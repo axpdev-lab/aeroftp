@@ -1038,6 +1038,88 @@ enum PosixRenameSupport {
     Absent,
 }
 
+/// A session of the read-ahead's own, on a second channel of the connection.
+///
+/// `SftpSession` reads a file only through `File`, which keeps one READ in
+/// flight and copies the reply into a buffer the caller allocated before the
+/// READ went out. The read-ahead therefore kept its depth with one handle per
+/// READ in flight, each holding a chunk-sized buffer for the whole round trip:
+/// at the default depth, four connections held 33 MB of buffers waiting for
+/// bytes (heaptrack, lab, 2026-10-04). On this session the READs go out on one
+/// handle and every reply lands in a buffer of its own, allocated when its
+/// bytes arrive, so what the read-ahead holds is what came back and is not
+/// written yet.
+struct ReadaheadSession {
+    raw: RawSftpSession,
+    /// The longest READ to ask for: what `File` asks for on the main session
+    /// (the server's stated read length, else the packet length less the READ
+    /// reply's header).
+    max_read_len: usize,
+    /// Cancelled when this channel's stream ends ([`WatchedSftpStream`]).
+    ended: CancellationToken,
+}
+
+impl ReadaheadSession {
+    /// The session over `stream`, negotiated as `SftpSession::new` does: the
+    /// limits extension, when the server states it, sets the READ length.
+    async fn open<S>(stream: S) -> Result<Self, russh_sftp::client::error::Error>
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        let ended = CancellationToken::new();
+        let mut raw = RawSftpSession::new(WatchedSftpStream {
+            inner: stream,
+            ended: ended.clone(),
+        });
+        let version = raw.init().await?;
+        let mut packet_len = russh_sftp::client::Config::default().max_packet_len;
+        let mut read_len = None;
+        if version
+            .extensions
+            .get(russh_sftp::extensions::LIMITS)
+            .is_some_and(|v| v == "1")
+        {
+            let limits = russh_sftp::client::rawsession::Limits::from(raw.limits().await?);
+            raw.set_limits(limits);
+            read_len = limits.read_len;
+            if let Some(stated) = limits.packet_len {
+                packet_len = u32::try_from(stated).unwrap_or(u32::MAX).min(packet_len);
+            }
+        }
+        // `File` leaves 9 bytes of the packet to the READ reply's header.
+        let max_read_len = read_len.unwrap_or(u64::from(packet_len.saturating_sub(9)));
+        Ok(Self {
+            raw,
+            max_read_len: usize::try_from(max_read_len).unwrap_or(usize::MAX),
+            ended,
+        })
+    }
+}
+
+/// What one connection knows about its [`ReadaheadSession`].
+///
+/// Opened on the first read-ahead and kept for the next ones, so a connection
+/// pays for the channel once. A server may refuse a second channel (sshd's
+/// `MaxSessions 1`, some appliances): the answer is remembered and the
+/// read-ahead reads on handles of the main session, as before this session.
+enum ReadaheadSupport {
+    /// Not opened yet on this connection.
+    Unasked,
+    /// Open, and shared by the downloads of this connection.
+    Available(Arc<ReadaheadSession>),
+    /// This server refused it.
+    Absent,
+}
+
+/// Test-only: opens a [`ReadaheadSession`] where there is no SSH connection to
+/// open a channel on (the in-memory servers of the tests).
+#[cfg(test)]
+type ReadaheadOpener = Arc<
+    dyn Fn() -> futures_util::future::BoxFuture<'static, Result<ReadaheadSession, ProviderError>>
+        + Send
+        + Sync,
+>;
+
 pub struct SftpProvider {
     config: SftpConfig,
     /// SSH connection handle (shared so rsync-over-SSH can open exec channels on the same session).
@@ -1085,6 +1167,15 @@ pub struct SftpProvider {
     /// `clone_for_transfer`: a pool worker dials its own connection, so it
     /// must ask its own server rather than inherit an answer about another.
     posix_rename: PosixRenameSupport,
+    /// The read-ahead's own session on this connection, see
+    /// [`ReadaheadSupport`]. Behind a lock because the range workers of a
+    /// segmented download hold the provider shared. Like `posix_rename`, NOT
+    /// carried over by `clone_for_transfer`: a pool worker dials its own
+    /// connection.
+    readahead_session: TokioMutex<ReadaheadSupport>,
+    /// Test-only, see [`ReadaheadOpener`].
+    #[cfg(test)]
+    readahead_opener: Option<ReadaheadOpener>,
     /// Test-only hook. Production never cancels this token; read-ahead used
     /// to watch a local `CancellationToken::new()` that no caller cancelled.
     /// Each download replaces the token in the slot, so two concurrent
@@ -1126,6 +1217,9 @@ impl SftpProvider {
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
             posix_rename: PosixRenameSupport::Unasked,
+            readahead_session: TokioMutex::new(ReadaheadSupport::Unasked),
+            #[cfg(test)]
+            readahead_opener: None,
             transfer_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
             fail_readahead_write: Arc::new(AtomicBool::new(false)),
             resume_in_place: false,
@@ -1742,6 +1836,85 @@ impl SftpProvider {
         })
     }
 
+    /// The read-ahead's own session on this connection (see
+    /// [`ReadaheadSupport`]), opened on first use. `None` when this server
+    /// refused it: the read-ahead then reads on the main session's handles.
+    async fn readahead_session(&self) -> Option<Arc<ReadaheadSession>> {
+        let mut support = self.readahead_session.lock().await;
+        match &*support {
+            // A channel the server closed is opened again; the connection
+            // itself is checked by whoever reads on it.
+            ReadaheadSupport::Available(session) if !session.ended.is_cancelled() => {
+                return Some(Arc::clone(session));
+            }
+            ReadaheadSupport::Absent => return None,
+            ReadaheadSupport::Available(_) | ReadaheadSupport::Unasked => {}
+        }
+        match self.open_readahead_session().await {
+            Ok(session) => {
+                let session = Arc::new(session);
+                *support = ReadaheadSupport::Available(Arc::clone(&session));
+                Some(session)
+            }
+            Err(e) => {
+                // A refusal is the server's answer for this connection and is
+                // remembered. A timeout or a dropped connection is not an
+                // answer: remembered, it would take the second channel away
+                // from every later download on the connection, so the next
+                // read-ahead asks again.
+                let refused = !e.is_recoverable();
+                tracing::info!(
+                    "SFTP: no second channel on {} for the read-ahead ({}{}); reading on the main session",
+                    self.config.host,
+                    e,
+                    if refused { "" } else { ", asked again next time" }
+                );
+                *support = if refused {
+                    ReadaheadSupport::Absent
+                } else {
+                    ReadaheadSupport::Unasked
+                };
+                None
+            }
+        }
+    }
+
+    /// A channel of this connection with an SFTP session of the read-ahead's
+    /// own, as [`Self::posix_rename_session`] opens one.
+    async fn open_readahead_session(&self) -> Result<ReadaheadSession, ProviderError> {
+        #[cfg(test)]
+        if let Some(opener) = &self.readahead_opener {
+            return opener().await;
+        }
+        let handle = self.ssh_handle.clone().ok_or(ProviderError::NotConnected)?;
+        let channel = {
+            let guard = handle.lock().await;
+            guard.channel_open_session().await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!(
+                        "Failed to open a channel for the read-ahead: {s}"
+                    ))
+                })
+            })?
+        };
+        channel.request_subsystem(true, "sftp").await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!(
+                    "Failed to request the SFTP subsystem for the read-ahead: {s}"
+                ))
+            })
+        })?;
+        ReadaheadSession::open(channel.into_stream())
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!(
+                        "Failed to negotiate the SFTP session for the read-ahead: {s}"
+                    ))
+                })
+            })
+    }
+
     fn get_sftp(&self) -> Result<&SftpChannel, ProviderError> {
         self.sftp.as_ref().ok_or(ProviderError::NotConnected)
     }
@@ -2065,8 +2238,10 @@ impl StorageProvider for SftpProvider {
         );
         // The posix-rename answer and its session belong to the connection
         // that was asked: after a dropped transport and a new dial it would be
-        // a dead session, and every replace would fail on it.
+        // a dead session, and every replace would fail on it. The same holds
+        // for the read-ahead's session.
         self.posix_rename = PosixRenameSupport::Unasked;
+        *self.readahead_session.get_mut() = ReadaheadSupport::Unasked;
         // A reconnect over a connection still held (the GUI's silent
         // reconnect after a stalled session) closes it first instead of
         // overwriting the handle.
@@ -2243,8 +2418,9 @@ impl StorageProvider for SftpProvider {
         // The posix-rename answer belongs to the connection that was asked,
         // not to this struct: the next `connect()` may reach a different
         // server, and an inherited "Absent" would refuse a replace the new
-        // server can do.
+        // server can do. The read-ahead's session goes with its connection.
         self.posix_rename = PosixRenameSupport::Unasked;
+        *self.readahead_session.get_mut() = ReadaheadSupport::Unasked;
 
         // Close SSH handle. Arc<Mutex<_>> means other clones (e.g. rsync-over-SSH borrowers)
         // may still hold references; the disconnect message is sent through the shared sender,
@@ -2645,6 +2821,7 @@ impl StorageProvider for SftpProvider {
                     1,
                 ) {
                     close_preopened!();
+                    let reads = self.readahead_session().await;
                     let sftp = self.get_sftp()?;
                     let cancel = {
                         let mut slot = self
@@ -2658,6 +2835,7 @@ impl StorageProvider for SftpProvider {
                     on_progress = fallback_progress;
                     match sftp_readahead_download(
                         sftp,
+                        reads.as_ref(),
                         &full_path,
                         total_size,
                         local_path,
@@ -4503,6 +4681,178 @@ async fn shutdown_sftp_file(
     first
 }
 
+/// The read-ahead's handle on its own session ([`ReadaheadSession`]), shared
+/// by every READ of one range. Closed on every exit: awaited by
+/// [`Self::close`] on the paths that return, and queued from `Drop` when the
+/// transfer's future is dropped, because the session outlives the transfer and
+/// a handle left on it would stay open until the connection closes.
+struct RawReadHandle {
+    session: Arc<ReadaheadSession>,
+    handle: Option<String>,
+}
+
+impl RawReadHandle {
+    /// Open `full_path` for reading on `session`. A cancel during the OPEN
+    /// still waits for its answer, briefly, so a handle it returns is closed.
+    async fn open(
+        session: &Arc<ReadaheadSession>,
+        full_path: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Self, ProviderError> {
+        let open = until_sftp_ends(
+            &session.ended,
+            session.raw.open(
+                full_path,
+                russh_sftp::protocol::OpenFlags::READ,
+                russh_sftp::protocol::FileAttributes::default(),
+            ),
+        );
+        tokio::pin!(open);
+        let opened = tokio::select! {
+            _ = cancel.cancelled() => {
+                if let Ok(Ok(opened)) =
+                    tokio::time::timeout(std::time::Duration::from_secs(2), &mut open).await
+                {
+                    let _ = until_sftp_ends(&session.ended, session.raw.close(opened.handle)).await;
+                }
+                return Err(ProviderError::TransferFailed(
+                    SFTP_TRANSFER_CANCELLED.to_string(),
+                ));
+            }
+            opened = &mut open => opened,
+        };
+        let opened = opened.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!(
+                    "Failed to open remote file (readahead): {}",
+                    s
+                ))
+            })
+        })?;
+        Ok(Self {
+            session: Arc::clone(session),
+            handle: Some(opened.handle),
+        })
+    }
+
+    fn handle(&self) -> &str {
+        self.handle.as_deref().unwrap_or_default()
+    }
+
+    /// One READ of at most `want` bytes at `abs_off`, in the reply's own
+    /// buffer: what the server sends back for one request. Empty at end of
+    /// file.
+    async fn read_once(&self, abs_off: u64, want: usize) -> Result<Vec<u8>, ProviderError> {
+        let len = u32::try_from(want.min(self.session.max_read_len)).unwrap_or(u32::MAX);
+        match until_sftp_ends(
+            &self.session.ended,
+            self.session.raw.read(self.handle(), abs_off, len),
+        )
+        .await
+        {
+            Ok(data) => Ok(data.data),
+            Err(russh_sftp::client::error::Error::Status(status))
+                if status.status_code == russh_sftp::protocol::StatusCode::Eof =>
+            {
+                Ok(Vec::new())
+            }
+            Err(e) => Err(classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Read error (readahead): {}", s))
+            })),
+        }
+    }
+
+    /// `want` bytes at `abs_off`, shorter only at end of file. A whole reply
+    /// is kept as it came, with no copy; a server that sends less per READ
+    /// gets the rest asked for.
+    async fn read_exact(&self, abs_off: u64, want: usize) -> Result<Vec<u8>, ProviderError> {
+        let mut buf = self.read_once(abs_off, want).await?;
+        while !buf.is_empty() && buf.len() < want {
+            let more = self
+                .read_once(abs_off + buf.len() as u64, want - buf.len())
+                .await?;
+            if more.is_empty() {
+                break;
+            }
+            buf.extend_from_slice(&more);
+        }
+        Ok(buf)
+    }
+
+    async fn close(mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _ = until_sftp_ends(&self.session.ended, self.session.raw.close(handle)).await;
+        }
+    }
+}
+
+impl Drop for RawReadHandle {
+    fn drop(&mut self) {
+        let Some(handle) = self.handle.take() else {
+            return;
+        };
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let session = Arc::clone(&self.session);
+            runtime.spawn(async move {
+                let _ = until_sftp_ends(&session.ended, session.raw.close(handle)).await;
+            });
+        }
+    }
+}
+
+/// One reader of the read-ahead (see [`sftp_readahead_range_into`]).
+enum ChunkReader<'a> {
+    /// A handle of the main session: one READ in flight, into a buffer
+    /// allocated before the READ goes out.
+    File(Box<russh_sftp::client::fs::File>),
+    /// The shared handle of the read-ahead's own session: each reply arrives
+    /// in a buffer of its own.
+    Raw(&'a RawReadHandle),
+}
+
+impl ChunkReader<'_> {
+    /// One READ of at most `want` bytes at `abs_off`; empty at end of file.
+    async fn read_once(
+        &mut self,
+        abs_off: u64,
+        want: usize,
+        ended: &CancellationToken,
+    ) -> Result<Vec<u8>, ProviderError> {
+        match self {
+            Self::File(file) => sftp_read_once(file, abs_off, want, ended).await,
+            Self::Raw(handle) => handle.read_once(abs_off, want).await,
+        }
+    }
+
+    /// `want` bytes at `abs_off`, shorter only at end of file.
+    async fn read_chunk(
+        &mut self,
+        abs_off: u64,
+        want: usize,
+        ended: &CancellationToken,
+    ) -> Result<Vec<u8>, ProviderError> {
+        match self {
+            Self::File(file) => sftp_pipelined_read_window(file, abs_off, want, ended).await,
+            Self::Raw(handle) => handle.read_exact(abs_off, want).await,
+        }
+    }
+
+    /// Close a main-session handle, awaited; the shared handle is closed once,
+    /// by its owner.
+    async fn close(self, ended: &CancellationToken) {
+        if let Self::File(file) = self {
+            close_sftp_file(*file, ended).await;
+        }
+    }
+}
+
+/// Closes every reader of `readers` (see [`ChunkReader::close`]).
+async fn close_readers(readers: Vec<ChunkReader<'_>>, ended: &CancellationToken) {
+    for reader in readers {
+        reader.close(ended).await;
+    }
+}
+
 /// Sliding-window read-ahead for the byte range `[start, start + expected)` on
 /// ONE SFTP session, written positioned into the already-open `out` at each
 /// chunk's absolute offset.
@@ -4510,11 +4860,14 @@ async fn shutdown_sftp_file(
 /// Why this exists: russh-sftp's `File` reads serially (one `SSH_FXP_READ`
 /// awaited per `poll_read`; upstream AspectUnk/russh-sftp#70), so a single SFTP
 /// connection downloads far below the link while its writes pipeline
-/// (`write_nowait`) and upload runs ~3x faster on the same session. We cannot
-/// reach the private `RawSftpSession` to add a symmetric `read_nowait`, but the
-/// session multiplexes concurrent requests by id with no global lock, so we keep
-/// `window` `SSH_FXP_READ` continuously in flight: open `window` cheap file
-/// handles and let each free handle claim the next chunk. Unlike the batched
+/// (`write_nowait`) and upload runs ~3x faster on the same session. So we keep
+/// `window` `SSH_FXP_READ` continuously in flight, each free reader claiming
+/// the next chunk. With `reads`, the read-ahead's own session on a second
+/// channel ([`ReadaheadSession`]), the READs go out on ONE handle and each
+/// reply lands in a buffer allocated on its arrival. Without it (a server that
+/// refused the channel) the main session's `SftpSession` hides its raw
+/// session, and the readers are `window` cheap file handles of it, each with
+/// one READ in flight into a buffer allocated before the READ. Unlike the batched
 /// `sftp_pipelined_download` there is no per-window barrier: the readers feed a
 /// single writer over a bounded channel, and every chunk is one READ (the first
 /// READ sizes them), so the pipe never drains between batches. Composes with the
@@ -4532,6 +4885,59 @@ async fn shutdown_sftp_file(
 #[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_range_into(
     sftp: &SftpChannel,
+    reads: Option<&Arc<ReadaheadSession>>,
+    full_path: &str,
+    start: u64,
+    expected: u64,
+    out: &mut tokio::fs::File,
+    chunk: usize,
+    window: usize,
+    grow_to: Option<usize>,
+    aggregate: &Arc<AtomicU64>,
+    cancel: &CancellationToken,
+    total_for_progress: u64,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    fail_write: Arc<AtomicBool>,
+    mark: Option<&RangeMark>,
+) -> Result<(), ProviderError> {
+    if expected == 0 {
+        return Ok(());
+    }
+    let raw_handle = match reads {
+        Some(session) => Some(RawReadHandle::open(session, full_path, cancel).await?),
+        None => None,
+    };
+    let result = readahead_range_on(
+        sftp,
+        raw_handle.as_ref(),
+        full_path,
+        start,
+        expected,
+        out,
+        chunk,
+        window,
+        grow_to,
+        aggregate,
+        cancel,
+        total_for_progress,
+        on_progress,
+        fail_write,
+        mark,
+    )
+    .await;
+    if let Some(handle) = raw_handle {
+        handle.close().await;
+    }
+    result
+}
+
+/// The read-ahead of [`sftp_readahead_range_into`], on the shared handle of
+/// the read-ahead's own session when there is one (`raw_handle`, closed by the
+/// caller) and on handles of the main session otherwise.
+#[allow(clippy::too_many_arguments)]
+async fn readahead_range_on(
+    sftp: &SftpChannel,
+    raw_handle: Option<&RawReadHandle>,
     full_path: &str,
     start: u64,
     expected: u64,
@@ -4547,13 +4953,19 @@ async fn sftp_readahead_range_into(
     mark: Option<&RangeMark>,
 ) -> Result<(), ProviderError> {
     use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-    if expected == 0 {
-        return Ok(());
-    }
     let chunk = (chunk.max(4096)) as u64;
     let n_chunks = expected.div_ceil(chunk).max(1);
     let eff_window = (window.clamp(1, SFTP_READAHEAD_MAX_WINDOW) as u64).min(n_chunks) as usize;
-    let handles = open_readahead_handles(sftp, full_path, eff_window, cancel).await?;
+    let mut readers: Vec<ChunkReader<'_>> = match raw_handle {
+        Some(handle) => std::iter::repeat_with(|| ChunkReader::Raw(handle))
+            .take(eff_window)
+            .collect(),
+        None => open_readahead_handles(sftp, full_path, eff_window, cancel)
+            .await?
+            .into_iter()
+            .map(|file| ChunkReader::File(Box::new(file)))
+            .collect(),
+    };
 
     // One chunk, one READ. russh-sftp cuts a READ at the session's read length,
     // and OpenSSH's (261120 bytes) is 1 KiB under the 256 KiB default chunk:
@@ -4565,9 +4977,8 @@ async fn sftp_readahead_range_into(
     // server's send queue ran empty every ~1.2 s). The first READ comes back
     // with what the server sends for one request, and that sizes every chunk
     // after it.
-    let mut handles = handles;
     let first_want = chunk.min(expected) as usize;
-    let Some(probe) = handles.first_mut() else {
+    let Some(probe) = readers.first_mut() else {
         return Err(ProviderError::TransferFailed(
             "Failed to open remote file (readahead): no handle".to_string(),
         ));
@@ -4576,19 +4987,19 @@ async fn sftp_readahead_range_into(
         _ = cancel.cancelled() => Err(ProviderError::TransferFailed(
             SFTP_TRANSFER_CANCELLED.to_string(),
         )),
-        r = sftp_read_once(probe, start, first_want, &sftp.ended) => r,
+        r = probe.read_once(start, first_want, &sftp.ended) => r,
     };
     let first = match first {
         Ok(first) if !first.is_empty() => first,
         Ok(_) => {
-            close_sftp_files(handles, &sftp.ended).await;
+            close_readers(readers, &sftp.ended).await;
             return Err(ProviderError::TransferFailed(format!(
                 "Short read at offset {} (0 of {} bytes): remote file changed or truncated",
                 start, first_want
             )));
         }
         Err(e) => {
-            close_sftp_files(handles, &sftp.ended).await;
+            close_readers(readers, &sftp.ended).await;
             return Err(e);
         }
     };
@@ -4606,36 +5017,46 @@ async fn sftp_readahead_range_into(
     let rest = expected - first.len() as u64;
     let n_chunks = rest.div_ceil(chunk);
 
-    // Each handle keeps one READ in flight, so on a server that sends less
+    // Each reader keeps one READ in flight, so on a server that sends less
     // per READ than the configured chunk a window holds fewer bytes than it
     // was sized for. With `grow_to`, the window grows back toward those bytes,
-    // but never past `grow_to` handles (the handles the release opened on a
+    // but never past `grow_to` READs (the handles the release opened on a
     // connection): a server with a small read length gets no less depth than
-    // before and no new load. Without it the window stays as asked. A server
-    // that will not open more handles leaves the read-ahead with the ones it
-    // already has; the bytes already read are kept either way.
+    // before and no new load. Without it the window stays as asked. On the
+    // read-ahead's own session the READs share one handle; on the main session
+    // each takes one, and a server that will not open more leaves the
+    // read-ahead with the ones it already has. The bytes already read are kept
+    // either way.
     if let Some(grow_to) = grow_to.filter(|_| chunk < configured) {
-        let target = usize::try_from(handles.len() as u64 * configured / chunk)
+        let target = usize::try_from(readers.len() as u64 * configured / chunk)
             .unwrap_or(usize::MAX)
             .min(grow_to)
             .min(SFTP_READAHEAD_MAX_WINDOW)
             .min(usize::try_from(n_chunks).unwrap_or(usize::MAX));
-        if target > handles.len() {
-            match open_readahead_handles(sftp, full_path, target - handles.len(), cancel).await {
-                Ok(more) => handles.extend(more),
-                Err(e) if is_transfer_cancellation(&e) => {
-                    close_sftp_files(handles, &sftp.ended).await;
-                    return Err(e);
-                }
-                Err(e) => tracing::warn!(
-                    "SFTP read-ahead: no more handles ({}); reading with {}",
-                    e,
-                    handles.len()
-                ),
+        if target > readers.len() {
+            let missing = target - readers.len();
+            match raw_handle {
+                Some(handle) => readers
+                    .extend(std::iter::repeat_with(|| ChunkReader::Raw(handle)).take(missing)),
+                None => match open_readahead_handles(sftp, full_path, missing, cancel).await {
+                    Ok(more) => readers.extend(
+                        more.into_iter()
+                            .map(|file| ChunkReader::File(Box::new(file))),
+                    ),
+                    Err(e) if is_transfer_cancellation(&e) => {
+                        close_readers(readers, &sftp.ended).await;
+                        return Err(e);
+                    }
+                    Err(e) => tracing::warn!(
+                        "SFTP read-ahead: no more handles ({}); reading with {}",
+                        e,
+                        readers.len()
+                    ),
+                },
             }
         }
     }
-    let eff_window = handles.len();
+    let eff_window = readers.len();
 
     // `eff_window` readers -> one writer. The writer owns `out` (no cursor race)
     // and is the sole caller of `on_progress`.
@@ -4643,12 +5064,12 @@ async fn sftp_readahead_range_into(
     // Child token: an I/O error here must not cancel the caller's token.
     let work_cancel = cancel.child_token();
 
-    let readers = {
+    let reading = {
         let work_cancel = work_cancel.clone();
         async move {
             let mut reader_tasks = Vec::with_capacity(eff_window);
             let next_chunk = Arc::new(AtomicU64::new(0));
-            for mut file in handles {
+            for mut reader in readers {
                 let tx = tx.clone();
                 let work_cancel = work_cancel.clone();
                 let next_chunk = next_chunk.clone();
@@ -4673,7 +5094,7 @@ async fn sftp_readahead_range_into(
                                         SFTP_TRANSFER_CANCELLED.to_string(),
                                     ));
                                 }
-                                r = sftp_pipelined_read_window(&mut file, abs_off, want, &sftp.ended) => r?,
+                                r = reader.read_chunk(abs_off, want, &sftp.ended) => r?,
                             };
                             if buf.len() != want {
                                 return Err(ProviderError::TransferFailed(format!(
@@ -4700,7 +5121,7 @@ async fn sftp_readahead_range_into(
                         Ok(())
                     }
                     .await;
-                    close_sftp_file(file, &sftp.ended).await;
+                    reader.close(&sftp.ended).await;
                     if result.is_err() {
                         work_cancel.cancel();
                     }
@@ -4773,7 +5194,7 @@ async fn sftp_readahead_range_into(
         }
     };
 
-    let (reader_res, writer_res) = tokio::join!(readers, writer);
+    let (reader_res, writer_res) = tokio::join!(reading, writer);
     match (reader_res, writer_res) {
         (Ok(()), Ok(())) => Ok(()),
         (Ok(()), Err(e)) | (Err(e), Ok(())) => Err(e),
@@ -4809,6 +5230,26 @@ fn first_reader_cause(results: Vec<Result<(), ProviderError>>) -> Result<(), Pro
     cancelled.map_or(Ok(()), Err)
 }
 
+/// The error of a range worker whose connection did not get through.
+///
+/// The download's own connection did, to the same server with the same key,
+/// so a refusal now is most likely the server's limit on connections being
+/// set up at once: Dropbear lets five authenticate from one address and
+/// closes the rest during the handshake, OpenSSH's `MaxStartups` starts
+/// dropping at ten. Sixteen ranges dial together, and the download failed
+/// whole (Dropbear: 5 runs in 5 at 16 connections, 2026-10-16). As a lost
+/// connection the range is asked again from its mark once the others are in
+/// (`write_range_resuming`, backoff 1, 2, 4 s); a refused key or host key is
+/// left as it is.
+fn range_worker_refused(error: ProviderError) -> ProviderError {
+    match error {
+        ProviderError::ConnectionFailed(why) => {
+            ProviderError::ConnectionLost(format!("the server refused another connection ({why})"))
+        }
+        other => other,
+    }
+}
+
 /// What a transfer of this module reports when it was cancelled, by the
 /// caller or by a sibling reader that failed.
 const SFTP_TRANSFER_CANCELLED: &str = "Transfer cancelled by user";
@@ -4830,6 +5271,7 @@ fn is_transfer_cancellation(error: &ProviderError) -> bool {
 #[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_download(
     sftp: &SftpChannel,
+    reads: Option<&Arc<ReadaheadSession>>,
     full_path: &str,
     total_size: u64,
     local_path: &str,
@@ -4886,6 +5328,7 @@ async fn sftp_readahead_download(
     // there is no spawned ticker to leak on a dropped/cancelled transfer.
     sftp_readahead_range_into(
         sftp,
+        reads,
         full_path,
         0,
         total_size,
@@ -5332,7 +5775,10 @@ async fn sftp_download_one_range(
     worker.buffer_size = buffer_size;
     worker.compression_enabled = compression_enabled;
     worker.connection_spec = Some(spec);
-    worker.ensure_connected().await?;
+    worker
+        .ensure_connected()
+        .await
+        .map_err(range_worker_refused)?;
 
     let read = sftp_read_one_range(
         &worker,
@@ -5407,8 +5853,10 @@ async fn sftp_read_one_range(
                 .open(temp_path)
                 .await
                 .map_err(ProviderError::IoError)?;
+            let reads = worker.readahead_session().await;
             let read = sftp_readahead_range_into(
                 sftp,
+                reads.as_ref(),
                 &full_path,
                 start,
                 expected,
@@ -6903,6 +7351,20 @@ mod tests {
         assert!(err.is_connection_lost(), "{err:?}");
     }
 
+    /// A range whose connection the server refused is asked again (see
+    /// `range_worker_refused`); a refused key is not.
+    #[test]
+    fn a_refused_range_connection_is_retried_and_a_refused_key_is_not() {
+        let refused = range_worker_refused(ProviderError::ConnectionFailed(
+            "ssh: Disconnected".to_string(),
+        ));
+        assert!(refused.is_recoverable(), "{refused:?}");
+        let key = range_worker_refused(ProviderError::AuthenticationFailed(
+            "key rejected".to_string(),
+        ));
+        assert!(!key.is_recoverable(), "{key:?}");
+    }
+
     /// Read-ahead readers report their cause, not the cancellation it caused
     /// in the others: a lost connection used to surface as "Transfer
     /// cancelled by user" whenever a cancelled reader came first.
@@ -7411,7 +7873,10 @@ mod tests {
     /// simply sends less than it was asked for, as other servers do. With
     /// `first_cap`, its very first reply is shorter still. With `open_limit`,
     /// it refuses an OPEN while that many handles are open, and it keeps the
-    /// most handles that were ever open at once.
+    /// most handles that were ever open at once. A clone serves another
+    /// channel of the same connection: the file, the read log and the handle
+    /// counts are shared.
+    #[derive(Clone)]
     struct ReadCappingServer {
         data: Arc<Vec<u8>>,
         cap: usize,
@@ -7422,6 +7887,8 @@ mod tests {
         open_limit: Option<usize>,
         open_now: usize,
         max_open: Arc<std::sync::atomic::AtomicUsize>,
+        /// Handles open right now, on every channel.
+        live: Arc<std::sync::atomic::AtomicUsize>,
         reads: Arc<std::sync::Mutex<Vec<(u64, u32)>>>,
     }
 
@@ -7436,6 +7903,7 @@ mod tests {
                 open_limit: None,
                 open_now: 0,
                 max_open: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                live: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 reads: Arc::new(std::sync::Mutex::new(Vec::new())),
             }
         }
@@ -7447,6 +7915,32 @@ mod tests {
             let mut provider = provider_without_a_session();
             provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
             provider
+        }
+
+        /// [`Self::serve`], and the read-ahead's own session on a second
+        /// channel served by a clone, as a connection that allows it gives.
+        /// Counts the channels the provider opens.
+        async fn serve_with_readahead_channel(self) -> (SftpProvider, Arc<AtomicU64>) {
+            let template = self.clone();
+            let opened = Arc::new(AtomicU64::new(0));
+            let counted = Arc::clone(&opened);
+            let mut provider = self.serve().await;
+            provider.readahead_opener = Some(Arc::new(move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                let server = template.clone();
+                Box::pin(async move {
+                    let (client, end) = tokio::io::duplex(1 << 20);
+                    russh_sftp::server::run(end, server).await;
+                    ReadaheadSession::open(client)
+                        .await
+                        .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))
+                })
+            }));
+            (provider, opened)
+        }
+
+        fn live_handles(&self) -> Arc<std::sync::atomic::AtomicUsize> {
+            Arc::clone(&self.live)
         }
     }
 
@@ -7507,6 +8001,7 @@ mod tests {
             self.open_now += 1;
             self.max_open
                 .fetch_max(self.open_now, std::sync::atomic::Ordering::SeqCst);
+            self.live.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(russh_sftp::protocol::Handle {
                 id,
                 handle: filename,
@@ -7519,6 +8014,11 @@ mod tests {
             _handle: String,
         ) -> Result<russh_sftp::protocol::Status, Self::Error> {
             self.open_now = self.open_now.saturating_sub(1);
+            let _ = self.live.fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |n| n.checked_sub(1),
+            );
             Ok(GoingAwayServer::ok(id))
         }
 
@@ -7647,13 +8147,26 @@ mod tests {
         window: usize,
         grow_to: Option<usize>,
     ) -> Result<Vec<u8>, ProviderError> {
+        readahead_into_file_until(provider, size, window, grow_to, &CancellationToken::new()).await
+    }
+
+    /// [`readahead_into_file`] under `cancel`.
+    async fn readahead_into_file_until(
+        provider: &SftpProvider,
+        size: u64,
+        window: usize,
+        grow_to: Option<usize>,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<u8>, ProviderError> {
         use tokio::io::AsyncWriteExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("out.bin");
         let mut out = tokio::fs::File::create(&path).await.expect("output file");
         out.set_len(size).await.expect("output size");
+        let reads = provider.readahead_session().await;
         sftp_readahead_range_into(
             provider.get_sftp().expect("session"),
+            reads.as_ref(),
             "/down.bin",
             0,
             size,
@@ -7662,7 +8175,7 @@ mod tests {
             window,
             grow_to,
             &Arc::new(AtomicU64::new(0)),
-            &CancellationToken::new(),
+            cancel,
             size,
             None,
             Arc::new(AtomicBool::new(false)),
@@ -7736,6 +8249,249 @@ mod tests {
         });
         assert!(got == data, "the downloaded bytes differ");
         assert!(max_open.load(std::sync::atomic::Ordering::SeqCst) <= 2);
+    }
+
+    /// Requested 37 of #1202, part (a). On a channel of its own the
+    /// read-ahead sends every READ on one handle and keeps each reply in the
+    /// buffer it arrived in, instead of one handle per READ in flight with a
+    /// chunk allocated before the READ went out. The chunks are sized by the
+    /// first reply as on the main session, and the handle is closed.
+    #[tokio::test]
+    async fn a_readahead_on_its_own_channel_reads_every_chunk_on_one_handle() {
+        let data = pattern(3 * 1024 * 1024 + 12_345);
+        let size = data.len() as u64;
+        let mut wrong = Vec::new();
+        for (case, cap, announce, first_cap, chunk) in [
+            (
+                "OpenSSH's read length",
+                OPENSSH_MAX_WRITE,
+                true,
+                None,
+                OPENSSH_MAX_WRITE,
+            ),
+            (
+                "replies cut at 64 KiB, no limits stated",
+                64 * 1024,
+                false,
+                None,
+                64 * 1024,
+            ),
+            (
+                "a first reply of 1000 bytes",
+                OPENSSH_MAX_WRITE,
+                true,
+                Some(1000),
+                32 * 1024,
+            ),
+        ] {
+            let mut server = ReadCappingServer::new(&data, cap, announce);
+            server.first_cap = first_cap;
+            let reads = Arc::clone(&server.reads);
+            let max_open = Arc::clone(&server.max_open);
+            let live = server.live_handles();
+            let (mut provider, opened) = server.serve_with_readahead_channel().await;
+            let got = download_bytes(&mut provider)
+                .await
+                .unwrap_or_else(|e| panic!("{case}: {e:?}"));
+            if got != data {
+                wrong.push(format!("{case}: the downloaded bytes differ"));
+            }
+            if opened.load(Ordering::SeqCst) != 1 {
+                wrong.push(format!(
+                    "{case}: the read-ahead did not use its own channel"
+                ));
+            }
+            let at_once = max_open.load(Ordering::SeqCst);
+            if at_once != 1 {
+                wrong.push(format!("{case}: {at_once} handles open at once, not one"));
+            }
+            if live.load(Ordering::SeqCst) != 0 {
+                wrong.push(format!("{case}: a handle was left open"));
+            }
+            for &(offset, len) in reads.lock().expect("read log").iter() {
+                let inside = offset > 0 && offset + u64::from(len) < size;
+                if inside && len as usize != chunk {
+                    wrong.push(format!(
+                        "{case}: READ of {len} bytes at {offset}, chunks are {chunk} bytes"
+                    ));
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// The channel is the connection's, not the download's: opened by the
+    /// first read-ahead and used by the next.
+    #[tokio::test]
+    async fn the_readahead_channel_is_opened_once_per_connection() {
+        let data = pattern(2 * 1024 * 1024 + 7);
+        let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+        let (mut provider, opened) = server.serve_with_readahead_channel().await;
+        for round in 1..=2 {
+            let got = download_bytes(&mut provider)
+                .await
+                .unwrap_or_else(|e| panic!("download {round}: {e:?}"));
+            assert!(got == data, "download {round}: the bytes differ");
+        }
+        assert_eq!(opened.load(Ordering::SeqCst), 1);
+    }
+
+    /// A server may refuse a second channel (sshd's `MaxSessions 1`). The
+    /// read-ahead then reads on the main session's handles, as before its own
+    /// channel, and the refusal is asked once per connection.
+    #[tokio::test]
+    async fn a_server_that_refuses_the_readahead_channel_is_read_on_the_main_session() {
+        let data = pattern(2 * 1024 * 1024 + 7);
+        let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+        let max_open = Arc::clone(&server.max_open);
+        let mut provider = server.serve().await;
+        let asked = Arc::new(AtomicU64::new(0));
+        let counted = Arc::clone(&asked);
+        provider.readahead_opener = Some(Arc::new(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async {
+                Err(ProviderError::ServerError(
+                    "administratively prohibited".to_string(),
+                ))
+            })
+        }));
+        for round in 1..=2 {
+            let got = download_bytes(&mut provider)
+                .await
+                .unwrap_or_else(|e| panic!("download {round}: {e:?}"));
+            assert!(got == data, "download {round}: the bytes differ");
+        }
+        assert_eq!(
+            asked.load(Ordering::SeqCst),
+            1,
+            "the refusal was asked again"
+        );
+        assert!(
+            max_open.load(Ordering::SeqCst) > 1,
+            "the read-ahead did not read on the main session's handles"
+        );
+    }
+
+    /// A channel that could not be opened in time is not a refusal: the next
+    /// read-ahead asks again, and reads on its own channel once it opens.
+    #[tokio::test]
+    async fn a_transient_channel_failure_is_asked_again() {
+        let data = pattern(2 * 1024 * 1024 + 7);
+        let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+        let template = server.clone();
+        let max_open = Arc::clone(&server.max_open);
+        let mut provider = server.serve().await;
+        let asked = Arc::new(AtomicU64::new(0));
+        let counted = Arc::clone(&asked);
+        provider.readahead_opener = Some(Arc::new(move || {
+            let round = counted.fetch_add(1, Ordering::SeqCst);
+            let server = template.clone();
+            Box::pin(async move {
+                if round == 0 {
+                    return Err(ProviderError::Timeout);
+                }
+                let (client, end) = tokio::io::duplex(1 << 20);
+                russh_sftp::server::run(end, server).await;
+                ReadaheadSession::open(client)
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))
+            })
+        }));
+        for round in 1..=2 {
+            let got = download_bytes(&mut provider)
+                .await
+                .unwrap_or_else(|e| panic!("download {round}: {e:?}"));
+            assert!(got == data, "download {round}: the bytes differ");
+        }
+        assert_eq!(
+            asked.load(Ordering::SeqCst),
+            2,
+            "a timeout was remembered as a refusal"
+        );
+        assert!(
+            max_open.load(Ordering::SeqCst) > 1,
+            "the first download did not fall back"
+        );
+    }
+
+    /// A file shorter than the range is refused, as on the main session, and
+    /// the shared handle is closed before the error returns.
+    #[tokio::test]
+    async fn a_readahead_on_its_own_channel_refuses_a_short_file_and_closes_its_handle() {
+        let data = pattern(2 * 1024 * 1024 + 7);
+        let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+        let live = server.live_handles();
+        let (provider, _) = server.serve_with_readahead_channel().await;
+        let refused = readahead_into_file(&provider, data.len() as u64 + 5_000, 8, None).await;
+        match refused {
+            Err(ProviderError::TransferFailed(message)) => {
+                assert!(message.contains("Short read"), "{message}")
+            }
+            other => panic!("a short file was not refused: {other:?}"),
+        }
+        assert_eq!(live.load(Ordering::SeqCst), 0, "the handle was left open");
+    }
+
+    /// A write that fails mid-range ends the read-ahead with the handle closed.
+    #[tokio::test]
+    async fn a_failed_write_closes_the_readahead_channel_handle() {
+        let data = pattern(2 * 1024 * 1024 + 7);
+        let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+        let live = server.live_handles();
+        let (mut provider, _) = server.serve_with_readahead_channel().await;
+        provider.fail_readahead_write.store(true, Ordering::SeqCst);
+        assert!(download_bytes(&mut provider).await.is_err());
+        assert_eq!(live.load(Ordering::SeqCst), 0, "the handle was left open");
+    }
+
+    /// A cancel that arrives while the shared handle is being opened waits for
+    /// the OPEN's answer and closes what it opened: the channel outlives the
+    /// transfer, so nothing else would.
+    #[tokio::test]
+    async fn a_cancel_during_the_open_closes_the_shared_handle() {
+        let data = pattern(1024 * 1024);
+        let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+        let live = server.live_handles();
+        let (provider, _) = server.serve_with_readahead_channel().await;
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let cancelled =
+            readahead_into_file_until(&provider, data.len() as u64, 8, None, &cancel).await;
+        assert!(
+            matches!(&cancelled, Err(e) if is_transfer_cancellation(e)),
+            "{cancelled:?}"
+        );
+        assert_eq!(live.load(Ordering::SeqCst), 0, "the handle was left open");
+    }
+
+    /// A transfer whose future is dropped (a task aborted) never reaches the
+    /// awaited close: dropping the shared handle queues its CLOSE.
+    #[tokio::test]
+    async fn a_dropped_shared_handle_is_closed() {
+        let data = pattern(64 * 1024);
+        let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+        let live = server.live_handles();
+        let (provider, _) = server.serve_with_readahead_channel().await;
+        let session = provider
+            .readahead_session()
+            .await
+            .expect("read-ahead channel");
+        let handle = RawReadHandle::open(&session, "/down.bin", &CancellationToken::new())
+            .await
+            .expect("open");
+        assert_eq!(live.load(Ordering::SeqCst), 1);
+        drop(handle);
+        for _ in 0..200 {
+            if live.load(Ordering::SeqCst) == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert_eq!(
+            live.load(Ordering::SeqCst),
+            0,
+            "a dropped handle stayed open"
+        );
     }
 
     /// Takes at most `cap` bytes per write, as russh-sftp's `File` takes at

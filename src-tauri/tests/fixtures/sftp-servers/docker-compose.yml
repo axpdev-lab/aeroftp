@@ -1,0 +1,121 @@
+# SFTP server matrix: one SFTP client, every server implementation we can run
+# on Linux, each on its own localhost port, all serving the same read-only
+# payload at /data to the user `testuser` with the same key.
+#
+# Usage:
+#   cd src-tauri/tests/fixtures/sftp-servers
+#   ./setup.sh                        # key, host keys, payload (first run only)
+#   docker compose up -d --build
+#   ./run-matrix.sh <aeroftp-cli> [server...]
+#   docker compose down               # add -v to drop SFTPGo's state
+#
+# | port | server                                     | covers                                  |
+# |------|--------------------------------------------|-----------------------------------------|
+# | 2231 | OpenSSH 10, Debian trixie, sftp-server     | limits@openssh.com, the current default |
+# | 2232 | OpenSSH 8.2, Ubuntu 20.04, sftp-server     | no limits extension (pre 8.6)           |
+# | 2233 | OpenSSH 10, MaxSessions 1                  | a second channel refused                |
+# | 2234 | OpenSSH 10, internal-sftp in a chroot      | the usual hosting setup                 |
+# | 2235 | SFTPGo (Go, pkg/sftp)                      | a server of its own, not OpenSSH        |
+# | 2236 | ProFTPD mod_sftp                           | a server of its own, not OpenSSH        |
+# | 2237 | Dropbear with OpenSSH's sftp-server        | embedded systems and appliances         |
+#
+# Generated files (keys, payload) are gitignored; see setup.sh. A compose
+# plugin older than the Docker daemon ("client version 1.43 is too old") runs
+# with DOCKER_API_VERSION set to the daemon's minimum, e.g. 1.44; the runners
+# pass the variable through to `docker logs` and `docker exec`.
+
+x-openssh: &openssh
+  build:
+    context: ./openssh
+    args:
+      BASE: debian:trixie-slim
+  image: aeroftp-sftp-openssh:trixie
+  restart: "no"
+  # tc netem inside the container shapes the server's side of the link
+  # (latency, loss) for runs that need a WAN without the lab.
+  cap_add: [NET_ADMIN]
+
+services:
+  openssh:
+    <<: *openssh
+    container_name: aeroftp-sftp-openssh
+    ports: ["127.0.0.1:2231:22"]
+    volumes:
+      - ./ssh_key.pub:/mnt/authorized_keys:ro
+      - ./generated/hostkeys/openssh:/mnt/hostkeys:ro
+      - ./payload:/data:ro
+
+  openssh-legacy:
+    <<: *openssh
+    build:
+      context: ./openssh
+      args:
+        BASE: ubuntu:20.04
+    image: aeroftp-sftp-openssh:focal
+    container_name: aeroftp-sftp-openssh-legacy
+    ports: ["127.0.0.1:2232:22"]
+    volumes:
+      - ./ssh_key.pub:/mnt/authorized_keys:ro
+      - ./generated/hostkeys/openssh:/mnt/hostkeys:ro
+      - ./payload:/data:ro
+
+  openssh-maxsessions1:
+    <<: *openssh
+    container_name: aeroftp-sftp-openssh-maxsessions1
+    environment:
+      SSHD_EXTRA: "MaxSessions 1"
+    ports: ["127.0.0.1:2233:22"]
+    volumes:
+      - ./ssh_key.pub:/mnt/authorized_keys:ro
+      - ./generated/hostkeys/openssh:/mnt/hostkeys:ro
+      - ./payload:/data:ro
+
+  openssh-chroot:
+    <<: *openssh
+    container_name: aeroftp-sftp-openssh-chroot
+    environment:
+      SFTP_SUBSYSTEM: internal-sftp
+      SSHD_EXTRA: "Match User testuser\\n  ChrootDirectory /srv/chroot\\n  ForceCommand internal-sftp"
+    ports: ["127.0.0.1:2234:22"]
+    volumes:
+      - ./ssh_key.pub:/mnt/authorized_keys:ro
+      - ./generated/hostkeys/openssh:/mnt/hostkeys:ro
+      - ./payload:/srv/chroot/data:ro
+
+  sftpgo:
+    image: drakkan/sftpgo:v2
+    container_name: aeroftp-sftp-sftpgo
+    restart: "no"
+    environment:
+      SFTPGO_LOADDATA_FROM: /etc/sftpgo-initial.json
+      SFTPGO_LOADDATA_MODE: "0"
+    ports: ["127.0.0.1:2235:2022"]
+    volumes:
+      - ./generated/sftpgo-initial.json:/etc/sftpgo-initial.json:ro
+      - ./payload:/srv/sftpgo/data/testuser/data:ro
+      - sftpgo-state:/var/lib/sftpgo
+
+  proftpd:
+    build: ./proftpd
+    image: aeroftp-sftp-proftpd:bookworm
+    container_name: aeroftp-sftp-proftpd
+    restart: "no"
+    ports: ["127.0.0.1:2236:2222"]
+    volumes:
+      - ./ssh_key.rfc4716:/mnt/authorized_keys.rfc4716:ro
+      - ./generated/hostkeys/proftpd:/etc/proftpd/hostkeys:ro
+      - ./payload:/home/testuser/data:ro
+
+  dropbear:
+    build: ./dropbear
+    image: aeroftp-sftp-dropbear:alpine
+    container_name: aeroftp-sftp-dropbear
+    restart: "no"
+    ports: ["127.0.0.1:2237:22"]
+    volumes:
+      - ./ssh_key.pub:/mnt/authorized_keys:ro
+      - ./generated/hostkeys/dropbear:/mnt/hostkeys:ro
+      - ./payload:/data:ro
+
+volumes:
+  sftpgo-state:

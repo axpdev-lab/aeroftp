@@ -552,6 +552,33 @@ impl Drop for TempFileGuard {
     }
 }
 
+/// Create the segmented temporary at `temp`, sized to `total_size`, with its
+/// guard armed in the same blocking step that creates it.
+///
+/// Run in `spawn_blocking`, whose task finishes even when its caller stops
+/// awaiting it: Ctrl-C drops a transfer, and the step creates the file
+/// anyway. Its guard then goes with the task's output and removes the file.
+/// Armed after the await, as it was, the guard missed that file, and a size
+/// that could not be reserved (a full disk) returned before arming it: both
+/// left a temporary as large as the download (2 runs in 30 of Ctrl-C at a
+/// random moment on 4.2.3, 2026-10-16).
+fn create_segmented_temp(
+    temp: PathBuf,
+    total_size: u64,
+) -> std::io::Result<(TempFileGuard, std::fs::File)> {
+    #[cfg(unix)]
+    let file = crate::providers::atomic_write::temp_claim::create_fresh(&temp)?;
+    #[cfg(not(unix))]
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&temp)?;
+    let guard = TempFileGuard::new(temp);
+    file.set_len(total_size)?;
+    Ok((guard, file))
+}
+
 /// What a segmented run hands back to its caller.
 #[must_use]
 #[derive(Debug)]
@@ -1091,35 +1118,18 @@ where
     // file is refused instead of truncating this one's windows, and a stale
     // one is replaced. The windows write through handles of their own, which
     // an advisory lock leaves alone; Windows locks are not advisory, so there
-    // the temporary is created as before. A completed run hands the claim to
-    // its caller with the temporary (`SegmentedTemp`).
-    #[cfg(unix)]
-    let claim = {
+    // the handle is closed at once, as before. A completed run hands the claim
+    // to its caller with the temporary (`SegmentedTemp`).
+    let (mut guard, claim) = {
         let temp = temp_path.clone();
-        let file = tokio::task::spawn_blocking(move || {
-            crate::providers::atomic_write::temp_claim::create_fresh(&temp)
-        })
-        .await
-        .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
-        .map_err(ProviderError::IoError)?;
-        file.set_len(config.total_size)
-            .map_err(ProviderError::IoError)?;
-        file
+        let total_size = config.total_size;
+        tokio::task::spawn_blocking(move || create_segmented_temp(temp, total_size))
+            .await
+            .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
+            .map_err(ProviderError::IoError)?
     };
     #[cfg(not(unix))]
-    {
-        let f = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&temp_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-        f.set_len(config.total_size)
-            .await
-            .map_err(ProviderError::IoError)?;
-    }
-    let mut guard = TempFileGuard::new(temp_path.clone());
+    drop(claim);
 
     let write_one_range = Arc::new(write_one_range);
     let total_size = config.total_size;
@@ -2475,6 +2485,53 @@ pub(crate) mod window_server {
 mod tests {
     use super::*;
     use crate::providers::HttpResultExt;
+
+    /// Ctrl-C drops a segmented transfer while its temporary is being created
+    /// in the blocking pool. The step finishes on its own; the guard it
+    /// returns goes with the task's output and removes the file, which was
+    /// left as large as the download when the guard was armed after the
+    /// await (2 runs in 30 of Ctrl-C at a random moment, 4.2.3).
+    #[tokio::test]
+    async fn a_segmented_temporary_created_after_its_caller_left_is_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = segmented_temp_path_for(&dir.path().join("left.bin"));
+        let path = temp.clone();
+        let (created, was_created) = std::sync::mpsc::channel();
+        let task = tokio::task::spawn_blocking(move || {
+            let made = create_segmented_temp(path.clone(), 64 * 1024 * 1024);
+            let _ = created.send(path.exists());
+            made
+        });
+        drop(task);
+        assert!(
+            tokio::task::spawn_blocking(move || was_created.recv().unwrap())
+                .await
+                .unwrap(),
+            "the step did not create the temporary"
+        );
+        for _ in 0..400 {
+            if !temp.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(
+            !temp.exists(),
+            "the temporary outlived the caller that left"
+        );
+    }
+
+    /// A size the disk cannot reserve fails the step and leaves no file.
+    #[test]
+    fn a_segmented_temporary_that_cannot_be_sized_is_not_left_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = segmented_temp_path_for(&dir.path().join("huge.bin"));
+        assert!(create_segmented_temp(temp.clone(), u64::MAX).is_err());
+        assert!(
+            !temp.exists(),
+            "a temporary that could not be sized was kept"
+        );
+    }
 
     const MAX: usize = 16;
 
