@@ -66,6 +66,8 @@ pub mod peer;
 #[cfg(test)]
 pub(crate) mod probe_fake;
 pub mod proton;
+#[cfg(feature = "proton-native")]
+pub mod proton_native;
 pub mod redirect_policy;
 pub mod retry_after;
 pub mod s3;

@@ -98,6 +98,7 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
             "md4",
             "num-bigint-dig",
             "pbkdf2",
+            "proton-crypto-account", // Optional, `proton-native` feature only.
             "rand",
             "ring",
             "ripemd",
