@@ -4581,7 +4581,7 @@ struct FtpDownloadScanResult {
 
 #[allow(clippy::too_many_arguments)]
 async fn scan_ftp_download_entries(
-    app: &AppHandle,
+    emit: &(dyn Fn(TransferEvent) + Sync),
     cancel_flag: &Arc<AtomicBool>,
     ftp_manager: &mut ftp::FtpManager,
     remote_path: &str,
@@ -4590,19 +4590,29 @@ async fn scan_ftp_download_entries(
     transfer_id: &str,
     folder_name: &str,
 ) -> Result<FtpDownloadScanResult, String> {
-    let mut result = FtpDownloadScanResult::default();
-    let base_local = local_folder_path.to_path_buf();
-    let mut dirs_to_scan: Vec<(String, PathBuf)> =
-        vec![(remote_path.to_string(), local_folder_path.to_path_buf())];
-    let mut last_scan_emit = std::time::Instant::now();
-    let mut file_index: u32 = 0;
+    // The scan goes into each folder it lists, on the session the app
+    // browses with, and goes back to the folder it started in on every exit.
+    let original_path = ftp_manager.current_path();
+    let scanned = async {
+        let mut result = FtpDownloadScanResult::default();
+        let base_local = local_folder_path.to_path_buf();
+        // Each remote path is built from the folder and the name a LIST row
+        // gives; the local side is sanitized, the remote side is not, so a name
+        // such as `d/..`, `up/../..` or `../keep.txt` sent the scan back over the
+        // folder or out of it. A folder is listed only when `WalkScope` allows it
+        // and each file is planned once; an entry outside the folder is one of
+        // the scan's errors, so the download reports it instead of success.
+        let mut scope = crate::sync_core::WalkScope::new(remote_path);
+        let mut planned = std::collections::HashSet::new();
+        let mut dirs_to_scan: Vec<(String, PathBuf)> =
+            vec![(remote_path.to_string(), local_folder_path.to_path_buf())];
+        let mut last_scan_emit = std::time::Instant::now();
+        let mut file_index: u32 = 0;
 
-    while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
-        if cancel_flag.load(Ordering::Relaxed) {
-            result.cancelled = true;
-            crate::transfer_event_sink::emit_gui_transfer_event(
-                app,
-                TransferEvent {
+        while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
+            if cancel_flag.load(Ordering::Relaxed) {
+                result.cancelled = true;
+                emit(TransferEvent {
                     event_type: "cancelled".to_string(),
                     transfer_id: transfer_id.to_string(),
                     filename: folder_name.to_string(),
@@ -4612,75 +4622,78 @@ async fn scan_ftp_download_entries(
                     path: Some(remote_path.to_string()),
                     delta_stats: None,
                     fallback_reason: None,
-                },
-            );
-            return Ok(result);
-        }
+                });
+                return Ok(result);
+            }
 
-        if let Err(e) = ftp_manager.change_dir(&remote_dir).await {
-            warn!("Cannot access remote directory {}: {}", remote_dir, e);
-            continue;
-        }
-
-        let files = match ftp_manager.list_files().await {
-            Ok(files) => files,
-            Err(e) => {
-                warn!("Cannot list files in {}: {}", remote_dir, e);
+            if let Err(e) = ftp_manager.change_dir(&remote_dir).await {
+                warn!("Cannot access remote directory {}: {}", remote_dir, e);
                 continue;
             }
-        };
 
-        for file in files {
-            let safe_name = match crate::provider_commands::sanitize_remote_filename(&file.name) {
-                Ok(name) => name,
-                Err(error) => {
-                    warn!("Skipping unsafe FTP remote entry {}: {}", file.name, error);
-                    result.scan_errors += 1;
+            let files = match ftp_manager.list_files().await {
+                Ok(files) => files,
+                Err(e) => {
+                    warn!("Cannot list files in {}: {}", remote_dir, e);
                     continue;
                 }
             };
-            let remote_file_path = format!("{}/{}", remote_dir.trim_end_matches('/'), file.name);
-            let local_file_path = local_dir.join(&safe_name);
 
-            if file.is_dir {
-                if let Err(e) = tokio::fs::create_dir_all(&local_file_path).await {
-                    warn!(
-                        "Failed to create local directory {}: {}",
-                        local_file_path.display(),
-                        e
-                    );
-                    result.scan_errors += 1;
-                    continue;
-                }
-
-                if let Err(error) =
-                    crate::provider_commands::verify_path_containment(&base_local, &local_file_path)
+            for file in files {
+                let safe_name = match crate::provider_commands::sanitize_remote_filename(&file.name)
                 {
-                    warn!(
-                        "Skipping FTP directory {} due to unsafe local target {}: {}",
-                        remote_file_path,
-                        local_file_path.display(),
-                        error
-                    );
-                    result.scan_errors += 1;
+                    Ok(name) => name,
+                    Err(error) => {
+                        warn!("Skipping unsafe FTP remote entry {}: {}", file.name, error);
+                        result.scan_errors += 1;
+                        continue;
+                    }
+                };
+                let remote_file_path =
+                    format!("{}/{}", remote_dir.trim_end_matches('/'), file.name);
+                let step = if file.is_dir {
+                    scope.admit(&remote_dir, &remote_file_path)
+                } else {
+                    scope.locate(&remote_dir, &remote_file_path)
+                };
+                match step {
+                    crate::sync_core::WalkStep::Follow => {}
+                    crate::sync_core::WalkStep::AlreadyListed => continue,
+                    step => {
+                        warn!(
+                            "Not downloading {}: the listing of {} names it, but {}",
+                            remote_file_path,
+                            remote_dir,
+                            step.explain()
+                        );
+                        result.scan_errors += 1;
+                        continue;
+                    }
+                }
+                if !file.is_dir
+                    && !planned.insert(crate::sync_core::walk_path_key(&remote_file_path))
+                {
                     continue;
                 }
+                let local_file_path = local_dir.join(&safe_name);
 
-                dirs_to_scan.push((remote_file_path, local_file_path));
-                continue;
-            }
+                if file.is_dir {
+                    if let Err(e) = tokio::fs::create_dir_all(&local_file_path).await {
+                        warn!(
+                            "Failed to create local directory {}: {}",
+                            local_file_path.display(),
+                            e
+                        );
+                        result.scan_errors += 1;
+                        continue;
+                    }
 
-            result.total_files_discovered += 1;
-            let modified_dt = file.modified.as_deref().and_then(parse_remote_datetime);
-
-            if let Some(parent) = local_file_path.parent() {
-                if parent.exists() {
                     if let Err(error) = crate::provider_commands::verify_path_containment(
                         &base_local,
                         &local_file_path,
                     ) {
                         warn!(
-                            "Skipping FTP file {} due to unsafe local target {}: {}",
+                            "Skipping FTP directory {} due to unsafe local target {}: {}",
                             remote_file_path,
                             local_file_path.display(),
                             error
@@ -4688,23 +4701,44 @@ async fn scan_ftp_download_entries(
                         result.scan_errors += 1;
                         continue;
                     }
-                }
-            }
 
-            if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
-                if let Ok(local_meta) = std::fs::metadata(&local_file_path) {
-                    if local_meta.is_file()
-                        && should_skip_file_download(
-                            file_exists_action,
-                            modified_dt,
-                            file.size.unwrap_or(0),
-                            &local_meta,
-                        )
-                    {
-                        result.files_skipped += 1;
-                        crate::transfer_event_sink::emit_gui_transfer_event(
-                            app,
-                            TransferEvent {
+                    dirs_to_scan.push((remote_file_path, local_file_path));
+                    continue;
+                }
+
+                result.total_files_discovered += 1;
+                let modified_dt = file.modified.as_deref().and_then(parse_remote_datetime);
+
+                if let Some(parent) = local_file_path.parent() {
+                    if parent.exists() {
+                        if let Err(error) = crate::provider_commands::verify_path_containment(
+                            &base_local,
+                            &local_file_path,
+                        ) {
+                            warn!(
+                                "Skipping FTP file {} due to unsafe local target {}: {}",
+                                remote_file_path,
+                                local_file_path.display(),
+                                error
+                            );
+                            result.scan_errors += 1;
+                            continue;
+                        }
+                    }
+                }
+
+                if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+                    if let Ok(local_meta) = std::fs::metadata(&local_file_path) {
+                        if local_meta.is_file()
+                            && should_skip_file_download(
+                                file_exists_action,
+                                modified_dt,
+                                file.size.unwrap_or(0),
+                                &local_meta,
+                            )
+                        {
+                            result.files_skipped += 1;
+                            emit(TransferEvent {
                                 event_type: "file_skip".to_string(),
                                 transfer_id: transfer_id.to_string(),
                                 filename: safe_name.clone(),
@@ -4714,30 +4748,27 @@ async fn scan_ftp_download_entries(
                                 path: Some(remote_file_path.clone()),
                                 delta_stats: None,
                                 fallback_reason: None,
-                            },
-                        );
-                        continue;
+                            });
+                            continue;
+                        }
                     }
                 }
+
+                let file_transfer_id = format!("{}-{}", transfer_id, file_index);
+                file_index += 1;
+
+                result.entries.push(transfer_domain::TransferEntry {
+                    id: file_transfer_id,
+                    display_name: safe_name,
+                    remote_path: remote_file_path,
+                    local_path: local_file_path.to_string_lossy().to_string(),
+                    size: file.size.unwrap_or(0),
+                    modified: file.modified,
+                });
             }
 
-            let file_transfer_id = format!("{}-{}", transfer_id, file_index);
-            file_index += 1;
-
-            result.entries.push(transfer_domain::TransferEntry {
-                id: file_transfer_id,
-                display_name: safe_name,
-                remote_path: remote_file_path,
-                local_path: local_file_path.to_string_lossy().to_string(),
-                size: file.size.unwrap_or(0),
-                modified: file.modified,
-            });
-        }
-
-        if last_scan_emit.elapsed().as_millis() > 500 || result.total_files_discovered <= 1 {
-            crate::transfer_event_sink::emit_gui_transfer_event(
-                app,
-                TransferEvent {
+            if last_scan_emit.elapsed().as_millis() > 500 || result.total_files_discovered <= 1 {
+                emit(TransferEvent {
                     event_type: "scanning".to_string(),
                     transfer_id: transfer_id.to_string(),
                     filename: folder_name.to_string(),
@@ -4752,13 +4783,16 @@ async fn scan_ftp_download_entries(
                     path: Some(remote_path.to_string()),
                     delta_stats: None,
                     fallback_reason: None,
-                },
-            );
-            last_scan_emit = std::time::Instant::now();
+                });
+                last_scan_emit = std::time::Instant::now();
+            }
         }
-    }
 
-    Ok(result)
+        Ok(result)
+    }
+    .await;
+    let _ = ftp_manager.change_dir(&original_path).await;
+    scanned
 }
 
 #[tauri::command]
@@ -4842,7 +4876,7 @@ async fn download_folder(
         let original_path = ftp_manager.current_path();
 
         let scan_result = scan_ftp_download_entries(
-            &app,
+            &|event| crate::transfer_event_sink::emit_gui_transfer_event(&app, event),
             &state.cancel_flag,
             &mut ftp_manager,
             &params.remote_path,
@@ -4852,8 +4886,6 @@ async fn download_folder(
             &folder_name,
         )
         .await?;
-
-        let _ = ftp_manager.change_dir(&original_path).await;
 
         let connection_spec = if scan_result.cancelled {
             None
@@ -6238,6 +6270,105 @@ mod safe_picker_start_dir_tests {
 // ============ File Operations Commands =====
 /// Delete a remote file or folder with detailed event emission for each deleted item.
 /// For folders, recursively scans and emits events for each file deleted.
+/// A file a recursive delete of a folder removes over the legacy FTP session.
+struct FtpDeleteItem {
+    path: String,
+    name: String,
+}
+
+/// What a recursive delete of a folder removes over the legacy FTP session:
+/// its files, then its folders, deepest last in `dirs`.
+struct FtpDeleteTree {
+    files: Vec<FtpDeleteItem>,
+    dirs: Vec<String>,
+}
+
+/// List the folder `target_path` and every folder under it over the legacy
+/// FTP session, for `delete_remote_file`. `on_scanned` is told, after each
+/// folder, how many entries were read and how many files and folders were
+/// found.
+///
+/// Each path is built from the folder and the name a LIST row gives, so a
+/// name such as `d/..`, `up/../..` or `../keep.txt` leads back to the folder,
+/// above it or out of it: the delete never ended, or deleted the server
+/// root's files. A folder is listed only when [`crate::sync_core::WalkScope`]
+/// allows it, each path is taken once, and a row that names anything outside
+/// the folder fails the delete before anything is deleted: a partial
+/// recursive delete must not report success.
+async fn collect_ftp_delete_tree(
+    ftp_manager: &mut ftp::FtpManager,
+    target_path: &str,
+    on_scanned: &mut (dyn FnMut(usize, usize, usize) + Send),
+) -> Result<FtpDeleteTree, String> {
+    use crate::sync_core::WalkStep;
+    // The walk goes into each folder it lists, on the session the app
+    // browses with: it goes back to the folder it started in on every exit,
+    // a refused listing included, or the next relative path resolves against
+    // the folder where the walk stopped.
+    let original_path = ftp_manager.current_path();
+    let walked = async {
+        let mut tree = FtpDeleteTree {
+            files: Vec::new(),
+            dirs: Vec::new(),
+        };
+        let mut scope = crate::sync_core::WalkScope::new(target_path);
+        let mut planned = std::collections::HashSet::new();
+        let mut dirs_to_scan: Vec<String> = vec![target_path.to_string()];
+        let mut scan_counter: usize = 0;
+
+        while let Some(current_dir) = dirs_to_scan.pop() {
+            if ftp_manager.change_dir(&current_dir).await.is_err() {
+                continue;
+            }
+
+            let files = match ftp_manager.list_files().await {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+
+            for file in files {
+                let file_path = format!("{}/{}", current_dir, file.name);
+                scan_counter += 1;
+
+                let step = if file.is_dir {
+                    scope.admit(&current_dir, &file_path)
+                } else {
+                    scope.locate(&current_dir, &file_path)
+                };
+                match step {
+                    WalkStep::Follow => {}
+                    WalkStep::AlreadyListed => continue,
+                    step => {
+                        return Err(crate::sync_core::refused_removal(
+                            target_path,
+                            &file_path,
+                            step,
+                        )
+                        .to_string())
+                    }
+                }
+                if file.is_dir {
+                    dirs_to_scan.push(file_path.clone());
+                } else if planned.insert(crate::sync_core::walk_path_key(&file_path)) {
+                    tree.files.push(FtpDeleteItem {
+                        path: file_path,
+                        name: file.name,
+                    });
+                }
+            }
+
+            // Add directory to delete list (will be deleted after its contents)
+            tree.dirs.push(current_dir);
+
+            on_scanned(scan_counter, tree.files.len(), tree.dirs.len());
+        }
+        Ok(tree)
+    }
+    .await;
+    let _ = ftp_manager.change_dir(&original_path).await;
+    walked
+}
+
 #[tauri::command]
 async fn delete_remote_file(
     app: AppHandle,
@@ -6330,67 +6461,58 @@ async fn delete_remote_file(
         };
 
         // Phase 1: Collect all files and directories recursively
-        struct DeleteItem {
-            path: String,
-            name: String,
-        }
-
-        let mut files_to_delete: Vec<DeleteItem> = Vec::new();
-        let mut dirs_to_delete: Vec<String> = Vec::new();
-        let mut dirs_to_scan: Vec<String> = vec![target_path.clone()];
         let mut last_scan_emit = std::time::Instant::now();
-        let mut scan_counter: usize = 0;
-
-        while let Some(current_dir) = dirs_to_scan.pop() {
-            if ftp_manager.change_dir(&current_dir).await.is_err() {
-                continue;
-            }
-
-            let files = match ftp_manager.list_files().await {
-                Ok(f) => f,
-                Err(_) => continue,
-            };
-
-            for file in files {
-                let file_path = format!("{}/{}", current_dir, file.name);
-                scan_counter += 1;
-
-                if file.is_dir {
-                    dirs_to_scan.push(file_path.clone());
-                } else {
-                    files_to_delete.push(DeleteItem {
-                        path: file_path,
-                        name: file.name,
-                    });
+        let tree = collect_ftp_delete_tree(
+            &mut ftp_manager,
+            &target_path,
+            &mut |scan_counter, files_found, folders_found| {
+                // Emit scan progress every 500ms or every 100 entries
+                if last_scan_emit.elapsed().as_millis() > 500 || scan_counter.is_multiple_of(100) {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        TransferEvent {
+                            event_type: "scanning".to_string(),
+                            transfer_id: delete_id.clone(),
+                            filename: file_name.clone(),
+                            direction: "remote".to_string(),
+                            message: Some(format!(
+                                "Scanning... {} files, {} folders found",
+                                files_found, folders_found
+                            )),
+                            progress: None,
+                            path: None,
+                            delta_stats: None,
+                            fallback_reason: None,
+                        },
+                    );
+                    last_scan_emit = std::time::Instant::now();
                 }
-            }
-
-            // Add directory to delete list (will be deleted after its contents)
-            dirs_to_delete.push(current_dir);
-
-            // Emit scan progress every 500ms or every 100 entries
-            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter.is_multiple_of(100) {
+            },
+        )
+        .await;
+        let FtpDeleteTree {
+            files: files_to_delete,
+            dirs: dirs_to_delete,
+        } = match tree {
+            Ok(tree) => tree,
+            Err(e) => {
                 crate::transfer_event_sink::emit_gui_transfer_event(
                     &app,
                     TransferEvent {
-                        event_type: "scanning".to_string(),
+                        event_type: "delete_error".to_string(),
                         transfer_id: delete_id.clone(),
                         filename: file_name.clone(),
                         direction: "remote".to_string(),
-                        message: Some(format!(
-                            "Scanning... {} files, {} folders found",
-                            files_to_delete.len(),
-                            dirs_to_delete.len()
-                        )),
+                        message: Some(format!("Failed to delete: {}", e)),
                         progress: None,
-                        path: None,
+                        path: Some(path.clone()),
                         delta_stats: None,
                         fallback_reason: None,
                     },
                 );
-                last_scan_emit = std::time::Instant::now();
+                return Err(e);
             }
-        }
+        };
 
         let total_files = files_to_delete.len();
         let total_dirs = dirs_to_delete.len();
@@ -6521,9 +6643,6 @@ async fn delete_remote_file(
                 }
             }
         }
-
-        // Return to original directory
-        let _ = ftp_manager.change_dir(&original_path).await;
 
         // Emit completion
         let result_message = if cancelled {
@@ -12122,13 +12241,22 @@ async fn compare_directories(
     let remote_future = async {
         let mut ftp_manager = state.ftp_manager.lock().await;
         get_remote_files_recursive_with_progress(
-            &app,
             &mut ftp_manager,
             &remote_path,
             &options.exclude_patterns,
-            0,
             Some(cancel.flag()),
-            progress_id.as_deref(),
+            &|files_found, dirs_found, bytes_found| {
+                let _ = app.emit(
+                    "sync_scan_progress",
+                    serde_json::json!({
+                        "phase": "remote",
+                        "files_found": files_found,
+                        "dirs_found": dirs_found,
+                        "bytes_found": bytes_found,
+                        "progress_id": progress_id,
+                    }),
+                );
+            },
         )
         .await
     };
@@ -12694,13 +12822,11 @@ pub fn local_scan_progress_payload(
 /// them. This walk hits the network, where a half-listed tree is far more
 /// ordinary than a half-read local disk.
 async fn get_remote_files_recursive_with_progress(
-    app: &AppHandle,
     ftp_manager: &mut ftp::FtpManager,
     base_path: &str,
     exclude_patterns: &[String],
-    local_count: usize,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
-    progress_id: Option<&str>,
+    on_listed: &(dyn Fn(usize, usize, u64) + Sync),
 ) -> Result<
     (
         HashMap<String, FileInfo>,
@@ -12710,123 +12836,142 @@ async fn get_remote_files_recursive_with_progress(
 > {
     // One compile per scan; an invalid pattern is an error, never dropped.
     let excludes = crate::sync::compile_excludes(exclude_patterns)?;
-    let mut files = HashMap::new();
-    let mut completeness = crate::sync_core::ScanCompleteness::default();
-    // (absolute_path, depth): depth limit prevents infinite loops on servers
-    // that list the current directory itself as a child entry.
-    let mut dirs_to_process: Vec<(String, u32)> = vec![(base_path.to_string(), 0)];
-    let mut visited = std::collections::HashSet::new();
-    visited.insert(base_path.to_string());
-    // Reported next to the file count so the Compare dialog can show the shape
-    // of the remote tree while it is being listed (discussion #347).
-    let mut remote_dirs_found: usize = 0;
-    let mut remote_bytes_found: u64 = 0;
-    const MAX_DEPTH: u32 = 64;
+    // The scan goes into each folder it lists, on the session the app
+    // browses with: it goes back to the folder it started in on every exit,
+    // a cancel included, or the next relative path resolves against the
+    // folder where the scan stopped.
+    let original_path = ftp_manager.current_path();
+    let scanned = async {
+        let mut files = HashMap::new();
+        let mut completeness = crate::sync_core::ScanCompleteness::default();
+        // (absolute_path, depth): depth limit prevents infinite loops on servers
+        // that list the current directory itself as a child entry.
+        let mut dirs_to_process: Vec<(String, u32)> = vec![(base_path.to_string(), 0)];
+        // Each path is built from the folder and the name a LIST row gives, so a
+        // name such as `d/..`, `up/../..` or `../keep.txt` led back to the folder
+        // or out of it while reading as a new path: the visited set compared
+        // those strings. A folder is listed only when `WalkScope` allows it, and
+        // an entry outside the folder is a listing error, so the scan is
+        // incomplete and its deletes are held back.
+        let mut scope = crate::sync_core::WalkScope::new(base_path);
+        // Reported next to the file count so the Compare dialog can show the shape
+        // of the remote tree while it is being listed (discussion #347).
+        let mut remote_dirs_found: usize = 0;
+        let mut remote_bytes_found: u64 = 0;
+        const MAX_DEPTH: u32 = 64;
 
-    while let Some((current_dir, depth)) = dirs_to_process.pop() {
-        if depth > MAX_DEPTH {
-            info!("Remote scan depth limit reached at {}", current_dir);
-            // CLAUDE-AV-B3-13: everything below the depth limit is invisible to
-            // this scan, which is a truncated tree, not an absent one.
-            completeness.truncated = true;
-            continue;
-        }
-
-        // Check cancellation flag: release FTP lock immediately on cancel
-        if let Some(flag) = cancel_flag {
-            if flag.load(std::sync::atomic::Ordering::Relaxed) {
-                info!("Remote scan cancelled by user after {} files", files.len());
-                // CLAUDE-AV-B3-13: the old comment here claimed the frontend
-                // discards these partial results. It only discards them when the
-                // dialog was closed or reopened; a cancel with the dialog still
-                // open kept them and classified against a half-read tree.
+        while let Some((current_dir, depth)) = dirs_to_process.pop() {
+            if depth > MAX_DEPTH {
+                info!("Remote scan depth limit reached at {}", current_dir);
+                // CLAUDE-AV-B3-13: everything below the depth limit is invisible to
+                // this scan, which is a truncated tree, not an absent one.
                 completeness.truncated = true;
-                return Ok((files, completeness));
+                continue;
             }
-        }
-        if let Err(e) = ftp_manager.change_dir(&current_dir).await {
-            info!(
-                "Warning: Could not change to directory {}: {}",
-                current_dir, e
-            );
-            // CLAUDE-AV-B3-13: a directory we could not enter hides everything
-            // under it; count it rather than silently pruning the subtree.
-            completeness.list_errors += 1;
-            continue;
-        }
 
-        let entries = match ftp_manager.list_files().await {
-            Ok(e) => e,
-            Err(e) => {
-                info!("Warning: Could not list files in {}: {}", current_dir, e);
+            // Check cancellation flag: release FTP lock immediately on cancel
+            if let Some(flag) = cancel_flag {
+                if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                    info!("Remote scan cancelled by user after {} files", files.len());
+                    // CLAUDE-AV-B3-13: the old comment here claimed the frontend
+                    // discards these partial results. It only discards them when the
+                    // dialog was closed or reopened; a cancel with the dialog still
+                    // open kept them and classified against a half-read tree.
+                    completeness.truncated = true;
+                    return Ok((files, completeness));
+                }
+            }
+            if let Err(e) = ftp_manager.change_dir(&current_dir).await {
+                info!(
+                    "Warning: Could not change to directory {}: {}",
+                    current_dir, e
+                );
+                // CLAUDE-AV-B3-13: a directory we could not enter hides everything
+                // under it; count it rather than silently pruning the subtree.
                 completeness.list_errors += 1;
                 continue;
             }
-        };
 
-        for entry in entries {
-            if entry.name == "." || entry.name == ".." {
-                continue;
-            }
+            let entries = match ftp_manager.list_files().await {
+                Ok(e) => e,
+                Err(e) => {
+                    info!("Warning: Could not list files in {}: {}", current_dir, e);
+                    completeness.list_errors += 1;
+                    continue;
+                }
+            };
 
-            let relative_path = if current_dir == base_path {
-                entry.name.clone()
-            } else {
-                let rel_dir = current_dir.strip_prefix(base_path).unwrap_or(&current_dir);
-                let rel_dir = rel_dir.trim_start_matches('/');
-                if rel_dir.is_empty() {
+            for entry in entries {
+                if entry.name == "." || entry.name == ".." {
+                    continue;
+                }
+                let child_path = format!("{}/{}", current_dir, entry.name);
+                match scope.locate(&current_dir, &child_path) {
+                    crate::sync_core::WalkStep::Follow => {}
+                    step => {
+                        info!(
+                            "Warning: not reading {}: the listing of {} names it, but {}",
+                            child_path,
+                            current_dir,
+                            step.explain()
+                        );
+                        completeness.list_errors += 1;
+                        continue;
+                    }
+                }
+
+                let relative_path = if current_dir == base_path {
                     entry.name.clone()
                 } else {
-                    format!("{}/{}", rel_dir, entry.name)
+                    let rel_dir = current_dir.strip_prefix(base_path).unwrap_or(&current_dir);
+                    let rel_dir = rel_dir.trim_start_matches('/');
+                    if rel_dir.is_empty() {
+                        entry.name.clone()
+                    } else {
+                        format!("{}/{}", rel_dir, entry.name)
+                    }
+                };
+
+                if excludes.is_excluded(&relative_path) {
+                    continue;
                 }
-            };
 
-            if excludes.is_excluded(&relative_path) {
-                continue;
-            }
+                let file_info = FileInfo {
+                    name: entry.name.clone(),
+                    path: format!("{}/{}", current_dir, entry.name),
+                    size: entry.size.unwrap_or(0),
+                    modified: entry.modified.as_deref().and_then(parse_remote_datetime),
+                    is_dir: entry.is_dir,
+                    checksum_alg: None,
+                    checksum: None,
+                };
 
-            let file_info = FileInfo {
-                name: entry.name.clone(),
-                path: format!("{}/{}", current_dir, entry.name),
-                size: entry.size.unwrap_or(0),
-                modified: entry.modified.as_deref().and_then(parse_remote_datetime),
-                is_dir: entry.is_dir,
-                checksum_alg: None,
-                checksum: None,
-            };
-
-            files.insert(relative_path, file_info);
-            if entry.is_dir {
-                remote_dirs_found += 1;
-            } else {
-                remote_bytes_found += entry.size.unwrap_or(0);
-            }
-
-            if entry.is_dir {
-                let child_path = format!("{}/{}", current_dir, entry.name);
-                if visited.insert(child_path.clone()) {
-                    dirs_to_process.push((child_path, depth + 1));
+                files.insert(relative_path, file_info);
+                if entry.is_dir {
+                    remote_dirs_found += 1;
                 } else {
-                    info!("Skipping already-visited directory: {}", child_path);
+                    remote_bytes_found += entry.size.unwrap_or(0);
+                }
+
+                if entry.is_dir {
+                    if scope.admit(&current_dir, &child_path) == crate::sync_core::WalkStep::Follow
+                    {
+                        dirs_to_process.push((child_path, depth + 1));
+                    } else {
+                        info!("Skipping already-visited directory: {}", child_path);
+                    }
                 }
             }
+
+            // Report progress after each directory listing
+            on_listed(files.len(), remote_dirs_found, remote_bytes_found);
         }
 
-        // Emit progress after each directory listing
-        let _ = app.emit(
-            "sync_scan_progress",
-            serde_json::json!({
-                "phase": "remote",
-                "files_found": local_count + files.len(),
-                "dirs_found": remote_dirs_found,
-                "bytes_found": remote_bytes_found,
-                "progress_id": progress_id,
-            }),
-        );
+        Ok((files, completeness))
     }
-
-    let _ = ftp_manager.change_dir(base_path).await;
-    Ok((files, completeness))
+    .await;
+    let _ = ftp_manager.change_dir(&original_path).await;
+    scanned
 }
 
 #[tauri::command]
@@ -15356,9 +15501,34 @@ async fn list_remote_folders_tree(
         .await?;
     }
 
-    let base = &config.remote_folder;
+    let folders = walk_cloud_folder_tree(
+        provider.as_mut(),
+        &config.remote_folder,
+        max_d,
+        &config.excluded_folders,
+    )
+    .await;
+    let _ = provider.disconnect().await;
+    folders
+}
+
+/// The folders under `base`, `max_d` levels deep, for the AeroCloud
+/// selective-sync picker. Each folder's path is built from its parent and the
+/// name the listing gives, so a name such as `d1/..` or `up/../..` leads back
+/// to the folder or out of it: the picker showed the folder again under
+/// itself, or the account root's folders as subfolders. A folder gets a row
+/// and is listed only when [`crate::sync_core::WalkScope`] places it strictly
+/// under `base`, once; one it does not take is left out with a log line, as
+/// the depth cap leaves deeper folders out.
+async fn walk_cloud_folder_tree(
+    provider: &mut dyn providers::StorageProvider,
+    base: &str,
+    max_d: u32,
+    excluded_folders: &[String],
+) -> Result<Vec<serde_json::Value>, String> {
     let mut folders = Vec::new();
-    let mut stack: Vec<(String, String, u32)> = vec![(base.clone(), String::new(), 0)];
+    let mut scope = crate::sync_core::WalkScope::new(base);
+    let mut stack: Vec<(String, String, u32)> = vec![(base.to_string(), String::new(), 0)];
 
     while let Some((path, rel, depth)) = stack.pop() {
         if depth > max_d {
@@ -15375,13 +15545,26 @@ async fn list_remote_folders_tree(
             if !entry.is_dir {
                 continue;
             }
+            let child = format!("{}/{}", path.trim_end_matches('/'), entry.name);
+            match scope.admit(&path, &child) {
+                crate::sync_core::WalkStep::Follow => {}
+                crate::sync_core::WalkStep::AlreadyListed => continue,
+                step => {
+                    warn!(
+                        "AeroCloud folder tree: not listing {}: the listing of {} names it, but {}",
+                        child,
+                        path,
+                        step.explain()
+                    );
+                    continue;
+                }
+            }
             let rel_path = if rel.is_empty() {
                 entry.name.clone()
             } else {
                 format!("{}/{}", rel, entry.name)
             };
-            let excluded = config
-                .excluded_folders
+            let excluded = excluded_folders
                 .iter()
                 .any(|ef| ef.trim_matches('/') == rel_path);
             folders.push(serde_json::json!({
@@ -15391,13 +15574,11 @@ async fn list_remote_folders_tree(
                 "excluded": excluded,
             }));
             if !excluded {
-                let child = format!("{}/{}", path.trim_end_matches('/'), entry.name);
                 stack.push((child, rel_path, depth + 1));
             }
         }
     }
 
-    let _ = provider.disconnect().await;
     Ok(folders)
 }
 
@@ -24190,6 +24371,330 @@ mod sync_backup_archive_local_tests {
             )
             .await;
             assert!(outcome.is_err(), "{root:?} was accepted: {outcome:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod legacy_ftp_walk_tests {
+    use super::*;
+    use crate::providers::ftp::walk_scope_tests::{tree_server, Listings};
+
+    /// One defective LIST of `/x` per case. `/x` holds `a.txt` and the folder
+    /// `d` holding `b.txt`; the server's root holds `keep.txt`, `x` and `y`,
+    /// and `/y` holds `y.txt`. The legacy FTP walks build each path from the
+    /// folder and the name a row gives, so the stray row is a name that leads
+    /// somewhere a walk of `/x` must not go. The number is how many entries a
+    /// walk of `/x` must refuse.
+    const STRAY_NAMES: [(&str, Listings, usize); 6] = [
+        (
+            "a name that leads back to the folder",
+            &[
+                ("/", &["keep.txt", "x/", "y/"]),
+                ("/x", &["a.txt", "d/", "d/../"]),
+                ("/x/d", &["b.txt"]),
+                ("/y", &["y.txt"]),
+            ],
+            1,
+        ),
+        (
+            "a name above the folder",
+            &[
+                ("/", &["keep.txt", "x/", "y/"]),
+                ("/x", &["a.txt", "d/", "up/../../"]),
+                ("/x/d", &["b.txt"]),
+                ("/y", &["y.txt"]),
+            ],
+            1,
+        ),
+        (
+            "a name outside the folder",
+            &[
+                ("/", &["keep.txt", "x/", "y/"]),
+                ("/x", &["a.txt", "d/", "up/../../y/"]),
+                ("/x/d", &["b.txt"]),
+                ("/y", &["y.txt"]),
+            ],
+            1,
+        ),
+        (
+            "a folder named twice",
+            &[
+                ("/", &["keep.txt", "x/", "y/"]),
+                ("/x", &["a.txt", "d/", "d/"]),
+                ("/x/d", &["b.txt"]),
+                ("/y", &["y.txt"]),
+            ],
+            0,
+        ),
+        (
+            "a file named twice",
+            &[
+                ("/", &["keep.txt", "x/", "y/"]),
+                ("/x", &["a.txt", "a.txt", "d/"]),
+                ("/x/d", &["b.txt"]),
+                ("/y", &["y.txt"]),
+            ],
+            0,
+        ),
+        (
+            "a file named outside the folder",
+            &[
+                ("/", &["keep.txt", "x/", "y/"]),
+                ("/x", &["a.txt", "d/", "../keep.txt"]),
+                ("/x/d", &["b.txt"]),
+                ("/y", &["y.txt"]),
+            ],
+            1,
+        ),
+    ];
+
+    /// A legacy FTP session logged in on a tree server holding `listings`.
+    async fn session_on(listings: Listings) -> ftp::FtpManager {
+        let (port, _) = tree_server(listings).await;
+        let mut session = ftp::FtpManager::new();
+        session
+            .connect(&format!("127.0.0.1:{port}"))
+            .await
+            .expect("connect to the tree server");
+        session.login("u", "p").await.expect("log in");
+        session
+    }
+
+    fn keys<'a>(paths: impl IntoIterator<Item = &'a String>) -> Vec<String> {
+        let mut keys: Vec<String> = paths
+            .into_iter()
+            .map(|p| crate::sync_core::walk_path_key(p))
+            .collect();
+        keys.sort();
+        keys
+    }
+
+    const LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+    /// The folder delete of the legacy FTP session lists `/x` and every
+    /// folder a row names under it, then deletes what it found. Through
+    /// `d/..` it never ended; through `up/../..` it listed the server root
+    /// and would delete `keep.txt` and every folder there, `up/../../y` gave
+    /// it `/y`, and `../keep.txt` gave it `/keep.txt`. It finds each path
+    /// under the folder once, and a listing that names anything outside it
+    /// fails the delete before anything is deleted.
+    #[tokio::test]
+    async fn the_ftp_folder_delete_finds_only_what_is_under_the_folder() {
+        for (case, listings, refused) in STRAY_NAMES {
+            let mut session = session_on(listings).await;
+            let found = tokio::time::timeout(
+                LIMIT,
+                collect_ftp_delete_tree(&mut session, "/x", &mut |_, _, _| {}),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the scan does not end"));
+            if refused > 0 {
+                let err = found.err().unwrap_or_else(|| panic!("{case}: scanned"));
+                assert!(err.contains("refusing to delete /x"), "{case}: {err}");
+                continue;
+            }
+            let tree = found.unwrap_or_else(|e| panic!("{case}: {e}"));
+            let files: Vec<String> = tree.files.into_iter().map(|f| f.path).collect();
+            assert_eq!(keys(&files), ["/x/a.txt", "/x/d/b.txt"], "{case}");
+            assert_eq!(keys(&tree.dirs), ["/x", "/x/d"], "{case}");
+        }
+    }
+
+    /// The folder download of the legacy FTP session plans what its scan of
+    /// `/x` finds: through `d/..` it went down to its depth cap, and through
+    /// `up/../..`, `up/../../y` and `../keep.txt` it planned files outside
+    /// the folder. It plans each file under the folder once, and an entry it
+    /// does not follow is one of the scan's errors.
+    #[tokio::test]
+    async fn the_ftp_folder_download_plans_only_what_is_under_the_folder() {
+        for (case, listings, refused) in STRAY_NAMES {
+            let mut session = session_on(listings).await;
+            let local = tempfile::tempdir().expect("temp dir");
+            let planned = tokio::time::timeout(
+                LIMIT,
+                scan_ftp_download_entries(
+                    &|_| {},
+                    &Arc::new(AtomicBool::new(false)),
+                    &mut session,
+                    "/x",
+                    local.path(),
+                    "",
+                    "t",
+                    "x",
+                ),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the scan does not end"))
+            .unwrap_or_else(|e| panic!("{case}: {e}"));
+            let remote: Vec<String> = planned
+                .entries
+                .iter()
+                .map(|e| e.remote_path.clone())
+                .collect();
+            assert_eq!(keys(&remote), ["/x/a.txt", "/x/d/b.txt"], "{case}");
+            assert_eq!(planned.scan_errors as usize, refused, "{case}");
+        }
+    }
+
+    /// The Compare and sync scan of the legacy FTP session reads `/x` into
+    /// rows keyed by relative path: through `d/..` it read the folder again
+    /// down to its depth cap, and through the other rows it read the server
+    /// root, `/y` and `/keep.txt` as rows of `/x`. Each path under the folder
+    /// is one row, and an entry it does not follow is a listing error, so
+    /// the scan is incomplete and its deletes are held back.
+    #[tokio::test]
+    async fn the_ftp_sync_scan_reads_only_what_is_under_the_folder() {
+        for (case, listings, refused) in STRAY_NAMES {
+            let mut session = session_on(listings).await;
+            let (rows, scan) = tokio::time::timeout(
+                LIMIT,
+                get_remote_files_recursive_with_progress(
+                    &mut session,
+                    "/x",
+                    &[],
+                    None,
+                    &|_, _, _| {},
+                ),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the scan does not end"))
+            .unwrap_or_else(|e| panic!("{case}: {e}"));
+            let mut paths: Vec<String> = rows.keys().cloned().collect();
+            paths.sort();
+            assert_eq!(paths, ["a.txt", "d", "d/b.txt"], "{case}");
+            assert_eq!(scan.list_errors, refused, "{case}: {scan:?}");
+        }
+    }
+
+    /// The AeroCloud selective-sync picker builds each folder's path from the
+    /// name its listing gives: through `../d1` it showed `d1` again under
+    /// itself down to its depth cap, through `d1/../..` the account root's
+    /// folders, and `up/../../elsewhere` as a folder of the sync root. It
+    /// shows each folder under the root once.
+    #[tokio::test]
+    async fn the_cloud_folder_picker_shows_each_folder_under_the_root_once() {
+        for shape in crate::sync_core::scan::tests::stray_listings() {
+            let case = shape.case;
+            let mut provider = shape.provider();
+            let rows = walk_cloud_folder_tree(&mut provider, "/root", 5, &[])
+                .await
+                .unwrap_or_else(|e| panic!("{case}: {e}"));
+            let mut paths: Vec<String> = rows
+                .iter()
+                .map(|row| row["path"].as_str().unwrap_or_default().to_string())
+                .collect();
+            paths.sort();
+            assert_eq!(paths, shape.folders, "{case}");
+        }
+    }
+
+    /// Every walk of the legacy FTP session goes into the folders it lists,
+    /// on the session the app browses with, so it must leave the session in
+    /// the folder it started in on every exit. A folder delete refused by a
+    /// stray row, and a Compare scan cancelled after its first listing,
+    /// returned with the session in `/x`, where the next relative path then
+    /// resolved.
+    #[tokio::test]
+    async fn every_ftp_walk_leaves_the_session_in_the_folder_it_started_in() {
+        use crate::transfer_queue_scan::{walk_remote_ftp, HARD_DEPTH_CAP};
+        for (case, listings, _) in STRAY_NAMES {
+            let mut session = session_on(listings).await;
+            session.change_dir("/y").await.expect("go to /y");
+            assert_eq!(session.current_path(), "/y", "{case}");
+
+            let _ = tokio::time::timeout(
+                LIMIT,
+                collect_ftp_delete_tree(&mut session, "/x", &mut |_, _, _| {}),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the delete scan does not end"));
+            assert_eq!(session.current_path(), "/y", "{case}: folder delete");
+
+            let local = tempfile::tempdir().expect("temp dir");
+            let _ = tokio::time::timeout(
+                LIMIT,
+                scan_ftp_download_entries(
+                    &|_| {},
+                    &Arc::new(AtomicBool::new(false)),
+                    &mut session,
+                    "/x",
+                    local.path(),
+                    "",
+                    "t",
+                    "x",
+                ),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the download scan does not end"));
+            assert_eq!(session.current_path(), "/y", "{case}: folder download");
+
+            let _ = tokio::time::timeout(
+                LIMIT,
+                get_remote_files_recursive_with_progress(
+                    &mut session,
+                    "/x",
+                    &[],
+                    None,
+                    &|_, _, _| {},
+                ),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the sync scan does not end"));
+            assert_eq!(session.current_path(), "/y", "{case}: sync scan");
+
+            let cancel = AtomicBool::new(false);
+            let _ = tokio::time::timeout(
+                LIMIT,
+                get_remote_files_recursive_with_progress(
+                    &mut session,
+                    "/x",
+                    &[],
+                    Some(&cancel),
+                    &|_, _, _| cancel.store(true, Ordering::Relaxed),
+                ),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the cancelled sync scan does not end"));
+            assert_eq!(session.current_path(), "/y", "{case}: cancelled sync scan");
+
+            let _ = tokio::time::timeout(
+                LIMIT,
+                walk_remote_ftp(
+                    &mut session,
+                    &Arc::new(AtomicBool::new(false)),
+                    "/x",
+                    HARD_DEPTH_CAP,
+                    100,
+                ),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the queue scan does not end"));
+            assert_eq!(session.current_path(), "/y", "{case}: queue scan");
+        }
+    }
+
+    /// The Transfer Queue scan of the legacy FTP session shows what it reads
+    /// under `/x`: through `d/..` it showed the folder again at every level,
+    /// and through the other rows it showed the server root, `/y` and
+    /// `/keep.txt` as part of `/x`. Each path under the folder is one row,
+    /// and an entry it does not follow is counted as omitted at its level.
+    #[tokio::test]
+    async fn the_ftp_queue_scan_shows_only_what_is_under_the_folder() {
+        use crate::transfer_queue_scan::{walk_remote_ftp, HARD_DEPTH_CAP};
+        for (case, listings, refused) in STRAY_NAMES {
+            let mut session = session_on(listings).await;
+            let cancel = Arc::new(AtomicBool::new(false));
+            let result = tokio::time::timeout(
+                LIMIT,
+                walk_remote_ftp(&mut session, &cancel, "/x", HARD_DEPTH_CAP, 100),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{case}: the scan does not end"));
+            let paths: Vec<String> = result.nodes.iter().map(|n| n.path.clone()).collect();
+            assert_eq!(keys(&paths), ["/x/a.txt", "/x/d", "/x/d/b.txt"], "{case}");
+            let omitted: u32 = result.truncated_parents.iter().map(|t| t.omitted).sum();
+            assert_eq!(omitted as usize, refused, "{case}");
         }
     }
 }

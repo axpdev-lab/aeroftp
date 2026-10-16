@@ -1387,6 +1387,16 @@ impl StorageProvider for SwiftProvider {
                 if key <= marker.as_str() {
                     continue;
                 }
+                // The folder being listed is not one of its own children. The
+                // zero-byte marker `prefix/` that `mkdir` writes sits under
+                // the prefix it marks, so the server returns it in the
+                // folder's own listing, and it used to come out as a child
+                // folder with the folder's own name and path: a walk that
+                // follows it lists the same folder again, without end.
+                let is_marker_or_subdir = entry.subdir.is_some() || entry.bytes.unwrap_or(0) == 0;
+                if !prefix_query.is_empty() && key == prefix_query && is_marker_or_subdir {
+                    continue;
+                }
                 if let Some(ref subdir) = entry.subdir {
                     // Virtual directory pseudo-entry
                     let dir_name = subdir
@@ -1805,7 +1815,13 @@ impl StorageProvider for SwiftProvider {
             if entries.is_empty() {
                 break;
             }
-            let names: Vec<String> = entries.into_iter().filter_map(|entry| entry.name).collect();
+            // Every name must be under the prefix before any is deleted: a
+            // listing that ignored `prefix` would name other folders' objects.
+            let names = crate::sync_core::keys_under_prefix(
+                &format!("{prefix}/"),
+                entries.into_iter().filter_map(|entry| entry.name).collect(),
+                "delete",
+            )?;
             let last_name = names.last().cloned().unwrap_or_default();
             if last_name.as_str() <= marker.as_str() {
                 return Err(ProviderError::ServerError(
@@ -2410,6 +2426,28 @@ mod tests {
         );
     }
 
+    /// A listing of the prefix `d/` that names an object outside it, as a
+    /// listing that ignored `prefix` would, had the recursive delete remove
+    /// that object. The delete fails before it deletes anything.
+    #[tokio::test]
+    async fn a_recursive_delete_never_deletes_an_object_outside_the_prefix() {
+        let (mut p, log) = provider_on_storage(
+            &[],
+            serde_json::json!([
+                { "name": "d/a.txt", "bytes": 1 },
+                { "name": "other/keep.txt", "bytes": 1 },
+            ]),
+        )
+        .await;
+        let outcome = p.rmdir_recursive("/d").await;
+        let log = log.lock().unwrap().clone();
+        assert!(outcome.is_err(), "{log:?}");
+        assert!(
+            log.iter().all(|r| r.0 == "GET"),
+            "nothing is deleted: {log:?}"
+        );
+    }
+
     /// A folder of more than one page used to be deleted only up to the first
     /// `limit=10000`, and the call still answered Ok. Both pages are deleted.
     #[tokio::test]
@@ -2791,6 +2829,53 @@ mod tests {
             gets.load(std::sync::atomic::Ordering::SeqCst),
             2,
             "the repeated page is refused on the next read"
+        );
+    }
+
+    /// Seen live on a Swift server: listing the prefix `d/` returns the
+    /// zero-byte marker `d/` that `mkdir` wrote, and it came out as a child
+    /// folder `d` with the path `/d`, the folder being listed. A walk that
+    /// follows children listed `/d` inside `/d` again and again. The folder is
+    /// not its own child; its real content is listed as before.
+    #[tokio::test]
+    async fn list_leaves_out_the_marker_of_the_folder_being_listed() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| async move {
+                let query = req.uri().query().unwrap_or("").to_string();
+                if query.contains("marker=") {
+                    return axum::response::Response::builder()
+                        .status(204)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                }
+                // Byte order, as Swift returns it: the marker `d/` sorts first.
+                let body = r#"[{"name":"d/","bytes":0,"content_type":"application/directory"},{"name":"d/a.txt","bytes":1},{"subdir":"d/e/"}]"#;
+                axum::response::Response::builder()
+                    .status(200)
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body))
+                    .unwrap()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+        let entries = p.list("/d").await.expect("the listing");
+        let listed: Vec<(&str, &str, bool)> = entries
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.path.as_str(), entry.is_dir))
+            .collect();
+        assert_eq!(
+            listed,
+            [("a.txt", "/d/a.txt", false), ("e", "/d/e", true)],
+            "the folder `/d` is not listed inside itself"
         );
     }
 

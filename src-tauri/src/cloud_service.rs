@@ -1469,10 +1469,14 @@ impl CloudService {
         // Stack-based recursive scan with depth tracking
         // (base_path, relative_prefix, depth)
         let mut stack: Vec<(String, String, u32)> = vec![(base_path.clone(), String::new(), 0)];
-        // Track visited absolute paths to prevent infinite loops caused by
-        // servers that list the current directory itself as a child entry.
-        let mut visited = std::collections::HashSet::new();
-        visited.insert(base_path.clone());
+        // Each folder's path is built from its parent and the name the
+        // listing gives, so a name such as `../d1`, `d1/../..` or
+        // `up/../../elsewhere` leads back to the folder, above it or out of
+        // it while reading as a new path every time. A folder is listed only
+        // when `WalkScope` allows it (strictly under the sync folder, not the
+        // folder listed or above it, not listed already); one it does not
+        // follow hides what it holds, so the scan is incomplete.
+        let mut scope = crate::sync_core::WalkScope::new(base_path);
         const MAX_DEPTH: u32 = 64;
 
         while let Some((current_path, relative_prefix, depth)) = stack.pop() {
@@ -1503,6 +1507,21 @@ impl CloudService {
                 } else {
                     format!("{}/{}", relative_prefix, entry.name)
                 };
+                let child_path = format!("{}/{}", current_path, entry.name);
+                use crate::sync_core::WalkStep;
+                match scope.locate(&current_path, &child_path) {
+                    WalkStep::Follow => {}
+                    step => {
+                        tracing::warn!(
+                            "Remote scan: skipping {}: the listing of {} names it, but {}",
+                            child_path,
+                            current_path,
+                            step.explain()
+                        );
+                        complete = false;
+                        continue;
+                    }
+                }
 
                 // Check exclusions: .aeroignore first, then config patterns
                 let decision = crate::sync_ignore::scan_decision(
@@ -1555,8 +1574,8 @@ impl CloudService {
                         continue;
                     }
 
-                    let child_path = format!("{}/{}", current_path, entry.name);
-                    if visited.insert(child_path.clone()) {
+                    if scope.admit(&current_path, &child_path) == crate::sync_core::WalkStep::Follow
+                    {
                         stack.push((child_path, relative_path, depth + 1));
                     } else {
                         tracing::warn!("Skipping already-visited directory: {}", child_path);
@@ -3936,5 +3955,48 @@ mod secval_b_tests {
             still_there,
             "AeroCloud deleted a local file because a non-authoritative listing omitted it"
         );
+    }
+}
+
+#[cfg(test)]
+mod walk_scope_tests {
+    use super::*;
+
+    /// The AeroCloud remote scan builds each folder's path from its parent
+    /// and the name the listing gives, and its visited set compared those
+    /// strings: a name that leads back to the folder (`../d1`) or above it
+    /// (`d1/../..`) or out of it (`up/../../elsewhere`) is a new string each
+    /// time, so the scan went down to its depth cap or indexed `/top.txt`
+    /// and `/elsewhere/big.bin` as files of the sync folder. It indexes each
+    /// path under the folder once, and a folder it does not follow makes
+    /// the scan incomplete, which keeps deletes from propagating.
+    #[tokio::test]
+    async fn the_cloud_scan_indexes_each_path_under_the_folder_once() {
+        let local = tempfile::tempdir().expect("temp dir");
+        for shape in crate::sync_core::scan::tests::stray_listings() {
+            let case = shape.case;
+            let mut provider = shape.provider();
+            let config = CloudConfig {
+                local_folder: local.path().to_path_buf(),
+                remote_folder: "/root".into(),
+                ..Default::default()
+            };
+            let svc = CloudService::new();
+            let (files, complete) = svc
+                .scan_remote_folder_with_provider(&mut provider, &config)
+                .await
+                .unwrap_or_else(|e| panic!("{case}: {e}"));
+            let mut indexed: Vec<String> = files.keys().cloned().collect();
+            indexed.sort();
+            let mut expected: Vec<String> = shape
+                .files
+                .iter()
+                .chain(shape.folders)
+                .map(|p| p.to_string())
+                .collect();
+            expected.sort();
+            assert_eq!(indexed, expected, "{case}");
+            assert_eq!(complete, shape.refused == 0, "{case}");
+        }
     }
 }

@@ -1272,12 +1272,20 @@ impl StorageProvider for ImageKitProvider {
         let mut dirs = Vec::new();
 
         while let Some(dir) = stack.pop() {
-            let entries = self.list_raw(&dir).await?;
-            for entry in entries {
-                if entry.entry_type == "folder" {
-                    stack.push(normalize_path(&entry.file_path));
+            let listed: Vec<RemoteEntry> = self
+                .list_raw(&dir)
+                .await?
+                .iter()
+                .map(file_to_entry)
+                .collect();
+            // Every entry the listing names must be inside `dir` before any
+            // of it is deleted: a folder this API spelled `/` sent the walk
+            // back to the account root, which it emptied and never left.
+            for entry in crate::sync_core::listing_to_remove(&dir, listed)? {
+                if entry.is_dir {
+                    stack.push(entry.path);
                 } else {
-                    self.delete_file_by_path(&entry.file_path).await?;
+                    self.delete_file_by_path(&entry.path).await?;
                 }
             }
             dirs.push(dir);
@@ -1398,17 +1406,29 @@ impl StorageProvider for ImageKitProvider {
             return Err(ProviderError::NotConnected);
         }
         let root = self.resolve_path(path);
-        let mut stack = vec![root];
+        let mut walk = crate::sync_core::FindWalk::new(&root);
+        let mut stack = vec![root.clone()];
         let mut matches = Vec::new();
         while let Some(dir) = stack.pop() {
-            for item in self.list_raw(&dir).await? {
-                if item.entry_type == "folder" {
-                    stack.push(normalize_path(&item.file_path));
-                }
-                if super::matches_find_pattern(&item.name, pattern) {
-                    matches.push(file_to_entry(&item));
-                }
+            let listed = self
+                .list_raw(&dir)
+                .await?
+                .iter()
+                .map(file_to_entry)
+                .collect();
+            let sorted = walk.sort(&dir, listed);
+            // A listing error fails the search, and so does a folder it
+            // cannot follow: either way the search did not see the folder.
+            if let Some((folder, step)) = sorted.refused.first() {
+                return Err(crate::sync_core::refused_search(&root, &dir, folder, *step));
             }
+            stack.extend(sorted.follow);
+            matches.extend(
+                sorted
+                    .entries
+                    .into_iter()
+                    .filter(|entry| super::matches_find_pattern(&entry.name, pattern)),
+            );
         }
         Ok(matches)
     }
@@ -1636,6 +1656,129 @@ mod tests {
             folder_copy_destination("/src/photos", "/dst/photos").unwrap(),
             "/dst"
         );
+    }
+
+    /// An ImageKit double that answers the listing of each folder in
+    /// `listings` with the JSON array given for it (any other folder lists
+    /// empty) and records every DELETE, as `DELETE path body`.
+    async fn provider_on_listings(
+        listings: &'static [(&'static str, &'static str)],
+    ) -> (
+        ImageKitProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let deletes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&deletes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    let reply = if method == "GET" && url.path() == "/files" {
+                        let folder = url
+                            .query_pairs()
+                            .find(|(k, _)| k == "path")
+                            .map(|(_, v)| normalize_path(&v))
+                            .unwrap_or_default();
+                        listings
+                            .iter()
+                            .find(|(listed, _)| *listed == folder)
+                            .map_or("[]", |(_, json)| *json)
+                            .to_string()
+                    } else {
+                        if method == "DELETE" {
+                            seen.lock().unwrap().push(format!(
+                                "DELETE {} {}",
+                                url.path(),
+                                String::from_utf8_lossy(&body)
+                            ));
+                        }
+                        "{}".to_string()
+                    };
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(reply))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, deletes)
+    }
+
+    /// The account root holds `keep.png`; the listing of `/tree` names a
+    /// folder spelled `/` (the old reading of a folder without `filePath`),
+    /// one spelled as `/tree` itself, and one outside it.
+    const STRAY_FOLDERS: &[(&str, &str)] = &[
+        (
+            "/",
+            r#"[{"fileId":"k","name":"keep.png","filePath":"/keep.png","type":"file"},
+                {"name":"tree","filePath":"/tree","type":"folder"}]"#,
+        ),
+        (
+            "/tree",
+            r#"[{"fileId":"a","name":"a.png","filePath":"/tree/a.png","type":"file"},
+                {"name":"sub","filePath":"/","type":"folder"},
+                {"name":"tree","filePath":"/tree","type":"folder"},
+                {"name":"other","filePath":"/other","type":"folder"}]"#,
+        ),
+        (
+            "/other",
+            r#"[{"fileId":"o","name":"o.png","filePath":"/other/o.png","type":"file"}]"#,
+        ),
+    ];
+
+    /// A recursive delete deletes only inside its folder, and ends, whatever
+    /// folder paths the listing gives. On a listing that names a folder
+    /// outside it, it fails rather than report a partial delete as done.
+    #[tokio::test]
+    async fn a_recursive_delete_never_follows_a_folder_outside_it() {
+        let (mut provider, deletes) = provider_on_listings(STRAY_FOLDERS).await;
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.rmdir_recursive("/tree"),
+        )
+        .await
+        .expect("the delete ends");
+        let deletes = deletes.lock().unwrap().clone();
+        assert!(
+            deletes
+                .iter()
+                .all(|call| !call.contains("/files/k") && !call.contains("/files/o")),
+            "{outcome:?} {deletes:?}"
+        );
+        assert!(
+            deletes
+                .iter()
+                .all(|call| !call.contains(r#""folderPath":"/""#) && !call.contains("/other/")),
+            "{outcome:?} {deletes:?}"
+        );
+        assert!(outcome.is_err(), "{deletes:?}");
+    }
+
+    /// A search ends, never reports what lies outside the folder searched,
+    /// and fails on a listing that names a folder it cannot follow, as on
+    /// one it cannot list.
+    #[tokio::test]
+    async fn a_find_never_follows_a_folder_outside_it() {
+        let (mut provider, _) = provider_on_listings(STRAY_FOLDERS).await;
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.find("/tree", "*.png"),
+        )
+        .await
+        .expect("the search ends");
+        assert!(outcome.is_err(), "{outcome:?}");
     }
 
     /// An ImageKit double holding the folder `/src/photos` (listed only

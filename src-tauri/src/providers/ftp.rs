@@ -2024,7 +2024,11 @@ impl StorageProvider for FtpProvider {
         // directory that still holds an invisible `.aeroftp-crypt.json` / `.env`
         // etc. (see list_inner_opts). SFTP/WebDAV already return dotfiles; FTP is
         // the outlier that relies on the server to hide them on a bare LIST.
-        let entries = self.list_for_delete(path).await?;
+        //
+        // A LIST row whose name is absolute is taken as the path itself, and
+        // a name with `..` resolves above the folder: every entry must be
+        // inside the folder before any of them is deleted.
+        let entries = crate::sync_core::listing_to_remove(path, self.list_for_delete(path).await?)?;
 
         // Delete contents first
         for entry in entries {
@@ -2138,6 +2142,7 @@ impl StorageProvider for FtpProvider {
         } else {
             path.to_string()
         };
+        let mut walk = crate::sync_core::FindWalk::new(&search_path);
         let mut dirs_to_scan = vec![search_path];
 
         while let Some(dir) = dirs_to_scan.pop() {
@@ -2153,11 +2158,18 @@ impl StorageProvider for FtpProvider {
             };
             self.current_path = saved;
 
-            for entry in entries {
-                if entry.is_walkable_dir() {
-                    dirs_to_scan.push(entry.path.clone());
-                }
-
+            // A row whose name points outside the folder searched, or back
+            // onto it, is neither followed nor reported: skipped with a
+            // warning, as a folder that cannot be listed is skipped.
+            let sorted = walk.sort(&dir, entries);
+            for (path, step) in &sorted.refused {
+                tracing::warn!(
+                    "[FTP] find: skipping {path:?}, named in {dir}: {}",
+                    step.reason()
+                );
+            }
+            dirs_to_scan.extend(sorted.follow);
+            for entry in sorted.entries {
                 if matcher.is_match(&entry.name) {
                     results.push(entry);
                     if results.len() >= 500 {
@@ -8478,6 +8490,227 @@ mod transfer_verdict_tests {
                 provider.stream.is_none(),
                 "{op}: the session outlived a transfer dropped with its verdict owed"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod walk_scope_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::{TcpListener, TcpStream};
+
+    pub(crate) type Listings = &'static [(&'static str, &'static [&'static str])];
+
+    /// One control connection of a server without MLSD that holds
+    /// `listings`: each folder with the names its LIST rows carry (a name
+    /// ending in `/` is a folder, the slash dropped). Paths are resolved
+    /// against the working directory with `.` and `..` read as a server reads
+    /// them; every DELE and RMD is logged with the path it reached.
+    async fn serve_tree(stream: TcpStream, listings: Listings, log: Arc<Mutex<Vec<String>>>) {
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        if write.write_all(b"220 ready\r\n").await.is_err() {
+            return;
+        }
+        let mut data: Option<TcpListener> = None;
+        let mut cwd = "/".to_string();
+        let held = |path: &str| listings.iter().any(|(folder, _)| *folder == path);
+        while let Ok(Some(line)) = lines.next_line().await {
+            let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+            let cmd = cmd.to_uppercase();
+            let argument = argument.trim().to_string();
+            let resolve = |cwd: &str, argument: &str| {
+                if argument.starts_with('/') {
+                    crate::sync_core::walk_path_key(argument)
+                } else {
+                    crate::sync_core::walk_path_key(&format!("{cwd}/{argument}"))
+                }
+            };
+            let reply = match cmd.as_str() {
+                "USER" => "331 password please\r\n".to_string(),
+                "PASS" => "230 logged in\r\n".to_string(),
+                "FEAT" => "211-Features:\r\n UTF8\r\n211 End\r\n".to_string(),
+                "MLST" | "MLSD" => "500 Unknown command\r\n".to_string(),
+                "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                "CWD" => {
+                    let target = resolve(&cwd, &argument);
+                    if held(&target) {
+                        cwd = target;
+                        "250 Directory changed\r\n".to_string()
+                    } else {
+                        "550 Failed to change directory.\r\n".to_string()
+                    }
+                }
+                "DELE" | "RMD" => {
+                    log.lock()
+                        .unwrap()
+                        .push(format!("{cmd} {}", resolve(&cwd, &argument)));
+                    "250 Done\r\n".to_string()
+                }
+                "PASV" => {
+                    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let port = listener.local_addr().unwrap().port();
+                    data = Some(listener);
+                    format!(
+                        "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                        port / 256,
+                        port % 256
+                    )
+                }
+                "LIST" => {
+                    let target = match argument.as_str() {
+                        "" | "-a" => cwd.clone(),
+                        other => resolve(&cwd, other),
+                    };
+                    let names = listings
+                        .iter()
+                        .find(|(folder, _)| *folder == target)
+                        .map_or(&[][..], |(_, names)| *names);
+                    let listing: String = names
+                        .iter()
+                        .map(|name| match name.strip_suffix('/') {
+                            Some(folder) => {
+                                format!("drwxr-xr-x 1 u g 0 Jan 01 2024 {folder}\r\n")
+                            }
+                            None => format!("-rw-r--r-- 1 u g 3 Jan 01 2024 {name}\r\n"),
+                        })
+                        .collect();
+                    if write
+                        .write_all(b"150 Here comes the listing\r\n")
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    if let Some(listener) = data.take() {
+                        if let Ok((mut socket, _)) = listener.accept().await {
+                            let _ = socket.write_all(listing.as_bytes()).await;
+                            let _ = socket.shutdown().await;
+                        }
+                    }
+                    "226 Transfer complete\r\n".to_string()
+                }
+                "QUIT" => {
+                    let _ = write.write_all(b"221 bye\r\n").await;
+                    return;
+                }
+                _ => "200 ok\r\n".to_string(),
+            };
+            if write.write_all(reply.as_bytes()).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    /// A [`serve_tree`] server on a local port, and its DELE/RMD log. The
+    /// legacy FTP session's walks (`crate::ftp::FtpManager`) are tested on it
+    /// too.
+    pub(crate) async fn tree_server(listings: Listings) -> (u16, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(serve_tree(stream, listings, Arc::clone(&seen)));
+            }
+        });
+        (port, log)
+    }
+
+    /// A connected provider on a [`serve_tree`] server, and its DELE/RMD log.
+    async fn provider_on_tree(listings: Listings) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        let (port, log) = tree_server(listings).await;
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider
+            .connect()
+            .await
+            .expect("connect to the tree server");
+        (provider, log)
+    }
+
+    /// `/x` holds `a.txt` and the folder `d`; the root holds `keep.txt` and
+    /// `/y` holds `y.txt`. Each case adds a LIST row whose name points the
+    /// walk elsewhere: an absolute name, which the listing takes as the path
+    /// itself (`/`, the folder listed, `/y`), or a relative one with `..`.
+    const STRAY_ROWS: [Listings; 4] = [
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/", "//"]),
+            ("/x/d", &["b.txt"]),
+            ("/y", &["y.txt"]),
+        ],
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/"]),
+            ("/x/d", &["b.txt", "/x/d/"]),
+            ("/y", &["y.txt"]),
+        ],
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/", "/y/"]),
+            ("/x/d", &["b.txt"]),
+            ("/y", &["y.txt"]),
+        ],
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/", "up/../../"]),
+            ("/x/d", &["b.txt"]),
+            ("/y", &["y.txt"]),
+        ],
+    ];
+
+    /// A recursive delete never deletes outside its folder, whatever the
+    /// LIST rows name, ends, and fails rather than report a partial delete.
+    #[tokio::test]
+    async fn a_recursive_delete_never_leaves_its_folder() {
+        for listings in STRAY_ROWS {
+            let (mut provider, log) = provider_on_tree(listings).await;
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.rmdir_recursive("/x"),
+            )
+            .await
+            .expect("the delete ends");
+            let log = log.lock().unwrap().clone();
+            assert!(outcome.is_err(), "{listings:?}: {log:?}");
+            assert!(
+                log.iter().all(|call| call
+                    .split_once(' ')
+                    .is_some_and(|(_, path)| path.starts_with("/x/"))),
+                "{listings:?}: {log:?}"
+            );
+        }
+    }
+
+    /// A search follows only folders inside the one searched, once each.
+    #[tokio::test]
+    async fn a_find_never_leaves_its_folder() {
+        for listings in STRAY_ROWS {
+            let (mut provider, _) = provider_on_tree(listings).await;
+            let found = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.find("/x", "*.txt"),
+            )
+            .await
+            .expect("the search ends")
+            .expect("a folder it does not follow is skipped, as an unreadable one is");
+            let mut paths: Vec<String> = found
+                .iter()
+                .map(|entry| crate::sync_core::walk_path_key(&entry.path))
+                .collect();
+            paths.sort();
+            assert_eq!(paths, ["/x/a.txt", "/x/d/b.txt"], "{listings:?}");
         }
     }
 }

@@ -973,13 +973,29 @@ impl StorageProvider for GitLabProvider {
         );
         let items: Vec<GitLabTreeEntry> = self.client.get_paginated(&tree_path, 100).await?;
 
-        let delete_actions: Vec<serde_json::Value> = items
+        // The commit deletes every path the tree lists: each must be under
+        // the folder before any is sent, or the commit deletes another
+        // folder's files with it.
+        let prefix = if resolved.is_empty() {
+            String::new()
+        } else {
+            format!("{resolved}/")
+        };
+        let blobs = crate::sync_core::keys_under_prefix(
+            &prefix,
+            items
+                .into_iter()
+                .filter(|item| item.entry_type == "blob")
+                .map(|item| item.path)
+                .collect(),
+            "delete",
+        )?;
+        let delete_actions: Vec<serde_json::Value> = blobs
             .iter()
-            .filter(|item| item.entry_type == "blob")
-            .map(|item| {
+            .map(|path| {
                 serde_json::json!({
                     "action": "delete",
-                    "file_path": item.path,
+                    "file_path": path,
                 })
             })
             .collect();
@@ -1187,6 +1203,61 @@ mod tests {
             "{:?}",
             requests.lock().unwrap()
         );
+    }
+
+    /// A recursive delete is one commit deleting every blob the recursive
+    /// tree of the folder lists. A tree of `docs` that also listed
+    /// `other/keep.txt` had that file deleted in the commit. The delete
+    /// fails before it commits anything.
+    #[tokio::test]
+    async fn a_recursive_delete_never_commits_a_path_outside_the_folder() {
+        use std::sync::{Arc, Mutex};
+        let commits: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&commits);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    let reply = if path.ends_with("/repository/tree") {
+                        serde_json::json!([
+                            { "id": "1", "name": "a.txt", "type": "blob", "path": "docs/a.txt", "mode": "100644" },
+                            { "id": "2", "name": "keep.txt", "type": "blob", "path": "other/keep.txt", "mode": "100644" },
+                        ])
+                    } else {
+                        seen.lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&body).to_string());
+                        serde_json::json!({ "id": "c" })
+                    };
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(reply.to_string()))
+                        .unwrap()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = GitLabProvider::new(GitLabConfig {
+            token: "t".to_string(),
+            api_base: format!("http://{addr}/api/v4"),
+            project_path: "group/project".to_string(),
+            branch: "main".to_string(),
+            initial_path: None,
+            accept_invalid_certs: false,
+        })
+        .unwrap();
+        provider.connected = true;
+        let outcome = provider.rmdir_recursive("/docs").await;
+        let commits = commits.lock().unwrap().clone();
+        assert!(outcome.is_err(), "{commits:?}");
+        assert!(commits.is_empty(), "{commits:?}");
     }
 
     /// A commit that moves a file onto an existing path is refused, so there

@@ -1001,11 +1001,21 @@ impl InternxtProvider {
     /// each item by the uuid its folder's listing gives. By path, the
     /// listing and the deletes resolved `resolved` again through the cache,
     /// and a spelling the fallback had cached there emptied another folder.
+    /// Delete the folder `uuid` (at `resolved`) and everything in it, going
+    /// down by the uuids its listings give. `met` holds the uuids this delete
+    /// must never reach again: the folders above `resolved` and every folder
+    /// already entered. A listing that names one of them as a subfolder, a
+    /// subfolder of another parent, or a name that is not a plain child
+    /// would take the delete outside the folder (a listing of `/docs` that
+    /// named the drive root deleted the root's files and never ended), so
+    /// the delete fails before it deletes anything that listing holds.
     async fn remove_folder_tree(
         &mut self,
         uuid: &str,
         resolved: &str,
+        met: &mut HashSet<String>,
     ) -> Result<(), ProviderError> {
+        met.insert(uuid.to_string());
         let mut files = Vec::new();
         let mut trail = CursorTrail::default();
         let mut cursor: Option<String> = None;
@@ -1035,7 +1045,7 @@ impl InternxtProvider {
                     .filter(|f| !matches!(f.status.as_deref(), Some("TRASHED" | "DELETED")))
                     .map(|f| {
                         let name = f.plain_name.or(f.name).unwrap_or_default();
-                        (f.uuid, name)
+                        (f.uuid, name, f.parent_uuid)
                     }),
             );
             match trail.follow("folders", next)? {
@@ -1044,12 +1054,33 @@ impl InternxtProvider {
             }
         }
 
+        // Named twice, deleted once: a second delete of the same uuid fails
+        // on an item that is already gone.
+        let mut seen = HashSet::new();
+        files.retain(|file| seen.insert(file.clone()));
+        let mut seen = HashSet::new();
+        folders.retain(|(folder, _, _)| seen.insert(folder.clone()));
+        let mut children = Vec::with_capacity(folders.len());
+        for (folder, name, parent) in folders {
+            let path = format!("{}/{name}", resolved.trim_end_matches('/'));
+            // The folder goes by its uuid, so its name only labels it: a
+            // folder named `..` that this folder holds is inside it.
+            if met.contains(&folder) {
+                let step = crate::sync_core::WalkStep::LoopsBack;
+                return Err(crate::sync_core::refused_removal(resolved, &path, step));
+            }
+            if parent.as_deref().is_some_and(|parent| parent != uuid) {
+                let step = crate::sync_core::WalkStep::OutsideRoot;
+                return Err(crate::sync_core::refused_removal(resolved, &path, step));
+            }
+            children.push((folder, path));
+        }
+
         for file in files {
             self.delete_file_by_uuid(&file).await?;
         }
-        for (folder, name) in folders {
-            let path = format!("{}/{name}", resolved.trim_end_matches('/'));
-            Box::pin(self.remove_folder_tree(&folder, &path)).await?;
+        for (folder, path) in children {
+            Box::pin(self.remove_folder_tree(&folder, &path, met)).await?;
         }
         self.delete_folder_by_uuid(uuid, resolved).await
     }
@@ -2342,7 +2373,18 @@ impl StorageProvider for InternxtProvider {
         // The folder by its exact path, and then everything in it by the
         // uuids of its listings, never by path again.
         let uuid = self.resolve_folder_uuid_exact(&resolved).await?;
-        self.remove_folder_tree(&uuid, &resolved).await
+        // The folders above it, which the delete must never reach: resolving
+        // the folder resolved each of them, so this asks the cache.
+        let mut met = HashSet::from([self.root_folder_id.clone()]);
+        let mut above = resolved.trim_end_matches('/');
+        while let Some((parent, _)) = above.rsplit_once('/') {
+            above = parent;
+            if parent.is_empty() {
+                break;
+            }
+            met.insert(self.resolve_folder_uuid_exact(parent).await?);
+        }
+        self.remove_folder_tree(&uuid, &resolved, &mut met).await
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
@@ -3094,7 +3136,9 @@ mod tests {
     }
 
     /// [`provider_on_drive`] over the folders `folders` (uuid, name, parent)
-    /// in place of `src` and `dst`.
+    /// in place of `src` and `dst`. A folder is listed with its parent's
+    /// uuid as `parentUuid`; a parent written `P@Q` lists the folder under
+    /// `P` with `parentUuid` `Q`, as a defective listing would.
     #[allow(clippy::type_complexity)]
     async fn provider_on_drive_with(
         folders: &[(&str, &str, &str)],
@@ -3186,8 +3230,13 @@ mod tests {
                                     .lock()
                                     .unwrap()
                                     .iter()
-                                    .filter(|f| f.2 == parent)
-                                    .map(|f| serde_json::json!({ "uuid": f.0, "plainName": f.1 }))
+                                    .filter(|f| f.2.split('@').next() == Some(parent))
+                                    .map(|f| {
+                                        let said = f.2.rsplit('@').next().unwrap_or("");
+                                        serde_json::json!({
+                                            "uuid": f.0, "plainName": f.1, "parentUuid": said,
+                                        })
+                                    })
                                     .collect();
                                 serde_json::json!({ "folders": listed })
                             }
@@ -3474,6 +3523,54 @@ mod tests {
             ["DELETE /drive/files/F2", "DELETE /drive/folders/D"]
         );
         assert!(store.lock().unwrap().iter().any(|f| f.0 == "F1"));
+    }
+
+    /// A recursive delete goes down by the uuids the listings give. A
+    /// listing of `/docs` that names, as a subfolder, the drive root, `/docs`
+    /// itself, or a folder whose parent is another folder must not take the
+    /// delete there: it fails before it deletes anything in that folder, and
+    /// never deletes outside `/docs`. A subfolder listed twice is deleted
+    /// once.
+    #[tokio::test]
+    async fn a_recursive_delete_never_follows_a_folder_outside_it() {
+        type Folders = &'static [(&'static str, &'static str, &'static str)];
+        const CASES: [Folders; 3] = [
+            &[("D", "docs", "R"), ("R", "up", "D")],
+            &[("D", "docs", "R"), ("D", "again", "D")],
+            &[("D", "docs", "R"), ("Y", "y", "R"), ("Y", "y", "D@R")],
+        ];
+        for folders in CASES {
+            let (mut provider, _, changes) =
+                provider_on_drive_with(folders, &[("K", "keep.txt", "R"), ("A", "a.txt", "D")])
+                    .await;
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.rmdir_recursive("/docs"),
+            )
+            .await
+            .expect("the delete ends");
+            let changes = changes.lock().unwrap().clone();
+            assert!(outcome.is_err(), "{folders:?}: {changes:?}");
+            assert!(changes.is_empty(), "{folders:?}: {changes:?}");
+        }
+
+        let (mut provider, _, changes) = provider_on_drive_with(
+            &[("D", "docs", "R"), ("S", "sub", "D"), ("S", "sub", "D")],
+            &[("A", "a.txt", "S")],
+        )
+        .await;
+        provider
+            .rmdir_recursive("/docs")
+            .await
+            .expect("a subfolder listed twice is deleted once");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            [
+                "DELETE /drive/files/A",
+                "DELETE /drive/folders/S",
+                "DELETE /drive/folders/D"
+            ]
+        );
     }
 
     /// With only `Docs` there, `rm /docs/keep.txt` and `put /docs/keep.txt`

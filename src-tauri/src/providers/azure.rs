@@ -2074,7 +2074,10 @@ impl StorageProvider for AzureProvider {
                     .into(),
             ));
         }
-        let entries = self.list(path).await?;
+        // Blob names are literal, request URLs are not: a child named `..`
+        // (the prefix `x/../`) holds blobs whose delete URL resolves above
+        // the folder. Every entry must be inside it before any is deleted.
+        let entries = crate::sync_core::listing_to_remove(path, self.list(path).await?)?;
         for entry in entries {
             if entry.is_walkable_dir() {
                 Box::pin(self.rmdir_recursive(&entry.path)).await?;
@@ -3064,6 +3067,98 @@ mod tests {
         let mut provider = AzureProvider::new(config);
         provider.connected = true;
         (provider, log)
+    }
+
+    /// A blob service double for container `mycontainer` that answers the
+    /// listing of each prefix in `listings` with the blob names and the
+    /// `BlobPrefix` names given for it (a name ending in `/` is a prefix);
+    /// any other prefix lists empty and any blob HEAD is a 404. Returns a
+    /// provider pointed at it and every DELETE path as it reached the server.
+    async fn provider_on_prefix_listings(
+        listings: &'static [(&'static str, &'static [&'static str])],
+    ) -> (AzureProvider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        let deletes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&deletes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let reply = |status: u16, body: String| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    };
+                    match req.method().as_str() {
+                        "GET" if path == "/mycontainer" => {
+                            let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                                .unwrap()
+                                .to_string();
+                            let prefix = query
+                                .split('&')
+                                .find_map(|pair| pair.strip_prefix("prefix="))
+                                .unwrap_or("");
+                            let names = listings
+                                .iter()
+                                .find(|(listed, _)| *listed == prefix)
+                                .map_or(&[][..], |(_, names)| *names);
+                            let blobs: String = names
+                                .iter()
+                                .map(|name| {
+                                    if name.ends_with('/') {
+                                        format!("<BlobPrefix><Name>{name}</Name></BlobPrefix>")
+                                    } else {
+                                        format!("<Blob><Name>{name}</Name></Blob>")
+                                    }
+                                })
+                                .collect();
+                            reply(
+                                200,
+                                format!(
+                                    "<EnumerationResults><Blobs>{blobs}</Blobs></EnumerationResults>"
+                                ),
+                            )
+                        }
+                        "DELETE" => {
+                            seen.lock().unwrap().push(path);
+                            reply(202, String::new())
+                        }
+                        _ => reply(404, String::new()),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+        (provider, deletes)
+    }
+
+    /// Blob names are literal, but a request URL is not: a prefix `x/../`
+    /// under `x/` is a child named `..`, and a blob under it, `x/../keep`,
+    /// is deleted through a URL that resolves to `keep` at the container
+    /// root. A recursive delete of `x` must refuse that child, not follow it.
+    #[tokio::test]
+    async fn a_recursive_delete_never_follows_a_dot_dot_prefix() {
+        let (mut provider, deletes) = provider_on_prefix_listings(&[
+            ("x/", &["x/a.txt", "x/../"]),
+            ("x/../", &["x/../keep"]),
+        ])
+        .await;
+        let outcome = provider.rmdir_recursive("/x").await;
+        let deletes = deletes.lock().unwrap().clone();
+        assert!(outcome.is_err(), "{deletes:?}");
+        assert!(
+            deletes
+                .iter()
+                .all(|path| path.starts_with("/mycontainer/x/")),
+            "{deletes:?}"
+        );
     }
 
     /// Upload a 300 KB file through Put Blob to a local fixture answering

@@ -1545,8 +1545,14 @@ impl S3Provider {
         let (from, to) = (from_path.as_str(), to_path.as_str());
         let prefix = format!("{}/", from_trimmed);
 
-        // Check if this is a directory by listing objects under the prefix
-        let keys = self.list_keys_with_prefix(&prefix).await?;
+        // Check if this is a directory by listing objects under the prefix.
+        // A key outside it would be copied onto itself below and then
+        // deleted, the only copy with it.
+        let keys = crate::sync_core::keys_under_prefix(
+            &prefix,
+            self.list_keys_with_prefix(&prefix).await?,
+            "move",
+        )?;
 
         // The trait promises no overwrite, and CopyObject replaces whatever
         // the destination key holds. Listings, not a HEAD: without
@@ -5448,7 +5454,11 @@ impl StorageProvider for S3Provider {
         }
 
         let prefix = format!("{}/", path.trim_matches('/'));
-        let mut keys = self.list_keys_with_prefix(&prefix).await?;
+        let mut keys = crate::sync_core::keys_under_prefix(
+            &prefix,
+            self.list_keys_with_prefix(&prefix).await?,
+            "delete",
+        )?;
 
         // Always include the directory marker itself (key with trailing slash).
         // MinIO and some S3-compatible providers create this marker on mkdir
@@ -9856,6 +9866,114 @@ mod tests {
             assert_eq!(bodies[0].contains("<Key>folder</Key>"), include_bare);
             server.abort();
         }
+    }
+
+    /// A path-style S3 double holding `folder/a` and `other/keep` whose
+    /// listing of the prefix `folder/` also names `other/keep`, as a
+    /// defective gateway might; every other listing is filtered by its
+    /// prefix. HEAD, CopyObject and batch delete act on the objects. Returns
+    /// the provider, the objects, and every batch delete body.
+    async fn provider_on_a_listing_that_leaks_a_key() -> (
+        S3Provider,
+        std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let objects: Arc<Mutex<std::collections::BTreeSet<String>>> = Arc::new(Mutex::new(
+            ["folder/a", "other/keep"].map(String::from).into(),
+        ));
+        let bodies: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (store, captured) = (Arc::clone(&objects), Arc::clone(&bodies));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (store, captured) = (Arc::clone(&store), Arc::clone(&captured));
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+                    let key = urlencoding::decode(
+                        url.path()
+                            .trim_start_matches("/test-bucket")
+                            .trim_start_matches('/'),
+                    )
+                    .unwrap()
+                    .into_owned();
+                    let method = req.method().clone();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let reply = |status: u16, body: String| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    };
+                    let mut store = store.lock().unwrap();
+                    match method {
+                        Method::GET if key.is_empty() => {
+                            let prefix = query.get("prefix").cloned().unwrap_or_default();
+                            let listed: Vec<&String> = store
+                                .iter()
+                                .filter(|k| prefix == "folder/" || k.starts_with(&prefix))
+                                .collect();
+                            let contents: String = listed
+                                .iter()
+                                .map(|k| {
+                                    format!("<Contents><Key>{k}</Key><Size>1</Size></Contents>")
+                                })
+                                .collect();
+                            reply(
+                                200,
+                                format!("<ListBucketResult>{contents}</ListBucketResult>"),
+                            )
+                        }
+                        Method::HEAD if store.contains(&key) => reply(200, String::new()),
+                        Method::PUT => {
+                            store.insert(key);
+                            reply(200, "<CopyObjectResult></CopyObjectResult>".to_string())
+                        }
+                        Method::POST => {
+                            let body = String::from_utf8(body.to_vec()).unwrap();
+                            store.retain(|k| !body.contains(&format!("<Key>{k}</Key>")));
+                            captured.lock().unwrap().push(body);
+                            reply(200, "<DeleteResult/>".to_string())
+                        }
+                        _ => reply(404, String::new()),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, objects, bodies)
+    }
+
+    /// A recursive delete and a folder move act only on keys under the
+    /// folder's prefix. A listing that names `other/keep` under `folder/`
+    /// had the delete remove it, and the move copy it onto itself and then
+    /// delete the only copy. Both fail before they change anything.
+    #[tokio::test]
+    async fn a_folder_delete_or_move_never_acts_on_a_key_outside_the_prefix() {
+        let (mut provider, objects, bodies) = provider_on_a_listing_that_leaks_a_key().await;
+        let outcome = provider.rmdir_recursive("/folder").await;
+        assert!(outcome.is_err(), "{:?}", bodies.lock().unwrap());
+        assert!(objects.lock().unwrap().contains("other/keep"));
+        assert!(
+            bodies.lock().unwrap().is_empty(),
+            "{:?}",
+            bodies.lock().unwrap()
+        );
+
+        let (mut provider, objects, bodies) = provider_on_a_listing_that_leaks_a_key().await;
+        let outcome = provider.rename("/folder", "/moved").await;
+        assert!(outcome.is_err(), "{:?}", objects.lock().unwrap());
+        assert!(objects.lock().unwrap().contains("other/keep"));
+        assert!(
+            bodies.lock().unwrap().is_empty(),
+            "{:?}",
+            bodies.lock().unwrap()
+        );
     }
 
     /// Round 2 of the 4.2.1 review: `rmdir` was `rmdir_recursive`, so an

@@ -4627,6 +4627,7 @@ impl StorageProvider for WebDavProvider {
         }
 
         let mut results = Vec::new();
+        let mut walk = crate::sync_core::FindWalk::new(path);
         let mut dirs_to_scan = vec![path.to_string()];
 
         while let Some(dir) = dirs_to_scan.pop() {
@@ -4635,11 +4636,18 @@ impl StorageProvider for WebDavProvider {
                 Err(_) => continue,
             };
 
-            for entry in entries {
-                if entry.is_walkable_dir() {
-                    dirs_to_scan.push(entry.path.clone());
-                }
-
+            // A listing joins each display name to the folder listed, so a
+            // name such as `../y` points outside the folder searched: such an
+            // entry is skipped with a warning, as an unreadable collection is.
+            let sorted = walk.sort(&dir, entries);
+            for (path, step) in &sorted.refused {
+                tracing::warn!(
+                    "[WebDAV] find: skipping {path:?}, named in {dir}: {}",
+                    step.reason()
+                );
+            }
+            dirs_to_scan.extend(sorted.follow);
+            for entry in sorted.entries {
                 if super::matches_find_pattern(&entry.name, pattern) {
                     results.push(entry);
                     if results.len() >= 500 {
@@ -8569,5 +8577,123 @@ mod body_cut_short_tests {
         let message = format!("{outcome:?}");
         assert!(message.contains("after 0 of 100 bytes"), "{message}");
         assert!(!local.exists(), "a cut-short download is not committed");
+    }
+}
+
+#[cfg(test)]
+mod walk_scope_tests {
+    use super::*;
+
+    type Listings = &'static [(&'static str, &'static [&'static str])];
+
+    /// A WebDAV double holding `listings`: each collection with the display
+    /// names its PROPFIND answers carry (a name ending in `/` is a
+    /// collection, the slash dropped), after the collection's own response.
+    /// A request path is resolved as a server resolves it; a collection not
+    /// in `listings` is a 404.
+    async fn provider_on_listings(listings: Listings) -> WebDavProvider {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| async move {
+                let path = urlencoding::decode(req.uri().path())
+                    .map(|p| crate::sync_core::walk_path_key(&p))
+                    .unwrap_or_default();
+                let Some((_, names)) = listings.iter().find(|(folder, _)| *folder == path) else {
+                    return axum::response::Response::builder()
+                        .status(404)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                };
+                let response = |href: &str, name: &str, collection: bool| {
+                    let kind = if collection { "<d:collection/>" } else { "" };
+                    format!(
+                        "<d:response><d:href>{href}</d:href><d:propstat><d:prop>\
+                             <d:displayname>{name}</d:displayname>\
+                             <d:resourcetype>{kind}</d:resourcetype>\
+                             <d:getcontentlength>1</d:getcontentlength></d:prop>\
+                             <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+                    )
+                };
+                let base = path.trim_end_matches('/');
+                let mut body = String::from(
+                    "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:multistatus xmlns:d=\"DAV:\">",
+                );
+                body.push_str(&response(&format!("{base}/"), "", true));
+                for (i, name) in names.iter().enumerate() {
+                    let (name, collection) = match name.strip_suffix('/') {
+                        Some(folder) => (folder, true),
+                        None => (*name, false),
+                    };
+                    let slash = if collection { "/" } else { "" };
+                    body.push_str(&response(&format!("{base}/e{i}{slash}"), name, collection));
+                }
+                body.push_str("</d:multistatus>");
+                axum::response::Response::builder()
+                    .status(207)
+                    .header("content-type", "application/xml; charset=utf-8")
+                    .body(axum::body::Body::from(body))
+                    .unwrap()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = WebDavProvider::new(WebDavConfig {
+            url: format!("http://{addr}/"),
+            username: "user".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+            provider_id: None,
+            verify_cert: true,
+            anonymous: false,
+        })
+        .expect("provider");
+        provider.connected = true;
+        provider
+    }
+
+    /// `/x` holds `a.txt` and the collection `d`; the root holds `keep.txt`
+    /// and `/y` holds `y.txt`. Each case adds a collection whose display
+    /// name, which the listing joins to the folder listed, points the walk
+    /// elsewhere: back at the folder listed, at `/y`, or at the root.
+    const STRAY_NAMES: [Listings; 3] = [
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/"]),
+            ("/x/d", &["b.txt", "../d/"]),
+            ("/y", &["y.txt"]),
+        ],
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/", "../y/"]),
+            ("/x/d", &["b.txt"]),
+            ("/y", &["y.txt"]),
+        ],
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/", "up/../../"]),
+            ("/x/d", &["b.txt"]),
+            ("/y", &["y.txt"]),
+        ],
+    ];
+
+    /// A search follows only collections inside the one searched, once each.
+    #[tokio::test]
+    async fn a_find_never_leaves_its_folder() {
+        for listings in STRAY_NAMES {
+            let mut provider = provider_on_listings(listings).await;
+            let found = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.find("/x", "*.txt"),
+            )
+            .await
+            .expect("the search ends")
+            .expect("a collection it does not follow is skipped, as an unreadable one is");
+            let mut paths: Vec<String> = found
+                .iter()
+                .map(|entry| crate::sync_core::walk_path_key(&entry.path))
+                .collect();
+            paths.sort();
+            assert_eq!(paths, ["/x/a.txt", "/x/d/b.txt"], "{listings:?}");
+        }
     }
 }

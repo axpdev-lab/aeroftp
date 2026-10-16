@@ -18588,6 +18588,11 @@ async fn view_local_file(path: &str) -> Result<(String, bool, bool), String> {
 
 /// Recursive byte count + file count under a remote directory, bounded by
 /// [`TUI_SIZE_MAX_ENTRIES`]. A depth-first walk reusing the provider listing.
+///
+/// Each folder strictly under the one sized is listed once and each file
+/// counted once ([`cli_walk_step`]). A listing that names a folder the walk
+/// cannot follow leaves no true total, so the size fails and says why, as a
+/// folder that cannot be listed does.
 async fn size_remote_dir(
     session: &mut cli_tui::session::TuiSession,
     path: &str,
@@ -18599,12 +18604,19 @@ async fn size_remote_dir(
     let mut total_bytes: u64 = 0;
     let mut files: u64 = 0;
     let mut visited: usize = 0;
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(&resolved);
+    let mut counted: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut root_listed = false;
     let mut stack = vec![resolved];
     while let Some(dir) = stack.pop() {
         let entries = provider
             .list(&dir)
             .await
             .map_err(|err| format!("list failed: {}", err))?;
+        if !root_listed {
+            scope.learn_root_listing(&entries);
+            root_listed = true;
+        }
         for entry in entries {
             visited += 1;
             if visited > TUI_SIZE_MAX_ENTRIES {
@@ -18616,10 +18628,12 @@ async fn size_remote_dir(
                 entry.path.clone()
             };
             if entry.is_dir {
-                if entry.is_walkable_dir() {
+                if entry.is_walkable_dir() && cli_walk_step(&mut scope, &dir, &child, true)? {
                     stack.push(child);
                 }
-            } else {
+            } else if cli_walk_step(&mut scope, &dir, &child, false)?
+                && counted.insert(ftp_client_gui_lib::sync_core::walk_path_key(&child))
+            {
                 total_bytes += entry.size;
                 files += 1;
             }
@@ -30218,6 +30232,10 @@ async fn create_and_connect_raw(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    #[cfg(test)]
+    if let Some(provider) = TEST_CONNECTED_PROVIDER.with(|slot| slot.borrow_mut().take()) {
+        return Ok((provider, "/".to_string()));
+    }
     create_and_connect_with(url, cli, cli.profile.as_deref(), format, false, None)
         .await
         .map(|(provider, path, _metadata)| (provider, path))
@@ -34994,6 +35012,12 @@ async fn cmd_get_recursive(
     // G108: directories the scan could not read. Collected here because the
     // run's error list is built further down, and folded into it below.
     let mut listing_errors: Vec<String> = Vec::new();
+    // Only folders strictly under `remote_dir` are listed, each once, and each
+    // file is fetched once ([`cli_walk_step`]). A folder the scan does not
+    // follow is an error of the run, as one it could not list is: what it
+    // holds was not downloaded.
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(remote_dir);
+    let mut fetched: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     while let Some((dir, depth)) = queue.pop() {
         if cancelled.load(Ordering::Relaxed) {
@@ -35016,15 +35040,33 @@ async fn cmd_get_recursive(
         }
         match provider.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for e in entries {
-                    if e.is_dir {
-                        // Never walk (nor recreate locally) a symlink-to-dir:
-                        // it would copy the target's tree twice, or cycle.
-                        if e.is_walkable_dir() {
-                            queue.push((e.path.clone(), depth + 1));
-                            dirs.push(e.path);
+                    // Never walk (nor recreate locally) a symlink-to-dir:
+                    // it would copy the target's tree twice, or cycle.
+                    if e.is_dir && !e.is_walkable_dir() {
+                        continue;
+                    }
+                    match cli_walk_step(&mut scope, &dir, &e.path, e.is_dir) {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(refusal) => {
+                            if !quiet {
+                                eprintln!("Warning: {refusal}");
+                            }
+                            listing_errors.push(refusal);
+                            continue;
                         }
+                    }
+                    if e.is_dir {
+                        queue.push((e.path.clone(), depth + 1));
+                        dirs.push(e.path);
                     } else {
+                        if !fetched.insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path)) {
+                            continue;
+                        }
                         let relative = e
                             .path
                             .strip_prefix(remote_dir)
@@ -35122,6 +35164,10 @@ async fn cmd_get_recursive(
     let mut done_bytes: u64 = 0;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
+    // A folder the scan could not read or did not follow makes the run
+    // partial whatever the transfers do: the subtree asked for was not all
+    // downloaded.
+    let unlisted_folders = listing_errors.len();
     let mut errors: Vec<String> = listing_errors;
     // DAG-P2-07 (block E): engine-level stats when this folder download ran on
     // the converged DAG-engine path; stays `None` on the legacy fallback.
@@ -35280,7 +35326,7 @@ async fn cmd_get_recursive(
         }
     }
 
-    if downloaded == total_files as u32 {
+    if downloaded == total_files as u32 && unlisted_folders == 0 {
         0
     } else if interrupted {
         130
@@ -36917,6 +36963,14 @@ async fn build_rm_dry_run_plan(
     let mut seen = 0usize;
     let mut truncated = false;
     let mut queue: Vec<usize> = vec![0];
+    // The plan must not reach outside `path`: a filtered `rm` deletes it as
+    // it is. Each listing is taken only when every entry it names is strictly
+    // under the folder listed, and refuses the whole plan otherwise, before
+    // anything is deleted (`listing_to_remove`, the rule of the providers'
+    // own recursive deletes). Each folder is walked and each file planned
+    // once.
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(path);
+    let mut planned: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     while let Some(idx) = queue.pop() {
         if dirs[idx].depth >= MAX_SCAN_DEPTH || seen >= MAX_SCAN_ENTRIES {
@@ -36925,7 +36979,28 @@ async fn build_rm_dry_run_plan(
             continue;
         }
         let dir = dirs[idx].path.clone();
-        for entry in provider.list(&dir).await? {
+        let listing =
+            ftp_client_gui_lib::sync_core::listing_to_remove(&dir, provider.list(&dir).await?)?;
+        if idx == 0 {
+            scope.learn_root_listing(&listing);
+        }
+        for entry in listing {
+            if entry.is_dir && !entry.is_symlink {
+                use ftp_client_gui_lib::sync_core::WalkStep;
+                match scope.admit(&dir, &entry.path) {
+                    WalkStep::Follow => {}
+                    WalkStep::AlreadyListed => continue,
+                    step => {
+                        return Err(ftp_client_gui_lib::sync_core::refused_removal(
+                            path,
+                            &entry.path,
+                            step,
+                        ))
+                    }
+                }
+            } else if !planned.insert(ftp_client_gui_lib::sync_core::walk_path_key(&entry.path)) {
+                continue;
+            }
             if seen >= MAX_SCAN_ENTRIES {
                 truncated = true;
                 dirs[idx].listing_complete = false;
@@ -43133,6 +43208,72 @@ fn resolve_find_target<'a>(
     }
 }
 
+/// What the listing fallback of `find` found, and what it did not search.
+struct FoundByListing {
+    /// The entries whose name matched.
+    entries: Vec<RemoteEntry>,
+    /// The folders it did not search, each with the reason.
+    unwalked: Vec<String>,
+    /// The walk stopped at the entry cap.
+    capped: bool,
+}
+
+/// `find` on a provider without its own search: walk the tree under `path`
+/// and keep the entries whose name `matcher` matches. The walk follows each
+/// folder strictly under `path` once and reports each path once (the
+/// `FindWalk` the providers' own searches use); a folder it did not search,
+/// because a listing named it outside `path` or back on itself, or because
+/// it could not be listed, is named in `unwalked`.
+async fn find_by_listing(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    matcher: &globset::GlobMatcher,
+    max_depth: usize,
+) -> FoundByListing {
+    let mut found = FoundByListing {
+        entries: Vec::new(),
+        unwalked: Vec::new(),
+        capped: false,
+    };
+    let mut walk = ftp_client_gui_lib::sync_core::FindWalk::new(path);
+    let mut queue: Vec<(String, usize)> = vec![(path.to_string(), 0)];
+    let mut scanned: usize = 0;
+    while let Some((dir, depth)) = queue.pop() {
+        if depth >= max_depth {
+            continue;
+        }
+        let entries = match provider.list(&dir).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                found.unwalked.push(format!("Not searching {dir}: {e}"));
+                continue;
+            }
+        };
+        let sorted = walk.sort(&dir, entries);
+        for (child, step) in sorted.refused {
+            found.unwalked.push(format!(
+                "Skipping {child}: the listing of {dir} names it, but {}",
+                step.explain()
+            ));
+        }
+        for e in sorted.entries {
+            scanned += 1;
+            if scanned >= MAX_SCAN_ENTRIES {
+                found.capped = true;
+                break;
+            }
+            if matcher.is_match(&e.name) {
+                found.entries.push(e);
+            }
+        }
+        if scanned >= MAX_SCAN_ENTRIES {
+            break;
+        }
+        queue.extend(sorted.follow.into_iter().map(|child| (child, depth + 1)));
+    }
+    found
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_find(
     url: &str,
@@ -43164,37 +43305,20 @@ async fn cmd_find(
                 }
             };
 
-            let mut queue: Vec<(String, usize)> = vec![(path.to_string(), 0)];
-            let mut found = Vec::new();
-            let mut scanned: usize = 0;
-
             let find_max_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
-            while let Some((dir, depth)) = queue.pop() {
-                if depth >= find_max_depth {
-                    continue;
-                }
-                if let Ok(entries) = provider.list(&dir).await {
-                    for e in entries {
-                        scanned += 1;
-                        if scanned >= MAX_SCAN_ENTRIES {
-                            if !cli.quiet {
-                                eprintln!("Warning: scan limit reached ({} entries), results may be incomplete", MAX_SCAN_ENTRIES);
-                            }
-                            break;
-                        }
-                        if e.is_walkable_dir() {
-                            queue.push((e.path.clone(), depth + 1));
-                        }
-                        if matcher.is_match(&e.name) {
-                            found.push(e);
-                        }
-                    }
-                }
-                if scanned >= MAX_SCAN_ENTRIES {
-                    break;
+            let found = find_by_listing(&mut *provider, path, &matcher, find_max_depth).await;
+            if !cli.quiet {
+                for line in &found.unwalked {
+                    eprintln!("Warning: {line}");
                 }
             }
-            found
+            if found.capped && !cli.quiet {
+                eprintln!(
+                    "Warning: scan limit reached ({} entries), results may be incomplete",
+                    MAX_SCAN_ENTRIES
+                );
+            }
+            found.entries
         }
         Err(e) => {
             print_error(
@@ -43838,6 +43962,68 @@ async fn cmd_rmdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
     }
 }
 
+/// Whether a CLI walk that deletes what it takes (`rmdirs`, `cleanup`,
+/// `dedupe`) takes `child`, an entry the listing of `listed` named (see
+/// `sync_core::WalkScope::place_to_delete`): a folder it `follows` is listed,
+/// any other entry acted on, and either must keep the letter case of the
+/// root. An entry that points back at the folder being listed or above it,
+/// or outside the walk root, is not taken: it is counted in `scan_errors`,
+/// which makes the run partial, and named on stderr, since the walk did not
+/// see the tree that listing describes. A folder already listed is simply
+/// not listed again, so nothing under it is collected twice.
+fn cli_walk_admits(
+    scope: &mut ftp_client_gui_lib::sync_core::WalkScope,
+    listed: &str,
+    child: &str,
+    follows: bool,
+    scan_errors: &mut u32,
+    quiet: bool,
+) -> bool {
+    let step = scope.place_to_delete(listed, child, follows);
+    match cli_walk_decision(step, listed, child, follows) {
+        Ok(follow) => follow,
+        Err(refusal) => {
+            *scan_errors += 1;
+            if !quiet {
+                eprintln!("  {refusal}");
+            }
+            false
+        }
+    }
+}
+
+/// The same decision for a walk that reports a refused entry its own way
+/// (an error of the run, a truncated listing, a warning): `Ok(true)` to take
+/// `child`, `Ok(false)` when it is a folder already listed, and the sentence
+/// that says why it is not taken at all.
+fn cli_walk_step(
+    scope: &mut ftp_client_gui_lib::sync_core::WalkScope,
+    listed: &str,
+    child: &str,
+    follows: bool,
+) -> Result<bool, String> {
+    let step = scope.place(listed, child, follows);
+    cli_walk_decision(step, listed, child, follows)
+}
+
+fn cli_walk_decision(
+    step: ftp_client_gui_lib::sync_core::WalkStep,
+    listed: &str,
+    child: &str,
+    follows: bool,
+) -> Result<bool, String> {
+    use ftp_client_gui_lib::sync_core::WalkStep;
+    match step {
+        WalkStep::Follow => Ok(true),
+        WalkStep::AlreadyListed => Ok(false),
+        step => Err(format!(
+            "{} {child}: the listing of {listed} names it, but {}",
+            if follows { "Not listing" } else { "Skipping" },
+            step.explain()
+        )),
+    }
+}
+
 /// Order discovered directories for empty-prune: deepest first
 /// (post-order), so a child is always considered before its parent and a
 /// parent that only becomes empty after its children are pruned is still
@@ -43876,6 +44062,7 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
     let mut scan_errors = 0u32;
     let mut exit_code = 0i32;
     let mut capped = false;
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(&root);
 
     while let Some((dir, depth)) = stack.pop() {
         if depth >= max_depth {
@@ -43887,6 +44074,9 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
         }
         match provider.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for entry in entries {
                     // A symlink-to-directory is neither descended into nor
                     // offered as an empty-directory candidate (GAP-A02):
@@ -43897,6 +44087,16 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
                     }
                     let rel = entry.path.strip_prefix(&root_norm).unwrap_or(&entry.path);
                     if validate_relative_path(rel).is_none() {
+                        continue;
+                    }
+                    if !cli_walk_admits(
+                        &mut scope,
+                        &dir,
+                        &entry.path,
+                        true,
+                        &mut scan_errors,
+                        quiet,
+                    ) {
                         continue;
                     }
                     if found.len() >= MAX_SCAN_ENTRIES {
@@ -44180,7 +44380,13 @@ async fn cmd_lsjson(
     } else {
         let max_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
         let mut out: Vec<LsjsonEntry> = Vec::new();
-        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // With -R each folder strictly under the root is listed once and each
+        // path is one row ([`cli_walk_step`]): rows are named from the names
+        // on the way, so a folder listed inside itself showed as `d1/d1`, and
+        // one listed as `/` showed the account root under its name. A folder
+        // the walk does not follow gets no row and is named on stderr.
+        let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(&resolved);
+        let mut shown: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut entry_count: usize = 0;
         let mut truncated = false;
 
@@ -44210,9 +44416,6 @@ async fn cmd_lsjson(
                 truncated = true;
                 break;
             }
-            if !visited.insert(dir_path.clone()) {
-                continue;
-            }
             if show_spinner {
                 let mut err = std::io::stderr();
                 let _ = write!(
@@ -44234,12 +44437,19 @@ async fn cmd_lsjson(
                         return code;
                     }
                     // A sub-listing failure is non-fatal (mirrors `tree`):
-                    // skip the unreadable subtree, keep the rest.
+                    // skip the unreadable subtree, keep the rest, and say so.
+                    if !cli.quiet {
+                        if show_spinner {
+                            erase_spinner();
+                        }
+                        eprintln!("Warning: cannot list {dir_path}: {e}");
+                    }
                     continue;
                 }
             };
 
             if is_root_list {
+                scope.learn_root_listing(&entries);
                 is_root_list = false;
             }
 
@@ -44247,6 +44457,24 @@ async fn cmd_lsjson(
                 if entry_count >= MAX_SCAN_ENTRIES {
                     truncated = true;
                     break;
+                }
+                if recursive {
+                    match cli_walk_step(&mut scope, &dir_path, &e.path, e.is_walkable_dir()) {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(refusal) => {
+                            if !cli.quiet {
+                                if show_spinner {
+                                    erase_spinner();
+                                }
+                                eprintln!("Warning: {refusal}");
+                            }
+                            continue;
+                        }
+                    }
+                    if !shown.insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path)) {
+                        continue;
+                    }
                 }
                 let rel = if rel_prefix.is_empty() {
                     e.name.clone()
@@ -48094,7 +48322,8 @@ async fn cmd_cleanup(
     // prove staleness before deleting (CLEAN-01).
     let mut orphans: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(path.to_string(), 0)];
-    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Cycle guard: every folder is listed once, and only one under `path`.
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(path);
     let max_entries = 100_000usize;
     let mut scanned_entries = 0u64;
     let mut scan_errors = 0u32;
@@ -48111,19 +48340,36 @@ async fn cmd_cleanup(
             truncated = true;
             continue;
         }
-        if !visited.insert(dir.clone()) {
-            // Cycle guard: a symlinked directory loop would otherwise spin forever.
-            continue;
-        }
         match provider.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for entry in entries {
                     scanned_entries += 1;
                     if entry.is_dir {
-                        if entry.is_walkable_dir() {
+                        if entry.is_walkable_dir()
+                            && cli_walk_admits(
+                                &mut scope,
+                                &dir,
+                                &entry.path,
+                                true,
+                                &mut scan_errors,
+                                quiet,
+                            )
+                        {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
-                    } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
+                    } else if (entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp"))
+                        && cli_walk_admits(
+                            &mut scope,
+                            &dir,
+                            &entry.path,
+                            false,
+                            &mut scan_errors,
+                            quiet,
+                        )
+                    {
                         orphans.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
                 }
@@ -48140,6 +48386,10 @@ async fn cmd_cleanup(
             }
         }
     }
+    // One delete per file, whatever the listings repeated.
+    ftp_client_gui_lib::sync_core::retain_first_per_path(&mut orphans, |(path, _, _)| {
+        path.as_str()
+    });
 
     if orphans.is_empty() {
         if !quiet {
@@ -48351,7 +48601,8 @@ async fn cmd_dedupe(
     // cap entries, and guard against symlinked directory cycles.
     let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(path.to_string(), 0)];
-    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Cycle guard: every folder is listed once, and only one under `path`.
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(path);
     let max_entries = 100_000usize;
     let mut scan_errors = 0u32;
     let mut hash_errors = 0u32;
@@ -48365,18 +48616,33 @@ async fn cmd_dedupe(
         if depth >= MAX_SCAN_DEPTH {
             continue;
         }
-        if !visited.insert(dir.clone()) {
-            // Cycle guard: a symlinked directory loop would otherwise spin forever.
-            continue;
-        }
         match provider.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for entry in entries {
                     if entry.is_dir {
-                        if entry.is_walkable_dir() {
+                        if entry.is_walkable_dir()
+                            && cli_walk_admits(
+                                &mut scope,
+                                &dir,
+                                &entry.path,
+                                true,
+                                &mut scan_errors,
+                                quiet,
+                            )
+                        {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
-                    } else {
+                    } else if cli_walk_admits(
+                        &mut scope,
+                        &dir,
+                        &entry.path,
+                        false,
+                        &mut scan_errors,
+                        quiet,
+                    ) {
                         files.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
                 }
@@ -48392,6 +48658,16 @@ async fn cmd_dedupe(
                 continue;
             }
         }
+    }
+
+    // A file is never its own duplicate: whatever a listing did, each path is
+    // grouped once, so the copies a group deletes are always other files.
+    let repeated =
+        ftp_client_gui_lib::sync_core::retain_first_per_path(&mut files, |(path, _, _)| {
+            path.as_str()
+        });
+    if repeated > 0 && !quiet {
+        eprintln!("  {repeated} path(s) were listed more than once and are counted once");
     }
 
     let sim_mode = SimilarityMode::parse(similarity);
@@ -52971,6 +53247,61 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
     let mut file_count: usize = 0;
     let mut dir_count: usize = 0;
 
+    /// What both renderings show: each path under the root once, and a
+    /// folder only when the walk may list it ([`cli_walk_step`]). Rows came
+    /// from whatever each listing named, so a folder listed inside itself
+    /// showed under itself and one listed as `/` showed the account root. A
+    /// symlink to a folder is shown and never listed (GAP-A02).
+    struct TreeWalk {
+        scope: ftp_client_gui_lib::sync_core::WalkScope,
+        shown: std::collections::HashSet<String>,
+        root_listed: bool,
+        quiet: bool,
+    }
+
+    impl TreeWalk {
+        fn new(root: &str, quiet: bool) -> Self {
+            Self {
+                scope: ftp_client_gui_lib::sync_core::WalkScope::new(root),
+                shown: std::collections::HashSet::new(),
+                root_listed: false,
+                quiet,
+            }
+        }
+
+        /// The entries of the listing of `listed` the tree shows. The first
+        /// call must be the root's, which teaches how the provider spells it.
+        fn keep(&mut self, listed: &str, entries: Vec<RemoteEntry>) -> Vec<RemoteEntry> {
+            if !self.root_listed {
+                self.scope.learn_root_listing(&entries);
+                self.root_listed = true;
+            }
+            entries
+                .into_iter()
+                .filter(|e| {
+                    match cli_walk_step(&mut self.scope, listed, &e.path, e.is_walkable_dir()) {
+                        Ok(true) => {}
+                        Ok(false) => return false,
+                        Err(refusal) => {
+                            if !self.quiet {
+                                eprintln!("Warning: {refusal}");
+                            }
+                            return false;
+                        }
+                    }
+                    self.shown
+                        .insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path))
+                })
+                .collect()
+        }
+
+        fn cannot_list(&self, path: &str, error: &ProviderError) {
+            if !self.quiet {
+                eprintln!("Warning: cannot list {path}: {error}");
+            }
+        }
+    }
+
     // For JSON output, build tree recursively with entry limit
     async fn build_tree(
         provider: &mut dyn StorageProvider,
@@ -52978,21 +53309,17 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
         depth: usize,
         max_depth: usize,
         entry_count: &mut usize,
-        visited: &mut std::collections::HashSet<String>,
+        walk: &mut TreeWalk,
     ) -> Vec<TreeNode> {
         if depth >= max_depth || *entry_count >= MAX_SCAN_ENTRIES {
             return Vec::new();
         }
-        // Re-entry guard: skip a path we already expanded. This does NOT catch
-        // a symlink loop, because every pass through `sub/loop -> ..` yields a
-        // longer, distinct path string. Loops are prevented by refusing to
-        // descend into symlinks at all (see `is_walkable_dir` below).
-        if !visited.insert(path.to_string()) {
-            return Vec::new();
-        }
         let entries = match provider.list(path).await {
-            Ok(e) => e,
-            Err(_) => return Vec::new(),
+            Ok(e) => walk.keep(path, e),
+            Err(e) => {
+                walk.cannot_list(path, &e);
+                return Vec::new();
+            }
         };
         let mut nodes = Vec::new();
         for e in entries {
@@ -53007,7 +53334,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                     depth + 1,
                     max_depth,
                     entry_count,
-                    visited,
+                    walk,
                 ))
                 .await
             } else {
@@ -53032,14 +53359,14 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
     match format {
         OutputFormat::Json => {
             let mut tree_entry_count: usize = 0;
-            let mut tree_visited = std::collections::HashSet::new();
+            let mut walk = TreeWalk::new(effective_path, cli.quiet);
             let root_children = build_tree(
                 &mut *provider,
                 effective_path,
                 0,
                 max_depth,
                 &mut tree_entry_count,
-                &mut tree_visited,
+                &mut walk,
             )
             .await;
             fn count_nodes(nodes: &[TreeNode]) -> (usize, usize) {
@@ -53107,12 +53434,11 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
             // requested `max_depth` is only a cap; a shallow tree reports less.
             let mut max_depth_reached: usize = 0;
             let mut tree_entry_count: usize = 0;
-            let mut tree_visited: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
+            let mut walk = TreeWalk::new(effective_path, cli.quiet);
 
             // Load root entries
             let root_entries = match provider.list(effective_path).await {
-                Ok(e) => e,
+                Ok(e) => walk.keep(effective_path, e),
                 Err(e) => {
                     print_error(
                         format,
@@ -53175,8 +53501,15 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                     // A symlink-to-directory renders with a trailing `/` like any
                     // other directory, so the descent is gated on `walkable`, not
                     // on the rendered name.
-                    if item.walkable && tree_visited.insert(item.path.clone()) {
-                        if let Ok(children) = provider.list(&item.path).await {
+                    if item.walkable {
+                        let listed = match provider.list(&item.path).await {
+                            Ok(children) => Some(walk.keep(&item.path, children)),
+                            Err(e) => {
+                                walk.cannot_list(&item.path, &e);
+                                None
+                            }
+                        };
+                        if let Some(children) = listed {
                             let mut sorted: Vec<_> = children.into_iter().collect();
                             sorted.sort_by(|a, b| match (a.is_dir, b.is_dir) {
                                 (true, false) => std::cmp::Ordering::Less,
@@ -53276,6 +53609,29 @@ impl NcduEntry {
     }
 }
 
+/// What an `ncdu` scan may list, and what it did not read. The scan used to
+/// follow every folder a listing named, symlinks included, with no record of
+/// what it had scanned, so a folder listed inside itself or as `/` was
+/// scanned again down to the depth cap and a folder outside the root was
+/// added to its total. The folders it skips are kept so the command can say
+/// the total leaves them out.
+struct NcduWalk {
+    scope: ftp_client_gui_lib::sync_core::WalkScope,
+    counted: std::collections::HashSet<String>,
+    /// One line per folder the scan did not read, with the reason.
+    unscanned: Vec<String>,
+}
+
+impl NcduWalk {
+    fn new(root: &str) -> Self {
+        Self {
+            scope: ftp_client_gui_lib::sync_core::WalkScope::new(root),
+            counted: std::collections::HashSet::new(),
+            unscanned: Vec::new(),
+        }
+    }
+}
+
 /// Recursively scan a remote directory and build an NcduEntry tree.
 #[allow(clippy::too_many_arguments)]
 async fn ncdu_scan(
@@ -53284,7 +53640,7 @@ async fn ncdu_scan(
     name: &str,
     depth: usize,
     max_depth: usize,
-    quiet: bool,
+    walk: &mut NcduWalk,
     spinner: &Option<ProgressBar>,
     entry_count: &mut usize,
 ) -> NcduEntry {
@@ -53304,14 +53660,16 @@ async fn ncdu_scan(
     let entries = match provider.list(path).await {
         Ok(e) => e,
         Err(err) => {
-            if !quiet {
-                if let Some(sp) = spinner {
-                    sp.set_message(format!("Error listing {}: {}", path, err));
-                }
+            if let Some(sp) = spinner {
+                sp.set_message(format!("Error listing {}: {}", path, err));
             }
+            walk.unscanned.push(format!("Not scanning {path}: {err}"));
             return node;
         }
     };
+    if depth == 0 {
+        walk.scope.learn_root_listing(&entries);
+    }
 
     for entry in entries {
         *entry_count += 1;
@@ -53324,14 +53682,27 @@ async fn ncdu_scan(
             }
         }
 
-        if entry.is_dir {
+        // A symlink to a folder is a leaf: following it could loop or leave
+        // the root (GAP-A02).
+        let follows = entry.is_walkable_dir();
+        match cli_walk_step(&mut walk.scope, path, &entry.path, follows) {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(refusal) => {
+                walk.unscanned.push(refusal);
+                continue;
+            }
+        }
+        if follows {
+            walk.counted
+                .insert(ftp_client_gui_lib::sync_core::walk_path_key(&entry.path));
             let child = Box::pin(ncdu_scan(
                 provider,
                 &entry.path,
                 &entry.name,
                 depth + 1,
                 max_depth,
-                quiet,
+                walk,
                 spinner,
                 entry_count,
             ))
@@ -53339,11 +53710,17 @@ async fn ncdu_scan(
             node.agg_size += child.agg_size;
             node.children.push(child);
         } else {
+            if !walk
+                .counted
+                .insert(ftp_client_gui_lib::sync_core::walk_path_key(&entry.path))
+            {
+                continue;
+            }
             node.agg_size += entry.size;
             node.children.push(NcduEntry {
                 name: entry.name,
                 path: entry.path,
-                is_dir: false,
+                is_dir: entry.is_dir,
                 size: entry.size,
                 agg_size: entry.size,
                 children: Vec::new(),
@@ -53626,13 +54003,14 @@ async fn cmd_ncdu(
 
     let mut entry_count = 0usize;
     let root_name = base_path.rsplit('/').find(|s| !s.is_empty()).unwrap_or("/");
+    let mut walk = NcduWalk::new(&base_path);
     let root = ncdu_scan(
         &mut *provider,
         &base_path,
         root_name,
         0,
         max_depth,
-        quiet,
+        &mut walk,
         &spinner,
         &mut entry_count,
     )
@@ -53643,6 +54021,14 @@ async fn cmd_ncdu(
     }
 
     let _ = provider.disconnect().await;
+
+    // The total leaves these folders out: say so on stderr, so a JSON or
+    // export consumer reading stdout is not affected.
+    if !cli.quiet {
+        for line in &walk.unscanned {
+            eprintln!("Warning: {line}");
+        }
+    }
 
     if !quiet {
         eprintln!(
@@ -59378,6 +59764,16 @@ async fn cmd_crypt_ls(
         let mut rows: Vec<(String, bool, u64)> = Vec::new(); // (rel_path, is_dir, size)
         let mut entries_seen = 0usize;
         let mut truncated = false;
+        // Each row's path is built from decrypted names, so a folder listed
+        // inside itself or as `/` gave rows under it down to the depth cap,
+        // and a folder outside the overlay gave rows as if it were in it.
+        // The walk lists a folder only when `cli_walk_step` allows it, and
+        // shows each path once; a folder it does not follow marks the
+        // listing truncated, as the caps do. Kept apart from `truncated`,
+        // which also stops the walk.
+        let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(&base_path);
+        let mut shown = std::collections::HashSet::new();
+        let mut unlisted = false;
         while let Some((abs_dir, rel_prefix, depth)) = stack.pop() {
             if depth >= CRYPT_OVERLAY_MAX_DEPTH {
                 truncated = true;
@@ -59392,6 +59788,9 @@ async fn cmd_crypt_ls(
                     return code;
                 }
             };
+            if depth == 0 {
+                scope.learn_root_listing(&entries);
+            }
             for entry in entries {
                 if entry.name == ".aerocrypt.tsv" || entry.name == ".aeroftp-crypt.json" {
                     continue;
@@ -59401,6 +59800,23 @@ async fn cmd_crypt_ls(
                     Some(p) => p,
                     None => continue,
                 };
+                // Listed, never walked (GAP-A02): a symlink to a folder is a
+                // row only.
+                let follow = entry.is_walkable_dir();
+                match cli_walk_step(&mut scope, &abs_dir, &entry.path, follow) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(refusal) => {
+                        if !cli.quiet {
+                            eprintln!("Warning: {refusal}");
+                        }
+                        unlisted = true;
+                        continue;
+                    }
+                }
+                if !shown.insert(ftp_client_gui_lib::sync_core::walk_path_key(&entry.path)) {
+                    continue;
+                }
                 if entries_seen >= MAX_SCAN_ENTRIES {
                     truncated = true;
                     break;
@@ -59413,8 +59829,7 @@ async fn cmd_crypt_ls(
                 };
                 if entry.is_dir {
                     rows.push((rel.clone(), true, 0));
-                    // Listed, never walked (GAP-A02).
-                    if entry.is_walkable_dir() {
+                    if follow {
                         stack.push((entry.path.clone(), rel, depth + 1));
                     }
                 } else {
@@ -59425,6 +59840,7 @@ async fn cmd_crypt_ls(
                 break;
             }
         }
+        let truncated = truncated || unlisted;
         // Sort so a directory sorts immediately before its children.
         rows.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -59942,6 +60358,15 @@ async fn cmd_crypt_get(
             (None, d) => std::path::PathBuf::from(d),
         };
 
+        // Each local path is built from decrypted names, so a folder listed
+        // inside itself was written again under itself down to the depth
+        // cap, and a folder listed as `/` or outside the overlay folder had
+        // what lies outside decrypted and written into it. The walk lists a
+        // folder only when `cli_walk_step` allows it, and fetches each file
+        // once; a folder it does not follow is one of the run's errors, so
+        // the run is partial (exit 4), not a success.
+        let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(&remote_root);
+        let mut fetched = std::collections::HashSet::new();
         let mut stack: Vec<(String, std::path::PathBuf, usize)> =
             vec![(remote_root, local_root.clone(), 0)];
         let mut files_done = 0u64;
@@ -59978,6 +60403,9 @@ async fn cmd_crypt_get(
                     continue;
                 }
             };
+            if first {
+                scope.learn_root_listing(&entries);
+            }
             first = false;
             for entry in entries {
                 if entry.name == ".aerocrypt.tsv" || entry.name == ".aeroftp-crypt.json" {
@@ -59987,6 +60415,19 @@ async fn cmd_crypt_get(
                     Some(p) => p,
                     None => continue,
                 };
+                match cli_walk_step(&mut scope, &rdir, &entry.path, entry.is_walkable_dir()) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(refusal) => {
+                        errors.push(refusal);
+                        continue;
+                    }
+                }
+                if !entry.is_dir
+                    && !fetched.insert(ftp_client_gui_lib::sync_core::walk_path_key(&entry.path))
+                {
+                    continue;
+                }
                 if entries_seen >= MAX_SCAN_ENTRIES {
                     errors.push(format!("tree exceeds the {} entry cap", MAX_SCAN_ENTRIES));
                     break;
@@ -61494,6 +61935,11 @@ async fn cmd_sync_doctor(
 /// The two caps are parameters rather than the module constants they are called
 /// with. At 500_000 entries the entry cap is not reachable from a test, and a
 /// cap no test can reach is a cap nobody has checked.
+///
+/// A folder is listed only when [`cli_walk_step`] allows it. The walk used to
+/// queue every folder at the path its listing gave, so a folder listed as `/`
+/// or outside the root put the files there among the root's. A folder it does
+/// not follow hides what it holds, so it counts as a listing error.
 async fn scan_doctor_remote_tree(
     provider: &mut dyn StorageProvider,
     remote: &str,
@@ -61506,6 +61952,7 @@ async fn scan_doctor_remote_tree(
 ) {
     let mut entries_found: HashMap<String, (u64, Option<String>)> = HashMap::new();
     let mut scan = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(remote);
     let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
     'walk: while let Some((dir, depth)) = queue.pop() {
         if depth >= max_depth {
@@ -61521,6 +61968,9 @@ async fn scan_doctor_remote_tree(
                 continue;
             }
         };
+        if depth == 0 {
+            scope.learn_root_listing(&listed);
+        }
         for e in listed {
             let relative = e
                 .path
@@ -61534,10 +61984,18 @@ async fn scan_doctor_remote_tree(
             }
             if e.is_dir {
                 if e.is_walkable_dir() {
-                    queue.push((e.path.clone(), depth + 1));
+                    match cli_walk_step(&mut scope, &dir, &e.path, true) {
+                        Ok(true) => queue.push((e.path.clone(), depth + 1)),
+                        Ok(false) => {}
+                        Err(_) => scan.list_errors += 1,
+                    }
                 }
             } else {
                 if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                    continue;
+                }
+                if cli_walk_step(&mut scope, &dir, &e.path, false).is_err() {
+                    scan.list_errors += 1;
                     continue;
                 }
                 if entries_found.len() >= max_entries {
@@ -82978,6 +83436,15 @@ mod tests {
         hidden: std::collections::HashSet<String>,
         /// Opt-in: every `rmdir` is refused for want of permission.
         rmdir_denied: bool,
+        /// File bodies `download_to_bytes` and `download` answer with, by full
+        /// path; a path with none is refused as before.
+        contents: HashMap<String, Vec<u8>>,
+        /// Every `download` and `download_to_bytes` the run attempted, served
+        /// or refused.
+        download_attempts: Arc<Mutex<Vec<String>>>,
+        /// Opt-in: `stat` answers for a listed directory, and for a file as a
+        /// listing names it, instead of not found.
+        stat_listed: bool,
     }
 
     impl MemTreeProvider {
@@ -83064,17 +83531,30 @@ mod tests {
         }
         async fn download(
             &mut self,
-            _remote_path: &str,
-            _local_path: &str,
+            remote_path: &str,
+            local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
-            Err(ProviderError::NotSupported("download".to_string()))
+            self.download_attempts
+                .lock()
+                .expect("download log")
+                .push(remote_path.to_string());
+            let body = self
+                .contents
+                .get(remote_path)
+                .ok_or_else(|| ProviderError::NotSupported("download".to_string()))?;
+            std::fs::write(local_path, body)
+                .map_err(|e| ProviderError::TransferFailed(format!("{local_path}: {e}")))
         }
-        async fn download_to_bytes(
-            &mut self,
-            _remote_path: &str,
-        ) -> Result<Vec<u8>, ProviderError> {
-            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.download_attempts
+                .lock()
+                .expect("download log")
+                .push(remote_path.to_string());
+            self.contents
+                .get(remote_path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotSupported("download_to_bytes".to_string()))
         }
         async fn upload(
             &mut self,
@@ -83171,13 +83651,27 @@ mod tests {
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if self.stat_listed {
+                if self.dirs.contains_key(path) {
+                    let name = path.rsplit('/').next().unwrap_or_default().to_string();
+                    return Ok(RemoteEntry::directory(name, path.to_string()));
+                }
+                if let Some(file) = self
+                    .dirs
+                    .values()
+                    .flatten()
+                    .find(|entry| entry.path == path && !entry.is_dir)
+                {
+                    return Ok(file.clone());
+                }
+            }
             Err(ProviderError::NotFound(path.to_string()))
         }
         async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
             Err(ProviderError::NotFound(path.to_string()))
         }
         async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-            Ok(self.dirs.contains_key(path))
+            Ok(self.dirs.contains_key(path) || self.contents.contains_key(path))
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
             Ok(())
@@ -88655,6 +89149,1206 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(stats.exit_code, 0);
         assert!(deletes.lock().unwrap().is_empty());
         assert!(rmdirs.lock().unwrap().is_empty());
+    }
+
+    /// One listing for [`listed_remote`]: the path listed and its entries,
+    /// each `(name, path, file size or None for a folder)`.
+    type Listing<'a> = (&'a str, &'a [(&'a str, &'a str, Option<u64>)]);
+
+    /// A remote holding `listings`, with the files stamped with
+    /// [`FIXTURE_MTIME`] and holding `contents` when named there. Mutations go
+    /// through, so a test sees what a command really removed.
+    fn listed_remote(listings: &[Listing<'_>], contents: &[(&str, &[u8])]) -> MemTreeProvider {
+        let dirs = listings
+            .iter()
+            .map(|(listed, entries)| {
+                let entries = entries
+                    .iter()
+                    .map(|(name, path, size)| match size {
+                        Some(size) => {
+                            let mut file =
+                                RemoteEntry::file(name.to_string(), path.to_string(), *size);
+                            file.modified = Some(FIXTURE_MTIME.to_string());
+                            file
+                        }
+                        None => RemoteEntry::directory(name.to_string(), path.to_string()),
+                    })
+                    .collect();
+                (listed.to_string(), entries)
+            })
+            .collect();
+        MemTreeProvider {
+            dirs,
+            mutable: true,
+            contents: contents
+                .iter()
+                .map(|(path, body)| (path.to_string(), body.to_vec()))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    /// `dedupe` kept a visited set of the paths it listed, compared as typed.
+    /// A listing that names the walk root in another spelling sent it through
+    /// the root a second time and every file there became a duplicate of
+    /// itself: with `--force` the only copy was deleted. Seen two ways: `/`
+    /// resolves to the empty root, and ImageKit gave every folder the path
+    /// `/`; a root given with a trailing slash, and Swift listed each folder
+    /// inside itself at the path without one. A folder that points above the
+    /// root (ImageKit below it) sent the walk outside the root, where a real
+    /// copy of a file inside it was deleted, and so did a listing that names
+    /// that copy itself (`../keep.txt`). Nothing is deleted now, and the run
+    /// is partial for the entry it did not take.
+    #[test]
+    fn dedupe_deletes_no_only_copy_and_nothing_outside_its_root() {
+        let imagekit_at_root = listed_remote(
+            &[
+                ("", &[("a.txt", "/a.txt", Some(4)), ("d1", "/", None)]),
+                ("/", &[("a.txt", "/a.txt", Some(4)), ("d1", "/", None)]),
+            ],
+            &[("/a.txt", b"aaaa")],
+        );
+        let swift_trailing_slash = listed_remote(
+            &[
+                (
+                    "/root/",
+                    &[("root", "/root", None), ("a.txt", "/root/a.txt", Some(4))],
+                ),
+                (
+                    "/root",
+                    &[("root", "/root", None), ("a.txt", "/root/a.txt", Some(4))],
+                ),
+            ],
+            &[("/root/a.txt", b"aaaa")],
+        );
+        let imagekit_below_root = listed_remote(
+            &[
+                (
+                    "/root",
+                    &[("a.txt", "/root/a.txt", Some(4)), ("d1", "/", None)],
+                ),
+                (
+                    "/",
+                    &[("root", "/root", None), ("top.txt", "/top.txt", Some(4))],
+                ),
+            ],
+            &[("/root/a.txt", b"aaaa"), ("/top.txt", b"aaaa")],
+        );
+        let file_outside = listed_remote(
+            &[(
+                "/root",
+                &[
+                    ("a.txt", "/root/a.txt", Some(4)),
+                    ("../keep.txt", "/keep.txt", Some(4)),
+                ],
+            )],
+            &[("/root/a.txt", b"aaaa"), ("/keep.txt", b"aaaa")],
+        );
+        for (remote, path) in [
+            (imagekit_at_root, "/"),
+            (swift_trailing_slash, "/root/"),
+            (imagekit_below_root, "/root"),
+            (file_outside, "/root"),
+        ] {
+            let deletes = Arc::clone(&remote.delete_attempts);
+            let code = run_against_remote(remote, || async {
+                cmd_dedupe(
+                    "memory://",
+                    path,
+                    "newest",
+                    false,
+                    true,
+                    Some("10"),
+                    "exact",
+                    None,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            });
+            assert!(
+                deletes.lock().unwrap().is_empty(),
+                "{path}: deleted {:?}",
+                deletes.lock().unwrap()
+            );
+            assert_eq!(
+                code, 4,
+                "{path}: the folder it did not list makes the run partial"
+            );
+        }
+    }
+
+    /// `cleanup` walked the same root twice on the same listings and deleted
+    /// each orphan once per pass; it deletes it once now.
+    #[test]
+    fn cleanup_deletes_each_orphan_once_on_a_root_listed_in_two_spellings() {
+        let remote = listed_remote(
+            &[
+                (
+                    "/root/",
+                    &[
+                        ("root", "/root", None),
+                        ("x.aerotmp", "/root/x.aerotmp", Some(4)),
+                    ],
+                ),
+                (
+                    "/root",
+                    &[
+                        ("root", "/root", None),
+                        ("x.aerotmp", "/root/x.aerotmp", Some(4)),
+                    ],
+                ),
+            ],
+            &[],
+        );
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_cleanup(
+                "memory://",
+                "/root/",
+                true,
+                "1h",
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(*deletes.lock().unwrap(), ["/root/x.aerotmp"]);
+        assert_eq!(code, 4, "the folder it did not list makes the run partial");
+    }
+
+    /// `rmdirs` and `cleanup` delete, so they take a path only as the root
+    /// spells it, letter case included, as a recursive delete does: a
+    /// listing of `/root/d1` that names `/ROOT/d1/empty` and
+    /// `/ROOT/d1/x.aerotmp` (another folder on a case-sensitive store) had
+    /// both deleted. Neither is now, and the run is partial.
+    #[test]
+    fn delete_walks_take_a_path_only_as_the_root_spells_it() {
+        let listings: &[Listing<'static>] = &[
+            ("/root", &[("d1", "/root/d1", None)]),
+            (
+                "/root/d1",
+                &[
+                    ("empty", "/ROOT/d1/empty", None),
+                    ("x.aerotmp", "/ROOT/d1/x.aerotmp", Some(4)),
+                ],
+            ),
+            ("/ROOT/d1/empty", &[]),
+        ];
+        let remote = listed_remote(listings, &[]);
+        let rmdirs = Arc::clone(&remote.rmdir_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_rmdirs("memory://", "/root", true, &quiet_cli(), OutputFormat::Json).await
+        });
+        assert!(
+            rmdirs.lock().unwrap().is_empty(),
+            "{:?}",
+            rmdirs.lock().unwrap()
+        );
+        assert_eq!(
+            code, 4,
+            "rmdirs: the folder it refused makes the run partial"
+        );
+
+        let remote = listed_remote(listings, &[]);
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_cleanup(
+                "memory://",
+                "/root",
+                true,
+                "1h",
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert!(
+            deletes.lock().unwrap().is_empty(),
+            "{:?}",
+            deletes.lock().unwrap()
+        );
+        assert_eq!(
+            code, 4,
+            "cleanup: the orphan it refused makes the run partial"
+        );
+    }
+
+    /// `cleanup` deleted every `.aerotmp` a listing named, wherever its path
+    /// pointed: a listing of `/root` that names `../y.aerotmp` (`/y.aerotmp`)
+    /// lost a file outside the folder cleaned. Only the orphan under the
+    /// folder is deleted now, and the run is partial for the one it refused.
+    #[test]
+    fn cleanup_deletes_no_orphan_a_listing_names_outside_its_folder() {
+        let remote = listed_remote(
+            &[(
+                "/root",
+                &[
+                    ("x.aerotmp", "/root/x.aerotmp", Some(4)),
+                    ("../y.aerotmp", "/y.aerotmp", Some(4)),
+                ],
+            )],
+            &[],
+        );
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_cleanup(
+                "memory://",
+                "/root",
+                true,
+                "1h",
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(*deletes.lock().unwrap(), ["/root/x.aerotmp"]);
+        assert_eq!(code, 4, "the orphan it refused makes the run partial");
+    }
+
+    /// `rmdirs` followed a folder spelled `/` out of its root, then removed an
+    /// empty folder outside the root and tried the root itself. It removes
+    /// only the empty folder under the root now.
+    #[test]
+    fn rmdirs_removes_nothing_outside_its_root() {
+        let remote = listed_remote(
+            &[
+                (
+                    "/root",
+                    &[("empty", "/root/empty", None), ("d1", "/", None)],
+                ),
+                ("/root/empty", &[]),
+                ("/", &[("root", "/root", None), ("other", "/other", None)]),
+                ("/other", &[]),
+            ],
+            &[],
+        );
+        let rmdirs = Arc::clone(&remote.rmdir_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_rmdirs("memory://", "/root", true, &quiet_cli(), OutputFormat::Json).await
+        });
+        assert_eq!(*rmdirs.lock().unwrap(), ["/root/empty"]);
+        assert_eq!(code, 4, "the folder it did not list makes the run partial");
+    }
+
+    /// A listing defect every CLI walk of `/root` must survive: the listings,
+    /// what sits under `/root` relative to it (files, then folders), and how
+    /// many entries the walk must refuse: folders it must not follow, files
+    /// it must not count, fetch or delete. Every file holds the four bytes
+    /// `data`, so a size is four times a count.
+    struct WalkShape {
+        case: &'static str,
+        listings: &'static [Listing<'static>],
+        files: &'static [&'static str],
+        dirs: &'static [&'static str],
+        refused: usize,
+    }
+
+    const WALK_SHAPES: &[WalkShape] = &[
+        // Swift's old listing.
+        WalkShape {
+            case: "a folder listed inside itself",
+            listings: &[
+                (
+                    "/root",
+                    &[("a.txt", "/root/a.txt", Some(4)), ("d1", "/root/d1", None)],
+                ),
+                (
+                    "/root/d1",
+                    &[
+                        ("d1", "/root/d1", None),
+                        ("b.txt", "/root/d1/b.txt", Some(4)),
+                    ],
+                ),
+            ],
+            files: &["a.txt", "d1/b.txt"],
+            dirs: &["d1"],
+            refused: 1,
+        },
+        // ImageKit's old listing, below the account root.
+        WalkShape {
+            case: "a folder listed as /",
+            listings: &[
+                (
+                    "/root",
+                    &[("a.txt", "/root/a.txt", Some(4)), ("d1", "/", None)],
+                ),
+                (
+                    "/",
+                    &[("root", "/root", None), ("top.txt", "/top.txt", Some(4))],
+                ),
+            ],
+            files: &["a.txt"],
+            dirs: &[],
+            refused: 1,
+        },
+        WalkShape {
+            case: "a folder named twice",
+            listings: &[
+                (
+                    "/root",
+                    &[
+                        ("a.txt", "/root/a.txt", Some(4)),
+                        ("d1", "/root/d1", None),
+                        ("d1", "/root/d1", None),
+                    ],
+                ),
+                ("/root/d1", &[("b.txt", "/root/d1/b.txt", Some(4))]),
+            ],
+            files: &["a.txt", "d1/b.txt"],
+            dirs: &["d1"],
+            refused: 0,
+        },
+        WalkShape {
+            case: "a file named twice",
+            listings: &[
+                (
+                    "/root",
+                    &[
+                        ("a.txt", "/root/a.txt", Some(4)),
+                        ("a.txt", "/root/a.txt", Some(4)),
+                        ("d1", "/root/d1", None),
+                    ],
+                ),
+                ("/root/d1", &[("b.txt", "/root/d1/b.txt", Some(4))]),
+            ],
+            files: &["a.txt", "d1/b.txt"],
+            dirs: &["d1"],
+            refused: 0,
+        },
+        WalkShape {
+            case: "a folder outside the root",
+            listings: &[
+                (
+                    "/root",
+                    &[
+                        ("a.txt", "/root/a.txt", Some(4)),
+                        ("elsewhere", "/elsewhere", None),
+                    ],
+                ),
+                ("/elsewhere", &[("big.bin", "/elsewhere/big.bin", Some(4))]),
+            ],
+            files: &["a.txt"],
+            dirs: &[],
+            refused: 1,
+        },
+        WalkShape {
+            case: "a file outside the root",
+            listings: &[
+                (
+                    "/root",
+                    &[
+                        ("a.txt", "/root/a.txt", Some(4)),
+                        ("d1", "/root/d1", None),
+                        ("../keep.txt", "/keep.txt", Some(4)),
+                    ],
+                ),
+                ("/root/d1", &[("b.txt", "/root/d1/b.txt", Some(4))]),
+            ],
+            files: &["a.txt", "d1/b.txt"],
+            dirs: &["d1"],
+            refused: 1,
+        },
+    ];
+
+    impl WalkShape {
+        /// The remote holding these listings, every file holding `data`.
+        fn remote(&self) -> MemTreeProvider {
+            let files: Vec<(&str, &[u8])> = self
+                .listings
+                .iter()
+                .flat_map(|(_, entries)| entries.iter())
+                .filter(|(_, _, size)| size.is_some())
+                .map(|(_, path, _)| (*path, b"data".as_slice()))
+                .collect();
+            MemTreeProvider {
+                stat_listed: true,
+                ..listed_remote(self.listings, &files)
+            }
+        }
+
+        /// What sits under `/root`, files and folders, relative to it, sorted.
+        fn shown(&self) -> Vec<String> {
+            let mut shown: Vec<String> = self
+                .files
+                .iter()
+                .chain(self.dirs)
+                .map(|rel| rel.to_string())
+                .collect();
+            shown.sort();
+            shown
+        }
+
+        /// The files under `/root` as absolute paths, sorted.
+        fn file_paths(&self) -> Vec<String> {
+            let mut paths: Vec<String> = self
+                .files
+                .iter()
+                .map(|rel| format!("/root/{rel}"))
+                .collect();
+            paths.sort();
+            paths
+        }
+    }
+
+    /// Env var naming the shape a child run of a walk test drives: see
+    /// [`walk_child_output`].
+    const WALK_CHILD: &str = "AEROFTP_CLI_TEST_WALK_CHILD";
+
+    /// Run the test `test` again in a child process of this test binary for
+    /// the shape `case`, and return what it printed on stdout and stderr:
+    /// libtest captures what a test's own threads print, and these commands
+    /// answer on stdout.
+    fn walk_child_output(test: &str, case: &str) -> (String, String) {
+        let output = std::process::Command::new(std::env::current_exe().expect("the test binary"))
+            .args(["--exact", test, "--nocapture", "--test-threads=1"])
+            .env(WALK_CHILD, case)
+            .output()
+            .expect("run the child");
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "{case}: the child: {stdout}\n{stderr}"
+        );
+        (stdout, stderr)
+    }
+
+    /// The first JSON document a child printed, past what libtest printed
+    /// before it.
+    fn first_json(case: &str, stdout: &str) -> serde_json::Value {
+        let start = stdout
+            .find(['{', '['])
+            .unwrap_or_else(|| panic!("{case}: no JSON in {stdout}"));
+        serde_json::Deserializer::from_str(&stdout[start..])
+            .into_iter::<serde_json::Value>()
+            .next()
+            .and_then(Result::ok)
+            .unwrap_or_else(|| panic!("{case}: no JSON in {stdout}"))
+    }
+
+    /// The shape a child run drives, when this process is one.
+    fn walk_child_shape() -> Option<&'static WalkShape> {
+        let case = std::env::var(WALK_CHILD).ok()?;
+        Some(
+            WALK_SHAPES
+                .iter()
+                .find(|shape| shape.case == case)
+                .expect("a known shape"),
+        )
+    }
+
+    /// The TUI size of a folder counted what a looping listing sent it
+    /// through again until its entry cap, and what a folder outside held. It
+    /// counts each path under the folder once, and does not answer with a
+    /// size at all when a listing names a folder it cannot follow.
+    #[tokio::test]
+    async fn the_tui_size_counts_each_path_under_the_folder_once() {
+        for shape in WALK_SHAPES {
+            let identity = cli_tui::session::TuiSessionIdentity {
+                user_name: "u".to_string(),
+                profile_selector: "p".to_string(),
+                profile_name: "p".to_string(),
+                protocol: "sftp".to_string(),
+                host: "h".to_string(),
+            };
+            let mut session =
+                cli_tui::session::TuiSession::new(Box::new(shape.remote()), identity, "/");
+            let sized = size_remote_dir(&mut session, "/root").await;
+            let case = shape.case;
+            if shape.refused > 0 {
+                let err = sized.expect_err(case);
+                assert!(err.contains("names it"), "{case}: {err}");
+            } else {
+                let count = shape.files.len() as u64;
+                assert_eq!(sized, Ok((4 * count, count)), "{case}");
+            }
+        }
+    }
+
+    /// `get -r` downloaded what a looping listing named once per level and
+    /// what a folder outside held, under a local name built from its path.
+    /// It downloads each file under the folder once, nothing else, and a
+    /// folder it did not follow makes the run partial (exit 4), as one it
+    /// could not list does.
+    #[test]
+    fn get_recursive_downloads_each_file_under_the_folder_once_and_nothing_else() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let dir = tempfile::tempdir().expect("temp dir");
+            let local_base = dir.path().join("down");
+            let local = local_base.to_string_lossy().into_owned();
+            let remote = shape.remote();
+            let downloads = Arc::clone(&remote.download_attempts);
+            let cli = Cli {
+                quiet: true,
+                parallel: 1,
+                ..test_cli()
+            };
+            let code = run_against_remote(remote, || async {
+                cmd_get_recursive(
+                    "memory://",
+                    "/root",
+                    Some(&local),
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let mut written: Vec<String> = walkdir::WalkDir::new(&local_base)
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_file())
+                .map(|e| {
+                    e.path()
+                        .strip_prefix(&local_base)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect();
+            written.sort();
+            let mut expected: Vec<String> = shape.files.iter().map(|f| f.to_string()).collect();
+            expected.sort();
+            assert_eq!(written, expected, "{case}");
+            let mut read = downloads.lock().unwrap().clone();
+            read.sort();
+            assert_eq!(read, shape.file_paths(), "{case}: each file read once");
+            assert_eq!(code, if shape.refused > 0 { 4 } else { 0 }, "{case}");
+        }
+    }
+
+    /// The `rm -r` plan, which a filtered `rm` executes as it is, held what a
+    /// looping listing named once per level and what a folder above or
+    /// outside held. It holds each path under the folder once, and a listing
+    /// that names anything else refuses the plan, as the providers' own
+    /// recursive deletes refuse it.
+    #[tokio::test]
+    async fn an_rm_plan_holds_each_path_under_the_folder_once_or_is_refused() {
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let mut provider: Box<dyn StorageProvider> = Box::new(shape.remote());
+            let filter = RmFilter {
+                predicate: None,
+                files_from: None,
+                root: "/root".to_string(),
+            };
+            let plan = build_rm_dry_run_plan(&mut provider, "/root", true, &filter).await;
+            match plan {
+                Err(err) if shape.refused > 0 => {
+                    assert!(
+                        err.to_string().contains("refusing to delete"),
+                        "{case}: {err}"
+                    )
+                }
+                Ok(DryRunOutcome::Plan { entries, truncated }) if shape.refused == 0 => {
+                    let mut files: Vec<String> = entries
+                        .iter()
+                        .filter(|e| !e.is_dir)
+                        .map(|e| e.path.clone())
+                        .collect();
+                    files.sort();
+                    assert_eq!(files, shape.file_paths(), "{case}");
+                    let mut dirs: Vec<String> = entries
+                        .iter()
+                        .filter(|e| e.is_dir)
+                        .map(|e| e.path.clone())
+                        .collect();
+                    dirs.sort();
+                    let mut expected: Vec<String> =
+                        shape.dirs.iter().map(|d| format!("/root/{d}")).collect();
+                    expected.push("/root".to_string());
+                    expected.sort();
+                    assert_eq!(dirs, expected, "{case}");
+                    assert!(!truncated, "{case}");
+                }
+                Err(err) => panic!("{case}: refused: {err}"),
+                Ok(DryRunOutcome::Plan { entries, .. }) => panic!(
+                    "{case}: planned {:?}",
+                    entries.iter().map(|e| &e.path).collect::<Vec<_>>()
+                ),
+                Ok(_) => panic!("{case}: not a plan"),
+            }
+        }
+    }
+
+    /// A filtered `rm -r` deletes the plan above: through a folder listed as
+    /// `/` it deleted `/top.txt`, outside the folder, and through a looping
+    /// or doubled listing it deleted the same file again. It deletes each
+    /// file under the folder once, and nothing at all when the plan is
+    /// refused.
+    #[tokio::test]
+    async fn a_filtered_rm_deletes_nothing_outside_its_folder() {
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let remote = shape.remote();
+            let deletes = Arc::clone(&remote.delete_attempts);
+            let mut provider: Box<dyn StorageProvider> = Box::new(remote);
+            let filter = RmFilter {
+                predicate: Some(Box::new(|_name, _size, _mtime| true)),
+                files_from: None,
+                root: "/root".to_string(),
+            };
+            let code = run_filtered_rm(
+                &mut provider,
+                "/root",
+                true,
+                false,
+                &filter,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await;
+            let mut deleted = deletes.lock().unwrap().clone();
+            deleted.sort();
+            if shape.refused > 0 {
+                assert!(deleted.is_empty(), "{case}: deleted {deleted:?}");
+                assert_ne!(code, 0, "{case}");
+            } else {
+                assert_eq!(deleted, shape.file_paths(), "{case}");
+                assert_eq!(code, 0, "{case}");
+            }
+        }
+    }
+
+    /// The listing fallback of `find` reported each file once per level of a
+    /// looping listing, and searched the account root through a folder
+    /// listed as `/`. It reports each path under the root once, and names
+    /// each folder it did not search.
+    #[tokio::test]
+    async fn find_by_listing_reports_each_path_under_the_root_once() {
+        let everything = globset::Glob::new("*").unwrap().compile_matcher();
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let mut remote = shape.remote();
+            let found = find_by_listing(&mut remote, "/root", &everything, MAX_SCAN_DEPTH).await;
+            let mut paths: Vec<String> = found
+                .entries
+                .iter()
+                .map(|e| e.path.trim_start_matches("/root/").to_string())
+                .collect();
+            paths.sort();
+            assert_eq!(paths, shape.shown(), "{case}");
+            assert_eq!(
+                found.unwalked.len(),
+                shape.refused,
+                "{case}: {:?}",
+                found.unwalked
+            );
+        }
+    }
+
+    /// `lsjson -R` builds each row's path from names: a folder listed inside
+    /// itself showed up as `d1/d1`, a folder listed as `/` showed the
+    /// account root under `d1/`, and a folder named twice showed twice. Each
+    /// path under the root is one row now, and a folder it did not follow is
+    /// named on stderr.
+    #[test]
+    fn lsjson_recursive_shows_each_path_under_the_root_once() {
+        const TEST: &str = "tests::lsjson_recursive_shows_each_path_under_the_root_once";
+        if let Some(shape) = walk_child_shape() {
+            let code = run_against_remote(shape.remote(), || async {
+                cmd_lsjson(
+                    "memory://",
+                    "/root",
+                    true,
+                    false,
+                    false,
+                    false,
+                    true,
+                    true,
+                    false,
+                    HashAlgorithm::Sha256,
+                    false,
+                    &test_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            });
+            assert_eq!(code, 0);
+            return;
+        }
+        for shape in WALK_SHAPES {
+            let (stdout, stderr) = walk_child_output(TEST, shape.case);
+            let rows = first_json(shape.case, &stdout);
+            let mut paths: Vec<String> = rows
+                .as_array()
+                .unwrap_or_else(|| panic!("{}: {rows}", shape.case))
+                .iter()
+                .map(|row| row["Path"].as_str().unwrap_or_default().to_string())
+                .collect();
+            paths.sort();
+            assert_eq!(paths, shape.shown(), "{}", shape.case);
+            assert_eq!(
+                stderr.matches("names it").count(),
+                shape.refused,
+                "{}: {stderr}",
+                shape.case
+            );
+        }
+    }
+
+    /// `tree` (both renderings) built its rows from what each listing named:
+    /// a folder listed inside itself showed under itself, a folder listed as
+    /// `/` showed the account root, a folder named twice showed twice. Each
+    /// path under the root is one node now, and a folder it did not follow
+    /// is named on stderr.
+    #[test]
+    fn tree_shows_each_path_under_the_root_once() {
+        const TEST: &str = "tests::tree_shows_each_path_under_the_root_once";
+        if let Some(shape) = walk_child_shape() {
+            for format in [OutputFormat::Json, OutputFormat::Text] {
+                let code = run_against_remote(shape.remote(), || async {
+                    cmd_tree("memory://", "/root", 10, &test_cli(), format).await
+                });
+                assert_eq!(code, 0);
+                println!("END OF RENDERING");
+            }
+            return;
+        }
+        fn node_paths(nodes: &serde_json::Value, into: &mut Vec<String>) {
+            for node in nodes.as_array().into_iter().flatten() {
+                into.push(
+                    node["path"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .trim_start_matches("/root/")
+                        .to_string(),
+                );
+                node_paths(&node["children"], into);
+            }
+        }
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let (stdout, stderr) = walk_child_output(TEST, case);
+            let report = first_json(case, &stdout);
+            let mut paths = Vec::new();
+            node_paths(&report["tree"], &mut paths);
+            paths.sort();
+            assert_eq!(paths, shape.shown(), "{case}: {report}");
+            let text = stdout
+                .split("END OF RENDERING")
+                .nth(1)
+                .unwrap_or_else(|| panic!("{case}: no text rendering in {stdout}"));
+            let summary = format!(
+                "{} directories and {} files",
+                shape.dirs.len(),
+                shape.files.len()
+            );
+            assert!(text.contains(&summary), "{case}: {text}");
+            for stray in ["top.txt", "big.bin", "root/", "keep.txt"] {
+                assert!(!text.contains(stray), "{case}: {text}");
+            }
+            assert_eq!(
+                stderr.matches("names it").count(),
+                2 * shape.refused,
+                "{case}: once per rendering: {stderr}"
+            );
+        }
+    }
+
+    /// `ncdu` followed every folder a listing named, symlinks included, with
+    /// no record of what it had scanned: a folder listed inside itself or as
+    /// `/` was scanned again down to the depth cap, and a folder outside was
+    /// added to the total. Each path under the root is one node now.
+    #[tokio::test]
+    async fn ncdu_scans_each_path_under_the_root_once() {
+        fn node_paths(node: &NcduEntry, into: &mut Vec<String>) {
+            for child in &node.children {
+                into.push(child.path.trim_start_matches("/root/").to_string());
+                node_paths(child, into);
+            }
+        }
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let mut remote = shape.remote();
+            let mut count = 0usize;
+            let mut walk = NcduWalk::new("/root");
+            let root = ncdu_scan(
+                &mut remote,
+                "/root",
+                "root",
+                0,
+                10,
+                &mut walk,
+                &None,
+                &mut count,
+            )
+            .await;
+            let mut paths = Vec::new();
+            node_paths(&root, &mut paths);
+            paths.sort();
+            assert_eq!(paths, shape.shown(), "{case}");
+            assert_eq!(root.agg_size, 4 * shape.files.len() as u64, "{case}");
+            let refusals = walk.unscanned.iter().filter(|l| l.contains("names it"));
+            assert_eq!(
+                refusals.count(),
+                shape.refused,
+                "{case}: {:?}",
+                walk.unscanned
+            );
+        }
+    }
+
+    /// The `sync-doctor` remote walk counted a file a folder listed as `/`
+    /// or outside the root holds as one of the root's (`top.txt`,
+    /// `elsewhere/big.bin`), and called that scan complete. A folder it does
+    /// not follow is a listing error now, so the doctor answers `attention`.
+    #[tokio::test]
+    async fn the_doctor_remote_walk_counts_only_what_is_under_the_root() {
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let mut remote = shape.remote();
+            let (entries, scan) = scan_doctor_remote_tree(
+                &mut remote,
+                "/root",
+                &SyncExcludes::default(),
+                MAX_SCAN_DEPTH,
+                MAX_SCAN_ENTRIES,
+            )
+            .await;
+            let mut found: Vec<String> = entries.keys().cloned().collect();
+            found.sort();
+            let mut expected: Vec<String> = shape.files.iter().map(|f| f.to_string()).collect();
+            expected.sort();
+            assert_eq!(found, expected, "{case}");
+            assert_eq!(scan.list_errors, shape.refused, "{case}: {scan:?}");
+            assert!(!scan.truncated, "{case}: {scan:?}");
+        }
+    }
+
+    /// The other side of the walk rule: a root the provider spells its own way
+    /// is walked whole, nothing refused. The caller's `docs` is the
+    /// provider's `/home/u/docs`, `/Docs` and `/docs ` its `/docs`, and
+    /// Yandex's `disk:/docs` its `/docs`. Each walk learns the spelling from
+    /// the root's own listing; without that, every folder under such a root
+    /// reads as outside it. A recursive delete takes an absolute root as it
+    /// is spelled, letter case and spaces included, so the rm plan is refused
+    /// for `/Docs` and `/docs `: on a case-sensitive store `/docs/a.txt` is
+    /// not in `/Docs`.
+    #[test]
+    fn cli_walks_take_a_root_the_provider_spells_its_own_way_whole() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        // Every surface is checked before the test fails, so a run shows
+        // which walks do not learn the spelling.
+        let mut failures: Vec<String> = Vec::new();
+        let mut check = |ok: bool, what: String| {
+            if !ok {
+                failures.push(what);
+            }
+        };
+        for (root, spelled, removable) in [
+            ("docs", "/home/u/docs", true),
+            ("/Docs", "/docs", false),
+            ("disk:/docs", "/docs", true),
+            ("/docs ", "/docs", false),
+        ] {
+            let a = format!("{spelled}/a.txt");
+            let sub = format!("{spelled}/sub");
+            let b = format!("{sub}/b.txt");
+            let root_entries = [("a.txt", a.as_str(), Some(4)), ("sub", sub.as_str(), None)];
+            let sub_entries = [("b.txt", b.as_str(), Some(4))];
+            // The root's listing under each form a command may pass it in.
+            let resolved = normalize_remote_path(&resolve_cli_remote_path("/", root));
+            let mut listings: Vec<Listing<'_>> = vec![(root, &root_entries[..])];
+            if resolved != root {
+                listings.push((resolved.as_str(), &root_entries[..]));
+            }
+            listings.push((sub.as_str(), &sub_entries[..]));
+            let contents: [(&str, &[u8]); 2] = [(a.as_str(), b"data"), (b.as_str(), b"data")];
+            let remote = || MemTreeProvider {
+                stat_listed: true,
+                ..listed_remote(&listings, &contents)
+            };
+
+            runtime.block_on(async {
+                let identity = cli_tui::session::TuiSessionIdentity {
+                    user_name: "u".to_string(),
+                    profile_selector: "p".to_string(),
+                    profile_name: "p".to_string(),
+                    protocol: "sftp".to_string(),
+                    host: "h".to_string(),
+                };
+                let mut session =
+                    cli_tui::session::TuiSession::new(Box::new(remote()), identity, "/");
+                let sized = size_remote_dir(&mut session, root).await;
+                check(sized == Ok((8, 2)), format!("{root:?}: TUI size {sized:?}"));
+
+                let everything = globset::Glob::new("*").unwrap().compile_matcher();
+                let found = find_by_listing(&mut remote(), root, &everything, MAX_SCAN_DEPTH).await;
+                check(
+                    found.entries.len() == 3 && found.unwalked.is_empty(),
+                    format!(
+                        "{root:?}: find {} {:?}",
+                        found.entries.len(),
+                        found.unwalked
+                    ),
+                );
+
+                let mut walk = NcduWalk::new(root);
+                let mut count = 0usize;
+                let scanned = ncdu_scan(
+                    &mut remote(),
+                    root,
+                    "docs",
+                    0,
+                    10,
+                    &mut walk,
+                    &None,
+                    &mut count,
+                )
+                .await;
+                check(
+                    scanned.agg_size == 8 && walk.unscanned.is_empty(),
+                    format!("{root:?}: ncdu {} {:?}", scanned.agg_size, walk.unscanned),
+                );
+
+                let (entries, scan) = scan_doctor_remote_tree(
+                    &mut remote(),
+                    root,
+                    &SyncExcludes::default(),
+                    MAX_SCAN_DEPTH,
+                    MAX_SCAN_ENTRIES,
+                )
+                .await;
+                check(
+                    entries.len() == 2 && scan.is_complete(),
+                    format!("{root:?}: doctor {entries:?} {scan:?}"),
+                );
+
+                let mut provider: Box<dyn StorageProvider> = Box::new(remote());
+                let filter = RmFilter {
+                    predicate: None,
+                    files_from: None,
+                    root: root.to_string(),
+                };
+                let plan = match build_rm_dry_run_plan(&mut provider, root, true, &filter).await {
+                    Ok(DryRunOutcome::Plan { entries, .. }) => {
+                        Ok(entries.iter().filter(|e| !e.is_dir).count())
+                    }
+                    Ok(_) => Err("not a plan".to_string()),
+                    Err(err) => Err(err.to_string()),
+                };
+                let as_expected = if removable {
+                    plan == Ok(2)
+                } else {
+                    matches!(&plan, Err(err) if err.contains("refusing to delete"))
+                };
+                check(as_expected, format!("{root:?}: rm plan {plan:?}"));
+            });
+
+            let dir = tempfile::tempdir().expect("temp dir");
+            let local = dir.path().to_string_lossy().into_owned();
+            let cli = Cli {
+                quiet: true,
+                parallel: 1,
+                ..test_cli()
+            };
+            let code = run_against_remote(remote(), || async {
+                cmd_get_recursive(
+                    "memory://",
+                    root,
+                    Some(&local),
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let written = walkdir::WalkDir::new(dir.path())
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_file())
+                .count();
+            check(
+                (code, written) == (0, 2),
+                format!("{root:?}: get -r exit {code}, {written} files"),
+            );
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    /// An AeroCrypt overlay at `/root` holding `shape`: every name under the
+    /// overlay, and every name outside it a walk could reach, encrypted, so
+    /// the crypt walks see the defect as they would on a real overlay.
+    /// Returns the remote and the password.
+    fn crypt_walk_remote(shape: &WalkShape) -> (MemTreeProvider, &'static str) {
+        use ftp_client_gui_lib::aerocrypt::{names, overlay};
+        const PASSWORD: &str = "walk-shape-password";
+        static KEYS: std::sync::OnceLock<([u8; 32], String)> = std::sync::OnceLock::new();
+        let (master, marker) = KEYS.get_or_init(|| {
+            let salt = [0x5Au8; 32];
+            let master =
+                overlay::derive_master_key(&overlay::OverlayConfig::v3_bootstrap(salt), PASSWORD)
+                    .unwrap();
+            let marker = overlay::init_config_v3_with_vault_id(
+                &salt,
+                &master,
+                &overlay::random_vault_id(),
+                overlay::SaltMode::PerVault,
+            )
+            .unwrap();
+            (master, marker)
+        });
+        let encrypt_path = |path: &str| -> String {
+            if path == "/" || path == "/root" {
+                return path.to_string();
+            }
+            let (base, rest) = match path.strip_prefix("/root/") {
+                Some(rest) => ("/root", rest),
+                None => ("", path.trim_start_matches('/')),
+            };
+            let encrypted: Vec<String> = rest
+                .split('/')
+                .map(|part| names::encrypt_filename(master, part).unwrap())
+                .collect();
+            format!("{base}/{}", encrypted.join("/"))
+        };
+        let body = overlay::encrypt_data(
+            &overlay::OverlayConfig::v3_bootstrap([0x5Au8; 32]),
+            master,
+            b"data",
+        )
+        .unwrap();
+        let mut dirs: HashMap<String, Vec<RemoteEntry>> = HashMap::new();
+        let mut contents: HashMap<String, Vec<u8>> = HashMap::new();
+        for (listed, entries) in shape.listings {
+            let listing = entries
+                .iter()
+                .map(|(name, path, size)| {
+                    let name = if *path == "/root" {
+                        name.to_string()
+                    } else {
+                        names::encrypt_filename(master, name).unwrap()
+                    };
+                    let path = encrypt_path(path);
+                    match size {
+                        Some(_) => {
+                            contents.insert(path.clone(), body.clone());
+                            RemoteEntry::file(name, path, body.len() as u64)
+                        }
+                        None => RemoteEntry::directory(name, path),
+                    }
+                })
+                .collect();
+            dirs.insert(encrypt_path(listed), listing);
+        }
+        contents.insert(
+            format!("/root/{}", overlay::CRYPT_CONFIG_WRITE_NAME),
+            marker.clone().into_bytes(),
+        );
+        (
+            MemTreeProvider {
+                dirs,
+                contents,
+                ..Default::default()
+            },
+            PASSWORD,
+        )
+    }
+
+    /// `crypt ls -R` builds each row from decrypted names: through a folder
+    /// listed inside itself or as `/` it showed rows under `d1/` down to its
+    /// depth cap, and a folder outside showed as one of the overlay's. Each
+    /// path under the overlay is one row now, and a folder it did not follow
+    /// marks the listing truncated, as its depth cap does.
+    #[test]
+    fn crypt_ls_recursive_shows_each_path_under_the_overlay_once() {
+        const TEST: &str = "tests::crypt_ls_recursive_shows_each_path_under_the_overlay_once";
+        if let Some(shape) = walk_child_shape() {
+            let (remote, password) = crypt_walk_remote(shape);
+            let code = run_against_remote(remote, || async {
+                cmd_crypt_ls(
+                    "memory://",
+                    "/root",
+                    password,
+                    None,
+                    false,
+                    true,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            });
+            assert_eq!(code, 0);
+            return;
+        }
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let (stdout, _) = walk_child_output(TEST, case);
+            let report = first_json(case, &stdout);
+            let mut paths: Vec<String> = report["items"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{case}: {report}"))
+                .iter()
+                .map(|item| item["path"].as_str().unwrap_or_default().to_string())
+                .collect();
+            paths.sort();
+            assert_eq!(paths, shape.shown(), "{case}: {report}");
+            assert_eq!(
+                report["summary"]["truncated"],
+                shape.refused > 0,
+                "{case}: {report}"
+            );
+        }
+    }
+
+    /// `crypt get -r` rebuilds the tree locally from decrypted names: through
+    /// a folder listed inside itself it wrote `d1/d1/...` down to its depth
+    /// cap, and through a folder listed as `/` or outside it decrypted and
+    /// wrote what lies outside the overlay folder. It writes each file under
+    /// the folder once, and a folder it did not follow makes the run partial.
+    #[test]
+    fn crypt_get_recursive_writes_each_file_under_the_folder_once() {
+        for shape in WALK_SHAPES {
+            let case = shape.case;
+            let (remote, password) = crypt_walk_remote(shape);
+            let downloads = Arc::clone(&remote.download_attempts);
+            let dir = tempfile::tempdir().expect("temp dir");
+            let dest = dir.path().to_string_lossy().into_owned();
+            let code = run_against_remote(remote, || async {
+                cmd_crypt_get(
+                    "memory://",
+                    "",
+                    "/root",
+                    &dest,
+                    password,
+                    None,
+                    false,
+                    true,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            });
+            let mut written: Vec<String> = walkdir::WalkDir::new(dir.path())
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_file())
+                .map(|e| {
+                    e.path()
+                        .strip_prefix(dir.path())
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect();
+            written.sort();
+            let mut expected: Vec<String> = shape.files.iter().map(|f| f.to_string()).collect();
+            expected.sort();
+            assert_eq!(written, expected, "{case}");
+            let reads = downloads
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|path| !path.ends_with(".aerocrypt.tsv"))
+                .count();
+            assert_eq!(reads, shape.files.len(), "{case}: each file read once");
+            assert_eq!(code, if shape.refused > 0 { 4 } else { 0 }, "{case}");
+        }
     }
 
     /// `sync --direction download --delete` removes the LOCAL directories its

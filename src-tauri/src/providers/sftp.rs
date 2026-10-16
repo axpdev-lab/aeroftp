@@ -3712,8 +3712,11 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Recursively removing directory: {}", full_path);
 
-        // List all entries
-        let entries = self.list(&full_path).await?;
+        // List all entries. Each path is built from a name the server gave,
+        // and a name such as `a/../..` resolves outside the folder: every
+        // one must be inside it before any of them is deleted.
+        let entries =
+            crate::sync_core::listing_to_remove(&full_path, self.list(&full_path).await?)?;
 
         // Delete all entries recursively (GAP-A02: skip symlinks to prevent following into target dirs)
         for entry in entries {
@@ -4078,6 +4081,7 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let root = self.normalize_path(path);
         let mut results = Vec::new();
+        let mut walk = crate::sync_core::FindWalk::new(&root);
         let mut dirs_to_scan = vec![root];
 
         while let Some(dir) = dirs_to_scan.pop() {
@@ -4092,6 +4096,7 @@ impl StorageProvider for SftpProvider {
                 },
             };
 
+            let mut listed = Vec::new();
             for entry in entries {
                 let name = entry.file_name();
                 if name == "." || name == ".." {
@@ -4104,14 +4109,22 @@ impl StorageProvider for SftpProvider {
                     format!("{}/{}", dir.trim_end_matches('/'), name)
                 };
 
-                let remote_entry =
-                    Self::metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
+                listed.push(Self::metadata_to_entry(name, entry_path, &entry.metadata()));
+            }
 
-                if remote_entry.is_walkable_dir() {
-                    dirs_to_scan.push(entry_path.clone());
-                }
-
-                if super::matches_find_pattern(&name, pattern) {
+            // A name that resolves outside the folder searched, or back onto
+            // it, is neither followed nor reported: skipped with a warning,
+            // as a folder that cannot be read is skipped.
+            let sorted = walk.sort(&dir, listed);
+            for (path, step) in &sorted.refused {
+                tracing::warn!(
+                    "SFTP find: skipping {path:?}, named in {dir}: {}",
+                    step.reason()
+                );
+            }
+            dirs_to_scan.extend(sorted.follow);
+            for remote_entry in sorted.entries {
+                if super::matches_find_pattern(&remote_entry.name, pattern) {
                     results.push(remote_entry);
                     if results.len() >= 500 {
                         return Ok(results);
@@ -7861,6 +7874,195 @@ mod tests {
         let mut provider = provider_without_a_session();
         provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
         provider
+    }
+
+    /// An SFTP server holding `listings`: each folder with the names it lists
+    /// (a name ending in `/` is a folder, the slash dropped). It resolves `.`
+    /// and `..` in the paths it is sent, as a real server does, and records
+    /// every REMOVE and RMDIR as `rm path` and `rmdir path`, resolved.
+    struct TreeServer {
+        listings: &'static [(&'static str, &'static [&'static str])],
+        sent: std::collections::HashSet<String>,
+        removed: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl russh_sftp::server::Handler for TreeServer {
+        type Error = russh_sftp::protocol::StatusCode;
+
+        fn unimplemented(&self) -> Self::Error {
+            russh_sftp::protocol::StatusCode::OpUnsupported
+        }
+
+        async fn init(
+            &mut self,
+            _version: u32,
+            _extensions: std::collections::HashMap<String, String>,
+        ) -> Result<russh_sftp::protocol::Version, Self::Error> {
+            Ok(russh_sftp::protocol::Version::new())
+        }
+
+        async fn opendir(
+            &mut self,
+            id: u32,
+            path: String,
+        ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
+            let path = crate::sync_core::walk_path_key(&path);
+            if !self.listings.iter().any(|(folder, _)| *folder == path) {
+                return Err(russh_sftp::protocol::StatusCode::NoSuchFile);
+            }
+            self.sent.remove(&path);
+            Ok(russh_sftp::protocol::Handle { id, handle: path })
+        }
+
+        async fn readdir(
+            &mut self,
+            id: u32,
+            handle: String,
+        ) -> Result<russh_sftp::protocol::Name, Self::Error> {
+            if !self.sent.insert(handle.clone()) {
+                return Err(russh_sftp::protocol::StatusCode::Eof);
+            }
+            let names = self
+                .listings
+                .iter()
+                .find(|(folder, _)| *folder == handle)
+                .map_or(&[][..], |(_, names)| *names);
+            let files = names
+                .iter()
+                .map(|name| {
+                    let (name, permissions) = match name.strip_suffix('/') {
+                        Some(folder) => (folder, 0o040755),
+                        None => (*name, 0o100644),
+                    };
+                    let attrs = russh_sftp::protocol::FileAttributes {
+                        size: Some(1),
+                        permissions: Some(permissions),
+                        ..Default::default()
+                    };
+                    russh_sftp::protocol::File::new(name, attrs)
+                })
+                .collect();
+            Ok(russh_sftp::protocol::Name { id, files })
+        }
+
+        async fn close(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            Ok(GoingAwayServer::ok(id))
+        }
+
+        async fn remove(
+            &mut self,
+            id: u32,
+            filename: String,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            let path = crate::sync_core::walk_path_key(&filename);
+            self.removed.lock().unwrap().push(format!("rm {path}"));
+            Ok(GoingAwayServer::ok(id))
+        }
+
+        async fn rmdir(
+            &mut self,
+            id: u32,
+            path: String,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            let path = crate::sync_core::walk_path_key(&path);
+            self.removed.lock().unwrap().push(format!("rmdir {path}"));
+            Ok(GoingAwayServer::ok(id))
+        }
+    }
+
+    async fn provider_on_a_tree_server(
+        listings: &'static [(&'static str, &'static [&'static str])],
+    ) -> (SftpProvider, Arc<std::sync::Mutex<Vec<String>>>) {
+        let (client, server) = tokio::io::duplex(1 << 20);
+        let removed = Arc::new(std::sync::Mutex::new(Vec::new()));
+        russh_sftp::server::run(
+            server,
+            TreeServer {
+                listings,
+                sent: Default::default(),
+                removed: Arc::clone(&removed),
+            },
+        )
+        .await;
+        let mut provider = provider_without_a_session();
+        provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
+        (provider, removed)
+    }
+
+    type Listings = &'static [(&'static str, &'static [&'static str])];
+
+    /// `/x` holds `a.txt` and the folder `d`; the account root holds
+    /// `keep.txt`, and `/y` holds `y.txt`. Each case adds a folder whose
+    /// name points the walk elsewhere: back at the root, back at the folder
+    /// listed, or at `/y`.
+    const STRAY_NAMES: [Listings; 3] = [
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/", "up/../../"]),
+            ("/x/d", &["b.txt"]),
+            ("/y", &["y.txt"]),
+        ],
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/"]),
+            ("/x/d", &["b.txt", "../d/"]),
+            ("/y", &["y.txt"]),
+        ],
+        &[
+            ("/", &["keep.txt", "x/", "y/"]),
+            ("/x", &["a.txt", "d/", "../y/"]),
+            ("/x/d", &["b.txt"]),
+            ("/y", &["y.txt"]),
+        ],
+    ];
+
+    /// A recursive delete builds each child's path from its name; a name
+    /// that resolves outside the folder (or back onto it) must not take the
+    /// delete there. It fails instead of reporting a partial delete as done.
+    #[tokio::test]
+    async fn a_recursive_delete_never_leaves_its_folder() {
+        for listings in STRAY_NAMES {
+            let (mut provider, removed) = provider_on_a_tree_server(listings).await;
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.rmdir_recursive("/x"),
+            )
+            .await
+            .expect("the delete ends");
+            let removed = removed.lock().unwrap().clone();
+            assert!(outcome.is_err(), "{listings:?}: {removed:?}");
+            assert!(
+                removed.iter().all(|call| call
+                    .split_once(' ')
+                    .is_some_and(|(_, path)| path.starts_with("/x/"))),
+                "{listings:?}: {removed:?}"
+            );
+        }
+    }
+
+    /// A search follows only folders inside the one searched, once each.
+    #[tokio::test]
+    async fn a_find_never_leaves_its_folder() {
+        for listings in STRAY_NAMES {
+            let (mut provider, _) = provider_on_a_tree_server(listings).await;
+            let found = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.find("/x", "*.txt"),
+            )
+            .await
+            .expect("the search ends")
+            .expect("a folder it does not follow is skipped, as an unreadable one is");
+            let mut paths: Vec<String> = found
+                .iter()
+                .map(|entry| crate::sync_core::walk_path_key(&entry.path))
+                .collect();
+            paths.sort();
+            assert_eq!(paths, ["/x/a.txt", "/x/d/b.txt"], "{listings:?}");
+        }
     }
 
     /// `exists` settles FAILURE as `stat` does, by listing the parent. It
