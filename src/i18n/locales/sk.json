@@ -5469,7 +5469,6 @@
                 "start": "Spustiť synchronizáciu",
                 "resultOk": "Synchronizácia dokončená",
                 "resultPartial": "Synchronizácia dokončená s chybami",
-                "uploaded": "Nahrané",
                 "skipped": "Preskočené",
                 "errors": "Chyby",
                 "elapsed": "Uplynutý čas",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Neobmedzené",
                 "stop": "Zastaviť",
                 "stopping": "Zastavovanie...",
-                "resultCancelled": "Synchronizácia zrušená"
+                "resultCancelled": "Synchronizácia zrušená",
+                "copied": "Skopírované",
+                "planned": "Plánované kópie",
+                "resultDryRunOk": "Skúšobný beh dokončený",
+                "resultDryRunPartial": "Skúšobný beh dokončený s chybami",
+                "resultDryRunCancelled": "Skúšobný beh zrušený"
             },
             "launcherTemplates": "Šablóny",
             "launcherMultiPath": "Viacero ciest",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Pre tento server sa už nepýtať",
                 "continue": "Pokračovať"
             },
-            "launcherHistory": "História denníka",
+            "launcherHistory": "Žurnály synchronizácie",
             "history": {
-                "title": "História AeroSync",
+                "title": "Žurnály AeroSync",
                 "refresh": "Obnoviť",
                 "cleanupOld": "Odstrániť záznamy staršie ako 30 dní",
                 "clearAll": "Vymazať všetky denníky",
                 "confirmClearAll": "Vymazať VŠETKY denníky synchronizácie?",
-                "empty": "Zatiaľ žiadne denníky synchronizácie. Vytvárajú sa pri prvom spustení predvoľby pre túto dvojicu ciest.",
+                "empty": "Žiadne žurnály synchronizácie na zobrazenie.",
                 "selectPrompt": "Vyberte denník vľavo, aby ste si pozreli záznamy pre jednotlivé súbory.",
                 "journalMissing": "Denník sa nenašiel.",
                 "entriesEmpty": "Žiadne zaznamenané záznamy.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "POZMENENÉ",
                 "verifyNoSignature": "BEZ PODPISU",
                 "statusCompleted": "DOKONČENÉ",
-                "statusInProgress": "PREBIEHA",
                 "delete": "Odstrániť denník",
                 "created": "Vytvorené",
                 "bytes": "Bajty",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Smer",
                 "colStatus": "Stav",
                 "colBytes": "Bajty",
-                "colAction": "Akcia"
+                "colAction": "Akcia",
+                "description": "Žurnály pomáhajú pri obnove synchronizácie. Úspešné spustenia odstránia svoj žurnál; toto nie je história dokončených spustení.",
+                "statusIncomplete": "NEDOKONČENÉ"
             },
             "launcherScheduler": "Plánovač",
             "errorCorrection": "Oprava chýb",

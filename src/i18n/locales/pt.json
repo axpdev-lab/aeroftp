@@ -5469,7 +5469,6 @@
                 "start": "Iniciar sincronização",
                 "resultOk": "Sincronização concluída",
                 "resultPartial": "Sincronização concluída com erros",
-                "uploaded": "Carregados",
                 "skipped": "Ignorados",
                 "errors": "Erros",
                 "elapsed": "Tempo decorrido",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Ilimitado",
                 "stop": "Parar",
                 "stopping": "Parando...",
-                "resultCancelled": "Sincronização cancelada"
+                "resultCancelled": "Sincronização cancelada",
+                "copied": "Copiados",
+                "planned": "Cópias previstas",
+                "resultDryRunOk": "Simulação concluída",
+                "resultDryRunPartial": "Simulação concluída com erros",
+                "resultDryRunCancelled": "Simulação cancelada"
             },
             "launcherTemplates": "Modelos",
             "launcherMultiPath": "Múltiplos caminhos",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Não perguntar novamente para este servidor",
                 "continue": "Continuar"
             },
-            "launcherHistory": "Histórico do journal",
+            "launcherHistory": "Diários de sincronização",
             "history": {
-                "title": "Histórico do AeroSync",
+                "title": "Diários do AeroSync",
                 "refresh": "Atualizar",
                 "cleanupOld": "Remover entradas com mais de 30 dias",
                 "clearAll": "Limpar todos os journals",
                 "confirmClearAll": "Limpar TODOS os journals de sincronização?",
-                "empty": "Nenhum journal de sincronização ainda. São criados na primeira execução de um preset neste par de caminhos.",
+                "empty": "Não há diários de sincronização para mostrar.",
                 "selectPrompt": "Selecione um journal à esquerda para inspecionar as entradas por arquivo.",
                 "journalMissing": "Journal não encontrado.",
                 "entriesEmpty": "Nenhuma entrada registrada.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "ADULTERADO",
                 "verifyNoSignature": "SEM ASSINATURA",
                 "statusCompleted": "CONCLUÍDO",
-                "statusInProgress": "EM ANDAMENTO",
                 "delete": "Excluir journal",
                 "created": "Criado",
                 "bytes": "Bytes",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Direção",
                 "colStatus": "Status",
                 "colBytes": "Bytes",
-                "colAction": "Ação"
+                "colAction": "Ação",
+                "description": "Os diários ajudam a recuperar a sincronização. As execuções bem-sucedidas removem o seu diário; isto não é um histórico de execuções concluídas.",
+                "statusIncomplete": "INCOMPLETO"
             },
             "launcherScheduler": "Agendador",
             "errorCorrection": "Correção de erros",

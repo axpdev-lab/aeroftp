@@ -5469,7 +5469,6 @@
                 "start": "Rozpocznij synchronizację",
                 "resultOk": "Synchronizacja zakończona",
                 "resultPartial": "Synchronizacja zakończona z błędami",
-                "uploaded": "Przesłane",
                 "skipped": "Pominięte",
                 "errors": "Błędy",
                 "elapsed": "Upłynęło",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Bez ograniczeń",
                 "stop": "Zatrzymaj",
                 "stopping": "Zatrzymywanie...",
-                "resultCancelled": "Synchronizacja anulowana"
+                "resultCancelled": "Synchronizacja anulowana",
+                "copied": "Skopiowano",
+                "planned": "Planowane kopie",
+                "resultDryRunOk": "Uruchomienie próbne zakończone",
+                "resultDryRunPartial": "Uruchomienie próbne zakończone z błędami",
+                "resultDryRunCancelled": "Uruchomienie próbne anulowane"
             },
             "launcherTemplates": "Szablony",
             "launcherMultiPath": "Wiele ścieżek",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Nie pytaj ponownie dla tego serwera",
                 "continue": "Kontynuuj"
             },
-            "launcherHistory": "Historia dziennika",
+            "launcherHistory": "Dzienniki synchronizacji",
             "history": {
-                "title": "Historia AeroSync",
+                "title": "Dzienniki AeroSync",
                 "refresh": "Odśwież",
                 "cleanupOld": "Usuń wpisy starsze niż 30 dni",
                 "clearAll": "Wyczyść wszystkie dzienniki",
                 "confirmClearAll": "Wyczyścić WSZYSTKIE dzienniki synchronizacji?",
-                "empty": "Brak dzienników synchronizacji. Są tworzone przy pierwszym uruchomieniu presetu dla tej pary ścieżek.",
+                "empty": "Brak dzienników synchronizacji do wyświetlenia.",
                 "selectPrompt": "Wybierz dziennik po lewej, aby zobaczyć wpisy dla poszczególnych plików.",
                 "journalMissing": "Nie znaleziono dziennika.",
                 "entriesEmpty": "Brak zarejestrowanych wpisów.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "NARUSZONY",
                 "verifyNoSignature": "BRAK PODPISU",
                 "statusCompleted": "UKOŃCZONO",
-                "statusInProgress": "W TOKU",
                 "delete": "Usuń dziennik",
                 "created": "Utworzono",
                 "bytes": "Bajty",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Kierunek",
                 "colStatus": "Status",
                 "colBytes": "Bajty",
-                "colAction": "Akcja"
+                "colAction": "Akcja",
+                "description": "Dzienniki pomagają w odzyskiwaniu synchronizacji. Pomyślne uruchomienia usuwają swój dziennik; to nie jest historia zakończonych uruchomień.",
+                "statusIncomplete": "NIEUKOŃCZONE"
             },
             "launcherScheduler": "Harmonogram",
             "errorCorrection": "Korekcja błędów",

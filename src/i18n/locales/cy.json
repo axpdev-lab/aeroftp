@@ -5488,7 +5488,6 @@
                 "start": "Cychwyn cydweddu",
                 "resultOk": "Cydweddu wedi'i gwblhau",
                 "resultPartial": "Cydweddu wedi'i gwblhau gyda gwallau",
-                "uploaded": "Wedi llwytho",
                 "skipped": "Wedi hepgor",
                 "errors": "Gwallau",
                 "elapsed": "Amser a aeth heibio",
@@ -5522,7 +5521,12 @@
                 "bandwidthUnlimited": "Diderfyn",
                 "stop": "Stopio",
                 "stopping": "Stopio...",
-                "resultCancelled": "Cydweddu wedi ei ganslo"
+                "resultCancelled": "Cydweddu wedi ei ganslo",
+                "copied": "Wedi'u copïo",
+                "planned": "Copïau arfaethedig",
+                "resultDryRunOk": "Rhediad prawf wedi'i gwblhau",
+                "resultDryRunPartial": "Rhediad prawf wedi'i gwblhau gyda gwallau",
+                "resultDryRunCancelled": "Rhediad prawf wedi'i ganslo"
             },
             "launcherTemplates": "Templedi",
             "launcherMultiPath": "Aml-lwybr",
@@ -5547,14 +5551,14 @@
                 "skipFuture": "Peidiwch â gofyn eto am y gweinydd hwn",
                 "continue": "Parhau"
             },
-            "launcherHistory": "Hanes y journal",
+            "launcherHistory": "Dyddlyfrau cysoni",
             "history": {
-                "title": "Hanes AeroSync",
+                "title": "Dyddlyfrau AeroSync",
                 "refresh": "Adnewyddu",
                 "cleanupOld": "Tynnu cofnodion sy'n hŷn na 30 diwrnod",
                 "clearAll": "Clirio pob journal",
                 "confirmClearAll": "Clirio POB journal cysoni?",
-                "empty": "Dim journals cysoni eto. Cant eu creu wrth weithredu rhagosodiad am y tro cyntaf ar y pâr llwybr hwn.",
+                "empty": "Dim dyddlyfrau cysoni i'w dangos.",
                 "selectPrompt": "Dewiswch journal ar y chwith i archwilio ei gofnodion fesul ffeil.",
                 "journalMissing": "Heb ddod o hyd i'r journal.",
                 "entriesEmpty": "Dim cofnodion wedi'u cofnodi.",
@@ -5563,7 +5567,6 @@
                 "verifyFailed": "WEDI'I NEWID",
                 "verifyNoSignature": "DIM LLOFNOD",
                 "statusCompleted": "WEDI CWBLHAU",
-                "statusInProgress": "AR Y GWEILL",
                 "delete": "Dileu journal",
                 "created": "Crëwyd",
                 "bytes": "Beitiau",
@@ -5571,7 +5574,9 @@
                 "colDirection": "Cyfeiriad",
                 "colStatus": "Statws",
                 "colBytes": "Beitiau",
-                "colAction": "Gweithred"
+                "colAction": "Gweithred",
+                "description": "Mae dyddlyfrau'n helpu i adfer cysoni. Mae rhediadau llwyddiannus yn dileu eu dyddlyfr; nid hanes rhediadau gorffenedig yw hwn.",
+                "statusIncomplete": "ANGHYFLAWN"
             },
             "launcherScheduler": "Trefnydd",
             "errorCorrection": "Cywiro Gwallau",

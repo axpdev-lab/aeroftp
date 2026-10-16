@@ -5,7 +5,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "2083d263f8bfffffbf34d7c6339d5679c2725d9537ff1c8c9cdde7147bcb9253",
+    "enHash": "3d7bd607f09f3889f2b8dbb5a19aec33a958a72360372c48c984ddb482dd775f",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -94,6 +94,15 @@
         ],
         "aerosync.errorCorrectionHint": [
             "Stores a small .aerorec parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original."
+        ],
+        "aerosync.history.empty": [
+            "No sync journals yet. They are created on the first preset execution against this path pair."
+        ],
+        "aerosync.history.title": [
+            "AeroSync history"
+        ],
+        "aerosync.launcherHistory": [
+            "Journal history"
         ],
         "aerosync.speedModeHint": [
             "Parallel streams + compression preset applied to the run."

@@ -5469,7 +5469,6 @@
                 "start": "Spustit synchronizaci",
                 "resultOk": "Synchronizace dokončena",
                 "resultPartial": "Synchronizace dokončena s chybami",
-                "uploaded": "Nahráno",
                 "skipped": "Přeskočeno",
                 "errors": "Chyby",
                 "elapsed": "Uplynulý čas",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Neomezeno",
                 "stop": "Zastavit",
                 "stopping": "Zastavování...",
-                "resultCancelled": "Synchronizace zrušena"
+                "resultCancelled": "Synchronizace zrušena",
+                "copied": "Zkopírováno",
+                "planned": "Plánované kopie",
+                "resultDryRunOk": "Zkušební běh dokončen",
+                "resultDryRunPartial": "Zkušební běh dokončen s chybami",
+                "resultDryRunCancelled": "Zkušební běh zrušen"
             },
             "launcherTemplates": "Šablony",
             "launcherMultiPath": "Více cest",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Pro tento server se již neptat",
                 "continue": "Pokračovat"
             },
-            "launcherHistory": "Historie journalu",
+            "launcherHistory": "Žurnály synchronizace",
             "history": {
-                "title": "Historie AeroSync",
+                "title": "Žurnály AeroSync",
                 "refresh": "Obnovit",
                 "cleanupOld": "Odstranit záznamy starší než 30 dní",
                 "clearAll": "Vymazat všechny journaly",
                 "confirmClearAll": "Vymazat VŠECHNY journaly synchronizace?",
-                "empty": "Zatím žádné journaly synchronizace. Vytvářejí se při prvním spuštění presetu nad touto dvojicí cest.",
+                "empty": "Žádné žurnály synchronizace k zobrazení.",
                 "selectPrompt": "Vyberte journal vlevo pro zobrazení jeho záznamů po souborech.",
                 "journalMissing": "Journal nenalezen.",
                 "entriesEmpty": "Žádné zaznamenané položky.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "POZMĚNĚNO",
                 "verifyNoSignature": "BEZ PODPISU",
                 "statusCompleted": "DOKONČENO",
-                "statusInProgress": "PROBÍHÁ",
                 "delete": "Smazat journal",
                 "created": "Vytvořeno",
                 "bytes": "Bajty",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Směr",
                 "colStatus": "Stav",
                 "colBytes": "Bajty",
-                "colAction": "Akce"
+                "colAction": "Akce",
+                "description": "Žurnály pomáhají při obnově synchronizace. Úspěšná spuštění svůj žurnál odstraní; toto není historie dokončených spuštění.",
+                "statusIncomplete": "NEDOKONČENO"
             },
             "launcherScheduler": "Plánovač",
             "errorCorrection": "Oprava chyb",

@@ -5469,7 +5469,6 @@
                 "start": "Mulakan penyegerakan",
                 "resultOk": "Penyegerakan selesai",
                 "resultPartial": "Penyegerakan selesai dengan ralat",
-                "uploaded": "Dimuat naik",
                 "skipped": "Dilangkau",
                 "errors": "Ralat",
                 "elapsed": "Masa berlalu",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Tanpa had",
                 "stop": "Hentikan",
                 "stopping": "Menghentikan...",
-                "resultCancelled": "Penyegerakan dibatalkan"
+                "resultCancelled": "Penyegerakan dibatalkan",
+                "copied": "Disalin",
+                "planned": "Salinan dirancang",
+                "resultDryRunOk": "Larian percubaan selesai",
+                "resultDryRunPartial": "Larian percubaan selesai dengan ralat",
+                "resultDryRunCancelled": "Larian percubaan dibatalkan"
             },
             "launcherTemplates": "Templat",
             "launcherMultiPath": "Pelbagai Laluan",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Jangan tanya lagi untuk pelayan ini",
                 "continue": "Teruskan"
             },
-            "launcherHistory": "Sejarah journal",
+            "launcherHistory": "Jurnal penyegerakan",
             "history": {
-                "title": "Sejarah AeroSync",
+                "title": "Jurnal AeroSync",
                 "refresh": "Muat semula",
                 "cleanupOld": "Buang entri yang lebih lama daripada 30 hari",
                 "clearAll": "Kosongkan semua journal",
                 "confirmClearAll": "Kosongkan SEMUA journal penyegerakan?",
-                "empty": "Belum ada journal penyegerakan. Ia dicipta semasa pelaksanaan preset pertama pada pasangan path ini.",
+                "empty": "Tiada jurnal penyegerakan untuk dipaparkan.",
                 "selectPrompt": "Pilih journal di sebelah kiri untuk memeriksa entri setiap fail.",
                 "journalMissing": "Journal tidak dijumpai.",
                 "entriesEmpty": "Tiada entri direkodkan.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "DIUBAH SUAI",
                 "verifyNoSignature": "TIADA TANDATANGAN",
                 "statusCompleted": "SELESAI",
-                "statusInProgress": "SEDANG BERJALAN",
                 "delete": "Padam journal",
                 "created": "Dicipta",
                 "bytes": "Bait",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Arah",
                 "colStatus": "Status",
                 "colBytes": "Bait",
-                "colAction": "Tindakan"
+                "colAction": "Tindakan",
+                "description": "Jurnal membantu pemulihan penyegerakan. Larian yang berjaya memadamkan jurnalnya; ini bukan sejarah larian yang telah selesai.",
+                "statusIncomplete": "BELUM SELESAI"
             },
             "launcherScheduler": "Penjadual",
             "errorCorrection": "Pembetulan Ralat",

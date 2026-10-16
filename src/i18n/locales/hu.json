@@ -5469,7 +5469,6 @@
                 "start": "Szinkronizálás indítása",
                 "resultOk": "Szinkronizálás befejezve",
                 "resultPartial": "Szinkronizálás hibákkal befejezve",
-                "uploaded": "Feltöltve",
                 "skipped": "Kihagyva",
                 "errors": "Hibák",
                 "elapsed": "Eltelt idő",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Korlátlan",
                 "stop": "Leállítás",
                 "stopping": "Leállítás...",
-                "resultCancelled": "Szinkronizálás megszakítva"
+                "resultCancelled": "Szinkronizálás megszakítva",
+                "copied": "Másolva",
+                "planned": "Tervezett másolások",
+                "resultDryRunOk": "Próbafuttatás befejezve",
+                "resultDryRunPartial": "Próbafuttatás hibákkal befejezve",
+                "resultDryRunCancelled": "Próbafuttatás megszakítva"
             },
             "launcherTemplates": "Sablonok",
             "launcherMultiPath": "Több útvonal",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Ne kérdezze újra ennél a kiszolgálónál",
                 "continue": "Folytatás"
             },
-            "launcherHistory": "Journal előzmények",
+            "launcherHistory": "Szinkronizálási naplók",
             "history": {
-                "title": "AeroSync előzmények",
+                "title": "AeroSync-naplók",
                 "refresh": "Frissítés",
                 "cleanupOld": "30 napnál régebbi bejegyzések eltávolítása",
                 "clearAll": "Összes journal törlése",
                 "confirmClearAll": "Törli az ÖSSZES szinkronizációs journalt?",
-                "empty": "Még nincsenek szinkronizációs journalok. Az első preset futtatásakor jönnek létre ezen az útvonalpáron.",
+                "empty": "Nincsenek megjeleníthető szinkronizálási naplók.",
                 "selectPrompt": "Válasszon journalt a bal oldalon a fájlonkénti bejegyzések megtekintéséhez.",
                 "journalMissing": "Journal nem található.",
                 "entriesEmpty": "Nincsenek rögzített bejegyzések.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "MEGHAMISÍTVA",
                 "verifyNoSignature": "NINCS ALÁÍRÁS",
                 "statusCompleted": "BEFEJEZVE",
-                "statusInProgress": "FOLYAMATBAN",
                 "delete": "Journal törlése",
                 "created": "Létrehozva",
                 "bytes": "Bájt",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Irány",
                 "colStatus": "Állapot",
                 "colBytes": "Bájt",
-                "colAction": "Művelet"
+                "colAction": "Művelet",
+                "description": "A naplók segítik a szinkronizálás helyreállítását. A sikeres futások törlik a saját naplójukat; ez nem a befejezett futások előzménye.",
+                "statusIncomplete": "BEFEJEZETLEN"
             },
             "launcherScheduler": "Ütemező",
             "errorCorrection": "Hibajavítás",

@@ -5469,7 +5469,6 @@
                 "start": "সিঙ্ক শুরু করুন",
                 "resultOk": "সিঙ্ক সম্পন্ন হয়েছে",
                 "resultPartial": "ত্রুটির সাথে সিঙ্ক সম্পন্ন হয়েছে",
-                "uploaded": "আপলোড হয়েছে",
                 "skipped": "এড়ানো হয়েছে",
                 "errors": "ত্রুটি",
                 "elapsed": "অতিবাহিত সময়",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "সীমাহীন",
                 "stop": "থামান",
                 "stopping": "থামছে...",
-                "resultCancelled": "সিঙ্ক বাতিল করা হয়েছে"
+                "resultCancelled": "সিঙ্ক বাতিল করা হয়েছে",
+                "copied": "কপি করা হয়েছে",
+                "planned": "পরিকল্পিত কপি",
+                "resultDryRunOk": "ড্রাই রান সম্পন্ন হয়েছে",
+                "resultDryRunPartial": "ত্রুটিসহ ড্রাই রান সম্পন্ন হয়েছে",
+                "resultDryRunCancelled": "ড্রাই রান বাতিল করা হয়েছে"
             },
             "launcherTemplates": "টেমপ্লেট",
             "launcherMultiPath": "একাধিক পাথ",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "এই সার্ভারের জন্য আর জিজ্ঞাসা করবেন না",
                 "continue": "চালিয়ে যান"
             },
-            "launcherHistory": "জার্নাল ইতিহাস",
+            "launcherHistory": "সিঙ্ক জার্নাল",
             "history": {
-                "title": "AeroSync ইতিহাস",
+                "title": "AeroSync জার্নাল",
                 "refresh": "রিফ্রেশ",
                 "cleanupOld": "৩০ দিনের পুরনো এন্ট্রি সরান",
                 "clearAll": "সব জার্নাল মুছুন",
                 "confirmClearAll": "সব সিঙ্ক জার্নাল মুছে ফেলবেন?",
-                "empty": "এখনো কোনো সিঙ্ক জার্নাল নেই। এই পাথ জোড়ার জন্য প্রথম প্রিসেট চালানোর সময় এগুলি তৈরি হয়।",
+                "empty": "দেখানোর মতো কোনো সিঙ্ক জার্নাল নেই।",
                 "selectPrompt": "প্রতিটি ফাইলের এন্ট্রি দেখতে বাম দিক থেকে একটি জার্নাল নির্বাচন করুন।",
                 "journalMissing": "জার্নাল পাওয়া যায়নি।",
                 "entriesEmpty": "কোনো এন্ট্রি নথিভুক্ত নেই।",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "বিকৃত",
                 "verifyNoSignature": "স্বাক্ষর নেই",
                 "statusCompleted": "সম্পন্ন",
-                "statusInProgress": "চলছে",
                 "delete": "জার্নাল মুছুন",
                 "created": "তৈরি হয়েছে",
                 "bytes": "বাইট",
@@ -5552,7 +5555,9 @@
                 "colDirection": "দিক",
                 "colStatus": "স্থিতি",
                 "colBytes": "বাইট",
-                "colAction": "ক্রিয়া"
+                "colAction": "ক্রিয়া",
+                "description": "জার্নাল সিঙ্ক পুনরুদ্ধারে সহায়তা করে। সফলভাবে সম্পন্ন হলে সংশ্লিষ্ট জার্নাল মুছে ফেলা হয়; এটি সম্পন্ন রানগুলোর ইতিহাস নয়।",
+                "statusIncomplete": "অসম্পূর্ণ"
             },
             "launcherScheduler": "শিডিউলার",
             "errorCorrection": "ত্রুটি সংশোধন",

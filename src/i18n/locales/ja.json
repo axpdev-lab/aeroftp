@@ -5469,7 +5469,6 @@
                 "start": "同期を開始",
                 "resultOk": "同期が完了しました",
                 "resultPartial": "エラーありで同期が完了しました",
-                "uploaded": "アップロード済み",
                 "skipped": "スキップ",
                 "errors": "エラー",
                 "elapsed": "経過時間",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "無制限",
                 "stop": "停止",
                 "stopping": "停止中...",
-                "resultCancelled": "同期がキャンセルされました"
+                "resultCancelled": "同期がキャンセルされました",
+                "copied": "コピー済み",
+                "planned": "コピー予定",
+                "resultDryRunOk": "ドライランが完了しました",
+                "resultDryRunPartial": "ドライランがエラーありで完了しました",
+                "resultDryRunCancelled": "ドライランがキャンセルされました"
             },
             "launcherTemplates": "テンプレート",
             "launcherMultiPath": "マルチパス",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "このサーバーでは次回から確認しない",
                 "continue": "続行"
             },
-            "launcherHistory": "ジャーナル履歴",
+            "launcherHistory": "同期ジャーナル",
             "history": {
-                "title": "AeroSync 履歴",
+                "title": "AeroSync ジャーナル",
                 "refresh": "更新",
                 "cleanupOld": "30日より古いエントリを削除",
                 "clearAll": "すべてのジャーナルをクリア",
                 "confirmClearAll": "すべての同期ジャーナルをクリアしますか？",
-                "empty": "同期ジャーナルはまだありません。このパスペアで最初にプリセットを実行したときに作成されます。",
+                "empty": "表示する同期ジャーナルはありません。",
                 "selectPrompt": "左側のジャーナルを選択して、ファイル別エントリを確認してください。",
                 "journalMissing": "ジャーナルが見つかりません。",
                 "entriesEmpty": "記録されたエントリはありません。",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "改ざん",
                 "verifyNoSignature": "署名なし",
                 "statusCompleted": "完了",
-                "statusInProgress": "進行中",
                 "delete": "ジャーナルを削除",
                 "created": "作成日時",
                 "bytes": "バイト",
@@ -5552,7 +5555,9 @@
                 "colDirection": "方向",
                 "colStatus": "状態",
                 "colBytes": "バイト",
-                "colAction": "操作"
+                "colAction": "操作",
+                "description": "ジャーナルは同期の復旧に使用されます。正常に完了した実行のジャーナルは削除されるため、完了した実行の履歴ではありません。",
+                "statusIncomplete": "未完了"
             },
             "launcherScheduler": "スケジューラ",
             "errorCorrection": "エラー訂正",

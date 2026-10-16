@@ -5469,7 +5469,6 @@
                 "start": "Synchronisatie starten",
                 "resultOk": "Synchronisatie voltooid",
                 "resultPartial": "Synchronisatie voltooid met fouten",
-                "uploaded": "Geüpload",
                 "skipped": "Overgeslagen",
                 "errors": "Fouten",
                 "elapsed": "Verstreken tijd",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Onbeperkt",
                 "stop": "Stoppen",
                 "stopping": "Stoppen...",
-                "resultCancelled": "Synchronisatie geannuleerd"
+                "resultCancelled": "Synchronisatie geannuleerd",
+                "copied": "Gekopieerd",
+                "planned": "Geplande kopieën",
+                "resultDryRunOk": "Proefrun voltooid",
+                "resultDryRunPartial": "Proefrun voltooid met fouten",
+                "resultDryRunCancelled": "Proefrun geannuleerd"
             },
             "launcherTemplates": "Sjablonen",
             "launcherMultiPath": "Meerdere paden",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Niet meer vragen voor deze server",
                 "continue": "Doorgaan"
             },
-            "launcherHistory": "Journaalgeschiedenis",
+            "launcherHistory": "Synchronisatiejournalen",
             "history": {
-                "title": "AeroSync-geschiedenis",
+                "title": "AeroSync-journalen",
                 "refresh": "Vernieuwen",
                 "cleanupOld": "Verwijder vermeldingen ouder dan 30 dagen",
                 "clearAll": "Alle journals wissen",
                 "confirmClearAll": "ALLE synchronisatie-journals wissen?",
-                "empty": "Nog geen synchronisatie-journals. Ze worden gemaakt bij de eerste preset-uitvoering op dit padpaar.",
+                "empty": "Geen synchronisatiejournalen om weer te geven.",
                 "selectPrompt": "Kies links een journal om de invoer per bestand te bekijken.",
                 "journalMissing": "Journal niet gevonden.",
                 "entriesEmpty": "Geen vermeldingen geregistreerd.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "GEMANIPULEERD",
                 "verifyNoSignature": "GEEN HANDTEKENING",
                 "statusCompleted": "VOLTOOID",
-                "statusInProgress": "BEZIG",
                 "delete": "Journal verwijderen",
                 "created": "Gemaakt",
                 "bytes": "Bytes",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Richting",
                 "colStatus": "Status",
                 "colBytes": "Bytes",
-                "colAction": "Actie"
+                "colAction": "Actie",
+                "description": "Journalen helpen bij het herstellen van synchronisaties. Geslaagde uitvoeringen verwijderen hun journaal; dit is geen geschiedenis van voltooide uitvoeringen.",
+                "statusIncomplete": "ONVOLTOOID"
             },
             "launcherScheduler": "Planner",
             "errorCorrection": "Foutcorrectie",

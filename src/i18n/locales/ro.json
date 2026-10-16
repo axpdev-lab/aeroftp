@@ -5469,7 +5469,6 @@
                 "start": "Pornește sincronizarea",
                 "resultOk": "Sincronizare finalizată",
                 "resultPartial": "Sincronizare finalizată cu erori",
-                "uploaded": "Încărcate",
                 "skipped": "Omise",
                 "errors": "Erori",
                 "elapsed": "Timp scurs",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Nelimitat",
                 "stop": "Oprește",
                 "stopping": "Se oprește...",
-                "resultCancelled": "Sincronizare anulată"
+                "resultCancelled": "Sincronizare anulată",
+                "copied": "Copiate",
+                "planned": "Copii planificate",
+                "resultDryRunOk": "Rulare de probă finalizată",
+                "resultDryRunPartial": "Rulare de probă finalizată cu erori",
+                "resultDryRunCancelled": "Rulare de probă anulată"
             },
             "launcherTemplates": "Șabloane",
             "launcherMultiPath": "Căi multiple",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Nu mai întreba pentru acest server",
                 "continue": "Continuă"
             },
-            "launcherHistory": "Istoric jurnal",
+            "launcherHistory": "Jurnale de sincronizare",
             "history": {
-                "title": "Istoric AeroSync",
+                "title": "Jurnale AeroSync",
                 "refresh": "Reîmprospătează",
                 "cleanupOld": "Elimină intrările mai vechi de 30 de zile",
                 "clearAll": "Șterge toate jurnalele",
                 "confirmClearAll": "Ștergeți TOATE jurnalele de sincronizare?",
-                "empty": "Niciun jurnal de sincronizare încă. Acestea sunt create la prima execuție a unui preset pentru această pereche de căi.",
+                "empty": "Nu există jurnale de sincronizare de afișat.",
                 "selectPrompt": "Selectează un jurnal din stânga pentru a vedea intrările per fișier.",
                 "journalMissing": "Jurnalul nu a fost găsit.",
                 "entriesEmpty": "Nicio intrare înregistrată.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "MODIFICAT",
                 "verifyNoSignature": "FĂRĂ SEMNĂTURĂ",
                 "statusCompleted": "FINALIZAT",
-                "statusInProgress": "ÎN CURS",
                 "delete": "Șterge jurnalul",
                 "created": "Creat",
                 "bytes": "Octeți",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Direcție",
                 "colStatus": "Stare",
                 "colBytes": "Octeți",
-                "colAction": "Acțiune"
+                "colAction": "Acțiune",
+                "description": "Jurnalele ajută la recuperarea sincronizării. Rulările reușite își elimină jurnalul; acesta nu este un istoric al rulărilor finalizate.",
+                "statusIncomplete": "INCOMPLET"
             },
             "launcherScheduler": "Planificator",
             "errorCorrection": "Corectarea erorilor",

@@ -5469,7 +5469,6 @@
                 "start": "Sākt sinhronizāciju",
                 "resultOk": "Sinhronizācija pabeigta",
                 "resultPartial": "Sinhronizācija pabeigta ar kļūdām",
-                "uploaded": "Augšupielādēts",
                 "skipped": "Izlaists",
                 "errors": "Kļūdas",
                 "elapsed": "Pagājušais laiks",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Neierobežots",
                 "stop": "Apturēt",
                 "stopping": "Apturēšana...",
-                "resultCancelled": "Sinhronizācija atcelta"
+                "resultCancelled": "Sinhronizācija atcelta",
+                "copied": "Nokopēti",
+                "planned": "Plānotās kopijas",
+                "resultDryRunOk": "Izmēģinājuma palaišana pabeigta",
+                "resultDryRunPartial": "Izmēģinājuma palaišana pabeigta ar kļūdām",
+                "resultDryRunCancelled": "Izmēģinājuma palaišana atcelta"
             },
             "launcherTemplates": "Veidnes",
             "launcherMultiPath": "Vairāki ceļi",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Vairs nejautāt par šo serveri",
                 "continue": "Turpināt"
             },
-            "launcherHistory": "Žurnāla vēsture",
+            "launcherHistory": "Sinhronizācijas žurnāli",
             "history": {
-                "title": "AeroSync vēsture",
+                "title": "AeroSync žurnāli",
                 "refresh": "Atsvaidzināt",
                 "cleanupOld": "Noņemt ierakstus, kas vecāki par 30 dienām",
                 "clearAll": "Notīrīt visus žurnālus",
                 "confirmClearAll": "Notīrīt VISUS sinhronizācijas žurnālus?",
-                "empty": "Sinhronizācijas žurnālu vēl nav. Tie tiek izveidoti pie pirmā priekšiestatījuma izpildīšanas šim ceļu pārim.",
+                "empty": "Nav sinhronizācijas žurnālu, ko rādīt.",
                 "selectPrompt": "Izvēlieties žurnālu kreisajā pusē, lai apskatītu ierakstus pa failiem.",
                 "journalMissing": "Žurnāls nav atrasts.",
                 "entriesEmpty": "Nav reģistrētu ierakstu.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "BOJĀTS",
                 "verifyNoSignature": "BEZ PARAKSTA",
                 "statusCompleted": "PABEIGTS",
-                "statusInProgress": "NORIT",
                 "delete": "Dzēst žurnālu",
                 "created": "Izveidots",
                 "bytes": "Baiti",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Virziens",
                 "colStatus": "Statuss",
                 "colBytes": "Baiti",
-                "colAction": "Darbība"
+                "colAction": "Darbība",
+                "description": "Žurnāli palīdz atjaunot sinhronizāciju. Veiksmīgas izpildes noņem savu žurnālu; šī nav pabeigto izpilžu vēsture.",
+                "statusIncomplete": "NEPABEIGTS"
             },
             "launcherScheduler": "Plānotājs",
             "errorCorrection": "Kļūdu labošana",

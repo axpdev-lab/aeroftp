@@ -5469,7 +5469,6 @@
                 "start": "Začni sinhronizacijo",
                 "resultOk": "Sinhronizacija zaključena",
                 "resultPartial": "Sinhronizacija zaključena z napakami",
-                "uploaded": "Naloženo",
                 "skipped": "Preskočeno",
                 "errors": "Napake",
                 "elapsed": "Pretečen čas",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Neomejeno",
                 "stop": "Ustavi",
                 "stopping": "Ustavljanje...",
-                "resultCancelled": "Sinhronizacija preklicana"
+                "resultCancelled": "Sinhronizacija preklicana",
+                "copied": "Kopirano",
+                "planned": "Načrtovane kopije",
+                "resultDryRunOk": "Preizkusni zagon zaključen",
+                "resultDryRunPartial": "Preizkusni zagon zaključen z napakami",
+                "resultDryRunCancelled": "Preizkusni zagon preklican"
             },
             "launcherTemplates": "Predloge",
             "launcherMultiPath": "Več poti",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Ne sprašuj več za ta strežnik",
                 "continue": "Nadaljuj"
             },
-            "launcherHistory": "Zgodovina dnevnika",
+            "launcherHistory": "Dnevniki sinhronizacije",
             "history": {
-                "title": "Zgodovina AeroSync",
+                "title": "Dnevniki AeroSync",
                 "refresh": "Osveži",
                 "cleanupOld": "Odstrani vnose, starejše od 30 dni",
                 "clearAll": "Počisti vse dnevnike",
                 "confirmClearAll": "Počistim VSE dnevnike sinhronizacije?",
-                "empty": "Še ni dnevnikov sinhronizacije. Ustvarijo se ob prvi izvedbi prednastavitve za ta par poti.",
+                "empty": "Ni dnevnikov sinhronizacije za prikaz.",
                 "selectPrompt": "Izberite dnevnik na levi za pregled vnosov za posamezno datoteko.",
                 "journalMissing": "Dnevnik ni najden.",
                 "entriesEmpty": "Brez zabeleženih vnosov.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "SPREMENJENO",
                 "verifyNoSignature": "BREZ PODPISA",
                 "statusCompleted": "DOKONČANO",
-                "statusInProgress": "V TEKU",
                 "delete": "Izbriši dnevnik",
                 "created": "Ustvarjeno",
                 "bytes": "Bajti",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Smer",
                 "colStatus": "Stanje",
                 "colBytes": "Bajti",
-                "colAction": "Dejanje"
+                "colAction": "Dejanje",
+                "description": "Dnevniki pomagajo pri obnovitvi sinhronizacije. Uspešne izvedbe odstranijo svoj dnevnik; to ni zgodovina zaključenih izvedb.",
+                "statusIncomplete": "NEDOKONČANO"
             },
             "launcherScheduler": "Razporejevalnik",
             "errorCorrection": "Popravljanje napak",

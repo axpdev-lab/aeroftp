@@ -5469,7 +5469,6 @@
                 "start": "Alusta sünkroonimist",
                 "resultOk": "Sünkroonimine lõpetatud",
                 "resultPartial": "Sünkroonimine lõpetatud vigadega",
-                "uploaded": "Üles laaditud",
                 "skipped": "Vahele jäetud",
                 "errors": "Vead",
                 "elapsed": "Möödunud aeg",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Piiramatu",
                 "stop": "Peata",
                 "stopping": "Peatamine...",
-                "resultCancelled": "Sünkroonimine tühistatud"
+                "resultCancelled": "Sünkroonimine tühistatud",
+                "copied": "Kopeeritud",
+                "planned": "Kavandatud koopiad",
+                "resultDryRunOk": "Testkäivitus lõpetatud",
+                "resultDryRunPartial": "Testkäivitus lõpetatud vigadega",
+                "resultDryRunCancelled": "Testkäivitus tühistatud"
             },
             "launcherTemplates": "Mallid",
             "launcherMultiPath": "Mitu rada",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Ära küsi enam selle serveri kohta",
                 "continue": "Jätka"
             },
-            "launcherHistory": "Journali ajalugu",
+            "launcherHistory": "Sünkroonimislogid",
             "history": {
-                "title": "AeroSynci ajalugu",
+                "title": "AeroSynci logid",
                 "refresh": "Värskenda",
                 "cleanupOld": "Eemalda üle 30 päeva vanad kirjed",
                 "clearAll": "Tühjenda kõik journalid",
                 "confirmClearAll": "Tühjendada KÕIK sünkroonimise journalid?",
-                "empty": "Sünkroonimise journale veel pole. Need luuakse selle teede paari esmasel preseti käivitamisel.",
+                "empty": "Sünkroonimisloge pole kuvada.",
                 "selectPrompt": "Vali vasakult journal, et näha selle failipõhiseid kirjeid.",
                 "journalMissing": "Journali ei leitud.",
                 "entriesEmpty": "Kirjeid pole salvestatud.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "RIKUTUD",
                 "verifyNoSignature": "ALLKIRI PUUDUB",
                 "statusCompleted": "VALMIS",
-                "statusInProgress": "KÄIMAS",
                 "delete": "Kustuta journal",
                 "created": "Loodud",
                 "bytes": "Baidid",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Suund",
                 "colStatus": "Olek",
                 "colBytes": "Baidid",
-                "colAction": "Toiming"
+                "colAction": "Toiming",
+                "description": "Logid aitavad sünkroonimist taastada. Edukad käivitused eemaldavad oma logi; see ei ole lõpetatud käivituste ajalugu.",
+                "statusIncomplete": "LÕPETAMATA"
             },
             "launcherScheduler": "Ajastaja",
             "errorCorrection": "Veaparandus",

@@ -5488,7 +5488,6 @@
                 "start": "Hasi sinkronizazioa",
                 "resultOk": "Sinkronizazioa amaitu da",
                 "resultPartial": "Sinkronizazioa erroreekin amaitu da",
-                "uploaded": "Igota",
                 "skipped": "Saltatuta",
                 "errors": "Erroreak",
                 "elapsed": "Igarotako denbora",
@@ -5522,7 +5521,12 @@
                 "bandwidthUnlimited": "Mugagabea",
                 "stop": "Gelditu",
                 "stopping": "Gelditzen...",
-                "resultCancelled": "Sinkronizazioa bertan behera utzi da"
+                "resultCancelled": "Sinkronizazioa bertan behera utzi da",
+                "copied": "Kopiatuta",
+                "planned": "Aurreikusitako kopiak",
+                "resultDryRunOk": "Saiakera amaitu da",
+                "resultDryRunPartial": "Saiakera erroreekin amaitu da",
+                "resultDryRunCancelled": "Saiakera bertan behera utzi da"
             },
             "launcherTemplates": "Txantiloiak",
             "launcherMultiPath": "Bide anitz",
@@ -5547,14 +5551,14 @@
                 "skipFuture": "Ez galdetu berriro zerbitzari honetaz",
                 "continue": "Jarraitu"
             },
-            "launcherHistory": "Journal historia",
+            "launcherHistory": "Sinkronizazio-egunkariak",
             "history": {
-                "title": "AeroSync historia",
+                "title": "AeroSync egunkariak",
                 "refresh": "Freskatu",
                 "cleanupOld": "Kendu 30 egun baino zaharragoak diren sarrerak",
                 "clearAll": "Garbitu journal guztiak",
                 "confirmClearAll": "Garbitu sinkronizazio journal GUZTIAK?",
-                "empty": "Oraindik ez dago sinkronizazio journalik. Bide-bikote honetan preset bat lehen aldiz exekutatzean sortzen dira.",
+                "empty": "Ez dago sinkronizazio-egunkaririk erakusteko.",
                 "selectPrompt": "Hautatu ezkerreko journal bat fitxategiko sarrerak ikusteko.",
                 "journalMissing": "Ez da journal aurkitu.",
                 "entriesEmpty": "Ez dago sarrera erregistraturik.",
@@ -5563,7 +5567,6 @@
                 "verifyFailed": "MANIPULATUA",
                 "verifyNoSignature": "SINADURARIK EZ",
                 "statusCompleted": "AMAITUTA",
-                "statusInProgress": "MARTXAN",
                 "delete": "Ezabatu journal",
                 "created": "Sortua",
                 "bytes": "Byteak",
@@ -5571,7 +5574,9 @@
                 "colDirection": "Norabidea",
                 "colStatus": "Egoera",
                 "colBytes": "Byteak",
-                "colAction": "Ekintza"
+                "colAction": "Ekintza",
+                "description": "Egunkariek sinkronizazioa berreskuratzen laguntzen dute. Exekuzio arrakastatsuek beren egunkaria ezabatzen dute; hau ez da amaitutako exekuzioen historia.",
+                "statusIncomplete": "OSATU GABE"
             },
             "launcherScheduler": "Antolatzailea",
             "errorCorrection": "Erroreen zuzenketa",

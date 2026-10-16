@@ -5469,7 +5469,6 @@
                 "start": "Aloita synkronointi",
                 "resultOk": "Synkronointi valmis",
                 "resultPartial": "Synkronointi valmis virheineen",
-                "uploaded": "Ladattu",
                 "skipped": "Ohitettu",
                 "errors": "Virheet",
                 "elapsed": "Kulunut aika",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Rajaton",
                 "stop": "Pysäytä",
                 "stopping": "Pysäytetään...",
-                "resultCancelled": "Synkronointi peruutettu"
+                "resultCancelled": "Synkronointi peruutettu",
+                "copied": "Kopioitu",
+                "planned": "Suunnitellut kopiot",
+                "resultDryRunOk": "Testiajo valmis",
+                "resultDryRunPartial": "Testiajo valmis virheineen",
+                "resultDryRunCancelled": "Testiajo peruutettu"
             },
             "launcherTemplates": "Mallit",
             "launcherMultiPath": "Monireitti",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Älä kysy uudelleen tälle palvelimelle",
                 "continue": "Jatka"
             },
-            "launcherHistory": "Journalin historia",
+            "launcherHistory": "Synkronointilokit",
             "history": {
-                "title": "AeroSync-historia",
+                "title": "AeroSync-lokit",
                 "refresh": "Päivitä",
                 "cleanupOld": "Poista yli 30 päivää vanhat merkinnät",
                 "clearAll": "Tyhjennä kaikki journalit",
                 "confirmClearAll": "Tyhjennetäänkö KAIKKI synkronointijournalit?",
-                "empty": "Synkronointijournaleita ei vielä ole. Ne luodaan, kun preset suoritetaan ensimmäisen kerran tälle polkuparille.",
+                "empty": "Ei näytettäviä synkronointilokeja.",
                 "selectPrompt": "Valitse journal vasemmalta nähdäksesi sen tiedostokohtaiset merkinnät.",
                 "journalMissing": "Journalia ei löytynyt.",
                 "entriesEmpty": "Ei tallennettuja merkintöjä.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "MUOKATTU",
                 "verifyNoSignature": "EI ALLEKIRJ.",
                 "statusCompleted": "VALMIS",
-                "statusInProgress": "KÄYNNISSÄ",
                 "delete": "Poista journal",
                 "created": "Luotu",
                 "bytes": "Tavua",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Suunta",
                 "colStatus": "Tila",
                 "colBytes": "Tavua",
-                "colAction": "Toiminto"
+                "colAction": "Toiminto",
+                "description": "Lokit auttavat synkronoinnin palautuksessa. Onnistuneet ajot poistavat oman lokinsa; tämä ei ole valmistuneiden ajojen historia.",
+                "statusIncomplete": "KESKENERÄINEN"
             },
             "launcherScheduler": "Ajastin",
             "errorCorrection": "Virheenkorjaus",

@@ -5469,7 +5469,6 @@
                 "start": "Starta synkronisering",
                 "resultOk": "Synkronisering slutförd",
                 "resultPartial": "Synkronisering slutförd med fel",
-                "uploaded": "Uppladdade",
                 "skipped": "Hoppades över",
                 "errors": "Fel",
                 "elapsed": "Förfluten tid",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Obegränsat",
                 "stop": "Stoppa",
                 "stopping": "Stoppar...",
-                "resultCancelled": "Synkronisering avbruten"
+                "resultCancelled": "Synkronisering avbruten",
+                "copied": "Kopierade",
+                "planned": "Planerade kopieringar",
+                "resultDryRunOk": "Testkörning slutförd",
+                "resultDryRunPartial": "Testkörning slutförd med fel",
+                "resultDryRunCancelled": "Testkörning avbruten"
             },
             "launcherTemplates": "Mallar",
             "launcherMultiPath": "Flera sökvägar",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Fråga inte igen för den här servern",
                 "continue": "Fortsätt"
             },
-            "launcherHistory": "Journalhistorik",
+            "launcherHistory": "Synkroniseringsjournaler",
             "history": {
-                "title": "AeroSync-historik",
+                "title": "AeroSync-journaler",
                 "refresh": "Uppdatera",
                 "cleanupOld": "Ta bort poster äldre än 30 dagar",
                 "clearAll": "Rensa alla journaler",
                 "confirmClearAll": "Rensa ALLA synkroniseringsjournaler?",
-                "empty": "Inga synkroniseringsjournaler ännu. De skapas vid första körningen av en förinställning för detta sökvägspar.",
+                "empty": "Inga synkroniseringsjournaler att visa.",
                 "selectPrompt": "Välj en journal till vänster för att granska posterna per fil.",
                 "journalMissing": "Journal hittades inte.",
                 "entriesEmpty": "Inga poster registrerade.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "MANIPULERAD",
                 "verifyNoSignature": "INGEN SIGNATUR",
                 "statusCompleted": "SLUTFÖRD",
-                "statusInProgress": "PÅGÅR",
                 "delete": "Ta bort journal",
                 "created": "Skapad",
                 "bytes": "Byte",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Riktning",
                 "colStatus": "Status",
                 "colBytes": "Byte",
-                "colAction": "Åtgärd"
+                "colAction": "Åtgärd",
+                "description": "Journaler hjälper till att återställa synkroniseringar. Lyckade körningar tar bort sin journal; detta är ingen historik över slutförda körningar.",
+                "statusIncomplete": "OFULLSTÄNDIG"
             },
             "launcherScheduler": "Schemaläggare",
             "errorCorrection": "Felkorrigering",

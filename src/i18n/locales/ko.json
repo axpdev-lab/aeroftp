@@ -5469,7 +5469,6 @@
                 "start": "동기화 시작",
                 "resultOk": "동기화 완료",
                 "resultPartial": "오류와 함께 동기화 완료",
-                "uploaded": "업로드됨",
                 "skipped": "건너뜀",
                 "errors": "오류",
                 "elapsed": "경과 시간",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "무제한",
                 "stop": "중지",
                 "stopping": "중지 중...",
-                "resultCancelled": "동기화가 취소되었습니다"
+                "resultCancelled": "동기화가 취소되었습니다",
+                "copied": "복사됨",
+                "planned": "복사 예정",
+                "resultDryRunOk": "시험 실행 완료",
+                "resultDryRunPartial": "오류와 함께 시험 실행 완료",
+                "resultDryRunCancelled": "시험 실행 취소됨"
             },
             "launcherTemplates": "템플릿",
             "launcherMultiPath": "다중 경로",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "이 서버에 대해 다시 묻지 않기",
                 "continue": "계속"
             },
-            "launcherHistory": "저널 기록",
+            "launcherHistory": "동기화 저널",
             "history": {
-                "title": "AeroSync 기록",
+                "title": "AeroSync 저널",
                 "refresh": "새로 고침",
                 "cleanupOld": "30일보다 오래된 항목 제거",
                 "clearAll": "모든 저널 지우기",
                 "confirmClearAll": "모든 동기화 저널을 지우시겠습니까?",
-                "empty": "아직 동기화 저널이 없습니다. 이 경로 쌍에서 프리셋을 처음 실행할 때 생성됩니다.",
+                "empty": "표시할 동기화 저널이 없습니다.",
                 "selectPrompt": "왼쪽에서 저널을 선택하여 파일별 항목을 확인하세요.",
                 "journalMissing": "저널을 찾을 수 없습니다.",
                 "entriesEmpty": "기록된 항목이 없습니다.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "변조됨",
                 "verifyNoSignature": "서명 없음",
                 "statusCompleted": "완료",
-                "statusInProgress": "진행 중",
                 "delete": "저널 삭제",
                 "created": "생성됨",
                 "bytes": "바이트",
@@ -5552,7 +5555,9 @@
                 "colDirection": "방향",
                 "colStatus": "상태",
                 "colBytes": "바이트",
-                "colAction": "작업"
+                "colAction": "작업",
+                "description": "저널은 동기화 복구에 사용됩니다. 성공한 실행의 저널은 삭제되며, 여기는 완료된 실행 내역이 아닙니다.",
+                "statusIncomplete": "미완료"
             },
             "launcherScheduler": "스케줄러",
             "errorCorrection": "오류 정정",
