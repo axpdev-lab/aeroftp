@@ -197,6 +197,20 @@ const SFTP_MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
 /// applies the same bound as the single-file path.
 const SFTP_MULTI_THREAD_CUTOFF_FLOOR: u64 = 1024 * 1024;
 
+/// The SSH channel window this client grants the server, in bytes: what the
+/// server may send on a channel before it waits for a WINDOW_ADJUST. russh
+/// grants 2 MiB and tops the window up only once half of it is used, so one
+/// connection kept about 1.1 MB in flight whatever the read-ahead asked for,
+/// and the server's socket sat idle with room in both TCP windows (app
+/// limited). Over 50 ms of added delay one connection read 128 MiB in 7.9 s,
+/// where rclone took 5.3 to 5.5 s; with 8 MiB, what the default read-ahead
+/// keeps in flight (32 READs of 256 KiB), it took 4.1 s (4 MiB: 4.8 s, 16
+/// MiB: 4.5 to 4.6 s). Without added delay nothing changed, and neither did
+/// memory (Docker OpenSSH, three rounds, 2026-10-16): the window bounds what
+/// the server may send, and an SFTP download receives only the replies to the
+/// READs it asked for, which the read-ahead window bounds.
+const SFTP_SSH_CHANNEL_WINDOW: u32 = 8 * 1024 * 1024;
+
 /// The SSH client configuration of every SFTP connection: the provider's own
 /// and each one a pool, range or transfer worker dials.
 ///
@@ -216,6 +230,7 @@ fn sftp_ssh_client_config(timeout_secs: u64, preferred: Preferred) -> Config {
         keepalive_max: 3, // Allow 3 missed keepalives before disconnect
         preferred,
         nodelay: true,
+        window_size: SFTP_SSH_CHANNEL_WINDOW,
         ..Default::default()
     }
 }
@@ -6334,6 +6349,24 @@ mod tests {
             SftpReadaheadSetting::from_explicit(Some(1)),
             SftpReadaheadSetting::Disabled
         );
+    }
+
+    /// The server sends a download's replies only as far as the channel window
+    /// it was granted, so a window smaller than what the read-ahead keeps in
+    /// flight caps one connection below its window: russh's 2 MiB held one
+    /// connection to about 1.1 MB in flight at 50 ms of delay (see
+    /// [`SFTP_SSH_CHANNEL_WINDOW`]). Every SFTP connection gets the larger
+    /// window, keep-alive and `nodelay` from the one configuration.
+    #[test]
+    fn the_ssh_channel_window_is_not_smaller_than_the_default_readahead() {
+        let config = sftp_ssh_client_config(30, Preferred::default());
+        assert!(
+            u64::from(config.window_size) >= SFTP_READAHEAD_DEFAULT_BYTES,
+            "a {} byte channel window caps the {} bytes the read-ahead keeps in flight",
+            config.window_size,
+            SFTP_READAHEAD_DEFAULT_BYTES
+        );
+        assert!(config.nodelay);
     }
 
     #[test]
