@@ -8495,13 +8495,13 @@ mod transfer_verdict_tests {
 }
 
 #[cfg(test)]
-mod walk_scope_tests {
+pub(crate) mod walk_scope_tests {
     use super::*;
     use std::sync::{Arc, Mutex};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::{TcpListener, TcpStream};
 
-    type Listings = &'static [(&'static str, &'static [&'static str])];
+    pub(crate) type Listings = &'static [(&'static str, &'static [&'static str])];
 
     /// One control connection of a server without MLSD that holds
     /// `listings`: each folder with the names its LIST rows carry (a name
@@ -8604,10 +8604,12 @@ mod walk_scope_tests {
         }
     }
 
-    /// A connected provider on a [`serve_tree`] server, and its DELE/RMD log.
-    async fn provider_on_tree(listings: Listings) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+    /// A [`serve_tree`] server on a local port, and its DELE/RMD log. The
+    /// legacy FTP session's walks (`crate::ftp::FtpManager`) are tested on it
+    /// too.
+    pub(crate) async fn tree_server(listings: Listings) -> (u16, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
+        let port = listener.local_addr().unwrap().port();
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
         tokio::spawn(async move {
@@ -8615,9 +8617,15 @@ mod walk_scope_tests {
                 tokio::spawn(serve_tree(stream, listings, Arc::clone(&seen)));
             }
         });
+        (port, log)
+    }
+
+    /// A connected provider on a [`serve_tree`] server, and its DELE/RMD log.
+    async fn provider_on_tree(listings: Listings) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        let (port, log) = tree_server(listings).await;
         let mut provider = FtpProvider::new(FtpConfig {
             host: "127.0.0.1".to_string(),
-            port: addr.port(),
+            port,
             username: "u".to_string(),
             password: "p".to_string().into(),
             tls_mode: FtpTlsMode::None,

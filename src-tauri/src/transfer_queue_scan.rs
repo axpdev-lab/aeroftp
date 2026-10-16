@@ -92,6 +92,13 @@ fn join_remote(parent: &str, name: &str) -> String {
 /// never emits transfer events. It exists to feed the Transfer Queue panel
 /// (TQ-2) which surfaces the remote tree for the user to prune before the
 /// real transfer starts.
+///
+/// Each path is built from the folder and the name a LIST row gives, so a
+/// name such as `d/..`, `up/../..` or `../keep.txt` leads back to the folder
+/// or out of it. An entry is shown only when [`crate::sync_core::WalkScope`]
+/// places it under the root (a folder is also listed only once), each path
+/// is one row, and an entry it does not take is counted as omitted at its
+/// level, as the per-level cap counts.
 pub async fn walk_remote_ftp(
     ftp_manager: &mut FtpManager,
     cancel_flag: &Arc<AtomicBool>,
@@ -112,6 +119,8 @@ pub async fn walk_remote_ftp(
 
     let mut queue: VecDeque<(String, u32)> = VecDeque::new();
     queue.push_back((root_path.to_string(), 0));
+    let mut scope = crate::sync_core::WalkScope::new(root_path);
+    let mut shown = std::collections::HashSet::new();
 
     while let Some((current_dir, current_depth)) = queue.pop_front() {
         if cancel_flag.load(Ordering::Relaxed) {
@@ -146,17 +155,35 @@ pub async fn walk_remote_ftp(
 
         let total = files.len();
         let cap = entry_cap_per_level.min(total);
-        if total > entry_cap_per_level {
-            result.truncated_parents.push(TruncatedLevel {
-                parent_path: current_dir.clone(),
-                kept: cap as u32,
-                omitted: (total - cap) as u32,
-            });
-        }
-
+        let mut kept: u32 = 0;
+        let mut refused: u32 = 0;
         for file in files.into_iter().take(cap) {
             let path = join_remote(&current_dir, &file.name);
             let is_dir = file.is_dir;
+            use crate::sync_core::WalkStep;
+            let step = if is_dir {
+                scope.admit(&current_dir, &path)
+            } else {
+                scope.locate(&current_dir, &path)
+            };
+            match step {
+                WalkStep::Follow => {}
+                WalkStep::AlreadyListed => continue,
+                step => {
+                    warn!(
+                        "transfer_queue_scan: not showing {}: the listing of {} names it, but {}",
+                        path,
+                        current_dir,
+                        step.explain()
+                    );
+                    refused += 1;
+                    continue;
+                }
+            }
+            if !shown.insert(crate::sync_core::walk_path_key(&path)) {
+                continue;
+            }
+            kept += 1;
             let size = file.size.unwrap_or(0);
             result.nodes.push(ScanNode {
                 name: file.name.clone(),
@@ -172,6 +199,14 @@ pub async fn walk_remote_ftp(
             if is_dir && current_depth + 1 < max_depth {
                 queue.push_back((path, current_depth + 1));
             }
+        }
+        let omitted = (total - cap) as u32 + refused;
+        if omitted > 0 {
+            result.truncated_parents.push(TruncatedLevel {
+                parent_path: current_dir.clone(),
+                kept,
+                omitted,
+            });
         }
     }
 
