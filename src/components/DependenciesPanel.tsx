@@ -54,17 +54,17 @@ const STATUS_LABEL: Record<DependencyRow['status'], string> = {
 const StatusBadge: React.FC<{ status: DependencyRow['status'] }> = ({ status }) => {
     switch (status) {
         case 'checking':
-            return <Loader2 size={14} className="animate-spin text-gray-400" />;
+            return <Loader2 size={14} className="mx-auto animate-spin text-gray-400" />;
         case 'up_to_date':
-            return <CheckCircle size={14} className="text-green-500" />;
+            return <CheckCircle size={14} className="mx-auto text-green-500" />;
         case 'compatible_update':
-            return <ArrowUpCircle size={14} className="text-yellow-500" />;
+            return <ArrowUpCircle size={14} className="mx-auto text-yellow-500" />;
         case 'incompatible_update':
-            return <AlertTriangle size={14} className="text-red-500" />;
+            return <AlertTriangle size={14} className="mx-auto text-red-500" />;
         case 'pinned':
-            return <Lock size={14} className="text-blue-500" />;
+            return <Lock size={14} className="mx-auto text-blue-500" />;
         case 'error':
-            return <X size={14} className="text-gray-400" />;
+            return <X size={14} className="mx-auto text-gray-400" />;
     }
 };
 

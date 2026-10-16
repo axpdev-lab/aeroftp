@@ -275,9 +275,9 @@ export const TrashTable: React.FC<TrashTableProps> = ({
                                 {selectable && (
                                     <td className="px-2 py-1.5 text-center">
                                         {isSelected ? (
-                                            <CheckSquare size={13} className={accentClass} />
+                                            <CheckSquare size={13} className={`mx-auto ${accentClass}`} />
                                         ) : (
-                                            <Square size={13} className="text-gray-500 dark:text-gray-500" />
+                                            <Square size={13} className="mx-auto text-gray-500 dark:text-gray-500" />
                                         )}
                                     </td>
                                 )}

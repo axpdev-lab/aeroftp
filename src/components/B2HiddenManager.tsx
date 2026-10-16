@@ -227,7 +227,7 @@ export function B2HiddenManager({ onClose, onRefreshFiles, currentPath }: B2Hidd
                     onClick={() => toggleSelect(item)}
                   >
                     <td className="px-2 py-1.5 text-center">
-                      {selected.has(item.path) ? <CheckSquare size={13} className="text-red-500" /> : <Square size={13} className="text-gray-500 dark:text-gray-500" />}
+                      {selected.has(item.path) ? <CheckSquare size={13} className="mx-auto text-red-500" /> : <Square size={13} className="mx-auto text-gray-500 dark:text-gray-500" />}
                     </td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1.5">
