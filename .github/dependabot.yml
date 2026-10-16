@@ -53,8 +53,6 @@ updates:
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "rand"
         update-types: ["version-update:semver-major"]
-      - dependency-name: "zip"
-        update-types: ["version-update:semver-major"]
       - dependency-name: "dirs"
         update-types: ["version-update:semver-major"]
       - dependency-name: "portable-pty"
