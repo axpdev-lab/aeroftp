@@ -439,6 +439,77 @@ trait PassphraseSlots {
     fn write(&self, account: &str, encoded: &str) -> Result<(), String>;
     /// Remove `account`; a missing entry is not an error.
     fn delete(&self, account: &str);
+    /// Wait for the lock that every read-then-write of these accounts holds,
+    /// shared by all processes of this user; held until the guard is dropped.
+    fn lock(&self) -> Result<ClaimLock, String>;
+}
+
+/// Held from the read of an account through its write and read-back. Without
+/// it two processes on different config folders (two first runs started
+/// together) both find the default account empty, and the second write
+/// replaces the first vault's key. The keyring has no portable create-if-absent.
+struct ClaimLock {
+    _guard: Box<dyn std::any::Any>,
+}
+
+const CLAIM_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The lock file, in a folder every process of this user that shares the
+/// keyring sees whatever its config folder: the per-user runtime folder on
+/// Linux (in a Flatpak the per-app one, which its instances share), otherwise
+/// the temporary folder, which is per user on macOS and Windows.
+fn claim_lock_path() -> PathBuf {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_dir());
+    let flatpak_app = std::env::var_os("FLATPAK_ID")
+        .zip(runtime.clone())
+        .map(|(id, dir)| dir.join("app").join(id))
+        .filter(|dir| dir.is_dir());
+    let dir = flatpak_app.or(runtime).unwrap_or_else(std::env::temp_dir);
+    #[cfg(unix)]
+    // SAFETY: getuid never fails and has no preconditions.
+    let name = format!("aeroftp-keyring-{}.lock", unsafe { libc::getuid() });
+    #[cfg(not(unix))]
+    let name = "aeroftp-keyring.lock".to_string();
+    dir.join(name)
+}
+
+/// Lock `path` exclusively, waiting up to `wait` for another holder. The OS
+/// releases the lock when its holder exits, so a crash leaves nothing stale.
+fn acquire_claim_lock(path: &Path, wait: std::time::Duration) -> Result<ClaimLock, String> {
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).truncate(false).write(true);
+    // In a shared temporary folder another user could otherwise open the file
+    // and hold its lock.
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let file = options
+        .open(path)
+        .map_err(|e| format!("cannot open the keyring lock {}: {}", path.display(), e))?;
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        match file.try_lock() {
+            Ok(()) => {
+                return Ok(ClaimLock {
+                    _guard: Box::new(file),
+                })
+            }
+            Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(format!(
+                    "another AeroFTP process held the keyring lock {} for over {}s",
+                    path.display(),
+                    wait.as_secs()
+                ))
+            }
+            Err(std::fs::TryLockError::Error(e)) => {
+                return Err(format!("cannot lock {}: {}", path.display(), e))
+            }
+        }
+    }
 }
 
 /// The OS credential manager, under `KEYRING_SERVICE`.
@@ -467,6 +538,10 @@ impl PassphraseSlots for OsKeyring {
         if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, account) {
             let _ = entry.delete_credential();
         }
+    }
+
+    fn lock(&self) -> Result<ClaimLock, String> {
+        acquire_claim_lock(&claim_lock_path(), CLAIM_LOCK_WAIT)
     }
 }
 
@@ -534,12 +609,15 @@ fn load_passphrase_in(
             // existed: its passphrase is still in the shared native slot. Read it
             // (reading never corrupts anything) and adopt it into this scope's own
             // slot, but only when that slot is empty, so subsequent loads are
-            // isolated. We never WRITE the native slot from a sandbox.
+            // isolated. We never WRITE the native slot from a sandbox. Without the
+            // lock the adoption waits for a later load.
             if let Some(native) = native_account.filter(|native| *native != account) {
                 if let Ok(p) = load_passphrase_from_slot(slots, native) {
-                    if matches!(slots.read(account), SlotContent::Empty) {
-                        let encoded = Zeroizing::new(BASE64.encode(p));
-                        let _ = slots.write(account, &encoded);
+                    if let Ok(_lock) = slots.lock() {
+                        if matches!(slots.read(account), SlotContent::Empty) {
+                            let encoded = Zeroizing::new(BASE64.encode(p));
+                            let _ = slots.write(account, &encoded);
+                        }
                     }
                     return Ok(p);
                 }
@@ -555,12 +633,20 @@ fn load_passphrase_in(
 /// locked for good if it were overwritten, and is not adopted even when it
 /// holds this same passphrase: two vault.key files naming one account would
 /// let either one's release clear the other's key. The new vault takes a named
-/// account instead and records it in vault.key.
+/// account instead and records it in vault.key. The whole claim runs under
+/// the keyring lock; without it the claim fails and the caller keeps the key
+/// on disk, as for a missing keyring.
 fn claim_slot_in(
     slots: &dyn PassphraseSlots,
     default_account: &str,
     passphrase: &[u8; PASSPHRASE_LEN],
 ) -> Result<KeyringSlot, CredentialError> {
+    let _lock = slots.lock().map_err(|e| {
+        CredentialError::Encryption(format!(
+            "Failed to write vault key to system keyring: {}",
+            e
+        ))
+    })?;
     let encoded = Zeroizing::new(BASE64.encode(passphrase));
     let write_checked = |account: &str| -> Result<(), CredentialError> {
         slots.write(account, &encoded).map_err(|e| {
@@ -611,8 +697,17 @@ fn claim_slot_in(
 /// vault. A byte copy of this vault made outside AeroFTP (a backup of the data
 /// folder) carries the same vault.key and the same key, so nothing on disk can
 /// tell it apart from this vault, and it loses its key here too; before this
-/// check the account was cleared whatever it held.
+/// check the account was cleared whatever it held. When the keyring lock
+/// cannot be had the account is still cleared: a key left next to a
+/// master-password vault would open it without the password.
 fn release_slot_in(slots: &dyn PassphraseSlots, account: &str, passphrase: &[u8; PASSPHRASE_LEN]) {
+    let _lock = match slots.lock() {
+        Ok(lock) => Some(lock),
+        Err(e) => {
+            warn!("Clearing keyring account {account} without the keyring lock: {e}");
+            None
+        }
+    };
     let encoded = Zeroizing::new(BASE64.encode(passphrase));
     if let SlotContent::Holds(stored) = slots.read(account) {
         if *stored == *encoded {
@@ -2040,23 +2135,39 @@ mod tests {
 
     mod keyring_slots {
         use super::super::{
-            claim_slot_in, load_passphrase_in, release_slot_in, CredentialError, KeyringSlot,
-            PassphraseSlots, SlotContent, VaultKeyFile, VaultKeyMode, BASE64, PASSPHRASE_LEN,
+            acquire_claim_lock, claim_slot_in, load_passphrase_in, release_slot_in, ClaimLock,
+            CredentialError, KeyringSlot, PassphraseSlots, SlotContent, VaultKeyFile, VaultKeyMode,
+            BASE64, PASSPHRASE_LEN,
         };
         use base64::Engine as _;
         use std::cell::{Cell, RefCell};
         use std::collections::{HashMap, HashSet};
+        use std::path::PathBuf;
+        use std::rc::Rc;
+        use std::sync::{Arc, Barrier, Mutex};
+        use std::time::Duration;
         use zeroize::Zeroizing;
 
         const DEFAULT: &str = "vault-passphrase-dev";
 
         /// An in-memory keyring with the failure modes the slot rules care about.
+        /// It checks that every write and every delete happens under the lock.
         #[derive(Default)]
         struct MemSlots {
             entries: RefCell<HashMap<String, String>>,
             unreadable: HashSet<String>,
             drop_writes: bool,
+            lock_fails: bool,
+            held: Rc<Cell<bool>>,
             writes: Cell<usize>,
+        }
+
+        struct Held(Rc<Cell<bool>>);
+
+        impl Drop for Held {
+            fn drop(&mut self) {
+                self.0.set(false);
+            }
         }
 
         impl MemSlots {
@@ -2086,6 +2197,7 @@ mod tests {
                 }
             }
             fn write(&self, account: &str, encoded: &str) -> Result<(), String> {
+                assert!(self.held.get(), "write of {account} outside the lock");
                 self.writes.set(self.writes.get() + 1);
                 if !self.drop_writes {
                     self.entries
@@ -2095,7 +2207,54 @@ mod tests {
                 Ok(())
             }
             fn delete(&self, account: &str) {
+                assert!(
+                    self.held.get() || self.lock_fails,
+                    "delete of {account} outside the lock"
+                );
                 self.entries.borrow_mut().remove(account);
+            }
+            fn lock(&self) -> Result<ClaimLock, String> {
+                // A second lock in the same process would wait on the first.
+                assert!(!self.held.get(), "the keyring lock is not re-entrant");
+                if self.lock_fails {
+                    return Err("held elsewhere".into());
+                }
+                self.held.set(true);
+                Ok(ClaimLock {
+                    _guard: Box::new(Held(self.held.clone())),
+                })
+            }
+        }
+
+        /// One process's view of a keyring shared with others: reads are slower
+        /// than the lock's retry interval, so two claims overlap unless the lock
+        /// is held from the first read to the read-back.
+        struct SharedSlots {
+            entries: Arc<Mutex<HashMap<String, String>>>,
+            lock_path: PathBuf,
+        }
+
+        impl PassphraseSlots for SharedSlots {
+            fn read(&self, account: &str) -> SlotContent {
+                let value = self.entries.lock().unwrap().get(account).cloned();
+                std::thread::sleep(Duration::from_millis(150));
+                match value {
+                    Some(value) => SlotContent::Holds(Zeroizing::new(value)),
+                    None => SlotContent::Empty,
+                }
+            }
+            fn write(&self, account: &str, encoded: &str) -> Result<(), String> {
+                self.entries
+                    .lock()
+                    .unwrap()
+                    .insert(account.to_string(), encoded.to_string());
+                Ok(())
+            }
+            fn delete(&self, account: &str) {
+                self.entries.lock().unwrap().remove(account);
+            }
+            fn lock(&self) -> Result<ClaimLock, String> {
+                acquire_claim_lock(&self.lock_path, Duration::from_secs(10))
             }
         }
 
@@ -2189,6 +2348,87 @@ mod tests {
 
             // The caller falls back to the on-disk key, as for a missing keyring.
             assert!(claim_slot_in(&slots, DEFAULT, &key(0xB2)).is_err());
+        }
+
+        #[test]
+        fn two_claims_at_once_never_both_take_the_default_account() {
+            let dir = tempfile::tempdir().unwrap();
+            let entries = Arc::new(Mutex::new(HashMap::new()));
+            let start = Barrier::new(2);
+
+            let slots: Vec<KeyringSlot> = std::thread::scope(|scope| {
+                let claims: Vec<_> = [0xA1u8, 0xB2]
+                    .into_iter()
+                    .map(|byte| {
+                        let slots = SharedSlots {
+                            entries: entries.clone(),
+                            lock_path: dir.path().join("keyring.lock"),
+                        };
+                        let start = &start;
+                        scope.spawn(move || {
+                            start.wait();
+                            (byte, claim_slot_in(&slots, DEFAULT, &key(byte)).unwrap())
+                        })
+                    })
+                    .collect();
+                claims
+                    .into_iter()
+                    .map(|claim| {
+                        let (byte, slot) = claim.join().unwrap();
+                        let account = match &slot {
+                            KeyringSlot::Default => DEFAULT,
+                            KeyringSlot::Named(account) => account.as_str(),
+                        };
+                        assert_eq!(
+                            entries.lock().unwrap().get(account),
+                            Some(&enc(byte)),
+                            "each vault finds its own key"
+                        );
+                        slot
+                    })
+                    .collect()
+            });
+
+            let defaults = slots.iter().filter(|s| **s == KeyringSlot::Default).count();
+            assert_eq!(defaults, 1, "{slots:?}");
+        }
+
+        #[test]
+        fn a_claim_without_the_lock_writes_nothing() {
+            let slots = MemSlots {
+                lock_fails: true,
+                ..Default::default()
+            };
+
+            // The caller keeps the key on disk and tries again at the next start.
+            assert!(claim_slot_in(&slots, DEFAULT, &key(0xB2)).is_err());
+            assert_eq!(slots.writes.get(), 0);
+        }
+
+        #[test]
+        fn a_release_without_the_lock_still_clears_this_vaults_key() {
+            let slots = MemSlots {
+                lock_fails: true,
+                ..MemSlots::with(&[(DEFAULT, &enc(0xA1))])
+            };
+
+            // A key left in the keyring would open the vault without its new
+            // master password.
+            release_slot_in(&slots, DEFAULT, &key(0xA1));
+            assert_eq!(slots.get(DEFAULT), None);
+        }
+
+        #[test]
+        fn the_keyring_lock_keeps_a_second_holder_out_until_it_is_dropped() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("keyring.lock");
+
+            let first = acquire_claim_lock(&path, Duration::ZERO).unwrap();
+            let second = acquire_claim_lock(&path, Duration::from_millis(200));
+            assert!(second.is_err(), "taken while held");
+
+            drop(first);
+            assert!(acquire_claim_lock(&path, Duration::ZERO).is_ok());
         }
 
         #[test]
