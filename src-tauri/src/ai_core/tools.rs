@@ -195,6 +195,15 @@ fn list_servers_schema() -> Value {
     })
 }
 
+/// Builds one [`TOOL_DEFINITIONS`] entry in a stack frame of its own. A
+/// debug build gives every `json!` temporary of a function its own stack
+/// slot, so the table built in one closure needed a 284 KiB frame (127
+/// tools), growing with each tool, on whichever thread first reads it: in
+/// the MCP server a tokio worker, whose 2 MiB had to hold the request too.
+fn entry(build: impl FnOnce() -> ToolDef) -> ToolDef {
+    build()
+}
+
 /// Registry canonico. Popolato in Gate 2 per aree (local_*, clipboard_/
 /// shell_/archive_, remote_, rag_/memory_). I tool non ancora migrati
 /// non compaiono qui e restano gestiti dai dispatcher legacy (arriva
@@ -210,7 +219,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
     let diagnostics_enum: Value = crate::coding_diagnostics::diagnostics_sources().into();
     vec![
         // ─── Area A: local_* (T3 Gate 2) ─────────────────────────────
-        ToolDef {
+        entry(|| ToolDef {
             name: "local_list",
             description: "List entries in a local directory (max 100).",
             input_schema: json!({
@@ -220,8 +229,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_read",
             description: "Read first 5 KB of a local text file (max 10 MB).",
             input_schema: json!({
@@ -231,8 +240,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_write",
             description: "Write text content to a local file, overwriting if present.",
             input_schema: json!({
@@ -245,8 +254,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_mkdir",
             description: "Create a directory (and missing parents) on the local filesystem.",
             input_schema: json!({
@@ -256,8 +265,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_delete",
             description: "Delete a local file or directory (recursive). Refuses dangerous paths.",
             input_schema: json!({
@@ -267,8 +276,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_rename",
             description: "Rename or move a single local file/directory.",
             input_schema: json!({
@@ -281,8 +290,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_search",
             description: "Search a local directory for files matching a glob-like pattern.",
             input_schema: json!({
@@ -295,8 +304,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_edit",
             description: "Find & replace inside a local text file (BOM-aware).",
             input_schema: json!({
@@ -311,8 +320,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_move_files",
             description: "Move multiple local files/directories into a destination directory.",
             input_schema: json!({
@@ -325,8 +334,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_batch_rename",
             description:
                 "Batch-rename files via find_replace / add_prefix / add_suffix / sequential modes.",
@@ -348,8 +357,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_copy_files",
             description: "Copy multiple local files/directories (recursive) into a destination.",
             input_schema: json!({
@@ -362,8 +371,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_trash",
             description: "Move files/directories to the OS recycle bin (recoverable).",
             input_schema: json!({
@@ -375,8 +384,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_file_info",
             description: "Full metadata for a local file or directory (size, perms, MIME, times).",
             input_schema: json!({
@@ -386,8 +395,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_disk_usage",
             description: "Recursive disk usage for a local directory (capped at 500k entries).",
             input_schema: json!({
@@ -397,8 +406,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "local_find_duplicates",
             description:
                 "Find duplicate files. similarity='exact' (default): BLAKE3 via shared engine (unified, no MD5). similarity='non-identical': pHash (raster) / SimHash+MinHash (text) / TLSH (other bytes) via shared engine. distance overrides default thresholds (raster~10, text~3, other~100). min_size applies as lower bound.",
@@ -414,8 +424,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "local_grep",
             description: "Regex search within text files in a directory tree.",
             input_schema: json!({
@@ -432,8 +443,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_head",
             description: "First N lines of a local text file.",
             input_schema: json!({
@@ -446,8 +457,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_tail",
             description: "Last N lines of a local text file.",
             input_schema: json!({
@@ -460,8 +471,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_stat_batch",
             description: "Batch metadata for up to 100 local paths.",
             input_schema: json!({
@@ -473,8 +484,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_diff",
             description: "Unified diff between two local text files (max 5 MB each).",
             input_schema: json!({
@@ -488,8 +499,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "local_tree",
             description: "Unicode tree view of a local directory (max_depth default 3, capped).",
             input_schema: json!({
@@ -504,8 +515,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "coding_checkpoint_create",
             description: "Snapshot explicit workspace files before coding-agent mutations.",
             input_schema: json!({
@@ -521,8 +532,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "coding_checkpoint_restore",
             description: "Restore files from a workspace checkpoint, optionally as a dry run.",
             input_schema: json!({
@@ -536,8 +547,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "coding_apply_patch",
             description: "Dry-run or apply a unified multi-file diff inside a workspace root.",
             input_schema: json!({
@@ -554,8 +565,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "coding_git_status",
             description: "Inspect git branch and working tree status for a coding workspace.",
             input_schema: json!({
@@ -568,8 +579,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "coding_git_diff",
             description: "Inspect unstaged or staged git diff for a coding workspace.",
             input_schema: json!({
@@ -584,8 +595,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "coding_git_stage",
             description: "Stage explicit workspace paths in git, optionally as a dry run.",
             input_schema: json!({
@@ -599,10 +610,11 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "coding_git_commit",
-            description: "Create a git commit from the currently staged index, optionally as a dry run.",
+            description:
+                "Create a git commit from the currently staged index, optionally as a dry run.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -614,8 +626,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "coding_git_log",
             description: "List recent git commits (newest first) for a coding workspace, optionally limited to a path subset.",
             input_schema: json!({
@@ -629,8 +642,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "coding_git_show",
             description: "Show a single git commit's metadata, per-file stats, and capped diff for a coding workspace.",
             input_schema: json!({
@@ -644,8 +659,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "coding_run_checks",
             description: "Run a curated project check (build/test/lint/typecheck) from a fixed allowlist inside a coding workspace and capture structured pass/fail output. Use coding_git_diff to review changes first. Known checks: cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build. Only cargo-test and vitest accept an optional filter.",
             input_schema: json!({
@@ -663,8 +680,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "coding_verify",
             description: "Run an ordered list of curated checks in one pass, stopping at the first failure unless continue_on_failure is set, and return per-check results plus an overall pass/fail. Use after applying patches and before committing. Each check is from the same allowlist as coding_run_checks.",
             input_schema: json!({
@@ -685,8 +704,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "coding_diagnostics",
             description: "Run a compiler/typechecker/linter pass (cargo check, tsc, or eslint) in a coding workspace and return structured diagnostics: a flat list of {file, line, column, severity, code, message} plus error/warning counts. Use to inspect build/type/lint errors without producing binaries. Note: this executes the project's own build/config code (cargo runs build.rs and proc-macros; tsc/eslint run the project's JS config), so it is treated as a mutating, approval-gated action. Sources: cargo (cargo check --message-format=json), tsc (tsc --noEmit), eslint (eslint -f json).",
             input_schema: json!({
@@ -705,8 +726,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             // so it is Medium (mutating-class), matching coding_run_checks, not ReadOnly.
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "coding_search",
             description: "Search the coding workspace with ripgrep and return structured matches: a flat list of {file, line, column, line_text, submatches} (file paths are workspace-relative). Respects .gitignore and skips hidden files. Use to locate symbols, identifiers, or strings before editing. The pattern is a regex by default; set fixed_strings=true for a literal search. Optionally restrict to a path subset and/or file globs.",
             input_schema: json!({
@@ -725,9 +748,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
-        },
+        }
+        }),
         // ─── Area B: system_* (clipboard/shell/archive) (T3 Gate 2) ──────────
-        ToolDef {
+        entry(|| ToolDef {
             name: "clipboard_read",
             description: "Read text from the system clipboard.",
             input_schema: json!({
@@ -736,8 +760,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Safe,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "clipboard_write",
             description: "Write text to the system clipboard.",
             input_schema: json!({
@@ -747,8 +771,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Safe,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "shell_execute",
             description: "Execute a shell command and capture output (stderr/stdout merged).",
             input_schema: json!({
@@ -762,8 +786,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "archive_compress",
             description: "Compress files into an archive (ZIP, 7z, TAR, etc.).",
             input_schema: json!({
@@ -779,8 +803,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "archive_decompress",
             description: "Extract an archive file to a local directory.",
             input_schema: json!({
@@ -795,34 +819,37 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
+        }),
         // ─── Area C: remote_* + aeroftp_* aliases (T3 Gate 2) ────────────────
-        ToolDef {
+        entry(|| {
+            ToolDef {
             name: "aeroftp_list_servers",
             description:
                 "List saved server profiles from the encrypted vault. Passwords are never exposed. Returns lean identity fields by default; pass include_capabilities:true to embed the per-profile transfer_capabilities block.",
             input_schema: list_servers_schema(),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
+        }
+        }),
         // The aliases take the same arguments: with an empty schema a model
         // never learns it can filter or page, and on a large vault it only
         // sees the first page of the list.
-        ToolDef {
+        entry(|| ToolDef {
             name: "remote_list_servers",
             description: "Alias of aeroftp_list_servers.",
             input_schema: list_servers_schema(),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "server_list_saved",
             description: "Alias of aeroftp_list_servers (legacy GUI/CLI name).",
             input_schema: list_servers_schema(),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_list_files",
             description: "List one level of a remote directory (non-recursive). Supports pagination (limit/offset), sort (name|size|mtime), reverse, files_only/dirs_only filters, and size/mtime range filters. Default limit: 200, hard cap: 5000. For a recursive listing use aeroftp_tree, which emits the same entry shape plus a `depth` field; do not issue N sequential calls here to walk a subtree.",
             input_schema: json!({
@@ -845,8 +872,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_list",
             description: "Legacy alias of aeroftp_list_files.",
             input_schema: json!({
@@ -869,8 +897,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_list_files",
             description: "Alias of aeroftp_list_files.",
             input_schema: json!({
@@ -893,8 +921,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "aeroftp_read_file",
             description: "Read a remote text file preview.",
             input_schema: json!({
@@ -908,8 +936,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_read",
             description: "Legacy alias of aeroftp_read_file.",
             input_schema: json!({
@@ -923,8 +951,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_read_file",
             description: "Alias of aeroftp_read_file.",
             input_schema: json!({
@@ -938,8 +966,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "aeroftp_file_info",
             description: "Get metadata for a remote file or directory.",
             input_schema: json!({
@@ -952,8 +980,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_info",
             description: "Legacy alias of aeroftp_file_info.",
             input_schema: json!({
@@ -966,8 +994,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_file_info",
             description: "Alias of aeroftp_file_info.",
             input_schema: json!({
@@ -980,8 +1008,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_stat",
             description: "Alias of aeroftp_file_info.",
             input_schema: json!({
@@ -994,8 +1022,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_search_files",
             description: "Search for files matching a glob pattern on a remote server. Supports pagination (limit/offset), sort (name|size|mtime), reverse, files_only/dirs_only filters, and size/mtime range filters. Default limit: 100, hard cap: 5000.",
             input_schema: json!({
@@ -1019,8 +1048,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_search",
             description: "Legacy alias of aeroftp_search_files.",
             input_schema: json!({
@@ -1044,8 +1074,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_search_files",
             description: "Alias of aeroftp_search_files.",
             input_schema: json!({
@@ -1069,8 +1099,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "aeroftp_upload_file",
             description: "Upload a local file or inline text content to a remote server.",
             input_schema: json!({
@@ -1087,8 +1117,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_upload",
             description: "Legacy alias of aeroftp_upload_file.",
             input_schema: json!({
@@ -1103,8 +1133,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_upload_file",
             description: "Alias of aeroftp_upload_file.",
             input_schema: json!({
@@ -1119,8 +1149,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "aeroftp_upload_many",
             description: "Upload multiple local files to a remote server.",
             input_schema: json!({
@@ -1134,8 +1164,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_upload_many",
             description: "Alias of aeroftp_upload_many.",
             input_schema: json!({
@@ -1149,8 +1179,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "aeroftp_download_file",
             description: "Download a remote file to a local path.",
             input_schema: json!({
@@ -1164,8 +1194,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_download",
             description: "Legacy alias of aeroftp_download_file.",
             input_schema: json!({
@@ -1179,8 +1209,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_download_file",
             description: "Alias of aeroftp_download_file.",
             input_schema: json!({
@@ -1194,8 +1224,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "aeroftp_create_directory",
             description: "Create a directory on a remote server.",
             input_schema: json!({
@@ -1208,8 +1238,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_mkdir",
             description: "Legacy alias of aeroftp_create_directory.",
             input_schema: json!({
@@ -1222,8 +1252,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_create_directory",
             description: "Alias of aeroftp_create_directory.",
             input_schema: json!({
@@ -1236,8 +1266,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_delete",
             description: "Delete one or more remote entries. Deleting a directory requires `recursive=true`; without it a non-empty directory is refused. With `dry_run=true` nothing is deleted and every entry reports `would_delete: true` plus the bytes that would be reclaimed, so a dry-run can be diffed against the real run.",
             input_schema: json!({
@@ -1254,8 +1285,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_delete_many",
             description: "Alias of aeroftp_delete_many.",
             input_schema: json!({
@@ -1271,8 +1303,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_delete",
             description: "Legacy alias of aeroftp_delete.",
             input_schema: json!({
@@ -1287,8 +1319,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_delete_many",
             description: "Batch delete remote entries. Deleting a directory requires `recursive=true`; without it a non-empty directory is refused. With `dry_run=true` nothing is deleted: every result carries `deleted: false` and `would_delete: true` plus `bytes`, in the same results/summary envelope the real run returns, so the two can be diffed.",
             input_schema: json!({
@@ -1304,8 +1337,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "aeroftp_rename",
             description: "Rename or move a file/directory on a remote server.",
             input_schema: json!({
@@ -1319,8 +1353,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "remote_rename",
             description: "Legacy alias of aeroftp_rename.",
             input_schema: json!({
@@ -1334,8 +1368,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_edit",
             description: "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories. On a server that cannot replace a file in one step the edit is refused and nothing is written. Where that server's replace sets the previous file aside (MEGA through the native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive, WebDAV), `allow_non_atomic` true accepts it: the previous file is set aside, the new one is moved into its place, and the old one is then deleted.",
             input_schema: json!({ "type": "object", "properties": {
@@ -1348,10 +1383,12 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }, "required": ["server", "path", "find", "replace"] }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_edit",
-            description: "Legacy alias of aeroftp_edit (GUI surface uses a different implementation).",
+            description:
+                "Legacy alias of aeroftp_edit (GUI surface uses a different implementation).",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string" },
                 "path": { "type": "string" },
@@ -1362,8 +1399,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }, "required": ["server", "path", "find", "replace"] }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "remote_versions",
             description: "Browse and manage a remote file's version history (S3-family and other version-aware providers). action=list returns versions newest-first ({version_id, modified, size, modified_by}); action=restore copies an older version forward to a new current version (needs version_id); action=purge permanently deletes one version (needs version_id, irreversible). Defaults to list.",
             input_schema: json!({
@@ -1378,8 +1416,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "remote_trash",
             description: "Browse and manage the S3-family soft-delete trash under a prefix (every version and delete marker from ListObjectVersions). action=list returns entries ({key, display_key, version_id, is_delete_marker, is_latest, size, last_modified}); set include_noncurrent=true to also list older versions. action=undelete drops a delete marker so the object reappears (needs key+version_id); action=restore copies an older version forward (needs key+version_id); action=purge permanently removes one version or marker (needs key+version_id); action=empty purges the whole trash under the prefix (defaults to dry_run=true, a preview that deletes nothing; a real whole-bucket purge with an empty prefix also needs confirm_whole_bucket=true). All destructive actions are irreversible. S3 only. Defaults to list.",
             input_schema: json!({
@@ -1398,8 +1438,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_storage_quota",
             description: "Get storage usage and quota for a remote server. By default returns the provider's reported quota (fast, one API call). For backends with no quota API (raw FTP/FTPS, most S3/WebDAV) set scan:true to recursively sum file sizes and get a real used figure (mirrors CLI `df --scan`); combined with a provider total it yields used/total/used_percent. The scan is bounded (depth 100, 500k entries; scan_truncated:true when a cap is hit) and never runs unless you opt in. Use full:true to scan from the account root, or path to scan a specific subtree (default '/').",
             input_schema: json!({
@@ -1414,10 +1456,12 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_storage_quota",
-            description: "Alias of aeroftp_storage_quota (supports the same scan/full/path arguments).",
+            description:
+                "Alias of aeroftp_storage_quota (supports the same scan/full/path arguments).",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -1430,8 +1474,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_hashsum",
             description: "Compute a cryptographic hash of a remote file by downloading it and hashing the bytes locally. Always transfers the file; does not use a server-side digest even when the backend has one. Hard cap: 256 MB per file (returns `error: file_too_large` above the cap). Algorithms: sha256 (default), sha1, sha512, md5, blake3.",
             input_schema: json!({
@@ -1449,8 +1494,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_hashsum",
             description: "Alias of aeroftp_hashsum.",
             input_schema: json!({
@@ -1464,8 +1510,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_head",
             description: "Return the first N lines of a remote UTF-8 text file (default 50, cap 10000). Mirrors `aeroftp head` from the CLI. Streams the file through `download_to_bytes` then splits on newlines, so non-UTF-8 bytes are replaced with U+FFFD. Hard cap on file size: 16 MB. Use aeroftp_download_file + local processing for larger files.",
             input_schema: json!({
@@ -1479,8 +1526,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_head",
             description: "Alias of aeroftp_head.",
             input_schema: json!({
@@ -1494,8 +1542,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_tail",
             description: "Return the last N lines of a remote UTF-8 text file (default 50, cap 10000). Mirrors `aeroftp tail` from the CLI. Useful for log inspection without downloading the full file. Streams the file through `download_to_bytes`. Hard cap on file size: 16 MB. Note: this is NOT a streaming `tail -f`: it is a one-shot read. For continuous follow, use the local CLI on a downloaded copy.",
             input_schema: json!({
@@ -1509,8 +1558,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_tail",
             description: "Alias of aeroftp_tail.",
             input_schema: json!({
@@ -1524,8 +1574,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_tree",
             description: "Recursively list the contents of a remote directory as a flat JSON array, bounded by max_depth and max_entries. Mirrors `aeroftp tree` from the CLI. Output is flat (each entry includes `path` and `depth`) rather than nested: agents reconstruct hierarchy from `path` if needed, which is cheaper than deep nested JSON on large trees. Defaults: max_depth=3, max_entries=500. Hard caps: max_depth=20, max_entries=5000. Use this instead of N sequential aeroftp_list_files calls when exploring a layout.",
             input_schema: json!({
@@ -1542,8 +1593,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_tree",
             description: "Alias of aeroftp_tree.",
             input_schema: json!({
@@ -1560,8 +1612,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_transfer",
             description: "Cross-profile single-file transfer between two saved server profiles. Streams source -> temp -> dest without exposing local paths to the agent. Refuses identical src/dst profiles. Mirrors `cross_profile_transfer` in the GUI; uses delta upload when the destination is SFTP key-based with rsync helper.",
             input_schema: json!({
@@ -1578,8 +1631,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_transfer",
             description: "Alias of aeroftp_transfer.",
             input_schema: json!({
@@ -1596,8 +1650,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_transfer_tree",
             description: "Cross-profile recursive directory transfer between two saved server profiles. Plans the full file set first, then copies one file at a time reusing the same source/destination connection across the whole batch. Default cap: 1000 files per call, hard cap 10000. With `dry_run=true` returns the planned file list (or summary if `summary_only=true`).",
             input_schema: json!({
@@ -1616,8 +1671,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_transfer_tree",
             description: "Alias of aeroftp_transfer_tree.",
             input_schema: json!({
@@ -1636,8 +1692,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_touch",
             description: "Create an empty file or report an existing one. If the path exists, the call is a no-op (`action=\"exists\"`); otherwise an empty zero-byte file is uploaded (`action=\"created\"`). Useful for cache-bust triggers, lock files, `.maintenance` markers, opcache reset markers. Mtime-bump on existing files is NOT supported (most providers lack a portable utime API): `touch` on existing files reports the state without modifying it.",
             input_schema: json!({
@@ -1650,8 +1707,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_touch",
             description: "Alias of aeroftp_touch.",
             input_schema: json!({
@@ -1664,8 +1722,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_cleanup",
             description: "Find and optionally remove orphan `.aerotmp` files left by interrupted uploads (proftpd / sftp atomic-write pattern). With `dry_run=true` (default) returns the list of orphan paths and total bytes; with `dry_run=false` deletes them and reports `cleaned`/`bytes_freed`. Hard cap: 100k entries scanned. Mirrors `aeroftp cleanup` from the CLI.",
             input_schema: json!({
@@ -1679,8 +1738,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_cleanup",
             description: "Alias of aeroftp_cleanup.",
             input_schema: json!({
@@ -1694,8 +1754,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_speed",
             description: "Throughput benchmark for a saved profile: uploads a random payload, downloads it back, optionally verifies SHA-256 integrity, then deletes the test artifact. Returns upload/download bps + Mbps, integrity_verified, cleanup_ok. Default size 4 MiB, max 64 MiB (MCP cap), iterations clamped 1..3 (vs CLI 1..10): agent-grade fast probe rather than long benchmark. Mirrors `aeroftp speed` from the CLI but tighter caps.",
             input_schema: json!({
@@ -1711,8 +1772,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_speed",
             description: "Alias of aeroftp_speed.",
             input_schema: json!({
@@ -1728,8 +1790,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_sync_doctor",
             description: "Preflight risk summary for a sync between a local directory and a remote one. Lighter than `aeroftp_sync_tree dry_run=true`: counts files+bytes on both sides and emits a list of human-readable risk strings (delete enabled, bidirectional with no track-renames, remote unreachable, ...) plus a `suggested_next_command` agent can echo to the user. NO file-level plan. Hard cap on remote scan: 500k entries / depth 100. Mirrors `aeroftp sync-doctor` from the CLI.",
             input_schema: json!({
@@ -1748,8 +1811,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_sync_doctor",
             description: "Alias of aeroftp_sync_doctor.",
             input_schema: json!({
@@ -1768,8 +1832,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_dedupe",
             description: "Detect duplicates on remote. similarity='exact' (default): fast path SHA-256 after size prefilter (unchanged behavior). similarity='non-identical': stage capped downloads (preserve ext for modality) then shared engine (pHash/SimHash/TLSH). Supports distance. Same modes + dry_run + caps. Returns similarity in response.",
             input_schema: json!({
@@ -1786,8 +1851,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "remote_dedupe",
             description: "Alias of aeroftp_dedupe (supports similarity + distance for Phase 3 non-identical).",
             input_schema: json!({
@@ -1804,8 +1871,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_reconcile",
             description: "Categorized diff superset of `aeroftp_check_tree`: reports the same 4 buckets (match, differ, missing_local, missing_remote) plus elapsed time and a `suggested_next_command` (CLI-style `aeroftp-cli sync` invocation). Mirrors `aeroftp reconcile` from the CLI. Use `aeroftp_check_tree` when you want the same diff with per-group caps and `summary_only` short-circuit; use `aeroftp_reconcile` when you want elapsed-time + next-command for an end-to-end agent report. NOT capped by max_entries_reported: full lists returned.",
             input_schema: json!({
@@ -1823,8 +1892,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "remote_reconcile",
             description: "Alias of aeroftp_reconcile.",
             input_schema: json!({
@@ -1842,8 +1912,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_agent_connect",
             description: "Single-shot agent connect surface. Returns one JSON payload with per-block status (`connect`, `capabilities`, `quota`, `path`) so the agent can decide go/no-go and gracefully degrade. Replaces the boilerplate sequence of `connect → about → df → ls /`. `connect.status` is the critical signal; `unsupported`/`unavailable`/`error` on other blocks are non-fatal.",
             input_schema: json!({
@@ -1853,8 +1924,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "agent_connect",
             description: "Alias of aeroftp_agent_connect.",
             input_schema: json!({
@@ -1864,8 +1936,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "server_exec",
             description: "Execute a vault-backed server operation without exposing credentials.",
             input_schema: json!({
@@ -1883,9 +1955,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::High,
             surfaces: remote_surfaces,
-        },
+        }),
         // ─── Area D: rag_*, agent_memory_* (T3 Gate 2) ──────────────
-        ToolDef {
+        entry(|| ToolDef {
             name: "rag_index",
             description: "Index a local directory for retrieval (file list with optional preview).",
             input_schema: json!({
@@ -1899,8 +1971,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "rag_search",
             description: "Full-text search inside a local directory (case-insensitive substring).",
             input_schema: json!({
@@ -1914,8 +1986,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "agent_memory_write",
             description: "Persist a categorized memory note for a project (SQLite-backed).",
             input_schema: json!({
@@ -1929,15 +2001,17 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "gui_state",
             description: "Inspect the running GUI with a redacted snapshot. Use only when the user asks to watch work in the app. No credentials or file contents.",
             input_schema: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "gui_wait",
             description: "Wait for a bounded condition in the running GUI. No headless fallback.",
             input_schema: json!({ "type": "object", "properties": {
@@ -1946,8 +2020,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }, "required": ["condition"], "additionalProperties": false }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| {
+            ToolDef {
             name: "gui_run",
             description: "Run a visible GUI navigation, selection, refresh, view, disconnect, Stop or bounded Settings action. AeroTools actions open/read/close workspace metadata or ensure editor/terminal/agent visibility without hiding existing panels. They never create terminal tabs, start shells, send chat or read/save editor contents. Security Tools blocks workspace changes. Human input interrupts control. Saved profiles connect by exact profile_id with vault credentials kept internal. Settings actions cover only the owned safe surface: open/read/update/close for allowlisted general preferences and AI provider/model enabled flags, per-provider default model and bounded generation parameters. No click, script, unlock, credential or API-key read/write, or file-write action is supported. Optional speed_percent (10-400) is allowed only on the first mutating dispatch of this session and ONLY if the user explicitly asked. Omit it otherwise. Human badge controls own later speed changes and Pause/Resume; agents cannot change those controls or Settings defaults/presets. A paused reply means no dispatch: obtain a fresh request after human Resume, never replay an in-flight action.",
             input_schema: json!({ "type": "object", "properties": {
@@ -1967,15 +2042,16 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }, "required": ["intent"], "additionalProperties": false }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| ToolDef {
             name: "set_theme",
             description: "Change the application theme.",
             input_schema: json!({ "type": "object", "properties": { "theme": {"type": "string"} }, "required": ["theme"] }),
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "app_info",
             description: "Get application version, OS, and connection status.",
             input_schema: json!({ "type": "object" }),
@@ -1985,36 +2061,37 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             // declare, and that refusal is not a fallback, so the answer never
             // arrives.
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "sync_control",
             description: "Control background sync process.",
             input_schema: json!({ "type": "object", "properties": { "action": {"type": "string"} }, "required": ["action"] }),
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "vault_peek",
             description: "Check the number of credentials in the vault without unlocking it.",
             input_schema: json!({ "type": "object", "properties": { "path": {"type": "string"} }, "required": ["path"] }),
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "cross_profile_transfer",
-            description: "Transfer files between two saved remote profiles without downloading locally.",
+            description:
+                "Transfer files between two saved remote profiles without downloading locally.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "preview_edit",
             description: "Preview a find and replace edit.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "hash_file",
             description: "Compute the hash of a local file.",
             input_schema: json!({ "type": "object" }),
@@ -2022,37 +2099,38 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             // Offered by the CLI too, over a file `local_read` can already
             // open. Same reason as `app_info` above.
             surfaces: local_surfaces,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "generate_transfer_plan",
             description: "Plan a bulk upload or download operation.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "upload_files",
             description: "Upload multiple local files to a remote directory.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "download_files",
             description: "Download multiple remote files to a local directory.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }),
+        entry(|| ToolDef {
             name: "sync_preview",
             description: "Preview a directory sync operation.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
-        },
+        }),
         // ─── Error correction: detached .aerocorrect sidecars (MCP, AeroAgent) ─
-        ToolDef {
+        entry(|| {
+            ToolDef {
             name: "aeroftp_correct_gen",
             description: "Generate a detached .aerocorrect Reed-Solomon recovery sidecar for a local file (par2-style). Writes <file>.aerocorrect by default. Use this to protect a file against bit rot before storing or transferring it.",
             input_schema: json!({
@@ -2066,8 +2144,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI | Surfaces::MCP,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_correct_verify",
             description: "Verify a local file against its .aerocorrect sidecar (read-only, never mutates the file). Returns verified=true if intact or status=needs_repair if corruption is detected.",
             input_schema: json!({
@@ -2080,8 +2160,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI | Surfaces::MCP,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_correct_repair",
             description: "Repair a corrupted local file in place from its .aerocorrect sidecar (atomic, all-or-nothing; rebuilt bytes are re-verified against the bound content hash before replacing the original, so a bad sidecar can only fail, never corrupt). An already-intact file is reported verified with no write.",
             input_schema: json!({
@@ -2095,12 +2177,14 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI | Surfaces::MCP,
-        },
+        }
+        }),
         // ─── Measurement and engine telemetry (AeroAgent) ───────────────────
         // The MCP server serves its own definitions of both names (the
         // benchmark through the CLI binary, which is the MCP process), so the
         // entries here are for the GUI only.
-        ToolDef {
+        entry(|| {
+            ToolDef {
             name: "aeroftp_benchmark",
             description: "Run the AeroFTP community benchmark suite against a saved profile and return the schema-v1 JSON report, the same report `aeroftp-cli benchmark` produces. The report is anonymized (no hostnames, paths, credentials or bucket names). Writes its test files in an `aeroftp-bench` folder under the profile's start path and removes them at the end, also when the turn is stopped. Long-running: 'quick' ~30s, 'standard' ~5min, 'deep' ~30min; progress is shown while it runs.",
             input_schema: json!({
@@ -2119,14 +2203,17 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
-        },
-        ToolDef {
+        }
+        }),
+        entry(|| {
+            ToolDef {
             name: "aeroftp_transfer_stats",
             description: "Return the engine-level telemetry of the most recent DAG-engine transfer job in this app: byte triple (logical/wire/local-payload), retries, dispatch wait and runner nanos, concurrency high-water (slot_peak), time-to-first-byte totals, real wall-clock duration, and the process CPU/RSS/FD delta bracketing the job. Read-only, no arguments. Returns {available:false} when no such job has run yet.",
             input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
-        },
+        }
+        }),
     ]
 });
 
