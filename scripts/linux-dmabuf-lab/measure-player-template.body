@@ -8,13 +8,30 @@ while(!document.querySelector('#row56-player canvas')) {if(Date.now()>endReady)t
 await new Promise(r=>setTimeout(r,350));
 const c=document.querySelector('#row56-player canvas'),g=kind==='webgl'?c.getContext('webgl2'):null;
 if(kind==='webgl'&&!g)throw Error('No WebGL2 context');
+function shaderState() {
+ const renderedText=document.querySelector('#row56-player').innerText;
+ // The component renders its error overlay beside the GL label.
+ if(renderedText.trim()!=='GL')throw Error(`Shader component error: ${renderedText}`);
+ const program=g.getParameter(g.CURRENT_PROGRAM);
+ const programLinked=program?g.getProgramParameter(program,g.LINK_STATUS):false;
+ const attached=program?g.getAttachedShaders(program)||[]:[];
+ const shaderCompiled=attached.map(s=>g.getShaderParameter(s,g.COMPILE_STATUS));
+ const fragment=attached.find(s=>g.getShaderParameter(s,g.SHADER_TYPE)===g.FRAGMENT_SHADER);
+ const fragmentCompiled=!!fragment&&g.getShaderParameter(fragment,g.COMPILE_STATUS);
+ const expectedSource=window.__row56.shaderSources[mode];
+ const fragmentMatchesMode=!!fragment&&typeof expectedSource==='string'&&g.getShaderSource(fragment)===expectedSource;
+ if(!programLinked||shaderCompiled.length!==2||!shaderCompiled.every(Boolean)||!fragmentCompiled||!fragmentMatchesMode)throw Error(`Requested shader is not active and compiled: ${mode}`);
+ return {programLinked,shaderCompiled,fragmentCompiled,fragmentMatchesMode};
+}
+// Refuse a stale program before counting frames, and recheck after sampling.
+if(kind==='webgl')shaderState();
 let frames=0,previous=performance.now(),start=previous;const delta=[];
 while(performance.now()-start<6000){const now=await new Promise(requestAnimationFrame);delta.push(now-previous);previous=now;frames++;}
 delta.sort((a,b)=>a-b);
 const glError=g?.getError(),lost=g?.isContextLost();
-const program=g?.getParameter(g.CURRENT_PROGRAM);const programLinked=program?g.getProgramParameter(program,g.LINK_STATUS):null;const shaderCompiled=program?g.getAttachedShaders(program).map(s=>g.getShaderParameter(s,g.COMPILE_STATUS)):null;
+const {programLinked,shaderCompiled,fragmentCompiled,fragmentMatchesMode}=kind==='webgl'?shaderState():{programLinked:null,shaderCompiled:null,fragmentCompiled:null,fragmentMatchesMode:null};
 const renderedText=document.querySelector("#row56-player").innerText;
 let pixelSummary=null;
 if(kind==='canvas') {const data=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let min=255,max=0,coloured=0;for(let i=0;i<data.length;i+=4){min=Math.min(min,data[i],data[i+1],data[i+2]);max=Math.max(max,data[i],data[i+1],data[i+2]);if(Math.max(data[i],data[i+1],data[i+2])-Math.min(data[i],data[i+1],data[i+2])>25)coloured++;}pixelSummary={min,max,colouredPixels:coloured};}
 const durationMs=performance.now()-start;
-return {kind,mode,frames,durationMs,fps:frames/(durationMs/1000),p50:delta[Math.floor(delta.length*.5)],p95:delta[Math.floor(delta.length*.95)],over33ms:delta.filter(x=>x>33.4).length,canvas:[c.width,c.height],glError,programLinked,shaderCompiled,renderedText,contextLost:lost,contextLostEvents:window.__row56.lost.count,pixelSummary,newErrors:window.__row56.errors.slice(errorsBefore)};
+return {kind,mode,frames,durationMs,fps:frames/(durationMs/1000),p50:delta[Math.floor(delta.length*.5)],p95:delta[Math.floor(delta.length*.95)],over33ms:delta.filter(x=>x>33.4).length,canvas:[c.width,c.height],glError,programLinked,shaderCompiled,fragmentCompiled,fragmentMatchesMode,renderedText,contextLost:lost,contextLostEvents:window.__row56.lost.count,pixelSummary,newErrors:window.__row56.errors.slice(errorsBefore)};

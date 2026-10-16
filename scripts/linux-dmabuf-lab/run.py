@@ -218,7 +218,7 @@ try:
                     receipt = json.loads((root / 'evidence' / f'{mode}-{kind}-{name}.json').read_text())['value']
                     if receipt['newErrors'] or receipt['contextLostEvents']:
                         raise RuntimeError(f'{mode}/{kind}/{name}: page errors or lost GPU context')
-                    if kind == 'webgl' and (receipt['glError'] != 0 or not receipt['programLinked'] or not all(receipt['shaderCompiled'] or [])):
+                    if kind == 'webgl' and (receipt['glError'] != 0 or not receipt['programLinked'] or not receipt['fragmentCompiled'] or not receipt['fragmentMatchesMode'] or len(receipt['shaderCompiled'] or []) != 2 or not all(receipt['shaderCompiled'] or [])):
                         raise RuntimeError(f'{mode}/{kind}/{name}: shader or GL assertion failed')
                     if kind == 'canvas' and not receipt['pixelSummary']['colouredPixels']:
                         raise RuntimeError(f'{mode}/{kind}/{name}: no coloured canvas content')
