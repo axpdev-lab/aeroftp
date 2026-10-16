@@ -8,6 +8,7 @@
 #
 # Usage: ./run-matrix.sh <aeroftp-cli> <label> [server...]
 # Results: results/<label>.tsv (one line per run) and results/<label>/ logs.
+# Exits nonzero when any run failed or any file did not match.
 set -u
 cd "$(dirname "$0")"
 CLI=$1
@@ -29,6 +30,7 @@ TSV=results/$LABEL.tsv
 [ -f "$TSV" ] || printf 'utc\tserver\tscenario\trc\tfiles_ok\tfiles\twall\tpeak_rss_kb\tsftp_channels\n' > "$TSV"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
+FAILED=0
 
 channels() { # SFTP channels opened so far on an OpenSSH server, "-" elsewhere
     case $1 in
@@ -69,6 +71,7 @@ run() { # server scenario prefix -- cli args...
     [ "$before" != - ] && opened=$((after - before))
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%H:%M:%SZ)" "$server" "$scenario" \
         "$rc" "$ok" "$total" "$wall" "$rss" "$opened" | tee -a "$TSV"
+    if [ "$rc" != 0 ] || [ "$ok" != "$total" ]; then FAILED=$((FAILED + 1)); fi
 }
 
 for server in "${SERVERS[@]}"; do
@@ -80,3 +83,7 @@ for server in "${SERVERS[@]}"; do
     run "$server" edges edges/ -- get -r "$url" /data/edges "$WORK/dl"
     run "$server" small-100 small/ -- get -r "$url" /data/small "$WORK/dl"
 done
+if [ "$FAILED" != 0 ]; then
+    echo "$FAILED run(s) failed" >&2
+    exit 1
+fi

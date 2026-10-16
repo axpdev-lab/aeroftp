@@ -8,6 +8,7 @@
 #
 # Usage: ./stress-matrix.sh <aeroftp-cli> <label> [server...]
 # Results: results/<label>-stress.tsv and results/<label>-stress/ logs.
+# Exits nonzero when any case failed.
 set -u
 cd "$(dirname "$0")"
 CLI=$1
@@ -29,7 +30,12 @@ port_of() {
     esac
 }
 sum_of() { grep -F "  ./$1" generated/payload.sha256 | head -1 | cut -d' ' -f1; }
-record() { printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%H:%M:%SZ)" "$1" "$2" "$3" "$4" | tee -a "$TSV"; }
+FAILED=0
+record() {
+    printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%H:%M:%SZ)" "$1" "$2" "$3" "$4" | tee -a "$TSV"
+    [ "$3" = FAIL ] && FAILED=$((FAILED + 1))
+    return 0
+}
 cli() { timeout "${TIMEOUT:-600}" "$CLI" --no-banner --key ssh_key --trust-host-key "$@"; }
 leftovers() { find "$1" -name '*.aerotmp' -o -name '*.aeroardtmp' -o -name '*.aerosegtmp' -o -name '*.aerosrctmp' | wc -l; }
 
@@ -73,22 +79,53 @@ for server in "${SERVERS[@]}"; do
     fi
 
     # Cancelled at random moments: no temporary left, the next download whole.
+    # A run that finished before its signal exercised nothing and is counted
+    # apart; one that ignores SIGINT is killed 30 s later and counts as bad.
+    # The signal lands at a random moment inside the time one whole
+    # download takes on this server, so most runs are cut mid-flight.
+    rm -rf "$WORK/d" && mkdir -p "$WORK/d"
+    t0=$(date +%s.%N)
+    cli --multi-thread-streams 4 --multi-thread-cutoff 32M get "$url" /data/big.bin "$WORK/d/out.bin" > /dev/null 2>&1
+    span=$(awk -v a="$t0" -v b="$(date +%s.%N)" 'BEGIN { printf "%.2f", b - a }')
     bad=0
+    cancelled=0
+    finished=0
     for i in $(seq 12); do
         rm -rf "$WORK/d" && mkdir -p "$WORK/d"
-        delay=$(awk -v s="$RANDOM" 'BEGIN { srand(s); printf "%.2f", 0.05 + rand() * 1.2 }')
-        timeout -s INT "$delay" "$CLI" --no-banner --key ssh_key --trust-host-key --multi-thread-streams 4 \
-            --multi-thread-cutoff 32M get "$url" /data/big.bin "$WORK/d/out.bin" > "$OUT/$server-cancel-$i.log" 2>&1
+        delay=$(awk -v s="$RANDOM" -v span="$span" 'BEGIN { srand(s); printf "%.3f", 0.02 + rand() * span }')
+        # SIGINT by hand, then 30 s to exit before SIGKILL. Not timeout -k:
+        # the uutils timeout (Ubuntu's coreutils now) sends KILL at once
+        # with -k, so the client never gets to clean up.
+        "$CLI" --no-banner --key ssh_key --trust-host-key --multi-thread-streams 4 \
+            --multi-thread-cutoff 32M get "$url" /data/big.bin "$WORK/d/out.bin" > "$OUT/$server-cancel-$i.log" 2>&1 &
+        pid=$!
+        sleep "$delay"
+        kill -INT "$pid" 2>/dev/null
+        waited=0
+        while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 300 ]; do sleep 0.1; waited=$((waited + 1)); done
+        ignored=0
+        if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null; ignored=1; fi
+        wait "$pid"
         rc=$?
         sleep 0.3
+        if [ "$ignored" = 1 ]; then
+            cancelled=$((cancelled + 1)); bad=$((bad + 1))
+            echo "run $i: SIGINT after ${delay}s was ignored for 30 s, killed" >> "$OUT/$server-cancel-leftovers.txt"
+        elif [ "$rc" = 0 ]; then
+            finished=$((finished + 1))
+        else
+            cancelled=$((cancelled + 1))
+        fi
         if [ "$(leftovers "$WORK/d")" != 0 ]; then
             bad=$((bad + 1))
             left=$(find "$WORK/d" -type f -printf '%f:%s ' | cut -c1-120)
             echo "run $i: SIGINT after ${delay}s, rc=$rc, left: $left" >> "$OUT/$server-cancel-leftovers.txt"
         fi
     done
-    if [ $bad = 0 ]; then
-        record "$server" cancel-x12 PASS "no temporary left"
+    if [ $cancelled = 0 ]; then
+        record "$server" cancel-x12 FAIL "no run was cancelled ($finished finished before the signal)"
+    elif [ $bad = 0 ]; then
+        record "$server" cancel-x12 PASS "$cancelled cancelled within ${span}s, no temporary left ($finished finished first)"
     else
         record "$server" cancel-x12 FAIL "$bad runs left a temporary: $(tail -1 "$OUT/$server-cancel-leftovers.txt")"
     fi
@@ -148,12 +185,16 @@ if printf '%s\n' "${SERVERS[@]}" | grep -qx openssh; then
     wait $pid
     rc=$?
     got=$(sha256sum "$WORK/d/out.bin" 2>/dev/null | cut -d' ' -f1)
-    if [ $rc != 0 ] && [ ! -e "$WORK/d/out.bin" ]; then
+    if [ $rc != 0 ] && [ ! -e "$WORK/d/out.bin" ] && [ "$(leftovers "$WORK/d")" = 0 ]; then
         record openssh replaced-mid-transfer PASS "refused rc=$rc: $(grep -m1 -oE 'changed while[^.]*' "$OUT/openssh-replaced.log" | cut -c1-80)"
     elif [ $rc = 0 ] && { [ "$got" = "$old" ] || [ "$got" = "$new" ]; }; then
         record openssh replaced-mid-transfer PASS "one whole version: $([ "$got" = "$old" ] && echo old || echo new)"
     else
-        record openssh replaced-mid-transfer FAIL "rc=$rc, published bytes match neither version"
+        record openssh replaced-mid-transfer FAIL "rc=$rc, out=$([ -e "$WORK/d/out.bin" ] && echo present || echo absent), temps=$(leftovers "$WORK/d"), bytes match neither version"
     fi
     docker exec "$C" tc qdisc del dev eth0 root 2>/dev/null
+fi
+if [ "$FAILED" != 0 ]; then
+    echo "$FAILED case(s) failed" >&2
+    exit 1
 fi
