@@ -2487,15 +2487,29 @@ fn is_pacman_system(path_exists: impl Fn(&str) -> bool) -> bool {
 /// process inherits the two variables (WebKit's processes, or an AeroFTP
 /// installed from a package and started from another AppImage, a terminal
 /// say), so they count only when this executable is inside `APPDIR`.
+///
+/// The three paths are compared as `resolve` gives them, the real path with
+/// every symlink followed. The runtime builds `APPDIR` from `TMPDIR` as it
+/// finds it, while the kernel reports this executable through the links:
+/// with `TMPDIR=/home/me/tmp` a link to `/mnt/tmp`, `APPDIR` is
+/// `/home/me/tmp/.mount_...` and the executable `/mnt/tmp/.mount_...`. A path
+/// that does not resolve is not an AppImage (fail closed). `APPIMAGE` is
+/// resolved too, so an update replaces the file itself, never a link to it.
 fn running_appimage(
     appimage: Option<&std::ffi::OsStr>,
     appdir: Option<&std::ffi::OsStr>,
     current_exe: &Path,
+    resolve: impl Fn(&Path) -> Option<PathBuf>,
 ) -> Option<PathBuf> {
     let appimage = Path::new(appimage.filter(|value| !value.is_empty())?);
     let appdir = Path::new(appdir.filter(|value| !value.is_empty())?);
-    (appimage.is_absolute() && appdir.is_absolute() && current_exe.starts_with(appdir))
-        .then(|| appimage.to_path_buf())
+    if !appimage.is_absolute() || !appdir.is_absolute() {
+        return None;
+    }
+    let appdir = resolve(appdir)?;
+    let current_exe = resolve(current_exe)?;
+    let appimage = resolve(appimage)?;
+    current_exe.starts_with(&appdir).then_some(appimage)
 }
 
 /// [`running_appimage`] for this process.
@@ -2505,6 +2519,7 @@ fn current_appimage() -> Option<PathBuf> {
         std::env::var_os("APPIMAGE").as_deref(),
         std::env::var_os("APPDIR").as_deref(),
         &current_exe,
+        |path| std::fs::canonicalize(path).ok(),
     )
 }
 
@@ -3070,6 +3085,85 @@ async fn clear_update_marker(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Puts a copy of `source` in place of `target`, which keeps naming a whole
+/// file at every instant: the old one until the last step, the new one after.
+/// The copy is staged next to `target` (same filesystem), made executable,
+/// flushed to disk, then renamed over `target` in one atomic step. Moving
+/// `target` aside first, as the AppImage update did, left no file at the
+/// launch path when the process died between the two renames, and only a
+/// hidden `.backup` to restore by hand. `rename` is the final step, a
+/// parameter so a test can look at the files at that moment.
+///
+/// The staged name is fixed and sits in the AppImage's folder, which another
+/// user may be able to write. Whatever is already there is removed (a link
+/// itself, not what it points to), and the copy goes only into a file this
+/// call creates: `create_new` fails on anything placed there in between, so
+/// a planted link can never receive the update or its executable bit.
+fn replace_file_in_place(
+    source: &Path,
+    target: &Path,
+    rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<(), String> {
+    let name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Failed to resolve the AppImage file name".to_string())?;
+    let parent = target
+        .parent()
+        .ok_or_else(|| "Failed to resolve AppImage directory".to_string())?;
+    let staged = parent.join(format!(".{}.update", name));
+
+    let installed = (|| {
+        match std::fs::remove_file(&staged) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "Failed to clear a stale AppImage update: {}",
+                    error
+                ))
+            }
+        }
+        let mut staged_file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)
+            .map_err(|error| format!("Failed to stage AppImage update: {}", error))?;
+        let mut downloaded = std::fs::File::open(source)
+            .map_err(|error| format!("Failed to read the AppImage update: {}", error))?;
+        std::io::copy(&mut downloaded, &mut staged_file)
+            .map_err(|error| format!("Failed to stage AppImage update: {}", error))?;
+        // Through the handle this call created, never through the name.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            staged_file
+                .set_permissions(std::fs::Permissions::from_mode(0o755))
+                .map_err(|error| format!("Failed to set AppImage permissions: {}", error))?;
+        }
+        staged_file
+            .sync_all()
+            .map_err(|error| format!("Failed to flush the AppImage update: {}", error))?;
+        drop(staged_file);
+        rename(&staged, target)
+            .map_err(|error| format!("Failed to install new AppImage: {}", error))
+    })();
+    if installed.is_err() {
+        let _ = std::fs::remove_file(&staged);
+        return installed;
+    }
+
+    // Make the rename itself durable, then drop the backup an earlier version
+    // left when it was stopped between its two renames: the launch path holds
+    // the new file now. Both best-effort, the update is in place.
+    #[cfg(unix)]
+    if let Ok(directory) = std::fs::File::open(parent) {
+        let _ = directory.sync_all();
+    }
+    let _ = std::fs::remove_file(parent.join(format!(".{}.backup", name)));
+    Ok(())
+}
+
 /// Replace current AppImage with downloaded update and restart
 #[tauri::command]
 async fn install_appimage_update(
@@ -3092,42 +3186,10 @@ async fn install_appimage_update(
     // inside the read-only mount, and replacing it would update nothing.
     let current_appimage = current_appimage()
         .ok_or_else(|| "This process was not started from an AppImage".to_string())?;
-    let current_name = current_appimage
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "Failed to resolve the AppImage file name".to_string())?;
 
-    let current_parent = current_appimage
-        .parent()
-        .ok_or_else(|| "Failed to resolve AppImage directory".to_string())?;
-    let staged_path = current_parent.join(format!(".{}.update", current_name));
-    let backup_path = current_parent.join(format!(".{}.backup", current_name));
-
-    if backup_path.exists() {
-        std::fs::remove_file(&backup_path)
-            .map_err(|error| format!("Failed to remove stale AppImage backup: {}", error))?;
-    }
-
-    std::fs::copy(&downloaded, &staged_path)
-        .map_err(|error| format!("Failed to stage AppImage update: {}", error))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let permissions = std::fs::Permissions::from_mode(0o755);
-        std::fs::set_permissions(&staged_path, permissions)
-            .map_err(|error| format!("Failed to set AppImage permissions: {}", error))?;
-    }
-
-    std::fs::rename(&current_appimage, &backup_path)
-        .map_err(|error| format!("Failed to move current AppImage aside: {}", error))?;
-
-    if let Err(error) = std::fs::rename(&staged_path, &current_appimage) {
-        let _ = std::fs::rename(&backup_path, &current_appimage);
-        return Err(format!("Failed to install new AppImage: {}", error));
-    }
-
-    let _ = std::fs::remove_file(&backup_path);
+    replace_file_in_place(&downloaded, &current_appimage, |from, to| {
+        std::fs::rename(from, to)
+    })?;
 
     // Issue #176: the downloaded AppImage was copied (not moved) into the
     // running install location, so the source in our staging dir is now
@@ -23000,6 +23062,15 @@ mod appimage_install_format_tests {
     const FILE: &str = "/home/me/Apps/AeroFTP_4.2.3_amd64.AppImage";
     const MOUNT: &str = "/tmp/.mount_AeroFTibMhaa";
 
+    /// For paths that name no real file: each one taken as its own real path.
+    fn as_given(path: &Path) -> Option<PathBuf> {
+        Some(path.to_path_buf())
+    }
+
+    fn real_path(path: &Path) -> Option<PathBuf> {
+        std::fs::canonicalize(path).ok()
+    }
+
     /// What the 4.2.3 AppImage process actually has (measured): the variables
     /// the runtime sets, and an executable inside the mount that names neither
     /// the file nor the format. The old check read only that path and
@@ -23011,6 +23082,7 @@ mod appimage_install_format_tests {
                 Some(OsStr::new(FILE)),
                 Some(OsStr::new(MOUNT)),
                 Path::new("/tmp/.mount_AeroFTibMhaa/usr/lib/aeroftp/aeroftp.bin"),
+                as_given,
             ),
             Some(PathBuf::from(FILE))
         );
@@ -23030,7 +23102,8 @@ mod appimage_install_format_tests {
                 running_appimage(
                     Some(OsStr::new(FILE)),
                     Some(OsStr::new(MOUNT)),
-                    Path::new(exe)
+                    Path::new(exe),
+                    as_given,
                 ),
                 None,
                 "{exe}"
@@ -23043,18 +23116,276 @@ mod appimage_install_format_tests {
         let exe = Path::new("/tmp/.mount_AeroFTibMhaa/usr/lib/aeroftp/aeroftp.bin");
         let file = Some(OsStr::new(FILE));
         let mount = Some(OsStr::new(MOUNT));
-        assert_eq!(running_appimage(None, mount, exe), None);
-        assert_eq!(running_appimage(file, None, exe), None);
-        assert_eq!(running_appimage(Some(OsStr::new("")), mount, exe), None);
-        assert_eq!(running_appimage(file, Some(OsStr::new("")), exe), None);
+        assert_eq!(running_appimage(None, mount, exe, as_given), None);
+        assert_eq!(running_appimage(file, None, exe, as_given), None);
         assert_eq!(
-            running_appimage(Some(OsStr::new("AeroFTP.AppImage")), mount, exe),
+            running_appimage(Some(OsStr::new("")), mount, exe, as_given),
             None
         );
         assert_eq!(
-            running_appimage(file, Some(OsStr::new("tmp/.mount_AeroFTibMhaa")), exe),
+            running_appimage(file, Some(OsStr::new("")), exe, as_given),
             None
         );
+        assert_eq!(
+            running_appimage(Some(OsStr::new("AeroFTP.AppImage")), mount, exe, as_given),
+            None
+        );
+        assert_eq!(
+            running_appimage(
+                file,
+                Some(OsStr::new("tmp/.mount_AeroFTibMhaa")),
+                exe,
+                as_given
+            ),
+            None
+        );
+    }
+
+    /// A file system laid out like a run with `TMPDIR` behind a symlink:
+    /// `link -> real`, the mount under `real`, the AppImage elsewhere.
+    struct LinkedTmpdir {
+        _root: tempfile::TempDir,
+        appimage: PathBuf,
+        appdir_through_link: PathBuf,
+        exe_as_the_kernel_reports_it: PathBuf,
+    }
+
+    fn linked_tmpdir() -> LinkedTmpdir {
+        let root = tempfile::tempdir().expect("temp dir");
+        let base = std::fs::canonicalize(root.path()).expect("real temp dir");
+        let real = base.join("real");
+        let mount = real.join(".mount_AeroFTibMhaa");
+        let exe_dir = mount.join("usr/lib/aeroftp");
+        std::fs::create_dir_all(&exe_dir).expect("mount dirs");
+        let exe = exe_dir.join("aeroftp.bin");
+        std::fs::write(&exe, b"").expect("exe");
+        std::os::unix::fs::symlink(&real, base.join("link")).expect("tmpdir link");
+        let apps = base.join("Apps");
+        std::fs::create_dir_all(&apps).expect("apps dir");
+        let appimage = apps.join("AeroFTP_4.2.4_amd64.AppImage");
+        std::fs::write(&appimage, b"appimage").expect("appimage");
+        LinkedTmpdir {
+            _root: root,
+            appimage,
+            appdir_through_link: base.join("link/.mount_AeroFTibMhaa"),
+            exe_as_the_kernel_reports_it: exe,
+        }
+    }
+
+    /// The runtime builds `APPDIR` from `TMPDIR` as given, the kernel reports
+    /// the executable with the links followed: compared as written, the
+    /// executable is not inside `APPDIR` and the AppImage reported `deb`.
+    #[test]
+    fn a_tmpdir_behind_a_symlink_still_holds_the_mount() {
+        let fs = linked_tmpdir();
+        let appimage = Some(fs.appimage.as_os_str());
+        let appdir = Some(fs.appdir_through_link.as_os_str());
+        assert_eq!(
+            running_appimage(appimage, appdir, &fs.exe_as_the_kernel_reports_it, as_given),
+            None,
+            "the lexical comparison is what failed"
+        );
+        assert_eq!(
+            running_appimage(
+                appimage,
+                appdir,
+                &fs.exe_as_the_kernel_reports_it,
+                real_path
+            ),
+            Some(fs.appimage.clone())
+        );
+    }
+
+    /// An update replaces the file `running_appimage` returns: a link there
+    /// would be replaced by the new file and the AppImage it named left old.
+    #[test]
+    fn an_appimage_named_through_a_link_resolves_to_the_file() {
+        let fs = linked_tmpdir();
+        let link = fs.appimage.with_file_name("AeroFTP.AppImage");
+        std::os::unix::fs::symlink(&fs.appimage, &link).expect("appimage link");
+        assert_eq!(
+            running_appimage(
+                Some(link.as_os_str()),
+                Some(fs.appdir_through_link.as_os_str()),
+                &fs.exe_as_the_kernel_reports_it,
+                real_path
+            ),
+            Some(fs.appimage.clone())
+        );
+    }
+
+    #[test]
+    fn a_path_that_does_not_resolve_is_not_an_appimage() {
+        let fs = linked_tmpdir();
+        let gone_mount = fs.appdir_through_link.with_file_name(".mount_gone");
+        let gone_file = fs.appimage.with_file_name("gone.AppImage");
+        let exe = &fs.exe_as_the_kernel_reports_it;
+        assert_eq!(
+            running_appimage(
+                Some(fs.appimage.as_os_str()),
+                Some(gone_mount.as_os_str()),
+                exe,
+                real_path
+            ),
+            None
+        );
+        assert_eq!(
+            running_appimage(
+                Some(gone_file.as_os_str()),
+                Some(fs.appdir_through_link.as_os_str()),
+                exe,
+                real_path
+            ),
+            None
+        );
+    }
+}
+
+#[cfg(test)]
+mod appimage_swap_tests {
+    use super::replace_file_in_place;
+    use std::cell::Cell;
+    use std::path::{Path, PathBuf};
+
+    struct Install {
+        _root: tempfile::TempDir,
+        dir: PathBuf,
+        target: PathBuf,
+        source: PathBuf,
+    }
+
+    fn install() -> Install {
+        let root = tempfile::tempdir().expect("temp dir");
+        let dir = root.path().join("Apps");
+        std::fs::create_dir_all(&dir).expect("apps dir");
+        let target = dir.join("AeroFTP.AppImage");
+        std::fs::write(&target, b"old appimage").expect("old");
+        let source = root.path().join("downloaded.AppImage");
+        std::fs::write(&source, b"new appimage, longer").expect("new");
+        Install {
+            _root: root,
+            dir,
+            target,
+            source,
+        }
+    }
+
+    fn names_in(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .expect("list")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn an_update_replaces_the_file_and_leaves_nothing_beside_it() {
+        let fs = install();
+        // What an earlier version left when it was stopped between its renames.
+        std::fs::write(fs.dir.join(".AeroFTP.AppImage.backup"), b"old").expect("backup");
+        replace_file_in_place(&fs.source, &fs.target, |from, to| std::fs::rename(from, to))
+            .expect("installed");
+        assert_eq!(
+            std::fs::read(&fs.target).expect("read"),
+            b"new appimage, longer"
+        );
+        assert_eq!(names_in(&fs.dir), vec!["AeroFTP.AppImage".to_string()]);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&fs.target)
+                .expect("meta")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o755);
+        }
+    }
+
+    /// A process can be stopped between any two steps. The only step that
+    /// touches the launch path is one rename of the complete staged copy over
+    /// it, so before it the old file is whole there and after it the new one.
+    /// The update used to move the old file aside first: stopped there, the
+    /// launch path named nothing.
+    #[test]
+    fn the_launch_path_holds_a_whole_file_at_every_step() {
+        let fs = install();
+        let renames = Cell::new(0);
+        replace_file_in_place(&fs.source, &fs.target, |from, to| {
+            renames.set(renames.get() + 1);
+            assert_eq!(
+                to,
+                fs.target.as_path(),
+                "only the launch path is renamed onto"
+            );
+            assert_eq!(
+                std::fs::read(&fs.target).expect("the launch path is still there"),
+                b"old appimage"
+            );
+            assert_eq!(
+                std::fs::read(from).expect("staged copy"),
+                b"new appimage, longer"
+            );
+            std::fs::rename(from, to)
+        })
+        .expect("installed");
+        assert_eq!(renames.get(), 1);
+    }
+
+    /// The staged name is fixed and sits in the AppImage's folder, which
+    /// another user may be able to write. A link planted there sent the copy,
+    /// and then the executable bit, to the file it pointed at.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_at_the_staged_name_is_never_written_through() {
+        use std::os::unix::fs::PermissionsExt;
+        let fs = install();
+        let elsewhere = tempfile::tempdir().expect("temp dir");
+        let victim = elsewhere.path().join("victim.txt");
+        std::fs::write(&victim, b"someone else's file").expect("victim");
+        std::fs::set_permissions(&victim, std::fs::Permissions::from_mode(0o644)).expect("mode");
+        std::os::unix::fs::symlink(&victim, fs.dir.join(".AeroFTP.AppImage.update")).expect("link");
+        replace_file_in_place(&fs.source, &fs.target, |from, to| std::fs::rename(from, to))
+            .expect("installed");
+        assert_eq!(
+            std::fs::read(&victim).expect("victim"),
+            b"someone else's file"
+        );
+        let mode = std::fs::metadata(&victim)
+            .expect("meta")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o644);
+        assert_eq!(
+            std::fs::read(&fs.target).expect("read"),
+            b"new appimage, longer"
+        );
+        assert_eq!(names_in(&fs.dir), vec!["AeroFTP.AppImage".to_string()]);
+    }
+
+    #[test]
+    fn a_failed_install_keeps_the_old_file_and_removes_the_staged_copy() {
+        let fs = install();
+        let refused = replace_file_in_place(&fs.source, &fs.target, |_, _| {
+            Err(std::io::Error::other("rename refused"))
+        });
+        assert!(refused.expect_err("fails").contains("rename refused"));
+        assert_eq!(std::fs::read(&fs.target).expect("read"), b"old appimage");
+        assert_eq!(names_in(&fs.dir), vec!["AeroFTP.AppImage".to_string()]);
+
+        let missing = fs.source.with_file_name("not-downloaded.AppImage");
+        assert!(
+            replace_file_in_place(&missing, &fs.target, |from, to| std::fs::rename(from, to))
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&fs.target).expect("read"), b"old appimage");
+        assert_eq!(names_in(&fs.dir), vec!["AeroFTP.AppImage".to_string()]);
     }
 }
 
