@@ -455,24 +455,36 @@ struct ClaimLock {
 const CLAIM_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// The lock file, in a folder every process of this user that shares the
-/// keyring sees whatever its config folder: the per-user runtime folder on
-/// Linux (in a Flatpak the per-app one, which its instances share), otherwise
-/// the temporary folder, which is per user on macOS and Windows.
+/// keyring sees whatever its config folder.
 fn claim_lock_path() -> PathBuf {
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .filter(|dir| dir.is_dir());
-    let flatpak_app = std::env::var_os("FLATPAK_ID")
-        .zip(runtime.clone())
-        .map(|(id, dir)| dir.join("app").join(id))
-        .filter(|dir| dir.is_dir());
-    let dir = flatpak_app.or(runtime).unwrap_or_else(std::env::temp_dir);
+    let dir = claim_lock_dir(
+        std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from),
+        std::env::var_os("FLATPAK_ID"),
+        std::env::temp_dir(),
+    );
     #[cfg(unix)]
     // SAFETY: getuid never fails and has no preconditions.
     let name = format!("aeroftp-keyring-{}.lock", unsafe { libc::getuid() });
     #[cfg(not(unix))]
     let name = "aeroftp-keyring.lock".to_string();
     dir.join(name)
+}
+
+/// The per-user runtime folder on Linux; in a Flatpak the per-app one under
+/// it, which the app's instances share while each sees its own runtime
+/// folder. Without a runtime folder, the temporary folder, which is per user
+/// on macOS and Windows.
+fn claim_lock_dir(
+    runtime: Option<PathBuf>,
+    flatpak_id: Option<std::ffi::OsString>,
+    temp: PathBuf,
+) -> PathBuf {
+    let runtime = runtime.filter(|dir| dir.is_dir());
+    let flatpak_app = flatpak_id
+        .zip(runtime.clone())
+        .map(|(id, dir)| dir.join("app").join(id))
+        .filter(|dir| dir.is_dir());
+    flatpak_app.or(runtime).unwrap_or(temp)
 }
 
 /// Lock `path` exclusively, waiting up to `wait` for another holder. The OS
@@ -2135,9 +2147,9 @@ mod tests {
 
     mod keyring_slots {
         use super::super::{
-            acquire_claim_lock, claim_slot_in, load_passphrase_in, release_slot_in, ClaimLock,
-            CredentialError, KeyringSlot, PassphraseSlots, SlotContent, VaultKeyFile, VaultKeyMode,
-            BASE64, PASSPHRASE_LEN,
+            acquire_claim_lock, claim_lock_dir, claim_slot_in, load_passphrase_in, release_slot_in,
+            ClaimLock, CredentialError, KeyringSlot, PassphraseSlots, SlotContent, VaultKeyFile,
+            VaultKeyMode, BASE64, PASSPHRASE_LEN,
         };
         use base64::Engine as _;
         use std::cell::{Cell, RefCell};
@@ -2429,6 +2441,40 @@ mod tests {
 
             drop(first);
             assert!(acquire_claim_lock(&path, Duration::ZERO).is_ok());
+        }
+
+        #[test]
+        fn the_lock_lives_where_every_process_sharing_the_keyring_finds_it() {
+            let root = tempfile::tempdir().unwrap();
+            let runtime = root.path().join("run");
+            let temp = root.path().join("tmp");
+            let app = runtime.join("app").join("com.aeroftp.AeroFTP");
+            let id = || Some("com.aeroftp.AeroFTP".into());
+
+            // No runtime folder: the temporary folder.
+            assert_eq!(claim_lock_dir(None, None, temp.clone()), temp);
+            assert_eq!(
+                claim_lock_dir(Some(runtime.clone()), None, temp.clone()),
+                temp
+            );
+
+            std::fs::create_dir_all(&runtime).unwrap();
+            assert_eq!(
+                claim_lock_dir(Some(runtime.clone()), None, temp.clone()),
+                runtime
+            );
+            // A Flatpak without its per-app folder keeps the runtime folder.
+            assert_eq!(
+                claim_lock_dir(Some(runtime.clone()), id(), temp.clone()),
+                runtime
+            );
+
+            std::fs::create_dir_all(&app).unwrap();
+            assert_eq!(
+                claim_lock_dir(Some(runtime.clone()), id(), temp.clone()),
+                app
+            );
+            assert_eq!(claim_lock_dir(None, id(), temp.clone()), temp);
         }
 
         #[test]
