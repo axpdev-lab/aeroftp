@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use super::walk_scope::{listed_parent, WalkScope, WalkStep, MAX_ROOT_SPELLINGS};
+use super::walk_scope::{listed_parent, walk_path_key, WalkScope, WalkStep, MAX_ROOT_SPELLINGS};
 use crate::provider_transfer_executor::ProviderListSessionModel;
 use crate::providers::{ProviderError, StorageProvider};
 use crate::transfer_dag::{
@@ -1116,6 +1116,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         depth: 0,
     }]);
     let mut scope = WalkScope::new(remote_root);
+    let mut placed = HashMap::new();
     let mut join_set = JoinSet::new();
     let mut in_flight = 0usize;
     // Back-dated by one interval, so the first listing to land is reported at
@@ -1215,6 +1216,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                     }
                     if !admit_scan_dir(
                         &mut scope,
+                        &mut placed,
                         &batch.listed_dir,
                         &dir,
                         &mut boundaries,
@@ -1326,6 +1328,7 @@ async fn scan_remote_tree_locked(
         depth: 0,
     }]);
     let mut scope = WalkScope::new(remote_root);
+    let mut placed = HashMap::new();
     while let Some(dir) = queue.pop_front() {
         if scan_cancelled(&cancel) {
             record_cancelled(&mut completeness, &mut boundaries);
@@ -1444,6 +1447,7 @@ async fn scan_remote_tree_locked(
                     }
                     if !admit_scan_dir(
                         &mut scope,
+                        &mut placed,
                         &batch.listed_dir,
                         &dir,
                         &mut boundaries,
@@ -1565,11 +1569,16 @@ fn learn_root_spellings(scope: &mut WalkScope, spellings: &[String]) {
 /// absent. It is counted as a listing failure, which makes the scan incomplete
 /// for every caller that gates a delete on that, and named as an unseen path
 /// with the reason, so a run is bounded around it. That holds for a folder
-/// already listed too: the walk builds relative paths from names, so the same
-/// folder reached again stands at another relative path, which the walk then
-/// leaves unseen.
+/// already listed when it is reached at another relative path: the walk
+/// builds relative paths from names, so what stands under that second place
+/// is never read. A listing that names the same folder twice under the same
+/// name (an S3 folder marker next to its common prefix) puts both at the same
+/// relative path, which the walk did read: the repeat is dropped and nothing
+/// is unseen. `placed` holds, for each folder followed, the relative path it
+/// was followed at.
 fn admit_scan_dir(
     scope: &mut WalkScope,
+    placed: &mut HashMap<String, String>,
     listed_dir: &str,
     dir: &RemoteScanDir,
     boundaries: &mut ScanBoundaries,
@@ -1578,7 +1587,15 @@ fn admit_scan_dir(
 ) -> bool {
     let step = scope.admit(listed_dir, &dir.abs_dir);
     if step == WalkStep::Follow {
+        placed.insert(walk_path_key(&dir.abs_dir), dir.rel_prefix.clone());
         return true;
+    }
+    if step == WalkStep::AlreadyListed
+        && placed
+            .get(&walk_path_key(&dir.abs_dir))
+            .is_some_and(|rel_prefix| *rel_prefix == dir.rel_prefix)
+    {
+        return false;
     }
     tracing::warn!(
         "[scan_remote_tree] not listing {} (path {:?} in the listing of {}): {}",
@@ -1798,6 +1815,7 @@ async fn scan_remote_dir(
         }
     };
     let mut files = Vec::new();
+    let mut file_rels = HashSet::new();
     let mut dirs = Vec::new();
     let mut skipped_links = Vec::new();
     let mut cancelled = false;
@@ -1890,6 +1908,11 @@ async fn scan_remote_dir(
             if !set.contains(entry_rel.as_str()) {
                 continue;
             }
+        }
+        // A listing that names a file twice gives one row: the rows are keyed
+        // by relative path, and a second one is the same file counted again.
+        if !file_rels.insert(entry_rel.clone()) {
+            continue;
         }
         let (checksum_alg, checksum_hex) = if want_remote_checksum {
             // SHA-256 is the only digest the comparison uses; naming it lets
@@ -4420,6 +4443,30 @@ pub(crate) mod tests {
                 [named_folder("d1/d1", "loops_back")],
                 "pool={pool}"
             );
+        }
+    }
+
+    /// The five stray listings every walk in the app is held to
+    /// ([`stray_listings`]), through the sync scan, serial and pooled: each
+    /// file under the root once, and a complete scan. A folder named twice in
+    /// one listing sits at one relative path, which the walk read, so a sync
+    /// must not drop that folder from the comparison or hold back its
+    /// deletes. The three shapes other walks refuse are spelled with a `..`
+    /// segment, a name that is no place in the tree: the scan's traversal
+    /// guard drops it before the walk decides, so nothing under the root goes
+    /// unread. The refusals the scan does count, a folder named for a place
+    /// it does not list, are pinned by the tests around this one.
+    #[tokio::test]
+    async fn the_scan_reads_each_stray_listing_like_every_other_walk() {
+        for shape in stray_listings() {
+            for pool in [false, true] {
+                let tree = WalkTreeProvider::new(shape.dirs.clone(), pool);
+                let (rows, completeness, boundaries) = walk_tree_at(tree, "/root").await;
+                let case = format!("{} (pool={pool})", shape.case);
+                assert_eq!(sorted_rows(&rows), shape.files, "{case}");
+                assert_eq!(completeness.list_errors, 0, "{case}");
+                assert_eq!(boundaries.unseen, [], "{case}");
+            }
         }
     }
 
