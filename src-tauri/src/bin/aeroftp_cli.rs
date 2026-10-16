@@ -4086,7 +4086,7 @@ enum AeroCloudCommands {
         /// Remote folder on the server (absolute path for FTP/SFTP/WebDAV)
         #[arg(long, value_name = "PATH")]
         remote: Option<String>,
-        /// Saved server profile name providing the connection + credentials
+        /// Saved server profile (name or id) providing the connection + credentials
         #[arg(long, value_name = "NAME")]
         profile: Option<String>,
         /// Sync direction: bidirectional | send-only | receive-only
@@ -14392,7 +14392,7 @@ fn aerocloud_refresh_protocol_for_display(
     config: &mut ftp_client_gui_lib::cloud_config::CloudConfig,
 ) {
     if let Ok(store) = open_vault(cli) {
-        if let Some(proto) = aerocloud_protocol_for_profile(&store, &config.server_profile) {
+        if let Some(proto) = aerocloud_protocol_for_profile(&store, config) {
             config.protocol_type = proto;
         }
     }
@@ -14409,17 +14409,20 @@ fn aerocloud_refresh_protocol_for_display(
 /// that display and the one that connects.
 fn aerocloud_protocol_for_profile(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
-    profile_name: &str,
+    config: &ftp_client_gui_lib::cloud_config::CloudConfig,
 ) -> Option<String> {
-    if profile_name.is_empty() {
+    if config.server_profile_id.is_none() && config.server_profile.is_empty() {
         return None;
     }
-    ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(store)
-        .ok()?
-        .iter()
-        .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(profile_name))
-        .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-        .map(str::to_string)
+    let profiles =
+        ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(store).ok()?;
+    ftp_client_gui_lib::crypt_overlay_provider::select_aerocloud_profile(
+        &profiles,
+        config.server_profile_id.as_deref(),
+        &config.server_profile,
+    )
+    .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+    .map(str::to_string)
 }
 
 /// Every spelling [`aerocloud_parse_direction`] accepts, in the order a person
@@ -14688,7 +14691,7 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
     // wrong provider (e.g. FTP against an SFTP profile). Host and credentials
     // already come from the vault by profile name, so only the protocol is
     // derived here.
-    if let Some(proto) = aerocloud_protocol_for_profile(&store, &config.server_profile) {
+    if let Some(proto) = aerocloud_protocol_for_profile(&store, &config) {
         config.protocol_type = proto;
     }
 
@@ -14787,15 +14790,52 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             }
             if let Some(profile) = profile {
                 config.server_profile = profile.clone();
-                // Store the protocol the profile speaks, instead of leaving the
-                // `"ftp"` default in place for every reader until the next sync
-                // corrects it in memory. If the vault cannot be opened here the
-                // value stays as it was and the sync path still derives it, so
+                config.server_profile_id = None;
+                // Resolve the profile (its id, or its exact name) and store its
+                // name, id and protocol: the id keeps the config on this profile
+                // when another one shares the name, and the protocol replaces
+                // the `"ftp"` default every reader would otherwise see until the
+                // next sync corrects it in memory. If the vault cannot be opened
+                // here, the name alone is stored and resolved by the sync, so
                 // this improves the stored truth without becoming a new way to
                 // fail `set`.
                 if let Ok(store) = open_vault(cli) {
-                    if let Some(proto) = aerocloud_protocol_for_profile(&store, profile) {
-                        config.protocol_type = proto;
+                    if let Ok(profiles) =
+                        ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(&store)
+                    {
+                        let field = |p: &serde_json::Value, key: &str| {
+                            p.get(key).and_then(|v| v.as_str()).map(str::to_string)
+                        };
+                        let by_id = profiles
+                            .iter()
+                            .find(|p| field(p, "id").as_deref() == Some(profile.as_str()));
+                        let by_name: Vec<&serde_json::Value> = profiles
+                            .iter()
+                            .filter(|p| field(p, "name").as_deref() == Some(profile.as_str()))
+                            .collect();
+                        let chosen = match (by_id, by_name.as_slice()) {
+                            (Some(p), _) => Some(p),
+                            (None, [p]) => Some(*p),
+                            (None, []) => None,
+                            (None, shared) => {
+                                print_error(
+                                    format,
+                                    &format!(
+                                        "{} saved profiles are named '{profile}': pass the profile id to --profile",
+                                        shared.len()
+                                    ),
+                                    5,
+                                );
+                                return 5;
+                            }
+                        };
+                        if let Some(p) = chosen {
+                            config.server_profile = field(p, "name").unwrap_or_default();
+                            config.server_profile_id = field(p, "id");
+                            if let Some(proto) = field(p, "protocol") {
+                                config.protocol_type = proto;
+                            }
+                        }
                     }
                 }
                 changed = true;
@@ -29265,24 +29305,9 @@ fn profile_value_to_provider_config(
     }
 
     if provider_type == ProviderType::Cloudinary {
-        // cloud_name comes either from the profile's `bucket` field or from
-        // the host (when users key it into the server entry).
-        let stored_cloud_name = profile
-            .get("options")
-            .and_then(|o| o.as_object())
-            .and_then(|o| o.get("bucket"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-        if let Some(name) = stored_cloud_name {
-            extra.insert("cloud_name".to_string(), name);
-        } else if !host.trim().is_empty() && host != "api.cloudinary.com" {
-            extra.insert("cloud_name".to_string(), host.trim().to_string());
-        }
-        if host.trim().is_empty() {
-            host = "api.cloudinary.com".to_string();
-        }
+        ftp_client_gui_lib::profile_loader::apply_cloudinary_profile_defaults(
+            &mut extra, profile, &mut host,
+        );
     }
 
     // Include providerId (preset id) when present so the banner makes it

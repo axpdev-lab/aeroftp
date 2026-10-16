@@ -12,7 +12,7 @@
 
 use crate::credential_store::CredentialStore;
 use crate::profile_loader::{
-    apply_local_bridge_credential_defaults, apply_profile_options, apply_s3_profile_defaults,
+    apply_local_bridge_credential_defaults, parse_server_credential, profile_connection_extra,
 };
 use crate::providers::{ProviderConfig, ProviderFactory, ProviderType, StorageProvider};
 use chrono::{DateTime, Utc};
@@ -644,35 +644,7 @@ fn create_provider_from_vault(
     .map(|s| s.to_string())
     .unwrap_or_default();
 
-    let (mut resolved_username, mut password) =
-        if let Ok(cred_val) = serde_json::from_str::<serde_json::Value>(&raw_cred) {
-            if let Some(obj) = cred_val.as_object() {
-                let u = obj
-                    .get("username")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let p = obj
-                    .get("password")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| obj.get("access_token").and_then(|v| v.as_str()))
-                    .or_else(|| obj.get("api_key").and_then(|v| v.as_str()))
-                    .unwrap_or("")
-                    .to_string();
-                (
-                    if u.is_empty() {
-                        username.to_string()
-                    } else {
-                        u
-                    },
-                    p,
-                )
-            } else {
-                (username.to_string(), raw_cred.trim_matches('"').to_string())
-            }
-        } else {
-            (username.to_string(), raw_cred)
-        };
+    let (mut resolved_username, mut password) = parse_server_credential(&raw_cred, username);
 
     // Filen Desktop local bridges default to admin/admin unless the user changed
     // them; the GUI applies that fallback at connect time but the saved profile
@@ -686,12 +658,6 @@ fn create_provider_from_vault(
     );
 
     let username: &str = &resolved_username;
-
-    // Build extra options from the profile (bucket, region, endpoint, etc.).
-    // This mirrors how the CLI resolves S3 profile defaults: the vault copy
-    // alone does not carry bucket/region because they live in `profile.options`.
-    let mut extra: HashMap<String, String> = HashMap::new();
-    apply_profile_options(&mut extra, matched);
 
     let provider_type = match protocol_to_provider_type(protocol) {
         Some(pt) => pt,
@@ -723,30 +689,10 @@ fn create_provider_from_vault(
         ));
     }
 
-    // Azure: GUI stores container as "bucket" in options; map to "container".
-    if provider_type == ProviderType::Azure && !extra.contains_key("container") {
-        if let Some(bucket) = extra.remove("bucket") {
-            extra.insert("container".to_string(), bucket);
-        }
-    }
-
-    // S3: resolve preset defaults (region, path_style, endpoint) so that
-    // providers like Storj/Cloudflare R2/Wasabi receive a valid config even
-    // when the profile only stores the bucket name + provider id.
-    let mut resolved_host = host.to_string();
-    if provider_type == ProviderType::S3 {
-        let provider_id = matched.get("providerId").and_then(|v| v.as_str());
-        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id, host) {
-            if resolved_host.trim().is_empty() {
-                resolved_host = resolved_endpoint;
-            }
-        }
-    }
-
-    // Mega: default to native protocol.
-    if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
-        extra.insert("mega_mode".to_string(), "native".to_string());
-    }
+    // Provider options from the profile (bucket, region, endpoint, etc.): the
+    // vault credential alone does not carry them, they live in
+    // `profile.options`, with the per-protocol defaults applied on top.
+    let (extra, resolved_host) = profile_connection_extra(matched, provider_type, host);
 
     let config = ProviderConfig {
         name: profile_name.to_string(),

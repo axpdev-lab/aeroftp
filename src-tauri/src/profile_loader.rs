@@ -8,6 +8,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::ProviderType;
 use std::collections::HashMap;
 
 pub const S3_PROVIDER_ID_META_KEY: &str = "_aeroftp_s3_provider_id";
@@ -188,6 +189,108 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
         .filter(|s| !s.is_empty())
     {
         extra.insert("profile_id".to_string(), id.to_string());
+    }
+}
+
+/// The provider options of a saved profile and the host to connect to, for a
+/// surface that connects a profile without a form: the profile's own options
+/// (bucket, region, endpoint, container, key path, profile id, ...) plus the
+/// per-protocol defaults a profile leaves implicit. Azure stores its container
+/// as `bucket`; an S3 preset may store only a bucket and its provider id, the
+/// endpoint and region coming from the preset (and the host from the endpoint
+/// when the profile has none); MEGA defaults to the native client.
+///
+/// The MCP pool and AeroCloud both build their connection here, so a profile
+/// reaches the provider the same way through either.
+pub fn profile_connection_extra(
+    profile: &serde_json::Value,
+    provider_type: ProviderType,
+    host: &str,
+) -> (HashMap<String, String>, String) {
+    let mut extra = HashMap::new();
+    apply_profile_options(&mut extra, profile);
+
+    if provider_type == ProviderType::Azure && !extra.contains_key("container") {
+        if let Some(bucket) = extra.remove("bucket") {
+            extra.insert("container".to_string(), bucket);
+        }
+    }
+
+    let mut resolved_host = host.to_string();
+    if provider_type == ProviderType::S3 {
+        let provider_id = profile.get("providerId").and_then(|v| v.as_str());
+        if let Some(endpoint) = apply_s3_profile_defaults(&mut extra, provider_id, host) {
+            if resolved_host.trim().is_empty() {
+                resolved_host = endpoint;
+            }
+        }
+    }
+
+    if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
+        extra.insert("mega_mode".to_string(), "native".to_string());
+    }
+
+    if provider_type == ProviderType::Cloudinary {
+        apply_cloudinary_profile_defaults(&mut extra, profile, &mut resolved_host);
+    }
+
+    (extra, resolved_host)
+}
+
+/// Cloudinary keeps the cloud name in the profile's `bucket` option, or in the
+/// host when the user keyed it into the server entry; the API host is fixed.
+pub fn apply_cloudinary_profile_defaults(
+    extra: &mut HashMap<String, String>,
+    profile: &serde_json::Value,
+    host: &mut String,
+) {
+    let stored_cloud_name = profile
+        .get("options")
+        .and_then(|o| o.as_object())
+        .and_then(|o| o.get("bucket"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    if let Some(name) = stored_cloud_name {
+        extra.insert("cloud_name".to_string(), name);
+    } else if !host.trim().is_empty() && host != "api.cloudinary.com" {
+        extra.insert("cloud_name".to_string(), host.trim().to_string());
+    }
+    if host.trim().is_empty() {
+        *host = "api.cloudinary.com".to_string();
+    }
+}
+
+/// The username and secret held by a saved profile's `server_{id}` credential.
+/// The GUI stores either the bare password or a JSON object
+/// (`{username, password}`, or an `access_token` / `api_key` in place of the
+/// password); an object's empty or missing username falls back to the
+/// profile's. Shared by the MCP pool and AeroCloud, which both connect a
+/// profile without a form.
+pub fn parse_server_credential(raw: &str, profile_username: &str) -> (String, String) {
+    match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(serde_json::Value::Object(obj)) => {
+            let username = obj
+                .get("username")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(profile_username)
+                .to_string();
+            let secret = obj
+                .get("password")
+                .and_then(|v| v.as_str())
+                .or_else(|| obj.get("access_token").and_then(|v| v.as_str()))
+                .or_else(|| obj.get("api_key").and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .to_string();
+            (username, secret)
+        }
+        // A JSON string is decoded, so an escaped quote stays a quote.
+        Ok(serde_json::Value::String(secret)) => (profile_username.to_string(), secret),
+        // Any other JSON scalar (a numeric password parses as a number) and
+        // anything that is not JSON is the bare secret itself.
+        Ok(_) | Err(_) => (profile_username.to_string(), raw.to_string()),
     }
 }
 
@@ -904,6 +1007,41 @@ mod tests {
         assert!(
             !extra.contains_key("webdavScheme"),
             "raw camelCase key must not leak into provider config"
+        );
+    }
+
+    #[test]
+    fn server_credential_reads_bare_and_structured_secrets() {
+        assert_eq!(
+            parse_server_credential("hunter2", "ale"),
+            ("ale".to_string(), "hunter2".to_string())
+        );
+        assert_eq!(
+            parse_server_credential(r#"{"username":"bob","password":"pw"}"#, "ale"),
+            ("bob".to_string(), "pw".to_string()),
+            "a structured blob must not be sent whole as the password"
+        );
+        assert_eq!(
+            parse_server_credential(r#"{"username":"","access_token":"tok"}"#, "ale"),
+            ("ale".to_string(), "tok".to_string())
+        );
+        assert_eq!(
+            parse_server_credential(r#"{"api_key":"key"}"#, "ale"),
+            ("ale".to_string(), "key".to_string())
+        );
+        assert_eq!(
+            parse_server_credential(r#""quoted""#, "ale"),
+            ("ale".to_string(), "quoted".to_string())
+        );
+        assert_eq!(
+            parse_server_credential(r#""a\"b""#, "ale"),
+            ("ale".to_string(), "a\"b".to_string()),
+            "an escaped quote in a JSON string is part of the secret"
+        );
+        assert_eq!(
+            parse_server_credential("12345", "ale"),
+            ("ale".to_string(), "12345".to_string()),
+            "a numeric password is the bare secret"
         );
     }
 

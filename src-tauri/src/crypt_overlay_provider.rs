@@ -2349,16 +2349,60 @@ pub async fn wrap_connected_provider_for_profile(
 /// returns `inner` byte-identical. An unreadable profile set propagates its
 /// `Err` (fail-closed), consistent with the credential read that gates the
 /// same sync.
+///
+/// The overlay is anchored by [`aerocloud_overlay_profile`], where the app
+/// anchors it when it opens the profile.
 pub async fn wrap_connected_provider_for_profile_named(
     inner: Box<dyn StorageProvider>,
+    profile_id: Option<&str>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
 ) -> Result<Box<dyn StorageProvider>, String> {
     let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
-    let Some(profile) = select_profile_by_name(&profiles, profile_name) else {
+    let Some(profile) = select_aerocloud_profile(&profiles, profile_id, profile_name) else {
         return Ok(inner);
     };
-    wrap_connected_provider_for_profile(inner, profile, store).await
+    wrap_connected_provider_for_profile(inner, &aerocloud_overlay_profile(profile), store).await
+}
+
+/// The profile as AeroCloud wraps it: a binding without a folder of its own
+/// is anchored at the profile's starting folder, which is how the app reads
+/// it when it opens the profile (`binding.remoteScope || profile.initialPath`
+/// in App.tsx). AeroCloud syncs a plaintext-absolute folder below that base,
+/// so an empty anchor (the whole remote) would encrypt the starting folder's
+/// own name too and miss the vault the app wrote there.
+pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_json::Value {
+    let mut profile = profile.clone();
+    // The `{username}` template some WebDAV presets keep in the starting folder
+    // is resolved as the AeroCloud root resolves it, or the remote folder below
+    // that root would fall outside the anchor.
+    let username = profile
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let start = profile
+        .get("initialPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .replace("{username}", &username)
+        .trim()
+        .to_string();
+    if let Some(binding) = profile
+        .get_mut("aeroCryptOverlay")
+        .and_then(|v| v.as_object_mut())
+    {
+        let unscoped = binding
+            .get("remoteScope")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty();
+        if unscoped && !start.is_empty() && start != "/" {
+            binding.insert("remoteScope".to_string(), serde_json::Value::String(start));
+        }
+    }
+    profile
 }
 
 /// AeroCrypt overlay builder for the AeroCloud stack.
@@ -2376,10 +2420,38 @@ pub async fn wrap_connected_provider_for_profile_named(
 /// live in `CloudConfig` or `CloudPathPair`.
 pub async fn build_aerocloud_overlay_stack(
     inner: Box<dyn StorageProvider>,
+    profile_id: Option<&str>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    wrap_connected_provider_for_profile_named(inner, profile_name, store).await
+    wrap_connected_provider_for_profile_named(inner, profile_id, profile_name, store).await
+}
+
+/// The saved profile an AeroCloud config names: by its stable id when the
+/// config carries one, by exact name ([`select_profile_by_name`]) for a config
+/// written before the id was stored, then by that same value taken as an id
+/// (`aerocloud set --profile <id>` stores the raw value when it cannot open
+/// the vault). Names are not unique (two profiles can share one), and the
+/// wrong match brings another account's credentials, tokens, root and crypt
+/// binding. An explicit id that matches nothing returns `None` rather than
+/// falling back to the name, which could pick a different profile.
+/// Shared by the connection, the overlay and the CLI, so they never resolve a
+/// config to two different profiles.
+pub fn select_aerocloud_profile<'a>(
+    profiles: &'a [serde_json::Value],
+    profile_id: Option<&str>,
+    profile_name: &str,
+) -> Option<&'a serde_json::Value> {
+    match profile_id.map(str::trim).filter(|id| !id.is_empty()) {
+        Some(id) => profiles
+            .iter()
+            .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id)),
+        None => select_profile_by_name(profiles, profile_name).or_else(|| {
+            profiles
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_name))
+        }),
+    }
 }
 
 /// Select the profile named `name` from a decrypted profile list by EXACT
@@ -6271,6 +6343,88 @@ mod tests {
         assert!(select_profile_by_name(&profiles, "PROD").is_none());
         assert!(select_profile_by_name(&profiles, "absent").is_none());
         assert!(select_profile_by_name(&[], "prod").is_none());
+    }
+
+    #[test]
+    fn aerocloud_profile_is_selected_by_id_before_name() {
+        let profiles = vec![
+            serde_json::json!({ "id": "srv_a", "name": "NAS" }),
+            serde_json::json!({ "id": "srv_b", "name": "NAS" }),
+        ];
+        let id = |p: Option<&serde_json::Value>| {
+            p.and_then(|p| p.get("id"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        assert_eq!(
+            id(select_aerocloud_profile(&profiles, Some("srv_b"), "NAS")),
+            Some("srv_b".to_string()),
+            "the id must pick the right one of two profiles sharing a name"
+        );
+        assert_eq!(
+            id(select_aerocloud_profile(&profiles, None, "NAS")),
+            Some("srv_a".to_string()),
+            "a legacy config without an id keeps the exact-name match"
+        );
+        assert_eq!(
+            id(select_aerocloud_profile(&profiles, Some("  "), "NAS")),
+            Some("srv_a".to_string())
+        );
+        assert!(
+            select_aerocloud_profile(&profiles, Some("srv_gone"), "NAS").is_none(),
+            "a deleted profile must not fall back to another profile by name"
+        );
+        assert_eq!(
+            id(select_aerocloud_profile(&profiles, None, "srv_b")),
+            Some("srv_b".to_string()),
+            "a stored value that names no profile is tried as an id"
+        );
+    }
+
+    #[test]
+    fn aerocloud_overlay_resolves_the_username_template_in_the_anchor() {
+        let templated = serde_json::json!({
+            "initialPath": "/files/{username}/",
+            "username": "ale",
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt" }
+        });
+        assert_eq!(
+            aerocloud_overlay_profile(&templated)["aeroCryptOverlay"]["remoteScope"],
+            "/files/ale/"
+        );
+    }
+
+    #[test]
+    fn aerocloud_overlay_anchors_an_unscoped_binding_at_the_start_folder() {
+        let unscoped = serde_json::json!({
+            "initialPath": "/AeroCryptTest",
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "" }
+        });
+        assert_eq!(
+            aerocloud_overlay_profile(&unscoped)["aeroCryptOverlay"]["remoteScope"],
+            "/AeroCryptTest",
+            "an unscoped binding must anchor where the app anchors it"
+        );
+
+        let scoped = serde_json::json!({
+            "initialPath": "/data",
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "/data/enc" }
+        });
+        assert_eq!(
+            aerocloud_overlay_profile(&scoped)["aeroCryptOverlay"]["remoteScope"],
+            "/data/enc"
+        );
+
+        let at_root = serde_json::json!({
+            "initialPath": "/",
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt" }
+        });
+        assert!(aerocloud_overlay_profile(&at_root)["aeroCryptOverlay"]
+            .get("remoteScope")
+            .is_none());
+
+        let plain = serde_json::json!({ "initialPath": "/data" });
+        assert_eq!(aerocloud_overlay_profile(&plain), plain);
     }
 
     #[test]
