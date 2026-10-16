@@ -2159,12 +2159,12 @@ impl StorageProvider for FtpProvider {
             self.current_path = saved;
 
             // A row whose name points outside the folder searched, or back
-            // onto it, is not followed: skipped with a warning, as a folder
-            // that cannot be listed is skipped.
+            // onto it, is neither followed nor reported: skipped with a
+            // warning, as a folder that cannot be listed is skipped.
             let sorted = walk.sort(&dir, entries);
-            for (folder, step) in &sorted.refused {
+            for (path, step) in &sorted.refused {
                 tracing::warn!(
-                    "[FTP] find: not searching {folder:?}, named in {dir}: {}",
+                    "[FTP] find: skipping {path:?}, named in {dir}: {}",
                     step.reason()
                 );
             }

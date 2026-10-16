@@ -301,21 +301,19 @@ pub async fn walk_remote_provider(
         for entry in entries.into_iter().take(cap) {
             let path_for_descent = entry.path.clone();
             let is_dir = entry.is_dir;
-            if is_dir {
-                use crate::sync_core::WalkStep;
-                match scope.admit(&current_dir, &path_for_descent) {
-                    WalkStep::Follow => {}
-                    WalkStep::AlreadyListed => continue,
-                    step => {
-                        warn!(
-                            "transfer_queue_scan: not listing {}: the listing of {} names it, but {}",
-                            path_for_descent,
-                            current_dir,
-                            step.explain()
-                        );
-                        refused += 1;
-                        continue;
-                    }
+            use crate::sync_core::WalkStep;
+            match scope.place(&current_dir, &path_for_descent, is_dir) {
+                WalkStep::Follow => {}
+                WalkStep::AlreadyListed => continue,
+                step => {
+                    warn!(
+                        "transfer_queue_scan: not showing {}: the listing of {} names it, but {}",
+                        path_for_descent,
+                        current_dir,
+                        step.explain()
+                    );
+                    refused += 1;
+                    continue;
                 }
             }
             if !shown.insert(crate::sync_core::walk_path_key(&path_for_descent)) {

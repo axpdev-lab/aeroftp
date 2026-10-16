@@ -230,6 +230,21 @@ impl WalkScope {
         WalkStep::Follow
     }
 
+    /// Where `path`, an entry the listing of `listed_dir` named, stands for a
+    /// walk that lists the folders it `follows` and acts on everything else
+    /// without listing it: [`WalkScope::admit`] for the first,
+    /// [`WalkScope::locate`] for the rest. A file is held to the root as a
+    /// folder is: a size that counted `../keep.txt`, a copy that fetched it
+    /// or a cleanup that deleted it would reach outside the folder as surely
+    /// as one that listed a folder there.
+    pub fn place(&mut self, listed_dir: &str, path: &str, follows: bool) -> WalkStep {
+        if follows {
+            self.admit(listed_dir, path)
+        } else {
+            self.locate(listed_dir, path)
+        }
+    }
+
     /// `path` sits strictly under a spelling of the root with the letter case
     /// kept. [`WalkScope::locate`] ignores case, so that a walk does not
     /// refuse a case-insensitive provider for spelling the root its own way;
@@ -354,9 +369,9 @@ pub struct FoundListing {
     pub entries: Vec<RemoteEntry>,
     /// The folders to list next, each once over the whole walk.
     pub follow: Vec<String>,
-    /// The folders the listing named outside the root, or on the folder
-    /// listed or above it, with the reason: the search did not go there, so
-    /// it did not see the whole tree.
+    /// The entries the listing named outside the root, or on the folder
+    /// listed or above it, with the reason: the search did not go there and
+    /// does not report them, so it did not see the whole tree.
     pub refused: Vec<(String, WalkStep)>,
 }
 
@@ -372,7 +387,9 @@ impl FindWalk {
     }
 
     /// Sort the listing of `listed`. Only folders that are not symlinks are
-    /// followed ([`RemoteEntry::is_walkable_dir`]), as before.
+    /// followed ([`RemoteEntry::is_walkable_dir`]), as before; any other
+    /// entry is reported only where a folder would be followed
+    /// ([`WalkScope::place`]).
     pub fn sort(&mut self, listed: &str, entries: Vec<RemoteEntry>) -> FoundListing {
         if !self.root_listed {
             self.scope.learn_root_listing(&entries);
@@ -380,14 +397,13 @@ impl FindWalk {
         }
         let mut sorted = FoundListing::default();
         for entry in entries {
-            if entry.is_walkable_dir() {
-                match self.scope.admit(listed, &entry.path) {
-                    WalkStep::Follow => sorted.follow.push(entry.path.clone()),
-                    WalkStep::AlreadyListed => {}
-                    step => {
-                        sorted.refused.push((entry.path.clone(), step));
-                        continue;
-                    }
+            let follows = entry.is_walkable_dir();
+            match self.scope.place(listed, &entry.path, follows) {
+                WalkStep::Follow if follows => sorted.follow.push(entry.path.clone()),
+                WalkStep::Follow | WalkStep::AlreadyListed => {}
+                step => {
+                    sorted.refused.push((entry.path.clone(), step));
+                    continue;
                 }
             }
             if self.reported.insert(walk_path_key(&entry.path)) {
@@ -399,11 +415,11 @@ impl FindWalk {
 }
 
 /// The error of a provider `find` under `root` whose listing of `listed`
-/// named the folder `path` outside the root or back on itself, for a `find`
-/// that fails when a folder cannot be listed.
+/// named `path` outside the root or back on itself, for a `find` that fails
+/// when a folder cannot be listed.
 pub fn refused_search(root: &str, listed: &str, path: &str, step: WalkStep) -> ProviderError {
     ProviderError::ServerError(format!(
-        "cannot search {root}: the listing of {listed} names the folder {path:?}, which is \
+        "cannot search {root}: the listing of {listed} names {path:?}, which is \
          outside the folder searched or back on it ({})",
         step.reason()
     ))
@@ -804,6 +820,39 @@ mod tests {
         );
     }
 
+    /// A walk lists the folders it follows and acts on the rest without
+    /// listing them: a file outside the root, or on the folder listed or
+    /// above it, is refused as such a folder is, and a file is never
+    /// recorded as listed.
+    #[test]
+    fn a_file_is_held_to_the_root_as_a_folder_is() {
+        let mut scope = WalkScope::new("/root");
+        assert_eq!(scope.place("/root", "/root/a.txt", false), WalkStep::Follow);
+        assert_eq!(scope.place("/root", "/root/a.txt", false), WalkStep::Follow);
+        assert_eq!(
+            scope.place("/root", "/root/../keep.txt", false),
+            WalkStep::OutsideRoot
+        );
+        assert_eq!(
+            scope.place("/root", "/keep.txt", false),
+            WalkStep::OutsideRoot
+        );
+        assert_eq!(
+            scope.place("/root/d", "/root/d", false),
+            WalkStep::LoopsBack
+        );
+        assert_eq!(scope.place("/root/d", "/root", false), WalkStep::LoopsBack);
+        assert_eq!(scope.place("/root", "/root/d", true), WalkStep::Follow);
+        assert_eq!(
+            scope.place("/root", "/root/d", true),
+            WalkStep::AlreadyListed
+        );
+        assert_eq!(
+            scope.place("/root", "/elsewhere", true),
+            WalkStep::OutsideRoot
+        );
+    }
+
     /// `locate` answers as `admit` does and records nothing.
     #[test]
     fn locating_an_entry_records_nothing() {
@@ -842,9 +891,9 @@ mod tests {
     }
 
     /// A provider `find` follows each folder inside the root once, refuses a
-    /// folder spelled `/`, the folder listed inside itself and a folder
-    /// outside the root, and reports each path once. A symlinked folder is
-    /// reported and not followed.
+    /// folder spelled `/`, the folder listed inside itself, and a folder or
+    /// file outside the root, and reports each path once. A symlinked folder
+    /// is reported and not followed.
     #[test]
     fn a_find_walk_stays_inside_its_root_and_reports_each_path_once() {
         let mut walk = FindWalk::new("/x");
@@ -859,6 +908,7 @@ mod tests {
                 file("a.txt", "/x//a.txt"),
                 dir("up", "/"),
                 dir("y", "/y"),
+                file("../keep.txt", "/keep.txt"),
                 link,
             ],
         );
@@ -868,7 +918,8 @@ mod tests {
             root.refused,
             [
                 ("/".to_string(), WalkStep::LoopsBack),
-                ("/y".to_string(), WalkStep::OutsideRoot)
+                ("/y".to_string(), WalkStep::OutsideRoot),
+                ("/keep.txt".to_string(), WalkStep::OutsideRoot)
             ]
         );
 

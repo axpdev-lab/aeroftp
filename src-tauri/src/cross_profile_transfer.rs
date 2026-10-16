@@ -369,16 +369,17 @@ async fn collect_tree(
             if entries.len() >= MAX_SCAN_ENTRIES {
                 break;
             }
-            if e.is_dir {
-                match scope.admit(&dir, &e.path) {
-                    WalkStep::Follow => queue.push((e.path, depth + 1)),
-                    WalkStep::AlreadyListed => {}
-                    step => {
-                        return Err(ProviderError::ServerError(refused_transfer(
-                            root, &dir, &e.path, step,
-                        )))
-                    }
+            match scope.place(&dir, &e.path, e.is_dir) {
+                WalkStep::Follow => {}
+                WalkStep::AlreadyListed => continue,
+                step => {
+                    return Err(ProviderError::ServerError(refused_transfer(
+                        root, &dir, &e.path, step,
+                    )))
                 }
+            }
+            if e.is_dir {
+                queue.push((e.path, depth + 1));
             } else if planned.insert(walk_path_key(&e.path)) {
                 let display_name = fallback_display_name(&e.name, &e.path);
                 entries.push(CrossProfileTransferEntry {

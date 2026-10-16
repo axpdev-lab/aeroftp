@@ -10317,21 +10317,21 @@ async fn provider_calculate_folder_size_inner(
             } else {
                 format!("{}/{}", current_path, entry.name)
             };
-            if entry.is_dir {
-                use crate::sync_core::WalkStep;
-                match scope.admit(&current_path, &subpath) {
-                    WalkStep::Follow => {}
-                    WalkStep::AlreadyListed => continue,
-                    step => {
-                        return Err(format!(
-                            "Cannot size {}: the listing of {} names {:?}, but {}",
-                            root,
-                            current_path,
-                            subpath,
-                            step.explain()
-                        ))
-                    }
+            use crate::sync_core::WalkStep;
+            match scope.place(&current_path, &subpath, entry.is_dir) {
+                WalkStep::Follow => {}
+                WalkStep::AlreadyListed => continue,
+                step => {
+                    return Err(format!(
+                        "Cannot size {}: the listing of {} names {:?}, but {}",
+                        root,
+                        current_path,
+                        subpath,
+                        step.explain()
+                    ))
                 }
+            }
+            if entry.is_dir {
                 dir_count += 1;
                 queue.push((subpath, depth + 1));
             } else if counted.insert(crate::sync_core::walk_path_key(&subpath)) {
@@ -13352,18 +13352,16 @@ async fn walk_compare_remote_serially(
                 format!("{}/{}", current_dir, entry.name)
             };
             use crate::sync_core::WalkStep;
-            if entry.is_dir {
-                match scope.locate(&current_dir, &sub_path) {
-                    WalkStep::Follow => {}
-                    step => {
-                        return Err(format!(
-                            "{}: the listing of {} names {:?}, but {}; refusing to compare a tree it cannot walk.",
-                            crate::SCAN_INCOMPLETE_MARKER,
-                            current_dir,
-                            sub_path,
-                            step.explain()
-                        ))
-                    }
+            match scope.locate(&current_dir, &sub_path) {
+                WalkStep::Follow => {}
+                step => {
+                    return Err(format!(
+                        "{}: the listing of {} names {:?}, but {}; refusing to compare a tree it cannot walk.",
+                        crate::SCAN_INCOMPLETE_MARKER,
+                        current_dir,
+                        sub_path,
+                        step.explain()
+                    ))
                 }
             }
 

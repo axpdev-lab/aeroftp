@@ -3407,7 +3407,8 @@ pub(crate) mod tests {
         pub(crate) files: &'static [&'static str],
         /// The folders under `/root`, relative to it.
         pub(crate) folders: &'static [&'static str],
-        /// How many folders a walk of `/root` must refuse to list.
+        /// How many entries a walk of `/root` must refuse: folders it must
+        /// not list, and files it must not count, copy or delete.
         pub(crate) refused: usize,
     }
 
@@ -3424,10 +3425,10 @@ pub(crate) mod tests {
         }
     }
 
-    /// The five defects: a folder listed inside itself (Swift's old
+    /// The six defects: a folder listed inside itself (Swift's old
     /// listing), a folder listed as `/` (ImageKit's), a folder named twice,
-    /// a file named twice, and a folder outside the root. The first, second
-    /// and last are refused; the two named twice are walked once.
+    /// a file named twice, a folder outside the root and a file outside the
+    /// root. The two named twice are walked once; the others are refused.
     pub(crate) fn stray_listings() -> Vec<StrayListing> {
         fn file(name: &str, path: &str) -> crate::providers::RemoteEntry {
             crate::providers::RemoteEntry::file(name.to_string(), path.to_string(), 4)
@@ -3493,6 +3494,16 @@ pub(crate) mod tests {
                 ]),
                 files: &["a.txt"],
                 folders: &[],
+                refused: 1,
+            },
+            StrayListing {
+                case: "a file outside the root",
+                dirs: tree(vec![
+                    ("/root", vec![a(), d1(), file("../keep.txt", "/keep.txt")]),
+                    ("/root/d1", vec![b()]),
+                ]),
+                files: &["a.txt", "d1/b.txt"],
+                folders: &["d1"],
                 refused: 1,
             },
         ]

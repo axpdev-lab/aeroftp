@@ -1508,20 +1508,18 @@ impl CloudService {
                     format!("{}/{}", relative_prefix, entry.name)
                 };
                 let child_path = format!("{}/{}", current_path, entry.name);
-                if entry.is_dir {
-                    use crate::sync_core::WalkStep;
-                    match scope.locate(&current_path, &child_path) {
-                        WalkStep::Follow => {}
-                        step => {
-                            tracing::warn!(
-                                "Remote scan: not listing {}: the listing of {} names it, but {}",
-                                child_path,
-                                current_path,
-                                step.explain()
-                            );
-                            complete = false;
-                            continue;
-                        }
+                use crate::sync_core::WalkStep;
+                match scope.locate(&current_path, &child_path) {
+                    WalkStep::Follow => {}
+                    step => {
+                        tracing::warn!(
+                            "Remote scan: skipping {}: the listing of {} names it, but {}",
+                            child_path,
+                            current_path,
+                            step.explain()
+                        );
+                        complete = false;
+                        continue;
                     }
                 }
 

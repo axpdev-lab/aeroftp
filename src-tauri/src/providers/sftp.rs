@@ -3872,12 +3872,12 @@ impl StorageProvider for SftpProvider {
             }
 
             // A name that resolves outside the folder searched, or back onto
-            // it, is not followed: skipped with a warning, as a folder that
-            // cannot be read is skipped.
+            // it, is neither followed nor reported: skipped with a warning,
+            // as a folder that cannot be read is skipped.
             let sorted = walk.sort(&dir, listed);
-            for (folder, step) in &sorted.refused {
+            for (path, step) in &sorted.refused {
                 tracing::warn!(
-                    "SFTP find: not searching {folder:?}, named in {dir}: {}",
+                    "SFTP find: skipping {path:?}, named in {dir}: {}",
                     step.reason()
                 );
             }

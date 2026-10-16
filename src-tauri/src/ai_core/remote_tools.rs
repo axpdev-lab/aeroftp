@@ -1011,26 +1011,25 @@ async fn preview_delete(
             // A symlink is unlinked, never followed: following a
             // symlink-to-dir would open a cur/parent cycle and inflate the
             // total.
-            if entry.is_symlink {
-                if counted.insert(crate::sync_core::walk_path_key(&entry.path)) {
-                    files += 1;
-                }
+            let follows = entry.is_dir && !entry.is_symlink;
+            if !walk_admits(
+                &mut scope,
+                &dir,
+                &entry.path,
+                follows,
+                &mut refused,
+                "delete preview",
+            ) {
                 continue;
             }
-            if entry.is_dir {
-                if walk_admits(
-                    &mut scope,
-                    &dir,
-                    &entry.path,
-                    &mut refused,
-                    "delete preview",
-                ) {
-                    directories += 1;
-                    queue.push((entry.path, depth + 1));
-                }
+            if follows {
+                directories += 1;
+                queue.push((entry.path, depth + 1));
             } else if counted.insert(crate::sync_core::walk_path_key(&entry.path)) {
                 files += 1;
-                bytes = bytes.saturating_add(entry.size);
+                if !entry.is_symlink {
+                    bytes = bytes.saturating_add(entry.size);
+                }
             }
         }
     }
@@ -1681,10 +1680,18 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             if entry.is_symlink {
                 continue;
             }
+            if !walk_admits(
+                &mut scope,
+                &dir,
+                &entry.path,
+                entry.is_dir,
+                &mut refused,
+                "storage scan",
+            ) {
+                continue;
+            }
             if entry.is_dir {
-                if walk_admits(&mut scope, &dir, &entry.path, &mut refused, "storage scan") {
-                    queue.push_back((entry.path, depth + 1));
-                }
+                queue.push_back((entry.path, depth + 1));
             } else if counted.insert(crate::sync_core::walk_path_key(&entry.path)) {
                 // saturating_add: entry.size is fully server-controlled
                 // (SFTP attrs, WebDAV getcontentlength, S3 Size). A hostile
@@ -1936,7 +1943,7 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let mut total_files: usize = 0;
     let mut truncated = false;
     let mut errors: Vec<Value> = Vec::new();
-    // Each path under the root is shown once. A folder that points back at
+    // Each path under the root is shown once. An entry that points back at
     // the folder listed or above it, or outside the root, gets no row (its
     // path is not under the root) and is named in `errors`; one already
     // shown is not shown or listed again.
@@ -1964,27 +1971,25 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 truncated = true;
                 break;
             }
-            if entry.is_walkable_dir() {
-                use crate::sync_core::WalkStep;
-                match scope.admit(&dir, &entry.path) {
-                    WalkStep::Follow => {}
-                    WalkStep::AlreadyListed => continue,
-                    step => {
-                        tracing::warn!(
-                            "tree: not listing {:?}, named in the listing of {dir}: {}",
-                            entry.path,
-                            step.reason()
-                        );
-                        errors.push(json!({
-                            "path": entry.path,
-                            "error": format!(
-                                "not listed: the listing of {dir} names it, but {}",
-                                step.explain()
-                            ),
-                            "reason": step.reason(),
-                        }));
-                        continue;
-                    }
+            use crate::sync_core::WalkStep;
+            match scope.place(&dir, &entry.path, entry.is_walkable_dir()) {
+                WalkStep::Follow => {}
+                WalkStep::AlreadyListed => continue,
+                step => {
+                    tracing::warn!(
+                        "tree: not showing {:?}, named in the listing of {dir}: {}",
+                        entry.path,
+                        step.reason()
+                    );
+                    errors.push(json!({
+                        "path": entry.path,
+                        "error": format!(
+                            "not shown: the listing of {dir} names it, but {}",
+                            step.explain()
+                        ),
+                        "reason": step.reason(),
+                    }));
+                    continue;
                 }
             }
             if !shown.insert(crate::sync_core::walk_path_key(&entry.path)) {
@@ -2670,26 +2675,30 @@ async fn touch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     }))
 }
 
-/// Whether a remote walk lists `child`, a folder the listing of `listed`
-/// named (see [`crate::sync_core::WalkScope`]). A folder that points back at
-/// the folder being listed or above it, or outside the walk root, is counted
-/// in `scan_errors`: what it holds went unseen. A folder already listed is
-/// simply not listed again, so nothing under it is collected twice.
+/// Whether a remote walk takes `child`, an entry the listing of `listed`
+/// named (see [`crate::sync_core::WalkScope::place`]): a folder it `follows`
+/// is listed, any other entry counted, compared or deleted. An entry that
+/// points back at the folder being listed or above it, or outside the walk
+/// root, is counted in `scan_errors`: the walk did not see the tree that
+/// listing describes, and what sits there is not the walk's to act on. A
+/// folder already listed is simply not listed again, so nothing under it is
+/// collected twice.
 fn walk_admits(
     scope: &mut crate::sync_core::WalkScope,
     listed: &str,
     child: &str,
+    follows: bool,
     scan_errors: &mut u32,
     tool: &str,
 ) -> bool {
     use crate::sync_core::WalkStep;
-    match scope.admit(listed, child) {
+    match scope.place(listed, child, follows) {
         WalkStep::Follow => true,
         WalkStep::AlreadyListed => false,
         step => {
             *scan_errors += 1;
             tracing::warn!(
-                "{tool}: not listing {child:?}, named in the listing of {listed}: {}",
+                "{tool}: skipping {child:?}, named in the listing of {listed}: {}",
                 step.reason()
             );
             false
@@ -2812,11 +2821,14 @@ async fn scan_remote_files(
             if e.is_dir {
                 if e.is_walkable_dir()
                     && !exclude.is_excluded_entry(rel, &e.name)
-                    && walk_admits(&mut scope, &dir, &e.path, &mut refused, tool)
+                    && walk_admits(&mut scope, &dir, &e.path, true, &mut refused, tool)
                 {
                     queue.push((e.path.clone(), depth + 1));
                 }
-            } else if !rel.is_empty() && !exclude.is_excluded_entry(rel, &e.name) {
+            } else if !rel.is_empty()
+                && !exclude.is_excluded_entry(rel, &e.name)
+                && walk_admits(&mut scope, &dir, &e.path, false, &mut refused, tool)
+            {
                 files.insert(rel.to_string(), (e.size, e.modified.clone()));
             }
         }
@@ -2858,13 +2870,23 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                                 &mut scope,
                                 &dir,
                                 &entry.path,
+                                true,
                                 &mut scan_errors,
                                 "cleanup",
                             )
                         {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
-                    } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
+                    } else if (entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp"))
+                        && walk_admits(
+                            &mut scope,
+                            &dir,
+                            &entry.path,
+                            false,
+                            &mut scan_errors,
+                            "cleanup",
+                        )
+                    {
                         orphans.push((entry.path.clone(), entry.size));
                     }
                 }
@@ -3300,11 +3322,25 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 for e in entries {
                     if e.is_dir {
                         if e.is_walkable_dir()
-                            && walk_admits(&mut scope, &dir, &e.path, &mut scan_errors, "dedupe")
+                            && walk_admits(
+                                &mut scope,
+                                &dir,
+                                &e.path,
+                                true,
+                                &mut scan_errors,
+                                "dedupe",
+                            )
                         {
                             dirs.push((e.path, depth + 1));
                         }
-                    } else {
+                    } else if walk_admits(
+                        &mut scope,
+                        &dir,
+                        &e.path,
+                        false,
+                        &mut scan_errors,
+                        "dedupe",
+                    ) {
                         files.push((e.path, e.size, e.modified));
                     }
                 }
@@ -5989,8 +6025,10 @@ mod tests {
     /// A listing that names a folder inside itself, or every folder as `/`,
     /// sent the walk through the same files again and again, and dedupe found
     /// each file to be a duplicate of itself: with `dry_run: false` it deleted
-    /// the only copy. Each folder is now listed once, the looping one is
-    /// counted as a scan error, each path is grouped once whatever the
+    /// the only copy. A listing that names a file outside the folder made it
+    /// a duplicate of the folder's own copy, and one of the two was deleted.
+    /// Each folder is now listed once, the looping one and the file outside
+    /// are counted as scan errors, each path is grouped once whatever the
     /// listings say, and a tree of single copies loses nothing.
     #[tokio::test]
     async fn dedupe_deletes_nothing_when_a_listing_loops_over_single_copies() {
@@ -5998,6 +6036,7 @@ mod tests {
             (self_listing_backend(), "/root", 3, 1),
             (root_spelled_folders_backend(), "/", 2, 1),
             (cross_listing_backend(), "/root", 2, 0),
+            (outside_file_backend(), "/root", 3, 1),
         ] {
             let backend = Arc::new(backend);
             let ctx = test_ctx(Arc::clone(&backend));
@@ -6032,13 +6071,16 @@ mod tests {
 
     /// The same two listings sent cleanup through the same orphan once per
     /// level: it deleted it, then failed or deleted it again for every repeat.
-    /// It is deleted once, and the looping folder is a scan error.
+    /// It is deleted once, and the looping folder is a scan error. An orphan
+    /// a listing names outside the folder was deleted with the folder's; it
+    /// is a scan error and stays.
     #[tokio::test]
     async fn cleanup_deletes_each_orphan_once_when_a_listing_loops() {
         for (backend, root, orphan, scan_errors) in [
             (self_listing_backend(), "/root", "/root/d1/c.aerotmp", 1),
             (root_spelled_folders_backend(), "/", "/c.aerotmp", 1),
             (cross_listing_backend(), "/root", "/root/c.aerotmp", 0),
+            (outside_file_backend(), "/root", "/root/d1/c.aerotmp", 1),
         ] {
             let backend = Arc::new(backend);
             let ctx = test_ctx(Arc::clone(&backend));
@@ -6094,10 +6136,45 @@ mod tests {
         }
     }
 
+    /// A listing of `/root` that names `/keep.aerotmp`, a file outside it: an
+    /// orphan to cleanup and a copy of `/root/a.txt` to dedupe, which a walk
+    /// of `/root` must never count, delete, or delete `a.txt` in favour of.
+    /// `/root/d1` holds a real orphan.
+    fn outside_file_backend() -> FakeBackend {
+        let mut tree = std::collections::HashMap::new();
+        tree.insert(
+            "/root".to_string(),
+            vec![
+                entry("/root/a.txt", false, 4),
+                entry("/root/d1", true, 0),
+                entry("/keep.aerotmp", false, 4),
+            ],
+        );
+        tree.insert(
+            "/root/d1".to_string(),
+            vec![
+                entry("/root/d1/b.txt", false, 4),
+                entry("/root/d1/c.aerotmp", false, 4),
+            ],
+        );
+        let downloads = std::collections::HashMap::from([
+            ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+            ("/keep.aerotmp".to_string(), b"aaaa".to_vec()),
+            ("/root/d1/b.txt".to_string(), b"bbbb".to_vec()),
+            ("/root/d1/c.aerotmp".to_string(), b"cccc".to_vec()),
+        ]);
+        FakeBackend {
+            tree,
+            downloads,
+            ..FakeBackend::sample()
+        }
+    }
+
     /// What a walk of the root holds in each defective listing:
     /// (case, backend, root, files, bytes, folders listed with the root,
-    /// folders refused). Only a folder that loops back or sits outside the
-    /// root is refused; one named twice is listed once, which loses nothing.
+    /// entries refused). A folder that loops back or sits outside the root
+    /// is refused, and so is a file outside it; one named twice is listed
+    /// once, which loses nothing.
     #[allow(clippy::type_complexity)]
     fn defective_listings() -> Vec<(&'static str, FakeBackend, &'static str, u64, u64, u64, u64)> {
         vec![
@@ -6144,6 +6221,15 @@ mod tests {
                 1,
                 4,
                 1,
+                1,
+            ),
+            (
+                "a file outside the root",
+                outside_file_backend(),
+                "/root",
+                3,
+                12,
+                2,
                 1,
             ),
         ]

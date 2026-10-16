@@ -4637,12 +4637,12 @@ impl StorageProvider for WebDavProvider {
             };
 
             // A listing joins each display name to the folder listed, so a
-            // name such as `../y` points outside the folder searched: such a
-            // collection is skipped with a warning, as an unreadable one is.
+            // name such as `../y` points outside the folder searched: such an
+            // entry is skipped with a warning, as an unreadable collection is.
             let sorted = walk.sort(&dir, entries);
-            for (folder, step) in &sorted.refused {
+            for (path, step) in &sorted.refused {
                 tracing::warn!(
-                    "[WebDAV] find: not searching {folder:?}, named in {dir}: {}",
+                    "[WebDAV] find: skipping {path:?}, named in {dir}: {}",
                     step.reason()
                 );
             }

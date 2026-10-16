@@ -18628,10 +18628,12 @@ async fn size_remote_dir(
                 entry.path.clone()
             };
             if entry.is_dir {
-                if entry.is_walkable_dir() && cli_walk_step(&mut scope, &dir, &child)? {
+                if entry.is_walkable_dir() && cli_walk_step(&mut scope, &dir, &child, true)? {
                     stack.push(child);
                 }
-            } else if counted.insert(ftp_client_gui_lib::sync_core::walk_path_key(&child)) {
+            } else if cli_walk_step(&mut scope, &dir, &child, false)?
+                && counted.insert(ftp_client_gui_lib::sync_core::walk_path_key(&child))
+            {
                 total_bytes += entry.size;
                 files += 1;
             }
@@ -35042,24 +35044,25 @@ async fn cmd_get_recursive(
                     scope.learn_root_listing(&entries);
                 }
                 for e in entries {
-                    if e.is_dir {
-                        // Never walk (nor recreate locally) a symlink-to-dir:
-                        // it would copy the target's tree twice, or cycle.
-                        if e.is_walkable_dir() {
-                            match cli_walk_step(&mut scope, &dir, &e.path) {
-                                Ok(true) => {
-                                    queue.push((e.path.clone(), depth + 1));
-                                    dirs.push(e.path);
-                                }
-                                Ok(false) => {}
-                                Err(refusal) => {
-                                    if !quiet {
-                                        eprintln!("Warning: {refusal}");
-                                    }
-                                    listing_errors.push(refusal);
-                                }
+                    // Never walk (nor recreate locally) a symlink-to-dir:
+                    // it would copy the target's tree twice, or cycle.
+                    if e.is_dir && !e.is_walkable_dir() {
+                        continue;
+                    }
+                    match cli_walk_step(&mut scope, &dir, &e.path, e.is_dir) {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(refusal) => {
+                            if !quiet {
+                                eprintln!("Warning: {refusal}");
                             }
+                            listing_errors.push(refusal);
+                            continue;
                         }
+                    }
+                    if e.is_dir {
+                        queue.push((e.path.clone(), depth + 1));
+                        dirs.push(e.path);
                     } else {
                         if !fetched.insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path)) {
                             continue;
@@ -43249,7 +43252,7 @@ async fn find_by_listing(
         let sorted = walk.sort(&dir, entries);
         for (child, step) in sorted.refused {
             found.unwalked.push(format!(
-                "Not searching {child}: the listing of {dir} names it, but {}",
+                "Skipping {child}: the listing of {dir} names it, but {}",
                 step.explain()
             ));
         }
@@ -43959,20 +43962,23 @@ async fn cmd_rmdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
     }
 }
 
-/// Whether a CLI walk (`rmdirs`, `cleanup`, `dedupe`) lists `child`, a folder
-/// the listing of `listed` named (see `sync_core::WalkScope`). A folder that
-/// points back at the one being listed or above it, or outside the walk root,
-/// is not listed: it is counted in `scan_errors`, which makes the run partial,
-/// and named on stderr, since what it holds went unseen. A folder already
-/// listed is simply not listed again, so nothing under it is collected twice.
+/// Whether a CLI walk (`rmdirs`, `cleanup`, `dedupe`) takes `child`, an
+/// entry the listing of `listed` named (see `sync_core::WalkScope::place`): a
+/// folder it `follows` is listed, any other entry acted on. An entry that
+/// points back at the folder being listed or above it, or outside the walk
+/// root, is not taken: it is counted in `scan_errors`, which makes the run
+/// partial, and named on stderr, since the walk did not see the tree that
+/// listing describes. A folder already listed is simply not listed again, so
+/// nothing under it is collected twice.
 fn cli_walk_admits(
     scope: &mut ftp_client_gui_lib::sync_core::WalkScope,
     listed: &str,
     child: &str,
+    follows: bool,
     scan_errors: &mut u32,
     quiet: bool,
 ) -> bool {
-    match cli_walk_step(scope, listed, child) {
+    match cli_walk_step(scope, listed, child, follows) {
         Ok(follow) => follow,
         Err(refusal) => {
             *scan_errors += 1;
@@ -43984,21 +43990,23 @@ fn cli_walk_admits(
     }
 }
 
-/// The same decision for a walk that reports a refused folder its own way
-/// (an error of the run, a truncated listing, a warning): `Ok(true)` to list
-/// `child`, `Ok(false)` when it was already listed, and the sentence that
-/// says why it is not listed at all.
+/// The same decision for a walk that reports a refused entry its own way
+/// (an error of the run, a truncated listing, a warning): `Ok(true)` to take
+/// `child`, `Ok(false)` when it is a folder already listed, and the sentence
+/// that says why it is not taken at all.
 fn cli_walk_step(
     scope: &mut ftp_client_gui_lib::sync_core::WalkScope,
     listed: &str,
     child: &str,
+    follows: bool,
 ) -> Result<bool, String> {
     use ftp_client_gui_lib::sync_core::WalkStep;
-    match scope.admit(listed, child) {
+    match scope.place(listed, child, follows) {
         WalkStep::Follow => Ok(true),
         WalkStep::AlreadyListed => Ok(false),
         step => Err(format!(
-            "Not listing {child}: the listing of {listed} names it, but {}",
+            "{} {child}: the listing of {listed} names it, but {}",
+            if follows { "Not listing" } else { "Skipping" },
             step.explain()
         )),
     }
@@ -44069,7 +44077,14 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
                     if validate_relative_path(rel).is_none() {
                         continue;
                     }
-                    if !cli_walk_admits(&mut scope, &dir, &entry.path, &mut scan_errors, quiet) {
+                    if !cli_walk_admits(
+                        &mut scope,
+                        &dir,
+                        &entry.path,
+                        true,
+                        &mut scan_errors,
+                        quiet,
+                    ) {
                         continue;
                     }
                     if found.len() >= MAX_SCAN_ENTRIES {
@@ -44432,19 +44447,17 @@ async fn cmd_lsjson(
                     break;
                 }
                 if recursive {
-                    if e.is_walkable_dir() {
-                        match cli_walk_step(&mut scope, &dir_path, &e.path) {
-                            Ok(true) => {}
-                            Ok(false) => continue,
-                            Err(refusal) => {
-                                if !cli.quiet {
-                                    if show_spinner {
-                                        erase_spinner();
-                                    }
-                                    eprintln!("Warning: {refusal}");
+                    match cli_walk_step(&mut scope, &dir_path, &e.path, e.is_walkable_dir()) {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(refusal) => {
+                            if !cli.quiet {
+                                if show_spinner {
+                                    erase_spinner();
                                 }
-                                continue;
+                                eprintln!("Warning: {refusal}");
                             }
+                            continue;
                         }
                     }
                     if !shown.insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path)) {
@@ -48328,13 +48341,23 @@ async fn cmd_cleanup(
                                 &mut scope,
                                 &dir,
                                 &entry.path,
+                                true,
                                 &mut scan_errors,
                                 quiet,
                             )
                         {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
-                    } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
+                    } else if (entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp"))
+                        && cli_walk_admits(
+                            &mut scope,
+                            &dir,
+                            &entry.path,
+                            false,
+                            &mut scan_errors,
+                            quiet,
+                        )
+                    {
                         orphans.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
                 }
@@ -48593,13 +48616,21 @@ async fn cmd_dedupe(
                                 &mut scope,
                                 &dir,
                                 &entry.path,
+                                true,
                                 &mut scan_errors,
                                 quiet,
                             )
                         {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
-                    } else {
+                    } else if cli_walk_admits(
+                        &mut scope,
+                        &dir,
+                        &entry.path,
+                        false,
+                        &mut scan_errors,
+                        quiet,
+                    ) {
                         files.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
                 }
@@ -53236,16 +53267,14 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
             entries
                 .into_iter()
                 .filter(|e| {
-                    if e.is_walkable_dir() {
-                        match cli_walk_step(&mut self.scope, listed, &e.path) {
-                            Ok(true) => {}
-                            Ok(false) => return false,
-                            Err(refusal) => {
-                                if !self.quiet {
-                                    eprintln!("Warning: {refusal}");
-                                }
-                                return false;
+                    match cli_walk_step(&mut self.scope, listed, &e.path, e.is_walkable_dir()) {
+                        Ok(true) => {}
+                        Ok(false) => return false,
+                        Err(refusal) => {
+                            if !self.quiet {
+                                eprintln!("Warning: {refusal}");
                             }
+                            return false;
                         }
                     }
                     self.shown
@@ -53643,15 +53672,16 @@ async fn ncdu_scan(
 
         // A symlink to a folder is a leaf: following it could loop or leave
         // the root (GAP-A02).
-        if entry.is_walkable_dir() {
-            match cli_walk_step(&mut walk.scope, path, &entry.path) {
-                Ok(true) => {}
-                Ok(false) => continue,
-                Err(refusal) => {
-                    walk.unscanned.push(refusal);
-                    continue;
-                }
+        let follows = entry.is_walkable_dir();
+        match cli_walk_step(&mut walk.scope, path, &entry.path, follows) {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(refusal) => {
+                walk.unscanned.push(refusal);
+                continue;
             }
+        }
+        if follows {
             walk.counted
                 .insert(ftp_client_gui_lib::sync_core::walk_path_key(&entry.path));
             let child = Box::pin(ncdu_scan(
@@ -59761,17 +59791,15 @@ async fn cmd_crypt_ls(
                 // Listed, never walked (GAP-A02): a symlink to a folder is a
                 // row only.
                 let follow = entry.is_walkable_dir();
-                if follow {
-                    match cli_walk_step(&mut scope, &abs_dir, &entry.path) {
-                        Ok(true) => {}
-                        Ok(false) => continue,
-                        Err(refusal) => {
-                            if !cli.quiet {
-                                eprintln!("Warning: {refusal}");
-                            }
-                            unlisted = true;
-                            continue;
+                match cli_walk_step(&mut scope, &abs_dir, &entry.path, follow) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(refusal) => {
+                        if !cli.quiet {
+                            eprintln!("Warning: {refusal}");
                         }
+                        unlisted = true;
+                        continue;
                     }
                 }
                 if !shown.insert(ftp_client_gui_lib::sync_core::walk_path_key(&entry.path)) {
@@ -60375,16 +60403,15 @@ async fn cmd_crypt_get(
                     Some(p) => p,
                     None => continue,
                 };
-                if entry.is_walkable_dir() {
-                    match cli_walk_step(&mut scope, &rdir, &entry.path) {
-                        Ok(true) => {}
-                        Ok(false) => continue,
-                        Err(refusal) => {
-                            errors.push(refusal);
-                            continue;
-                        }
+                match cli_walk_step(&mut scope, &rdir, &entry.path, entry.is_walkable_dir()) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(refusal) => {
+                        errors.push(refusal);
+                        continue;
                     }
-                } else if !entry.is_dir
+                }
+                if !entry.is_dir
                     && !fetched.insert(ftp_client_gui_lib::sync_core::walk_path_key(&entry.path))
                 {
                     continue;
@@ -61945,7 +61972,7 @@ async fn scan_doctor_remote_tree(
             }
             if e.is_dir {
                 if e.is_walkable_dir() {
-                    match cli_walk_step(&mut scope, &dir, &e.path) {
+                    match cli_walk_step(&mut scope, &dir, &e.path, true) {
                         Ok(true) => queue.push((e.path.clone(), depth + 1)),
                         Ok(false) => {}
                         Err(_) => scan.list_errors += 1,
@@ -61953,6 +61980,10 @@ async fn scan_doctor_remote_tree(
                 }
             } else {
                 if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                    continue;
+                }
+                if cli_walk_step(&mut scope, &dir, &e.path, false).is_err() {
+                    scan.list_errors += 1;
                     continue;
                 }
                 if entries_found.len() >= max_entries {
@@ -89134,8 +89165,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     /// `/`; a root given with a trailing slash, and Swift listed each folder
     /// inside itself at the path without one. A folder that points above the
     /// root (ImageKit below it) sent the walk outside the root, where a real
-    /// copy of a file inside it was deleted. Nothing is deleted now, and the
-    /// run is partial for the folder it did not list.
+    /// copy of a file inside it was deleted, and so did a listing that names
+    /// that copy itself (`../keep.txt`). Nothing is deleted now, and the run
+    /// is partial for the entry it did not take.
     #[test]
     fn dedupe_deletes_no_only_copy_and_nothing_outside_its_root() {
         let imagekit_at_root = listed_remote(
@@ -89171,10 +89203,21 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             ],
             &[("/root/a.txt", b"aaaa"), ("/top.txt", b"aaaa")],
         );
+        let file_outside = listed_remote(
+            &[(
+                "/root",
+                &[
+                    ("a.txt", "/root/a.txt", Some(4)),
+                    ("../keep.txt", "/keep.txt", Some(4)),
+                ],
+            )],
+            &[("/root/a.txt", b"aaaa"), ("/keep.txt", b"aaaa")],
+        );
         for (remote, path) in [
             (imagekit_at_root, "/"),
             (swift_trailing_slash, "/root/"),
             (imagekit_below_root, "/root"),
+            (file_outside, "/root"),
         ] {
             let deletes = Arc::clone(&remote.delete_attempts);
             let code = run_against_remote(remote, || async {
@@ -89243,6 +89286,38 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(code, 4, "the folder it did not list makes the run partial");
     }
 
+    /// `cleanup` deleted every `.aerotmp` a listing named, wherever its path
+    /// pointed: a listing of `/root` that names `../y.aerotmp` (`/y.aerotmp`)
+    /// lost a file outside the folder cleaned. Only the orphan under the
+    /// folder is deleted now, and the run is partial for the one it refused.
+    #[test]
+    fn cleanup_deletes_no_orphan_a_listing_names_outside_its_folder() {
+        let remote = listed_remote(
+            &[(
+                "/root",
+                &[
+                    ("x.aerotmp", "/root/x.aerotmp", Some(4)),
+                    ("../y.aerotmp", "/y.aerotmp", Some(4)),
+                ],
+            )],
+            &[],
+        );
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_cleanup(
+                "memory://",
+                "/root",
+                true,
+                "1h",
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(*deletes.lock().unwrap(), ["/root/x.aerotmp"]);
+        assert_eq!(code, 4, "the orphan it refused makes the run partial");
+    }
+
     /// `rmdirs` followed a folder spelled `/` out of its root, then removed an
     /// empty folder outside the root and tried the root itself. It removes
     /// only the empty folder under the root now.
@@ -89270,7 +89345,8 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
     /// A listing defect every CLI walk of `/root` must survive: the listings,
     /// what sits under `/root` relative to it (files, then folders), and how
-    /// many folders the walk must not follow. Every file holds the four bytes
+    /// many entries the walk must refuse: folders it must not follow, files
+    /// it must not count, fetch or delete. Every file holds the four bytes
     /// `data`, so a size is four times a count.
     struct WalkShape {
         case: &'static str,
@@ -89366,6 +89442,23 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             ],
             files: &["a.txt"],
             dirs: &[],
+            refused: 1,
+        },
+        WalkShape {
+            case: "a file outside the root",
+            listings: &[
+                (
+                    "/root",
+                    &[
+                        ("a.txt", "/root/a.txt", Some(4)),
+                        ("d1", "/root/d1", None),
+                        ("../keep.txt", "/keep.txt", Some(4)),
+                    ],
+                ),
+                ("/root/d1", &[("b.txt", "/root/d1/b.txt", Some(4))]),
+            ],
+            files: &["a.txt", "d1/b.txt"],
+            dirs: &["d1"],
             refused: 1,
         },
     ];
@@ -89757,7 +89850,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 shape.files.len()
             );
             assert!(text.contains(&summary), "{case}: {text}");
-            for stray in ["top.txt", "big.bin", "root/"] {
+            for stray in ["top.txt", "big.bin", "root/", "keep.txt"] {
                 assert!(!text.contains(stray), "{case}: {text}");
             }
             assert_eq!(

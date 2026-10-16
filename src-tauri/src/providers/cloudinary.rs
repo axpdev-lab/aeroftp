@@ -1626,18 +1626,28 @@ impl StorageProvider for CloudinaryProvider {
         let mut matches = Vec::new();
         while let Some(dir) = stack.pop() {
             let listed = format!("/{dir}");
-            let subfolders = self
+            let mut listing: Vec<RemoteEntry> = self
                 .list_subfolders(&dir)
                 .await?
                 .iter()
                 .map(|sf| folder_to_entry(sf, &dir))
                 .collect();
+            let files = self.list_files(&dir).await?;
+            let dynamic = self.dynamic_folders();
+            let unique = names_listed_once(&files, dynamic);
+            for f in files {
+                self.cache_resource_type(&f.public_id, &f.resource_type);
+                let name_is_unique = unique.contains(&resource_name(&f, dynamic));
+                listing.push(resource_to_entry(&f, &dir, dynamic, name_is_unique));
+            }
             // A subfolder the search cannot follow fails it, as a folder it
-            // cannot list does: either way it did not see the whole tree.
-            let sorted = walk.sort(&listed, subfolders);
-            if let Some((folder, step)) = sorted.refused.first() {
+            // cannot list does: either way it did not see the whole tree. So
+            // does an asset whose path (its public id, when its name is not
+            // unique) is not in the folder searched.
+            let sorted = walk.sort(&listed, listing);
+            if let Some((path, step)) = sorted.refused.first() {
                 return Err(crate::sync_core::refused_search(
-                    &root, &listed, folder, *step,
+                    &root, &listed, path, *step,
                 ));
             }
             stack.extend(
@@ -1650,19 +1660,8 @@ impl StorageProvider for CloudinaryProvider {
                 sorted
                     .entries
                     .into_iter()
-                    .filter(|folder| super::matches_find_pattern(&folder.name, pattern)),
+                    .filter(|entry| super::matches_find_pattern(&entry.name, pattern)),
             );
-            let files = self.list_files(&dir).await?;
-            let dynamic = self.dynamic_folders();
-            let unique = names_listed_once(&files, dynamic);
-            for f in files {
-                self.cache_resource_type(&f.public_id, &f.resource_type);
-                let name = resource_name(&f, dynamic);
-                if super::matches_find_pattern(&name, pattern) {
-                    let name_is_unique = unique.contains(&name);
-                    matches.push(resource_to_entry(&f, &dir, dynamic, name_is_unique));
-                }
-            }
         }
         Ok(matches)
     }
@@ -2650,9 +2649,12 @@ mod tests {
                         .map(|(_, v)| v.into_owned())
                         .unwrap_or_default();
                     let listed: Vec<serde_json::Value> = if path == "/resources/image" {
+                        // An id marked `!` is listed under every prefix, as
+                        // a store that does not filter by it would.
                         images
                             .iter()
-                            .filter(|id| id.starts_with(&prefix))
+                            .filter(|id| id.starts_with('!') || id.starts_with(&prefix))
+                            .map(|id| id.trim_start_matches('!'))
                             .map(|id| {
                                 serde_json::json!({
                                     "asset_id": format!("AID_{id}"), "public_id": id,
@@ -2730,6 +2732,23 @@ mod tests {
             .expect("the search ends");
             assert!(outcome.is_err(), "{subfolders:?}: {outcome:?}");
         }
+    }
+
+    /// A listing of `tree` that names the image `keep` of the root next to
+    /// `tree/keep`: the two share the name `keep.jpg`, so each takes its
+    /// public id for its path, and `/keep` is not in `/tree`. The search
+    /// reported it as a match under `/tree`; it fails now, as on a subfolder
+    /// it cannot follow.
+    #[tokio::test]
+    async fn a_find_never_reports_an_asset_outside_it() {
+        let (mut provider, _) =
+            provider_on_folder_listings(&[("tree", "[]")], &["tree/keep", "!keep"]).await;
+        let outcome = provider.find("/tree", "*").await;
+        let err = outcome.expect_err("an asset outside the folder searched");
+        assert!(
+            err.to_string().contains("\"/keep\"") && err.to_string().contains("outside_root"),
+            "{err}"
+        );
     }
 
     /// A replace of a file onto a folder took the public id of an image
