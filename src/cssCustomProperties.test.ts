@@ -9,6 +9,7 @@
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseAst } from 'vite';
 import { describe, expect, it } from 'vitest';
 
 interface Scan {
@@ -16,31 +17,80 @@ interface Scan {
     referenced: Map<string, Set<string>>;
 }
 
+interface AstNode {
+    type: string;
+    [field: string]: unknown;
+}
+
 const NAME = '--[A-Za-z0-9_-]+';
 // Tailwind writes its own --tw-* properties into the generated stylesheet.
 const isTailwindInternal = (name: string) => name.startsWith('--tw-');
+// Expression wrappers between a style key and its string: ['--x' as string].
+const WRAPPERS = new Set(['TSAsExpression', 'TSSatisfiesExpression', 'TSTypeAssertion', 'TSNonNullExpression', 'ParenthesizedExpression']);
 
-function scanText(scan: Scan, file: string, text: string): void {
-    const isCss = file.endsWith('.css') || file.endsWith('.html');
-    const source = isCss ? text.replace(/\/\*[\s\S]*?\*\//g, '') : text;
-    const definitions = isCss
-        // A declaration, never the name inside var( or after a comma.
-        ? [new RegExp(`(?<![\\w(,-])(${NAME})\\s*:`, 'g')]
-        : [
-            // Style object keys, computed ones included: { '--x': v, ['--y' as string]: v }.
-            new RegExp(`['"\`](${NAME})['"\`]\\s*(?:as\\s+\\w+\\s*)?\\]?\\s*:`, 'g'),
-            new RegExp(`setProperty\\(\\s*['"\`](${NAME})`, 'g'),
-            // Tailwind arbitrary property: [--x:value].
-            new RegExp(`\\[(${NAME}):`, 'g'),
-        ];
-    for (const pattern of definitions) {
-        for (const match of source.matchAll(pattern)) scan.defined.add(match[1]);
-    }
-    for (const match of source.matchAll(new RegExp(`var\\(\\s*(${NAME})`, 'g'))) {
+function addReferences(scan: Scan, file: string, text: string): void {
+    for (const match of text.matchAll(new RegExp(`var\\(\\s*(${NAME})`, 'g'))) {
         const users = scan.referenced.get(match[1]) ?? new Set<string>();
         users.add(file);
         scan.referenced.set(match[1], users);
     }
+}
+
+function scanStylesheet(scan: Scan, file: string, text: string): void {
+    const source = text.replace(/\/\*[\s\S]*?\*\//g, '');
+    // A declaration, never the name inside var( or after a comma.
+    for (const match of source.matchAll(new RegExp(`(?<![\\w(,-])(${NAME})\\s*:`, 'g'))) scan.defined.add(match[1]);
+    addReferences(scan, file, source);
+}
+
+const isAstNode = (value: unknown): value is AstNode =>
+    typeof value === 'object' && value !== null && typeof (value as AstNode).type === 'string';
+
+// A string literal defines a property when it is a style key ({ '--x': v },
+// { ['--x' as string]: v }) or the name passed to element.style.setProperty.
+function isDefinitionSite(node: AstNode, ancestors: AstNode[]): boolean {
+    let child = node;
+    let index = ancestors.length - 1;
+    while (index >= 0 && WRAPPERS.has(ancestors[index].type)) child = ancestors[index--];
+    const parent = ancestors[index];
+    if (parent?.type === 'Property') return parent.key === child;
+    if (parent?.type !== 'CallExpression' || (parent.arguments as unknown[])[0] !== child) return false;
+    const callee = parent.callee as AstNode;
+    const method = callee.type === 'MemberExpression' ? callee.property as AstNode : undefined;
+    return method?.type === 'Identifier' && method.name === 'setProperty';
+}
+
+// Components are parsed, not pattern matched: comments, JSX text and the other
+// branch of a ternary never reach the scan, only string and template contents do.
+function scanScript(scan: Scan, file: string, text: string): void {
+    const ancestors: AstNode[] = [];
+    const visit = (node: AstNode): void => {
+        const literal = node.type === 'Literal' && typeof node.value === 'string' ? node.value
+            : node.type === 'TemplateLiteral' && (node.expressions as unknown[]).length === 0
+                ? ((node.quasis as AstNode[])[0].value as { cooked: string | null }).cooked ?? undefined
+                : undefined;
+        if (literal !== undefined && new RegExp(`^${NAME}$`).test(literal) && isDefinitionSite(node, ancestors)) {
+            scan.defined.add(literal);
+        }
+        const content = node.type === 'Literal' && typeof node.value === 'string' ? node.value
+            : node.type === 'TemplateElement' ? (node.value as { raw: string }).raw : undefined;
+        if (content !== undefined) {
+            addReferences(scan, file, content);
+            // Tailwind arbitrary property in a class string: [--x:value].
+            for (const match of content.matchAll(new RegExp(`\\[(${NAME}):`, 'g'))) scan.defined.add(match[1]);
+        }
+        ancestors.push(node);
+        for (const field of Object.values(node)) {
+            for (const child of Array.isArray(field) ? field : [field]) if (isAstNode(child)) visit(child);
+        }
+        ancestors.pop();
+    };
+    visit(parseAst(text, { lang: file.endsWith('.tsx') ? 'tsx' : 'ts' }) as unknown as AstNode);
+}
+
+function scanText(scan: Scan, file: string, text: string): void {
+    if (file.endsWith('.css') || file.endsWith('.html')) scanStylesheet(scan, file, text);
+    else scanScript(scan, file, text);
 }
 
 function scanFiles(files: string[]): Scan {
@@ -84,6 +134,18 @@ describe('custom property scanner', () => {
             el.style.setProperty('--s', value);`);
         expect([...scan.defined].sort()).toEqual(['--k', '--q', '--s', '--t']);
         expect(undefinedReferences(scan)).toEqual({ '--u': ['b.tsx'] });
+    });
+
+    it('ignores comments, JSX text and plain string values in components', () => {
+        const scan = scanSnippet('c.tsx', `
+            // const legacy = { '--c': 1 };
+            /* className="bg-[var(--d)]" */
+            const tone = dark ? '--e' : '--f';
+            const bar = { [\`--y\`]: 1 };
+            <a className="bg-[var(--u)]">Don't open http://example.com {\`p \${q} var(--m)\`}</a>;
+            <p>var(--g)</p>;`);
+        expect([...scan.defined]).toEqual(['--y']);
+        expect(undefinedReferences(scan)).toEqual({ '--m': ['c.tsx'], '--u': ['c.tsx'] });
     });
 });
 
