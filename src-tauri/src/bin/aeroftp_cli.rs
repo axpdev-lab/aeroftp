@@ -43838,6 +43838,33 @@ async fn cmd_rmdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
     }
 }
 
+/// Whether a CLI walk (`rmdirs`, `cleanup`, `dedupe`) lists `child`, a folder
+/// the listing of `listed` named (see `sync_core::WalkScope`). A folder that
+/// points back at the one being listed or above it, or outside the walk root,
+/// is not listed: it is counted in `scan_errors`, which makes the run partial,
+/// and named on stderr, since what it holds went unseen. A folder already
+/// listed is simply not listed again, so nothing under it is collected twice.
+fn cli_walk_admits(
+    scope: &mut ftp_client_gui_lib::sync_core::WalkScope,
+    listed: &str,
+    child: &str,
+    scan_errors: &mut u32,
+    quiet: bool,
+) -> bool {
+    use ftp_client_gui_lib::sync_core::WalkStep;
+    let why = match scope.admit(listed, child) {
+        WalkStep::Follow => return true,
+        WalkStep::AlreadyListed => return false,
+        WalkStep::LoopsBack => "it is that folder or one above it",
+        WalkStep::OutsideRoot => "it is outside the path being walked",
+    };
+    *scan_errors += 1;
+    if !quiet {
+        eprintln!("  Not listing {child}: the listing of {listed} names it, but {why}");
+    }
+    false
+}
+
 /// Order discovered directories for empty-prune: deepest first
 /// (post-order), so a child is always considered before its parent and a
 /// parent that only becomes empty after its children are pruned is still
@@ -43876,6 +43903,7 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
     let mut scan_errors = 0u32;
     let mut exit_code = 0i32;
     let mut capped = false;
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(&root);
 
     while let Some((dir, depth)) = stack.pop() {
         if depth >= max_depth {
@@ -43887,6 +43915,9 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
         }
         match provider.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for entry in entries {
                     // A symlink-to-directory is neither descended into nor
                     // offered as an empty-directory candidate (GAP-A02):
@@ -43897,6 +43928,9 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
                     }
                     let rel = entry.path.strip_prefix(&root_norm).unwrap_or(&entry.path);
                     if validate_relative_path(rel).is_none() {
+                        continue;
+                    }
+                    if !cli_walk_admits(&mut scope, &dir, &entry.path, &mut scan_errors, quiet) {
                         continue;
                     }
                     if found.len() >= MAX_SCAN_ENTRIES {
@@ -48094,7 +48128,8 @@ async fn cmd_cleanup(
     // prove staleness before deleting (CLEAN-01).
     let mut orphans: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(path.to_string(), 0)];
-    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Cycle guard: every folder is listed once, and only one under `path`.
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(path);
     let max_entries = 100_000usize;
     let mut scanned_entries = 0u64;
     let mut scan_errors = 0u32;
@@ -48111,16 +48146,23 @@ async fn cmd_cleanup(
             truncated = true;
             continue;
         }
-        if !visited.insert(dir.clone()) {
-            // Cycle guard: a symlinked directory loop would otherwise spin forever.
-            continue;
-        }
         match provider.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for entry in entries {
                     scanned_entries += 1;
                     if entry.is_dir {
-                        if entry.is_walkable_dir() {
+                        if entry.is_walkable_dir()
+                            && cli_walk_admits(
+                                &mut scope,
+                                &dir,
+                                &entry.path,
+                                &mut scan_errors,
+                                quiet,
+                            )
+                        {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
                     } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
@@ -48140,6 +48182,10 @@ async fn cmd_cleanup(
             }
         }
     }
+    // One delete per file, whatever the listings repeated.
+    ftp_client_gui_lib::sync_core::retain_first_per_path(&mut orphans, |(path, _, _)| {
+        path.as_str()
+    });
 
     if orphans.is_empty() {
         if !quiet {
@@ -48351,7 +48397,8 @@ async fn cmd_dedupe(
     // cap entries, and guard against symlinked directory cycles.
     let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(path.to_string(), 0)];
-    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Cycle guard: every folder is listed once, and only one under `path`.
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(path);
     let max_entries = 100_000usize;
     let mut scan_errors = 0u32;
     let mut hash_errors = 0u32;
@@ -48365,15 +48412,22 @@ async fn cmd_dedupe(
         if depth >= MAX_SCAN_DEPTH {
             continue;
         }
-        if !visited.insert(dir.clone()) {
-            // Cycle guard: a symlinked directory loop would otherwise spin forever.
-            continue;
-        }
         match provider.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for entry in entries {
                     if entry.is_dir {
-                        if entry.is_walkable_dir() {
+                        if entry.is_walkable_dir()
+                            && cli_walk_admits(
+                                &mut scope,
+                                &dir,
+                                &entry.path,
+                                &mut scan_errors,
+                                quiet,
+                            )
+                        {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
                     } else {
@@ -48392,6 +48446,16 @@ async fn cmd_dedupe(
                 continue;
             }
         }
+    }
+
+    // A file is never its own duplicate: whatever a listing did, each path is
+    // grouped once, so the copies a group deletes are always other files.
+    let repeated =
+        ftp_client_gui_lib::sync_core::retain_first_per_path(&mut files, |(path, _, _)| {
+            path.as_str()
+        });
+    if repeated > 0 && !quiet {
+        eprintln!("  {repeated} path(s) were listed more than once and are counted once");
     }
 
     let sim_mode = SimilarityMode::parse(similarity);
@@ -82959,6 +83023,9 @@ mod tests {
         hidden: std::collections::HashSet<String>,
         /// Opt-in: every `rmdir` is refused for want of permission.
         rmdir_denied: bool,
+        /// File bodies `download_to_bytes` answers with, by full path; a path
+        /// with none is refused as before.
+        contents: HashMap<String, Vec<u8>>,
     }
 
     impl MemTreeProvider {
@@ -83051,11 +83118,11 @@ mod tests {
         ) -> Result<(), ProviderError> {
             Err(ProviderError::NotSupported("download".to_string()))
         }
-        async fn download_to_bytes(
-            &mut self,
-            _remote_path: &str,
-        ) -> Result<Vec<u8>, ProviderError> {
-            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.contents
+                .get(remote_path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotSupported("download_to_bytes".to_string()))
         }
         async fn upload(
             &mut self,
@@ -88636,6 +88703,185 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(stats.exit_code, 0);
         assert!(deletes.lock().unwrap().is_empty());
         assert!(rmdirs.lock().unwrap().is_empty());
+    }
+
+    /// One listing for [`listed_remote`]: the path listed and its entries,
+    /// each `(name, path, file size or None for a folder)`.
+    type Listing<'a> = (&'a str, &'a [(&'a str, &'a str, Option<u64>)]);
+
+    /// A remote holding `listings`, with the files stamped with
+    /// [`FIXTURE_MTIME`] and holding `contents` when named there. Mutations go
+    /// through, so a test sees what a command really removed.
+    fn listed_remote(listings: &[Listing<'_>], contents: &[(&str, &[u8])]) -> MemTreeProvider {
+        let dirs = listings
+            .iter()
+            .map(|(listed, entries)| {
+                let entries = entries
+                    .iter()
+                    .map(|(name, path, size)| match size {
+                        Some(size) => {
+                            let mut file =
+                                RemoteEntry::file(name.to_string(), path.to_string(), *size);
+                            file.modified = Some(FIXTURE_MTIME.to_string());
+                            file
+                        }
+                        None => RemoteEntry::directory(name.to_string(), path.to_string()),
+                    })
+                    .collect();
+                (listed.to_string(), entries)
+            })
+            .collect();
+        MemTreeProvider {
+            dirs,
+            mutable: true,
+            contents: contents
+                .iter()
+                .map(|(path, body)| (path.to_string(), body.to_vec()))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    /// `dedupe` kept a visited set of the paths it listed, compared as typed.
+    /// A listing that names the walk root in another spelling sent it through
+    /// the root a second time and every file there became a duplicate of
+    /// itself: with `--force` the only copy was deleted. Seen two ways: `/`
+    /// resolves to the empty root, and ImageKit gave every folder the path
+    /// `/`; a root given with a trailing slash, and Swift listed each folder
+    /// inside itself at the path without one. A folder that points above the
+    /// root (ImageKit below it) sent the walk outside the root, where a real
+    /// copy of a file inside it was deleted. Nothing is deleted now, and the
+    /// run is partial for the folder it did not list.
+    #[test]
+    fn dedupe_deletes_no_only_copy_and_nothing_outside_its_root() {
+        let imagekit_at_root = listed_remote(
+            &[
+                ("", &[("a.txt", "/a.txt", Some(4)), ("d1", "/", None)]),
+                ("/", &[("a.txt", "/a.txt", Some(4)), ("d1", "/", None)]),
+            ],
+            &[("/a.txt", b"aaaa")],
+        );
+        let swift_trailing_slash = listed_remote(
+            &[
+                (
+                    "/root/",
+                    &[("root", "/root", None), ("a.txt", "/root/a.txt", Some(4))],
+                ),
+                (
+                    "/root",
+                    &[("root", "/root", None), ("a.txt", "/root/a.txt", Some(4))],
+                ),
+            ],
+            &[("/root/a.txt", b"aaaa")],
+        );
+        let imagekit_below_root = listed_remote(
+            &[
+                (
+                    "/root",
+                    &[("a.txt", "/root/a.txt", Some(4)), ("d1", "/", None)],
+                ),
+                (
+                    "/",
+                    &[("root", "/root", None), ("top.txt", "/top.txt", Some(4))],
+                ),
+            ],
+            &[("/root/a.txt", b"aaaa"), ("/top.txt", b"aaaa")],
+        );
+        for (remote, path) in [
+            (imagekit_at_root, "/"),
+            (swift_trailing_slash, "/root/"),
+            (imagekit_below_root, "/root"),
+        ] {
+            let deletes = Arc::clone(&remote.delete_attempts);
+            let code = run_against_remote(remote, || async {
+                cmd_dedupe(
+                    "memory://",
+                    path,
+                    "newest",
+                    false,
+                    true,
+                    Some("10"),
+                    "exact",
+                    None,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            });
+            assert!(
+                deletes.lock().unwrap().is_empty(),
+                "{path}: deleted {:?}",
+                deletes.lock().unwrap()
+            );
+            assert_eq!(
+                code, 4,
+                "{path}: the folder it did not list makes the run partial"
+            );
+        }
+    }
+
+    /// `cleanup` walked the same root twice on the same listings and deleted
+    /// each orphan once per pass; it deletes it once now.
+    #[test]
+    fn cleanup_deletes_each_orphan_once_on_a_root_listed_in_two_spellings() {
+        let remote = listed_remote(
+            &[
+                (
+                    "/root/",
+                    &[
+                        ("root", "/root", None),
+                        ("x.aerotmp", "/root/x.aerotmp", Some(4)),
+                    ],
+                ),
+                (
+                    "/root",
+                    &[
+                        ("root", "/root", None),
+                        ("x.aerotmp", "/root/x.aerotmp", Some(4)),
+                    ],
+                ),
+            ],
+            &[],
+        );
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_cleanup(
+                "memory://",
+                "/root/",
+                true,
+                "1h",
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(*deletes.lock().unwrap(), ["/root/x.aerotmp"]);
+        assert_eq!(code, 4, "the folder it did not list makes the run partial");
+    }
+
+    /// `rmdirs` followed a folder spelled `/` out of its root, then removed an
+    /// empty folder outside the root and tried the root itself. It removes
+    /// only the empty folder under the root now.
+    #[test]
+    fn rmdirs_removes_nothing_outside_its_root() {
+        let remote = listed_remote(
+            &[
+                (
+                    "/root",
+                    &[("empty", "/root/empty", None), ("d1", "/", None)],
+                ),
+                ("/root/empty", &[]),
+                ("/", &[("root", "/root", None), ("other", "/other", None)]),
+                ("/other", &[]),
+            ],
+            &[],
+        );
+        let rmdirs = Arc::clone(&remote.rmdir_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_rmdirs("memory://", "/root", true, &quiet_cli(), OutputFormat::Json).await
+        });
+        assert_eq!(*rmdirs.lock().unwrap(), ["/root/empty"]);
+        assert_eq!(code, 4, "the folder it did not list makes the run partial");
     }
 
     /// `sync --direction download --delete` removes the LOCAL directories its
