@@ -48,7 +48,10 @@ fn dispatch(argv: Vec<OsString>, route: DispatchRoute) -> Result<u8, String> {
         // instead of the AeroFTP icon and name. Forcing argv[0] to
         // "aeroftp" binds the window back to the .desktop entry.
         command.arg0("aeroftp");
-        command.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // Inherit an explicit renderer choice, including 0 or an empty value.
+        if env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            command.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
     }
 
     exec_or_wait(command, route)
