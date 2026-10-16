@@ -174,6 +174,7 @@ enum KeyringSlot {
 }
 
 impl KeyringSlot {
+    /// The keyring account this slot names.
     fn account(&self) -> &str {
         match self {
             KeyringSlot::Default => keyring_account(),
@@ -431,8 +432,12 @@ enum SlotContent {
 /// The keyring operations the vault needs, behind a seam so tests can run the
 /// slot rules against an in-memory keyring instead of the user's real one.
 trait PassphraseSlots {
+    /// What `account` holds, read without changing it.
     fn read(&self, account: &str) -> SlotContent;
+    /// Store `encoded` (a base64 passphrase) in `account`, replacing whatever
+    /// is there: callers decide whether that is allowed.
     fn write(&self, account: &str, encoded: &str) -> Result<(), String>;
+    /// Remove `account`; a missing entry is not an error.
     fn delete(&self, account: &str);
 }
 
@@ -476,6 +481,7 @@ fn is_named_slot_account(account: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
+/// Decode a base64 keyring value into a passphrase, refusing any other length.
 fn decode_passphrase(encoded: &str) -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
     let mut decoded = BASE64
         .decode(encoded.as_bytes())
@@ -490,6 +496,8 @@ fn decode_passphrase(encoded: &str) -> Result<[u8; PASSPHRASE_LEN], CredentialEr
     Ok(passphrase)
 }
 
+/// Read and decode the passphrase held by `account`. An empty or unreadable
+/// account is an error, worded as before for `keystore status`.
 fn load_passphrase_from_slot(
     slots: &dyn PassphraseSlots,
     account: &str,
@@ -613,11 +621,14 @@ fn release_slot_in(slots: &dyn PassphraseSlots, account: &str, passphrase: &[u8;
     }
 }
 
+/// The native default account a Flatpak or Snap install created before
+/// per-scope accounts may still find its key in; `None` for other installs.
 fn native_account_for_migration() -> Option<&'static str> {
     matches!(keyring_scope(), KeyringScope::Flatpak | KeyringScope::Snap)
         .then(|| keyring_account_for(KeyringScope::Native, cfg!(debug_assertions)))
 }
 
+/// [`load_passphrase_in`] against the OS keyring, for this install.
 fn load_passphrase_from_keyring(
     slot: &KeyringSlot,
 ) -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
@@ -629,6 +640,7 @@ fn load_passphrase_from_keyring(
     )
 }
 
+/// [`claim_slot_in`] against the OS keyring, for this install.
 fn claim_keyring_slot(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<KeyringSlot, CredentialError> {
     // Always within THIS scope's accounts. A Flatpak/Snap must never write the
     // native slot, which is what corrupted a native vault when a sandboxed
@@ -636,6 +648,7 @@ fn claim_keyring_slot(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<KeyringSlot, 
     claim_slot_in(&OsKeyring, keyring_account(), passphrase)
 }
 
+/// [`release_slot_in`] against the OS keyring, for the account `slot` names.
 fn release_keyring_slot(slot: &KeyringSlot, passphrase: &[u8; PASSPHRASE_LEN]) {
     release_slot_in(&OsKeyring, slot.account(), passphrase)
 }
