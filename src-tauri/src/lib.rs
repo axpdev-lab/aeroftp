@@ -2479,6 +2479,35 @@ fn is_pacman_system(path_exists: impl Fn(&str) -> bool) -> bool {
     path_exists("/etc/arch-release") || path_exists("/etc/pacman.conf")
 }
 
+/// The AppImage file this process was started from, if it was. The AppImage
+/// runtime sets `APPIMAGE` to that file and `APPDIR` to where it mounted it,
+/// and this binary then runs from inside the mount
+/// (`/tmp/.mount_AeroFT.../usr/lib/aeroftp/aeroftp.bin`), a path that names
+/// neither the file nor the format, on a read-only filesystem. Every child
+/// process inherits the two variables (WebKit's processes, or an AeroFTP
+/// installed from a package and started from another AppImage, a terminal
+/// say), so they count only when this executable is inside `APPDIR`.
+fn running_appimage(
+    appimage: Option<&std::ffi::OsStr>,
+    appdir: Option<&std::ffi::OsStr>,
+    current_exe: &Path,
+) -> Option<PathBuf> {
+    let appimage = Path::new(appimage.filter(|value| !value.is_empty())?);
+    let appdir = Path::new(appdir.filter(|value| !value.is_empty())?);
+    (appimage.is_absolute() && appdir.is_absolute() && current_exe.starts_with(appdir))
+        .then(|| appimage.to_path_buf())
+}
+
+/// [`running_appimage`] for this process.
+fn current_appimage() -> Option<PathBuf> {
+    let current_exe = std::env::current_exe().ok()?;
+    running_appimage(
+        std::env::var_os("APPIMAGE").as_deref(),
+        std::env::var_os("APPDIR").as_deref(),
+        &current_exe,
+    )
+}
+
 /// Detect how the app was installed (deb, appimage, snap, flatpak, rpm, exe, dmg)
 fn detect_install_format() -> String {
     let os = std::env::consts::OS;
@@ -2493,12 +2522,8 @@ fn detect_install_format() -> String {
             if std::env::var("FLATPAK_ID").is_ok() {
                 return "flatpak".to_string();
             }
-            // Check for AppImage - the executable path contains "AppImage"
-            if let Ok(exe_path) = std::env::current_exe() {
-                let path_str = exe_path.to_string_lossy();
-                if path_str.contains("AppImage") || path_str.contains(".AppImage") {
-                    return "appimage".to_string();
-                }
+            if current_appimage().is_some() {
+                return "appimage".to_string();
             }
             // Check for RPM-based distros (Fedora, CentOS, RHEL)
             if std::path::Path::new("/etc/redhat-release").exists()
@@ -3063,17 +3088,16 @@ async fn install_appimage_update(
         return Err("Downloaded AppImage not found".to_string());
     }
 
-    let current_exe = std::env::current_exe()
-        .map_err(|error| format!("Failed to resolve current AppImage path: {}", error))?;
-    let current_name = current_exe
+    // The AppImage file, not the running executable: that is the binary
+    // inside the read-only mount, and replacing it would update nothing.
+    let current_appimage = current_appimage()
+        .ok_or_else(|| "This process was not started from an AppImage".to_string())?;
+    let current_name = current_appimage
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| "Failed to resolve current executable name".to_string())?;
-    if !current_name.to_ascii_lowercase().contains("appimage") {
-        return Err("Current executable is not an AppImage path".to_string());
-    }
+        .ok_or_else(|| "Failed to resolve the AppImage file name".to_string())?;
 
-    let current_parent = current_exe
+    let current_parent = current_appimage
         .parent()
         .ok_or_else(|| "Failed to resolve AppImage directory".to_string())?;
     let staged_path = current_parent.join(format!(".{}.update", current_name));
@@ -3095,11 +3119,11 @@ async fn install_appimage_update(
             .map_err(|error| format!("Failed to set AppImage permissions: {}", error))?;
     }
 
-    std::fs::rename(&current_exe, &backup_path)
+    std::fs::rename(&current_appimage, &backup_path)
         .map_err(|error| format!("Failed to move current AppImage aside: {}", error))?;
 
-    if let Err(error) = std::fs::rename(&staged_path, &current_exe) {
-        let _ = std::fs::rename(&backup_path, &current_exe);
+    if let Err(error) = std::fs::rename(&staged_path, &current_appimage) {
+        let _ = std::fs::rename(&backup_path, &current_appimage);
         return Err(format!("Failed to install new AppImage: {}", error));
     }
 
@@ -22960,6 +22984,75 @@ mod archive_meta_tests {
         assert_eq!(super::rar_method_label(0), "Store");
         assert_eq!(super::rar_method_label(0x31), "RAR");
         assert_eq!(super::rar_method_label(0x35), "RAR");
+    }
+}
+
+// The AppImage runtime exists on Linux only, and these are its paths: on
+// Windows `/home/...` is not absolute, so every case would read `None`.
+#[cfg(all(test, target_os = "linux"))]
+mod appimage_install_format_tests {
+    use super::running_appimage;
+    use std::ffi::OsStr;
+    use std::path::{Path, PathBuf};
+
+    const FILE: &str = "/home/me/Apps/AeroFTP_4.2.3_amd64.AppImage";
+    const MOUNT: &str = "/tmp/.mount_AeroFTibMhaa";
+
+    /// What the 4.2.3 AppImage process actually has (measured): the variables
+    /// the runtime sets, and an executable inside the mount that names neither
+    /// the file nor the format. The old check read only that path and
+    /// reported `deb`.
+    #[test]
+    fn the_appimage_runtime_names_the_file_it_started_from() {
+        assert_eq!(
+            running_appimage(
+                Some(OsStr::new(FILE)),
+                Some(OsStr::new(MOUNT)),
+                Path::new("/tmp/.mount_AeroFTibMhaa/usr/lib/aeroftp/aeroftp.bin"),
+            ),
+            Some(PathBuf::from(FILE))
+        );
+    }
+
+    /// The variables are inherited by children: WebKit's processes, or a
+    /// packaged AeroFTP started from another AppImage. Neither is that
+    /// AppImage, and an update must never replace its file.
+    #[test]
+    fn inherited_variables_do_not_make_an_appimage() {
+        for exe in [
+            "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess",
+            "/usr/bin/aeroftp",
+            "/tmp/.mount_AeroFTibMhaa-other/usr/bin/aeroftp",
+        ] {
+            assert_eq!(
+                running_appimage(
+                    Some(OsStr::new(FILE)),
+                    Some(OsStr::new(MOUNT)),
+                    Path::new(exe)
+                ),
+                None,
+                "{exe}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_empty_or_relative_variables_are_not_an_appimage() {
+        let exe = Path::new("/tmp/.mount_AeroFTibMhaa/usr/lib/aeroftp/aeroftp.bin");
+        let file = Some(OsStr::new(FILE));
+        let mount = Some(OsStr::new(MOUNT));
+        assert_eq!(running_appimage(None, mount, exe), None);
+        assert_eq!(running_appimage(file, None, exe), None);
+        assert_eq!(running_appimage(Some(OsStr::new("")), mount, exe), None);
+        assert_eq!(running_appimage(file, Some(OsStr::new("")), exe), None);
+        assert_eq!(
+            running_appimage(Some(OsStr::new("AeroFTP.AppImage")), mount, exe),
+            None
+        );
+        assert_eq!(
+            running_appimage(file, Some(OsStr::new("tmp/.mount_AeroFTibMhaa")), exe),
+            None
+        );
     }
 }
 
