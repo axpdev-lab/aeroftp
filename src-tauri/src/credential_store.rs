@@ -456,35 +456,50 @@ const CLAIM_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// The lock file, in a folder every process of this user that shares the
 /// keyring sees whatever its config folder.
-fn claim_lock_path() -> PathBuf {
+fn claim_lock_path() -> Result<PathBuf, String> {
     let dir = claim_lock_dir(
         std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from),
         std::env::var_os("FLATPAK_ID"),
-        std::env::temp_dir(),
-    );
+        claim_lock_fallback_dir(),
+    )
+    .ok_or("no runtime, cache or temporary folder for the keyring lock")?;
     #[cfg(unix)]
     // SAFETY: getuid never fails and has no preconditions.
     let name = format!("aeroftp-keyring-{}.lock", unsafe { libc::getuid() });
     #[cfg(not(unix))]
     let name = "aeroftp-keyring.lock".to_string();
-    dir.join(name)
+    Ok(dir.join(name))
 }
 
 /// The per-user runtime folder on Linux; in a Flatpak the per-app one under
 /// it, which the app's instances share while each sees its own runtime
-/// folder. Without a runtime folder, the temporary folder, which is per user
-/// on macOS and Windows.
+/// folder. Without a runtime folder, `fallback`.
 fn claim_lock_dir(
     runtime: Option<PathBuf>,
     flatpak_id: Option<std::ffi::OsString>,
-    temp: PathBuf,
-) -> PathBuf {
+    fallback: Option<PathBuf>,
+) -> Option<PathBuf> {
     let runtime = runtime.filter(|dir| dir.is_dir());
     let flatpak_app = flatpak_id
         .zip(runtime.clone())
         .map(|(id, dir)| dir.join("app").join(id))
         .filter(|dir| dir.is_dir());
-    flatpak_app.or(runtime).unwrap_or(temp)
+    flatpak_app.or(runtime).or(fallback)
+}
+
+/// Where the lock goes without a runtime folder (an SSH session without
+/// logind, a container, cron): a folder other users cannot write to. On Linux
+/// that is the user's cache folder, never the shared /tmp, where another user
+/// could create the lock file first and make every claim fail. The temporary
+/// folder is per user on macOS and Windows.
+fn claim_lock_fallback_dir() -> Option<PathBuf> {
+    if cfg!(all(unix, not(target_os = "macos"))) {
+        let dir = dirs::cache_dir()?;
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    } else {
+        Some(std::env::temp_dir())
+    }
 }
 
 /// Lock `path` exclusively, waiting up to `wait` for another holder. The OS
@@ -492,8 +507,7 @@ fn claim_lock_dir(
 fn acquire_claim_lock(path: &Path, wait: std::time::Duration) -> Result<ClaimLock, String> {
     let mut options = std::fs::OpenOptions::new();
     options.create(true).truncate(false).write(true);
-    // In a shared temporary folder another user could otherwise open the file
-    // and hold its lock.
+    // Nobody else needs to open it.
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let file = options
@@ -553,7 +567,7 @@ impl PassphraseSlots for OsKeyring {
     }
 
     fn lock(&self) -> Result<ClaimLock, String> {
-        acquire_claim_lock(&claim_lock_path(), CLAIM_LOCK_WAIT)
+        acquire_claim_lock(&claim_lock_path()?, CLAIM_LOCK_WAIT)
     }
 }
 
@@ -2447,34 +2461,46 @@ mod tests {
         fn the_lock_lives_where_every_process_sharing_the_keyring_finds_it() {
             let root = tempfile::tempdir().unwrap();
             let runtime = root.path().join("run");
-            let temp = root.path().join("tmp");
+            let fallback = || Some(root.path().join("cache"));
             let app = runtime.join("app").join("com.aeroftp.AeroFTP");
             let id = || Some("com.aeroftp.AeroFTP".into());
 
-            // No runtime folder: the temporary folder.
-            assert_eq!(claim_lock_dir(None, None, temp.clone()), temp);
+            // No runtime folder: the fallback folder.
+            assert_eq!(claim_lock_dir(None, None, fallback()), fallback());
             assert_eq!(
-                claim_lock_dir(Some(runtime.clone()), None, temp.clone()),
-                temp
+                claim_lock_dir(Some(runtime.clone()), None, fallback()),
+                fallback()
             );
+            assert_eq!(claim_lock_dir(None, None, None), None);
 
             std::fs::create_dir_all(&runtime).unwrap();
             assert_eq!(
-                claim_lock_dir(Some(runtime.clone()), None, temp.clone()),
-                runtime
+                claim_lock_dir(Some(runtime.clone()), None, fallback()),
+                Some(runtime.clone())
             );
             // A Flatpak without its per-app folder keeps the runtime folder.
             assert_eq!(
-                claim_lock_dir(Some(runtime.clone()), id(), temp.clone()),
-                runtime
+                claim_lock_dir(Some(runtime.clone()), id(), fallback()),
+                Some(runtime.clone())
             );
 
             std::fs::create_dir_all(&app).unwrap();
             assert_eq!(
-                claim_lock_dir(Some(runtime.clone()), id(), temp.clone()),
-                app
+                claim_lock_dir(Some(runtime.clone()), id(), fallback()),
+                Some(app)
             );
-            assert_eq!(claim_lock_dir(None, id(), temp.clone()), temp);
+            assert_eq!(claim_lock_dir(None, id(), fallback()), fallback());
+        }
+
+        /// Another user can create a file in the shared /tmp before us and
+        /// hold its lock, so on Linux the fallback is never the temporary folder.
+        #[cfg(all(unix, not(target_os = "macos")))]
+        #[test]
+        fn the_linux_fallback_is_never_the_shared_temporary_folder() {
+            assert_ne!(
+                super::super::claim_lock_fallback_dir(),
+                Some(std::env::temp_dir())
+            );
         }
 
         #[test]
