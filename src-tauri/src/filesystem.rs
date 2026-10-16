@@ -1360,11 +1360,9 @@ pub async fn get_file_properties(path: String) -> Result<DetailedFileProperties,
 
     let to_iso = |time: std::io::Result<std::time::SystemTime>| -> Option<String> {
         time.ok().and_then(|t| {
-            t.duration_since(std::time::UNIX_EPOCH).ok().and_then(|d| {
-                let secs = d.as_secs() as i64;
-                chrono::DateTime::from_timestamp(secs, 0)
-                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
-            })
+            t.duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .and_then(|d| utc_instant(d.as_secs() as i64))
         })
     };
 
@@ -1740,6 +1738,14 @@ pub async fn delete_to_trash(path: String, allow_home_copy: Option<bool>) -> Res
         .map_err(|e| format!("Trash task failed: {e}"))?
 }
 
+/// An instant as RFC 3339 in UTC, with its `Z`. The frontend formats these
+/// with `new Date(...)`, which reads a date-time without an offset as local
+/// time: written as `%Y-%m-%dT%H:%M:%S`, a UTC instant showed shifted by the
+/// UTC offset (the AeroFile trash "Deleted" column, the Properties dialog).
+pub(crate) fn utc_instant(secs: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp(secs, 0).map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
 /// The guarded `trash::delete`, shared by the GUI command and AeroAgent's
 /// local trash tool.
 pub(crate) fn trash_blocking(path: &str, allow_home_copy: bool) -> Result<(), String> {
@@ -1779,8 +1785,7 @@ pub async fn list_trash_items() -> Result<Vec<TrashItem>, String> {
             .map(|item| {
                 let name = item.name.to_string_lossy().to_string();
                 let original_path = item.original_path().to_string_lossy().to_string();
-                let deleted_at = chrono::DateTime::from_timestamp(item.time_deleted, 0)
-                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
+                let deleted_at = utc_instant(item.time_deleted);
 
                 // Get size and is_dir via metadata (best-effort)
                 let (size, is_dir) = trash::os_limited::metadata(item)
@@ -1828,10 +1833,9 @@ pub async fn list_trash_items() -> Result<Vec<TrashItem>, String> {
                 let (size, is_dir, deleted_at) = match entry.metadata() {
                     Ok(m) => {
                         let deleted = m.modified().ok().and_then(|t| {
-                            t.duration_since(std::time::UNIX_EPOCH).ok().and_then(|d| {
-                                chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
-                            })
+                            t.duration_since(std::time::UNIX_EPOCH)
+                                .ok()
+                                .and_then(|d| utc_instant(d.as_secs() as i64))
                         });
                         (m.len(), m.is_dir(), deleted)
                     }
@@ -3094,5 +3098,48 @@ mod main_thread_tests {
             .await
             .expect("a no-op must still read");
         assert_eq!(props.size, 5);
+    }
+}
+
+#[cfg(test)]
+mod instant_offset_tests {
+    use super::*;
+
+    /// The frontend formats these with `new Date(...)`, which reads a
+    /// date-time with no offset as LOCAL time. An instant written as UTC
+    /// without its `Z` therefore showed shifted by the UTC offset (the
+    /// AeroFile trash "Deleted" column read 05:50 for a file trashed at 07:50
+    /// CEST). Every instant the backend hands out must say which zone it is in.
+    #[test]
+    fn utc_instant_carries_its_offset() {
+        assert_eq!(utc_instant(0).as_deref(), Some("1970-01-01T00:00:00Z"));
+        let text = utc_instant(1_792_130_000).expect("in range");
+        let parsed = chrono::DateTime::parse_from_rfc3339(&text).expect("RFC 3339");
+        assert_eq!(parsed.timestamp(), 1_792_130_000);
+    }
+
+    #[test]
+    fn file_properties_times_are_the_file_times_in_any_zone() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"data").expect("write");
+        let meta = std::fs::metadata(&file).expect("metadata");
+        let secs = |t: std::io::Result<std::time::SystemTime>| {
+            t.ok()
+                .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64)
+        };
+        let props =
+            tauri::async_runtime::block_on(get_file_properties(file.to_string_lossy().to_string()))
+                .expect("properties");
+        let instant = |s: &Option<String>| {
+            s.as_deref().map(|s| {
+                chrono::DateTime::parse_from_rfc3339(s)
+                    .unwrap_or_else(|e| panic!("{s} is not RFC 3339 with an offset: {e}"))
+                    .timestamp()
+            })
+        };
+        assert_eq!(instant(&props.modified), secs(meta.modified()));
+        assert_eq!(instant(&props.accessed), secs(meta.accessed()));
+        assert_eq!(instant(&props.created), secs(meta.created()));
     }
 }

@@ -477,11 +477,12 @@ pub async fn list_tar(archive_path: String) -> Result<Vec<ArchiveEntry>, String>
         // The size the extractors hold the entry to (PAX size included), not the
         // raw header field, so the listing and the extraction agree.
         let size = entry.size();
-        let modified = header.mtime().ok().map(|ts| {
-            chrono::DateTime::from_timestamp(ts as i64, 0)
-                .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
-                .unwrap_or_default()
-        });
+        // A tar mtime is a Unix instant: say it is UTC (a zip time above is
+        // DOS local time with no zone, so that one stays naive).
+        let modified = header
+            .mtime()
+            .ok()
+            .map(|ts| crate::filesystem::utc_instant(ts as i64).unwrap_or_default());
 
         entries.push(ArchiveEntry {
             name,
@@ -783,5 +784,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(got, b"data");
+    }
+
+    /// A tar mtime is a Unix instant. Written without its `Z`, the frontend's
+    /// `new Date(...)` would read it as local time and shift it by the UTC
+    /// offset. (A zip time is DOS local time with no zone, so it stays naive.)
+    #[test]
+    fn a_tar_entry_time_says_it_is_utc() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("t.tar");
+        let mut builder = tar::Builder::new(std::fs::File::create(&path).expect("create"));
+        let mut header = tar::Header::new_gnu();
+        header.set_size(4);
+        header.set_mode(0o644);
+        header.set_mtime(1_700_000_000);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "a.txt", &b"data"[..])
+            .expect("append");
+        builder.finish().expect("finish");
+        drop(builder);
+        let entries =
+            tauri::async_runtime::block_on(super::list_tar(path.to_string_lossy().to_string()))
+                .expect("list");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].modified.as_deref(), Some("2023-11-14T22:13:20Z"));
     }
 }
