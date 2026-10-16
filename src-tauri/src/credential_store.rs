@@ -542,11 +542,12 @@ fn load_passphrase_in(
 }
 
 /// Give a new keyring-backed vault an account of its own and store its
-/// passphrase there. The default account is used only when it is empty (or
-/// already holds this same passphrase); a default account holding anything
-/// else belongs to another vault, which would be locked for good if it were
-/// overwritten, so the new vault takes a named account instead and records it
-/// in vault.key.
+/// passphrase there. The default account is used only when it is empty. A
+/// default account holding anything belongs to another vault, which would be
+/// locked for good if it were overwritten, and is not adopted even when it
+/// holds this same passphrase: two vault.key files naming one account would
+/// let either one's release clear the other's key. The new vault takes a named
+/// account instead and records it in vault.key.
 fn claim_slot_in(
     slots: &dyn PassphraseSlots,
     default_account: &str,
@@ -574,7 +575,6 @@ fn claim_slot_in(
             write_checked(default_account)?;
             return Ok(KeyringSlot::Default);
         }
-        SlotContent::Holds(stored) if *stored == *encoded => return Ok(KeyringSlot::Default),
         SlotContent::Holds(_) => {
             info!("Keyring account {default_account} holds another vault's key; using a named account");
         }
@@ -600,7 +600,10 @@ fn claim_slot_in(
 
 /// Remove a vault's passphrase from its account, only when the account still
 /// holds exactly that passphrase: whatever else is there belongs to another
-/// vault.
+/// vault. A byte copy of this vault made outside AeroFTP (a backup of the data
+/// folder) carries the same vault.key and the same key, so nothing on disk can
+/// tell it apart from this vault, and it loses its key here too; before this
+/// check the account was cleared whatever it held.
 fn release_slot_in(slots: &dyn PassphraseSlots, account: &str, passphrase: &[u8; PASSPHRASE_LEN]) {
     let encoded = Zeroizing::new(BASE64.encode(passphrase));
     if let SlotContent::Holds(stored) = slots.read(account) {
@@ -2139,14 +2142,18 @@ mod tests {
         }
 
         #[test]
-        fn a_default_account_already_holding_this_key_is_kept_without_a_write() {
+        fn a_default_account_holding_this_same_key_is_not_shared() {
             let slots = MemSlots::with(&[(DEFAULT, &enc(0xB2))]);
 
-            assert_eq!(
-                claim_slot_in(&slots, DEFAULT, &key(0xB2)).unwrap(),
-                KeyringSlot::Default
-            );
-            assert_eq!(slots.writes.get(), 0);
+            let slot = claim_slot_in(&slots, DEFAULT, &key(0xB2)).unwrap();
+
+            // Two vault.key files naming one account: either one's release would
+            // clear the other's key.
+            let KeyringSlot::Named(account) = slot else {
+                panic!("an occupied account must not be adopted");
+            };
+            assert_eq!(slots.get(&account), Some(enc(0xB2)));
+            assert_eq!(slots.get(DEFAULT), Some(enc(0xB2)), "left as it was");
         }
 
         #[test]
