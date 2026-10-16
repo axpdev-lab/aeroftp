@@ -3176,6 +3176,10 @@ pub(crate) mod tests {
         /// Uploads, directory creations, deletes and renames attempted.
         pub(crate) writes: Arc<std::sync::atomic::AtomicUsize>,
         pub(crate) pool: bool,
+        /// The folder `cd` last entered, which `list(".")` lists.
+        pub(crate) cwd: String,
+        /// Every file read through `download` or `download_to_bytes`.
+        pub(crate) reads: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     impl WalkTreeProvider {
@@ -3191,7 +3195,34 @@ pub(crate) mod tests {
                 cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 writes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 pool,
+                cwd: "/".to_string(),
+                reads: Arc::default(),
             }
+        }
+
+        /// The listing of `path`, taken as a server takes a path: `.` is the
+        /// working folder, and a path is looked up by its identity, so
+        /// `/root/d1/..` lists `/root`.
+        fn listing_of(&self, path: &str) -> Option<&Vec<crate::providers::RemoteEntry>> {
+            let path = if path == "." { self.cwd.as_str() } else { path };
+            self.dirs
+                .get(path)
+                .or_else(|| self.dirs.get(&crate::sync_core::walk_path_key(path)))
+        }
+
+        /// The file `path` names, if a listing holds it: every file reads
+        /// `data`.
+        fn read(&self, path: &str) -> Result<Vec<u8>, ProviderError> {
+            let key = crate::sync_core::walk_path_key(path);
+            let held =
+                self.dirs.values().flatten().any(|entry| {
+                    !entry.is_dir && crate::sync_core::walk_path_key(&entry.path) == key
+                });
+            if !held {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            self.reads.lock().unwrap().push(key);
+            Ok(b"data".to_vec())
         }
 
         fn count_write(&self) -> Result<(), ProviderError> {
@@ -3234,6 +3265,8 @@ pub(crate) mod tests {
                 cancel: Arc::clone(&self.cancel),
                 writes: Arc::clone(&self.writes),
                 pool: true,
+                cwd: self.cwd.clone(),
+                reads: Arc::clone(&self.reads),
             }))
         }
         async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -3257,15 +3290,15 @@ pub(crate) mod tests {
                     "Failed to list directory: {path}"
                 )));
             }
-            self.dirs
-                .get(path)
+            self.listing_of(path)
                 .cloned()
                 .ok_or_else(|| ProviderError::NotFound(path.to_string()))
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
             Ok("/".to_string())
         }
-        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.cwd = crate::sync_core::walk_path_key(path);
             Ok(())
         }
         async fn cd_up(&mut self) -> Result<(), ProviderError> {
@@ -3273,17 +3306,15 @@ pub(crate) mod tests {
         }
         async fn download(
             &mut self,
-            _remote_path: &str,
-            _local_path: &str,
+            remote_path: &str,
+            local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
-            Err(ProviderError::NotSupported("download".to_string()))
+            let data = self.read(remote_path)?;
+            std::fs::write(local_path, data).map_err(|e| ProviderError::Other(e.to_string()))
         }
-        async fn download_to_bytes(
-            &mut self,
-            _remote_path: &str,
-        ) -> Result<Vec<u8>, ProviderError> {
-            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.read(remote_path)
         }
         async fn upload(
             &mut self,
@@ -3337,6 +3368,111 @@ pub(crate) mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("walk-tree".to_string())
         }
+    }
+
+    /// A defective listing under `/root`, for the walks that live outside
+    /// this module. `/root` holds `a.txt` and the folder `d1` holding `b.txt`
+    /// (`d1` only where `dirs` says so); the defect adds one entry whose
+    /// name and path both lead somewhere a walk of `/root` must not go, so
+    /// a walk that follows `RemoteEntry::path` and one that builds each path
+    /// from the parent and the name meet the same defect. Every file holds
+    /// `data` (4 bytes).
+    pub(crate) struct StrayListing {
+        pub(crate) case: &'static str,
+        pub(crate) dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
+        /// The files under `/root`, relative to it.
+        pub(crate) files: &'static [&'static str],
+        /// The folders under `/root`, relative to it.
+        pub(crate) folders: &'static [&'static str],
+        /// How many folders a walk of `/root` must refuse to list.
+        pub(crate) refused: usize,
+    }
+
+    impl StrayListing {
+        pub(crate) fn provider(&self) -> WalkTreeProvider {
+            WalkTreeProvider::new(self.dirs.clone(), false)
+        }
+
+        /// The files under `/root` as absolute paths, sorted.
+        pub(crate) fn file_paths(&self) -> Vec<String> {
+            let mut paths: Vec<String> = self.files.iter().map(|f| format!("/root/{f}")).collect();
+            paths.sort();
+            paths
+        }
+    }
+
+    /// The five defects: a folder listed inside itself (Swift's old
+    /// listing), a folder listed as `/` (ImageKit's), a folder named twice,
+    /// a file named twice, and a folder outside the root. The first, second
+    /// and last are refused; the two named twice are walked once.
+    pub(crate) fn stray_listings() -> Vec<StrayListing> {
+        fn file(name: &str, path: &str) -> crate::providers::RemoteEntry {
+            crate::providers::RemoteEntry::file(name.to_string(), path.to_string(), 4)
+        }
+        fn dir(name: &str, path: &str) -> crate::providers::RemoteEntry {
+            crate::providers::RemoteEntry::directory(name.to_string(), path.to_string())
+        }
+        let tree = |listings: Vec<(&str, Vec<crate::providers::RemoteEntry>)>| {
+            listings
+                .into_iter()
+                .map(|(path, entries)| (path.to_string(), entries))
+                .collect::<std::collections::HashMap<_, _>>()
+        };
+        let a = || file("a.txt", "/root/a.txt");
+        let d1 = || dir("d1", "/root/d1");
+        let b = || file("b.txt", "/root/d1/b.txt");
+        vec![
+            StrayListing {
+                case: "a folder listed inside itself",
+                dirs: tree(vec![
+                    ("/root", vec![a(), d1()]),
+                    ("/root/d1", vec![dir("../d1", "/root/d1"), b()]),
+                ]),
+                files: &["a.txt", "d1/b.txt"],
+                folders: &["d1"],
+                refused: 1,
+            },
+            StrayListing {
+                case: "a folder listed as /",
+                dirs: tree(vec![
+                    ("/root", vec![a(), dir("d1/../..", "/")]),
+                    ("/", vec![dir("root", "/root"), file("top.txt", "/top.txt")]),
+                ]),
+                files: &["a.txt"],
+                folders: &[],
+                refused: 1,
+            },
+            StrayListing {
+                case: "a folder named twice",
+                dirs: tree(vec![
+                    ("/root", vec![a(), d1(), d1()]),
+                    ("/root/d1", vec![b()]),
+                ]),
+                files: &["a.txt", "d1/b.txt"],
+                folders: &["d1"],
+                refused: 0,
+            },
+            StrayListing {
+                case: "a file named twice",
+                dirs: tree(vec![
+                    ("/root", vec![a(), a(), d1()]),
+                    ("/root/d1", vec![b()]),
+                ]),
+                files: &["a.txt", "d1/b.txt"],
+                folders: &["d1"],
+                refused: 0,
+            },
+            StrayListing {
+                case: "a folder outside the root",
+                dirs: tree(vec![
+                    ("/root", vec![a(), dir("up/../../elsewhere", "/elsewhere")]),
+                    ("/elsewhere", vec![file("big.bin", "/elsewhere/big.bin")]),
+                ]),
+                files: &["a.txt"],
+                folders: &[],
+                refused: 1,
+            },
+        ]
     }
 
     /// `a.txt` at the root and one directory `d1` holding `x.txt`, the last

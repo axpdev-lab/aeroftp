@@ -4327,6 +4327,120 @@ struct DownloadEntry {
     modified: Option<String>,
 }
 
+/// What a provider folder download has walked: each folder strictly under the
+/// one downloaded is listed once ([`crate::sync_core::WalkScope`]), and each
+/// file is fetched once.
+struct DownloadWalk {
+    root: String,
+    scope: crate::sync_core::WalkScope,
+    fetched: std::collections::HashSet<String>,
+}
+
+impl DownloadWalk {
+    fn new(root: &str) -> Self {
+        Self {
+            root: root.to_string(),
+            scope: crate::sync_core::WalkScope::new(root),
+            fetched: std::collections::HashSet::new(),
+        }
+    }
+}
+
+/// What one listing adds to a folder download: the folders to list next and
+/// the files to fetch from this one.
+struct DownloadListing {
+    folders: Vec<(String, String)>,
+    files: Vec<DownloadEntry>,
+}
+
+/// Take the listing of `remote_folder` into a folder download, creating the
+/// local folders it names under `local_folder`.
+///
+/// Each remote path is built from the folder and the name the listing gives.
+/// `sanitize_remote_filename` keeps the local side inside the destination, but
+/// the remote path keeps the name as it is: `up/../../elsewhere` sanitizes to
+/// `elsewhere` and, on the server, names `/elsewhere`, so the download walked
+/// out of the folder (or, through `d1/../..`, back over the account root) and
+/// wrote what it found inside the destination. A folder is followed only when
+/// the walk may list it, and a listing that names a folder or a file outside
+/// the folder fails the download: skipping it would leave part of the folder
+/// behind and report success.
+async fn take_download_listing(
+    walk: &mut DownloadWalk,
+    remote_folder: &str,
+    local_folder: &str,
+    base_local: &std::path::Path,
+    files: Vec<RemoteEntry>,
+) -> Result<DownloadListing, String> {
+    use crate::sync_core::WalkStep;
+    let mut listed = DownloadListing {
+        folders: Vec::new(),
+        files: Vec::new(),
+    };
+    for file in files {
+        let safe_name = match sanitize_remote_filename(&file.name) {
+            Ok(n) => n,
+            Err(e) => {
+                warn!("Skipping unsafe remote entry: {}", e);
+                continue;
+            }
+        };
+
+        let remote_file_path = if remote_folder.ends_with('/') {
+            format!("{}{}", remote_folder, file.name)
+        } else {
+            format!("{}/{}", remote_folder, file.name)
+        };
+        let step = if file.is_dir {
+            walk.scope.admit(remote_folder, &remote_file_path)
+        } else {
+            walk.scope.locate(remote_folder, &remote_file_path)
+        };
+        match step {
+            WalkStep::Follow => {}
+            WalkStep::AlreadyListed => continue,
+            step => {
+                return Err(crate::sync_core::refused_transfer(
+                    &walk.root,
+                    remote_folder,
+                    &remote_file_path,
+                    step,
+                ))
+            }
+        }
+        let local_file_path_buf = std::path::Path::new(local_folder).join(&safe_name);
+        let local_file_path = local_file_path_buf.to_string_lossy().to_string();
+
+        if file.is_dir {
+            tokio::fs::create_dir_all(&local_file_path)
+                .await
+                .map_err(|e| format!("Failed to create folder {}: {}", local_file_path, e))?;
+            verify_path_containment(base_local, &local_file_path_buf)?;
+            listed.folders.push((remote_file_path, local_file_path));
+        } else {
+            if !walk
+                .fetched
+                .insert(crate::sync_core::walk_path_key(&remote_file_path))
+            {
+                continue;
+            }
+            if let Some(parent) = local_file_path_buf.parent() {
+                if parent.exists() {
+                    verify_path_containment(base_local, &local_file_path_buf)?;
+                }
+            }
+            listed.files.push(DownloadEntry {
+                remote_path: remote_file_path,
+                local_path: local_file_path,
+                name: safe_name,
+                size: file.size,
+                modified: file.modified.clone(),
+            });
+        }
+    }
+    Ok(listed)
+}
+
 fn provider_transfer_cancelled(state: &State<'_, ProviderState>) -> bool {
     state.cancel_flag.load(Ordering::Relaxed)
 }
@@ -4486,6 +4600,7 @@ async fn provider_download_folder_inner(
 
     let mut folders_to_scan: Vec<(String, String)> =
         vec![(remote_path.to_string(), local_path.to_string())];
+    let mut walk = DownloadWalk::new(remote_path);
     let mut files_downloaded = 0u32;
     let mut files_skipped = 0u32;
     let mut total_files_discovered = 0u32;
@@ -4528,8 +4643,7 @@ async fn provider_download_folder_inner(
         }
 
         // ── Scan this directory (acquire lock, list, release) ──
-        let mut dir_files: Vec<DownloadEntry> = Vec::new();
-        {
+        let dir_files: Vec<DownloadEntry> = {
             let mut provider_lock = state.provider.lock().await;
             let provider = provider_lock
                 .as_mut()
@@ -4545,47 +4659,12 @@ async fn provider_download_folder_inner(
                 .await
                 .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
 
-            for file in files {
-                let safe_name = match sanitize_remote_filename(&file.name) {
-                    Ok(n) => n,
-                    Err(e) => {
-                        warn!("Skipping unsafe remote entry: {}", e);
-                        continue;
-                    }
-                };
-
-                let remote_file_path = if remote_folder.ends_with('/') {
-                    format!("{}{}", remote_folder, file.name)
-                } else {
-                    format!("{}/{}", remote_folder, file.name)
-                };
-                let local_file_path_buf = std::path::Path::new(&local_folder).join(&safe_name);
-                let local_file_path = local_file_path_buf.to_string_lossy().to_string();
-
-                if file.is_dir {
-                    tokio::fs::create_dir_all(&local_file_path)
-                        .await
-                        .map_err(|e| {
-                            format!("Failed to create folder {}: {}", local_file_path, e)
-                        })?;
-                    verify_path_containment(base_local, &local_file_path_buf)?;
-                    folders_to_scan.push((remote_file_path, local_file_path));
-                } else {
-                    if let Some(parent) = local_file_path_buf.parent() {
-                        if parent.exists() {
-                            verify_path_containment(base_local, &local_file_path_buf)?;
-                        }
-                    }
-                    dir_files.push(DownloadEntry {
-                        remote_path: remote_file_path,
-                        local_path: local_file_path,
-                        name: safe_name,
-                        size: file.size,
-                        modified: file.modified.clone(),
-                    });
-                }
-            }
-        } // ← provider lock released: ready to transfer this batch
+            let listed =
+                take_download_listing(&mut walk, &remote_folder, &local_folder, base_local, files)
+                    .await?;
+            folders_to_scan.extend(listed.folders);
+            listed.files
+        }; // ← provider lock released: ready to transfer this batch
 
         dirs_scanned += 1;
         total_files_discovered += dir_files.len() as u32;
@@ -10184,6 +10263,16 @@ async fn provider_calculate_folder_size_inner(
     const MAX_ENTRIES: u64 = 50_000;
     const MAX_DEPTH: usize = 50;
 
+    // Each folder's path is built from its parent and the name the listing
+    // gives, so a name such as `../d1` or `up/../../elsewhere` leads back to
+    // the folder or out of it while reading as a new path. A folder is listed
+    // only when `WalkScope` allows it, and a listing that names one it cannot
+    // follow fails the size, as a folder that cannot be listed does: either
+    // way there is no true total to show.
+    let mut scope = crate::sync_core::WalkScope::new(&path);
+    let mut counted = std::collections::HashSet::new();
+    let root = path.clone();
+
     // BFS queue: (path, depth)
     let mut queue: Vec<(String, usize)> = vec![(path, 0)];
 
@@ -10221,17 +10310,31 @@ async fn provider_calculate_folder_size_inner(
 
         for entry in &entries {
             entries_scanned += 1;
-            if entry.is_dir {
-                dir_count += 1;
-                let subpath = if current_path == "/" || current_path.is_empty() {
-                    format!("/{}", entry.name)
-                } else if current_path.ends_with('/') {
-                    format!("{}{}", current_path, entry.name)
-                } else {
-                    format!("{}/{}", current_path, entry.name)
-                };
-                queue.push((subpath, depth + 1));
+            let subpath = if current_path == "/" || current_path.is_empty() {
+                format!("/{}", entry.name)
+            } else if current_path.ends_with('/') {
+                format!("{}{}", current_path, entry.name)
             } else {
+                format!("{}/{}", current_path, entry.name)
+            };
+            if entry.is_dir {
+                use crate::sync_core::WalkStep;
+                match scope.admit(&current_path, &subpath) {
+                    WalkStep::Follow => {}
+                    WalkStep::AlreadyListed => continue,
+                    step => {
+                        return Err(format!(
+                            "Cannot size {}: the listing of {} names {:?}, but {}",
+                            root,
+                            current_path,
+                            subpath,
+                            step.explain()
+                        ))
+                    }
+                }
+                dir_count += 1;
+                queue.push((subpath, depth + 1));
+            } else if counted.insert(crate::sync_core::walk_path_key(&subpath)) {
                 file_count += 1;
                 total_bytes += entry.size;
             }
@@ -13141,6 +13244,13 @@ async fn walk_compare_remote_serially(
     let mut dirs_to_process = vec![remote_path.to_string()];
     let mut remote_dirs_found: usize = 0;
     let mut remote_bytes_found: u64 = 0;
+    // Each folder's path is built from its parent and the name the listing
+    // gives, so a name such as `../d1` or `up/../../elsewhere` leads back to
+    // the folder or out of it while reading as a new path. A folder is listed
+    // only when `WalkScope` allows it; one it cannot follow hides what it
+    // holds, which would read as deleted, so the compare is refused as it is
+    // for a folder that does not list.
+    let mut scope = crate::sync_core::WalkScope::new(remote_path);
     while let Some(current_dir) = dirs_to_process.pop() {
         // Abort the remote scan if the user cancelled from the UI.
         // Without this, the walk keeps listing directories until the tree is
@@ -13236,6 +13346,27 @@ async fn walk_compare_remote_serially(
                 continue;
             }
 
+            let sub_path = if current_dir.ends_with('/') {
+                format!("{}{}", current_dir, entry.name)
+            } else {
+                format!("{}/{}", current_dir, entry.name)
+            };
+            use crate::sync_core::WalkStep;
+            if entry.is_dir {
+                match scope.locate(&current_dir, &sub_path) {
+                    WalkStep::Follow => {}
+                    step => {
+                        return Err(format!(
+                            "{}: the listing of {} names {:?}, but {}; refusing to compare a tree it cannot walk.",
+                            crate::SCAN_INCOMPLETE_MARKER,
+                            current_dir,
+                            sub_path,
+                            step.explain()
+                        ))
+                    }
+                }
+            }
+
             let modified = entry
                 .modified
                 .as_deref()
@@ -13267,12 +13398,7 @@ async fn walk_compare_remote_serially(
                 remote_bytes_found += entry.size;
             }
 
-            if entry.is_dir {
-                let sub_path = if current_dir.ends_with('/') {
-                    format!("{}{}", current_dir, entry.name)
-                } else {
-                    format!("{}/{}", current_dir, entry.name)
-                };
+            if entry.is_dir && scope.admit(&current_dir, &sub_path) == WalkStep::Follow {
                 dirs_to_process.push(sub_path);
             }
         }
@@ -17157,5 +17283,142 @@ mod provider_chmod_tests {
             .await
             .unwrap_err();
         assert_eq!(e, "Not connected to any provider");
+    }
+}
+
+#[cfg(test)]
+mod walk_scope_tests {
+    use super::*;
+    use crate::sync_core::scan::tests::stray_listings;
+
+    /// The Properties size of a folder builds each subfolder's path from the
+    /// name its listing gives: through `../d1` it sized the same folder again
+    /// down to its depth cap, and through `d1/../..` or `up/../../elsewhere`
+    /// it added the account root and `/elsewhere`. It counts each path under
+    /// the folder once, and fails with the reason when a listing names a
+    /// folder it cannot follow.
+    #[tokio::test]
+    async fn the_folder_size_counts_each_path_under_the_folder_once() {
+        for shape in stray_listings() {
+            let case = shape.case;
+            let state = ProviderState::new();
+            *state.provider.lock().await = Some(Box::new(shape.provider()));
+            let sized =
+                provider_calculate_folder_size_inner(&state, "/root".to_string(), |_| {}).await;
+            if shape.refused > 0 {
+                let err = sized.err().unwrap_or_else(|| panic!("{case}: sized"));
+                assert!(err.contains("Cannot size /root"), "{case}: {err}");
+                continue;
+            }
+            let sized = sized.unwrap_or_else(|e| panic!("{case}: {e}"));
+            assert_eq!(
+                (sized.file_count, sized.total_bytes, sized.dir_count),
+                (
+                    shape.files.len() as u64,
+                    4 * shape.files.len() as u64,
+                    shape.folders.len() as u64
+                ),
+                "{case}"
+            );
+        }
+    }
+
+    /// The serial Compare walk builds each subfolder's path from the name its
+    /// listing gives: through `../d1` it listed the same folder again under a
+    /// longer relative path until its entry cap, and through `d1/../..` or
+    /// `up/../../elsewhere` it compared the account root's files and
+    /// `/elsewhere` as the folder's. It compares each path under the folder
+    /// once, and refuses the compare when a listing names a folder it cannot
+    /// follow, as it does for a folder that does not list.
+    #[tokio::test]
+    async fn the_serial_compare_walk_compares_each_path_under_the_folder_once() {
+        for shape in stray_listings() {
+            let case = shape.case;
+            let provider: Mutex<Option<Box<dyn StorageProvider>>> =
+                Mutex::new(Some(Box::new(shape.provider())));
+            let walked = walk_compare_remote_serially(
+                &provider,
+                "/root",
+                &[],
+                10_000,
+                &AtomicBool::new(false),
+                &|| true,
+                &mut |_, _, _| {},
+            )
+            .await;
+            if shape.refused > 0 {
+                let err = walked.err().unwrap_or_else(|| panic!("{case}: compared"));
+                assert!(
+                    err.contains(crate::SCAN_INCOMPLETE_MARKER) && err.contains("names"),
+                    "{case}: {err}"
+                );
+                continue;
+            }
+            let (rows, _) = walked.unwrap_or_else(|e| panic!("{case}: {e}"));
+            let mut paths: Vec<String> = rows.keys().cloned().collect();
+            paths.sort();
+            let mut expected: Vec<String> = shape
+                .files
+                .iter()
+                .chain(shape.folders)
+                .map(|p| p.to_string())
+                .collect();
+            expected.sort();
+            assert_eq!(paths, expected, "{case}");
+        }
+    }
+
+    /// A provider folder download lists each folder after a `cd` and builds
+    /// each remote path from the name the listing gives. Through `../d1` it
+    /// fetched `b.txt` once per level down to its depth cap, through
+    /// `d1/../..` and `up/../../elsewhere` it fetched the account root's
+    /// files and `/elsewhere/big.bin` into the destination, and a file named
+    /// twice was fetched twice. This drives the download's own listing step
+    /// (`take_download_listing`) the way the command walks: it fetches each
+    /// file under the folder once, and a listing that names a folder outside
+    /// it fails the download.
+    #[tokio::test]
+    async fn a_folder_download_fetches_each_file_under_the_folder_once_or_fails() {
+        for shape in stray_listings() {
+            let case = shape.case;
+            let mut provider = shape.provider();
+            let local = tempfile::tempdir().expect("temp dir");
+            let base = local.path().to_string_lossy().into_owned();
+            let mut walk = DownloadWalk::new("/root");
+            let mut folders = vec![("/root".to_string(), base.clone())];
+            let mut fetched: Vec<String> = Vec::new();
+            let mut outcome = Ok(());
+            let mut listings = 0;
+            while let Some((remote, local_folder)) = folders.pop() {
+                listings += 1;
+                assert!(listings < 1_000, "{case}: the walk does not end");
+                provider.cd(&remote).await.expect("cd");
+                let files = provider.list(".").await.expect("list");
+                match take_download_listing(&mut walk, &remote, &local_folder, local.path(), files)
+                    .await
+                {
+                    Ok(listed) => {
+                        folders.extend(listed.folders);
+                        fetched.extend(listed.files.into_iter().map(|f| f.remote_path));
+                    }
+                    Err(e) => {
+                        outcome = Err(e);
+                        break;
+                    }
+                }
+            }
+            if shape.refused > 0 {
+                let err = outcome.expect_err(case);
+                assert!(err.contains("cannot transfer /root whole"), "{case}: {err}");
+                continue;
+            }
+            outcome.unwrap_or_else(|e| panic!("{case}: {e}"));
+            let mut fetched: Vec<String> = fetched
+                .iter()
+                .map(|p| crate::sync_core::walk_path_key(p))
+                .collect();
+            fetched.sort();
+            assert_eq!(fetched, shape.file_paths(), "{case}");
+        }
     }
 }

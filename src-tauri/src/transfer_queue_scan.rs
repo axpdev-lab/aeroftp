@@ -202,6 +202,13 @@ fn entry_to_node(entry: RemoteEntry, depth: u32, parent_path: &str) -> ScanNode 
 /// breadth-first, bounded by the same caps as `walk_remote_ftp`. The
 /// `StorageProvider::list(path)` trait method accepts an absolute path so
 /// no CWD juggling is required - simpler than the FTP path, same shape.
+///
+/// A folder is listed only when [`crate::sync_core::WalkScope`] allows it,
+/// and each path is one node: the walk used to queue every folder at the
+/// path its listing gave, so a folder listed inside itself or as `/` showed
+/// the same rows again, and a folder outside the root showed as part of it.
+/// A folder it does not follow gets no node and is counted as omitted at
+/// its level, the signal the per-level cap gives.
 pub async fn walk_remote_provider(
     provider: &mut dyn StorageProvider,
     cancel_flag: &Arc<AtomicBool>,
@@ -216,6 +223,8 @@ pub async fn walk_remote_provider(
 
     let mut queue: VecDeque<(String, u32)> = VecDeque::new();
     queue.push_back((root_path.to_string(), 0));
+    let mut scope = crate::sync_core::WalkScope::new(root_path);
+    let mut shown = std::collections::HashSet::new();
 
     while let Some((current_dir, current_depth)) = queue.pop_front() {
         if cancel_flag.load(Ordering::Relaxed) {
@@ -246,26 +255,53 @@ pub async fn walk_remote_provider(
             }
         };
 
-        let total = entries.len();
-        let cap = entry_cap_per_level.min(total);
-        if total > entry_cap_per_level {
-            result.truncated_parents.push(TruncatedLevel {
-                parent_path: current_dir.clone(),
-                kept: cap as u32,
-                omitted: (total - cap) as u32,
-            });
+        if current_depth == 0 {
+            scope.learn_root_listing(&entries);
         }
 
+        let total = entries.len();
+        let cap = entry_cap_per_level.min(total);
+        let mut kept: u32 = 0;
+        let mut refused: u32 = 0;
         for entry in entries.into_iter().take(cap) {
             let path_for_descent = entry.path.clone();
             let is_dir = entry.is_dir;
+            if is_dir {
+                use crate::sync_core::WalkStep;
+                match scope.admit(&current_dir, &path_for_descent) {
+                    WalkStep::Follow => {}
+                    WalkStep::AlreadyListed => continue,
+                    step => {
+                        warn!(
+                            "transfer_queue_scan: not listing {}: the listing of {} names it, but {}",
+                            path_for_descent,
+                            current_dir,
+                            step.explain()
+                        );
+                        refused += 1;
+                        continue;
+                    }
+                }
+            }
+            if !shown.insert(crate::sync_core::walk_path_key(&path_for_descent)) {
+                continue;
+            }
             let node = entry_to_node(entry, current_depth, &current_dir);
             result.nodes.push(node);
             result.total_visited += 1;
+            kept += 1;
 
             if is_dir && current_depth + 1 < max_depth {
                 queue.push_back((path_for_descent, current_depth + 1));
             }
+        }
+        let omitted = (total - cap) as u32 + refused;
+        if omitted > 0 {
+            result.truncated_parents.push(TruncatedLevel {
+                parent_path: current_dir.clone(),
+                kept,
+                omitted,
+            });
         }
     }
 
@@ -415,5 +451,37 @@ mod tests {
         assert!(!node.is_dir);
         assert_eq!(node.depth, 2);
         assert_eq!(node.parent_path, "/dir");
+    }
+
+    /// The queue scan showed what each listing named: a folder listed inside
+    /// itself or as `/` went back over the same rows, a folder or file named
+    /// twice was two rows, and `/elsewhere` showed as part of `/root`. Each
+    /// path under the root is one row now, and a folder it does not follow is
+    /// counted as omitted at its level, as the per-level cap counts.
+    #[tokio::test]
+    async fn the_queue_scan_shows_each_path_under_the_root_once() {
+        for shape in crate::sync_core::scan::tests::stray_listings() {
+            let case = shape.case;
+            let mut provider = shape.provider();
+            let cancel = Arc::new(AtomicBool::new(false));
+            let result =
+                walk_remote_provider(&mut provider, &cancel, "/root", HARD_DEPTH_CAP, 100).await;
+            let mut paths: Vec<String> = result
+                .nodes
+                .iter()
+                .map(|node| node.path.trim_start_matches("/root/").to_string())
+                .collect();
+            paths.sort();
+            let mut expected: Vec<String> = shape
+                .files
+                .iter()
+                .chain(shape.folders)
+                .map(|p| p.to_string())
+                .collect();
+            expected.sort();
+            assert_eq!(paths, expected, "{case}");
+            let omitted: u32 = result.truncated_parents.iter().map(|t| t.omitted).sum();
+            assert_eq!(omitted as usize, shape.refused, "{case}");
+        }
     }
 }

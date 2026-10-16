@@ -8,6 +8,7 @@
 
 use crate::delta_sync_rsync::{try_delta_transfer, SyncDirection};
 use crate::providers::{ProviderError, StorageProvider};
+use crate::sync_core::{refused_transfer, walk_path_key, WalkScope, WalkStep};
 use filetime::FileTime;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -272,6 +273,12 @@ async fn download_source_to_temp(
 /// If `recursive` is false and the path is a directory, returns an error.
 /// If `recursive` is true, performs a bounded BFS scan.
 /// If the path is a file, returns a single entry.
+///
+/// The scan lists a folder only when [`WalkScope`] allows it, and plans each
+/// file once ([`collect_tree`]): it used to queue every folder at the path its
+/// listing gave, so a folder listed inside itself or as `/` planned the same
+/// files again, or the account root's, and a folder outside the source was
+/// copied as part of it.
 pub async fn collect_source_entries(
     source: &mut dyn StorageProvider,
     root: &str,
@@ -304,8 +311,39 @@ pub async fn collect_source_entries(
         )));
     }
 
+    collect_tree(source, &root_stat.path).await
+}
+
+async fn collect_virtual_root_entries(
+    source: &mut dyn StorageProvider,
+    root: &str,
+    recursive: bool,
+) -> Result<Vec<CrossProfileTransferEntry>, ProviderError> {
+    if !recursive {
+        return Err(ProviderError::InvalidPath(format!(
+            "'{}' is a directory; use --recursive to transfer directories",
+            root
+        )));
+    }
+
+    collect_tree(source, root).await
+}
+
+/// The files under the folder `root`, for a recursive copy: a bounded
+/// depth-first walk shared by a folder and the virtual root. Each folder is
+/// listed only when [`WalkScope`] allows it (strictly under `root`, not the
+/// folder listed or above it, not listed already), the root's spelling
+/// learned from its own listing, and each file is planned once. A folder the
+/// walk does not follow fails the plan: skipping it would copy part of the
+/// folder and report success, following it would copy what is not in it.
+async fn collect_tree(
+    source: &mut dyn StorageProvider,
+    root: &str,
+) -> Result<Vec<CrossProfileTransferEntry>, ProviderError> {
     let mut entries = Vec::new();
-    let mut queue: Vec<(String, usize)> = vec![(root_stat.path, 0)];
+    let mut scope = WalkScope::new(root);
+    let mut planned = std::collections::HashSet::new();
+    let mut queue: Vec<(String, usize)> = vec![(root.to_string(), 0)];
 
     while let Some((dir, depth)) = queue.pop() {
         if depth >= MAX_SCAN_DEPTH {
@@ -323,72 +361,29 @@ pub async fn collect_source_entries(
                 continue;
             }
         };
+        if depth == 0 {
+            scope.learn_root_listing(&listing);
+        }
 
         for e in listing {
             if entries.len() >= MAX_SCAN_ENTRIES {
                 break;
             }
             if e.is_dir {
-                queue.push((e.path, depth + 1));
-            } else {
+                match scope.admit(&dir, &e.path) {
+                    WalkStep::Follow => queue.push((e.path, depth + 1)),
+                    WalkStep::AlreadyListed => {}
+                    step => {
+                        return Err(ProviderError::ServerError(refused_transfer(
+                            root, &dir, &e.path, step,
+                        )))
+                    }
+                }
+            } else if planned.insert(walk_path_key(&e.path)) {
                 let display_name = fallback_display_name(&e.name, &e.path);
                 entries.push(CrossProfileTransferEntry {
                     source_path: e.path,
                     dest_path: String::new(), // filled by plan_transfer
-                    display_name,
-                    size: e.size,
-                    modified: e.modified,
-                    is_dir: false,
-                });
-            }
-        }
-    }
-
-    Ok(entries)
-}
-
-async fn collect_virtual_root_entries(
-    source: &mut dyn StorageProvider,
-    root: &str,
-    recursive: bool,
-) -> Result<Vec<CrossProfileTransferEntry>, ProviderError> {
-    if !recursive {
-        return Err(ProviderError::InvalidPath(format!(
-            "'{}' is a directory; use --recursive to transfer directories",
-            root
-        )));
-    }
-
-    let mut entries = Vec::new();
-    let mut queue: Vec<(String, usize)> = vec![(root.to_string(), 0)];
-
-    while let Some((dir, depth)) = queue.pop() {
-        if depth >= MAX_SCAN_DEPTH {
-            continue;
-        }
-        if entries.len() >= MAX_SCAN_ENTRIES {
-            break;
-        }
-
-        let listing = match source.list(&dir).await {
-            Ok(l) => l,
-            Err(e) => {
-                tracing::warn!("cannot list {}: {}", dir, e);
-                continue;
-            }
-        };
-
-        for e in listing {
-            if entries.len() >= MAX_SCAN_ENTRIES {
-                break;
-            }
-            if e.is_dir {
-                queue.push((e.path, depth + 1));
-            } else {
-                let display_name = fallback_display_name(&e.name, &e.path);
-                entries.push(CrossProfileTransferEntry {
-                    source_path: e.path,
-                    dest_path: String::new(),
                     display_name,
                     size: e.size,
                     modified: e.modified,
@@ -734,5 +729,54 @@ mod tests {
         let roots = source_root_candidates("cli_test/copilot", "/home/ftp/cli_test/copilot");
         let dest = map_dest_path(&roots, "/home/ftp/cli_test/copilot/sub/file.txt", "/backup");
         assert_eq!(dest, "/backup/sub/file.txt");
+    }
+
+    /// A cross-profile copy plans the files its walk of the source folder
+    /// finds and copies each one to the destination. The walk queued every
+    /// folder a listing named: through a folder listed inside itself it
+    /// planned `b.txt` once per level, through one listed as `/` it planned
+    /// the account root's files, a file named twice was copied twice, and
+    /// `/elsewhere/big.bin` was copied as one of the folder's. It plans each
+    /// file under the folder once, and a listing that names a folder it
+    /// cannot follow fails the plan: a copy that leaves part of the folder
+    /// behind must not report success.
+    #[tokio::test]
+    async fn a_copy_plans_each_file_under_the_folder_once_or_fails() {
+        for shape in crate::sync_core::scan::tests::stray_listings() {
+            let case = shape.case;
+            let mut source = shape.provider();
+            let planned = collect_source_entries(&mut source, "/root", true).await;
+            if shape.refused > 0 {
+                let err = planned.expect_err(case).to_string();
+                assert!(err.contains("cannot transfer /root whole"), "{case}: {err}");
+                continue;
+            }
+            let mut paths: Vec<String> = planned
+                .unwrap_or_else(|e| panic!("{case}: {e}"))
+                .into_iter()
+                .map(|entry| entry.source_path)
+                .collect();
+            paths.sort();
+            assert_eq!(paths, shape.file_paths(), "{case}");
+        }
+    }
+
+    /// A copy of the account root (`/`, the virtual root) walks it the same
+    /// way: a folder listed inside itself is refused, not walked to the cap.
+    #[tokio::test]
+    async fn a_copy_of_the_account_root_fails_on_a_folder_listed_inside_itself() {
+        let shape = crate::sync_core::scan::tests::stray_listings()
+            .into_iter()
+            .next()
+            .expect("the first shape");
+        let mut dirs = shape.dirs.clone();
+        let root = dirs.remove("/root").expect("the root listing");
+        dirs.insert("/".to_string(), root);
+        let mut source = crate::sync_core::scan::tests::WalkTreeProvider::new(dirs, false);
+        let err = collect_source_entries(&mut source, "/", true)
+            .await
+            .expect_err("a folder listed inside itself")
+            .to_string();
+        assert!(err.contains("cannot transfer / whole"), "{err}");
     }
 }

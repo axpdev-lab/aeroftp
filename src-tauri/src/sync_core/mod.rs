@@ -30,6 +30,6 @@ pub use scan::{
     UnseenPath,
 };
 pub use walk_scope::{
-    keys_under_prefix, listing_to_remove, refused_removal, refused_search, retain_first_per_path,
-    walk_path_key, FindWalk, FoundListing, WalkScope, WalkStep,
+    keys_under_prefix, listing_to_remove, refused_removal, refused_search, refused_transfer,
+    retain_first_per_path, walk_path_key, FindWalk, FoundListing, WalkScope, WalkStep,
 };

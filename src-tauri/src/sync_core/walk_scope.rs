@@ -409,6 +409,18 @@ pub fn refused_search(root: &str, listed: &str, path: &str, step: WalkStep) -> P
     ))
 }
 
+/// The error of a recursive copy or download of `folder` whose listing of
+/// `listed` named `path`, which the walk does not follow ([`WalkScope`]). A
+/// transfer that skipped it would leave part of the folder behind and report
+/// success; one that followed it would copy what is not in the folder.
+pub fn refused_transfer(folder: &str, listed: &str, path: &str, step: WalkStep) -> String {
+    format!(
+        "cannot transfer {folder} whole: the listing of {listed} names {path:?}, but {} ({})",
+        step.explain(),
+        step.reason()
+    )
+}
+
 /// The identity of a remote path for a walk: rooted, repeated slashes
 /// collapsed, no trailing slash, `.` and `..` resolved (`..` stops at the
 /// root). `""`, `.` and `/` are all `/`. Two listed paths with the same
