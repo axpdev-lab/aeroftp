@@ -7,7 +7,7 @@ import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
 import { shortAfid } from '../../utils/aeroShare';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
-import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
+import { getGitHubConnectionBadge, getMegaConnectionBadge, getProtonConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
 import { getFilenAuthVersion } from '../../utils/filenAuthVersion';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { useTranslation } from '../../i18n';
@@ -227,6 +227,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
     const certVerified = hasTlsConnection && !certUnverified;
     const gitHubBadge = proto === 'github' ? getGitHubConnectionBadge(server.options) : null;
     const megaBadge = proto === 'mega' ? getMegaConnectionBadge(server.options) : null;
+    const protonBadge = proto === 'proton' ? getProtonConnectionBadge(server.options) : null;
     const infiniCloudBadge = server.providerId === 'infinicloud' ? getInfiniCloudConnectionBadge(server.options) : null;
     const filenAuthVersion = getFilenAuthVersion(server);
     const protocolClass = getProtocolClass(proto as ProviderType);
@@ -247,7 +248,6 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
         API: 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300',
         WebDAV: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
         E2E: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-        CLI: 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300',
         S3: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
         Azure: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
         AeroCloud: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
@@ -385,6 +385,11 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
             {megaBadge && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${megaBadge.className}`}>
                     {megaBadge.label}
+                </span>
+            )}
+            {protonBadge && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${protonBadge.className}`}>
+                    {protonBadge.label}
                 </span>
             )}
             {filenAuthVersion && (

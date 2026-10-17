@@ -39,7 +39,26 @@ export const getMegaConnectionBadge = (options?: ProviderOptions): ProviderModeB
     };
 };
 
-export const getInfiniCloudConnectionMode = (options?: ProviderOptions): 'webdav' | 'api' => {
+/** The mode badge of a Proton Drive profile, next to its "E2E 256-bit" class
+ *  badge, as MEGA shows API or CMD: AeroFTP's native client or the official
+ *  Proton Drive CLI, the latter in Proton's purple. */
+export const getProtonConnectionBadge = (options?: ProviderOptions): ProviderModeBadge => {
+    if (options?.proton_mode === 'native') {
+        return {
+            label: 'API',
+            longLabel: 'Native API',
+            className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
+        };
+    }
+
+    return {
+        label: 'CLI',
+        longLabel: 'Proton Drive CLI',
+        className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
+    };
+};
+
+export const getInfiniCloudConnectionMode =(options?: ProviderOptions): 'webdav' | 'api' => {
     return options?.infinicloud_mode === 'api' ? 'api' : 'webdav';
 };
 

@@ -2,26 +2,34 @@ import { describe, expect, it } from 'vitest';
 import {
     getProtocolClass,
     getProfileProtocolClass,
+    getE2EBits,
     NATIVE_PROVIDER_PROTOCOLS,
     connectionSupportsStorageQuota,
     providerServesQuota,
     effectiveManualCap,
 } from './types';
+import { getProtonConnectionBadge } from './utils/providerConnectionMeta';
 
-describe('Proton Drive protocol class (pre-release review of 4.2.1, L21)', () => {
-    // The catalog, the mode strip and the connection label all present Proton
-    // Drive as a CLI connection; the My Servers class said "E2E 256-bit".
-    it('is the CLI class, as the catalog presents it', () => {
-        expect(getProtocolClass('proton')).toBe('CLI');
-        expect(getProfileProtocolClass({ protocol: 'proton' })).toBe('CLI');
+describe('Proton Drive protocol class and mode badge', () => {
+    // Both modes encrypt on this machine, so the class is E2E 256-bit as for
+    // Filen and Internxt. What the 4.2.1 review (L21) asked for still holds:
+    // a profile on the official CLI says CLI on its card, now through the
+    // mode badge next to the class, as MEGA shows CMD.
+    it('is E2E 256-bit in both modes, the mode badge names the client', () => {
+        const native = { protocol: 'proton' as const, options: { proton_mode: 'native' as const } };
+        for (const server of [{ protocol: 'proton' as const }, { protocol: 'proton' as const, options: { proton_mode: 'cli' as const } }, native]) {
+            expect(getProfileProtocolClass(server)).toBe('E2E');
+        }
+        expect(getE2EBits('proton')).toBe(256);
+        expect(getProtonConnectionBadge(native.options).label).toBe('API');
+        expect(getProtonConnectionBadge({ proton_mode: 'cli' }).label).toBe('CLI');
+        expect(getProtonConnectionBadge({}).label).toBe('CLI');
+        expect(getProtonConnectionBadge({}).className).toContain('purple');
     });
 
-    // The native client encrypts on this machine, as Filen and MEGA do, and
-    // reports the account quota, which the CLI cannot.
-    it('a native Proton profile is E2E and serves its own quota', () => {
+    // Only the native client reports the account quota; the CLI cannot.
+    it('a native Proton profile serves its own quota', () => {
         const native = { protocol: 'proton' as const, options: { proton_mode: 'native' as const } };
-        expect(getProfileProtocolClass(native)).toBe('E2E');
-        expect(getProfileProtocolClass({ protocol: 'proton', options: { proton_mode: 'cli' } })).toBe('CLI');
         expect(connectionSupportsStorageQuota('proton', native.options)).toBe(true);
         expect(connectionSupportsStorageQuota('proton', {})).toBe(false);
         expect(providerServesQuota('proton', null, null, native.options)).toBe(true);
