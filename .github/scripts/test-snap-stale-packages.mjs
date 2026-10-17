@@ -58,7 +58,7 @@ const ARCHIVE = {
 
 const CURRENT = ['bubblewrap=0.6.1-1ubuntu0.3', 'libssl3=3.0.2-0ubuntu1.18', 'zlib1g=1:1.2.11.dfsg-2ubuntu9.2'];
 
-async function audit(t, entries, { missing = [] } = {}) {
+async function audit(t, entries, { missing = [], raw, snapYaml = SNAP_YAML } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'snap-stale-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -78,8 +78,8 @@ async function audit(t, entries, { missing = [] } = {}) {
   t.after(() => server.close());
 
   // The audit runs `unsquashfs -q -n -f -d <dir> <snap> snap/manifest.yaml meta/snap.yaml`.
-  writeFileSync(join(dir, 'manifest.yaml'), manifest(entries));
-  writeFileSync(join(dir, 'snap.yaml'), SNAP_YAML);
+  writeFileSync(join(dir, 'manifest.yaml'), raw ?? manifest(entries));
+  writeFileSync(join(dir, 'snap.yaml'), snapYaml);
   const bin = join(dir, 'bin');
   mkdirSync(bin);
   writeFileSync(
@@ -150,6 +150,53 @@ test('a manifest entry not shaped name=version is unverified, not current', asyn
       assert.doesNotMatch(r.outputs, /^stale=/m);
     });
   }
+});
+
+// The list ends at the next top-level key, not at the first line that is
+// not an entry: a blank line, a comment or an indented entry used to end the
+// list there and drop every package after it, here a stale libssl3.
+test('a line inside the package list that is not an entry is unverified, not the end of the list', async (t) => {
+  const head = manifest([]).split('primed-stage-packages:')[0];
+  for (const [name, odd] of [
+    ['blank line', ''],
+    ['YAML comment', '# staged from jammy-security'],
+    ['indented entry', '  - libssl3=3.0.2-0ubuntu1.10'],
+  ]) {
+    await t.test(name, async (t) => {
+      const raw = `${head}primed-stage-packages:\n- bubblewrap=0.6.1-1ubuntu0.3\n${odd}\n- libssl3=3.0.2-0ubuntu1.10\nprimed-stage-snaps: []\n`;
+      const r = await audit(t, [], { raw });
+      assert.equal(r.status, 2, r.stdout);
+      assert.match(r.stderr, /::error::.*cannot read 1 primed-stage-packages entry/);
+      assert.doesNotMatch(r.outputs, /^stale=false$/m);
+    });
+  }
+});
+
+test('the last entry of a manifest without a final newline is still read', async (t) => {
+  const head = manifest([]).split('primed-stage-packages:')[0];
+  const raw = `${head}primed-stage-packages:\n- bubblewrap=0.6.1-1ubuntu0.3\n- libssl3=3.0.2-0ubuntu1.10`;
+  const r = await audit(t, [], { raw });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /libssl3: snap=3\.0\.2-0ubuntu1\.10/);
+  assert.match(r.outputs, /^stale=true$/m);
+});
+
+test('a package list with no entries fails the audit', async (t) => {
+  const head = manifest([]).split('primed-stage-packages:')[0];
+  for (const raw of [`${head}primed-stage-packages:\nprimed-stage-snaps: []\n`, `${head}primed-stage-packages: []\n`]) {
+    const r = await audit(t, [], { raw });
+    assert.equal(r.status, 2, r.stdout);
+    assert.match(r.stderr, /::error::.*primed-stage-packages/);
+    assert.doesNotMatch(r.outputs, /^stale=/m);
+  }
+});
+
+test('a snap whose architecture cannot be read fails the audit instead of assuming amd64', async (t) => {
+  const raw = manifest(CURRENT).replace('architectures:\n- amd64\n', '');
+  const r = await audit(t, [], { raw, snapYaml: 'name: aeroftp\nversion: 4.2.3\nbase: core22\n' });
+  assert.equal(r.status, 2, r.stdout);
+  assert.match(r.stderr, /::error::.*no architecture/);
+  assert.doesNotMatch(r.outputs, /^stale=/m);
 });
 
 // No snapcraft.yaml part adds a package repository, so every staged package
