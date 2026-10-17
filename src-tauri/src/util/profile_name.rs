@@ -12,9 +12,9 @@
 //! legacy blob, a keystore merge). A command that names the profile it saved,
 //! or the ones it renamed, takes the names from the list stored
 //! ([`name_of`], [`renamed_by_write`]): only the write knows which profile
-//! had a name first. The frontend applies the same rule
-//! (`src/utils/uniqueProfileName.ts`) only where it writes without the
-//! partition layer (the legacy store).
+//! had a name first. The frontend's twin of [`unique_profile_names`]
+//! (`src/utils/uniqueProfileName.ts`) is applied only where it writes without
+//! the partition layer (the legacy store), against the list that store holds.
 
 use std::collections::HashSet;
 

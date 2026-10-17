@@ -3,7 +3,7 @@
 
 import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
-import { withUniqueProfileNames } from './uniqueProfileName';
+import { uniqueProfileNames } from './uniqueProfileName';
 import {
     accountChangeGeneration,
     loadActiveServerProfiles,
@@ -186,7 +186,7 @@ export const savedProfilesGeneration = (): number => profilesWriteGeneration + a
 /**
  * Resolves to the list stored. No two profiles share a name: one saved onto a
  * name another profile holds is stored with the first free " (1)", " (2)",
- * ... (`util::profile_name` in the backend, `withUniqueProfileNames` for the
+ * ... (`util::profile_name` in the backend, `uniqueProfileNames` for the
  * legacy store), so a caller that keeps the list shows this one, and the
  * change event carries it.
  */
@@ -204,7 +204,11 @@ export const storeSavedServerProfiles = async (
         // A list bound to an account never falls back to the legacy store,
         // which has no accounts.
         if (expectedUserId !== undefined || !canUseLegacyProfileFallback(error)) throw error;
-        stored = withUniqueProfileNames([], profiles);
+        // The list the legacy store holds decides which profile had a name
+        // first, as the partition's does in the backend: a profile saved in
+        // front of the one holding its name must not take the name from it.
+        const held = (await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT)) ?? readLocalProfiles();
+        stored = uniqueProfileNames(Array.isArray(held) ? held : [], profiles);
         await secureStore(SAVED_SERVERS_ACCOUNT, stored);
     }
     profilesWriteGeneration += 1;

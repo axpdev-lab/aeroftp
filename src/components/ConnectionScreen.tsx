@@ -1794,7 +1794,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             handleCancelEdit();
             setGitHubAlert({
                 title: t('common.save'),
-                message: saveName,
+                // As stored: " (1)" when another profile holds the name.
+                message: savedServer?.name ?? saveName,
                 type: 'info',
             });
         }

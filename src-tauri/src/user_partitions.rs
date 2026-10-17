@@ -1753,7 +1753,9 @@ pub struct ProfileRelocation {
     /// Fresh id the relocated copy received in the target partition. Equal to
     /// `source_profile_id` only when the caller deliberately reuses it.
     pub new_profile_id: String,
-    /// Display name of the relocated profile (for the confirmation toast).
+    /// Display name of the relocated profile (for the confirmation toast): the
+    /// name the target stored it under, which is " (1)", " (2)", ... when a
+    /// profile there already holds the source's name.
     pub profile_name: String,
     /// Target user the profile now lives in.
     pub target_user_id: i64,
@@ -1821,7 +1823,7 @@ pub fn relocate_server_profile(
         .find(|p| value_str(p, &["id", "uid", "profileUid"]) == Some(profile_id))
         .cloned()
         .ok_or_else(|| format!("PROFILE_NOT_FOUND: {profile_id}"))?;
-    let profile_name = value_str(&source, &["name", "label", "host", "hostname"])
+    let mut profile_name = value_str(&source, &["name", "label", "host", "hostname"])
         .unwrap_or(profile_id)
         .to_string();
     let protocol = value_str(&source, &["protocol"]).unwrap_or("").to_string();
@@ -1884,7 +1886,13 @@ pub fn relocate_server_profile(
         let mut new_list = Vec::with_capacity(target_profiles.len() + 1);
         new_list.push(relocated);
         new_list.extend(target_profiles);
-        write_profiles_with_dek(conn, &root_secret, target_user_id, &target_dek, &new_list)?;
+        let stored =
+            write_profiles_with_dek(conn, &root_secret, target_user_id, &target_dek, &new_list)?;
+        // A profile of the target that holds the name keeps it; the copy is
+        // stored as " (1)", " (2)", ..., and that is the name to confirm.
+        if let Some(name) = crate::util::profile_name::name_of(&stored, new_profile_id) {
+            profile_name = name.to_string();
+        }
         true
     } else {
         false
@@ -6860,6 +6868,54 @@ mod tests {
         let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
         assert_eq!(target.len(), 1);
         assert_eq!(target[0]["id"], "srv_new");
+    }
+
+    /// The target already holds a profile of the source's name (another
+    /// account, so the Copy is not skipped): that profile keeps the name, the
+    /// copy is stored as "My SFTP (1)", and the report names the copy by the
+    /// name that selects it there, for a Copy and for a Move.
+    #[test]
+    fn relocate_reports_the_name_the_target_stored() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        let mut bobs = sftp_profile("srv_bob");
+        bobs["host"] = json!("other.example.com");
+        replace_server_profiles_for(&mut conn, &root, bob.id, &[bobs]).expect("seed bob");
+
+        for (source_id, new_id, remove_from_source, stored_as) in [
+            ("srv_src", "srv_copy", false, "My SFTP (1)"),
+            ("srv_src", "srv_moved", true, "My SFTP (2)"),
+        ] {
+            replace_active_server_profiles(&mut conn, &root, &[sftp_profile(source_id)])
+                .expect("seed source profile");
+            let report = relocate_server_profile(
+                &mut conn,
+                &root,
+                default.id,
+                bob.id,
+                source_id,
+                new_id,
+                None,
+                remove_from_source,
+            )
+            .expect("relocate");
+            assert!(report.inserted);
+            assert_eq!(report.profile_name, stored_as);
+            let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
+            assert_eq!(
+                crate::util::profile_name::name_of(&target, new_id),
+                Some(stored_as)
+            );
+            assert_eq!(
+                crate::util::profile_name::name_of(&target, "srv_bob"),
+                Some("My SFTP"),
+                "the target's own profile keeps its name"
+            );
+        }
     }
 
     #[test]
