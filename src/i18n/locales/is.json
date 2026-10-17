@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Dulkóðað",
             "notEncryptedBadge": "Ódulkóðað",
             "encryptedTooltip": "Dulkóðað með AES-256. Innihald og skráarnöfn eru trúnaðarmál; lykilorð þarf til að opna.",
-            "resetDefaults": "Endurstilla á sjálfgefið"
+            "resetDefaults": "Endurstilla á sjálfgefið",
+            "scrubErrorCorrectionTooltip": "{label} (sannreynir dulritunartætigildi)",
+            "repairErrorCorrectionTooltip": "{label} (forskoðun með þurrkeyrslu í boði)"
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",

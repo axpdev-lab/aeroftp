@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Versleuteld",
             "notEncryptedBadge": "Niet versleuteld",
             "encryptedTooltip": "Versleuteld met AES-256. Inhoud en bestandsnamen zijn vertrouwelijk; het wachtwoord is vereist om te openen.",
-            "resetDefaults": "Standaard herstellen"
+            "resetDefaults": "Standaard herstellen",
+            "scrubErrorCorrectionTooltip": "{label} (controleert de cipher-hashes)",
+            "repairErrorCorrectionTooltip": "{label} (voorbeeld via dry-run beschikbaar)"
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",

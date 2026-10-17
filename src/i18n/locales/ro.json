@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Criptat",
             "notEncryptedBadge": "Necriptat",
             "encryptedTooltip": "Criptat cu AES-256. Conținutul și numele fișierelor sunt confidențiale; este necesară parola pentru deschidere.",
-            "resetDefaults": "Resetează la implicit"
+            "resetDefaults": "Resetează la implicit",
+            "scrubErrorCorrectionTooltip": "{label} (verifică hash-urile de cifrare)",
+            "repairErrorCorrectionTooltip": "{label} (previzualizare prin simulare disponibilă)"
         },
         "cryptomator": {
             "title": "Seif Cryptomator",

@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Κρυπτογραφημένο",
             "notEncryptedBadge": "Μη κρυπτογραφημένο",
             "encryptedTooltip": "Κρυπτογραφημένο με AES-256. Το περιεχόμενο και τα ονόματα αρχείων είναι εμπιστευτικά· απαιτείται κωδικός για άνοιγμα.",
-            "resetDefaults": "Επαναφορά προεπιλογών"
+            "resetDefaults": "Επαναφορά προεπιλογών",
+            "scrubErrorCorrectionTooltip": "{label} (επαλήθευση των hash κρυπτογράφησης)",
+            "repairErrorCorrectionTooltip": "{label} (διαθέσιμη προεπισκόπηση με δοκιμαστική εκτέλεση)"
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",

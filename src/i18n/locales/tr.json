@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Şifreli",
             "notEncryptedBadge": "Şifresiz",
             "encryptedTooltip": "AES-256 ile şifreli. İçerik ve dosya adları gizlidir; açmak için parola gerekir.",
-            "resetDefaults": "Varsayılana sıfırla"
+            "resetDefaults": "Varsayılana sıfırla",
+            "scrubErrorCorrectionTooltip": "{label} (şifreleme karmalarını doğrular)",
+            "repairErrorCorrectionTooltip": "{label} (deneme önizlemesi kullanılabilir)"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",

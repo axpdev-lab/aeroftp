@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Šifrēts",
             "notEncryptedBadge": "Nešifrēts",
             "encryptedTooltip": "Šifrēts ar AES-256. Saturs un failu nosaukumi ir konfidenciāli; lai atvērtu, nepieciešama parole.",
-            "resetDefaults": "Atiestatīt noklusējumu"
+            "resetDefaults": "Atiestatīt noklusējumu",
+            "scrubErrorCorrectionTooltip": "{label} (pārbauda šifra jaucējkodus)",
+            "repairErrorCorrectionTooltip": "{label} (pieejams izmēģinājuma priekšskatījums)"
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",

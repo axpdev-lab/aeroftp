@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Terenkripsi",
             "notEncryptedBadge": "Tidak terenkripsi",
             "encryptedTooltip": "Terenkripsi dengan AES-256. Konten dan nama file bersifat rahasia; kata sandi diperlukan untuk membuka.",
-            "resetDefaults": "Atur ulang ke bawaan"
+            "resetDefaults": "Atur ulang ke bawaan",
+            "scrubErrorCorrectionTooltip": "{label} (memverifikasi hash sandi)",
+            "repairErrorCorrectionTooltip": "{label} (pratinjau dry-run tersedia)"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

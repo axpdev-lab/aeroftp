@@ -3399,7 +3399,9 @@
             "encryptedBadge": "დაშიფრული",
             "notEncryptedBadge": "დაუშიფრავი",
             "encryptedTooltip": "დაშიფრულია AES-256-ით. შინაარსი და ფაილების სახელები კონფიდენციალურია; გასახსნელად საჭიროა პაროლი.",
-            "resetDefaults": "ნაგულისხმევზე დაბრუნება"
+            "resetDefaults": "ნაგულისხმევზე დაბრუნება",
+            "scrubErrorCorrectionTooltip": "{label} (ამოწმებს შიფრის ჰეშებს)",
+            "repairErrorCorrectionTooltip": "{label} (ხელმისაწვდომია საცდელი გაშვების გადახედვა)"
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",

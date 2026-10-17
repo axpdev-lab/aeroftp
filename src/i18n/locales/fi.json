@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Salattu",
             "notEncryptedBadge": "Salaamaton",
             "encryptedTooltip": "Salattu AES-256:llä. Sisältö ja tiedostonimet ovat luottamuksellisia; avaaminen vaatii salasanan.",
-            "resetDefaults": "Palauta oletukset"
+            "resetDefaults": "Palauta oletukset",
+            "scrubErrorCorrectionTooltip": "{label} (tarkistaa salaustiivisteet)",
+            "repairErrorCorrectionTooltip": "{label} (koeajon esikatselu saatavilla)"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

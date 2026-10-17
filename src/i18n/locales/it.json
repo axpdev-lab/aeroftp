@@ -3704,7 +3704,9 @@
             "encryptedBadge": "Cifrato",
             "notEncryptedBadge": "Non cifrato",
             "encryptedTooltip": "Cifrato con AES-256. Contenuti e nomi file sono riservati; serve la password per aprire.",
-            "resetDefaults": "Ripristina predefiniti"
+            "resetDefaults": "Ripristina predefiniti",
+            "scrubErrorCorrectionTooltip": "{label} (verifica gli hash cifrati)",
+            "repairErrorCorrectionTooltip": "{label} (anteprima dry-run disponibile)"
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",

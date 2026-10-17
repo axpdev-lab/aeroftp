@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Verschlüsselt",
             "notEncryptedBadge": "Unverschlüsselt",
             "encryptedTooltip": "Mit AES-256 verschlüsselt. Inhalte und Dateinamen sind vertraulich; zum Öffnen ist das Passwort erforderlich.",
-            "resetDefaults": "Zurücksetzen"
+            "resetDefaults": "Zurücksetzen",
+            "scrubErrorCorrectionTooltip": "{label} (prüft die Cipher-Hashes)",
+            "repairErrorCorrectionTooltip": "{label} (Vorschau per Probelauf verfügbar)"
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Chiffré",
             "notEncryptedBadge": "Non chiffré",
             "encryptedTooltip": "Chiffré avec AES-256. Le contenu et les noms de fichiers sont confidentiels ; le mot de passe est requis pour ouvrir.",
-            "resetDefaults": "Réinitialiser"
+            "resetDefaults": "Réinitialiser",
+            "scrubErrorCorrectionTooltip": "{label} (vérifie les hachages de chiffrement)",
+            "repairErrorCorrectionTooltip": "{label} (aperçu en simulation disponible)"
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",

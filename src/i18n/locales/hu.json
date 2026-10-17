@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Titkosított",
             "notEncryptedBadge": "Nem titkosított",
             "encryptedTooltip": "AES-256 titkosítással. A tartalom és a fájlnevek bizalmasak; a megnyitáshoz jelszó szükséges.",
-            "resetDefaults": "Alapértelmezett visszaállítása"
+            "resetDefaults": "Alapértelmezett visszaállítása",
+            "scrubErrorCorrectionTooltip": "{label} (ellenőrzi a titkosítási hasheket)",
+            "repairErrorCorrectionTooltip": "{label} (próbafuttatásos előnézet elérhető)"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

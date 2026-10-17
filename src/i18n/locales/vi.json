@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Đã mã hóa",
             "notEncryptedBadge": "Chưa mã hóa",
             "encryptedTooltip": "Mã hóa bằng AES-256. Nội dung và tên tệp được bảo mật; cần mật khẩu để mở.",
-            "resetDefaults": "Đặt lại mặc định"
+            "resetDefaults": "Đặt lại mặc định",
+            "scrubErrorCorrectionTooltip": "{label} (xác minh hash mật mã)",
+            "repairErrorCorrectionTooltip": "{label} (có thể chạy thử để xem trước)"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

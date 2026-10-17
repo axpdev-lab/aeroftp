@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Krypterad",
             "notEncryptedBadge": "Okrypterad",
             "encryptedTooltip": "Krypterad med AES-256. Innehåll och filnamn är konfidentiella; lösenord krävs för att öppna.",
-            "resetDefaults": "Återställ standard"
+            "resetDefaults": "Återställ standard",
+            "scrubErrorCorrectionTooltip": "{label} (verifierar chiffer-hashar)",
+            "repairErrorCorrectionTooltip": "{label} (förhandsvisning via provkörning tillgänglig)"
         },
         "cryptomator": {
             "title": "Cryptomator-valv",

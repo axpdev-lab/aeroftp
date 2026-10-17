@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Disulitkan",
             "notEncryptedBadge": "Tidak disulitkan",
             "encryptedTooltip": "Disulitkan dengan AES-256. Kandungan dan nama fail adalah sulit; kata laluan diperlukan untuk membuka.",
-            "resetDefaults": "Tetapkan semula lalai"
+            "resetDefaults": "Tetapkan semula lalai",
+            "scrubErrorCorrectionTooltip": "{label} (mengesahkan cincang sifer)",
+            "repairErrorCorrectionTooltip": "{label} (pratonton larian uji tersedia)"
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

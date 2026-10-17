@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Krypteret",
             "notEncryptedBadge": "Ikke krypteret",
             "encryptedTooltip": "Krypteret med AES-256. Indhold og filnavne er fortrolige; adgangskode kræves for at åbne.",
-            "resetDefaults": "Nulstil til standard"
+            "resetDefaults": "Nulstil til standard",
+            "scrubErrorCorrectionTooltip": "{label} (verificerer cipher-hashes)",
+            "repairErrorCorrectionTooltip": "{label} (forhåndsvisning med tørkørsel tilgængelig)"
         },
         "cryptomator": {
             "title": "Cryptomator-boks",

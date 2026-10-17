@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Zaszyfrowane",
             "notEncryptedBadge": "Niezaszyfrowane",
             "encryptedTooltip": "Zaszyfrowane AES-256. Zawartość i nazwy plików są poufne; do otwarcia wymagane jest hasło.",
-            "resetDefaults": "Przywróć domyślne"
+            "resetDefaults": "Przywróć domyślne",
+            "scrubErrorCorrectionTooltip": "{label} (weryfikuje skróty szyfrogramu)",
+            "repairErrorCorrectionTooltip": "{label} (dostępny podgląd w próbnym przebiegu)"
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",

@@ -3399,7 +3399,9 @@
             "encryptedBadge": "এনক্রিপ্টেড",
             "notEncryptedBadge": "এনক্রিপ্ট করা নেই",
             "encryptedTooltip": "AES-256 দিয়ে এনক্রিপ্ট করা। বিষয়বস্তু ও ফাইলের নাম গোপনীয়; খুলতে পাসওয়ার্ড প্রয়োজন।",
-            "resetDefaults": "ডিফল্টে রিসেট করুন"
+            "resetDefaults": "ডিফল্টে রিসেট করুন",
+            "scrubErrorCorrectionTooltip": "{label} (সাইফার হ্যাশ যাচাই করে)",
+            "repairErrorCorrectionTooltip": "{label} (ড্রাই-রান প্রিভিউ উপলব্ধ)"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",

@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Xifrat",
             "notEncryptedBadge": "Sense xifrar",
             "encryptedTooltip": "Xifrat amb AES-256. El contingut i els noms de fitxer són confidencials; cal la contrasenya per obrir.",
-            "resetDefaults": "Restableix als valors"
+            "resetDefaults": "Restableix als valors",
+            "scrubErrorCorrectionTooltip": "{label} (verifica els hash de xifratge)",
+            "repairErrorCorrectionTooltip": "{label} (previsualització en simulació disponible)"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",

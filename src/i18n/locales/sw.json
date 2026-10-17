@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Imesimbwa",
             "notEncryptedBadge": "Haijasimbwa",
             "encryptedTooltip": "Imesimbwa kwa AES-256. Maudhui na majina ya faili ni siri; nenosiri linahitajika kufungua.",
-            "resetDefaults": "Rejesha chaguo-msingi"
+            "resetDefaults": "Rejesha chaguo-msingi",
+            "scrubErrorCorrectionTooltip": "{label} (huthibitisha hash za usimbaji)",
+            "repairErrorCorrectionTooltip": "{label} (onyesho la awali la jaribio linapatikana)"
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

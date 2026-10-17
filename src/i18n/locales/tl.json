@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Naka-encrypt",
             "notEncryptedBadge": "Hindi naka-encrypt",
             "encryptedTooltip": "Naka-encrypt gamit ang AES-256. Kumpidensyal ang nilalaman at mga pangalan ng file; kailangan ng password para buksan.",
-            "resetDefaults": "I-reset sa default"
+            "resetDefaults": "I-reset sa default",
+            "scrubErrorCorrectionTooltip": "{label} (sinusuri ang mga cipher hash)",
+            "repairErrorCorrectionTooltip": "{label} (maaaring i-preview muna sa dry-run)"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",

@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Зашифровано",
             "notEncryptedBadge": "Без шифрования",
             "encryptedTooltip": "Зашифровано AES-256. Содержимое и имена файлов конфиденциальны; для открытия нужен пароль.",
-            "resetDefaults": "Сбросить по умолчанию"
+            "resetDefaults": "Сбросить по умолчанию",
+            "scrubErrorCorrectionTooltip": "{label} (проверяет хеши шифротекста)",
+            "repairErrorCorrectionTooltip": "{label} (доступен предпросмотр в пробном запуске)"
         },
         "cryptomator": {
             "title": "Хранилище Cryptomator",

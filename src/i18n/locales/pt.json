@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Cifrado",
             "notEncryptedBadge": "Não cifrado",
             "encryptedTooltip": "Cifrado com AES-256. Conteúdo e nomes de ficheiros são confidenciais; é necessária a palavra-passe para abrir.",
-            "resetDefaults": "Repor predefinições"
+            "resetDefaults": "Repor predefinições",
+            "scrubErrorCorrectionTooltip": "{label} (verifica os hashes de cifra)",
+            "repairErrorCorrectionTooltip": "{label} (pré-visualização em simulação disponível)"
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",

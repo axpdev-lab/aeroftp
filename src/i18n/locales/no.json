@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Kryptert",
             "notEncryptedBadge": "Ikke kryptert",
             "encryptedTooltip": "Kryptert med AES-256. Innhold og filnavn er konfidensielle; passord kreves for å åpne.",
-            "resetDefaults": "Tilbakestill til standard"
+            "resetDefaults": "Tilbakestill til standard",
+            "scrubErrorCorrectionTooltip": "{label} (verifiserer krypterte hashverdier)",
+            "repairErrorCorrectionTooltip": "{label} (forhåndsvisning med tørrkjøring tilgjengelig)"
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",

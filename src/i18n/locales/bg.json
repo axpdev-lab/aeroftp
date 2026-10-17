@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Шифровано",
             "notEncryptedBadge": "Нешифровано",
             "encryptedTooltip": "Шифровано с AES-256. Съдържанието и имената на файловете са поверителни; за отваряне е нужна парола.",
-            "resetDefaults": "Възстанови по подразбиране"
+            "resetDefaults": "Възстанови по подразбиране",
+            "scrubErrorCorrectionTooltip": "{label} (проверява хешовете на шифъра)",
+            "repairErrorCorrectionTooltip": "{label} (налично пробно изпълнение с преглед)"
         },
         "cryptomator": {
             "title": "Cryptomator трезор",

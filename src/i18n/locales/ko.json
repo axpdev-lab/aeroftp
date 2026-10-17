@@ -3399,7 +3399,9 @@
             "encryptedBadge": "암호화됨",
             "notEncryptedBadge": "암호화 안 됨",
             "encryptedTooltip": "AES-256으로 암호화됨. 내용과 파일 이름은 기밀이며 열려면 비밀번호가 필요합니다.",
-            "resetDefaults": "기본값으로 재설정"
+            "resetDefaults": "기본값으로 재설정",
+            "scrubErrorCorrectionTooltip": "{label}(암호 해시 검증)",
+            "repairErrorCorrectionTooltip": "{label}(시험 실행 미리 보기 가능)"
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",

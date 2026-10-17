@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Užšifruota",
             "notEncryptedBadge": "Neužšifruota",
             "encryptedTooltip": "Užšifruota AES-256. Turinys ir failų pavadinimai konfidencialūs; norint atidaryti reikia slaptažodžio.",
-            "resetDefaults": "Atstatyti numatytuosius"
+            "resetDefaults": "Atstatyti numatytuosius",
+            "scrubErrorCorrectionTooltip": "{label} (tikrina šifro maišas)",
+            "repairErrorCorrectionTooltip": "{label} (galima bandomojo vykdymo peržiūra)"
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",

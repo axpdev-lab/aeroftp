@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Зашифровано",
             "notEncryptedBadge": "Без шифрування",
             "encryptedTooltip": "Зашифровано AES-256. Вміст та імена файлів конфіденційні; для відкриття потрібен пароль.",
-            "resetDefaults": "Скинути до типових"
+            "resetDefaults": "Скинути до типових",
+            "scrubErrorCorrectionTooltip": "{label} (перевіряє хеші шифротексту)",
+            "repairErrorCorrectionTooltip": "{label} (доступний попередній перегляд у пробному запуску)"
         },
         "cryptomator": {
             "title": "Сховище Cryptomator",

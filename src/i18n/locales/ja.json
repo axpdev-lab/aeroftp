@@ -3364,7 +3364,9 @@
             "encryptedBadge": "暗号化済み",
             "notEncryptedBadge": "暗号化なし",
             "encryptedTooltip": "AES-256で暗号化。内容とファイル名は機密で、開くにはパスワードが必要です。",
-            "resetDefaults": "デフォルトに戻す"
+            "resetDefaults": "デフォルトに戻す",
+            "scrubErrorCorrectionTooltip": "{label}（暗号ハッシュを検証）",
+            "repairErrorCorrectionTooltip": "{label}（ドライランでプレビュー可能）"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",

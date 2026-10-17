@@ -3392,7 +3392,9 @@
             "encryptedBadge": "Գաղտնագրված",
             "notEncryptedBadge": "Չգաղտնագրված",
             "encryptedTooltip": "Գաղտնագրված է AES-256-ով։ Բովանդակությունն ու ֆայլերի անունները գաղտնի են; բացելու համար պահանջվում է գաղտնաբառ։",
-            "resetDefaults": "Վերականգնել կանխադրվածը"
+            "resetDefaults": "Վերականգնել կանխադրվածը",
+            "scrubErrorCorrectionTooltip": "{label} (ստուգում է ծածկագրի հեշերը)",
+            "repairErrorCorrectionTooltip": "{label} (հասանելի է փորձնական նախադիտում)"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",

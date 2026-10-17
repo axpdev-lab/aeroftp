@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Cifrado",
             "notEncryptedBadge": "Sen cifrar",
             "encryptedTooltip": "Cifrado con AES-256. O contido e os nomes de ficheiro son confidenciais; é necesario o contrasinal para abrir.",
-            "resetDefaults": "Restablecer predefinidos"
+            "resetDefaults": "Restablecer predefinidos",
+            "scrubErrorCorrectionTooltip": "{label} (verifica os hashes de cifrado)",
+            "repairErrorCorrectionTooltip": "{label} (vista previa en simulación dispoñible)"
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

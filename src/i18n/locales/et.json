@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Krüpteeritud",
             "notEncryptedBadge": "Krüpteerimata",
             "encryptedTooltip": "Krüpteeritud AES-256-ga. Sisu ja failinimed on konfidentsiaalsed; avamiseks on vaja parooli.",
-            "resetDefaults": "Lähtesta vaikeväärtused"
+            "resetDefaults": "Lähtesta vaikeväärtused",
+            "scrubErrorCorrectionTooltip": "{label} (kontrollib šifri räsisid)",
+            "repairErrorCorrectionTooltip": "{label} (proovikäigu eelvaade saadaval)"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

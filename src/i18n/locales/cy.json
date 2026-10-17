@@ -3399,7 +3399,9 @@
             "encryptedBadge": "Wedi amgryptio",
             "notEncryptedBadge": "Heb amgryptio",
             "encryptedTooltip": "Wedi amgryptio gydag AES-256. Mae cynnwys ac enwau ffeiliau yn gyfrinachol; mae angen cyfrinair i agor.",
-            "resetDefaults": "Ailosod i ddiofyn"
+            "resetDefaults": "Ailosod i ddiofyn",
+            "scrubErrorCorrectionTooltip": "{label} (gwirio hashiau'r seiffr)",
+            "repairErrorCorrectionTooltip": "{label} (rhagolwg rhediad prawf ar gael)"
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",
