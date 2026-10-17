@@ -57,9 +57,6 @@
 #![cfg(feature = "aerorsync")]
 
 use std::path::Path;
-// `PathBuf` is named by the tests alone.
-#[cfg(test)]
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -2191,6 +2188,7 @@ mod tests {
     use super::*;
     use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
     use std::io::Write;
+    use std::path::PathBuf;
     use std::time::Duration;
     use tempfile::TempDir;
     use tokio::time::timeout;
