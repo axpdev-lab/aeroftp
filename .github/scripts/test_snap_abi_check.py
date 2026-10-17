@@ -61,12 +61,12 @@ class SnapAbiCheckTests(unittest.TestCase):
             bin_dir = tmp / 'bin'
             bin_dir.mkdir()
             for tool in ('bash', 'cat', 'mktemp', 'rm', 'find', 'grep', 'sort',
-                         'tail', 'sed', 'head', 'awk', 'paste', 'cp', 'mkdir'):
+                         'tail', 'sed', 'head', 'awk', 'paste', 'cp', 'mkdir', 'yes'):
                 (bin_dir / tool).symlink_to(shutil.which(tool))
             tree = tmp / 'tree'
             answers = tmp / 'answers'
             answers.mkdir()
-            for i, (name, (content, t_out, t_err, t_rc, p_out)) in enumerate(files.items()):
+            for i, (name, (content, t_out, t_err, t_rc, p_out, *p_extra)) in enumerate(files.items()):
                 path = tree / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(content)
@@ -75,6 +75,12 @@ class SnapAbiCheckTests(unittest.TestCase):
                 (answers / f'{key}.err').write_text(t_err)
                 (answers / f'{key}.rc').write_text(str(t_rc))
                 (answers / f'{key}.p').write_text(p_out)
+                # Optional: the exit status of `objdump -p`, and whether more
+                # output follows its NEEDED lines than a pipe buffer holds.
+                p_rc, p_flood = (p_extra + [0, False])[:2]
+                (answers / f'{key}.prc').write_text(str(p_rc))
+                if p_flood:
+                    (answers / f'{key}.flood').write_text('')
             # unsquashfs -q -n -f -no-xattrs -d DIR SNAP
             stub(bin_dir / 'unsquashfs', (
                 'while [ "$1" != -d ]; do shift; done\n'
@@ -88,7 +94,9 @@ class SnapAbiCheckTests(unittest.TestCase):
                 f'key="{answers}/${{rel//\\//__}}"\n'
                 'case $flag in\n'
                 '  -T) sed "s#FILE#$file#" "$key.T"; sed "s#FILE#$file#" "$key.err" >&2; exit "$(cat "$key.rc")" ;;\n'
-                '  -p) sed "s#FILE#$file#" "$key.p" ;;\n'
+                '  -p) sed "s#FILE#$file#" "$key.p"\n'
+                '      if [ -e "$key.flood" ]; then yes "  filler" | head -n 200000 || exit 141; fi\n'
+                '      exit "$(cat "$key.prc")" ;;\n'
                 'esac\n'
             ))
             stub(bin_dir / 'strings', 'exit 0\n')
@@ -128,6 +136,25 @@ class SnapAbiCheckTests(unittest.TestCase):
         rc, out = self.run_gate(files)
         self.assertEqual(rc, 0, out)
         self.assertIn('Scanned:  4 ELF files (2 with a glibc floor, 1 static)', out)
+
+    # Only an ELF that shows no GLIBC_x.y version reaches the `objdump -p`
+    # probe, which is the ELF this probe exists to catch. A failed probe, or
+    # a piped `grep -q` that stops reading at the NEEDED line and cuts
+    # objdump off with SIGPIPE (141 under pipefail), used to read as "does
+    # not link libc" and skip it.
+    def test_a_libc_probe_that_fails_is_unverified(self):
+        files = dict(CLEAN)
+        files['usr/bin/aeroftp'] = (ELF, dynsym(), '', 0, '', 1)
+        rc, out = self.run_gate(files)
+        self.assertEqual(rc, 2, out)
+        self.assertIn('::error::objdump -p cannot read usr/bin/aeroftp, so whether it links libc.so.6 is unverified', out)
+
+    def test_a_libc_probe_cut_off_after_the_needed_line_still_finds_libc(self):
+        files = dict(CLEAN)
+        files['usr/bin/aeroftp'] = (ELF, dynsym(), '', 0, needed('libc.so.6'), 0, True)
+        rc, out = self.run_gate(files)
+        self.assertEqual(rc, 2, out)
+        self.assertIn('::error::usr/bin/aeroftp links libc.so.6 but objdump shows no GLIBC_x.y version', out)
 
     def test_an_elf_objdump_cannot_read_is_unverified(self):
         for name, err in {

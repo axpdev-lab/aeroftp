@@ -92,6 +92,16 @@ class AppImagePermissionsTests(unittest.TestCase):
         self.assertIn('::error::AppImage entries not runnable or readable by every user:', out)
         self.assertIn('-rwxr-x--- squashfs-root/AppRun.wrapped', out)
 
+    # AppRun is the entry point: a regular AppRun nobody can run is an
+    # AppImage that does not start, whatever the other files look like.
+    def test_an_apprun_that_is_not_runnable_fails(self):
+        for mode in ('-rw-r--r--', '-rw-r--r-x'):
+            with self.subTest(mode):
+                listing = FIXED.replace('-rwxr-xr-x root/root              3120', f'{mode} root/root              3120')
+                rc, out, _ = self.run_check(listing)
+                self.assertEqual(rc, 1, out)
+                self.assertIn(f'{mode} squashfs-root/AppRun\n', out)
+
     def test_a_folder_other_than_755_fails(self):
         rc, out, _ = self.run_check(SCHEMAS_0777)
         self.assertEqual(rc, 1, out)

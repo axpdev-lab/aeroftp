@@ -199,7 +199,11 @@ fi
 # `%k` prints the number of distinct colours and nothing else. Read exactly
 # that: picking the digits out of whatever stdout holds would turn a notice
 # such as "IMv7 ..." in front of a blank frame's 3 into 73 colours.
-colors_out="$("$IM" "png:$SHOT" -format %k info: 2>/dev/null || true)"
+if ! colors_out="$("$IM" "png:$SHOT" -format %k info: 2>"$WORK/im-count.err")"; then
+  echo "::error::ImageMagick failed to measure the captured frame, so blankness cannot be ruled out:" >&2
+  sed -n '1,20p' "$WORK/im-count.err" >&2
+  exit 1
+fi
 if [[ $colors_out =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]]; then
   colors="${BASH_REMATCH[1]}"
 else

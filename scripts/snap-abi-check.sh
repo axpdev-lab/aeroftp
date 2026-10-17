@@ -179,6 +179,7 @@ fi
 FAILED=0
 VERSIONED=0
 STATIC=0
+NEEDS_LIBC=$'(^|\n)[[:space:]]+NEEDED[[:space:]]+libc\\.so\\.6(\n|$)'
 for elf in "${ELVES[@]}"; do
   rel="${elf#"$TMP/app/"}"
   if ! dyn="$(LC_ALL=C objdump -T "$elf" 2>"$TMP/objdump.err")"; then
@@ -193,7 +194,15 @@ for elf in "${ELVES[@]}"; do
   fi
   required="$(printf '%s\n' "$dyn" | max_glibc || true)"
   if [ -z "$required" ]; then
-    if LC_ALL=C objdump -p "$elf" 2>/dev/null | grep -qE '^[[:space:]]+NEEDED[[:space:]]+libc\.so\.6$'; then
+    # Captured, not piped into `grep -q`: a failed probe read as "does not
+    # link libc", and so did a probe that grep cut off with SIGPIPE after the
+    # NEEDED line, which is 141 under pipefail.
+    if ! dynamic="$(LC_ALL=C objdump -p "$elf" 2>"$TMP/objdump.err")"; then
+      echo "::error::objdump -p cannot read $rel, so whether it links libc.so.6 is unverified:" >&2
+      sed 's/^/    /' "$TMP/objdump.err" >&2
+      exit 2
+    fi
+    if [[ $dynamic =~ $NEEDS_LIBC ]]; then
       echo "::error::$rel links libc.so.6 but objdump shows no GLIBC_x.y version for it; its glibc floor is unverified" >&2
       exit 2
     fi

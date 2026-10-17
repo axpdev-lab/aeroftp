@@ -37,7 +37,7 @@ def stub(path, body):
 
 
 class SnapGuiCheckTests(unittest.TestCase):
-    def run_gate(self, log, *, colours=3221, wait_seconds=5):
+    def run_gate(self, log, *, colours=3221, colours_rc=0, wait_seconds=5):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             bin_dir = tmp / 'bin'
@@ -48,7 +48,7 @@ class SnapGuiCheckTests(unittest.TestCase):
             stub(bin_dir / 'Xvfb', 'exec sleep 60\n')
             stub(bin_dir / 'xwd', 'echo xwd-frame\n')
             stub(bin_dir / 'magick', (
-                f'for a in "$@"; do [ "$a" = info: ] && {{ printf "%s\\n" "{colours}"; exit 0; }}; done\n'
+                f'for a in "$@"; do [ "$a" = info: ] && {{ printf "%s\\n" "{colours}"; exit {colours_rc}; }}; done\n'
                 'out="${@: -1}"; echo png > "${out#png:}"\n'
             ))
             (tmp / 'app.log').write_text(log)
@@ -145,6 +145,11 @@ class SnapGuiCheckTests(unittest.TestCase):
         for printed in ('IMv7 notice\n3', '3 colours', '', 'unknown'):
             with self.subTest(printed=printed):
                 self.assert_red(REAL_LOG, '::error::could not measure the captured frame', colours=printed)
+
+    def test_a_colour_count_from_a_failed_measurement_fails(self):
+        # A number on stdout is not a measurement when ImageMagick failed.
+        self.assert_red(REAL_LOG, '::error::ImageMagick failed to measure the captured frame',
+                        colours=250000, colours_rc=1)
 
     # -- the lines above are printed by the app ------------------------------
 

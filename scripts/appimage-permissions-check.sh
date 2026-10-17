@@ -76,8 +76,10 @@ while IFS= read -r line || [ -n "$line" ]; do
   esac
   ENTRIES=$((ENTRIES + 1))
   case "$mode" in
-    # A regular file its owner can run must be runnable by everyone.
+    # A regular file its owner can run must be runnable by everyone, and
+    # AppRun, the entry point, must be runnable at all.
     -??x*) [ "${mode:9:1}" = x ] || BAD+=("$mode $path") ;;
+    -*) [ "$path" != squashfs-root/AppRun ] || BAD+=("$mode $path") ;;
     d*) [ "$mode" = drwxr-xr-x ] || BAD+=("$mode $path") ;;
   esac
 done <"$LIST"
