@@ -58,7 +58,7 @@ export const getProtonConnectionBadge = (options?: ProviderOptions): ProviderMod
     };
 };
 
-export const getInfiniCloudConnectionMode =(options?: ProviderOptions): 'webdav' | 'api' => {
+export const getInfiniCloudConnectionMode = (options?: ProviderOptions): 'webdav' | 'api' => {
     return options?.infinicloud_mode === 'api' ? 'api' : 'webdav';
 };
 

@@ -6,6 +6,7 @@ import {
     PROVIDER_MODE_GROUPS,
     findActiveMode,
     findActiveModeGroup,
+    resolveModeHeader,
     resolveModeSwitchCredentials,
     type ProviderModeGroup,
 } from './providerModeGroups';
@@ -85,6 +86,13 @@ describe('Proton Drive mode group', () => {
         expect(findActiveMode(group, 'proton', 'proton')?.label).toBe('CLI');
         expect(findActiveMode(group, undefined, 'proton', {})?.label).toBe('CLI');
         expect(findActiveMode(group, undefined, 'proton', { proton_mode: 'cli' })?.label).toBe('CLI');
+    });
+
+    it('the form header does not name the CLI on either tab', () => {
+        const header = resolveModeHeader(undefined, 'proton');
+        expect(header?.name).toBe('Proton Drive');
+        expect(header?.description).toBeTruthy();
+        expect(header?.description).not.toMatch(/CLI/);
     });
 
     it('a native profile resolves to the API tab, without the CLI status bridge', () => {
