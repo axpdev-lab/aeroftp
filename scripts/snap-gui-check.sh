@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Gate G3: launch the confined GUI on a disposable X server and prove two
-# things about it — the React frontend reached app_ready, and WebKit actually
-# painted the window.  A live process is insufficient: the blank WebKit
-# regression in #462 stayed alive until the splash safety timeout, and a
-# process that merely reports "ready" would still let a white window ship.
+# Gate G3: launch the confined GUI on a disposable X server and prove three
+# things about it: EGL was usable inside the snap, the React frontend reached
+# app_ready, and WebKit actually painted the window.  A live process is
+# insufficient: the blank WebKit regression in #462 stayed alive until the
+# splash safety timeout, and a process that merely reports "ready" would
+# still let a white window ship.
+#
+# Every one of the three is read from a line the app itself prints, never
+# from the absence of an error string: Mesa and WebKit word their errors as
+# they like, and a check that only looks for known errors passes the day the
+# wording changes.  .github/scripts/test_snap_gui_check.py runs this script
+# with stub tools and pins the app lines it waits for to the Rust source.
 set -euo pipefail
 
 APP="${1:-/snap/bin/aeroftp}"
@@ -111,15 +118,20 @@ APP_PID="$(cat "$PIDFILE" 2>/dev/null || true)"
 }
 
 # `app_ready post-show` is logged in the same main-thread callback as show(),
-# and GTK/X11 map the window asynchronously — on this platform that line always
+# and GTK/X11 map the window asynchronously; on this platform that line always
 # reads is_visible=false.  The truth lands in the +300ms/+1200ms re-heal
-# diagnostics, so accept visibility from any app_ready diagnostic.  The prefix
-# still carries the real assertion: those lines only exist once the frontend
-# has invoked the app_ready command (src/App.tsx), so a blank page that never
-# boots React can never produce them.
+# diagnostics, so accept visibility from any app_ready diagnostic.
+#
+# Those diagnostics do not prove the frontend booted: the splash safety
+# timeout finishes startup through the same sequence (finish_startup in
+# src-tauri/src/lib.rs, #1005) and prints the same "app_ready +300ms" lines
+# over a page React never reached.  Only "Finishing startup (app_ready)" is
+# printed when the frontend invoked the app_ready command (src/App.tsx), so
+# that line is required as well.
 ready=false
 for ((second = 1; second <= WAIT_SECONDS; second++)); do
-  if grep -qE '\[diag #290\] app_ready [^:]+: is_visible=true' "$LOG"; then
+  if grep -qF 'Finishing startup (app_ready)' "$LOG" &&
+    grep -qE '\[diag #290\] app_ready [^:]+: is_visible=true' "$LOG"; then
     ready=true
     break
   fi
@@ -153,17 +165,49 @@ if grep -q "Splash screen safety timeout reached" "$LOG"; then
   exit 1
 fi
 if [ "$ready" != true ]; then
+  finished_by="$(grep -m1 -oE 'Finishing startup \([^)]*\)' "$LOG" || true)"
+  if [ -n "$finished_by" ] && [ "$finished_by" != 'Finishing startup (app_ready)' ]; then
+    echo "::error::the frontend never signalled app_ready: the app logged '$finished_by'" >&2
+    exit 1
+  fi
   echo "::error::the snap GUI did not reach a visible app_ready state within ${WAIT_SECONDS}s" >&2
   exit 1
 fi
+# The EGL grep above names the known errors; it cannot fail on one worded
+# differently.  The app asks EGL itself before WebKit starts and logs the
+# answer (src-tauri/src/linux_egl.rs): "accelerated compositing enabled" when
+# EGL works, "software compositing" when it does not.  The second still paints,
+# on the CPU, so the frame check below cannot tell the two apart: require the
+# first.
+egl_decision="$(grep -m1 -E 'WebKit (accelerated compositing enabled|software compositing|compositing left to the environment)' "$LOG" || true)"
+case "$egl_decision" in
+  *"WebKit accelerated compositing enabled: EGL is usable on "*) ;;
+  "")
+    echo "::error::the app logged no EGL compositing decision, so EGL inside the snap is unverified" >&2
+    exit 1
+    ;;
+  *)
+    echo "::error::the app did not get a usable EGL inside the snap: ${egl_decision##*] }" >&2
+    exit 1
+    ;;
+esac
 
 if [ "$captured" != true ]; then
   echo "::error::could not capture the GUI frame, so blankness cannot be ruled out" >&2
   exit 1
 fi
-colors="$("$IM" "png:$SHOT" -format %k info: 2>/dev/null | tr -dc '0-9')"
-if [ -z "$colors" ]; then
-  echo "::error::could not measure the captured frame, so blankness cannot be ruled out" >&2
+# `%k` prints the number of distinct colours and nothing else. Read exactly
+# that: picking the digits out of whatever stdout holds would turn a notice
+# such as "IMv7 ..." in front of a blank frame's 3 into 73 colours.
+if ! colors_out="$("$IM" "png:$SHOT" -format %k info: 2>"$WORK/im-count.err")"; then
+  echo "::error::ImageMagick failed to measure the captured frame, so blankness cannot be ruled out:" >&2
+  sed -n '1,20p' "$WORK/im-count.err" >&2
+  exit 1
+fi
+if [[ $colors_out =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]]; then
+  colors="${BASH_REMATCH[1]}"
+else
+  echo "::error::could not measure the captured frame (ImageMagick printed '${colors_out:0:120}'), so blankness cannot be ruled out" >&2
   exit 1
 fi
 echo "Captured frame: $SHOT (${colors} distinct colours)"
@@ -172,4 +216,4 @@ if [ "$colors" -lt "$MIN_COLORS" ]; then
   exit 1
 fi
 
-echo "OK: confined snap GUI reached app_ready, became visible and painted a real frame under Xvfb."
+echo "OK: confined snap GUI got a usable EGL, reached app_ready, became visible and painted a real frame under Xvfb."

@@ -22,7 +22,9 @@
 #   scripts/snap-abi-check.sh <snap-file> --ceiling 2.39   # self-test override
 #
 # Exit codes: 0 = every ELF fits the base, 1 = at least one is too new,
-#             2 = usage / environment error.
+#             2 = usage / environment error, or an ELF whose glibc floor
+#             objdump could not read. Tested with stub tools:
+#             .github/scripts/test_snap_abi_check.py.
 
 set -euo pipefail
 
@@ -56,9 +58,9 @@ if [ -z "$SNAP_FILE" ] || [ ! -f "$SNAP_FILE" ]; then
   exit 2
 fi
 
-for tool in unsquashfs objdump file strings; do
+for tool in unsquashfs objdump strings; do
   command -v "$tool" >/dev/null 2>&1 || {
-    echo "::error::snap-abi-check needs '$tool' (apt: squashfs-tools binutils file)" >&2
+    echo "::error::snap-abi-check needs '$tool' (apt: squashfs-tools binutils)" >&2
     exit 2
   }
 done
@@ -143,26 +145,74 @@ echo "Ceiling:  $CEILING"
 # would silently narrow the scan.
 unsquashfs -q -n -f -no-xattrs -d "$TMP/app" "$SNAP_FILE" >/dev/null
 
-mapfile -t ELVES < <(
-  find "$TMP/app" -type f -print0 \
-    | xargs -0 -r file -h --mime-type -F $'\t' -- \
-    | awk -F'\t' '$2 ~ /x-(executable|pie-executable|sharedlib)/ {print $1}'
-)
+# An ELF is a file that starts with the four bytes 0x7f 'E' 'L' 'F', and that
+# is read here directly. This used to be `file --mime-type` filtered by awk
+# for x-executable, x-pie-executable and x-sharedlib: an ELF that `file`
+# names in any other string (PIE executables already moved once, in file
+# 5.33) left the scan without a word, and the gate passed over it.
+ELVES=()
+while IFS= read -r -d '' f; do
+  if [ ! -r "$f" ]; then
+    echo "::error::cannot read ${f#"$TMP/app/"} inside $SNAP_FILE" >&2
+    exit 2
+  fi
+  magic=""
+  IFS= LC_ALL=C read -r -N 4 magic <"$f" || true
+  if [ "$magic" = $'\x7fELF' ]; then
+    ELVES+=("$f")
+  fi
+done < <(find "$TMP/app" -type f -print0)
 
 if [ "${#ELVES[@]}" -eq 0 ]; then
   echo "::error::no ELF files found inside $SNAP_FILE - is it a valid snap?" >&2
   exit 2
 fi
 
+# objdump has one way to say "nothing to check": a static executable or an
+# object has no dynamic symbols, and `objdump -T` exits 1 with "not a dynamic
+# object" (in the C locale; the message is translated otherwise). Any other
+# failure means the ELF was not read, and an unread ELF used to count as one
+# that needs no glibc at all. And an ELF that links libc.so.6 always asks for
+# at least one GLIBC_x.y version: one that shows none was not read either
+# (on the 4.2.3 snap, all 325 such ELFs show one; the 6 that show none do not
+# link libc).
 FAILED=0
+VERSIONED=0
+STATIC=0
+NEEDS_LIBC=$'(^|\n)[[:space:]]+NEEDED[[:space:]]+libc\\.so\\.6(\n|$)'
 for elf in "${ELVES[@]}"; do
-  required="$(objdump -T "$elf" 2>/dev/null | max_glibc || true)"
-  [ -n "$required" ] || continue
+  rel="${elf#"$TMP/app/"}"
+  if ! dyn="$(LC_ALL=C objdump -T "$elf" 2>"$TMP/objdump.err")"; then
+    err="$(cat "$TMP/objdump.err")"
+    if [[ $err != *$'\n'* && $err == *": $elf: not a dynamic object" ]]; then
+      STATIC=$((STATIC + 1))
+      continue
+    fi
+    echo "::error::objdump cannot read $rel, so its glibc floor is unverified:" >&2
+    sed 's/^/    /' "$TMP/objdump.err" >&2
+    exit 2
+  fi
+  required="$(printf '%s\n' "$dyn" | max_glibc || true)"
+  if [ -z "$required" ]; then
+    # Captured, not piped into `grep -q`: a failed probe read as "does not
+    # link libc", and so did a probe that grep cut off with SIGPIPE after the
+    # NEEDED line, which is 141 under pipefail.
+    if ! dynamic="$(LC_ALL=C objdump -p "$elf" 2>"$TMP/objdump.err")"; then
+      echo "::error::objdump -p cannot read $rel, so whether it links libc.so.6 is unverified:" >&2
+      sed 's/^/    /' "$TMP/objdump.err" >&2
+      exit 2
+    fi
+    if [[ $dynamic =~ $NEEDS_LIBC ]]; then
+      echo "::error::$rel links libc.so.6 but objdump shows no GLIBC_x.y version for it; its glibc floor is unverified" >&2
+      exit 2
+    fi
+    continue
+  fi
+  VERSIONED=$((VERSIONED + 1))
   # sort -V puts the newer version last; if that is not the ceiling, the ELF wins
   # and therefore demands more than the base can provide.
   newest="$(printf '%s\n%s\n' "$required" "$CEILING" | sort -V | tail -1)"
   if [ "$newest" != "$CEILING" ]; then
-    rel="${elf#"$TMP/app/"}"
     echo "::error::$rel requires $required but base $BASE provides at most $CEILING"
     # Name the symbols that pushed it over the line - without them the failure
     # is a mystery, with them the cause (C23 stdio, pidfd spawn, ...) is obvious.
@@ -184,7 +234,14 @@ for elf in "${ELVES[@]}"; do
   fi
 done
 
-echo "Scanned:  ${#ELVES[@]} ELF files"
+echo "Scanned:  ${#ELVES[@]} ELF files ($VERSIONED with a glibc floor, $STATIC static)"
+
+# A dynamically linked app snap without a single versioned glibc reference is
+# not a snap this gate has read.
+if [ "$VERSIONED" -eq 0 ]; then
+  echo "::error::no ELF inside $SNAP_FILE shows a GLIBC_x.y version; the glibc floor is unverified" >&2
+  exit 2
+fi
 
 if [ "$FAILED" -gt 0 ]; then
   echo
