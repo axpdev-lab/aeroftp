@@ -3402,7 +3402,7 @@
             "resetDefaults": "Resetează la implicit",
             "scrubErrorCorrectionTooltip": "{label} (verifică hash-urile de cifrare)",
             "repairErrorCorrectionTooltip": "{label} (previzualizare prin simulare disponibilă)",
-            "repairDryRunNoDamage": "Simulare: nicio deteriorare; nimic de reparat.",
+            "repairDryRunNoDamage": "Simulare: nicio deteriorare; nimic de reparat. Nu s-a scris nimic.",
             "repairDryRunCannotRepair": "Simulare: niciuna dintre bucățile deteriorate ({damaged}) nu poate fi reparată. Nu s-a scris nimic.",
             "repairDryRunCanRepair": "Simulare: bucăți deteriorate care pot fi reparate: {repaired}. Nu s-a scris nimic.",
             "repairDryRunMetadata": "Simulare: antetul sau manifestul vault-ului poate fi reconstruit din paritate. Nu s-a scris nimic.",

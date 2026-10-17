@@ -3402,7 +3402,7 @@
             "resetDefaults": "កំណត់ឡើងវិញ​ជាលំនាំដើម",
             "scrubErrorCorrectionTooltip": "{label} (ផ្ទៀងផ្ទាត់ហាសនៃការអ៊ិនគ្រីប)",
             "repairErrorCorrectionTooltip": "{label} (អាចមើលជាមុនដោយការសាកល្បង)",
-            "repairDryRunNoDamage": "សាកល្បង៖ គ្មានការខូចខាត គ្មានអ្វីត្រូវជួសជុលទេ។",
+            "repairDryRunNoDamage": "សាកល្បង៖ គ្មានការខូចខាត គ្មានអ្វីត្រូវជួសជុលទេ។ គ្មានអ្វីត្រូវបានសរសេរទេ។",
             "repairDryRunCannotRepair": "សាកល្បង៖ មិនអាចជួសជុលបំណែកដែលខូចណាមួយក្នុងចំណោម {damaged} បានទេ។ គ្មានអ្វីត្រូវបានសរសេរទេ។",
             "repairDryRunCanRepair": "សាកល្បង៖ អាចជួសជុលបំណែកដែលខូច {repaired} បាន។ គ្មានអ្វីត្រូវបានសរសេរទេ។",
             "repairDryRunMetadata": "សាកល្បង៖ អាចស្ថាបនាក្បាល ឬ manifest នៃ vault ឡើងវិញពីប៉ារីតេបាន។ គ្មានអ្វីត្រូវបានសរសេរទេ។",

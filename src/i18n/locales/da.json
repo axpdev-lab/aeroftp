@@ -3402,7 +3402,7 @@
             "resetDefaults": "Nulstil til standard",
             "scrubErrorCorrectionTooltip": "{label} (verificerer cipher-hashes)",
             "repairErrorCorrectionTooltip": "{label} (forhåndsvisning med tørkørsel tilgængelig)",
-            "repairDryRunNoDamage": "Tørkørsel: ingen skader; intet at reparere.",
+            "repairDryRunNoDamage": "Tørkørsel: ingen skader; intet at reparere. Intet blev skrevet.",
             "repairDryRunCannotRepair": "Tørkørsel: ingen af {damaged} beskadigede chunk(s) kan repareres. Intet blev skrevet.",
             "repairDryRunCanRepair": "Tørkørsel: {repaired} beskadigede chunk(s) kan repareres. Intet blev skrevet.",
             "repairDryRunMetadata": "Tørkørsel: vault-headeren eller manifestet kan genopbygges ud fra paritet. Intet blev skrevet.",

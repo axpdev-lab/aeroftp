@@ -14,7 +14,8 @@ import { parseAst } from 'vite';
  *
  * This test finds a `t()` call joined with `+` to a string literal, or placed
  * in a template literal, where the literal text holds a word. A variable used
- * there is followed to its closest declaration before it in the same file: the
+ * there is followed to its declaration in scope (block, function, loop and catch
+ * scopes, with parameters shadowing outer names): the
  * vault repair dialog put `const prefix = dry ? 'Dry-run: ' : ''` in front of
  * its translated result, and a portable device named itself `|| 'Portable
  * device'` in a translated error. Shortcut key names (`(Ctrl+S)`), Aero product names,
@@ -72,6 +73,26 @@ function texts(node: Node): string[] {
     return [];
 }
 
+// Nodes that open a lexical scope for `const`, `let`, parameters and catch bindings.
+const SCOPES = new Set([
+    'BlockStatement', 'StaticBlock', 'ForStatement', 'ForInStatement', 'ForOfStatement', 'CatchClause',
+    'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
+]);
+
+// The names a binding pattern introduces: `a`, `{ a, b: c }`, `[a, ...d]`, `a = 1`, `a: string`.
+function bindingNames(pattern: Node): string[] {
+    if (pattern.type === 'Identifier') return [(pattern as unknown as { name: string }).name];
+    if (pattern.type === 'AssignmentPattern') return bindingNames(pattern.left as Node);
+    if (pattern.type === 'RestElement') return bindingNames(pattern.argument as Node);
+    if (pattern.type === 'TSParameterProperty') return bindingNames(pattern.parameter as Node);
+    if (pattern.type === 'ArrayPattern') return (pattern.elements as Array<Node | null>).filter(isNode).flatMap(bindingNames);
+    if (pattern.type === 'ObjectPattern') {
+        return (pattern.properties as Node[]).flatMap((property) =>
+            bindingNames((property.type === 'Property' ? property.value : property) as Node));
+    }
+    return [];
+}
+
 function offenders(sources: Record<string, string>): string[] {
     const out: string[] = [];
     for (const [file, source] of Object.entries(sources)) {
@@ -80,17 +101,31 @@ function offenders(sources: Record<string, string>): string[] {
             const line = source.slice(0, node.start).split('\n').length;
             out.push(`${file.replace(/^\//, '')}:${line} ${source.slice(node.start, node.end).replace(/\s+/g, ' ').slice(0, 90)}`);
         };
-        // The walk runs in source order, so the last declaration recorded for a name
-        // is the closest one before its use: the one in scope in ordinary code.
-        const declarations = new Map<string, Node>();
+        // One map per lexical scope, innermost last. A name resolves to the closest
+        // scope that declares it; a parameter shadows with no value (null).
+        const scopes: Array<Map<string, Node | null>> = [new Map()];
         const proseVariable = (node: Node) => {
             if (node.type !== 'Identifier') return false;
-            const init = declarations.get((node as unknown as { name: string }).name);
+            const name = (node as unknown as { name: string }).name;
+            const scope = [...scopes].reverse().find((candidate) => candidate.has(name));
+            const init = scope?.get(name);
             return !!init && texts(init).some(isProse);
         };
         const visit = (node: Node) => {
-            if (node.type === 'VariableDeclarator' && (node.id as Node).type === 'Identifier' && isNode(node.init)) {
-                declarations.set((node.id as unknown as { name: string }).name, node.init);
+            const opensScope = SCOPES.has(node.type);
+            if (opensScope) {
+                const scope = new Map<string, Node | null>();
+                for (const param of (node.params as Node[] | undefined) ?? []) bindingNames(param).forEach((name) => scope.set(name, null));
+                if (node.type === 'CatchClause' && isNode(node.param)) bindingNames(node.param).forEach((name) => scope.set(name, null));
+                scopes.push(scope);
+            }
+            if (node.type === 'VariableDeclarator') {
+                const scope = scopes[scopes.length - 1];
+                if ((node.id as Node).type === 'Identifier') {
+                    scope.set((node.id as unknown as { name: string }).name, isNode(node.init) ? node.init : null);
+                } else {
+                    bindingNames(node.id as Node).forEach((name) => scope.set(name, null));
+                }
             }
             if (node.type === 'BinaryExpression' && node.operator === '+') {
                 const left = node.left as Node;
@@ -107,6 +142,7 @@ function offenders(sources: Record<string, string>): string[] {
                 }
             }
             children(node).forEach(visit);
+            if (opensScope) scopes.pop();
         };
         visit(program);
     }
@@ -135,6 +171,14 @@ describe('a translated string is not glued to English in the code', () => {
             "const n = `${t('sidebar.portable_open_failed')}: ${name}`;",
             "const shown = t('vault.close') || 'Close';",
             "const o = t('vault.open') + shown;",
+            "const prefix2 = 'Error: ';",
+            "function helper() { const prefix2 = ''; return prefix2; }",
+            "const p = `${prefix2}${t('vault.close')}`;",
+            "const quiet = '';",
+            "function loud() { const quiet = 'Loud text'; return quiet; }",
+            "const q = `${quiet}${t('vault.close')}`;",
+            "const label2 = 'Some text';",
+            "const fmt = (label2: string) => `${label2}${t('vault.close')}`;",
         ].join('\n');
         expect(offenders({ 'sample.ts': sample })).toEqual([
             "sample.ts:1 t('vault.scrubErrorCorrection') + ' (verify cipher hashes)'",
@@ -144,6 +188,7 @@ describe('a translated string is not glued to English in the code', () => {
             "sample.ts:11 `${prefix}${t('vault.noDamageNothing')}`",
             "sample.ts:15 t('vault.close') + tail",
             "sample.ts:17 `${t('sidebar.portable_open_failed')}: ${name}`",
+            "sample.ts:22 `${prefix2}${t('vault.close')}`",
         ]);
     });
 

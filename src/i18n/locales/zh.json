@@ -3402,7 +3402,7 @@
             "resetDefaults": "重置为默认",
             "scrubErrorCorrectionTooltip": "{label}（校验密文哈希）",
             "repairErrorCorrectionTooltip": "{label}（可试运行预览）",
-            "repairDryRunNoDamage": "试运行：无损坏；无需修复。",
+            "repairDryRunNoDamage": "试运行：无损坏；无需修复。未写入任何内容。",
             "repairDryRunCannotRepair": "试运行：{damaged} 个损坏的数据块均无法修复。未写入任何内容。",
             "repairDryRunCanRepair": "试运行：{repaired} 个损坏的数据块可以修复。未写入任何内容。",
             "repairDryRunMetadata": "试运行：可以从校验数据重建保险库头部或清单。未写入任何内容。",

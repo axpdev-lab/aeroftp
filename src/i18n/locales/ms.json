@@ -3402,7 +3402,7 @@
             "resetDefaults": "Tetapkan semula lalai",
             "scrubErrorCorrectionTooltip": "{label} (mengesahkan cincang sifer)",
             "repairErrorCorrectionTooltip": "{label} (pratonton larian uji tersedia)",
-            "repairDryRunNoDamage": "Larian uji: tiada kerosakan; tiada apa-apa untuk dibaiki.",
+            "repairDryRunNoDamage": "Larian uji: tiada kerosakan; tiada apa-apa untuk dibaiki. Tiada apa-apa yang ditulis.",
             "repairDryRunCannotRepair": "Larian uji: tiada satu pun daripada {damaged} ketulan yang rosak boleh dibaiki. Tiada apa-apa yang ditulis.",
             "repairDryRunCanRepair": "Larian uji: {repaired} ketulan yang rosak boleh dibaiki. Tiada apa-apa yang ditulis.",
             "repairDryRunMetadata": "Larian uji: pengepala atau manifes bilik kebal boleh dibina semula daripada pariti. Tiada apa-apa yang ditulis.",

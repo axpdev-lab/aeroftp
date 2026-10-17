@@ -3402,7 +3402,7 @@
             "resetDefaults": "Przywróć domyślne",
             "scrubErrorCorrectionTooltip": "{label} (weryfikuje skróty szyfrogramu)",
             "repairErrorCorrectionTooltip": "{label} (dostępny podgląd w próbnym przebiegu)",
-            "repairDryRunNoDamage": "Próbny przebieg: brak uszkodzeń; nic do naprawienia.",
+            "repairDryRunNoDamage": "Próbny przebieg: brak uszkodzeń; nic do naprawienia. Nic nie zostało zapisane.",
             "repairDryRunCannotRepair": "Próbny przebieg: żadnego z uszkodzonych fragmentów ({damaged}) nie można naprawić. Nic nie zostało zapisane.",
             "repairDryRunCanRepair": "Próbny przebieg: liczba uszkodzonych fragmentów możliwych do naprawienia: {repaired}. Nic nie zostało zapisane.",
             "repairDryRunMetadata": "Próbny przebieg: nagłówek lub manifest sejfu można odtworzyć z parzystości. Nic nie zostało zapisane.",

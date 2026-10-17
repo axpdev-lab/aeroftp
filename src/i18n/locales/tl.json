@@ -3402,7 +3402,7 @@
             "resetDefaults": "I-reset sa default",
             "scrubErrorCorrectionTooltip": "{label} (sinusuri ang mga cipher hash)",
             "repairErrorCorrectionTooltip": "{label} (maaaring i-preview muna sa dry-run)",
-            "repairDryRunNoDamage": "Dry-run: walang pinsala; walang aayusin.",
+            "repairDryRunNoDamage": "Dry-run: walang pinsala; walang aayusin. Walang naisulat.",
             "repairDryRunCannotRepair": "Dry-run: wala sa {damaged} na sirang chunk ang maaayos. Walang naisulat.",
             "repairDryRunCanRepair": "Dry-run: maaayos ang {repaired} na sirang chunk. Walang naisulat.",
             "repairDryRunMetadata": "Dry-run: maaaring muling itayo mula sa parity ang header o manifest ng vault. Walang naisulat.",

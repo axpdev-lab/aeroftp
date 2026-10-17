@@ -3367,7 +3367,7 @@
             "resetDefaults": "デフォルトに戻す",
             "scrubErrorCorrectionTooltip": "{label}（暗号ハッシュを検証）",
             "repairErrorCorrectionTooltip": "{label}（ドライランでプレビュー可能）",
-            "repairDryRunNoDamage": "ドライラン：破損はありません。修復するものはありません。",
+            "repairDryRunNoDamage": "ドライラン：破損はありません。修復するものはありません。何も書き込まれていません。",
             "repairDryRunCannotRepair": "ドライラン：破損した {damaged} 件のチャンクはいずれも修復できません。何も書き込まれていません。",
             "repairDryRunCanRepair": "ドライラン：破損した {repaired} 件のチャンクを修復できます。何も書き込まれていません。",
             "repairDryRunMetadata": "ドライラン：パリティからボールトのヘッダーまたはマニフェストを再構築できます。何も書き込まれていません。",

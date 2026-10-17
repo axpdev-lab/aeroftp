@@ -3402,7 +3402,7 @@
             "resetDefaults": "Standaard herstellen",
             "scrubErrorCorrectionTooltip": "{label} (controleert de cipher-hashes)",
             "repairErrorCorrectionTooltip": "{label} (voorbeeld via dry-run beschikbaar)",
-            "repairDryRunNoDamage": "Dry-run: geen schade; niets te repareren.",
+            "repairDryRunNoDamage": "Dry-run: geen schade; niets te repareren. Er is niets geschreven.",
             "repairDryRunCannotRepair": "Dry-run: geen van de {damaged} beschadigde chunk(s) kan worden hersteld. Er is niets geschreven.",
             "repairDryRunCanRepair": "Dry-run: {repaired} beschadigde chunk(s) kunnen worden hersteld. Er is niets geschreven.",
             "repairDryRunMetadata": "Dry-run: de vault-header of het manifest kan uit de pariteit worden herbouwd. Er is niets geschreven.",

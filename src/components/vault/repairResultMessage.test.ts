@@ -20,7 +20,7 @@ describe('the repair dialog says what a repair or a dry run found', () => {
     });
 
     it('reports a dry run as a preview that wrote nothing', () => {
-        expect(repairResultMessage({ repaired: 0, damaged: 0, dry_run: true }, t)).toBe('Dry run: no damage; nothing to repair.');
+        expect(repairResultMessage({ repaired: 0, damaged: 0, dry_run: true }, t)).toBe('Dry run: no damage; nothing to repair. Nothing was written.');
         expect(repairResultMessage({ repaired: 0, damaged: 3, dry_run: true }, t)).toBe(
             'Dry run: none of 3 damaged chunk(s) can be repaired. Nothing was written.',
         );

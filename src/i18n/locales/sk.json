@@ -3402,7 +3402,7 @@
             "resetDefaults": "Obnoviť predvolené",
             "scrubErrorCorrectionTooltip": "{label} (overí šifrovacie haše)",
             "repairErrorCorrectionTooltip": "{label} (k dispozícii náhľad skúšobného behu)",
-            "repairDryRunNoDamage": "Skúšobný beh: žiadne poškodenie; nie je čo opravovať.",
+            "repairDryRunNoDamage": "Skúšobný beh: žiadne poškodenie; nie je čo opravovať. Nič nebolo zapísané.",
             "repairDryRunCannotRepair": "Skúšobný beh: žiadnu z poškodených častí ({damaged}) nemožno opraviť. Nič nebolo zapísané.",
             "repairDryRunCanRepair": "Skúšobný beh: počet poškodených častí, ktoré možno opraviť: {repaired}. Nič nebolo zapísané.",
             "repairDryRunMetadata": "Skúšobný beh: hlavičku alebo manifest trezoru možno obnoviť z parity. Nič nebolo zapísané.",

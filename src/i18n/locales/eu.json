@@ -3402,7 +3402,7 @@
             "resetDefaults": "Berrezarri lehenetsia",
             "scrubErrorCorrectionTooltip": "{label} (zifratutako hashak egiaztatzen ditu)",
             "repairErrorCorrectionTooltip": "{label} (proba-exekuzioaren aurrebista erabilgarri)",
-            "repairDryRunNoDamage": "Proba-exekuzioa: kalterik ez; ez dago zer konpondurik.",
+            "repairDryRunNoDamage": "Proba-exekuzioa: kalterik ez; ez dago zer konpondurik. Ez da ezer idatzi.",
             "repairDryRunCannotRepair": "Proba-exekuzioa: kaltetutako {damaged} zatietatik bat ere ezin da konpondu. Ez da ezer idatzi.",
             "repairDryRunCanRepair": "Proba-exekuzioa: kaltetutako {repaired} zati konpon daitezke. Ez da ezer idatzi.",
             "repairDryRunMetadata": "Proba-exekuzioa: vault-aren goiburua edo manifestua paritatetik berreraiki daiteke. Ez da ezer idatzi.",

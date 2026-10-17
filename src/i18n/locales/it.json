@@ -3707,7 +3707,7 @@
             "resetDefaults": "Ripristina predefiniti",
             "scrubErrorCorrectionTooltip": "{label} (verifica gli hash cifrati)",
             "repairErrorCorrectionTooltip": "{label} (anteprima dry-run disponibile)",
-            "repairDryRunNoDamage": "Dry-run: nessun danno; niente da riparare.",
+            "repairDryRunNoDamage": "Dry-run: nessun danno; niente da riparare. Non è stato scritto nulla.",
             "repairDryRunCannotRepair": "Dry-run: nessuno dei {damaged} chunk danneggiati può essere riparato. Non è stato scritto nulla.",
             "repairDryRunCanRepair": "Dry-run: {repaired} chunk danneggiati possono essere riparati. Non è stato scritto nulla.",
             "repairDryRunMetadata": "Dry-run: l'intestazione o il manifest del vault possono essere ricostruiti dalla parità. Non è stato scritto nulla.",

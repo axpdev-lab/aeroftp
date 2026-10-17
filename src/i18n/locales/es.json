@@ -3402,7 +3402,7 @@
             "resetDefaults": "Restablecer valores",
             "scrubErrorCorrectionTooltip": "{label} (verifica los hashes de cifrado)",
             "repairErrorCorrectionTooltip": "{label} (vista previa en simulación disponible)",
-            "repairDryRunNoDamage": "Simulación: sin daños; no hay nada que reparar.",
+            "repairDryRunNoDamage": "Simulación: sin daños; no hay nada que reparar. No se escribió nada.",
             "repairDryRunCannotRepair": "Simulación: no se puede reparar ninguno de los {damaged} fragmento(s) dañado(s). No se escribió nada.",
             "repairDryRunCanRepair": "Simulación: se pueden reparar {repaired} fragmento(s) dañado(s). No se escribió nada.",
             "repairDryRunMetadata": "Simulación: la cabecera o el manifiesto del vault se pueden reconstruir a partir de la paridad. No se escribió nada.",

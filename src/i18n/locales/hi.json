@@ -3402,7 +3402,7 @@
             "resetDefaults": "डिफ़ॉल्ट पर रीसेट करें",
             "scrubErrorCorrectionTooltip": "{label} (सिफर हैश सत्यापित करता है)",
             "repairErrorCorrectionTooltip": "{label} (ड्राई-रन पूर्वावलोकन उपलब्ध)",
-            "repairDryRunNoDamage": "ड्राई-रन: कोई क्षति नहीं; मरम्मत के लिए कुछ नहीं।",
+            "repairDryRunNoDamage": "ड्राई-रन: कोई क्षति नहीं; मरम्मत के लिए कुछ नहीं। कुछ भी नहीं लिखा गया।",
             "repairDryRunCannotRepair": "ड्राई-रन: {damaged} क्षतिग्रस्त चंक में से किसी की भी मरम्मत नहीं की जा सकती। कुछ भी नहीं लिखा गया।",
             "repairDryRunCanRepair": "ड्राई-रन: {repaired} क्षतिग्रस्त चंक की मरम्मत की जा सकती है। कुछ भी नहीं लिखा गया।",
             "repairDryRunMetadata": "ड्राई-रन: वॉल्ट हेडर या मेनिफ़ेस्ट को पैरिटी से फिर से बनाया जा सकता है। कुछ भी नहीं लिखा गया।",

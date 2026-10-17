@@ -3402,7 +3402,7 @@
             "resetDefaults": "Rejesha chaguo-msingi",
             "scrubErrorCorrectionTooltip": "{label} (huthibitisha hash za usimbaji)",
             "repairErrorCorrectionTooltip": "{label} (onyesho la awali la jaribio linapatikana)",
-            "repairDryRunNoDamage": "Jaribio: hakuna uharibifu; hakuna cha kurekebisha.",
+            "repairDryRunNoDamage": "Jaribio: hakuna uharibifu; hakuna cha kurekebisha. Hakuna kilichoandikwa.",
             "repairDryRunCannotRepair": "Jaribio: hakuna hata kimoja kati ya vipande {damaged} vilivyoharibika kinachoweza kurekebishwa. Hakuna kilichoandikwa.",
             "repairDryRunCanRepair": "Jaribio: vipande {repaired} vilivyoharibika vinaweza kurekebishwa. Hakuna kilichoandikwa.",
             "repairDryRunMetadata": "Jaribio: kichwa cha vault au manifesti yake kinaweza kujengwa upya kutoka kwa usawa. Hakuna kilichoandikwa.",

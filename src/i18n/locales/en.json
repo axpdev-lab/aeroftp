@@ -4864,7 +4864,7 @@
             "noDamageNothing": "No damage; nothing to repair.",
             "couldNotRepairAny": "Could not repair any of {damaged} (vault left untouched).",
             "successfullyRepaired": "Successfully repaired {repaired} chunk(s).",
-            "repairDryRunNoDamage": "Dry run: no damage; nothing to repair.",
+            "repairDryRunNoDamage": "Dry run: no damage; nothing to repair. Nothing was written.",
             "repairDryRunCannotRepair": "Dry run: none of {damaged} damaged chunk(s) can be repaired. Nothing was written.",
             "repairDryRunCanRepair": "Dry run: {repaired} damaged chunk(s) can be repaired. Nothing was written.",
             "repairDryRunMetadata": "Dry run: the vault header or manifest can be rebuilt from parity. Nothing was written.",

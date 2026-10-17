@@ -3402,7 +3402,7 @@
             "resetDefaults": "Lähtesta vaikeväärtused",
             "scrubErrorCorrectionTooltip": "{label} (kontrollib šifri räsisid)",
             "repairErrorCorrectionTooltip": "{label} (proovikäigu eelvaade saadaval)",
-            "repairDryRunNoDamage": "Proovikäik: kahjustusi pole; pole midagi parandada.",
+            "repairDryRunNoDamage": "Proovikäik: kahjustusi pole; pole midagi parandada. Midagi ei kirjutatud.",
             "repairDryRunCannotRepair": "Proovikäik: ühtegi {damaged} kahjustatud tükist ei saa parandada. Midagi ei kirjutatud.",
             "repairDryRunCanRepair": "Proovikäik: {repaired} kahjustatud tükki saab parandada. Midagi ei kirjutatud.",
             "repairDryRunMetadata": "Proovikäik: hoidla päise või manifesti saab pariteedist taastada. Midagi ei kirjutatud.",

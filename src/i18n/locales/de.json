@@ -3402,7 +3402,7 @@
             "resetDefaults": "Zurücksetzen",
             "scrubErrorCorrectionTooltip": "{label} (prüft die Cipher-Hashes)",
             "repairErrorCorrectionTooltip": "{label} (Vorschau per Probelauf verfügbar)",
-            "repairDryRunNoDamage": "Probelauf: Keine Schäden; nichts zu reparieren.",
+            "repairDryRunNoDamage": "Probelauf: Keine Schäden; nichts zu reparieren. Es wurde nichts geschrieben.",
             "repairDryRunCannotRepair": "Probelauf: Keiner der {damaged} beschädigten Chunk(s) kann repariert werden. Es wurde nichts geschrieben.",
             "repairDryRunCanRepair": "Probelauf: {repaired} beschädigte Chunk(s) können repariert werden. Es wurde nichts geschrieben.",
             "repairDryRunMetadata": "Probelauf: Der Vault-Header oder das Manifest kann aus der Parität wiederhergestellt werden. Es wurde nichts geschrieben.",

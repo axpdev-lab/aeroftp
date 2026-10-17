@@ -3402,7 +3402,7 @@
             "resetDefaults": "Återställ standard",
             "scrubErrorCorrectionTooltip": "{label} (verifierar chiffer-hashar)",
             "repairErrorCorrectionTooltip": "{label} (förhandsvisning via provkörning tillgänglig)",
-            "repairDryRunNoDamage": "Provkörning: inga skador; inget att reparera.",
+            "repairDryRunNoDamage": "Provkörning: inga skador; inget att reparera. Inget skrevs.",
             "repairDryRunCannotRepair": "Provkörning: inget av {damaged} skadade segment kan repareras. Inget skrevs.",
             "repairDryRunCanRepair": "Provkörning: {repaired} skadade segment kan repareras. Inget skrevs.",
             "repairDryRunMetadata": "Provkörning: valvets header eller manifest kan byggas upp igen från paritet. Inget skrevs.",

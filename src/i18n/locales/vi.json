@@ -3402,7 +3402,7 @@
             "resetDefaults": "Đặt lại mặc định",
             "scrubErrorCorrectionTooltip": "{label} (xác minh hash mật mã)",
             "repairErrorCorrectionTooltip": "{label} (có thể chạy thử để xem trước)",
-            "repairDryRunNoDamage": "Chạy thử: không có hư hỏng; không có gì để sửa.",
+            "repairDryRunNoDamage": "Chạy thử: không có hư hỏng; không có gì để sửa. Không có gì được ghi.",
             "repairDryRunCannotRepair": "Chạy thử: không thể sửa chunk nào trong số {damaged} chunk bị hỏng. Không có gì được ghi.",
             "repairDryRunCanRepair": "Chạy thử: có thể sửa {repaired} chunk bị hỏng. Không có gì được ghi.",
             "repairDryRunMetadata": "Chạy thử: có thể dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ. Không có gì được ghi.",

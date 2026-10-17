@@ -3402,7 +3402,7 @@
             "resetDefaults": "Palauta oletukset",
             "scrubErrorCorrectionTooltip": "{label} (tarkistaa salaustiivisteet)",
             "repairErrorCorrectionTooltip": "{label} (koeajon esikatselu saatavilla)",
-            "repairDryRunNoDamage": "Koeajo: ei vaurioita; ei korjattavaa.",
+            "repairDryRunNoDamage": "Koeajo: ei vaurioita; ei korjattavaa. Mitään ei kirjoitettu.",
             "repairDryRunCannotRepair": "Koeajo: yhtäkään {damaged} vaurioituneesta osasta ei voida korjata. Mitään ei kirjoitettu.",
             "repairDryRunCanRepair": "Koeajo: {repaired} vaurioitunutta osaa voidaan korjata. Mitään ei kirjoitettu.",
             "repairDryRunMetadata": "Koeajo: holvin otsikko tai manifesti voidaan rakentaa uudelleen pariteetista. Mitään ei kirjoitettu.",

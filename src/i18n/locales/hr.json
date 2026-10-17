@@ -3402,7 +3402,7 @@
             "resetDefaults": "Vrati zadano",
             "scrubErrorCorrectionTooltip": "{label} (provjerava kriptografske sažetke)",
             "repairErrorCorrectionTooltip": "{label} (dostupan pregled probnog rada)",
-            "repairDryRunNoDamage": "Probni rad: nema oštećenja; ništa za popraviti.",
+            "repairDryRunNoDamage": "Probni rad: nema oštećenja; ništa za popraviti. Ništa nije zapisano.",
             "repairDryRunCannotRepair": "Probni rad: nijedan od oštećenih dijelova ({damaged}) ne može se popraviti. Ništa nije zapisano.",
             "repairDryRunCanRepair": "Probni rad: broj oštećenih dijelova koje je moguće popraviti: {repaired}. Ništa nije zapisano.",
             "repairDryRunMetadata": "Probni rad: zaglavlje ili manifest trezora moguće je obnoviti iz pariteta. Ništa nije zapisano.",

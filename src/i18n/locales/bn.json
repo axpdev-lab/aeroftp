@@ -3402,7 +3402,7 @@
             "resetDefaults": "ডিফল্টে রিসেট করুন",
             "scrubErrorCorrectionTooltip": "{label} (সাইফার হ্যাশ যাচাই করে)",
             "repairErrorCorrectionTooltip": "{label} (ড্রাই-রান প্রিভিউ উপলব্ধ)",
-            "repairDryRunNoDamage": "ড্রাই-রান: কোনো ক্ষতি নেই; মেরামত করার কিছু নেই।",
+            "repairDryRunNoDamage": "ড্রাই-রান: কোনো ক্ষতি নেই; মেরামত করার কিছু নেই। কিছুই লেখা হয়নি।",
             "repairDryRunCannotRepair": "ড্রাই-রান: {damaged}টি ক্ষতিগ্রস্ত চাঙ্কের কোনোটিই মেরামত করা যাবে না। কিছুই লেখা হয়নি।",
             "repairDryRunCanRepair": "ড্রাই-রান: {repaired}টি ক্ষতিগ্রস্ত চাঙ্ক মেরামত করা যাবে। কিছুই লেখা হয়নি।",
             "repairDryRunMetadata": "ড্রাই-রান: প্যারিটি থেকে ভল্ট হেডার বা ম্যানিফেস্ট পুনর্নির্মাণ করা যাবে। কিছুই লেখা হয়নি।",

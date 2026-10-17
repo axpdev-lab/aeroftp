@@ -3402,7 +3402,7 @@
             "resetDefaults": "Ponastavi na privzeto",
             "scrubErrorCorrectionTooltip": "{label} (preveri šifrirne zgoščene vrednosti)",
             "repairErrorCorrectionTooltip": "{label} (na voljo predogled s preizkusom)",
-            "repairDryRunNoDamage": "Preizkus: ni poškodb; ni kaj popraviti.",
+            "repairDryRunNoDamage": "Preizkus: ni poškodb; ni kaj popraviti. Nič ni bilo zapisano.",
             "repairDryRunCannotRepair": "Preizkus: nobenega od poškodovanih delov ({damaged}) ni mogoče popraviti. Nič ni bilo zapisano.",
             "repairDryRunCanRepair": "Preizkus: število poškodovanih delov, ki jih je mogoče popraviti: {repaired}. Nič ni bilo zapisano.",
             "repairDryRunMetadata": "Preizkus: glavo ali manifest trezorja je mogoče obnoviti iz paritete. Nič ni bilo zapisano.",

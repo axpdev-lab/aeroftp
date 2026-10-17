@@ -3402,7 +3402,7 @@
             "resetDefaults": "Ailosod i ddiofyn",
             "scrubErrorCorrectionTooltip": "{label} (gwirio hashiau'r seiffr)",
             "repairErrorCorrectionTooltip": "{label} (rhagolwg rhediad prawf ar gael)",
-            "repairDryRunNoDamage": "Rhediad prawf: dim difrod; dim i'w atgyweirio.",
+            "repairDryRunNoDamage": "Rhediad prawf: dim difrod; dim i'w atgyweirio. Ni ysgrifennwyd dim.",
             "repairDryRunCannotRepair": "Rhediad prawf: ni ellir atgyweirio unrhyw un o {damaged} talp/talpiau sydd wedi'u difrodi. Ni ysgrifennwyd dim.",
             "repairDryRunCanRepair": "Rhediad prawf: gellir atgyweirio {repaired} talp/talpiau sydd wedi'u difrodi. Ni ysgrifennwyd dim.",
             "repairDryRunMetadata": "Rhediad prawf: gellir ailadeiladu pennyn neu faniffest y gladdgell o'r paredd. Ni ysgrifennwyd dim.",

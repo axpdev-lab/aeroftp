@@ -3402,7 +3402,7 @@
             "resetDefaults": "Atstatyti numatytuosius",
             "scrubErrorCorrectionTooltip": "{label} (tikrina šifro maišas)",
             "repairErrorCorrectionTooltip": "{label} (galima bandomojo vykdymo peržiūra)",
-            "repairDryRunNoDamage": "Bandomasis vykdymas: pažeidimų nėra; nėra ką taisyti.",
+            "repairDryRunNoDamage": "Bandomasis vykdymas: pažeidimų nėra; nėra ką taisyti. Nieko neįrašyta.",
             "repairDryRunCannotRepair": "Bandomasis vykdymas: nė vieno iš pažeistų fragmentų ({damaged}) negalima pataisyti. Nieko neįrašyta.",
             "repairDryRunCanRepair": "Bandomasis vykdymas: pažeistų fragmentų, kuriuos galima pataisyti: {repaired}. Nieko neįrašyta.",
             "repairDryRunMetadata": "Bandomasis vykdymas: saugyklos antraštę arba manifestą galima atkurti iš lyginumo. Nieko neįrašyta.",

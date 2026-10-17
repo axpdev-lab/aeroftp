@@ -3402,7 +3402,7 @@
             "resetDefaults": "Repor predefinições",
             "scrubErrorCorrectionTooltip": "{label} (verifica os hashes de cifra)",
             "repairErrorCorrectionTooltip": "{label} (pré-visualização em simulação disponível)",
-            "repairDryRunNoDamage": "Simulação: sem danos; nada a reparar.",
+            "repairDryRunNoDamage": "Simulação: sem danos; nada a reparar. Nada foi gravado.",
             "repairDryRunCannotRepair": "Simulação: nenhum dos {damaged} bloco(s) danificado(s) pode ser reparado. Nada foi gravado.",
             "repairDryRunCanRepair": "Simulação: {repaired} bloco(s) danificado(s) pode(m) ser reparado(s). Nada foi gravado.",
             "repairDryRunMetadata": "Simulação: o cabeçalho ou o manifesto do vault pode ser reconstruído a partir da paridade. Nada foi gravado.",

@@ -3402,7 +3402,7 @@
             "resetDefaults": "Atiestatīt noklusējumu",
             "scrubErrorCorrectionTooltip": "{label} (pārbauda šifra jaucējkodus)",
             "repairErrorCorrectionTooltip": "{label} (pieejams izmēģinājuma priekšskatījums)",
-            "repairDryRunNoDamage": "Izmēģinājuma palaišana: bojājumu nav; nav ko labot.",
+            "repairDryRunNoDamage": "Izmēģinājuma palaišana: bojājumu nav; nav ko labot. Nekas netika ierakstīts.",
             "repairDryRunCannotRepair": "Izmēģinājuma palaišana: nevienu no bojātajiem fragmentiem ({damaged}) nevar izlabot. Nekas netika ierakstīts.",
             "repairDryRunCanRepair": "Izmēģinājuma palaišana: bojāto fragmentu skaits, ko var izlabot: {repaired}. Nekas netika ierakstīts.",
             "repairDryRunMetadata": "Izmēģinājuma palaišana: glabātavas galveni vai manifestu var atjaunot no paritātes. Nekas netika ierakstīts.",

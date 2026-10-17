@@ -3402,7 +3402,7 @@
             "resetDefaults": "Atur ulang ke bawaan",
             "scrubErrorCorrectionTooltip": "{label} (memverifikasi hash sandi)",
             "repairErrorCorrectionTooltip": "{label} (pratinjau dry-run tersedia)",
-            "repairDryRunNoDamage": "Dry-run: tidak ada kerusakan; tidak ada yang perlu diperbaiki.",
+            "repairDryRunNoDamage": "Dry-run: tidak ada kerusakan; tidak ada yang perlu diperbaiki. Tidak ada yang ditulis.",
             "repairDryRunCannotRepair": "Dry-run: tidak satu pun dari {damaged} chunk yang rusak dapat diperbaiki. Tidak ada yang ditulis.",
             "repairDryRunCanRepair": "Dry-run: {repaired} chunk yang rusak dapat diperbaiki. Tidak ada yang ditulis.",
             "repairDryRunMetadata": "Dry-run: header atau manifes vault dapat dibangun ulang dari paritas. Tidak ada yang ditulis.",

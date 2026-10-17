@@ -3402,7 +3402,7 @@
             "resetDefaults": "Restableix als valors",
             "scrubErrorCorrectionTooltip": "{label} (verifica els hash de xifratge)",
             "repairErrorCorrectionTooltip": "{label} (previsualització en simulació disponible)",
-            "repairDryRunNoDamage": "Simulació: sense danys; res a reparar.",
+            "repairDryRunNoDamage": "Simulació: sense danys; res a reparar. No s'ha escrit res.",
             "repairDryRunCannotRepair": "Simulació: no es pot reparar cap dels {damaged} fragment(s) danyat(s). No s'ha escrit res.",
             "repairDryRunCanRepair": "Simulació: es poden reparar {repaired} fragment(s) danyat(s). No s'ha escrit res.",
             "repairDryRunMetadata": "Simulació: la capçalera o el manifest del vault es poden reconstruir a partir de la paritat. No s'ha escrit res.",

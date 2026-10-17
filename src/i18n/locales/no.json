@@ -3402,7 +3402,7 @@
             "resetDefaults": "Tilbakestill til standard",
             "scrubErrorCorrectionTooltip": "{label} (verifiserer krypterte hashverdier)",
             "repairErrorCorrectionTooltip": "{label} (forhåndsvisning med tørrkjøring tilgjengelig)",
-            "repairDryRunNoDamage": "Tørrkjøring: ingen skade; ingenting å reparere.",
+            "repairDryRunNoDamage": "Tørrkjøring: ingen skade; ingenting å reparere. Ingenting ble skrevet.",
             "repairDryRunCannotRepair": "Tørrkjøring: ingen av {damaged} skadde del(er) kan repareres. Ingenting ble skrevet.",
             "repairDryRunCanRepair": "Tørrkjøring: {repaired} skadde del(er) kan repareres. Ingenting ble skrevet.",
             "repairDryRunMetadata": "Tørrkjøring: vault-headeren eller manifestet kan bygges opp igjen fra paritet. Ingenting ble skrevet.",
