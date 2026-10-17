@@ -117,10 +117,24 @@ pub fn decode_winscp_password(hex_str: &str, key: &str) -> Result<String, String
     }
 }
 
-// ============ URL Decoding ============
+// ============ Session names ============
+//
+// WinSCP keeps a session under `[Sessions\<name>]`, where `<name>` is its
+// `MungeStr` of the session name (`source/core/HierarchicalStorage.cpp` in
+// WinSCP's source; `OpenSubKey` -> `MungeKeyName` -> `MungeStr` with
+// `ForceAnsi` off), and reads it back with `UnMungeStr`.
 
-/// Decode percent-encoded strings in WinSCP session names (%20 -> space, etc.)
-/// Handles multi-byte UTF-8 sequences correctly (e.g. %C3%A4 -> ä).
+/// The UTF-8 BOM WinSCP puts in front of a non-ASCII session name, so
+/// `UnMungeStr` reads what follows as UTF-8 and not in the ANSI code page.
+const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
+
+/// Decode a WinSCP session name, as WinSCP's `UnMungeStr` does: each `%XX`
+/// back to its byte, then, when the bytes start with the UTF-8 BOM, the
+/// UTF-8 text after it (`%EF%BB%BFCaf%C3%A9` -> `Café`). Bytes without the
+/// BOM are what WinSCP reads in the ANSI code page of the machine that wrote
+/// them, which a file import cannot know: they are read as UTF-8 when they
+/// are UTF-8 (ASCII always is) and lossily otherwise. A `%` not followed by
+/// two hex digits is kept as written.
 fn url_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut decoded_bytes = Vec::with_capacity(bytes.len());
@@ -136,8 +150,41 @@ fn url_decode(s: &str) -> String {
         decoded_bytes.push(bytes[i]);
         i += 1;
     }
-    String::from_utf8(decoded_bytes)
-        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+    let text = decoded_bytes
+        .strip_prefix(UTF8_BOM)
+        .unwrap_or(&decoded_bytes);
+    String::from_utf8_lossy(text).into_owned()
+}
+
+/// A profile name as the WinSCP session name WinSCP itself writes for it:
+/// WinSCP's `MungeStr` with `ForceAnsi` off. A name with a non-ASCII
+/// character is its UTF-8 bytes after the UTF-8 BOM (`ToUnicode` adds the BOM
+/// when the UTF-8 form is longer than the UTF-16 one, which is exactly when a
+/// character is not ASCII), an ASCII name its own bytes. Those bytes then go
+/// through PuTTY's `escape_registry_key`, which WinSCP calls: `%XX` for a
+/// space, `\`, `*`, `?`, `%`, a byte below space or above `~` (the BOM
+/// included) and a `.` in first position. `/` is kept, and WinSCP reads it as
+/// a folder separator.
+fn winscp_session_name(name: &str) -> String {
+    let mut bytes = Vec::with_capacity(UTF8_BOM.len() + name.len());
+    if !name.is_ascii() {
+        bytes.extend_from_slice(UTF8_BOM);
+    }
+    bytes.extend_from_slice(name.as_bytes());
+
+    let mut out = String::with_capacity(bytes.len());
+    for (idx, &b) in bytes.iter().enumerate() {
+        let escape = matches!(b, b' ' | b'\\' | b'*' | b'?' | b'%')
+            || !(b' '..=b'~').contains(&b)
+            || (idx == 0 && b == b'.');
+        if escape {
+            out.push_str(&format!("%{:02X}", b));
+        } else {
+            // What is left is printable ASCII: one byte is one char.
+            out.push(char::from(b));
+        }
+    }
+    out
 }
 
 // ============ INI Parser ============
@@ -506,21 +553,6 @@ pub struct WinScpExportServer {
     pub initial_path: Option<String>,
 }
 
-/// URL-encode a profile name as a WinSCP.ini session name.
-fn winscp_session_name(name: &str) -> String {
-    name.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                c.to_string()
-            } else if c == ' ' {
-                "%20".to_string()
-            } else {
-                format!("%{:02X}", c as u32)
-            }
-        })
-        .collect()
-}
-
 /// Export AeroFTP server profiles to WinSCP.ini format.
 ///
 /// Returns the number of successfully exported servers.
@@ -642,6 +674,120 @@ mod tests {
         assert_eq!(url_decode("Hello%20World"), "Hello World");
         assert_eq!(url_decode("test%25value"), "test%value");
         assert_eq!(url_decode("no-encoding"), "no-encoding");
+        assert_eq!(url_decode("bad%zz"), "bad%zz");
+    }
+
+    /// A non-ASCII name as WinSCP writes it carries the UTF-8 BOM, which is
+    /// a marker and not part of the name: it used to come in as a leading
+    /// U+FEFF.
+    #[test]
+    fn test_url_decode_strips_winscp_utf8_bom() {
+        assert_eq!(url_decode("%EF%BB%BFCaf%C3%A9"), "Café");
+        assert_eq!(
+            url_decode("%EF%BB%BFProduction/%E6%97%A5%E6%9C%AC%20lab"),
+            "Production/日本 lab"
+        );
+        // Without the BOM, UTF-8 bytes still read as UTF-8.
+        assert_eq!(url_decode("Caf%C3%A9"), "Café");
+    }
+
+    /// The session name WinSCP's `MungeStr` writes: PuTTY's escape set on
+    /// the bytes, and the UTF-8 BOM in front of a non-ASCII name only.
+    #[test]
+    fn test_winscp_session_name_is_what_winscp_writes() {
+        for (c, escaped) in [
+            (' ', "%20"),
+            ('\\', "%5C"),
+            ('*', "%2A"),
+            ('?', "%3F"),
+            ('%', "%25"),
+            ('\t', "%09"),
+            ('\n', "%0A"),
+            ('\u{7f}', "%7F"),
+        ] {
+            assert_eq!(winscp_session_name(&format!("a{c}")), format!("a{escaped}"));
+        }
+        for byte in 0x21..=0x7eu8 {
+            if matches!(byte, b'\\' | b'*' | b'?' | b'%') {
+                continue;
+            }
+            let pair = format!("{0}{0}", char::from(byte));
+            assert_eq!(
+                winscp_session_name(&pair),
+                pair.replacen('.', "%2E", 1),
+                "byte {byte:#04x}"
+            );
+        }
+        assert_eq!(winscp_session_name("My Server"), "My%20Server");
+        assert_eq!(winscp_session_name("Production/Web"), "Production/Web");
+        assert_eq!(winscp_session_name(".hidden"), "%2Ehidden");
+        assert_eq!(winscp_session_name("prod.db"), "prod.db");
+        assert_eq!(winscp_session_name("Café"), "%EF%BB%BFCaf%C3%A9");
+        assert_eq!(winscp_session_name("€"), "%EF%BB%BF%E2%82%AC");
+        assert_eq!(
+            winscp_session_name("日本 lab"),
+            "%EF%BB%BF%E6%97%A5%E6%9C%AC%20lab"
+        );
+        // The escape runs over the BOM too: a `.` after it is not first.
+        assert_eq!(winscp_session_name(".é"), "%EF%BB%BF.%C3%A9");
+    }
+
+    /// Export then import gives each name back, non-ASCII and INI-looking
+    /// characters included (a folder session comes back as its last segment,
+    /// which is how the importer names it), and every section name is one
+    /// line that starts with `[Sessions\` and ends with `]`.
+    #[test]
+    fn test_export_import_session_name_roundtrip() {
+        let names = [
+            "My Server",
+            "Café",
+            "日本 lab",
+            "Production/Web Server",
+            "x[1]=y;z",
+            ".hidden",
+            "100% *?",
+            "tab\there",
+            "back\\slash",
+        ];
+        let servers: Vec<WinScpExportServer> = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| WinScpExportServer {
+                id: format!("id-{i}"),
+                name: n.to_string(),
+                host: "sftp.example.com".to_string(),
+                port: 22,
+                username: "u".to_string(),
+                protocol: Some("sftp".to_string()),
+                options: None,
+                initial_path: None,
+            })
+            .collect();
+        let out = std::env::temp_dir().join(format!(
+            "aeroftp-winscp-names-{}.ini",
+            crate::bridge_shared::uuid_v4()
+        ));
+        assert_eq!(
+            export_winscp(&servers, &HashMap::new(), &out).unwrap(),
+            names.len()
+        );
+        let ini = std::fs::read_to_string(&out).unwrap();
+        let back = import_winscp(&out).unwrap();
+        std::fs::remove_file(&out).ok();
+
+        assert!(!ini.contains('\u{feff}') && ini.is_ascii(), "{ini}");
+        assert_eq!(
+            ini.lines().filter(|l| l.starts_with("[Sessions\\")).count(),
+            names.len()
+        );
+        let mut got: Vec<&str> = back.servers.iter().map(|s| s.name.as_str()).collect();
+        let mut want: Vec<&str> = names
+            .iter()
+            .map(|n| n.rsplit('/').next().unwrap())
+            .collect();
+        got.sort_unstable();
+        want.sort_unstable();
+        assert_eq!(got, want);
     }
 
     // CLAUDE-AV-B9-01: a crafted WinSCP.ini must not panic the importer.
