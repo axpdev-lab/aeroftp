@@ -357,6 +357,10 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PuttyExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -394,6 +398,11 @@ pub fn export_putty(
             .map_err(|e| format!("open/create PuTTY Sessions key: {}", e))?;
 
         let mut written = 0usize;
+        // One registry key per session, and the registry compares key names
+        // without case: a second key of a name is the first one, rewritten.
+        let mut names = crate::bridge_shared::ExportEntryNames::ignoring_case(
+            servers.iter().map(|s| encode_putty_name(&s.name)),
+        );
         for server in servers {
             // Only the SSH family maps to a PuTTY session we can drive.
             let proto = server.protocol.as_deref().unwrap_or("sftp");
@@ -404,7 +413,7 @@ pub fn export_putty(
                 continue;
             }
 
-            let key_name = encode_putty_name(&server.name);
+            let key_name = names.claim(&encode_putty_name(&server.name));
             let (sub, _) = sessions
                 .create_subkey(&key_name)
                 .map_err(|e| format!("create session '{}': {}", server.name, e))?;
@@ -583,6 +592,7 @@ mod tests {
     #[test]
     fn test_export_putty_noop_on_non_windows() {
         let servers = vec![PuttyExportServer {
+            id: "x".to_string(),
             name: "x".to_string(),
             host: "h".to_string(),
             port: 22,
@@ -618,6 +628,7 @@ mod tests {
 
         let p1 = map_putty_session("lab box", &kv).expect("map");
         let exp = PuttyExportServer {
+            id: p1.id.clone(),
             name: p1.name.clone(),
             host: p1.host.clone(),
             port: p1.port,

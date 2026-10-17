@@ -1329,11 +1329,54 @@ pub async fn export_bridge_config(
     include_credentials: bool,
     file_path: String,
 ) -> Result<Value, String> {
-    known(&source)?;
-    let supported = bridge_supported_protocols(&source);
-    let (ext, _) = bridge_export_format(&source).unwrap_or(("txt", ""));
+    let store = CredentialStore::from_cache();
+    export_bridge_profiles(
+        &source,
+        &servers_json,
+        include_credentials,
+        &file_path,
+        store.as_ref(),
+        |id| store.as_ref().and_then(|st| vault_export_password(st, id)),
+    )
+    .await
+}
 
-    let path = Path::new(&file_path);
+/// The password the vault holds for the profile with id `id`, stored as a
+/// JSON credential blob (`{"password": "..."}`) or a bare string. MUV-3:
+/// per-user store (active user) with vault fallback.
+fn vault_export_password(store: &CredentialStore, id: &str) -> Option<String> {
+    let stored =
+        crate::user_partitions::resolve_active_credential(store, &format!("server_{}", id))
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())?;
+    let pw = serde_json::from_str::<Value>(&stored)
+        .ok()
+        .and_then(|v| {
+            v.get("password")
+                .and_then(|x| x.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| stored.trim_matches('"').to_string());
+    Some(pw).filter(|pw| !pw.is_empty())
+}
+
+/// [`export_bridge_config`] with the vault passed in: `store` for what the
+/// rclone export injects into options, `secret_for` for each profile's
+/// password by id.
+async fn export_bridge_profiles(
+    source: &str,
+    servers_json: &str,
+    include_credentials: bool,
+    file_path: &str,
+    store: Option<&CredentialStore>,
+    secret_for: impl Fn(&str) -> Option<String> + Send + Sync,
+) -> Result<Value, String> {
+    known(source)?;
+    let supported = bridge_supported_protocols(source);
+    let (ext, _) = bridge_export_format(source).unwrap_or(("txt", ""));
+
+    let path = Path::new(file_path);
     if path.to_string_lossy().contains("..") {
         return Err("Invalid path: directory traversal not allowed".to_string());
     }
@@ -1348,8 +1391,7 @@ pub async fn export_bridge_config(
     }
 
     let raw: Vec<Value> =
-        serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {e}"))?;
-    let store = CredentialStore::from_cache();
+        serde_json::from_str(servers_json).map_err(|e| format!("Invalid server data: {e}"))?;
 
     // What an exporter reports back: the count it wrote and, for the ones
     // that can refuse a profile, the profiles it refused, so the caller shows
@@ -1370,7 +1412,17 @@ pub async fn export_bridge_config(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
+                let id = entry
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 if name.is_empty() {
+                    // Every format names its entries after the profile, so
+                    // there is nothing to write it under: say so, as the CLI
+                    // does, rather than drop it.
+                    let label = if id.is_empty() { "(unnamed)" } else { id.as_str() };
+                    skipped.push(json!({ "name": label, "reason": "profile has no name" }));
                     continue;
                 }
                 let proto = entry
@@ -1379,7 +1431,7 @@ pub async fn export_bridge_config(
                     .unwrap_or("ftp")
                     .to_string();
                 if !supported.contains(&proto.as_str()) {
-                    let reason = crate::bridge_shared::bridge_export_refusal(&source, &proto)
+                    let reason = crate::bridge_shared::bridge_export_refusal(source, &proto)
                         .map(str::to_string)
                         .unwrap_or_else(|| {
                             format!("protocol {} not exportable to {}", proto, source)
@@ -1394,7 +1446,7 @@ pub async fn export_bridge_config(
                 let injected_entry;
                 let entry: &Value = if source == "rclone" && include_credentials {
                     let mut e = entry.clone();
-                    if let Some(st) = store.as_ref() {
+                    if let Some(st) = store {
                         let id = e
                             .get("id")
                             .and_then(|v| v.as_str())
@@ -1439,36 +1491,11 @@ pub async fn export_bridge_config(
                 };
                 let one: $ty = serde_json::from_value(entry.clone())
                     .map_err(|e| format!("Invalid server data: {e}"))?;
-                if include_credentials {
-                    if let (Some(id), Some(st)) = (
-                        entry.get("id").and_then(|v| v.as_str()),
-                        store.as_ref(),
-                    ) {
-                        // MUV-3: per-user store (active user) with vault fallback.
-                        if let Some(stored) = crate::user_partitions::resolve_active_credential(
-                            st,
-                            &format!("server_{}", id),
-                        )
-                        .ok()
-                        .flatten()
-                        .map(|s| s.to_string())
-                        {
-                            // Stored value may be a JSON credential blob
-                            // ({"password": "..."}) or a bare string.
-                            let pw = serde_json::from_str::<Value>(&stored)
-                                .ok()
-                                .and_then(|v| {
-                                    v.get("password")
-                                        .and_then(|x| x.as_str())
-                                        .map(str::to_string)
-                                })
-                                .unwrap_or_else(|| {
-                                    stored.trim_matches('"').to_string()
-                                });
-                            if !pw.is_empty() {
-                                passwords.insert(name.clone(), pw);
-                            }
-                        }
+                // By id, the key the secret is read under: by name, two
+                // profiles of one name both went out with the second one's.
+                if include_credentials && !id.is_empty() {
+                    if let Some(pw) = secret_for(&id) {
+                        passwords.insert(id, pw);
                     }
                 }
                 typed.push(one);
@@ -1505,7 +1532,7 @@ pub async fn export_bridge_config(
         }};
     }
 
-    let out = match source.as_str() {
+    let out = match source {
         "aws" => run_export!(
             aws_credentials_import::AwsExportServer,
             aws_credentials_import::export_aws_credentials
@@ -2252,6 +2279,69 @@ mod tests {
         .is_empty());
     }
 
+    /// The GUI export keys each password by profile id. By name, two profiles
+    /// of one name (a list saved before names were unique) both went out with
+    /// the second one's; and a profile with no name was dropped without a
+    /// word, where the CLI reports it.
+    #[tokio::test]
+    async fn gui_export_writes_each_profile_with_its_own_password() {
+        let profile = |id: &str, name: &str, host: &str| {
+            json!({
+                "id": id, "name": name, "host": host, "port": 22,
+                "username": "u", "protocol": "sftp",
+            })
+        };
+        let servers = json!([
+            profile("id-a", "Lab", "a.example.com"),
+            profile("id-b", "Lab", "b.example.com"),
+            profile("id-c", "", "c.example.com"),
+        ])
+        .to_string();
+        let secret_for = |id: &str| Some(format!("secret-{}", id.trim_start_matches("id-")));
+        type ReadBack = fn(&Path) -> Vec<crate::profile_export::ServerProfileExport>;
+        let read_back: [(&str, &str, ReadBack); 4] = [
+            ("rclone", "rclone.conf", |p| {
+                rclone_import::import_rclone(p).unwrap().servers
+            }),
+            ("winscp", "WinSCP.ini", |p| {
+                winscp_import::import_winscp(p).unwrap().servers
+            }),
+            ("filezilla", "sitemanager.xml", |p| {
+                filezilla_import::import_filezilla(p).unwrap().servers
+            }),
+            ("lftp", "bookmarks.rc", |p| {
+                lftp_import::import_lftp(p).unwrap().servers
+            }),
+        ];
+        for (source, file, import) in read_back {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(file);
+            let out = export_bridge_profiles(
+                source,
+                &servers,
+                true,
+                &path.to_string_lossy(),
+                None,
+                secret_for,
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                out["skipped"],
+                json!([{ "name": "id-c", "reason": "profile has no name" }]),
+                "{source}: {out}"
+            );
+            assert_eq!(
+                crate::bridge_shared::names_hosts_secrets(&import(&path)),
+                crate::bridge_shared::owned3(&[
+                    ("Lab", "a.example.com", "secret-a"),
+                    ("Lab-2", "b.example.com", "secret-b"),
+                ]),
+                "{source}"
+            );
+        }
+    }
+
     #[test]
     fn legacy_export_servers_deserialize_from_profile_json() {
         // The run_export! macro deserializes each profile entry into the
@@ -2261,9 +2351,31 @@ mod tests {
             "id": "abc", "name": "S", "host": "h.example.com", "port": 21,
             "username": "u", "protocol": "ftp", "options": {}
         });
-        assert!(serde_json::from_value::<rclone_import::RcloneExportServer>(entry.clone()).is_ok());
-        assert!(serde_json::from_value::<winscp_import::WinScpExportServer>(entry.clone()).is_ok());
-        assert!(serde_json::from_value::<filezilla_import::FileZillaExportServer>(entry).is_ok());
+        // The id comes with it: it is the key of the profile's password.
+        macro_rules! id_of {
+            ($ty:path) => {
+                serde_json::from_value::<$ty>(entry.clone()).unwrap().id
+            };
+        }
+        for id in [
+            id_of!(rclone_import::RcloneExportServer),
+            id_of!(winscp_import::WinScpExportServer),
+            id_of!(filezilla_import::FileZillaExportServer),
+            id_of!(aws_credentials_import::AwsExportServer),
+            id_of!(ssh_config_import::SshExportServer),
+            id_of!(mc_import::McExportServer),
+            id_of!(cyberduck_import::CyberduckExportServer),
+            id_of!(s3cmd_import::S3cmdExportServer),
+            id_of!(lftp_import::LftpExportServer),
+            id_of!(putty_import::PuttyExportServer),
+            id_of!(mobaxterm_import::MobaxtermExportServer),
+            id_of!(dreamweaver_import::DreamweaverExportServer),
+            id_of!(kopia_import::KopiaExportServer),
+            id_of!(duplicacy_import::DuplicacyExportServer),
+            id_of!(restic_import::ResticExportServer),
+        ] {
+            assert_eq!(id, "abc");
+        }
     }
 
     /// L10 (4.2.1 review): an rclone-crypt salt the load-time migration left

@@ -416,6 +416,10 @@ pub fn import_mobaxterm(path: &Path) -> Result<MobaxtermImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MobaxtermExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -466,6 +470,11 @@ pub fn export_mobaxterm(
     );
 
     let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+    // One `Name=` key per bookmark in `[Bookmarks]`: a second one of a name
+    // is not a second bookmark.
+    let mut names = crate::bridge_shared::ExportEntryNames::ignoring_case(
+        servers.iter().map(|s| sanitize_field(&s.name)),
+    );
 
     for server in servers {
         let proto = server.protocol.as_deref().unwrap_or("ftp");
@@ -494,6 +503,7 @@ pub fn export_mobaxterm(
             );
             continue;
         }
+        let name = names.claim(&name);
         let host = sanitize_field(&server.host);
         let user = sanitize_field(&server.username);
 
@@ -613,6 +623,7 @@ RDP Host= #98#0%rdp.lab.test%3389%user%
     fn test_roundtrip_metadata_idempotence() {
         let servers = vec![
             MobaxtermExportServer {
+                id: "rt-sftp".to_string(),
                 name: "rt-sftp".to_string(),
                 host: "10.0.0.5".to_string(),
                 port: 2200,
@@ -623,6 +634,7 @@ RDP Host= #98#0%rdp.lab.test%3389%user%
                 initial_path: None,
             },
             MobaxtermExportServer {
+                id: "rt-ftp".to_string(),
                 name: "rt-ftp".to_string(),
                 host: "ftp.rt.test".to_string(),
                 port: 21,
@@ -710,5 +722,29 @@ RDP Host= #98#0%rdp.lab.test%3389%user%
             Some(v) => std::env::set_var("MOBAXTERM_INI", v),
             None => std::env::remove_var("MOBAXTERM_INI"),
         }
+    }
+
+    /// Two profiles of one name (a list saved before names were unique) were
+    /// two `Lab=` keys in `[Bookmarks]`, which is one bookmark.
+    #[test]
+    fn two_profiles_of_one_name_export_as_two_bookmarks() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<
+            MobaxtermExportServer,
+        >(
+            serde_json::json!({"host": "a.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+            serde_json::json!({"host": "b.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("MobaXterm.ini");
+        let outcome = export_mobaxterm(&servers, &passwords, &path).unwrap();
+        assert_eq!(outcome.exported, 2, "{:?}", outcome.skipped);
+        let back = import_mobaxterm(&path).unwrap();
+        assert_eq!(
+            crate::bridge_shared::names_hosts_secrets(&back.servers),
+            crate::bridge_shared::owned3(&[
+                ("Lab", "a.example.com", ""),
+                ("Lab-2", "b.example.com", ""),
+            ])
+        );
     }
 }
