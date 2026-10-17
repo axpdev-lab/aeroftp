@@ -204,14 +204,16 @@ pub(crate) mod temp_claim {
             }
         }
 
-        /// The claimed file.
+        /// The claimed file. Only Unix code reads it: elsewhere the claim
+        /// takes no lock, and nothing is done through it.
+        #[cfg(unix)]
         pub(crate) fn file(&self) -> &std::fs::File {
             self.file.as_ref().expect("a claim keeps its file")
         }
 
         /// Whether the claim took a lock (see the module doc for where it
         /// does not).
-        #[cfg(test)]
+        #[cfg(all(test, target_os = "linux"))]
         pub(crate) fn locked(&self) -> bool {
             self.locked
         }
