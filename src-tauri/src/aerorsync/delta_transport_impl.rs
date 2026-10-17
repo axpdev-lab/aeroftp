@@ -714,10 +714,13 @@ impl AerorsyncDeltaTransport {
 /// delta failure degrades into a hard `AlreadyExists` on the retry. The
 /// original target file is never touched here (no rename happened on these
 /// paths; if a rename had committed, `remove_file` is a harmless no-op).
+///
+/// The temp is removed while the writer still holds its claim, and the
+/// writer is dropped after: released first, another download of the target
+/// could take the temp in between and have it removed here.
 async fn discard_streaming_temp(writer: StreamingAtomicWriter) {
-    let temp = writer.temp_path().to_path_buf();
+    let _ = fs::remove_file(writer.temp_path()).await;
     drop(writer);
-    let _ = fs::remove_file(&temp).await;
 }
 
 /// Audit S1: is a peer-supplied symlink target safe to materialise on a
