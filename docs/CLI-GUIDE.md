@@ -2088,7 +2088,8 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 |------|-------------|
 | `--profile <name>` / `-P` | Use a saved server profile from the encrypted vault |
 | `--master-password <pw>` | Unlock vault master password (env: `AEROFTP_MASTER_PASSWORD`) |
-| `--json` / `--format json` | Machine-readable JSON output |
+| `--json` / `--format json` | Machine-readable JSON output. One global flag, accepted before or after the subcommand, and every command reads it, `import`, `export` and `keystore` included |
+| `--machine` | Agent mode: JSON output as with `--json`, plus `--quiet` and no banner, so stdout carries only the result (env: `AEROFTP_MACHINE=1`) |
 | `--quiet` / `-q` | Suppress info messages (errors only) |
 | `--verbose` / `-v` | Debug output (`-vv` for trace) |
 | `--password-stdin` | Read password from stdin pipe |
