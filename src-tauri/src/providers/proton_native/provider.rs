@@ -412,6 +412,30 @@ fn partial_download_path(destination: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
+/// The partial file of a download, removed when the download ends without
+/// taking the destination's place: on an error, and when a cancelled
+/// transfer drops the download before it finishes.
+struct PartialFile(Option<std::path::PathBuf>);
+
+impl PartialFile {
+    fn path(&self) -> &std::path::Path {
+        self.0.as_deref().expect("a partial file path until kept")
+    }
+
+    /// The partial file became the destination: nothing to remove.
+    fn keep(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for PartialFile {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// A local file's size and modification time.
 fn local_file(path: &str) -> Result<(u64, Option<DateTime<Utc>>), ProviderError> {
     let meta = std::fs::metadata(path)?;
@@ -960,29 +984,25 @@ impl StorageProvider for ProtonNativeProvider {
         // The content lands beside the destination and takes its place only
         // when every block and the manifest signature verified, so a failed
         // download neither leaves a partial file nor spoils one already there.
-        let partial = partial_download_path(destination);
+        let partial = PartialFile(Some(partial_download_path(destination)));
         let total = info.size;
         let mut report = move |written: u64| {
             if let Some(callback) = on_progress.as_ref() {
                 callback(written, total.max(written));
             }
         };
-        let result = async {
-            let mut file = tokio::fs::File::create(&partial).await?;
-            drive
-                .download(&info.link_id, &mut file, &mut report)
-                .await
-                .map_err(|error| map_error(&remote, error))?;
-            file.sync_all().await?;
-            drop(file);
-            tokio::fs::rename(&partial, destination).await?;
-            Ok::<(), ProviderError>(())
-        }
-        .await;
-        if result.is_err() {
-            let _ = tokio::fs::remove_file(&partial).await;
-        }
-        result
+        let mut partial = partial;
+        let path = partial.path().to_path_buf();
+        let mut file = tokio::fs::File::create(&path).await?;
+        drive
+            .download(&info.link_id, &mut file, &mut report)
+            .await
+            .map_err(|error| map_error(&remote, error))?;
+        file.sync_all().await?;
+        drop(file);
+        tokio::fs::rename(&path, destination).await?;
+        partial.keep();
+        Ok(())
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
@@ -1913,6 +1933,25 @@ mod tests {
         .expect("a long name downloads");
         assert_eq!(std::fs::read(&destination).unwrap(), b"long name");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    /// A cancelled transfer drops the download future: its partial file goes
+    /// with it.
+    #[tokio::test]
+    async fn a_dropped_download_leaves_no_partial_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join("a.txt");
+        let partial = PartialFile(Some(partial_download_path(&destination)));
+        std::fs::write(partial.path(), b"half").unwrap();
+        drop(partial);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+
+        let mut kept = PartialFile(Some(partial_download_path(&destination)));
+        std::fs::write(kept.path(), b"whole").unwrap();
+        let path = kept.path().to_path_buf();
+        kept.keep();
+        drop(kept);
+        assert!(path.exists(), "a kept file is not removed");
     }
 
     #[tokio::test]
