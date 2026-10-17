@@ -250,17 +250,22 @@ fn decode_putty_name(key: &str, cp: &dyn AnsiCodePage) -> Result<String, String>
 }
 
 /// The key name AeroFTP's exporter wrote for `name` before it followed
-/// PuTTY's escape, when that is not `current` (the key name it writes now).
+/// PuTTY's escape, when that key is one PuTTY cannot open, and so one the
+/// export may remove.
 ///
 /// The old form escaped `/` and left space, `*`, `?`, DEL and non-ASCII
 /// unescaped, the last as one Latin-1 character per UTF-8 byte (`Café`
-/// became `CafÃ©`). Where the two forms differ, the old one holds a raw
-/// space, `*`, `?`, DEL, a non-ASCII character or a `%2F`, none of which
-/// `escape_registry_key` writes: PuTTY never wrote that key, and lists it
-/// under a name that escapes to another key, so it can neither load nor
-/// delete it.
+/// became `CafÃ©`). The key is returned only when it holds a raw space, `*`,
+/// `?`, DEL, a non-ASCII character or a `%2F`, which happens exactly when the
+/// name has a `/`, space, `*`, `?`, DEL or non-ASCII character.
+/// `escape_registry_key` never writes any of those, so the key is not one
+/// PuTTY wrote, nor one this export writes, whatever suffix a collision adds
+/// to the escaped name. PuTTY lists it under a name that escapes to another
+/// key, so it can neither load nor delete it. The check is on the key itself,
+/// not on a comparison with the key written now, so a caller cannot make it
+/// name a live session.
 #[cfg(any(test, target_os = "windows"))]
-fn legacy_putty_key_name(name: &str, current: &str) -> Option<String> {
+fn legacy_putty_key_name(name: &str) -> Option<String> {
     let mut old = String::with_capacity(name.len());
     for (idx, b) in name.bytes().enumerate() {
         if b < 0x20 || b == b'%' || b == b'\\' || b == b'/' || (idx == 0 && b == b'.') {
@@ -270,7 +275,11 @@ fn legacy_putty_key_name(name: &str, current: &str) -> Option<String> {
             old.push(char::from(b));
         }
     }
-    (!old.eq_ignore_ascii_case(current)).then_some(old)
+    let putty_never_writes = old
+        .chars()
+        .any(|c| matches!(c, ' ' | '*' | '?' | '\u{7f}') || !c.is_ascii())
+        || old.contains("%2F");
+    putty_never_writes.then_some(old)
 }
 
 /// Build a `ServerProfileExport` from one PuTTY session's key/value map.
@@ -624,7 +633,7 @@ pub fn export_putty(
             // No password is ever written: PuTTY has no password store.
             written += 1;
 
-            if let Some(legacy) = legacy_putty_key_name(&server.name, &key_name) {
+            if let Some(legacy) = legacy_putty_key_name(&server.name) {
                 match sessions.delete_subkey(&legacy) {
                     Ok(()) => log::info!(
                         "[putty export] removed '{}', the key an earlier export wrote for '{}'; \
@@ -840,37 +849,60 @@ mod tests {
     }
 
     /// The key the old encoder wrote, found so the export can remove it, and
-    /// only where it differs from the key written now.
+    /// only for a name whose old and new keys differ.
     #[test]
     fn test_legacy_putty_key_name() {
-        let legacy =
-            |name: &str| legacy_putty_key_name(name, &encode_putty_name(name, &Cp1252).unwrap());
-        assert_eq!(legacy("My Server").as_deref(), Some("My Server"));
-        assert_eq!(legacy("a/b").as_deref(), Some("a%2Fb"));
-        assert_eq!(legacy("what?").as_deref(), Some("what?"));
-        assert_eq!(legacy("Café").as_deref(), Some("CafÃ©"));
-        assert_eq!(legacy("plain"), None);
-        assert_eq!(legacy(".dot%x"), None);
-        assert_eq!(legacy("tab\tname"), None);
+        assert_eq!(
+            legacy_putty_key_name("My Server").as_deref(),
+            Some("My Server")
+        );
+        assert_eq!(legacy_putty_key_name("a/b").as_deref(), Some("a%2Fb"));
+        assert_eq!(legacy_putty_key_name("what?").as_deref(), Some("what?"));
+        assert_eq!(legacy_putty_key_name("Café").as_deref(), Some("CafÃ©"));
+        assert_eq!(legacy_putty_key_name("plain"), None);
+        assert_eq!(legacy_putty_key_name(".dot%x"), None);
+        assert_eq!(legacy_putty_key_name("tab\tname"), None);
+        assert_eq!(legacy_putty_key_name("100%2F"), None);
     }
 
-    /// The property the export's removal rests on: a key the old encoder
-    /// wrote where the forms differ is one PuTTY cannot open, because the
-    /// name PuTTY lists for it escapes to another key. So it is never a key
-    /// PuTTY wrote, nor the one written now.
+    /// The property the export's removal rests on: a key it removes is one
+    /// PuTTY cannot open (the name PuTTY lists for it escapes to another key),
+    /// is never the key written now for that name, and is never a key written
+    /// for any profile in the same run, a collision suffix (`Lab-2`) included.
+    /// And it is found for exactly the names whose old and new keys differ.
     #[test]
     fn test_legacy_putty_key_is_one_putty_cannot_open() {
-        for name in [
+        let names = [
             "My Server",
             "a/b",
             "what?*",
             "Café",
             "Ünïcødé ñame",
             "x\u{7f}y",
-        ] {
-            for cp in [&Cp1252 as &dyn AnsiCodePage, &Utf8CodePage] {
+            "Lab",
+            "prod.db",
+            ".dot",
+            "100%2F",
+            "back\\slash",
+        ];
+        for cp in [&Cp1252 as &dyn AnsiCodePage, &Utf8CodePage] {
+            let written: Vec<String> = names
+                .iter()
+                .flat_map(|n| {
+                    let key = encode_putty_name(n, cp).unwrap();
+                    [key.clone(), format!("{key}-2"), format!("{key}-3")]
+                })
+                .collect();
+            for name in names {
                 let current = encode_putty_name(name, cp).unwrap();
-                let old = legacy_putty_key_name(name, &current).expect("forms differ");
+                let Some(old) = legacy_putty_key_name(name) else {
+                    // Same rule as the old encoder, without the filter.
+                    let differs = name
+                        .chars()
+                        .any(|c| matches!(c, '/' | ' ' | '*' | '?' | '\u{7f}') || !c.is_ascii());
+                    assert!(!differs, "no legacy key found for {name:?}");
+                    continue;
+                };
                 let putty_lookup =
                     encode_putty_name(&decode_putty_name(&old, cp).unwrap(), cp).unwrap();
                 assert!(
@@ -878,6 +910,10 @@ mod tests {
                     "PuTTY can open {old:?} for {name:?}"
                 );
                 assert!(!old.eq_ignore_ascii_case(&current));
+                assert!(
+                    !written.iter().any(|k| k.eq_ignore_ascii_case(&old)),
+                    "{old:?} is a key this export writes"
+                );
             }
         }
     }
