@@ -218,18 +218,14 @@ impl<P: PGPProviderSync> DriveClient<P> {
                     .fetch_block(node, &revision.revision_id, session_key, block)
                     .await?;
                 sha1.update(&plain);
-                out.write_all(&plain)
-                    .await
-                    .map_err(|error| ProtonError::Network(format!("write: {error}")))?;
+                out.write_all(&plain).await.map_err(ProtonError::LocalIo)?;
                 written += plain.len() as u64;
                 progress(written);
                 block_digests.push(digest);
                 next_index += 1;
             }
         }
-        out.flush()
-            .await
-            .map_err(|error| ProtonError::Network(format!("write: {error}")))?;
+        out.flush().await.map_err(ProtonError::LocalIo)?;
 
         // Manifest: thumbnails sorted by type, then blocks by index.
         thumbnails.sort_by_key(|(thumbnail_type, _)| *thumbnail_type);

@@ -287,6 +287,20 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
                 }
             }
         }
+        // The cached session of an rclone `protondrive` remote, under the key
+        // the native Proton Drive client reads.
+        if let Some(ref session_json) = secrets.proton_native_session {
+            if protocol == "proton" {
+                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
+                    &store,
+                    &format!("proton_native_session_{}", profile_id),
+                    "proton_native_session",
+                    session_json,
+                ) {
+                    log::warn!("rclone bridge: proton session store failed for {profile_id}: {e}");
+                }
+            }
+        }
         // #128-D: recover the BYO OAuth app client_id/secret into the
         // per-provider vault singletons so a fresh device can refresh the
         // imported token. Store only when the singleton is not already set, so
@@ -923,6 +937,44 @@ pub fn inject_rclone_oauth_export_options(
 /// NOT derive it from email + password, so without this an exported remote fails
 /// at use with "failed to reveal api key: input too short". Shared by the GUI
 /// bridge export and the CLI `cmd_export_rclone` so the two paths never diverge.
+/// rclone export of a native Proton Drive profile: puts its saved session
+/// (`proton_native_session_<id>`) into a copy of the options, where the
+/// `protondrive` writer turns it into rclone's cached login. A CLI profile
+/// (no `proton_mode = native`) has no such session and gets nothing.
+pub fn inject_rclone_proton_export_options(
+    options: &mut Option<Value>,
+    store: &CredentialStore,
+    protocol: &str,
+    id: &str,
+) {
+    if protocol != "proton" || id.is_empty() {
+        return;
+    }
+    let native = options
+        .as_ref()
+        .and_then(|o| o.get("proton_mode"))
+        .and_then(|v| v.as_str())
+        == Some("native");
+    if !native {
+        return;
+    }
+    let Some(session) = crate::user_partitions::resolve_active_credential(
+        store,
+        &format!("proton_native_session_{}", id),
+    )
+    .ok()
+    .flatten()
+    .filter(|s| !s.trim().is_empty()) else {
+        return;
+    };
+    if let Some(map) = options.as_mut().and_then(|o| o.as_object_mut()) {
+        map.insert(
+            crate::rclone_import::PROTON_SESSION_OPTION.into(),
+            Value::String(session.to_string()),
+        );
+    }
+}
+
 pub fn inject_rclone_filen_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
@@ -1455,6 +1507,7 @@ async fn export_bridge_profiles(
                         let mut opts = e.get("options").cloned();
                         inject_rclone_oauth_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
+                        inject_rclone_proton_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id);
                         let initial_path = e.get("initialPath").and_then(|v| v.as_str());
                         inject_rclone_zoho_export_options(&mut opts, &proto, initial_path);
@@ -1588,21 +1641,21 @@ mod tests {
     use super::*;
 
     /// The GUI Export greys out a profile whose protocol is not in
-    /// `supportedProtocols` and, for FileLu and Proton Drive, used to say the
-    /// tool does not support it: rclone does, with a secret the vault lacks.
-    /// The reason has to reach the panel, which filters before any export runs.
+    /// `supportedProtocols` and, for FileLu, used to say the tool does not
+    /// support it: rclone does, with a secret the vault lacks. The reason has
+    /// to reach the panel, which filters before any export runs. Proton Drive
+    /// is no longer refused as a protocol: the exporter skips a CLI profile
+    /// with its own reason.
     #[tokio::test]
     async fn rclone_source_meta_carries_the_export_refusal_reasons() {
         let meta = bridge_source_meta("rclone".to_string()).await.unwrap();
         let refusals = meta["exportRefusals"].as_object().expect("exportRefusals");
-        for protocol in ["filelu", "proton"] {
-            let reason = refusals[protocol].as_str().unwrap_or_default();
-            assert_eq!(
-                Some(reason),
-                crate::bridge_shared::bridge_export_refusal("rclone", protocol),
-                "{protocol}"
-            );
-        }
+        let reason = refusals["filelu"].as_str().unwrap_or_default();
+        assert_eq!(
+            Some(reason),
+            crate::bridge_shared::bridge_export_refusal("rclone", "filelu")
+        );
+        assert!(refusals.get("proton").is_none());
         let winscp = bridge_source_meta("winscp".to_string()).await.unwrap();
         assert_eq!(winscp["exportRefusals"], json!({}));
     }

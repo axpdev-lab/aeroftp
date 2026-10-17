@@ -17246,6 +17246,12 @@ async fn purge_profile_secrets(
 ) -> Result<Vec<String>, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    // A native Proton Drive session is ended on Proton before its key goes,
+    // so a deleted profile leaves no live session behind.
+    #[cfg(feature = "proton-native")]
+    if protocol.as_deref() == Some("proton") {
+        providers::proton_native::vault::revoke_saved_session(&profile_id).await;
+    }
     Ok(purge_profile_secret_keys(
         &profile_id,
         protocol.as_deref(),
@@ -17519,8 +17525,10 @@ pub(crate) fn oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static s
 ///
 /// Included: the main credential, the #215 per-mode snapshots, the OAuth token
 /// (protocol-derived slug) and Jottacloud refresh, all four AeroCrypt overlay
-/// secrets, the Filen CLI API key, and the OneDrive drive id/type captured at
-/// connect. NON-per-profile keys are deliberately excluded: `oauth_<slug>_client_id`
+/// secrets, the Filen CLI API key, the OneDrive drive id/type captured at
+/// connect, and the native Proton Drive session (tokens plus the key password
+/// from the browser sign-in; it travels in exports like the other secrets,
+/// owner decision 2026-10-17). NON-per-profile keys are deliberately excluded: `oauth_<slug>_client_id`
 /// / `_client_secret` are app-global (shared by every profile of a provider, so a
 /// single delete must not remove them), and `ai_apikey_*` / `peer_*` are not
 /// server-profile scoped. The non-slug keys are always emitted even for the wrong
@@ -17538,6 +17546,7 @@ pub fn per_profile_vault_keys(profile_id: &str, protocol: Option<&str>) -> Vec<S
         format!("filen_api_key_{}", profile_id),
         format!("onedrive_drive_id_{}", profile_id),
         format!("onedrive_drive_type_{}", profile_id),
+        format!("proton_native_session_{}", profile_id),
     ];
     // The per-profile OAuth token lives under `oauth_<slug>_<id>`; the slug is
     // provider-specific, so it is only added when the protocol maps to one.
@@ -17683,6 +17692,16 @@ fn collect_provider_secrets_for_server(
         out.onedrive_drive_type = Some(v.to_string());
     }
 
+    // The native Proton Drive session (`proton_native_session_<id>`), written
+    // at sign-in and at every refresh. Vault-only like the Filen key; it
+    // travels like every other per-profile secret (owner decision 2026-10-17).
+    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
+        store,
+        &format!("proton_native_session_{}", server.id),
+    ) {
+        out.proton_native_session = Some(v.to_string());
+    }
+
     out
 }
 
@@ -17742,6 +17761,7 @@ pub async fn export_server_profiles_core(
                         || secrets.filen_api_key.is_some()
                         || secrets.onedrive_drive_id.is_some()
                         || secrets.onedrive_drive_type.is_some()
+                        || secrets.proton_native_session.is_some()
                     {
                         provider_secrets.insert(server.id.clone(), secrets);
                     }
@@ -18029,6 +18049,20 @@ pub async fn import_server_profiles_core_filtered(
                     let key = format!("onedrive_drive_type_{}", profile_id);
                     if let Err(e) = user_partitions::store_active_credential_dual(&store, &key, v) {
                         cred_errors.push(format!("{} onedrive drive_type: {}", profile_id, e));
+                    }
+                }
+                // Native Proton Drive session, under the key the native
+                // provider reads, mirrored into the active user's partition
+                // with the type the provider writes it with.
+                if let Some(ref v) = secrets.proton_native_session {
+                    let key = format!("proton_native_session_{}", profile_id);
+                    if let Err(e) = user_partitions::store_active_credential_typed_dual(
+                        &store,
+                        &key,
+                        "proton_native_session",
+                        v,
+                    ) {
+                        cred_errors.push(format!("{} proton session: {}", profile_id, e));
                     }
                 }
             }
@@ -18588,6 +18622,7 @@ mod per_profile_vault_keys_tests {
             "filen_api_key_srv_1_abc",
             "onedrive_drive_id_srv_1_abc",
             "onedrive_drive_type_srv_1_abc",
+            "proton_native_session_srv_1_abc",
         ];
         assert_eq!(keys, expected, "the complete non-oauth key set must match");
         // No app-global key ever leaks into the per-profile delete/copy set.

@@ -461,7 +461,10 @@ impl StoredTokens {
 /// Unix, CREATE_NEW on Windows), no extra crate. A stale lease (holder
 /// crashed without cleanup) is stolen after `STALE_SECS`, and acquisition
 /// is bounded by `MAX_WAIT_MS`, so OAuth can never wedge permanently.
-struct RefreshLease {
+///
+/// The native Proton Drive client takes the same lease for its rotating
+/// session (`proton_native::vault`), keyed on its own vault key.
+pub(crate) struct RefreshLease {
     path: std::path::PathBuf,
 }
 
@@ -474,7 +477,7 @@ impl RefreshLease {
     /// `slug`. `Some(lease)` => WE own it, perform the refresh. `None` =>
     /// gave up waiting or no lock dir; caller must re-load tokens (the other
     /// owner is refreshing) rather than refresh in parallel.
-    async fn acquire(slug: &str) -> Option<Self> {
+    pub(crate) async fn acquire(slug: &str) -> Option<Self> {
         let dir = OAuth2Manager::token_dir().ok()?;
         let path = dir.join(format!("refresh-{}.lock", slug));
         let started = std::time::Instant::now();

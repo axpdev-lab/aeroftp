@@ -138,7 +138,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
     /// `POST drive/v2/volumes/{v}/folders` (spec 7). Returns the new link ID.
     /// A name already taken is API code 2500.
     pub async fn create_folder(&self, parent: &Node<P>, name: &str) -> Result<String, ProtonError> {
-        validate_node_name(name).map_err(ProtonError::Decode)?;
+        validate_node_name(name).map_err(ProtonError::InvalidName)?;
         let FolderKeys {
             public: parent_public,
             hash_key: parent_hash_key,
@@ -176,7 +176,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
     /// encrypted with the existing name session key; `OriginalHash` guards
     /// against a concurrent change (API code 2000).
     pub async fn rename(&self, node: &Node<P>, new_name: &str) -> Result<(), ProtonError> {
-        validate_node_name(new_name).map_err(ProtonError::Decode)?;
+        validate_node_name(new_name).map_err(ProtonError::InvalidName)?;
         let original_hash = node
             .name_hash
             .clone()
@@ -249,7 +249,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
                 ProtonError::Crypto("the node name could not be decrypted".into())
             })?,
         };
-        validate_node_name(&name).map_err(ProtonError::Decode)?;
+        validate_node_name(&name).map_err(ProtonError::InvalidName)?;
         let old_parent = self.node(&old_parent_id).await?;
         let old_parent_key = old_parent
             .node_key

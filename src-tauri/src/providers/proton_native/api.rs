@@ -48,6 +48,10 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// `apiService.ts`: storage (block) requests get 600 s.
 const STORAGE_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Refreshes one request may trigger: the first can adopt tokens another
+/// process refreshed, the second refreshes when those were stale as well.
+const MAX_REFRESH_ROUNDS: u32 = 2;
+
 /// Proton success code for multi-item responses.
 const CODE_MULTI_OK: i64 = 1001;
 
@@ -89,7 +93,25 @@ struct Throttle {
     blocked_until: Option<Instant>,
 }
 
-type TokensListener = Box<dyn Fn(&SessionTokens) + Send + Sync>;
+/// Where a session is kept between processes.
+///
+/// The desktop app, the MCP server and the CLI can each open the same saved
+/// session. Proton hands out a new refresh token at every refresh, so two
+/// processes refreshing independently would spend each other's token and one
+/// of them would be signed out. The store makes the refresh single-owner: the
+/// refresh runs under [`SessionStore::lock`], and a process that finds tokens
+/// newer than the ones that were rejected adopts them instead of refreshing.
+#[async_trait::async_trait]
+pub trait SessionStore: Send + Sync {
+    /// A guard held for the length of one refresh, so only one process
+    /// refreshes at a time. `None` when exclusivity could not be had in a
+    /// bounded wait; the refresh then goes ahead without it.
+    async fn lock(&self) -> Option<Box<dyn Send>>;
+    /// The tokens saved now, which another process may have refreshed.
+    fn load(&self) -> Option<SessionTokens>;
+    /// Saves freshly refreshed tokens.
+    fn save(&self, tokens: &SessionTokens);
+}
 
 /// The Proton API client: one per signed-in account.
 pub struct ProtonApi {
@@ -103,8 +125,8 @@ pub struct ProtonApi {
     /// Held while a refresh runs, so concurrent 401s share one refresh.
     refresh_gate: Mutex<()>,
     throttle: StdMutex<Throttle>,
-    /// Called after every refresh, so the caller can persist the new tokens.
-    tokens_listener: StdMutex<Option<TokensListener>>,
+    /// Shares the session with other processes and persists refreshes.
+    session_store: StdMutex<Option<std::sync::Arc<dyn SessionStore>>>,
 }
 
 /// Body of a Proton error response.
@@ -160,7 +182,7 @@ impl ProtonApi {
             tokens: RwLock::new(None),
             refresh_gate: Mutex::new(()),
             throttle: StdMutex::new(Throttle::default()),
-            tokens_listener: StdMutex::new(None),
+            session_store: StdMutex::new(None),
         }
     }
 
@@ -187,11 +209,19 @@ impl ProtonApi {
         self.tokens.read().await.clone()
     }
 
-    /// Registers the function told about every refreshed token pair.
-    pub fn on_tokens_refreshed(&self, listener: impl Fn(&SessionTokens) + Send + Sync + 'static) {
-        if let Ok(mut slot) = self.tokens_listener.lock() {
-            *slot = Some(Box::new(listener));
+    /// Installs the store that persists refreshed tokens and coordinates
+    /// refreshes with other processes holding the same session.
+    pub fn set_session_store(&self, store: std::sync::Arc<dyn SessionStore>) {
+        if let Ok(mut slot) = self.session_store.lock() {
+            *slot = Some(store);
         }
+    }
+
+    fn session_store(&self) -> Option<std::sync::Arc<dyn SessionStore>> {
+        self.session_store
+            .lock()
+            .ok()
+            .and_then(|slot| slot.as_ref().map(std::sync::Arc::clone))
     }
 
     /// Authenticated `GET`.
@@ -303,7 +333,7 @@ impl ProtonApi {
         authenticated: bool,
     ) -> Result<T, ProtonError> {
         let mut attempt: u32 = 0;
-        let mut refreshed = false;
+        let mut refreshes: u32 = 0;
         loop {
             self.fail_fast_if_blocked()?;
 
@@ -355,7 +385,7 @@ impl ProtonApi {
                         tokio::time::sleep(delay).await;
                         continue;
                     }
-                    return Err(ProtonError::Network(error.to_string()));
+                    return Err(send_error(error));
                 }
             };
 
@@ -389,12 +419,13 @@ impl ProtonApi {
                 }
             }
 
-            if status == StatusCode::UNAUTHORIZED
-                && authenticated
-                && !refreshed
-                && !skips_refresh(path)
-            {
-                refreshed = true;
+            if status == StatusCode::UNAUTHORIZED && authenticated && !skips_refresh(path) {
+                // Two rounds: tokens adopted from another process may have
+                // expired too, and then this process refreshes them itself.
+                if refreshes >= MAX_REFRESH_ROUNDS {
+                    return Err(ProtonError::SessionExpired);
+                }
+                refreshes += 1;
                 let rejected = sent_access_token
                     .as_ref()
                     .map(|token| token.expose_secret().to_owned())
@@ -405,10 +436,7 @@ impl ProtonApi {
                 return Err(ProtonError::SessionExpired);
             }
 
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|error| ProtonError::Network(error.to_string()))?;
+            let bytes = response.bytes().await.map_err(send_error)?;
             return decode_answer(status, &bytes);
         }
     }
@@ -446,7 +474,7 @@ impl ProtonApi {
                         tokio::time::sleep(self.policy.network_error_delay).await;
                         continue;
                     }
-                    return Err(ProtonError::Network(error.to_string()));
+                    return Err(send_error(error));
                 }
             };
             let status = response.status();
@@ -476,10 +504,7 @@ impl ProtonApi {
                 tokio::time::sleep(self.policy.server_error_delay).await;
                 continue;
             }
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|error| ProtonError::Network(error.to_string()))?;
+            let bytes = response.bytes().await.map_err(send_error)?;
             if !status.is_success() {
                 return decode_answer::<serde_json::Value>(status, &bytes).and(Err(
                     ProtonError::Api {
@@ -509,7 +534,7 @@ impl ProtonApi {
             let part = reqwest::multipart::Part::stream(block.clone())
                 .file_name("blob")
                 .mime_str("application/octet-stream")
-                .map_err(|error| ProtonError::Network(error.to_string()))?;
+                .map_err(send_error)?;
             let form = reqwest::multipart::Form::new().part("Block", part);
             let mut builder = self
                 .storage_http
@@ -536,7 +561,7 @@ impl ProtonApi {
                         tokio::time::sleep(self.policy.network_error_delay).await;
                         continue;
                     }
-                    return Err(ProtonError::Network(error.to_string()));
+                    return Err(send_error(error));
                 }
             };
             let status = response.status();
@@ -566,10 +591,7 @@ impl ProtonApi {
                 tokio::time::sleep(self.policy.server_error_delay).await;
                 continue;
             }
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|error| ProtonError::Network(error.to_string()))?;
+            let bytes = response.bytes().await.map_err(send_error)?;
             if !status.is_success() {
                 decode_answer::<serde_json::Value>(status, &bytes)?;
                 return Err(ProtonError::Api {
@@ -585,7 +607,9 @@ impl ProtonApi {
     }
 
     /// `apiClient.ts::refreshSessionIfPossible`. Returns true when the caller
-    /// should retry with the current tokens.
+    /// should retry with the current tokens. With a [`SessionStore`] the
+    /// refresh runs under its cross-process lock, and tokens another process
+    /// saved since the rejected ones are adopted instead of refreshing again.
     async fn refresh_if_possible(&self, rejected_access_token: &str) -> Result<bool, ProtonError> {
         let _gate = self.refresh_gate.lock().await;
 
@@ -594,6 +618,15 @@ impl ProtonApi {
         };
         // Another request already refreshed while this one waited.
         if current.access_token.expose_secret() != rejected_access_token {
+            return Ok(true);
+        }
+        let store = self.session_store();
+        let _lease = match store.as_ref() {
+            Some(store) => store.lock().await,
+            None => None,
+        };
+        if let Some(saved) = self.newer_saved_tokens(store.as_deref(), &current) {
+            *self.tokens.write().await = Some(saved);
             return Ok(true);
         }
         let Some(refresh_token) = current.refresh_token.clone() else {
@@ -615,7 +648,7 @@ impl ProtonApi {
             }))
             .send()
             .await
-            .map_err(|error| ProtonError::Network(error.to_string()))?;
+            .map_err(send_error)?;
 
         let status = response.status();
         if !status.is_success() {
@@ -624,16 +657,20 @@ impl ProtonApi {
                 status.as_u16()
             );
             // A 4xx other than 429 means the refresh token is dead: sign out,
-            // as apiClient.ts does. A 429 or 5xx keeps the session for later.
+            // as apiClient.ts does, unless another process saved a newer pair
+            // meanwhile (its lock can time out). A 429 or 5xx keeps the
+            // session for later.
             if status.is_client_error() && status != StatusCode::TOO_MANY_REQUESTS {
-                *self.tokens.write().await = None;
+                let saved = self.newer_saved_tokens(store.as_deref(), &current);
+                let adopted = saved.is_some();
+                *self.tokens.write().await = saved;
+                return Ok(adopted);
             }
             return Ok(false);
         }
 
-        let refreshed: RefreshResponse = response
-            .json()
-            .await
+        let body = response.bytes().await.map_err(send_error)?;
+        let refreshed: RefreshResponse = serde_json::from_slice(&body)
             .map_err(|error| ProtonError::Decode(format!("refresh answer: {error}")))?;
         let Some(access_token) = refreshed.access_token else {
             return Err(ProtonError::Decode(
@@ -651,12 +688,34 @@ impl ProtonApi {
             ),
         };
         *self.tokens.write().await = Some(tokens.clone());
-        if let Ok(listener) = self.tokens_listener.lock() {
-            if let Some(listener) = listener.as_ref() {
-                listener(&tokens);
-            }
+        if let Some(store) = store.as_ref() {
+            store.save(&tokens);
         }
         Ok(true)
+    }
+
+    /// The saved tokens when they belong to the same session and differ from
+    /// `current`: another process refreshed them.
+    fn newer_saved_tokens(
+        &self,
+        store: Option<&dyn SessionStore>,
+        current: &SessionTokens,
+    ) -> Option<SessionTokens> {
+        let saved = store?.load()?;
+        let same_session = saved.uid == current.uid;
+        let newer = saved.access_token.expose_secret() != current.access_token.expose_secret();
+        (same_session && newer).then_some(saved)
+    }
+}
+
+/// A failed request or body read. A timeout is its own error, so the
+/// provider reports it as one (`ProviderError::Timeout`); anything else is a
+/// network error.
+fn send_error(error: reqwest::Error) -> ProtonError {
+    if error.is_timeout() {
+        ProtonError::Timeout
+    } else {
+        ProtonError::Network(error.to_string())
     }
 }
 
@@ -747,6 +806,79 @@ mod tests {
             refresh_token: Some(SecretString::from("refresh-1".to_string())),
         }
     }
+
+    /// An in-memory [`SessionStore`] standing in for the vault.
+    #[derive(Default)]
+    struct MemoryStore {
+        saved: StdMutex<Option<SessionTokens>>,
+        locks: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl SessionStore for MemoryStore {
+        async fn lock(&self) -> Option<Box<dyn Send>> {
+            self.locks.fetch_add(1, Ordering::SeqCst);
+            None
+        }
+        fn load(&self) -> Option<SessionTokens> {
+            self.saved.lock().unwrap().clone()
+        }
+        fn save(&self, tokens: &SessionTokens) {
+            *self.saved.lock().unwrap() = Some(tokens.clone());
+        }
+    }
+
+    impl MemoryStore {
+        fn saved_access(&self) -> Option<String> {
+            self.saved
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|t| t.access_token.expose_secret().to_owned())
+        }
+    }
+
+    /// `/core/v4/users` that accepts only `Bearer access-2`, and a refresh
+    /// endpoint answering `refresh` and counting its calls.
+    fn users_app(refreshes: Arc<AtomicUsize>, refresh: (u16, &'static str)) -> axum::Router {
+        axum::Router::new()
+            .route(
+                "/auth/v4/refresh",
+                axum::routing::post(move || {
+                    refreshes.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        (
+                            axum::http::StatusCode::from_u16(refresh.0).unwrap(),
+                            refresh.1,
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/core/v4/users",
+                axum::routing::get(|headers: axum::http::HeaderMap| async move {
+                    let auth = headers
+                        .get("authorization")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    if auth == "Bearer access-2" {
+                        (axum::http::StatusCode::OK, r#"{"Code":1000,"Ok":true}"#)
+                    } else {
+                        (
+                            axum::http::StatusCode::UNAUTHORIZED,
+                            r#"{"Code":401,"Error":"Invalid access token"}"#,
+                        )
+                    }
+                }),
+            )
+    }
+
+    const REFRESH_OK: (u16, &str) = (
+        200,
+        r#"{"Code":1000,"UID":"uid-1","AccessToken":"access-2","RefreshToken":"refresh-2"}"#,
+    );
+    const REFRESH_DEAD: (u16, &str) = (400, r#"{"Code":10013,"Error":"Invalid refresh token"}"#);
 
     async fn serve(app: axum::Router) -> String {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -839,53 +971,95 @@ mod tests {
         );
     }
 
-    /// A 401 refreshes the session once, persists the new tokens through the
-    /// listener and replays the request with them.
+    /// A 401 refreshes the session once under the store's lock, saves the
+    /// new tokens in the store and replays the request with them.
     #[tokio::test]
     async fn a_401_refreshes_once_and_replays_with_the_new_token() {
         let refreshes = Arc::new(AtomicUsize::new(0));
-        let refresh_count = Arc::clone(&refreshes);
-        let app = axum::Router::new()
-            .route(
-                "/auth/v4/refresh",
-                axum::routing::post(move || {
-                    refresh_count.fetch_add(1, Ordering::SeqCst);
-                    async {
-                        r#"{"Code":1000,"UID":"uid-1","AccessToken":"access-2","RefreshToken":"refresh-2"}"#
-                    }
-                }),
-            )
-            .route(
-                "/core/v4/users",
-                axum::routing::get(|headers: axum::http::HeaderMap| async move {
-                    let auth = headers
-                        .get("authorization")
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or("")
-                        .to_string();
-                    if auth == "Bearer access-2" {
-                        (axum::http::StatusCode::OK, r#"{"Code":1000,"Ok":true}"#)
-                    } else {
-                        (axum::http::StatusCode::UNAUTHORIZED, r#"{"Code":401,"Error":"Invalid access token"}"#)
-                    }
-                }),
-            );
         let api = ProtonApi::with_base_url(
-            serve(app).await,
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
             "external-drive-aeroftp@1.2.3-alpha".into(),
         )
         .with_policy(FAST);
         api.set_tokens(Some(tokens("access-1"))).await;
-        let persisted: Arc<StdMutex<Option<String>>> = Arc::default();
-        let persist = Arc::clone(&persisted);
-        api.on_tokens_refreshed(move |tokens| {
-            *persist.lock().unwrap() = Some(tokens.access_token.expose_secret().to_owned());
-        });
+        let store = Arc::new(MemoryStore::default());
+        store.save(&tokens("access-1"));
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
 
         let answer: Value = api.get("/core/v4/users", &[]).await.expect("replayed");
         assert_eq!(answer["Ok"], Value::Bool(true));
         assert_eq!(refreshes.load(Ordering::SeqCst), 1);
-        assert_eq!(persisted.lock().unwrap().as_deref(), Some("access-2"));
+        assert_eq!(store.locks.load(Ordering::SeqCst), 1);
+        assert_eq!(store.saved_access().as_deref(), Some("access-2"));
+    }
+
+    /// Another process refreshed the shared session: its saved tokens are
+    /// adopted and the spent refresh token is not sent again.
+    #[tokio::test]
+    async fn tokens_refreshed_by_another_process_are_adopted_without_a_refresh() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_DEAD)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&tokens("access-2"));
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let answer: Value = api.get("/core/v4/users", &[]).await.expect("adopted");
+        assert_eq!(answer["Ok"], Value::Bool(true));
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "no refresh may be sent"
+        );
+        let adopted = api.tokens().await.expect("tokens kept");
+        assert_eq!(adopted.access_token.expose_secret(), "access-2");
+    }
+
+    /// Saved tokens of another session (another sign-in under the same
+    /// profile key) are never adopted by this one.
+    #[tokio::test]
+    async fn saved_tokens_of_another_session_are_not_adopted() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_DEAD)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        let mut other = tokens("access-2");
+        other.uid = "uid-other".into();
+        store.save(&other);
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let error = api.get::<Value>("/core/v4/users", &[]).await.unwrap_err();
+        assert!(matches!(error, ProtonError::SessionExpired), "{error:?}");
+        assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+    }
+
+    /// Adopted tokens that are stale too get one real refresh, then the
+    /// request goes through; a third 401 would end the session.
+    #[tokio::test]
+    async fn adopted_tokens_that_are_stale_too_are_refreshed() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&tokens("access-0"));
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let answer: Value = api.get("/core/v4/users", &[]).await.expect("refreshed");
+        assert_eq!(answer["Ok"], Value::Bool(true));
+        assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+        assert_eq!(store.saved_access().as_deref(), Some("access-2"));
     }
 
     /// A refresh refused with a 4xx ends the session instead of looping.

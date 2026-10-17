@@ -171,7 +171,7 @@ async fn read_block<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>, Pro
         let read = reader
             .read(&mut block[filled..])
             .await
-            .map_err(|error| ProtonError::Network(format!("read: {error}")))?;
+            .map_err(ProtonError::LocalIo)?;
         if read == 0 {
             break;
         }
@@ -194,7 +194,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
         modification_time: Option<DateTime<Utc>>,
         mut progress: impl FnMut(u64),
     ) -> Result<String, ProtonError> {
-        validate_node_name(name).map_err(ProtonError::Decode)?;
+        validate_node_name(name).map_err(ProtonError::InvalidName)?;
         let provider = self.provider();
         if !parent.is_folder() {
             return Err(ProtonError::Decode("the parent is not a folder".into()));
@@ -308,9 +308,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
             ));
         };
         if content_key.algorithm() == SessionKeyAlgorithm::Unknown {
-            return Err(ProtonError::Decode(
-                "this file uses Proton's newer content format; AeroFTP cannot write revisions of it yet".into(),
-            ));
+            return Err(ProtonError::RevisionUnsupported);
         }
         let node_public = provider
             .private_key_to_public_key(node_key)
@@ -636,7 +634,9 @@ impl<P: PGPProviderSync> DriveClient<P> {
                                 ))
                             })?;
                     }
-                    Err(error @ ProtonError::Network(_)) if failures < BLOCK_UPLOAD_RETRIES => {
+                    Err(error @ (ProtonError::Network(_) | ProtonError::Timeout))
+                        if failures < BLOCK_UPLOAD_RETRIES =>
+                    {
                         failures += 1;
                         log::warn!(
                             "Proton: block {} upload failed ({error}), retrying",
