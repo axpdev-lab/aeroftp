@@ -129,6 +129,7 @@ run-clean.sh
 # Exception: snap gates and stage-package staleness audit (#460, #462)
 !/scripts/snap-abi-check.sh
 !/scripts/snap-gui-check.sh
+!/scripts/snap-portal-check.sh
 !/scripts/snap-stale-packages.mjs
 # Exception: Linux ACL packaging contracts for AeroRsync (G4)
 !/scripts/assert-linux-acl-packaging.sh
