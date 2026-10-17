@@ -533,6 +533,10 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileZillaExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -552,6 +556,9 @@ pub fn export_filezilla(
     xml.push_str("<FileZilla3 version=\"3.67.1\" platform=\"*\">\n");
     xml.push_str("  <Servers>\n");
     let mut exported = 0;
+    // FileZilla addresses a site by its name (`--site 0/<name>`): two of one
+    // name leave the second unreachable that way.
+    let mut names = crate::bridge_shared::ExportEntryNames::exact(servers.iter().map(|s| &s.name));
 
     for server in servers {
         let protocol = server.protocol.as_deref().unwrap_or("ftp");
@@ -593,7 +600,7 @@ pub fn export_filezilla(
         ));
 
         // Password
-        if let Some(password) = passwords.get(&server.name) {
+        if let Some(password) = crate::bridge_shared::export_secret(passwords, &server.id) {
             let encoded = encode_filezilla_password(password);
             xml.push_str(&format!(
                 "      <Pass encoding=\"base64\">{}</Pass>\n",
@@ -614,7 +621,10 @@ pub fn export_filezilla(
             }
         }
 
-        xml.push_str(&format!("      <Name>{}</Name>\n", sanitize(&server.name)));
+        xml.push_str(&format!(
+            "      <Name>{}</Name>\n",
+            sanitize(&names.claim(&server.name))
+        ));
         xml.push_str("    </Server>\n");
         exported += 1;
     }
@@ -944,6 +954,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("sitemanager.xml");
         let servers = [FileZillaExportServer {
+            id: "R&D <\"prod\"> it's".to_string(),
             name: "R&D <\"prod\"> it's".to_string(),
             host: "ftp.example.com".to_string(),
             port: 21,
@@ -967,6 +978,29 @@ mod tests {
         assert_eq!(
             decode_filezilla_password(pass, encoding).as_deref(),
             Some("p&ss")
+        );
+    }
+
+    /// Two profiles of one name (a list saved before names were unique) were
+    /// two sites of one name, both with the second one's password.
+    #[test]
+    fn two_profiles_of_one_name_export_as_two_sites_each_with_its_own_password() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<
+            FileZillaExportServer,
+        >(
+            serde_json::json!({"host": "a.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+            serde_json::json!({"host": "b.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        assert_eq!(export_filezilla(&servers, &passwords, &path).unwrap(), 2);
+        let back = import_filezilla(&path).unwrap();
+        assert_eq!(
+            crate::bridge_shared::names_hosts_secrets(&back.servers),
+            crate::bridge_shared::owned3(&[
+                ("Lab", "a.example.com", "secret-a"),
+                ("Lab-2", "b.example.com", "secret-b"),
+            ])
         );
     }
 }

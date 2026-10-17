@@ -364,6 +364,10 @@ pub fn import_restic(path: &Path) -> Result<ResticImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResticExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -484,7 +488,7 @@ pub fn export_restic(
             );
             continue;
         }
-        let secret = passwords.get(&p.name).map(|s| s.as_str()).unwrap_or("");
+        let secret = crate::bridge_shared::export_secret(passwords, &p.id).unwrap_or("");
         match restic_repo_for(p, secret) {
             Ok(found) => chosen = Some((p.name.as_str(), found)),
             Err(reason) => outcome.skip(&p.name, reason),
@@ -710,6 +714,7 @@ mod tests {
     #[test]
     fn round_trip_export_then_reparse_is_idempotent() {
         let servers = vec![ResticExportServer {
+            id: "prod-s3".to_string(),
             name: "prod-s3".to_string(),
             host: "s3.wasabisys.com".to_string(),
             port: 443,
@@ -768,6 +773,7 @@ mod tests {
     #[test]
     fn export_escapes_single_quote_in_secret() {
         let servers = vec![ResticExportServer {
+            id: "tricky".to_string(),
             name: "tricky".to_string(),
             host: "s3.amazonaws.com".to_string(),
             port: 443,
@@ -854,5 +860,24 @@ mod tests {
     fn import_from_env_errors_when_nothing_set() {
         let env = |_: &str| -> Option<String> { None };
         assert!(import_restic_from_env(&env).is_err());
+    }
+
+    /// Of two profiles of one name (a list saved before names were unique),
+    /// the one written is the first, and with its own secret: the map keyed
+    /// by name gave it the second one's.
+    #[test]
+    fn of_two_profiles_of_one_name_the_one_written_has_its_own_secret() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<ResticExportServer>(
+            serde_json::json!({"host": "", "port": 443, "username": "AKA", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://a.example.com", "bucket": "tests", "region": "us-east-1"}}),
+            serde_json::json!({"host": "", "port": 443, "username": "AKB", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://b.example.com", "bucket": "tests", "region": "us-east-1"}}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("restic.sh");
+        let outcome = export_restic(&servers, &passwords, &path).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 1));
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("s3:https://a.example.com/tests"), "{body}");
+        assert!(body.contains("AWS_ACCESS_KEY_ID='AKA'"), "{body}");
+        assert!(body.contains("AWS_SECRET_ACCESS_KEY='secret-a'"), "{body}");
     }
 }

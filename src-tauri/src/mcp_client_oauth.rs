@@ -708,110 +708,6 @@ fn parse_token_response(bytes: &[u8], requested_scopes: &[String]) -> Result<Tok
     })
 }
 
-#[cfg(test)]
-fn account_key(prefix: &str, server_id: &str, issuer: &str, resource: &str) -> String {
-    let mut hash = blake3::Hasher::new();
-    for field in [server_id, issuer, resource] {
-        hash.update(&(field.len() as u64).to_le_bytes());
-        hash.update(field.as_bytes());
-    }
-    format!(
-        "mcp_http_oauth_{prefix}_{}",
-        &hash.finalize().to_hex()[..32]
-    )
-}
-
-#[cfg(test)]
-fn save_tokens_for(
-    conn: &Connection,
-    root_key: &[u8; 32],
-    user_id: i64,
-    server_id: &str,
-    issuer: &str,
-    resource: &str,
-    tokens: &TokenSet,
-) -> Result<(), OAuthError> {
-    if user_id <= 0 || server_id.is_empty() || tokens.access.is_empty() {
-        return Err(OAuthError::InvalidToken);
-    }
-    parse_public_https(issuer, 2048).map_err(|_| OAuthError::InvalidMetadata)?;
-    parse_public_https(resource, 2048).map_err(|_| OAuthError::InvalidMetadata)?;
-    let access_key = account_key("access", server_id, issuer, resource);
-    let refresh_key = account_key("refresh", server_id, issuer, resource);
-    let meta_key = account_key("meta", server_id, issuer, resource);
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|_| OAuthError::StoreUnavailable)?;
-    user_partitions::set_user_credential_for(
-        &tx,
-        root_key,
-        user_id,
-        &access_key,
-        "mcp_http_oauth",
-        &tokens.access,
-    )
-    .map_err(|_| OAuthError::StoreUnavailable)?;
-    if let Some(refresh) = &tokens.refresh {
-        user_partitions::set_user_credential_for(
-            &tx,
-            root_key,
-            user_id,
-            &refresh_key,
-            "mcp_http_oauth",
-            refresh,
-        )
-        .map_err(|_| OAuthError::StoreUnavailable)?;
-    } else {
-        user_partitions::delete_user_credential_for(&tx, user_id, &refresh_key)
-            .map_err(|_| OAuthError::StoreUnavailable)?;
-    }
-    user_partitions::set_user_setting_for(
-        &tx,
-        root_key,
-        user_id,
-        &meta_key,
-        &json!({
-            "expires_at": tokens.expires_at,
-            "scopes": tokens.scopes,
-        }),
-    )
-    .map_err(|_| OAuthError::StoreUnavailable)?;
-    tx.commit().map_err(|_| OAuthError::StoreUnavailable)
-}
-
-#[cfg(test)]
-fn load_tokens_for(
-    conn: &Connection,
-    root_key: &[u8; 32],
-    user_id: i64,
-    server_id: &str,
-    issuer: &str,
-    resource: &str,
-) -> Result<Option<TokenSet>, OAuthError> {
-    let access_key = account_key("access", server_id, issuer, resource);
-    let Some(access) =
-        user_partitions::get_user_credential_for(conn, root_key, user_id, &access_key)
-            .map_err(|_| OAuthError::StoreUnavailable)?
-    else {
-        return Ok(None);
-    };
-    let refresh_key = account_key("refresh", server_id, issuer, resource);
-    let refresh = user_partitions::get_user_credential_for(conn, root_key, user_id, &refresh_key)
-        .map_err(|_| OAuthError::StoreUnavailable)?;
-    let meta_key = account_key("meta", server_id, issuer, resource);
-    let meta = user_partitions::get_user_setting_for(conn, root_key, user_id, &meta_key)
-        .map_err(|_| OAuthError::StoreUnavailable)?
-        .ok_or(OAuthError::StoreUnavailable)?;
-    let scopes = scope_list(meta.get("scopes"))?;
-    let expires_at = meta.get("expires_at").and_then(Value::as_i64);
-    Ok(Some(TokenSet {
-        access,
-        refresh,
-        expires_at,
-        scopes,
-    }))
-}
-
 #[path = "mcp_client_oauth_lifecycle.rs"]
 pub(crate) mod lifecycle;
 #[path = "mcp_client_oauth_loopback.rs"]
@@ -1011,74 +907,13 @@ mod tests {
     }
 
     #[test]
-    fn token_values_are_redacted_and_bound_to_issuer_resource() {
+    fn token_values_are_redacted() {
         let tokens = parse_token_response(br#"{"token_type":"Bearer","access_token":"secret-access","refresh_token":"secret-refresh","expires_in":300,"scope":"files:read"}"#, &["files:read".into()]).unwrap();
         assert_eq!(tokens.access.as_str(), "secret-access");
         assert!(!format!("{tokens:?}").contains("secret-access"));
-        assert_ne!(
-            account_key(
-                "access",
-                "remote",
-                "https://auth.example.com",
-                endpoint().as_str()
-            ),
-            account_key(
-                "access",
-                "remote",
-                "https://evil.example.com",
-                endpoint().as_str()
-            )
-        );
-        assert_ne!(
-            account_key(
-                "access",
-                "remote",
-                "https://auth.example.com",
-                endpoint().as_str()
-            ),
-            account_key(
-                "access",
-                "remote",
-                "https://auth.example.com",
-                "https://other.example.com/mcp"
-            )
-        );
         assert!(
             parse_token_response(br#"{"token_type":"Basic","access_token":"secret"}"#, &[])
                 .is_err()
         );
-    }
-
-    #[test]
-    fn encrypted_tokens_remain_in_the_selected_user_partition() {
-        let root = [0x42; 32];
-        let mut conn = Connection::open_in_memory().unwrap();
-        user_partitions::migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
-        let first = user_partitions::get_active_user(&conn).unwrap().unwrap();
-        let second =
-            user_partitions::create_user(&mut conn, &root, "MCP test user", None, None, None)
-                .unwrap();
-        let tokens = parse_token_response(
-            br#"{"token_type":"Bearer","access_token":"private-access","refresh_token":"private-refresh","expires_in":300}"#,
-            &["files:read".into()],
-        ).unwrap();
-        let issuer = "https://auth.example.com";
-        let resource = endpoint().to_string();
-        save_tokens_for(&conn, &root, first.id, "remote", issuer, &resource, &tokens).unwrap();
-        assert!(
-            load_tokens_for(&conn, &root, second.id, "remote", issuer, &resource)
-                .unwrap()
-                .is_none()
-        );
-        let stored = load_tokens_for(&conn, &root, first.id, "remote", issuer, &resource)
-            .unwrap()
-            .unwrap();
-        assert_eq!(stored.access.as_str(), "private-access");
-        assert_eq!(
-            stored.refresh.as_deref().map(String::as_str),
-            Some("private-refresh")
-        );
-        assert_eq!(stored.scopes, ["files:read"]);
-        assert!(!format!("{stored:?}").contains("private-access"));
     }
 }

@@ -19,7 +19,7 @@ use crate::bridge_shared::{resolve_export_endpoint, BridgeExportOutcome};
 
 fn minio() -> Value {
     json!({
-        "name": "lab minio", "host": "", "port": 443, "username": "AKLAB",
+        "id": "srv-minio", "name": "lab minio", "host": "", "port": 443, "username": "AKLAB",
         "protocol": "s3", "providerId": "minio", "initialPath": "/",
         "options": { "endpoint": "https://s3.lab.example.com", "bucket": "tests", "region": "us-east-1" }
     })
@@ -27,7 +27,7 @@ fn minio() -> Value {
 
 fn r2() -> Value {
     json!({
-        "name": "r2", "host": "https://acct.r2.cloudflarestorage.com/", "port": 443,
+        "id": "srv-r2", "name": "r2", "host": "https://acct.r2.cloudflarestorage.com/", "port": 443,
         "username": "AKR2", "protocol": "s3", "providerId": "cloudflare-r2",
         "options": { "bucket": "media", "region": "auto" }
     })
@@ -35,14 +35,14 @@ fn r2() -> Value {
 
 fn webdav() -> Value {
     json!({
-        "name": "cloud dav", "host": "https://dav.example.com/remote.php/dav/files/u/",
+        "id": "srv-dav", "name": "cloud dav", "host": "https://dav.example.com/remote.php/dav/files/u/",
         "port": 443, "username": "u", "protocol": "webdav", "initialPath": "/"
     })
 }
 
 fn ftp(name: &str, protocol: &str, port: u32, tls_mode: Option<&str>) -> Value {
     let mut v = json!({
-        "name": name, "host": "ftp.example.com", "port": port, "username": "ftpuser",
+        "id": format!("srv-{name}"), "name": name, "host": "ftp.example.com", "port": port, "username": "ftpuser",
         "protocol": protocol
     });
     if let Some(m) = tls_mode {
@@ -58,10 +58,11 @@ fn typed<T: serde::de::DeserializeOwned>(profiles: &[Value]) -> Vec<T> {
         .collect()
 }
 
+/// One password per profile, keyed by id as both export surfaces key it.
 fn passwords(profiles: &[Value]) -> HashMap<String, String> {
     profiles
         .iter()
-        .map(|p| (p["name"].as_str().unwrap().to_string(), "pw".to_string()))
+        .map(|p| (p["id"].as_str().unwrap().to_string(), "pw".to_string()))
         .collect()
 }
 
@@ -655,6 +656,7 @@ fn rclone_ftp_tls_mode_survives_a_round_trip() {
         .servers
         .iter()
         .map(|s| crate::rclone_import::RcloneExportServer {
+            id: s.id.clone(),
             name: s.name.clone(),
             host: s.host.clone(),
             port: s.port,

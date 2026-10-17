@@ -300,6 +300,10 @@ pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -325,6 +329,8 @@ pub fn export_mc(
 ) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
     let mut aliases = serde_json::Map::new();
     let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+    // `aliases` is a map: a second alias of one name would replace the first.
+    let mut names = crate::bridge_shared::ExportEntryNames::exact(servers.iter().map(|s| &s.name));
 
     for server in servers {
         if server.protocol.as_deref() != Some("s3") {
@@ -381,7 +387,7 @@ pub fn export_mc(
                 }
             });
 
-        let secret = passwords.get(&server.name).cloned().unwrap_or_default();
+        let secret = crate::bridge_shared::export_secret(passwords, &server.id).unwrap_or_default();
 
         let entry = serde_json::json!({
             "url": url,
@@ -390,7 +396,7 @@ pub fn export_mc(
             "api": api,
             "path": path,
         });
-        aliases.insert(server.name.clone(), entry);
+        aliases.insert(names.claim(&server.name), entry);
         outcome.exported += 1;
     }
 
@@ -518,6 +524,7 @@ mod tests {
             .servers
             .iter()
             .map(|s| McExportServer {
+                id: s.id.clone(),
                 name: s.name.clone(),
                 host: s.host.clone(),
                 port: s.port,
@@ -532,7 +539,7 @@ mod tests {
         let mut passwords = HashMap::new();
         for s in &first.servers {
             if let Some(c) = &s.credential {
-                passwords.insert(s.name.clone(), c.clone());
+                passwords.insert(s.id.clone(), c.clone());
             }
         }
 
@@ -588,5 +595,35 @@ mod tests {
             None => std::env::remove_var("MC_CONFIG_DIR"),
         }
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Two profiles of one name (a list saved before names were unique) were
+    /// one alias: the second replaced the first in the map, with the second
+    /// one's secret, while the export counted two.
+    #[test]
+    fn two_profiles_of_one_name_export_as_two_aliases_each_with_its_own_secret() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<McExportServer>(
+            serde_json::json!({"host": "", "port": 443, "username": "AKA", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://a.example.com", "bucket": "tests", "region": "us-east-1"}}),
+            serde_json::json!({"host": "", "port": 443, "username": "AKB", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://b.example.com", "bucket": "tests", "region": "us-east-1"}}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let outcome = export_mc(&servers, &passwords, &path).unwrap();
+        assert_eq!(outcome.exported, 2, "{:?}", outcome.skipped);
+        let doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let aliases = doc["aliases"].as_object().unwrap();
+        assert_eq!(aliases.len(), 2, "{doc}");
+        for (alias, key, secret, host) in [
+            ("Lab", "AKA", "secret-a", "a.example.com"),
+            ("Lab-2", "AKB", "secret-b", "b.example.com"),
+        ] {
+            assert_eq!(aliases[alias]["accessKey"], key, "{doc}");
+            assert_eq!(aliases[alias]["secretKey"], secret, "{doc}");
+            assert!(
+                aliases[alias]["url"].as_str().unwrap().contains(host),
+                "{doc}"
+            );
+        }
     }
 }

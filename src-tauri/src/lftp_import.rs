@@ -388,6 +388,10 @@ pub fn import_lftp(path: &Path) -> Result<LftpImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LftpExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -421,6 +425,16 @@ fn protocol_to_scheme(protocol: &str) -> Option<&'static str> {
 /// TLS, so an explicit-TLS profile is written as `ftp://`, on which lftp
 /// negotiates `AUTH TLS` by default (`ftp:ssl-allow`); a bookmark cannot
 /// carry `ftp:ssl-force`, which the header comment of the file points out.
+/// Bookmark name: lftp uses the first whitespace as the name/url delimiter,
+/// so a name with whitespace would corrupt the line. Collapse internal
+/// whitespace to '_' to keep the bookmark parseable.
+fn lftp_bookmark_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_whitespace() { '_' } else { c })
+        .filter(|c| *c != '\n' && *c != '\r')
+        .collect()
+}
+
 pub fn export_lftp(
     servers: &[LftpExportServer],
     passwords: &HashMap<String, String>,
@@ -432,6 +446,10 @@ pub fn export_lftp(
          # to ~/.lftprc to refuse a cleartext fallback.\n",
     );
     let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+    // lftp opens a bookmark by name, so a second one of a name is never opened.
+    let mut names = crate::bridge_shared::ExportEntryNames::exact(
+        servers.iter().map(|s| lftp_bookmark_name(&s.name)),
+    );
 
     for server in servers {
         let proto = server.protocol.as_deref().unwrap_or("ftp");
@@ -468,24 +486,17 @@ pub fn export_lftp(
             scheme = ep.scheme;
         }
 
-        // Bookmark name: lftp uses the first whitespace as the name/url
-        // delimiter, so a name with whitespace would corrupt the line.
-        // Collapse internal whitespace to '_' to keep the bookmark parseable.
-        let safe_name: String = server
-            .name
-            .chars()
-            .map(|c| if c.is_whitespace() { '_' } else { c })
-            .filter(|c| *c != '\n' && *c != '\r')
-            .collect();
+        let safe_name = lftp_bookmark_name(&server.name);
         if safe_name.is_empty() {
             outcome.skip(&server.name, "empty bookmark name");
             continue;
         }
+        let safe_name = names.claim(&safe_name);
 
         let mut url = String::from(scheme);
         url.push_str("://");
 
-        let password = passwords.get(&server.name).filter(|p| !p.is_empty());
+        let password = crate::bridge_shared::export_secret(passwords, &server.id);
         if !server.username.is_empty() {
             url.push_str(&url_encode(&server.username));
             if let Some(pw) = password {
@@ -667,6 +678,7 @@ mystery gopher://old.example.com/0/
     fn test_roundtrip_idempotence_with_password() {
         let servers = vec![
             LftpExportServer {
+                id: "prod-ftp".to_string(),
                 name: "prod-ftp".to_string(),
                 host: "ftp.example.com".to_string(),
                 port: 2121,
@@ -677,6 +689,7 @@ mystery gopher://old.example.com/0/
                 initial_path: Some("/var/www".to_string()),
             },
             LftpExportServer {
+                id: "nas-sftp".to_string(),
                 name: "nas-sftp".to_string(),
                 host: "192.168.1.10".to_string(),
                 port: 22,
@@ -789,5 +802,54 @@ mystery gopher://old.example.com/0/
             let enc = url_encode(s);
             assert_eq!(&url_decode(&enc), s, "roundtrip failed for {}", s);
         }
+    }
+
+    /// Two profiles of one name (a list saved before names were unique) were
+    /// two bookmarks of one name, both with the second one's password, and
+    /// lftp opens only one of them.
+    #[test]
+    fn two_profiles_of_one_name_export_as_two_bookmarks_each_with_its_own_password() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<LftpExportServer>(
+            serde_json::json!({"host": "a.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+            serde_json::json!({"host": "b.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bookmarks");
+        let outcome = export_lftp(&servers, &passwords, &path).unwrap();
+        assert_eq!(outcome.exported, 2, "{:?}", outcome.skipped);
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            body.contains("\nLab sftp://u:secret-a@a.example.com\n"),
+            "{body}"
+        );
+        assert!(
+            body.contains("\nLab-2 sftp://u:secret-b@b.example.com\n"),
+            "{body}"
+        );
+    }
+
+    /// Two names the bookmark rules map onto one (`my lab`, `my_lab`) are
+    /// two bookmarks, not one written twice.
+    #[test]
+    fn names_that_become_one_bookmark_name_stay_two_bookmarks() {
+        let servers: Vec<LftpExportServer> = [("id-1", "my lab", "a"), ("id-2", "my_lab", "b")]
+            .into_iter()
+            .map(|(id, name, host)| {
+                serde_json::from_value(serde_json::json!({
+                    "id": id, "name": name, "host": format!("{host}.example.com"),
+                    "port": 22, "username": "u", "protocol": "sftp"
+                }))
+                .unwrap()
+            })
+            .collect();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bookmarks");
+        export_lftp(&servers, &HashMap::new(), &path).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("\nmy_lab sftp://u@a.example.com\n"), "{body}");
+        assert!(
+            body.contains("\nmy_lab-2 sftp://u@b.example.com\n"),
+            "{body}"
+        );
     }
 }
