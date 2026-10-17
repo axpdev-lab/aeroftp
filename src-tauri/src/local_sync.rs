@@ -381,11 +381,7 @@ pub async fn local_sync_run(
             // cannot leave a truncated file where the previous good mirror copy
             // was. The bounded async copy preserves source permissions; the
             // delta path already uses kill-safe rename-last writes.
-            let tmp = {
-                let mut t = dst.clone().into_os_string();
-                t.push(".aerotmp");
-                std::path::PathBuf::from(t)
-            };
+            let tmp = crate::util::temp_name::sibling(&dst, ".aerotmp");
             let copy_result = match copy_file_with_global_bandwidth(&src, &tmp).await {
                 Ok(n) => tokio::fs::rename(&tmp, &dst).await.map(|()| n),
                 Err(error) => Err(error),

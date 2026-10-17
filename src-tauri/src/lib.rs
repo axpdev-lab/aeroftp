@@ -7471,7 +7471,7 @@ struct ArchiveTempFile {
 impl ArchiveTempFile {
     fn new(final_path: &str) -> Self {
         Self {
-            tmp: std::path::PathBuf::from(format!("{}.aerotmp", final_path)),
+            tmp: crate::util::temp_name::sibling(std::path::Path::new(final_path), ".aerotmp"),
             committed: false,
         }
     }

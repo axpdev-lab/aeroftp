@@ -57,10 +57,6 @@
 #![cfg(feature = "aerorsync")]
 
 use std::path::Path;
-// Outside the symlink paths, which are unix-only, `PathBuf` is named by the
-// tests alone.
-#[cfg(any(unix, test))]
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -87,7 +83,7 @@ use crate::aerorsync::streaming_writer::{StreamingAtomicWriter, WriteAtomicError
 // Every reader of the temp suffix here, in the library and in the tests, sits
 // behind `cfg(unix)`: it names the slot the symlink path reuses.
 #[cfg(unix)]
-use crate::aerorsync::streaming_writer::TEMP_SUFFIX;
+use crate::aerorsync::streaming_writer::{temp_sibling, TEMP_SUFFIX};
 use crate::aerorsync::transport::{
     CancelHandle, RawRemoteShellTransport, RemoteShellTransport, TransportProbe,
 };
@@ -808,9 +804,7 @@ async fn create_symlink_atomic(
         // writer's temp was discarded just above, so the slot is free);
         // clear any stale leftover before `symlink`, which has
         // create-new semantics and would otherwise fail with EEXIST.
-        let mut temp_os = local_path.as_os_str().to_owned();
-        temp_os.push(TEMP_SUFFIX);
-        let temp_path = PathBuf::from(temp_os);
+        let temp_path = temp_sibling(local_path, TEMP_SUFFIX);
         let _ = fs::remove_file(&temp_path).await;
         fs::symlink(target, &temp_path)
             .await
@@ -2194,6 +2188,7 @@ mod tests {
     use super::*;
     use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
     use std::io::Write;
+    use std::path::PathBuf;
     use std::time::Duration;
     use tempfile::TempDir;
     use tokio::time::timeout;

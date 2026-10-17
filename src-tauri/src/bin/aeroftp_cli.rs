@@ -37824,7 +37824,10 @@ fn reject_oversize_cli_edit_download(data_len: usize) -> Result<(), String> {
 }
 
 fn cli_edit_temp_path(path: &str) -> String {
-    format!("{path}.aeroedit-{}.tmp", uuid::Uuid::new_v4())
+    ftp_client_gui_lib::util::temp_name::remote_sibling(
+        path,
+        &format!(".aeroedit-{}.tmp", uuid::Uuid::new_v4()),
+    )
 }
 
 async fn publish_cli_edit_via_temp_rename(
