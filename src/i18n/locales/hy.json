@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Գրանցել արխիվների ձևաչափերն ու Ֆայլերի դիտարկիչի ընտրացանկերը",
             "fileAssociationIntegrationDesc": "Փոփոխություններն ուժի մեջ են մտնում անմիջապես և պահպանվում են թարմացումների ժամանակ։ Windows-ն առանձին է կառավարում ձեր լռելյայն հավելվածները։",
             "fileAssociationIntegrationPortable": "Տեղադրեք AeroFTP-ը՝ Windows-ի ինտեգրումը փոխելու համար։",
-            "fileAssociationIntegrationAdmin": "Windows-ը կարող է ադմինիստրատորի թույլտվություն պահանջել՝ այս ընտրանքները փոխելու համար։"
+            "fileAssociationIntegrationAdmin": "Windows-ը կարող է ադմինիստրատորի թույլտվություն պահանջել՝ այս ընտրանքները փոխելու համար։",
+            "migrationServerProfilesFound": "Չկոդավորված պահոցում գտնվել է սերվերի {count} պրոֆիլ",
+            "migrationAiSettingsFound": "Չկոդավորված պահոցում գտնվել է AI կազմաձևում",
+            "migrationOauthFound": "Չկոդավորված պահոցում գտնվել է {count} OAuth հավատարմագիր",
+            "fontSystemInstall": "համակարգային տեղադրում",
+            "fontSizeMin": "նվազ",
+            "fontSizeMax": "առավ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Անվճար մակարդակը սահմանափակված է ամսական 25 կրեդիտով",
                 "fourshared": "Եթե թոքենը չեղարկվել է, նորից թույլատրեք ձեռքով"
             },
-            "profilesLoadFailed": "Ձեր պահված սերվերները չհաջողվեց կարդալ: {error}"
+            "profilesLoadFailed": "Ձեր պահված սերվերները չհաջողվեց կարդալ: {error}",
+            "cleanupSummary": "{count} ֆայլ, ազատվել է {size}"
         },
         "statusBar": {
             "connected": "Միացված է",
@@ -1593,7 +1600,8 @@
                 "title": "Axpdev Lab-ի թիմը",
                 "apRole": "Հիմնադիր, մշակող, սպասարկող, համադիզայներ",
                 "ekRole": "Հետազոտող, որակի ապահովման ինժեներ, համադիզայներ"
-            }
+            },
+            "madeBy": "{author} ընկերության կողմից"
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",
@@ -2014,7 +2022,11 @@
             "protonTooltip": "Օգտագործում է Proton Drive CLI - տեղադրեք, մուտք գործեք դիտարկիչում, AeroFTP-ը GUI-ն է",
             "twakeDesc": "Twake Drive (5 ԳԲ անվճար)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, ֆրանսիական բաց կոդով ամպ (Cozy Cloud-ն այժմ դրա մասն է) 5 ԳԲ անվճար",
-            "discoverTwake": "Linagora-ի բաց կոդով եվրոպական ամպը, այժմ Cozy Cloud-ի նոր տունը (5 ԳԲ անվճար)"
+            "discoverTwake": "Linagora-ի բաց կոդով եվրոպական ամպը, այժմ Cozy Cloud-ի նոր տունը (5 ԳԲ անվճար)",
+            "sourceforgeProject": "Նախագիծ (Unixname)",
+            "opendriveNotApiKey": "(ոչ ձեր OpenDrive API բանալին)",
+            "endpoint": "Վերջնակետ",
+            "accountId": "Հաշվի ID"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -2124,7 +2136,8 @@
             "confirmPassword": "Հաստատել գաղտնաբառը",
             "minLength": "Նվազագույնը 8 նիշ",
             "autoLockTimeout": "Ավտոմատ կողպման ժամանակ",
-            "enable": "Միացնել"
+            "enable": "Միացնել",
+            "setupBootstrapDescription": "Բանալիների պահոցը հասանելի չէ: սկզբնաբեռնման ռեժիմ գլխավոր գաղտնաբառով"
         },
         "search": {
             "remote_placeholder": "Որոնել հեռավոր ֆայլեր...",
@@ -2159,7 +2172,8 @@
             "email_placeholder": "Էլ. հասցե",
             "add": "Ավելացնել",
             "remove": "Հեռացնել",
-            "none": "Թույլտվություններ սահմանված չեն"
+            "none": "Թույլտվություններ սահմանված չեն",
+            "anyoneWithLink": "Հղում ունեցող ցանկացած ոք"
         },
         "locking": {
             "lock": "Կողպել ֆայլը",
@@ -2305,7 +2319,8 @@
             "canaryDryRun": "Ոչինչ չի փոխանցվում. սա ցույց է տալիս, թե ինչ կաներ լրիվ համաժամացումը՝ հաշվարկված նմուշից։ Սա aeroftp-cli sync --dry-run հրամանի (և rclone-ի --dry-run) գրաֆիկական համարժեքն է։",
             "templateImportPathPairs": "Օգտագործելի ուղիների զույգեր (տեղային/հեռավոր) այս կաղապարում՝ {count}։ AeroSync-ի պատուհանն աշխատում է ճիշտ մեկ զույգի հետ, ուստի ոչինչ չի ներմուծվել։ Խմբագրեք կաղապարը՝ թողնելով միայն մեկ զույգ, ապա նորից ներմուծեք այն։",
             "templateNamePlaceholder": "օր. Գիշերային պահուստավորում դեպի S3",
-            "templateDescPlaceholder": "Ինչի համար է այս ձևանմուշը (ըստ ցանկության)"
+            "templateDescPlaceholder": "Ինչի համար է այս ձևանմուշը (ըստ ցանկության)",
+            "templateExportCliDesc": "aeroftp-cli sync հրամանի փաթաթիչ ({shell})"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",
@@ -3175,6 +3190,52 @@
             "tokens": {
                 "breakdown": "{input} մուտքային տոկեն, {output} ելքային տոկեն, ըստ մատակարարի հաշվարկի",
                 "breakdownCache": "{input} մուտքային տոկեն, {output} ելքային տոկեն, {cacheRead} կարդացվել է հուշման քեշից, {cacheWritten} գրվել է դրա մեջ, ըստ մատակարարի հաշվարկի"
+            },
+            "executeOperations": "Կատարել {count} գործողություն",
+            "coding": {
+                "dryRun": "փորձնական գործարկում",
+                "apply": "կիրառել",
+                "timedOutAfter": "Ժամանակը սպառվեց {seconds}s հետո։",
+                "restore": {
+                    "previewNote": "Սա ցույց է տալիս վերահսկման կետից վերականգնման գործողությունների նախադիտումը՝ առանց ֆայլերը փոխելու։",
+                    "dangerNote": "Այս բարձր ռիսկի վերականգնումը կարող է վերագրանցել ֆայլերի ընթացիկ բովանդակությունը և ջնջել ֆայլեր, որոնք գոյություն չունեին վերահսկման կետում։",
+                    "wouldRewrite": "Կվերագրանցվեն",
+                    "rewritten": "Վերագրանցված",
+                    "wouldDelete": "Կջնջվեն",
+                    "deleted": "Ջնջված",
+                    "wouldSkip": "Բաց կթողնվեն",
+                    "skipped": "Բաց թողնված",
+                    "existedAtCheckpoint": "գոյություն ուներ վերահսկման կետում",
+                    "absentAtCheckpoint": "բացակայում էր վերահսկման կետում"
+                },
+                "checks": {
+                    "exitSummary": "ելքի կոդ {code} · {seconds}s",
+                    "continueOnFailure": "Գործարկում է բոլոր ստուգումները, նույնիսկ եթե մեկը ձախողվի։",
+                    "stopOnFailure": "Կանգ է առնում առաջին ձախողված ստուգման վրա։"
+                },
+                "diagnostics": {
+                    "none": "Ախտորոշումներ չեն հաղորդվել։"
+                },
+                "search": {
+                    "none": "Համընկնումներ չեն գտնվել։"
+                },
+                "git": {
+                    "noStagedDiff": "Նախապատրաստված փոփոխությունների diff ելք չկա։",
+                    "noUnstagedDiff": "Չնախապատրաստված փոփոխությունների diff ելք չկա։",
+                    "staged": "նախապատրաստված",
+                    "unstaged": "չնախապատրաստված",
+                    "commitApproval": "Git կոմիթի հաստատում",
+                    "stageApproval": "Git նախապատրաստման հաստատում",
+                    "commitNote": "Սա ստեղծում է git կոմիթ ընթացիկ նախապատրաստված ինդեքսից։ Նախ ստուգեք coding_git_status և coding_git_diff գործիքները staged=true պարամետրով։",
+                    "stagePreviewNote": "Սա նախադիտում է, թե պահանջված ուղիներից որոնք կնախապատրաստվեին։ Ինդեքսը չի փոխվի։",
+                    "stageNote": "Սա փոխում է git ինդեքսը պահանջված ուղիների համար։"
+                },
+                "patch": {
+                    "validateNote": "Սա վավերացնում է պատչը՝ առանց ֆայլերը փոխելու։",
+                    "applyNote": "Բարձր վտանգի այս կիրառման հարցումը գրում է ֆայլերը այն բանից հետո, երբ backend համակարգը ստեղծում է կիրառումից առաջ վերահսկման կետ։",
+                    "hideDiff": "Թաքցնել միասնական diff",
+                    "showDiff": "Ցույց տալ միասնական diff"
+                }
             }
         },
         "archive": {
@@ -3400,7 +3461,9 @@
             "repairDryRunCanRepair": "Փորձնական գործարկում՝ {repaired} վնասված կտոր հնարավոր է վերականգնել։ Ոչինչ չի գրառվել։",
             "repairDryRunMetadata": "Փորձնական գործարկում՝ պահոցի վերնագիրը կամ մանիֆեստը հնարավոր է վերակառուցել զույգությունից։ Ոչինչ չի գրառվել։",
             "metadataRepaired": "Պահոցի վերնագիրը կամ մանիֆեստը վերակառուցվեց զույգությունից։",
-            "repairMetadataSuccess": "Վերականգնումն ավարտված է՝ պահոցի վերնագիրը կամ մանիֆեստը վերակառուցվեց զույգությունից"
+            "repairMetadataSuccess": "Վերականգնումն ավարտված է՝ պահոցի վերնագիրը կամ մանիֆեստը վերակառուցվեց զույգությունից",
+            "errorCorrectionBadge": "Սխալների ուղղում",
+            "itemsInFolder": "{count} տարր /{folder} թղթապանակում"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",
@@ -3758,7 +3821,11 @@
             "keepFirstFound": "Առաջինը գտնվածը",
             "selectAllButOne": "Ընտրել բոլորը, բացի մեկից՝ ամեն խմբում",
             "everyCopyTicked": "բոլոր պատճեններն ընտրված են",
-            "everyCopyTickedHint": "Յուրաքանչյուր ընդգծված խմբում հանեք մեկ պատճենի նշումը. հակառակ դեպքում կջնջվեն բոլորը։"
+            "everyCopyTickedHint": "Յուրաքանչյուր ընդգծված խմբում հանեք առնվազն մեկ պատճենի նշումը. եթե բոլոր պատճեններն ընտրված լինեն, բոլորը կջնջվեն։",
+            "modeExactHint": "Բայթ առ բայթ նույնական",
+            "modeNonIdenticalHint": "Ընկալողական կամ տեքստային նմանություն, առանց ավտոմատ ջնջման",
+            "potentialWasteSelected": "հնարավոր վատնում (ընտրված)",
+            "similarityDistance": "{similarity}, հեռավ. {distance}"
         },
         "diskUsage": {
             "title": "Սկավառակի օգտագործում",
@@ -4384,7 +4451,9 @@
                 "next": "Հաջորդ",
                 "scanQr": "Ավելացրեք այս գաղտնիքը ձեր նույնականացման հավելվածում (Google Authenticator, Authy, Microsoft Authenticator)։ Կամ մուտքագրեք ձեռքով բանալին՝",
                 "setup": "Երկգործոն նույնականացում",
-                "verify": "Ստուգել և միացնել"
+                "verify": "Ստուգել և միացնել",
+                "active": "2FA ակտիվ է",
+                "inactive": "2FA ակտիվ չէ"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Ճյուղ",
             "pagesPath": "Ուղի",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Լիազորել",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Միացման էկրանին օգտագործեք «Լիազորել GitHub-ի միջոցով»՝ Device Flow-ով նույնականացվելու համար։ Տոկենն ապահով պահվում է պահոցում։",
@@ -4843,7 +4912,12 @@
             "branchList": "Ճյուղերի ցանկ",
             "noBranches": "Ճյուղեր չեն գտնվել",
             "rawUrlCopied": "Չմշակված URL-ը պատճենվեց",
-            "working": "աշխատում է"
+            "working": "աշխատում է",
+            "pagesDnsIssue": "Հայտնաբերվել է DNS խնդիր",
+            "releaseAssetOne": "{count} ֆայլ",
+            "releaseAssetMany": "{count} ֆայլ",
+            "repoPrivate": "Մասնավոր",
+            "repoPublic": "Հանրային"
         },
         "filenNotes": {
             "title": "Գաղտնագրված գրառումներ",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Կանգնեցնել",
             "compareStopped": "Համեմատումը կանգնեցվել է։",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Համեմատումը կարդում է երկու պանակները և դրանց տակ գտնվող բոլոր պանակները։ Մեծ ծառի դեպքում դա կարող է որոշ ժամանակ տևել, և դուք կարող եք այն կանգնեցնել։"
+            "compareStartHint": "Համեմատումը կարդում է երկու պանակները և դրանց տակ գտնվող բոլոր պանակները։ Մեծ ծառի դեպքում դա կարող է որոշ ժամանակ տևել, և դուք կարող եք այն կանգնեցնել։",
+            "progressDelta": "[դելտա]",
+            "progressCopy": "[պատճեն]"
         },
         "accountLock": {
             "title": "Ընտրեք հաշիվ",

@@ -4,8 +4,10 @@
 import { useState, useCallback } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { copyText } from '../utils/clipboard';
+import { useTranslation } from '../i18n';
 
 export const CopyButton: React.FC<{ text: string; label?: string }> = ({ text, label }) => {
+    const t = useTranslation();
     const [copied, setCopied] = useState(false);
     const handleCopy = useCallback(async () => {
         try {
@@ -22,7 +24,7 @@ export const CopyButton: React.FC<{ text: string; label?: string }> = ({ text, l
             title={label}
         >
             {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-            {copied ? 'Copied!' : (label || 'Copy')}
+            {copied ? t('common.copied') : (label || t('common.copy'))}
         </button>
     );
 };

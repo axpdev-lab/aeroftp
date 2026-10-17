@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "আর্কাইভ ফরম্যাট ও ফাইল এক্সপ্লোরারের মেনু নিবন্ধন করুন",
             "fileAssociationIntegrationDesc": "পরিবর্তনগুলো এখনই কার্যকর হবে এবং আপডেটের পরও থাকবে। Windows আপনার ডিফল্ট অ্যাপগুলো আলাদাভাবে পরিচালনা করে।",
             "fileAssociationIntegrationPortable": "Windows-এর সঙ্গে সমন্বয় পরিবর্তন করতে AeroFTP ইনস্টল করুন।",
-            "fileAssociationIntegrationAdmin": "এই বিকল্পগুলো পরিবর্তন করতে Windows প্রশাসকের অনুমতি চাইতে পারে।"
+            "fileAssociationIntegrationAdmin": "এই বিকল্পগুলো পরিবর্তন করতে Windows প্রশাসকের অনুমতি চাইতে পারে।",
+            "migrationServerProfilesFound": "এনক্রিপ্ট না করা স্টোরেজে {count} টি সার্ভার প্রোফাইল পাওয়া গেছে",
+            "migrationAiSettingsFound": "এনক্রিপ্ট না করা স্টোরেজে AI কনফিগারেশন পাওয়া গেছে",
+            "migrationOauthFound": "এনক্রিপ্ট না করা স্টোরেজে {count} টি OAuth ক্রেডেনশিয়াল পাওয়া গেছে",
+            "fontSystemInstall": "সিস্টেমে ইনস্টল",
+            "fontSizeMin": "সর্বনিম্ন",
+            "fontSizeMax": "সর্বোচ্চ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "বিনামূল্যের স্তরে প্রতি মাসে সর্বোচ্চ ২৫ ক্রেডিট",
                 "fourshared": "টোকেন প্রত্যাহার করা হলে নিজে আবার অনুমোদন দিন"
             },
-            "profilesLoadFailed": "আপনার সংরক্ষিত সার্ভারগুলো পড়া যায়নি: {error}"
+            "profilesLoadFailed": "আপনার সংরক্ষিত সার্ভারগুলো পড়া যায়নি: {error}",
+            "cleanupSummary": "{count} টি ফাইল, {size} খালি করা হয়েছে"
         },
         "statusBar": {
             "connected": "সংযুক্ত",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab টিম",
                 "apRole": "প্রতিষ্ঠাতা, ডেভেলপার, রক্ষণাবেক্ষণকারী, সহ-ডিজাইনার",
                 "ekRole": "গবেষক, কোয়ালিটি অ্যাসিউরেন্স ইঞ্জিনিয়ার, সহ-ডিজাইনার"
-            }
+            },
+            "madeBy": "{author} দ্বারা"
         },
         "support": {
             "title": "AeroFTP সমর্থন করুন",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Proton Drive CLI ব্যবহার করে - ইনস্টল করুন, ব্রাউজারে সাইন ইন করুন, AeroFTP হলো GUI",
             "twakeDesc": "Twake Drive (৫ GB বিনামূল্যে)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, একটি ফরাসি ওপেন-সোর্স ক্লাউড (Cozy Cloud এখন এর অংশ) 5 GB ফ্রি সহ",
-            "discoverTwake": "Linagora-এর ওপেন-সোর্স ইউরোপীয় ক্লাউড, এখন Cozy Cloud-এর নতুন ঠিকানা (5 GB ফ্রি)"
+            "discoverTwake": "Linagora-এর ওপেন-সোর্স ইউরোপীয় ক্লাউড, এখন Cozy Cloud-এর নতুন ঠিকানা (5 GB ফ্রি)",
+            "sourceforgeProject": "প্রকল্প (Unixname)",
+            "opendriveNotApiKey": "(আপনার OpenDrive API কী নয়)",
+            "endpoint": "এন্ডপয়েন্ট",
+            "accountId": "অ্যাকাউন্ট ID"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "পাসওয়ার্ড নিশ্চিত করুন",
             "minLength": "সর্বনিম্ন ৮ অক্ষর",
             "autoLockTimeout": "স্বয়ংক্রিয় লক টাইমআউট",
-            "enable": "সক্রিয় করুন"
+            "enable": "সক্রিয় করুন",
+            "setupBootstrapDescription": "কিরিং অনুপলব্ধ: মাস্টার পাসওয়ার্ড বুটস্ট্র্যাপ মোড"
         },
         "search": {
             "remote_placeholder": "রিমোট ফাইল খুঁজুন...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "ইমেল ঠিকানা",
             "add": "যোগ করুন",
             "remove": "সরান",
-            "none": "কোনো অনুমতি সেট করা নেই"
+            "none": "কোনো অনুমতি সেট করা নেই",
+            "anyoneWithLink": "লিঙ্ক থাকা যে কেউ"
         },
         "locking": {
             "lock": "ফাইল লক করুন",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "কিছুই স্থানান্তরিত হয় না: এটি একটি সম্পূর্ণ সিঙ্ক কী করবে তার পূর্বরূপ দেখায়, নমুনা থেকে গণনা করা। এটি CLI-এর aeroftp-cli sync --dry-run (এবং rclone-এর --dry-run) এর GUI সমতুল্য।",
             "templateImportPathPairs": "এই টেমপ্লেটে ব্যবহারযোগ্য স্থানীয়/রিমোট পাথ জোড়া: {count}। একটি AeroSync উইন্ডো ঠিক একটি জোড়া নিয়ে কাজ করে, তাই কিছুই আমদানি করা হয়নি। টেমপ্লেট সম্পাদনা করে কেবল একটি জোড়া রাখুন, তারপর আবার আমদানি করুন।",
             "templateNamePlaceholder": "যেমন S3-তে রাতের ব্যাকআপ",
-            "templateDescPlaceholder": "এই টেমপ্লেটটি কীসের জন্য (ঐচ্ছিক)"
+            "templateDescPlaceholder": "এই টেমপ্লেটটি কীসের জন্য (ঐচ্ছিক)",
+            "templateExportCliDesc": "aeroftp-cli sync মোড়ক স্ক্রিপ্ট ({shell})"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} ইনপুট টোকেন, {output} আউটপুট টোকেন, প্রদানকারীর গণনা অনুযায়ী",
                 "breakdownCache": "{input} ইনপুট টোকেন, {output} আউটপুট টোকেন, প্রম্পট ক্যাশ থেকে {cacheRead} পড়া হয়েছে, এতে {cacheWritten} লেখা হয়েছে, প্রদানকারীর গণনা অনুযায়ী"
+            },
+            "executeOperations": "{count} টি অপারেশন চালান",
+            "coding": {
+                "dryRun": "ড্রাই-রান",
+                "apply": "প্রয়োগ",
+                "timedOutAfter": "{seconds}s পরে সময় শেষ হয়েছে।",
+                "restore": {
+                    "previewNote": "এটি কোনো ফাইল পরিবর্তন না করে চেকপয়েন্ট পুনরুদ্ধারের কাজগুলোর প্রিভিউ দেখায়।",
+                    "dangerNote": "এই উচ্চ ঝুঁকিপূর্ণ পুনরুদ্ধার বর্তমান ফাইলের বিষয়বস্তু ওভাররাইট করতে পারে এবং চেকপয়েন্টের সময় যেসব ফাইল ছিল না সেগুলো মুছে ফেলতে পারে।",
+                    "wouldRewrite": "পুনর্লিখিত হবে",
+                    "rewritten": "পুনর্লিখিত",
+                    "wouldDelete": "মুছে ফেলা হবে",
+                    "deleted": "মুছে ফেলা হয়েছে",
+                    "wouldSkip": "এড়িয়ে যাওয়া হবে",
+                    "skipped": "এড়িয়ে যাওয়া হয়েছে",
+                    "existedAtCheckpoint": "চেকপয়েন্টে বিদ্যমান ছিল",
+                    "absentAtCheckpoint": "চেকপয়েন্টে অনুপস্থিত ছিল"
+                },
+                "checks": {
+                    "exitSummary": "প্রস্থান কোড {code} · {seconds}s",
+                    "continueOnFailure": "একটি ব্যর্থ হলেও সব পরীক্ষা চালায়।",
+                    "stopOnFailure": "প্রথম ব্যর্থ পরীক্ষায় থেমে যায়।"
+                },
+                "diagnostics": {
+                    "none": "কোনো ডায়াগনস্টিক রিপোর্ট করা হয়নি।"
+                },
+                "search": {
+                    "none": "কোনো মিল পাওয়া যায়নি।"
+                },
+                "git": {
+                    "noStagedDiff": "স্টেজ করা পরিবর্তনের কোনো diff আউটপুট নেই।",
+                    "noUnstagedDiff": "স্টেজ না করা পরিবর্তনের কোনো diff আউটপুট নেই।",
+                    "staged": "স্টেজ করা",
+                    "unstaged": "স্টেজ না করা",
+                    "commitApproval": "Git কমিট অনুমোদন",
+                    "stageApproval": "Git স্টেজ অনুমোদন",
+                    "commitNote": "এটি বর্তমান স্টেজ করা ইনডেক্স থেকে একটি git কমিট তৈরি করে। আগে staged=true সহ coding_git_status এবং coding_git_diff পর্যালোচনা করুন।",
+                    "stagePreviewNote": "এটি পূর্বরূপ দেখায় অনুরোধ করা কোন পাথগুলো স্টেজ করা হবে; ইনডেক্স পরিবর্তন হবে না।",
+                    "stageNote": "এটি অনুরোধ করা পাথগুলোর জন্য git ইনডেক্স পরিবর্তন করে।"
+                },
+                "patch": {
+                    "validateNote": "এটি কোনো ফাইল পরিবর্তন না করে প্যাচটি যাচাই করে।",
+                    "applyNote": "এই উচ্চ ঝুঁকির প্রয়োগ অনুরোধটি ব্যাকএন্ড প্রয়োগের আগের একটি চেকপয়েন্ট তৈরি করার পর ফাইল লেখে।",
+                    "hideDiff": "ইউনিফায়েড diff লুকান",
+                    "showDiff": "ইউনিফায়েড diff দেখান"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "ড্রাই-রান: {repaired}টি ক্ষতিগ্রস্ত চাঙ্ক মেরামত করা যাবে। কিছুই লেখা হয়নি।",
             "repairDryRunMetadata": "ড্রাই-রান: প্যারিটি থেকে ভল্ট হেডার বা ম্যানিফেস্ট পুনর্নির্মাণ করা যাবে। কিছুই লেখা হয়নি।",
             "metadataRepaired": "প্যারিটি থেকে ভল্ট হেডার বা ম্যানিফেস্ট পুনর্নির্মাণ করা হয়েছে।",
-            "repairMetadataSuccess": "মেরামত সম্পন্ন: প্যারিটি থেকে ভল্ট হেডার বা ম্যানিফেস্ট পুনর্নির্মাণ করা হয়েছে"
+            "repairMetadataSuccess": "মেরামত সম্পন্ন: প্যারিটি থেকে ভল্ট হেডার বা ম্যানিফেস্ট পুনর্নির্মাণ করা হয়েছে",
+            "errorCorrectionBadge": "ত্রুটি সংশোধন",
+            "itemsInFolder": "/{folder} ফোল্ডারে {count} টি আইটেম"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "প্রথম পাওয়া",
             "selectAllButOne": "প্রতি গ্রুপে একটি বাদে সব নির্বাচন করুন",
             "everyCopyTicked": "সব কপি টিক দেওয়া",
-            "everyCopyTickedHint": "প্রতিটি চিহ্নিত গ্রুপে একটি কপির টিক তুলে দিন: নাহলে সব কপি মুছে যাবে।"
+            "everyCopyTickedHint": "প্রতিটি হাইলাইট করা গ্রুপে অন্তত একটি কপির টিক তুলে দিন: সব কপিতে টিক দেওয়া থাকলে সবগুলোই মুছে যাবে।",
+            "modeExactHint": "বাইট বাই বাইট অভিন্ন",
+            "modeNonIdenticalHint": "দৃশ্যগত বা টেক্সট সাদৃশ্য, স্বয়ংক্রিয় মুছে ফেলা নেই",
+            "potentialWasteSelected": "সম্ভাব্য অপচয় (নির্বাচিত)",
+            "similarityDistance": "{similarity}, দূরত্ব {distance}"
         },
         "diskUsage": {
             "title": "ডিস্ক ব্যবহার",
@@ -4384,7 +4451,9 @@
                 "next": "পরবর্তী",
                 "scanQr": "আপনার অথেন্টিকেটর অ্যাপে এই গোপনীয়তা যোগ করুন (Google Authenticator, Authy, Microsoft Authenticator)। অথবা ম্যানুয়াল কী লিখুন:",
                 "setup": "দ্বি-ধাপ প্রমাণীকরণ",
-                "verify": "যাচাই ও সক্রিয় করুন"
+                "verify": "যাচাই ও সক্রিয় করুন",
+                "active": "2FA সক্রিয়",
+                "inactive": "2FA নিষ্ক্রিয়"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "শাখা",
             "pagesPath": "পাথ",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "অনুমোদন করুন",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "ব্রাঞ্চের তালিকা",
             "noBranches": "কোনো ব্রাঞ্চ পাওয়া যায়নি",
             "rawUrlCopied": "Raw URL কপি করা হয়েছে",
-            "working": "চলছে"
+            "working": "চলছে",
+            "pagesDnsIssue": "DNS সমস্যা সনাক্ত করা হয়েছে",
+            "releaseAssetOne": "{count} টি অ্যাসেট",
+            "releaseAssetMany": "{count} টি অ্যাসেট",
+            "repoPrivate": "ব্যক্তিগত",
+            "repoPublic": "সর্বজনীন"
         },
         "filenNotes": {
             "title": "এনক্রিপ্টেড নোট",
@@ -5620,7 +5694,9 @@
             "stopCompare": "থামান",
             "compareStopped": "তুলনা থামানো হয়েছে।",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "তুলনা দুটি ফোল্ডার এবং তাদের ভেতরের সব ফোল্ডার পড়ে। বড় ট্রিতে কিছুটা সময় লাগতে পারে, এবং আপনি এটি থামাতে পারেন।"
+            "compareStartHint": "তুলনা দুটি ফোল্ডার এবং তাদের ভেতরের সব ফোল্ডার পড়ে। বড় ট্রিতে কিছুটা সময় লাগতে পারে, এবং আপনি এটি থামাতে পারেন।",
+            "progressDelta": "[ডেল্টা]",
+            "progressCopy": "[কপি]"
         },
         "accountLock": {
             "title": "একটি অ্যাকাউন্ট বেছে নিন",

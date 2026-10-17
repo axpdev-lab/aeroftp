@@ -2193,7 +2193,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {FONT_PRESETS.map((preset) => (
                                                         <option key={preset.value} value={preset.value}>
                                                             {preset.label}
-                                                            {preset.bundled ? '' : ' • system install'}
+                                                            {preset.bundled ? '' : ` • ${t('settings.fontSystemInstall')}`}
                                                         </option>
                                                     ))}
                                                     <option value={CUSTOM_FONT_VALUE}>Custom...</option>
@@ -3090,7 +3090,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div className="flex items-center gap-2">
                                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${totpEnabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
                                                 <Shield size={12} />
-                                                {totpEnabled ? '2FA Active' : '2FA Inactive'}
+                                                {totpEnabled ? t('security.totp.active') : t('security.totp.inactive')}
                                             </span>
                                         </div>
 

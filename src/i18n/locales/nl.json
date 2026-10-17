@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Archiefindelingen en Verkenner-menu’s registreren",
             "fileAssociationIntegrationDesc": "Wijzigingen worden direct toegepast en blijven behouden bij updates. Windows beheert je standaardapps afzonderlijk.",
             "fileAssociationIntegrationPortable": "Installeer AeroFTP om de Windows-integratie te wijzigen.",
-            "fileAssociationIntegrationAdmin": "Windows kan om beheerdersrechten vragen om deze opties te wijzigen."
+            "fileAssociationIntegrationAdmin": "Windows kan om beheerdersrechten vragen om deze opties te wijzigen.",
+            "migrationServerProfilesFound": "{count} serverprofielen gevonden in onversleutelde opslag",
+            "migrationAiSettingsFound": "AI-configuratie gevonden in onversleutelde opslag",
+            "migrationOauthFound": "{count} OAuth-inloggegevens gevonden in onversleutelde opslag",
+            "fontSystemInstall": "systeeminstallatie",
+            "fontSizeMin": "min",
+            "fontSizeMax": "max"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Gratis niveau beperkt tot 25 credits per maand",
                 "fourshared": "Autoriseer handmatig opnieuw als het token is ingetrokken"
             },
-            "profilesLoadFailed": "Je opgeslagen servers konden niet worden gelezen: {error}"
+            "profilesLoadFailed": "Je opgeslagen servers konden niet worden gelezen: {error}",
+            "cleanupSummary": "{count} bestanden, {size} vrijgemaakt"
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -1600,7 +1607,8 @@
                 "title": "Het Axpdev Lab-team",
                 "apRole": "Oprichter, ontwikkelaar, maintainer, mede-ontwerper",
                 "ekRole": "Onderzoeker, kwaliteitsborgingsingenieur, mede-ontwerper"
-            }
+            },
+            "madeBy": "door {author}"
         },
         "support": {
             "title": "Steun AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Gebruikt de Proton Drive CLI - installeer, meld u aan in de browser, AeroFTP is de GUI",
             "twakeDesc": "Twake Drive (5 GB gratis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Franse open source cloud (Cozy Cloud maakt er nu deel van uit) met 5 GB gratis",
-            "discoverTwake": "Europese open source cloud van Linagora, nu de nieuwe thuisbasis van Cozy Cloud (5 GB gratis)"
+            "discoverTwake": "Europese open source cloud van Linagora, nu de nieuwe thuisbasis van Cozy Cloud (5 GB gratis)",
+            "sourceforgeProject": "Project (Unixname)",
+            "opendriveNotApiKey": "(niet uw OpenDrive API-sleutel)",
+            "endpoint": "Endpoint",
+            "accountId": "Account-ID"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Wachtwoord bevestigen",
             "minLength": "Minimaal 8 tekens",
             "autoLockTimeout": "Time-out automatisch vergrendelen",
-            "enable": "Inschakelen"
+            "enable": "Inschakelen",
+            "setupBootstrapDescription": "Sleutelhanger niet beschikbaar: bootstrapmodus met hoofdwachtwoord"
         },
         "search": {
             "remote_placeholder": "Externe bestanden zoeken...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "E-mailadres",
             "add": "Toevoegen",
             "remove": "Verwijderen",
-            "none": "Geen rechten ingesteld"
+            "none": "Geen rechten ingesteld",
+            "anyoneWithLink": "Iedereen met de link"
         },
         "locking": {
             "lock": "Bestand vergrendelen",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Er wordt niets overgedragen: dit toont een voorbeeld van wat een volledige synchronisatie zou doen, berekend op basis van de steekproef. Het is de grafische tegenhanger van het CLI-commando aeroftp-cli sync --dry-run (en --dry-run van rclone).",
             "templateImportPathPairs": "Bruikbare padparen (lokaal/extern) in deze sjabloon: {count}. Een AeroSync-venster werkt met precies één paar, dus er is niets geïmporteerd. Bewerk de sjabloon zodat er maar één paar overblijft en importeer hem daarna opnieuw.",
             "templateNamePlaceholder": "bijv. Nachtelijke back-up naar S3",
-            "templateDescPlaceholder": "Waarvoor dit sjabloon dient (optioneel)"
+            "templateDescPlaceholder": "Waarvoor dit sjabloon dient (optioneel)",
+            "templateExportCliDesc": "Wrapperscript voor aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} invoertokens, {output} uitvoertokens, zoals geteld door de provider",
                 "breakdownCache": "{input} invoertokens, {output} uitvoertokens, {cacheRead} gelezen uit de promptcache, {cacheWritten} ernaar geschreven, zoals geteld door de provider"
+            },
+            "executeOperations": "{count} bewerking(en) uitvoeren",
+            "coding": {
+                "dryRun": "proefrun",
+                "apply": "toepassen",
+                "timedOutAfter": "Tijdslimiet bereikt na {seconds}s.",
+                "restore": {
+                    "previewNote": "Dit toont een voorbeeld van de herstelacties vanaf het controlepunt zonder bestanden te wijzigen.",
+                    "dangerNote": "Dit herstel met hoog risico kan de huidige bestandsinhoud overschrijven en bestanden verwijderen die bij het controlepunt niet bestonden.",
+                    "wouldRewrite": "Zou herschrijven",
+                    "rewritten": "Herschreven",
+                    "wouldDelete": "Zou verwijderen",
+                    "deleted": "Verwijderd",
+                    "wouldSkip": "Zou overslaan",
+                    "skipped": "Overgeslagen",
+                    "existedAtCheckpoint": "bestond bij controlepunt",
+                    "absentAtCheckpoint": "ontbrak bij controlepunt"
+                },
+                "checks": {
+                    "exitSummary": "afsluitcode {code} · {seconds}s",
+                    "continueOnFailure": "Voert alle controles uit, ook als er een mislukt.",
+                    "stopOnFailure": "Stopt bij de eerste mislukte controle."
+                },
+                "diagnostics": {
+                    "none": "Geen diagnostiek gemeld."
+                },
+                "search": {
+                    "none": "Geen overeenkomsten gevonden."
+                },
+                "git": {
+                    "noStagedDiff": "Geen diff-uitvoer voor klaargezette wijzigingen.",
+                    "noUnstagedDiff": "Geen diff-uitvoer voor niet-klaargezette wijzigingen.",
+                    "staged": "klaargezet",
+                    "unstaged": "niet klaargezet",
+                    "commitApproval": "Goedkeuring Git-commit",
+                    "stageApproval": "Goedkeuring Git-klaarzetten",
+                    "commitNote": "Dit maakt een git-commit van de huidige klaargezette index. Controleer eerst coding_git_status en coding_git_diff met staged=true.",
+                    "stagePreviewNote": "Dit toont een voorbeeld van welke gevraagde paden klaargezet zouden worden; de index verandert niet.",
+                    "stageNote": "Dit wijzigt de git-index voor de gevraagde paden."
+                },
+                "patch": {
+                    "validateNote": "Dit valideert de patch zonder bestanden te wijzigen.",
+                    "applyNote": "Dit toepassingsverzoek met hoog risico schrijft bestanden nadat de backend een controlepunt vóór het toepassen heeft gemaakt.",
+                    "hideDiff": "Uniforme diff verbergen",
+                    "showDiff": "Uniforme diff tonen"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Dry-run: {repaired} beschadigde chunk(s) kunnen worden hersteld. Er is niets geschreven.",
             "repairDryRunMetadata": "Dry-run: de vault-header of het manifest kan uit de pariteit worden herbouwd. Er is niets geschreven.",
             "metadataRepaired": "Vault-header of manifest uit de pariteit herbouwd.",
-            "repairMetadataSuccess": "Reparatie voltooid: vault-header of manifest uit de pariteit herbouwd"
+            "repairMetadataSuccess": "Reparatie voltooid: vault-header of manifest uit de pariteit herbouwd",
+            "errorCorrectionBadge": "Foutcorrectie",
+            "itemsInFolder": "{count} items in de map /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Eerst gevonden",
             "selectAllButOne": "Alles op één na per groep selecteren",
             "everyCopyTicked": "alle kopieën aangevinkt",
-            "everyCopyTickedHint": "Vink in elke gemarkeerde groep één kopie uit: anders worden alle kopieën verwijderd."
+            "everyCopyTickedHint": "Vink in elke gemarkeerde groep ten minste één kopie uit: als alle kopieën aangevinkt zijn, zouden ze allemaal verwijderd worden.",
+            "modeExactHint": "Byte voor byte identiek",
+            "modeNonIdenticalHint": "Perceptuele of tekstuele gelijkenis, geen automatisch verwijderen",
+            "potentialWasteSelected": "mogelijk verspild (geselecteerd)",
+            "similarityDistance": "{similarity}, afst. {distance}"
         },
         "diskUsage": {
             "title": "Schijfgebruik",
@@ -4384,7 +4451,9 @@
                 "next": "Volgende",
                 "scanQr": "Voeg dit geheim toe aan uw authenticatie-app (Google Authenticator, Authy, Microsoft Authenticator). Of voer de handmatige sleutel in:",
                 "setup": "Tweefactorauthenticatie",
-                "verify": "Verifiëren en inschakelen"
+                "verify": "Verifiëren en inschakelen",
+                "active": "2FA actief",
+                "inactive": "2FA inactief"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Branch",
             "pagesPath": "Pad",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autoriseren",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Lijst met branches",
             "noBranches": "Geen branches gevonden",
             "rawUrlCopied": "Ruwe URL gekopieerd",
-            "working": "bezig"
+            "working": "bezig",
+            "pagesDnsIssue": "DNS-probleem gedetecteerd",
+            "releaseAssetOne": "{count} bestand",
+            "releaseAssetMany": "{count} bestanden",
+            "repoPrivate": "Privé",
+            "repoPublic": "Openbaar"
         },
         "filenNotes": {
             "title": "Versleutelde notities",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Stoppen",
             "compareStopped": "Vergelijking gestopt.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "De vergelijking leest beide mappen en alle mappen daaronder. Bij een grote boomstructuur kan dit even duren, en je kunt het stoppen."
+            "compareStartHint": "De vergelijking leest beide mappen en alle mappen daaronder. Bij een grote boomstructuur kan dit even duren, en je kunt het stoppen.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopie]"
         },
         "accountLock": {
             "title": "Kies een account",

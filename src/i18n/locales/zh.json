@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "注册压缩文件格式和资源管理器菜单",
             "fileAssociationIntegrationDesc": "更改立即生效，并在更新时保留。Windows 会单独管理默认应用。",
             "fileAssociationIntegrationPortable": "请安装 AeroFTP 以更改 Windows 集成。",
-            "fileAssociationIntegrationAdmin": "更改这些选项时，Windows 可能会请求管理员权限。"
+            "fileAssociationIntegrationAdmin": "更改这些选项时，Windows 可能会请求管理员权限。",
+            "migrationServerProfilesFound": "在未加密存储中发现 {count} 个服务器配置",
+            "migrationAiSettingsFound": "在未加密存储中发现 AI 配置",
+            "migrationOauthFound": "在未加密存储中发现 {count} 个 OAuth 凭据",
+            "fontSystemInstall": "需系统安装",
+            "fontSizeMin": "最小",
+            "fontSizeMax": "最大"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "免费套餐每月限 25 个积分",
                 "fourshared": "如果令牌被撤销，请手动重新授权"
             },
-            "profilesLoadFailed": "无法读取已保存的服务器：{error}"
+            "profilesLoadFailed": "无法读取已保存的服务器：{error}",
+            "cleanupSummary": "{count} 个文件，已释放 {size}"
         },
         "statusBar": {
             "connected": "已连接",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab 团队",
                 "apRole": "创始人、开发者、维护者、联合设计者",
                 "ekRole": "研究员、质量保证工程师、联合设计者"
-            }
+            },
+            "madeBy": "{author} 出品"
         },
         "support": {
             "title": "支持 AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "使用 Proton Drive CLI - 安装，在浏览器中登录，AeroFTP 即为 GUI",
             "twakeDesc": "Twake Drive(免费 5 GB)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace,法国开源云盘(Cozy Cloud 现已成为其一部分),免费 5 GB",
-            "discoverTwake": "Linagora 打造的欧洲开源云盘,现为 Cozy Cloud 的新家(免费 5 GB)"
+            "discoverTwake": "Linagora 打造的欧洲开源云盘,现为 Cozy Cloud 的新家(免费 5 GB)",
+            "sourceforgeProject": "项目 (Unixname)",
+            "opendriveNotApiKey": "(不是您的 OpenDrive API 密钥)",
+            "endpoint": "端点",
+            "accountId": "账户 ID"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "确认密码",
             "minLength": "至少 8 个字符",
             "autoLockTimeout": "自动锁定超时",
-            "enable": "启用"
+            "enable": "启用",
+            "setupBootstrapDescription": "密钥环不可用：主密码引导模式"
         },
         "search": {
             "remote_placeholder": "搜索远程文件...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "电子邮件地址",
             "add": "添加",
             "remove": "移除",
-            "none": "未设置权限"
+            "none": "未设置权限",
+            "anyoneWithLink": "任何拥有链接的人"
         },
         "locking": {
             "lock": "锁定文件",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "不会传输任何内容：这会根据样本预览完整同步将执行的操作。它是 CLI 命令 aeroftp-cli sync --dry-run（以及 rclone 的 --dry-run）的图形界面对应功能。",
             "templateImportPathPairs": "此模板中可用的本地/远程路径对：{count}。一个 AeroSync 窗口恰好对应一个路径对，因此未导入任何内容。请编辑模板，只保留一个路径对，然后重新导入。",
             "templateNamePlaceholder": "例如：夜间备份到 S3",
-            "templateDescPlaceholder": "此模板的用途（可选）"
+            "templateDescPlaceholder": "此模板的用途（可选）",
+            "templateExportCliDesc": "aeroftp-cli sync 包装脚本 ({shell})"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "输入 {input} 个 token，输出 {output} 个 token，以提供商统计为准",
                 "breakdownCache": "输入 {input} 个 token，输出 {output} 个 token，从提示缓存读取 {cacheRead} 个，写入提示缓存 {cacheWritten} 个，以提供商统计为准"
+            },
+            "executeOperations": "执行 {count} 个操作",
+            "coding": {
+                "dryRun": "试运行",
+                "apply": "应用",
+                "timedOutAfter": "{seconds}s 后超时。",
+                "restore": {
+                    "previewNote": "此操作预览检查点恢复操作，不会更改文件。",
+                    "dangerNote": "此高风险恢复可能会覆盖当前文件内容，并删除检查点时不存在的文件。",
+                    "wouldRewrite": "将重写",
+                    "rewritten": "已重写",
+                    "wouldDelete": "将删除",
+                    "deleted": "已删除",
+                    "wouldSkip": "将跳过",
+                    "skipped": "已跳过",
+                    "existedAtCheckpoint": "检查点时存在",
+                    "absentAtCheckpoint": "检查点时不存在"
+                },
+                "checks": {
+                    "exitSummary": "退出码 {code} · {seconds}s",
+                    "continueOnFailure": "即使某项检查失败，也会运行所有检查。",
+                    "stopOnFailure": "在第一个失败的检查处停止。"
+                },
+                "diagnostics": {
+                    "none": "未报告诊断信息。"
+                },
+                "search": {
+                    "none": "未找到匹配项。"
+                },
+                "git": {
+                    "noStagedDiff": "没有已暂存的差异输出。",
+                    "noUnstagedDiff": "没有未暂存的差异输出。",
+                    "staged": "已暂存",
+                    "unstaged": "未暂存",
+                    "commitApproval": "Git 提交审批",
+                    "stageApproval": "Git 暂存审批",
+                    "commitNote": "这将从当前暂存区索引创建一个 git 提交。请先使用 staged=true 检查 coding_git_status 和 coding_git_diff。",
+                    "stagePreviewNote": "这将预览哪些请求的路径会被暂存；索引不会改变。",
+                    "stageNote": "这将更改所请求路径的 git 索引。"
+                },
+                "patch": {
+                    "validateNote": "这将验证补丁而不更改文件。",
+                    "applyNote": "此高风险应用请求会在后端创建应用前检查点后写入文件。",
+                    "hideDiff": "隐藏统一差异",
+                    "showDiff": "显示统一差异"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "试运行：{repaired} 个损坏的数据块可以修复。未写入任何内容。",
             "repairDryRunMetadata": "试运行：可以从校验数据重建保险库头部或清单。未写入任何内容。",
             "metadataRepaired": "已从校验数据重建保险库头部或清单。",
-            "repairMetadataSuccess": "修复完成：已从校验数据重建保险库头部或清单"
+            "repairMetadataSuccess": "修复完成：已从校验数据重建保险库头部或清单",
+            "errorCorrectionBadge": "纠错",
+            "itemsInFolder": "/{folder} 中的 {count} 个项目"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "最先找到的",
             "selectAllButOne": "每组全选但保留一个",
             "everyCopyTicked": "所有副本均已勾选",
-            "everyCopyTickedHint": "请在每个高亮的组中取消勾选一个副本：否则所有副本都会被删除。"
+            "everyCopyTickedHint": "请在每个高亮的组中至少取消勾选一个副本：如果所有副本都被勾选，它们将全部被删除。",
+            "modeExactHint": "字节完全相同",
+            "modeNonIdenticalHint": "感知或文本相似度，不自动删除",
+            "potentialWasteSelected": "潜在浪费（已选）",
+            "similarityDistance": "{similarity}，距离 {distance}"
         },
         "diskUsage": {
             "title": "磁盘使用情况",
@@ -4384,7 +4451,9 @@
                 "next": "下一步",
                 "scanQr": "将此密钥添加到您的认证应用（Google Authenticator、Authy、Microsoft Authenticator）。或手动输入密钥：",
                 "setup": "双因素认证",
-                "verify": "验证并启用"
+                "verify": "验证并启用",
+                "active": "2FA 已启用",
+                "inactive": "2FA 未启用"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "分支",
             "pagesPath": "路径",
             "authMethod": "认证",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "授权",
             "modePat": "访问令牌",
             "modeApp": "App (.pem)",
             "oauthHint": "在连接屏幕上使用通过GitHub授权进行Device Flow认证。令牌安全存储在保险库中。",
@@ -4843,7 +4912,12 @@
             "branchList": "分支列表",
             "noBranches": "未找到分支",
             "rawUrlCopied": "已复制原始 URL",
-            "working": "进行中"
+            "working": "进行中",
+            "pagesDnsIssue": "检测到 DNS 问题",
+            "releaseAssetOne": "{count} 个资源",
+            "releaseAssetMany": "{count} 个资源",
+            "repoPrivate": "私有",
+            "repoPublic": "公开"
         },
         "filenNotes": {
             "title": "加密笔记",
@@ -5620,7 +5694,9 @@
             "stopCompare": "停止",
             "compareStopped": "比较已停止。",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "比较会读取两个文件夹及其下的所有文件夹。对于大型目录树，可能需要一些时间，您可以随时停止。"
+            "compareStartHint": "比较会读取两个文件夹及其下的所有文件夹。对于大型目录树，可能需要一些时间，您可以随时停止。",
+            "progressDelta": "[增量]",
+            "progressCopy": "[复制]"
         },
         "accountLock": {
             "title": "选择一个账户",

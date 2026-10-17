@@ -64,7 +64,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
       title={isPrivate ? 'Private repository' : 'Public repository'}
     >
       {isPrivate ? <LockKeyhole size={11} /> : <Globe size={11} />}
-      <span>{isPrivate ? 'Private' : 'Public'}</span>
+      <span>{isPrivate ? t('github.repoPrivate') : t('github.repoPublic')}</span>
     </span>
   );
 

@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Zaregistrovat formáty archivů a nabídky Průzkumníka",
             "fileAssociationIntegrationDesc": "Změny se projeví ihned a zachovají se při aktualizacích. Windows spravuje výchozí aplikace samostatně.",
             "fileAssociationIntegrationPortable": "Nainstalujte AeroFTP, abyste mohli změnit integraci s Windows.",
-            "fileAssociationIntegrationAdmin": "Windows může ke změně těchto možností vyžadovat oprávnění správce."
+            "fileAssociationIntegrationAdmin": "Windows může ke změně těchto možností vyžadovat oprávnění správce.",
+            "migrationServerProfilesFound": "V nešifrovaném úložišti nalezeno profilů serverů: {count}",
+            "migrationAiSettingsFound": "V nešifrovaném úložišti nalezena konfigurace AI",
+            "migrationOauthFound": "V nešifrovaném úložišti nalezeno ověřovacích údajů OAuth: {count}",
+            "fontSystemInstall": "instalace do systému",
+            "fontSizeMin": "min",
+            "fontSizeMax": "max"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Bezplatná úroveň je omezena na 25 kreditů měsíčně",
                 "fourshared": "Pokud je token odvolán, autorizujte ručně znovu"
             },
-            "profilesLoadFailed": "Uložené servery se nepodařilo načíst: {error}"
+            "profilesLoadFailed": "Uložené servery se nepodařilo načíst: {error}",
+            "cleanupSummary": "{count} souborů, uvolněno {size}"
         },
         "statusBar": {
             "connected": "Připojeno",
@@ -1600,7 +1607,8 @@
                 "title": "Tým Axpdev Lab",
                 "apRole": "Zakladatel, vývojář, správce, spoluautor designu",
                 "ekRole": "Výzkumník, inženýr zajištění kvality, spoluautor designu"
-            }
+            },
+            "madeBy": "společností {author}"
         },
         "support": {
             "title": "Podpořte AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Používá Proton Drive CLI - nainstalujte, přihlaste se v prohlížeči, AeroFTP je GUI",
             "twakeDesc": "Twake Drive (5 GB zdarma)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francouzský open-source cloud (Cozy Cloud je nyní jeho součástí) s 5 GB zdarma",
-            "discoverTwake": "Open-source evropský cloud od Linagora, nyní domov Cozy Cloud (5 GB zdarma)"
+            "discoverTwake": "Open-source evropský cloud od Linagora, nyní domov Cozy Cloud (5 GB zdarma)",
+            "sourceforgeProject": "Projekt (Unixname)",
+            "opendriveNotApiKey": "(nejde o váš API klíč OpenDrive)",
+            "endpoint": "Koncový bod",
+            "accountId": "ID účtu"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Potvrdite heslo",
             "minLength": "Minimálně 8 znaků",
             "autoLockTimeout": "Čas automatického zamknutí",
-            "enable": "Zapnout"
+            "enable": "Zapnout",
+            "setupBootstrapDescription": "Úložiště klíčů není dostupné: zaváděcí režim s hlavním heslem"
         },
         "search": {
             "remote_placeholder": "Hledat vzdálené soubory...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "E-mailová adresa",
             "add": "Přidat",
             "remove": "Odebrat",
-            "none": "Žádná nastavená oprávnění"
+            "none": "Žádná nastavená oprávnění",
+            "anyoneWithLink": "Kdokoli s odkazem"
         },
         "locking": {
             "lock": "Zamknout soubor",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Nic se nepřenáší: zobrazí náhled toho, co by udělala úplná synchronizace, vypočtený ze vzorku. Je to grafický protějšek příkazu aeroftp-cli sync --dry-run (a --dry-run nástroje rclone).",
             "templateImportPathPairs": "Použitelné dvojice cest (místní/vzdálená) v této šabloně: {count}. Okno AeroSync pracuje s právě jednou dvojicí, proto nebylo nic importováno. Upravte šablonu tak, aby v ní zůstala jediná dvojice, a poté ji importujte znovu.",
             "templateNamePlaceholder": "např. Noční záloha do S3",
-            "templateDescPlaceholder": "K čemu tato šablona slouží (volitelné)"
+            "templateDescPlaceholder": "K čemu tato šablona slouží (volitelné)",
+            "templateExportCliDesc": "Obalový skript pro aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Synchronizace...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} vstupních tokenů, {output} výstupních tokenů, podle počtu poskytovatele",
                 "breakdownCache": "{input} vstupních tokenů, {output} výstupních tokenů, {cacheRead} načteno z mezipaměti promptu, {cacheWritten} zapsáno do ní, podle počtu poskytovatele"
+            },
+            "executeOperations": "Provést operace: {count}",
+            "coding": {
+                "dryRun": "zkušební běh",
+                "apply": "použít",
+                "timedOutAfter": "Časový limit vypršel po {seconds}s.",
+                "restore": {
+                    "previewNote": "Zobrazí náhled akcí obnovení z kontrolního bodu bez změny souborů.",
+                    "dangerNote": "Toto vysoce rizikové obnovení může přepsat aktuální obsah souborů a smazat soubory, které v kontrolním bodě neexistovaly.",
+                    "wouldRewrite": "Bude přepsáno",
+                    "rewritten": "Přepsáno",
+                    "wouldDelete": "Bude smazáno",
+                    "deleted": "Smazáno",
+                    "wouldSkip": "Bude přeskočeno",
+                    "skipped": "Přeskočeno",
+                    "existedAtCheckpoint": "existoval v kontrolním bodě",
+                    "absentAtCheckpoint": "chyběl v kontrolním bodě"
+                },
+                "checks": {
+                    "exitSummary": "návratový kód {code} · {seconds}s",
+                    "continueOnFailure": "Spustí všechny kontroly, i když některá selže.",
+                    "stopOnFailure": "Zastaví se u první neúspěšné kontroly."
+                },
+                "diagnostics": {
+                    "none": "Nebyla hlášena žádná diagnostika."
+                },
+                "search": {
+                    "none": "Nebyly nalezeny žádné shody."
+                },
+                "git": {
+                    "noStagedDiff": "Žádný výstup diff pro připravené změny.",
+                    "noUnstagedDiff": "Žádný výstup diff pro nepřipravené změny.",
+                    "staged": "připravené",
+                    "unstaged": "nepřipravené",
+                    "commitApproval": "Schválení Git commitu",
+                    "stageApproval": "Schválení Git přípravy",
+                    "commitNote": "Tímto se vytvoří git commit z aktuálního připraveného indexu. Nejprve zkontrolujte coding_git_status a coding_git_diff se staged=true.",
+                    "stagePreviewNote": "Tímto se zobrazí náhled, které z požadovaných cest by byly připraveny; index se nezmění.",
+                    "stageNote": "Tímto se změní git index pro požadované cesty."
+                },
+                "patch": {
+                    "validateNote": "Tímto se ověří patch bez změny souborů.",
+                    "applyNote": "Tento vysoce rizikový požadavek na použití zapíše soubory poté, co backend vytvoří kontrolní bod před použitím.",
+                    "hideDiff": "Skrýt sjednocený diff",
+                    "showDiff": "Zobrazit sjednocený diff"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Zkušební běh: počet poškozených částí, které lze opravit: {repaired}. Nic nebylo zapsáno.",
             "repairDryRunMetadata": "Zkušební běh: hlavičku nebo manifest trezoru lze obnovit z parity. Nic nebylo zapsáno.",
             "metadataRepaired": "Z parity byla obnovena hlavička nebo manifest trezoru.",
-            "repairMetadataSuccess": "Oprava dokončena: z parity byla obnovena hlavička nebo manifest trezoru"
+            "repairMetadataSuccess": "Oprava dokončena: z parity byla obnovena hlavička nebo manifest trezoru",
+            "errorCorrectionBadge": "Oprava chyb",
+            "itemsInFolder": "{count} položek v /{folder}"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "První nalezený",
             "selectAllButOne": "Vybrat vše kromě jednoho v každé skupině",
             "everyCopyTicked": "zaškrtnuty všechny kopie",
-            "everyCopyTickedHint": "V každé zvýrazněné skupině odškrtněte jednu kopii: takto by se smazaly všechny."
+            "everyCopyTickedHint": "V každé zvýrazněné skupině odškrtněte alespoň jednu kopii: pokud jsou zaškrtnuty všechny kopie, budou smazány všechny.",
+            "modeExactHint": "Shodné bajt po bajtu",
+            "modeNonIdenticalHint": "Percepční nebo textová podobnost, bez automatického mazání",
+            "potentialWasteSelected": "potenciálně promarněno (vybrané)",
+            "similarityDistance": "{similarity}, vzdál. {distance}"
         },
         "diskUsage": {
             "title": "Využití disku",
@@ -4384,7 +4451,9 @@
                 "next": "Další",
                 "scanQr": "Přidejte tento tajný klíč do vaší ověřovací aplikace (Google Authenticator, Authy, Microsoft Authenticator). Nebo zadejte klíč ručně:",
                 "setup": "Dvoufaktorové ověření",
-                "verify": "Ověřit a zapnout"
+                "verify": "Ověřit a zapnout",
+                "active": "2FA aktivní",
+                "inactive": "2FA neaktivní"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Větev",
             "pagesPath": "Cesta",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autorizovat",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Seznam větví",
             "noBranches": "Nebyly nalezeny žádné větve",
             "rawUrlCopied": "Nezpracovaná adresa URL zkopírována",
-            "working": "pracuje"
+            "working": "pracuje",
+            "pagesDnsIssue": "Zjištěn problém s DNS",
+            "releaseAssetOne": "{count} příloha",
+            "releaseAssetMany": "Přílohy: {count}",
+            "repoPrivate": "Soukromý",
+            "repoPublic": "Veřejný"
         },
         "filenNotes": {
             "title": "Šifrované poznámky",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Zastavit",
             "compareStopped": "Porovnání zastaveno.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Porovnání načte obě složky i všechny složky v nich. U velkého stromu to může chvíli trvat a můžete ho zastavit."
+            "compareStartHint": "Porovnání načte obě složky i všechny složky v nich. U velkého stromu to může chvíli trvat a můžete ho zastavit.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopie]"
         },
         "accountLock": {
             "title": "Vyberte účet",

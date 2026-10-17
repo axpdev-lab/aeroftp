@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Archívumformátumok és Fájlkezelő-menük regisztrálása",
             "fileAssociationIntegrationDesc": "A módosítások azonnal érvénybe lépnek, és a frissítések során is megmaradnak. A Windows külön kezeli az alapértelmezett alkalmazásokat.",
             "fileAssociationIntegrationPortable": "A Windows-integráció módosításához telepítse az AeroFTP-t.",
-            "fileAssociationIntegrationAdmin": "A Windows rendszergazdai engedélyt kérhet ezen beállítások módosításához."
+            "fileAssociationIntegrationAdmin": "A Windows rendszergazdai engedélyt kérhet ezen beállítások módosításához.",
+            "migrationServerProfilesFound": "{count} szerverprofil található titkosítatlan tárolóban",
+            "migrationAiSettingsFound": "MI beállítások találhatók titkosítatlan tárolóban",
+            "migrationOauthFound": "{count} OAuth hitelesítő adat található titkosítatlan tárolóban",
+            "fontSystemInstall": "rendszerre telepítendő",
+            "fontSizeMin": "min",
+            "fontSizeMax": "max"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Az ingyenes csomag havi 25 kreditre korlátozott",
                 "fourshared": "Ha a tokent visszavonják, engedélyezze újra manuálisan"
             },
-            "profilesLoadFailed": "A mentett szervereket nem sikerült beolvasni: {error}"
+            "profilesLoadFailed": "A mentett szervereket nem sikerült beolvasni: {error}",
+            "cleanupSummary": "{count} fájl, {size} felszabadítva"
         },
         "statusBar": {
             "connected": "Csatlakozva",
@@ -1600,7 +1607,8 @@
                 "title": "Az Axpdev Lab csapata",
                 "apRole": "Alapító, fejlesztő, karbantartó, társtervező",
                 "ekRole": "Kutató, minőségbiztosítási mérnök, társtervező"
-            }
+            },
+            "madeBy": "{author} által"
         },
         "support": {
             "title": "Támogasd az AeroFTP-t",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "A Proton Drive CLI-t használja - telepítse, jelentkezzen be a böngészőben, az AeroFTP a GUI",
             "twakeDesc": "Twake Drive (5 GB ingyen)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francia nyílt forráskódú felhő (a Cozy Cloud mostantól ennek része) 5 GB ingyen",
-            "discoverTwake": "Linagora nyílt forráskódú európai felhője, mostantól a Cozy Cloud új otthona (5 GB ingyen)"
+            "discoverTwake": "Linagora nyílt forráskódú európai felhője, mostantól a Cozy Cloud új otthona (5 GB ingyen)",
+            "sourceforgeProject": "Projekt (Unixname)",
+            "opendriveNotApiKey": "(nem az OpenDrive API-kulcsa)",
+            "endpoint": "Végpont",
+            "accountId": "Fiók ID"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Jelszó megerősítése",
             "minLength": "Legalább 8 karakter",
             "autoLockTimeout": "Automatikus zárolás időkorlát",
-            "enable": "Engedélyezés"
+            "enable": "Engedélyezés",
+            "setupBootstrapDescription": "Kulcstároló nem érhető el: mesterjelszavas indítási mód"
         },
         "search": {
             "remote_placeholder": "Távoli fájlok keresése...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "E-mail cím",
             "add": "Hozzáadás",
             "remove": "Eltávolítás",
-            "none": "Nincsenek beállított jogosultságok"
+            "none": "Nincsenek beállított jogosultságok",
+            "anyoneWithLink": "Bárki, akinek megvan a hivatkozás"
         },
         "locking": {
             "lock": "Fájl zárolása",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Semmi sem kerül átvitelre: ez előnézetet ad arról, mit tenne egy teljes szinkronizálás, a mintából számítva. Ez a aeroftp-cli sync --dry-run parancs (és az rclone --dry-run) grafikus megfelelője.",
             "templateImportPathPairs": "Használható helyi/távoli útvonalpárok ebben a sablonban: {count}. Egy AeroSync-ablak pontosan egy párral dolgozik, ezért semmi sem lett importálva. Szerkessze a sablont úgy, hogy csak egy pár maradjon, majd importálja újra.",
             "templateNamePlaceholder": "pl. Éjszakai mentés S3-ra",
-            "templateDescPlaceholder": "Mire szolgál ez a sablon (nem kötelező)"
+            "templateDescPlaceholder": "Mire szolgál ez a sablon (nem kötelező)",
+            "templateExportCliDesc": "aeroftp-cli sync burkolószkript ({shell})"
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} bemeneti token, {output} kimeneti token, a szolgáltató számítása szerint",
                 "breakdownCache": "{input} bemeneti token, {output} kimeneti token, {cacheRead} olvasva a prompt gyorsítótárából, {cacheWritten} írva bele, a szolgáltató számítása szerint"
+            },
+            "executeOperations": "{count} művelet végrehajtása",
+            "coding": {
+                "dryRun": "próbafuttatás",
+                "apply": "alkalmazás",
+                "timedOutAfter": "Időtúllépés {seconds}s után.",
+                "restore": {
+                    "previewNote": "Ez a fájlok módosítása nélkül mutatja meg az ellenőrzőpont-visszaállítási műveletek előnézetét.",
+                    "dangerNote": "Ez a magas kockázatú visszaállítás felülírhatja a fájlok jelenlegi tartalmát, és törölheti azokat a fájlokat, amelyek az ellenőrzőpontnál nem léteztek.",
+                    "wouldRewrite": "Felülírásra kerülne",
+                    "rewritten": "Felülírva",
+                    "wouldDelete": "Törlésre kerülne",
+                    "deleted": "Törölve",
+                    "wouldSkip": "Kihagyásra kerülne",
+                    "skipped": "Kihagyva",
+                    "existedAtCheckpoint": "létezett az ellenőrzőpontnál",
+                    "absentAtCheckpoint": "hiányzott az ellenőrzőpontnál"
+                },
+                "checks": {
+                    "exitSummary": "kilépési kód {code} · {seconds}s",
+                    "continueOnFailure": "Minden ellenőrzést lefuttat, még ha valamelyik sikertelen is.",
+                    "stopOnFailure": "Az első sikertelen ellenőrzésnél leáll."
+                },
+                "diagnostics": {
+                    "none": "Nem jelentettek diagnosztikát."
+                },
+                "search": {
+                    "none": "Nincs találat."
+                },
+                "git": {
+                    "noStagedDiff": "Nincs diff kimenet az előkészített változásokhoz.",
+                    "noUnstagedDiff": "Nincs diff kimenet a nem előkészített változásokhoz.",
+                    "staged": "előkészítve",
+                    "unstaged": "nincs előkészítve",
+                    "commitApproval": "Git commit jóváhagyása",
+                    "stageApproval": "Git előkészítés jóváhagyása",
+                    "commitNote": "Ez git commitot hoz létre a jelenlegi előkészített indexből. Előbb ellenőrizze a coding_git_status és a coding_git_diff kimenetét staged=true értékkel.",
+                    "stagePreviewNote": "Ez előnézetben mutatja, hogy a kért útvonalak közül melyek kerülnének előkészítésre; az index nem változik.",
+                    "stageNote": "Ez módosítja a git indexet a kért útvonalakhoz."
+                },
+                "patch": {
+                    "validateNote": "Ez a fájlok módosítása nélkül ellenőrzi a javítást.",
+                    "applyNote": "Ez a magas kockázatú alkalmazási kérés azután írja a fájlokat, hogy a háttérrendszer létrehozott egy alkalmazás előtti ellenőrzőpontot.",
+                    "hideDiff": "Egységes diff elrejtése",
+                    "showDiff": "Egységes diff megjelenítése"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Próbafuttatás: {repaired} sérült darab javítható. Nem történt írás.",
             "repairDryRunMetadata": "Próbafuttatás: a széf fejléce vagy manifesztje újraépíthető a paritásból. Nem történt írás.",
             "metadataRepaired": "A széf fejléce vagy manifesztje a paritásból újraépült.",
-            "repairMetadataSuccess": "Javítás kész: a széf fejléce vagy manifesztje a paritásból újraépült"
+            "repairMetadataSuccess": "Javítás kész: a széf fejléce vagy manifesztje a paritásból újraépült",
+            "errorCorrectionBadge": "Hibajavítás",
+            "itemsInFolder": "{count} elem itt: /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Elsőként talált",
             "selectAllButOne": "Csoportonként egy kivételével mind kijelölése",
             "everyCopyTicked": "minden másolat kijelölve",
-            "everyCopyTickedHint": "Vegye ki a jelölést egy másolatról minden kiemelt csoportban: különben mind törlődik."
+            "everyCopyTickedHint": "Minden kiemelt csoportban vegye ki a jelölést legalább egy másolatról: ha minden másolat ki van jelölve, mindegyik törlődne.",
+            "modeExactHint": "Bájtra azonos",
+            "modeNonIdenticalHint": "Észlelési vagy szöveges hasonlóság, nincs automatikus törlés",
+            "potentialWasteSelected": "lehetséges pazarlás (kijelölt)",
+            "similarityDistance": "{similarity}, táv. {distance}"
         },
         "diskUsage": {
             "title": "Lemezfoglalás",
@@ -4384,7 +4451,9 @@
                 "next": "Tovább",
                 "scanQr": "Adja hozzá ezt a titkot a hitelesítő alkalmazásához (Google Authenticator, Authy, Microsoft Authenticator). Vagy adja meg a manuális kulcsot:",
                 "setup": "Kétlépcsős hitelesítés",
-                "verify": "Ellenőrzés és bekapcsolás"
+                "verify": "Ellenőrzés és bekapcsolás",
+                "active": "2FA aktív",
+                "inactive": "2FA inaktív"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Ág",
             "pagesPath": "Útvonal",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Engedélyezés",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Ágak listája",
             "noBranches": "Nem találhatók ágak",
             "rawUrlCopied": "Nyers URL másolva",
-            "working": "dolgozik"
+            "working": "dolgozik",
+            "pagesDnsIssue": "DNS-probléma észlelve",
+            "releaseAssetOne": "{count} fájl",
+            "releaseAssetMany": "{count} fájl",
+            "repoPrivate": "Privát",
+            "repoPublic": "Nyilvános"
         },
         "filenNotes": {
             "title": "Titkosított jegyzetek",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Leállítás",
             "compareStopped": "Az összehasonlítás leállítva.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Az összehasonlítás beolvassa mindkét mappát és az alattuk lévő összes mappát. Nagy fa esetén ez eltarthat egy ideig, és leállíthatja."
+            "compareStartHint": "Az összehasonlítás beolvassa mindkét mappát és az alattuk lévő összes mappát. Nagy fa esetén ez eltarthat egy ideig, és leállíthatja.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[másolat]"
         },
         "accountLock": {
             "title": "Válasszon fiókot",

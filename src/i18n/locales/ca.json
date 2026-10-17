@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Registra els formats d’arxiu comprimit i els menús de l’Explorador",
             "fileAssociationIntegrationDesc": "Els canvis s’apliquen ara i es conserven durant les actualitzacions. Windows gestiona les aplicacions predeterminades per separat.",
             "fileAssociationIntegrationPortable": "Instal·la AeroFTP per canviar la integració amb Windows.",
-            "fileAssociationIntegrationAdmin": "Windows pot demanar permisos d’administrador per canviar aquestes opcions."
+            "fileAssociationIntegrationAdmin": "Windows pot demanar permisos d’administrador per canviar aquestes opcions.",
+            "migrationServerProfilesFound": "S'han trobat {count} perfils de servidor en l'emmagatzematge sense xifrar",
+            "migrationAiSettingsFound": "S'ha trobat la configuració d'IA en l'emmagatzematge sense xifrar",
+            "migrationOauthFound": "S'han trobat {count} credencials OAuth en l'emmagatzematge sense xifrar",
+            "fontSystemInstall": "instal·lació al sistema",
+            "fontSizeMin": "mín",
+            "fontSizeMax": "màx"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "El nivell gratuït està limitat a 25 crèdits al mes",
                 "fourshared": "Torneu a autoritzar manualment si el token es revoca"
             },
-            "profilesLoadFailed": "No s'han pogut llegir els servidors desats: {error}"
+            "profilesLoadFailed": "No s'han pogut llegir els servidors desats: {error}",
+            "cleanupSummary": "{count} fitxers, {size} alliberats"
         },
         "statusBar": {
             "connected": "Connectat",
@@ -1600,7 +1607,8 @@
                 "title": "Equip d'Axpdev Lab",
                 "apRole": "Fundador, desenvolupador, mantenidor, codissenyador",
                 "ekRole": "Investigador, enginyer de garantia de qualitat, codissenyador"
-            }
+            },
+            "madeBy": "per {author}"
         },
         "support": {
             "title": "Donar Suport a AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Utilitza el CLI de Proton Drive - instal·leu-lo, inicieu sessió al navegador, AeroFTP és la GUI",
             "twakeDesc": "Twake Drive (5 GB gratis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, núvol francès de codi obert (Cozy Cloud ara en forma part) amb 5 GB gratuïts",
-            "discoverTwake": "Núvol europeu de codi obert de Linagora, ara la nova llar de Cozy Cloud (5 GB gratuïts)"
+            "discoverTwake": "Núvol europeu de codi obert de Linagora, ara la nova llar de Cozy Cloud (5 GB gratuïts)",
+            "sourceforgeProject": "Projecte (Unixname)",
+            "opendriveNotApiKey": "(no és la vostra clau d'API d'OpenDrive)",
+            "endpoint": "Punt d'accés",
+            "accountId": "ID del compte"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Confirmar contrasenya",
             "minLength": "Mínim 8 caràcters",
             "autoLockTimeout": "Temps de bloqueig automàtic",
-            "enable": "Activar"
+            "enable": "Activar",
+            "setupBootstrapDescription": "Clauer no disponible: mode d'arrencada amb contrasenya mestra"
         },
         "search": {
             "remote_placeholder": "Cercar fitxers remots...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Adreça de correu electrònic",
             "add": "Afegir",
             "remove": "Eliminar",
-            "none": "No hi ha permisos establerts"
+            "none": "No hi ha permisos establerts",
+            "anyoneWithLink": "Qualsevol persona amb l'enllaç"
         },
         "locking": {
             "lock": "Bloquejar fitxer",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "No es transfereix res: mostra una vista prèvia del que faria una sincronització completa, calculada a partir de la mostra. És l'equivalent gràfic de l'ordre aeroftp-cli sync --dry-run (i de --dry-run de rclone).",
             "templateImportPathPairs": "Parelles de rutes (local/remota) utilitzables en aquesta plantilla: {count}. Una finestra d'AeroSync treballa amb exactament una parella, així que no s'ha importat res. Edita la plantilla perquè només hi quedi una parella i torna-la a importar.",
             "templateNamePlaceholder": "p. ex. Còpia de seguretat nocturna a S3",
-            "templateDescPlaceholder": "Per a què serveix aquesta plantilla (opcional)"
+            "templateDescPlaceholder": "Per a què serveix aquesta plantilla (opcional)",
+            "templateExportCliDesc": "Embolcall d'aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} tokens d'entrada, {output} tokens de sortida, segons el recompte del proveïdor",
                 "breakdownCache": "{input} tokens d'entrada, {output} tokens de sortida, {cacheRead} llegits de la memòria cau del prompt, {cacheWritten} escrits en aquesta, segons el recompte del proveïdor"
+            },
+            "executeOperations": "Executar operacions: {count}",
+            "coding": {
+                "dryRun": "simulació",
+                "apply": "aplicar",
+                "timedOutAfter": "Temps esgotat després de {seconds}s.",
+                "restore": {
+                    "previewNote": "Això previsualitza les accions de restauració del punt de control sense modificar fitxers.",
+                    "dangerNote": "Aquesta restauració d'alt risc pot sobreescriure el contingut actual dels fitxers i eliminar fitxers que no existien al punt de control.",
+                    "wouldRewrite": "Es reescriurien",
+                    "rewritten": "Reescrits",
+                    "wouldDelete": "S'eliminarien",
+                    "deleted": "Eliminats",
+                    "wouldSkip": "S'ometrien",
+                    "skipped": "Omesos",
+                    "existedAtCheckpoint": "existia al punt de control",
+                    "absentAtCheckpoint": "absent al punt de control"
+                },
+                "checks": {
+                    "exitSummary": "sortida {code} · {seconds}s",
+                    "continueOnFailure": "Executa totes les comprovacions encara que una falli.",
+                    "stopOnFailure": "S'atura a la primera comprovació que falla."
+                },
+                "diagnostics": {
+                    "none": "No s'ha informat de cap diagnòstic."
+                },
+                "search": {
+                    "none": "No s'han trobat coincidències."
+                },
+                "git": {
+                    "noStagedDiff": "No hi ha sortida de diff dels canvis preparats.",
+                    "noUnstagedDiff": "No hi ha sortida de diff dels canvis no preparats.",
+                    "staged": "preparat",
+                    "unstaged": "no preparat",
+                    "commitApproval": "Aprovació de commit de Git",
+                    "stageApproval": "Aprovació de preparació de Git",
+                    "commitNote": "Això crea un commit de git a partir de l'índex preparat actual. Reviseu primer coding_git_status i coding_git_diff amb staged=true.",
+                    "stagePreviewNote": "Això previsualitza quins camins sol·licitats es prepararien; l'índex no canviarà.",
+                    "stageNote": "Això canvia l'índex de git per als camins sol·licitats."
+                },
+                "patch": {
+                    "validateNote": "Això valida el pedaç sense canviar fitxers.",
+                    "applyNote": "Aquesta sol·licitud d'aplicació d'alt perill escriu fitxers després que el backend creï un punt de control previ a l'aplicació.",
+                    "hideDiff": "Amaga el diff unificat",
+                    "showDiff": "Mostra el diff unificat"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Simulació: es poden reparar {repaired} fragment(s) danyat(s). No s'ha escrit res.",
             "repairDryRunMetadata": "Simulació: la capçalera o el manifest del vault es poden reconstruir a partir de la paritat. No s'ha escrit res.",
             "metadataRepaired": "S'ha reconstruït la capçalera o el manifest del vault a partir de la paritat.",
-            "repairMetadataSuccess": "Reparació completa: s'ha reconstruït la capçalera o el manifest del vault a partir de la paritat"
+            "repairMetadataSuccess": "Reparació completa: s'ha reconstruït la capçalera o el manifest del vault a partir de la paritat",
+            "errorCorrectionBadge": "Correcció d'errors",
+            "itemsInFolder": "{count} elements a /{folder}"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "El primer trobat",
             "selectAllButOne": "Selecciona tots menys un per grup",
             "everyCopyTicked": "totes les còpies marcades",
-            "everyCopyTickedHint": "Desmarqueu una còpia de cada grup destacat: així s'esborrarien totes les còpies."
+            "everyCopyTickedHint": "Desmarqueu almenys una còpia de cada grup destacat: amb totes les còpies marcades, s'esborrarien totes.",
+            "modeExactHint": "Idèntic byte a byte",
+            "modeNonIdenticalHint": "Semblança perceptiva o de text, sense supressió automàtica",
+            "potentialWasteSelected": "desaprofitament potencial (seleccionats)",
+            "similarityDistance": "{similarity}, dist. {distance}"
         },
         "diskUsage": {
             "title": "Ús del disc",
@@ -4384,7 +4451,9 @@
                 "next": "Següent",
                 "scanQr": "Afegiu aquest secret a la vostra aplicació d'autenticació (Google Authenticator, Authy, Microsoft Authenticator). O introduïu la clau manual:",
                 "setup": "Autenticació de dos factors",
-                "verify": "Verificar i activar"
+                "verify": "Verificar i activar",
+                "active": "2FA activa",
+                "inactive": "2FA inactiva"
             }
         },
         "vaultSync": {
@@ -4850,7 +4919,7 @@
             "pagesBranch": "Branca",
             "pagesPath": "Camí",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autoritza",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4862,7 +4931,12 @@
             "branchList": "Llista de branques",
             "noBranches": "No s'ha trobat cap branca",
             "rawUrlCopied": "S'ha copiat l'URL en brut",
-            "working": "en curs"
+            "working": "en curs",
+            "pagesDnsIssue": "S'ha detectat un problema de DNS",
+            "releaseAssetOne": "{count} recurs",
+            "releaseAssetMany": "{count} recursos",
+            "repoPrivate": "Privat",
+            "repoPublic": "Públic"
         },
         "filenNotes": {
             "title": "Notes xifrades",
@@ -5639,7 +5713,9 @@
             "stopCompare": "Atura",
             "compareStopped": "Comparació aturada.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "La comparació llegeix les dues carpetes i totes les carpetes que contenen. En un arbre gran pot trigar una estona, i la pots aturar."
+            "compareStartHint": "La comparació llegeix les dues carpetes i totes les carpetes que contenen. En un arbre gran pot trigar una estona, i la pots aturar.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[còpia]"
         },
         "accountLock": {
             "title": "Trieu un compte",

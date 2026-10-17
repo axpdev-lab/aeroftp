@@ -262,7 +262,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             >
                                 {state.hasDetachedRecovery && !state.hasErrorCorrection
                                     ? t('vault.errorCorrectionDetachedBadge')
-                                    : 'Error Correction'}
+                                    : t('vault.errorCorrectionBadge')}
                             </span>
                         )}
                     </div>
@@ -488,7 +488,9 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
 
             {/* Footer */}
             <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
-                <span>{sortedEntries.length} {t('vault.items')}{state.currentDir ? ` in /${state.currentDir}` : ''}</span>
+                <span>{state.currentDir
+                    ? t('vault.itemsInFolder', { count: sortedEntries.length, folder: state.currentDir })
+                    : `${sortedEntries.length} ${t('vault.items')}`}</span>
                 <div className="flex items-center gap-3">
                     {state.meta && <span>v{state.meta.version} | {state.entries.length} {t('vault.totalItems')}</span>}
                     <button

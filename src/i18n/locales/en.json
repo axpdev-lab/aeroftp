@@ -66,7 +66,8 @@
                 "title": "Axpdev Lab Team",
                 "apRole": "Founder, developer, maintainer, co-designer",
                 "ekRole": "Researcher, quality assurance engineer, co-designer"
-            }
+            },
+            "madeBy": "by {author}"
         },
         "activity": {
             "connect_error": "Connection to {server} failed. Check credentials.",
@@ -1020,6 +1021,52 @@
                 "confirmBlockNetwork": "Block network access for {name}? Previous tool approvals will no longer be valid.",
                 "managedStatus": "Managed installation: {version}",
                 "renewDirectory": "Renew access"
+            },
+            "executeOperations": "Execute {count} operation(s)",
+            "coding": {
+                "dryRun": "dry run",
+                "apply": "apply",
+                "timedOutAfter": "Timed out after {seconds}s.",
+                "restore": {
+                    "previewNote": "This previews checkpoint restore actions without changing files.",
+                    "dangerNote": "This high-danger restore can overwrite current file contents and delete files that did not exist at the checkpoint.",
+                    "wouldRewrite": "Would rewrite",
+                    "rewritten": "Rewritten",
+                    "wouldDelete": "Would delete",
+                    "deleted": "Deleted",
+                    "wouldSkip": "Would skip",
+                    "skipped": "Skipped",
+                    "existedAtCheckpoint": "existed at checkpoint",
+                    "absentAtCheckpoint": "absent at checkpoint"
+                },
+                "checks": {
+                    "exitSummary": "exit {code} · {seconds}s",
+                    "continueOnFailure": "Runs all checks even if one fails.",
+                    "stopOnFailure": "Stops at the first failing check."
+                },
+                "diagnostics": {
+                    "none": "No diagnostics reported."
+                },
+                "search": {
+                    "none": "No matches found."
+                },
+                "git": {
+                    "noStagedDiff": "No staged diff output.",
+                    "noUnstagedDiff": "No unstaged diff output.",
+                    "staged": "staged",
+                    "unstaged": "unstaged",
+                    "commitApproval": "Git Commit Approval",
+                    "stageApproval": "Git Stage Approval",
+                    "commitNote": "This creates a git commit from the current staged index. Review coding_git_status and coding_git_diff with staged=true first.",
+                    "stagePreviewNote": "This previews which requested paths would be staged; the index will not change.",
+                    "stageNote": "This changes the git index for the requested paths."
+                },
+                "patch": {
+                    "validateNote": "This validates the patch without changing files.",
+                    "applyNote": "This high-danger apply request writes files after the backend creates a pre-apply checkpoint.",
+                    "hideDiff": "Hide unified diff",
+                    "showDiff": "Show unified diff"
+                }
             }
         },
         "appearance": {
@@ -1284,7 +1331,8 @@
                 "cloudinary": "Free tier limited to 25 credits per month",
                 "fourshared": "Re-authorize manually if the token is revoked"
             },
-            "profilesLoadFailed": "Your saved servers could not be read: {error}"
+            "profilesLoadFailed": "Your saved servers could not be read: {error}",
+            "cleanupSummary": "{count} files, {size} freed"
         },
         "common": {
             "about": "About",
@@ -2259,7 +2307,11 @@
             "keepFirstFound": "First found",
             "selectAllButOne": "Select all but one per group",
             "everyCopyTicked": "every copy ticked",
-            "everyCopyTickedHint": "Untick one copy in each highlighted group: this would delete every copy."
+            "everyCopyTickedHint": "Untick at least one copy in each highlighted group: with every copy ticked, all of them would be deleted.",
+            "modeExactHint": "Byte-identical",
+            "modeNonIdenticalHint": "Perceptual or text similarity, no auto-delete",
+            "potentialWasteSelected": "potential waste (selected)",
+            "similarityDistance": "{similarity}, dist {distance}"
         },
         "error": {
             "description": "AeroFTP encountered an unexpected error. You can try to recover or reload the application.",
@@ -2524,7 +2576,8 @@
             "setupTitle": "Set Master Password",
             "setupTooltip": "Set Master Password",
             "tooShort": "Password must be at least 8 characters",
-            "unlock": "Unlock"
+            "unlock": "Unlock",
+            "setupBootstrapDescription": "Keyring unavailable: bootstrap master mode"
         },
         "menu": {
             "about": "About AeroFTP",
@@ -3228,7 +3281,11 @@
             "peerDesc": "Share folders directly with friends over an encrypted peer-to-peer channel, with no server in the middle.",
             "twakeDesc": "Twake Drive (5 GB free)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, French open-source cloud (Cozy Cloud is now part of it) with 5 GB free",
-            "discoverTwake": "Open-source European cloud by Linagora, now home of Cozy Cloud (5 GB free)"
+            "discoverTwake": "Open-source European cloud by Linagora, now home of Cozy Cloud (5 GB free)",
+            "sourceforgeProject": "Project (Unixname)",
+            "opendriveNotApiKey": "(not your OpenDrive API key)",
+            "endpoint": "Endpoint",
+            "accountId": "Account ID"
         },
         "quickLook": {
             "noPreview": "No preview available",
@@ -3296,7 +3353,9 @@
                 "next": "Next",
                 "scanQr": "Add this secret to your authenticator app (Google Authenticator, Authy, Microsoft Authenticator). Or enter the manual key:",
                 "setup": "Two-Factor Authentication",
-                "verify": "Verify & Enable"
+                "verify": "Verify & Enable",
+                "active": "2FA Active",
+                "inactive": "2FA Inactive"
             }
         },
         "settings": {
@@ -3872,7 +3931,13 @@
             "fileAssociationRegisterArchives": "Register archive formats and Explorer menus",
             "fileAssociationIntegrationDesc": "Changes take effect now and are kept during updates. Windows manages your default apps separately.",
             "fileAssociationIntegrationPortable": "Install AeroFTP to change Windows integration.",
-            "fileAssociationIntegrationAdmin": "Windows may request administrator permission to change these options."
+            "fileAssociationIntegrationAdmin": "Windows may request administrator permission to change these options.",
+            "migrationServerProfilesFound": "{count} server profiles found in unencrypted storage",
+            "migrationAiSettingsFound": "AI configuration found in unencrypted storage",
+            "migrationOauthFound": "{count} OAuth credentials found in unencrypted storage",
+            "fontSystemInstall": "system install",
+            "fontSizeMin": "min",
+            "fontSizeMax": "max"
         },
         "sharing": {
             "add": "Add",
@@ -3880,7 +3945,8 @@
             "menu": "Sharing",
             "none": "No permissions set",
             "remove": "Remove",
-            "title": "Sharing"
+            "title": "Sharing",
+            "anyoneWithLink": "Anyone with link"
         },
         "shortcuts": {
             "activityLog": "Activity Log",
@@ -4223,7 +4289,8 @@
             "canaryStatus": "Status",
             "canaryNoResults": "No sampled files",
             "canaryProjection": "Based on {percent}% sample, full sync would transfer ~{files} files ({size})",
-            "canaryApproveFullSync": "Approve Full Sync"
+            "canaryApproveFullSync": "Approve Full Sync",
+            "templateExportCliDesc": "aeroftp-cli sync wrapper ({shell})"
         },
         "toast": {
             "batchRenamePartial": "Batch rename completed with errors",
@@ -4900,7 +4967,9 @@
             "encryptedBadge": "Encrypted",
             "notEncryptedBadge": "Not encrypted",
             "encryptedTooltip": "Encrypted with AES-256. Contents and filenames are confidential; the password is required to open.",
-            "resetDefaults": "Reset to default"
+            "resetDefaults": "Reset to default",
+            "errorCorrectionBadge": "Error Correction",
+            "itemsInFolder": "{count} items in /{folder}"
         },
         "vaultSync": {
             "title": "Vault Sync",
@@ -5048,7 +5117,7 @@
             "editButton": "Edit",
             "previewButton": "Preview",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Authorize",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow. The token is stored securely in the vault.",
@@ -5083,7 +5152,12 @@
             "branchList": "Branch list",
             "noBranches": "No branches found",
             "rawUrlCopied": "Raw URL copied",
-            "working": "working"
+            "working": "working",
+            "pagesDnsIssue": "DNS issue detected",
+            "releaseAssetOne": "{count} asset",
+            "releaseAssetMany": "{count} assets",
+            "repoPrivate": "Private",
+            "repoPublic": "Public"
         },
         "gitlab": {
             "projectPath": "Project Path",
@@ -5875,7 +5949,9 @@
             "stopCompare": "Stop",
             "compareStopped": "Compare stopped.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "The compare reads both folders and every folder under them. On a large tree it can take a while, and you can stop it."
+            "compareStartHint": "The compare reads both folders and every folder under them. On a large tree it can take a while, and you can stop it.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[copy]"
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

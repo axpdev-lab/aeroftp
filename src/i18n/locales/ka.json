@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "არქივის ფორმატებისა და ფაილების მკვლევრის მენიუების რეგისტრაცია",
             "fileAssociationIntegrationDesc": "ცვლილებები ძალაში დაუყოვნებლივ შედის და განახლებების დროსაც ნარჩუნდება. Windows ნაგულისხმევ აპებს ცალკე მართავს.",
             "fileAssociationIntegrationPortable": "Windows-თან ინტეგრაციის შესაცვლელად დააყენეთ AeroFTP.",
-            "fileAssociationIntegrationAdmin": "ამ პარამეტრების შესაცვლელად Windows-მა შეიძლება ადმინისტრატორის ნებართვა მოითხოვოს."
+            "fileAssociationIntegrationAdmin": "ამ პარამეტრების შესაცვლელად Windows-მა შეიძლება ადმინისტრატორის ნებართვა მოითხოვოს.",
+            "migrationServerProfilesFound": "დაუშიფრავ საცავში ნაპოვნია სერვერის {count} პროფილი",
+            "migrationAiSettingsFound": "დაუშიფრავ საცავში ნაპოვნია AI კონფიგურაცია",
+            "migrationOauthFound": "დაუშიფრავ საცავში ნაპოვნია OAuth ავტორიზაციის {count} მონაცემი",
+            "fontSystemInstall": "სისტემაში ინსტალაცია",
+            "fontSizeMin": "მინ",
+            "fontSizeMax": "მაქს"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "უფასო დონე შეზღუდულია თვეში 25 კრედიტით",
                 "fourshared": "ტოკენის გაუქმების შემთხვევაში ხელახლა ავტორიზდით ხელით"
             },
-            "profilesLoadFailed": "თქვენი შენახული სერვერების წაკითხვა ვერ მოხერხდა: {error}"
+            "profilesLoadFailed": "თქვენი შენახული სერვერების წაკითხვა ვერ მოხერხდა: {error}",
+            "cleanupSummary": "{count} ფაილი, გათავისუფლდა {size}"
         },
         "statusBar": {
             "connected": "დაკავშირებული",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab-ის გუნდი",
                 "apRole": "დამფუძნებელი, დეველოპერი, მხარდამჭერი, თანადიზაინერი",
                 "ekRole": "მკვლევარი, ხარისხის უზრუნველყოფის ინჟინერი, თანადიზაინერი"
-            }
+            },
+            "madeBy": "{author} კომპანიის მიერ"
         },
         "support": {
             "title": "მხარი დაუჭირეთ AeroFTP-ს",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "იყენებს Proton Drive CLI-ს - დააყენეთ, შედით ბრაუზერში, AeroFTP არის GUI",
             "twakeDesc": "Twake Drive (5 GB უფასოდ)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, ფრანგული ღია კოდის ღრუბელი (Cozy Cloud ახლა მისი ნაწილია) 5 GB უფასოდ",
-            "discoverTwake": "Linagora-ს ღია კოდის ევროპული ღრუბელი, ახლა Cozy Cloud-ის ახალი სახლი (5 GB უფასოდ)"
+            "discoverTwake": "Linagora-ს ღია კოდის ევროპული ღრუბელი, ახლა Cozy Cloud-ის ახალი სახლი (5 GB უფასოდ)",
+            "sourceforgeProject": "პროექტი (Unixname)",
+            "opendriveNotApiKey": "(არა თქვენი OpenDrive API გასაღები)",
+            "endpoint": "საბოლოო წერტილი",
+            "accountId": "ანგარიშის ID"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "პაროლის დადასტურება",
             "minLength": "მინიმუმ 8 სიმბოლო",
             "autoLockTimeout": "ავტომატური ჩაკეტვის დრო",
-            "enable": "ჩართვა"
+            "enable": "ჩართვა",
+            "setupBootstrapDescription": "გასაღებების რგოლი მიუწვდომელია: ჩატვირთვის რეჟიმი მთავარი პაროლით"
         },
         "search": {
             "remote_placeholder": "დისტანციური ფაილების ძიება...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "ელფოსტის მისამართი",
             "add": "დამატება",
             "remove": "წაშლა",
-            "none": "უფლებები არ არის დაყენებული"
+            "none": "უფლებები არ არის დაყენებული",
+            "anyoneWithLink": "ნებისმიერი, ვისაც აქვს ბმული"
         },
         "locking": {
             "lock": "ფაილის ჩაკეტვა",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "არაფერი გადაიცემა: ეს გიჩვენებთ, რას გააკეთებდა სრული სინქრონიზაცია, ნიმუშიდან გამოთვლილი. ეს არის ბრძანების aeroftp-cli sync --dry-run (და rclone-ის --dry-run) გრაფიკული ეკვივალენტი.",
             "templateImportPathPairs": "გამოსადეგი ბილიკის წყვილები (ლოკალური/დისტანციური) ამ შაბლონში: {count}. AeroSync-ის ფანჯარა მუშაობს ზუსტად ერთ წყვილთან, ამიტომ არაფერი დაიმპორტებულა. დაარედაქტირეთ შაბლონი ისე, რომ მხოლოდ ერთი წყვილი დარჩეს, შემდეგ კი ხელახლა დააიმპორტეთ.",
             "templateNamePlaceholder": "მაგ. ღამის სარეზერვო ასლი S3-ზე",
-            "templateDescPlaceholder": "რისთვის არის ეს შაბლონი (არასავალდებულო)"
+            "templateDescPlaceholder": "რისთვის არის ეს შაბლონი (არასავალდებულო)",
+            "templateExportCliDesc": "aeroftp-cli sync ბრძანების გარსი ({shell})"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} შემავალი ტოკენი, {output} გამავალი ტოკენი, პროვაიდერის დათვლით",
                 "breakdownCache": "{input} შემავალი ტოკენი, {output} გამავალი ტოკენი, {cacheRead} წაკითხულია პრომპტის ქეშიდან, {cacheWritten} ჩაწერილია მასში, პროვაიდერის დათვლით"
+            },
+            "executeOperations": "{count} ოპერაციის შესრულება",
+            "coding": {
+                "dryRun": "საცდელი გაშვება",
+                "apply": "გამოყენება",
+                "timedOutAfter": "დრო ამოიწურა {seconds}s შემდეგ.",
+                "restore": {
+                    "previewNote": "ეს აჩვენებს საკონტროლო წერტილიდან აღდგენის მოქმედებების გადახედვას ფაილების შეცვლის გარეშე.",
+                    "dangerNote": "ამ მაღალი რისკის აღდგენამ შეიძლება გადაწეროს ფაილების მიმდინარე შიგთავსი და წაშალოს ფაილები, რომლებიც საკონტროლო წერტილში არ არსებობდა.",
+                    "wouldRewrite": "გადაიწერება",
+                    "rewritten": "გადაწერილი",
+                    "wouldDelete": "წაიშლება",
+                    "deleted": "წაშლილი",
+                    "wouldSkip": "გამოტოვდება",
+                    "skipped": "გამოტოვებული",
+                    "existedAtCheckpoint": "არსებობდა საკონტროლო წერტილში",
+                    "absentAtCheckpoint": "არ არსებობდა საკონტროლო წერტილში"
+                },
+                "checks": {
+                    "exitSummary": "გასვლის კოდი {code} · {seconds}s",
+                    "continueOnFailure": "უშვებს ყველა შემოწმებას, მაშინაც კი, თუ რომელიმე ჩავარდება.",
+                    "stopOnFailure": "ჩერდება პირველ წარუმატებელ შემოწმებაზე."
+                },
+                "diagnostics": {
+                    "none": "დიაგნოსტიკა არ დაფიქსირებულა."
+                },
+                "search": {
+                    "none": "დამთხვევები ვერ მოიძებნა."
+                },
+                "git": {
+                    "noStagedDiff": "მომზადებული ცვლილებების diff გამონატანი არ არის.",
+                    "noUnstagedDiff": "მოუმზადებელი ცვლილებების diff გამონატანი არ არის.",
+                    "staged": "მომზადებული",
+                    "unstaged": "მოუმზადებელი",
+                    "commitApproval": "Git კომიტის დამტკიცება",
+                    "stageApproval": "Git მომზადების დამტკიცება",
+                    "commitNote": "ეს ქმნის git კომიტს მიმდინარე მომზადებული ინდექსიდან. ჯერ გადახედეთ coding_git_status და coding_git_diff ხელსაწყოებს staged=true პარამეტრით.",
+                    "stagePreviewNote": "ეს წინასწარ აჩვენებს, მოთხოვნილი გზებიდან რომელი მომზადდებოდა; ინდექსი არ შეიცვლება.",
+                    "stageNote": "ეს ცვლის git ინდექსს მოთხოვნილი გზებისთვის."
+                },
+                "patch": {
+                    "validateNote": "ეს ამოწმებს პატჩს ფაილების შეცვლის გარეშე.",
+                    "applyNote": "ეს მაღალი რისკის გამოყენების მოთხოვნა ჩაწერს ფაილებს მას შემდეგ, რაც ბექენდი შექმნის გამოყენებამდე საკონტროლო წერტილს.",
+                    "hideDiff": "გაერთიანებული diff ხედის დამალვა",
+                    "showDiff": "გაერთიანებული diff ხედის ჩვენება"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "საცდელი გაშვება: შესაძლებელია {repaired} დაზიანებული ფრაგმენტის აღდგენა. არაფერი ჩაწერილა.",
             "repairDryRunMetadata": "საცდელი გაშვება: საცავის სათაური ან მანიფესტი შეიძლება აღდგეს პარიტეტიდან. არაფერი ჩაწერილა.",
             "metadataRepaired": "საცავის სათაური ან მანიფესტი აღდგა პარიტეტიდან.",
-            "repairMetadataSuccess": "აღდგენა დასრულდა: საცავის სათაური ან მანიფესტი აღდგა პარიტეტიდან"
+            "repairMetadataSuccess": "აღდგენა დასრულდა: საცავის სათაური ან მანიფესტი აღდგა პარიტეტიდან",
+            "errorCorrectionBadge": "შეცდომების შესწორება",
+            "itemsInFolder": "{count} ელემენტი საქაღალდეში /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "პირველად ნაპოვნი",
             "selectAllButOne": "მონიშნეთ ყველა, გარდა ერთისა თითო ჯგუფში",
             "everyCopyTicked": "ყველა ასლი მონიშნულია",
-            "everyCopyTickedHint": "თითოეულ გამოკვეთილ ჯგუფში მოხსენით ერთ ასლს მონიშვნა: სხვაგვარად წაიშლება ყველა."
+            "everyCopyTickedHint": "თითოეულ გამოკვეთილ ჯგუფში მოხსენით მონიშვნა სულ მცირე ერთ ასლს: თუ ყველა ასლი მონიშნულია, ყველა წაიშლება.",
+            "modeExactHint": "ბაიტ ბაიტ იდენტური",
+            "modeNonIdenticalHint": "აღქმითი ან ტექსტური მსგავსება, ავტომატური წაშლის გარეშე",
+            "potentialWasteSelected": "პოტენციურად გაფლანგული (არჩეული)",
+            "similarityDistance": "{similarity}, მანძ. {distance}"
         },
         "diskUsage": {
             "title": "დისკის გამოყენება",
@@ -4384,7 +4451,9 @@
                 "next": "შემდეგი",
                 "scanQr": "დაამატეთ ეს საიდუმლო თქვენს აუთენტიფიკატორის აპლიკაციაში (Google Authenticator, Authy, Microsoft Authenticator). ან შეიყვანეთ ხელით გასაღები:",
                 "setup": "ორფაქტორიანი აუთენტიფიკაცია",
-                "verify": "დაადასტურე და ჩართე"
+                "verify": "დაადასტურე და ჩართე",
+                "active": "2FA აქტიურია",
+                "inactive": "2FA არააქტიურია"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "შტო",
             "pagesPath": "გზა",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "ავტორიზაცია",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Device Flow-ით ავთენტიფიკაციისთვის დაკავშირების ეკრანზე გამოიყენეთ \"ავტორიზაცია GitHub-ით\". ტოკენი უსაფრთხოდ ინახება საცავში.",
@@ -4843,7 +4912,12 @@
             "branchList": "ტოტების სია",
             "noBranches": "ტოტები ვერ მოიძებნა",
             "rawUrlCopied": "დაუმუშავებელი URL დაკოპირდა",
-            "working": "მიმდინარეობს"
+            "working": "მიმდინარეობს",
+            "pagesDnsIssue": "აღმოჩენილია DNS პრობლემა",
+            "releaseAssetOne": "{count} ფაილი",
+            "releaseAssetMany": "{count} ფაილი",
+            "repoPrivate": "პირადი",
+            "repoPublic": "საჯარო"
         },
         "filenNotes": {
             "title": "დაშიფრული ჩანაწერები",
@@ -5620,7 +5694,9 @@
             "stopCompare": "შეჩერება",
             "compareStopped": "შედარება შეჩერდა.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "შედარება კითხულობს ორივე საქაღალდეს და მათ ქვეშ არსებულ ყველა საქაღალდეს. დიდი ხის შემთხვევაში ამას გარკვეული დრო შეიძლება დასჭირდეს და შეგიძლიათ შეაჩეროთ."
+            "compareStartHint": "შედარება კითხულობს ორივე საქაღალდეს და მათ ქვეშ არსებულ ყველა საქაღალდეს. დიდი ხის შემთხვევაში ამას გარკვეული დრო შეიძლება დასჭირდეს და შეგიძლიათ შეაჩეროთ.",
+            "progressDelta": "[დელტა]",
+            "progressCopy": "[ასლი]"
         },
         "accountLock": {
             "title": "აირჩიეთ ანგარიში",

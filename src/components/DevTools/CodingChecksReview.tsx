@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { CheckCircle2, ListChecks, PlayCircle, TerminalSquare, TimerReset, XCircle } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 import { commandLine } from './aiChatCodingChecks';
 import type { CodingRunCheckResult, CodingRunCheckResultData, CodingVerifyResultData } from './aiChatTypes';
 
@@ -93,6 +94,7 @@ const checkState = (result: CodingRunCheckResult): { label: string; tone: string
 };
 
 export const CodingVerifyReview: React.FC<CodingVerifyReviewProps> = ({ data }) => {
+    const t = useTranslation();
     const { result } = data;
     const passed = result.checks.filter(c => c.success).length;
     const tone = result.overall_success ? 'text-emerald-200' : 'text-red-200';
@@ -123,7 +125,7 @@ export const CodingVerifyReview: React.FC<CodingVerifyReviewProps> = ({ data }) 
                             </div>
                             <div className="mt-1 break-all font-mono text-[10px] text-white/50" title={commandLine(check)}>
                                 {commandLine(check)}
-                                {!check.timed_out && check.exit_code != null && ` · exit ${check.exit_code} · ${(check.duration_ms / 1000).toFixed(1)}s`}
+                                {!check.timed_out && check.exit_code != null && ` · ${t('ai.coding.checks.exitSummary', { code: check.exit_code, seconds: (check.duration_ms / 1000).toFixed(1) })}`}
                             </div>
                             {!check.success && (
                                 <div className="mt-2 space-y-2">
@@ -168,25 +170,28 @@ export const CodingVerifyApprovalPreview: React.FC<{
     workspaceRoot?: string;
     checks?: string[];
     continueOnFailure?: boolean;
-}> = ({ workspaceRoot, checks, continueOnFailure }) => (
-    <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-2">
-        <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-100">
-            <ListChecks className="h-3.5 w-3.5" />
-            Run verification pass
+}> = ({ workspaceRoot, checks, continueOnFailure }) => {
+    const t = useTranslation();
+    return (
+        <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-2">
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-100">
+                <ListChecks className="h-3.5 w-3.5" />
+                Run verification pass
+            </div>
+            <div className="mt-1 space-y-0.5 text-[11px] text-white/70">
+                {checks && checks.length > 0 && (
+                    <div>Checks: <span className="font-mono text-white/85">{checks.join(', ')}</span></div>
+                )}
+                {workspaceRoot && (
+                    <div className="truncate" title={workspaceRoot}>Workspace: <span className="font-mono text-white/85">{workspaceRoot}</span></div>
+                )}
+                <div>{continueOnFailure ? t('ai.coding.checks.continueOnFailure') : t('ai.coding.checks.stopOnFailure')}</div>
+            </div>
+            <div className="mt-1 text-[10px] text-amber-200/70">
+                Runs curated build/test/lint commands in the workspace. Build scripts and tests execute real code.
+            </div>
         </div>
-        <div className="mt-1 space-y-0.5 text-[11px] text-white/70">
-            {checks && checks.length > 0 && (
-                <div>Checks: <span className="font-mono text-white/85">{checks.join(', ')}</span></div>
-            )}
-            {workspaceRoot && (
-                <div className="truncate" title={workspaceRoot}>Workspace: <span className="font-mono text-white/85">{workspaceRoot}</span></div>
-            )}
-            <div>{continueOnFailure ? 'Runs all checks even if one fails.' : 'Stops at the first failing check.'}</div>
-        </div>
-        <div className="mt-1 text-[10px] text-amber-200/70">
-            Runs curated build/test/lint commands in the workspace. Build scripts and tests execute real code.
-        </div>
-    </div>
-);
+    );
+};
 
 export default CodingChecksReview;

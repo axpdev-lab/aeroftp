@@ -610,7 +610,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             Non-identical
           </button>
           <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
-            {mode === 'non-identical' ? 'Perceptual / text similarity — no auto-delete' : 'Byte-identical'}
+            {mode === 'non-identical' ? t('duplicates.modeNonIdenticalHint') : t('duplicates.modeExactHint')}
           </span>
         </div>
 
@@ -780,7 +780,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
               </span>
               <span className="flex items-center gap-1.5">
                 <Trash2 size={13} className="text-red-400" />
-                {formatBytes(summary.wastedBytes)} {mode === 'non-identical' ? 'potential waste (selected)' : t('duplicates.wasted')}
+                {formatBytes(summary.wastedBytes)} {mode === 'non-identical' ? t('duplicates.potentialWasteSelected') : t('duplicates.wasted')}
               </span>
               {(progress?.files_skipped ?? 0) > 0 && (
                 <span className="text-amber-600 dark:text-amber-400">
@@ -815,7 +815,9 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                     )}
                     {group.similarity && (
                       <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 shrink-0">
-                        {group.similarity}{group.distance != null ? `, dist ${group.distance}` : ''}
+                        {group.distance != null
+                          ? t('duplicates.similarityDistance', { similarity: group.similarity, distance: group.distance })
+                          : group.similarity}
                       </span>
                     )}
                   </div>

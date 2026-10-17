@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Зареєструвати формати архівів і меню Провідника",
             "fileAssociationIntegrationDesc": "Зміни набувають чинності одразу та зберігаються під час оновлень. Windows керує типовими програмами окремо.",
             "fileAssociationIntegrationPortable": "Установіть AeroFTP, щоб змінити інтеграцію з Windows.",
-            "fileAssociationIntegrationAdmin": "Windows може запросити дозвіл адміністратора для зміни цих параметрів."
+            "fileAssociationIntegrationAdmin": "Windows може запросити дозвіл адміністратора для зміни цих параметрів.",
+            "migrationServerProfilesFound": "Знайдено профілів серверів у незашифрованому сховищі: {count}",
+            "migrationAiSettingsFound": "У незашифрованому сховищі знайдено налаштування ШІ",
+            "migrationOauthFound": "Знайдено облікових даних OAuth у незашифрованому сховищі: {count}",
+            "fontSystemInstall": "системне встановлення",
+            "fontSizeMin": "мін",
+            "fontSizeMax": "макс"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Безкоштовний рівень обмежено 25 кредитами на місяць",
                 "fourshared": "Якщо токен відкликано, повторно авторизуйтеся вручну"
             },
-            "profilesLoadFailed": "Не вдалося прочитати збережені сервери: {error}"
+            "profilesLoadFailed": "Не вдалося прочитати збережені сервери: {error}",
+            "cleanupSummary": "{count} файлів, звільнено {size}"
         },
         "statusBar": {
             "connected": "Підключено",
@@ -1600,7 +1607,8 @@
                 "title": "Команда Axpdev Lab",
                 "apRole": "Засновник, розробник, мейнтейнер, співавтор дизайну",
                 "ekRole": "Дослідник, інженер із забезпечення якості, співавтор дизайну"
-            }
+            },
+            "madeBy": "командою {author}"
         },
         "support": {
             "title": "Підтримати AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Використовує Proton Drive CLI - встановіть, увійдіть у браузері, AeroFTP - це GUI",
             "twakeDesc": "Twake Drive (5 ГБ безкоштовно)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, французька хмара з відкритим кодом (Cozy Cloud тепер є її частиною) з 5 ГБ безкоштовно",
-            "discoverTwake": "Європейська хмара з відкритим кодом від Linagora, тепер новий дім Cozy Cloud (5 ГБ безкоштовно)"
+            "discoverTwake": "Європейська хмара з відкритим кодом від Linagora, тепер новий дім Cozy Cloud (5 ГБ безкоштовно)",
+            "sourceforgeProject": "Проєкт (Unixname)",
+            "opendriveNotApiKey": "(не ваш ключ API OpenDrive)",
+            "endpoint": "Кінцева точка",
+            "accountId": "ID облікового запису"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Підтвердіть пароль",
             "minLength": "Мінімум 8 символів",
             "autoLockTimeout": "Час автоблокування",
-            "enable": "Увімкнути"
+            "enable": "Увімкнути",
+            "setupBootstrapDescription": "Сховище ключів недоступне: режим початкового завантаження з майстер-паролем"
         },
         "search": {
             "remote_placeholder": "Пошук віддалених файлів...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Електронна пошта",
             "add": "Додати",
             "remove": "Видалити",
-            "none": "Дозволи не задані"
+            "none": "Дозволи не задані",
+            "anyoneWithLink": "Будь-хто з посиланням"
         },
         "locking": {
             "lock": "Заблокувати файл",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Нічого не передається: це показує попередній перегляд того, що зробила б повна синхронізація, обчислений за вибіркою. Це графічний відповідник команди aeroftp-cli sync --dry-run (та --dry-run у rclone).",
             "templateImportPathPairs": "Придатні пари шляхів (локальний/віддалений) у цьому шаблоні: {count}. Вікно AeroSync працює рівно з однією парою, тому нічого не імпортовано. Відредагуйте шаблон, залишивши в ньому лише одну пару, а потім імпортуйте його знову.",
             "templateNamePlaceholder": "напр. Нічне резервне копіювання до S3",
-            "templateDescPlaceholder": "Для чого цей шаблон (необов'язково)"
+            "templateDescPlaceholder": "Для чого цей шаблон (необов'язково)",
+            "templateExportCliDesc": "Обгортка для aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} вхідних токенів, {output} вихідних токенів, за підрахунком провайдера",
                 "breakdownCache": "{input} вхідних токенів, {output} вихідних токенів, {cacheRead} прочитано з кешу промпту, {cacheWritten} записано в нього, за підрахунком провайдера"
+            },
+            "executeOperations": "Виконати операції: {count}",
+            "coding": {
+                "dryRun": "пробний запуск",
+                "apply": "застосувати",
+                "timedOutAfter": "Час очікування вичерпано через {seconds}s.",
+                "restore": {
+                    "previewNote": "Показує попередній перегляд дій відновлення з контрольної точки без зміни файлів.",
+                    "dangerNote": "Це відновлення високого ризику може перезаписати поточний вміст файлів і видалити файли, яких не було в контрольній точці.",
+                    "wouldRewrite": "Буде перезаписано",
+                    "rewritten": "Перезаписано",
+                    "wouldDelete": "Буде видалено",
+                    "deleted": "Видалено",
+                    "wouldSkip": "Буде пропущено",
+                    "skipped": "Пропущено",
+                    "existedAtCheckpoint": "існував у контрольній точці",
+                    "absentAtCheckpoint": "був відсутній у контрольній точці"
+                },
+                "checks": {
+                    "exitSummary": "код виходу {code} · {seconds}s",
+                    "continueOnFailure": "Виконує всі перевірки, навіть якщо одна з них не пройде.",
+                    "stopOnFailure": "Зупиняється на першій невдалій перевірці."
+                },
+                "diagnostics": {
+                    "none": "Діагностичних повідомлень немає."
+                },
+                "search": {
+                    "none": "Збігів не знайдено."
+                },
+                "git": {
+                    "noStagedDiff": "Немає виводу diff для змін в індексі.",
+                    "noUnstagedDiff": "Немає виводу diff для змін поза індексом.",
+                    "staged": "в індексі",
+                    "unstaged": "поза індексом",
+                    "commitApproval": "Підтвердження коміту Git",
+                    "stageApproval": "Підтвердження індексації Git",
+                    "commitNote": "Це створює коміт git з поточного індексу. Спершу перегляньте coding_git_status і coding_git_diff з staged=true.",
+                    "stagePreviewNote": "Це показує попередній перегляд того, які із запитаних шляхів буде проіндексовано; індекс не зміниться.",
+                    "stageNote": "Це змінює індекс git для запитаних шляхів."
+                },
+                "patch": {
+                    "validateNote": "Це перевіряє патч без зміни файлів.",
+                    "applyNote": "Цей запит на застосування з високим ризиком записує файли після того, як бекенд створить контрольну точку перед застосуванням.",
+                    "hideDiff": "Приховати уніфікований diff",
+                    "showDiff": "Показати уніфікований diff"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Пробний запуск: можна відновити пошкоджених фрагментів: {repaired}. Нічого не записано.",
             "repairDryRunMetadata": "Пробний запуск: заголовок або маніфест сховища можна відновити з парності. Нічого не записано.",
             "metadataRepaired": "Заголовок або маніфест сховища відновлено з парності.",
-            "repairMetadataSuccess": "Відновлення завершено: заголовок або маніфест сховища відновлено з парності"
+            "repairMetadataSuccess": "Відновлення завершено: заголовок або маніфест сховища відновлено з парності",
+            "errorCorrectionBadge": "Виправлення помилок",
+            "itemsInFolder": "{count} елементів у /{folder}"
         },
         "cryptomator": {
             "title": "Сховище Cryptomator",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Першу знайдену",
             "selectAllButOne": "Вибрати всі, крім однієї в кожній групі",
             "everyCopyTicked": "позначено всі копії",
-            "everyCopyTickedHint": "У кожній виділеній групі зніміть позначку з однієї копії: інакше буде видалено всі."
+            "everyCopyTickedHint": "У кожній виділеній групі зніміть позначку хоча б з однієї копії: якщо позначено всі копії, буде видалено всі.",
+            "modeExactHint": "Побайтово ідентичні",
+            "modeNonIdenticalHint": "Перцептивна або текстова схожість, без автовидалення",
+            "potentialWasteSelected": "потенційно марно (вибрані)",
+            "similarityDistance": "{similarity}, відст. {distance}"
         },
         "diskUsage": {
             "title": "Використання диска",
@@ -4384,7 +4451,9 @@
                 "next": "Далі",
                 "scanQr": "Додайте цей секрет до вашого додатку автентифікації (Google Authenticator, Authy, Microsoft Authenticator). Або введіть ключ вручну:",
                 "setup": "Двофакторна автентифікація",
-                "verify": "Перевірити та увімкнути"
+                "verify": "Перевірити та увімкнути",
+                "active": "2FA активна",
+                "inactive": "2FA неактивна"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Гілка",
             "pagesPath": "Шлях",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Авторизувати",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Список гілок",
             "noBranches": "Гілок не знайдено",
             "rawUrlCopied": "Вихідну URL-адресу скопійовано",
-            "working": "виконується"
+            "working": "виконується",
+            "pagesDnsIssue": "Виявлено проблему з DNS",
+            "releaseAssetOne": "{count} файл",
+            "releaseAssetMany": "Файлів: {count}",
+            "repoPrivate": "Приватний",
+            "repoPublic": "Публічний"
         },
         "filenNotes": {
             "title": "Зашифровані нотатки",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Зупинити",
             "compareStopped": "Порівняння зупинено.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Порівняння читає обидві папки та всі папки в них. На великому дереві це може тривати певний час, і ви можете його зупинити."
+            "compareStartHint": "Порівняння читає обидві папки та всі папки в них. На великому дереві це може тривати певний час, і ви можете його зупинити.",
+            "progressDelta": "[дельта]",
+            "progressCopy": "[копія]"
         },
         "accountLock": {
             "title": "Виберіть обліковий запис",

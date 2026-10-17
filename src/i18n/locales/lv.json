@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Reģistrēt arhīvu formātus un failu pārlūka izvēlnes",
             "fileAssociationIntegrationDesc": "Izmaiņas stājas spēkā uzreiz un tiek saglabātas atjaunināšanas laikā. Windows pārvalda noklusējuma lietotnes atsevišķi.",
             "fileAssociationIntegrationPortable": "Instalējiet AeroFTP, lai mainītu integrāciju ar Windows.",
-            "fileAssociationIntegrationAdmin": "Windows var pieprasīt administratora atļauju, lai mainītu šīs opcijas."
+            "fileAssociationIntegrationAdmin": "Windows var pieprasīt administratora atļauju, lai mainītu šīs opcijas.",
+            "migrationServerProfilesFound": "Nešifrētā krātuvē atrasti {count} servera profili",
+            "migrationAiSettingsFound": "Nešifrētā krātuvē atrasta AI konfigurācija",
+            "migrationOauthFound": "Nešifrētā krātuvē atrasti {count} OAuth akreditācijas dati",
+            "fontSystemInstall": "sistēmas instalācija",
+            "fontSizeMin": "min",
+            "fontSizeMax": "maks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Bezmaksas līmenis ierobežots līdz 25 kredītiem mēnesī",
                 "fourshared": "Ja pilnvara ir atsaukta, autorizējiet atkārtoti manuāli"
             },
-            "profilesLoadFailed": "Neizdevās nolasīt saglabātos serverus: {error}"
+            "profilesLoadFailed": "Neizdevās nolasīt saglabātos serverus: {error}",
+            "cleanupSummary": "{count} faili, atbrīvoti {size}"
         },
         "statusBar": {
             "connected": "Savienots",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab komanda",
                 "apRole": "Dibinātājs, izstrādātājs, uzturētājs, līdzdizainers",
                 "ekRole": "Pētnieks, kvalitātes nodrošināšanas inženieris, līdzdizainers"
-            }
+            },
+            "madeBy": "uzņēmumā {author}"
         },
         "support": {
             "title": "Atbalstīt AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Izmanto Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI",
             "twakeDesc": "Twake Drive (5 GB bez maksas)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, franču atvērtā koda mākonis (Cozy Cloud tagad ir tā daļa) ar 5 GB bez maksas",
-            "discoverTwake": "Linagora atvērtā koda Eiropas mākonis, tagad Cozy Cloud jaunās mājas (5 GB bez maksas)"
+            "discoverTwake": "Linagora atvērtā koda Eiropas mākonis, tagad Cozy Cloud jaunās mājas (5 GB bez maksas)",
+            "sourceforgeProject": "Projekts (Unixname)",
+            "opendriveNotApiKey": "(nav jūsu OpenDrive API atslēga)",
+            "endpoint": "Galapunkts",
+            "accountId": "Konta ID"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Apstipriniet paroli",
             "minLength": "Vismaz 8 rakstzīmes",
             "autoLockTimeout": "Automātiskās bloķēšanas laiks",
-            "enable": "Iespējot"
+            "enable": "Iespējot",
+            "setupBootstrapDescription": "Atslēgu glabātuve nav pieejama: palaišanas režīms ar galveno paroli"
         },
         "search": {
             "remote_placeholder": "Meklēt attālos failus...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "E-pasta adrese",
             "add": "Pievienot",
             "remove": "Noņemt",
-            "none": "Atļaujas nav iestatītas"
+            "none": "Atļaujas nav iestatītas",
+            "anyoneWithLink": "Ikviens, kam ir saite"
         },
         "locking": {
             "lock": "Bloķēt failu",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko darītu pilna sinhronizācija, aprēķinātu no izlases. Tas ir komandas aeroftp-cli sync --dry-run (un rclone --dry-run) grafiskais ekvivalents.",
             "templateImportPathPairs": "Izmantojamie ceļu pāri (lokāls/attāls) šajā veidnē: {count}. AeroSync logs strādā ar tieši vienu pāri, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu tikai viens pāris, un pēc tam importējiet to vēlreiz.",
             "templateNamePlaceholder": "piem. Nakts dublējums uz S3",
-            "templateDescPlaceholder": "Kam paredzēta šī veidne (neobligāti)"
+            "templateDescPlaceholder": "Kam paredzēta šī veidne (neobligāti)",
+            "templateExportCliDesc": "Aptinējskripts komandai aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "Ievades tokeni: {input}, izvades tokeni: {output}, pēc pakalpojumu sniedzēja uzskaites",
                 "breakdownCache": "Ievades tokeni: {input}, izvades tokeni: {output}, nolasīti no uzvednes kešatmiņas: {cacheRead}, ierakstīti tajā: {cacheWritten}, pēc pakalpojumu sniedzēja uzskaites"
+            },
+            "executeOperations": "Izpildīt darbības: {count}",
+            "coding": {
+                "dryRun": "izmēģinājums",
+                "apply": "lietot",
+                "timedOutAfter": "Iestājās noildze pēc {seconds}s.",
+                "restore": {
+                    "previewNote": "Šis parāda kontrolpunkta atjaunošanas darbību priekšskatījumu, nemainot failus.",
+                    "dangerNote": "Šī augsta riska atjaunošana var pārrakstīt pašreizējo failu saturu un izdzēst failus, kas kontrolpunktā neeksistēja.",
+                    "wouldRewrite": "Tiktu pārrakstīti",
+                    "rewritten": "Pārrakstīti",
+                    "wouldDelete": "Tiktu izdzēsti",
+                    "deleted": "Izdzēsti",
+                    "wouldSkip": "Tiktu izlaisti",
+                    "skipped": "Izlaisti",
+                    "existedAtCheckpoint": "pastāvēja kontrolpunktā",
+                    "absentAtCheckpoint": "nebija kontrolpunktā"
+                },
+                "checks": {
+                    "exitSummary": "izejas kods {code} · {seconds}s",
+                    "continueOnFailure": "Palaiž visas pārbaudes, pat ja kāda neizdodas.",
+                    "stopOnFailure": "Apstājas pie pirmās neizdevušās pārbaudes."
+                },
+                "diagnostics": {
+                    "none": "Nav ziņots par diagnostiku."
+                },
+                "search": {
+                    "none": "Atbilstības nav atrastas."
+                },
+                "git": {
+                    "noStagedDiff": "Nav sagatavoto izmaiņu diff izvades.",
+                    "noUnstagedDiff": "Nav nesagatavoto izmaiņu diff izvades.",
+                    "staged": "sagatavots",
+                    "unstaged": "nesagatavots",
+                    "commitApproval": "Git iesūtījuma apstiprināšana",
+                    "stageApproval": "Git sagatavošanas apstiprināšana",
+                    "commitNote": "Tas izveido git iesūtījumu (commit) no pašreizējā sagatavotā indeksa. Vispirms pārskatiet coding_git_status un coding_git_diff ar staged=true.",
+                    "stagePreviewNote": "Tas priekšskatījumā parāda, kuri pieprasītie ceļi tiktu sagatavoti; indekss nemainīsies.",
+                    "stageNote": "Tas maina git indeksu pieprasītajiem ceļiem."
+                },
+                "patch": {
+                    "validateNote": "Tas validē ielāpu, nemainot failus.",
+                    "applyNote": "Šis augsta riska lietošanas pieprasījums ieraksta failus pēc tam, kad aizmugursistēma izveido kontrolpunktu pirms lietošanas.",
+                    "hideDiff": "Slēpt vienoto diff",
+                    "showDiff": "Rādīt vienoto diff"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Izmēģinājuma palaišana: bojāto fragmentu skaits, ko var izlabot: {repaired}. Nekas netika ierakstīts.",
             "repairDryRunMetadata": "Izmēģinājuma palaišana: glabātavas galveni vai manifestu var atjaunot no paritātes. Nekas netika ierakstīts.",
             "metadataRepaired": "No paritātes tika atjaunota glabātavas galvene vai manifests.",
-            "repairMetadataSuccess": "Labošana pabeigta: no paritātes atjaunota glabātavas galvene vai manifests"
+            "repairMetadataSuccess": "Labošana pabeigta: no paritātes atjaunota glabātavas galvene vai manifests",
+            "errorCorrectionBadge": "Kļūdu labošana",
+            "itemsInFolder": "{count} vienību mapē /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Pirmo atrasto",
             "selectAllButOne": "Atlasīt visus, izņemot vienu katrā grupā",
             "everyCopyTicked": "atzīmētas visas kopijas",
-            "everyCopyTickedHint": "Katrā izceltajā grupā noņemiet atzīmi vienai kopijai: citādi tiks dzēstas visas."
+            "everyCopyTickedHint": "Katrā izceltajā grupā noņemiet atzīmi vismaz vienai kopijai: ja atzīmētas visas kopijas, tiktu dzēstas tās visas.",
+            "modeExactHint": "Identiski baitu pa baitam",
+            "modeNonIdenticalHint": "Uztveres vai teksta līdzība, bez automātiskas dzēšanas",
+            "potentialWasteSelected": "iespējamais izšķērdējums (atlasīts)",
+            "similarityDistance": "{similarity}, att. {distance}"
         },
         "diskUsage": {
             "title": "Diska izmantošana",
@@ -4384,7 +4451,9 @@
                 "next": "Tālāk",
                 "scanQr": "Pievienojiet šo noslēpumu savai autentifikācijas lietotnei (Google Authenticator, Authy, Microsoft Authenticator). Vai ievadiet manuālo atslēgu:",
                 "setup": "Divfaktoru autentifikācija",
-                "verify": "Pārbaudīt un ieslēgt"
+                "verify": "Pārbaudīt un ieslēgt",
+                "active": "2FA aktīva",
+                "inactive": "2FA neaktīva"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Zars",
             "pagesPath": "Ceļš",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autorizēt",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Zaru saraksts",
             "noBranches": "Zari nav atrasti",
             "rawUrlCopied": "Neapstrādātais URL nokopēts",
-            "working": "darbojas"
+            "working": "darbojas",
+            "pagesDnsIssue": "Konstatēta DNS problēma",
+            "releaseAssetOne": "{count} fails",
+            "releaseAssetMany": "{count} faili",
+            "repoPrivate": "Privāts",
+            "repoPublic": "Publisks"
         },
         "filenNotes": {
             "title": "Šifrētas piezīmes",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Apturēt",
             "compareStopped": "Salīdzināšana apturēta.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Salīdzināšana nolasa abas mapes un visas mapes tajās. Lielam kokam tas var aizņemt kādu laiku, un jūs varat to apturēt."
+            "compareStartHint": "Salīdzināšana nolasa abas mapes un visas mapes tajās. Lielam kokam tas var aizņemt kādu laiku, un jūs varat to apturēt.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopija]"
         },
         "accountLock": {
             "title": "Izvēlieties kontu",
