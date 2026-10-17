@@ -14,11 +14,13 @@ use crate::user_crypto::{self, SecretKey};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use secrecy::zeroize::{Zeroize, Zeroizing};
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 static SESSION_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 use tauri::AppHandle;
 
@@ -43,6 +45,57 @@ static USER_SESSION: Mutex<Option<UserSession>> = Mutex::new(None);
 struct UserSession {
     user_id: i64,
     dek: SecretKey,
+}
+
+thread_local! {
+    /// The session as this thread found it when it took [`USER_SESSION`], for
+    /// as long as it holds it ([`SessionHold`]); `Some(None)` is held with no
+    /// account unlocked. The lock is not reentrant: a partition call made under
+    /// it (an MCP OAuth freshness check inside a token write) reads the session
+    /// from here, where taking the lock again would wait on its own thread.
+    static HELD_SESSION: RefCell<Option<Option<(i64, SecretKey)>>> = const { RefCell::new(None) };
+}
+
+/// [`USER_SESSION`], held by this thread until dropped. A writer takes it
+/// before SQLite's write lock, the order [`with_user_dek`] callers take them in:
+/// a writer that held the database's reservation and then waited on the
+/// session would leave a thread holding the session and waiting on the
+/// database to fail its write when the busy timeout runs out. A hold taken
+/// while this thread already holds the session is empty.
+pub(crate) struct SessionHold(Option<MutexGuard<'static, Option<UserSession>>>);
+
+impl Drop for SessionHold {
+    fn drop(&mut self) {
+        if self.0.is_some() {
+            HELD_SESSION.set(None);
+        }
+    }
+}
+
+fn hold_session() -> Result<SessionHold, String> {
+    if HELD_SESSION.with_borrow(Option::is_some) {
+        return Ok(SessionHold(None));
+    }
+    let guard = USER_SESSION
+        .lock()
+        .map_err(|_| "USER_SESSION_LOCK_POISONED".to_string())?;
+    let session = guard.as_ref().map(|session| {
+        let dek = user_crypto::secret_key_from_bytes(session.dek.expose_secret());
+        (session.user_id, dek)
+    });
+    HELD_SESSION.set(Some(session));
+    Ok(SessionHold(Some(guard)))
+}
+
+/// Hold the session before opening a transaction that goes through `user_id`'s
+/// partition. Taken for an account with a passphrase, the kind whose partition
+/// calls take the session. When `user_id` cannot be read, or the lock is
+/// poisoned, the hold is empty and those calls answer as they would without it.
+pub(crate) fn hold_user_session(conn: &Connection, user_id: i64) -> SessionHold {
+    match read_user_key_row(conn, user_id) {
+        Ok(row) if row.has_passphrase => hold_session().unwrap_or(SessionHold(None)),
+        _ => SessionHold(None),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1433,19 +1486,20 @@ fn with_user_dek<R>(
 ) -> Result<R, String> {
     let row = read_user_key_row(conn, user_id)?;
     if row.has_passphrase {
-        let session = USER_SESSION
-            .lock()
-            .map_err(|_| "USER_SESSION_LOCK_POISONED".to_string())?;
-        let Some(session) = session
-            .as_ref()
-            .filter(|session| session.user_id == user_id)
-        else {
-            return Err("USER_LOCKED".to_string());
-        };
-        if !user_crypto::verify_dek(&session.dek, &row.dek_verifier)? {
-            return Err("DEK_VERIFIER_MISMATCH".to_string());
-        }
-        return f(user_id, &session.dek);
+        let _session = hold_session()?;
+        return HELD_SESSION.with_borrow(|held| {
+            let Some((_, dek)) = held
+                .as_ref()
+                .and_then(Option::as_ref)
+                .filter(|(session_user, _)| *session_user == user_id)
+            else {
+                return Err("USER_LOCKED".to_string());
+            };
+            if !user_crypto::verify_dek(dek, &row.dek_verifier)? {
+                return Err("DEK_VERIFIER_MISMATCH".to_string());
+            }
+            f(user_id, dek)
+        });
     }
 
     let dek = unwrap_user_dek_with_key(&row, root_key)?;
@@ -1687,6 +1741,8 @@ pub fn update_server_profiles_for(
     apply: impl FnOnce(&mut Vec<Value>) -> bool,
 ) -> Result<(Vec<Value>, bool), String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    // The session before the reservation ([`SessionHold`]).
+    let _session = hold_user_session(conn, user_id);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start update profiles: {e}"))?;
@@ -5530,21 +5586,131 @@ pub async fn user_partitions_storage_stats(
     user_storage_stats(&conn)
 }
 
+/// Serializes the tests that prime, hold or clear the session, here and in
+/// the modules whose transactions go through a partition.
+#[cfg(test)]
+pub(crate) fn test_lock() -> MutexGuard<'static, ()> {
+    static USER_PARTITION_TEST_LOCK: Mutex<()> = Mutex::new(());
+    // Recover from poisoning so a single failing test does not cascade
+    // into the rest of the suite as PoisonError.
+    USER_PARTITION_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+}
+
+/// A partition database file whose active account has a passphrase and is
+/// unlocked: the kind of account whose partition calls take the session.
+/// Returns the file and the account.
+#[cfg(test)]
+pub(crate) fn passphrase_account_db(dir: &std::path::Path, root_key: &[u8; 32]) -> (PathBuf, i64) {
+    let path = dir.join(DB_FILENAME);
+    let mut conn = open_or_init_path(path.clone()).expect("open the partition database");
+    migrate_legacy_payloads(&mut conn, None, None, root_key).expect("migrate");
+    let user = create_user(
+        &mut conn,
+        root_key,
+        "Locked",
+        None,
+        None,
+        Some("passphrase"),
+    )
+    .expect("create the account");
+    unlock_user(&conn, root_key, user.id, Some("passphrase")).expect("unlock the account");
+    (path, user.id)
+}
+
+/// Runs `write` on its own connection and thread while this thread holds the
+/// session of `user_id` ([`passphrase_account_db`]), and checks that `write`
+/// does not hold the database's reservation while it waits for that session:
+/// another connection writes all along, with no busy timeout to wait one out.
+/// Returns what `write` returned once the session is released.
+#[cfg(test)]
+pub(crate) fn wait_for_the_session_without_reserving<T: Send + 'static>(
+    path: &std::path::Path,
+    user_id: i64,
+    write: impl FnOnce(Connection) -> T + Send + 'static,
+) -> T {
+    use std::time::{Duration, Instant};
+    let conn = open_or_init_path(path.to_path_buf()).expect("open the writer");
+    let other = open_or_init_path(path.to_path_buf()).expect("open the other writer");
+    other
+        .execute_batch("CREATE TABLE IF NOT EXISTS session_order_probe(x INTEGER)")
+        .expect("probe table");
+    other.busy_timeout(Duration::ZERO).expect("no busy timeout");
+    let session = hold_user_session(&other, user_id);
+    let held =
+        HELD_SESSION.with_borrow(|held| held.as_ref().and_then(Option::as_ref).map(|(id, _)| *id));
+    let writer = std::thread::spawn(move || write(conn));
+    // The writer reaches the session at once. One that holds the reservation
+    // while it waits refuses every write from then on.
+    let until = Instant::now() + Duration::from_millis(300);
+    let mut refused = None;
+    while refused.is_none() && Instant::now() < until {
+        refused = other
+            .execute("INSERT INTO session_order_probe VALUES (1)", [])
+            .err();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // Released before any assertion: a panic while holding it would poison
+    // the session for the rest of the suite.
+    drop(session);
+    let written = writer.join().expect("the writer");
+    assert_eq!(held, Some(user_id), "the session held is not the account's");
+    assert!(
+        refused.is_none(),
+        "a write was refused while the writer waited for the session: {refused:?}"
+    );
+    written
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rusqlite::params;
     use serde_json::json;
-    use std::sync::{Mutex as TestMutex, MutexGuard};
 
-    static USER_PARTITION_TEST_LOCK: TestMutex<()> = TestMutex::new(());
+    /// A partition call made under the session its thread holds reads the
+    /// session from the hold: the lock is not reentrant, and taking it again
+    /// would wait on its own thread for good.
+    #[test]
+    fn a_partition_call_under_a_held_session_does_not_wait_on_its_own_thread() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (path, user_id) = passphrase_account_db(dir.path(), &test_root());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let conn = open_or_init_path(path).expect("open");
+            let root_secret = user_crypto::secret_key_from_bytes(&test_root());
+            let _session = hold_user_session(&conn, user_id);
+            let nested = with_user_dek(&conn, &root_secret, user_id, |user_id, _| {
+                set_user_setting_for(&conn, &test_root(), user_id, "nested", &json!(1))?;
+                get_user_setting_for(&conn, &test_root(), user_id, "nested")
+            });
+            let _ = sender.send(nested);
+        });
+        let nested = receiver
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the nested calls waited on the session their own thread holds");
+        assert_eq!(nested, Ok(Some(json!(1))));
+    }
 
-    fn test_lock() -> MutexGuard<'static, ()> {
-        // Recover from poisoning so a single failing test does not cascade
-        // into the rest of the suite as PoisonError.
-        USER_PARTITION_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+    /// The read-modify-write of a profile list takes the session before the
+    /// reservation, like every other partition writer.
+    #[test]
+    fn a_profile_update_takes_the_session_before_the_reservation() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (path, user_id) = passphrase_account_db(dir.path(), &test_root());
+        let (profiles, written) =
+            wait_for_the_session_without_reserving(&path, user_id, move |mut conn| {
+                update_server_profiles_for(&mut conn, &test_root(), user_id, |profiles| {
+                    profiles.push(json!({"id": "p", "name": "P", "protocol": "sftp"}));
+                    true
+                })
+            })
+            .expect("the update");
+        assert!(written);
+        assert_eq!(profiles.len(), 1);
     }
 
     fn test_root() -> [u8; 32] {

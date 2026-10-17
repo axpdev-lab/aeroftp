@@ -373,6 +373,8 @@ fn write_catalog_in(
     if invalidate_first {
         manager.invalidate(user_id, Some(server_id));
     }
+    // The session before the reservation (user_partitions::SessionHold).
+    let _session = user_partitions::hold_user_session(conn, user_id);
     let transaction = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
@@ -554,22 +556,34 @@ pub async fn mcp_client_http_oauth_sign_out(
         let (mut conn, root_key, user_id) = mcp_client_commands::context(&app)?;
         let manager = lifecycle::shared();
         manager.invalidate(user_id, Some(&server_id));
-        let transaction = conn
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-            .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
-        if !load(&transaction, &root_key, user_id)?
-            .iter()
-            .any(|config| config.id == server_id)
-        {
-            return Err("MCP_CONFIG_NOT_FOUND");
-        }
-        lifecycle::cleanup_in_transaction(&transaction, user_id, &server_id)
-            .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
-        transaction.commit().map_err(|_| "MCP_STORE_UNAVAILABLE")?;
+        remove_tokens(&mut conn, &root_key, user_id, &server_id)?;
         manager.invalidate(user_id, Some(&server_id));
         Ok(())
     })
     .await
+}
+
+/// The stored OAuth tokens of a configured server, removed.
+fn remove_tokens(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    server_id: &str,
+) -> Result<(), &'static str> {
+    // The session before the reservation (user_partitions::SessionHold).
+    let _session = user_partitions::hold_user_session(conn, user_id);
+    let transaction = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
+    if !load(&transaction, root_key, user_id)?
+        .iter()
+        .any(|config| config.id == server_id)
+    {
+        return Err("MCP_CONFIG_NOT_FOUND");
+    }
+    lifecycle::cleanup_in_transaction(&transaction, user_id, server_id)
+        .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
+    transaction.commit().map_err(|_| "MCP_STORE_UNAVAILABLE")
 }
 
 /// Explicit refresh only. Never triggered by a 401 and never replays a tool call.
@@ -782,6 +796,41 @@ mod tests {
             !attempt.is_cancelled(),
             "a refused duplicate must not cancel the existing server's authorization"
         );
+    }
+
+    /// A catalog write and a sign-out take the session before the database's
+    /// reservation, on an account with a passphrase, the kind whose partition
+    /// calls take the session.
+    #[test]
+    fn catalog_writes_and_sign_out_take_the_session_before_the_reservation() {
+        let _guard = user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let (path, user) = user_partitions::passphrase_account_db(dir.path(), &ROOT);
+        let installed = user_partitions::wait_for_the_session_without_reserving(
+            &path,
+            user,
+            move |mut conn| {
+                let manager = lifecycle::PendingAuthorizationManager::default();
+                install_disabled_endpoint_in(
+                    &mut conn,
+                    &ROOT,
+                    user,
+                    &manager,
+                    "remote",
+                    "https://mcp.example.com/mcp",
+                )
+            },
+        );
+        assert_eq!(installed, Ok(()));
+        let conn = Connection::open(&path).unwrap();
+        put_oauth_rows(&conn, user, "remote");
+        let signed_out = user_partitions::wait_for_the_session_without_reserving(
+            &path,
+            user,
+            move |mut conn| remove_tokens(&mut conn, &ROOT, user, "remote"),
+        );
+        assert_eq!(signed_out, Ok(()));
+        assert_eq!(oauth_rows(&conn, user, "remote"), 0);
     }
 
     fn database() -> (tempfile::TempDir, Connection, i64) {
