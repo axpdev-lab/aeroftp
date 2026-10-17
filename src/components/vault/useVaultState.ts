@@ -2022,7 +2022,11 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 await refreshVaultEntries();
                 const repaired = res.repaired ?? 0;
                 const damaged = res.damaged ?? 0;
-                if (damaged === 0) {
+                if (damaged === 0 && repaired > 0) {
+                    // No damaged data block, but open rebuilt the header or manifest from
+                    // parity and the repair re-sealed the vault with it.
+                    setSuccess(t('vault.repairMetadataSuccess'));
+                } else if (damaged === 0) {
                     setSuccess(t('vault.repairNoDamage'));
                 } else if (repaired === 0) {
                     setSuccess(t('vault.repairUntouched', { damaged: String(damaged) }));

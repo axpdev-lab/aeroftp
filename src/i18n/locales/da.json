@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "Krypteret med AES-256. Indhold og filnavne er fortrolige; adgangskode kræves for at åbne.",
             "resetDefaults": "Nulstil til standard",
             "scrubErrorCorrectionTooltip": "{label} (verificerer cipher-hashes)",
-            "repairErrorCorrectionTooltip": "{label} (forhåndsvisning med tørkørsel tilgængelig)"
+            "repairErrorCorrectionTooltip": "{label} (forhåndsvisning med tørkørsel tilgængelig)",
+            "repairDryRunNoDamage": "Tørkørsel: ingen skader; intet at reparere. Intet blev skrevet.",
+            "repairDryRunCannotRepair": "Tørkørsel: ingen af {damaged} beskadigede chunk(s) kan repareres. Intet blev skrevet.",
+            "repairDryRunCanRepair": "Tørkørsel: {repaired} beskadigede chunk(s) kan repareres. Intet blev skrevet.",
+            "repairDryRunMetadata": "Tørkørsel: vault-headeren eller manifestet kan genopbygges ud fra paritet. Intet blev skrevet.",
+            "metadataRepaired": "Vault-headeren eller manifestet blev genopbygget ud fra paritet.",
+            "repairMetadataSuccess": "Reparation fuldført: vault-headeren eller manifestet blev genopbygget ud fra paritet"
         },
         "cryptomator": {
             "title": "Cryptomator-boks",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "Den bærbare enhed blev afbrudt. Sæt kablet i igen, og åbn den igen.",
             "portable_needs_replug": "Ikke monteret af skrivebordet. Træk kablet ud og sæt det i igen, og åbn det derefter igen.",
             "volumes_need_mount_observe": "I snap'en vises drev, når tilladelsen mount-observe er tilsluttet. Kør dette i en terminal, og vend derefter tilbage til AeroFTP:",
-            "volumes_unavailable": "Kunne ikke læse de monterede drev."
+            "volumes_unavailable": "Kunne ikke læse de monterede drev.",
+            "portable_device": "Bærbar enhed"
         },
         "viewMode": {
             "list": "Liste",

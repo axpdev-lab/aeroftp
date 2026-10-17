@@ -7,6 +7,7 @@ import { VaultIcon } from '../icons/VaultIcon';
 import VaultSyncDialog from '../VaultSyncDialog';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, IconProvider } from './useVaultState';
+import { repairResultMessage } from './repairResultMessage';
 import { useModalFileView } from '../modalview/useModalFileView';
 import { ModalViewToolbar } from '../modalview/ModalViewToolbar';
 import { ModalFileGrid, ModalGridItem } from '../modalview/ModalFileGrid';
@@ -600,17 +601,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
 
                             {state.repairResult ? (
                                 <div className="p-3 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                                    {(() => {
-                                        const r = state.repairResult.repaired ?? 0;
-                                        const d = state.repairResult.damaged ?? 0;
-                                        const dry = state.repairResult.dry_run;
-                                        const prefix = dry ? 'Dry-run: ' : '';
-                                        if (d === 0) return `${prefix}${t('vault.noDamageNothing')}`;
-                                        if (r === 0) return `${prefix}${t('vault.couldNotRepairAny', { damaged: String(d) })}`;
-                                        // all-or-nothing engine: r > 0 implies r === d (all verified + persisted)
-                                        return `${prefix}${t('vault.successfullyRepaired', { repaired: String(r) })}`;
-                                    })()}
-                                    {state.repairResult.dry_run && ' (no changes written)'}
+                                    {repairResultMessage(state.repairResult, t)}
                                 </div>
                             ) : (
                                 <div className="text-gray-500 dark:text-gray-400 text-xs">{t('vault.runScrubHint')}</div>

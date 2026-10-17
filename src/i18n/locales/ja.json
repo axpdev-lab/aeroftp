@@ -3366,7 +3366,13 @@
             "encryptedTooltip": "AES-256で暗号化。内容とファイル名は機密で、開くにはパスワードが必要です。",
             "resetDefaults": "デフォルトに戻す",
             "scrubErrorCorrectionTooltip": "{label}（暗号ハッシュを検証）",
-            "repairErrorCorrectionTooltip": "{label}（ドライランでプレビュー可能）"
+            "repairErrorCorrectionTooltip": "{label}（ドライランでプレビュー可能）",
+            "repairDryRunNoDamage": "ドライラン：破損はありません。修復するものはありません。何も書き込まれていません。",
+            "repairDryRunCannotRepair": "ドライラン：破損した {damaged} 件のチャンクはいずれも修復できません。何も書き込まれていません。",
+            "repairDryRunCanRepair": "ドライラン：破損した {repaired} 件のチャンクを修復できます。何も書き込まれていません。",
+            "repairDryRunMetadata": "ドライラン：パリティからボールトのヘッダーまたはマニフェストを再構築できます。何も書き込まれていません。",
+            "metadataRepaired": "パリティからボールトのヘッダーまたはマニフェストを再構築しました。",
+            "repairMetadataSuccess": "修復完了: パリティからボールトのヘッダーまたはマニフェストを再構築しました"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",
@@ -3561,7 +3567,8 @@
             "portable_unplugged": "ポータブルデバイスが切断されました。ケーブルを再接続して、もう一度開いてください。",
             "portable_needs_replug": "デスクトップにマウントされていません。ケーブルを抜き差ししてから、もう一度開いてください。",
             "volumes_need_mount_observe": "snap では、mount-observe 権限を接続するとボリュームが表示されます。ターミナルで次を実行し、AeroFTP に戻ってください：",
-            "volumes_unavailable": "マウントされているボリュームを読み取れませんでした。"
+            "volumes_unavailable": "マウントされているボリュームを読み取れませんでした。",
+            "portable_device": "ポータブルデバイス"
         },
         "viewMode": {
             "list": "リスト",
