@@ -9,9 +9,7 @@
 use notify::event::{CreateKind, RemoveKind};
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Config, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
-use notify_debouncer_full::{
-    new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
-};
+use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -112,6 +110,14 @@ impl Default for WatcherStatus {
 pub struct WatcherEvent {
     /// Paths that changed
     pub paths: Vec<PathBuf>,
+    /// Renames the debouncer matched up, as `(from, to)`, both inside the
+    /// watched tree. Both paths are in `paths` too: a consumer that does not
+    /// read renames still sees a removal and a creation.
+    pub renames: Vec<(PathBuf, PathBuf)>,
+    /// The watcher lost track of the tree (the kernel's event queue
+    /// overflowed, or it could not watch part of the tree): `paths` is not
+    /// everything that changed, and only a full scan sees the rest.
+    pub overflow: bool,
     /// Kind of change
     #[allow(dead_code)] // Populated but not yet consumed; will be used by sync engine
     pub kind: WatcherEventKind,
@@ -223,20 +229,57 @@ pub fn should_exclude_path(path: &Path) -> bool {
     false
 }
 
-/// Deduplicate paths from multiple events into a unique set
-fn deduplicate_paths(events: &[DebouncedEvent]) -> Vec<PathBuf> {
+/// What one debounced batch says changed: the unique paths, the renames the
+/// debouncer matched up, and whether the kernel asked for a rescan.
+#[derive(Debug, Default, PartialEq)]
+struct BatchChanges {
+    paths: Vec<PathBuf>,
+    renames: Vec<(PathBuf, PathBuf)>,
+    overflow: bool,
+}
+
+/// Collect the changes of a debounced batch. A rename is kept as a pair only
+/// when neither side is a path the quick filter drops (an editor's `x.tmp`
+/// renamed over `x` is a write of `x`, not a rename of a synced file). A
+/// rescan event carries no path: it says the kernel dropped events, which the
+/// batch reports as `overflow` instead of losing.
+fn collect_changes<'a>(events: impl IntoIterator<Item = &'a notify::Event>) -> BatchChanges {
     let mut seen = HashSet::new();
-    let mut result = Vec::new();
+    let mut changes = BatchChanges::default();
 
     for event in events {
-        for path in &event.event.paths {
+        if event.need_rescan() {
+            changes.overflow = true;
+        }
+        if let (EventKind::Modify(ModifyKind::Name(RenameMode::Both)), [from, to]) =
+            (&event.kind, event.paths.as_slice())
+        {
+            if !should_exclude_path(from) && !should_exclude_path(to) {
+                changes.renames.push((from.clone(), to.clone()));
+            }
+        }
+        for path in &event.paths {
             if !should_exclude_path(path) && seen.insert(path.clone()) {
-                result.push(path.clone());
+                changes.paths.push(path.clone());
             }
         }
     }
 
-    result
+    changes
+}
+
+/// Whether a watcher error means events were lost. A path that vanished
+/// before it could be watched (a temporary folder) loses nothing: its own
+/// removal is reported. Reaching the watch limit, or an error the backend
+/// does not explain, leaves part of the tree unwatched.
+fn error_loses_events(error: &notify::Error) -> bool {
+    match &error.kind {
+        notify::ErrorKind::PathNotFound | notify::ErrorKind::WatchNotFound => false,
+        notify::ErrorKind::Io(io) => io.kind() != std::io::ErrorKind::NotFound,
+        notify::ErrorKind::Generic(_)
+        | notify::ErrorKind::InvalidConfig(_)
+        | notify::ErrorKind::MaxFilesWatch => true,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +337,10 @@ pub struct FileWatcher {
     /// Debounce quiet period for the native debouncer (configurable via
     /// `with_debounce_ms`; defaults to `DEBOUNCE_TIMEOUT`).
     debounce_timeout: Duration,
+    /// Set when an event could not be delivered (the channel was full) or the
+    /// backend reported an error that loses events. The consumer reads and
+    /// clears it: what was dropped is unknown, so it needs a full scan.
+    lost_events: Arc<AtomicBool>,
 }
 
 impl FileWatcher {
@@ -312,7 +359,14 @@ impl FileWatcher {
             last_event_at: Arc::new(std::sync::Mutex::new(None)),
             running: Arc::new(AtomicBool::new(false)),
             debounce_timeout: DEBOUNCE_TIMEOUT,
+            lost_events: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// The flag this watcher sets when it loses events (see `lost_events`).
+    /// Shared, so the consumer can poll it while the watcher runs.
+    pub fn lost_events(&self) -> Arc<AtomicBool> {
+        self.lost_events.clone()
     }
 
     /// Override the native debouncer's quiet period. Clamped to [100, 60000] ms.
@@ -381,6 +435,7 @@ impl FileWatcher {
         let events_received = self.events_received.clone();
         let last_event_at = self.last_event_at.clone();
 
+        let lost_events = self.lost_events.clone();
         let debounce_timeout = self.debounce_timeout;
         let mut debouncer = new_debouncer(
             debounce_timeout,
@@ -388,8 +443,12 @@ impl FileWatcher {
             move |result: DebounceEventResult| {
                 match result {
                     Ok(events) => {
-                        let paths = deduplicate_paths(&events);
-                        if paths.is_empty() {
+                        let BatchChanges {
+                            paths,
+                            renames,
+                            overflow,
+                        } = collect_changes(events.iter().map(|e| &e.event));
+                        if paths.is_empty() && !overflow {
                             return;
                         }
 
@@ -399,21 +458,31 @@ impl FileWatcher {
                             .map(|e| WatcherEventKind::from_notify(&e.event.kind))
                             .unwrap_or(WatcherEventKind::Other);
 
-                        let event = WatcherEvent { paths, kind };
+                        let event = WatcherEvent {
+                            paths,
+                            renames,
+                            overflow,
+                            kind,
+                        };
 
                         events_received.fetch_add(1, Ordering::Relaxed);
                         if let Ok(mut guard) = last_event_at.lock() {
                             *guard = Some(Instant::now());
                         }
 
-                        // Non-blocking send: if channel is full, log and drop
+                        // Non-blocking send: a full channel drops the event,
+                        // and the flag tells the consumer something was lost.
                         if let Err(e) = tx.try_send(event) {
+                            lost_events.store(true, Ordering::SeqCst);
                             record_watcher_drop("debounced", e);
                         }
                     }
                     Err(errors) => {
                         for e in errors {
                             error!("Watcher error: {:?}", e);
+                            if error_loses_events(&e) {
+                                lost_events.store(true, Ordering::SeqCst);
+                            }
                         }
                     }
                 }
@@ -435,23 +504,29 @@ impl FileWatcher {
         let events_received = self.events_received.clone();
         let last_event_at = self.last_event_at.clone();
 
+        let lost_events = self.lost_events.clone();
         let config = Config::default().with_poll_interval(POLL_INTERVAL);
 
         let mut watcher = PollWatcher::new(
             move |result: Result<notify::Event, notify::Error>| match result {
                 Ok(event) => {
-                    let paths: Vec<PathBuf> = event
-                        .paths
-                        .into_iter()
-                        .filter(|p| !should_exclude_path(p))
-                        .collect();
+                    let BatchChanges {
+                        paths,
+                        renames,
+                        overflow,
+                    } = collect_changes(std::iter::once(&event));
 
-                    if paths.is_empty() {
+                    if paths.is_empty() && !overflow {
                         return;
                     }
 
                     let kind = WatcherEventKind::from_notify(&event.kind);
-                    let watcher_event = WatcherEvent { paths, kind };
+                    let watcher_event = WatcherEvent {
+                        paths,
+                        renames,
+                        overflow,
+                        kind,
+                    };
 
                     events_received.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut guard) = last_event_at.lock() {
@@ -459,11 +534,15 @@ impl FileWatcher {
                     }
 
                     if let Err(e) = tx.try_send(watcher_event) {
+                        lost_events.store(true, Ordering::SeqCst);
                         record_watcher_drop("poll", e);
                     }
                 }
                 Err(e) => {
                     error!("Poll watcher error: {:?}", e);
+                    if error_loses_events(&e) {
+                        lost_events.store(true, Ordering::SeqCst);
+                    }
                 }
             },
             config,
@@ -669,6 +748,84 @@ mod tests {
         assert_eq!(status.events_received, 0);
 
         watcher.stop(); // Should not panic on double-stop
+    }
+
+    fn event(kind: EventKind, paths: &[&str]) -> notify::Event {
+        let mut event = notify::Event::new(kind);
+        for path in paths {
+            event = event.add_path(PathBuf::from(path));
+        }
+        event
+    }
+
+    /// A rename the debouncer matched up travels as a pair, and both of its
+    /// paths still travel as changed paths, once each.
+    #[test]
+    fn a_matched_rename_is_kept_as_a_pair() {
+        let events = [
+            event(
+                EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+                &["/sync/a.txt", "/sync/b.txt"],
+            ),
+            event(EventKind::Modify(ModifyKind::Any), &["/sync/b.txt"]),
+        ];
+        let changes = collect_changes(events.iter());
+        assert_eq!(
+            changes.renames,
+            vec![(PathBuf::from("/sync/a.txt"), PathBuf::from("/sync/b.txt"))]
+        );
+        assert_eq!(
+            changes.paths,
+            vec![PathBuf::from("/sync/a.txt"), PathBuf::from("/sync/b.txt")]
+        );
+        assert!(!changes.overflow);
+    }
+
+    /// An editor that writes `x.tmp` and renames it over `x` wrote `x`: the
+    /// pair is dropped with the filtered side, and `x` stays a changed path.
+    #[test]
+    fn a_rename_from_a_filtered_path_is_a_write() {
+        let events = [event(
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+            &["/sync/x.tmp", "/sync/x"],
+        )];
+        let changes = collect_changes(events.iter());
+        assert!(changes.renames.is_empty());
+        assert_eq!(changes.paths, vec![PathBuf::from("/sync/x")]);
+    }
+
+    /// The kernel's overflow arrives as a rescan event with no path. It used
+    /// to be dropped with the other empty batches; it is the one batch that
+    /// says events were lost.
+    #[test]
+    fn a_rescan_event_is_reported_as_an_overflow() {
+        let rescan = notify::Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
+        let changes = collect_changes(std::iter::once(&rescan));
+        assert!(changes.overflow);
+        assert!(changes.paths.is_empty());
+    }
+
+    #[test]
+    fn only_errors_that_unwatch_part_of_the_tree_lose_events() {
+        assert!(!error_loses_events(&notify::Error::path_not_found()));
+        assert!(!error_loses_events(&notify::Error::io(
+            std::io::Error::from(std::io::ErrorKind::NotFound)
+        )));
+        assert!(error_loses_events(&notify::Error::new(
+            notify::ErrorKind::MaxFilesWatch
+        )));
+        assert!(error_loses_events(&notify::Error::generic("queue")));
+    }
+
+    /// A full channel drops the event; the flag is what tells the consumer.
+    #[test]
+    fn the_lost_events_flag_is_shared_with_the_consumer() {
+        let (tx, _rx) = mpsc::channel(1);
+        let watcher = FileWatcher::new(tx);
+        let flag = watcher.lost_events();
+        watcher.lost_events.store(true, Ordering::SeqCst);
+        assert!(flag.swap(false, Ordering::SeqCst));
+        assert!(!watcher.lost_events.load(Ordering::SeqCst));
     }
 
     #[test]

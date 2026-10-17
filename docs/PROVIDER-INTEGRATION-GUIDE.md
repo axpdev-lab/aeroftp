@@ -222,6 +222,15 @@ Providers opt-in to additional features by overriding paired `supports_*()` + me
 | Delta sync | `supports_delta_sync()` | `read_range()` | SFTP |
 | Speed limits | - | `set_speed_limit()` / `get_speed_limit()` | FTP |
 
+Sync reads a few declarations too, each with a default that suits a plain backend. An overlay (crypt, compress) forwards its inner provider's answer.
+
+| Declaration | Default | Override when |
+|-------------|---------|---------------|
+| `listing_is_authoritative()` | `true` | A successful listing can omit stored objects (ImageKit): sync never deletes on absence |
+| `reports_exact_size()` | `true` | Sizes are not the plaintext size (a deferred-size overlay): sync compares times, not sizes |
+| `mtime_precision()` | per protocol | The listed times are coarser than declared, or not comparable at all |
+| `min_full_scan_interval()` | `None` | The backend's terms rule out frequent recursive traversals: AeroCloud scans a folder pair in full at most this often (the larger of this and the user's interval), and syncs local changes between scans one path at a time |
+
 ### RemoteEntry
 
 The universal file/directory representation:

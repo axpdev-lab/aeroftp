@@ -3248,6 +3248,15 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
     Ok(Some(index))
 }
 
+/// Remove the sync index of a path pair, for a live test that leaves the
+/// data folder as it found it.
+#[cfg(test)]
+pub(crate) fn remove_sync_index(local_path: &str, remote_path: &str) {
+    if let Ok(dir) = sync_index_dir() {
+        let _ = std::fs::remove_file(dir.join(index_filename(local_path, remote_path)));
+    }
+}
+
 /// Save a sync index for a given path pair
 pub fn save_sync_index(index: &SyncIndex) -> Result<(), String> {
     let dir = sync_index_dir()?;
@@ -3354,10 +3363,7 @@ pub fn classify_with_summary(
                 // under a size-only pair window it would stop seeing a
                 // same-size local edit, and the remote change would then
                 // overwrite it.
-                let local_changed = (options.compare_size && l.size != cached.size)
-                    || (l.modified.is_some()
-                        && cached.modified.is_some()
-                        && !timestamps_equal(l.modified, cached.modified, ModifyWindow::LOCAL));
+                let local_changed = local_changed_since(l, cached, options.compare_size);
                 let remote_changed = (options.compare_size && r.size != cached.size)
                     || (r.modified.is_some()
                         && cached.modified.is_some()
@@ -3421,6 +3427,19 @@ pub fn classify_with_summary(
         summary,
         modify_window: options.modify_window,
     }
+}
+
+/// Whether the local file changed since the baseline `cached` recorded it:
+/// the rule [`classify_with_summary`] reads the local side with. The
+/// baseline's time is a local mtime (see there), so it is read with
+/// [`ModifyWindow::LOCAL`] whatever the remote keeps; the size counts only
+/// when `compare_size`. AeroCloud's incremental pass asks the same question
+/// before it asks the remote anything, so the two cannot drift.
+pub fn local_changed_since(local: &FileInfo, cached: &SyncIndexEntry, compare_size: bool) -> bool {
+    (compare_size && local.size != cached.size)
+        || (local.modified.is_some()
+            && cached.modified.is_some()
+            && !timestamps_equal(local.modified, cached.modified, ModifyWindow::LOCAL))
 }
 
 /// Enhanced comparison that uses the sync index to detect true conflicts.
