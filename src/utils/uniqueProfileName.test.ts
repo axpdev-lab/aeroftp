@@ -28,8 +28,31 @@ describe('uniqueProfileNames', () => {
         const out = uniqueProfileNames(held, [...held, ...added]);
         expect(namesOf(out)).toEqual([
             'Prod', 'prod (1)', 'Lab',
-            'Staging', 'Prod (2)', 'PROD (3)', 'Staging (1)', 'Prod (2) (1)', 'lab ',
+            // "Prod (2)" is asked for and free: it is kept, the numbers go around it.
+            'Staging', 'Prod (3)', 'PROD (4)', 'Staging (1)', 'Prod (2)', 'lab ',
         ]);
+    });
+
+    it('never gives a number that is a name another profile keeps', () => {
+        const previous = [{ id: 'a', name: 'Lab' }, { id: 'b', name: 'Lab' }, { id: 'c', name: 'Lab (1)' }];
+        expect(namesOf(uniqueProfileNames(previous, previous))).toEqual(['Lab', 'Lab (2)', 'Lab (1)']);
+        const older = previous.slice(0, 2);
+        expect(namesOf(uniqueProfileNames(older, [...older, { id: 'x', name: 'Lab (1)' }]))).toEqual(['Lab', 'Lab (2)', 'Lab (1)']);
+    });
+
+    it('never changes a name only one profile has, and leaves no two names equal', () => {
+        const pool = ['Lab', 'lab', 'Lab (1)', 'Lab (2)', 'Prod'];
+        for (let x = 0; x < 125; x++) {
+            const picked = [pool[x % 5], pool[Math.floor(x / 5) % 5], pool[Math.floor(x / 25) % 5]];
+            const list = picked.map((name, i) => ({ id: String(i), name }));
+            for (let kept = 0; kept <= list.length; kept++) {
+                const out = namesOf(uniqueProfileNames(list.slice(0, kept), list)) as string[];
+                expect(new Set(out.map(n => n.toLowerCase())).size).toBe(list.length);
+                picked.forEach((name, i) => {
+                    if (picked.filter(n => n.toLowerCase() === name.toLowerCase()).length === 1) expect(out[i]).toBe(name);
+                });
+            }
+        }
     });
 
     it('returns a kept profile as it was and leaves its inputs alone', () => {

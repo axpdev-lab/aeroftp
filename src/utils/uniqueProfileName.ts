@@ -37,19 +37,27 @@ export function uniqueProfileNames<T extends Named>(
     const keeps = profiles.map(p => typeof p.id === 'string' && typeof p.name === 'string' && before.get(p.id) === p.name);
     const taken = new Set<string>();
     const stored = [...profiles];
-    // Settled before any rename, as in the backend: the profiles that had
-    // their name claim first, then the others in list order.
+    // As in the backend, every name a profile can keep as it is goes before
+    // any number is given, so a number never takes a name another profile
+    // has: first the names the profiles that had them keep, then the free
+    // names asked for. The profiles left get the first free " (1)", ...
+    const numbered: number[] = [];
     for (const pass of [true, false]) {
-        stored.forEach((profile, i) => {
+        profiles.forEach((profile, i) => {
             if (keeps[i] !== pass || typeof profile.name !== 'string') return;
-            const original = profile.name;
-            let name = original;
-            for (let n = 1; taken.has(nameKey(name)); n++) {
-                name = `${original} (${n})`;
-            }
-            taken.add(nameKey(name));
-            if (name !== original) stored[i] = { ...profile, name };
+            const key = nameKey(profile.name);
+            if (taken.has(key)) numbered.push(i);
+            else taken.add(key);
         });
+    }
+    for (const i of numbered) {
+        const original = profiles[i].name as string;
+        let name = original;
+        for (let n = 1; taken.has(nameKey(name)); n++) {
+            name = `${original} (${n})`;
+        }
+        taken.add(nameKey(name));
+        stored[i] = { ...profiles[i], name };
     }
     return stored;
 }

@@ -38,6 +38,11 @@ impl ProfileNames {
         }
     }
 
+    /// Takes `name` as it is when no profile has it yet; false when one has.
+    fn reserve(&mut self, name: &str) -> bool {
+        self.taken.insert(key(name))
+    }
+
     /// `name` when no profile has it yet, else the first of "name (1)",
     /// "name (2)", ... that none has. The name returned is taken from then on.
     fn claim(&mut self, name: &str) -> String {
@@ -115,19 +120,28 @@ pub fn unique_profile_names(
         profile_id(p).and_then(|id| before.get(id)).copied() == profile_name(p)
             && profile_name(p).is_some()
     };
-    // Settled before any rename: a profile renamed by the first pass must not
-    // read as renamed by the user and be claimed again by the second.
     let keeps: Vec<bool> = profiles.iter().map(unchanged).collect();
     let mut stored = profiles.to_vec();
     let mut names = ProfileNames::new(std::iter::empty());
-    let mut renamed = Vec::new();
+    // Every name a profile can keep as it is goes before any number is given,
+    // so a number never takes a name another profile has: first the names the
+    // profiles that had them keep, then the free names asked for. The
+    // profiles left (a second of one name) get the first free " (1)", " (2)",
+    // ..., those that had their name first.
+    let mut numbered = Vec::new();
     for pass in [true, false] {
-        for (profile, _) in stored.iter_mut().zip(&keeps).filter(|(_, k)| **k == pass) {
-            renamed.extend(claim_profile_names(
-                &mut names,
-                std::slice::from_mut(profile),
-            ));
+        for (i, _) in keeps.iter().enumerate().filter(|(_, k)| **k == pass) {
+            if profile_name(&stored[i]).is_some_and(|name| !names.reserve(name)) {
+                numbered.push(i);
+            }
         }
+    }
+    let mut renamed = Vec::new();
+    for i in numbered {
+        renamed.extend(claim_profile_names(
+            &mut names,
+            std::slice::from_mut(&mut stored[i]),
+        ));
     }
     (stored, renamed)
 }
@@ -211,6 +225,58 @@ mod tests {
         let (again, none) = unique_profile_names(&stored, &stored);
         assert_eq!(again, stored, "a list with unique names is stored as it is");
         assert!(none.is_empty());
+    }
+
+    /// A number never takes a name another profile keeps: with an older list
+    /// "Lab", "Lab", "Lab (1)", the second "Lab" gets "Lab (2)", and "Lab (1)"
+    /// still selects the profile that had it. A free name asked for is kept
+    /// the same way, ahead of the numbers.
+    #[test]
+    fn a_number_never_takes_a_name_another_profile_keeps() {
+        let previous = [
+            json!({"id": "a", "name": "Lab"}),
+            json!({"id": "b", "name": "Lab"}),
+            json!({"id": "c", "name": "Lab (1)"}),
+        ];
+        let (stored, renamed) = unique_profile_names(&previous, &previous);
+        assert_eq!(names_of(&stored), ["Lab", "Lab (2)", "Lab (1)"]);
+        assert_eq!(
+            renamed.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["b"]
+        );
+
+        let older = &previous[..2];
+        let mut sent = older.to_vec();
+        sent.push(json!({"id": "x", "name": "Lab (1)"}));
+        let (stored, _) = unique_profile_names(older, &sent);
+        assert_eq!(names_of(&stored), ["Lab", "Lab (2)", "Lab (1)"]);
+    }
+
+    /// Over every list of three names drawn from a set that collides on case
+    /// and on numbers, kept, new, or both: no two names are equal, and a
+    /// profile whose name no other profile in the list has keeps it.
+    #[test]
+    fn a_name_only_one_profile_has_is_never_changed() {
+        let pool = ["Lab", "lab", "Lab (1)", "Lab (2)", "Prod"];
+        for x in 0..pool.len().pow(3) {
+            let picked = [pool[x % 5], pool[x / 5 % 5], pool[x / 25 % 5]];
+            let list: Vec<serde_json::Value> = picked
+                .iter()
+                .enumerate()
+                .map(|(i, name)| json!({"id": i.to_string(), "name": name}))
+                .collect();
+            for kept in 0..=list.len() {
+                let (stored, _) = unique_profile_names(&list[..kept], &list);
+                let keys: HashSet<String> = names_of(&stored).into_iter().map(key).collect();
+                assert_eq!(keys.len(), list.len(), "{picked:?} kept {kept}: {stored:?}");
+                for (i, name) in picked.iter().enumerate() {
+                    let alone = picked.iter().filter(|n| key(n) == key(name)).count() == 1;
+                    if alone {
+                        assert_eq!(names_of(&stored)[i], *name, "{picked:?} kept {kept}");
+                    }
+                }
+            }
+        }
     }
 
     /// The cases `src/utils/uniqueProfileName.test.ts` holds the frontend to.
