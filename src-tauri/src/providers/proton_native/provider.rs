@@ -442,18 +442,32 @@ impl AsyncWrite for CappedBuffer {
     }
 }
 
+/// Files transferred, and folders scanned, at once through clones of one
+/// connection: below the SDK's 5 concurrent file uploads and downloads
+/// (`upload/queue.ts`, `download/queue.ts`). Every clone shares the session,
+/// its rate limiter and the block budget of the Drive client.
+const MAX_SESSIONS: u16 = 4;
+
+/// What a connection and its clones share: the resolved paths, the items
+/// this session trashed and whether a listing left an unreadable name out.
+/// A write through any clone drops the paths of all of them.
+#[derive(Default)]
+struct SharedState {
+    paths: std::sync::Mutex<HashMap<String, Cached>>,
+    /// Link IDs this session trashed, by path, so a purge right after a
+    /// delete finds them without a trash scan.
+    trashed: std::sync::Mutex<HashMap<String, String>>,
+    /// A listing left out an entry whose name could not be decrypted, so
+    /// listings no longer prove that a file is absent.
+    skipped_unreadable: AtomicBool,
+}
+
 /// Proton Drive through the native client.
 pub struct ProtonNativeProvider {
     config: ProtonConfig,
     drive: Option<Arc<dyn DriveOps>>,
     current_path: String,
-    paths: HashMap<String, Cached>,
-    /// Link IDs this session trashed, by path, so a purge right after a
-    /// delete finds them without a trash scan.
-    trashed: HashMap<String, String>,
-    /// A listing left out an entry whose name could not be decrypted, so
-    /// listings no longer prove that a file is absent.
-    skipped_unreadable: AtomicBool,
+    shared: Arc<SharedState>,
 }
 
 impl ProtonNativeProvider {
@@ -462,10 +476,33 @@ impl ProtonNativeProvider {
             config,
             drive: None,
             current_path: "/".to_string(),
-            paths: HashMap::new(),
-            trashed: HashMap::new(),
-            skipped_unreadable: AtomicBool::new(false),
+            shared: Arc::default(),
         }
+    }
+
+    /// A clone on the same connection, for a parallel transfer or scan.
+    fn clone_connected(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        let drive = self.drive()?;
+        Ok(Box::new(Self {
+            config: self.config.clone(),
+            drive: Some(drive),
+            current_path: self.current_path.clone(),
+            shared: Arc::clone(&self.shared),
+        }))
+    }
+
+    fn trashed(&self) -> std::sync::MutexGuard<'_, HashMap<String, String>> {
+        self.shared
+            .trashed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn paths(&self) -> std::sync::MutexGuard<'_, HashMap<String, Cached>> {
+        self.shared
+            .paths
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// A provider over `drive`, already connected (tests).
@@ -490,14 +527,14 @@ impl ProtonNativeProvider {
     }
 
     fn cached(&self, path: &str) -> Option<NodeInfo> {
-        self.paths
+        self.paths()
             .get(path)
             .filter(|cached| cached.at.elapsed() < PATH_CACHE_TTL)
             .map(|cached| cached.info.clone())
     }
 
     fn remember(&mut self, path: String, info: NodeInfo) {
-        self.paths.insert(
+        self.paths().insert(
             path,
             Cached {
                 info,
@@ -506,9 +543,10 @@ impl ProtonNativeProvider {
         );
     }
 
-    /// Drops every resolved path: called after each write of this provider.
+    /// Drops every resolved path, for this connection and its clones:
+    /// called after each write.
     fn invalidate(&mut self) {
-        self.paths.clear();
+        self.paths().clear();
     }
 
     /// The active children of `folder`, cached under `folder_path`. Entries
@@ -527,7 +565,9 @@ impl ProtonNativeProvider {
         let mut named = Vec::with_capacity(children.len());
         for child in children {
             let Some(name) = child.name.clone() else {
-                self.skipped_unreadable.store(true, Ordering::Relaxed);
+                self.shared
+                    .skipped_unreadable
+                    .store(true, Ordering::Relaxed);
                 log::warn!("Proton: an item in {folder_path} has a name that cannot be decrypted");
                 continue;
             };
@@ -731,8 +771,8 @@ impl ProtonNativeProvider {
     /// The trashed item that was `path`: the one this session trashed, else
     /// the one trashed from its folder under its name.
     async fn find_trashed(&mut self, path: &str) -> Result<Option<String>, ProviderError> {
-        if let Some(link_id) = self.trashed.get(path) {
-            return Ok(Some(link_id.clone()));
+        if let Some(link_id) = self.trashed().get(path).cloned() {
+            return Ok(Some(link_id));
         }
         let Some((parent_path, name)) = split(path) else {
             return Ok(None);
@@ -826,8 +866,8 @@ impl StorageProvider for ProtonNativeProvider {
 
         self.drive = Some(Arc::new(drive));
         self.current_path = "/".to_string();
-        self.invalidate();
-        self.trashed.clear();
+        // A new connection starts clean; clones of the old one keep theirs.
+        self.shared = Arc::default();
         tracing::info!("[Proton native] connected");
         Ok(())
     }
@@ -846,7 +886,7 @@ impl StorageProvider for ProtonNativeProvider {
     }
 
     fn listing_is_authoritative(&self) -> bool {
-        !self.skipped_unreadable.load(Ordering::Relaxed)
+        !self.shared.skipped_unreadable.load(Ordering::Relaxed)
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
@@ -995,7 +1035,7 @@ impl StorageProvider for ProtonNativeProvider {
             .map_err(|error| map_error(&target, error));
         self.invalidate();
         result?;
-        self.trashed.insert(target, info.link_id);
+        self.trashed().insert(target, info.link_id);
         Ok(())
     }
 
@@ -1043,7 +1083,7 @@ impl StorageProvider for ProtonNativeProvider {
             .await
             .map_err(|error| map_error(&target, error));
         self.invalidate();
-        self.trashed.remove(&target);
+        self.trashed().remove(&target);
         result.map(|()| true)
     }
 
@@ -1145,6 +1185,36 @@ impl StorageProvider for ProtonNativeProvider {
             digests.insert("sha1".to_string(), sha1);
         }
         Ok(digests)
+    }
+
+    fn transfer_executor_kind(&self) -> crate::providers::ProviderTransferExecutorKind {
+        crate::providers::ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        MAX_SESSIONS
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        self.clone_connected()
+    }
+
+    /// A worker that finished a file is still on the shared connection, so
+    /// the executor may hand it the next file.
+    fn supports_transfer_worker_reuse(&self) -> bool {
+        true
+    }
+
+    fn list_executor_kind(&self) -> crate::providers::ProviderListExecutorKind {
+        crate::providers::ProviderListExecutorKind::HttpClonePool
+    }
+
+    fn list_executor_max_sessions(&self) -> u16 {
+        MAX_SESSIONS
+    }
+
+    fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        self.clone_connected()
     }
 
     fn checksum_capability(&self, _path: &str) -> crate::providers::ChecksumCapability {
@@ -1829,6 +1899,36 @@ mod tests {
         let info = p.storage_info().await.unwrap();
         assert_eq!((info.used, info.total, info.free), (300, 1000, 700));
         assert_eq!(p.checksum_capability("/").algorithms, vec!["sha1"]);
+    }
+
+    /// Clones share the connection and its caches: a write through one drops
+    /// what the others resolved, and a purge finds what another one trashed.
+    #[tokio::test]
+    async fn clones_share_the_connection_and_its_caches() {
+        let (mut p, drive) = provider();
+        assert!(p.exists("/docs/a.txt").await.unwrap());
+        let walks = drive.count("children");
+
+        let mut clone = p.clone_for_transfer().expect("connected");
+        clone.delete("/docs/a.txt").await.unwrap();
+        assert!(
+            !p.exists("/docs/a.txt").await.unwrap(),
+            "the primary must not answer from a path its clone just trashed"
+        );
+        assert!(drive.count("children") > walks);
+
+        assert!(p.delete_permanent("/docs/a.txt").await.unwrap());
+        assert_eq!(drive.count("trash-scan"), 0, "the clone's trash is known");
+
+        let caps = p.transfer_capabilities();
+        assert_eq!(caps.file_parallel, crate::transfer_dag::Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(MAX_SESSIONS));
+        assert_eq!(caps.list_parallel, crate::transfer_dag::Capability::Supported);
+
+        assert!(matches!(
+            ProtonNativeProvider::new(config()).clone_for_transfer(),
+            Err(ProviderError::NotConnected)
+        ));
     }
 
     #[tokio::test]

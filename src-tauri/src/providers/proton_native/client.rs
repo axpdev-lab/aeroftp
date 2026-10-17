@@ -249,6 +249,10 @@ pub struct DriveClient<P: PGPProviderSync> {
     /// Identifies this client's drafts, so a stale draft of ours can be
     /// replaced (`ClientUID` in the SDK).
     pub(crate) client_uid: String,
+    /// Block uploads in flight across every upload of this client (its
+    /// provider clones included): the SDK's `MAX_CONCURRENT_UPLOAD_SIZE` of
+    /// ten blocks (`upload/queue.ts`).
+    pub(crate) block_uploads: tokio::sync::Semaphore,
 }
 
 impl<P: PGPProviderSync> std::fmt::Debug for DriveClient<P> {
@@ -330,6 +334,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
             nodes: Mutex::new(HashMap::new()),
             other_public_keys: Mutex::new(HashMap::new()),
             client_uid: machine_client_uid(),
+            block_uploads: tokio::sync::Semaphore::new(super::upload::MAX_BLOCK_UPLOADS_IN_FLIGHT),
         })
     }
 

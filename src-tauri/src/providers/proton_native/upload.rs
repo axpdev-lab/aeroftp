@@ -41,9 +41,13 @@ use super::nodes::{validate_node_name, Node, LINK_STATE_ACTIVE};
 
 /// `streamUploader.ts::FILE_CHUNK_SIZE`.
 pub const BLOCK_SIZE: usize = 4 * 1024 * 1024;
-/// Blocks prepared before their upload URLs are requested together. The SDK
-/// buffers up to 15; fewer keeps memory at 20 MiB per upload.
+/// Blocks prepared before their upload URLs are requested together, and sent
+/// at once: the SDK's `MAX_UPLOADING_BLOCKS` (`streamUploader.ts`). It buffers
+/// up to 15; five keeps memory at 20 MiB per upload.
 const BLOCKS_PER_URL_REQUEST: usize = 5;
+/// Block uploads in flight across all uploads of one client
+/// (`upload/queue.ts::MAX_CONCURRENT_UPLOAD_SIZE`, ten blocks).
+pub(crate) const MAX_BLOCK_UPLOADS_IN_FLIGHT: usize = 10;
 /// `streamUploader.ts::MAX_BLOCK_UPLOAD_RETRIES`.
 const BLOCK_UPLOAD_RETRIES: u32 = 3;
 /// The SDK refreshes an expired block token without a cap; the port caps it.
@@ -699,9 +703,11 @@ impl<P: PGPProviderSync> DriveClient<P> {
         Ok(response.upload_links)
     }
 
-    /// Sends a batch: one URL request, then each block in order. An expired
-    /// token gets a fresh URL for that block; other failures are retried up
-    /// to the SDK's limit.
+    /// Sends a batch: one URL request, then its blocks at once, each holding
+    /// one of the client's block slots while it is sent. An expired token
+    /// gets a fresh URL for that block; other failures are retried up to the
+    /// SDK's limit. The first block that fails for good fails the batch, and
+    /// the blocks still in flight are dropped with it.
     async fn send_blocks(
         &self,
         target: &RevisionTarget<'_, P>,
@@ -709,48 +715,58 @@ impl<P: PGPProviderSync> DriveClient<P> {
     ) -> Result<(), ProtonError> {
         let refs: Vec<&PreparedBlock> = batch.iter().collect();
         let links = self.request_upload_links(target, &refs).await?;
-        for block in batch {
-            let mut link = links
-                .iter()
-                .find(|link| link.index == block.index)
-                .cloned()
-                .ok_or_else(|| {
-                    ProtonError::Decode(format!("no upload URL for block {}", block.index))
-                })?;
-            let mut refreshes = 0;
-            let mut failures = 0;
-            loop {
-                match self
-                    .api
-                    .storage_post_block(&link.bare_url, &link.token, block.encrypted.clone())
-                    .await
-                {
-                    Ok(()) => break,
-                    Err(ProtonError::StorageTokenExpired) if refreshes < TOKEN_REFRESH_LIMIT => {
-                        refreshes += 1;
-                        link = self
-                            .request_upload_links(target, &[block])
-                            .await?
-                            .into_iter()
-                            .next()
-                            .ok_or_else(|| {
-                                ProtonError::Decode(format!(
-                                    "no upload URL for block {}",
-                                    block.index
-                                ))
-                            })?;
-                    }
-                    Err(error @ (ProtonError::Network(_) | ProtonError::Timeout))
-                        if failures < BLOCK_UPLOAD_RETRIES =>
-                    {
-                        failures += 1;
-                        log::warn!(
-                            "Proton: block {} upload failed ({error}), retrying",
-                            block.index
-                        );
-                    }
-                    Err(error) => return Err(error),
+        let sends = batch.iter().map(|block| {
+            let link = links.iter().find(|link| link.index == block.index).cloned();
+            self.send_block(target, block, link)
+        });
+        futures_util::future::try_join_all(sends).await?;
+        Ok(())
+    }
+
+    async fn send_block(
+        &self,
+        target: &RevisionTarget<'_, P>,
+        block: &PreparedBlock,
+        link: Option<UploadLink>,
+    ) -> Result<(), ProtonError> {
+        let mut link = link.ok_or_else(|| {
+            ProtonError::Decode(format!("no upload URL for block {}", block.index))
+        })?;
+        let _slot = self
+            .block_uploads
+            .acquire()
+            .await
+            .map_err(|_| ProtonError::Network("the upload slots are closed".into()))?;
+        let mut refreshes = 0;
+        let mut failures = 0;
+        loop {
+            match self
+                .api
+                .storage_post_block(&link.bare_url, &link.token, block.encrypted.clone())
+                .await
+            {
+                Ok(()) => break,
+                Err(ProtonError::StorageTokenExpired) if refreshes < TOKEN_REFRESH_LIMIT => {
+                    refreshes += 1;
+                    link = self
+                        .request_upload_links(target, &[block])
+                        .await?
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| {
+                            ProtonError::Decode(format!("no upload URL for block {}", block.index))
+                        })?;
                 }
+                Err(error @ (ProtonError::Network(_) | ProtonError::Timeout))
+                    if failures < BLOCK_UPLOAD_RETRIES =>
+                {
+                    failures += 1;
+                    log::warn!(
+                        "Proton: block {} upload failed ({error}), retrying",
+                        block.index
+                    );
+                }
+                Err(error) => return Err(error),
             }
         }
         Ok(())
