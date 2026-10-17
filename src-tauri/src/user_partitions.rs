@@ -1030,6 +1030,10 @@ pub fn migrate_legacy_payloads(
     }
 
     let legacy_profiles = parse_legacy_profiles(legacy_profiles_json)?;
+    // The legacy store let two profiles share a name: the first keeps it and
+    // the others get " (1)", " (2)", ..., as every write of a list does.
+    let (legacy_profiles, _) =
+        crate::util::profile_name::unique_profile_names(&legacy_profiles, &legacy_profiles);
     let legacy_settings = parse_legacy_settings(legacy_settings_json)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let legacy_profiles_backup =
@@ -1557,11 +1561,13 @@ pub fn list_active_server_profiles(
     list_server_profiles_for(conn, root_key, user_id)
 }
 
+/// Returns the list stored, whose names [`insert_profiles_with_dek`] made
+/// unique.
 pub fn replace_active_server_profiles(
     conn: &mut Connection,
     root_key: &[u8; 32],
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
     replace_server_profiles_for(conn, root_key, user_id, profiles)
 }
@@ -1594,7 +1600,7 @@ pub fn replace_expected_server_profiles(
     root_key: &[u8; 32],
     expected_user: i64,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     let conn: &Connection = conn;
     // Answer a switch away from a locked account as ACCOUNT_CHANGED, before
     // its DEK lookup can fail as USER_LOCKED.
@@ -1609,9 +1615,10 @@ pub fn replace_expected_server_profiles(
         if active_user_id(&tx)? != Some(user_id) {
             return Err(ACCOUNT_CHANGED.to_string());
         }
-        insert_profiles_with_dek(&tx, &root_secret, user_id, dek, profiles)?;
+        let stored = insert_profiles_with_dek(&tx, &root_secret, user_id, dek, profiles)?;
         tx.commit()
-            .map_err(|e| format!("Commit expected profile replace: {e}"))
+            .map_err(|e| format!("Commit expected profile replace: {e}"))?;
+        Ok(stored)
     })
 }
 
@@ -1669,7 +1676,7 @@ pub fn replace_server_profiles_for(
     root_key: &[u8; 32],
     user_id: i64,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
         write_profiles_with_dek(conn, &root_secret, user_id, dek, profiles)
@@ -1687,19 +1694,56 @@ fn write_profiles_with_dek(
     user_id: i64,
     dek: &SecretKey,
     profiles: &[Value],
-) -> Result<(), String> {
-    let tx = conn
-        .unchecked_transaction()
+) -> Result<Vec<Value>, String> {
+    // IMMEDIATE: the write reads the list it replaces before its DELETE. In a
+    // deferred transaction on this WAL database, a save committed by another
+    // process between that read and the DELETE leaves a stale snapshot, and
+    // the DELETE fails with SQLITE_BUSY_SNAPSHOT, which no busy timeout waits
+    // out. Taken after the session lock, as every partition writer does.
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start replace profiles: {e}"))?;
-    insert_profiles_with_dek(&tx, root_secret, user_id, dek, profiles)?;
+    let stored = insert_profiles_with_dek(&tx, root_secret, user_id, dek, profiles)?;
     tx.commit()
         .map_err(|e| format!("Commit replace profiles: {e}"))?;
-    Ok(())
+    Ok(stored)
 }
 
 /// The rows of [`write_profiles_with_dek`], on a transaction the caller holds
-/// and commits.
+/// and commits. Every write of a profile list ends here, so this is where no
+/// two profiles of one name get stored: a profile created, edited or imported
+/// onto a name another one holds gets the first free " (1)", " (2)", ...
+/// (`util::profile_name::unique_profile_names`, against the list being
+/// replaced). Returns the list stored.
 fn insert_profiles_with_dek(
+    tx: &Connection,
+    root_secret: &SecretKey,
+    user_id: i64,
+    dek: &SecretKey,
+    profiles: &[Value],
+) -> Result<Vec<Value>, String> {
+    // The list being replaced tells which profile had a name first. One that
+    // cannot be read leaves the order of `profiles` to decide.
+    let previous = read_profiles_with_dek(tx, user_id, dek).unwrap_or_else(|e| {
+        tracing::warn!("Profile names checked without the previous list: {e}");
+        Vec::new()
+    });
+    let (profiles, renamed) = crate::util::profile_name::unique_profile_names(&previous, profiles);
+    for r in &renamed {
+        tracing::info!(
+            "Profile {} saved as {:?}: {:?} is already another profile's name",
+            r.id,
+            r.to,
+            r.from
+        );
+    }
+    insert_profile_rows(tx, root_secret, user_id, dek, &profiles)?;
+    Ok(profiles)
+}
+
+/// `user_id`'s rows replaced by `profiles`, as given. Production writes reach
+/// it only through [`insert_profiles_with_dek`], which settles the names
+/// first; a test calls it to lay down a list an older build stored.
+fn insert_profile_rows(
     tx: &Connection,
     root_secret: &SecretKey,
     user_id: i64,
@@ -1732,6 +1776,61 @@ fn insert_profiles_with_dek(
     Ok(())
 }
 
+/// Puts right the profile lists of a partition database written whole rather
+/// than through the writes above (a keystore restore of a backup made before
+/// profile names were unique): in a list that holds two profiles of one name
+/// the first keeps it and the others get " (1)", " (2)", ..., which is what
+/// that list's next write would store. Covers every account this machine's
+/// key opens; a passphrase account is put right by its first write after
+/// unlock. Returns the profiles renamed and the passphrase accounts left to
+/// that write.
+pub fn put_right_profile_names_in_db(
+    store: &CredentialStore,
+    db_path: &std::path::Path,
+) -> Result<(usize, usize), String> {
+    if !db_path.is_file() {
+        return Ok((0, 0));
+    }
+    let mut conn =
+        Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = put_right_profile_names(&mut conn, &root_key);
+    root_key.zeroize();
+    result
+}
+
+fn put_right_profile_names(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+) -> Result<(usize, usize), String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let (mut renamed, mut left) = (0, 0);
+    for user in list_users(conn)? {
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e| format!("Start profile name check: {e}"))?;
+        let row = read_user_key_row(&tx, user.id)?;
+        if row.has_passphrase {
+            left += 1;
+            continue;
+        }
+        // An account this machine cannot open is reported by the re-key.
+        let Ok(dek) = unwrap_user_dek_with_key(&row, &root_secret) else {
+            continue;
+        };
+        let profiles = read_profiles_with_dek(&tx, user.id, &dek)?;
+        let (_, renames) = crate::util::profile_name::unique_profile_names(&profiles, &profiles);
+        if renames.is_empty() {
+            continue;
+        }
+        insert_profiles_with_dek(&tx, &root_secret, user.id, &dek, &profiles)?;
+        tx.commit()
+            .map_err(|e| format!("Commit profile names: {e}"))?;
+        renamed += renames.len();
+    }
+    Ok((renamed, left))
+}
+
 /// Re-read `user_id`'s server profiles, let `apply` change them, and write
 /// them back only when it reports a change, all in one IMMEDIATE transaction:
 /// no other writer (the CLI, another window) can save between the read and the
@@ -1756,8 +1855,8 @@ pub fn update_server_profiles_for(
         if !apply(&mut profiles) {
             return Ok((read, false));
         }
-        insert_profiles_with_dek(&tx, &root_secret, user_id, dek, &profiles)?;
-        Ok((profiles, true))
+        let stored = insert_profiles_with_dek(&tx, &root_secret, user_id, dek, &profiles)?;
+        Ok((stored, true))
     })?;
     if written {
         tx.commit()
@@ -1787,7 +1886,9 @@ pub struct ProfileRelocation {
     /// Fresh id the relocated copy received in the target partition. Equal to
     /// `source_profile_id` only when the caller deliberately reuses it.
     pub new_profile_id: String,
-    /// Display name of the relocated profile (for the confirmation toast).
+    /// Display name of the relocated profile (for the confirmation toast): the
+    /// name the target stored it under, which is " (1)", " (2)", ... when a
+    /// profile there already holds the source's name.
     pub profile_name: String,
     /// Target user the profile now lives in.
     pub target_user_id: i64,
@@ -1855,7 +1956,7 @@ pub fn relocate_server_profile(
         .find(|p| value_str(p, &["id", "uid", "profileUid"]) == Some(profile_id))
         .cloned()
         .ok_or_else(|| format!("PROFILE_NOT_FOUND: {profile_id}"))?;
-    let profile_name = value_str(&source, &["name", "label", "host", "hostname"])
+    let mut profile_name = value_str(&source, &["name", "label", "host", "hostname"])
         .unwrap_or(profile_id)
         .to_string();
     let protocol = value_str(&source, &["protocol"]).unwrap_or("").to_string();
@@ -1918,7 +2019,13 @@ pub fn relocate_server_profile(
         let mut new_list = Vec::with_capacity(target_profiles.len() + 1);
         new_list.push(relocated);
         new_list.extend(target_profiles);
-        write_profiles_with_dek(conn, &root_secret, target_user_id, &target_dek, &new_list)?;
+        let stored =
+            write_profiles_with_dek(conn, &root_secret, target_user_id, &target_dek, &new_list)?;
+        // A profile of the target that holds the name keeps it; the copy is
+        // stored as " (1)", " (2)", ..., and that is the name to confirm.
+        if let Some(name) = crate::util::profile_name::name_of(&stored, new_profile_id) {
+            profile_name = name.to_string();
+        }
         true
     } else {
         false
@@ -2485,8 +2592,11 @@ fn copy_user_secrets_with_dek(
         .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]).map(str::to_string))
         .collect();
 
-    let tx = conn
-        .unchecked_transaction()
+    // IMMEDIATE, as `write_profiles_with_dek`: each copy reads before it
+    // inserts, which a deferred transaction on this WAL database turns into
+    // SQLITE_BUSY_SNAPSHOT when another process commits in between. Called
+    // under the session lock (`with_user_dek`), the order every writer takes.
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential migration: {e}"))?;
     let mut migrated = 0usize;
 
@@ -4012,7 +4122,7 @@ pub fn cli_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
 pub fn cli_replace_active_server_profiles(
     store: &CredentialStore,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     init_or_migrate_cli(store)?;
     let mut conn = open_or_init_cli()?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -4103,15 +4213,23 @@ pub fn cli_list_server_profiles_for_user(
     result
 }
 
+/// What the error of [`cli_replace_server_profiles_for_user`] starts with when
+/// the database could not be opened or brought to this build's schema: the
+/// one failure after which the CLI may keep the list in the legacy blob alone.
+/// A write that fails on an open database (another process holding it) is
+/// that write's error, and the import or edit that made it did not happen.
+pub const PARTITION_UNAVAILABLE: &str = "USER_PARTITION_UNAVAILABLE";
+
 /// Companion writer for [`cli_list_server_profiles_for_user`]. Replaces the
 /// target user's profile rows without changing `active_user_id`.
 pub fn cli_replace_server_profiles_for_user(
     store: &CredentialStore,
     user_id: i64,
     profiles: &[Value],
-) -> Result<(), String> {
-    init_or_migrate_cli(store)?;
-    let mut conn = open_or_init_cli()?;
+) -> Result<Vec<Value>, String> {
+    let unavailable = |e: String| format!("{PARTITION_UNAVAILABLE}: {e}");
+    init_or_migrate_cli(store).map_err(unavailable)?;
+    let mut conn = open_or_init_cli().map_err(unavailable)?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = replace_server_profiles_for(&mut conn, &root_key, user_id, profiles);
     root_key.zeroize();
@@ -5029,7 +5147,7 @@ pub async fn user_partitions_save_active_server_profiles(
     app: AppHandle,
     profiles: Vec<Value>,
     expected_user_id: Option<i64>,
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     init_or_migrate(&app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -5041,19 +5159,21 @@ pub async fn user_partitions_save_active_server_profiles(
         None => replace_active_server_profiles(&mut conn, &root_key, &profiles),
     };
     root_key.zeroize();
-    result?;
+    // The list stored, whose names the write made unique: the caller shows
+    // this one, not the one it sent.
+    let stored = result?;
     // The blob mirrors the active account; a switch that landed after a bound
     // write leaves it to the next load of the new account.
     if expected_user_id.is_some() && active_user_id(&conn)? != expected_user_id {
-        return Ok(());
+        return Ok(stored);
     }
     // #736: the same mirror the CLI's `save_active_user_profiles` does, so a
     // profile deleted or renamed here is deleted or renamed in the blob too.
     // The partition write already succeeded, so a mirror failure is a warning.
-    if let Err(e) = mirror_active_profiles_to_legacy_blob(&store, &profiles) {
+    if let Err(e) = mirror_active_profiles_to_legacy_blob(&store, &stored) {
         tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
     }
-    Ok(())
+    Ok(stored)
 }
 
 /// N4: copy or move a saved server profile from the ACTIVE (source) user into
@@ -5394,7 +5514,7 @@ pub async fn user_partitions_copy_user(
     // Copy the (credential-free) server profiles into the new user.
     let result = replace_server_profiles_for(&mut conn, &root_key, new_user.id, &profiles);
     root_key.zeroize();
-    result.map(|()| new_user)
+    result.map(|_| new_user)
 }
 
 #[tauri::command]
@@ -5636,6 +5756,22 @@ fn assert_test_lock_held() {
 /// A partition database file whose active account has a passphrase and is
 /// unlocked: the kind of account whose partition calls take the session.
 /// Returns the file and the account.
+/// Lays `profiles` down as `user_id`'s rows the way a build before unique
+/// profile names stored them, names as given. The account opens with this
+/// machine's key (no passphrase).
+#[cfg(test)]
+pub(crate) fn store_profiles_as_an_older_build(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    profiles: &[Value],
+) {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let row = read_user_key_row(conn, user_id).expect("the account");
+    let dek = unwrap_user_dek_with_key(&row, &root_secret).expect("an account without passphrase");
+    insert_profile_rows(conn, &root_secret, user_id, &dek, profiles).expect("the rows");
+}
+
 #[cfg(test)]
 pub(crate) fn passphrase_account_db(dir: &std::path::Path, root_key: &[u8; 32]) -> (PathBuf, i64) {
     let path = dir.join(DB_FILENAME);
@@ -5914,6 +6050,188 @@ mod tests {
         conn
     }
 
+    /// A vault from before the naming rule migrates with two profiles of one
+    /// name, and the first write numbers the second. An import onto that list
+    /// reports the names stored: a name claimed before the write ("Lab (1)")
+    /// is the one the second old profile gets, and would select it.
+    #[test]
+    fn an_import_onto_two_profiles_of_one_name_reports_names_that_select_it() {
+        use crate::util::profile_name::renamed_by_write;
+
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        migrate_legacy_payloads(&mut conn, None, None, &test_root()).expect("migrate");
+        let user_id = active_user_id(&conn).unwrap().expect("active user");
+        store_profiles_as_an_older_build(
+            &conn,
+            &test_root(),
+            user_id,
+            &[
+                json!({"id": "a", "name": "Lab", "protocol": "sftp", "host": "one.example"}),
+                json!({"id": "b", "name": "Lab", "protocol": "sftp", "host": "two.example"}),
+            ],
+        );
+        let mut sent = list_server_profiles_for(&conn, &test_root(), user_id).expect("list");
+        assert_eq!(sent.len(), 2, "an older build kept both: {sent:?}");
+        sent.push(json!({"id": "c", "name": "Lab", "protocol": "sftp", "host": "three.example"}));
+
+        let stored =
+            replace_server_profiles_for(&mut conn, &test_root(), user_id, &sent).expect("write");
+        let renamed = renamed_by_write(&sent, &stored);
+        let read_back = list_server_profiles_for(&conn, &test_root(), user_id).expect("re-read");
+        assert_eq!(read_back, stored, "the list returned is the list stored");
+        assert_eq!(
+            renamed
+                .iter()
+                .map(|r| (r.id.as_str(), r.to.as_str()))
+                .collect::<Vec<_>>(),
+            [("b", "Lab (1)"), ("c", "Lab (2)")]
+        );
+        for r in &renamed {
+            // `--profile NAME` takes the first profile of that name,
+            // case-insensitive.
+            let selected = read_back.iter().find(|p| {
+                p["name"]
+                    .as_str()
+                    .is_some_and(|n| n.eq_ignore_ascii_case(&r.to))
+            });
+            assert_eq!(selected.and_then(|p| p["id"].as_str()), Some(r.id.as_str()));
+        }
+    }
+
+    /// The legacy store let two profiles share a name; the migration into the
+    /// partition stores them as every write of a list does.
+    #[test]
+    fn the_migration_numbers_a_legacy_list_with_two_profiles_of_one_name() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        let legacy = json!([
+            {"id": "a", "name": "Lab", "protocol": "sftp", "host": "one.example"},
+            {"id": "b", "name": "lab", "protocol": "sftp", "host": "two.example"},
+            {"id": "c", "name": "Prod", "protocol": "sftp", "host": "three.example"},
+        ]);
+        migrate_legacy_payloads(&mut conn, Some(&legacy.to_string()), None, &test_root())
+            .expect("migrate");
+        let user_id = active_user_id(&conn).unwrap().expect("active user");
+        let stored = list_server_profiles_for(&conn, &test_root(), user_id).expect("list");
+        let names: Vec<&str> = stored.iter().map(|p| p["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Lab", "lab (1)", "Prod"]);
+    }
+
+    /// A database written whole (a restored backup from an older build) is put
+    /// right as the next write of each list would: every account this machine
+    /// opens, once; a passphrase account is left to its first write after
+    /// unlock and counted.
+    #[test]
+    fn a_database_from_an_older_build_is_put_right_for_every_account_it_can_open() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, None, None, &root).expect("migrate");
+        let default = active_user_id(&conn).unwrap().expect("active user");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", None, None).expect("bob");
+        create_user(&mut conn, &root, "Locked", None, None, Some("passphrase")).expect("locked");
+        let old = |name_b: &str| {
+            vec![
+                json!({"id": "a", "name": "Lab", "protocol": "sftp", "host": "one.example"}),
+                json!({"id": "b", "name": name_b, "protocol": "sftp", "host": "two.example"}),
+            ]
+        };
+        store_profiles_as_an_older_build(&conn, &root, default, &old("lab"));
+        store_profiles_as_an_older_build(&conn, &root, bob.id, &old("Lab"));
+
+        assert_eq!(put_right_profile_names(&mut conn, &root), Ok((2, 1)));
+        for (user, second) in [(default, "lab (1)"), (bob.id, "Lab (1)")] {
+            let stored = list_server_profiles_for(&conn, &root, user).expect("list");
+            let names: Vec<&str> = stored.iter().map(|p| p["name"].as_str().unwrap()).collect();
+            assert_eq!(names, ["Lab", second]);
+        }
+        assert_eq!(
+            put_right_profile_names(&mut conn, &root),
+            Ok((0, 1)),
+            "a list put right is left as it is"
+        );
+    }
+
+    /// A save committed by another connection while a profile write reads
+    /// the list it replaces cannot make that write fail: the write holds the
+    /// database's write reservation from before its first read, so the other
+    /// save waits (here, with no busy timeout, it is refused) and lands after.
+    /// In a deferred transaction the other save went through and this write's
+    /// DELETE failed with SQLITE_BUSY_SNAPSHOT.
+    #[test]
+    fn a_save_from_another_connection_cannot_break_a_profile_write_mid_read() {
+        use std::sync::{Arc, Mutex};
+
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(DB_FILENAME);
+        let mut a = open_or_init_path(path.clone()).expect("open a");
+        // Enough rows that the write's read runs well past the progress
+        // handler's interval, which BEGIN alone never reaches.
+        let profiles: Vec<Value> = (0..50)
+            .map(|idx| json!({"id": format!("p{idx}"), "name": format!("P{idx}"), "protocol": "sftp"}))
+            .collect();
+        migrate_legacy_payloads(
+            &mut a,
+            Some(&serde_json::to_string(&profiles).unwrap()),
+            None,
+            &test_root(),
+        )
+        .expect("migrate");
+        let b = open_or_init_path(path).expect("open b");
+        b.execute_batch("CREATE TABLE contention_probe(x INTEGER)")
+            .expect("probe table");
+        b.busy_timeout(std::time::Duration::ZERO).expect("no wait");
+
+        let other = Arc::new(Mutex::new((Some(b), Vec::<Result<(), String>>::new())));
+        let in_handler = Arc::clone(&other);
+        let user_id = active_user_id(&a).unwrap().expect("active user");
+        let root_secret = user_crypto::secret_key_from_bytes(&test_root());
+        let written = with_user_dek(&a, &root_secret, user_id, |user_id, dek| {
+            a.progress_handler(
+                10,
+                Some(move || {
+                    let mut other = in_handler.lock().unwrap();
+                    if other.1.is_empty() {
+                        let attempt = other
+                            .0
+                            .as_ref()
+                            .unwrap()
+                            .execute("INSERT INTO contention_probe VALUES (1)", [])
+                            .map(|_| ())
+                            .map_err(|e| e.to_string());
+                        other.1.push(attempt);
+                    }
+                    false
+                }),
+            );
+            let written = write_profiles_with_dek(&a, &root_secret, user_id, dek, &profiles);
+            a.progress_handler(0, None::<fn() -> bool>);
+            written
+        });
+
+        let mut other = other.lock().unwrap();
+        assert_eq!(
+            other.1.len(),
+            1,
+            "the other save never ran during the write"
+        );
+        assert!(
+            other.1[0].as_ref().is_err_and(|e| e.contains("locked")),
+            "the other save went through mid-read: {:?}",
+            other.1[0]
+        );
+        assert_eq!(written.expect("the profile write").len(), 50);
+        let b = other.0.take().unwrap();
+        b.execute("INSERT INTO contention_probe VALUES (1)", [])
+            .expect("the other save lands once the write commits");
+    }
+
     #[test]
     fn second_connection_migration_is_idempotent_no_unique_failure() {
         // Regression for the GUI + CLI race that surfaced as
@@ -6142,6 +6460,48 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM server_profiles", [], |row| row.get(0))
             .expect("profile count");
         assert_eq!(encrypted_count, 2);
+    }
+
+    /// Every write of the list goes through one place, so no window, command
+    /// or import can store two profiles of one name: the one that had the
+    /// name keeps it, the one created or renamed onto it gets " (1)", and the
+    /// list returned is the list stored.
+    #[test]
+    fn no_write_stores_two_profiles_of_one_name() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(2);
+        let root = test_root();
+        let before = list_active_server_profiles(&conn, &root).expect("load migrated profiles");
+
+        let mut profiles = before.clone();
+        profiles
+            .push(json!({"id":"new","name":"profile 0","protocol":"sftp","host":"n.example.com"}));
+        let stored =
+            replace_active_server_profiles(&mut conn, &root, &profiles).expect("add a profile");
+        let names = |list: &[Value]| -> Vec<String> {
+            list.iter()
+                .map(|p| p["name"].as_str().unwrap_or_default().to_string())
+                .collect()
+        };
+        assert_eq!(names(&stored), ["Profile 0", "Profile 1", "profile 0 (1)"]);
+        assert_eq!(
+            list_active_server_profiles(&conn, &root).expect("reload"),
+            stored
+        );
+
+        let (renamed, _) = update_active_server_profiles(&mut conn, &root, |p| {
+            p[1]["name"] = json!("PROFILE 0");
+            true
+        })
+        .expect("rename onto a taken name");
+        assert_eq!(
+            names(&renamed),
+            ["Profile 0", "PROFILE 0 (2)", "profile 0 (1)"]
+        );
+        assert_eq!(
+            list_active_server_profiles(&conn, &root).expect("reload"),
+            renamed
+        );
     }
 
     #[test]
@@ -6858,6 +7218,54 @@ mod tests {
         let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
         assert_eq!(target.len(), 1);
         assert_eq!(target[0]["id"], "srv_new");
+    }
+
+    /// The target already holds a profile of the source's name (another
+    /// account, so the Copy is not skipped): that profile keeps the name, the
+    /// copy is stored as "My SFTP (1)", and the report names the copy by the
+    /// name that selects it there, for a Copy and for a Move.
+    #[test]
+    fn relocate_reports_the_name_the_target_stored() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        let mut bobs = sftp_profile("srv_bob");
+        bobs["host"] = json!("other.example.com");
+        replace_server_profiles_for(&mut conn, &root, bob.id, &[bobs]).expect("seed bob");
+
+        for (source_id, new_id, remove_from_source, stored_as) in [
+            ("srv_src", "srv_copy", false, "My SFTP (1)"),
+            ("srv_src", "srv_moved", true, "My SFTP (2)"),
+        ] {
+            replace_active_server_profiles(&mut conn, &root, &[sftp_profile(source_id)])
+                .expect("seed source profile");
+            let report = relocate_server_profile(
+                &mut conn,
+                &root,
+                default.id,
+                bob.id,
+                source_id,
+                new_id,
+                None,
+                remove_from_source,
+            )
+            .expect("relocate");
+            assert!(report.inserted);
+            assert_eq!(report.profile_name, stored_as);
+            let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
+            assert_eq!(
+                crate::util::profile_name::name_of(&target, new_id),
+                Some(stored_as)
+            );
+            assert_eq!(
+                crate::util::profile_name::name_of(&target, "srv_bob"),
+                Some("My SFTP"),
+                "the target's own profile keeps its name"
+            );
+        }
     }
 
     #[test]

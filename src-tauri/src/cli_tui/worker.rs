@@ -443,6 +443,17 @@ pub enum WorkerEvent {
         profile_id: String,
         message: String,
     },
+    /// The names a [`WorkerCommand::SaveProfile`] or
+    /// [`WorkerCommand::DeleteProfile`] stored for `user_name`'s profiles, as
+    /// (id, name). A profile saved onto a name another one holds is stored
+    /// with the first free " (1)", " (2)", ..., and a write numbers an older
+    /// list's two of one name (`util::profile_name`): the optimistic update
+    /// cannot know either. `saved_id` is the profile a save wrote.
+    ProfileNamesStored {
+        user_name: String,
+        saved_id: Option<String>,
+        names: Vec<(String, String)>,
+    },
     /// Decoded content of a file requested with [`WorkerCommand::ViewFile`].
     /// `binary` flags a non-text file (then `content` is a short notice);
     /// `truncated` marks that only a capped prefix was read.
@@ -514,6 +525,9 @@ impl WorkerEvent {
                 total,
             } => format!("quota {} {}/{}", profile_id, used, total),
             WorkerEvent::QuotaFailed { profile_id, .. } => format!("quota {} failed", profile_id),
+            WorkerEvent::ProfileNamesStored { names, .. } => {
+                format!("profile names stored ({} profiles)", names.len())
+            }
             WorkerEvent::FileContent { path, binary, .. } => {
                 format!(
                     "view ready {} ({})",

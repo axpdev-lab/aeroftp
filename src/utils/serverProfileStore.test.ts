@@ -103,17 +103,35 @@ describe('storeSavedServerProfiles', () => {
 
         mockInvoke
             .mockRejectedValueOnce(new Error('STORE_NOT_READY')) // partition save rejects
+            .mockRejectedValueOnce(new Error('not found')) // legacy get_credential: nothing held
             .mockResolvedValueOnce(undefined); // legacy store_credential succeeds
 
         await storeSavedServerProfiles([sampleProfile()]);
 
         expect(mockInvoke.mock.calls[0][0]).toBe('user_partitions_save_active_server_profiles');
-        expect(mockInvoke.mock.calls[1][0]).toBe('store_credential');
-        expect(mockInvoke.mock.calls[1][1]).toMatchObject({
+        expect(mockInvoke.mock.calls[1][0]).toBe('get_credential');
+        expect(mockInvoke.mock.calls[2][0]).toBe('store_credential');
+        expect(mockInvoke.mock.calls[2][1]).toMatchObject({
             account: 'config_server_profiles',
         });
         expect(handler).toHaveBeenCalledTimes(1);
         expect(localStoreMap.has('aeroftp-saved-servers')).toBe(false);
+    });
+
+    it('lets the profile the legacy store holds keep its name on a fallback write', async () => {
+        // Save-as-new puts the new profile in front of the one holding its
+        // name: the list order must not hand the name to the new one.
+        const held = sampleProfile({ id: 'srv_held', name: 'Lab' });
+        const added = sampleProfile({ id: 'srv_new', name: 'Lab' });
+        mockInvoke
+            .mockRejectedValueOnce(new Error('STORE_NOT_READY')) // partition save rejects
+            .mockResolvedValueOnce(JSON.stringify([held])) // legacy get_credential
+            .mockResolvedValueOnce(undefined); // legacy store_credential succeeds
+
+        const stored = await storeSavedServerProfiles([added, held]);
+
+        expect(stored.map(p => [p.id, p.name])).toEqual([['srv_new', 'Lab (1)'], ['srv_held', 'Lab']]);
+        expect(JSON.parse((mockInvoke.mock.calls[2][1] as { password: string }).password)).toEqual(stored);
     });
 
     it('does not swallow a non-fallback error from the partition write', async () => {
@@ -342,6 +360,18 @@ describe('account-bound profile writes', () => {
             profiles: [sampleProfile({ name: 'merged' })],
             expectedUserId: 4,
         });
+    });
+
+    it('resolves a merge to the list the write stored', async () => {
+        // A rename onto a name another profile holds is stored as " (1)": a
+        // view that keeps the merge's result must show that name.
+        const other = sampleProfile({ id: 'srv_2', name: 'Lab' });
+        const stored = [sampleProfile({ name: 'Lab (1)' }), other];
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile(), other] })
+            .mockResolvedValueOnce(stored);
+
+        await expect(mergeSavedServerProfile('srv_1', profile => ({ ...profile, name: 'Lab' }))).resolves.toEqual(stored);
     });
 
     it('awaits an updater before writing the merged profile', async () => {

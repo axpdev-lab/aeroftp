@@ -120,11 +120,13 @@ describe('connection form save paths', () => {
     // new server account runs the probe after the store.
     it('runs the cross-user probe after every save that can change the account', () => {
         const save = bodyOf('saveToServers');
-        // Edit branch (compared with the profile before the edit) and add branch.
+        // Edit branch (compared with the profile before the edit) and add branch,
+        // each with the profile as stored (its name may have gained " (1)").
         expect(save).toContain('warnIfSavedByOtherAccount(savedServer, prevProfile, t, logActivity)');
-        expect(save).toContain('warnIfSavedByOtherAccount(newServer, undefined, t, logActivity)');
-        expect(bodyOf('handleSaveAsNew')).toContain('warnIfSavedByOtherAccount(newServer, originalServer, t, logActivity)');
-        expect(bodyOf('handleConvertMode')).toContain('warnIfSavedByOtherAccount(newServer, originalServer, t, logActivity)');
+        expect(save).toContain('warnIfSavedByOtherAccount(savedServer, undefined, t, logActivity)');
+        const asStored = 'warnIfSavedByOtherAccount(storedServers.find((s) => s.id === newServer.id) ?? newServer, originalServer, t, logActivity)';
+        expect(bodyOf('handleSaveAsNew')).toContain(asStored);
+        expect(bodyOf('handleConvertMode')).toContain(asStored);
         // Not awaited: a slow or failing probe never holds up the save.
         expect(connectionScreenSource).not.toMatch(/await\s+warnIfSavedByOtherAccount/);
         for (const fn of ['saveToServers', 'handleSaveAsNew', 'handleConvertMode']) {
