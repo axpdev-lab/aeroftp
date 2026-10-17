@@ -39447,6 +39447,25 @@ struct ExportCollected {
     skipped: Vec<(String, String)>,
 }
 
+/// Whether a profile of `protocol` exports only with a password in the vault.
+/// Three kinds carry none, and an empty `server_<id>` is legitimate for them:
+/// key-auth SFTP (the key path is in `options.private_key_path` and becomes
+/// rclone's `key_file`), the #128-D OAuth providers (token and BYO client
+/// injected from the vault at export time) and Proton Drive (the native
+/// session is injected at export time; a CLI profile, or a native one not
+/// signed in, is skipped by the exporter with its own reason, which says more
+/// than "no credential in vault").
+fn export_needs_vault_secret(protocol: &str, options: Option<&serde_json::Value>) -> bool {
+    let has_sftp_key = protocol == "sftp"
+        && options
+            .and_then(|o| o.get("private_key_path"))
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.trim().is_empty());
+    let is_rclone_oauth =
+        ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(protocol).is_some();
+    !(has_sftp_key || is_rclone_oauth || protocol == "proton")
+}
+
 /// Pull every profile the `--profiles` selectors pick (or all profiles if
 /// `None`) from the vault, decoding `server_<id>` credentials. A selector that
 /// picks nothing is recorded as skipped, under the selector as typed.
@@ -39570,27 +39589,7 @@ fn collect_export_scaffold(
             out.skipped.push((name.to_string(), reason));
             continue;
         }
-        // SFTP profiles authenticate by SSH key (path in
-        // `options.private_key_path`), so an empty vault password is
-        // legitimate for them. Everything else genuinely needs a stored
-        // secret. Key-auth SFTP must still reach export_rclone, which emits
-        // the `key_file` reference from `options`.
-        let has_sftp_key = protocol == "sftp"
-            && options
-                .as_ref()
-                .and_then(|o| o.get("private_key_path"))
-                .and_then(|v| v.as_str())
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
-
-        // #128-D: OAuth-token providers (Drive/Dropbox/OneDrive/Box/pCloud/
-        // Yandex) carry no `server_<id>` password; their token + BYO
-        // client_id/secret are injected from the vault at export time, so an
-        // empty vault password is legitimate (like key-auth SFTP).
-        let is_rclone_oauth =
-            ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol).is_some();
-
-        if secret.is_empty() && !has_sftp_key && !is_rclone_oauth {
+        if secret.is_empty() && export_needs_vault_secret(&protocol, options.as_ref()) {
             out.skipped
                 .push((name.to_string(), "no credential in vault".to_string()));
             continue;
@@ -41171,6 +41170,28 @@ fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportRe
         format!(
             "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from {source}, and existing files are never overwritten."
         )
+    }
+}
+
+#[cfg(test)]
+mod export_vault_secret_tests {
+    use super::export_needs_vault_secret;
+
+    /// A native Proton Drive profile has no password, only a session that the
+    /// export injects: the pre-filter turned it away as "no credential in
+    /// vault" before the exporter could write it (found live by L2 Debby).
+    #[test]
+    fn proton_oauth_and_key_auth_sftp_export_without_a_vault_password() {
+        let native = serde_json::json!({ "proton_mode": "native" });
+        assert!(!export_needs_vault_secret("proton", Some(&native)));
+        assert!(!export_needs_vault_secret("proton", None));
+        assert!(!export_needs_vault_secret("googledrive", None));
+        let key = serde_json::json!({ "private_key_path": "/home/u/.ssh/id_ed25519" });
+        assert!(!export_needs_vault_secret("sftp", Some(&key)));
+
+        assert!(export_needs_vault_secret("sftp", None));
+        assert!(export_needs_vault_secret("ftp", None));
+        assert!(export_needs_vault_secret("s3", Some(&native)));
     }
 }
 
