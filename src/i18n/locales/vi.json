@@ -5469,7 +5469,6 @@
                 "start": "Bắt đầu đồng bộ",
                 "resultOk": "Đồng bộ hoàn tất",
                 "resultPartial": "Đồng bộ hoàn tất với lỗi",
-                "uploaded": "Đã tải lên",
                 "skipped": "Đã bỏ qua",
                 "errors": "Lỗi",
                 "elapsed": "Thời gian đã trôi qua",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Không giới hạn",
                 "stop": "Dừng",
                 "stopping": "Đang dừng...",
-                "resultCancelled": "Đã hủy đồng bộ"
+                "resultCancelled": "Đã hủy đồng bộ",
+                "copied": "Đã sao chép",
+                "planned": "Bản sao dự kiến",
+                "resultDryRunOk": "Chạy thử hoàn tất",
+                "resultDryRunPartial": "Chạy thử hoàn tất với lỗi",
+                "resultDryRunCancelled": "Đã hủy chạy thử"
             },
             "launcherTemplates": "Mẫu",
             "launcherMultiPath": "Nhiều đường dẫn",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Không hỏi lại cho máy chủ này",
                 "continue": "Tiếp tục"
             },
-            "launcherHistory": "Lịch sử nhật ký",
+            "launcherHistory": "Nhật ký đồng bộ",
             "history": {
-                "title": "Lịch sử AeroSync",
+                "title": "Nhật ký AeroSync",
                 "refresh": "Làm mới",
                 "cleanupOld": "Xóa các mục cũ hơn 30 ngày",
                 "clearAll": "Xóa tất cả nhật ký",
                 "confirmClearAll": "Xóa TẤT CẢ nhật ký đồng bộ?",
-                "empty": "Chưa có nhật ký đồng bộ nào. Chúng được tạo khi thực hiện cài đặt sẵn lần đầu cho cặp đường dẫn này.",
+                "empty": "Không có nhật ký đồng bộ để hiển thị.",
                 "selectPrompt": "Chọn một nhật ký ở bên trái để xem các mục theo từng tệp.",
                 "journalMissing": "Không tìm thấy nhật ký.",
                 "entriesEmpty": "Không có mục nào được ghi lại.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "ĐÃ BỊ THAY ĐỔI",
                 "verifyNoSignature": "KHÔNG CÓ CHỮ KÝ",
                 "statusCompleted": "HOÀN TẤT",
-                "statusInProgress": "ĐANG XỬ LÝ",
                 "delete": "Xóa nhật ký",
                 "created": "Đã tạo",
                 "bytes": "Byte",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Hướng",
                 "colStatus": "Trạng thái",
                 "colBytes": "Byte",
-                "colAction": "Hành động"
+                "colAction": "Hành động",
+                "description": "Nhật ký hỗ trợ khôi phục đồng bộ. Các lần chạy thành công sẽ xóa nhật ký của mình; đây không phải lịch sử các lần chạy đã hoàn tất.",
+                "statusIncomplete": "CHƯA HOÀN TẤT"
             },
             "launcherScheduler": "Bộ lập lịch",
             "errorCorrection": "Sửa lỗi",

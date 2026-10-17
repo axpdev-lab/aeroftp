@@ -5469,7 +5469,6 @@
                 "start": "Démarrer la synchronisation",
                 "resultOk": "Synchronisation terminée",
                 "resultPartial": "Synchronisation terminée avec des erreurs",
-                "uploaded": "Transférés",
                 "skipped": "Ignorés",
                 "errors": "Erreurs",
                 "elapsed": "Temps écoulé",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Illimité",
                 "stop": "Arrêter",
                 "stopping": "Arrêt...",
-                "resultCancelled": "Synchronisation annulée"
+                "resultCancelled": "Synchronisation annulée",
+                "copied": "Copiés",
+                "planned": "Copies prévues",
+                "resultDryRunOk": "Simulation terminée",
+                "resultDryRunPartial": "Simulation terminée avec des erreurs",
+                "resultDryRunCancelled": "Simulation annulée"
             },
             "launcherTemplates": "Modèles",
             "launcherMultiPath": "Multi-chemin",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Ne plus demander pour ce serveur",
                 "continue": "Continuer"
             },
-            "launcherHistory": "Historique du journal",
+            "launcherHistory": "Journaux de synchronisation",
             "history": {
-                "title": "Historique AeroSync",
+                "title": "Journaux AeroSync",
                 "refresh": "Actualiser",
                 "cleanupOld": "Supprimer les entrées de plus de 30 jours",
                 "clearAll": "Effacer tous les journaux",
                 "confirmClearAll": "Effacer TOUS les journaux de synchronisation ?",
-                "empty": "Aucun journal de synchronisation pour le moment. Ils sont créés lors de la première exécution d'un preset sur cette paire de chemins.",
+                "empty": "Aucun journal de synchronisation à afficher.",
                 "selectPrompt": "Sélectionnez un journal à gauche pour inspecter ses entrées par fichier.",
                 "journalMissing": "Journal introuvable.",
                 "entriesEmpty": "Aucune entrée enregistrée.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "ALTÉRÉ",
                 "verifyNoSignature": "SANS SIGNATURE",
                 "statusCompleted": "TERMINÉ",
-                "statusInProgress": "EN COURS",
                 "delete": "Supprimer le journal",
                 "created": "Créé",
                 "bytes": "Octets",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Direction",
                 "colStatus": "Statut",
                 "colBytes": "Octets",
-                "colAction": "Action"
+                "colAction": "Action",
+                "description": "Les journaux facilitent la reprise des synchronisations. Les exécutions réussies suppriment leur journal ; ceci n'est pas un historique des exécutions terminées.",
+                "statusIncomplete": "INCOMPLET"
             },
             "launcherScheduler": "Planificateur",
             "errorCorrection": "Correction d'erreurs",

@@ -5469,7 +5469,6 @@
                 "start": "开始同步",
                 "resultOk": "同步完成",
                 "resultPartial": "同步完成，但有错误",
-                "uploaded": "已上传",
                 "skipped": "已跳过",
                 "errors": "错误",
                 "elapsed": "已用时间",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "无限制",
                 "stop": "停止",
                 "stopping": "正在停止...",
-                "resultCancelled": "同步已取消"
+                "resultCancelled": "同步已取消",
+                "copied": "已复制",
+                "planned": "计划复制",
+                "resultDryRunOk": "试运行完成",
+                "resultDryRunPartial": "试运行完成，但有错误",
+                "resultDryRunCancelled": "试运行已取消"
             },
             "launcherTemplates": "模板",
             "launcherMultiPath": "多路径",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "不再为此服务器询问",
                 "continue": "继续"
             },
-            "launcherHistory": "日志历史",
+            "launcherHistory": "同步日志",
             "history": {
-                "title": "AeroSync 历史",
+                "title": "AeroSync 日志",
                 "refresh": "刷新",
                 "cleanupOld": "删除超过 30 天的条目",
                 "clearAll": "清除所有日志",
                 "confirmClearAll": "清除所有同步日志?",
-                "empty": "尚无同步日志。当首次对此路径对执行预设时会自动创建。",
+                "empty": "没有可显示的同步日志。",
                 "selectPrompt": "在左侧选择一个日志以查看每个文件的条目。",
                 "journalMissing": "未找到日志。",
                 "entriesEmpty": "未记录任何条目。",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "已篡改",
                 "verifyNoSignature": "无签名",
                 "statusCompleted": "已完成",
-                "statusInProgress": "进行中",
                 "delete": "删除日志",
                 "created": "创建时间",
                 "bytes": "字节",
@@ -5552,7 +5555,9 @@
                 "colDirection": "方向",
                 "colStatus": "状态",
                 "colBytes": "字节",
-                "colAction": "操作"
+                "colAction": "操作",
+                "description": "日志用于恢复同步。运行成功后会删除对应日志；此处不保存已完成运行的历史记录。",
+                "statusIncomplete": "未完成"
             },
             "launcherScheduler": "调度器",
             "errorCorrection": "纠错",

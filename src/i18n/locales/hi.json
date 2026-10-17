@@ -5469,7 +5469,6 @@
                 "start": "सिंक प्रारंभ करें",
                 "resultOk": "सिंक पूर्ण हुआ",
                 "resultPartial": "सिंक त्रुटियों के साथ पूर्ण हुआ",
-                "uploaded": "अपलोड किए गए",
                 "skipped": "छोड़े गए",
                 "errors": "त्रुटियाँ",
                 "elapsed": "बीता समय",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "असीमित",
                 "stop": "रोकें",
                 "stopping": "रोका जा रहा है...",
-                "resultCancelled": "सिंक रद्द कर दिया गया"
+                "resultCancelled": "सिंक रद्द कर दिया गया",
+                "copied": "कॉपी किए गए",
+                "planned": "नियोजित कॉपियाँ",
+                "resultDryRunOk": "ड्राई रन पूर्ण हुआ",
+                "resultDryRunPartial": "ड्राई रन त्रुटियों के साथ पूर्ण हुआ",
+                "resultDryRunCancelled": "ड्राई रन रद्द कर दिया गया"
             },
             "launcherTemplates": "टेम्पलेट",
             "launcherMultiPath": "मल्टी-पाथ",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "इस सर्वर के लिए दोबारा न पूछें",
                 "continue": "जारी रखें"
             },
-            "launcherHistory": "जर्नल इतिहास",
+            "launcherHistory": "सिंक जर्नल",
             "history": {
-                "title": "AeroSync इतिहास",
+                "title": "AeroSync जर्नल",
                 "refresh": "ताज़ा करें",
                 "cleanupOld": "30 दिन से पुरानी प्रविष्टियाँ हटाएँ",
                 "clearAll": "सभी जर्नल साफ़ करें",
                 "confirmClearAll": "सभी सिंक जर्नल साफ़ करें?",
-                "empty": "अभी तक कोई सिंक जर्नल नहीं है। इस पाथ जोड़ी पर पहली प्रीसेट चलाने पर बनाए जाते हैं।",
+                "empty": "दिखाने के लिए कोई सिंक जर्नल नहीं है।",
                 "selectPrompt": "प्रत्येक फ़ाइल की प्रविष्टियाँ देखने के लिए बायीं ओर से एक जर्नल चुनें।",
                 "journalMissing": "जर्नल नहीं मिला।",
                 "entriesEmpty": "कोई प्रविष्टि दर्ज नहीं है।",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "छेड़छाड़",
                 "verifyNoSignature": "कोई हस्ताक्षर नहीं",
                 "statusCompleted": "पूर्ण",
-                "statusInProgress": "जारी",
                 "delete": "जर्नल हटाएँ",
                 "created": "बनाया गया",
                 "bytes": "बाइट्स",
@@ -5552,7 +5555,9 @@
                 "colDirection": "दिशा",
                 "colStatus": "स्थिति",
                 "colBytes": "बाइट्स",
-                "colAction": "क्रिया"
+                "colAction": "क्रिया",
+                "description": "जर्नल सिंक को पुनः प्राप्त करने में मदद करते हैं। सफल रन अपना जर्नल हटा देते हैं; यह पूरे हो चुके रन का इतिहास नहीं है।",
+                "statusIncomplete": "अपूर्ण"
             },
             "launcherScheduler": "अनुसूचक",
             "errorCorrection": "त्रुटि सुधार",

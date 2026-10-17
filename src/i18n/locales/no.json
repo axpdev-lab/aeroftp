@@ -5488,7 +5488,6 @@
                 "start": "Start synkronisering",
                 "resultOk": "Synkronisering fullført",
                 "resultPartial": "Synkronisering fullført med feil",
-                "uploaded": "Lastet opp",
                 "skipped": "Hoppet over",
                 "errors": "Feil",
                 "elapsed": "Tid brukt",
@@ -5522,7 +5521,12 @@
                 "bandwidthUnlimited": "Ubegrenset",
                 "stop": "Stopp",
                 "stopping": "Stopper...",
-                "resultCancelled": "Synkronisering avbrutt"
+                "resultCancelled": "Synkronisering avbrutt",
+                "copied": "Kopiert",
+                "planned": "Planlagte kopieringer",
+                "resultDryRunOk": "Prøvekjøring fullført",
+                "resultDryRunPartial": "Prøvekjøring fullført med feil",
+                "resultDryRunCancelled": "Prøvekjøring avbrutt"
             },
             "launcherTemplates": "Maler",
             "launcherMultiPath": "Flere baner",
@@ -5547,14 +5551,14 @@
                 "skipFuture": "Ikke spør igjen for denne serveren",
                 "continue": "Fortsett"
             },
-            "launcherHistory": "Journalhistorikk",
+            "launcherHistory": "Synkroniseringsjournaler",
             "history": {
-                "title": "AeroSync-historikk",
+                "title": "AeroSync-journaler",
                 "refresh": "Oppdater",
                 "cleanupOld": "Fjern oppføringer eldre enn 30 dager",
                 "clearAll": "Tøm alle journaler",
                 "confirmClearAll": "Tømme ALLE synkroniseringsjournaler?",
-                "empty": "Ingen synkroniseringsjournaler ennå. De opprettes ved første kjøring av en forhåndsinnstilling på dette stiparet.",
+                "empty": "Ingen synkroniseringsjournaler å vise.",
                 "selectPrompt": "Velg en journal til venstre for å se oppføringer per fil.",
                 "journalMissing": "Journal ikke funnet.",
                 "entriesEmpty": "Ingen registrerte oppføringer.",
@@ -5563,7 +5567,6 @@
                 "verifyFailed": "MANIPULERT",
                 "verifyNoSignature": "INGEN SIGNATUR",
                 "statusCompleted": "FULLFØRT",
-                "statusInProgress": "PÅGÅR",
                 "delete": "Slett journal",
                 "created": "Opprettet",
                 "bytes": "Byte",
@@ -5571,7 +5574,9 @@
                 "colDirection": "Retning",
                 "colStatus": "Status",
                 "colBytes": "Byte",
-                "colAction": "Handling"
+                "colAction": "Handling",
+                "description": "Journaler hjelper med å gjenopprette synkroniseringer. Vellykkede kjøringer fjerner sin journal; dette er ikke en historikk over fullførte kjøringer.",
+                "statusIncomplete": "UFULLSTENDIG"
             },
             "launcherScheduler": "Planlegger",
             "errorCorrection": "Feilkorreksjon",

@@ -236,7 +236,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
             className="fixed inset-0 z-[9998] flex items-start justify-center pt-[5vh] bg-black/50 animate-scale-in"
             role="dialog"
             aria-modal="true"
-            aria-label={t('aerosync.history.title') || 'AeroSync history'}
+            aria-label={t('aerosync.history.title') || 'AeroSync journals'}
             onClick={onClose}
         >
             <div
@@ -251,7 +251,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
                     <div className="flex items-center gap-2 pointer-events-none">
                         <History size={18} className="text-blue-500" />
                         <h2 className="text-base font-semibold">
-                            {t('aerosync.history.title') || 'AeroSync history'}
+                            {t('aerosync.history.title') || 'AeroSync journals'}
                         </h2>
                     </div>
                     <div className="flex items-center gap-1">
@@ -318,6 +318,10 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
                     </div>
                 )}
 
+                <p className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
+                    {t('aerosync.history.description') || 'Journals support sync recovery. Successful runs remove their journal; this is not a history of completed runs.'}
+                </p>
+
                 <div className="flex flex-1 min-h-0">
                     <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col">
                         {loading ? (
@@ -326,7 +330,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
                             </div>
                         ) : filtered.length === 0 ? (
                             <div className="flex-1 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400 italic px-4 text-center">
-                                {t('aerosync.history.empty') || 'No sync journals yet. They are created on the first preset execution against this path pair.'}
+                                {t('aerosync.history.empty') || 'No sync journals to show.'}
                             </div>
                         ) : (
                             <ul className="overflow-y-auto flex-1 text-sm">
@@ -359,7 +363,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
                                                         </span>
                                                     ) : (
                                                         <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                                                            <AlertTriangle size={10} /> {t('aerosync.history.statusInProgress') || 'IN PROGRESS'}
+                                                            <AlertTriangle size={10} /> {t('aerosync.history.statusIncomplete') || 'INCOMPLETE'}
                                                         </span>
                                                     )}
                                                     {renderVerifyBadge(verifyState[key] || 'idle')}

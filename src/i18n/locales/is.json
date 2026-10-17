@@ -5488,7 +5488,6 @@
                 "start": "Hefja samstillingu",
                 "resultOk": "Samstillingu lokið",
                 "resultPartial": "Samstillingu lokið með villum",
-                "uploaded": "Hlaðið upp",
                 "skipped": "Sleppt",
                 "errors": "Villur",
                 "elapsed": "Liðinn tími",
@@ -5522,7 +5521,12 @@
                 "bandwidthUnlimited": "Ótakmarkað",
                 "stop": "Stöðva",
                 "stopping": "Stöðva...",
-                "resultCancelled": "Samstilling hætt"
+                "resultCancelled": "Samstilling hætt",
+                "copied": "Afritað",
+                "planned": "Áætluð afrit",
+                "resultDryRunOk": "Þurrkeyrslu lokið",
+                "resultDryRunPartial": "Þurrkeyrslu lokið með villum",
+                "resultDryRunCancelled": "Þurrkeyrslu hætt"
             },
             "launcherTemplates": "Sniðmát",
             "launcherMultiPath": "Margar slóðir",
@@ -5547,14 +5551,14 @@
                 "skipFuture": "Ekki spyrja aftur fyrir þennan netþjón",
                 "continue": "Halda áfram"
             },
-            "launcherHistory": "Saga journals",
+            "launcherHistory": "Samstillingardagbækur",
             "history": {
-                "title": "AeroSync saga",
+                "title": "AeroSync-dagbækur",
                 "refresh": "Endurnýja",
                 "cleanupOld": "Fjarlægja færslur eldri en 30 daga",
                 "clearAll": "Hreinsa öll journal",
                 "confirmClearAll": "Hreinsa ÖLL samstillingar-journal?",
-                "empty": "Engin samstillingar-journal enn. Þau eru búin til við fyrstu keyrslu forstillingar á þessu slóðapari.",
+                "empty": "Engar samstillingardagbækur til að sýna.",
                 "selectPrompt": "Veldu journal til vinstri til að skoða færslur fyrir hverja skrá.",
                 "journalMissing": "Journal fannst ekki.",
                 "entriesEmpty": "Engar færslur skráðar.",
@@ -5563,7 +5567,6 @@
                 "verifyFailed": "BREYTT",
                 "verifyNoSignature": "EKKERT UNDIRSKRIFT",
                 "statusCompleted": "LOKIÐ",
-                "statusInProgress": "Í GANGI",
                 "delete": "Eyða journali",
                 "created": "Búið til",
                 "bytes": "Bæti",
@@ -5571,7 +5574,9 @@
                 "colDirection": "Stefna",
                 "colStatus": "Staða",
                 "colBytes": "Bæti",
-                "colAction": "Aðgerð"
+                "colAction": "Aðgerð",
+                "description": "Dagbækur hjálpa við endurheimt samstillingar. Keyrslur sem takast fjarlægja dagbók sína; þetta er ekki ferill lokinna keyrslna.",
+                "statusIncomplete": "ÓLOKIÐ"
             },
             "launcherScheduler": "Tímaáætlun",
             "errorCorrection": "Villuleiðrétting",

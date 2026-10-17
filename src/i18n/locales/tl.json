@@ -5488,7 +5488,6 @@
                 "start": "Simulan ang sync",
                 "resultOk": "Nakumpleto ang sync",
                 "resultPartial": "Nakumpleto ang sync na may mga error",
-                "uploaded": "Na-upload",
                 "skipped": "Nilaktawan",
                 "errors": "Mga error",
                 "elapsed": "Lumipas na oras",
@@ -5522,7 +5521,12 @@
                 "bandwidthUnlimited": "Walang limitasyon",
                 "stop": "Itigil",
                 "stopping": "Ihinihinto...",
-                "resultCancelled": "Kinansela ang sync"
+                "resultCancelled": "Kinansela ang sync",
+                "copied": "Nakopya",
+                "planned": "Mga nakaplanong kopya",
+                "resultDryRunOk": "Nakumpleto ang dry run",
+                "resultDryRunPartial": "Nakumpleto ang dry run na may mga error",
+                "resultDryRunCancelled": "Kinansela ang dry run"
             },
             "launcherTemplates": "Mga template",
             "launcherMultiPath": "Maramihang landas",
@@ -5547,14 +5551,14 @@
                 "skipFuture": "Huwag nang magtanong muli para sa server na ito",
                 "continue": "Magpatuloy"
             },
-            "launcherHistory": "Kasaysayan ng journal",
+            "launcherHistory": "Mga journal ng sync",
             "history": {
-                "title": "Kasaysayan ng AeroSync",
+                "title": "Mga journal ng AeroSync",
                 "refresh": "I-refresh",
                 "cleanupOld": "Alisin ang mga entry na mas matanda sa 30 araw",
                 "clearAll": "I-clear ang lahat ng journal",
                 "confirmClearAll": "I-clear ang LAHAT ng sync journal?",
-                "empty": "Wala pang sync journal. Nililikha ang mga ito sa unang pagpapatakbo ng preset para sa pares na ito ng path.",
+                "empty": "Walang journal ng sync na maipapakita.",
                 "selectPrompt": "Pumili ng journal sa kaliwa para tingnan ang mga entry kada file.",
                 "journalMissing": "Hindi natagpuan ang journal.",
                 "entriesEmpty": "Walang naitala na entry.",
@@ -5563,7 +5567,6 @@
                 "verifyFailed": "NABAGO",
                 "verifyNoSignature": "WALANG PIRMA",
                 "statusCompleted": "TAPOS NA",
-                "statusInProgress": "ISINASAGAWA",
                 "delete": "Tanggalin ang journal",
                 "created": "Nilikha",
                 "bytes": "Bytes",
@@ -5571,7 +5574,9 @@
                 "colDirection": "Direksyon",
                 "colStatus": "Status",
                 "colBytes": "Bytes",
-                "colAction": "Aksyon"
+                "colAction": "Aksyon",
+                "description": "Tumutulong ang mga journal sa pagbawi ng sync. Inaalis ng mga matagumpay na pagpapatakbo ang kanilang journal; hindi ito kasaysayan ng mga nakumpletong pagpapatakbo.",
+                "statusIncomplete": "HINDI KUMPLETO"
             },
             "launcherScheduler": "Tagaplano",
             "errorCorrection": "Pagwawasto ng Error",

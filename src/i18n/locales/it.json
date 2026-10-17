@@ -5693,7 +5693,6 @@
                 "start": "Avvia sincronizzazione",
                 "resultOk": "Sincronizzazione completata",
                 "resultPartial": "Sincronizzazione completata con errori",
-                "uploaded": "Trasferiti",
                 "skipped": "Saltati",
                 "errors": "Errori",
                 "elapsed": "Tempo trascorso",
@@ -5727,7 +5726,12 @@
                 "bandwidthUnlimited": "Illimitato",
                 "stop": "Interrompi",
                 "stopping": "Interruzione...",
-                "resultCancelled": "Sincronizzazione annullata"
+                "resultCancelled": "Sincronizzazione annullata",
+                "copied": "Copiati",
+                "planned": "Copie previste",
+                "resultDryRunOk": "Simulazione completata",
+                "resultDryRunPartial": "Simulazione completata con errori",
+                "resultDryRunCancelled": "Simulazione annullata"
             },
             "launcherTemplates": "Modelli",
             "launcherMultiPath": "Percorsi multipli",
@@ -5754,14 +5758,14 @@
                 "skipFuture": "Non chiedere più per questo server",
                 "continue": "Continua"
             },
-            "launcherHistory": "Cronologia journal",
+            "launcherHistory": "Registri di sincronizzazione",
             "history": {
-                "title": "Cronologia AeroSync",
+                "title": "Registri AeroSync",
                 "refresh": "Aggiorna",
                 "cleanupOld": "Rimuovi le voci più vecchie di 30 giorni",
                 "clearAll": "Cancella tutti i journal",
                 "confirmClearAll": "Cancellare TUTTI i journal di sincronizzazione?",
-                "empty": "Nessun journal di sincronizzazione. Vengono creati alla prima esecuzione di un preset su questa coppia di path.",
+                "empty": "Nessun registro di sincronizzazione da mostrare.",
                 "selectPrompt": "Seleziona un journal a sinistra per vederne le voci per-file.",
                 "journalMissing": "Journal non trovato.",
                 "entriesEmpty": "Nessuna voce registrata.",
@@ -5770,7 +5774,6 @@
                 "verifyFailed": "MANOMESSO",
                 "verifyNoSignature": "NESSUNA FIRMA",
                 "statusCompleted": "COMPLETATO",
-                "statusInProgress": "IN CORSO",
                 "delete": "Elimina journal",
                 "created": "Creato",
                 "bytes": "Byte",
@@ -5778,7 +5781,9 @@
                 "colDirection": "Direzione",
                 "colStatus": "Stato",
                 "colBytes": "Byte",
-                "colAction": "Azione"
+                "colAction": "Azione",
+                "description": "I registri aiutano a recuperare le sincronizzazioni. Le esecuzioni riuscite rimuovono il proprio registro; questa non è una cronologia delle esecuzioni completate.",
+                "statusIncomplete": "INCOMPLETO"
             },
             "launcherScheduler": "Pianificatore",
             "outOfSyncItemsPct": "Elementi non sincronizzati",

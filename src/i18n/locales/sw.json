@@ -5469,7 +5469,6 @@
                 "start": "Anza usawazishaji",
                 "resultOk": "Usawazishaji umekamilika",
                 "resultPartial": "Usawazishaji umekamilika na makosa",
-                "uploaded": "Zimepakiwa",
                 "skipped": "Zimerukwa",
                 "errors": "Makosa",
                 "elapsed": "Muda uliopita",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Bila kikomo",
                 "stop": "Simamisha",
                 "stopping": "Inasimamisha...",
-                "resultCancelled": "Usawazishaji umeghairiwa"
+                "resultCancelled": "Usawazishaji umeghairiwa",
+                "copied": "Zimenakiliwa",
+                "planned": "Nakala zilizopangwa",
+                "resultDryRunOk": "Jaribio limekamilika",
+                "resultDryRunPartial": "Jaribio limekamilika likiwa na makosa",
+                "resultDryRunCancelled": "Jaribio limeghairiwa"
             },
             "launcherTemplates": "Violezo",
             "launcherMultiPath": "Njia nyingi",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Usiulize tena kwa seva hii",
                 "continue": "Endelea"
             },
-            "launcherHistory": "Historia ya jarida",
+            "launcherHistory": "Kumbukumbu za usawazishaji",
             "history": {
-                "title": "Historia ya AeroSync",
+                "title": "Kumbukumbu za AeroSync",
                 "refresh": "Onyesha upya",
                 "cleanupOld": "Ondoa rekodi zenye umri zaidi ya siku 30",
                 "clearAll": "Futa majarida yote",
                 "confirmClearAll": "Futa majarida YOTE ya usawazishaji?",
-                "empty": "Bado hakuna majarida ya usawazishaji. Yanaundwa wakati wa utekelezaji wa kwanza wa preset kwa jozi hii ya njia.",
+                "empty": "Hakuna kumbukumbu za usawazishaji za kuonyesha.",
                 "selectPrompt": "Chagua jarida upande wa kushoto ili kukagua rekodi kwa kila faili.",
                 "journalMissing": "Jarida halikupatikana.",
                 "entriesEmpty": "Hakuna rekodi zilizohifadhiwa.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "IMEHARIBIWA",
                 "verifyNoSignature": "HAKUNA SAINI",
                 "statusCompleted": "IMEKAMILIKA",
-                "statusInProgress": "INAENDELEA",
                 "delete": "Futa jarida",
                 "created": "Imeundwa",
                 "bytes": "Baiti",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Mwelekeo",
                 "colStatus": "Hali",
                 "colBytes": "Baiti",
-                "colAction": "Kitendo"
+                "colAction": "Kitendo",
+                "description": "Kumbukumbu husaidia kurejesha usawazishaji. Utekelezaji uliofanikiwa huondoa kumbukumbu yake; hii si historia ya utekelezaji uliokamilika.",
+                "statusIncomplete": "HAIJAKAMILIKA"
             },
             "launcherScheduler": "Mratibu wa Wakati",
             "errorCorrection": "Kusahihisha Makosa",

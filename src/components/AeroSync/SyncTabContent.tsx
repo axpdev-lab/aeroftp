@@ -167,7 +167,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     const [running, setRunning] = useState(false);
     const [cancelling, setCancelling] = useState(false);
     const [progress, setProgress] = useState<LocalSyncProgress | null>(null);
-    const [report, setReport] = useState<LocalSyncReport | null>(null);
+    const [report, setReport] = useState<(LocalSyncReport & { dry_run: boolean }) | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [showAdvanced, setShowAdvanced] = useStickyState('sync.showAdvanced', false);
 
@@ -262,7 +262,9 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                     download_limit_kbps: downloadLimit > 0 ? downloadLimit : null,
                 },
             });
-            setReport(result);
+            // Bind the result to the request that produced it, even if the
+            // user changes the dry-run checkbox after this run.
+            setReport({ ...result, dry_run: dryRun });
         } catch (e) {
             setError(String(e));
         } finally {
@@ -513,15 +515,28 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                             <AlertTriangle size={16} className="text-amber-500" />
                         )}
                         <span className="font-semibold text-sm">
-                            {report.status === 'ok'
-                                ? t('aerosync.sync.resultOk') || 'Sync completed'
-                                : report.status === 'cancelled'
-                                    ? t('aerosync.sync.resultCancelled') || 'Sync cancelled'
-                                    : t('aerosync.sync.resultPartial') || 'Sync completed with errors'}
+                            {report.dry_run
+                                ? report.status === 'ok'
+                                    ? t('aerosync.sync.resultDryRunOk') || 'Dry run completed'
+                                    : report.status === 'cancelled'
+                                        ? t('aerosync.sync.resultDryRunCancelled') || 'Dry run cancelled'
+                                        : t('aerosync.sync.resultDryRunPartial') || 'Dry run completed with errors'
+                                : report.status === 'ok'
+                                    ? t('aerosync.sync.resultOk') || 'Sync completed'
+                                    : report.status === 'cancelled'
+                                        ? t('aerosync.sync.resultCancelled') || 'Sync cancelled'
+                                        : t('aerosync.sync.resultPartial') || 'Sync completed with errors'}
                         </span>
                     </div>
+                    {report.dry_run && (
+                        <p className="mb-2 text-xs text-gray-600 dark:text-gray-300">
+                            {t('aerosync.sync.resultsDryRun') || 'Dry run preview only.'}
+                        </p>
+                    )}
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700 dark:text-gray-300">
-                        <dt>{t('aerosync.sync.uploaded') || 'Uploaded'}</dt>
+                        <dt>{report.dry_run
+                            ? t('aerosync.sync.planned') || 'Planned copies'
+                            : t('aerosync.sync.copied') || 'Copied'}</dt>
                         <dd className="font-mono">{report.uploaded}</dd>
                         <dt>{t('aerosync.sync.skipped') || 'Skipped'}</dt>
                         <dd className="font-mono">{report.skipped}</dd>
@@ -619,7 +634,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                             </div>
                         ) : (
                             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 italic">
-                                {dryRun
+                                {report.dry_run
                                     ? (t('aerosync.sync.resultsDryRun') || 'Dry run preview only.')
                                     : (t('aerosync.sync.resultsEmpty') || 'No files processed.')}
                             </p>

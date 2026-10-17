@@ -5469,7 +5469,6 @@
                 "start": "Eşitlemeyi başlat",
                 "resultOk": "Eşitleme tamamlandı",
                 "resultPartial": "Eşitleme hatalarla tamamlandı",
-                "uploaded": "Yüklendi",
                 "skipped": "Atlandı",
                 "errors": "Hatalar",
                 "elapsed": "Geçen süre",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Sınırsız",
                 "stop": "Durdur",
                 "stopping": "Durduruluyor...",
-                "resultCancelled": "Senkronizasyon iptal edildi"
+                "resultCancelled": "Senkronizasyon iptal edildi",
+                "copied": "Kopyalandı",
+                "planned": "Planlanan kopyalar",
+                "resultDryRunOk": "Kuru çalıştırma tamamlandı",
+                "resultDryRunPartial": "Kuru çalıştırma hatalarla tamamlandı",
+                "resultDryRunCancelled": "Kuru çalıştırma iptal edildi"
             },
             "launcherTemplates": "Şablonlar",
             "launcherMultiPath": "Çoklu yol",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Bu sunucu için tekrar sorma",
                 "continue": "Devam et"
             },
-            "launcherHistory": "Günlük geçmişi",
+            "launcherHistory": "Eşitleme günlükleri",
             "history": {
-                "title": "AeroSync geçmişi",
+                "title": "AeroSync günlükleri",
                 "refresh": "Yenile",
                 "cleanupOld": "30 günden eski girdileri kaldır",
                 "clearAll": "Tüm günlükleri temizle",
                 "confirmClearAll": "TÜM senkronizasyon günlükleri temizlensin mi?",
-                "empty": "Henüz senkronizasyon günlüğü yok. Bu yol çifti için bir ön ayarın ilk çalıştırılmasında oluşturulur.",
+                "empty": "Gösterilecek eşitleme günlüğü yok.",
                 "selectPrompt": "Dosya bazlı girdileri incelemek için soldan bir günlük seçin.",
                 "journalMissing": "Günlük bulunamadı.",
                 "entriesEmpty": "Kayıtlı girdi yok.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "DEĞİŞTİRİLMİŞ",
                 "verifyNoSignature": "İMZA YOK",
                 "statusCompleted": "TAMAMLANDI",
-                "statusInProgress": "DEVAM EDİYOR",
                 "delete": "Günlüğü sil",
                 "created": "Oluşturuldu",
                 "bytes": "Bayt",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Yön",
                 "colStatus": "Durum",
                 "colBytes": "Bayt",
-                "colAction": "Eylem"
+                "colAction": "Eylem",
+                "description": "Günlükler, eşitlemeyi kurtarmaya yardımcı olur. Başarılı çalıştırmalar kendi günlüklerini kaldırır; burası tamamlanan çalıştırmaların geçmişi değildir.",
+                "statusIncomplete": "TAMAMLANMADI"
             },
             "launcherScheduler": "Zamanlayıcı",
             "errorCorrection": "Hata Düzeltme",

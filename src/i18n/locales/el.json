@@ -5469,7 +5469,6 @@
                 "start": "Έναρξη συγχρονισμού",
                 "resultOk": "Ο συγχρονισμός ολοκληρώθηκε",
                 "resultPartial": "Ο συγχρονισμός ολοκληρώθηκε με σφάλματα",
-                "uploaded": "Μεταφορτώθηκαν",
                 "skipped": "Παραλείφθηκαν",
                 "errors": "Σφάλματα",
                 "elapsed": "Χρόνος που πέρασε",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Απεριόριστο",
                 "stop": "Διακοπή",
                 "stopping": "Διακοπή...",
-                "resultCancelled": "Η συγχρονισμός ακυρώθηκε"
+                "resultCancelled": "Ο συγχρονισμός ακυρώθηκε",
+                "copied": "Αντιγράφηκαν",
+                "planned": "Προγραμματισμένες αντιγραφές",
+                "resultDryRunOk": "Η δοκιμαστική εκτέλεση ολοκληρώθηκε",
+                "resultDryRunPartial": "Η δοκιμαστική εκτέλεση ολοκληρώθηκε με σφάλματα",
+                "resultDryRunCancelled": "Η δοκιμαστική εκτέλεση ακυρώθηκε"
             },
             "launcherTemplates": "Πρότυπα",
             "launcherMultiPath": "Πολλαπλές διαδρομές",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Να μην ερωτηθώ ξανά για αυτόν τον διακομιστή",
                 "continue": "Συνέχεια"
             },
-            "launcherHistory": "Ιστορικό journal",
+            "launcherHistory": "Ημερολόγια συγχρονισμού",
             "history": {
-                "title": "Ιστορικό AeroSync",
+                "title": "Ημερολόγια AeroSync",
                 "refresh": "Ανανέωση",
                 "cleanupOld": "Αφαίρεση εγγραφών παλαιότερων των 30 ημερών",
                 "clearAll": "Εκκαθάριση όλων των journals",
                 "confirmClearAll": "Εκκαθάριση ΟΛΩΝ των journals συγχρονισμού;",
-                "empty": "Δεν υπάρχουν ακόμα journals συγχρονισμού. Δημιουργούνται κατά την πρώτη εκτέλεση preset για αυτό το ζεύγος διαδρομών.",
+                "empty": "Δεν υπάρχουν ημερολόγια συγχρονισμού για εμφάνιση.",
                 "selectPrompt": "Επιλέξτε ένα journal αριστερά για να δείτε τις εγγραφές ανά αρχείο.",
                 "journalMissing": "Το journal δεν βρέθηκε.",
                 "entriesEmpty": "Καμία καταγεγραμμένη εγγραφή.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "ΑΛΛΟΙΩΜΕΝΟ",
                 "verifyNoSignature": "ΧΩΡΙΣ ΥΠΟΓΡΑΦΗ",
                 "statusCompleted": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
-                "statusInProgress": "ΣΕ ΕΞΕΛΙΞΗ",
                 "delete": "Διαγραφή journal",
                 "created": "Δημιουργήθηκε",
                 "bytes": "Bytes",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Κατεύθυνση",
                 "colStatus": "Κατάσταση",
                 "colBytes": "Bytes",
-                "colAction": "Ενέργεια"
+                "colAction": "Ενέργεια",
+                "description": "Τα ημερολόγια βοηθούν στην ανάκτηση του συγχρονισμού. Οι επιτυχημένες εκτελέσεις διαγράφουν το ημερολόγιό τους· αυτό δεν είναι ιστορικό ολοκληρωμένων εκτελέσεων.",
+                "statusIncomplete": "ΗΜΙΤΕΛΕΣ"
             },
             "launcherScheduler": "Χρονοδιάγραμμα",
             "errorCorrection": "Διόρθωση σφαλμάτων",

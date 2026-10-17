@@ -5469,7 +5469,6 @@
                 "start": "เริ่มการซิงค์",
                 "resultOk": "ซิงค์เสร็จสมบูรณ์",
                 "resultPartial": "ซิงค์เสร็จสมบูรณ์โดยมีข้อผิดพลาด",
-                "uploaded": "อัปโหลดแล้ว",
                 "skipped": "ข้าม",
                 "errors": "ข้อผิดพลาด",
                 "elapsed": "เวลาที่ผ่านไป",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "ไม่จำกัด",
                 "stop": "หยุด",
                 "stopping": "กำลังหยุด...",
-                "resultCancelled": "ยกเลิกการซิงค์แล้ว"
+                "resultCancelled": "ยกเลิกการซิงค์แล้ว",
+                "copied": "คัดลอกแล้ว",
+                "planned": "รายการคัดลอกที่วางแผนไว้",
+                "resultDryRunOk": "ทดลองรันเสร็จสมบูรณ์",
+                "resultDryRunPartial": "ทดลองรันเสร็จสมบูรณ์โดยมีข้อผิดพลาด",
+                "resultDryRunCancelled": "ยกเลิกการทดลองรันแล้ว"
             },
             "launcherTemplates": "เทมเพลต",
             "launcherMultiPath": "หลายเส้นทาง",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "ไม่ต้องถามอีกสำหรับเซิร์ฟเวอร์นี้",
                 "continue": "ดำเนินการต่อ"
             },
-            "launcherHistory": "ประวัติบันทึก",
+            "launcherHistory": "บันทึกการซิงค์",
             "history": {
-                "title": "ประวัติ AeroSync",
+                "title": "บันทึก AeroSync",
                 "refresh": "รีเฟรช",
                 "cleanupOld": "ลบรายการที่เก่ากว่า 30 วัน",
                 "clearAll": "ล้างบันทึกทั้งหมด",
                 "confirmClearAll": "ล้างบันทึกการซิงค์ทั้งหมด?",
-                "empty": "ยังไม่มีบันทึกการซิงค์ จะถูกสร้างขึ้นเมื่อรันพรีเซ็ตครั้งแรกสำหรับคู่เส้นทางนี้",
+                "empty": "ไม่มีบันทึกการซิงค์ให้แสดง",
                 "selectPrompt": "เลือกบันทึกทางซ้ายเพื่อดูรายการต่อไฟล์",
                 "journalMissing": "ไม่พบบันทึก",
                 "entriesEmpty": "ไม่มีรายการที่บันทึกไว้",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "ถูกแก้ไข",
                 "verifyNoSignature": "ไม่มีลายเซ็น",
                 "statusCompleted": "เสร็จสิ้น",
-                "statusInProgress": "กำลังดำเนินการ",
                 "delete": "ลบบันทึก",
                 "created": "สร้างเมื่อ",
                 "bytes": "ไบต์",
@@ -5552,7 +5555,9 @@
                 "colDirection": "ทิศทาง",
                 "colStatus": "สถานะ",
                 "colBytes": "ไบต์",
-                "colAction": "การกระทำ"
+                "colAction": "การกระทำ",
+                "description": "บันทึกช่วยในการกู้คืนการซิงค์ การรันที่สำเร็จจะลบบันทึกของตนเอง ที่นี่จึงไม่ใช่ประวัติของการรันที่เสร็จสมบูรณ์แล้ว",
+                "statusIncomplete": "ยังไม่เสร็จสมบูรณ์"
             },
             "launcherScheduler": "ตัวกำหนดเวลา",
             "errorCorrection": "การแก้ไขข้อผิดพลาด",

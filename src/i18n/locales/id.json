@@ -5469,7 +5469,6 @@
                 "start": "Mulai sinkronisasi",
                 "resultOk": "Sinkronisasi selesai",
                 "resultPartial": "Sinkronisasi selesai dengan kesalahan",
-                "uploaded": "Diunggah",
                 "skipped": "Dilewati",
                 "errors": "Kesalahan",
                 "elapsed": "Waktu berlalu",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Tanpa batas",
                 "stop": "Hentikan",
                 "stopping": "Menghentikan...",
-                "resultCancelled": "Sinkronisasi dibatalkan"
+                "resultCancelled": "Sinkronisasi dibatalkan",
+                "copied": "Disalin",
+                "planned": "Salinan terencana",
+                "resultDryRunOk": "Uji coba selesai",
+                "resultDryRunPartial": "Uji coba selesai dengan kesalahan",
+                "resultDryRunCancelled": "Uji coba dibatalkan"
             },
             "launcherTemplates": "Templat",
             "launcherMultiPath": "Multi-Jalur",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Jangan tanya lagi untuk server ini",
                 "continue": "Lanjutkan"
             },
-            "launcherHistory": "Riwayat journal",
+            "launcherHistory": "Jurnal sinkronisasi",
             "history": {
-                "title": "Riwayat AeroSync",
+                "title": "Jurnal AeroSync",
                 "refresh": "Segarkan",
                 "cleanupOld": "Hapus entri yang lebih lama dari 30 hari",
                 "clearAll": "Hapus semua journal",
                 "confirmClearAll": "Hapus SEMUA journal sinkronisasi?",
-                "empty": "Belum ada journal sinkronisasi. Mereka dibuat pada eksekusi preset pertama pada pasangan path ini.",
+                "empty": "Tidak ada jurnal sinkronisasi untuk ditampilkan.",
                 "selectPrompt": "Pilih journal di sebelah kiri untuk memeriksa entri per-file.",
                 "journalMissing": "Journal tidak ditemukan.",
                 "entriesEmpty": "Tidak ada entri tercatat.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "DIRUSAK",
                 "verifyNoSignature": "TANPA TANDA",
                 "statusCompleted": "SELESAI",
-                "statusInProgress": "BERLANGSUNG",
                 "delete": "Hapus journal",
                 "created": "Dibuat",
                 "bytes": "Byte",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Arah",
                 "colStatus": "Status",
                 "colBytes": "Byte",
-                "colAction": "Tindakan"
+                "colAction": "Tindakan",
+                "description": "Jurnal membantu pemulihan sinkronisasi. Proses yang berhasil menghapus jurnalnya; ini bukan riwayat proses yang telah selesai.",
+                "statusIncomplete": "BELUM SELESAI"
             },
             "launcherScheduler": "Penjadwal",
             "errorCorrection": "Koreksi Kesalahan",

@@ -5469,7 +5469,6 @@
                 "start": "Synchronisierung starten",
                 "resultOk": "Synchronisierung abgeschlossen",
                 "resultPartial": "Synchronisierung mit Fehlern abgeschlossen",
-                "uploaded": "Hochgeladen",
                 "skipped": "Übersprungen",
                 "errors": "Fehler",
                 "elapsed": "Verstrichene Zeit",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Unbegrenzt",
                 "stop": "Stoppen",
                 "stopping": "Wird gestoppt...",
-                "resultCancelled": "Synchronisierung abgebrochen"
+                "resultCancelled": "Synchronisierung abgebrochen",
+                "copied": "Kopiert",
+                "planned": "Geplante Kopien",
+                "resultDryRunOk": "Testlauf abgeschlossen",
+                "resultDryRunPartial": "Testlauf mit Fehlern abgeschlossen",
+                "resultDryRunCancelled": "Testlauf abgebrochen"
             },
             "launcherTemplates": "Vorlagen",
             "launcherMultiPath": "Mehrere Pfade",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Für diesen Server nicht mehr fragen",
                 "continue": "Fortfahren"
             },
-            "launcherHistory": "Journal-Verlauf",
+            "launcherHistory": "Synchronisierungsjournale",
             "history": {
-                "title": "AeroSync-Verlauf",
+                "title": "AeroSync-Journale",
                 "refresh": "Aktualisieren",
                 "cleanupOld": "Einträge älter als 30 Tage entfernen",
                 "clearAll": "Alle Journale löschen",
                 "confirmClearAll": "ALLE Synchronisierungs-Journale löschen?",
-                "empty": "Noch keine Synchronisierungs-Journale. Sie werden bei der ersten Preset-Ausführung für dieses Pfadpaar erstellt.",
+                "empty": "Keine Synchronisierungsjournale zum Anzeigen.",
                 "selectPrompt": "Wählen Sie links ein Journal aus, um die Einträge pro Datei anzuzeigen.",
                 "journalMissing": "Journal nicht gefunden.",
                 "entriesEmpty": "Keine Einträge erfasst.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "MANIPULIERT",
                 "verifyNoSignature": "KEINE SIGNATUR",
                 "statusCompleted": "ABGESCHLOSSEN",
-                "statusInProgress": "IN ARBEIT",
                 "delete": "Journal löschen",
                 "created": "Erstellt",
                 "bytes": "Bytes",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Richtung",
                 "colStatus": "Status",
                 "colBytes": "Bytes",
-                "colAction": "Aktion"
+                "colAction": "Aktion",
+                "description": "Journale helfen bei der Wiederherstellung von Synchronisierungen. Erfolgreiche Durchläufe entfernen ihr Journal; dies ist kein Verlauf abgeschlossener Durchläufe.",
+                "statusIncomplete": "UNVOLLSTÄNDIG"
             },
             "launcherScheduler": "Planer",
             "errorCorrection": "Fehlerkorrektur",

@@ -5469,7 +5469,6 @@
                 "start": "Pradėti sinchronizaciją",
                 "resultOk": "Sinchronizacija baigta",
                 "resultPartial": "Sinchronizacija baigta su klaidomis",
-                "uploaded": "Įkelta",
                 "skipped": "Praleista",
                 "errors": "Klaidos",
                 "elapsed": "Praėjęs laikas",
@@ -5503,7 +5502,12 @@
                 "bandwidthUnlimited": "Neribota",
                 "stop": "Stabdyti",
                 "stopping": "Stabdoma...",
-                "resultCancelled": "Sinchronizavimas atšauktas"
+                "resultCancelled": "Sinchronizavimas atšauktas",
+                "copied": "Nukopijuota",
+                "planned": "Suplanuotos kopijos",
+                "resultDryRunOk": "Bandomasis paleidimas baigtas",
+                "resultDryRunPartial": "Bandomasis paleidimas baigtas su klaidomis",
+                "resultDryRunCancelled": "Bandomasis paleidimas atšauktas"
             },
             "launcherTemplates": "Šablonai",
             "launcherMultiPath": "Keli keliai",
@@ -5528,14 +5532,14 @@
                 "skipFuture": "Nebeklausti dėl šio serverio",
                 "continue": "Tęsti"
             },
-            "launcherHistory": "Žurnalo istorija",
+            "launcherHistory": "Sinchronizavimo žurnalai",
             "history": {
-                "title": "AeroSync istorija",
+                "title": "AeroSync žurnalai",
                 "refresh": "Atnaujinti",
                 "cleanupOld": "Pašalinti įrašus, senesnius nei 30 dienų",
                 "clearAll": "Išvalyti visus žurnalus",
                 "confirmClearAll": "Išvalyti VISUS sinchronizavimo žurnalus?",
-                "empty": "Sinchronizavimo žurnalų dar nėra. Jie sukuriami pirmą kartą paleidus išankstinį nustatymą šiai kelių porai.",
+                "empty": "Nėra rodytinų sinchronizavimo žurnalų.",
                 "selectPrompt": "Pasirinkite žurnalą kairėje, kad peržiūrėtumėte įrašus pagal failą.",
                 "journalMissing": "Žurnalas nerastas.",
                 "entriesEmpty": "Įrašų nėra.",
@@ -5544,7 +5548,6 @@
                 "verifyFailed": "PAŽEISTA",
                 "verifyNoSignature": "BE PARAŠO",
                 "statusCompleted": "BAIGTA",
-                "statusInProgress": "VYKDOMA",
                 "delete": "Pašalinti žurnalą",
                 "created": "Sukurta",
                 "bytes": "Baitų",
@@ -5552,7 +5555,9 @@
                 "colDirection": "Kryptis",
                 "colStatus": "Būsena",
                 "colBytes": "Baitai",
-                "colAction": "Veiksmas"
+                "colAction": "Veiksmas",
+                "description": "Žurnalai padeda atkurti sinchronizavimą. Sėkmingos vykdymo sesijos pašalina savo žurnalą; tai nėra baigtų sesijų istorija.",
+                "statusIncomplete": "NEBAIGTA"
             },
             "launcherScheduler": "Tvarkaraštis",
             "errorCorrection": "Klaidų taisymas",
