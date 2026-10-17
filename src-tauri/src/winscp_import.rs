@@ -493,6 +493,10 @@ pub fn obfuscate_winscp_password(password: &str, key: &str) -> String {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WinScpExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -500,6 +504,21 @@ pub struct WinScpExportServer {
     pub protocol: Option<String>,
     pub options: Option<serde_json::Value>,
     pub initial_path: Option<String>,
+}
+
+/// URL-encode a profile name as a WinSCP.ini session name.
+fn winscp_session_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c.to_string()
+            } else if c == ' ' {
+                "%20".to_string()
+            } else {
+                format!("%{:02X}", c as u32)
+            }
+        })
+        .collect()
 }
 
 /// Export AeroFTP server profiles to WinSCP.ini format.
@@ -512,6 +531,13 @@ pub fn export_winscp(
 ) -> Result<usize, String> {
     let mut ini = String::from("; WinSCP session file exported by AeroFTP\n\n");
     let mut exported = 0;
+    // A second `[Sessions\<name>]` is not a second session, and
+    // `[Sessions\Default%20Settings]` is WinSCP's default session, which the
+    // import skips: a profile called that would set the defaults instead.
+    let mut names = crate::bridge_shared::ExportEntryNames::ignoring_case(
+        servers.iter().map(|s| winscp_session_name(&s.name)),
+    )
+    .with_taken([winscp_session_name("Default Settings")]);
 
     for server in servers {
         let protocol = server.protocol.as_deref().unwrap_or("ftp");
@@ -549,20 +575,7 @@ pub fn export_winscp(
             _ => continue, // Skip unsupported protocols
         };
 
-        // URL-encode session name
-        let encoded_name = server
-            .name
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                    c.to_string()
-                } else if c == ' ' {
-                    "%20".to_string()
-                } else {
-                    format!("%{:02X}", c as u32)
-                }
-            })
-            .collect::<String>();
+        let encoded_name = names.claim(&winscp_session_name(&server.name));
 
         // Sanitize values to prevent INI injection (strip newlines and bracket chars)
         let sanitize = |s: &str| -> String {
@@ -579,7 +592,7 @@ pub fn export_winscp(
         ini.push_str(&format!("Ftps={}\n", ftps));
 
         // Password
-        if let Some(password) = passwords.get(&server.name) {
+        if let Some(password) = crate::bridge_shared::export_secret(passwords, &server.id) {
             let key = format!("{}{}", server.username, server.host);
             let obfuscated = obfuscate_winscp_password(password, &key);
             ini.push_str(&format!("Password={}\n", obfuscated));
@@ -803,5 +816,62 @@ FSProtocol=1
 
         let mapped = map_session("test", &fields).unwrap();
         assert_eq!(mapped.password.unwrap(), "mysecret");
+    }
+
+    /// Two profiles of one name (a list saved before names were unique) were
+    /// written as `[Sessions\Lab]` twice, both with the second one's
+    /// password, and two sections of one name are one session.
+    #[test]
+    fn two_profiles_of_one_name_export_as_two_sessions_each_with_its_own_password() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<WinScpExportServer>(
+            serde_json::json!({"host": "a.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+            serde_json::json!({"host": "b.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        assert_eq!(export_winscp(&servers, &passwords, &path).unwrap(), 2);
+        let back = import_winscp(&path).unwrap();
+        assert_eq!(
+            crate::bridge_shared::names_hosts_secrets(&back.servers),
+            crate::bridge_shared::owned3(&[
+                ("Lab", "a.example.com", "secret-a"),
+                ("Lab-2", "b.example.com", "secret-b"),
+            ])
+        );
+    }
+
+    /// `[Sessions\Default%20Settings]` is WinSCP's default session, which the
+    /// import skips: a profile called that, in any case, set the defaults
+    /// instead of adding a session.
+    #[test]
+    fn a_profile_named_default_settings_is_not_written_onto_the_defaults() {
+        let servers: Vec<WinScpExportServer> =
+            [("id-a", "Default Settings"), ("id-b", "default settings")]
+                .into_iter()
+                .map(|(id, name)| {
+                    serde_json::from_value(serde_json::json!({
+                        "id": id, "name": name, "host": format!("{id}.example.com"),
+                        "port": 21, "username": "u", "protocol": "ftp"
+                    }))
+                    .unwrap()
+                })
+                .collect();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        assert_eq!(export_winscp(&servers, &HashMap::new(), &path).unwrap(), 2);
+        let ini = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !ini.to_lowercase()
+                .contains("[sessions\\default%20settings]"),
+            "{ini}"
+        );
+        let mut back: Vec<String> = import_winscp(&path)
+            .unwrap()
+            .servers
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        back.sort();
+        assert_eq!(back, ["Default Settings-2", "default settings-3"]);
     }
 }

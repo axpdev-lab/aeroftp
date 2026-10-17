@@ -334,6 +334,10 @@ pub fn import_kopia(path: &Path) -> Result<KopiaImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KopiaExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -465,7 +469,7 @@ pub fn export_kopia(
         .first()
         .ok_or_else(|| "kopia export: no profile supplied".to_string())?;
 
-    let secret = passwords.get(&server.name).map(|s| s.as_str());
+    let secret = crate::bridge_shared::export_secret(passwords, &server.id);
     let doc = storage_block(server, secret)?;
     let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
     crate::bridge_shared::atomic_write_600(out, &body)?;
@@ -620,6 +624,7 @@ mod tests {
         let s1 = &r1.servers[0];
 
         let export = vec![KopiaExportServer {
+            id: s1.id.clone(),
             name: s1.name.clone(),
             host: s1.host.clone(),
             port: s1.port,
@@ -630,7 +635,7 @@ mod tests {
             initial_path: s1.initial_path.clone(),
         }];
         let mut passwords = HashMap::new();
-        passwords.insert(s1.name.clone(), s1.credential.clone().unwrap_or_default());
+        passwords.insert(s1.id.clone(), s1.credential.clone().unwrap_or_default());
 
         let out = std::env::temp_dir().join(format!(
             "aeroftp-kopia-rt-{}.config",
@@ -664,6 +669,7 @@ mod tests {
         let s1 = &r1.servers[0];
 
         let export = vec![KopiaExportServer {
+            id: s1.id.clone(),
             name: s1.name.clone(),
             host: s1.host.clone(),
             port: s1.port,
@@ -674,7 +680,7 @@ mod tests {
             initial_path: s1.initial_path.clone(),
         }];
         let mut passwords = HashMap::new();
-        passwords.insert(s1.name.clone(), "K00rt".to_string());
+        passwords.insert(s1.id.clone(), "K00rt".to_string());
 
         let out = std::env::temp_dir().join(format!(
             "aeroftp-kopia-b2rt-{}.config",
@@ -768,5 +774,23 @@ mod tests {
         let _ = resolved;
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Of two profiles of one name (a list saved before names were unique),
+    /// the one written is the first, and with its own secret: the map keyed
+    /// by name gave it the second one's.
+    #[test]
+    fn of_two_profiles_of_one_name_the_one_written_has_its_own_secret() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<KopiaExportServer>(
+            serde_json::json!({"host": "", "port": 443, "username": "AKA", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://a.example.com", "bucket": "tests", "region": "us-east-1"}}),
+            serde_json::json!({"host": "", "port": 443, "username": "AKB", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://b.example.com", "bucket": "tests", "region": "us-east-1"}}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("repository.config");
+        let outcome = export_kopia(&servers, &passwords, &path).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 1));
+        let back = import_kopia(&path).unwrap();
+        assert_eq!(back.servers[0].username, "AKA");
+        assert_eq!(back.servers[0].credential.as_deref(), Some("secret-a"));
     }
 }

@@ -293,6 +293,10 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct S3cmdExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -369,7 +373,7 @@ pub fn export_s3cmd(
     };
     let opt_bool = |k: &str| opts.and_then(|m| m.get(k)).and_then(|v| v.as_bool());
 
-    let secret = passwords.get(&server.name).cloned().unwrap_or_default();
+    let secret = crate::bridge_shared::export_secret(passwords, &server.id).unwrap_or_default();
     let region = opt_str("region").unwrap_or_default();
 
     // No endpoint of its own: the profile is on AWS, s3cmd's default.
@@ -517,6 +521,7 @@ bucket_location = us-east-1
         let s1 = &first.servers[0];
 
         let export_servers = vec![S3cmdExportServer {
+            id: s1.id.clone(),
             name: s1.name.clone(),
             host: s1.host.clone(),
             port: s1.port,
@@ -527,7 +532,7 @@ bucket_location = us-east-1
             initial_path: s1.initial_path.clone(),
         }];
         let mut passwords = HashMap::new();
-        passwords.insert(s1.name.clone(), s1.credential.clone().unwrap_or_default());
+        passwords.insert(s1.id.clone(), s1.credential.clone().unwrap_or_default());
 
         let out = std::env::temp_dir().join("aeroftp-test-s3cmd-rt-out.cfg");
         let exported = export_s3cmd(&export_servers, &passwords, &out).expect("export");
@@ -590,5 +595,26 @@ bucket_location = us-east-1
             None => std::env::remove_var("S3CMD_CONFIG"),
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Of two profiles of one name (a list saved before names were unique),
+    /// the one written is the first, and with its own secret: the map keyed
+    /// by name gave it the second one's.
+    #[test]
+    fn of_two_profiles_of_one_name_the_one_written_has_its_own_secret() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<S3cmdExportServer>(
+            serde_json::json!({"host": "", "port": 443, "username": "AKA", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://a.example.com", "bucket": "tests", "region": "us-east-1"}}),
+            serde_json::json!({"host": "", "port": 443, "username": "AKB", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://b.example.com", "bucket": "tests", "region": "us-east-1"}}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s3cfg");
+        let outcome = export_s3cmd(&servers, &passwords, &path).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 1));
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            body.contains("access_key = AKA\nsecret_key = secret-a\n"),
+            "{body}"
+        );
+        assert!(body.contains("host_base = a.example.com"), "{body}");
     }
 }

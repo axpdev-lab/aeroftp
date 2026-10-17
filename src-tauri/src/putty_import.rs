@@ -537,6 +537,10 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PuttyExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -545,6 +549,156 @@ pub struct PuttyExportServer {
     pub options: Option<serde_json::Value>,
     pub provider_id: Option<String>,
     pub initial_path: Option<String>,
+}
+
+/// Whether a profile becomes a PuTTY session: the SSH family (the only one
+/// that maps to a session we can drive), with a host.
+#[cfg(any(test, target_os = "windows"))]
+fn putty_writes(server: &PuttyExportServer) -> bool {
+    let proto = server.protocol.as_deref().unwrap_or("sftp");
+    map_putty_protocol(proto).is_some() && !server.host.trim().is_empty()
+}
+
+/// The registry key names one export may write. One key per session, and the
+/// registry compares key names without case: a second key of a name is the
+/// first one, rewritten. Names are compared as the keys PuTTY writes for them
+/// ([`encode_putty_name`]), after the code page: on a Western install `日本 box`
+/// and `中国 box` are both `%3F%3F%20box`. `Default Settings` is the session
+/// PuTTY loads as its defaults: a profile called that would set the host of
+/// every new session. Its key is ASCII, the same in every ANSI code page.
+#[cfg(any(test, target_os = "windows"))]
+fn putty_session_names(
+    servers: &[PuttyExportServer],
+    cp: &dyn AnsiCodePage,
+) -> crate::bridge_shared::ExportEntryNames {
+    crate::bridge_shared::ExportEntryNames::ignoring_case(
+        servers
+            .iter()
+            .filter_map(|s| encode_putty_name(&s.name, cp).ok()),
+    )
+    .with_taken([escape_registry_key(b"Default Settings")])
+}
+
+/// The key each profile is written under, in the order of `servers`: `None`
+/// for a profile PuTTY does not take ([`putty_writes`]). A name the code page
+/// holds keeps its key ahead of one it does not, whatever the order: a profile
+/// called `?? box` stays `?? box` in PuTTY's list, and `日本 box`, which a
+/// Western code page also turns into `?? box`, goes out as `?? box-2`.
+#[cfg(any(test, target_os = "windows"))]
+fn putty_session_keys(
+    servers: &[PuttyExportServer],
+    cp: &dyn AnsiCodePage,
+) -> Result<Vec<Option<String>>, String> {
+    let mut encoded = Vec::with_capacity(servers.len());
+    for server in servers {
+        if !putty_writes(server) {
+            encoded.push(None);
+            continue;
+        }
+        let key = encode_putty_name(&server.name, cp)
+            .map_err(|e| format!("session name '{}': {}", server.name, e))?;
+        let exact = match decode_putty_name(&key, cp) {
+            Ok(shown) if shown == server.name => true,
+            Ok(shown) => {
+                log::warn!(
+                    "[putty export] '{}' has characters the Windows code page cannot hold; \
+                     PuTTY lists it as '{}'",
+                    server.name,
+                    shown
+                );
+                false
+            }
+            Err(e) => {
+                log::warn!(
+                    "[putty export] cannot tell how PuTTY lists '{}': {}",
+                    server.name,
+                    e
+                );
+                false
+            }
+        };
+        encoded.push(Some((key, exact)));
+    }
+
+    let mut names = putty_session_names(servers, cp);
+    let mut keys = vec![None; servers.len()];
+    for exact_first in [true, false] {
+        for (slot, entry) in keys.iter_mut().zip(&encoded) {
+            if let Some((key, exact)) = entry {
+                if *exact == exact_first {
+                    *slot = Some(names.claim(key));
+                }
+            }
+        }
+    }
+    Ok(keys)
+}
+
+/// Write `servers` as sessions under `sessions` (PuTTY's `Sessions` key, or
+/// a scratch key in a test), each under its key from [`putty_session_keys`],
+/// and remove the key an earlier AeroFTP export wrote for that name in the old
+/// form ([`legacy_putty_key_name`]). Returns the number of sessions written.
+#[cfg(target_os = "windows")]
+fn write_putty_sessions(
+    sessions: &winreg::RegKey,
+    servers: &[PuttyExportServer],
+    cp: &dyn AnsiCodePage,
+) -> Result<usize, String> {
+    let keys = putty_session_keys(servers, cp)?;
+    let mut written = 0usize;
+    for (server, key_name) in servers.iter().zip(keys) {
+        let Some(key_name) = key_name else {
+            continue;
+        };
+        let (sub, _) = sessions
+            .create_subkey(&key_name)
+            .map_err(|e| format!("create session '{}': {}", server.name, e))?;
+
+        sub.set_value("HostName", &server.host)
+            .map_err(|e| format!("write HostName for '{}': {}", server.name, e))?;
+        // PortNumber is a REG_DWORD in PuTTY.
+        sub.set_value("PortNumber", &server.port)
+            .map_err(|e| format!("write PortNumber for '{}': {}", server.name, e))?;
+        sub.set_value("Protocol", &"ssh".to_string())
+            .map_err(|e| format!("write Protocol for '{}': {}", server.name, e))?;
+        if !server.username.trim().is_empty() {
+            sub.set_value("UserName", &server.username)
+                .map_err(|e| format!("write UserName for '{}': {}", server.name, e))?;
+        }
+        if let Some(key_file) = server
+            .options
+            .as_ref()
+            .and_then(|o| o.get("private_key_path"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            sub.set_value("PublicKeyFile", &key_file.to_string())
+                .map_err(|e| format!("write PublicKeyFile for '{}': {}", server.name, e))?;
+        }
+        // No password is ever written: PuTTY has no password store.
+        written += 1;
+
+        if let Some(legacy) = legacy_putty_key_name(&server.name) {
+            match sessions.delete_subkey(&legacy) {
+                Ok(()) => log::info!(
+                    "[putty export] removed '{}', the key an earlier export wrote for '{}'; \
+                     PuTTY could not open it",
+                    legacy,
+                    server.name
+                ),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => log::warn!(
+                    "[putty export] could not remove '{}', the key an earlier export wrote \
+                     for '{}': {}",
+                    legacy,
+                    server.name,
+                    e
+                ),
+            }
+        }
+    }
+    Ok(written)
 }
 
 /// Write server profiles back as PuTTY saved sessions under
@@ -557,7 +711,8 @@ pub struct PuttyExportServer {
 /// protocols are skipped. A referenced `options.private_key_path` is
 /// written to `PublicKeyFile` by reference (no key bytes). Each session is
 /// written under the key PuTTY itself uses for its name
-/// ([`encode_putty_name`]), and the key an earlier AeroFTP export wrote for
+/// ([`encode_putty_name`]), made unique among the profiles of one export
+/// ([`putty_session_keys`]), and the key an earlier AeroFTP export wrote for
 /// that name in the old form, which PuTTY lists but can neither load nor
 /// delete ([`legacy_putty_key_name`]), is removed. On non-Windows hosts this
 /// is a no-op returning `Ok(0)` with an info log so the file compiles on the
@@ -577,82 +732,7 @@ pub fn export_putty(
             .create_subkey(PUTTY_SESSIONS_KEY)
             .map_err(|e| format!("open/create PuTTY Sessions key: {}", e))?;
 
-        let mut written = 0usize;
-        for server in servers {
-            // Only the SSH family maps to a PuTTY session we can drive.
-            let proto = server.protocol.as_deref().unwrap_or("sftp");
-            if map_putty_protocol(proto).is_none() {
-                continue;
-            }
-            if server.host.trim().is_empty() {
-                continue;
-            }
-
-            let key_name = encode_putty_name(&server.name, &SystemAnsiCodePage)
-                .map_err(|e| format!("session name '{}': {}", server.name, e))?;
-            match decode_putty_name(&key_name, &SystemAnsiCodePage) {
-                Ok(shown) if shown == server.name => {}
-                Ok(shown) => log::warn!(
-                    "[putty export] '{}' has characters the Windows code page cannot hold; \
-                     PuTTY lists it as '{}'",
-                    server.name,
-                    shown
-                ),
-                Err(e) => log::warn!(
-                    "[putty export] cannot tell how PuTTY lists '{}': {}",
-                    server.name,
-                    e
-                ),
-            }
-            let (sub, _) = sessions
-                .create_subkey(&key_name)
-                .map_err(|e| format!("create session '{}': {}", server.name, e))?;
-
-            sub.set_value("HostName", &server.host)
-                .map_err(|e| format!("write HostName for '{}': {}", server.name, e))?;
-            // PortNumber is a REG_DWORD in PuTTY.
-            sub.set_value("PortNumber", &server.port)
-                .map_err(|e| format!("write PortNumber for '{}': {}", server.name, e))?;
-            sub.set_value("Protocol", &"ssh".to_string())
-                .map_err(|e| format!("write Protocol for '{}': {}", server.name, e))?;
-            if !server.username.trim().is_empty() {
-                sub.set_value("UserName", &server.username)
-                    .map_err(|e| format!("write UserName for '{}': {}", server.name, e))?;
-            }
-            if let Some(key_file) = server
-                .options
-                .as_ref()
-                .and_then(|o| o.get("private_key_path"))
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
-                sub.set_value("PublicKeyFile", &key_file.to_string())
-                    .map_err(|e| format!("write PublicKeyFile for '{}': {}", server.name, e))?;
-            }
-            // No password is ever written: PuTTY has no password store.
-            written += 1;
-
-            if let Some(legacy) = legacy_putty_key_name(&server.name) {
-                match sessions.delete_subkey(&legacy) {
-                    Ok(()) => log::info!(
-                        "[putty export] removed '{}', the key an earlier export wrote for '{}'; \
-                         PuTTY could not open it",
-                        legacy,
-                        server.name
-                    ),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(e) => log::warn!(
-                        "[putty export] could not remove '{}', the key an earlier export wrote \
-                         for '{}': {}",
-                        legacy,
-                        server.name,
-                        e
-                    ),
-                }
-            }
-        }
-        Ok(written)
+        write_putty_sessions(&sessions, servers, &SystemAnsiCodePage)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -1010,6 +1090,7 @@ mod tests {
     #[test]
     fn test_export_putty_noop_on_non_windows() {
         let servers = vec![PuttyExportServer {
+            id: "x".to_string(),
             name: "x".to_string(),
             host: "h".to_string(),
             port: 22,
@@ -1045,6 +1126,7 @@ mod tests {
 
         let p1 = map_putty_session("lab box", &kv).expect("map");
         let exp = PuttyExportServer {
+            id: p1.id.clone(),
             name: p1.name.clone(),
             host: p1.host.clone(),
             port: p1.port,
@@ -1083,5 +1165,167 @@ mod tests {
         // Metadata-only idempotence: no credential on either side.
         assert!(p1.credential.is_none() && p2.credential.is_none());
         assert_eq!(p1.has_stored_credential, p2.has_stored_credential);
+    }
+
+    /// SFTP profiles of these names and hosts, as the exporter receives them.
+    fn sftp_profiles(entries: &[(&str, &str)]) -> Vec<PuttyExportServer> {
+        entries
+            .iter()
+            .enumerate()
+            .map(|(i, (name, host))| {
+                serde_json::from_value(serde_json::json!({
+                    "id": format!("id-{i}"), "name": name, "host": host,
+                    "port": 22, "username": "u", "protocol": "sftp"
+                }))
+                .unwrap()
+            })
+            .collect()
+    }
+
+    fn as_strs(keys: &[Option<String>]) -> Vec<Option<&str>> {
+        keys.iter().map(Option::as_deref).collect()
+    }
+
+    /// The keys an export writes: never `Default Settings`, the session PuTTY
+    /// loads as its defaults, in any case, and never one key for two
+    /// profiles (the registry compares key names without case).
+    #[test]
+    fn no_session_key_lands_on_the_defaults_or_on_another_session() {
+        let servers = sftp_profiles(&[
+            ("Default Settings", "h.example.com"),
+            ("default settings", "h.example.com"),
+            ("Lab", "h.example.com"),
+            ("lab", "h.example.com"),
+        ]);
+        let keys = putty_session_keys(&servers, &Cp1252).unwrap();
+        assert_eq!(
+            as_strs(&keys),
+            [
+                Some("Default%20Settings-2"),
+                Some("default%20settings-3"),
+                Some("Lab"),
+                Some("lab-2")
+            ]
+        );
+    }
+
+    /// Names the code page turns into one key go out under keys of their
+    /// own, each holding its own profile's host. A Western code page makes
+    /// both `日本 box` and `中国 box` into `?? box`, which is also the name of
+    /// a third profile: that one keeps the key, in any order. The model
+    /// writes as the registry does: a key equal to another but for case is
+    /// that key, rewritten.
+    #[test]
+    fn names_the_code_page_merges_keep_a_session_each() {
+        let entries = [
+            ("日本 box", "a.example.com"),
+            ("中国 box", "b.example.com"),
+            ("?? box", "c.example.com"),
+        ];
+        for rotation in 0..entries.len() {
+            let mut order = entries.to_vec();
+            order.rotate_left(rotation);
+            let servers = sftp_profiles(&order);
+            let keys = putty_session_keys(&servers, &Cp1252).unwrap();
+
+            let mut registry: HashMap<String, &str> = HashMap::new();
+            for (server, key) in servers.iter().zip(&keys) {
+                let key = key
+                    .as_deref()
+                    .expect("an SFTP profile with a host is written");
+                registry.insert(key.to_ascii_lowercase(), &server.host);
+            }
+            assert_eq!(registry.len(), servers.len(), "{order:?} -> {keys:?}");
+            for (server, key) in servers.iter().zip(&keys) {
+                let key = key.as_deref().unwrap();
+                assert_eq!(registry[&key.to_ascii_lowercase()], server.host);
+                if server.name == "?? box" {
+                    assert_eq!(key, "%3F%3F%20box", "{order:?} -> {keys:?}");
+                } else {
+                    assert!(key.starts_with("%3F%3F%20box-"), "{order:?} -> {keys:?}");
+                }
+            }
+        }
+
+        // Where the code page holds every name, no key needs a suffix.
+        let servers = sftp_profiles(&entries);
+        let keys = putty_session_keys(&servers, &Utf8CodePage).unwrap();
+        assert_eq!(
+            as_strs(&keys),
+            [
+                Some("%E6%97%A5%E6%9C%AC%20box"),
+                Some("%E4%B8%AD%E5%9B%BD%20box"),
+                Some("%3F%3F%20box")
+            ]
+        );
+    }
+
+    /// A profile PuTTY does not take has no key, and its name does not move
+    /// the key of one it does.
+    #[test]
+    fn a_profile_putty_does_not_take_has_no_key() {
+        let mut servers = sftp_profiles(&[
+            ("ftp lab", "h.example.com"),
+            ("no host", " "),
+            ("Lab", "h.example.com"),
+        ]);
+        servers[0].protocol = Some("ftp".to_string());
+        let keys = putty_session_keys(&servers, &Cp1252).unwrap();
+        assert_eq!(as_strs(&keys), [None, None, Some("Lab")]);
+    }
+
+    /// The real registry, under a scratch key of its own: the sessions of
+    /// [`names_the_code_page_merges_keep_a_session_each`] each keep their own
+    /// host, and the key an earlier export wrote for `Café box` in the old
+    /// form is gone.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn write_putty_sessions_keeps_a_session_each_in_the_registry() {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+        use winreg::RegKey;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let root = format!(
+            r"Software\AeroFTP-test-putty-{}",
+            crate::bridge_shared::uuid_v4()
+        );
+        let (sessions, _) = hkcu.create_subkey(&root).expect("scratch key");
+        let legacy = legacy_putty_key_name("Café box").expect("old form");
+        sessions.create_subkey(&legacy).expect("old key");
+
+        let servers = sftp_profiles(&[
+            ("日本 box", "a.example.com"),
+            ("中国 box", "b.example.com"),
+            ("?? box", "c.example.com"),
+            ("Café box", "d.example.com"),
+        ]);
+        let written = write_putty_sessions(&sessions, &servers, &Cp1252);
+        let mut found: Vec<(String, String)> = sessions
+            .enum_keys()
+            .flatten()
+            .map(|key| {
+                let host = sessions
+                    .open_subkey_with_flags(&key, KEY_READ)
+                    .and_then(|sub| sub.get_value::<String, _>("HostName"))
+                    .unwrap_or_default();
+                (key, host)
+            })
+            .collect();
+        found.sort();
+        drop(sessions);
+        let cleanup = hkcu.delete_subkey_all(&root);
+
+        assert_eq!(written, Ok(4));
+        assert_eq!(
+            found,
+            [
+                ("%3F%3F%20box", "c.example.com"),
+                ("%3F%3F%20box-2", "a.example.com"),
+                ("%3F%3F%20box-3", "b.example.com"),
+                ("Caf%E9%20box", "d.example.com"),
+            ]
+            .map(|(k, h)| (k.to_string(), h.to_string()))
+        );
+        cleanup.expect("remove the scratch key");
     }
 }

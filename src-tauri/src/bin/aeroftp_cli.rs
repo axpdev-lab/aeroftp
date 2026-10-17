@@ -39477,6 +39477,7 @@ struct ProfileExportScaffold {
 #[derive(Default)]
 struct ExportCollected {
     profiles: Vec<ProfileExportScaffold>,
+    /// Keyed by profile id ([`ftp_client_gui_lib::bridge_shared::export_secret`]).
     passwords: std::collections::HashMap<String, String>,
     skipped: Vec<(String, String)>,
 }
@@ -39620,8 +39621,10 @@ fn collect_export_scaffold(
             continue;
         }
 
+        // By id, the key the secret was read under: by name, two profiles of
+        // one name both went out with the second one's secret.
         if !secret.is_empty() {
-            out.passwords.insert(name.to_string(), secret.clone());
+            out.passwords.insert(id.to_string(), secret.clone());
         }
         out.profiles.push(ProfileExportScaffold {
             id: id.to_string(),
@@ -39763,6 +39766,7 @@ async fn cmd_export_rclone(
             p.overlay.as_ref(),
         );
         exportable.push(RcloneExportServer {
+            id: p.id.clone(),
             name: p.name.clone(),
             host: p.host.clone(),
             port: p.port,
@@ -39867,6 +39871,7 @@ async fn cmd_export_winscp(
         .profiles
         .iter()
         .map(|p| WinScpExportServer {
+            id: p.id.clone(),
             name: p.name.clone(),
             host: p.host.clone(),
             port: p.port,
@@ -39947,6 +39952,7 @@ async fn cmd_export_filezilla(
         .profiles
         .iter()
         .map(|p| FileZillaExportServer {
+            id: p.id.clone(),
             name: p.name.clone(),
             host: p.host.clone(),
             port: p.port,
@@ -40071,6 +40077,7 @@ async fn cmd_export_bridge(
                 .profiles
                 .iter()
                 .map(|p| $ty {
+                    id: p.id.clone(),
                     name: p.name.clone(),
                     host: p.host.clone(),
                     port: p.port,
