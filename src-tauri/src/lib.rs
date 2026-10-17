@@ -18271,6 +18271,61 @@ mod crypto_provider_guard {
     }
 }
 
+/// Keep the Linux compatibility default while preserving explicit WebKit choices.
+/// Must run before any GTK/WebKit initialization.
+#[cfg(target_os = "linux")]
+fn configure_linux_dmabuf_renderer() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_renderer_tests {
+    #[test]
+    fn dmabuf_default_preserves_explicit_values() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        const SWITCH: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+        const CHILD: &str = "AEROFTP_DMABUF_TEST_CHILD";
+        // Never mutate the parallel test runner's environment.
+        if std::env::var_os(CHILD).is_some() {
+            let inherited = std::env::var_os(SWITCH);
+            super::configure_linux_dmabuf_renderer();
+            assert_eq!(
+                std::env::var_os(SWITCH),
+                Some(inherited.unwrap_or_else(|| OsString::from("1")))
+            );
+            return;
+        }
+
+        for value in [
+            None,
+            Some(OsString::from("0")),
+            Some(OsString::from("1")),
+            Some(OsString::from("")),
+            Some(OsString::from("yes")),
+            Some(OsString::from_vec(vec![0xff])),
+        ] {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+            child
+                .args([
+                    "--exact",
+                    "linux_renderer_tests::dmabuf_default_preserves_explicit_values",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .env_remove(SWITCH);
+            if let Some(value) = &value {
+                child.env(SWITCH, value);
+            }
+            let output = child.output().unwrap();
+            assert!(output.status.success(), "value={value:?}: {output:?}");
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(windows)]
@@ -18302,12 +18357,15 @@ pub fn run() {
         crate::transfer_dag::governor::GovernorConfig::from_env(),
     );
 
-    // Fix WebKitGTK rendering issues on Linux: disable DMA-BUF renderer
-    // which causes canvas/WebGL artifacts in Monaco and xterm.js.
+    // Retain the workaround for historical Monaco and xterm.js rendering
+    // artifacts until the accelerated path has been verified across drivers.
     // Must be set BEFORE any WebKit initialization.
     #[cfg(target_os = "linux")]
     {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // Keep the compatibility default, but let users opt into DMA-BUF
+        // with WEBKIT_DISABLE_DMABUF_RENDERER=0. An empty or non-UTF-8 value
+        // is also an explicit choice and must reach WebKit unchanged.
+        configure_linux_dmabuf_renderer();
 
         // A GNOME session passes on gnome-shell's RLIMIT_RTTIME with the soft
         // limit equal to the hard one, so WebKit's real-time threads are

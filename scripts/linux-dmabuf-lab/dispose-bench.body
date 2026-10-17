@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// DEV-only component rendering workload, never imported by application code.
+window.__row56?.root?.unmount();document.getElementById('row56-bench')?.remove();return {disposed:true};

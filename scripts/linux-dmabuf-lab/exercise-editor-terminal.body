@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// DEV-only component rendering workload, never imported by application code.
+const monaco = window.monaco || await new Promise(resolve=>window.require(['vs/editor/editor.main'],resolve));
+const editor = monaco.editor.getEditors().find(e=>e.getDomNode()?.closest('#row56-editor'));
+if(!editor) throw Error('Actual Monaco editor missing');
+const command = "i=1; while [ $i -le 1200 ]; do printf '\\033[3%smrow56-%04d\\033[0m  box: ┌─┐  unicode: è λ 中  link: https://example.invalid/%d\\n' $((i % 7 + 1)) $i $i; i=$((i+1)); done; printf 'ROW56_TERMINAL_DONE\\n'";
+window.dispatchEvent(new CustomEvent('terminal-execute',{detail:{command}}));
+const frameTimes=[], start=performance.now();let previous=start,frames=0;
+while(performance.now()-start<12000) {
+ const now=await new Promise(requestAnimationFrame); frameTimes.push(now-previous);previous=now;frames++;
+ const line=1+((frames*13)%1450);editor.revealLineInCenter(line);editor.setPosition({lineNumber:line,column:8});
+ if(frames%25===0) editor.executeEdits('row56',[{range:{startLineNumber:line,startColumn:1,endLineNumber:line,endColumn:1},text:' ',forceMoveMarkers:true}]);
+ if(frames%60===0){const width=frames%120===0?'55%':'62%';document.getElementById('row56-editor').style.width=width;editor.layout();window.dispatchEvent(new Event('resize'));}
+}
+frameTimes.sort((a,b)=>a-b);
+const rows=Array.from(document.querySelectorAll('#row56-terminal .xterm-rows>div')).map(x=>x.textContent);
+const durationMs=performance.now()-start;
+editor.revealLineInCenter(720);editor.setPosition({lineNumber:720,column:8});
+return {durationMs,frames,fps:frames/(durationMs/1000),p50:frameTimes[Math.floor(frameTimes.length*.5)],p95:frameTimes[Math.floor(frameTimes.length*.95)],over33ms:frameTimes.filter(x=>x>33.4).length,modelLines:editor.getModel().getLineCount(),terminalRows:rows,terminalHasCompletion:rows.some(x=>x.includes('ROW56_TERMINAL_DONE')),xtermCanvases:document.querySelectorAll('#row56-terminal canvas').length,errors:window.__row56.errors};

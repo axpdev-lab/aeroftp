@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// DEV-only component rendering workload, never imported by application code.
+const React = (await import('/node_modules/.vite/deps/react.js')).default;
+const ReactDOM = (await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+const { I18nProvider } = await import('/src/i18n/index.ts');
+const { CodeEditor } = await import('/src/components/DevTools/CodeEditor.tsx');
+const { SSHTerminal } = await import('/src/components/DevTools/SSHTerminal.tsx');
+window.__row56?.root?.unmount();
+document.getElementById('row56-bench')?.remove();
+const host = document.createElement('div'); host.id = 'row56-bench';
+host.style.cssText = 'position:fixed;inset:42px 14px 14px;z-index:2147480000;background:#111827;padding:12px;display:flex;flex-direction:column;gap:12px;';
+host.innerHTML = '<div style="color:white;font:14px monospace;height:24px">ROW56: actual CodeEditor + SSHTerminal components, synthetic DEV workload</div><div id="row56-components" style="display:flex;gap:12px;flex:1;min-height:0"></div>';
+document.body.appendChild(host);
+const contents = Array.from({length:1500}, (_, i) => `export const sample${i} = { label: "DMA-BUF row ${i}", amount: ${i}, enabled: true }; // accented àèé and Ελληνικά`).join('\n');
+const root = ReactDOM.createRoot(document.getElementById('row56-components'));
+root.render(React.createElement(I18nProvider,{initialLanguage:'en'},
+ React.createElement('div',{style:{display:'flex',gap:12,width:'100%',height:'100%'}},
+  React.createElement('div',{id:'row56-editor',style:{width:'58%',height:'100%'}},React.createElement(CodeEditor,{file:{name:'row56-fixture.ts',path:'/tmp/dmabuf-fixture.ts',content:contents,mimeType:'text/typescript',size:contents.length,isRemote:false},onSave:async()=>{},onClose:()=>{},className:'h-full',theme:'tokyo-night'})),
+  React.createElement('div',{id:'row56-terminal',style:{flex:1,height:'100%'}},React.createElement(SSHTerminal,{localPath:'~',className:'h-full'}))
+ )));
+window.__row56 = {root,errors:[],contextLost:0,kind:'editor-terminal'};
+window.addEventListener('error',e=>window.__row56.errors.push(String(e.message)));
+window.addEventListener('unhandledrejection',e=>window.__row56.errors.push(String(e.reason)));
+const deadline=Date.now()+25000;
+while(!document.querySelector('#row56-editor .view-lines')) {if(Date.now()>deadline) throw Error('Monaco did not render');await new Promise(r=>setTimeout(r,100));}
+window.dispatchEvent(new CustomEvent('terminal-execute',{detail:{command:"printf '\\033[36mROW56 shell ready\\033[0m\\n'"}}));
+const terminalDeadline=Date.now()+25000;
+while(!Array.from(document.querySelectorAll('#row56-terminal .xterm-rows>div')).some(e=>e.textContent.includes('ROW56 shell ready'))) {if(Date.now()>terminalDeadline)throw Error('Owned PTY did not report ready');await new Promise(r=>setTimeout(r,100));}
+return {mounted:true,monacoLines:document.querySelectorAll('#row56-editor .view-line').length};

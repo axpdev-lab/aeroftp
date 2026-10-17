@@ -145,6 +145,13 @@ mod tests {
             egl < gate,
             "the EGL decision is made before the corners are"
         );
+        let renderer = lib
+            .find("configure_linux_dmabuf_renderer();")
+            .expect("the startup renderer default");
+        assert!(
+            renderer < gate,
+            "the renderer default precedes the corner gate"
+        );
         // Every place the app sets a WebKit switch runs before the gate reads it.
         for (at, _) in lib.match_indices("std::env::set_var(\"WEBKIT_DISABLE_") {
             assert!(

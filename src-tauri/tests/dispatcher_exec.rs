@@ -101,6 +101,15 @@ fn write_stub(path: &Path, name: &str, exit_code: i32) {
 }
 
 fn run_dispatcher(dispatcher: &Path, arg0: &str, args: &[&str]) -> Output {
+    run_dispatcher_with_renderer(dispatcher, arg0, args, None)
+}
+
+fn run_dispatcher_with_renderer(
+    dispatcher: &Path,
+    arg0: &str,
+    args: &[&str],
+    renderer: Option<&std::ffi::OsStr>,
+) -> Output {
     // Shared side of FORK_GUARD: this fork cannot happen while any executable
     // in this process is open for writing, so neither this exec nor the
     // dispatcher's exec of the stub can find one busy. No retry lives here any
@@ -111,10 +120,42 @@ fn run_dispatcher(dispatcher: &Path, arg0: &str, args: &[&str]) -> Output {
     // `exec failed: Text file busy`, measured twice in 5000 runs under load).
     let _spawning = FORK_GUARD.read().unwrap_or_else(|e| e.into_inner());
     let mut cmd = Command::new(dispatcher);
+    // Test the absent default independently of the test runner's environment.
+    cmd.env_remove("WEBKIT_DISABLE_DMABUF_RENDERER");
+    if let Some(value) = renderer {
+        cmd.env("WEBKIT_DISABLE_DMABUF_RENDERER", value);
+    }
     cmd.arg0(arg0);
     cmd.args(args);
     cmd.output()
         .unwrap_or_else(|e| panic!("dispatcher exec failed: {e}"))
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn dispatch_preserves_explicit_linux_renderer_values_for_both_routes() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let test_dir = TestDir::new();
+    let dispatcher = copy_dispatcher(&test_dir.path);
+    write_stub(&test_dir.path.join("aeroftp-cli"), "CLI", 0);
+    write_stub(&test_dir.path.join("aeroftp.bin"), "GUI", 0);
+
+    for value in [b"0".as_slice(), b"1", b"", b"yes", b"\xff"] {
+        for (arg0, name) in [("aeroftp", "GUI"), ("aftp", "CLI")] {
+            let output = run_dispatcher_with_renderer(
+                &dispatcher,
+                arg0,
+                &["--version"],
+                Some(std::ffi::OsStr::from_bytes(value)),
+            );
+            assert!(output.status.success(), "{output:?}");
+            let mut expected = format!("{name}\nargs:[--version]\nwebkit:").into_bytes();
+            expected.extend_from_slice(value);
+            expected.push(b'\n');
+            assert_eq!(output.stdout, expected, "arg0={arg0}, value={value:?}");
+        }
+    }
 }
 
 #[test]

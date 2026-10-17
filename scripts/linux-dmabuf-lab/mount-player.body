@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// DEV-only component rendering workload, never imported by application code.
+const React = (await import('/node_modules/.vite/deps/react.js')).default;
+const ReactDOM = (await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+const { I18nProvider } = await import('/src/i18n/index.ts');
+const { AudioVisualizer } = await import('/src/components/Preview/controls/AudioVisualizer.tsx');
+const { WebGLVisualizer } = await import('/src/components/Preview/controls/WebGLVisualizer.tsx');
+const { SHADERS } = await import('/src/components/Preview/controls/shaders.ts');
+window.__row56?.root?.unmount();document.getElementById('row56-bench')?.remove();
+const host=document.createElement('div');host.id='row56-bench';host.style.cssText='position:fixed;inset:42px 14px 14px;z-index:2147480000;background:#111827;padding:12px;color:white;font:14px monospace;';
+host.innerHTML='<div id="row56-label">AeroPlayer production canvas/WebGL components, deterministic synthetic analyser</div><div id="row56-player" style="width:100%;height:calc(100% - 32px);margin-top:12px"></div>';document.body.appendChild(host);
+const root=ReactDOM.createRoot(document.getElementById('row56-player'));
+const analyser={frequencyBinCount:256,getByteFrequencyData(a){const t=performance.now()/500;for(let i=0;i<a.length;i++)a[i]=Math.round(128+100*Math.sin(i*.13+t)*Math.cos(i*.04-t));},getByteTimeDomainData(a){const t=performance.now()/500;for(let i=0;i<a.length;i++)a[i]=128+Math.round(100*Math.sin(i*.1+t));}};
+const lost={count:0};host.addEventListener('webglcontextlost',()=>lost.count++,true);
+window.__row56={root,errors:[],lost,shaders:Object.keys(SHADERS),shaderSources:SHADERS,render(kind,mode){document.getElementById('row56-label').textContent=`AeroPlayer actual ${kind}: ${mode}, deterministic synthetic analyser`;root.render(React.createElement(I18nProvider,{initialLanguage:'en'},kind==='canvas'?React.createElement(AudioVisualizer,{analyser,mode,isPlaying:true,cyberMode:true}):React.createElement(WebGLVisualizer,{analyser,shader:mode,isPlaying:true,onContextLost:()=>lost.count++})));}};
+window.__row56.render('canvas','bars');
+return {mounted:true,shaders:Object.keys(SHADERS)};
