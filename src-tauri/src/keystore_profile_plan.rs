@@ -533,9 +533,6 @@ pub fn apply(
     let backup_by_id = index_by_id(backup);
 
     let mut ops = Vec::new();
-    // Ids of the profiles the list takes as the backup names them: added,
-    // taken over, or kept as a copy.
-    let mut named_by_backup: HashSet<String> = HashSet::new();
     // Resolve each id to the profiles it contributes, in place.
     let mut resolve = |id: &str, ops: &mut Vec<SecretOp>| -> Vec<Value> {
         let local = local_by_id.get(id).copied();
@@ -550,7 +547,6 @@ pub fn apply(
         match (change.kind, decision) {
             (ProfileChangeKind::Added, ProfileDecision::Accept) => {
                 take_backup(inputs, &keys, ops);
-                named_by_backup.insert(id.to_string());
                 bak.cloned().into_iter().collect()
             }
             (ProfileChangeKind::Added, _) => {
@@ -571,7 +567,6 @@ pub fn apply(
             }
             (ProfileChangeKind::Changed, ProfileDecision::Accept) => {
                 take_backup(inputs, &keys, ops);
-                named_by_backup.insert(id.to_string());
                 bak.cloned().into_iter().collect()
             }
             (ProfileChangeKind::Changed, ProfileDecision::Reject) => {
@@ -589,9 +584,7 @@ pub fn apply(
                     .unwrap_or_else(|| {
                         format!("{} (imported)", string_field(b, "name").unwrap_or_default())
                     });
-                let copy_id = new_id();
-                named_by_backup.insert(copy_id.clone());
-                let copy = copy_of(inputs, b, &copy_id, name, ops);
+                let copy = copy_of(inputs, b, &new_id(), name, ops);
                 vec![l.clone(), copy]
             }
         }
@@ -610,30 +603,17 @@ pub fn apply(
             profiles.extend(resolve(id, &mut ops));
         }
     }
-    unique_backup_names(&mut profiles, &named_by_backup);
+    // A profile the backup adds, renames or copies onto a name this
+    // machine's list holds gets the first free " (1)", " (2)", ...; this
+    // machine's own profiles keep their names. The rule every profile write
+    // applies (`util::profile_name`), against the list the plan was read
+    // from: the partition the write lands in may already be the backup's.
+    let (profiles, _) = crate::util::profile_name::unique_profile_names(&inputs.local, &profiles);
 
     Ok(PlanOutcome {
         profiles,
         secret_ops: ops,
     })
-}
-
-/// A profile named by the backup whose name another profile of the list
-/// already holds gets the first free " (1)", " (2)", ..., as every import does
-/// (`util::profile_name`); this machine's own profiles keep their names.
-fn unique_backup_names(profiles: &mut [Value], named_by_backup: &HashSet<String>) {
-    let by_backup = |p: &Value| profile_id(p).is_some_and(|id| named_by_backup.contains(id));
-    let mut names = crate::util::profile_name::ProfileNames::of_profiles(
-        profiles.iter().filter(|p| !by_backup(p)),
-    );
-    for profile in profiles.iter_mut().filter(|p| by_backup(p)) {
-        if let Some(name) = string_field(profile, "name") {
-            let claimed = names.claim(&name);
-            if claimed != name {
-                profile["name"] = Value::String(claimed);
-            }
-        }
-    }
 }
 
 #[cfg(test)]

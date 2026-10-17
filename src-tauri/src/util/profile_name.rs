@@ -8,10 +8,13 @@
 //! imported onto a name another profile holds therefore gets the first free
 //! " (1)", " (2)", ...: [`unique_profile_names`] is applied to every write of a
 //! profile list (`user_partitions::insert_profiles_with_dek`), whichever
-//! window, command or import made it. Imports also claim names up front with
-//! [`ProfileNames`], to report what they renamed. The frontend applies the
-//! same rule (`src/utils/uniqueProfileName.ts`) only where it writes without
-//! the partition layer (the legacy store).
+//! window, command or import made it, and to the writes that bypass it (the
+//! legacy blob, a keystore merge). A command that names the profile it saved,
+//! or the ones it renamed, takes the names from the list stored
+//! ([`name_of`], [`renamed_by_write`]): only the write knows which profile
+//! had a name first. The frontend applies the same rule
+//! (`src/utils/uniqueProfileName.ts`) only where it writes without the
+//! partition layer (the legacy store).
 
 use std::collections::HashSet;
 
@@ -22,26 +25,21 @@ fn key(name: &str) -> String {
 }
 
 /// The names in use, handing out names not yet taken.
-pub struct ProfileNames {
+struct ProfileNames {
     taken: HashSet<String>,
 }
 
 impl ProfileNames {
     /// The names `existing` already holds.
-    pub fn new<'a>(existing: impl IntoIterator<Item = &'a str>) -> Self {
+    fn new<'a>(existing: impl IntoIterator<Item = &'a str>) -> Self {
         Self {
             taken: existing.into_iter().map(key).collect(),
         }
     }
 
-    /// The names of the profiles `existing` (JSON objects) already holds.
-    pub fn of_profiles<'a>(existing: impl IntoIterator<Item = &'a serde_json::Value>) -> Self {
-        Self::new(existing.into_iter().filter_map(profile_name))
-    }
-
     /// `name` when no profile has it yet, else the first of "name (1)",
     /// "name (2)", ... that none has. The name returned is taken from then on.
-    pub fn claim(&mut self, name: &str) -> String {
+    fn claim(&mut self, name: &str) -> String {
         let mut claimed = name.to_string();
         let mut n = 1u32;
         while self.taken.contains(&key(&claimed)) {
@@ -53,7 +51,7 @@ impl ProfileNames {
     }
 }
 
-/// An imported profile that took another name than the one it came with.
+/// A profile stored under another name than the one it was saved with.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct RenamedProfile {
     pub id: String,
@@ -67,7 +65,7 @@ fn profile_name(profile: &serde_json::Value) -> Option<&str> {
 
 /// Give each profile of `added` (JSON objects with a `name`) a name that no
 /// profile of `names` holds, nor an earlier one of `added`: the ones renamed.
-pub fn claim_profile_names(
+fn claim_profile_names(
     names: &mut ProfileNames,
     added: &mut [serde_json::Value],
 ) -> Vec<RenamedProfile> {
@@ -131,6 +129,37 @@ pub fn unique_profile_names(
         }
     }
     (stored, renamed)
+}
+
+/// The name of the profile `id` in `profiles`.
+pub fn name_of<'a>(profiles: &'a [serde_json::Value], id: &str) -> Option<&'a str> {
+    profiles
+        .iter()
+        .find(|p| profile_id(p) == Some(id))
+        .and_then(profile_name)
+}
+
+/// The profiles of `sent` that `stored`, the list a write of `sent` stored,
+/// holds under another name, each with the name it was stored under: a
+/// profile saved onto a taken name, and one of an older list's two of one
+/// name that the write numbered. A name reported here is what selects that
+/// profile, which a name claimed before the write may not be.
+pub fn renamed_by_write(
+    sent: &[serde_json::Value],
+    stored: &[serde_json::Value],
+) -> Vec<RenamedProfile> {
+    sent.iter()
+        .filter_map(|profile| {
+            let id = profile_id(profile)?;
+            let from = profile_name(profile)?;
+            let to = name_of(stored, id)?;
+            (to != from).then(|| RenamedProfile {
+                id: id.to_string(),
+                from: from.to_string(),
+                to: to.to_string(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -207,10 +236,53 @@ mod tests {
         );
     }
 
+    /// An import onto an older list that holds two of one name: the write
+    /// numbers the second old one first, so a name claimed for the import
+    /// before the write ("Lab (1)") would select that old profile. The names
+    /// reported come from the list stored, and each selects its own profile.
     #[test]
-    fn only_the_imported_profiles_are_renamed_and_each_rename_is_reported() {
+    fn the_renames_reported_are_the_names_stored() {
+        let previous = [
+            json!({"id": "a", "name": "Lab"}),
+            json!({"id": "b", "name": "Lab"}),
+        ];
+        let sent = [
+            previous[0].clone(),
+            previous[1].clone(),
+            json!({"id": "c", "name": "Lab"}),
+        ];
+        let (stored, _) = unique_profile_names(&previous, &sent);
+        let renamed = renamed_by_write(&sent, &stored);
+        assert_eq!(
+            renamed,
+            [
+                RenamedProfile {
+                    id: "b".into(),
+                    from: "Lab".into(),
+                    to: "Lab (1)".into()
+                },
+                RenamedProfile {
+                    id: "c".into(),
+                    from: "Lab".into(),
+                    to: "Lab (2)".into()
+                },
+            ]
+        );
+        for r in &renamed {
+            // `--profile NAME` takes the first profile of that name.
+            let selected = stored
+                .iter()
+                .find(|p| p["name"].as_str().is_some_and(|n| key(n) == key(&r.to)));
+            assert_eq!(selected.and_then(profile_id), Some(r.id.as_str()));
+        }
+        assert_eq!(name_of(&stored, "c"), Some("Lab (2)"));
+        assert_eq!(name_of(&stored, "z"), None);
+    }
+
+    #[test]
+    fn only_the_added_profiles_are_renamed_and_each_rename_is_reported() {
         let existing = [json!({"id": "a", "name": "Proton API"})];
-        let mut names = ProfileNames::of_profiles(&existing);
+        let mut names = ProfileNames::new(existing.iter().filter_map(profile_name));
         let mut added = vec![
             json!({"id": "b", "name": "Proton API"}),
             json!({"id": "c", "name": "Other"}),

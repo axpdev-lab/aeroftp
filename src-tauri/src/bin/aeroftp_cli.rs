@@ -94,7 +94,7 @@ use ftp_client_gui_lib::sftp_download_tuning::SftpDownloadPreset;
 use ftp_client_gui_lib::shell_quote::shell_arg;
 use ftp_client_gui_lib::sync_core::mtime::ModifyWindow;
 use ftp_client_gui_lib::user_partitions;
-use ftp_client_gui_lib::util::profile_name::{claim_profile_names, ProfileNames};
+use ftp_client_gui_lib::util::profile_name::{name_of, renamed_by_write};
 use ftp_client_gui_lib::util::shutdown_signal;
 use ftp_client_gui_lib::util::size::{format_size, parse_size_filter};
 use futures_util::StreamExt;
@@ -13222,11 +13222,15 @@ fn reorder_saved_profiles(
     Ok(Some(stored))
 }
 
+/// Write the active user's profile list. Returns the list stored: a profile
+/// saved onto a name another one holds is stored with the first free " (1)",
+/// " (2)", ... (`util::profile_name`), so a command that names a profile it
+/// saved takes the name from this list, never from the one it sent.
 fn save_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     profiles: &[serde_json::Value],
-) -> Result<(), String> {
+) -> Result<Vec<serde_json::Value>, String> {
     use ftp_client_gui_lib::user_partitions;
     let target = match ensure_active_user_unlocked(cli, store)? {
         Some(t) => t,
@@ -13239,11 +13243,14 @@ fn save_active_user_profiles(
         // blob mirrors.
         Ok(stored) => {
             mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
-            Ok(())
+            Ok(stored)
         }
-        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => Err(e),
+        // A write refused on an open partition (a lock, another process's
+        // save in between) did not happen: the blob alone would report the
+        // list saved while the partition, which the GUI reads first, lacks it.
+        Err(e) if !e.starts_with(user_partitions::PARTITION_UNAVAILABLE) => Err(e),
         Err(_) => {
-            // Partition write failed (downgrade / unavailable): write the
+            // Partition unavailable (downgrade, unreachable file): write the
             // legacy blob only when this would have been the active user
             // anyway. Same R3-safety reasoning as the success path.
             if !writing_to_active {
@@ -13265,7 +13272,8 @@ fn save_active_user_profiles(
                 .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
             store
                 .store("config_server_profiles", &serialized)
-                .map_err(|e| format!("Failed to save server profiles: {}", e))
+                .map_err(|e| format!("Failed to save server profiles: {}", e))?;
+            Ok(profiles)
         }
     }
 }
@@ -17378,26 +17386,49 @@ fn prune_profile_from_groups_and_favorites(store: &CredentialStore, profile_id: 
 /// the row by id, prune the id from groups/favourites, and best-effort delete
 /// its `server_<id>` credential. Best-effort like the favourite/group flips:
 /// the IntroHub already removed the row optimistically. A locked user partition
-/// or a missing user simply skips the write.
-fn tui_delete_profile(store: &CredentialStore, user_name: &str, profile_id: &str) {
+/// or a missing user simply skips the write. Returns the list stored, `None`
+/// when nothing was written.
+fn tui_delete_profile(
+    store: &CredentialStore,
+    user_name: &str,
+    profile_id: &str,
+) -> Option<Vec<serde_json::Value>> {
     use ftp_client_gui_lib::user_partitions;
-    let Ok(user) = user_partitions::cli_find_user_by_name(store, user_name) else {
-        return;
-    };
-    let Ok(mut profiles) = user_partitions::cli_list_server_profiles_for_user(store, user.id)
-    else {
-        return;
-    };
+    let user = user_partitions::cli_find_user_by_name(store, user_name).ok()?;
+    let mut profiles = user_partitions::cli_list_server_profiles_for_user(store, user.id).ok()?;
     let before = profiles.len();
     profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
     if profiles.len() == before {
-        return; // nothing to delete
+        return None; // nothing to delete
     }
-    if user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).is_err() {
-        return;
-    }
+    let stored =
+        user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).ok()?;
     prune_profile_from_groups_and_favorites(store, profile_id);
     dual_delete_server_cred(store, Some(user.id), &format!("server_{}", profile_id));
+    Some(stored)
+}
+
+/// The names an IntroHub profile write stored, for the TUI to show: the write
+/// may have numbered the profile it saved, or an older list's two of one name
+/// (`util::profile_name`), which the optimistic update cannot know.
+fn profile_names_stored(
+    user_name: String,
+    saved_id: Option<String>,
+    stored: &[serde_json::Value],
+) -> cli_tui::worker::WorkerEvent {
+    let names = stored
+        .iter()
+        .filter_map(|p| {
+            let id = p.get("id")?.as_str()?;
+            let name = p.get("name")?.as_str()?;
+            Some((id.to_string(), name.to_string()))
+        })
+        .collect();
+    cli_tui::worker::WorkerEvent::ProfileNamesStored {
+        user_name,
+        saved_id,
+        names,
+    }
 }
 
 /// Create or edit a saved profile in `user_name`'s partition (B4 DiscoveryHub).
@@ -17406,23 +17437,19 @@ fn tui_delete_profile(store: &CredentialStore, user_name: &str, profile_id: &str
 /// keys (options, lastConnected, color, providerId) are preserved and only the
 /// form-owned fields are overwritten. When `secret` is present the password is
 /// dual-written under `server_<id>`. Best-effort, like the favourite/group flips.
+/// Returns the list stored, `None` when nothing was written.
 fn tui_save_profile(
     store: &CredentialStore,
     user_name: &str,
     draft: &cli_tui::worker::TuiProfileDraft,
     secret: Option<&cli_tui::worker::TuiSecret>,
-) {
+) -> Option<Vec<serde_json::Value>> {
     use ftp_client_gui_lib::user_partitions;
     if draft.id.is_empty() {
-        return;
+        return None;
     }
-    let Ok(user) = user_partitions::cli_find_user_by_name(store, user_name) else {
-        return;
-    };
-    let Ok(mut profiles) = user_partitions::cli_list_server_profiles_for_user(store, user.id)
-    else {
-        return;
-    };
+    let user = user_partitions::cli_find_user_by_name(store, user_name).ok()?;
+    let mut profiles = user_partitions::cli_list_server_profiles_for_user(store, user.id).ok()?;
 
     let apply_fields = |entry: &mut serde_json::Map<String, serde_json::Value>| {
         entry.insert("id".into(), serde_json::Value::String(draft.id.clone()));
@@ -17470,9 +17497,8 @@ fn tui_save_profile(
         profiles.insert(0, serde_json::Value::Object(entry));
     }
 
-    if user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).is_err() {
-        return;
-    }
+    let stored =
+        user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).ok()?;
 
     if let Some(secret) = secret {
         if !secret.is_empty() {
@@ -17484,6 +17510,7 @@ fn tui_save_profile(
             );
         }
     }
+    Some(stored)
 }
 
 /// ANSI colour cues used by the interactive shell. Mirrors the colour
@@ -19420,7 +19447,9 @@ async fn run_cli_tui_worker(
                 // optimistically (B4): drop the row, prune groups/favourites,
                 // remove the credential. Fire-and-forget like the group flips.
                 if let Ok(store) = open_vault(cli) {
-                    tui_delete_profile(&store, &user_name, &profile_id);
+                    if let Some(stored) = tui_delete_profile(&store, &user_name, &profile_id) {
+                        let _ = event_tx.send(profile_names_stored(user_name, None, &stored));
+                    }
                 }
             }
             WorkerCommand::SaveProfile {
@@ -19433,7 +19462,12 @@ async fn run_cli_tui_worker(
                 // under `server_<id>` and zeroized when it drops at the end of
                 // this arm.
                 if let Ok(store) = open_vault(cli) {
-                    tui_save_profile(&store, &user_name, &draft, secret.as_ref());
+                    if let Some(stored) =
+                        tui_save_profile(&store, &user_name, &draft, secret.as_ref())
+                    {
+                        let saved_id = Some(draft.id.clone());
+                        let _ = event_tx.send(profile_names_stored(user_name, saved_id, &stored));
+                    }
                 }
             }
             WorkerCommand::HealthCheck {
@@ -23233,6 +23267,8 @@ fn interactive_profiles_loop(
                     serde_json::Value::String(new_name.clone()),
                 ) {
                     Ok(updated) => {
+                        // A name another profile holds is stored as " (1)", ...
+                        let stored_name = name_of(&updated, &id).unwrap_or(&new_name).to_string();
                         current = updated;
                         eprintln!(
                             "{}",
@@ -23240,7 +23276,7 @@ fn interactive_profiles_loop(
                                 "#{} '{}' renamed to '{}'.",
                                 zero + 1,
                                 name,
-                                new_name
+                                stored_name
                             ))
                         );
                     }
@@ -25013,7 +25049,7 @@ fn cmd_profile_add(
     // "swift" — apply without a per-alias special case.
     let (stored_protocol, resolved_provider_id) =
         canonical_protocol_and_provider(&proto_lower, provider_id);
-    let new_id = match persist_new_profile_entry(
+    let (new_id, stored_name) = match persist_new_profile_entry(
         cli,
         &store,
         trimmed_name,
@@ -25032,7 +25068,7 @@ fn cmd_profile_add(
         skip_delta_eligibility_prompt,
         filen_api_key.is_some(),
     ) {
-        Ok(id) => id,
+        Ok(created) => created,
         Err(e) => {
             let code = if e.starts_with("Failed to read") {
                 6
@@ -25058,7 +25094,7 @@ fn cmd_profile_add(
                 format,
                 &format!(
                     "Profile '{}' created (id={}) but credential write failed: {}",
-                    trimmed_name, new_id, e
+                    stored_name, new_id, e
                 ),
                 5,
             );
@@ -25080,7 +25116,7 @@ fn cmd_profile_add(
                 format,
                 &format!(
                     "Profile '{}' created (id={}) but Filen API key write failed: {}",
-                    trimmed_name, new_id, e
+                    stored_name, new_id, e
                 ),
                 5,
             );
@@ -25092,7 +25128,7 @@ fn cmd_profile_add(
         OutputFormat::Json => {
             let out = serde_json::json!({
                 "id": new_id,
-                "name": trimmed_name,
+                "name": stored_name,
                 "protocol": proto_lower,
                 "port": resolved_port,
                 "credential_seeded": seeded_credential,
@@ -25103,7 +25139,7 @@ fn cmd_profile_add(
         _ => {
             println!(
                 "Created profile '{}' ({}, port {}) with id={}{}",
-                trimmed_name,
+                stored_name,
                 proto_lower,
                 resolved_port,
                 new_id,
@@ -25120,7 +25156,8 @@ fn cmd_profile_add(
 
 /// Build and persist a new profile entry for the active user from already-resolved
 /// fields, prepending it so it surfaces at the top of the table, and returning the
-/// new id. This writes only the config entry; the credential is seeded
+/// new id and the name it was stored under (" (1)", ... when another profile
+/// has `name`, `util::profile_name`). This writes only the config entry; the credential is seeded
 /// separately by the caller (`cmd_profile_add` now does so when a credential
 /// source is given, otherwise the profile stays credential-free). Shared by
 /// `cmd_profile_add` and the interactive `profiles -i` New(N) verb (#311 row 1,
@@ -25145,7 +25182,7 @@ fn persist_new_profile_entry(
     favicon_url: Option<&str>,
     skip_delta_eligibility_prompt: bool,
     has_filen_api_key: bool,
-) -> Result<String, String> {
+) -> Result<(String, String), String> {
     let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, store) {
         Ok(p) => p,
         Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
@@ -25248,9 +25285,10 @@ fn persist_new_profile_entry(
 
     profiles.insert(0, serde_json::Value::Object(entry));
 
-    save_active_user_profiles(cli, store, &profiles)
+    let stored = save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
-    Ok(new_id)
+    let stored_name = name_of(&stored, &new_id).unwrap_or(name).to_string();
+    Ok((new_id, stored_name))
 }
 
 /// Protocols whose endpoint is user-supplied (self-hosted / generic network),
@@ -25704,7 +25742,7 @@ fn interactive_new_profile(
         }
     }
 
-    let id = persist_new_profile_entry(
+    let (id, name) = persist_new_profile_entry(
         cli,
         store,
         &name,
@@ -25892,10 +25930,17 @@ fn cmd_profile_duplicate(
     // like the GUI's `handleDuplicate` (`[dup, ...servers]`).
     profiles.insert(0, copy);
 
-    if let Err(e) = save_active_user_profiles(cli, &store, &profiles) {
-        print_error(format, &format!("Failed to write profiles: {}", e), 5);
-        return 5;
-    }
+    // A copy saved onto a taken name ("X (copy)" twice) is stored as " (1)",
+    // ...: report the name that selects it.
+    let resolved_name = match save_active_user_profiles(cli, &store, &profiles) {
+        Ok(stored) => name_of(&stored, &new_id)
+            .map(str::to_string)
+            .unwrap_or(resolved_name),
+        Err(e) => {
+            print_error(format, &format!("Failed to write profiles: {}", e), 5);
+            return 5;
+        }
+    };
 
     // Best-effort clone of EVERY vault secret scoped to the source profile so a
     // duplicate is a complete working copy, not just the password (crypt overlay,
@@ -27251,14 +27296,18 @@ fn duplicate_profile_in_vault(
         map.remove("lastConnected");
     }
     profiles.insert(0, copy);
-    save_active_user_profiles(cli, store, &profiles)
+    let stored = save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
     // MUV-3: clone the credential into vault + the scoped user's partition.
     let scoped_uid = scoped_credential_user_id(cli, store);
     if let Some(cred) = read_server_cred(store, scoped_uid, &format!("server_{}", source_id)) {
         dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), &cred);
     }
-    Ok((new_id, resolved_name, profiles))
+    // The name that selects the copy: " (1)", ... when it was taken.
+    let resolved_name = name_of(&stored, &new_id)
+        .map(str::to_string)
+        .unwrap_or(resolved_name);
+    Ok((new_id, resolved_name, stored))
 }
 
 /// Convenience wrapper around `apply_profile_updates_in_vault` for the
@@ -27309,9 +27358,9 @@ fn apply_profile_updates_in_vault(
             map.insert((*key).to_string(), value.clone());
         }
     }
+    // The list stored: a rename onto a taken name lands as " (1)", ...
     save_active_user_profiles(cli, store, &profiles)
-        .map_err(|e| format!("Failed to write profiles: {}", e))?;
-    Ok(profiles)
+        .map_err(|e| format!("Failed to write profiles: {}", e))
 }
 
 /// Tiny wrapper around `storage_tone` that consumes the `u128` totals from
@@ -39020,7 +39069,8 @@ struct RcloneApplySummary {
     oauth_tokens_stored: usize,
     jotta_refresh_stored: usize,
     profiles_appended: usize,
-    /// Appended profiles whose name was taken, and the name each got instead.
+    /// Profiles the write stored under another name, each with the name it
+    /// got (`renamed_by_write`).
     profiles_renamed: Vec<ftp_client_gui_lib::util::profile_name::RenamedProfile>,
 }
 
@@ -39156,25 +39206,22 @@ async fn apply_rclone_import_to_vault(
         .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
         .collect();
     let mut profiles_appended = 0usize;
-    let mut names = ProfileNames::of_profiles(&profiles);
-    let mut profiles_renamed = Vec::new();
     for server in &result.servers {
         if existing_ids.contains(&server.id) {
             continue;
         }
-        let mut profile = imported_server_profile(server, |key, secret| {
+        let profile = imported_server_profile(server, |key, secret| {
             dual_store_server_cred_checked(&store, scoped_uid, key, secret)
         })
         .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
-        profiles_renamed.extend(claim_profile_names(
-            &mut names,
-            std::slice::from_mut(&mut profile),
-        ));
         profiles.push(profile);
         profiles_appended += 1;
     }
-    save_active_user_profiles(cli, &store, &profiles)
+    let stored = save_active_user_profiles(cli, &store, &profiles)
         .map_err(|e| format!("vault write failed for server profiles: {}", e))?;
+    // Read from the list stored: only the write knows which profile had a
+    // name first (an older list may hold two of one name).
+    let profiles_renamed = renamed_by_write(&profiles, &stored);
 
     Ok(RcloneApplySummary {
         passwords_stored,
@@ -40544,18 +40591,19 @@ async fn cmd_profile_import(
 
     // Append the added profiles, preferring the phase-2 redaction (true
     // credential-presence flags) over the phase-1 preview (flags all false).
-    let mut added_profiles =
-        merged_added_profiles(&decision.add_indices, &imported, &restored_by_id);
-    let renamed = claim_profile_names(
-        &mut ProfileNames::of_profiles(&current),
-        &mut added_profiles,
-    );
+    let added_profiles = merged_added_profiles(&decision.add_indices, &imported, &restored_by_id);
     current.extend(added_profiles);
 
+    // Read from the list stored: only the write knows which profile had a
+    // name first (an older list may hold two of one name).
+    let mut renamed = Vec::new();
     if added > 0 {
-        if let Err(e) = save_active_user_profiles(cli, &store, &current) {
-            print_error(format, &format!("save profiles: {e}"), 1);
-            return 1;
+        match save_active_user_profiles(cli, &store, &current) {
+            Ok(stored) => renamed = renamed_by_write(&current, &stored),
+            Err(e) => {
+                print_error(format, &format!("save profiles: {e}"), 1);
+                return 1;
+            }
         }
     }
 
@@ -40574,7 +40622,9 @@ async fn cmd_profile_import(
                 // one already present: legitimately distinct (different protocol,
                 // crypt overlay, folder, or auth mode), kept, just flagged.
                 "similar": similar,
-                // Added profiles whose name was taken, and the name each got.
+                // Profiles the write stored under another name: an added one
+                // whose name was taken, or one of an older list's two of one
+                // name. Each `to` is the name that selects that profile.
                 "renamed": renamed,
                 "total_in_file": imported.len(),
                 "metadata": metadata,
@@ -40594,7 +40644,7 @@ async fn cmd_profile_import(
     0
 }
 
-/// One line per imported profile that took another name than its own.
+/// One line per profile the import's write stored under another name.
 fn print_profile_renames(renamed: &[ftp_client_gui_lib::util::profile_name::RenamedProfile]) {
     for r in renamed {
         eprintln!(

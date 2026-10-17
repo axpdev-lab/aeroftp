@@ -1633,8 +1633,12 @@ fn write_profiles_with_dek(
     dek: &SecretKey,
     profiles: &[Value],
 ) -> Result<Vec<Value>, String> {
-    let tx = conn
-        .unchecked_transaction()
+    // IMMEDIATE: the write reads the list it replaces before its DELETE. In a
+    // deferred transaction on this WAL database, a save committed by another
+    // process between that read and the DELETE leaves a stale snapshot, and
+    // the DELETE fails with SQLITE_BUSY_SNAPSHOT, which no busy timeout waits
+    // out. Taken after the session lock, as every partition writer does.
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start replace profiles: {e}"))?;
     let stored = insert_profiles_with_dek(&tx, root_secret, user_id, dek, profiles)?;
     tx.commit()
@@ -2447,8 +2451,11 @@ fn copy_user_secrets_with_dek(
         .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]).map(str::to_string))
         .collect();
 
-    let tx = conn
-        .unchecked_transaction()
+    // IMMEDIATE, as `write_profiles_with_dek`: each copy reads before it
+    // inserts, which a deferred transaction on this WAL database turns into
+    // SQLITE_BUSY_SNAPSHOT when another process commits in between. Called
+    // under the session lock (`with_user_dek`), the order every writer takes.
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential migration: {e}"))?;
     let mut migrated = 0usize;
 
@@ -4065,6 +4072,13 @@ pub fn cli_list_server_profiles_for_user(
     result
 }
 
+/// What the error of [`cli_replace_server_profiles_for_user`] starts with when
+/// the database could not be opened or brought to this build's schema: the
+/// one failure after which the CLI may keep the list in the legacy blob alone.
+/// A write that fails on an open database (another process holding it) is
+/// that write's error, and the import or edit that made it did not happen.
+pub const PARTITION_UNAVAILABLE: &str = "USER_PARTITION_UNAVAILABLE";
+
 /// Companion writer for [`cli_list_server_profiles_for_user`]. Replaces the
 /// target user's profile rows without changing `active_user_id`.
 pub fn cli_replace_server_profiles_for_user(
@@ -4072,8 +4086,9 @@ pub fn cli_replace_server_profiles_for_user(
     user_id: i64,
     profiles: &[Value],
 ) -> Result<Vec<Value>, String> {
-    init_or_migrate_cli(store)?;
-    let mut conn = open_or_init_cli()?;
+    let unavailable = |e: String| format!("{PARTITION_UNAVAILABLE}: {e}");
+    init_or_migrate_cli(store).map_err(unavailable)?;
+    let mut conn = open_or_init_cli().map_err(unavailable)?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = replace_server_profiles_for(&mut conn, &root_key, user_id, profiles);
     root_key.zeroize();
@@ -5735,6 +5750,128 @@ mod tests {
         )
         .expect("migrate");
         conn
+    }
+
+    /// A vault from before the naming rule migrates with two profiles of one
+    /// name, and the first write numbers the second. An import onto that list
+    /// reports the names stored: a name claimed before the write ("Lab (1)")
+    /// is the one the second old profile gets, and would select it.
+    #[test]
+    fn an_import_onto_two_profiles_of_one_name_reports_names_that_select_it() {
+        use crate::util::profile_name::renamed_by_write;
+
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        let legacy = json!([
+            {"id": "a", "name": "Lab", "protocol": "sftp", "host": "one.example"},
+            {"id": "b", "name": "Lab", "protocol": "sftp", "host": "two.example"},
+        ]);
+        migrate_legacy_payloads(&mut conn, Some(&legacy.to_string()), None, &test_root())
+            .expect("migrate");
+        let user_id = active_user_id(&conn).unwrap().expect("active user");
+        let mut sent = list_server_profiles_for(&conn, &test_root(), user_id).expect("list");
+        assert_eq!(sent.len(), 2, "the migration keeps both: {sent:?}");
+        sent.push(json!({"id": "c", "name": "Lab", "protocol": "sftp", "host": "three.example"}));
+
+        let stored =
+            replace_server_profiles_for(&mut conn, &test_root(), user_id, &sent).expect("write");
+        let renamed = renamed_by_write(&sent, &stored);
+        let read_back = list_server_profiles_for(&conn, &test_root(), user_id).expect("re-read");
+        assert_eq!(read_back, stored, "the list returned is the list stored");
+        assert_eq!(
+            renamed
+                .iter()
+                .map(|r| (r.id.as_str(), r.to.as_str()))
+                .collect::<Vec<_>>(),
+            [("b", "Lab (1)"), ("c", "Lab (2)")]
+        );
+        for r in &renamed {
+            // `--profile NAME` takes the first profile of that name,
+            // case-insensitive.
+            let selected = read_back.iter().find(|p| {
+                p["name"]
+                    .as_str()
+                    .is_some_and(|n| n.eq_ignore_ascii_case(&r.to))
+            });
+            assert_eq!(selected.and_then(|p| p["id"].as_str()), Some(r.id.as_str()));
+        }
+    }
+
+    /// A save committed by another connection while a profile write reads
+    /// the list it replaces cannot make that write fail: the write holds the
+    /// database's write reservation from before its first read, so the other
+    /// save waits (here, with no busy timeout, it is refused) and lands after.
+    /// In a deferred transaction the other save went through and this write's
+    /// DELETE failed with SQLITE_BUSY_SNAPSHOT.
+    #[test]
+    fn a_save_from_another_connection_cannot_break_a_profile_write_mid_read() {
+        use std::sync::{Arc, Mutex};
+
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(DB_FILENAME);
+        let mut a = open_or_init_path(path.clone()).expect("open a");
+        // Enough rows that the write's read runs well past the progress
+        // handler's interval, which BEGIN alone never reaches.
+        let profiles: Vec<Value> = (0..50)
+            .map(|idx| json!({"id": format!("p{idx}"), "name": format!("P{idx}"), "protocol": "sftp"}))
+            .collect();
+        migrate_legacy_payloads(
+            &mut a,
+            Some(&serde_json::to_string(&profiles).unwrap()),
+            None,
+            &test_root(),
+        )
+        .expect("migrate");
+        let b = open_or_init_path(path).expect("open b");
+        b.execute_batch("CREATE TABLE contention_probe(x INTEGER)")
+            .expect("probe table");
+        b.busy_timeout(std::time::Duration::ZERO).expect("no wait");
+
+        let other = Arc::new(Mutex::new((Some(b), Vec::<Result<(), String>>::new())));
+        let in_handler = Arc::clone(&other);
+        let user_id = active_user_id(&a).unwrap().expect("active user");
+        let root_secret = user_crypto::secret_key_from_bytes(&test_root());
+        let written = with_user_dek(&a, &root_secret, user_id, |user_id, dek| {
+            a.progress_handler(
+                10,
+                Some(move || {
+                    let mut other = in_handler.lock().unwrap();
+                    if other.1.is_empty() {
+                        let attempt = other
+                            .0
+                            .as_ref()
+                            .unwrap()
+                            .execute("INSERT INTO contention_probe VALUES (1)", [])
+                            .map(|_| ())
+                            .map_err(|e| e.to_string());
+                        other.1.push(attempt);
+                    }
+                    false
+                }),
+            );
+            let written = write_profiles_with_dek(&a, &root_secret, user_id, dek, &profiles);
+            a.progress_handler(0, None::<fn() -> bool>);
+            written
+        });
+
+        let mut other = other.lock().unwrap();
+        assert_eq!(
+            other.1.len(),
+            1,
+            "the other save never ran during the write"
+        );
+        assert!(
+            other.1[0].as_ref().is_err_and(|e| e.contains("locked")),
+            "the other save went through mid-read: {:?}",
+            other.1[0]
+        );
+        assert_eq!(written.expect("the profile write").len(), 50);
+        let b = other.0.take().unwrap();
+        b.execute("INSERT INTO contention_probe VALUES (1)", [])
+            .expect("the other save lands once the write commits");
     }
 
     #[test]

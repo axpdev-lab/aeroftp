@@ -3085,6 +3085,30 @@ impl AppState {
             } => {
                 self.status = format!("Quota refresh failed: {}", message);
             }
+            WorkerEvent::ProfileNamesStored {
+                user_name,
+                saved_id,
+                names,
+            } => {
+                // Show the names the write stored, not the ones the form sent.
+                let mut saved_as = None;
+                if let Some(user) = self.context.users.iter_mut().find(|u| u.name == *user_name) {
+                    for profile in &mut user.profiles {
+                        let Some((_, name)) = names.iter().find(|(id, _)| *id == profile.id) else {
+                            continue;
+                        };
+                        if profile.name != *name {
+                            if saved_id.as_deref() == Some(profile.id.as_str()) {
+                                saved_as = Some(name.clone());
+                            }
+                            profile.name = name.clone();
+                        }
+                    }
+                }
+                if let Some(name) = saved_as {
+                    self.status = format!("Saved as '{}': another profile has that name.", name);
+                }
+            }
             WorkerEvent::SiteReply { title, lines, .. } => {
                 let lines: Vec<String> = lines
                     .iter()
@@ -3464,6 +3488,7 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         | WorkerEvent::HealthReady { .. }
         | WorkerEvent::QuotaReady { .. }
         | WorkerEvent::QuotaFailed { .. }
+        | WorkerEvent::ProfileNamesStored { .. }
         | WorkerEvent::FileContent { .. }
         | WorkerEvent::DirSize { .. }
         | WorkerEvent::EditReady { .. }
@@ -5167,6 +5192,37 @@ mod tests {
         assert_eq!(health.status, "healthy");
         assert_eq!(health.score, 97);
         assert_eq!(health.latency_ms, Some(42));
+    }
+
+    /// A profile saved onto a taken name is stored as " (1)", ...: the list
+    /// shows the name stored, for it and for any profile the write numbered.
+    #[test]
+    fn introhub_shows_the_names_a_profile_write_stored() {
+        let mut context = introhub_context();
+        context.users[0].profiles[0].id = "srv-1".to_string();
+        context.users[0].profiles[1].id = "srv-2".to_string();
+        context.users[0].profiles[1].name = "Production".to_string();
+        let mut app = AppState::new_live(context);
+
+        app.apply_worker_event(WorkerEvent::ProfileNamesStored {
+            user_name: "ale".to_string(),
+            saved_id: Some("srv-2".to_string()),
+            names: vec![
+                ("srv-1".to_string(), "Production".to_string()),
+                ("srv-2".to_string(), "Production (1)".to_string()),
+            ],
+        });
+        let names: Vec<&str> = app.context.users[0]
+            .profiles
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(names, ["Production", "Production (1)"]);
+        assert!(app.status.contains("Production (1)"), "{}", app.status);
+        assert_eq!(
+            app.context.users[1].profiles[0].name, "Backup",
+            "another account's list is left alone"
+        );
     }
 
     #[test]

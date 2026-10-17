@@ -2302,22 +2302,20 @@ fn merge_profile_lists(existing_json: &str, backup_json: &str) -> String {
         .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
         .collect();
 
-    // A backup profile whose name is taken gets the first free " (1)",
-    // " (2)", ..., as every import does (`util::profile_name`).
-    let mut names = crate::util::profile_name::ProfileNames::of_profiles(&existing);
+    let before = existing.clone();
     let mut added = 0usize;
-    for mut profile in backup {
+    for profile in backup {
         if let Some(id) = profile.get("id").and_then(|v| v.as_str()) {
             if !existing_ids.contains(id) {
-                crate::util::profile_name::claim_profile_names(
-                    &mut names,
-                    std::slice::from_mut(&mut profile),
-                );
                 existing.push(profile);
                 added += 1;
             }
         }
     }
+    // The merged list goes to the blob without the partition's write: a
+    // backup profile whose name is taken gets the first free " (1)",
+    // " (2)", ..., by the rule that write applies (`util::profile_name`).
+    let (existing, _) = crate::util::profile_name::unique_profile_names(&before, &existing);
 
     if added > 0 {
         tracing::info!(

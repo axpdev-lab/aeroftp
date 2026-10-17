@@ -38,17 +38,50 @@ fn json(out: &Output) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", describe(out)))
 }
 
-/// The names of the saved profiles, in order.
-fn saved_names(config: &Path) -> Vec<String> {
+/// The saved profiles, in order.
+fn saved_profiles(config: &Path) -> Vec<serde_json::Value> {
     let listed = json(&cli(config, &["profiles", "--json"]));
-    let profiles = listed
+    listed
         .get("profiles")
         .and_then(|p| p.as_array())
         .or_else(|| listed.as_array())
-        .unwrap_or_else(|| panic!("no profile list in {listed}"));
-    profiles
+        .unwrap_or_else(|| panic!("no profile list in {listed}"))
+        .clone()
+}
+
+/// The names of the saved profiles, in order.
+fn saved_names(config: &Path) -> Vec<String> {
+    saved_profiles(config)
         .iter()
         .map(|p| p["name"].as_str().unwrap_or_default().to_string())
+        .collect()
+}
+
+/// Each name reported for a profile selects that profile: `--profile NAME`
+/// takes the first of that name, case-insensitive.
+fn assert_each_name_selects_its_profile(config: &Path, reported: &[(&str, &str)]) {
+    let saved = saved_profiles(config);
+    for (id, name) in reported {
+        let selected = saved.iter().find(|p| {
+            p["name"]
+                .as_str()
+                .is_some_and(|n| n.eq_ignore_ascii_case(name))
+        });
+        assert_eq!(
+            selected.and_then(|p| p["id"].as_str()),
+            Some(*id),
+            "{name:?} does not select {id}: {saved:?}"
+        );
+    }
+}
+
+/// The (id, to) of each rename an import reported.
+fn reported_renames(renamed: &serde_json::Value) -> Vec<(&str, &str)> {
+    renamed
+        .as_array()
+        .unwrap_or_else(|| panic!("no renames reported: {renamed}"))
+        .iter()
+        .map(|r| (r["id"].as_str().unwrap(), r["to"].as_str().unwrap()))
         .collect()
 }
 
@@ -98,6 +131,10 @@ fn an_rclone_import_of_a_taken_name_gets_the_next_free_number() {
     assert_eq!(
         saved_names(config.path()),
         ["LAB", "lab (1)", "LAB (2)", "lab (3)"]
+    );
+    assert_each_name_selects_its_profile(
+        config.path(),
+        &reported_renames(&again["appliedSummary"]["profilesRenamed"]),
     );
 }
 
@@ -153,4 +190,45 @@ fn a_profile_file_import_of_a_taken_name_gets_the_next_free_number() {
     assert_eq!(imported["renamed"][0]["from"], "lab", "{imported}");
     assert_eq!(imported["renamed"][0]["to"], "lab (1)", "{imported}");
     assert_eq!(saved_names(here.path()), ["lab", "lab (1)"]);
+    assert_each_name_selects_its_profile(here.path(), &reported_renames(&imported["renamed"]));
+}
+
+/// A copy saved onto a name another profile holds ("X (copy)" twice) is
+/// stored as " (1)": the name the command reports is the one that selects
+/// the copy, not the one it asked for.
+#[test]
+fn a_duplicate_reports_the_name_that_selects_the_copy() {
+    let config = tempfile::tempdir().unwrap();
+    let conf = config.path().join("rclone.conf");
+    std::fs::write(
+        &conf,
+        "[lab]\ntype = sftp\nhost = sftp.example.invalid\nuser = smoke\n",
+    )
+    .unwrap();
+    json(&cli(
+        config.path(),
+        &[
+            "import",
+            "rclone",
+            conf.to_str().unwrap(),
+            "--apply",
+            "--json",
+        ],
+    ));
+
+    let mut reported = Vec::new();
+    for _ in 0..2 {
+        let copy = json(&cli(config.path(), &["profile-duplicate", "lab", "--json"]));
+        reported.push((
+            copy["id"].as_str().unwrap().to_string(),
+            copy["name"].as_str().unwrap().to_string(),
+        ));
+    }
+    assert_eq!(reported[0].1, "lab (copy)");
+    assert_eq!(reported[1].1, "lab (copy) (1)");
+    let reported: Vec<(&str, &str)> = reported
+        .iter()
+        .map(|(id, name)| (id.as_str(), name.as_str()))
+        .collect();
+    assert_each_name_selects_its_profile(config.path(), &reported);
 }
