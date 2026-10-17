@@ -18926,6 +18926,11 @@ pub fn run() {
                 // entries that still use the old crate name).
                 .level_for("aeroftp", log::LevelFilter::Trace)
                 .level_for("ftp_client_gui_lib", log::LevelFilter::Trace)
+                // rpgp, under the native Proton Drive client, warns "packet
+                // header mismatch" (lengths only) each time it writes a new
+                // node key, about two per uploaded file: harmless, and noise
+                // in the DebugPanel. Its DEBUG output dumps key material.
+                .level_for("pgp", log::LevelFilter::Error)
                 // Stdout, the log file and the Webview fan-out (the `log://log`
                 // event consumed by the in-app DebugPanel). The file target is
                 // an explicit folder rather than the default `LogDir`, which
