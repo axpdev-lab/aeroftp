@@ -458,6 +458,10 @@ pub fn import_duplicacy_with_env(
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DuplicacyExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -609,7 +613,7 @@ pub fn export_duplicacy(
     let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
 
     for server in servers {
-        let secret = passwords.get(&server.name).map(|s| s.as_str());
+        let secret = crate::bridge_shared::export_secret(passwords, &server.id);
         let (url, keys) = match duplicacy_storage_for(server, secret) {
             Ok(v) => v,
             Err(reason) => {
@@ -831,9 +835,10 @@ mod tests {
             .iter()
             .map(|s| {
                 if let Some(c) = &s.credential {
-                    passwords.insert(s.name.clone(), c.clone());
+                    passwords.insert(s.id.clone(), c.clone());
                 }
                 DuplicacyExportServer {
+                    id: s.id.clone(),
                     name: s.name.clone(),
                     host: s.host.clone(),
                     port: s.port,
@@ -906,5 +911,39 @@ mod tests {
         assert_eq!(resolved.as_deref(), Some(pref.as_path()));
 
         let _ = std::fs::remove_dir_all(&work);
+    }
+
+    /// Two profiles of one name (a list saved before names were unique) were
+    /// already two storages, but both carried the second one's secret.
+    #[test]
+    fn two_profiles_of_one_name_export_as_two_storages_each_with_its_own_secret() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<
+            DuplicacyExportServer,
+        >(
+            serde_json::json!({"host": "", "port": 443, "username": "AKA", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://a.example.com", "bucket": "tests", "region": "us-east-1"}}),
+            serde_json::json!({"host": "", "port": 443, "username": "AKB", "protocol": "s3", "providerId": "minio", "options": {"endpoint": "https://b.example.com", "bucket": "tests", "region": "us-east-1"}}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("preferences");
+        let outcome = export_duplicacy(&servers, &passwords, &path).unwrap();
+        assert_eq!(outcome.exported, 2, "{:?}", outcome.skipped);
+        let entries: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let keys: Vec<(&str, &str)> = entries
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| {
+                (
+                    e["keys"]["s3_id"].as_str().unwrap(),
+                    e["keys"]["s3_secret"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            keys,
+            [("AKA", "secret-a"), ("AKB", "secret-b")],
+            "{entries}"
+        );
     }
 }

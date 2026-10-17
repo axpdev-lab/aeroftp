@@ -4018,6 +4018,7 @@
             "other_locations": "Other Locations",
             "pictures": "Pictures",
             "places": "Places",
+            "portable_device": "Portable device",
             "portable_devices": "Portable devices",
             "portable_disconnect": "Disconnect",
             "portable_disconnected": "Portable device disconnected: {name}",
@@ -4930,6 +4931,12 @@
             "noDamageNothing": "No damage; nothing to repair.",
             "couldNotRepairAny": "Could not repair any of {damaged} (vault left untouched).",
             "successfullyRepaired": "Successfully repaired {repaired} chunk(s).",
+            "repairDryRunNoDamage": "Dry run: no damage; nothing to repair. Nothing was written.",
+            "repairDryRunCannotRepair": "Dry run: none of {damaged} damaged chunk(s) can be repaired. Nothing was written.",
+            "repairDryRunCanRepair": "Dry run: {repaired} damaged chunk(s) can be repaired. Nothing was written.",
+            "repairDryRunMetadata": "Dry run: the vault header or manifest can be rebuilt from parity. Nothing was written.",
+            "metadataRepaired": "Rebuilt the vault header or manifest from parity.",
+            "repairMetadataSuccess": "Repair complete: vault header or manifest rebuilt from parity",
             "addFolder": "Add Folder",
             "addFolderHint": "Add a whole folder, preserving its structure",
             "addFolderUnsupported": "Adding a folder is supported on v2 and v3 vaults",
@@ -4962,8 +4969,7 @@
             "encryptedTooltip": "Encrypted with AES-256. Contents and filenames are confidential; the password is required to open.",
             "resetDefaults": "Reset to default",
             "errorCorrectionBadge": "Error Correction",
-            "itemsInFolder": "{count} items in /{folder}",
-            "repairNoChangesWritten": "(no changes written)"
+            "itemsInFolder": "{count} items in /{folder}"
         },
         "vaultSync": {
             "title": "Vault Sync",

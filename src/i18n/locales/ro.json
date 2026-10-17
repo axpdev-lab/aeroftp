@@ -3463,9 +3463,14 @@
             "resetDefaults": "Resetează la implicit",
             "scrubErrorCorrectionTooltip": "{label} (verifică hash-urile de cifrare)",
             "repairErrorCorrectionTooltip": "{label} (previzualizare prin simulare disponibilă)",
+            "repairDryRunNoDamage": "Simulare: nicio deteriorare; nimic de reparat. Nu s-a scris nimic.",
+            "repairDryRunCannotRepair": "Simulare: niciuna dintre bucățile deteriorate ({damaged}) nu poate fi reparată. Nu s-a scris nimic.",
+            "repairDryRunCanRepair": "Simulare: bucăți deteriorate care pot fi reparate: {repaired}. Nu s-a scris nimic.",
+            "repairDryRunMetadata": "Simulare: antetul sau manifestul vault-ului poate fi reconstruit din paritate. Nu s-a scris nimic.",
+            "metadataRepaired": "Antetul sau manifestul vault-ului a fost reconstruit din paritate.",
+            "repairMetadataSuccess": "Reparație finalizată: antetul sau manifestul vault-ului a fost reconstruit din paritate",
             "errorCorrectionBadge": "Corectarea erorilor",
-            "itemsInFolder": "{count} elemente în /{folder}",
-            "repairNoChangesWritten": "(nu s-au scris modificări)"
+            "itemsInFolder": "{count} elemente în /{folder}"
         },
         "cryptomator": {
             "title": "Seif Cryptomator",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Dispozitivul portabil a fost deconectat. Reconectați cablul și deschideți-l din nou.",
             "portable_needs_replug": "Neînregistrat de desktop. Deconectați și reconectați cablul, apoi deschideți din nou.",
             "volumes_need_mount_observe": "În snap, volumele apar după ce permisiunea mount-observe este conectată. Rulați aceasta într-un terminal, apoi reveniți la AeroFTP:",
-            "volumes_unavailable": "Nu s-au putut citi volumele montate."
+            "volumes_unavailable": "Nu s-au putut citi volumele montate.",
+            "portable_device": "Dispozitiv portabil"
         },
         "viewMode": {
             "list": "Listă",

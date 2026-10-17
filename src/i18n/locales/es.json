@@ -3463,9 +3463,14 @@
             "resetDefaults": "Restablecer valores",
             "scrubErrorCorrectionTooltip": "{label} (verifica los hashes de cifrado)",
             "repairErrorCorrectionTooltip": "{label} (vista previa en simulación disponible)",
+            "repairDryRunNoDamage": "Simulación: sin daños; no hay nada que reparar. No se escribió nada.",
+            "repairDryRunCannotRepair": "Simulación: no se puede reparar ninguno de los {damaged} fragmento(s) dañado(s). No se escribió nada.",
+            "repairDryRunCanRepair": "Simulación: se pueden reparar {repaired} fragmento(s) dañado(s). No se escribió nada.",
+            "repairDryRunMetadata": "Simulación: la cabecera o el manifiesto del vault se pueden reconstruir a partir de la paridad. No se escribió nada.",
+            "metadataRepaired": "Se reconstruyó la cabecera o el manifiesto del vault a partir de la paridad.",
+            "repairMetadataSuccess": "Reparación completada: se reconstruyó la cabecera o el manifiesto del vault a partir de la paridad",
             "errorCorrectionBadge": "Corrección de errores",
-            "itemsInFolder": "{count} elementos en /{folder}",
-            "repairNoChangesWritten": "(no se escribió ningún cambio)"
+            "itemsInFolder": "{count} elementos en /{folder}"
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Se desconectó el dispositivo portátil. Vuelva a conectar el cable y ábralo de nuevo.",
             "portable_needs_replug": "No montado por el escritorio. Desconecta y vuelve a conectar el cable y ábrelo de nuevo.",
             "volumes_need_mount_observe": "En el snap, los volúmenes aparecen cuando se conecta el permiso mount-observe. Ejecuta esto en una terminal y vuelve a AeroFTP:",
-            "volumes_unavailable": "No se pudieron leer los volúmenes montados."
+            "volumes_unavailable": "No se pudieron leer los volúmenes montados.",
+            "portable_device": "Dispositivo portátil"
         },
         "viewMode": {
             "list": "Lista",

@@ -3463,9 +3463,14 @@
             "resetDefaults": "Rejesha chaguo-msingi",
             "scrubErrorCorrectionTooltip": "{label} (huthibitisha hash za usimbaji)",
             "repairErrorCorrectionTooltip": "{label} (onyesho la awali la jaribio linapatikana)",
+            "repairDryRunNoDamage": "Jaribio: hakuna uharibifu; hakuna cha kurekebisha. Hakuna kilichoandikwa.",
+            "repairDryRunCannotRepair": "Jaribio: hakuna hata kimoja kati ya vipande {damaged} vilivyoharibika kinachoweza kurekebishwa. Hakuna kilichoandikwa.",
+            "repairDryRunCanRepair": "Jaribio: vipande {repaired} vilivyoharibika vinaweza kurekebishwa. Hakuna kilichoandikwa.",
+            "repairDryRunMetadata": "Jaribio: kichwa cha vault au manifesti yake kinaweza kujengwa upya kutoka kwa usawa. Hakuna kilichoandikwa.",
+            "metadataRepaired": "Kichwa cha vault au manifesti yake kimejengwa upya kutoka kwa usawa.",
+            "repairMetadataSuccess": "Marekebisho yamekamilika: kichwa cha vault au manifesti yake kimejengwa upya kutoka kwa usawa",
             "errorCorrectionBadge": "Usahihishaji wa hitilafu",
-            "itemsInFolder": "vipengele {count} katika /{folder}",
-            "repairNoChangesWritten": "(hakuna mabadiliko yaliyoandikwa)"
+            "itemsInFolder": "vipengele {count} katika /{folder}"
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Kifaa kinachobebeka kilikatwa. Chomeka tena kebo na uifungue tena.",
             "portable_needs_replug": "Haijawekwa na eneo-kazi. Ondoa kebo na uiunganishe tena, kisha fungua tena.",
             "volumes_need_mount_observe": "Katika snap, diski huonekana ruhusa ya mount-observe ikishaunganishwa. Endesha hii kwenye terminal, kisha rudi kwenye AeroFTP:",
-            "volumes_unavailable": "Imeshindwa kusoma diski zilizopachikwa."
+            "volumes_unavailable": "Imeshindwa kusoma diski zilizopachikwa.",
+            "portable_device": "Kifaa kinachobebeka"
         },
         "viewMode": {
             "list": "Orodha",

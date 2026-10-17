@@ -3463,9 +3463,14 @@
             "resetDefaults": "รีเซ็ตเป็นค่าเริ่มต้น",
             "scrubErrorCorrectionTooltip": "{label} (ตรวจสอบแฮชรหัสลับ)",
             "repairErrorCorrectionTooltip": "{label} (ดูตัวอย่างแบบรันทดสอบได้)",
+            "repairDryRunNoDamage": "รันทดสอบ: ไม่มีความเสียหาย ไม่มีอะไรต้องซ่อม ไม่มีการเขียนข้อมูลใดๆ",
+            "repairDryRunCannotRepair": "รันทดสอบ: ไม่สามารถซ่อมชังก์ที่เสียหายได้เลยจากทั้งหมด {damaged} ชังก์ ไม่มีการเขียนข้อมูลใดๆ",
+            "repairDryRunCanRepair": "รันทดสอบ: สามารถซ่อมชังก์ที่เสียหายได้ {repaired} ชังก์ ไม่มีการเขียนข้อมูลใดๆ",
+            "repairDryRunMetadata": "รันทดสอบ: สามารถสร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีได้ ไม่มีการเขียนข้อมูลใดๆ",
+            "metadataRepaired": "สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว",
+            "repairMetadataSuccess": "ซ่อมเสร็จสมบูรณ์: สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว",
             "errorCorrectionBadge": "การแก้ไขข้อผิดพลาด",
-            "itemsInFolder": "{count} รายการใน /{folder}",
-            "repairNoChangesWritten": "(ไม่มีการเขียนการเปลี่ยนแปลง)"
+            "itemsInFolder": "{count} รายการใน /{folder}"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "อุปกรณ์พกพาถูกตัดการเชื่อมต่อ เสียบสายเคเบิลอีกครั้งแล้วเปิดใหม่อีกครั้ง",
             "portable_needs_replug": "เดสก์ท็อปยังไม่ได้เมานต์ ถอดสายแล้วเสียบใหม่ จากนั้นเปิดอีกครั้ง",
             "volumes_need_mount_observe": "ใน snap ไดรฟ์จะปรากฏหลังจากเชื่อมต่อสิทธิ์ mount-observe แล้ว เรียกใช้คำสั่งนี้ในเทอร์มินัล จากนั้นกลับมาที่ AeroFTP:",
-            "volumes_unavailable": "ไม่สามารถอ่านไดรฟ์ที่เมานต์ไว้ได้"
+            "volumes_unavailable": "ไม่สามารถอ่านไดรฟ์ที่เมานต์ไว้ได้",
+            "portable_device": "อุปกรณ์พกพา"
         },
         "viewMode": {
             "list": "รายการ",

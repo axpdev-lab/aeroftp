@@ -3463,9 +3463,14 @@
             "resetDefaults": "Lähtesta vaikeväärtused",
             "scrubErrorCorrectionTooltip": "{label} (kontrollib šifri räsisid)",
             "repairErrorCorrectionTooltip": "{label} (proovikäigu eelvaade saadaval)",
+            "repairDryRunNoDamage": "Proovikäik: kahjustusi pole; pole midagi parandada. Midagi ei kirjutatud.",
+            "repairDryRunCannotRepair": "Proovikäik: ühtegi {damaged} kahjustatud tükist ei saa parandada. Midagi ei kirjutatud.",
+            "repairDryRunCanRepair": "Proovikäik: {repaired} kahjustatud tükki saab parandada. Midagi ei kirjutatud.",
+            "repairDryRunMetadata": "Proovikäik: hoidla päise või manifesti saab pariteedist taastada. Midagi ei kirjutatud.",
+            "metadataRepaired": "Hoidla päis või manifest taastati pariteedist.",
+            "repairMetadataSuccess": "Parandamine lõpetatud: hoidla päis või manifest taastati pariteedist",
             "errorCorrectionBadge": "Vigade parandus",
-            "itemsInFolder": "{count} üksust kaustas /{folder}",
-            "repairNoChangesWritten": "(muudatusi ei kirjutatud)"
+            "itemsInFolder": "{count} üksust kaustas /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Kaasaskantav seade ühendati lahti. Ühendage kaabel uuesti ja avage seade uuesti.",
             "portable_needs_replug": "Töölaua poolt ei ole haagitud. Ühendage kaabel lahti ja uuesti sisse, seejärel avage uuesti.",
             "volumes_need_mount_observe": "Snapis ilmuvad köited pärast mount-observe loa ühendamist. Käivitage see terminalis ja naaske seejärel AeroFTP-sse:",
-            "volumes_unavailable": "Ühendatud köiteid ei õnnestunud lugeda."
+            "volumes_unavailable": "Ühendatud köiteid ei õnnestunud lugeda.",
+            "portable_device": "Kaasaskantav seade"
         },
         "viewMode": {
             "list": "Loend",

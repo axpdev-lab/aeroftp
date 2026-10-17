@@ -3463,9 +3463,14 @@
             "resetDefaults": "Ponastavi na privzeto",
             "scrubErrorCorrectionTooltip": "{label} (preveri šifrirne zgoščene vrednosti)",
             "repairErrorCorrectionTooltip": "{label} (na voljo predogled s preizkusom)",
+            "repairDryRunNoDamage": "Preizkus: ni poškodb; ni kaj popraviti. Nič ni bilo zapisano.",
+            "repairDryRunCannotRepair": "Preizkus: nobenega od poškodovanih delov ({damaged}) ni mogoče popraviti. Nič ni bilo zapisano.",
+            "repairDryRunCanRepair": "Preizkus: število poškodovanih delov, ki jih je mogoče popraviti: {repaired}. Nič ni bilo zapisano.",
+            "repairDryRunMetadata": "Preizkus: glavo ali manifest trezorja je mogoče obnoviti iz paritete. Nič ni bilo zapisano.",
+            "metadataRepaired": "Iz paritete je bila obnovljena glava ali manifest trezorja.",
+            "repairMetadataSuccess": "Popravilo končano: iz paritete je bila obnovljena glava ali manifest trezorja",
             "errorCorrectionBadge": "Popravljanje napak",
-            "itemsInFolder": "{count} elementov v /{folder}",
-            "repairNoChangesWritten": "(nobena sprememba ni bila zapisana)"
+            "itemsInFolder": "{count} elementov v /{folder}"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Prenosna naprava je bila odklopljena. Ponovno priključite kabel in jo znova odprite.",
             "portable_needs_replug": "Namizje ni priklopilo. Izklopite in znova vklopite kabel, nato znova odprite.",
             "volumes_need_mount_observe": "V snapu se pogoni prikažejo, ko je dovoljenje mount-observe povezano. To zaženite v terminalu in se nato vrnite v AeroFTP:",
-            "volumes_unavailable": "Priklopljenih pogonov ni bilo mogoče prebrati."
+            "volumes_unavailable": "Priklopljenih pogonov ni bilo mogoče prebrati.",
+            "portable_device": "Prenosna naprava"
         },
         "viewMode": {
             "list": "Seznam",

@@ -3463,9 +3463,14 @@
             "resetDefaults": "Tetapkan semula lalai",
             "scrubErrorCorrectionTooltip": "{label} (mengesahkan cincang sifer)",
             "repairErrorCorrectionTooltip": "{label} (pratonton larian uji tersedia)",
+            "repairDryRunNoDamage": "Larian uji: tiada kerosakan; tiada apa-apa untuk dibaiki. Tiada apa-apa yang ditulis.",
+            "repairDryRunCannotRepair": "Larian uji: tiada satu pun daripada {damaged} ketulan yang rosak boleh dibaiki. Tiada apa-apa yang ditulis.",
+            "repairDryRunCanRepair": "Larian uji: {repaired} ketulan yang rosak boleh dibaiki. Tiada apa-apa yang ditulis.",
+            "repairDryRunMetadata": "Larian uji: pengepala atau manifes bilik kebal boleh dibina semula daripada pariti. Tiada apa-apa yang ditulis.",
+            "metadataRepaired": "Pengepala atau manifes bilik kebal telah dibina semula daripada pariti.",
+            "repairMetadataSuccess": "Pembaikan selesai: pengepala atau manifes bilik kebal dibina semula daripada pariti",
             "errorCorrectionBadge": "Pembetulan Ralat",
-            "itemsInFolder": "{count} item dalam /{folder}",
-            "repairNoChangesWritten": "(tiada perubahan ditulis)"
+            "itemsInFolder": "{count} item dalam /{folder}"
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Peranti mudah alih telah diputuskan. Colokkan semula kabel dan buka semula.",
             "portable_needs_replug": "Tidak dipasang oleh desktop. Cabut dan pasang semula kabel, kemudian buka semula.",
             "volumes_need_mount_observe": "Dalam snap, volum muncul setelah kebenaran mount-observe disambungkan. Jalankan ini dalam terminal, kemudian kembali ke AeroFTP:",
-            "volumes_unavailable": "Tidak dapat membaca volum yang dilekapkan."
+            "volumes_unavailable": "Tidak dapat membaca volum yang dilekapkan.",
+            "portable_device": "Peranti mudah alih"
         },
         "viewMode": {
             "list": "Senarai",

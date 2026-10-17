@@ -3463,9 +3463,14 @@
             "resetDefaults": "Zurücksetzen",
             "scrubErrorCorrectionTooltip": "{label} (prüft die Cipher-Hashes)",
             "repairErrorCorrectionTooltip": "{label} (Vorschau per Probelauf verfügbar)",
+            "repairDryRunNoDamage": "Probelauf: Keine Schäden; nichts zu reparieren. Es wurde nichts geschrieben.",
+            "repairDryRunCannotRepair": "Probelauf: Keiner der {damaged} beschädigten Chunk(s) kann repariert werden. Es wurde nichts geschrieben.",
+            "repairDryRunCanRepair": "Probelauf: {repaired} beschädigte Chunk(s) können repariert werden. Es wurde nichts geschrieben.",
+            "repairDryRunMetadata": "Probelauf: Der Vault-Header oder das Manifest kann aus der Parität wiederhergestellt werden. Es wurde nichts geschrieben.",
+            "metadataRepaired": "Vault-Header oder Manifest aus der Parität wiederhergestellt.",
+            "repairMetadataSuccess": "Reparatur abgeschlossen: Vault-Header oder Manifest aus der Parität wiederhergestellt",
             "errorCorrectionBadge": "Fehlerkorrektur",
-            "itemsInFolder": "{count} Elemente in /{folder}",
-            "repairNoChangesWritten": "(keine Änderungen geschrieben)"
+            "itemsInFolder": "{count} Elemente in /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Das tragbare Gerät wurde getrennt. Kabel erneut anschließen und erneut öffnen.",
             "portable_needs_replug": "Vom Desktop nicht eingehängt. Kabel abziehen und wieder einstecken, dann erneut öffnen.",
             "volumes_need_mount_observe": "Im Snap erscheinen Laufwerke, sobald die Berechtigung mount-observe verbunden ist. Führen Sie dies in einem Terminal aus und kehren Sie dann zu AeroFTP zurück:",
-            "volumes_unavailable": "Die eingehängten Laufwerke konnten nicht gelesen werden."
+            "volumes_unavailable": "Die eingehängten Laufwerke konnten nicht gelesen werden.",
+            "portable_device": "Tragbares Gerät"
         },
         "viewMode": {
             "list": "Liste",

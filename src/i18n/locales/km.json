@@ -3463,9 +3463,14 @@
             "resetDefaults": "កំណត់ឡើងវិញ​ជាលំនាំដើម",
             "scrubErrorCorrectionTooltip": "{label} (ផ្ទៀងផ្ទាត់ហាសនៃការអ៊ិនគ្រីប)",
             "repairErrorCorrectionTooltip": "{label} (អាចមើលជាមុនដោយការសាកល្បង)",
+            "repairDryRunNoDamage": "សាកល្បង៖ គ្មានការខូចខាត គ្មានអ្វីត្រូវជួសជុលទេ។ គ្មានអ្វីត្រូវបានសរសេរទេ។",
+            "repairDryRunCannotRepair": "សាកល្បង៖ មិនអាចជួសជុលបំណែកដែលខូចណាមួយក្នុងចំណោម {damaged} បានទេ។ គ្មានអ្វីត្រូវបានសរសេរទេ។",
+            "repairDryRunCanRepair": "សាកល្បង៖ អាចជួសជុលបំណែកដែលខូច {repaired} បាន។ គ្មានអ្វីត្រូវបានសរសេរទេ។",
+            "repairDryRunMetadata": "សាកល្បង៖ អាចស្ថាបនាក្បាល ឬ manifest នៃ vault ឡើងវិញពីប៉ារីតេបាន។ គ្មានអ្វីត្រូវបានសរសេរទេ។",
+            "metadataRepaired": "បានស្ថាបនាក្បាល ឬ manifest នៃ vault ឡើងវិញពីប៉ារីតេ។",
+            "repairMetadataSuccess": "ការជួសជុលបានបញ្ចប់៖ បានស្ថាបនាក្បាល ឬ manifest នៃ vault ឡើងវិញពីប៉ារីតេ",
             "errorCorrectionBadge": "ការកែកំហុស",
-            "itemsInFolder": "ធាតុ {count} នៅក្នុង /{folder}",
-            "repairNoChangesWritten": "(មិនបានសរសេរការផ្លាស់ប្តូរទេ)"
+            "itemsInFolder": "ធាតុ {count} នៅក្នុង /{folder}"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "ឧបករណ៍ចល័តត្រូវបានផ្តាច់។ សូមដោតខ្សែម្តងទៀត ហើយបើកវាម្តងទៀត។",
             "portable_needs_replug": "មិនត្រូវបានភ្ជាប់ដោយផ្ទៃតុទេ។ ដកខ្សែចេញ រួចដោតម្តងទៀត បន្ទាប់មកបើកវាឡើងវិញ។",
             "volumes_need_mount_observe": "នៅក្នុង snap ដ្រាយនឹងបង្ហាញ នៅពេលដែលការអនុញ្ញាត mount-observe ត្រូវបានភ្ជាប់។ សូមដំណើរការពាក្យបញ្ជានេះក្នុងទែមីណាល់ រួចត្រឡប់ទៅ AeroFTP វិញ:",
-            "volumes_unavailable": "មិនអាចអានដ្រាយដែលបានភ្ជាប់បានទេ។"
+            "volumes_unavailable": "មិនអាចអានដ្រាយដែលបានភ្ជាប់បានទេ។",
+            "portable_device": "ឧបករណ៍ចល័ត"
         },
         "viewMode": {
             "list": "បញ្ជី",

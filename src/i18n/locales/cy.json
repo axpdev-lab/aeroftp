@@ -3463,9 +3463,14 @@
             "resetDefaults": "Ailosod i ddiofyn",
             "scrubErrorCorrectionTooltip": "{label} (gwirio hashiau'r seiffr)",
             "repairErrorCorrectionTooltip": "{label} (rhagolwg rhediad prawf ar gael)",
+            "repairDryRunNoDamage": "Rhediad prawf: dim difrod; dim i'w atgyweirio. Ni ysgrifennwyd dim.",
+            "repairDryRunCannotRepair": "Rhediad prawf: ni ellir atgyweirio unrhyw un o {damaged} talp/talpiau sydd wedi'u difrodi. Ni ysgrifennwyd dim.",
+            "repairDryRunCanRepair": "Rhediad prawf: gellir atgyweirio {repaired} talp/talpiau sydd wedi'u difrodi. Ni ysgrifennwyd dim.",
+            "repairDryRunMetadata": "Rhediad prawf: gellir ailadeiladu pennyn neu faniffest y gladdgell o'r paredd. Ni ysgrifennwyd dim.",
+            "metadataRepaired": "Ailadeiladwyd pennyn neu faniffest y gladdgell o'r paredd.",
+            "repairMetadataSuccess": "Atgyweirio wedi'i gwblhau: ailadeiladwyd pennyn neu faniffest y gladdgell o'r paredd",
             "errorCorrectionBadge": "Cywiro gwallau",
-            "itemsInFolder": "{count} o eitemau yn /{folder}",
-            "repairNoChangesWritten": "(dim newidiadau wedi'u hysgrifennu)"
+            "itemsInFolder": "{count} o eitemau yn /{folder}"
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Datgysylltwyd y ddyfais gludadwy. Ail-blygiwch y cebl a'i hagor eto.",
             "portable_needs_replug": "Heb ei osod gan y bwrdd gwaith. Dad-blygiwch ac ail-blygiwch y cebl, yna ei agor eto.",
             "volumes_need_mount_observe": "Yn y snap, mae cyfrolau'n ymddangos unwaith y bydd y caniatâd mount-observe wedi'i gysylltu. Rhedwch hyn mewn terfynell, yna dychwelwch i AeroFTP:",
-            "volumes_unavailable": "Methwyd darllen y cyfrolau sydd wedi'u gosod."
+            "volumes_unavailable": "Methwyd darllen y cyfrolau sydd wedi'u gosod.",
+            "portable_device": "Dyfais gludadwy"
         },
         "viewMode": {
             "list": "Rhestr",

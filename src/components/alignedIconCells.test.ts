@@ -193,6 +193,8 @@ describe('an aligned element does not hold a bare icon', () => {
         ]);
     });
 
+    // Parsing every component takes a few seconds on an idle machine and timed out
+    // at vitest's default 5 s under a load average of 17 to 20.
     it('no component of the app does', () => {
         expect(Object.keys(SOURCES).length).toBeGreaterThan(100);
         expect(offenders(SOURCES)).toEqual([]);

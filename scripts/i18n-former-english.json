@@ -5,7 +5,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "d53d83cdc3b9a719b66ddcaf352251cf08c4422c283803ac1e3129aa6fb958f5",
+    "enHash": "8b8e5383dde973e8f56a0927b54f3226a0c4cbe7016166bfde2bdeb7dabfadf1",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -765,6 +765,9 @@
         ],
         "vault.placementDetachedDesc": [
             "Sibling .aerovault.rec file"
+        ],
+        "vault.repairDryRunNoDamage": [
+            "Dry run: no damage; nothing to repair."
         ],
         "vault.titleFull": [
             "AeroVault - Military-Grade Encryption"

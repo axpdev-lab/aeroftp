@@ -1867,6 +1867,10 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
 #[derive(Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RcloneExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -2464,7 +2468,7 @@ pub fn export_rclone(
         let server = &server;
         let proto = server.protocol.as_deref().unwrap_or("ftp");
         let options = server.options.as_ref();
-        let password = passwords.get(&server.name);
+        let password = crate::bridge_shared::export_secret(passwords, &server.id);
 
         // Sanitize remote name to rclone's own naming rules, not just INI
         // safety: rclone refuses names outside `^[\w.+@ -]+$`, so profiles
@@ -3416,6 +3420,7 @@ mod tests {
         options: Option<serde_json::Value>,
     ) -> RcloneExportServer {
         RcloneExportServer {
+            id: name.to_string(),
             name: name.to_string(),
             host: "host.example".to_string(),
             port: 21,
@@ -4113,6 +4118,7 @@ user = t
     fn test_export_rclone() {
         let servers = vec![
             RcloneExportServer {
+                id: "test-sftp".to_string(),
                 name: "test-sftp".to_string(),
                 host: "192.168.1.1".to_string(),
                 port: 22,
@@ -4122,6 +4128,7 @@ user = t
                 provider_id: None,
             },
             RcloneExportServer {
+                id: "my-s3".to_string(),
                 name: "my-s3".to_string(),
                 host: "s3.amazonaws.com".to_string(),
                 port: 443,
@@ -4168,6 +4175,7 @@ user = t
         // refresh_token + past expiry) and `configVersion = 1`, otherwise
         // rclone rejects it ("outdated config" / "no refresh token").
         let servers = vec![RcloneExportServer {
+            id: "Jotta".to_string(),
             name: "Jotta".to_string(),
             host: "jfs.jottacloud.com".to_string(),
             port: 443,
@@ -4207,6 +4215,7 @@ user = t
         // `explicit_tls = true` is also present. An explicit-TLS profile
         // (`tlsMode`, the key the GUI stores) must set only `explicit_tls`.
         let servers = vec![RcloneExportServer {
+            id: "secure-ftp".to_string(),
             name: "secure-ftp".to_string(),
             host: "ftp.example.com".to_string(),
             port: 21,
@@ -4239,6 +4248,7 @@ user = t
         // `ftp` profile with explicit TLS used to become a cleartext remote,
         // and an implicit `ftps` profile an explicit one.
         let mk = |name: &str, protocol: &str, mode: Option<&str>| RcloneExportServer {
+            id: name.to_string(),
             name: name.to_string(),
             host: "ftp.example.com".to_string(),
             port: 21,
@@ -4302,6 +4312,7 @@ user = t
         // key checked against ~/.ssh/known_hosts) and its starting folder,
         // which rclone can only express as an alias remote.
         let servers = vec![RcloneExportServer {
+            id: "nas".to_string(),
             name: "nas".to_string(),
             host: "nas.example.test".to_string(),
             port: 2222,
@@ -4340,6 +4351,7 @@ user = t
     #[test]
     fn test_export_rclone_scoped_crypt_wraps_the_start_folder_alias() {
         let servers = vec![RcloneExportServer {
+            id: "nas".to_string(),
             name: "nas".to_string(),
             host: "nas.example.test".to_string(),
             port: 22,
@@ -4370,6 +4382,7 @@ user = t
     #[test]
     fn test_export_rclone_root_folder_carries_no_alias_and_webdav_alias_is_relative() {
         let root = vec![RcloneExportServer {
+            id: "plainftp".to_string(),
             name: "plainftp".to_string(),
             host: "ftp.example.test".to_string(),
             port: 21,
@@ -4379,6 +4392,7 @@ user = t
             provider_id: None,
         }];
         let dav = vec![RcloneExportServer {
+            id: "dav".to_string(),
             name: "dav".to_string(),
             host: "https://dav.example.test/".to_string(),
             port: 443,
@@ -4413,6 +4427,7 @@ user = t
         // `alias` remote that is bucket-relative, matching how the AeroFTP
         // S3 client writes keys.
         let servers = vec![RcloneExportServer {
+            id: "minio".to_string(),
             name: "minio".to_string(),
             host: "s3.lab.example.test".to_string(),
             port: 443,
@@ -4477,6 +4492,7 @@ user = t
         // S3 `secret_access_key` and Azure `key`. Verified against
         // `rclone config providers` (swift.key IsPassword = false).
         let servers = vec![RcloneExportServer {
+            id: "blomp".to_string(),
             name: "blomp".to_string(),
             host: "authenticate.blomp.com".to_string(),
             port: 443,
@@ -4524,6 +4540,7 @@ user = t
         // to the same account (password as the credential, api_key relocated
         // into options.filen_api_key for the vault).
         let servers = vec![RcloneExportServer {
+            id: "filen-acct".to_string(),
             name: "filen-acct".to_string(),
             host: "filen.io".to_string(),
             port: 443,
@@ -4625,6 +4642,7 @@ user = t
 
     fn internxt_server(name: &str) -> RcloneExportServer {
         RcloneExportServer {
+            id: name.to_string(),
             name: name.to_string(),
             host: "gateway.internxt.com".to_string(),
             port: 443,
@@ -5182,6 +5200,7 @@ token = {\"access_token\":\"eyJhbGciOi.x.y\",\"token_type\":\"Bearer\",\"expiry\
         options: Option<serde_json::Value>,
     ) -> RcloneExportServer {
         RcloneExportServer {
+            id: name.to_string(),
             name: name.to_string(),
             host: host.to_string(),
             port: 443,
@@ -5522,6 +5541,7 @@ private_key = k
         // email + password PLUS a guidance comment, NEVER a half-remote with a
         // missing api_key that fails at use with "input too short".
         let servers = vec![RcloneExportServer {
+            id: "filen-noapikey".to_string(),
             name: "filen-noapikey".to_string(),
             host: "filen.io".to_string(),
             port: 443,
@@ -5568,6 +5588,7 @@ private_key = k
         // captures both at connect and the bridge injects them into options; the
         // export arm must emit them verbatim.
         let servers = vec![RcloneExportServer {
+            id: "onedrive-acct".to_string(),
             name: "onedrive-acct".to_string(),
             host: "graph.microsoft.com".to_string(),
             port: 443,
@@ -5635,6 +5656,7 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
         // `key` is NOT an rclone IsPassword field, so it must be emitted plain
         // (verified against `rclone config providers`: b2.key IsPassword=false).
         let servers = vec![RcloneExportServer {
+            id: "b2-acct".to_string(),
             name: "b2-acct".to_string(),
             host: "api.backblazeb2.com".to_string(),
             port: 443,
@@ -6459,6 +6481,7 @@ endpoint = https://ik.imagekit.io/demo_id
         let stored_tokens = r#"{"access_token":"acc-123","refresh_token":"ref-456","expires_at":1893499200,"token_type":"Bearer","scopes":[]}"#;
         for (protocol, rclone_type) in cases {
             let servers = vec![RcloneExportServer {
+                id: format!("{}-acct", protocol),
                 name: format!("{}-acct", protocol),
                 host: "example.com".to_string(),
                 port: 443,
@@ -6557,6 +6580,7 @@ endpoint = https://ik.imagekit.io/demo_id
     fn test_export_rclone_zoho_emits_region_and_root_folder() {
         let stored_tokens = r#"{"access_token":"acc-zoho","refresh_token":"ref-zoho","expires_at":1893499200,"token_type":"Zoho-oauthtoken","scopes":[]}"#;
         let servers = vec![RcloneExportServer {
+            id: "zoho-eu".to_string(),
             name: "zoho-eu".to_string(),
             host: "workdrive.zoho.eu".to_string(),
             port: 443,
@@ -6599,6 +6623,7 @@ endpoint = https://ik.imagekit.io/demo_id
     fn test_export_rclone_zoho_rewrites_bearer_token_type() {
         let stored_tokens = r#"{"access_token":"acc-zoho","refresh_token":"ref-zoho","expires_at":1893499200,"token_type":"Bearer","scopes":[]}"#;
         let servers = vec![RcloneExportServer {
+            id: "zoho-bearer".to_string(),
             name: "zoho-bearer".to_string(),
             host: "workdrive.zoho.eu".to_string(),
             port: 443,
@@ -6633,6 +6658,7 @@ endpoint = https://ik.imagekit.io/demo_id
     #[test]
     fn test_export_rclone_zoho_us_region_becomes_com() {
         let servers = vec![RcloneExportServer {
+            id: "zoho-us".to_string(),
             name: "zoho-us".to_string(),
             host: "workdrive.zoho.com".to_string(),
             port: 443,
@@ -6660,6 +6686,7 @@ endpoint = https://ik.imagekit.io/demo_id
     #[test]
     fn test_export_rclone_zoho_skips_region_rclone_cannot_address() {
         let servers = vec![RcloneExportServer {
+            id: "zoho-ca".to_string(),
             name: "zoho-ca".to_string(),
             host: "workdrive.zohocloud.ca".to_string(),
             port: 443,
@@ -6780,6 +6807,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     #[test]
     fn test_export_rclone_crypt_emits_second_section() {
         let servers = vec![RcloneExportServer {
+            id: "My NAS".to_string(),
             name: "My NAS".to_string(),
             host: "192.168.1.10".to_string(),
             port: 22,
@@ -6861,6 +6889,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             .unwrap()
             .insert("initial_path".into(), serde_json::json!("/enc"));
         let servers = vec![RcloneExportServer {
+            id: vault.id.clone(),
             name: vault.name.clone(),
             host: vault.host.clone(),
             port: vault.port,
@@ -7042,6 +7071,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     #[test]
     fn test_export_rclone_crypt_scope_and_missing_password() {
         let servers = vec![RcloneExportServer {
+            id: "drive".to_string(),
             name: "drive".to_string(),
             host: "www.googleapis.com".to_string(),
             port: 443,
@@ -7078,6 +7108,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     #[test]
     fn test_export_rclone_s3_crypt_wraps_bucket_alias() {
         let servers = vec![RcloneExportServer {
+            id: "minio".to_string(),
             name: "minio".to_string(),
             host: "s3.lab.example.test".to_string(),
             port: 443,
@@ -7124,6 +7155,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     fn test_export_rclone_pcloud_region_hostname() {
         // US profile: host is a display label, no options.region -> no hostname.
         let us = vec![RcloneExportServer {
+            id: "pcloud-us".to_string(),
             name: "pcloud-us".to_string(),
             host: "pCloud (US)".to_string(),
             port: 443,
@@ -7148,6 +7180,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
 
         // EU via the host label.
         let eu = vec![RcloneExportServer {
+            id: "pcloud-eu".to_string(),
             name: "pcloud-eu".to_string(),
             host: "pCloud (EU)".to_string(),
             port: 443,
@@ -7167,6 +7200,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
 
         // EU via options.region, and the import maps the hostname back to region.
         let eu2 = vec![RcloneExportServer {
+            id: "pcloud-eu2".to_string(),
             name: "pcloud-eu2".to_string(),
             host: "anything".to_string(),
             port: 443,
@@ -7202,6 +7236,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     #[test]
     fn test_export_rclone_oauth_without_secrets_emits_reconnect_comment() {
         let servers = vec![RcloneExportServer {
+            id: "drive-noauth".to_string(),
             name: "drive-noauth".to_string(),
             host: "www.googleapis.com".to_string(),
             port: 443,
@@ -7234,6 +7269,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // collection root rclone's nextcloud vendor requires, so the exported
         // remote could not list or transfer.
         let servers = vec![RcloneExportServer {
+            id: "ncloud".to_string(),
             name: "ncloud".to_string(),
             host: "https://cloud.lab.example.test".to_string(),
             port: 443,
@@ -7263,6 +7299,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     #[test]
     fn test_export_rclone_webdav_owncloud_appends_dav_path() {
         let servers = vec![RcloneExportServer {
+            id: "ocloud".to_string(),
             name: "ocloud".to_string(),
             host: "https://oc.example.com".to_string(),
             port: 443,
@@ -7294,6 +7331,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // A profile that already carries a `/remote.php/...` path (basePath or
         // explicit URL) must be honoured verbatim, never double-appended.
         let servers = vec![RcloneExportServer {
+            id: "ncloud".to_string(),
             name: "ncloud".to_string(),
             host: "https://cloud.lab.example.test".to_string(),
             port: 443,
@@ -7327,6 +7365,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // Generic WebDAV (vendor `other`: Koofr, SharePoint, Fastmail) has no
         // Nextcloud collection convention and must be left exactly as-is.
         let servers = vec![RcloneExportServer {
+            id: "generic".to_string(),
             name: "generic".to_string(),
             host: "https://dav.example.com".to_string(),
             port: 443,
@@ -7362,6 +7401,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         let dir = tempfile::tempdir().unwrap();
         for provider_id in ["backblaze", "backblaze-b2"] {
             let servers = vec![RcloneExportServer {
+                id: "b2-s3".into(),
                 name: "b2-s3".into(),
                 host: "s3.eu-central-003.backblazeb2.com".into(),
                 port: 443,
@@ -7388,6 +7428,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // to the unreachable AWS auto-region host. The export must now resolve
         // the preset endpoint just like the connect path.
         let servers = vec![RcloneExportServer {
+            id: "gcs".to_string(),
             name: "gcs".to_string(),
             host: String::new(),
             port: 443,
@@ -7426,6 +7467,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // `no_check_certificate` is set, mirroring AeroFTP's accept-invalid-
         // certs-on-loopback behaviour.
         let servers = vec![RcloneExportServer {
+            id: "filen-s3".to_string(),
             name: "filen-s3".to_string(),
             host: String::new(),
             port: 1800,
@@ -7461,6 +7503,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // Regression guard: a normal public S3 endpoint must keep certificate
         // verification and must not be rewritten.
         let servers = vec![RcloneExportServer {
+            id: "aws".to_string(),
             name: "aws".to_string(),
             host: "s3.amazonaws.com".to_string(),
             port: 443,
@@ -7492,6 +7535,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // A profile whose host/username/options carry CR/LF must not be able to
         // forge a second [section] in the generated rclone.conf.
         let servers = vec![RcloneExportServer {
+            id: "victim".to_string(),
             name: "victim".to_string(),
             host: "h\n[evil]\ntype = local".to_string(),
             port: 21,
@@ -7543,6 +7587,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // MUST run it through ini_value; a CR/LF key must not forge a second
         // [section]. This regresses F-01 (the b2 gap that skipped ini_value).
         let servers = vec![RcloneExportServer {
+            id: "victim".to_string(),
             name: "victim".to_string(),
             host: String::new(),
             port: 443,
@@ -7582,6 +7627,29 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             headers,
             ["[victim]"],
             "exactly one real section header expected:\n{conf}"
+        );
+    }
+
+    /// Two profiles of one name (a list saved before names were unique) were
+    /// already two remotes, `Lab` and `Lab-2`, but both carried the second
+    /// one's password: the map handed to the export was keyed by name.
+    #[test]
+    fn two_profiles_of_one_name_export_each_with_its_own_password() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<RcloneExportServer>(
+            serde_json::json!({"host": "a.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+            serde_json::json!({"host": "b.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let outcome = export_rclone(&servers, &passwords, &path).unwrap();
+        assert_eq!(outcome.exported, 2, "{:?}", outcome.skipped);
+        let back = import_rclone(&path).unwrap();
+        assert_eq!(
+            crate::bridge_shared::names_hosts_secrets(&back.servers),
+            crate::bridge_shared::owned3(&[
+                ("Lab", "a.example.com", "secret-a"),
+                ("Lab-2", "b.example.com", "secret-b"),
+            ])
         );
     }
 }

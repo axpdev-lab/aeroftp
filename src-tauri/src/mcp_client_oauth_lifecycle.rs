@@ -564,6 +564,9 @@ fn save(
     fresh: &mut impl FnMut() -> Result<(), OAuthError>,
 ) -> Result<(), OAuthError> {
     fresh()?;
+    // The session before the reservation (user_partitions::SessionHold); the
+    // freshness checks below read under the session this thread holds.
+    let _session = user_partitions::hold_user_session(conn, binding.user_id);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|_| OAuthError::StoreUnavailable)?;
@@ -628,6 +631,7 @@ fn finish_refresh(
     match outcome {
         Ok(tokens) => save(conn, root, binding, &tokens, expected_snapshot, fresh),
         Err(OAuthError::InvalidGrant) => {
+            let _session = user_partitions::hold_user_session(conn, binding.user_id);
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(|_| OAuthError::StoreUnavailable)?;
@@ -655,6 +659,7 @@ pub(crate) fn resolve_token(
     user: i64,
     config: &McpHttpServerConfig,
 ) -> Result<ResolvedMcpHttpAuth, OAuthError> {
+    let _session = user_partitions::hold_user_session(conn, user);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|_| OAuthError::StoreUnavailable)?;
@@ -854,6 +859,25 @@ pub(crate) async fn complete(
     result
 }
 
+/// What a refresh starts from: the live configuration, the stored tokens and
+/// their snapshot, read in one transaction.
+fn refresh_start(
+    conn: &mut Connection,
+    root: &[u8; 32],
+    user: i64,
+    server_id: &str,
+) -> Result<(McpHttpServerConfig, Metadata, TokenSet, Option<String>), OAuthError> {
+    let _session = user_partitions::hold_user_session(conn, user);
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| OAuthError::StoreUnavailable)?;
+    let config = live_config(&tx, root, user, server_id)?;
+    let (meta, previous) = read(&tx, root, user, server_id)?.ok_or(OAuthError::InvalidToken)?;
+    let token_snapshot = snapshot(&tx, root, user, server_id)?;
+    tx.commit().map_err(|_| OAuthError::StoreUnavailable)?;
+    Ok((config, meta, previous, token_snapshot))
+}
+
 /// Explicit refresh re-discovers issuer endpoints, checks token generation around each
 /// request and compare-and-swaps the replacement. No transport retry is performed.
 pub(crate) async fn refresh(
@@ -864,13 +888,8 @@ pub(crate) async fn refresh(
 ) -> Result<(), OAuthError> {
     let (mut conn, root, user) =
         mcp_client_commands::context(app).map_err(|_| OAuthError::StoreUnavailable)?;
-    let tx = conn
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(|_| OAuthError::StoreUnavailable)?;
-    let config = live_config(&tx, &root, user, server_id)?;
-    let (meta, previous) = read(&tx, &root, user, server_id)?.ok_or(OAuthError::InvalidToken)?;
-    let token_snapshot = snapshot(&tx, &root, user, server_id)?;
-    tx.commit().map_err(|_| OAuthError::StoreUnavailable)?;
+    let (config, meta, previous, token_snapshot) =
+        refresh_start(&mut conn, &root, user, server_id)?;
     drop(conn);
     let operation = cancel.child_token();
     let handle = manager.lease_refresh(user, server_id, operation.clone())?;
@@ -1140,6 +1159,119 @@ mod tests {
     }
     fn tokens() -> TokenSet {
         parse_token_response(br#"{"token_type":"Bearer","access_token":"access-secret","refresh_token":"refresh-secret","expires_in":300}"#, &[]).unwrap()
+    }
+    /// Tokens saved for one account are not read for another.
+    #[test]
+    fn tokens_stay_in_the_partition_they_were_saved_to() {
+        let (mut conn, first, record) = database();
+        let second = user_partitions::create_user(&mut conn, &[42; 32], "Second", None, None, None)
+            .unwrap()
+            .id;
+        user_partitions::set_user_setting_for(
+            &conn,
+            &[42; 32],
+            second,
+            "aeroagent_mcp_http_servers",
+            &json!([fixture().0]),
+        )
+        .unwrap();
+        save(
+            &mut conn,
+            &[42; 32],
+            &record.binding,
+            &tokens(),
+            None,
+            &mut || Ok(()),
+        )
+        .unwrap();
+        assert!(read(&conn, &[42; 32], second, "fixture").unwrap().is_none());
+        let (_, stored) = read(&conn, &[42; 32], first, "fixture").unwrap().unwrap();
+        assert_eq!(stored.access.as_str(), "access-secret");
+        assert_eq!(
+            stored.refresh.as_deref().map(String::as_str),
+            Some("refresh-secret")
+        );
+        assert!(!format!("{stored:?}").contains("access-secret"));
+    }
+    /// Every transaction that reads or writes the tokens takes the session
+    /// before the database's reservation, and the freshness check inside a
+    /// save, which reads the partition on a connection of its own, reads under
+    /// the session its thread holds instead of waiting on it. The account has
+    /// a passphrase, the kind whose partition calls take the session.
+    #[test]
+    fn token_transactions_take_the_session_before_the_reservation() {
+        let _guard = user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let (path, user) = user_partitions::passphrase_account_db(dir.path(), &[42; 32]);
+        let conn = Connection::open(&path).unwrap();
+        user_partitions::set_user_setting_for(
+            &conn,
+            &[42; 32],
+            user,
+            "aeroagent_mcp_http_servers",
+            &json!([fixture().0]),
+        )
+        .unwrap();
+        let binding = record(user).binding;
+
+        let (saving, live) = (binding.clone(), path.clone());
+        let saved = user_partitions::wait_for_the_session_without_reserving(
+            &path,
+            user,
+            move |mut conn| {
+                let mut checks = 0;
+                save(&mut conn, &[42; 32], &saving, &tokens(), None, &mut || {
+                    checks += 1;
+                    // The check before the transaction reads nothing here, or
+                    // it would wait for the session before the save got to it.
+                    if checks == 1 {
+                        return Ok(());
+                    }
+                    // What `app_check` reads: the live binding, on its own connection.
+                    let live = Connection::open(&live).map_err(|_| OAuthError::StoreUnavailable)?;
+                    saving.check(&live, &[42; 32])
+                })
+            },
+        );
+        assert_eq!(saved, Ok(()));
+
+        let resolved = user_partitions::wait_for_the_session_without_reserving(
+            &path,
+            user,
+            move |mut conn| {
+                resolve_token(&mut conn, &[42; 32], &[7; 32], user, &fixture().0)
+                    .map(|auth| auth.bearer.is_some())
+            },
+        );
+        assert_eq!(resolved, Ok(true));
+
+        let started = user_partitions::wait_for_the_session_without_reserving(
+            &path,
+            user,
+            move |mut conn| {
+                refresh_start(&mut conn, &[42; 32], user, "fixture").map(|start| start.3)
+            },
+        );
+        let token_snapshot = started.unwrap().expect("a snapshot of the saved tokens");
+
+        let cleaned = user_partitions::wait_for_the_session_without_reserving(
+            &path,
+            user,
+            move |mut conn| {
+                finish_refresh(
+                    &mut conn,
+                    &[42; 32],
+                    &binding,
+                    Some(&token_snapshot),
+                    Err(OAuthError::InvalidGrant),
+                    &mut || Ok(()),
+                )
+            },
+        );
+        assert_eq!(cleaned, Err(OAuthError::InvalidGrant));
+        assert!(snapshot(&conn, &[42; 32], user, "fixture")
+            .unwrap()
+            .is_none());
     }
     #[test]
     fn callback_origin_path_denial_duplicates_and_mixups_consume_once() {

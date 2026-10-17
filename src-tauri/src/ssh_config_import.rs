@@ -270,6 +270,10 @@ pub fn import_ssh_config(path: &Path) -> Result<SshImportResult, String> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -286,6 +290,12 @@ pub struct SshExportServer {
 /// ssh config format has no password field, so the `passwords` map is
 /// intentionally unused: secrets are never written. An `IdentityFile` line is
 /// emitted only when the profile already references a key by path.
+/// ssh `Host` patterns are whitespace separated, so an alias with a space
+/// would silently become two patterns. Collapse to a safe token.
+fn ssh_host_alias(name: &str) -> String {
+    name.trim().replace(char::is_whitespace, "-")
+}
+
 pub fn export_ssh_config(
     servers: &[SshExportServer],
     _passwords: &HashMap<String, String>,
@@ -299,18 +309,21 @@ pub fn export_ssh_config(
     ));
 
     let mut exported = 0;
+    // ssh takes the first `Host` that matches: a second one of an alias is
+    // never reached by it.
+    let mut names = crate::bridge_shared::ExportEntryNames::exact(
+        servers.iter().map(|s| ssh_host_alias(&s.name)),
+    );
 
     for server in servers {
         if server.protocol.as_deref() != Some("sftp") {
             continue;
         }
-        let alias = server.name.trim();
-        if alias.is_empty() {
+        let safe_alias = ssh_host_alias(&server.name);
+        if safe_alias.is_empty() {
             continue;
         }
-        // ssh `Host` patterns are whitespace separated, so an alias with a
-        // space would silently become two patterns. Collapse to a safe token.
-        let safe_alias = alias.replace(char::is_whitespace, "-");
+        let safe_alias = names.claim(&safe_alias);
 
         output.push_str(&format!("Host {}\n", safe_alias));
         if !server.host.trim().is_empty() {
@@ -461,6 +474,7 @@ Host roundtrip
 
         let s = &imported.servers[0];
         let export_servers = vec![SshExportServer {
+            id: s.id.clone(),
             name: s.name.clone(),
             host: s.host.clone(),
             port: s.port,
@@ -533,6 +547,7 @@ Host roundtrip
     fn test_export_skips_non_sftp() {
         let servers = vec![
             SshExportServer {
+                id: "ftp-box".to_string(),
                 name: "ftp-box".to_string(),
                 host: "ftp.example.com".to_string(),
                 port: 21,
@@ -543,6 +558,7 @@ Host roundtrip
                 initial_path: None,
             },
             SshExportServer {
+                id: "ssh-box".to_string(),
                 name: "ssh-box".to_string(),
                 host: "ssh.example.com".to_string(),
                 port: 22,
@@ -566,5 +582,28 @@ Host roundtrip
         assert!(!conf.contains("ftp-box"));
         // No secret material ever written.
         assert!(!conf.to_lowercase().contains("password"));
+    }
+
+    /// Two profiles of one name (a list saved before names were unique) were
+    /// two `Host Lab` blocks, and ssh takes the first `Host` that matches:
+    /// the second host was not reachable by any alias.
+    #[test]
+    fn two_profiles_of_one_name_export_as_two_hosts() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<SshExportServer>(
+            serde_json::json!({"host": "a.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+            serde_json::json!({"host": "b.example.com", "port": 22, "username": "u", "protocol": "sftp"}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        assert_eq!(export_ssh_config(&servers, &passwords, &path).unwrap(), 2);
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            body.contains("Host Lab\n  HostName a.example.com\n"),
+            "{body}"
+        );
+        assert!(
+            body.contains("Host Lab-2\n  HostName b.example.com\n"),
+            "{body}"
+        );
     }
 }

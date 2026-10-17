@@ -3463,9 +3463,14 @@
             "resetDefaults": "Atstatyti numatytuosius",
             "scrubErrorCorrectionTooltip": "{label} (tikrina šifro maišas)",
             "repairErrorCorrectionTooltip": "{label} (galima bandomojo vykdymo peržiūra)",
+            "repairDryRunNoDamage": "Bandomasis vykdymas: pažeidimų nėra; nėra ką taisyti. Nieko neįrašyta.",
+            "repairDryRunCannotRepair": "Bandomasis vykdymas: nė vieno iš pažeistų fragmentų ({damaged}) negalima pataisyti. Nieko neįrašyta.",
+            "repairDryRunCanRepair": "Bandomasis vykdymas: pažeistų fragmentų, kuriuos galima pataisyti: {repaired}. Nieko neįrašyta.",
+            "repairDryRunMetadata": "Bandomasis vykdymas: saugyklos antraštę arba manifestą galima atkurti iš lyginumo. Nieko neįrašyta.",
+            "metadataRepaired": "Iš lyginumo atkurta saugyklos antraštė arba manifestas.",
+            "repairMetadataSuccess": "Taisymas baigtas: iš lyginumo atkurta saugyklos antraštė arba manifestas",
             "errorCorrectionBadge": "Klaidų taisymas",
-            "itemsInFolder": "{count} elementų aplanke /{folder}",
-            "repairNoChangesWritten": "(pakeitimai neįrašyti)"
+            "itemsInFolder": "{count} elementų aplanke /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Nešiojamasis įrenginys buvo atjungtas. Vėl prijunkite kabelį ir atidarykite jį iš naujo.",
             "portable_needs_replug": "Darbalaukis neprijungė. Atjunkite ir vėl įjunkite kabelį, tada atidarykite iš naujo.",
             "volumes_need_mount_observe": "Snap pakete tomai rodomi, kai prijungiamas mount-observe leidimas. Paleiskite tai terminale, tada grįžkite į AeroFTP:",
-            "volumes_unavailable": "Nepavyko nuskaityti prijungtų tomų."
+            "volumes_unavailable": "Nepavyko nuskaityti prijungtų tomų.",
+            "portable_device": "Nešiojamasis įrenginys"
         },
         "viewMode": {
             "list": "Sąrašas",

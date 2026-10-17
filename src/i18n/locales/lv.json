@@ -3463,9 +3463,14 @@
             "resetDefaults": "Atiestatīt noklusējumu",
             "scrubErrorCorrectionTooltip": "{label} (pārbauda šifra jaucējkodus)",
             "repairErrorCorrectionTooltip": "{label} (pieejams izmēģinājuma priekšskatījums)",
+            "repairDryRunNoDamage": "Izmēģinājuma palaišana: bojājumu nav; nav ko labot. Nekas netika ierakstīts.",
+            "repairDryRunCannotRepair": "Izmēģinājuma palaišana: nevienu no bojātajiem fragmentiem ({damaged}) nevar izlabot. Nekas netika ierakstīts.",
+            "repairDryRunCanRepair": "Izmēģinājuma palaišana: bojāto fragmentu skaits, ko var izlabot: {repaired}. Nekas netika ierakstīts.",
+            "repairDryRunMetadata": "Izmēģinājuma palaišana: glabātavas galveni vai manifestu var atjaunot no paritātes. Nekas netika ierakstīts.",
+            "metadataRepaired": "No paritātes tika atjaunota glabātavas galvene vai manifests.",
+            "repairMetadataSuccess": "Labošana pabeigta: no paritātes atjaunota glabātavas galvene vai manifests",
             "errorCorrectionBadge": "Kļūdu labošana",
-            "itemsInFolder": "{count} vienību mapē /{folder}",
-            "repairNoChangesWritten": "(izmaiņas netika ierakstītas)"
+            "itemsInFolder": "{count} vienību mapē /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Pārnēsājamā ierīce tika atvienota. Atkārtoti pievienojiet kabeli un atveriet to vēlreiz.",
             "portable_needs_replug": "Darbvirsma nav pievienojusi. Atvienojiet un atkal pievienojiet kabeli, pēc tam atveriet vēlreiz.",
             "volumes_need_mount_observe": "Snap pakotnē sējumi parādās pēc mount-observe atļaujas pievienošanas. Palaidiet to terminālī un pēc tam atgriezieties AeroFTP:",
-            "volumes_unavailable": "Neizdevās nolasīt pievienotos sējumus."
+            "volumes_unavailable": "Neizdevās nolasīt pievienotos sējumus.",
+            "portable_device": "Pārnēsājamā ierīce"
         },
         "viewMode": {
             "list": "Saraksts",

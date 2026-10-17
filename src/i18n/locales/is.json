@@ -3463,9 +3463,14 @@
             "resetDefaults": "Endurstilla á sjálfgefið",
             "scrubErrorCorrectionTooltip": "{label} (sannreynir dulritunartætigildi)",
             "repairErrorCorrectionTooltip": "{label} (forskoðun með þurrkeyrslu í boði)",
+            "repairDryRunNoDamage": "Þurrkeyrsla: engar skemmdir; ekkert að gera við. Ekkert var skrifað.",
+            "repairDryRunCannotRepair": "Þurrkeyrsla: ekki er hægt að gera við neinn af {damaged} skemmdum kjörnum. Ekkert var skrifað.",
+            "repairDryRunCanRepair": "Þurrkeyrsla: hægt er að gera við {repaired} skemmda kjarna. Ekkert var skrifað.",
+            "repairDryRunMetadata": "Þurrkeyrsla: hægt er að endurbyggja haus eða skráarlista hvelfingarinnar úr jöfnun. Ekkert var skrifað.",
+            "metadataRepaired": "Haus eða skráarlisti hvelfingarinnar var endurbyggður úr jöfnun.",
+            "repairMetadataSuccess": "Viðgerð lokið: haus eða skráarlisti hvelfingarinnar endurbyggður úr jöfnun",
             "errorCorrectionBadge": "Villuleiðrétting",
-            "itemsInFolder": "{count} hlutir í /{folder}",
-            "repairNoChangesWritten": "(engar breytingar skrifaðar)"
+            "itemsInFolder": "{count} hlutir í /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",
@@ -3660,7 +3665,8 @@
             "portable_unplugged": "Færanlega tækið var aftengt. Tengdu snúruna aftur og opnaðu það aftur.",
             "portable_needs_replug": "Ekki fest af skjáborðinu. Taktu snúruna úr og settu hana aftur í, opnaðu síðan aftur.",
             "volumes_need_mount_observe": "Í snap birtast drif þegar mount-observe heimildin er tengd. Keyrðu þetta í skipanalínu og farðu svo aftur í AeroFTP:",
-            "volumes_unavailable": "Ekki tókst að lesa tengd drif."
+            "volumes_unavailable": "Ekki tókst að lesa tengd drif.",
+            "portable_device": "Færanlegt tæki"
         },
         "viewMode": {
             "list": "Listi",

@@ -13,10 +13,14 @@ import { parseAst } from 'vite';
  * not in a locale file.
  *
  * This test finds a `t()` call joined with `+` to a string literal, or placed
- * in a template literal, where the literal text holds a word. Shortcut key
- * names (`(Ctrl+S)`), Aero product names and a version prefix are not prose
- * and pass. The text belongs in the translation, with the variable part as a
- * `{placeholder}`.
+ * in a template literal, where the literal text holds a word. A variable used
+ * there is followed to its declaration in scope (block, function, loop and catch
+ * scopes, with parameters shadowing outer names): the
+ * vault repair dialog put `const prefix = dry ? 'Dry-run: ' : ''` in front of
+ * its translated result, and a portable device named itself `|| 'Portable
+ * device'` in a translated error. Shortcut key names (`(Ctrl+S)`), Aero product names,
+ * rclone crypt and a version prefix are not prose and pass. The text belongs in
+ * the translation, with the variable part as a `{placeholder}`.
  *
  * JSX has two more shapes of the same defect, and they are found here too.
  * A JSX child expression that renders a string literal: `{dryRun ? 'Would
@@ -31,8 +35,8 @@ import { parseAst } from 'vite';
  * words but are not prose (S3 storage classes, pricing tiers, a provider name
  * after a dash) are allowed by file and exact text in JSX_NEUTRAL, and an
  * entry that no longer matches a hit fails, so the list cannot outlive its
- * reason. JSX text with no translated sibling and JSX attributes (`title`,
- * `placeholder`) are not covered.
+ * reason. JSX text with no translated sibling, a variable rendered as a JSX
+ * child and JSX attributes (`title`, `placeholder`) are not covered.
  */
 
 const SOURCES = import.meta.glob<string>(
@@ -52,7 +56,7 @@ function children(node: Node): Node[] {
     return out;
 }
 
-const NEUTRAL = /\b(?:Ctrl|Shift|Alt|Cmd|Meta|Esc|Enter|Tab|Aero[A-Z][A-Za-z]*)\b/g;
+const NEUTRAL = /\b(?:Ctrl|Shift|Alt|Cmd|Meta|Esc|Enter|Tab|Aero[A-Z][A-Za-z]*|AERO[A-Z]+|(?:rclone|RCLONE)(?:[ -](?:crypt|CRYPT))?)\b/g;
 const PROSE = /[A-Za-z]{2,}/;
 
 const isT = (node: Node) =>
@@ -69,6 +73,40 @@ function literalText(node: Node): string | null {
 }
 
 const isProse = (text: string) => PROSE.test(text.replace(NEUTRAL, ''));
+
+// The texts a declaration can evaluate to: a literal, either branch of a
+// condition, the value side of `&&`, or either side of `||` / `??`. A fallback
+// after t() is not one: t() always returns a non-empty string, so it never shows.
+function texts(node: Node): string[] {
+    const text = literalText(node);
+    if (text !== null) return [text];
+    if (node.type === 'ConditionalExpression') return [...texts(node.consequent as Node), ...texts(node.alternate as Node)];
+    if (node.type === 'LogicalExpression') {
+        if (node.operator === '&&') return texts(node.right as Node);
+        if (!containsT(node.left as Node)) return [...texts(node.left as Node), ...texts(node.right as Node)];
+    }
+    return [];
+}
+
+// Nodes that open a lexical scope for `const`, `let`, parameters and catch bindings.
+const SCOPES = new Set([
+    'BlockStatement', 'StaticBlock', 'ForStatement', 'ForInStatement', 'ForOfStatement', 'CatchClause',
+    'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
+]);
+
+// The names a binding pattern introduces: `a`, `{ a, b: c }`, `[a, ...d]`, `a = 1`, `a: string`.
+function bindingNames(pattern: Node): string[] {
+    if (pattern.type === 'Identifier') return [(pattern as unknown as { name: string }).name];
+    if (pattern.type === 'AssignmentPattern') return bindingNames(pattern.left as Node);
+    if (pattern.type === 'RestElement') return bindingNames(pattern.argument as Node);
+    if (pattern.type === 'TSParameterProperty') return bindingNames(pattern.parameter as Node);
+    if (pattern.type === 'ArrayPattern') return (pattern.elements as Array<Node | null>).filter(isNode).flatMap(bindingNames);
+    if (pattern.type === 'ObjectPattern') {
+        return (pattern.properties as Node[]).flatMap((property) =>
+            bindingNames((property.type === 'Property' ? property.value : property) as Node));
+    }
+    return [];
+}
 
 /** Units, file extensions and HTML entities: neutral where JSX renders them. */
 const JSX_TOKENS = /&[a-z]+;|(?<![\w.])\.[a-z][a-z0-9]*\b|(?<![A-Za-z])(?:B|KB|MB|GB|TB|ms|min|px)(?![A-Za-z])/g;
@@ -113,10 +151,9 @@ const JSX_NEUTRAL: Record<string, string[]> = {
 const squash = (text: string) => text.replace(/\s+/g, ' ').trim();
 
 /**
- * The string nodes a JSX child expression renders: both arms of a conditional,
- * the right of `&&`, both sides of `||` and `??` unless the left is a
- * translation (then the right is a dead fallback), and a template literal
- * with no `t()` in it (one with `t()` is the template check above).
+ * The string nodes a JSX child expression renders: the same cases as texts(),
+ * plus a template literal with no `t()` in it (one with `t()` is the template
+ * check above) and TypeScript wrappers.
  */
 function rendered(node: Node, out: Node[]): void {
     if (literalText(node) !== null) out.push(node);
@@ -151,23 +188,51 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
             if (!found.includes(entry)) found.push(entry);
         };
         const neutral = (text: string) => {
-            const key = `${name} ${squash(text)}`;
             if (!allowed[name]?.includes(squash(text))) return !isJsxProse(text);
-            unused.delete(key);
+            unused.delete(`${name} ${squash(text)}`);
             return true;
         };
+        // One map per lexical scope, innermost last. A name resolves to the closest
+        // scope that declares it; a parameter shadows with no value (null).
+        const scopes: Array<Map<string, Node | null>> = [new Map()];
+        const proseVariable = (node: Node) => {
+            if (node.type !== 'Identifier') return false;
+            const name = (node as unknown as { name: string }).name;
+            const scope = [...scopes].reverse().find((candidate) => candidate.has(name));
+            const init = scope?.get(name);
+            return !!init && texts(init).some(isProse);
+        };
         const visit = (node: Node) => {
+            if (isStyleElement(node)) return;
+            const opensScope = SCOPES.has(node.type);
+            if (opensScope) {
+                const scope = new Map<string, Node | null>();
+                for (const param of (node.params as Node[] | undefined) ?? []) bindingNames(param).forEach((name) => scope.set(name, null));
+                if (node.type === 'CatchClause' && isNode(node.param)) bindingNames(node.param).forEach((name) => scope.set(name, null));
+                scopes.push(scope);
+            }
+            if (node.type === 'VariableDeclarator') {
+                const scope = scopes[scopes.length - 1];
+                if ((node.id as Node).type === 'Identifier') {
+                    scope.set((node.id as unknown as { name: string }).name, isNode(node.init) ? node.init : null);
+                } else {
+                    bindingNames(node.id as Node).forEach((name) => scope.set(name, null));
+                }
+            }
             if (node.type === 'BinaryExpression' && node.operator === '+') {
                 const left = node.left as Node;
                 const right = node.right as Node;
-                const text = containsT(left) ? literalText(right) : containsT(right) ? literalText(left) : null;
-                if (text !== null && isProse(text)) report(node);
+                const other = containsT(left) ? right : containsT(right) ? left : null;
+                const text = other ? literalText(other) : null;
+                if ((text !== null && isProse(text)) || (other && proseVariable(other))) report(node);
             }
             if (node.type === 'TemplateLiteral' && (node.expressions as Node[]).some(containsT)) {
                 const quasis = node.quasis as Array<{ value: { cooked: string } }>;
-                if (quasis.some((quasi) => isProse(quasi.value.cooked))) report(node);
+                const expressions = node.expressions as Node[];
+                if (quasis.some((quasi) => isProse(quasi.value.cooked)) || expressions.some(proseVariable)) {
+                    report(node);
+                }
             }
-            if (isStyleElement(node)) return;
             if (node.type === 'JSXElement' || node.type === 'JSXFragment') {
                 const kids = node.children as Node[];
                 const translated = kids.some((kid) => kid.type === 'JSXExpressionContainer' && containsT(kid));
@@ -183,6 +248,7 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
                 }
             }
             children(node).forEach(visit);
+            if (opensScope) scopes.pop();
         };
         visit(program);
     }
@@ -203,12 +269,34 @@ describe('a translated string is not glued to English in the code', () => {
             "const g = t('vault.repairErrorCorrectionTooltip', { label: t('vault.repairErrorCorrection') });",
             "const h = t('a') + ' ' + t('b');",
             "const i = `${t('guiController.banner')}: ${ok ? t('common.open') : t('common.close')}`;",
+            "const prefix = dry ? 'Dry-run: ' : '';",
+            "const j = `${prefix}${t('vault.noDamageNothing')}`;",
+            "const label = isAero ? 'AEROCRYPT' : 'RCLONE CRYPT';",
+            "const k = `${label} · ${t('aerocrypt.lock')}`;",
+            "const tail = dry && ' (no changes written)';",
+            "const m = t('vault.close') + tail;",
+            "const name = profile?.name || device.displayName || 'Portable device';",
+            "const n = `${t('sidebar.portable_open_failed')}: ${name}`;",
+            "const shown = t('vault.close') || 'Close';",
+            "const o = t('vault.open') + shown;",
+            "const prefix2 = 'Error: ';",
+            "function helper() { const prefix2 = ''; return prefix2; }",
+            "const p = `${prefix2}${t('vault.close')}`;",
+            "const quiet = '';",
+            "function loud() { const quiet = 'Loud text'; return quiet; }",
+            "const q = `${quiet}${t('vault.close')}`;",
+            "const label2 = 'Some text';",
+            "const fmt = (label2: string) => `${label2}${t('vault.close')}`;",
         ].join('\n');
         expect(offenders({ 'sample.ts': sample })).toEqual([
             "sample.ts:1 t('vault.scrubErrorCorrection') + ' (verify cipher hashes)'",
             "sample.ts:2 t('vault.remote.open') + ': .aerovault'",
             "sample.ts:3 `AeroVault ON: ${t('toolbar.aerovaultOverlayActive') || 'fallback'}`",
             "sample.ts:4 'Error: ' + t('common.failed')",
+            "sample.ts:11 `${prefix}${t('vault.noDamageNothing')}`",
+            "sample.ts:15 t('vault.close') + tail",
+            "sample.ts:17 `${t('sidebar.portable_open_failed')}: ${name}`",
+            "sample.ts:22 `${prefix2}${t('vault.close')}`",
         ]);
     });
 
@@ -241,6 +329,8 @@ describe('a translated string is not glued to English in the code', () => {
         });
     });
 
+    // Parsing every source file takes about 3 s on an idle machine and over 10 s
+    // under a load average of 30, past vitest's default 5 s.
     it('no source file of the app does', () => {
         expect(Object.keys(SOURCES).length).toBeGreaterThan(100);
         expect(scan(SOURCES, JSX_NEUTRAL)).toEqual({ found: [], unused: [] });
