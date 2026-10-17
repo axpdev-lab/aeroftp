@@ -221,6 +221,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         id: 'proton',
         headerLabel: 'Proton Drive Modes',
         headerName: 'Proton Drive',
+        // Neutral across the tabs: the catalog's own text names the CLI,
+        // which is wrong for the API tab. Each tab says how it connects.
+        headerDescription: 'Proton cloud storage with end-to-end encryption',
         modes: [
             {
                 protocol: 'proton',
