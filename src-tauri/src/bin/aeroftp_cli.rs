@@ -84723,7 +84723,9 @@ mod tests {
     /// CodeRabbit on 487373b2 (#951): the TUI's discard of a dropped transfer
     /// removed the segmented temporary and the resumable part by name, and so
     /// the file of a transfer of the same destination still running. A stale
-    /// one goes; a live one stays.
+    /// one goes; a live one stays. Stale is decided by the lock alone: a
+    /// descriptor of the file still open somewhere, as a process forked by
+    /// another thread holds one until it execs, does not keep it.
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn the_tui_discard_leaves_a_live_transfers_temporary() {
@@ -84744,12 +84746,21 @@ mod tests {
             segmented.exists(),
             "the discard removed a live transfer's segmented temporary"
         );
+        // The writer ends its claim by unlocking, as `ClaimedTemp` does, not
+        // only by closing: the lock belongs to the open file description, and
+        // a child another test thread forks meanwhile shares it until its
+        // exec, so a close alone left it held for the second discard (the
+        // full suite failed here). A copy of the descriptor stays open through
+        // the discard, as that child's does.
+        let inherited = live.try_clone().unwrap();
+        live.unlock().unwrap();
         drop(live);
         discard_partial_sidecars(&local_str).await;
         assert!(
             !segmented.exists(),
             "the discard kept a temporary no transfer holds"
         );
+        drop(inherited);
     }
 
     /// m4 (review of #951): the transfer task of `get -r` and of a glob keeps
