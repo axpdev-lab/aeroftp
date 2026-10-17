@@ -23,6 +23,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { readValidateReport } from './lib/appstream-report.mjs';
 
 const inCI = Boolean(process.env.GITHUB_ACTIONS);
 const err = (m) => console.error(`${inCI ? '::error::' : ''}${m}`);
@@ -75,12 +76,16 @@ const METAINFO = 'app.aeroftp.AeroFTP.metainfo.xml';
 // this gate.
 const DESKTOP = ['app.aeroftp.AeroFTP.desktop'];
 
+// `out` is stdout and stderr together, for reading by eye and for
+// desktop-file-validate. `stdout` alone is what a report parser may read: a
+// warning on stderr appended after a JSON document would make it unparseable.
 function run(cmd, args) {
   try {
-    return { out: execFileSync(cmd, args, { encoding: 'utf8' }), code: 0 };
+    const out = execFileSync(cmd, args, { encoding: 'utf8' });
+    return { out, stdout: out, code: 0 };
   } catch (e) {
     if (e.code === 'ENOENT') return { missing: true };
-    return { out: `${e.stdout ?? ''}${e.stderr ?? ''}`, code: e.status ?? 1 };
+    return { out: `${e.stdout ?? ''}${e.stderr ?? ''}`, stdout: e.stdout ?? '', code: e.status ?? 1 };
   }
 }
 
@@ -100,54 +105,16 @@ if (res.missing) {
 // The YAML report is parsed rather than the text one because it carries
 // `severity` as a field. The exit code does not: measured on this tree, it is
 // 3 both for two warnings and for a real error, so it cannot tell them apart.
-const findings = [];
-let cur = null;
-for (const raw of res.out.split('\n')) {
-  const line = raw.trimEnd();
-  const m = /^-\s+tag:\s*(\S+)/.exec(line);
-  if (m) {
-    if (cur) findings.push(cur);
-    cur = { tag: m[1] };
-    continue;
-  }
-  if (!cur) continue;
-  const s = /^\s+severity:\s*(\S+)/.exec(line);
-  if (s) cur.severity = s[1];
-  const l = /^\s+line:\s*(\d+)/.exec(line);
-  if (l) cur.line = Number(l[1]);
-}
-if (cur) findings.push(cur);
-
-// A report with findings the parser cannot see is the dangerous case, so it is
-// named rather than left to the generic path. appstreamcli has been observed
-// emitting flow-style records (`{ tag: ..., severity: ... }`) in other versions,
-// which this block-style parser would skip. Measured here: 1.0.2 emits
-// block style for this file, for validate-tree, and for a numeric component id,
-// which is the shape that produced flow style in a reported Debian case. So the
-// case is not reproducible on this version, and the script refuses to guess
-// rather than silently reporting zero findings.
-// ANY flow-style record fails, not a majority of them. The first version of
-// this guard compared the two counts (`flowRecords > findings.length`), which
-// is a comparison between two populations where the question is simply "is
-// there even one record I cannot read". One block record next to one flow
-// record made that false, and an unapproved AppStream error inside the flow one
-// would have passed the gate: a guard written against silent failure, failing
-// silently.
-const flowRecords = (res.out.match(/^\s*[-{]?\s*\{\s*tag:/gm) ?? []).length;
-if (flowRecords > 0) {
-  err(
-    `appstreamcli emitted ${flowRecords} flow-style record(s) that this parser does not read ` +
-      `(it read ${findings.length} block-style). The report format changed: fix the parser, do not skip the gate.`,
-  );
+// Which document `--format yaml` produces depends on the appstreamcli version,
+// and scripts/lib/appstream-report.mjs reads each of them into the same
+// findings, or refuses with the reason.
+const report = readValidateReport(res.stdout, res.code);
+if (report.error) {
+  err(report.error);
   console.error(res.out.split('\n').slice(0, 20).join('\n'));
   process.exit(1);
 }
-
-if (!findings.length && !/Passed:\s*yes/.test(res.out)) {
-  err('appstreamcli produced a report this script could not read, so nothing was checked');
-  console.error(res.out.split('\n').slice(0, 20).join('\n'));
-  process.exit(1);
-}
+const { findings } = report;
 
 const src = readFileSync(METAINFO, 'utf8').split('\n');
 const blocking = [];
@@ -193,8 +160,18 @@ for (const d of DESKTOP) {
     err('desktop-file-validate is not installed, so this gate did not run. Install desktop-file-utils.');
     process.exit(1);
   }
-  for (const l of (r.out || '').split('\n')) {
-    if (/:\s*error:/.test(l)) blocking.push(l.trim());
+  const errors = (r.out || '')
+    .split('\n')
+    .filter((l) => /:\s*error:/.test(l))
+    .map((l) => l.trim());
+  blocking.push(...errors);
+  // The exit status is the verdict and the `error:` lines only explain it.
+  // Measured on 0.28: every failure exits 1, and not every failure says
+  // `error:` ("file does not exist" does not). Reading only the lines, a
+  // version that words or translates them differently would exit 1 and pass.
+  if (r.code !== 0 && !errors.length) {
+    const first = (r.out || '').trim().split('\n')[0];
+    blocking.push(`${d}: desktop-file-validate exited ${r.code}${first ? `: ${first}` : ' with no output'}`);
   }
 }
 
@@ -214,5 +191,6 @@ if (blocking.length) {
 
 console.log(
   `appstream  ${METAINFO} and ${DESKTOP.length} desktop entry validate ` +
-    `(${accepted.length} accepted finding${accepted.length === 1 ? '' : 's'}, listed above)`,
+    `(${accepted.length} accepted finding${accepted.length === 1 ? '' : 's'}, listed above; ` +
+    `${report.format} report)`,
 );

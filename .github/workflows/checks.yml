@@ -184,6 +184,14 @@ jobs:
       - name: AppStream metadata validates
         run: npm run check:appstream
 
+      # The gate reads appstreamcli's report, and the report's shape depends on
+      # the version this runner image happens to carry: block YAML from 1.0.2,
+      # a JSON-shaped document from 1.1.2 that is not strict JSON. Reports
+      # captured from both binaries pin that they give the same findings and
+      # the same verdict, and that a report the gate cannot read still fails.
+      - name: AppStream gate self-test
+        run: node --test .github/scripts/test-check-appstream.mjs
+
       # `cargo install cargo-audit --locked` compiled the tool from source on
       # every run: measured at 2m58s, for an audit that then takes about five
       # seconds, on the workflow that runs more often than any other here (42

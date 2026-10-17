@@ -1,0 +1,12 @@
+---
+File: special.metainfo.xml
+Validator: 1.0.2
+Issues:
+- tag: xml-markup-invalid
+  severity: error
+  hint: "Could not parse XML data: Entity: line 9: parser error : PCDATA invalid Char value 7\n    <p>Café NBSP
+    \"q\" back\\slash \LLS tab\there \U0001F600 \abel</p>\n                                           \t
+    \         ^\n"
+  explanation: >-
+    The XML of this file is malformed.
+Passed: no
