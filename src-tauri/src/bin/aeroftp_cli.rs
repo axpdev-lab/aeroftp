@@ -3680,9 +3680,6 @@ enum Commands {
             value_name = "ID_OR_NAME"
         )]
         ids: Option<String>,
-        /// Output a JSON summary on stdout (errors go to stderr in any mode)
-        #[arg(long)]
-        json: bool,
     },
     /// Import server profiles from a `.aeroftp` file (existing profiles are
     /// SKIPPED, never overwritten)
@@ -3702,9 +3699,6 @@ enum Commands {
         /// Read one password line from stdin
         #[arg(long = "password-stdin")]
         password_stdin: bool,
-        /// Output a JSON import-result summary on stdout
-        #[arg(long)]
-        json: bool,
         /// Preview only: decrypt the file and print which profiles would be
         /// added, skipped as duplicates, or resemble an existing profile, then
         /// exit 0 without touching the vault or the keyring. A duplicate (same
@@ -4643,9 +4637,6 @@ enum ExportCommands {
         /// exportable profile in the vault is emitted.
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary instead of plaintext path message
-        #[arg(long)]
-        json: bool,
     },
     /// Export profiles to WinSCP.ini format (FTP/FTPS/SFTP).
     Winscp {
@@ -4655,9 +4646,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export profiles to FileZilla sitemanager.xml format (FTP/FTPS/SFTP).
     Filezilla {
@@ -4667,9 +4655,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export S3 profiles to AWS shared credentials/config files (secrets written to file).
     Aws {
@@ -4679,9 +4664,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export SFTP profiles to an ssh_config file (key paths only, no key material).
     Ssh {
@@ -4691,9 +4673,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export S3 profiles to a MinIO client config.json (secrets written to file).
     Mc {
@@ -4703,9 +4682,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export FTP/FTPS/SFTP/WebDAV/S3 profiles to Cyberduck bookmarks (.duck).
     Cyberduck {
@@ -4715,9 +4691,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export S3/SFTP/WebDAV profiles to a .s3cfg file (secrets written to file).
     S3cmd {
@@ -4727,9 +4700,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export FTP/FTPS/SFTP/WebDAV profiles to an lftp rc file (secrets written to file).
     Lftp {
@@ -4739,9 +4709,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export SFTP profiles to a PuTTY session file (key paths only, no key material).
     Putty {
@@ -4751,9 +4718,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export profiles to a MobaXterm.ini file (secrets written to file).
     Mobaxterm {
@@ -4763,9 +4727,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export profiles to a Dreamweaver site definition (.ste; secrets written to file).
     Dreamweaver {
@@ -4775,9 +4736,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export S3/SFTP/WebDAV profiles to a kopia repository config (secrets written to file).
     Kopia {
@@ -4787,9 +4745,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export S3/SFTP/WebDAV profiles to Duplicacy preferences (secrets written to file).
     Duplicacy {
@@ -4799,9 +4754,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export S3/SFTP/WebDAV profiles to a sourceable Restic env script (secrets written to file).
     Restic {
@@ -4811,9 +4763,6 @@ enum ExportCommands {
         /// Comma-separated profile names to export
         #[arg(long)]
         profiles: Option<String>,
-        /// Output as JSON summary
-        #[arg(long)]
-        json: bool,
     },
     /// Export profiles to AeroFTP's own encrypted `.aeroftp` bundle
     /// (the format `My Servers > Export` writes). Unlike the foreign
@@ -4835,9 +4784,6 @@ enum ExportCommands {
         /// Export only these profiles (comma-separated ids or names)
         #[arg(long, value_name = "IDS")]
         ids: Option<String>,
-        /// Output a JSON summary
-        #[arg(long)]
-        json: bool,
     },
 }
 
@@ -4916,10 +4862,6 @@ enum KeystoreCommands {
         /// plugins live). Defaults to the same directory the GUI uses.
         #[arg(long = "config-dir")]
         config_dir: Option<String>,
-        /// Output a JSON summary on stdout (metadata + size + zstd
-        /// ratio); errors go to stderr in any mode.
-        #[arg(long)]
-        json: bool,
     },
     /// Import an encrypted `.aeroftp-keystore` backup file into the
     /// current installation. Sections that have been opted out via
@@ -4954,9 +4896,6 @@ enum KeystoreCommands {
         /// Override the destination config directory
         #[arg(long = "config-dir")]
         config_dir: Option<String>,
-        /// Output a JSON import-result summary on stdout
-        #[arg(long)]
-        json: bool,
     },
     /// Inspect the cleartext envelope metadata of a backup file
     /// WITHOUT decrypting the payload. Useful for "what's in this
@@ -4969,19 +4908,12 @@ enum KeystoreCommands {
         /// Backup `.aeroftp-keystore` path
         #[arg(long, short = 'i')]
         input: String,
-        /// Output a JSON summary on stdout
-        #[arg(long)]
-        json: bool,
     },
     /// Health check of the credential vault: reports the key mode and whether
     /// the vault can be opened right now. Detects a lost or overwritten keyring
     /// entry (zero-password vault that no longer unlocks). Read-only; exits 0
     /// when healthy, 1 when the vault cannot be opened.
-    Status {
-        /// Output a JSON summary on stdout
-        #[arg(long)]
-        json: bool,
-    },
+    Status,
     /// Recover a credential vault that can no longer be unlocked (e.g. its
     /// system-keyring entry was lost or overwritten). Snapshots and resets
     /// `vault.db` + `vault.key`, re-initialises a fresh vault, then imports the
@@ -5002,9 +4934,6 @@ enum KeystoreCommands {
         /// Skip the destructive-action confirmation prompt
         #[arg(long, short = 'y')]
         yes: bool,
-        /// Output a JSON summary on stdout
-        #[arg(long)]
-        json: bool,
     },
 }
 
@@ -5181,9 +5110,6 @@ enum ImportCommands {
     Rclone {
         /// Path to rclone.conf (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
         /// Write the imported profiles AND any OAuth / Jotta token blobs
         /// into the vault, mirroring the GUI's `Settings > Import from rclone`
         /// flow. Default is a dry-run: profiles are printed but the vault is
@@ -5195,17 +5121,11 @@ enum ImportCommands {
     Winscp {
         /// Path to WinSCP.ini (auto-detected on Windows if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import sites from FileZilla configuration file
     Filezilla {
         /// Path to sitemanager.xml (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Convert an rclone filter file (--filter-from format) into a .aeroignore file
     #[command(name = "rclone-filter")]
@@ -5218,97 +5138,61 @@ enum ImportCommands {
         /// Overwrite the output file if it already exists
         #[arg(long)]
         force: bool,
-        /// Output a JSON envelope with the converted text and warnings
-        #[arg(long)]
-        json: bool,
     },
     /// Import profiles from ~/.aws/credentials + config (secrets are read, never printed)
     Aws {
         /// Path to the AWS credentials file (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import hosts from ~/.ssh/config (key paths only; never prints key material)
     Ssh {
         /// Path to ssh_config (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import aliases from the MinIO client config.json (secrets read, never printed)
     Mc {
         /// Path to mc config.json (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import bookmarks from Cyberduck (.duck/Bookmarks; passwords stay in the OS keychain)
     Cyberduck {
         /// Path to the Cyberduck bookmarks directory/file (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import buckets from ~/.s3cfg (s3cmd secrets are read, never printed)
     S3cmd {
         /// Path to .s3cfg (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import bookmarks from ~/.lftprc / ~/.lftp/rc (stored secrets read, never printed)
     Lftp {
         /// Path to the lftp rc file (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import sessions from PuTTY (registry on Windows; key paths only, no key material)
     Putty {
         /// Path to a PuTTY session export (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import sessions from MobaXterm.ini (stored secrets read, never printed)
     Mobaxterm {
         /// Path to MobaXterm.ini (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import sites from Dreamweaver site definitions (.ste; secrets read, never printed)
     Dreamweaver {
         /// Path to the Dreamweaver site file (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import the repository from the kopia repository config (secrets read, never printed)
     Kopia {
         /// Path to the kopia repository config (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import the storage backend from Duplicacy preferences (secrets read, never printed)
     Duplicacy {
         /// Path to the Duplicacy preferences file (auto-detected if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import the Restic repository. PATH is a RESTIC_REPOSITORY_FILE; if
     /// omitted, RESTIC_REPOSITORY / RESTIC_REPOSITORY_FILE env vars are
@@ -5316,9 +5200,6 @@ enum ImportCommands {
     Restic {
         /// Path to a RESTIC_REPOSITORY_FILE (env fallback if omitted)
         path: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Import profiles from AeroFTP's own encrypted `.aeroftp` bundle
     /// (the format `My Servers > Import` reads). It is an alias for
@@ -5333,9 +5214,6 @@ enum ImportCommands {
         /// Read one password line from stdin
         #[arg(long = "password-stdin")]
         password_stdin: bool,
-        /// Output a JSON import-result summary
-        #[arg(long)]
-        json: bool,
         /// Preview only: print what would be added or skipped, touch nothing
         #[arg(long)]
         dry_run: bool,
@@ -39711,7 +39589,7 @@ async fn cmd_export_rclone(
     };
 
     if collected.profiles.is_empty() {
-        emit_empty_export(json, format, &collected.skipped);
+        emit_empty_export(json, &collected.skipped);
         return 4;
     }
 
@@ -39796,7 +39674,7 @@ async fn cmd_export_rclone(
                 // envelope and exit 0, while the adjacent "nothing selected"
                 // case exits 4: identical outcome for the operator, opposite
                 // contract for anything scripted on top of it.
-                emit_empty_export(json, format, &skipped);
+                emit_empty_export(json, &skipped);
                 return 4;
             }
             emit_export_success(
@@ -39859,7 +39737,7 @@ async fn cmd_export_winscp(
         }
     };
     if collected.profiles.is_empty() {
-        emit_empty_export(json, format, &collected.skipped);
+        emit_empty_export(json, &collected.skipped);
         return 4;
     }
 
@@ -39939,7 +39817,7 @@ async fn cmd_export_filezilla(
         }
     };
     if collected.profiles.is_empty() {
-        emit_empty_export(json, format, &collected.skipped);
+        emit_empty_export(json, &collected.skipped);
         return 4;
     }
 
@@ -40049,7 +39927,7 @@ async fn cmd_export_bridge(
         }
     };
     if collected.profiles.is_empty() {
-        emit_empty_export(json, format, &collected.skipped);
+        emit_empty_export(json, &collected.skipped);
         return 4;
     }
 
@@ -40109,7 +39987,7 @@ async fn cmd_export_bridge(
             let mut skipped = collected.skipped.clone();
             skipped.extend(refused);
             if count == 0 {
-                emit_empty_export(json, format, &skipped);
+                emit_empty_export(json, &skipped);
                 return 4;
             }
             emit_export_success(json, label, count, &target_path, &skipped);
@@ -40373,7 +40251,7 @@ async fn cmd_profile_export(
                 "metadata": metadata,
             })
         );
-    } else if matches!(format, OutputFormat::Text) {
+    } else {
         eprintln!(
             "Exported {} profile(s){} -> {} ({} bytes)",
             count,
@@ -40504,7 +40382,7 @@ async fn cmd_profile_import(
                         .unwrap_or(serde_json::Value::Null),
                 })
             );
-        } else if matches!(format, OutputFormat::Text) {
+        } else {
             eprintln!("DRY RUN: no profiles were imported.");
             for n in &would_add {
                 println!("+ would add   {n}");
@@ -40608,7 +40486,7 @@ async fn cmd_profile_import(
                 "metadata": metadata,
             })
         );
-    } else if matches!(format, OutputFormat::Text) {
+    } else {
         let mut tail = String::new();
         if skipped > 0 {
             tail.push_str(&format!(", {skipped} skipped (already present)"));
@@ -40810,7 +40688,7 @@ async fn cmd_keystore_export(
             "metadata": metadata,
         });
         println!("{}", summary);
-    } else if matches!(format, OutputFormat::Text) {
+    } else {
         eprintln!(
             "Keystore exported: {} entries, {} SQLite DBs, {} file blobs, {} localStorage keys",
             metadata.entries_count,
@@ -40936,7 +40814,7 @@ async fn cmd_keystore_import(
             "profile_list_error": outcome.profile_decisions_error,
         });
         println!("{}", summary);
-    } else if matches!(format, OutputFormat::Text) {
+    } else {
         eprintln!(
             "Keystore imported: vault={} ({} skipped of {}), sqlite_dbs={}, files={}, local_storage_keys={}",
             outcome.imported,
@@ -41202,7 +41080,7 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
                 "metadata": metadata,
             })
         );
-    } else if matches!(format, OutputFormat::Text) {
+    } else {
         eprintln!("Backup file: {} ({} bytes)", input, file_size);
         eprintln!("  Export date:    {}", metadata.export_date);
         eprintln!("  AeroFTP:        {}", metadata.aeroftp_version);
@@ -41233,7 +41111,7 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
 /// the key mode and whether the vault opens right now. Exit codes:
 /// 0 = healthy and unlockable now; 2 = healthy but locked (master mode, password
 /// not supplied); 1 = unopenable (e.g. lost/overwritten keyring entry).
-fn cmd_keystore_status(json: bool, format: OutputFormat) -> i32 {
+fn cmd_keystore_status(json: bool) -> i32 {
     let h = ftp_client_gui_lib::credential_store::CredentialStore::health();
     if json {
         println!(
@@ -41246,7 +41124,7 @@ fn cmd_keystore_status(json: bool, format: OutputFormat) -> i32 {
                 "detail": h.detail,
             })
         );
-    } else if matches!(format, OutputFormat::Text) {
+    } else {
         eprintln!("Vault key mode:  {}", h.mode);
         eprintln!(
             "vault.db:        {}",
@@ -41945,13 +41823,13 @@ fn classify_keystore_error(err: &ftp_client_gui_lib::keystore_export::KeystoreEx
     }
 }
 
-fn emit_empty_export(json: bool, format: OutputFormat, skipped: &[(String, String)]) {
+fn emit_empty_export(json: bool, skipped: &[(String, String)]) {
     if json {
         println!(
             "{}",
             serde_json::json!({"error": "no exportable profiles", "skipped": skipped})
         );
-    } else if matches!(format, OutputFormat::Text) {
+    } else {
         eprintln!("No exportable profiles in vault.");
         for (n, r) in skipped {
             eprintln!("  skipped {} : {}", n, r);
@@ -71398,6 +71276,12 @@ async fn main() {
     }
 
     let format = cli.output_format();
+    // The one answer to "JSON or text" for the handlers that take a bool:
+    // `--json` in any position, `--machine`, AEROFTP_MACHINE and `--format
+    // json`, all folded into `format`. Their subcommands used to declare a
+    // `--json` of their own and read only that, so `--machine` and `--format
+    // json` left them printing text, or nothing at all.
+    let json_output = matches!(format, OutputFormat::Json);
 
     // Stash JSON-mode + machine mode globally.
     // --machine is the strong "agent" mode: implies --json + extra suppression.
@@ -74215,7 +74099,6 @@ async fn main() {
             password_stdin,
             include_credentials,
             ids,
-            json,
         } => {
             cmd_profile_export(
                 &cli,
@@ -74224,7 +74107,7 @@ async fn main() {
                 *password_stdin,
                 *include_credentials,
                 ids,
-                *json,
+                json_output,
                 format,
             )
             .await
@@ -74233,7 +74116,6 @@ async fn main() {
             input,
             password,
             password_stdin,
-            json,
             dry_run,
         } => {
             cmd_profile_import(
@@ -74241,7 +74123,7 @@ async fn main() {
                 input,
                 password,
                 *password_stdin,
-                *json,
+                json_output,
                 *dry_run,
                 format,
             )
@@ -74944,52 +74826,51 @@ async fn main() {
             JobCommands::Cancel { id } => cmd_jobs_cancel(id, format).await,
         },
         Commands::Import { command } => match command {
-            ImportCommands::Rclone { path, json, apply } => {
-                cmd_import_rclone(path.clone(), *json, *apply, &cli).await
+            ImportCommands::Rclone { path, apply } => {
+                cmd_import_rclone(path.clone(), json_output, *apply, &cli).await
             }
-            ImportCommands::Winscp { path, json } => cmd_import_winscp(path.clone(), *json).await,
-            ImportCommands::Filezilla { path, json } => {
-                cmd_import_filezilla(path.clone(), *json).await
+            ImportCommands::Winscp { path } => cmd_import_winscp(path.clone(), json_output).await,
+            ImportCommands::Filezilla { path } => {
+                cmd_import_filezilla(path.clone(), json_output).await
             }
             ImportCommands::RcloneFilter {
                 path,
                 output,
                 force,
-                json,
-            } => cmd_import_rclone_filter(path.clone(), output.clone(), *force, *json).await,
-            ImportCommands::Aws { path, json } => {
-                cmd_import_bridge("aws", path.clone(), *json).await
+            } => cmd_import_rclone_filter(path.clone(), output.clone(), *force, json_output).await,
+            ImportCommands::Aws { path } => {
+                cmd_import_bridge("aws", path.clone(), json_output).await
             }
-            ImportCommands::Ssh { path, json } => {
-                cmd_import_bridge("ssh", path.clone(), *json).await
+            ImportCommands::Ssh { path } => {
+                cmd_import_bridge("ssh", path.clone(), json_output).await
             }
-            ImportCommands::Mc { path, json } => cmd_import_bridge("mc", path.clone(), *json).await,
-            ImportCommands::Cyberduck { path, json } => {
-                cmd_import_bridge("cyberduck", path.clone(), *json).await
+            ImportCommands::Mc { path } => cmd_import_bridge("mc", path.clone(), json_output).await,
+            ImportCommands::Cyberduck { path } => {
+                cmd_import_bridge("cyberduck", path.clone(), json_output).await
             }
-            ImportCommands::S3cmd { path, json } => {
-                cmd_import_bridge("s3cmd", path.clone(), *json).await
+            ImportCommands::S3cmd { path } => {
+                cmd_import_bridge("s3cmd", path.clone(), json_output).await
             }
-            ImportCommands::Lftp { path, json } => {
-                cmd_import_bridge("lftp", path.clone(), *json).await
+            ImportCommands::Lftp { path } => {
+                cmd_import_bridge("lftp", path.clone(), json_output).await
             }
-            ImportCommands::Putty { path, json } => {
-                cmd_import_bridge("putty", path.clone(), *json).await
+            ImportCommands::Putty { path } => {
+                cmd_import_bridge("putty", path.clone(), json_output).await
             }
-            ImportCommands::Mobaxterm { path, json } => {
-                cmd_import_bridge("mobaxterm", path.clone(), *json).await
+            ImportCommands::Mobaxterm { path } => {
+                cmd_import_bridge("mobaxterm", path.clone(), json_output).await
             }
-            ImportCommands::Dreamweaver { path, json } => {
-                cmd_import_bridge("dreamweaver", path.clone(), *json).await
+            ImportCommands::Dreamweaver { path } => {
+                cmd_import_bridge("dreamweaver", path.clone(), json_output).await
             }
-            ImportCommands::Kopia { path, json } => {
-                cmd_import_bridge("kopia", path.clone(), *json).await
+            ImportCommands::Kopia { path } => {
+                cmd_import_bridge("kopia", path.clone(), json_output).await
             }
-            ImportCommands::Duplicacy { path, json } => {
-                cmd_import_bridge("duplicacy", path.clone(), *json).await
+            ImportCommands::Duplicacy { path } => {
+                cmd_import_bridge("duplicacy", path.clone(), json_output).await
             }
-            ImportCommands::Restic { path, json } => {
-                cmd_import_bridge("restic", path.clone(), *json).await
+            ImportCommands::Restic { path } => {
+                cmd_import_bridge("restic", path.clone(), json_output).await
             }
             // Native `.aeroftp` bundle: alias for `profile-import`, one shared
             // handler so the family discovers our own format too (A10).
@@ -74997,7 +74878,6 @@ async fn main() {
                 input,
                 password,
                 password_stdin,
-                json,
                 dry_run,
             } => {
                 cmd_profile_import(
@@ -75005,7 +74885,7 @@ async fn main() {
                     input,
                     password,
                     *password_stdin,
-                    *json,
+                    json_output,
                     *dry_run,
                     format,
                 )
@@ -75013,174 +74893,143 @@ async fn main() {
             }
         },
         Commands::Export { command } => match command {
-            ExportCommands::Rclone {
-                output,
-                profiles,
-                json,
-            } => cmd_export_rclone(output.clone(), profiles.clone(), *json, &cli, format).await,
-            ExportCommands::Winscp {
-                output,
-                profiles,
-                json,
-            } => cmd_export_winscp(output.clone(), profiles.clone(), *json, &cli, format).await,
-            ExportCommands::Filezilla {
-                output,
-                profiles,
-                json,
-            } => cmd_export_filezilla(output.clone(), profiles.clone(), *json, &cli, format).await,
-            ExportCommands::Aws {
-                output,
-                profiles,
-                json,
-            } => {
-                cmd_export_bridge("aws", output.clone(), profiles.clone(), *json, &cli, format)
+            ExportCommands::Rclone { output, profiles } => {
+                cmd_export_rclone(output.clone(), profiles.clone(), json_output, &cli, format).await
+            }
+            ExportCommands::Winscp { output, profiles } => {
+                cmd_export_winscp(output.clone(), profiles.clone(), json_output, &cli, format).await
+            }
+            ExportCommands::Filezilla { output, profiles } => {
+                cmd_export_filezilla(output.clone(), profiles.clone(), json_output, &cli, format)
                     .await
             }
-            ExportCommands::Ssh {
-                output,
-                profiles,
-                json,
-            } => {
-                cmd_export_bridge("ssh", output.clone(), profiles.clone(), *json, &cli, format)
-                    .await
+            ExportCommands::Aws { output, profiles } => {
+                cmd_export_bridge(
+                    "aws",
+                    output.clone(),
+                    profiles.clone(),
+                    json_output,
+                    &cli,
+                    format,
+                )
+                .await
             }
-            ExportCommands::Mc {
-                output,
-                profiles,
-                json,
-            } => {
-                cmd_export_bridge("mc", output.clone(), profiles.clone(), *json, &cli, format).await
+            ExportCommands::Ssh { output, profiles } => {
+                cmd_export_bridge(
+                    "ssh",
+                    output.clone(),
+                    profiles.clone(),
+                    json_output,
+                    &cli,
+                    format,
+                )
+                .await
             }
-            ExportCommands::Cyberduck {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::Mc { output, profiles } => {
+                cmd_export_bridge(
+                    "mc",
+                    output.clone(),
+                    profiles.clone(),
+                    json_output,
+                    &cli,
+                    format,
+                )
+                .await
+            }
+            ExportCommands::Cyberduck { output, profiles } => {
                 cmd_export_bridge(
                     "cyberduck",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
                 .await
             }
-            ExportCommands::S3cmd {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::S3cmd { output, profiles } => {
                 cmd_export_bridge(
                     "s3cmd",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
                 .await
             }
-            ExportCommands::Lftp {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::Lftp { output, profiles } => {
                 cmd_export_bridge(
                     "lftp",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
                 .await
             }
-            ExportCommands::Putty {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::Putty { output, profiles } => {
                 cmd_export_bridge(
                     "putty",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
                 .await
             }
-            ExportCommands::Mobaxterm {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::Mobaxterm { output, profiles } => {
                 cmd_export_bridge(
                     "mobaxterm",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
                 .await
             }
-            ExportCommands::Dreamweaver {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::Dreamweaver { output, profiles } => {
                 cmd_export_bridge(
                     "dreamweaver",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
                 .await
             }
-            ExportCommands::Kopia {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::Kopia { output, profiles } => {
                 cmd_export_bridge(
                     "kopia",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
                 .await
             }
-            ExportCommands::Duplicacy {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::Duplicacy { output, profiles } => {
                 cmd_export_bridge(
                     "duplicacy",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
                 .await
             }
-            ExportCommands::Restic {
-                output,
-                profiles,
-                json,
-            } => {
+            ExportCommands::Restic { output, profiles } => {
                 cmd_export_bridge(
                     "restic",
                     output.clone(),
                     profiles.clone(),
-                    *json,
+                    json_output,
                     &cli,
                     format,
                 )
@@ -75194,7 +75043,6 @@ async fn main() {
                 password_stdin,
                 include_credentials,
                 ids,
-                json,
             } => {
                 cmd_profile_export(
                     &cli,
@@ -75203,7 +75051,7 @@ async fn main() {
                     *password_stdin,
                     *include_credentials,
                     ids,
-                    *json,
+                    json_output,
                     format,
                 )
                 .await
@@ -75217,7 +75065,6 @@ async fn main() {
                 password,
                 password_stdin,
                 config_dir,
-                json,
             } => {
                 cmd_keystore_export(
                     &cli,
@@ -75226,7 +75073,7 @@ async fn main() {
                     password,
                     *password_stdin,
                     config_dir,
-                    *json,
+                    json_output,
                     format,
                 )
                 .await
@@ -75241,7 +75088,6 @@ async fn main() {
                 skip_files,
                 skip_local_storage,
                 config_dir,
-                json,
             } => {
                 cmd_keystore_import(
                     &cli,
@@ -75254,20 +75100,19 @@ async fn main() {
                     *skip_files,
                     *skip_local_storage,
                     config_dir,
-                    *json,
+                    json_output,
                     format,
                 )
                 .await
             }
-            KeystoreCommands::Info { input, json } => cmd_keystore_info(input, *json, format),
-            KeystoreCommands::Status { json } => cmd_keystore_status(*json, format),
+            KeystoreCommands::Info { input } => cmd_keystore_info(input, json_output, format),
+            KeystoreCommands::Status => cmd_keystore_status(json_output),
             KeystoreCommands::Repair {
                 input,
                 password,
                 password_stdin,
                 config_dir,
                 yes,
-                json,
             } => {
                 cmd_keystore_repair(
                     &cli,
@@ -75276,7 +75121,7 @@ async fn main() {
                     *password_stdin,
                     config_dir,
                     *yes,
-                    *json,
+                    json_output,
                     format,
                 )
                 .await
@@ -75943,6 +75788,90 @@ mod tests {
             let parsed: String = serde_json::from_str(&quoted).unwrap();
             assert_eq!(parsed, raw);
         }
+    }
+
+    // Forty subcommands (the import, export and keystore families, and
+    // profile-export / profile-import) declared a `--json` of their own and
+    // read only that one, so `--machine` and `--format json` left them
+    // printing text, or nothing at all. The global `--json` is accepted after
+    // the subcommand as well, so a local one adds no spelling: it only splits
+    // the answer to "JSON or text" in two.
+    #[test]
+    fn no_subcommand_declares_a_json_flag_of_its_own() {
+        use clap::CommandFactory;
+        fn walk(cmd: &clap::Command, path: &str, found: &mut Vec<String>) {
+            for sub in cmd.get_subcommands() {
+                let here = format!("{path} {}", sub.get_name());
+                if sub
+                    .get_arguments()
+                    .any(|a| a.get_id() == "json" || a.get_long() == Some("json"))
+                {
+                    found.push(here.clone());
+                }
+                walk(sub, &here, found);
+            }
+        }
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let root = Cli::command();
+                assert!(
+                    root.get_arguments()
+                        .any(|a| a.get_id() == "json" && a.is_global_set()),
+                    "the global --json is gone"
+                );
+                let mut found = Vec::new();
+                walk(&root, "aeroftp-cli", &mut found);
+                assert!(
+                    found.is_empty(),
+                    "these declare their own --json, which --machine and --format json do not reach: {found:?}"
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn json_in_any_position_machine_and_format_json_all_select_json() {
+        use clap::Parser;
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let format_of = |argv: &[&str]| {
+                    Cli::try_parse_from(argv)
+                        .unwrap_or_else(|e| panic!("{argv:?}: {e}"))
+                        .output_format()
+                };
+                for argv in [
+                    &["aeroftp-cli", "keystore", "status", "--json"][..],
+                    &["aeroftp-cli", "--json", "keystore", "status"],
+                    &["aeroftp-cli", "--machine", "keystore", "status"],
+                    &["aeroftp-cli", "--format", "json", "keystore", "status"],
+                    &[
+                        "aeroftp-cli",
+                        "export",
+                        "rclone",
+                        "--profiles",
+                        "x",
+                        "--json",
+                    ],
+                    &["aeroftp-cli", "import", "winscp", "/x.ini", "--json"],
+                    &["aeroftp-cli", "profile-import", "-i", "x.aeroftp", "--json"],
+                ] {
+                    assert!(
+                        matches!(format_of(argv), OutputFormat::Json),
+                        "{argv:?} does not select JSON"
+                    );
+                }
+                assert!(matches!(
+                    format_of(&["aeroftp-cli", "keystore", "status"]),
+                    OutputFormat::Text
+                ));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[test]
