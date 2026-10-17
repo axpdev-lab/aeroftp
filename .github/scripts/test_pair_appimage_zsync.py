@@ -60,7 +60,7 @@ def stub(path, body):
 
 
 class PairAppImageZsyncTests(unittest.TestCase):
-    def run_pair(self, output, *, api_rc=0):
+    def run_pair(self, output, *, api_rc=0, apt_update_rc=0):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             bin_dir = tmp / 'bin'
@@ -80,7 +80,11 @@ class PairAppImageZsyncTests(unittest.TestCase):
                 'fi\n'
                 'exit 99\n'
             ))
-            stub(bin_dir / 'sudo', 'exit 0\n')
+            stub(bin_dir / 'sudo', (
+                f'printf "sudo %s\\n" "$*" >> "{trace}"\n'
+                f'[ "$*" = "apt-get update" ] && exit {apt_update_rc}\n'
+                'exit 0\n'
+            ))
             stub(bin_dir / 'zsyncmake', 'printf "zsync of the published bytes" > "$1.zsync"\n')
             assets = tmp / 'release-assets/appimage'
             assets.mkdir(parents=True)
@@ -115,6 +119,16 @@ class PairAppImageZsyncTests(unittest.TestCase):
         self.assertIn('Repair case', result.stdout)
         self.assertEqual(zsync, 'zsync of the published bytes')
         self.assertIn(f'release download {TAG} --repo axpdev-lab/aeroftp --pattern {APPIMAGE}', calls)
+
+    # `apt-get update && apt-get install` is an && list, and set -e ignores a
+    # failure in it unless it is the last command: a failed update skipped
+    # the install and the repair went on to download the AppImage anyway.
+    def test_a_failed_package_index_update_stops_the_repair(self):
+        result, zsync, calls = self.run_pair(include(release(APPIMAGE)), apt_update_rc=100)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn('sudo apt-get install', calls)
+        self.assertNotIn('release download', calls)
+        self.assertEqual(zsync, 'zsync of this build')
 
     def test_published_zsync_without_appimage_refuses(self):
         result, _, _ = self.run_pair(include(release(f'{APPIMAGE}.zsync')))

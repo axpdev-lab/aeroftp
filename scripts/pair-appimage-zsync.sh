@@ -60,7 +60,10 @@ for appimage in "${appimages[@]}"; do
   fi
   if grep -qxF "$base" "$TMP/assets.txt" && ! grep -qxF "${base}.zsync" "$TMP/assets.txt"; then
     echo "Repair case: the release has $base but no .zsync; regenerating from the published asset"
-    sudo apt-get update && sudo apt-get install -y --no-install-recommends zsync
+    # Two commands, not an && list: set -e does not stop on a failure inside
+    # one, so a failed update would skip the install and download anyway.
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends zsync
     mkdir -p "$TMP/published"
     gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$base" --dir "$TMP/published" --clobber
     (cd "$TMP/published" && zsyncmake "$base")
