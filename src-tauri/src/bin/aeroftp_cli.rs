@@ -38874,6 +38874,10 @@ fn rclone_import_json(
                 s.options.as_ref()
             ),
             "hasCredential": s.credential.is_some(),
+            // A secret that is not a password travels beside the profile: an
+            // OAuth token, a Jottacloud refresh token, a native Proton Drive
+            // session. `hasCredential` stays false for those.
+            "hasProviderSecret": result.provider_secrets.contains_key(&s.id),
         })).collect::<Vec<_>>(),
         "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
         "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
@@ -85411,6 +85415,38 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         // What is left still says what was found.
         assert!(printed.contains("\"rcloneCryptEnabled\":true"), "{printed}");
         assert!(printed.contains("\"hasCredential\":true"), "{printed}");
+    }
+
+    /// An imported Proton Drive session is reported as a provider secret and
+    /// never printed: not the tokens, not the key password.
+    #[test]
+    fn rclone_import_json_reports_a_proton_session_without_printing_it() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[pd]\ntype = protondrive\nusername = someone@proton.me\nclient_uid = uid-1\n\
+             client_access_token = AccessTokenPlain5\nclient_refresh_token = RefreshTokenPlain6\n\
+             client_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+        )
+        .expect("write the config");
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).expect("import");
+        let printed =
+            serde_json::to_string(&rclone_import_json(&result, false, None)).expect("serialize");
+        for secret in [
+            "AccessTokenPlain5",
+            "RefreshTokenPlain6",
+            "key-password-1",
+            "a2V5LXBhc3N3b3JkLTE=",
+        ] {
+            assert!(!printed.contains(secret), "'{secret}' on stdout: {printed}");
+        }
+        let expected = cfg!(feature = "proton-native");
+        assert!(
+            printed.contains(&format!("\"hasProviderSecret\":{expected}")),
+            "{printed}"
+        );
+        assert!(printed.contains("\"hasCredential\":false"), "{printed}");
     }
 
     /// Records the offset of every `resume_download` and counts whole

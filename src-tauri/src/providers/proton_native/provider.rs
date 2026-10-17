@@ -381,6 +381,20 @@ struct Cached {
     at: Instant,
 }
 
+/// Where a download is written before it replaces `destination`: a hidden
+/// name of fixed length in the same folder, so it fits the file system's name
+/// limit whatever the length of the file's own name (a 244-byte name plus a
+/// suffix went past ext4's 255 bytes, found live by L2 Debby) and the final
+/// rename stays on one file system.
+fn partial_download_path(destination: &std::path::Path) -> std::path::PathBuf {
+    let unique = uuid::Uuid::new_v4().simple().to_string();
+    let name = format!(".aeroftp-proton-{}.part", &unique[..16]);
+    match destination.parent().filter(|p| !p.as_os_str().is_empty()) {
+        Some(folder) => folder.join(name),
+        None => std::path::PathBuf::from(name),
+    }
+}
+
 /// A local file's size and modification time.
 fn local_file(path: &str) -> Result<(u64, Option<DateTime<Utc>>), ProviderError> {
     let meta = std::fs::metadata(path)?;
@@ -879,9 +893,7 @@ impl StorageProvider for ProtonNativeProvider {
         // The content lands beside the destination and takes its place only
         // when every block and the manifest signature verified, so a failed
         // download neither leaves a partial file nor spoils one already there.
-        let unique = uuid::Uuid::new_v4().simple().to_string();
-        let partial =
-            std::path::PathBuf::from(format!("{local_path}.aeroftp-proton-{}", &unique[..8]));
+        let partial = partial_download_path(destination);
         let total = info.size;
         let mut report = move |written: u64| {
             if let Some(callback) = on_progress.as_ref() {
@@ -1755,6 +1767,31 @@ mod tests {
         .unwrap();
         assert_eq!(std::fs::read(&destination).unwrap(), b"alpha");
         assert_eq!(seen.lock().unwrap().last(), Some(&(5, 5)));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    /// The partial file's name does not grow with the file's: a 244-byte
+    /// name (120 x "ä" plus ".txt", valid on ext4) downloads.
+    #[tokio::test]
+    async fn a_long_file_name_downloads_through_a_short_partial_name() {
+        let long = format!("{}.txt", "ä".repeat(120));
+        assert_eq!(long.len(), 244);
+        let (mut p, drive) = provider();
+        drive.insert("long", Some("docs"), Some(&long), false, b"long name");
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join(&long);
+        let partial = partial_download_path(&destination);
+        assert_eq!(partial.parent(), Some(dir.path()));
+        assert!(partial.file_name().unwrap().len() < 64);
+
+        p.download(
+            &format!("/docs/{long}"),
+            destination.to_str().unwrap(),
+            None,
+        )
+        .await
+        .expect("a long name downloads");
+        assert_eq!(std::fs::read(&destination).unwrap(), b"long name");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 

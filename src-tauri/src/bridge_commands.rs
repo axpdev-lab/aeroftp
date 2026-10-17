@@ -937,6 +937,24 @@ pub fn inject_rclone_oauth_export_options(
 /// NOT derive it from email + password, so without this an exported remote fails
 /// at use with "failed to reveal api key: input too short". Shared by the GUI
 /// bridge export and the CLI `cmd_export_rclone` so the two paths never diverge.
+/// Whether the export injection added or changed a secret-bearing option
+/// (the keys `options_without_secrets` strips, plus OAuth tokens and app
+/// credentials), so the export result can say the file carries credentials.
+fn options_gained_a_secret(before: Option<&Value>, after: Option<&Value>) -> bool {
+    let value = |options: Option<&Value>, key: &str| options.and_then(|o| o.get(key)).cloned();
+    let after_keys: Vec<String> = after
+        .and_then(|o| o.as_object())
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default();
+    after_keys.iter().any(|key| {
+        let secret = crate::rclone_import::IMPORT_SECRET_OPTION_KEYS.contains(&key.as_str())
+            || crate::profile_export::OPTIONS_SECRET_KEYS.contains(&key.as_str())
+            || key.contains("token")
+            || key.contains("secret");
+        secret && value(before, key) != value(after, key)
+    })
+}
+
 /// rclone export of a native Proton Drive profile: puts its saved session
 /// (`proton_native_session_<id>`) into a copy of the options, where the
 /// `protondrive` writer turns it into rclone's cached login. A CLI profile
@@ -1416,6 +1434,10 @@ pub async fn export_bridge_config(
             let mut typed: Vec<$ty> = Vec::new();
             let mut passwords: HashMap<String, String> = HashMap::new();
             let mut skipped: Vec<Value> = Vec::new();
+            // A secret the rclone export injects into the options (an OAuth
+            // token, the native Proton Drive session) is a credential in the
+            // written file as much as a password is.
+            let mut injected_secret = false;
             for entry in &raw {
                 let name = entry
                     .get("name")
@@ -1453,6 +1475,7 @@ pub async fn export_bridge_config(
                             .unwrap_or("")
                             .to_string();
                         let mut opts = e.get("options").cloned();
+                        let before = opts.clone();
                         inject_rclone_oauth_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_proton_export_options(&mut opts, st, &proto, &id);
@@ -1468,6 +1491,7 @@ pub async fn export_bridge_config(
                             &id,
                             e.get("aeroCryptOverlay"),
                         );
+                        injected_secret |= options_gained_a_secret(before.as_ref(), opts.as_ref());
                         if let Some(o) = opts {
                             e["options"] = o;
                         }
@@ -1553,7 +1577,7 @@ pub async fn export_bridge_config(
                 "total": total,
                 "skipped": skipped,
                 "filePath": file_path,
-                "includesCredentials": !passwords.is_empty(),
+                "includesCredentials": !passwords.is_empty() || injected_secret,
             })
         }};
     }
@@ -1619,6 +1643,24 @@ mod tests {
     /// to reach the panel, which filters before any export runs. Proton Drive
     /// is no longer refused as a protocol: the exporter skips a CLI profile
     /// with its own reason.
+    /// The export result says the file carries credentials when the rclone
+    /// injection wrote one (an OAuth token, the native Proton session), not
+    /// only when a password was resolved: a Proton export reported
+    /// `includesCredentials: false` with the session in the file (found live
+    /// by L2 Debby).
+    #[test]
+    fn an_injected_token_or_session_counts_as_a_credential() {
+        let plain = json!({ "proton_mode": "native" });
+        let with_session = json!({ "proton_mode": "native", "proton_native_session": "{}" });
+        assert!(options_gained_a_secret(Some(&plain), Some(&with_session)));
+        let with_token = json!({ "__aeroftp_oauth_token": "{}" });
+        assert!(options_gained_a_secret(None, Some(&with_token)));
+        let with_drive = json!({ "onedrive_drive_id": "b!x" });
+        assert!(!options_gained_a_secret(None, Some(&with_drive)));
+        assert!(!options_gained_a_secret(Some(&plain), Some(&plain)));
+        assert!(!options_gained_a_secret(None, None));
+    }
+
     #[tokio::test]
     async fn rclone_source_meta_carries_the_export_refusal_reasons() {
         let meta = bridge_source_meta("rclone".to_string()).await.unwrap();
