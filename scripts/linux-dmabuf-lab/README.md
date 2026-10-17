@@ -24,6 +24,8 @@ The fixture directory must be new or empty. Startup logs, manifest, native scree
 
 Each measured controller call has a 60-second outer timeout. A timeout writes its partial output and process snapshot to the evidence receipt and exits with status 124, so a stuck inspector does not leave the measurement waiting indefinitely.
 
+Startup readiness also has a 60-second deadline. Each readiness controller call uses the remaining deadline, so a stuck controller exits through the driver's process cleanup.
+
 Variants are explicitly recorded in `*-environment.json`. A clean environment prevents inherited `GDK_BACKEND`, WebKit flags, Mesa overrides, display names or EGL settings from affecting the result:
 
 | Variant | GDK_BACKEND | WAYLAND_DISPLAY | DISPLAY | WEBKIT_DISABLE_DMABUF_RENDERER | WEBKIT_DISABLE_COMPOSITING_MODE |

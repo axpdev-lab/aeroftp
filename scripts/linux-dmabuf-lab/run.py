@@ -123,10 +123,13 @@ def stop(process):
         process.wait()
 
 
-def gui(*arguments, script=None, capture=None):
+def gui(*arguments, script=None, capture=None, timeout=None):
     command = ['node', str(CHECKOUT / 'scripts/gui-controller-dev.mjs')]
     command += ['--js', str(script)] if script else list(arguments)
-    result = subprocess.run(command, cwd=CHECKOUT, env=base, capture_output=True, text=True)
+    try:
+        result = subprocess.run(command, cwd=CHECKOUT, env=base, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f'controller timed out: {command[2:]}') from error
     if capture:
         (root / 'evidence' / capture).write_text(result.stdout + result.stderr)
     if result.returncode:
@@ -182,7 +185,10 @@ try:
         deadline = time.monotonic() + 60
         while True:
             try:
-                state = gui(script=HERE / 'inspect-runtime.body')
+                state = gui(
+                    script=HERE / 'inspect-runtime.body',
+                    timeout=max(0.1, deadline - time.monotonic()),
+                )
                 if state['value']['viewport'][0] < 500 or not state['value']['body'].strip():
                     raise RuntimeError('waiting for the visible initialized main window')
                 break
