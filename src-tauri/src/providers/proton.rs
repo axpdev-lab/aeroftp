@@ -50,6 +50,8 @@ pub struct ProtonConfig {
     pub connection_mode: ProtonConnectionMode,
     /// The saved profile the native client keeps its session with.
     pub profile_id: Option<String>,
+    /// The account the profile names (its username field), if any.
+    pub username: Option<String>,
 }
 
 impl ProtonConfig {
@@ -92,11 +94,18 @@ impl ProtonConfig {
             .get("profile_id")
             .map(|id| id.trim().to_string())
             .filter(|id| !id.is_empty());
+        let username = config
+            .username
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string);
         Ok(Self {
             display_name,
             binary_path,
             connection_mode,
             profile_id,
+            username,
         })
     }
 }
@@ -296,6 +305,7 @@ pub async fn cli_session_status() -> (bool, bool) {
         binary_path: Some(binary),
         connection_mode: ProtonConnectionMode::Cli,
         profile_id: None,
+        username: None,
     });
     let signed_in = probe
         .run_cli(
@@ -1404,6 +1414,7 @@ mod tests {
             binary_path: None,
             connection_mode: ProtonConnectionMode::Cli,
             profile_id: None,
+            username: None,
         });
         assert!(!p.supports_atomic_replace().await.unwrap());
         assert!(!p.replace_sets_aside());
@@ -1601,6 +1612,7 @@ mod tests {
             binary_path: None,
             connection_mode: ProtonConnectionMode::Cli,
             profile_id: None,
+            username: None,
         });
         let caps = p.share_link_capabilities();
         assert!(caps.supports_password);
@@ -1637,6 +1649,7 @@ mod tests {
             binary_path: None,
             connection_mode: ProtonConnectionMode::Cli,
             profile_id: None,
+            username: None,
         });
         p.current_path = "/my-files/a".into();
         assert_eq!(p.resolve_path("../b"), "/my-files/b");
@@ -1777,6 +1790,7 @@ mod cli_sequence_tests {
             binary_path: Some(shim.to_string_lossy().to_string()),
             connection_mode: ProtonConnectionMode::Cli,
             profile_id: None,
+            username: None,
         });
         p.connected = true;
         p

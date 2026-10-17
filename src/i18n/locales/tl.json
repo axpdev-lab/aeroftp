@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Buksan ang mga setting ng OAuth",
             "oauthKeysReadFailedTitle": "Hindi mabasa ang mga key ng app ng {provider}",
             "oauthKeysReadFailed": "Hindi nabasa ng AeroFTP ang mga key ng app ng {provider} mula sa vault, kaya hindi ito makakapag-sign in. Walang binago sa mga key. Error: {error}",
-            "profileName": "Pangalan ng profile"
+            "profileName": "Pangalan ng profile",
+            "protonNativeTitle": "Native na Proton Drive client",
+            "protonNativeBody": "Direktang kumokonekta ang AeroFTP sa Proton Drive at ine-encrypt at dine-decrypt ang iyong mga file sa computer na ito. Nagsa-sign in ka sa sariling page ng Proton sa browser: hindi kailanman nakikita ng AeroFTP ang iyong password, at itinatago nito ang session sa naka-encrypt na vault nito.",
+            "protonNativeDisclosure": "Ito ay isang application mula sa ikatlong partido na hindi opisyal na sinusuportahan ng Proton.",
+            "protonSignIn": "Mag-sign in sa Proton",
+            "protonSignInAgain": "Mag-sign in ulit",
+            "protonWaitingBrowser": "Tapusin ang pag-sign in sa iyong browser...",
+            "protonSignedInAs": "Naka-sign in bilang {email}",
+            "protonSignInHelp": "Binubuksan ng AeroFTP ang sign-in page ng Proton sa iyong browser. Maaari mong tapusin ang session anumang oras sa mga setting ng iyong Proton account, o dito gamit ang Mag-sign out.",
+            "protonSignOut": "Mag-sign out",
+            "protonSignOutHelp": "Tinatapos ang session sa Proton at inaalis ito sa profile na ito.",
+            "protonSignInExpired": "Nag-expire na ang sign-in page. Mag-sign in ulit.",
+            "protonNativeUnavailable": "Hindi kasama sa build na ito ang native na Proton Drive client."
         },
         "browser": {
             "remote": "Remote",

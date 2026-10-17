@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "បើកការកំណត់ OAuth",
             "oauthKeysReadFailedTitle": "មិនអាចអានសោកម្មវិធីរបស់ {provider} បានទេ",
             "oauthKeysReadFailed": "AeroFTP មិនអាចអានសោកម្មវិធីរបស់ {provider} ពីឃ្លាំងសុវត្ថិភាពបានទេ ដូច្នេះមិនអាចចូលគណនីបានទេ។ សោមិនត្រូវបានផ្លាស់ប្តូរទេ។ កំហុស៖ {error}",
-            "profileName": "ឈ្មោះប្រវត្តិរូប"
+            "profileName": "ឈ្មោះប្រវត្តិរូប",
+            "protonNativeTitle": "កម្មវិធីភ្ញៀវ Proton Drive ដើម",
+            "protonNativeBody": "AeroFTP ភ្ជាប់ទៅ Proton Drive ដោយផ្ទាល់ ហើយអ៊ិនគ្រីប និងឌិគ្រីបឯកសាររបស់អ្នកនៅលើកុំព្យូទ័រនេះ។ អ្នកចូលគណនីនៅលើទំព័រផ្ទាល់របស់ Proton នៅក្នុងកម្មវិធីរុករក៖ AeroFTP មិនដែលឃើញពាក្យសម្ងាត់របស់អ្នកទេ ហើយរក្សាទុកសម័យនៅក្នុងវ៉ាល់អ៊ិនគ្រីបរបស់វា។",
+            "protonNativeDisclosure": "នេះជាកម្មវិធីភាគីទីបី ដែលមិនត្រូវបានគាំទ្រជាផ្លូវការដោយ Proton ទេ។",
+            "protonSignIn": "ចូលគណនី Proton",
+            "protonSignInAgain": "ចូលគណនីម្តងទៀត",
+            "protonWaitingBrowser": "សូមបញ្ចប់ការចូលគណនីនៅក្នុងកម្មវិធីរុករករបស់អ្នក...",
+            "protonSignedInAs": "បានចូលគណនីជា {email}",
+            "protonSignInHelp": "AeroFTP បើកទំព័រចូលគណនីរបស់ Proton នៅក្នុងកម្មវិធីរុករករបស់អ្នក។ អ្នកអាចបញ្ចប់សម័យបានគ្រប់ពេលនៅក្នុងការកំណត់គណនី Proton របស់អ្នក ឬនៅទីនេះដោយប្រើ ចាកចេញ។",
+            "protonSignOut": "ចាកចេញ",
+            "protonSignOutHelp": "បញ្ចប់សម័យនៅលើ Proton ហើយដកវាចេញពីប្រវត្តិរូបនេះ។",
+            "protonSignInExpired": "ទំព័រចូលគណនីបានផុតកំណត់។ សូមចូលគណនីម្តងទៀត។",
+            "protonNativeUnavailable": "កំណែនេះមិនរួមបញ្ចូលកម្មវិធីភ្ញៀវ Proton Drive ដើមទេ។"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",

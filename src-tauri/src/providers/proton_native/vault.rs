@@ -14,6 +14,13 @@
 //! [`super::api::SessionStore`]). Two copies of one session on two devices
 //! (an export imported elsewhere) still rotate apart: the first to refresh
 //! keeps the session and the other must sign in again.
+//!
+//! A sign-in made before its profile is saved (Quick Connect) has no profile
+//! id yet: it goes under the unbound key `proton_native_session`, like the
+//! legacy OAuth singleton, and the first connect of a saved profile without a
+//! session of its own takes it over (`ProtonNativeProvider::connect` checks
+//! the account first). The unbound key belongs to no profile, so it is not in
+//! `per_profile_vault_keys` and is never exported.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -31,15 +38,21 @@ use crate::providers::ProviderError;
 /// Prefix of every per-profile session key.
 pub const SESSION_KEY_PREFIX: &str = "proton_native_session_";
 
+/// Key of a session signed in before its profile was saved.
+pub const UNBOUND_SESSION_KEY: &str = "proton_native_session";
+
 /// `credential_type` of the partition mirror.
 const PARTITION_TYPE: &str = "proton_native_session";
 
 /// How long a profile delete waits for the revoke before it gives up.
 const REVOKE_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// The vault key of the session saved for `profile_id`.
-pub fn session_key(profile_id: &str) -> String {
-    format!("{SESSION_KEY_PREFIX}{profile_id}")
+/// The vault key of the session saved for `profile_id`, or the unbound key.
+pub fn session_key(profile_id: Option<&str>) -> String {
+    match profile_id {
+        Some(id) => format!("{SESSION_KEY_PREFIX}{id}"),
+        None => UNBOUND_SESSION_KEY.to_string(),
+    }
 }
 
 /// The open vault, initialising it when it needs no master password.
@@ -77,14 +90,19 @@ fn read(store: &CredentialStore, key: &str) -> Result<Option<ProtonSession>, Pro
     }
 }
 
-/// The session saved for `profile_id`, `None` when it never signed in.
-pub fn load_session(profile_id: &str) -> Result<Option<ProtonSession>, ProviderError> {
+/// The session saved for `profile_id` (the unbound one for `None`), `None`
+/// when there is none.
+pub fn load_session(profile_id: Option<&str>) -> Result<Option<ProtonSession>, ProviderError> {
     read(&open_store()?, &session_key(profile_id))
 }
 
-/// Saves `session` for `profile_id` in the vault and in the active user's
-/// partition.
-pub fn store_session(profile_id: &str, session: &ProtonSession) -> Result<(), ProviderError> {
+/// Saves `session` for `profile_id` in the vault and, for a profile, in the
+/// active user's partition (the unbound key stays vault-only, like the legacy
+/// OAuth singleton).
+pub fn store_session(
+    profile_id: Option<&str>,
+    session: &ProtonSession,
+) -> Result<(), ProviderError> {
     let store = open_store()?;
     let key = session_key(profile_id);
     let json = Zeroizing::new(
@@ -94,13 +112,15 @@ pub fn store_session(profile_id: &str, session: &ProtonSession) -> Result<(), Pr
     store
         .store(&key, &json)
         .map_err(|error| ProviderError::Other(format!("the vault refused the session: {error}")))?;
-    crate::user_partitions::mirror_active_credential(&store, &key, PARTITION_TYPE, &json);
+    if profile_id.is_some() {
+        crate::user_partitions::mirror_active_credential(&store, &key, PARTITION_TYPE, &json);
+    }
     Ok(())
 }
 
 /// Removes the session saved for `profile_id` from the vault and the active
 /// user's partition. Nothing saved is not an error.
-pub fn delete_session(profile_id: &str) -> Result<(), ProviderError> {
+pub fn delete_session(profile_id: Option<&str>) -> Result<(), ProviderError> {
     let store = open_store()?;
     let key = session_key(profile_id);
     store
@@ -117,11 +137,21 @@ fn session_shared(uid: &str, others: impl IntoIterator<Item = ProtonSession>) ->
     others.into_iter().any(|other| other.tokens.uid == uid)
 }
 
+/// Moves the unbound session to `profile_id`, the profile that just connected
+/// with it.
+pub fn bind_unbound_session(
+    profile_id: &str,
+    session: &ProtonSession,
+) -> Result<(), ProviderError> {
+    store_session(Some(profile_id), session)?;
+    delete_session(None)
+}
+
 /// Revokes on Proton the session saved for `profile_id`, best effort, before
-/// a profile delete removes the key. A session that another saved profile on
-/// this device also holds is left alive. Never fails the delete: errors are
-/// logged.
-pub async fn revoke_saved_session(profile_id: &str) {
+/// a profile delete (or a new sign-in) replaces the key. A session that
+/// another key on this device also holds is left alive. Never fails the
+/// caller: errors are logged.
+pub async fn revoke_saved_session(profile_id: Option<&str>) {
     let store = match open_store() {
         Ok(store) => store,
         Err(_) => return,
@@ -139,7 +169,10 @@ pub async fn revoke_saved_session(profile_id: &str) {
         .list_accounts()
         .unwrap_or_default()
         .into_iter()
-        .filter(|account| account.starts_with(SESSION_KEY_PREFIX) && *account != key)
+        .filter(|account| {
+            (account.starts_with(SESSION_KEY_PREFIX) || account == UNBOUND_SESSION_KEY)
+                && *account != key
+        })
         .filter_map(|account| read(&store, &account).ok().flatten());
     if session_shared(&session.tokens.uid, others) {
         log::info!("Proton: session kept, another saved profile uses it");
@@ -158,14 +191,14 @@ pub async fn revoke_saved_session(profile_id: &str) {
 /// it runs on a thread of its own with its own runtime, so it works whether
 /// or not the caller is inside a Tokio runtime, and returns when the revoke
 /// is done or has timed out.
-pub fn revoke_saved_session_blocking(profile_id: &str) {
-    let profile_id = profile_id.to_string();
+pub fn revoke_saved_session_blocking(profile_id: Option<&str>) {
+    let profile_id = profile_id.map(str::to_string);
     let joined = std::thread::spawn(move || {
         match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
         {
-            Ok(runtime) => runtime.block_on(revoke_saved_session(&profile_id)),
+            Ok(runtime) => runtime.block_on(revoke_saved_session(profile_id.as_deref())),
             Err(error) => log::warn!("Proton: session not revoked, no runtime: {error}"),
         }
     })
@@ -175,19 +208,18 @@ pub fn revoke_saved_session_blocking(profile_id: &str) {
     }
 }
 
-/// The [`SessionStore`] of one saved profile: refreshes are serialized
-/// across processes with the OAuth [`RefreshLease`] keyed on the session's
-/// vault key, and the refreshed tokens are saved with the unchanged key
-/// password.
+/// The [`SessionStore`] of one vault key: refreshes are serialized across
+/// processes with the OAuth [`RefreshLease`] keyed on the session's vault
+/// key, and the refreshed tokens are saved with the unchanged key password.
 pub struct VaultSession {
-    profile_id: String,
+    profile_id: Option<String>,
     key_password: secrecy::SecretString,
 }
 
 impl VaultSession {
-    pub fn new(profile_id: &str, session: &ProtonSession) -> Self {
+    pub fn new(profile_id: Option<&str>, session: &ProtonSession) -> Self {
         Self {
-            profile_id: profile_id.to_string(),
+            profile_id: profile_id.map(str::to_string),
             key_password: session.key_password.clone(),
         }
     }
@@ -196,13 +228,13 @@ impl VaultSession {
 #[async_trait::async_trait]
 impl SessionStore for VaultSession {
     async fn lock(&self) -> Option<Box<dyn Send>> {
-        RefreshLease::acquire(&session_key(&self.profile_id))
+        RefreshLease::acquire(&session_key(self.profile_id.as_deref()))
             .await
             .map(|lease| Box::new(lease) as Box<dyn Send>)
     }
 
     fn load(&self) -> Option<SessionTokens> {
-        match load_session(&self.profile_id) {
+        match load_session(self.profile_id.as_deref()) {
             Ok(session) => session.map(|session| session.tokens),
             Err(error) => {
                 log::warn!("Proton: saved session not readable: {error}");
@@ -216,7 +248,7 @@ impl SessionStore for VaultSession {
             tokens: tokens.clone(),
             key_password: self.key_password.clone(),
         };
-        if let Err(error) = store_session(&self.profile_id, &session) {
+        if let Err(error) = store_session(self.profile_id.as_deref(), &session) {
             // The session stays usable in this process; the next process to
             // start will find the old pair and sign in again.
             log::warn!("Proton: refreshed session not saved: {error}");
@@ -242,10 +274,12 @@ mod tests {
 
     #[test]
     fn the_key_is_per_profile_and_matches_the_export_list() {
-        assert_eq!(session_key("srv_1"), "proton_native_session_srv_1");
-        assert!(
-            crate::per_profile_vault_keys("srv_1", Some("proton")).contains(&session_key("srv_1"))
-        );
+        assert_eq!(session_key(Some("srv_1")), "proton_native_session_srv_1");
+        assert_eq!(session_key(None), UNBOUND_SESSION_KEY);
+        assert!(!crate::per_profile_vault_keys("srv_1", Some("proton"))
+            .contains(&UNBOUND_SESSION_KEY.to_string()));
+        assert!(crate::per_profile_vault_keys("srv_1", Some("proton"))
+            .contains(&session_key(Some("srv_1"))));
     }
 
     #[test]

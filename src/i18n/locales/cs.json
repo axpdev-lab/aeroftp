@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Otevřít nastavení OAuth",
             "oauthKeysReadFailedTitle": "Nelze načíst klíče aplikace pro {provider}",
             "oauthKeysReadFailed": "AeroFTP nemohl načíst klíče aplikace pro {provider} z trezoru, a proto se nemůže přihlásit. Klíče nebyly změněny. Chyba: {error}",
-            "profileName": "Název profilu"
+            "profileName": "Název profilu",
+            "protonNativeTitle": "Nativní klient Proton Drive",
+            "protonNativeBody": "AeroFTP se připojuje přímo k Proton Drive a šifruje i dešifruje vaše soubory v tomto počítači. Přihlašujete se na vlastní stránce Proton v prohlížeči: AeroFTP nikdy nevidí vaše heslo a relaci uchovává ve svém šifrovaném trezoru.",
+            "protonNativeDisclosure": "Toto je aplikace třetí strany, kterou Proton oficiálně nepodporuje.",
+            "protonSignIn": "Přihlásit se k Proton",
+            "protonSignInAgain": "Přihlásit se znovu",
+            "protonWaitingBrowser": "Dokončete přihlášení v prohlížeči...",
+            "protonSignedInAs": "Přihlášeno jako {email}",
+            "protonSignInHelp": "AeroFTP otevře přihlašovací stránku Proton ve vašem prohlížeči. Relaci můžete kdykoli ukončit v nastavení účtu Proton nebo zde pomocí Odhlásit se.",
+            "protonSignOut": "Odhlásit se",
+            "protonSignOutHelp": "Ukončí relaci u Proton a odebere ji z tohoto profilu.",
+            "protonSignInExpired": "Platnost přihlašovací stránky vypršela. Přihlaste se znovu.",
+            "protonNativeUnavailable": "Toto sestavení neobsahuje nativního klienta Proton Drive."
         },
         "browser": {
             "remote": "Vzdálený",

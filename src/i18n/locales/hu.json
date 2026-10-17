@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth-beállítások megnyitása",
             "oauthKeysReadFailedTitle": "A(z) {provider} alkalmazáskulcsai nem olvashatók",
             "oauthKeysReadFailed": "Az AeroFTP nem tudta beolvasni a(z) {provider} alkalmazáskulcsait a széfből, ezért nem tud bejelentkezni. A kulcsok nem változtak. Hiba: {error}",
-            "profileName": "Profil neve"
+            "profileName": "Profil neve",
+            "protonNativeTitle": "Natív Proton Drive-kliens",
+            "protonNativeBody": "Az AeroFTP közvetlenül csatlakozik a Proton Drive-hoz, és ezen a számítógépen titkosítja és fejti vissza a fájljaidat. A bejelentkezés a Proton saját oldalán történik a böngészőben: az AeroFTP soha nem látja a jelszavadat, és a munkamenetet a titkosított tárolójában őrzi.",
+            "protonNativeDisclosure": "Ez egy harmadik féltől származó alkalmazás, amelyet a Proton hivatalosan nem támogat.",
+            "protonSignIn": "Jelentkezz be a Protonba",
+            "protonSignInAgain": "Jelentkezz be újra",
+            "protonWaitingBrowser": "Fejezd be a bejelentkezést a böngésződben...",
+            "protonSignedInAs": "Bejelentkezve: {email}",
+            "protonSignInHelp": "Az AeroFTP megnyitja a Proton bejelentkezési oldalát a böngésződben. A munkamenetet bármikor befejezheted a Proton-fiókod beállításaiban, vagy itt a Kijelentkezés gombbal.",
+            "protonSignOut": "Kijelentkezés",
+            "protonSignOutHelp": "Befejezi a munkamenetet a Protonnál, és eltávolítja ebből a profilból.",
+            "protonSignInExpired": "A bejelentkezési oldal lejárt. Jelentkezz be újra.",
+            "protonNativeUnavailable": "Ez a build nem tartalmazza a natív Proton Drive-klienst."
         },
         "browser": {
             "remote": "Távoli",

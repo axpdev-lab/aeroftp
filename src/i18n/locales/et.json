@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Ava OAuth-i seaded",
             "oauthKeysReadFailedTitle": "Teenuse {provider} rakenduse võtmeid ei saa lugeda",
             "oauthKeysReadFailed": "AeroFTP ei saanud teenuse {provider} rakenduse võtmeid hoidlast lugeda, seega ei saa ta sisse logida. Võtmeid ei muudetud. Viga: {error}",
-            "profileName": "Profiili nimi"
+            "profileName": "Profiili nimi",
+            "protonNativeTitle": "Natiivne Proton Drive'i klient",
+            "protonNativeBody": "AeroFTP ühendub otse Proton Drive'iga ning krüpteerib ja dekrüpteerib teie faile selles arvutis. Logite sisse Protoni enda lehel brauseris: AeroFTP ei näe kunagi teie parooli ja hoiab seanssi oma krüpteeritud hoidlas.",
+            "protonNativeDisclosure": "See on kolmanda osapoole rakendus, mida Proton ametlikult ei toeta.",
+            "protonSignIn": "Logi Protonisse sisse",
+            "protonSignInAgain": "Logi uuesti sisse",
+            "protonWaitingBrowser": "Lõpetage sisselogimine oma brauseris...",
+            "protonSignedInAs": "Sisse logitud kui {email}",
+            "protonSignInHelp": "AeroFTP avab teie brauseris Protoni sisselogimislehe. Seansi saate igal ajal lõpetada oma Protoni konto seadetes või siin nupuga Logi välja.",
+            "protonSignOut": "Logi välja",
+            "protonSignOutHelp": "Lõpetab seansi Protonis ja eemaldab selle sellest profiilist.",
+            "protonSignInExpired": "Sisselogimisleht aegus. Logi uuesti sisse.",
+            "protonNativeUnavailable": "See versioon ei sisalda natiivset Proton Drive'i klienti."
         },
         "browser": {
             "remote": "Kaugserver",

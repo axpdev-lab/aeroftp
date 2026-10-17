@@ -91,7 +91,7 @@ function fixture(mode: Mode, options: {
     sessions: [{ id: 'session-A', connectionParams: params }], activeSessionId: 'session-A',
     connectionParams: params, liveConnectionParams: params, invoke, loadSavedServerProfiles: profiles,
     resolveLiveProfile: () => profile, persistQuotaToProfile: persist,
-    supportsStorageQuota: () => mode !== 'no quota API',
+    connectionSupportsStorageQuota: () => mode !== 'no quota API',
     effectiveManualCap: () => undefined,
     resolveEffectiveQuota: (used: number, total: number) => ({ used, total }),
     isMegaCmdQuotaProfile: () => false, setStorageQuota: display,

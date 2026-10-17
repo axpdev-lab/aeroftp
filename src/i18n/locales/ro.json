@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Deschide setările OAuth",
             "oauthKeysReadFailedTitle": "Nu se pot citi cheile aplicației {provider}",
             "oauthKeysReadFailed": "AeroFTP nu a putut citi cheile aplicației {provider} din seif, deci nu se poate autentifica. Cheile nu au fost modificate. Eroare: {error}",
-            "profileName": "Numele profilului"
+            "profileName": "Numele profilului",
+            "protonNativeTitle": "Client Proton Drive nativ",
+            "protonNativeBody": "AeroFTP se conectează direct la Proton Drive și criptează și decriptează fișierele dvs. pe acest computer. Vă conectați pe pagina proprie a Proton în browser: AeroFTP nu vă vede niciodată parola și păstrează sesiunea în seiful său criptat.",
+            "protonNativeDisclosure": "Aceasta este o aplicație terță, care nu este acceptată oficial de Proton.",
+            "protonSignIn": "Conectați-vă la Proton",
+            "protonSignInAgain": "Conectați-vă din nou",
+            "protonWaitingBrowser": "Finalizați conectarea în browser...",
+            "protonSignedInAs": "Conectat ca {email}",
+            "protonSignInHelp": "AeroFTP deschide pagina de conectare Proton în browserul dvs. Puteți încheia sesiunea oricând din setările contului Proton sau de aici, cu Deconectare.",
+            "protonSignOut": "Deconectare",
+            "protonSignOutHelp": "Încheie sesiunea pe Proton și o elimină din acest profil.",
+            "protonSignInExpired": "Pagina de conectare a expirat. Conectați-vă din nou.",
+            "protonNativeUnavailable": "Această versiune nu include clientul Proton Drive nativ."
         },
         "browser": {
             "remote": "La distanță",

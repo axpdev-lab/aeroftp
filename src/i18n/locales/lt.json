@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Atidaryti OAuth nustatymus",
             "oauthKeysReadFailedTitle": "Nepavyko nuskaityti „{provider}“ programos raktų",
             "oauthKeysReadFailed": "AeroFTP nepavyko nuskaityti „{provider}“ programos raktų iš saugyklos, todėl negali prisijungti. Raktai nebuvo pakeisti. Klaida: {error}",
-            "profileName": "Profilio pavadinimas"
+            "profileName": "Profilio pavadinimas",
+            "protonNativeTitle": "Integruotas Proton Drive klientas",
+            "protonNativeBody": "AeroFTP jungiasi tiesiogiai prie Proton Drive ir šiame kompiuteryje šifruoja bei iššifruoja jūsų failus. Prisijungiate paties Proton puslapyje naršyklėje: AeroFTP niekada nemato jūsų slaptažodžio ir saugo seansą savo užšifruotoje saugykloje.",
+            "protonNativeDisclosure": "Tai trečiosios šalies programa, kurios Proton oficialiai nepalaiko.",
+            "protonSignIn": "Prisijungti prie Proton",
+            "protonSignInAgain": "Prisijunkite iš naujo",
+            "protonWaitingBrowser": "Baikite prisijungimą naršyklėje...",
+            "protonSignedInAs": "Prisijungta kaip {email}",
+            "protonSignInHelp": "AeroFTP naršyklėje atidaro Proton prisijungimo puslapį. Seansą galite bet kada baigti savo Proton paskyros nustatymuose arba čia mygtuku Atsijungti.",
+            "protonSignOut": "Atsijungti",
+            "protonSignOutHelp": "Baigia seansą Proton ir pašalina jį iš šio profilio.",
+            "protonSignInExpired": "Prisijungimo puslapio galiojimas baigėsi. Prisijunkite iš naujo.",
+            "protonNativeUnavailable": "Šioje versijoje nėra integruoto Proton Drive kliento."
         },
         "browser": {
             "remote": "Nuotolinis",

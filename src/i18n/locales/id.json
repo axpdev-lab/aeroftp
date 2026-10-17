@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Buka pengaturan OAuth",
             "oauthKeysReadFailedTitle": "Tidak dapat membaca kunci aplikasi {provider}",
             "oauthKeysReadFailed": "AeroFTP tidak dapat membaca kunci aplikasi {provider} dari brankas, sehingga tidak bisa masuk. Kunci tidak diubah. Kesalahan: {error}",
-            "profileName": "Nama profil"
+            "profileName": "Nama profil",
+            "protonNativeTitle": "Klien Proton Drive bawaan",
+            "protonNativeBody": "AeroFTP terhubung langsung ke Proton Drive serta mengenkripsi dan mendekripsi file Anda di komputer ini. Anda masuk di halaman milik Proton sendiri di browser: AeroFTP tidak pernah melihat kata sandi Anda, dan menyimpan sesi di brankas terenkripsinya.",
+            "protonNativeDisclosure": "Ini adalah aplikasi pihak ketiga yang tidak didukung secara resmi oleh Proton.",
+            "protonSignIn": "Masuk ke Proton",
+            "protonSignInAgain": "Masuk lagi",
+            "protonWaitingBrowser": "Selesaikan proses masuk di browser Anda...",
+            "protonSignedInAs": "Masuk sebagai {email}",
+            "protonSignInHelp": "AeroFTP membuka halaman masuk Proton di browser Anda. Anda dapat mengakhiri sesi kapan saja di pengaturan akun Proton Anda, atau di sini dengan Keluar.",
+            "protonSignOut": "Keluar",
+            "protonSignOutHelp": "Mengakhiri sesi di Proton dan menghapusnya dari profil ini.",
+            "protonSignInExpired": "Halaman masuk telah kedaluwarsa. Masuk lagi.",
+            "protonNativeUnavailable": "Build ini tidak menyertakan klien Proton Drive bawaan."
         },
         "browser": {
             "remote": "Jarak Jauh",

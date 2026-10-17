@@ -203,7 +203,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     // with total:0 (scan ran before the cap, or against a duplicate profile
     // lacking options.manualTotalBytes).
     const q = server.lastQuota;
-    const manual = effectiveManualCap(server.options?.manualTotalBytes, server.protocol, server.providerId, server.host);
+    const manual = effectiveManualCap(server.options?.manualTotalBytes, server.protocol, server.providerId, server.host, server.options);
     const rawUsed = q?.used && q.used > 0 ? q.used : 0;
     const rawTotal = q?.total && q.total > 0 ? q.total : 0;
     const eff = resolveEffectiveQuota(rawUsed, rawTotal, manual);

@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth-instellingen openen",
             "oauthKeysReadFailedTitle": "Kan app-sleutels voor {provider} niet lezen",
             "oauthKeysReadFailed": "AeroFTP kon de app-sleutels voor {provider} niet uit de kluis lezen en kan daarom niet inloggen. De sleutels zijn niet gewijzigd. Fout: {error}",
-            "profileName": "Profielnaam"
+            "profileName": "Profielnaam",
+            "protonNativeTitle": "Ingebouwde Proton Drive-client",
+            "protonNativeBody": "AeroFTP maakt rechtstreeks verbinding met Proton Drive en versleutelt en ontsleutelt uw bestanden op deze computer. U logt in op de eigen pagina van Proton in de browser: AeroFTP ziet uw wachtwoord nooit en bewaart de sessie in zijn versleutelde kluis.",
+            "protonNativeDisclosure": "Dit is een applicatie van derden die niet officieel door Proton wordt ondersteund.",
+            "protonSignIn": "Inloggen bij Proton",
+            "protonSignInAgain": "Opnieuw inloggen",
+            "protonWaitingBrowser": "Rond het inloggen in uw browser af...",
+            "protonSignedInAs": "Ingelogd als {email}",
+            "protonSignInHelp": "AeroFTP opent de inlogpagina van Proton in uw browser. U kunt de sessie op elk moment beëindigen in uw Proton-accountinstellingen, of hier met Uitloggen.",
+            "protonSignOut": "Uitloggen",
+            "protonSignOutHelp": "Beëindigt de sessie bij Proton en verwijdert die uit dit profiel.",
+            "protonSignInExpired": "De inlogpagina is verlopen. Log opnieuw in.",
+            "protonNativeUnavailable": "Deze build bevat de ingebouwde Proton Drive-client niet."
         },
         "browser": {
             "remote": "Extern",

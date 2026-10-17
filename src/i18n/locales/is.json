@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Opna OAuth stillingar",
             "oauthKeysReadFailedTitle": "Ekki tókst að lesa forritslykla fyrir {provider}",
             "oauthKeysReadFailed": "AeroFTP gat ekki lesið forritslykla fyrir {provider} úr hvelfingunni og getur því ekki skráð sig inn. Lyklunum var ekki breytt. Villa: {error}",
-            "profileName": "Nafn sniðs"
+            "profileName": "Nafn sniðs",
+            "protonNativeTitle": "Innbyggður Proton Drive-biðlari",
+            "protonNativeBody": "AeroFTP tengist Proton Drive beint og dulkóðar og afkóðar skrárnar þínar á þessari tölvu. Þú skráir þig inn á síðu Proton sjálfs í vafranum: AeroFTP sér aldrei lykilorðið þitt og geymir lotuna í dulkóðuðu hvelfingunni sinni.",
+            "protonNativeDisclosure": "Þetta er forrit frá þriðja aðila sem Proton styður ekki opinberlega.",
+            "protonSignIn": "Skrá inn í Proton",
+            "protonSignInAgain": "Skrá inn aftur",
+            "protonWaitingBrowser": "Kláraðu innskráningu í vafranum þínum...",
+            "protonSignedInAs": "Innskráð/ur sem {email}",
+            "protonSignInHelp": "AeroFTP opnar innskráningarsíðu Proton í vafranum þínum. Þú getur lokið lotunni hvenær sem er í stillingum Proton-reikningsins þíns, eða hér með Skrá út.",
+            "protonSignOut": "Skrá út",
+            "protonSignOutHelp": "Lýkur lotunni hjá Proton og fjarlægir hana úr þessum prófíl.",
+            "protonSignInExpired": "Innskráningarsíðan rann út. Skráðu þig inn aftur.",
+            "protonNativeUnavailable": "Þessi útgáfa inniheldur ekki innbyggða Proton Drive-biðlarann."
         },
         "browser": {
             "remote": "Fjartengdur",

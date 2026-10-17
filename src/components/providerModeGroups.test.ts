@@ -59,10 +59,11 @@ describe('resolveModeSwitchCredentials (#215 password leak)', () => {
     });
 });
 
-// Proton Drive follows the Filen form: a mode strip with the official API
-// first and the CLI second. Until Proton opens an API to third-party apps
-// the API tab is shown disabled, and it must never be taken for the active
-// mode: both tabs use the `proton` protocol.
+// Proton Drive follows the Filen form: a mode strip with the API (AeroFTP's
+// native client) first and the official CLI second. Both tabs use the
+// `proton` protocol and are told apart by the `proton_mode` option, so a
+// profile without it, which is every profile saved before the native client,
+// stays a CLI profile.
 describe('Proton Drive mode group', () => {
     const group = findActiveModeGroup(undefined, 'proton') as ProviderModeGroup;
 
@@ -70,14 +71,25 @@ describe('Proton Drive mode group', () => {
         expect(group?.id).toBe('proton');
     });
 
-    it('lists the API tab first, disabled, and the CLI tab second', () => {
+    it('lists the native API tab first and the CLI tab second', () => {
         expect(group.modes.map(m => m.label)).toEqual(['API', 'CLI']);
-        expect(group.modes[0].disabled).toBe(true);
-        expect(group.modes[1].disabled).not.toBe(true);
+        expect(group.modes[0].options).toEqual({ proton_mode: 'native' });
+        expect(group.modes[0].requires).toBe('proton-native');
+        expect(group.modes[0].bridgeKind).toBeUndefined();
+        expect(group.modes[1].options).toBeUndefined();
+        expect(group.modes[1].bridgeKind).toBe('proton-cli');
     });
 
-    it('resolves the CLI as the active mode, never the disabled API tab', () => {
+    it('a profile without proton_mode, or with cli, resolves to the CLI tab', () => {
         expect(findActiveMode(group, undefined, 'proton')?.label).toBe('CLI');
         expect(findActiveMode(group, 'proton', 'proton')?.label).toBe('CLI');
+        expect(findActiveMode(group, undefined, 'proton', {})?.label).toBe('CLI');
+        expect(findActiveMode(group, undefined, 'proton', { proton_mode: 'cli' })?.label).toBe('CLI');
+    });
+
+    it('a native profile resolves to the API tab, without the CLI status bridge', () => {
+        const mode = findActiveMode(group, undefined, 'proton', { proton_mode: 'native' });
+        expect(mode?.label).toBe('API');
+        expect(mode?.bridgeKind).toBeUndefined();
     });
 });

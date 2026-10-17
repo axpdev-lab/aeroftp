@@ -447,7 +447,19 @@
             "oauthKeysOpenSettings": "Apri impostazioni OAuth",
             "oauthKeysReadFailedTitle": "Impossibile leggere le chiavi dell'app {provider}",
             "oauthKeysReadFailed": "AeroFTP non è riuscito a leggere dal vault le chiavi dell'app {provider}, quindi non può accedere. Le chiavi non sono state modificate. Errore: {error}",
-            "profileName": "Nome profilo"
+            "profileName": "Nome profilo",
+            "protonNativeTitle": "Client nativo di Proton Drive",
+            "protonNativeBody": "AeroFTP si collega direttamente a Proton Drive e cifra e decifra i tuoi file su questo computer. Accedi dalla pagina di Proton stessa nel browser: AeroFTP non vede mai la tua password e conserva la sessione nel suo vault cifrato.",
+            "protonNativeDisclosure": "Questa è un'applicazione di terze parti non supportata ufficialmente da Proton.",
+            "protonSignIn": "Accedi a Proton",
+            "protonSignInAgain": "Accedi di nuovo",
+            "protonWaitingBrowser": "Completa l'accesso nel browser...",
+            "protonSignedInAs": "Accesso effettuato come {email}",
+            "protonSignInHelp": "AeroFTP apre la pagina di accesso di Proton nel browser. Puoi chiudere la sessione in qualsiasi momento dalle impostazioni del tuo account Proton, oppure qui con Esci.",
+            "protonSignOut": "Esci",
+            "protonSignOutHelp": "Chiude la sessione su Proton e la rimuove da questo profilo.",
+            "protonSignInExpired": "La pagina di accesso è scaduta. Accedi di nuovo.",
+            "protonNativeUnavailable": "Questa build non include il client nativo di Proton Drive."
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",

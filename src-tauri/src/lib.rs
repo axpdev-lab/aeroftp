@@ -17250,7 +17250,7 @@ async fn purge_profile_secrets(
     // so a deleted profile leaves no live session behind.
     #[cfg(feature = "proton-native")]
     if protocol.as_deref() == Some("proton") {
-        providers::proton_native::vault::revoke_saved_session(&profile_id).await;
+        providers::proton_native::vault::revoke_saved_session(Some(&profile_id)).await;
     }
     Ok(purge_profile_secret_keys(
         &profile_id,
@@ -20169,6 +20169,12 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            #[cfg(feature = "proton-native")]
+            providers::proton_native::commands::proton_native_sign_in,
+            #[cfg(feature = "proton-native")]
+            providers::proton_native::commands::proton_native_sign_out,
+            #[cfg(feature = "proton-native")]
+            providers::proton_native::commands::proton_native_status,
             #[cfg(feature = "aerorsync")]
             local_sync::local_sync_run,
             #[cfg(feature = "aerorsync")]

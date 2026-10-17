@@ -99,7 +99,8 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isAeroCloudProvider(type)) return "AeroCloud";
   if (type === "filen" || type === "internxt" || type === "mega") return "E2E";
   // Driven through the user-installed Proton Drive CLI, as the catalog, the
-  // mode strip and the connection label present it.
+  // mode strip and the connection label present it. A saved profile on the
+  // native client is classified by `getProfileProtocolClass`.
   if (type === "proton") return "CLI";
   if (type === "webdav") return "WebDAV";
   if (type === "ftps") return "FTPS";
@@ -263,12 +264,14 @@ export const providerServesQuota = (
   protocol?: string | null,
   providerId?: string | null,
   server?: string | null,
+  options?: ProviderOptions | null,
 ): boolean => {
   // AeroShare friend (protocol "peer"): a read-only local replica with no quota
   // concept. Reporting "serves quota" suppresses the manual-total-bytes field
   // and the used-storage scan in the connection/edit form.
-  // Proton Drive CLI has no quota command; keep the manual cap available.
-  if (protocol === "proton") return false;
+  // The Proton Drive CLI has no quota command, so its profiles keep the manual
+  // cap; the native client reports the account's quota.
+  if (protocol === "proton") return isNativeProton(protocol, options);
   if (protocol === "peer") return true;
   // MTP portable devices report real storage free/total from the device; the
   // manual cap and used-scan checkbox are noise on that form (live-test LT7).
@@ -321,6 +324,18 @@ export const supportsStorageQuota = (type: ProviderType): boolean => {
     "twake",
   ].includes(type);
 };
+
+/** Whether a Proton Drive connection goes through AeroFTP's native client
+ *  (`proton_mode: 'native'`) rather than the official CLI. */
+const isNativeProton = (protocol?: string | null, options?: ProviderOptions | null): boolean =>
+  protocol === "proton" && options?.proton_mode === "native";
+
+/** {@link supportsStorageQuota} for one connection: the native Proton Drive
+ *  client reports its quota, which the type alone cannot tell from the CLI. */
+export const connectionSupportsStorageQuota = (
+  type: ProviderType,
+  options?: ProviderOptions | null,
+): boolean => supportsStorageQuota(type) || isNativeProton(type, options);
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
@@ -415,6 +430,9 @@ export interface ProviderOptions {
   mega_mode?: "native" | "megacmd";
   session_expires_at?: number; // Timestamp (ms)
   logout_on_disconnect?: boolean;
+
+  // Proton Drive: which client. Absent means the official CLI.
+  proton_mode?: "cli" | "native";
 
   // Azure Blob Storage-specific
   container?: string;
@@ -775,8 +793,9 @@ export const effectiveManualCap = (
   protocol?: string | null,
   providerId?: string | null,
   server?: string | null,
+  options?: ProviderOptions | null,
 ): number | undefined =>
-  providerServesQuota(protocol, providerId, server) ? undefined : manualTotalBytes;
+  providerServesQuota(protocol, providerId, server, options) ? undefined : manualTotalBytes;
 
 /**
  * A profile is quota-capable for the My Servers bar/columns when its
@@ -788,7 +807,7 @@ export const profileHasQuota = (server: {
   protocol?: ProviderType;
   options?: ProviderOptions;
 }): boolean =>
-  supportsStorageQuota((server.protocol || "ftp") as ProviderType) ||
+  connectionSupportsStorageQuota((server.protocol || "ftp") as ProviderType, server.options) ||
   !!(server.options?.manualTotalBytes && server.options.manualTotalBytes > 0);
 
 // Crypt-overlay kind for a saved profile, or null when the profile has no
@@ -812,9 +831,11 @@ export const getServerCryptOverlay = (
 // class when no overlay is bound. Use this (not getProtocolClass) wherever a
 // SAVED PROFILE is being classified for display/sort/grouping.
 export const getProfileProtocolClass = (
-  server: Pick<ServerProfile, "protocol" | "aeroCryptOverlay">,
+  server: Pick<ServerProfile, "protocol" | "aeroCryptOverlay"> & { options?: ProviderOptions },
 ): ProtocolClass => {
   if (getServerCryptOverlay(server) !== null) return "Crypt";
+  // The native Proton Drive client encrypts on this machine, like Filen/MEGA.
+  if (isNativeProton(server.protocol, server.options)) return "E2E";
   return getProtocolClass((server.protocol || "ftp") as ProviderType);
 };
 
