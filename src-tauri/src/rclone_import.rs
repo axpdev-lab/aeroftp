@@ -1442,9 +1442,9 @@ fn map_remote(
                 .then(|| rclone_proton_session_to_aeroftp(remote))
                 .flatten();
             let warning = if mode != "native" {
-                "this build reaches Proton Drive through the official CLI: sign in with                  `proton-drive auth login`; rclone's saved session was left out"
+                "this build reaches Proton Drive through the official CLI: sign in with `proton-drive auth login`; rclone's saved session was left out"
             } else if session.is_some() {
-                "rclone's saved session was imported and is now shared with rclone: the                  first of the two to refresh it keeps it, the other signs in again"
+                "rclone's saved session was imported and is now shared with rclone: the first of the two to refresh it keeps it, the other signs in again"
             } else {
                 "the remote holds no complete saved session: sign in with Proton in                  AeroFTP after the import"
             };
@@ -3863,6 +3863,12 @@ mod tests {
                 .is_none());
         }
         assert_eq!(result.warnings.len(), 1, "the shared session is reported");
+        // A Rust line continuation lost in an edit once left 18 spaces inside.
+        assert!(
+            !result.warnings[0].reason.contains("  "),
+            "{:?}",
+            result.warnings[0].reason
+        );
     }
 
     #[test]
