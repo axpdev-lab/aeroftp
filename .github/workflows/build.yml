@@ -608,14 +608,10 @@ jobs:
           # the following release), confirming the delta download applies.
 
           # The repackaged image must keep Fix 4: no file executable by its
-          # owner only, no folder other than 755.
-          BAD=$(unsquashfs -ll -o "$("$APPIMAGE" --appimage-offset)" "$APPIMAGE" \
-            | awk '($1 ~ /^-..x/ && substr($1,10,1) != "x") || ($1 ~ /^d/ && $1 != "drwxr-xr-x") {print $1, $NF}')
-          if [ -n "$BAD" ]; then
-            echo "::error::AppImage entries not runnable or readable by every user:"
-            echo "$BAD"
-            exit 1
-          fi
+          # owner only, no folder other than 755. A script rather than a pipe
+          # into awk: this step has no pipefail, and the script fails on a
+          # listing it cannot read instead of passing it.
+          "$GITHUB_WORKSPACE/scripts/appimage-permissions-check.sh" "$APPIMAGE"
 
       - name: Assert Linux ACL packaging contracts
         if: matrix.target == 'linux'
@@ -774,47 +770,17 @@ jobs:
           name: aeroftp-macos-x64-${{ github.sha }}
           path: release-assets
 
-      # Keep the published AppImage and its .zsync from the same build.
-      # overwrite_files: false repairs a partial release by uploading only the
-      # missing assets, so a re-run whose fresh build produced a byte-different
-      # AppImage would publish a .zsync that does not match the AppImage
-      # already on the release, breaking delta updates. When the release
-      # already has the AppImage but not its .zsync, regenerate the .zsync
-      # from the published bytes instead of shipping this run's one.
+      # Keep the published AppImage and its .zsync from the same build: when
+      # the release already has the AppImage but not its .zsync, regenerate
+      # the .zsync from the published bytes instead of shipping this run's one
+      # (the reason is in the script). A script rather than inline so the
+      # read of `gh api --include` is tested: an output it cannot read
+      # refuses instead of passing as a release with no assets.
       - name: Pair AppImage .zsync with the published AppImage
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          appimages=(release-assets/appimage/*.AppImage)
-          if [ ${#appimages[@]} -eq 0 ]; then exit 0; fi
-          if ! gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" > /tmp/published-release.txt 2>/tmp/published-release-error.txt; then
-            if grep -Eq '^HTTP/[0-9.]+ 404([[:space:]]|$)' /tmp/published-release.txt; then
-              echo "Release $GITHUB_REF_NAME does not exist yet: fresh publish, the pair comes from this build"
-              exit 0
-            fi
-            echo "::error::Release lookup failed; refusing to assume a fresh publication"
-            cat /tmp/published-release-error.txt >&2
-            exit 1
-          fi
-          sed '1,/^[[:space:]]*$/d' /tmp/published-release.txt | jq -r '.assets[].name' > /tmp/published-assets.txt
-          for appimage in "${appimages[@]}"; do
-            base=$(basename "$appimage")
-            if grep -qx "${base}.zsync" /tmp/published-assets.txt && ! grep -qx "$base" /tmp/published-assets.txt; then
-              echo "::error::Release has ${base}.zsync without its AppImage; refusing to pair it with new bytes"
-              exit 1
-            fi
-            if grep -qx "$base" /tmp/published-assets.txt && ! grep -qx "${base}.zsync" /tmp/published-assets.txt; then
-              echo "Repair case: the release has $base but no .zsync; regenerating from the published asset"
-              sudo apt-get update && sudo apt-get install -y --no-install-recommends zsync
-              mkdir -p /tmp/published-appimage
-              gh release download "$GITHUB_REF_NAME" --pattern "$base" --dir /tmp/published-appimage --clobber
-              (cd /tmp/published-appimage && zsyncmake "$base")
-              mv "/tmp/published-appimage/${base}.zsync" "${appimage}.zsync"
-            fi
-          done
+        run: scripts/pair-appimage-zsync.sh release-assets/appimage
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2

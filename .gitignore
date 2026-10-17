@@ -114,6 +114,7 @@ run-clean.sh
 # Exception: CI-required scripts
 !/scripts/apply-i18n-batch.py
 !/scripts/aerorsync-emit-guard-tests.sh
+!/scripts/pair-appimage-zsync.sh
 !/scripts/i18n-validate.ts
 !/scripts/i18n-sync.ts
 !/scripts/i18n-stats.ts
@@ -128,9 +129,12 @@ run-clean.sh
 !/scripts/publish-sourceforge.sh
 # Exception: snap gates and stage-package staleness audit (#460, #462)
 !/scripts/snap-abi-check.sh
+!/scripts/snap-gpu-lint-check.sh
 !/scripts/snap-gui-check.sh
 !/scripts/snap-portal-check.sh
 !/scripts/snap-stale-packages.mjs
+# Exception: the AppImage permission check of the "Fix AppImage" step
+!/scripts/appimage-permissions-check.sh
 # Exception: Linux ACL packaging contracts for AeroRsync (G4)
 !/scripts/assert-linux-acl-packaging.sh
 # Exception: re-emits the aerorsync module as a standalone crate, so the CI can

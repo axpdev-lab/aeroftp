@@ -933,7 +933,7 @@ async fn write_plaintext_atomic(output_path: &str, plaintext: &[u8]) -> Result<(
     if let Some(parent) = std::path::Path::new(output_path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    let tmp = format!("{output_path}.aerotmp");
+    let tmp = crate::util::temp_name::sibling(std::path::Path::new(output_path), ".aerotmp");
     tokio::fs::write(&tmp, plaintext)
         .await
         .map_err(ProviderError::IoError)?;

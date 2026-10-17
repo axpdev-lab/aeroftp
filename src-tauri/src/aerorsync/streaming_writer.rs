@@ -195,9 +195,50 @@ fn locks_usable(_path: &Path) -> bool {
 /// Append `TEMP_SUFFIX` to `target` preserving the original extension.
 /// `data.tar.gz` becomes `data.tar.gz.aerotmp`, not `data.tar.aerotmp`.
 fn temp_path_for_streaming(target: &Path) -> PathBuf {
-    let mut os: OsString = target.as_os_str().to_os_string();
-    os.push(TEMP_SUFFIX);
-    PathBuf::from(os)
+    temp_sibling(target, TEMP_SUFFIX)
+}
+
+/// The longest name file systems take, in bytes.
+const NAME_MAX_BYTES: usize = 255;
+
+/// The room a name keeps for a suffix: the longest of the download sidecars
+/// AeroFTP writes next to a file (`.aerosegtmp`, 11 bytes), so all of them
+/// share one stem.
+const SUFFIX_ROOM: usize = 11;
+
+/// Hex digits of the hash a cut name ends with: 128 bits of SHA-256.
+const HASH_HEX_DIGITS: usize = 32;
+
+/// The temporary of `target`: its name with `suffix`, in its folder. A name
+/// near the 255-byte limit leaves no room for the suffix, and its temporary
+/// could not be created although the file can: such a name is cut at a
+/// character boundary and followed by `~` and the hash of the whole name, the
+/// same on every run. AeroFTP's download writers name their temporaries the
+/// same way (`util::temp_name`, which this module may not name); a test there
+/// holds the two to the same names.
+pub(crate) fn temp_sibling(target: &Path, suffix: &str) -> PathBuf {
+    let room = suffix.len().max(SUFFIX_ROOM);
+    let Some(name) = target
+        .file_name()
+        .filter(|name| name.len() + room > NAME_MAX_BYTES)
+    else {
+        let mut os: OsString = target.as_os_str().to_os_string();
+        os.push(suffix);
+        return PathBuf::from(os);
+    };
+    let whole = name.to_string_lossy();
+    let mut cut = (NAME_MAX_BYTES - room - 1 - HASH_HEX_DIGITS).min(whole.len());
+    while !whole.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let mut fitted = OsString::from(&whole[..cut]);
+    fitted.push("~");
+    let digest = <sha2::Sha256 as sha2::Digest>::digest(name.as_encoded_bytes());
+    for byte in &digest[..HASH_HEX_DIGITS / 2] {
+        fitted.push(format!("{byte:02x}"));
+    }
+    fitted.push(suffix);
+    target.with_file_name(fitted)
 }
 
 /// Build a per-invocation temp path. U-14: the suffix carries the
@@ -218,9 +259,7 @@ fn temp_path_for(local: &Path) -> PathBuf {
         counter,
         nanos
     );
-    let mut os = local.as_os_str().to_os_string();
-    os.push(suffix);
-    PathBuf::from(os)
+    temp_sibling(local, &suffix)
 }
 
 /// Error type for `write_atomic_chunked`. Splits "temp file never

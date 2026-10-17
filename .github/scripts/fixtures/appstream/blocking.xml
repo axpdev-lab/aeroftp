@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture for .github/scripts/test-check-appstream.mjs, not the shipped metainfo. -->
+<component type="desktop-application">
+  <id>app.aeroftp.AeroFTP</id>
+  <name>AeroFTP</name>
+  <summary>Multi-protocol file client used as a fixture for the AppStream gate</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>A fixture for the AppStream gate.</p>
+  </description>
+  <launchable type="desktop-id">app.aeroftp.AeroFTP.desktop</launchable>
+  <url type="homepage">https://www.aeroftp.app</url>
+  <developer id="app.aeroftp">
+    <name>AeroFTP</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.6" date="2026-10-07">
+      <description>
+        <p>Opens saved profiles from aeroftp://connections links.</p>
+      </description>
+    </release>
+    <release version="1.0.5" date="2026-10-06">
+      <description>
+        <p>Documentation moved to https://example.com/docs for this release.</p>
+      </description>
+    </release>
+    <release version="1.0.4" date="2026-10-05">
+      <description>
+        <p>Profiles open from aeroftp://connections, see https://example.com/profiles.</p>
+      </description>
+    </release>
+    <release version="1.0.3" date="2026-10-04">
+      <description>
+        <p>The server at http://127.0.0.1.example.invalid/ is not loopback.</p>
+      </description>
+    </release>
+  </releases>
+</component>

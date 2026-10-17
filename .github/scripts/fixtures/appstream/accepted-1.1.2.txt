@@ -1,0 +1,45 @@
+---
+{
+  "File": "app.aeroftp.AeroFTP.metainfo.xml",
+  "Validator": "1.1.2",
+  "Issues": [
+    {
+      "tag": "cid-contains-uppercase-letter",
+      "severity": "pedantic",
+      "component": "app.aeroftp.AeroFTP",
+      "line": 4,
+      "hint": "app.aeroftp.AeroFTP",
+      "explanation": "The component ID should only contain lowercase characters."
+    },
+    {
+      "tag": "description-first-para-too-short",
+      "severity": "info",
+      "component": "app.aeroftp.AeroFTP",
+      "line": 10,
+      "hint": "A fixture for the AppStream gate.",
+      "explanation": "The first `description/p` paragraph of this component might be too short (< 80
+        characters). Please consider starting with a longer paragraph to improve how the description
+        looks like in software centers and to provide more detailed information on this component im\
+        mediately in the first paragraph."
+    },
+    {
+      "tag": "description-has-plaintext-url",
+      "severity": "warning",
+      "component": "app.aeroftp.AeroFTP",
+      "line": 21,
+      "hint": "p",
+      "explanation": "The description contains a web URL in plain text. This is not allowed, please \
+        use the <url/> tag instead to share links."
+    },
+    {
+      "tag": "description-has-plaintext-url",
+      "severity": "warning",
+      "component": "app.aeroftp.AeroFTP",
+      "line": 26,
+      "hint": "p",
+      "explanation": "The description contains a web URL in plain text. This is not allowed, please \
+        use the <url/> tag instead to share links."
+    }
+  ],
+  "Passed": "no"
+}

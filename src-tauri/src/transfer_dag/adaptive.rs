@@ -1154,7 +1154,7 @@ impl AimdController {
     /// pathological `Retry-After: 3600` from a 1-second-default provider
     /// would otherwise stall the entire transfer for an hour on a single
     /// transient rate limit. Cap at 10× the default and let the operator
-    /// see the throttling in `RUST_LOG=transfer_dag::adaptive=debug`.
+    /// see the throttling in `RUST_LOG=ftp_client_gui_lib::transfer_dag::adaptive=debug`.
     const MAX_HINT_MULTIPLIER: u32 = 10;
 
     /// Multiplicative decrease with an explicit cooldown hint. Identical
@@ -1212,6 +1212,14 @@ impl AimdController {
         // registry mutex is a strict leaf and never touches a class lock.
         let learned = st.target;
         drop(st);
+        // The one place a throttle shows: concurrency halved and a cooldown
+        // armed, with the provider's hint as it came and as it was clamped.
+        tracing::debug!(
+            "transfer throttled: {class:?} concurrency {level_at_congestion} -> {learned}, \
+             cooldown {} ms (Retry-After hint {:?} ms)",
+            effective_cooldown.as_millis(),
+            cooldown_hint.map(|hint| hint.as_millis())
+        );
         self.record_learned(class, learned);
     }
 
@@ -1718,6 +1726,63 @@ mod tests {
         assert_eq!(ctrl.target(AdaptiveClass::Chunk), 3);
         assert_eq!(ctrl.target(AdaptiveClass::Http), 9);
         assert_eq!(ctrl.target(AdaptiveClass::Api), 2);
+    }
+
+    /// The directive `MAX_HINT_MULTIPLIER` points operators to shows the
+    /// throttle: the halved concurrency and the hint, raw and clamped.
+    #[test]
+    fn a_throttle_shows_under_the_documented_log_directive() {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct Capture(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+            type Writer = Capture;
+            fn make_writer(&'writer self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        use tracing_subscriber::layer::SubscriberExt as _;
+        let targets: tracing_subscriber::filter::Targets =
+            "ftp_client_gui_lib::transfer_dag::adaptive=debug"
+                .parse()
+                .unwrap();
+        let capture = Capture::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_writer(capture.clone())
+            .finish()
+            .with(targets);
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(1),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
+        };
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        tracing::subscriber::with_default(subscriber, || {
+            ctrl.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_secs(3600)));
+        });
+        let out = String::from_utf8_lossy(&capture.0.lock().unwrap()).into_owned();
+        assert!(
+            out.contains("transfer throttled: File concurrency 8 -> 4"),
+            "{out:?}"
+        );
+        assert!(
+            out.contains("cooldown 10000 ms (Retry-After hint Some(3600000) ms)"),
+            "{out:?}"
+        );
     }
 
     /// T-DEBT-05: `on_congestion_with_hint(class, Some(d))` must arm the

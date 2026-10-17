@@ -16,6 +16,7 @@ pub mod provider_guard;
 pub mod scratch;
 pub mod shutdown;
 pub mod size;
+pub mod temp_name;
 
 pub use abort_on_drop::AbortOnDrop;
 pub use endpoint::endpoint_stays_on_this_machine;

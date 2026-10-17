@@ -377,7 +377,7 @@ fn write_vault(
     entries: &[(String, Vec<u8>)],
     meta: &AeroVaultMeta,
 ) -> Result<String, String> {
-    let tmp_path = format!("{}.tmp", vault_path);
+    let tmp_path = crate::util::temp_name::sibling(std::path::Path::new(vault_path), ".tmp");
 
     let file =
         File::create(&tmp_path).map_err(|e| format!("Failed to create temp vault: {}", e))?;

@@ -1036,7 +1036,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
     const handleOpenRemoteVault = async () => {
         if (!remoteVaultPath.trim() || !remoteVaultPath.endsWith('.aerovault')) {
-            setError(t('vault.remote.open') + ': .aerovault');
+            setError(t('vault.errors.notAVault'));
             return;
         }
         setRemoteLoading(true);

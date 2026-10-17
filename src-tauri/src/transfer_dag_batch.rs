@@ -704,13 +704,16 @@ where
     metrics
 }
 
+/// How often a pending checkout looks at the stop flag.
+const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
 /// Stays pending until `is_cancelled` is true, then completes with `false`.
 async fn wait_until_cancelled(is_cancelled: impl Fn() -> bool) -> bool {
     loop {
         if is_cancelled() {
             return false;
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
     }
 }
 
@@ -1968,7 +1971,10 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    /// Paused time: the clock moves only to the next timer, so a stalled
+    /// runner cannot stretch the measurement, and a checkout that ignores the
+    /// stop runs into the cap instead of hanging the suite.
+    #[tokio::test(start_paused = true)]
     async fn checkout_wait_stops_when_the_file_is_no_longer_wanted() {
         struct NeverPool;
 
@@ -2001,14 +2007,15 @@ mod tests {
             }
         }
 
+        const STOP_AFTER: Duration = Duration::from_millis(40);
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag = std::sync::Arc::clone(&cancel);
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            tokio::time::sleep(STOP_AFTER).await;
             flag.store(true, std::sync::atomic::Ordering::Relaxed);
         });
 
-        let started = std::time::Instant::now();
+        let started = tokio::time::Instant::now();
         let governor =
             crate::transfer_dag::GlobalTransferGovernor::new(crate::transfer_dag::GovernorConfig {
                 buffer_bytes: 0,
@@ -2016,23 +2023,27 @@ mod tests {
                 endpoint_slots: 4,
                 disk_device_slots: 4,
             });
-        let result = super::acquire_session_then_job(
-            &crate::transfer_dag::TransferSessionPoolHandle::new(NeverPool),
-            &governor,
-            crate::transfer_dag::EndpointIdentity::new("ftp", "127.0.0.1", "test"),
-            std::iter::empty(),
-            || cancel.load(std::sync::atomic::Ordering::Relaxed),
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            super::acquire_session_then_job(
+                &crate::transfer_dag::TransferSessionPoolHandle::new(NeverPool),
+                &governor,
+                crate::transfer_dag::EndpointIdentity::new("ftp", "127.0.0.1", "test"),
+                std::iter::empty(),
+                || cancel.load(std::sync::atomic::Ordering::Relaxed),
+            ),
         )
         .await
+        .expect("checkout kept waiting after stop")
         .expect("stopping a checkout is not a pool error");
         assert!(
             result.is_none(),
             "a stopped file must not take the governor job"
         );
+        let elapsed = started.elapsed();
         assert!(
-            started.elapsed() < std::time::Duration::from_millis(500),
-            "checkout kept waiting after stop: {:?}",
-            started.elapsed()
+            elapsed <= STOP_AFTER + super::CANCEL_POLL_INTERVAL,
+            "the stop must be seen within one poll interval, it was seen after {elapsed:?}"
         );
     }
 

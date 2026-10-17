@@ -31,17 +31,13 @@ pub(crate) fn inplace_active() -> bool {
 /// It must stay distinct from `.aerotmp`: a pre-sized, out-of-order partial is
 /// not safe for the length-based resumable writer to append to or commit.
 pub fn readahead_temp_path_for(final_path: &Path) -> PathBuf {
-    let mut temp = final_path.as_os_str().to_owned();
-    temp.push(".aeroardtmp");
-    PathBuf::from(temp)
+    crate::util::temp_name::sibling(final_path, ".aeroardtmp")
 }
 
 /// The record a resumable part keeps of the version of the file it was
 /// started from: `<final>.aerosrctmp`, next to its `<final>.aerotmp`.
 pub fn part_record_path_for(final_path: &Path) -> PathBuf {
-    let mut record = final_path.as_os_str().to_owned();
-    record.push(".aerosrctmp");
-    PathBuf::from(record)
+    crate::util::temp_name::sibling(final_path, ".aerosrctmp")
 }
 
 /// The record of the part at `temp`, when `temp` is a resumable part.
@@ -285,11 +281,12 @@ pub(crate) mod temp_claim {
 
     /// `e`, from creating or opening the temporary at `temp`, told plainly
     /// when the file system refused the name as too long. The temporary is
-    /// the local name plus a suffix of up to 11 bytes (`.aerosegtmp`), so a
-    /// name that fits the file system on its own can still leave no room for
-    /// it, and the bare "File name too long" reads as if the name were
-    /// refused. The name cannot be shortened here: a resumed download finds
-    /// its part again by this exact name.
+    /// the local name plus a suffix of up to 11 bytes (`.aerosegtmp`), cut to
+    /// the 255 bytes most file systems take (`util::temp_name`); one with a
+    /// lower limit (eCryptfs takes 143) can still refuse it, and the bare
+    /// "File name too long" reads as if the name were refused. The name is
+    /// not cut further here: a resumed download finds its part again by the
+    /// name `util::temp_name` gives, on every file system alike.
     pub(crate) fn name_too_long(e: Error, temp: &Path) -> Error {
         #[cfg(unix)]
         let too_long = e.raw_os_error() == Some(libc::ENAMETOOLONG);
@@ -909,9 +906,7 @@ impl AtomicFile {
 
     /// Generate temp path for a given final path.
     fn temp_path_for(path: &Path) -> PathBuf {
-        let mut temp = path.as_os_str().to_owned();
-        temp.push(".aerotmp");
-        PathBuf::from(temp)
+        crate::util::temp_name::sibling(path, ".aerotmp")
     }
 }
 
@@ -1508,41 +1503,51 @@ mod tests {
         assert_eq!(std::fs::read(path).unwrap(), b"first part, the rest");
     }
 
-    /// Pre-release review of 4.2.1 (B4 sweep): a local name that fits the
-    /// file system but leaves no room for the temporary's suffix failed with
-    /// the bare "File name too long", which reads as if the name itself were
-    /// refused. Every writer names the temporary and the way out.
+    /// A local name that fits the file system but leaves no room for the
+    /// temporary's suffix failed on every attempt (4.2.1 only made the error
+    /// clear): the stress test of the Proton Drive client lost a 244-byte
+    /// name so. Its temporaries are cut to fit, and its download writes,
+    /// resumes from its part against that part's record, and publishes.
     #[tokio::test]
-    async fn a_name_with_no_room_for_the_suffix_fails_with_a_clear_error() {
-        let dir = tempfile::tempdir().unwrap();
-        // 250 bytes fits NAME_MAX (255); 250 + ".aerotmp" does not.
-        let path = dir.path().join("n".repeat(250));
-        let path = path.to_str().unwrap();
-        let clear = |e: std::io::Error, suffix: &str| {
-            let text = e.to_string();
-            assert!(
-                text.contains(suffix) && text.contains("shorten"),
-                "unclear error: {text}"
+    async fn a_name_with_no_room_for_the_suffix_downloads_and_resumes() {
+        // 244 bytes ("ä" is two), and 250: both fit NAME_MAX (255), neither
+        // with ".aerosegtmp" after it.
+        for name in [format!("{}.txt", "ä".repeat(120)), "n".repeat(250)] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(&name);
+            let path = path.to_str().unwrap();
+
+            let mut file = AtomicFile::new(path).await.expect("atomic temporary");
+            file.write_all(b"atomic").await.unwrap();
+            file.commit().await.unwrap();
+            assert_eq!(std::fs::read(path).unwrap(), b"atomic");
+
+            let v1 = version(100, Some("\"v1\""), Some("2026-10-17 10:00:00"));
+            leave_part(path, &v1, b"first part").await;
+            let mut resumed = ResumableFile::open_for(path, &v1).await.unwrap();
+            assert_eq!(resumed.offset(), 10, "{name}: the part was not found again");
+            resumed.write_all(b", the rest").await.unwrap();
+            resumed.commit().await.unwrap();
+            assert_eq!(std::fs::read(path).unwrap(), b"first part, the rest");
+
+            let segmented =
+                crate::providers::multi_thread::segmented_temp_path_for(Path::new(path));
+            drop(temp_claim::create_fresh(&segmented).expect("segmented temporary"));
+            std::fs::remove_file(&segmented).unwrap();
+            let readahead = readahead_temp_path_for(Path::new(path));
+            std::fs::write(&readahead, b"window").expect("read-ahead temporary");
+            std::fs::remove_file(&readahead).unwrap();
+
+            let left: Vec<_> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(
+                left,
+                [std::ffi::OsString::from(&name)],
+                "only the file remains"
             );
-        };
-        clear(AtomicFile::new(path).await.err().unwrap(), ".aerotmp");
-        clear(
-            ResumableFile::open_in(path, false).await.err().unwrap(),
-            ".aerotmp",
-        );
-        clear(
-            ResumableFile::open_fresh_in(path, false)
-                .await
-                .err()
-                .unwrap(),
-            ".aerotmp",
-        );
-        let segmented = crate::providers::multi_thread::segmented_temp_path_for(Path::new(path));
-        clear(
-            temp_claim::create_fresh(&segmented).err().unwrap(),
-            ".aerosegtmp",
-        );
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        }
     }
 
     /// A version of a remote file, as a provider's stat describes it.

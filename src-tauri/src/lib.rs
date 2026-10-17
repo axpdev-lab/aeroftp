@@ -7471,7 +7471,7 @@ struct ArchiveTempFile {
 impl ArchiveTempFile {
     fn new(final_path: &str) -> Self {
         Self {
-            tmp: std::path::PathBuf::from(format!("{}.aerotmp", final_path)),
+            tmp: crate::util::temp_name::sibling(std::path::Path::new(final_path), ".aerotmp"),
             committed: false,
         }
     }
@@ -11435,6 +11435,9 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
         info!("Startup already finished or finishing; {by} has nothing to do");
         return;
     }
+    // Gate G3 (scripts/snap-gui-check.sh) takes "Finishing startup (app_ready)"
+    // as the proof that the frontend booted; pinned by
+    // .github/scripts/test_snap_gui_check.py.
     info!("Finishing startup ({by})");
 
     // IMPORTANT: Do NOT set APP_READY_DONE here! Setting it early creates a race

@@ -37,10 +37,18 @@ export function validateFixtureEnvironment(root, env, port) {
 
 /** ss columns distinguish the listening address from the wildcard peer address. */
 export function inspectorPid(listener, port) {
-    const lines = listener.split('\n').map(line => ({ line, local: line.trim().split(/\s+/)[3] }));
-    if (lines.some(({ local }) => local === `0.0.0.0:${port}` || local === `*:${port}` || local === `[::]:${port}`)) {
-        throw Error('Development inspector must listen only on loopback');
+    // Every row must be read, and every listener on the port must be the loopback one: a list of
+    // wildcard spellings (0.0.0.0, *, [::]) let `:::PORT`, `0.0.0.0%eth0:PORT` or a LAN address
+    // through next to the loopback row. Rows are `State Recv-Q Send-Q Local Peer Process`.
+    const lines = [];
+    for (const line of listener.split('\n')) {
+        const fields = line.trim().split(/\s+/);
+        if (line.trim() === '' || fields[0] === 'State') continue;
+        if (fields[0] !== 'LISTEN' || fields.length < 5) throw Error(`Development inspector check cannot read this ss line: ${line.trim()}`);
+        lines.push({ line, local: fields[3] });
     }
+    const other = lines.find(({ local }) => local !== `127.0.0.1:${port}`);
+    if (other) throw Error(`Development inspector must listen only on 127.0.0.1:${port}; ss shows ${other.local}`);
     const owned = lines.filter(({ local }) => local === `127.0.0.1:${port}`);
     if (owned.length !== 1 || !/"aeroftp",pid=(\d+)/.test(owned[0].line)) throw Error('Owned loopback AeroFTP inspector unavailable');
     return Number(owned[0].line.match(/"aeroftp",pid=(\d+)/)[1]);

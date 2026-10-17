@@ -4810,6 +4810,7 @@
                 "factorContainer": "Container"
             },
             "scrubErrorCorrection": "Scrub Error Correction",
+            "scrubErrorCorrectionTooltip": "{label} (verify cipher hashes)",
             "compressionProfile": "Compression Profile",
             "enableErrorCorrection": "Enable Reed-Solomon Error Correction",
             "errorCorrectionDesc": "Adds redundancy for bit-rot recovery on encrypted chunks. Non-critical (v3 readers can still open).",
@@ -4840,6 +4841,7 @@
             "parityStrippedNoRecovery": "Embedded parity removed; this vault now has no recovery data",
             "errorCorrectionDetachedBadge": "Error Correction (detached)",
             "repairErrorCorrection": "Repair Error Correction",
+            "repairErrorCorrectionTooltip": "{label} (dry-run preview available)",
             "errorCorrectionScrubResult": "Error Correction Scrub Result",
             "noDamageDetected": "No damage detected. All cipher hashes match the stored blocks.",
             "checkedParen": "(checked: {count})",

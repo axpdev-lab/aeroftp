@@ -298,17 +298,18 @@ impl FtpSessionPool {
         }
     }
 
-    /// One session whose connect hangs, with a short acquire deadline.
-    /// Checkout must stop at the deadline instead of the connect timeout.
+    /// One session on `server`, which accepts the connection and never sends
+    /// the greeting, with a short acquire deadline. The connect hangs until
+    /// its 5 s timeout, so checkout must stop at the deadline instead.
     #[cfg(test)]
-    pub(crate) fn blackhole_for_test(acquire_timeout_ms: u64) -> Self {
+    pub(crate) fn silent_server_for_test(server: &str, acquire_timeout_ms: u64) -> Self {
         let timeouts = crate::ftp::FtpTimeoutConfig {
             connect_timeout: Duration::from_secs(5),
             ..crate::ftp::FtpTimeoutConfig::default()
         };
         let config = FtpPoolConfig {
             connection: FtpConnectionSpec {
-                server: "192.0.2.1:1".to_string(),
+                server: server.to_string(),
                 username: "user".to_string(),
                 password: secrecy::SecretString::from("unused".to_string()),
                 initial_path: "/".to_string(),
@@ -732,16 +733,29 @@ mod tests {
         let _ = pool.close().await;
     }
 
-    #[tokio::test]
+    /// The listener completes the handshake from its backlog and never greets,
+    /// so the checkout hangs on every host, whatever its routing. Paused time
+    /// moves only to the next timer: a stalled runner cannot stretch the
+    /// measurement, and only the deadline (50 ms), the cap (2 s) and the
+    /// connect timeout (5 s) can end the wait.
+    #[tokio::test(start_paused = true)]
     async fn acquire_bounds_checkout_io_by_the_deadline() {
-        let pool = FtpSessionPool::blackhole_for_test(50);
-        let started = std::time::Instant::now();
+        const DEADLINE: std::time::Duration = std::time::Duration::from_millis(50);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind the silent server");
+        let server = listener.local_addr().expect("silent server address");
+        let pool = FtpSessionPool::silent_server_for_test(
+            &server.to_string(),
+            DEADLINE.as_millis() as u64,
+        );
+        let started = tokio::time::Instant::now();
         let acquired = tokio::time::timeout(std::time::Duration::from_secs(2), pool.acquire())
             .await
             .expect("checkout I/O must not run past the test cap");
         let error = match acquired {
             Err(error) => error,
-            Ok(_) => panic!("a blackholed connect is not a lease"),
+            Ok(_) => panic!("a server that never greets is not a lease"),
         };
         assert!(
             error.contains("Timed out"),
@@ -749,9 +763,10 @@ mod tests {
         );
         let elapsed = started.elapsed();
         assert!(
-            elapsed < std::time::Duration::from_millis(800),
-            "checkout ran past the acquire deadline: {elapsed:?}"
+            elapsed >= DEADLINE && elapsed < DEADLINE * 2,
+            "checkout must stop at the acquire deadline ({DEADLINE:?}), it stopped after {elapsed:?}"
         );
         let _ = pool.close().await;
+        drop(listener);
     }
 }
