@@ -104,6 +104,58 @@ struct TrashOfShare {
 /// empty page cannot keep the scan going.
 const TRASH_PAGE_LIMIT: u32 = 1000;
 
+/// File holding this machine's client UID, in AeroFTP's data folder.
+const CLIENT_UID_FILE: &str = "proton_native_client_uid.json";
+/// Prefix of AeroFTP's client UIDs.
+const CLIENT_UID_PREFIX: &str = "aeroftp-";
+
+/// One client UID per machine, as the official CLI keeps one
+/// (`cli/src/clientUid.ts`): a draft an interrupted upload left behind then
+/// carries our UID, and the next upload of that name, from any of AeroFTP's
+/// processes, deletes and replaces it instead of reporting the name taken by
+/// another client. Not a secret: plain JSON next to the other data files. A
+/// folder that cannot be read or written falls back to a UID for this run.
+pub fn machine_client_uid() -> String {
+    match crate::portable::aeroftp_data_root() {
+        Some(dir) => client_uid_in(&dir),
+        None => new_client_uid(),
+    }
+}
+
+fn new_client_uid() -> String {
+    format!("{CLIENT_UID_PREFIX}{}", uuid::Uuid::new_v4())
+}
+
+/// The UID saved in `dir`, or a new one saved there.
+fn client_uid_in(dir: &std::path::Path) -> String {
+    #[derive(serde::Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ClientUidFile {
+        client_uid: String,
+    }
+    let path = dir.join(CLIENT_UID_FILE);
+    if let Some(saved) = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<ClientUidFile>(&text).ok())
+        .map(|file| file.client_uid)
+        .filter(|uid| uid.starts_with(CLIENT_UID_PREFIX) && uid.len() > CLIENT_UID_PREFIX.len())
+    {
+        return saved;
+    }
+    let client_uid = new_client_uid();
+    let written = std::fs::create_dir_all(dir).and_then(|()| {
+        let body = serde_json::to_string(&ClientUidFile {
+            client_uid: client_uid.clone(),
+        })
+        .unwrap_or_default();
+        std::fs::write(&path, body)
+    });
+    if let Err(error) = written {
+        log::warn!("Proton: client UID not saved ({error}); this run uses its own");
+    }
+    client_uid
+}
+
 /// `GET core/v4/keys/all`.
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -277,7 +329,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
             account,
             nodes: Mutex::new(HashMap::new()),
             other_public_keys: Mutex::new(HashMap::new()),
-            client_uid: format!("aeroftp-{}", uuid::Uuid::new_v4()),
+            client_uid: machine_client_uid(),
         })
     }
 
@@ -825,6 +877,27 @@ mod tests {
                 total: 500
             }
         );
+    }
+
+    #[test]
+    fn the_client_uid_is_kept_per_machine_and_a_foreign_one_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = client_uid_in(dir.path());
+        assert!(first.starts_with(CLIENT_UID_PREFIX), "{first}");
+        assert_eq!(
+            client_uid_in(dir.path()),
+            first,
+            "a second process reads the same UID"
+        );
+
+        std::fs::write(
+            dir.path().join(CLIENT_UID_FILE),
+            r#"{"clientUid":"someone-else"}"#,
+        )
+        .unwrap();
+        let replaced = client_uid_in(dir.path());
+        assert!(replaced.starts_with(CLIENT_UID_PREFIX) && replaced != first);
+        assert_eq!(client_uid_in(dir.path()), replaced);
     }
 
     #[test]
