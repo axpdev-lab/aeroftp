@@ -104,16 +104,45 @@ pub(crate) fn upsert_catalog(
     Ok(stale_accounts)
 }
 
+/// A catalog write: its transaction, opened under the session it reads the
+/// catalog through (`user_partitions::SessionHold`), which `commit` or a drop
+/// releases after the transaction.
+pub(crate) struct CatalogWrite<'a> {
+    transaction: rusqlite::Transaction<'a>,
+    _session: user_partitions::SessionHold,
+}
+
+impl<'a> std::ops::Deref for CatalogWrite<'a> {
+    type Target = rusqlite::Transaction<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.transaction
+    }
+}
+
+impl CatalogWrite<'_> {
+    pub(crate) fn commit(self) -> rusqlite::Result<()> {
+        self.transaction.commit()
+    }
+}
+
 pub(crate) fn begin_catalog_write<'a>(
     conn: &'a mut Connection,
     root_key: &[u8; 32],
     user_id: i64,
-) -> Result<(rusqlite::Transaction<'a>, Vec<McpServerConfig>), &'static str> {
+) -> Result<(CatalogWrite<'a>, Vec<McpServerConfig>), &'static str> {
+    // The session before the reservation, the order of every partition writer.
+    let session = user_partitions::hold_user_session(conn, user_id);
     let transaction = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
     let configs = load(&transaction, root_key, user_id)?;
-    Ok((transaction, configs))
+    Ok((
+        CatalogWrite {
+            transaction,
+            _session: session,
+        },
+        configs,
+    ))
 }
 
 fn validate_edit(
@@ -458,6 +487,31 @@ mod tests {
         assert_eq!(configs[0].revision, 2);
         assert!(upsert_catalog(&mut configs, update).is_err());
         drop(transaction);
+    }
+
+    /// A catalog write takes the session before the database's reservation,
+    /// on an account with a passphrase, the kind whose partition calls take
+    /// the session.
+    #[test]
+    fn a_catalog_write_takes_the_session_before_the_reservation() {
+        let _guard = user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let root_key = [7; 32];
+        let (path, user_id) = user_partitions::passphrase_account_db(dir.path(), &root_key);
+        let written = user_partitions::wait_for_the_session_without_reserving(
+            &path,
+            user_id,
+            move |mut conn| {
+                let (transaction, mut configs) =
+                    begin_catalog_write(&mut conn, &root_key, user_id)?;
+                upsert_catalog(&mut configs, fixture("test"))?;
+                save(&transaction, &root_key, user_id, &configs)?;
+                transaction.commit().map_err(|_| "MCP_STORE_UNAVAILABLE")
+            },
+        );
+        assert_eq!(written, Ok(()));
+        let conn = Connection::open(&path).unwrap();
+        assert_eq!(load(&conn, &root_key, user_id).unwrap().len(), 1);
     }
 
     #[test]
