@@ -158,9 +158,7 @@ impl Drop for StagingLease {
         // its lease; normal callers may already have removed it asynchronously.
         let _ = std::fs::remove_file(&self.path);
         for suffix in DOWNLOAD_PART_SUFFIXES {
-            let mut part = self.path.as_os_str().to_owned();
-            part.push(suffix);
-            let _ = std::fs::remove_file(Path::new(&part));
+            let _ = std::fs::remove_file(super::temp_name::sibling(&self.path, suffix));
         }
         let _ = std::fs::remove_file(&self.lock_path);
     }

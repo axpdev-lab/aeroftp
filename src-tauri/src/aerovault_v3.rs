@@ -1323,7 +1323,10 @@ fn repack_vault_blocking(
 
     // 2) Create a fresh container at a temp path in the same dir, under the target
     //    format, and 3) re-add the extracted content preserving the tree.
-    let tmp_container = parent.join(format!(".{name}.repack-{}.tmp", std::process::id()));
+    let tmp_container = parent.join(crate::util::temp_name::fit_name(
+        std::ffi::OsStr::new(&format!(".{name}")),
+        &format!(".repack-{}.tmp", std::process::id()),
+    ));
     let _ = std::fs::remove_file(&tmp_container); // clear any stale leftover
     let readd: Result<(usize, usize), String> = if target_v3 {
         let opts = apply_profile_level(

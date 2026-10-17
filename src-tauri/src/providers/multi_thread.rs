@@ -1012,9 +1012,7 @@ pub async fn range_source_changed_through(
 /// used by `AtomicFile::temp_path_for` so existing cleanup tooling and the
 /// resume path stay consistent.
 pub fn aerotmp_path_for(final_path: &Path) -> PathBuf {
-    let mut p = final_path.as_os_str().to_owned();
-    p.push(".aerotmp");
-    PathBuf::from(p)
+    crate::util::temp_name::sibling(final_path, ".aerotmp")
 }
 
 /// The temporary the concurrent range engine writes: pre-sized to the whole
@@ -1024,9 +1022,7 @@ pub fn aerotmp_path_for(final_path: &Path) -> PathBuf {
 /// kill, a second Ctrl-C) was taken for a complete part, and the next download
 /// published it, holes included, as the file.
 pub fn segmented_temp_path_for(final_path: &Path) -> PathBuf {
-    let mut p = final_path.as_os_str().to_owned();
-    p.push(".aerosegtmp");
-    PathBuf::from(p)
+    crate::util::temp_name::sibling(final_path, ".aerosegtmp")
 }
 
 /// Disk writes for one download job.
