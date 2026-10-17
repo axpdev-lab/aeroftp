@@ -4616,6 +4616,10 @@ enum CorrectCommands {
     },
 }
 
+/// `--profiles` of every foreign-format `export` subcommand, one text for all
+/// fifteen so they cannot drift apart.
+const EXPORT_PROFILES_HELP: &str = "Comma-separated profiles to export, each selected the way --profile selects one: the 1-based index shown by `profiles`, an exact (case-insensitive) name, an id, or a substring of exactly one name. A name two profiles share selects neither: use the id. A selector that selects nothing is listed with the skipped profiles. Without --profiles, every exportable profile is exported.";
+
 #[derive(Subcommand, Clone)]
 enum ExportCommands {
     /// Export profiles to rclone.conf format: FTP/FTPS, SFTP, WebDAV, S3,
@@ -4633,9 +4637,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export. If omitted, every
-        /// exportable profile in the vault is emitted.
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export profiles to WinSCP.ini format (FTP/FTPS/SFTP).
@@ -4643,8 +4645,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export profiles to FileZilla sitemanager.xml format (FTP/FTPS/SFTP).
@@ -4652,8 +4653,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export S3 profiles to AWS shared credentials/config files (secrets written to file).
@@ -4661,8 +4661,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export SFTP profiles to an ssh_config file (key paths only, no key material).
@@ -4670,8 +4669,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export S3 profiles to a MinIO client config.json (secrets written to file).
@@ -4679,8 +4677,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export FTP/FTPS/SFTP/WebDAV/S3 profiles to Cyberduck bookmarks (.duck).
@@ -4688,8 +4685,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export S3/SFTP/WebDAV profiles to a .s3cfg file (secrets written to file).
@@ -4697,8 +4693,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export FTP/FTPS/SFTP/WebDAV profiles to an lftp rc file (secrets written to file).
@@ -4706,8 +4701,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export SFTP profiles to a PuTTY session file (key paths only, no key material).
@@ -4715,8 +4709,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export profiles to a MobaXterm.ini file (secrets written to file).
@@ -4724,8 +4717,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export profiles to a Dreamweaver site definition (.ste; secrets written to file).
@@ -4733,8 +4725,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export S3/SFTP/WebDAV profiles to a kopia repository config (secrets written to file).
@@ -4742,8 +4733,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export S3/SFTP/WebDAV profiles to Duplicacy preferences (secrets written to file).
@@ -4751,8 +4741,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export S3/SFTP/WebDAV profiles to a sourceable Restic env script (secrets written to file).
@@ -4760,8 +4749,7 @@ enum ExportCommands {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
         output: Option<String>,
-        /// Comma-separated profile names to export
-        #[arg(long)]
+        #[arg(long, value_name = "SELECTORS", help = EXPORT_PROFILES_HELP)]
         profiles: Option<String>,
     },
     /// Export profiles to AeroFTP's own encrypted `.aeroftp` bundle
@@ -28695,7 +28683,9 @@ fn match_profile_by_query<'a>(
     profile_name: &str,
 ) -> ProfileMatch<'a> {
     if let Ok(idx) = profile_name.parse::<usize>() {
-        return match profiles.get(idx.saturating_sub(1)) {
+        // 1-based: 0 is no profile, as in `resolve_profile_selector`. A
+        // saturating subtraction made `--profile 0` open the first one.
+        return match idx.checked_sub(1).and_then(|i| profiles.get(i)) {
             Some(p) => ProfileMatch::One(p),
             None => ProfileMatch::None,
         };
@@ -39332,7 +39322,7 @@ async fn cmd_import_bridge(src: &str, path: Option<String>, json: bool) -> i32 {
     }
 }
 
-/// Shared scaffold for the three `Commands::Export` subcommands. Reads
+/// Shared scaffold for the foreign-format `Commands::Export` subcommands. Reads
 /// the GUI-managed profile list from the vault, resolves credentials
 /// against the same `server_<id>` keys used by the connect path, and
 /// hands off to the per-format `pub fn export_*` functions in
@@ -39360,14 +39350,15 @@ struct ExportCollected {
     skipped: Vec<(String, String)>,
 }
 
-/// Pull every profile that matches `name_filter` (or all profiles if `None`)
-/// from the vault, decoding `server_<id>` credentials. `oauth_protocols` are
-/// always recorded as skipped because rclone/WinSCP/FileZilla all need their
-/// own OAuth flow for those.
+/// Pull every profile the `--profiles` selectors pick (or all profiles if
+/// `None`) from the vault, decoding `server_<id>` credentials. A selector that
+/// picks nothing is recorded as skipped, under the selector as typed.
+/// `oauth_protocols` are always recorded as skipped because rclone/WinSCP/
+/// FileZilla all need their own OAuth flow for those.
 fn collect_export_scaffold(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     servers_json: &serde_json::Value,
-    name_filter: Option<&[String]>,
+    selectors: Option<&[String]>,
     source: &str,
     supported_protocols: &[&str],
     oauth_protocols: &[&str],
@@ -39377,18 +39368,27 @@ fn collect_export_scaffold(
         .ok_or_else(|| "vault profiles payload is not an array".to_string())?;
     let mut out = ExportCollected::default();
 
-    for entry in arr {
-        let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        if name.is_empty() {
+    let selected = selectors.map(|tokens| {
+        let selection = select_export_profiles(arr, tokens);
+        out.skipped.extend(selection.unmatched);
+        selection.selected
+    });
+
+    for (idx, entry) in arr.iter().enumerate() {
+        if selected.as_ref().is_some_and(|s| !s.contains(&idx)) {
             continue;
         }
-        if let Some(filter) = name_filter {
-            if !filter.iter().any(|n| n == name) {
-                continue;
-            }
+        let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        if name.is_empty() {
+            // Every format names its entries after the profile, so there is
+            // nothing to write it under; say so rather than drop it.
+            let label = if id.is_empty() { "(unnamed)" } else { id };
+            out.skipped
+                .push((label.to_string(), "profile has no name".to_string()));
+            continue;
         }
 
-        let id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let protocol = entry
             .get("protocol")
             .and_then(|v| v.as_str())
@@ -39522,14 +39522,79 @@ fn collect_export_scaffold(
     Ok(out)
 }
 
-/// Parse the comma-separated --profiles filter into a Vec.
-fn parse_profile_name_filter(arg: Option<String>) -> Option<Vec<String>> {
+/// Split the comma-separated `--profiles` value into its selectors.
+fn parse_profile_selectors(arg: Option<String>) -> Option<Vec<String>> {
     arg.map(|s| {
         s.split(',')
             .map(|tok| tok.trim().to_string())
             .filter(|tok| !tok.is_empty())
             .collect()
     })
+}
+
+/// What a `--profiles` list picks for an export: positions in the saved list,
+/// each once, and every selector that picked nothing with the reason.
+#[derive(Debug, Default)]
+struct ExportSelection {
+    selected: std::collections::BTreeSet<usize>,
+    unmatched: Vec<(String, String)>,
+}
+
+/// Resolve each `--profiles` selector the way `--profile` resolves one
+/// ([`resolve_profile_selector`]: the 1-based index shown by `profiles`, an
+/// exact case-insensitive name, an id, then a substring of exactly one name),
+/// as `profile-export --ids` does.
+///
+/// The filter used to compare each selector with the exact, case-sensitive
+/// name and nothing else. An id, or a name typed in another case, picked
+/// nothing, and a selector that picked nothing left no trace: the export
+/// answered "no exportable profiles" with an empty `skipped`, which reads as
+/// "nothing here can be exported" when the selector was the problem.
+///
+/// One rule is stricter than `--profile`: a name that two profiles share (a
+/// vault saved before names were unique) picks neither and is reported with
+/// their ids. `--profile` takes the first of them, which for an export would
+/// write one profile's credentials while the operator may have meant the
+/// other.
+fn select_export_profiles(profiles: &[serde_json::Value], selectors: &[String]) -> ExportSelection {
+    let mut out = ExportSelection::default();
+    for selector in selectors {
+        match resolve_export_selector(profiles, selector) {
+            Ok(idx) => {
+                out.selected.insert(idx);
+            }
+            Err(reason) => out.unmatched.push((selector.clone(), reason)),
+        }
+    }
+    out
+}
+
+fn resolve_export_selector(
+    profiles: &[serde_json::Value],
+    selector: &str,
+) -> Result<usize, String> {
+    // A number is an index first everywhere, so a shared name cannot apply.
+    if selector.parse::<usize>().is_err() {
+        let lower = selector.to_lowercase();
+        let ids: Vec<&str> = profiles
+            .iter()
+            .filter(|p| {
+                p.get("name")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|n| n.to_lowercase() == lower)
+            })
+            .map(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("?"))
+            .collect();
+        if ids.len() > 1 {
+            return Err(format!(
+                "{} profiles are named '{}' (ids {}): select one by id",
+                ids.len(),
+                selector,
+                ids.join(", ")
+            ));
+        }
+    }
+    resolve_profile_selector(profiles, selector)
 }
 
 /// Export saved profiles to rclone.conf. Reuses the same Rust function the
@@ -39560,7 +39625,7 @@ async fn cmd_export_rclone(
             return 4;
         }
     };
-    let filter = parse_profile_name_filter(profiles);
+    let selectors = parse_profile_selectors(profiles);
 
     // Single source of truth shared with the GUI bridge: the credential
     // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Internxt/Azure/Swift/Koofr/
@@ -39579,7 +39644,7 @@ async fn cmd_export_rclone(
     let collected = match collect_export_scaffold(
         &store,
         &servers_json,
-        filter.as_deref(),
+        selectors.as_deref(),
         "rclone",
         &supported,
         &oauth,
@@ -39720,7 +39785,7 @@ async fn cmd_export_winscp(
             return 4;
         }
     };
-    let filter = parse_profile_name_filter(profiles);
+    let selectors = parse_profile_selectors(profiles);
 
     // WinSCP only handles FTP/FTPS/SFTP. Everything else is skipped.
     let supported = ["ftp", "ftps", "sftp"];
@@ -39729,7 +39794,7 @@ async fn cmd_export_winscp(
     let collected = match collect_export_scaffold(
         &store,
         &servers_json,
-        filter.as_deref(),
+        selectors.as_deref(),
         "winscp",
         &supported,
         &oauth,
@@ -39800,7 +39865,7 @@ async fn cmd_export_filezilla(
             return 4;
         }
     };
-    let filter = parse_profile_name_filter(profiles);
+    let selectors = parse_profile_selectors(profiles);
 
     // FileZilla supports FTP/FTPS/SFTP and Storj (s3). For consistency
     // with the GUI we restrict to the protocol set commonly tested.
@@ -39810,7 +39875,7 @@ async fn cmd_export_filezilla(
     let collected = match collect_export_scaffold(
         &store,
         &servers_json,
-        filter.as_deref(),
+        selectors.as_deref(),
         "filezilla",
         &supported,
         &oauth,
@@ -39866,7 +39931,7 @@ async fn cmd_export_filezilla(
 
 /// Generic exporter for the 12 profile-bridge sources. Mirrors
 /// `cmd_export_winscp`: unlocks the vault, reads the GUI profile list,
-/// applies the optional `--profiles` name filter, collects exportable
+/// applies the optional `--profiles` selectors, collects exportable
 /// profiles with the per-source supported-protocol set, then builds the
 /// matching typed `Vec<<Src>ExportServer>` and calls the matching
 /// `export_<src>`. OAuth-only providers are reported as skipped by the
@@ -39916,12 +39981,12 @@ async fn cmd_export_bridge(
             return 4;
         }
     };
-    let filter = parse_profile_name_filter(profiles);
+    let selectors = parse_profile_selectors(profiles);
 
     let collected = match collect_export_scaffold(
         &store,
         &servers_json,
-        filter.as_deref(),
+        selectors.as_deref(),
         src,
         supported,
         &oauth,
@@ -41837,7 +41902,9 @@ fn emit_empty_export(json: bool, skipped: &[(String, String)]) {
             serde_json::json!({"error": "no exportable profiles", "skipped": skipped})
         );
     } else {
-        eprintln!("No exportable profiles in vault.");
+        // Not "in vault": with --profiles the selection may be what is empty,
+        // and the lines below say which.
+        eprintln!("No exportable profiles.");
         for (n, r) in skipped {
             eprintln!("  skipped {} : {}", n, r);
         }
@@ -82027,6 +82094,10 @@ mod tests {
             match_profile_by_query(&profiles, "3"),
             ProfileMatch::None
         ));
+        assert!(matches!(
+            match_profile_by_query(&profiles, "0"),
+            ProfileMatch::None
+        ));
     }
 
     // With a sort saved in the vault, the table numbered its rows by position
@@ -82131,6 +82202,105 @@ mod tests {
             }
             _ => panic!("expected ambiguous match for shared substring"),
         }
+    }
+
+    fn selectors(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn selected_names<'a>(
+        profiles: &'a [serde_json::Value],
+        sel: &ExportSelection,
+    ) -> Vec<&'a str> {
+        sel.selected
+            .iter()
+            .map(|&i| profiles[i]["name"].as_str().unwrap())
+            .collect()
+    }
+
+    // `export --profiles` compared each selector with the exact, case-sensitive
+    // name, so an id or a name in another case exported nothing. Each selector
+    // now picks the profile `--profile` would open with it.
+    #[test]
+    fn an_export_selector_picks_the_profile_that_profile_opens() {
+        let profiles = vec![
+            json!({"id": "srv_1", "name": "lab"}),
+            json!({"id": "srv_2", "name": "Prod Web"}),
+            json!({"id": "srv_3", "name": "staging"}),
+        ];
+        for selector in ["srv_2", "prod web", "PROD WEB", "Prod Web", "2", "web"] {
+            let sel = select_export_profiles(&profiles, &selectors(&[selector]));
+            assert_eq!(selected_names(&profiles, &sel), ["Prod Web"], "{selector}");
+            assert!(sel.unmatched.is_empty(), "{selector}: {:?}", sel.unmatched);
+            assert_eq!(
+                name_of(&match_profile_by_query(&profiles, selector)),
+                Some("Prod Web"),
+                "{selector} selects for export what --profile does not open"
+            );
+        }
+    }
+
+    #[test]
+    fn every_export_selector_that_picks_nothing_is_reported_with_its_reason() {
+        let profiles = vec![
+            json!({"id": "srv_1", "name": "lab"}),
+            json!({"id": "srv_2", "name": "lab-2"}),
+        ];
+        let sel = select_export_profiles(&profiles, &selectors(&["lab", "nope", "9", "0", "la"]));
+        assert_eq!(selected_names(&profiles, &sel), ["lab"]);
+        let reported: Vec<&str> = sel.unmatched.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(reported, ["nope", "9", "0", "la"]);
+        assert!(
+            sel.unmatched[0].1.contains("no profile matches"),
+            "{:?}",
+            sel.unmatched
+        );
+        assert!(
+            sel.unmatched[1].1.contains("no profile at index 9"),
+            "{:?}",
+            sel.unmatched
+        );
+        assert!(
+            sel.unmatched[3].1.contains("ambiguous"),
+            "{:?}",
+            sel.unmatched
+        );
+    }
+
+    #[test]
+    fn two_selectors_of_one_profile_export_it_once_in_saved_order() {
+        let profiles = vec![
+            json!({"id": "srv_1", "name": "alpha"}),
+            json!({"id": "srv_2", "name": "beta"}),
+        ];
+        let sel = select_export_profiles(&profiles, &selectors(&["beta", "srv_2", "2", "ALPHA"]));
+        assert_eq!(selected_names(&profiles, &sel), ["alpha", "beta"]);
+        assert!(sel.unmatched.is_empty());
+    }
+
+    // A vault saved before names were unique can hold two profiles of one
+    // name. `--profile` takes the first; an export would write that one's
+    // credentials while the other may have been meant, so the name picks
+    // neither and the report names both ids. Each id still picks its own.
+    #[test]
+    fn a_name_two_profiles_share_picks_neither_and_names_their_ids() {
+        let profiles = vec![
+            json!({"id": "srv_a", "name": "Lab"}),
+            json!({"id": "srv_b", "name": "other"}),
+            json!({"id": "srv_c", "name": "lab"}),
+        ];
+        let sel = select_export_profiles(&profiles, &selectors(&["LAB"]));
+        assert!(sel.selected.is_empty(), "{:?}", sel.selected);
+        let (selector, reason) = &sel.unmatched[0];
+        assert_eq!(selector, "LAB");
+        assert!(
+            reason.contains("2 profiles are named 'LAB'") && reason.contains("srv_a, srv_c"),
+            "{reason}"
+        );
+
+        let sel = select_export_profiles(&profiles, &selectors(&["srv_c"]));
+        assert_eq!(sel.selected.iter().copied().collect::<Vec<_>>(), [2]);
+        assert!(sel.unmatched.is_empty());
     }
 
     #[test]
