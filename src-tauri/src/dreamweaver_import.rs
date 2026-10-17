@@ -450,13 +450,17 @@ fn xml_escape(s: &str) -> String {
 /// Percent-encode the characters Dreamweaver escapes in `sitename` /
 /// `remoteroot` (space, `[`, `]`, `%`, control). Exact inverse of
 /// `pct_decode` for those, so a name round-trips through real Dreamweaver.
+/// Every other character, non-ASCII included, is kept as text: the `.ste`
+/// is written as UTF-8. The result still needs `xml_escape` to sit in an
+/// attribute.
 fn pct_encode_min(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    for &b in s.as_bytes() {
-        if b == b' ' || b == b'[' || b == b']' || b == b'%' || b < 0x20 {
-            out.push_str(&format!("%{:02X}", b));
+    for c in s.chars() {
+        if c == ' ' || c == '[' || c == ']' || c == '%' || c < ' ' {
+            // ASCII here: the code point is the byte.
+            out.push_str(&format!("%{:02X}", u32::from(c)));
         } else {
-            out.push(b as char);
+            out.push(c);
         }
     }
     out
@@ -552,14 +556,14 @@ pub fn export_dreamweaver(
     xml.push_str("<site>\n");
     xml.push_str(&format!(
         "<localinfo sitename=\"{}\" ftporrdsserver=\"FALSE\" httpaddress=\"{}\" curserver=\"webserver\"/>\n",
-        pct_encode_min(&server.name),
+        xml_escape(&pct_encode_min(&server.name)),
         xml_escape(http),
     ));
     xml.push_str(&format!(
         "<remoteinfo accesstype=\"{}\" host=\"{}\" remoteroot=\"{}\" user=\"{}\"{}{}{} usepasv=\"TRUE\" useSFTP=\"{}\"/>\n",
         access_type,
         xml_escape(&host),
-        pct_encode_min(remoteroot),
+        xml_escape(&pct_encode_min(remoteroot)),
         xml_escape(&server.username),
         pw_attr
             .as_deref()
@@ -772,6 +776,45 @@ mod tests {
         assert_eq!(a.initial_path, b.initial_path);
         assert_eq!(a.credential, b.credential, "pw byte-stable");
         assert_eq!(a.public_url_base, b.public_url_base);
+    }
+
+    /// A non-ASCII name is written as its own text in the UTF-8 `.ste`, not
+    /// one Latin-1 character per UTF-8 byte (`Café` used to come out as
+    /// `CafÃ©`), and a name or remote root with `"`, `&` or `<` stays inside
+    /// its attribute.
+    #[test]
+    fn test_export_keeps_non_ascii_and_xml_special_names() {
+        assert_eq!(pct_encode_min("Café [x] 100%"), "Café%20%5Bx%5D%20100%25");
+        assert_eq!(
+            pct_decode(&pct_encode_min("Ünïcødé\tñame")),
+            "Ünïcødé\tñame"
+        );
+
+        let name = r#"Café "lab" & <co> [x]"#;
+        let root = "/srv/é & co/";
+        let export_servers = vec![DreamweaverExportServer {
+            name: name.to_string(),
+            host: "ftp.example.com".to_string(),
+            port: 21,
+            username: "u".to_string(),
+            protocol: Some("ftp".to_string()),
+            options: None,
+            provider_id: None,
+            initial_path: Some(root.to_string()),
+        }];
+        let out = std::env::temp_dir().join(format!(
+            "aeroftp-dw-out-{}.ste",
+            crate::bridge_shared::uuid_v4()
+        ));
+        export_dreamweaver(&export_servers, &HashMap::new(), &out).expect("export");
+        let xml = std::fs::read_to_string(&out).expect("read .ste");
+        let back = import_dreamweaver(&out).expect("reimport");
+        std::fs::remove_file(&out).ok();
+
+        assert!(xml.contains(r#"sitename="Café%20&quot;lab&quot;%20&amp;%20&lt;co&gt;%20%5Bx%5D""#));
+        assert!(!xml.contains('Ã'), "no mojibake in {xml}");
+        assert_eq!(back.servers[0].name, name);
+        assert_eq!(back.servers[0].initial_path.as_deref(), Some(root));
     }
 
     #[test]

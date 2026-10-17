@@ -8,9 +8,10 @@
 //! session key carries `HostName`, `PortNumber` (REG_DWORD), `UserName`,
 //! `Protocol` (`ssh`/`raw`/`telnet`/`rlogin`/`serial`; modern builds also
 //! advertise `sftp` indirectly via SSH) and `PublicKeyFile` (path to a
-//! `.ppk`/key file). Session names are URL-encoded with `%XX` escapes
-//! (PuTTY's `unmungestr`/`mungestr`), so `My%20Server` decodes to
-//! `My Server`.
+//! `.ppk`/key file). A session's key name is its name in the Windows ANSI
+//! code page with some bytes written as `%XX` (PuTTY's
+//! `escape_registry_key`/`unescape_registry_key`), so `My%20Server` is the
+//! session `My Server`; see [`encode_putty_name`].
 //!
 //! Because the source is the registry and not a file, `import_putty(path)`
 //! and `export_putty(.., out)` accept their `Path`/`out` arguments only for
@@ -66,50 +67,210 @@ pub fn map_putty_protocol(proto: &str) -> Option<&'static str> {
     }
 }
 
-/// Decode a PuTTY-munged session name. PuTTY escapes characters it cannot
-/// store verbatim in a registry key name as `%XX` (uppercase hex), where
-/// `%` itself is `%25`. Invalid escapes are passed through unchanged.
-pub fn decode_putty_name(raw: &str) -> String {
-    let bytes = raw.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+// ---- Session names ----
+//
+// PuTTY keeps a session under the key its `escape_registry_key` makes of the
+// session name (`windows/utils/escape_registry_key.c` in PuTTY's source), and
+// finds a session again the same way: loading or deleting a session escapes
+// the name PuTTY shows and opens that key (`open_settings_r`, `del_settings`
+// in `windows/storage.c`). A key written in any other form is still listed
+// (the listing unescapes it), but under a name that escapes to a different
+// key, so PuTTY loads it with its built-in defaults (no host) and cannot
+// delete it.
+//
+// The name PuTTY escapes is not UTF-8. PuTTY reads it from the Saved Sessions
+// box with `GetWindowTextA` (`windows/utils/getdlgitemtext_alloc.c`), is built
+// without `UNICODE` and ships no UTF-8 `activeCodePage` manifest, so the
+// bytes are in the system ANSI code page: Windows-1252 on a Western install,
+// UTF-8 only where the "Beta: Use Unicode UTF-8" option is on. WinSCP reads
+// PuTTY's names the same way (`PuttyStr`, an `AnsiString`, in
+// `source/core/HierarchicalStorage.cpp`).
+//
+// The helpers are reached only from the Windows registry paths and the unit
+// tests, so they are `#[cfg]`-gated to avoid dead-code warnings on a
+// non-Windows lib build (the CI host).
+
+/// The Windows ANSI code page PuTTY's session names are written in.
+#[cfg(any(test, target_os = "windows"))]
+trait AnsiCodePage {
+    /// `s` in the code page, as an ANSI edit box hands it to PuTTY: a
+    /// character the code page has no byte for becomes its best fit or the
+    /// code page's default character (`?`).
+    fn encode(&self, s: &str) -> Result<Vec<u8>, String>;
+    /// Bytes in the code page, as text.
+    fn decode(&self, bytes: &[u8]) -> Result<String, String>;
+}
+
+/// This system's ANSI code page (`CP_ACP`), the one PuTTY uses.
+#[cfg(target_os = "windows")]
+struct SystemAnsiCodePage;
+
+#[cfg(target_os = "windows")]
+impl AnsiCodePage for SystemAnsiCodePage {
+    fn encode(&self, s: &str) -> Result<Vec<u8>, String> {
+        use windows::core::PCSTR;
+        use windows::Win32::Globalization::{WideCharToMultiByte, CP_ACP};
+
+        let wide: Vec<u16> = s.encode_utf16().collect();
+        if wide.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Flags 0: best fit and the default character, the conversion an
+        // ANSI edit box applies to what is typed into it.
+        // SAFETY: the wrapper passes `wide` with its own length, no output
+        // buffer (a size query) and null default-character pointers.
+        let len = unsafe { WideCharToMultiByte(CP_ACP, 0, &wide, None, PCSTR::null(), None) };
+        if len <= 0 {
+            return Err(format!(
+                "convert to the Windows code page: {}",
+                windows::core::Error::from_win32()
+            ));
+        }
+        let mut out = vec![0u8; len as usize];
+        // SAFETY: as above, with `out` passed with its own length.
+        let written =
+            unsafe { WideCharToMultiByte(CP_ACP, 0, &wide, Some(&mut out), PCSTR::null(), None) };
+        if written <= 0 {
+            return Err(format!(
+                "convert to the Windows code page: {}",
+                windows::core::Error::from_win32()
+            ));
+        }
+        out.truncate(written as usize);
+        Ok(out)
+    }
+
+    fn decode(&self, bytes: &[u8]) -> Result<String, String> {
+        use windows::Win32::Globalization::{
+            MultiByteToWideChar, CP_ACP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS,
+        };
+
+        if bytes.is_empty() {
+            return Ok(String::new());
+        }
+        // SAFETY: the wrapper passes `bytes` with its own length and no
+        // output buffer (a size query).
+        let len =
+            unsafe { MultiByteToWideChar(CP_ACP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0), bytes, None) };
+        if len <= 0 {
+            return Err(format!(
+                "convert from the Windows code page: {}",
+                windows::core::Error::from_win32()
+            ));
+        }
+        let mut wide = vec![0u16; len as usize];
+        // SAFETY: as above, with `wide` passed with its own length.
+        let written = unsafe {
+            MultiByteToWideChar(
+                CP_ACP,
+                MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0),
+                bytes,
+                Some(&mut wide),
+            )
+        };
+        if written <= 0 {
+            return Err(format!(
+                "convert from the Windows code page: {}",
+                windows::core::Error::from_win32()
+            ));
+        }
+        wide.truncate(written as usize);
+        Ok(String::from_utf16_lossy(&wide))
+    }
+}
+
+/// PuTTY's `escape_registry_key`: the bytes of a session name as the key
+/// name PuTTY keeps it under. A byte becomes `%XX` (uppercase hex) when it
+/// is a space, `\`, `*`, `?`, `%`, below a space, above `~` (DEL and every
+/// byte of a non-ASCII character) or a `.` in first position. `/` is kept:
+/// a registry key name may hold it, and PuTTY does not escape it.
+#[cfg(any(test, target_os = "windows"))]
+fn escape_registry_key(name: &[u8]) -> String {
+    let mut out = String::with_capacity(name.len());
+    for (idx, &b) in name.iter().enumerate() {
+        let escape = matches!(b, b' ' | b'\\' | b'*' | b'?' | b'%')
+            || !(b' '..=b'~').contains(&b)
+            || (idx == 0 && b == b'.');
+        if escape {
+            out.push_str(&format!("%{:02X}", b));
+        } else {
+            // What is left is printable ASCII: one byte is one char.
+            out.push(char::from(b));
+        }
+    }
+    out
+}
+
+/// PuTTY's `unescape_registry_key`: each `%XX` back to its byte, every
+/// other byte as it is. PuTTY decodes any `%` followed by two characters
+/// without checking that they are hex digits; this decodes only real hex
+/// escapes and keeps anything else as written. The two agree on every key
+/// name `escape_registry_key` writes.
+#[cfg(any(test, target_os = "windows"))]
+fn unescape_registry_key(key: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(key.len());
     let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hi = (bytes[i + 1] as char).to_digit(16);
-            let lo = (bytes[i + 2] as char).to_digit(16);
+    while i < key.len() {
+        if key[i] == b'%' && i + 2 < key.len() {
+            let hi = char::from(key[i + 1]).to_digit(16);
+            let lo = char::from(key[i + 2]).to_digit(16);
             if let (Some(h), Some(l)) = (hi, lo) {
                 out.push((h * 16 + l) as u8);
                 i += 3;
                 continue;
             }
         }
-        out.push(bytes[i]);
+        out.push(key[i]);
         i += 1;
     }
-    String::from_utf8_lossy(&out).into_owned()
+    out
 }
 
-/// Encode a session name back into PuTTY's munged registry-key form.
-/// Mirrors PuTTY's `mungestr`: control characters, `%`, and a leading `.`
-/// are percent-escaped; everything else (including spaces) is preserved,
-/// matching what PuTTY itself writes.
+/// The registry key name PuTTY keeps the session `name` under, the one
+/// PuTTY's own load, save and delete of that name address: `name` in the
+/// ANSI code page `cp`, then [`escape_registry_key`]. The result is
+/// printable ASCII.
 ///
-/// Reached only from the Windows registry export path and the unit tests,
-/// so it is `#[cfg]`-gated to avoid a dead-code warning on a non-Windows
-/// lib build (the CI host).
+/// A character `cp` has no byte for cannot be part of a PuTTY session name
+/// (PuTTY's Saved Sessions box could not hold it either): it is written as
+/// `cp`'s best fit or `?`, and the session comes back from PuTTY under that
+/// name.
 #[cfg(any(test, target_os = "windows"))]
-fn encode_putty_name(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
+fn encode_putty_name(name: &str, cp: &dyn AnsiCodePage) -> Result<String, String> {
+    Ok(escape_registry_key(&cp.encode(name)?))
+}
+
+/// The session name PuTTY shows for the registry key name `key`. PuTTY
+/// lists its sessions through the ANSI registry API, so the key name is
+/// first taken in the code page (a key name PuTTY wrote is ASCII, which no
+/// code page changes), then unescaped, then read in the code page.
+#[cfg(any(test, target_os = "windows"))]
+fn decode_putty_name(key: &str, cp: &dyn AnsiCodePage) -> Result<String, String> {
+    cp.decode(&unescape_registry_key(&cp.encode(key)?))
+}
+
+/// The key name AeroFTP's exporter wrote for `name` before it followed
+/// PuTTY's escape, when that is not `current` (the key name it writes now).
+///
+/// The old form escaped `/` and left space, `*`, `?`, DEL and non-ASCII
+/// unescaped, the last as one Latin-1 character per UTF-8 byte (`Café`
+/// became `CafÃ©`). Where the two forms differ, the old one holds a raw
+/// space, `*`, `?`, DEL, a non-ASCII character or a `%2F`, none of which
+/// `escape_registry_key` writes: PuTTY never wrote that key, and lists it
+/// under a name that escapes to another key, so it can neither load nor
+/// delete it.
+#[cfg(any(test, target_os = "windows"))]
+fn legacy_putty_key_name(name: &str, current: &str) -> Option<String> {
+    let mut old = String::with_capacity(name.len());
     for (idx, b) in name.bytes().enumerate() {
-        let needs_escape =
-            b < 0x20 || b == b'%' || b == b'\\' || b == b'/' || (idx == 0 && b == b'.');
-        if needs_escape {
-            out.push_str(&format!("%{:02X}", b));
+        if b < 0x20 || b == b'%' || b == b'\\' || b == b'/' || (idx == 0 && b == b'.') {
+            old.push_str(&format!("%{:02X}", b));
         } else {
-            out.push(b as char);
+            // The old defect, reproduced on purpose to find its keys.
+            old.push(char::from(b));
         }
     }
-    out
+    (!old.eq_ignore_ascii_case(current)).then_some(old)
 }
 
 /// Build a `ServerProfileExport` from one PuTTY session's key/value map.
@@ -267,7 +428,17 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
             }
             total_remotes += 1;
 
-            let decoded = decode_putty_name(&sub_name);
+            let decoded = match decode_putty_name(&sub_name, &SystemAnsiCodePage) {
+                Ok(name) => name,
+                Err(e) => {
+                    skipped.push(PuttySkippedRemote {
+                        name: sub_name,
+                        kind: "session".to_string(),
+                        reason: format!("session name unreadable: {}", e),
+                    });
+                    continue;
+                }
+            };
             let sub = match sessions.open_subkey_with_flags(&sub_name, KEY_READ) {
                 Ok(s) => s,
                 Err(e) => {
@@ -375,9 +546,13 @@ pub struct PuttyExportServer {
 /// registry (not a file) and PuTTY never stores passwords, so neither is
 /// used. Only SFTP/SSH profiles are written (`Protocol = ssh`); other
 /// protocols are skipped. A referenced `options.private_key_path` is
-/// written to `PublicKeyFile` by reference (no key bytes). On non-Windows
-/// hosts this is a no-op returning `Ok(0)` with an info log so the file
-/// compiles on the Linux CI host. Returns the number of sessions written.
+/// written to `PublicKeyFile` by reference (no key bytes). Each session is
+/// written under the key PuTTY itself uses for its name
+/// ([`encode_putty_name`]), and the key an earlier AeroFTP export wrote for
+/// that name in the old form, which PuTTY lists but can neither load nor
+/// delete ([`legacy_putty_key_name`]), is removed. On non-Windows hosts this
+/// is a no-op returning `Ok(0)` with an info log so the file compiles on the
+/// Linux CI host. Returns the number of sessions written.
 pub fn export_putty(
     servers: &[PuttyExportServer],
     _passwords: &HashMap<String, String>,
@@ -404,7 +579,22 @@ pub fn export_putty(
                 continue;
             }
 
-            let key_name = encode_putty_name(&server.name);
+            let key_name = encode_putty_name(&server.name, &SystemAnsiCodePage)
+                .map_err(|e| format!("session name '{}': {}", server.name, e))?;
+            match decode_putty_name(&key_name, &SystemAnsiCodePage) {
+                Ok(shown) if shown == server.name => {}
+                Ok(shown) => log::warn!(
+                    "[putty export] '{}' has characters the Windows code page cannot hold; \
+                     PuTTY lists it as '{}'",
+                    server.name,
+                    shown
+                ),
+                Err(e) => log::warn!(
+                    "[putty export] cannot tell how PuTTY lists '{}': {}",
+                    server.name,
+                    e
+                ),
+            }
             let (sub, _) = sessions
                 .create_subkey(&key_name)
                 .map_err(|e| format!("create session '{}': {}", server.name, e))?;
@@ -433,6 +623,25 @@ pub fn export_putty(
             }
             // No password is ever written: PuTTY has no password store.
             written += 1;
+
+            if let Some(legacy) = legacy_putty_key_name(&server.name, &key_name) {
+                match sessions.delete_subkey(&legacy) {
+                    Ok(()) => log::info!(
+                        "[putty export] removed '{}', the key an earlier export wrote for '{}'; \
+                         PuTTY could not open it",
+                        legacy,
+                        server.name
+                    ),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => log::warn!(
+                        "[putty export] could not remove '{}', the key an earlier export wrote \
+                         for '{}': {}",
+                        legacy,
+                        server.name,
+                        e
+                    ),
+                }
+            }
         }
         Ok(written)
     }
@@ -466,28 +675,210 @@ mod tests {
         assert_eq!(map_putty_protocol("serial"), None);
     }
 
+    /// Windows-1252, the ANSI code page of a Western install, for the
+    /// characters these tests use. No best-fit table: anything else is `?`.
+    struct Cp1252;
+
+    impl AnsiCodePage for Cp1252 {
+        fn encode(&self, s: &str) -> Result<Vec<u8>, String> {
+            Ok(s.chars()
+                .map(|c| match c {
+                    '\u{0}'..='\u{7f}' | '\u{a0}'..='\u{ff}' => c as u8,
+                    '\u{20ac}' => 0x80,
+                    _ => b'?',
+                })
+                .collect())
+        }
+
+        fn decode(&self, bytes: &[u8]) -> Result<String, String> {
+            Ok(bytes
+                .iter()
+                .map(|&b| match b {
+                    0x80 => '\u{20ac}',
+                    0x81..=0x9f => char::REPLACEMENT_CHARACTER,
+                    _ => char::from(b),
+                })
+                .collect())
+        }
+    }
+
+    /// The UTF-8 code page (65001), set where Windows' "Beta: Use Unicode
+    /// UTF-8" option is on.
+    struct Utf8CodePage;
+
+    impl AnsiCodePage for Utf8CodePage {
+        fn encode(&self, s: &str) -> Result<Vec<u8>, String> {
+            Ok(s.as_bytes().to_vec())
+        }
+
+        fn decode(&self, bytes: &[u8]) -> Result<String, String> {
+            Ok(String::from_utf8_lossy(bytes).into_owned())
+        }
+    }
+
+    /// The bytes PuTTY's `escape_registry_key` escapes, each on its own, and
+    /// every other printable ASCII byte kept as it is.
     #[test]
-    fn test_decode_putty_name() {
-        assert_eq!(decode_putty_name("My%20Server"), "My Server");
-        assert_eq!(decode_putty_name("plain"), "plain");
-        assert_eq!(decode_putty_name("a%2Fb"), "a/b");
-        assert_eq!(decode_putty_name("100%25"), "100%");
-        // Invalid escape is passed through unchanged.
-        assert_eq!(decode_putty_name("bad%zz"), "bad%zz");
-        assert_eq!(decode_putty_name("trailing%2"), "trailing%2");
+    fn test_escape_registry_key_escapes_what_putty_escapes() {
+        for (byte, key) in [
+            (b' ', "%20"),
+            (b'\\', "%5C"),
+            (b'*', "%2A"),
+            (b'?', "%3F"),
+            (b'%', "%25"),
+            (0x00, "%00"),
+            (b'\t', "%09"),
+            (0x1f, "%1F"),
+            (0x7f, "%7F"),
+            (0x80, "%80"),
+            (0xe9, "%E9"),
+            (0xff, "%FF"),
+        ] {
+            assert_eq!(escape_registry_key(&[b'a', byte]), format!("a{key}"));
+        }
+        for byte in 0x21..=0x7eu8 {
+            if matches!(byte, b'\\' | b'*' | b'?' | b'%') {
+                continue;
+            }
+            assert_eq!(
+                escape_registry_key(&[byte, byte]),
+                format!("{0}{0}", char::from(byte)).replacen('.', "%2E", 1),
+                "byte {byte:#04x}"
+            );
+        }
+        // `/` is kept: PuTTY writes the session `a/b` as the key `a/b`.
+        assert_eq!(escape_registry_key(b"a/b"), "a/b");
+    }
+
+    /// Only a `.` in first position is escaped, and only that one.
+    #[test]
+    fn test_escape_registry_key_leading_dot() {
+        assert_eq!(escape_registry_key(b".hidden"), "%2Ehidden");
+        assert_eq!(escape_registry_key(b"..x"), "%2E.x");
+        assert_eq!(escape_registry_key(b"prod.db"), "prod.db");
+        assert_eq!(escape_registry_key(b"."), "%2E");
     }
 
     #[test]
-    fn test_encode_decode_name_roundtrip() {
-        for original in ["My Server", "prod.db", "a/b\\c", "100% sure", "lab-01"] {
-            let encoded = encode_putty_name(original);
-            assert_eq!(
-                decode_putty_name(&encoded),
-                original,
-                "round-trip failed for {:?} (encoded {:?})",
-                original,
-                encoded
+    fn test_unescape_registry_key() {
+        assert_eq!(unescape_registry_key(b"My%20Server"), b"My Server");
+        assert_eq!(unescape_registry_key(b"plain"), b"plain");
+        assert_eq!(unescape_registry_key(b"a/b"), b"a/b");
+        assert_eq!(unescape_registry_key(b"100%25"), b"100%");
+        assert_eq!(unescape_registry_key(b"Caf%E9"), b"Caf\xe9");
+        assert_eq!(unescape_registry_key(b"%2Ehidden"), b".hidden");
+        // Not a hex escape: kept as written.
+        assert_eq!(unescape_registry_key(b"bad%zz"), b"bad%zz");
+        assert_eq!(unescape_registry_key(b"trailing%2"), b"trailing%2");
+    }
+
+    /// A non-ASCII name is written in the system's ANSI code page, the bytes
+    /// PuTTY would have saved for it: `Caf%E9` on Windows-1252, not the
+    /// `CafÃ©` the old encoder wrote.
+    #[test]
+    fn test_encode_putty_name_uses_the_ansi_code_page() {
+        assert_eq!(encode_putty_name("Café", &Cp1252).unwrap(), "Caf%E9");
+        assert_eq!(encode_putty_name("€ box", &Cp1252).unwrap(), "%80%20box");
+        assert_eq!(
+            encode_putty_name("Café", &Utf8CodePage).unwrap(),
+            "Caf%C3%A9"
+        );
+        for cp in [&Cp1252 as &dyn AnsiCodePage, &Utf8CodePage] {
+            let key = encode_putty_name("Ünïcødé ñame", cp).unwrap();
+            assert!(
+                key.bytes()
+                    .all(|b| b.is_ascii_graphic() && !matches!(b, b'\\' | b'*' | b'?')),
+                "a key name is printable ASCII without space, \\, * or ?: {key:?}"
             );
+        }
+    }
+
+    /// A character the code page has no byte for cannot be in a PuTTY
+    /// session name: it is written as `?`, which is what PuTTY's Saved
+    /// Sessions box would have made of it, and PuTTY lists it that way.
+    #[test]
+    fn test_encode_putty_name_outside_the_code_page() {
+        let key = encode_putty_name("日本 box", &Cp1252).unwrap();
+        assert_eq!(key, "%3F%3F%20box");
+        assert_eq!(decode_putty_name(&key, &Cp1252).unwrap(), "?? box");
+        let key = encode_putty_name("日本 box", &Utf8CodePage).unwrap();
+        assert_eq!(decode_putty_name(&key, &Utf8CodePage).unwrap(), "日本 box");
+    }
+
+    /// Export then import gives the name back, non-ASCII included, and the
+    /// key name is the one PuTTY's own load and save of that name address:
+    /// escaping the name PuTTY shows gives the same key again.
+    #[test]
+    fn test_encode_decode_name_roundtrip() {
+        for original in [
+            "My Server",
+            "prod.db",
+            ".dotfirst",
+            "a/b\\c",
+            "100% sure",
+            "what?*",
+            "tab\tname",
+            "Café",
+            "Ünïcødé ñame",
+            "€ box",
+            "lab-01",
+        ] {
+            for cp in [&Cp1252 as &dyn AnsiCodePage, &Utf8CodePage] {
+                let key = encode_putty_name(original, cp).unwrap();
+                assert_eq!(
+                    decode_putty_name(&key, cp).unwrap(),
+                    original,
+                    "round-trip failed for {original:?} (key {key:?})"
+                );
+                assert_eq!(
+                    encode_putty_name(&decode_putty_name(&key, cp).unwrap(), cp).unwrap(),
+                    key,
+                    "PuTTY would address another key for {original:?}"
+                );
+            }
+        }
+    }
+
+    /// The key the old encoder wrote, found so the export can remove it, and
+    /// only where it differs from the key written now.
+    #[test]
+    fn test_legacy_putty_key_name() {
+        let legacy =
+            |name: &str| legacy_putty_key_name(name, &encode_putty_name(name, &Cp1252).unwrap());
+        assert_eq!(legacy("My Server").as_deref(), Some("My Server"));
+        assert_eq!(legacy("a/b").as_deref(), Some("a%2Fb"));
+        assert_eq!(legacy("what?").as_deref(), Some("what?"));
+        assert_eq!(legacy("Café").as_deref(), Some("CafÃ©"));
+        assert_eq!(legacy("plain"), None);
+        assert_eq!(legacy(".dot%x"), None);
+        assert_eq!(legacy("tab\tname"), None);
+    }
+
+    /// The property the export's removal rests on: a key the old encoder
+    /// wrote where the forms differ is one PuTTY cannot open, because the
+    /// name PuTTY lists for it escapes to another key. So it is never a key
+    /// PuTTY wrote, nor the one written now.
+    #[test]
+    fn test_legacy_putty_key_is_one_putty_cannot_open() {
+        for name in [
+            "My Server",
+            "a/b",
+            "what?*",
+            "Café",
+            "Ünïcødé ñame",
+            "x\u{7f}y",
+        ] {
+            for cp in [&Cp1252 as &dyn AnsiCodePage, &Utf8CodePage] {
+                let current = encode_putty_name(name, cp).unwrap();
+                let old = legacy_putty_key_name(name, &current).expect("forms differ");
+                let putty_lookup =
+                    encode_putty_name(&decode_putty_name(&old, cp).unwrap(), cp).unwrap();
+                assert!(
+                    !putty_lookup.eq_ignore_ascii_case(&old),
+                    "PuTTY can open {old:?} for {name:?}"
+                );
+                assert!(!old.eq_ignore_ascii_case(&current));
+            }
         }
     }
 
