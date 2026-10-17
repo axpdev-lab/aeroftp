@@ -502,8 +502,11 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         // remote is usable. Zoho also carries `region` and `root_folder_id`.
         // Drime, Cloudinary and ImageKit export the API keys AeroFTP signs
         // with (ImageKit only when the profile also holds the public key rclone
-        // requires). FileLu and Proton Drive have rclone backends that need a
-        // secret the vault does not hold: `bridge_export_refusal` says which.
+        // requires). Proton Drive exports the native client's session as
+        // rclone's cached login (`client_*`); a CLI profile or one not signed
+        // in is skipped by the exporter with the reason. FileLu has an rclone
+        // backend that needs a secret the vault does not hold:
+        // `bridge_export_refusal` says which.
         // Jottacloud is intentionally NOT here: it exports via a dedicated path
         // that rebuilds its persisted OIDC refresh token into a working rclone
         // token, which only the CLI (`cmd_export_rclone`/`collect_export_scaffold`)
@@ -533,6 +536,7 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
             "drime",
             "cloudinary",
             "imagekit",
+            "proton",
         ],
         "winscp" => &["ftp", "ftps", "sftp", "webdav", "s3"],
         "filezilla" => &["ftp", "ftps", "sftp", "s3"],
@@ -557,12 +561,6 @@ pub fn bridge_export_refusals(src: &str) -> &'static [(&'static str, &'static st
                  shown in My Account once Rclone is switched on), a different key from \
                  the API key AeroFTP uses. Create the remote with `rclone config` and \
                  that key.",
-            ),
-            (
-                "proton",
-                "AeroFTP reaches Proton Drive through Proton's own CLI, which keeps the \
-                 session, so the vault holds no password for rclone's protondrive backend. \
-                 Create the remote with `rclone config`.",
             ),
             // The CLI adds Jottacloud to its own list (`cmd_export_rclone`), so
             // this reason is only ever shown by the GUI.
@@ -907,17 +905,17 @@ impl ExportReport for crate::rclone_import::RcloneExportOutcome {
 mod tests {
     use super::*;
 
-    /// FileLu and Proton Drive have rclone backends, so "not exportable" would
-    /// read as "rclone cannot reach this provider". They are refused because
-    /// the vault lacks the secret those backends sign in with, and the reason
-    /// says which. A refused protocol must also stay out of the gate: the
-    /// reason is only given for a protocol the gate turns away.
+    /// FileLu has an rclone backend, so "not exportable" would read as "rclone
+    /// cannot reach this provider". It is refused because the vault lacks the
+    /// secret that backend signs in with, and the reason says which. A refused
+    /// protocol must also stay out of the gate: the reason is only given for a
+    /// protocol the gate turns away. Proton Drive is exportable (the native
+    /// session); the exporter itself skips a CLI profile with its reason.
     #[test]
     fn rclone_refusals_name_the_missing_secret_and_stay_out_of_the_gate() {
         let gated = bridge_supported_protocols("rclone");
         for (proto, needle) in [
             ("filelu", "Rclone key"),
-            ("proton", "Proton's own CLI"),
             ("jottacloud", "aeroftp-cli export rclone"),
         ] {
             let reason = bridge_export_refusal("rclone", proto)
@@ -930,6 +928,8 @@ mod tests {
         }
         assert_eq!(bridge_export_refusal("winscp", "filelu"), None);
         assert_eq!(bridge_export_refusal("rclone", "ftp"), None);
+        assert_eq!(bridge_export_refusal("rclone", "proton"), None);
+        assert!(gated.contains(&"proton"));
     }
 
     #[test]

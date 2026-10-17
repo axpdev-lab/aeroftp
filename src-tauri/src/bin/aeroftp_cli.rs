@@ -26809,6 +26809,14 @@ fn delete_profile_in_vault(
     // dual-delete from the vault + the scoped user's partition; best-effort per
     // key (a key absent for this profile kind is a no-op).
     let scoped_uid = scoped_credential_user_id(cli, store);
+    // A native Proton Drive session is ended on Proton before its key goes,
+    // as the GUI delete does.
+    #[cfg(feature = "proton-native")]
+    if protocol.as_deref() == Some("proton") {
+        ftp_client_gui_lib::providers::proton_native::vault::revoke_saved_session_blocking(
+            profile_id,
+        );
+    }
     for key in ftp_client_gui_lib::per_profile_vault_keys(profile_id, protocol.as_deref()) {
         dual_delete_server_cred(store, scoped_uid, &key);
     }
@@ -39127,6 +39135,25 @@ async fn apply_rclone_import_to_vault(
                 jotta_refresh_stored += 1;
             }
         }
+        // The cached session of an rclone `protondrive` remote, under the key
+        // the native Proton Drive client reads.
+        if let Some(ref session_json) = secrets.proton_native_session {
+            if protocol == "proton" {
+                dual_store_typed_cred_checked(
+                    &store,
+                    scoped_uid,
+                    &format!("proton_native_session_{}", profile_id),
+                    "proton_native_session",
+                    session_json,
+                )
+                .map_err(|e| {
+                    format!(
+                        "vault write failed for proton session {}: {}",
+                        profile_id, e
+                    )
+                })?;
+            }
+        }
     }
 
     // Append the imported profiles to the active user's partition. Existing
@@ -39673,6 +39700,12 @@ async fn cmd_export_rclone(
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
+            &mut options,
+            &store,
+            &p.protocol,
+            &p.id,
+        );
+        ftp_client_gui_lib::bridge_commands::inject_rclone_proton_export_options(
             &mut options,
             &store,
             &p.protocol,

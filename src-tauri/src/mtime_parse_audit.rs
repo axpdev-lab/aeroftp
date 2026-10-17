@@ -50,6 +50,11 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("providers/sts.rs", 2, "STS credential expiry"),
     ("providers/filen/mod.rs", 1, "producer: Filen metadata time"),
     (
+        "providers/proton_native/nodes.rs",
+        1,
+        "producer: the `ModificationTime` of a Proton Drive file's extended attributes (RFC 3339 with milliseconds) to `modified`",
+    ),
+    (
         "providers/http_retry.rs",
         1,
         "HTTP Retry-After deadline, not a file time",

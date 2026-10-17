@@ -136,7 +136,7 @@ pub use onedrive::OneDriveProvider;
 pub use opendrive::OpenDriveProvider;
 pub use pcloud::PCloudProvider;
 pub use peer::PeerProvider;
-pub use proton::{ProtonCliProvider, ProtonConfig};
+pub use proton::{ProtonCliProvider, ProtonConfig, ProtonConnectionMode};
 pub use s3::S3Provider;
 pub use sftp::SftpProvider;
 pub use swift::SwiftProvider;
@@ -3037,6 +3037,30 @@ pub(crate) fn refuse_replace_across_types(
     )))
 }
 
+/// The native Proton Drive client for a profile with `proton_mode=native`.
+#[cfg(feature = "proton-native")]
+fn native_proton_provider(config: ProtonConfig) -> Result<Box<dyn StorageProvider>, ProviderError> {
+    Ok(Box::new(
+        proton_native::provider::ProtonNativeProvider::new(config),
+    ))
+}
+
+/// Without the `proton-native` feature a native profile is refused, not
+/// connected through the CLI.
+#[cfg(not(feature = "proton-native"))]
+fn native_proton_provider(
+    _config: ProtonConfig,
+) -> Result<Box<dyn StorageProvider>, ProviderError> {
+    Err(ProviderError::InvalidConfig(
+        NATIVE_PROTON_UNAVAILABLE.to_string(),
+    ))
+}
+
+/// What a build without the native Proton Drive client answers a profile
+/// that asks for it.
+pub const NATIVE_PROTON_UNAVAILABLE: &str =
+    "This build does not include the native Proton Drive client. Switch the profile to the Proton Drive CLI, or use a build with the native client.";
+
 /// Provider factory for creating provider instances
 pub struct ProviderFactory;
 
@@ -3096,7 +3120,12 @@ impl ProviderFactory {
             }
             ProviderType::Proton => {
                 let proton_config = ProtonConfig::from_provider_config(config)?;
-                Ok(Box::new(ProtonCliProvider::new(proton_config)))
+                match proton_config.connection_mode {
+                    ProtonConnectionMode::Cli => Ok(Box::new(ProtonCliProvider::new(proton_config))),
+                    // Never a silent fall back to the CLI: it may be signed
+                    // in to another account than the one this profile chose.
+                    ProtonConnectionMode::Native => native_proton_provider(proton_config),
+                }
             }
             ProviderType::Azure => {
                 let azure_config = AzureConfig::from_provider_config(config)?;

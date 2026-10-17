@@ -86,6 +86,24 @@ struct ChildrenPage {
     more: bool,
 }
 
+/// `GET drive/volumes/{v}/trash?Page=n`: trashed link IDs grouped by share
+/// (`nodes/apiService.ts::iterateTrashedNodeUids`).
+#[derive(Deserialize)]
+struct TrashPage {
+    #[serde(rename = "Trash", default)]
+    trash: Vec<TrashOfShare>,
+}
+
+#[derive(Deserialize)]
+struct TrashOfShare {
+    #[serde(rename = "LinkIDs", default)]
+    link_ids: Vec<String>,
+}
+
+/// Bound on trash pages read in one scan, so a server that never answers an
+/// empty page cannot keep the scan going.
+const TRASH_PAGE_LIMIT: u32 = 1000;
+
 /// `GET core/v4/keys/all`.
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -705,6 +723,47 @@ impl<P: PGPProviderSync> DriveClient<P> {
         }
     }
 
+    /// Every trashed link ID of the volume, page by page until a page is empty,
+    /// as the SDK reads it ("we rather end when the page is fully empty").
+    async fn trashed_ids(&self) -> Result<Vec<String>, ProtonError> {
+        let path = format!("drive/volumes/{}/trash", self.my_files.volume_id);
+        let mut ids = Vec::new();
+        for page in 0..TRASH_PAGE_LIMIT {
+            let answer: TrashPage = self.api.get(&path, &[("Page", page.to_string())]).await?;
+            let before = ids.len();
+            ids.extend(answer.trash.into_iter().flat_map(|share| share.link_ids));
+            if ids.len() == before {
+                return Ok(ids);
+            }
+        }
+        Err(ProtonError::Decode(format!(
+            "the trash listing did not end after {TRASH_PAGE_LIMIT} pages"
+        )))
+    }
+
+    /// The trashed nodes whose parent is `folder`, decrypted with its key.
+    /// A purge after a trash finds the item here, by its name in the folder
+    /// it was trashed from. Not cached: trashed nodes leave the trash on
+    /// their own (restore, purge, 30-day expiry).
+    pub async fn trashed_children(
+        &self,
+        folder: &Node<P>,
+    ) -> Result<Vec<Arc<Node<P>>>, ProtonError> {
+        let folder_key = folder
+            .node_key
+            .clone()
+            .ok_or_else(|| ProtonError::Crypto("the folder key is not available".into()))?;
+        let ids = self.trashed_ids().await?;
+        let details = self.load_details(&ids).await?;
+        let mut trashed = Vec::new();
+        for detail in details {
+            if detail.link.parent_link_id.as_deref() == Some(folder.link_id.as_str()) {
+                trashed.push(Arc::new(self.decrypt_node(detail, &folder_key).await));
+            }
+        }
+        Ok(trashed)
+    }
+
     /// Resolves an absolute AeroFTP path (`/`, `/a/b.txt`) from the My Files
     /// root by listing each folder on the way. Names are compared exactly:
     /// Proton does not normalise them and allows no duplicates in a folder.
@@ -766,6 +825,22 @@ mod tests {
                 total: 500
             }
         );
+    }
+
+    #[test]
+    fn trash_pages_group_link_ids_by_share() {
+        let page: TrashPage = serde_json::from_str(
+            r#"{"Code":1000,"Trash":[{"ShareID":"s1","LinkIDs":["a","b"],"ParentIDs":["p","p"]},{"ShareID":"s2","LinkIDs":["c"]}]}"#,
+        )
+        .unwrap();
+        let ids: Vec<String> = page
+            .trash
+            .into_iter()
+            .flat_map(|share| share.link_ids)
+            .collect();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+        let empty: TrashPage = serde_json::from_str(r#"{"Code":1000,"Trash":[]}"#).unwrap();
+        assert!(empty.trash.is_empty());
     }
 
     #[test]

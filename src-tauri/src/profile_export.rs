@@ -143,6 +143,14 @@ pub struct ProviderSecrets {
     /// OneDrive Graph drive type captured at connect (`onedrive_drive_type_<id>`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub onedrive_drive_type: Option<String>,
+    /// The native Proton Drive session (`proton_native_session_<id>`): API
+    /// tokens plus the key password the browser sign-in handed over, as the
+    /// vault stores it. It travels like every other per-profile secret (owner
+    /// decision 2026-10-17). Proton rotates the refresh token, so after an
+    /// import the copy that refreshes first keeps the session and the other
+    /// signs in again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proton_native_session: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -271,6 +279,9 @@ pub const OPTIONS_SECRET_KEYS: &[&str] = &[
     // holder can sync the iroh doc: plaintext file names, sizes, the
     // publisher's addresses. Not content: the key is in the sealed capability.
     "peerTicket",
+    // The native Proton Drive session, injected into a copy of the options
+    // only on the rclone export path (`inject_rclone_proton_export_options`).
+    "proton_native_session",
 ];
 
 /// Remove options-borne secrets in place. No-op when `options` is absent or
@@ -338,6 +349,7 @@ pub fn export_profiles(
             || s.filen_api_key.is_some()
             || s.onedrive_drive_id.is_some()
             || s.onedrive_drive_type.is_some()
+            || s.proton_native_session.is_some()
     });
     let any_options_secret = servers.iter().any(|s| options_carry_secrets(&s.options));
     let metadata = ExportMetadata {
@@ -694,6 +706,9 @@ mod tests {
                 filen_api_key: Some("filen-cli-api-key-secret".to_string()),
                 onedrive_drive_id: Some("b!driveid123".to_string()),
                 onedrive_drive_type: Some("business".to_string()),
+                proton_native_session: Some(
+                    r#"{"uid":"u","access_token":"a","key_password":"k"}"#.to_string(),
+                ),
                 ..Default::default()
             },
         );
@@ -744,6 +759,13 @@ mod tests {
                 .and_then(|s| s.onedrive_drive_type.clone()),
             Some("business".to_string()),
             "OneDrive drive type must survive"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("filen-profile")
+                .and_then(|s| s.proton_native_session.clone()),
+            Some(r#"{"uid":"u","access_token":"a","key_password":"k"}"#.to_string()),
+            "the native Proton Drive session must survive"
         );
 
         let _ = std::fs::remove_file(&tmp);

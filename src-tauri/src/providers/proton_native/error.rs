@@ -37,6 +37,14 @@ pub enum ProtonError {
     #[error("Proton requires a human verification step ({})", methods.join(", "))]
     HumanVerificationRequired { methods: Vec<String> },
 
+    /// A request or a body read ran out of time (after the SDK's retries).
+    #[error("Proton did not answer in time")]
+    Timeout,
+
+    /// Reading or writing the local file failed (not a Proton error).
+    #[error("local file error: {0}")]
+    LocalIo(std::io::Error),
+
     /// Too many consecutive 429 answers: requests stop for a cool-down, as the
     /// SDK does, instead of hammering the service.
     #[error("Proton rate limit reached, retry after {retry_after_secs} s")]
@@ -75,6 +83,20 @@ pub enum ProtonError {
         draft_client_uid: Option<String>,
         is_draft: bool,
     },
+
+    /// A name Proton refuses: empty, longer than 255 UTF-16 units, `.`, `..`
+    /// or containing `/` (`nodes/validations.ts`).
+    #[error("invalid Proton Drive name: {0}")]
+    InvalidName(String),
+
+    /// A new revision of this file cannot be written: its content key came
+    /// from a v6 (AEAD) key packet, a format `proton-crypto` cannot write
+    /// yet, and Proton refuses a revision whose format differs from the
+    /// file's.
+    #[error(
+        "this file uses Proton's newer content format; AeroFTP cannot write a revision of it yet"
+    )]
+    RevisionUnsupported,
 
     /// The node, path or volume does not exist (API code 2501).
     #[error("not found on Proton Drive: {0}")]

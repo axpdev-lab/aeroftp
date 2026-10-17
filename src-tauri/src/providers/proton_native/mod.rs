@@ -40,8 +40,10 @@ pub mod drive_crypto;
 pub mod error;
 pub mod management;
 pub mod nodes;
+pub mod provider;
 pub mod session;
 pub mod upload;
+pub mod vault;
 
 pub use error::ProtonError;
 

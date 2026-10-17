@@ -30,10 +30,26 @@ const RETRY_DELAY_MS: u64 = 2000;
 const MISSING_CLI: &str = "Proton Drive CLI (`proton-drive`) is not installed. Download it from https://proton.me/download/drive/cli/index.html, then run `proton-drive auth login` in a terminal.";
 const NEED_LOGIN: &str = "Proton Drive CLI is installed but not signed in. Run `proton-drive auth login` in a terminal, finish in the browser, then connect again.";
 
+/// Which client a Proton Drive profile connects through, from the profile
+/// option `proton_mode`. A profile without it is a CLI profile: every profile
+/// saved before the native client existed keeps connecting as it did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ProtonConnectionMode {
+    /// Proton's official `proton-drive` CLI ([`ProtonCliProvider`]).
+    #[default]
+    Cli,
+    /// AeroFTP's native client (`proton_native`, cargo feature
+    /// `proton-native`).
+    Native,
+}
+
 #[derive(Debug, Clone)]
 pub struct ProtonConfig {
     pub display_name: String,
     pub binary_path: Option<String>,
+    pub connection_mode: ProtonConnectionMode,
+    /// The saved profile the native client keeps its session with.
+    pub profile_id: Option<String>,
 }
 
 impl ProtonConfig {
@@ -60,9 +76,27 @@ impl ProtonConfig {
         let binary_path = std::env::var("AEROFTP_PROTON_CLI")
             .ok()
             .filter(|s| !s.trim().is_empty());
+        // Unlike MEGA, a missing mode is never read as native: a profile
+        // gets the native client only when it asks for it.
+        let connection_mode = match config.extra.get("proton_mode").map(String::as_str) {
+            None | Some("cli") => ProtonConnectionMode::Cli,
+            Some("native") => ProtonConnectionMode::Native,
+            Some(other) => {
+                return Err(ProviderError::InvalidConfig(format!(
+                    "Invalid Proton Drive connection mode: {other}"
+                )));
+            }
+        };
+        let profile_id = config
+            .extra
+            .get("profile_id")
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty());
         Ok(Self {
             display_name,
             binary_path,
+            connection_mode,
+            profile_id,
         })
     }
 }
@@ -260,6 +294,8 @@ pub async fn cli_session_status() -> (bool, bool) {
     let probe = ProtonCliProvider::new(ProtonConfig {
         display_name: "status".into(),
         binary_path: Some(binary),
+        connection_mode: ProtonConnectionMode::Cli,
+        profile_id: None,
     });
     let signed_in = probe
         .run_cli(
@@ -1366,6 +1402,8 @@ mod tests {
         let mut p = ProtonCliProvider::new(ProtonConfig {
             display_name: "t".into(),
             binary_path: None,
+            connection_mode: ProtonConnectionMode::Cli,
+            profile_id: None,
         });
         assert!(!p.supports_atomic_replace().await.unwrap());
         assert!(!p.replace_sets_aside());
@@ -1453,6 +1491,99 @@ mod tests {
         );
     }
 
+    fn proton_profile(extra: &[(&str, &str)]) -> super::super::ProviderConfig {
+        super::super::ProviderConfig {
+            name: "p".to_string(),
+            provider_type: super::super::ProviderType::Proton,
+            host: "drive.proton.me".to_string(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: None,
+            extra: extra
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+
+    /// Saved profiles have no `proton_mode`: they stay CLI profiles. Only an
+    /// explicit `native` selects the native client, and a value nobody wrote
+    /// is refused instead of guessed.
+    #[test]
+    fn the_connection_mode_is_cli_unless_the_profile_asks_for_native() {
+        let _env = crate::test_env::lock();
+        let mode = |extra: &[(&str, &str)]| {
+            ProtonConfig::from_provider_config(&proton_profile(extra)).map(|c| c.connection_mode)
+        };
+        assert_eq!(mode(&[]).unwrap(), ProtonConnectionMode::Cli);
+        assert_eq!(
+            mode(&[("proton_mode", "cli")]).unwrap(),
+            ProtonConnectionMode::Cli
+        );
+        assert_eq!(
+            mode(&[("proton_mode", "native")]).unwrap(),
+            ProtonConnectionMode::Native
+        );
+        assert!(matches!(
+            mode(&[("proton_mode", "Native ")]),
+            Err(ProviderError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            mode(&[("proton_mode", "megacmd")]),
+            Err(ProviderError::InvalidConfig(_))
+        ));
+    }
+
+    /// The factory builds what the mode names and never falls back to the
+    /// CLI: a build without the native client refuses a native profile.
+    #[test]
+    fn the_factory_builds_the_client_the_mode_names() {
+        let _env = crate::test_env::lock();
+        let mut cli = super::super::ProviderFactory::create(&proton_profile(&[]))
+            .unwrap_or_else(|e| panic!("cli profile refused: {e}"));
+        assert!(cli
+            .as_any_mut()
+            .downcast_mut::<ProtonCliProvider>()
+            .is_some());
+
+        let native = super::super::ProviderFactory::create(&proton_profile(&[
+            ("proton_mode", "native"),
+            ("profile_id", "srv_1"),
+        ]));
+        #[cfg(feature = "proton-native")]
+        {
+            let mut native = native.unwrap_or_else(|e| panic!("native profile refused: {e}"));
+            assert!(!native.is_connected());
+            assert_eq!(native.provider_type(), ProviderType::Proton);
+            assert!(native
+                .as_any_mut()
+                .downcast_mut::<crate::providers::proton_native::provider::ProtonNativeProvider>()
+                .is_some());
+        }
+        #[cfg(not(feature = "proton-native"))]
+        match native {
+            Err(ProviderError::InvalidConfig(text)) => {
+                assert_eq!(text, super::super::NATIVE_PROTON_UNAVAILABLE)
+            }
+            Err(other) => panic!("wrong refusal: {other}"),
+            Ok(_) => panic!("a build without the native client built one"),
+        }
+    }
+
+    #[test]
+    fn the_profile_id_is_read_and_a_blank_one_is_none() {
+        let _env = crate::test_env::lock();
+        let id = |extra: &[(&str, &str)]| {
+            ProtonConfig::from_provider_config(&proton_profile(extra))
+                .unwrap()
+                .profile_id
+        };
+        assert_eq!(id(&[("profile_id", "srv_1")]).as_deref(), Some("srv_1"));
+        assert_eq!(id(&[("profile_id", "  ")]), None);
+        assert_eq!(id(&[]), None);
+    }
+
     #[test]
     fn a_share_expiring_later_today_is_sent_as_tomorrow() {
         use chrono::TimeZone;
@@ -1468,6 +1599,8 @@ mod tests {
         let p = ProtonCliProvider::new(ProtonConfig {
             display_name: "t".into(),
             binary_path: None,
+            connection_mode: ProtonConnectionMode::Cli,
+            profile_id: None,
         });
         let caps = p.share_link_capabilities();
         assert!(caps.supports_password);
@@ -1502,6 +1635,8 @@ mod tests {
         let mut p = ProtonCliProvider::new(ProtonConfig {
             display_name: "t".into(),
             binary_path: None,
+            connection_mode: ProtonConnectionMode::Cli,
+            profile_id: None,
         });
         p.current_path = "/my-files/a".into();
         assert_eq!(p.resolve_path("../b"), "/my-files/b");
@@ -1640,6 +1775,8 @@ mod cli_sequence_tests {
         let mut p = ProtonCliProvider::new(ProtonConfig {
             display_name: "t".into(),
             binary_path: Some(shim.to_string_lossy().to_string()),
+            connection_mode: ProtonConnectionMode::Cli,
+            profile_id: None,
         });
         p.connected = true;
         p
