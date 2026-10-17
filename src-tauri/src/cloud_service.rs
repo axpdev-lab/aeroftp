@@ -154,7 +154,9 @@ struct SyncPlan {
 /// Which paths the scans of a pair list, by the rules `scan_local_folder` and
 /// `scan_remote_folder_with_provider` apply: `.aeroignore`, the exclude list,
 /// the excluded folders. Local links and unreadable local folders are the
-/// bound's part (see `CloudService::bound_local_scan_paths`).
+/// bound's part (see `CloudService::bound_local_scan_paths`). The full sync
+/// forgets by it what is gone from both sides, and the incremental pass picks
+/// by it the paths it syncs, so the two read the same rules.
 struct ScanScope {
     aeroignore: Option<crate::sync_ignore::AeroIgnore>,
     excludes: crate::sync_exclude::ExcludeMatcher,
@@ -190,19 +192,31 @@ impl ScanScope {
         })
     }
 
-    /// Whether both scans list `key`: they walk every folder above it and
-    /// keep the key itself. The remote scan lists an excluded folder itself
-    /// (it only does not walk into it) and the local scan does not, so the
-    /// stricter local rule is the one both meet.
+    /// Whether the scans walk down to `key`: no folder above it is left out.
+    fn reaches(&self, key: &str) -> bool {
+        key.match_indices('/').all(|(end, _)| {
+            let folder = &key[..end];
+            self.decision(folder, true) != crate::sync_ignore::ScanDecision::Skip
+                && !self.excluded_folder(folder)
+        })
+    }
+
+    /// Whether both scans list `key` itself. The remote scan lists an
+    /// excluded folder itself (it only does not walk into it) and the local
+    /// scan does not, so the stricter local rule is the one both meet.
     fn lists(&self, key: &str, is_dir: bool) -> bool {
-        use crate::sync_ignore::ScanDecision;
         validate_relative_path(key).is_ok()
-            && key.match_indices('/').all(|(end, _)| {
-                let folder = &key[..end];
-                self.decision(folder, true) != ScanDecision::Skip && !self.excluded_folder(folder)
-            })
-            && self.decision(key, is_dir) == ScanDecision::Keep
+            && self.reaches(key)
+            && self.decision(key, is_dir) == crate::sync_ignore::ScanDecision::Keep
             && !(is_dir && self.excluded_folder(key))
+    }
+
+    /// Whether the scans walk into the folder `key`.
+    fn walks(&self, key: &str) -> bool {
+        validate_relative_path(key).is_ok()
+            && self.reaches(key)
+            && self.decision(key, true) != crate::sync_ignore::ScanDecision::Skip
+            && !self.excluded_folder(key)
     }
 }
 
