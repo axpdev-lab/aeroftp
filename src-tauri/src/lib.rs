@@ -16113,6 +16113,44 @@ fn watched_cloud_folders(configs: &[cloud_config::CloudConfig]) -> Vec<std::path
     folders
 }
 
+#[cfg(test)]
+mod watched_cloud_folders_tests {
+    use super::*;
+
+    fn folders(paths: &[&str]) -> Vec<std::path::PathBuf> {
+        let configs: Vec<cloud_config::CloudConfig> = paths
+            .iter()
+            .map(|p| cloud_config::CloudConfig {
+                local_folder: std::path::PathBuf::from(p),
+                ..cloud_config::CloudConfig::default()
+            })
+            .collect();
+        watched_cloud_folders(&configs)
+    }
+
+    #[test]
+    fn one_watcher_per_folder_and_none_inside_another() {
+        assert_eq!(
+            folders(&["/a/b", "/a/b"]),
+            vec![std::path::PathBuf::from("/a/b")]
+        );
+        assert_eq!(
+            folders(&["/a/b/c", "/a/b"]),
+            vec![std::path::PathBuf::from("/a/b")],
+            "the recursive watch of /a/b covers /a/b/c"
+        );
+        // Whole components: /a/bc is not inside /a/b.
+        assert_eq!(
+            folders(&["/a/bc", "/a/b"]),
+            vec![
+                std::path::PathBuf::from("/a/b"),
+                std::path::PathBuf::from("/a/bc")
+            ]
+        );
+        assert!(folders(&[]).is_empty());
+    }
+}
+
 /// What is left of the watcher cooldown, counted from the worker's last cycle
 /// and from the last manual sync, whichever is later.
 fn watcher_cooldown_left(last_cycle: tokio::time::Instant, cooldown: Duration) -> Duration {
@@ -16435,6 +16473,18 @@ async fn background_sync_worker(app: AppHandle) {
             // the watcher's changes wait in the backlog meanwhile.
             if store.is_none() {
                 debug!("Background AeroCloud sync skipped: vault is locked");
+                // A full scan that came due (startup, the schedule, a
+                // request) is not lost with the tick spent below: it waits in
+                // the ledger and runs once the vault is open.
+                let mut ledger = ledger();
+                for (cfg, job) in &jobs {
+                    if *job == PairJob::FullScan {
+                        ledger.request_full_scan(
+                            &pair_key(cfg),
+                            "its full scan came due while the vault was locked",
+                        );
+                    }
+                }
             } else {
                 progressed = true;
                 // Plan each pair's watcher changes on the local side first: a
@@ -16601,7 +16651,10 @@ async fn background_sync_worker(app: AppHandle) {
                                     }
                                 }
                                 // Nothing ran (no connection): the paths come back.
-                                Err(e) if crate::sync::classify_sync_error(e, None).retryable => {
+                                Err(e)
+                                    if crate::sync::classify_sync_error(&e.message, None)
+                                        .retryable =>
+                                {
                                     retry_paths.extend(changes.paths);
                                 }
                                 Err(_) => {}
@@ -16630,7 +16683,12 @@ async fn background_sync_worker(app: AppHandle) {
                             agg.duration_secs += r.duration_secs;
                             agg.file_details.extend(r.file_details);
                         }
-                        Some(Err(e)) => agg.errors.push(e),
+                        Some(Err(e)) => {
+                            if let Some(traits) = e.traits {
+                                ledger().learn(&key, traits);
+                            }
+                            agg.errors.push(e.message);
+                        }
                         None => {}
                     }
                 }
@@ -16695,9 +16753,13 @@ async fn background_sync_worker(app: AppHandle) {
                 wait = wait.min(Duration::from_secs(5));
             }
         }
-        if has_work {
-            // Another sync held the guard, or the vault is locked.
+        if busy {
+            // Another sync holds the guard: it ends soon.
             wait = wait.min(Duration::from_secs(5));
+        } else if has_work {
+            // The vault is locked: look again now and then, not every few
+            // seconds for as long as it stays locked.
+            wait = wait.min(Duration::from_secs(30));
         }
         // Emit schedule countdown to frontend
         if let Some(next_secs) = schedule.next_sync_in() {

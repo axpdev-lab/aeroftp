@@ -2033,6 +2033,27 @@ pub struct PairCycleReport {
     pub failed_paths: Vec<FailedPath>,
 }
 
+/// A pair's background cycle that failed. A failure after the connection
+/// still carries what the provider said about scanning: the floor it
+/// declared holds the next scans of the pair back even while the error
+/// lasts, and a failure that dropped it would let a fallback scan run every
+/// cycle.
+#[derive(Debug, Clone)]
+pub struct PairCycleError {
+    pub message: String,
+    /// `None` when the cycle never connected.
+    pub traits: Option<ProviderScanTraits>,
+}
+
+impl PairCycleError {
+    pub(crate) fn before_connecting(message: String) -> Self {
+        Self {
+            message,
+            traits: None,
+        }
+    }
+}
+
 /// A path an incremental pass could not sync, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FailedPath {
@@ -2047,8 +2068,10 @@ pub async fn run_pair_full_cycle(
     config: CloudConfig,
     store: Option<&credential_store::CredentialStore>,
     app: Option<AppHandle>,
-) -> Result<PairCycleReport, String> {
-    let mut provider = open_aerocloud_provider(&config, store).await?;
+) -> Result<PairCycleReport, PairCycleError> {
+    let mut provider = open_aerocloud_provider(&config, store)
+        .await
+        .map_err(PairCycleError::before_connecting)?;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
     if let Some(handle) = app {
@@ -2057,12 +2080,18 @@ pub async fn run_pair_full_cycle(
     svc.init(config).await;
     let result = svc.perform_full_sync_with_provider(&mut *provider).await;
     let _ = provider.disconnect().await;
-    Ok(PairCycleReport {
-        result: result?,
-        ran_full_scan: true,
-        traits: Some(traits),
-        failed_paths: Vec::new(),
-    })
+    match result {
+        Ok(result) => Ok(PairCycleReport {
+            result,
+            ran_full_scan: true,
+            traits: Some(traits),
+            failed_paths: Vec::new(),
+        }),
+        Err(message) => Err(PairCycleError {
+            message,
+            traits: Some(traits),
+        }),
+    }
 }
 
 /// State that a folder pair is compared by size only: a warning the first

@@ -1345,7 +1345,9 @@ async fn live_round(
     std::fs::write(root.join("dir/gone.txt"), b"deleted later").unwrap();
 
     // The baseline: a full sync, as the scheduler runs it.
-    let full = crate::cloud_service::run_pair_full_cycle(config.clone(), Some(store), None).await?;
+    let full = crate::cloud_service::run_pair_full_cycle(config.clone(), Some(store), None)
+        .await
+        .map_err(|e| e.message)?;
     if !full.result.errors.is_empty() {
         return Err(format!("full sync: {:?}", full.result.errors));
     }

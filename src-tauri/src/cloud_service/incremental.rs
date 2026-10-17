@@ -18,8 +18,8 @@
 //! folder that vanished as a whole from a few files deleted on purpose.
 
 use super::{
-    open_aerocloud_provider, CloudService, FailedPath, PairCycleReport, ProviderScanTraits,
-    SkippedEntry, SyncOperationResult,
+    open_aerocloud_provider, CloudService, FailedPath, PairCycleError, PairCycleReport,
+    ProviderScanTraits, SkippedEntry, SyncOperationResult,
 };
 use crate::cloud_config::{CloudConfig, CloudSyncStatus};
 use crate::credential_store;
@@ -900,8 +900,11 @@ impl CloudService {
             })
             .await;
         } else {
+            // The status says when files last synced. The config's
+            // `last_sync` is not moved: it dates the last full scan, and
+            // the countdown to the next one is read from it.
             self.set_status(CloudSyncStatus::Idle {
-                last_sync: config.last_sync,
+                last_sync: Some(Utc::now()),
                 next_sync: None,
             })
             .await;
@@ -951,8 +954,10 @@ pub async fn run_pair_incremental_cycle(
     app: Option<AppHandle>,
     plan: Box<IncrementalPlan>,
     full_scan_allowed: bool,
-) -> Result<PairCycleReport, String> {
-    let mut provider = open_aerocloud_provider(&config, store).await?;
+) -> Result<PairCycleReport, PairCycleError> {
+    let mut provider = open_aerocloud_provider(&config, store)
+        .await
+        .map_err(PairCycleError::before_connecting)?;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
     if let Some(handle) = app {
@@ -986,7 +991,10 @@ pub async fn run_pair_incremental_cycle(
         Err(e) => Err(e),
     };
     let _ = provider.disconnect().await;
-    report
+    report.map_err(|message| PairCycleError {
+        message,
+        traits: Some(traits),
+    })
 }
 
 #[cfg(test)]
