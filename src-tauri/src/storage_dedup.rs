@@ -335,6 +335,13 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
         return format!("api:{}:{}", pid, user_or_id());
     }
 
+    // Proton Drive, through the official CLI or the native client: one
+    // account is one drive, keyed by the account. Not in
+    // NATIVE_API_PROTOCOLS, which also names the CLI banner's REST API token.
+    if proto == "proton" {
+        return format!("api:proton:{}", user_or_id());
+    }
+
     if matches!(proto, "ftp" | "ftps" | "sftp") {
         let host = normalize_host(profile.host);
         let port = if profile.port == 0 {
@@ -599,6 +606,50 @@ mod tests {
         let key = dedup_key(&profiles[0]);
         assert_eq!(key, "family:koofr:user@example.com");
         assert_eq!(dedup_key(&profiles[0]), dedup_key(&profiles[1]));
+    }
+
+    /// Two profiles of one Proton account (the CLI and the native client,
+    /// or a profile imported from rclone beside the one created here) are
+    /// one drive; another account stays apart.
+    #[test]
+    fn proton_profiles_of_one_account_are_one_drive() {
+        let cli = p(
+            "c",
+            "proton",
+            None,
+            "drive.proton.me",
+            443,
+            "Someone@Proton.me",
+            None,
+            None,
+        );
+        let native = p(
+            "n",
+            "proton",
+            None,
+            "drive.proton.me",
+            443,
+            "someone@proton.me",
+            None,
+            None,
+        );
+        let other = p(
+            "o",
+            "proton",
+            None,
+            "drive.proton.me",
+            443,
+            "other@proton.me",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&cli), dedup_key(&native));
+        assert_eq!(dedup_key(&native), "api:proton:someone@proton.me");
+        assert_ne!(dedup_key(&native), dedup_key(&other));
+        assert!(
+            !is_native_api_protocol("proton"),
+            "the CLI banner keeps its token"
+        );
     }
 
     #[test]

@@ -257,6 +257,12 @@ export const getStorageDedupKey = (server: ServerProfile): string => {
         return `api:${pid}:${userOrId}`;
     }
 
+    // Proton Drive, through the official CLI or the native client: one
+    // account is one drive (mirrors the Rust `dedup_key`).
+    if (proto === 'proton') {
+        return `api:proton:${userOrId}`;
+    }
+
     if (proto === 'ftp' || proto === 'ftps' || proto === 'sftp') {
         const host = normalizeHost(server.host);
         const port = server.port || defaultPort(proto);
