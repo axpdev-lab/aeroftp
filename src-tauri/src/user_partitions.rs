@@ -1026,6 +1026,10 @@ pub fn migrate_legacy_payloads(
     }
 
     let legacy_profiles = parse_legacy_profiles(legacy_profiles_json)?;
+    // The legacy store let two profiles share a name: the first keeps it and
+    // the others get " (1)", " (2)", ..., as every write of a list does.
+    let (legacy_profiles, _) =
+        crate::util::profile_name::unique_profile_names(&legacy_profiles, &legacy_profiles);
     let legacy_settings = parse_legacy_settings(legacy_settings_json)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let legacy_profiles_backup =
@@ -1728,6 +1732,20 @@ fn insert_profiles_with_dek(
             r.from
         );
     }
+    insert_profile_rows(tx, root_secret, user_id, dek, &profiles)?;
+    Ok(profiles)
+}
+
+/// `user_id`'s rows replaced by `profiles`, as given. Production writes reach
+/// it only through [`insert_profiles_with_dek`], which settles the names
+/// first; a test calls it to lay down a list an older build stored.
+fn insert_profile_rows(
+    tx: &Connection,
+    root_secret: &SecretKey,
+    user_id: i64,
+    dek: &SecretKey,
+    profiles: &[Value],
+) -> Result<(), String> {
     tx.execute(
         "DELETE FROM server_profiles WHERE user_id = ?1",
         params![user_id],
@@ -1751,7 +1769,62 @@ fn insert_profiles_with_dek(
         )
         .map_err(|e| format!("Insert profile: {e}"))?;
     }
-    Ok(profiles)
+    Ok(())
+}
+
+/// Puts right the profile lists of a partition database written whole rather
+/// than through the writes above (a keystore restore of a backup made before
+/// profile names were unique): in a list that holds two profiles of one name
+/// the first keeps it and the others get " (1)", " (2)", ..., which is what
+/// that list's next write would store. Covers every account this machine's
+/// key opens; a passphrase account is put right by its first write after
+/// unlock. Returns the profiles renamed and the passphrase accounts left to
+/// that write.
+pub fn put_right_profile_names_in_db(
+    store: &CredentialStore,
+    db_path: &std::path::Path,
+) -> Result<(usize, usize), String> {
+    if !db_path.is_file() {
+        return Ok((0, 0));
+    }
+    let mut conn =
+        Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = put_right_profile_names(&mut conn, &root_key);
+    root_key.zeroize();
+    result
+}
+
+fn put_right_profile_names(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+) -> Result<(usize, usize), String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let (mut renamed, mut left) = (0, 0);
+    for user in list_users(conn)? {
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e| format!("Start profile name check: {e}"))?;
+        let row = read_user_key_row(&tx, user.id)?;
+        if row.has_passphrase {
+            left += 1;
+            continue;
+        }
+        // An account this machine cannot open is reported by the re-key.
+        let Ok(dek) = unwrap_user_dek_with_key(&row, &root_secret) else {
+            continue;
+        };
+        let profiles = read_profiles_with_dek(&tx, user.id, &dek)?;
+        let (_, renames) = crate::util::profile_name::unique_profile_names(&profiles, &profiles);
+        if renames.is_empty() {
+            continue;
+        }
+        insert_profiles_with_dek(&tx, &root_secret, user.id, &dek, &profiles)?;
+        tx.commit()
+            .map_err(|e| format!("Commit profile names: {e}"))?;
+        renamed += renames.len();
+    }
+    Ok((renamed, left))
 }
 
 /// Re-read `user_id`'s server profiles, let `apply` change them, and write
@@ -5648,6 +5721,22 @@ pub(crate) fn test_lock() -> MutexGuard<'static, ()> {
 /// A partition database file whose active account has a passphrase and is
 /// unlocked: the kind of account whose partition calls take the session.
 /// Returns the file and the account.
+/// Lays `profiles` down as `user_id`'s rows the way a build before unique
+/// profile names stored them, names as given. The account opens with this
+/// machine's key (no passphrase).
+#[cfg(test)]
+pub(crate) fn store_profiles_as_an_older_build(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    profiles: &[Value],
+) {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let row = read_user_key_row(conn, user_id).expect("the account");
+    let dek = unwrap_user_dek_with_key(&row, &root_secret).expect("an account without passphrase");
+    insert_profile_rows(conn, &root_secret, user_id, &dek, profiles).expect("the rows");
+}
+
 #[cfg(test)]
 pub(crate) fn passphrase_account_db(dir: &std::path::Path, root_key: &[u8; 32]) -> (PathBuf, i64) {
     let path = dir.join(DB_FILENAME);
@@ -5937,15 +6026,19 @@ mod tests {
         let _guard = test_lock();
         clear_user_session();
         let mut conn = Connection::open_in_memory().expect("memory db");
-        let legacy = json!([
-            {"id": "a", "name": "Lab", "protocol": "sftp", "host": "one.example"},
-            {"id": "b", "name": "Lab", "protocol": "sftp", "host": "two.example"},
-        ]);
-        migrate_legacy_payloads(&mut conn, Some(&legacy.to_string()), None, &test_root())
-            .expect("migrate");
+        migrate_legacy_payloads(&mut conn, None, None, &test_root()).expect("migrate");
         let user_id = active_user_id(&conn).unwrap().expect("active user");
+        store_profiles_as_an_older_build(
+            &conn,
+            &test_root(),
+            user_id,
+            &[
+                json!({"id": "a", "name": "Lab", "protocol": "sftp", "host": "one.example"}),
+                json!({"id": "b", "name": "Lab", "protocol": "sftp", "host": "two.example"}),
+            ],
+        );
         let mut sent = list_server_profiles_for(&conn, &test_root(), user_id).expect("list");
-        assert_eq!(sent.len(), 2, "the migration keeps both: {sent:?}");
+        assert_eq!(sent.len(), 2, "an older build kept both: {sent:?}");
         sent.push(json!({"id": "c", "name": "Lab", "protocol": "sftp", "host": "three.example"}));
 
         let stored =
@@ -5970,6 +6063,62 @@ mod tests {
             });
             assert_eq!(selected.and_then(|p| p["id"].as_str()), Some(r.id.as_str()));
         }
+    }
+
+    /// The legacy store let two profiles share a name; the migration into the
+    /// partition stores them as every write of a list does.
+    #[test]
+    fn the_migration_numbers_a_legacy_list_with_two_profiles_of_one_name() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        let legacy = json!([
+            {"id": "a", "name": "Lab", "protocol": "sftp", "host": "one.example"},
+            {"id": "b", "name": "lab", "protocol": "sftp", "host": "two.example"},
+            {"id": "c", "name": "Prod", "protocol": "sftp", "host": "three.example"},
+        ]);
+        migrate_legacy_payloads(&mut conn, Some(&legacy.to_string()), None, &test_root())
+            .expect("migrate");
+        let user_id = active_user_id(&conn).unwrap().expect("active user");
+        let stored = list_server_profiles_for(&conn, &test_root(), user_id).expect("list");
+        let names: Vec<&str> = stored.iter().map(|p| p["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Lab", "lab (1)", "Prod"]);
+    }
+
+    /// A database written whole (a restored backup from an older build) is put
+    /// right as the next write of each list would: every account this machine
+    /// opens, once; a passphrase account is left to its first write after
+    /// unlock and counted.
+    #[test]
+    fn a_database_from_an_older_build_is_put_right_for_every_account_it_can_open() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, None, None, &root).expect("migrate");
+        let default = active_user_id(&conn).unwrap().expect("active user");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", None, None).expect("bob");
+        create_user(&mut conn, &root, "Locked", None, None, Some("passphrase")).expect("locked");
+        let old = |name_b: &str| {
+            vec![
+                json!({"id": "a", "name": "Lab", "protocol": "sftp", "host": "one.example"}),
+                json!({"id": "b", "name": name_b, "protocol": "sftp", "host": "two.example"}),
+            ]
+        };
+        store_profiles_as_an_older_build(&conn, &root, default, &old("lab"));
+        store_profiles_as_an_older_build(&conn, &root, bob.id, &old("Lab"));
+
+        assert_eq!(put_right_profile_names(&mut conn, &root), Ok((2, 1)));
+        for (user, second) in [(default, "lab (1)"), (bob.id, "Lab (1)")] {
+            let stored = list_server_profiles_for(&conn, &root, user).expect("list");
+            let names: Vec<&str> = stored.iter().map(|p| p["name"].as_str().unwrap()).collect();
+            assert_eq!(names, ["Lab", second]);
+        }
+        assert_eq!(
+            put_right_profile_names(&mut conn, &root),
+            Ok((0, 1)),
+            "a list put right is left as it is"
+        );
     }
 
     /// A save committed by another connection while a profile write reads

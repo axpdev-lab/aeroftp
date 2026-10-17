@@ -9,7 +9,8 @@
 //! " (1)", " (2)", ...: [`unique_profile_names`] is applied to every write of a
 //! profile list (`user_partitions::insert_profiles_with_dek`), whichever
 //! window, command or import made it, and to the writes that bypass it (the
-//! legacy blob, a keystore merge). A command that names the profile it saved,
+//! legacy blob, a keystore merge, the legacy migration, a partition database
+//! or blob restored whole from a backup). A command that names the profile it saved,
 //! or the ones it renamed, takes the names from the list stored
 //! ([`name_of`], [`renamed_by_write`]): only the write knows which profile
 //! had a name first. The frontend's twin of [`unique_profile_names`]
