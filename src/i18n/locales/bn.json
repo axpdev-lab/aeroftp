@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "AES-256 দিয়ে এনক্রিপ্ট করা। বিষয়বস্তু ও ফাইলের নাম গোপনীয়; খুলতে পাসওয়ার্ড প্রয়োজন।",
             "resetDefaults": "ডিফল্টে রিসেট করুন",
             "scrubErrorCorrectionTooltip": "{label} (সাইফার হ্যাশ যাচাই করে)",
-            "repairErrorCorrectionTooltip": "{label} (ড্রাই-রান প্রিভিউ উপলব্ধ)"
+            "repairErrorCorrectionTooltip": "{label} (ড্রাই-রান প্রিভিউ উপলব্ধ)",
+            "repairDryRunNoDamage": "ড্রাই-রান: কোনো ক্ষতি নেই; মেরামত করার কিছু নেই।",
+            "repairDryRunCannotRepair": "ড্রাই-রান: {damaged}টি ক্ষতিগ্রস্ত চাঙ্কের কোনোটিই মেরামত করা যাবে না। কিছুই লেখা হয়নি।",
+            "repairDryRunCanRepair": "ড্রাই-রান: {repaired}টি ক্ষতিগ্রস্ত চাঙ্ক মেরামত করা যাবে। কিছুই লেখা হয়নি।"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",

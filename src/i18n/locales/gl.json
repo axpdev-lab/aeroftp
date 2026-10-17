@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Cifrado con AES-256. O contido e os nomes de ficheiro son confidenciais; é necesario o contrasinal para abrir.",
             "resetDefaults": "Restablecer predefinidos",
             "scrubErrorCorrectionTooltip": "{label} (verifica os hashes de cifrado)",
-            "repairErrorCorrectionTooltip": "{label} (vista previa en simulación dispoñible)"
+            "repairErrorCorrectionTooltip": "{label} (vista previa en simulación dispoñible)",
+            "repairDryRunNoDamage": "Simulación: sen danos; nada que reparar.",
+            "repairDryRunCannotRepair": "Simulación: non se pode reparar ningún dos {damaged} fragmento(s) danado(s). Non se escribiu nada.",
+            "repairDryRunCanRepair": "Simulación: pódense reparar {repaired} fragmento(s) danado(s). Non se escribiu nada."
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Šifrēts ar AES-256. Saturs un failu nosaukumi ir konfidenciāli; lai atvērtu, nepieciešama parole.",
             "resetDefaults": "Atiestatīt noklusējumu",
             "scrubErrorCorrectionTooltip": "{label} (pārbauda šifra jaucējkodus)",
-            "repairErrorCorrectionTooltip": "{label} (pieejams izmēģinājuma priekšskatījums)"
+            "repairErrorCorrectionTooltip": "{label} (pieejams izmēģinājuma priekšskatījums)",
+            "repairDryRunNoDamage": "Izmēģinājuma palaišana: bojājumu nav; nav ko labot.",
+            "repairDryRunCannotRepair": "Izmēģinājuma palaišana: nevienu no bojātajiem fragmentiem ({damaged}) nevar izlabot. Nekas netika ierakstīts.",
+            "repairDryRunCanRepair": "Izmēģinājuma palaišana: bojāto fragmentu skaits, ko var izlabot: {repaired}. Nekas netika ierakstīts."
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",

@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Mã hóa bằng AES-256. Nội dung và tên tệp được bảo mật; cần mật khẩu để mở.",
             "resetDefaults": "Đặt lại mặc định",
             "scrubErrorCorrectionTooltip": "{label} (xác minh hash mật mã)",
-            "repairErrorCorrectionTooltip": "{label} (có thể chạy thử để xem trước)"
+            "repairErrorCorrectionTooltip": "{label} (có thể chạy thử để xem trước)",
+            "repairDryRunNoDamage": "Chạy thử: không có hư hỏng; không có gì để sửa.",
+            "repairDryRunCannotRepair": "Chạy thử: không thể sửa chunk nào trong số {damaged} chunk bị hỏng. Không có gì được ghi.",
+            "repairDryRunCanRepair": "Chạy thử: có thể sửa {repaired} chunk bị hỏng. Không có gì được ghi."
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

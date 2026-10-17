@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Mit AES-256 verschlüsselt. Inhalte und Dateinamen sind vertraulich; zum Öffnen ist das Passwort erforderlich.",
             "resetDefaults": "Zurücksetzen",
             "scrubErrorCorrectionTooltip": "{label} (prüft die Cipher-Hashes)",
-            "repairErrorCorrectionTooltip": "{label} (Vorschau per Probelauf verfügbar)"
+            "repairErrorCorrectionTooltip": "{label} (Vorschau per Probelauf verfügbar)",
+            "repairDryRunNoDamage": "Probelauf: Keine Schäden; nichts zu reparieren.",
+            "repairDryRunCannotRepair": "Probelauf: Keiner der {damaged} beschädigten Chunk(s) kann repariert werden. Es wurde nichts geschrieben.",
+            "repairDryRunCanRepair": "Probelauf: {repaired} beschädigte Chunk(s) können repariert werden. Es wurde nichts geschrieben."
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

@@ -604,13 +604,17 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                         const r = state.repairResult.repaired ?? 0;
                                         const d = state.repairResult.damaged ?? 0;
                                         const dry = state.repairResult.dry_run;
-                                        const prefix = dry ? 'Dry-run: ' : '';
-                                        if (d === 0) return `${prefix}${t('vault.noDamageNothing')}`;
-                                        if (r === 0) return `${prefix}${t('vault.couldNotRepairAny', { damaged: String(d) })}`;
-                                        // all-or-nothing engine: r > 0 implies r === d (all verified + persisted)
-                                        return `${prefix}${t('vault.successfullyRepaired', { repaired: String(r) })}`;
+                                        if (d === 0) return dry ? t('vault.repairDryRunNoDamage') : t('vault.noDamageNothing');
+                                        if (r === 0) {
+                                            return dry
+                                                ? t('vault.repairDryRunCannotRepair', { damaged: String(d) })
+                                                : t('vault.couldNotRepairAny', { damaged: String(d) });
+                                        }
+                                        // all-or-nothing engine: r > 0 implies r === d (all verified; persisted unless dry run)
+                                        return dry
+                                            ? t('vault.repairDryRunCanRepair', { repaired: String(r) })
+                                            : t('vault.successfullyRepaired', { repaired: String(r) });
                                     })()}
-                                    {state.repairResult.dry_run && ' (no changes written)'}
                                 </div>
                             ) : (
                                 <div className="text-gray-500 dark:text-gray-400 text-xs">{t('vault.runScrubHint')}</div>

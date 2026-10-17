@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Versleuteld met AES-256. Inhoud en bestandsnamen zijn vertrouwelijk; het wachtwoord is vereist om te openen.",
             "resetDefaults": "Standaard herstellen",
             "scrubErrorCorrectionTooltip": "{label} (controleert de cipher-hashes)",
-            "repairErrorCorrectionTooltip": "{label} (voorbeeld via dry-run beschikbaar)"
+            "repairErrorCorrectionTooltip": "{label} (voorbeeld via dry-run beschikbaar)",
+            "repairDryRunNoDamage": "Dry-run: geen schade; niets te repareren.",
+            "repairDryRunCannotRepair": "Dry-run: geen van de {damaged} beschadigde chunk(s) kan worden hersteld. Er is niets geschreven.",
+            "repairDryRunCanRepair": "Dry-run: {repaired} beschadigde chunk(s) kunnen worden hersteld. Er is niets geschreven."
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",

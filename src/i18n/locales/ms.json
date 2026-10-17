@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Disulitkan dengan AES-256. Kandungan dan nama fail adalah sulit; kata laluan diperlukan untuk membuka.",
             "resetDefaults": "Tetapkan semula lalai",
             "scrubErrorCorrectionTooltip": "{label} (mengesahkan cincang sifer)",
-            "repairErrorCorrectionTooltip": "{label} (pratonton larian uji tersedia)"
+            "repairErrorCorrectionTooltip": "{label} (pratonton larian uji tersedia)",
+            "repairDryRunNoDamage": "Larian uji: tiada kerosakan; tiada apa-apa untuk dibaiki.",
+            "repairDryRunCannotRepair": "Larian uji: tiada satu pun daripada {damaged} ketulan yang rosak boleh dibaiki. Tiada apa-apa yang ditulis.",
+            "repairDryRunCanRepair": "Larian uji: {repaired} ketulan yang rosak boleh dibaiki. Tiada apa-apa yang ditulis."
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

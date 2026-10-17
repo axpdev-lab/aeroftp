@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "AES-256 ile şifreli. İçerik ve dosya adları gizlidir; açmak için parola gerekir.",
             "resetDefaults": "Varsayılana sıfırla",
             "scrubErrorCorrectionTooltip": "{label} (şifreleme karmalarını doğrular)",
-            "repairErrorCorrectionTooltip": "{label} (deneme önizlemesi kullanılabilir)"
+            "repairErrorCorrectionTooltip": "{label} (deneme önizlemesi kullanılabilir)",
+            "repairDryRunNoDamage": "Deneme: hasar yok; onarılacak bir şey yok.",
+            "repairDryRunCannotRepair": "Deneme: {damaged} hasarlı parçanın hiçbiri onarılamaz. Hiçbir şey yazılmadı.",
+            "repairDryRunCanRepair": "Deneme: {repaired} hasarlı parça onarılabilir. Hiçbir şey yazılmadı."
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",

@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Terenkripsi dengan AES-256. Konten dan nama file bersifat rahasia; kata sandi diperlukan untuk membuka.",
             "resetDefaults": "Atur ulang ke bawaan",
             "scrubErrorCorrectionTooltip": "{label} (memverifikasi hash sandi)",
-            "repairErrorCorrectionTooltip": "{label} (pratinjau dry-run tersedia)"
+            "repairErrorCorrectionTooltip": "{label} (pratinjau dry-run tersedia)",
+            "repairDryRunNoDamage": "Dry-run: tidak ada kerusakan; tidak ada yang perlu diperbaiki.",
+            "repairDryRunCannotRepair": "Dry-run: tidak satu pun dari {damaged} chunk yang rusak dapat diperbaiki. Tidak ada yang ditulis.",
+            "repairDryRunCanRepair": "Dry-run: {repaired} chunk yang rusak dapat diperbaiki. Tidak ada yang ditulis."
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

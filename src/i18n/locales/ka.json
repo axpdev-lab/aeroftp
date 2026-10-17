@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "დაშიფრულია AES-256-ით. შინაარსი და ფაილების სახელები კონფიდენციალურია; გასახსნელად საჭიროა პაროლი.",
             "resetDefaults": "ნაგულისხმევზე დაბრუნება",
             "scrubErrorCorrectionTooltip": "{label} (ამოწმებს შიფრის ჰეშებს)",
-            "repairErrorCorrectionTooltip": "{label} (ხელმისაწვდომია საცდელი გაშვების გადახედვა)"
+            "repairErrorCorrectionTooltip": "{label} (ხელმისაწვდომია საცდელი გაშვების გადახედვა)",
+            "repairDryRunNoDamage": "საცდელი გაშვება: დაზიანება არ არის; აღსადგენი არაფერია.",
+            "repairDryRunCannotRepair": "საცდელი გაშვება: {damaged} დაზიანებული ფრაგმენტიდან ვერცერთი აღდგება. არაფერი ჩაწერილა.",
+            "repairDryRunCanRepair": "საცდელი გაშვება: შესაძლებელია {repaired} დაზიანებული ფრაგმენტის აღდგენა. არაფერი ჩაწერილა."
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",

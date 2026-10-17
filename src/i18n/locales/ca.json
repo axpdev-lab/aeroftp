@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Xifrat amb AES-256. El contingut i els noms de fitxer són confidencials; cal la contrasenya per obrir.",
             "resetDefaults": "Restableix als valors",
             "scrubErrorCorrectionTooltip": "{label} (verifica els hash de xifratge)",
-            "repairErrorCorrectionTooltip": "{label} (previsualització en simulació disponible)"
+            "repairErrorCorrectionTooltip": "{label} (previsualització en simulació disponible)",
+            "repairDryRunNoDamage": "Simulació: sense danys; res a reparar.",
+            "repairDryRunCannotRepair": "Simulació: no es pot reparar cap dels {damaged} fragment(s) danyat(s). No s'ha escrit res.",
+            "repairDryRunCanRepair": "Simulació: es poden reparar {repaired} fragment(s) danyat(s). No s'ha escrit res."
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",

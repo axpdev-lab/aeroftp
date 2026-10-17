@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Naka-encrypt gamit ang AES-256. Kumpidensyal ang nilalaman at mga pangalan ng file; kailangan ng password para buksan.",
             "resetDefaults": "I-reset sa default",
             "scrubErrorCorrectionTooltip": "{label} (sinusuri ang mga cipher hash)",
-            "repairErrorCorrectionTooltip": "{label} (maaaring i-preview muna sa dry-run)"
+            "repairErrorCorrectionTooltip": "{label} (maaaring i-preview muna sa dry-run)",
+            "repairDryRunNoDamage": "Dry-run: walang pinsala; walang aayusin.",
+            "repairDryRunCannotRepair": "Dry-run: wala sa {damaged} na sirang chunk ang maaayos. Walang naisulat.",
+            "repairDryRunCanRepair": "Dry-run: maaayos ang {repaired} na sirang chunk. Walang naisulat."
         },
         "cryptomator": {
             "title": "Cryptomator Vault",

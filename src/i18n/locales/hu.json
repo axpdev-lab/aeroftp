@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "AES-256 titkosítással. A tartalom és a fájlnevek bizalmasak; a megnyitáshoz jelszó szükséges.",
             "resetDefaults": "Alapértelmezett visszaállítása",
             "scrubErrorCorrectionTooltip": "{label} (ellenőrzi a titkosítási hasheket)",
-            "repairErrorCorrectionTooltip": "{label} (próbafuttatásos előnézet elérhető)"
+            "repairErrorCorrectionTooltip": "{label} (próbafuttatásos előnézet elérhető)",
+            "repairDryRunNoDamage": "Próbafuttatás: nincs sérülés; nincs mit javítani.",
+            "repairDryRunCannotRepair": "Próbafuttatás: a(z) {damaged} sérült darabból egyik sem javítható. Nem történt írás.",
+            "repairDryRunCanRepair": "Próbafuttatás: {repaired} sérült darab javítható. Nem történt írás."
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

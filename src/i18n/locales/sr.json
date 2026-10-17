@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Шифровано помоћу AES-256. Садржај и називи датотека су поверљиви; за отварање је потребна лозинка.",
             "resetDefaults": "Врати подразумевано",
             "scrubErrorCorrectionTooltip": "{label} (проверава хешеве шифре)",
-            "repairErrorCorrectionTooltip": "{label} (доступан преглед пробног пролаза)"
+            "repairErrorCorrectionTooltip": "{label} (доступан преглед пробног пролаза)",
+            "repairDryRunNoDamage": "Пробни пролаз: нема оштећења; нема шта да се поправи.",
+            "repairDryRunCannotRepair": "Пробни пролаз: ниједан од оштећених делова ({damaged}) не може да се поправи. Ништа није уписано.",
+            "repairDryRunCanRepair": "Пробни пролаз: број оштећених делова који могу да се поправе: {repaired}. Ништа није уписано."
         },
         "cryptomator": {
             "title": "Cryptomator трезор",

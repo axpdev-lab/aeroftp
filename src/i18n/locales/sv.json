@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Krypterad med AES-256. Innehåll och filnamn är konfidentiella; lösenord krävs för att öppna.",
             "resetDefaults": "Återställ standard",
             "scrubErrorCorrectionTooltip": "{label} (verifierar chiffer-hashar)",
-            "repairErrorCorrectionTooltip": "{label} (förhandsvisning via provkörning tillgänglig)"
+            "repairErrorCorrectionTooltip": "{label} (förhandsvisning via provkörning tillgänglig)",
+            "repairDryRunNoDamage": "Provkörning: inga skador; inget att reparera.",
+            "repairDryRunCannotRepair": "Provkörning: inget av {damaged} skadade segment kan repareras. Inget skrevs.",
+            "repairDryRunCanRepair": "Provkörning: {repaired} skadade segment kan repareras. Inget skrevs."
         },
         "cryptomator": {
             "title": "Cryptomator-valv",

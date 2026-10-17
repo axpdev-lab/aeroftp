@@ -3706,7 +3706,10 @@
             "encryptedTooltip": "Cifrato con AES-256. Contenuti e nomi file sono riservati; serve la password per aprire.",
             "resetDefaults": "Ripristina predefiniti",
             "scrubErrorCorrectionTooltip": "{label} (verifica gli hash cifrati)",
-            "repairErrorCorrectionTooltip": "{label} (anteprima dry-run disponibile)"
+            "repairErrorCorrectionTooltip": "{label} (anteprima dry-run disponibile)",
+            "repairDryRunNoDamage": "Dry-run: nessun danno; niente da riparare.",
+            "repairDryRunCannotRepair": "Dry-run: nessuno dei {damaged} chunk danneggiati può essere riparato. Non è stato scritto nulla.",
+            "repairDryRunCanRepair": "Dry-run: {repaired} chunk danneggiati possono essere riparati. Non è stato scritto nulla."
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",

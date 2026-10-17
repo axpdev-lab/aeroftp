@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Salattu AES-256:llä. Sisältö ja tiedostonimet ovat luottamuksellisia; avaaminen vaatii salasanan.",
             "resetDefaults": "Palauta oletukset",
             "scrubErrorCorrectionTooltip": "{label} (tarkistaa salaustiivisteet)",
-            "repairErrorCorrectionTooltip": "{label} (koeajon esikatselu saatavilla)"
+            "repairErrorCorrectionTooltip": "{label} (koeajon esikatselu saatavilla)",
+            "repairDryRunNoDamage": "Koeajo: ei vaurioita; ei korjattavaa.",
+            "repairDryRunCannotRepair": "Koeajo: yhtäkään {damaged} vaurioituneesta osasta ei voida korjata. Mitään ei kirjoitettu.",
+            "repairDryRunCanRepair": "Koeajo: {repaired} vaurioitunutta osaa voidaan korjata. Mitään ei kirjoitettu."
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Dulkóðað með AES-256. Innihald og skráarnöfn eru trúnaðarmál; lykilorð þarf til að opna.",
             "resetDefaults": "Endurstilla á sjálfgefið",
             "scrubErrorCorrectionTooltip": "{label} (sannreynir dulritunartætigildi)",
-            "repairErrorCorrectionTooltip": "{label} (forskoðun með þurrkeyrslu í boði)"
+            "repairErrorCorrectionTooltip": "{label} (forskoðun með þurrkeyrslu í boði)",
+            "repairDryRunNoDamage": "Þurrkeyrsla: engar skemmdir; ekkert að gera við.",
+            "repairDryRunCannotRepair": "Þurrkeyrsla: ekki er hægt að gera við neinn af {damaged} skemmdum kjörnum. Ekkert var skrifað.",
+            "repairDryRunCanRepair": "Þurrkeyrsla: hægt er að gera við {repaired} skemmda kjarna. Ekkert var skrifað."
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",

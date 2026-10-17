@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Krüpteeritud AES-256-ga. Sisu ja failinimed on konfidentsiaalsed; avamiseks on vaja parooli.",
             "resetDefaults": "Lähtesta vaikeväärtused",
             "scrubErrorCorrectionTooltip": "{label} (kontrollib šifri räsisid)",
-            "repairErrorCorrectionTooltip": "{label} (proovikäigu eelvaade saadaval)"
+            "repairErrorCorrectionTooltip": "{label} (proovikäigu eelvaade saadaval)",
+            "repairDryRunNoDamage": "Proovikäik: kahjustusi pole; pole midagi parandada.",
+            "repairDryRunCannotRepair": "Proovikäik: ühtegi {damaged} kahjustatud tükist ei saa parandada. Midagi ei kirjutatud.",
+            "repairDryRunCanRepair": "Proovikäik: {repaired} kahjustatud tükki saab parandada. Midagi ei kirjutatud."
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

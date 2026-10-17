@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Šifrováno pomocí AES-256. Obsah a názvy souborů jsou důvěrné; k otevření je nutné heslo.",
             "resetDefaults": "Obnovit výchozí",
             "scrubErrorCorrectionTooltip": "{label} (ověří šifrovací haše)",
-            "repairErrorCorrectionTooltip": "{label} (k dispozici náhled zkušebního běhu)"
+            "repairErrorCorrectionTooltip": "{label} (k dispozici náhled zkušebního běhu)",
+            "repairDryRunNoDamage": "Zkušební běh: žádné poškození; není co opravovat.",
+            "repairDryRunCannotRepair": "Zkušební běh: žádnou z poškozených částí ({damaged}) nelze opravit. Nic nebylo zapsáno.",
+            "repairDryRunCanRepair": "Zkušební běh: počet poškozených částí, které lze opravit: {repaired}. Nic nebylo zapsáno."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

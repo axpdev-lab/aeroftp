@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Зашифровано AES-256. Содержимое и имена файлов конфиденциальны; для открытия нужен пароль.",
             "resetDefaults": "Сбросить по умолчанию",
             "scrubErrorCorrectionTooltip": "{label} (проверяет хеши шифротекста)",
-            "repairErrorCorrectionTooltip": "{label} (доступен предпросмотр в пробном запуске)"
+            "repairErrorCorrectionTooltip": "{label} (доступен предпросмотр в пробном запуске)",
+            "repairDryRunNoDamage": "Пробный запуск: повреждений нет; восстанавливать нечего.",
+            "repairDryRunCannotRepair": "Пробный запуск: ни один из повреждённых фрагментов ({damaged}) не может быть восстановлен. Ничего не записано.",
+            "repairDryRunCanRepair": "Пробный запуск: можно восстановить повреждённых фрагментов: {repaired}. Ничего не записано."
         },
         "cryptomator": {
             "title": "Хранилище Cryptomator",

@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Шифровано с AES-256. Съдържанието и имената на файловете са поверителни; за отваряне е нужна парола.",
             "resetDefaults": "Възстанови по подразбиране",
             "scrubErrorCorrectionTooltip": "{label} (проверява хешовете на шифъра)",
-            "repairErrorCorrectionTooltip": "{label} (налично пробно изпълнение с преглед)"
+            "repairErrorCorrectionTooltip": "{label} (налично пробно изпълнение с преглед)",
+            "repairDryRunNoDamage": "Пробно изпълнение: няма повреди; няма какво да се поправя.",
+            "repairDryRunCannotRepair": "Пробно изпълнение: нито едно от повредените парчета ({damaged}) не може да бъде поправено. Нищо не е записано.",
+            "repairDryRunCanRepair": "Пробно изпълнение: брой повредени парчета, които могат да бъдат поправени: {repaired}. Нищо не е записано."
         },
         "cryptomator": {
             "title": "Cryptomator трезор",

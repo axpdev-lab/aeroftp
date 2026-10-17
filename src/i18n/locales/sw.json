@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Imesimbwa kwa AES-256. Maudhui na majina ya faili ni siri; nenosiri linahitajika kufungua.",
             "resetDefaults": "Rejesha chaguo-msingi",
             "scrubErrorCorrectionTooltip": "{label} (huthibitisha hash za usimbaji)",
-            "repairErrorCorrectionTooltip": "{label} (onyesho la awali la jaribio linapatikana)"
+            "repairErrorCorrectionTooltip": "{label} (onyesho la awali la jaribio linapatikana)",
+            "repairDryRunNoDamage": "Jaribio: hakuna uharibifu; hakuna cha kurekebisha.",
+            "repairDryRunCannotRepair": "Jaribio: hakuna hata kimoja kati ya vipande {damaged} vilivyoharibika kinachoweza kurekebishwa. Hakuna kilichoandikwa.",
+            "repairDryRunCanRepair": "Jaribio: vipande {repaired} vilivyoharibika vinaweza kurekebishwa. Hakuna kilichoandikwa."
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

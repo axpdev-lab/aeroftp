@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "AES-256 bidez zifratuta. Edukia eta fitxategi-izenak konfidentzialak dira; pasahitza behar da irekitzeko.",
             "resetDefaults": "Berrezarri lehenetsia",
             "scrubErrorCorrectionTooltip": "{label} (zifratutako hashak egiaztatzen ditu)",
-            "repairErrorCorrectionTooltip": "{label} (proba-exekuzioaren aurrebista erabilgarri)"
+            "repairErrorCorrectionTooltip": "{label} (proba-exekuzioaren aurrebista erabilgarri)",
+            "repairDryRunNoDamage": "Proba-exekuzioa: kalterik ez; ez dago zer konpondurik.",
+            "repairDryRunCannotRepair": "Proba-exekuzioa: kaltetutako {damaged} zatietatik bat ere ezin da konpondu. Ez da ezer idatzi.",
+            "repairDryRunCanRepair": "Proba-exekuzioa: kaltetutako {repaired} zati konpon daitezke. Ez da ezer idatzi."
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",

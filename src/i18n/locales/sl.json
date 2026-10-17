@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "Šifrirano z AES-256. Vsebina in imena datotek so zaupni; za odpiranje je potrebno geslo.",
             "resetDefaults": "Ponastavi na privzeto",
             "scrubErrorCorrectionTooltip": "{label} (preveri šifrirne zgoščene vrednosti)",
-            "repairErrorCorrectionTooltip": "{label} (na voljo predogled s preizkusom)"
+            "repairErrorCorrectionTooltip": "{label} (na voljo predogled s preizkusom)",
+            "repairDryRunNoDamage": "Preizkus: ni poškodb; ni kaj popraviti.",
+            "repairDryRunCannotRepair": "Preizkus: nobenega od poškodovanih delov ({damaged}) ni mogoče popraviti. Nič ni bilo zapisano.",
+            "repairDryRunCanRepair": "Preizkus: število poškodovanih delov, ki jih je mogoče popraviti: {repaired}. Nič ni bilo zapisano."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

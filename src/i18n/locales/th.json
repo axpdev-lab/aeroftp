@@ -3401,7 +3401,10 @@
             "encryptedTooltip": "เข้ารหัสด้วย AES-256 เนื้อหาและชื่อไฟล์เป็นความลับ ต้องใช้รหัสผ่านเพื่อเปิด",
             "resetDefaults": "รีเซ็ตเป็นค่าเริ่มต้น",
             "scrubErrorCorrectionTooltip": "{label} (ตรวจสอบแฮชรหัสลับ)",
-            "repairErrorCorrectionTooltip": "{label} (ดูตัวอย่างแบบรันทดสอบได้)"
+            "repairErrorCorrectionTooltip": "{label} (ดูตัวอย่างแบบรันทดสอบได้)",
+            "repairDryRunNoDamage": "รันทดสอบ: ไม่มีความเสียหาย ไม่มีอะไรต้องซ่อม",
+            "repairDryRunCannotRepair": "รันทดสอบ: ไม่สามารถซ่อมชังก์ที่เสียหายได้เลยจากทั้งหมด {damaged} ชังก์ ไม่มีการเขียนข้อมูลใดๆ",
+            "repairDryRunCanRepair": "รันทดสอบ: สามารถซ่อมชังก์ที่เสียหายได้ {repaired} ชังก์ ไม่มีการเขียนข้อมูลใดๆ"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",
