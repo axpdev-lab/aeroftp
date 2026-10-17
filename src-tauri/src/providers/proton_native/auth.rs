@@ -209,7 +209,9 @@ pub async fn sign_out(api: &ProtonApi) -> Result<(), ProtonError> {
         .map(|_| ());
     api.set_tokens(None).await;
     match result {
-        Err(ProtonError::NotSignedIn) | Err(ProtonError::SessionExpired) => Ok(()),
+        Err(ProtonError::NotSignedIn)
+        | Err(ProtonError::SessionExpired)
+        | Err(ProtonError::SessionReplaced) => Ok(()),
         other => other,
     }
 }

@@ -300,6 +300,11 @@ pub fn map_error(path: &str, error: ProtonError) -> ProviderError {
         ProtonError::SessionExpired | ProtonError::NotSignedIn => ProviderError::AuthenticationFailed(
             "The Proton session has ended: sign in with Proton again.".into(),
         ),
+        // A lost connection, so the app's silent reconnect runs: its connect
+        // opens the session now saved for the profile, as Connect would.
+        ProtonError::SessionReplaced => ProviderError::ConnectionLost(
+            "The Proton session was replaced by a new sign-in".into(),
+        ),
         ProtonError::HumanVerificationRequired { .. } => ProviderError::AuthenticationFailed(
             "Proton asks for a human verification: complete it in Proton Drive on the web, then connect again.".into(),
         ),
@@ -1640,6 +1645,8 @@ mod tests {
                 ProviderError::AuthenticationFailed(ref t) if t.contains("sign in")
             ));
         }
+        // The app reconnects silently only on a lost connection.
+        assert!(map_error("/", ProtonError::SessionReplaced).is_connection_lost());
         assert!(matches!(
             map_error("/", ProtonError::HumanVerificationRequired { methods: vec![] }),
             ProviderError::AuthenticationFailed(ref t) if t.contains("human verification")

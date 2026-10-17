@@ -63,6 +63,11 @@ pub enum ProtonError {
     #[error("the Proton session expired, sign in again")]
     SessionExpired,
 
+    /// A new sign-in saved another session for this profile and ended the
+    /// one in use: a reconnect continues with the new one.
+    #[error("the Proton session was replaced by a new sign-in")]
+    SessionReplaced,
+
     /// A call that needs a session ran without one.
     #[error("not signed in to Proton")]
     NotSignedIn,

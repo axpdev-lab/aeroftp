@@ -334,7 +334,7 @@ impl ProtonApi {
     ) -> Result<T, ProtonError> {
         let mut attempt: u32 = 0;
         let mut refreshes: u32 = 0;
-        let what = format!("{method} {path}");
+        let what = format!("{method} {}", loggable_path(path));
         loop {
             self.fail_fast_if_blocked()?;
 
@@ -441,10 +441,11 @@ impl ProtonApi {
                     .as_ref()
                     .map(|token| token.expose_secret().to_owned())
                     .unwrap_or_default();
-                if self.refresh_if_possible(&rejected).await? {
-                    continue;
+                match self.refresh_if_possible(&rejected).await? {
+                    Refreshed::Retry => continue,
+                    Refreshed::Ended => return Err(ProtonError::SessionExpired),
+                    Refreshed::Replaced => return Err(ProtonError::SessionReplaced),
                 }
-                return Err(ProtonError::SessionExpired);
             }
 
             let bytes = response.bytes().await.map_err(send_error)?;
@@ -649,19 +650,23 @@ impl ProtonApi {
         }
     }
 
-    /// `apiClient.ts::refreshSessionIfPossible`. Returns true when the caller
-    /// should retry with the current tokens. With a [`SessionStore`] the
-    /// refresh runs under its cross-process lock, and tokens another process
-    /// saved since the rejected ones are adopted instead of refreshing again.
-    async fn refresh_if_possible(&self, rejected_access_token: &str) -> Result<bool, ProtonError> {
+    /// `apiClient.ts::refreshSessionIfPossible`: whether the caller retries
+    /// with the current tokens or the session is over. With a
+    /// [`SessionStore`] the refresh runs under its cross-process lock, and
+    /// tokens another process saved since the rejected ones are adopted
+    /// instead of refreshing again.
+    async fn refresh_if_possible(
+        &self,
+        rejected_access_token: &str,
+    ) -> Result<Refreshed, ProtonError> {
         let _gate = self.refresh_gate.lock().await;
 
         let Some(current) = self.tokens.read().await.clone() else {
-            return Ok(false);
+            return Ok(Refreshed::Ended);
         };
         // Another request already refreshed while this one waited.
         if current.access_token.expose_secret() != rejected_access_token {
-            return Ok(true);
+            return Ok(Refreshed::Retry);
         }
         let store = self.session_store();
         let _lease = match store.as_ref() {
@@ -670,11 +675,11 @@ impl ProtonApi {
         };
         if let Some(saved) = self.newer_saved_tokens(store.as_deref(), &current) {
             *self.tokens.write().await = Some(saved);
-            return Ok(true);
+            return Ok(Refreshed::Retry);
         }
         let Some(refresh_token) = current.refresh_token.clone() else {
             log::warn!("Proton session refresh impossible: no refresh token");
-            return Ok(false);
+            return Ok(Refreshed::Ended);
         };
 
         let response = self
@@ -704,12 +709,27 @@ impl ProtonApi {
             // meanwhile (its lock can time out). A 429 or 5xx keeps the
             // session for later.
             if status.is_client_error() && status != StatusCode::TOO_MANY_REQUESTS {
-                let saved = self.newer_saved_tokens(store.as_deref(), &current);
-                let adopted = saved.is_some();
-                *self.tokens.write().await = saved;
-                return Ok(adopted);
+                if let Some(saved) = self.newer_saved_tokens(store.as_deref(), &current) {
+                    *self.tokens.write().await = Some(saved);
+                    return Ok(Refreshed::Retry);
+                }
+                *self.tokens.write().await = None;
+                // Another session under this vault key means a new sign-in
+                // replaced this one (and revoked it): a reconnect opens that
+                // session with its own keys. Its tokens are not adopted here:
+                // it may belong to another account, whose keys this session
+                // has not unlocked.
+                let replaced = store
+                    .as_deref()
+                    .and_then(|store| store.load())
+                    .is_some_and(|saved| saved.uid != current.uid);
+                return Ok(if replaced {
+                    Refreshed::Replaced
+                } else {
+                    Refreshed::Ended
+                });
             }
-            return Ok(false);
+            return Ok(Refreshed::Ended);
         }
 
         let body = response.bytes().await.map_err(send_error)?;
@@ -734,7 +754,7 @@ impl ProtonApi {
         if let Some(store) = store.as_ref() {
             store.save(&tokens);
         }
-        Ok(true)
+        Ok(Refreshed::Retry)
     }
 
     /// The saved tokens when they belong to the same session and differ from
@@ -749,6 +769,18 @@ impl ProtonApi {
         let newer = saved.access_token.expose_secret() != current.access_token.expose_secret();
         (same_session && newer).then_some(saved)
     }
+}
+
+/// What [`ProtonApi::refresh_if_possible`] leaves the rejected request with.
+enum Refreshed {
+    /// Retry with the current tokens (refreshed here or by another request
+    /// or process).
+    Retry,
+    /// The session is over: the user signs in again.
+    Ended,
+    /// A new sign-in saved another session under this vault key and ended
+    /// this one: a reconnect continues with it.
+    Replaced,
 }
 
 /// One answer, for the debug log: the method and path (volume and link IDs,
@@ -778,7 +810,22 @@ fn send_error(error: reqwest::Error) -> ProtonError {
     if error.is_timeout() {
         ProtonError::Timeout
     } else {
-        ProtonError::Network(error.to_string())
+        // Without the URL: a storage URL or a fork selector would otherwise
+        // ride along into the message, the log and the UI.
+        ProtonError::Network(error.without_url().to_string())
+    }
+}
+
+/// `path` as the log may show it. The selector of a session fork is a
+/// capability: until AeroFTP collects the session, whoever holds it can, so
+/// it is masked. Volume, share and link IDs are identifiers and stay.
+fn loggable_path(path: &str) -> std::borrow::Cow<'_, str> {
+    const FORKS: &str = "auth/v4/sessions/forks/";
+    match path.find(FORKS) {
+        Some(at) if path.len() > at + FORKS.len() => {
+            std::borrow::Cow::Owned(format!("{}{FORKS}<selector>", &path[..at]))
+        }
+        _ => std::borrow::Cow::Borrowed(path),
     }
 }
 
@@ -1083,7 +1130,8 @@ mod tests {
     }
 
     /// Saved tokens of another session (another sign-in under the same
-    /// profile key) are never adopted by this one.
+    /// profile key) are never adopted by this one: the request reads as
+    /// replaced, and the reconnect that follows opens that session itself.
     #[tokio::test]
     async fn saved_tokens_of_another_session_are_not_adopted() {
         let refreshes = Arc::new(AtomicUsize::new(0));
@@ -1100,8 +1148,55 @@ mod tests {
         api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
 
         let error = api.get::<Value>("/core/v4/users", &[]).await.unwrap_err();
-        assert!(matches!(error, ProtonError::SessionExpired), "{error:?}");
+        assert!(matches!(error, ProtonError::SessionReplaced), "{error:?}");
         assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+        assert!(
+            api.tokens().await.is_none(),
+            "another session's tokens were adopted"
+        );
+    }
+
+    /// A refused refresh with nothing else saved, or the same session saved,
+    /// ends the session: only another session under the key reads as replaced.
+    #[tokio::test]
+    async fn a_dead_refresh_without_another_saved_session_ends_it() {
+        for saved in [None, Some(tokens("access-1"))] {
+            let refreshes = Arc::new(AtomicUsize::new(0));
+            let api = ProtonApi::with_base_url(
+                serve(users_app(Arc::clone(&refreshes), REFRESH_DEAD)).await,
+                "external-drive-aeroftp@1.2.3-alpha".into(),
+            )
+            .with_policy(FAST);
+            api.set_tokens(Some(tokens("access-1"))).await;
+            let store = Arc::new(MemoryStore::default());
+            if let Some(saved) = &saved {
+                store.save(saved);
+            }
+            api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+            let error = api.get::<Value>("/core/v4/users", &[]).await.unwrap_err();
+            assert!(
+                matches!(error, ProtonError::SessionExpired),
+                "saved {}: {error:?}",
+                saved.is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn the_log_masks_a_fork_selector_and_keeps_ids() {
+        assert_eq!(
+            loggable_path("/auth/v4/sessions/forks/7dkqwlvdgyi3v2dvuu4bgqmpnsscp47z"),
+            "/auth/v4/sessions/forks/<selector>"
+        );
+        assert_eq!(
+            loggable_path("/auth/v4/sessions/forks"),
+            "/auth/v4/sessions/forks"
+        );
+        assert_eq!(
+            loggable_path("drive/v2/volumes/vol-1/links/link-2"),
+            "drive/v2/volumes/vol-1/links/link-2"
+        );
     }
 
     /// Adopted tokens that are stale too get one real refresh, then the
