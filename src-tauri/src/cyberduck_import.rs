@@ -60,6 +60,10 @@ pub struct CyberduckImportResult {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CyberduckExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -488,7 +492,11 @@ pub fn export_cyberduck(
     std::fs::create_dir_all(out).map_err(|e| format!("create Cyberduck Bookmarks dir: {e}"))?;
 
     let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
-    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // One file per bookmark, on file systems where `Lab.duck` and `lab.duck`
+    // are usually one file: the second would replace the first.
+    let mut names = crate::bridge_shared::ExportEntryNames::ignoring_case(
+        servers.iter().map(|s| sanitize_filename(&s.name)),
+    );
 
     for server in servers {
         let proto = server.protocol.as_deref().unwrap_or("ftp");
@@ -645,14 +653,7 @@ pub fn export_cyberduck(
         body.push_str("</dict>\n</plist>\n");
 
         // Stable, collision-free file name per bookmark.
-        let base = sanitize_filename(&server.name);
-        let mut file_name = format!("{base}.duck");
-        let mut n = 2;
-        while used_names.contains(&file_name) {
-            file_name = format!("{base}-{n}.duck");
-            n += 1;
-        }
-        used_names.insert(file_name.clone());
+        let file_name = format!("{}.duck", names.claim(&sanitize_filename(&server.name)));
 
         crate::bridge_shared::atomic_write_600(&out.join(&file_name), body.as_bytes())?;
         outcome.exported += 1;
@@ -871,6 +872,7 @@ mod tests {
             .servers
             .iter()
             .map(|s| CyberduckExportServer {
+                id: s.id.clone(),
                 name: s.name.clone(),
                 host: s.host.clone(),
                 port: s.port,
@@ -948,5 +950,35 @@ mod tests {
         if let Some(v) = prev {
             std::env::set_var("CYBERDUCK_BOOKMARKS", v);
         }
+    }
+
+    /// "Lab" and "lab" are one file name on the file systems macOS and
+    /// Windows use, so the second bookmark replaced the first there.
+    #[test]
+    fn names_one_file_system_takes_for_one_file_stay_two_bookmarks() {
+        let servers: Vec<CyberduckExportServer> = [("id-a", "Lab", "a"), ("id-b", "lab", "b")]
+            .into_iter()
+            .map(|(id, name, host)| {
+                serde_json::from_value(serde_json::json!({
+                    "id": id, "name": name, "host": format!("{host}.example.com"),
+                    "port": 22, "username": "u", "protocol": "sftp"
+                }))
+                .unwrap()
+            })
+            .collect();
+        let dir = tempfile::tempdir().unwrap();
+        let outcome = export_cyberduck(&servers, &HashMap::new(), dir.path()).unwrap();
+        assert_eq!(outcome.exported, 2, "{:?}", outcome.skipped);
+        let mut files: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        files.sort();
+        assert_eq!(files, ["Lab.duck", "lab-2.duck"]);
+        let second = std::fs::read_to_string(dir.path().join("lab-2.duck")).unwrap();
+        assert!(
+            second.contains("<string>b.example.com</string>"),
+            "{second}"
+        );
     }
 }

@@ -420,6 +420,10 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DreamweaverExportServer {
+    /// The profile's id: the key of its secret in the passwords map
+    /// ([`crate::bridge_shared::export_secret`]).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub host: String,
     pub port: u32,
@@ -536,10 +540,8 @@ pub fn export_dreamweaver(
     };
 
     let remoteroot = server.initial_path.as_deref().unwrap_or("");
-    let pw_attr = passwords
-        .get(&server.name)
-        .filter(|p| !p.is_empty())
-        .map(|pw| obscure_dreamweaver(pw));
+    let pw_attr =
+        crate::bridge_shared::export_secret(passwords, &server.id).map(obscure_dreamweaver);
     let http = server
         .options
         .as_ref()
@@ -737,9 +739,10 @@ mod tests {
 
         let mut passwords = HashMap::new();
         if let Some(c) = &a.credential {
-            passwords.insert(a.name.clone(), c.clone());
+            passwords.insert(a.id.clone(), c.clone());
         }
         let export_servers = vec![DreamweaverExportServer {
+            id: a.id.clone(),
             name: a.name.clone(),
             host: a.host.clone(),
             port: a.port,
@@ -777,5 +780,27 @@ mod tests {
     #[test]
     fn test_default_path_is_none() {
         assert!(default_dreamweaver_config_path().is_none());
+    }
+
+    /// Of two profiles of one name (a list saved before names were unique),
+    /// the one written is the first, and with its own password: the map keyed
+    /// by name gave it the second one's.
+    #[test]
+    fn of_two_profiles_of_one_name_the_one_written_has_its_own_password() {
+        let (servers, passwords) = crate::bridge_shared::two_profiles_named_lab::<
+            DreamweaverExportServer,
+        >(
+            serde_json::json!({"host": "a.example.com", "port": 21, "username": "u", "protocol": "ftp"}),
+            serde_json::json!({"host": "b.example.com", "port": 21, "username": "u", "protocol": "ftp"}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("Lab.ste");
+        let outcome = export_dreamweaver(&servers, &passwords, &path).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 1));
+        let back = import_dreamweaver(&path).unwrap();
+        assert_eq!(
+            crate::bridge_shared::names_hosts_secrets(&back.servers),
+            crate::bridge_shared::owned3(&[("Lab", "a.example.com", "secret-a")])
+        );
     }
 }
