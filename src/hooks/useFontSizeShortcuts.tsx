@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { updateAppSettings } from '../utils/appSettings';
+import { useTranslation } from '../i18n';
 import { clampAppFontSize, MIN_APP_FONT_SIZE, MAX_APP_FONT_SIZE } from './useSettings';
 
 
@@ -126,6 +127,7 @@ interface FontSizeIndicatorProps {
 }
 
 export const FontSizeIndicator: React.FC<FontSizeIndicatorProps> = ({ indicator }) => {
+    const t = useTranslation();
     if (!indicator) return null;
     const atMin = indicator.size <= MIN_APP_FONT_SIZE;
     const atMax = indicator.size >= MAX_APP_FONT_SIZE;
@@ -142,7 +144,7 @@ export const FontSizeIndicator: React.FC<FontSizeIndicatorProps> = ({ indicator 
                 <span className="tabular-nums">{indicator.size}px</span>
                 {(atMin || atMax) && (
                     <span className="opacity-60 text-[10px] uppercase tracking-wider">
-                        {atMin ? 'min' : 'max'}
+                        {atMin ? t('settings.fontSizeMin') : t('settings.fontSizeMax')}
                     </span>
                 )}
             </div>

@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Daftarkan format arsip dan menu Penjelajah Berkas",
             "fileAssociationIntegrationDesc": "Perubahan langsung berlaku dan tetap tersimpan selama pembaruan. Windows mengelola aplikasi bawaan Anda secara terpisah.",
             "fileAssociationIntegrationPortable": "Instal AeroFTP untuk mengubah integrasi Windows.",
-            "fileAssociationIntegrationAdmin": "Windows mungkin meminta izin administrator untuk mengubah opsi ini."
+            "fileAssociationIntegrationAdmin": "Windows mungkin meminta izin administrator untuk mengubah opsi ini.",
+            "migrationServerProfilesFound": "{count} profil server ditemukan di penyimpanan yang tidak terenkripsi",
+            "migrationAiSettingsFound": "Konfigurasi AI ditemukan di penyimpanan yang tidak terenkripsi",
+            "migrationOauthFound": "{count} kredensial OAuth ditemukan di penyimpanan yang tidak terenkripsi",
+            "fontSystemInstall": "instal di sistem",
+            "fontSizeMin": "min",
+            "fontSizeMax": "maks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Tingkat gratis dibatasi hingga 25 kredit per bulan",
                 "fourshared": "Otorisasi ulang secara manual jika token dicabut"
             },
-            "profilesLoadFailed": "Server tersimpan Anda tidak dapat dibaca: {error}"
+            "profilesLoadFailed": "Server tersimpan Anda tidak dapat dibaca: {error}",
+            "cleanupSummary": "{count} file, {size} dibebaskan"
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -1600,7 +1607,8 @@
                 "title": "Tim Axpdev Lab",
                 "apRole": "Pendiri, pengembang, pengelola, rekan perancang",
                 "ekRole": "Peneliti, insinyur penjaminan mutu, rekan perancang"
-            }
+            },
+            "madeBy": "oleh {author}"
         },
         "support": {
             "title": "Dukung AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Menggunakan CLI Proton Drive - pasang, masuk di peramban, AeroFTP adalah GUI",
             "twakeDesc": "Twake Drive (5 GB gratis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cloud open source asal Prancis (Cozy Cloud kini menjadi bagiannya) dengan 5 GB gratis",
-            "discoverTwake": "Cloud Eropa open source dari Linagora, kini menjadi rumah baru Cozy Cloud (5 GB gratis)"
+            "discoverTwake": "Cloud Eropa open source dari Linagora, kini menjadi rumah baru Cozy Cloud (5 GB gratis)",
+            "sourceforgeProject": "Proyek (Unixname)",
+            "opendriveNotApiKey": "(bukan kunci API OpenDrive Anda)",
+            "endpoint": "Endpoint",
+            "accountId": "ID Akun"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Konfirmasi kata sandi",
             "minLength": "Minimal 8 karakter",
             "autoLockTimeout": "Batas Waktu Kunci Otomatis",
-            "enable": "Aktifkan"
+            "enable": "Aktifkan",
+            "setupBootstrapDescription": "Keyring tidak tersedia: mode bootstrap kata sandi utama"
         },
         "search": {
             "remote_placeholder": "Cari file jarak jauh...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Alamat Email",
             "add": "Tambah",
             "remove": "Hapus",
-            "none": "Tidak ada izin yang disetel"
+            "none": "Tidak ada izin yang disetel",
+            "anyoneWithLink": "Siapa pun yang memiliki tautan"
         },
         "locking": {
             "lock": "Kunci File",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Tidak ada yang ditransfer: ini menampilkan pratinjau dari apa yang akan dilakukan sinkronisasi penuh, dihitung dari sampel. Ini adalah padanan GUI dari perintah aeroftp-cli sync --dry-run (dan --dry-run milik rclone).",
             "templateImportPathPairs": "Pasangan path lokal/remote yang dapat digunakan dalam template ini: {count}. Jendela AeroSync bekerja dengan tepat satu pasangan, jadi tidak ada yang diimpor. Edit template agar hanya tersisa satu pasangan, lalu impor lagi.",
             "templateNamePlaceholder": "mis. Cadangan malam ke S3",
-            "templateDescPlaceholder": "Untuk apa templat ini (opsional)"
+            "templateDescPlaceholder": "Untuk apa templat ini (opsional)",
+            "templateExportCliDesc": "Pembungkus aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Menyinkronkan...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} token input, {output} token output, sesuai penghitungan penyedia",
                 "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca dari cache prompt, {cacheWritten} ditulis ke dalamnya, sesuai penghitungan penyedia"
+            },
+            "executeOperations": "Jalankan {count} operasi",
+            "coding": {
+                "dryRun": "uji coba",
+                "apply": "terapkan",
+                "timedOutAfter": "Waktu habis setelah {seconds}s.",
+                "restore": {
+                    "previewNote": "Ini menampilkan pratinjau tindakan pemulihan titik pemeriksaan tanpa mengubah file.",
+                    "dangerNote": "Pemulihan berisiko tinggi ini dapat menimpa isi file saat ini dan menghapus file yang tidak ada pada titik pemeriksaan.",
+                    "wouldRewrite": "Akan ditulis ulang",
+                    "rewritten": "Ditulis ulang",
+                    "wouldDelete": "Akan dihapus",
+                    "deleted": "Dihapus",
+                    "wouldSkip": "Akan dilewati",
+                    "skipped": "Dilewati",
+                    "existedAtCheckpoint": "ada pada titik pemeriksaan",
+                    "absentAtCheckpoint": "tidak ada pada titik pemeriksaan"
+                },
+                "checks": {
+                    "exitSummary": "kode keluar {code} · {seconds}s",
+                    "continueOnFailure": "Menjalankan semua pemeriksaan meskipun salah satunya gagal.",
+                    "stopOnFailure": "Berhenti pada pemeriksaan pertama yang gagal."
+                },
+                "diagnostics": {
+                    "none": "Tidak ada diagnostik yang dilaporkan."
+                },
+                "search": {
+                    "none": "Tidak ada kecocokan ditemukan."
+                },
+                "git": {
+                    "noStagedDiff": "Tidak ada keluaran diff untuk perubahan yang disiapkan.",
+                    "noUnstagedDiff": "Tidak ada keluaran diff untuk perubahan yang belum disiapkan.",
+                    "staged": "disiapkan",
+                    "unstaged": "belum disiapkan",
+                    "commitApproval": "Persetujuan Commit Git",
+                    "stageApproval": "Persetujuan Penyiapan Git",
+                    "commitNote": "Ini membuat git commit dari indeks yang disiapkan saat ini. Tinjau coding_git_status dan coding_git_diff dengan staged=true terlebih dahulu.",
+                    "stagePreviewNote": "Ini menampilkan pratinjau jalur yang diminta yang akan disiapkan; indeks tidak akan berubah.",
+                    "stageNote": "Ini mengubah indeks git untuk jalur yang diminta."
+                },
+                "patch": {
+                    "validateNote": "Ini memvalidasi patch tanpa mengubah file.",
+                    "applyNote": "Permintaan penerapan berisiko tinggi ini menulis file setelah backend membuat titik pemulihan sebelum penerapan.",
+                    "hideDiff": "Sembunyikan diff terpadu",
+                    "showDiff": "Tampilkan diff terpadu"
+                }
             }
         },
         "archive": {
@@ -3401,7 +3462,10 @@
             "encryptedTooltip": "Terenkripsi dengan AES-256. Konten dan nama file bersifat rahasia; kata sandi diperlukan untuk membuka.",
             "resetDefaults": "Atur ulang ke bawaan",
             "scrubErrorCorrectionTooltip": "{label} (memverifikasi hash sandi)",
-            "repairErrorCorrectionTooltip": "{label} (pratinjau dry-run tersedia)"
+            "repairErrorCorrectionTooltip": "{label} (pratinjau dry-run tersedia)",
+            "errorCorrectionBadge": "Koreksi Kesalahan",
+            "itemsInFolder": "{count} item di /{folder}",
+            "repairNoChangesWritten": "(tidak ada perubahan yang ditulis)"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",
@@ -3758,7 +3822,11 @@
             "keepFirstFound": "Pertama ditemukan",
             "selectAllButOne": "Pilih semua kecuali satu per grup",
             "everyCopyTicked": "semua salinan dicentang",
-            "everyCopyTickedHint": "Hapus centang satu salinan di setiap grup yang disorot: jika tidak, semua salinan akan dihapus."
+            "everyCopyTickedHint": "Hapus centang satu salinan di setiap grup yang disorot: jika tidak, semua salinan akan dihapus.",
+            "modeExactHint": "Identik byte demi byte",
+            "modeNonIdenticalHint": "Kemiripan perseptual atau teks, tanpa hapus otomatis",
+            "potentialWasteSelected": "potensi terbuang (dipilih)",
+            "similarityDistance": "{similarity}, jarak {distance}"
         },
         "diskUsage": {
             "title": "Penggunaan Disk",
@@ -4377,7 +4445,9 @@
                 "next": "Selanjutnya",
                 "scanQr": "Tambahkan rahasia ini ke aplikasi autentikator Anda (Google Authenticator, Authy, Microsoft Authenticator). Atau masukkan kunci manual:",
                 "setup": "Autentikasi Dua Faktor",
-                "verify": "Verifikasi & Aktifkan"
+                "verify": "Verifikasi & Aktifkan",
+                "active": "2FA Aktif",
+                "inactive": "2FA Nonaktif"
             }
         },
         "vaultSync": {
@@ -4824,7 +4894,7 @@
             "pagesBranch": "Cabang",
             "pagesPath": "Jalur",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Otorisasi",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4836,7 +4906,12 @@
             "branchList": "Daftar cabang",
             "noBranches": "Tidak ada cabang yang ditemukan",
             "rawUrlCopied": "URL mentah disalin",
-            "working": "bekerja"
+            "working": "bekerja",
+            "pagesDnsIssue": "Masalah DNS terdeteksi",
+            "releaseAssetOne": "{count} aset",
+            "releaseAssetMany": "{count} aset",
+            "repoPrivate": "Pribadi",
+            "repoPublic": "Publik"
         },
         "filenNotes": {
             "title": "Catatan Terenkripsi",
@@ -5613,7 +5688,9 @@
             "stopCompare": "Hentikan",
             "compareStopped": "Perbandingan dihentikan.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Perbandingan membaca kedua folder dan semua folder di bawahnya. Pada pohon yang besar, proses ini bisa memakan waktu, dan Anda dapat menghentikannya."
+            "compareStartHint": "Perbandingan membaca kedua folder dan semua folder di bawahnya. Pada pohon yang besar, proses ini bisa memakan waktu, dan Anda dapat menghentikannya.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[salinan]"
         },
         "accountLock": {
             "title": "Pilih akun",

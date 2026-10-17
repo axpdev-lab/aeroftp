@@ -225,7 +225,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                                                 {t('settings.migrationProfiles', { count: detected.serverProfiles.count })}
                                             </div>
                                             <div className={`text-xs ${textSecondary}`}>
-                                                {step === 2 && `${detected.serverProfiles.count} server profiles found in unencrypted storage`}
+                                                {step === 2 && t('settings.migrationServerProfilesFound', { count: detected.serverProfiles.count })}
                                             </div>
                                         </div>
                                         <AlertTriangle size={16} className="text-amber-500 shrink-0" />
@@ -243,7 +243,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                                                 {t('settings.migrationAiSettings')}
                                             </div>
                                             <div className={`text-xs ${textSecondary}`}>
-                                                {step === 2 && 'AI configuration found in unencrypted storage'}
+                                                {step === 2 && t('settings.migrationAiSettingsFound')}
                                             </div>
                                         </div>
                                         <AlertTriangle size={16} className="text-amber-500 shrink-0" />
@@ -261,7 +261,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                                                 {t('settings.migrationOauth', { count: detected.oauthCredentials.count })}
                                             </div>
                                             <div className={`text-xs ${textSecondary}`}>
-                                                {step === 2 && `${detected.oauthCredentials.count} OAuth credentials found in unencrypted storage`}
+                                                {step === 2 && t('settings.migrationOauthFound', { count: detected.oauthCredentials.count })}
                                             </div>
                                         </div>
                                         <AlertTriangle size={16} className="text-amber-500 shrink-0" />

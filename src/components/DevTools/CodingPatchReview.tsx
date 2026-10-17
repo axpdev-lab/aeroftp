@@ -3,6 +3,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileCode2, FileDiff, RotateCcw, ShieldAlert, XCircle } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 import type { CodingPatchResult } from './aiChatTypes';
 
 interface CodingPatchReviewProps {
@@ -83,6 +84,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
     dryRun,
     mode = 'result',
 }) => {
+    const t = useTranslation();
     const patchSummary = useMemo(() => summarizePatchText(patchText), [patchText]);
     const diffLines = useMemo(() => patchText ? patchText.split(/\r?\n/) : [], [patchText]);
     const [showDiff, setShowDiff] = useState(mode === 'approval' && !!patchText);
@@ -145,7 +147,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                             ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
                             : 'border-amber-400/30 bg-amber-400/10 text-amber-200'
                     }`}>
-                        {effectiveDryRun ? 'dry run' : 'apply'}
+                        {effectiveDryRun ? t('ai.coding.dryRun') : t('ai.coding.apply')}
                     </span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/65">
                         {fileCount} file{fileCount === 1 ? '' : 's'}
@@ -168,8 +170,8 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                         {effectiveDryRun ? <FileDiff size={13} className="mt-0.5 shrink-0 text-cyan-300" /> : <ShieldAlert size={13} className="mt-0.5 shrink-0 text-amber-300" />}
                         <span>
                             {effectiveDryRun
-                                ? 'This validates the patch without changing files.'
-                                : 'This high-danger apply request writes files after the backend creates a pre-apply checkpoint.'}
+                                ? t('ai.coding.patch.validateNote')
+                                : t('ai.coding.patch.applyNote')}
                         </span>
                     </div>
                 </div>
@@ -290,7 +292,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                     >
                         {showDiff ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                         <FileDiff size={12} className="text-purple-300" />
-                        <span>{showDiff ? 'Hide unified diff' : 'Show unified diff'}</span>
+                        <span>{showDiff ? t('ai.coding.patch.hideDiff') : t('ai.coding.patch.showDiff')}</span>
                         {diffLines.length > MAX_DIFF_LINES && (
                             <span className="ml-auto text-[10px] text-white/40">
                                 first {MAX_DIFF_LINES} of {diffLines.length} lines

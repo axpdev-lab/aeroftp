@@ -1134,9 +1134,9 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     <div>
                         <div className="flex items-center gap-2 mb-1.5">
                             <label className="block text-sm font-medium">
-                                {presetUnlocked['endpointSuffix'] ? 'Endpoint' : (accountIdField.label || 'Account ID')}
+                                {presetUnlocked['endpointSuffix'] ? t('protocol.endpoint') : (accountIdField.label || t('protocol.accountId'))}
                                 {endpointFixedPart && !presetUnlocked['endpointSuffix'] && (
-                                    <span className="text-xs font-normal text-gray-400 ml-1.5">→ Endpoint</span>
+                                    <span className="text-xs font-normal text-gray-400 ml-1.5">→ {t('protocol.endpoint')}</span>
                                 )}
                             </label>
                             {endpointFixedPart && onPresetUnlock && !isEditing && (

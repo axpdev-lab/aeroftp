@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Καταχώριση μορφών συμπιεσμένων αρχείων και μενού της Εξερεύνησης",
             "fileAssociationIntegrationDesc": "Οι αλλαγές εφαρμόζονται τώρα και διατηρούνται κατά τις ενημερώσεις. Τα Windows διαχειρίζονται ξεχωριστά τις προεπιλεγμένες εφαρμογές σας.",
             "fileAssociationIntegrationPortable": "Εγκαταστήστε το AeroFTP για να αλλάξετε την ενσωμάτωση στα Windows.",
-            "fileAssociationIntegrationAdmin": "Τα Windows ενδέχεται να ζητήσουν δικαιώματα διαχειριστή για να αλλάξετε αυτές τις επιλογές."
+            "fileAssociationIntegrationAdmin": "Τα Windows ενδέχεται να ζητήσουν δικαιώματα διαχειριστή για να αλλάξετε αυτές τις επιλογές.",
+            "migrationServerProfilesFound": "Βρέθηκαν {count} προφίλ διακομιστών σε μη κρυπτογραφημένο χώρο αποθήκευσης",
+            "migrationAiSettingsFound": "Βρέθηκε ρύθμιση AI σε μη κρυπτογραφημένο χώρο αποθήκευσης",
+            "migrationOauthFound": "Βρέθηκαν {count} διαπιστευτήρια OAuth σε μη κρυπτογραφημένο χώρο αποθήκευσης",
+            "fontSystemInstall": "εγκατάσταση στο σύστημα",
+            "fontSizeMin": "ελάχ",
+            "fontSizeMax": "μέγ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Η δωρεάν βαθμίδα περιορίζεται σε 25 credits τον μήνα",
                 "fourshared": "Εξουσιοδοτήστε ξανά χειροκίνητα αν το token ανακληθεί"
             },
-            "profilesLoadFailed": "Δεν ήταν δυνατή η ανάγνωση των αποθηκευμένων διακομιστών σας: {error}"
+            "profilesLoadFailed": "Δεν ήταν δυνατή η ανάγνωση των αποθηκευμένων διακομιστών σας: {error}",
+            "cleanupSummary": "{count} αρχεία, ελευθερώθηκαν {size}"
         },
         "statusBar": {
             "connected": "Συνδεδεμένο",
@@ -1600,7 +1607,8 @@
                 "title": "Η ομάδα του Axpdev Lab",
                 "apRole": "Ιδρυτής, προγραμματιστής, συντηρητής, συν-σχεδιαστής",
                 "ekRole": "Ερευνητής, μηχανικός διασφάλισης ποιότητας, συν-σχεδιαστής"
-            }
+            },
+            "madeBy": "από την {author}"
         },
         "support": {
             "title": "Υποστηρίξτε το AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Χρησιμοποιεί το Proton Drive CLI - εγκαταστήστε το, συνδεθείτε στον φυλλομετρητή, το AeroFTP είναι το GUI",
             "twakeDesc": "Twake Drive (5 GB δωρεάν)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, γαλλικό cloud ανοιχτού κώδικα (το Cozy Cloud είναι πλέον μέρος του) με 5 GB δωρεάν",
-            "discoverTwake": "Ευρωπαϊκό cloud ανοιχτού κώδικα από τη Linagora, πλέον σπίτι του Cozy Cloud (5 GB δωρεάν)"
+            "discoverTwake": "Ευρωπαϊκό cloud ανοιχτού κώδικα από τη Linagora, πλέον σπίτι του Cozy Cloud (5 GB δωρεάν)",
+            "sourceforgeProject": "Έργο (Unixname)",
+            "opendriveNotApiKey": "(δεν είναι το κλειδί API σας για το OpenDrive)",
+            "endpoint": "Τελικό Σημείο",
+            "accountId": "ID λογαριασμού"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Επιβεβαίωση κωδικού",
             "minLength": "Τουλάχιστον 8 χαρακτήρες",
             "autoLockTimeout": "Χρονικό όριο αυτόματου κλειδώματος",
-            "enable": "Ενεργοποίηση"
+            "enable": "Ενεργοποίηση",
+            "setupBootstrapDescription": "Η κλειδοθήκη δεν είναι διαθέσιμη: λειτουργία εκκίνησης με κύριο κωδικό"
         },
         "search": {
             "remote_placeholder": "Αναζήτηση απομακρυσμένων αρχείων...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Διεύθυνση email",
             "add": "Προσθήκη",
             "remove": "Αφαίρεση",
-            "none": "Δεν έχουν οριστεί δικαιώματα"
+            "none": "Δεν έχουν οριστεί δικαιώματα",
+            "anyoneWithLink": "Οποιοσδήποτε έχει τον σύνδεσμο"
         },
         "locking": {
             "lock": "Κλείδωμα Αρχείου",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Δεν μεταφέρεται τίποτα: αυτό προεπισκοπεί τι θα έκανε ένας πλήρης συγχρονισμός, υπολογισμένο από το δείγμα. Είναι το αντίστοιχο γραφικού περιβάλλοντος της εντολής aeroftp-cli sync --dry-run (και του --dry-run του rclone).",
             "templateImportPathPairs": "Χρησιμοποιήσιμα ζεύγη διαδρομών (τοπική/απομακρυσμένη) σε αυτό το πρότυπο: {count}. Ένα παράθυρο του AeroSync λειτουργεί με ακριβώς ένα ζεύγος, οπότε δεν εισήχθη τίποτα. Επεξεργαστείτε το πρότυπο ώστε να μείνει ένα μόνο ζεύγος και έπειτα εισαγάγετέ το ξανά.",
             "templateNamePlaceholder": "π.χ. Νυχτερινό αντίγραφο ασφαλείας στο S3",
-            "templateDescPlaceholder": "Σε τι χρησιμεύει αυτό το πρότυπο (προαιρετικό)"
+            "templateDescPlaceholder": "Σε τι χρησιμεύει αυτό το πρότυπο (προαιρετικό)",
+            "templateExportCliDesc": "Σενάριο περιτύλιξης για το aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} token εισόδου, {output} token εξόδου, όπως μετρήθηκαν από τον πάροχο",
                 "breakdownCache": "{input} token εισόδου, {output} token εξόδου, {cacheRead} που διαβάστηκαν από την προσωρινή μνήμη του prompt, {cacheWritten} που γράφτηκαν σε αυτήν, όπως μετρήθηκαν από τον πάροχο"
+            },
+            "executeOperations": "Εκτέλεση λειτουργιών: {count}",
+            "coding": {
+                "dryRun": "δοκιμαστική εκτέλεση",
+                "apply": "εφαρμογή",
+                "timedOutAfter": "Λήξη χρόνου μετά από {seconds}s.",
+                "restore": {
+                    "previewNote": "Εμφανίζει προεπισκόπηση των ενεργειών επαναφοράς από το σημείο ελέγχου χωρίς αλλαγή αρχείων.",
+                    "dangerNote": "Αυτή η επαναφορά υψηλού κινδύνου μπορεί να αντικαταστήσει το τρέχον περιεχόμενο αρχείων και να διαγράψει αρχεία που δεν υπήρχαν στο σημείο ελέγχου.",
+                    "wouldRewrite": "Θα επανεγγραφούν",
+                    "rewritten": "Επανεγγράφηκαν",
+                    "wouldDelete": "Θα διαγραφούν",
+                    "deleted": "Διαγράφηκαν",
+                    "wouldSkip": "Θα παραλειφθούν",
+                    "skipped": "Παραλείφθηκαν",
+                    "existedAtCheckpoint": "υπήρχε στο σημείο ελέγχου",
+                    "absentAtCheckpoint": "απουσίαζε στο σημείο ελέγχου"
+                },
+                "checks": {
+                    "exitSummary": "κωδικός εξόδου {code} · {seconds}s",
+                    "continueOnFailure": "Εκτελεί όλους τους ελέγχους ακόμη κι αν κάποιος αποτύχει.",
+                    "stopOnFailure": "Σταματά στον πρώτο έλεγχο που αποτυγχάνει."
+                },
+                "diagnostics": {
+                    "none": "Δεν αναφέρθηκαν διαγνωστικά."
+                },
+                "search": {
+                    "none": "Δεν βρέθηκαν αντιστοιχίες."
+                },
+                "git": {
+                    "noStagedDiff": "Δεν υπάρχει έξοδος diff για αλλαγές στο ευρετήριο.",
+                    "noUnstagedDiff": "Δεν υπάρχει έξοδος diff για αλλαγές εκτός ευρετηρίου.",
+                    "staged": "στο ευρετήριο",
+                    "unstaged": "εκτός ευρετηρίου",
+                    "commitApproval": "Έγκριση Git commit",
+                    "stageApproval": "Έγκριση προσθήκης στο ευρετήριο Git",
+                    "commitNote": "Αυτό δημιουργεί ένα git commit από το τρέχον ευρετήριο. Ελέγξτε πρώτα τα coding_git_status και coding_git_diff με staged=true.",
+                    "stagePreviewNote": "Αυτό δείχνει σε προεπισκόπηση ποιες από τις ζητούμενες διαδρομές θα προστίθεντο στο ευρετήριο. Το ευρετήριο δεν θα αλλάξει.",
+                    "stageNote": "Αυτό αλλάζει το ευρετήριο git για τις ζητούμενες διαδρομές."
+                },
+                "patch": {
+                    "validateNote": "Αυτό επικυρώνει το patch χωρίς να αλλάξει αρχεία.",
+                    "applyNote": "Αυτό το αίτημα εφαρμογής υψηλού κινδύνου γράφει αρχεία αφού το backend δημιουργήσει ένα σημείο ελέγχου πριν από την εφαρμογή.",
+                    "hideDiff": "Απόκρυψη ενοποιημένου diff",
+                    "showDiff": "Εμφάνιση ενοποιημένου diff"
+                }
             }
         },
         "archive": {
@@ -3401,7 +3462,10 @@
             "encryptedTooltip": "Κρυπτογραφημένο με AES-256. Το περιεχόμενο και τα ονόματα αρχείων είναι εμπιστευτικά· απαιτείται κωδικός για άνοιγμα.",
             "resetDefaults": "Επαναφορά προεπιλογών",
             "scrubErrorCorrectionTooltip": "{label} (επαλήθευση των hash κρυπτογράφησης)",
-            "repairErrorCorrectionTooltip": "{label} (διαθέσιμη προεπισκόπηση με δοκιμαστική εκτέλεση)"
+            "repairErrorCorrectionTooltip": "{label} (διαθέσιμη προεπισκόπηση με δοκιμαστική εκτέλεση)",
+            "errorCorrectionBadge": "Διόρθωση σφαλμάτων",
+            "itemsInFolder": "{count} στοιχεία στο /{folder}",
+            "repairNoChangesWritten": "(δεν γράφτηκαν αλλαγές)"
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",
@@ -3758,7 +3822,11 @@
             "keepFirstFound": "Πρώτο που βρέθηκε",
             "selectAllButOne": "Επιλογή όλων εκτός από ένα ανά ομάδα",
             "everyCopyTicked": "όλα τα αντίγραφα επιλεγμένα",
-            "everyCopyTickedHint": "Αποεπιλέξτε ένα αντίγραφο σε κάθε επισημασμένη ομάδα: αλλιώς θα διαγραφούν όλα."
+            "everyCopyTickedHint": "Αποεπιλέξτε ένα αντίγραφο σε κάθε επισημασμένη ομάδα: αλλιώς θα διαγραφούν όλα.",
+            "modeExactHint": "Πανομοιότυπα byte προς byte",
+            "modeNonIdenticalHint": "Αντιληπτική ή κειμενική ομοιότητα, χωρίς αυτόματη διαγραφή",
+            "potentialWasteSelected": "πιθανή σπατάλη (επιλεγμένα)",
+            "similarityDistance": "{similarity}, απόστ. {distance}"
         },
         "diskUsage": {
             "title": "Χρήση Δίσκου",
@@ -4377,7 +4445,9 @@
                 "next": "Επόμενο",
                 "scanQr": "Προσθέστε αυτό το μυστικό στην εφαρμογή ελέγχου ταυτότητας (Google Authenticator, Authy, Microsoft Authenticator). Ή εισαγάγετε το κλειδί χειροκίνητα:",
                 "setup": "Έλεγχος ταυτότητας δύο παραγόντων",
-                "verify": "Επαλήθευση & Ενεργοποίηση"
+                "verify": "Επαλήθευση & Ενεργοποίηση",
+                "active": "2FA ενεργό",
+                "inactive": "2FA ανενεργό"
             }
         },
         "vaultSync": {
@@ -4824,7 +4894,7 @@
             "pagesBranch": "Κλάδος",
             "pagesPath": "Διαδρομή",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Εξουσιοδότηση",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4836,7 +4906,12 @@
             "branchList": "Λίστα κλάδων",
             "noBranches": "Δεν βρέθηκαν κλάδοι",
             "rawUrlCopied": "Το ακατέργαστο URL αντιγράφηκε",
-            "working": "σε εξέλιξη"
+            "working": "σε εξέλιξη",
+            "pagesDnsIssue": "Εντοπίστηκε πρόβλημα DNS",
+            "releaseAssetOne": "{count} αρχείο",
+            "releaseAssetMany": "{count} αρχεία",
+            "repoPrivate": "Ιδιωτικό",
+            "repoPublic": "Δημόσιο"
         },
         "filenNotes": {
             "title": "Κρυπτογραφημένες σημειώσεις",
@@ -5613,7 +5688,9 @@
             "stopCompare": "Διακοπή",
             "compareStopped": "Η σύγκριση διακόπηκε.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Η σύγκριση διαβάζει και τους δύο φακέλους και κάθε φάκελο μέσα σε αυτούς. Σε μεγάλο δέντρο μπορεί να πάρει λίγο χρόνο, και μπορείτε να τη διακόψετε."
+            "compareStartHint": "Η σύγκριση διαβάζει και τους δύο φακέλους και κάθε φάκελο μέσα σε αυτούς. Σε μεγάλο δέντρο μπορεί να πάρει λίγο χρόνο, και μπορείτε να τη διακόψετε.",
+            "progressDelta": "[δέλτα]",
+            "progressCopy": "[αντίγραφο]"
         },
         "accountLock": {
             "title": "Επιλέξτε λογαριασμό",

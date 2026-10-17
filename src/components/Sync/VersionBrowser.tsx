@@ -179,7 +179,7 @@ function VersionBrowserContent({ filePath, diskUsage, versions, loading, cleanup
 
             {cleanupResult && cleanupResult.deleted_count > 0 && (
                 <div className="text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded">
-                    {t('cloud.cleanupDone')}: {cleanupResult.deleted_count} files, {formatSize(cleanupResult.freed_bytes)} freed
+                    {t('cloud.cleanupDone')}: {t('cloud.cleanupSummary', { count: cleanupResult.deleted_count, size: formatSize(cleanupResult.freed_bytes) })}
                 </div>
             )}
         </div>

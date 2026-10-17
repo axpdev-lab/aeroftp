@@ -589,7 +589,9 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                   {tagAssets && (
                     <span className="flex items-center gap-1">
                       <FileBox size={10} />
-                      {tagAssets.length} {tagAssets.length === 1 ? 'asset' : 'assets'}
+                      {tagAssets.length === 1
+                        ? t('github.releaseAssetOne', { count: 1 })
+                        : t('github.releaseAssetMany', { count: tagAssets.length })}
                     </span>
                   )}
                 </div>

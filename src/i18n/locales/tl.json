@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Irehistro ang mga format ng archive at mga menu ng File Explorer",
             "fileAssociationIntegrationDesc": "Agad na magkakabisa ang mga pagbabago at mananatili sa mga pag-update. Hiwalay na pinamamahalaan ng Windows ang iyong mga default na app.",
             "fileAssociationIntegrationPortable": "I-install ang AeroFTP upang baguhin ang pagsasama sa Windows.",
-            "fileAssociationIntegrationAdmin": "Maaaring humingi ang Windows ng pahintulot ng administrador upang baguhin ang mga opsyong ito."
+            "fileAssociationIntegrationAdmin": "Maaaring humingi ang Windows ng pahintulot ng administrador upang baguhin ang mga opsyong ito.",
+            "migrationServerProfilesFound": "May natagpuang {count} profile ng server sa imbakang hindi naka-encrypt",
+            "migrationAiSettingsFound": "May natagpuang pagsasaayos ng AI sa imbakang hindi naka-encrypt",
+            "migrationOauthFound": "May natagpuang {count} kredensyal ng OAuth sa imbakang hindi naka-encrypt",
+            "fontSystemInstall": "i-install sa system",
+            "fontSizeMin": "min",
+            "fontSizeMax": "max"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Limitado sa 25 credit kada buwan ang libreng tier",
                 "fourshared": "Mag-authorize muli nang mano-mano kung binawi ang token"
             },
-            "profilesLoadFailed": "Hindi nabasa ang iyong mga naka-save na server: {error}"
+            "profilesLoadFailed": "Hindi nabasa ang iyong mga naka-save na server: {error}",
+            "cleanupSummary": "{count} talaksan, {size} ang napalaya"
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -1600,7 +1607,8 @@
                 "title": "Ang Team ng Axpdev Lab",
                 "apRole": "Tagapagtatag, developer, maintainer, katuwang na taga-disenyo",
                 "ekRole": "Mananaliksik, quality assurance engineer, katuwang na taga-disenyo"
-            }
+            },
+            "madeBy": "ng {author}"
         },
         "support": {
             "title": "Suportahan ang AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Gumagamit ng Proton Drive CLI - i-install, mag-sign in sa browser, ang AeroFTP ang GUI",
             "twakeDesc": "Twake Drive (5 GB libre)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, French open-source cloud (bahagi na nito ngayon ang Cozy Cloud) na may 5 GB libre",
-            "discoverTwake": "Open-source na European cloud ng Linagora, ngayon ang bagong tahanan ng Cozy Cloud (5 GB libre)"
+            "discoverTwake": "Open-source na European cloud ng Linagora, ngayon ang bagong tahanan ng Cozy Cloud (5 GB libre)",
+            "sourceforgeProject": "Proyekto (Unixname)",
+            "opendriveNotApiKey": "(hindi ang iyong susi ng OpenDrive API)",
+            "endpoint": "Endpoint",
+            "accountId": "ID ng account"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Kumpirmahin ang password",
             "minLength": "Minimum 8 karakter",
             "autoLockTimeout": "Timeout ng auto-lock",
-            "enable": "I-enable"
+            "enable": "I-enable",
+            "setupBootstrapDescription": "Hindi magagamit ang keyring: bootstrap na mode gamit ang master password"
         },
         "search": {
             "remote_placeholder": "Maghanap ng remote file...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Email address",
             "add": "Idagdag",
             "remove": "Alisin",
-            "none": "Walang mga nakatakdang pahintulot"
+            "none": "Walang mga nakatakdang pahintulot",
+            "anyoneWithLink": "Sinumang may link"
         },
         "locking": {
             "lock": "I-lock ang File",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Walang inililipat: ipinapakita nito kung ano ang gagawin ng isang buong sync, kinakalkula mula sa sample. Ito ang katumbas na GUI ng utos na aeroftp-cli sync --dry-run (at ng --dry-run ng rclone).",
             "templateImportPathPairs": "Mga magagamit na lokal/remote na path pair sa template na ito: {count}. Gumagana ang isang AeroSync window sa eksaktong isang pares, kaya walang na-import. I-edit ang template para iisang pares na lang ang matira, pagkatapos ay i-import itong muli.",
             "templateNamePlaceholder": "hal. Backup tuwing gabi sa S3",
-            "templateDescPlaceholder": "Para saan ang template na ito (opsyonal)"
+            "templateDescPlaceholder": "Para saan ang template na ito (opsyonal)",
+            "templateExportCliDesc": "Pambalot na script ng aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} input token, {output} output token, ayon sa bilang ng provider",
                 "breakdownCache": "{input} input token, {output} output token, {cacheRead} nabasa mula sa prompt cache, {cacheWritten} naisulat dito, ayon sa bilang ng provider"
+            },
+            "executeOperations": "Isagawa ang {count} operasyon",
+            "coding": {
+                "dryRun": "pansubok na takbo",
+                "apply": "ilapat",
+                "timedOutAfter": "Naubos ang oras pagkatapos ng {seconds}s.",
+                "restore": {
+                    "previewNote": "Ipinapakita nito nang pauna ang mga aksyon sa pagpapanumbalik mula sa punto ng pagsusuri nang hindi binabago ang mga file.",
+                    "dangerNote": "Ang mataas na panganib na pagpapanumbalik na ito ay maaaring patungan ang kasalukuyang nilalaman ng mga file at burahin ang mga file na hindi umiiral sa punto ng pagsusuri.",
+                    "wouldRewrite": "Isusulat muli",
+                    "rewritten": "Isinulat muli",
+                    "wouldDelete": "Buburahin",
+                    "deleted": "Natanggal",
+                    "wouldSkip": "Lalaktawan",
+                    "skipped": "Nilaktawan",
+                    "existedAtCheckpoint": "umiiral sa punto ng pagsusuri",
+                    "absentAtCheckpoint": "wala sa punto ng pagsusuri"
+                },
+                "checks": {
+                    "exitSummary": "code ng paglabas {code} · {seconds}s",
+                    "continueOnFailure": "Pinapatakbo ang lahat ng pagsusuri kahit pumalya ang isa.",
+                    "stopOnFailure": "Humihinto sa unang pumalyang pagsusuri."
+                },
+                "diagnostics": {
+                    "none": "Walang naiulat na diagnostiko."
+                },
+                "search": {
+                    "none": "Walang nahanap na tugma."
+                },
+                "git": {
+                    "noStagedDiff": "Walang lumabas na diff para sa mga naka-stage na pagbabago.",
+                    "noUnstagedDiff": "Walang lumabas na diff para sa mga hindi naka-stage na pagbabago.",
+                    "staged": "naka-stage",
+                    "unstaged": "hindi naka-stage",
+                    "commitApproval": "Pag-apruba ng Git Commit",
+                    "stageApproval": "Pag-apruba ng Git Stage",
+                    "commitNote": "Gumagawa ito ng git commit mula sa kasalukuyang naka-stage na index. Suriin muna ang coding_git_status at coding_git_diff gamit ang staged=true.",
+                    "stagePreviewNote": "Ipinapakita nito kung aling mga hiniling na path ang mai-stage; hindi magbabago ang index.",
+                    "stageNote": "Binabago nito ang git index para sa mga hiniling na path."
+                },
+                "patch": {
+                    "validateNote": "Sinusuri nito ang patch nang hindi binabago ang mga file.",
+                    "applyNote": "Ang mataas na panganib na kahilingang ito na ilapat ay nagsusulat ng mga file pagkatapos gumawa ang backend ng checkpoint bago ilapat.",
+                    "hideDiff": "Itago ang pinag-isang diff",
+                    "showDiff": "Ipakita ang pinag-isang diff"
+                }
             }
         },
         "archive": {
@@ -3401,7 +3462,10 @@
             "encryptedTooltip": "Naka-encrypt gamit ang AES-256. Kumpidensyal ang nilalaman at mga pangalan ng file; kailangan ng password para buksan.",
             "resetDefaults": "I-reset sa default",
             "scrubErrorCorrectionTooltip": "{label} (sinusuri ang mga cipher hash)",
-            "repairErrorCorrectionTooltip": "{label} (maaaring i-preview muna sa dry-run)"
+            "repairErrorCorrectionTooltip": "{label} (maaaring i-preview muna sa dry-run)",
+            "errorCorrectionBadge": "Pagwawasto ng Error",
+            "itemsInFolder": "{count} aytem sa /{folder}",
+            "repairNoChangesWritten": "(walang naisulat na pagbabago)"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",
@@ -3758,7 +3822,11 @@
             "keepFirstFound": "Unang natagpuan",
             "selectAllButOne": "Piliin lahat maliban sa isa bawat grupo",
             "everyCopyTicked": "lahat ng kopya ay nakatik",
-            "everyCopyTickedHint": "Alisin ang tik sa isang kopya sa bawat naka-highlight na grupo: kung hindi, mabubura lahat ng kopya."
+            "everyCopyTickedHint": "Alisin ang tik sa isang kopya sa bawat naka-highlight na grupo: kung hindi, mabubura lahat ng kopya.",
+            "modeExactHint": "Magkapareho bawat byte",
+            "modeNonIdenticalHint": "Pagkakatulad sa paningin o teksto, walang awtomatikong pagbura",
+            "potentialWasteSelected": "posibleng nasayang (napili)",
+            "similarityDistance": "{similarity}, layo {distance}"
         },
         "diskUsage": {
             "title": "Paggamit ng Disk",
@@ -4377,7 +4445,9 @@
                 "next": "Susunod",
                 "scanQr": "Idagdag ang secret na ito sa iyong authenticator app (Google Authenticator, Authy, Microsoft Authenticator). O ilagay ang manual key:",
                 "setup": "Two-Factor Authentication",
-                "verify": "I-verify at I-enable"
+                "verify": "I-verify at I-enable",
+                "active": "Aktibo ang 2FA",
+                "inactive": "Hindi aktibo ang 2FA"
             }
         },
         "vaultSync": {
@@ -4843,7 +4913,7 @@
             "pagesBranch": "Sangay",
             "pagesPath": "Landas",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Awtorisahan",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4855,7 +4925,12 @@
             "branchList": "Listahan ng mga branch",
             "noBranches": "Walang natagpuang branch",
             "rawUrlCopied": "Nakopya ang raw URL",
-            "working": "gumagana"
+            "working": "gumagana",
+            "pagesDnsIssue": "May natukoy na problema sa DNS",
+            "releaseAssetOne": "{count} talaksan",
+            "releaseAssetMany": "{count} talaksan",
+            "repoPrivate": "Pribado",
+            "repoPublic": "Publiko"
         },
         "filenNotes": {
             "title": "Naka-encrypt na Mga Tala",
@@ -5632,7 +5707,9 @@
             "stopCompare": "Ihinto",
             "compareStopped": "Huminto ang paghahambing.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Binabasa ng paghahambing ang parehong folder at ang bawat folder sa ilalim ng mga ito. Sa malaking tree, maaari itong magtagal, at maaari mo itong ihinto."
+            "compareStartHint": "Binabasa ng paghahambing ang parehong folder at ang bawat folder sa ilalim ng mga ito. Sa malaking tree, maaari itong magtagal, at maaari mo itong ihinto.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopya]"
         },
         "accountLock": {
             "title": "Pumili ng account",

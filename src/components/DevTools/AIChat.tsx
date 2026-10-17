@@ -462,6 +462,7 @@ const TransferPlanReview: React.FC<{
     isExecuting: boolean;
     onExecute: (selectedOperationIds: string[]) => Promise<void>;
 }> = ({ plan, isExecuting, onExecute }) => {
+    const t = useTranslation();
     const defaultSelection = useMemo(
         () => new Set(plan.operations.filter(op => op.category !== 'prepare').map(op => op.id)),
         [plan],
@@ -503,7 +504,7 @@ const TransferPlanReview: React.FC<{
                     disabled={isExecuting || selectedCount === 0}
                     className="rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                    {isExecuting ? 'Executing...' : `Execute ${selectedCount} operation(s)`}
+                    {isExecuting ? t('ai.toolApproval.executing') : t('ai.executeOperations', { count: selectedCount })}
                 </button>
             </div>
 

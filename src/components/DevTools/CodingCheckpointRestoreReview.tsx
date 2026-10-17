@@ -3,6 +3,7 @@
 
 import React, { useMemo } from 'react';
 import { CheckCircle2, FileCode2, RotateCcw, ShieldAlert } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 import type { CodingCheckpointRestoreResult } from './aiChatTypes';
 
 interface CodingCheckpointRestoreReviewProps {
@@ -61,6 +62,7 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
     dryRun,
     mode = 'result',
 }) => {
+    const t = useTranslation();
     const actionCounts = useMemo(() => countActions(result), [result]);
     const selectedPaths = useMemo(
         () => (Array.isArray(paths) ? paths.filter(path => typeof path === 'string' && path.trim().length > 0) : []),
@@ -119,7 +121,7 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
                             ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
                             : 'border-red-400/30 bg-red-400/10 text-red-200'
                     }`}>
-                        {effectiveDryRun ? 'dry run' : 'apply'}
+                        {effectiveDryRun ? t('ai.coding.dryRun') : t('ai.coding.apply')}
                     </span>
                     {result && (
                         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/65">
@@ -141,8 +143,8 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
                             : <ShieldAlert size={13} className="mt-0.5 shrink-0 text-red-300" />}
                         <span>
                             {effectiveDryRun
-                                ? 'This previews checkpoint restore actions without changing files.'
-                                : 'This high-danger restore can overwrite current file contents and delete files that did not exist at the checkpoint.'}
+                                ? t('ai.coding.restore.previewNote')
+                                : t('ai.coding.restore.dangerNote')}
                         </span>
                     </div>
                 </div>
@@ -152,19 +154,19 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     <div className="rounded-lg border border-sky-400/20 bg-sky-400/10 p-2">
                         <div className="text-[10px] uppercase tracking-wide text-sky-200/70">
-                            {effectiveDryRun ? 'Would rewrite' : 'Rewritten'}
+                            {effectiveDryRun ? t('ai.coding.restore.wouldRewrite') : t('ai.coding.restore.rewritten')}
                         </div>
                         <div className="mt-1 text-lg font-semibold text-sky-100">{restoreCount}</div>
                     </div>
                     <div className="rounded-lg border border-red-400/20 bg-red-400/10 p-2">
                         <div className="text-[10px] uppercase tracking-wide text-red-200/70">
-                            {effectiveDryRun ? 'Would delete' : 'Deleted'}
+                            {effectiveDryRun ? t('ai.coding.restore.wouldDelete') : t('ai.coding.restore.deleted')}
                         </div>
                         <div className="mt-1 text-lg font-semibold text-red-100">{deleteCount}</div>
                     </div>
                     <div className="rounded-lg border border-white/10 bg-white/5 p-2">
                         <div className="text-[10px] uppercase tracking-wide text-white/45">
-                            {effectiveDryRun ? 'Would skip' : 'Skipped'}
+                            {effectiveDryRun ? t('ai.coding.restore.wouldSkip') : t('ai.coding.restore.skipped')}
                         </div>
                         <div className="mt-1 text-lg font-semibold text-white/75">{noopCount}</div>
                     </div>
@@ -215,7 +217,7 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
                                 </span>
                             </div>
                             <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-white/50">
-                                <span>{file.existed_at_checkpoint ? 'existed at checkpoint' : 'absent at checkpoint'}</span>
+                                <span>{file.existed_at_checkpoint ? t('ai.coding.restore.existedAtCheckpoint') : t('ai.coding.restore.absentAtCheckpoint')}</span>
                                 <span>{formatBytes(file.size_bytes)}</span>
                                 {file.sha256 && (
                                     <span className="font-mono" title={file.sha256}>

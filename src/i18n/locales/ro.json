@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Înregistrează formatele de arhive și meniurile Exploratorului",
             "fileAssociationIntegrationDesc": "Modificările se aplică imediat și se păstrează la actualizări. Windows gestionează separat aplicațiile implicite.",
             "fileAssociationIntegrationPortable": "Instalează AeroFTP pentru a modifica integrarea cu Windows.",
-            "fileAssociationIntegrationAdmin": "Windows poate solicita permisiunea administratorului pentru modificarea acestor opțiuni."
+            "fileAssociationIntegrationAdmin": "Windows poate solicita permisiunea administratorului pentru modificarea acestor opțiuni.",
+            "migrationServerProfilesFound": "{count} profiluri de server găsite în stocarea necriptată",
+            "migrationAiSettingsFound": "Configurație AI găsită în stocarea necriptată",
+            "migrationOauthFound": "{count} credențiale OAuth găsite în stocarea necriptată",
+            "fontSystemInstall": "instalare în sistem",
+            "fontSizeMin": "min",
+            "fontSizeMax": "max"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Nivelul gratuit este limitat la 25 de credite pe lună",
                 "fourshared": "Reautorizați manual dacă token-ul este revocat"
             },
-            "profilesLoadFailed": "Serverele salvate nu au putut fi citite: {error}"
+            "profilesLoadFailed": "Serverele salvate nu au putut fi citite: {error}",
+            "cleanupSummary": "{count} fișiere, s-au eliberat {size}"
         },
         "statusBar": {
             "connected": "Conectat",
@@ -1600,7 +1607,8 @@
                 "title": "Echipa Axpdev Lab",
                 "apRole": "Fondator, dezvoltator, întreținător, co-designer",
                 "ekRole": "Cercetător, inginer de asigurare a calității, co-designer"
-            }
+            },
+            "madeBy": "de {author}"
         },
         "support": {
             "title": "Susține AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Folosește CLI-ul Proton Drive - instalați, autentificați-vă în browser, AeroFTP este GUI-ul",
             "twakeDesc": "Twake Drive (5 GB gratuit)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cloud francez open source (Cozy Cloud face acum parte din el) cu 5 GB gratuit",
-            "discoverTwake": "Cloud european open source de la Linagora, acum noua casă a Cozy Cloud (5 GB gratuit)"
+            "discoverTwake": "Cloud european open source de la Linagora, acum noua casă a Cozy Cloud (5 GB gratuit)",
+            "sourceforgeProject": "Proiect (Unixname)",
+            "opendriveNotApiKey": "(nu este cheia dvs. API OpenDrive)",
+            "endpoint": "Endpoint",
+            "accountId": "ID-ul contului"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Confirmați parola",
             "minLength": "Minimum 8 caractere",
             "autoLockTimeout": "Timp blocare automată",
-            "enable": "Activare"
+            "enable": "Activare",
+            "setupBootstrapDescription": "Portchei indisponibil: mod de pornire cu parolă principală"
         },
         "search": {
             "remote_placeholder": "Caută fișiere la distanță...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Adresă de email",
             "add": "Adaugă",
             "remove": "Elimină",
-            "none": "Nicio permisiune setată"
+            "none": "Nicio permisiune setată",
+            "anyoneWithLink": "Oricine are linkul"
         },
         "locking": {
             "lock": "Blochează fișierul",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculată din eșantion. Este echivalentul grafic al comenzii aeroftp-cli sync --dry-run (și al --dry-run din rclone).",
             "templateImportPathPairs": "Perechi de căi (locală/la distanță) utilizabile în acest șablon: {count}. O fereastră AeroSync lucrează cu exact o pereche, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou.",
             "templateNamePlaceholder": "de ex. Copie de rezervă nocturnă în S3",
-            "templateDescPlaceholder": "La ce folosește acest șablon (opțional)"
+            "templateDescPlaceholder": "La ce folosește acest șablon (opțional)",
+            "templateExportCliDesc": "Script de încapsulare pentru aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} tokeni de intrare, {output} tokeni de ieșire, conform numărării furnizorului",
                 "breakdownCache": "{input} tokeni de intrare, {output} tokeni de ieșire, {cacheRead} citiți din cache-ul promptului, {cacheWritten} scriși în el, conform numărării furnizorului"
+            },
+            "executeOperations": "Execută operațiuni: {count}",
+            "coding": {
+                "dryRun": "simulare",
+                "apply": "aplică",
+                "timedOutAfter": "Timpul a expirat după {seconds}s.",
+                "restore": {
+                    "previewNote": "Aceasta previzualizează acțiunile de restaurare din punctul de control fără a modifica fișiere.",
+                    "dangerNote": "Această restaurare cu risc ridicat poate suprascrie conținutul actual al fișierelor și poate șterge fișiere care nu existau la punctul de control.",
+                    "wouldRewrite": "Ar fi rescrise",
+                    "rewritten": "Rescrise",
+                    "wouldDelete": "Ar fi șterse",
+                    "deleted": "Șterse",
+                    "wouldSkip": "Ar fi omise",
+                    "skipped": "Omise",
+                    "existedAtCheckpoint": "exista la punctul de control",
+                    "absentAtCheckpoint": "absent la punctul de control"
+                },
+                "checks": {
+                    "exitSummary": "cod de ieșire {code} · {seconds}s",
+                    "continueOnFailure": "Rulează toate verificările chiar dacă una eșuează.",
+                    "stopOnFailure": "Se oprește la prima verificare eșuată."
+                },
+                "diagnostics": {
+                    "none": "Nu au fost raportate diagnostice."
+                },
+                "search": {
+                    "none": "Nu s-au găsit potriviri."
+                },
+                "git": {
+                    "noStagedDiff": "Nicio ieșire diff pentru modificările pregătite.",
+                    "noUnstagedDiff": "Nicio ieșire diff pentru modificările nepregătite.",
+                    "staged": "pregătit",
+                    "unstaged": "nepregătit",
+                    "commitApproval": "Aprobare commit Git",
+                    "stageApproval": "Aprobare pregătire Git",
+                    "commitNote": "Aceasta creează un commit git din indexul pregătit curent. Verificați mai întâi coding_git_status și coding_git_diff cu staged=true.",
+                    "stagePreviewNote": "Aceasta previzualizează care dintre căile solicitate ar fi pregătite; indexul nu se va modifica.",
+                    "stageNote": "Aceasta modifică indexul git pentru căile solicitate."
+                },
+                "patch": {
+                    "validateNote": "Aceasta validează patch-ul fără a modifica fișiere.",
+                    "applyNote": "Această cerere de aplicare cu risc ridicat scrie fișiere după ce backend-ul creează un punct de control înainte de aplicare.",
+                    "hideDiff": "Ascunde diff unificat",
+                    "showDiff": "Afișează diff unificat"
+                }
             }
         },
         "archive": {
@@ -3401,7 +3462,10 @@
             "encryptedTooltip": "Criptat cu AES-256. Conținutul și numele fișierelor sunt confidențiale; este necesară parola pentru deschidere.",
             "resetDefaults": "Resetează la implicit",
             "scrubErrorCorrectionTooltip": "{label} (verifică hash-urile de cifrare)",
-            "repairErrorCorrectionTooltip": "{label} (previzualizare prin simulare disponibilă)"
+            "repairErrorCorrectionTooltip": "{label} (previzualizare prin simulare disponibilă)",
+            "errorCorrectionBadge": "Corectarea erorilor",
+            "itemsInFolder": "{count} elemente în /{folder}",
+            "repairNoChangesWritten": "(nu s-au scris modificări)"
         },
         "cryptomator": {
             "title": "Seif Cryptomator",
@@ -3758,7 +3822,11 @@
             "keepFirstFound": "Prima găsită",
             "selectAllButOne": "Selectează toate în afară de una per grup",
             "everyCopyTicked": "toate copiile bifate",
-            "everyCopyTickedHint": "Debifează o copie în fiecare grup evidențiat: altfel s-ar șterge toate copiile."
+            "everyCopyTickedHint": "Debifează o copie în fiecare grup evidențiat: altfel s-ar șterge toate copiile.",
+            "modeExactHint": "Identice octet cu octet",
+            "modeNonIdenticalHint": "Similaritate perceptuală sau de text, fără ștergere automată",
+            "potentialWasteSelected": "risipă potențială (selectate)",
+            "similarityDistance": "{similarity}, dist. {distance}"
         },
         "diskUsage": {
             "title": "Utilizarea discului",
@@ -4377,7 +4445,9 @@
                 "next": "Înainte",
                 "scanQr": "Adăugați acest secret în aplicația de autentificare (Google Authenticator, Authy, Microsoft Authenticator). Sau introduceți cheia manuală:",
                 "setup": "Autentificare cu doi factori",
-                "verify": "Verifică și activează"
+                "verify": "Verifică și activează",
+                "active": "2FA activă",
+                "inactive": "2FA inactivă"
             }
         },
         "vaultSync": {
@@ -4824,7 +4894,7 @@
             "pagesBranch": "Ramură",
             "pagesPath": "Cale",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autorizează",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4836,7 +4906,12 @@
             "branchList": "Lista de ramuri",
             "noBranches": "Nu s-au găsit ramuri",
             "rawUrlCopied": "URL brut copiat",
-            "working": "în curs"
+            "working": "în curs",
+            "pagesDnsIssue": "Problemă DNS detectată",
+            "releaseAssetOne": "{count} resursă",
+            "releaseAssetMany": "{count} resurse",
+            "repoPrivate": "Privat",
+            "repoPublic": "Public"
         },
         "filenNotes": {
             "title": "Note criptate",
@@ -5613,7 +5688,9 @@
             "stopCompare": "Oprește",
             "compareStopped": "Comparare oprită.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Compararea citește ambele foldere și toate folderele din ele. Pe un arbore mare poate dura ceva timp, iar o poți opri."
+            "compareStartHint": "Compararea citește ambele foldere și toate folderele din ele. Pe un arbore mare poate dura ceva timp, iar o poți opri.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[copie]"
         },
         "accountLock": {
             "title": "Alegeți un cont",

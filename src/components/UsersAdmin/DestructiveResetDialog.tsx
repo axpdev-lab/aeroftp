@@ -10,6 +10,7 @@ import {
     type UserStorageStats,
 } from '../../utils/userPartitions';
 import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
+import { useTranslation } from '../../i18n';
 
 interface DestructiveResetDialogProps {
     target: UserMetadata;
@@ -41,6 +42,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
     onClose,
     onComplete,
 }) => {
+    const t = useTranslation();
     const [stats, setStats] = React.useState<UserStorageStats | undefined>(initialStats);
     const [loadingStats, setLoadingStats] = React.useState(!initialStats);
     const [confirmText, setConfirmText] = React.useState('');
@@ -154,7 +156,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                         </div>
                         <div>
                             <div className="font-medium text-gray-900 dark:text-gray-100">
-                                {loadingStats ? 'Loading...' : formatBytes(encryptedBytes)}
+                                {loadingStats ? t('common.loading') : formatBytes(encryptedBytes)}
                             </div>
                             <div>encrypted bytes</div>
                         </div>

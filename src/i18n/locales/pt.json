@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Registrar os formatos de arquivos compactados e os menus do Explorador",
             "fileAssociationIntegrationDesc": "As alterações entram em vigor agora e são mantidas durante as atualizações. O Windows gerencia seus aplicativos padrão separadamente.",
             "fileAssociationIntegrationPortable": "Instale o AeroFTP para alterar a integração com o Windows.",
-            "fileAssociationIntegrationAdmin": "O Windows pode solicitar permissão de administrador para alterar estas opções."
+            "fileAssociationIntegrationAdmin": "O Windows pode solicitar permissão de administrador para alterar estas opções.",
+            "migrationServerProfilesFound": "{count} perfis de servidor encontrados em armazenamento não criptografado",
+            "migrationAiSettingsFound": "Configuração de IA encontrada em armazenamento não criptografado",
+            "migrationOauthFound": "{count} credenciais OAuth encontradas em armazenamento não criptografado",
+            "fontSystemInstall": "instalação no sistema",
+            "fontSizeMin": "mín",
+            "fontSizeMax": "máx"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "O nível gratuito é limitado a 25 créditos por mês",
                 "fourshared": "Autorize novamente de forma manual se o token for revogado"
             },
-            "profilesLoadFailed": "Não foi possível ler os servidores guardados: {error}"
+            "profilesLoadFailed": "Não foi possível ler os servidores guardados: {error}",
+            "cleanupSummary": "{count} arquivos, {size} liberados"
         },
         "statusBar": {
             "connected": "Conectado",
@@ -1600,7 +1607,8 @@
                 "title": "Equipe Axpdev Lab",
                 "apRole": "Fundador, desenvolvedor, mantenedor, codesigner",
                 "ekRole": "Pesquisador, engenheiro de garantia de qualidade, codesigner"
-            }
+            },
+            "madeBy": "por {author}"
         },
         "support": {
             "title": "Apoiar AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Utiliza o CLI do Proton Drive - instale, inicie sessão no navegador, o AeroFTP é a GUI",
             "twakeDesc": "Twake Drive (5 GB grátis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, nuvem francesa de código aberto (o Cozy Cloud agora faz parte dela) com 5 GB grátis",
-            "discoverTwake": "Nuvem europeia de código aberto da Linagora, agora o novo lar do Cozy Cloud (5 GB grátis)"
+            "discoverTwake": "Nuvem europeia de código aberto da Linagora, agora o novo lar do Cozy Cloud (5 GB grátis)",
+            "sourceforgeProject": "Projeto (Unixname)",
+            "opendriveNotApiKey": "(não é sua chave de API do OpenDrive)",
+            "endpoint": "Endpoint",
+            "accountId": "ID da conta"
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Confirmar senha",
             "minLength": "Mínimo de 8 caracteres",
             "autoLockTimeout": "Tempo de bloqueio automático",
-            "enable": "Ativar"
+            "enable": "Ativar",
+            "setupBootstrapDescription": "Chaveiro indisponível: modo de inicialização com senha mestra"
         },
         "search": {
             "remote_placeholder": "Pesquisar arquivos remotos...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Endereço de e-mail",
             "add": "Adicionar",
             "remove": "Remover",
-            "none": "Nenhuma permissão definida"
+            "none": "Nenhuma permissão definida",
+            "anyoneWithLink": "Qualquer pessoa com o link"
         },
         "locking": {
             "lock": "Bloquear Arquivo",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Nada é transferido: isto mostra uma prévia do que uma sincronização completa faria, calculada a partir da amostra. É o equivalente gráfico do comando aeroftp-cli sync --dry-run (e do --dry-run do rclone).",
             "templateImportPathPairs": "Pares de caminhos (local/remoto) utilizáveis neste modelo: {count}. Uma janela do AeroSync trabalha com exatamente um par, por isso nada foi importado. Edite o modelo para manter um único par e, em seguida, importe-o novamente.",
             "templateNamePlaceholder": "ex. Backup noturno para S3",
-            "templateDescPlaceholder": "Para que serve este modelo (opcional)"
+            "templateDescPlaceholder": "Para que serve este modelo (opcional)",
+            "templateExportCliDesc": "Script wrapper do aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -2871,7 +2886,7 @@
                 "local_trash": "Lixeira",
                 "local_write": "Gravar local",
                 "preview_edit": "Pré-visualizar edição",
-                "rag_index": "Indice RAG",
+                "rag_index": "Índice RAG",
                 "rag_search": "Pesquisa RAG",
                 "remote_chmod": "Permissões",
                 "remote_copy": "Copiar arquivo",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} tokens de entrada, {output} de saída, conforme a contagem do provedor",
                 "breakdownCache": "{input} tokens de entrada, {output} de saída, {cacheRead} lidos do cache do prompt, {cacheWritten} gravados nele, conforme a contagem do provedor"
+            },
+            "executeOperations": "Executar {count} operação(ões)",
+            "coding": {
+                "dryRun": "simulação",
+                "apply": "aplicar",
+                "timedOutAfter": "Tempo esgotado após {seconds}s.",
+                "restore": {
+                    "previewNote": "Isto pré-visualiza as ações de restauração do ponto de controle sem alterar arquivos.",
+                    "dangerNote": "Esta restauração de alto risco pode sobrescrever o conteúdo atual dos arquivos e excluir arquivos que não existiam no ponto de controle.",
+                    "wouldRewrite": "Seriam reescritos",
+                    "rewritten": "Reescritos",
+                    "wouldDelete": "Seriam excluídos",
+                    "deleted": "Excluídos",
+                    "wouldSkip": "Seriam ignorados",
+                    "skipped": "Ignorados",
+                    "existedAtCheckpoint": "existia no ponto de controle",
+                    "absentAtCheckpoint": "ausente no ponto de controle"
+                },
+                "checks": {
+                    "exitSummary": "código de saída {code} · {seconds}s",
+                    "continueOnFailure": "Executa todas as verificações mesmo que uma falhe.",
+                    "stopOnFailure": "Para na primeira verificação com falha."
+                },
+                "diagnostics": {
+                    "none": "Nenhum diagnóstico relatado."
+                },
+                "search": {
+                    "none": "Nenhuma correspondência encontrada."
+                },
+                "git": {
+                    "noStagedDiff": "Nenhuma saída de diff para as alterações preparadas.",
+                    "noUnstagedDiff": "Nenhuma saída de diff para as alterações não preparadas.",
+                    "staged": "preparado",
+                    "unstaged": "não preparado",
+                    "commitApproval": "Aprovação de commit do Git",
+                    "stageApproval": "Aprovação de preparação do Git",
+                    "commitNote": "Isso cria um commit do git a partir do índice preparado atual. Revise primeiro coding_git_status e coding_git_diff com staged=true.",
+                    "stagePreviewNote": "Isso mostra uma prévia de quais caminhos solicitados seriam preparados; o índice não será alterado.",
+                    "stageNote": "Isso altera o índice do git para os caminhos solicitados."
+                },
+                "patch": {
+                    "validateNote": "Isso valida o patch sem alterar arquivos.",
+                    "applyNote": "Esta solicitação de aplicação de alto risco grava arquivos depois que o backend cria um ponto de verificação anterior à aplicação.",
+                    "hideDiff": "Ocultar diff unificado",
+                    "showDiff": "Mostrar diff unificado"
+                }
             }
         },
         "archive": {
@@ -3401,7 +3462,10 @@
             "encryptedTooltip": "Cifrado com AES-256. Conteúdo e nomes de ficheiros são confidenciais; é necessária a palavra-passe para abrir.",
             "resetDefaults": "Repor predefinições",
             "scrubErrorCorrectionTooltip": "{label} (verifica os hashes de cifra)",
-            "repairErrorCorrectionTooltip": "{label} (pré-visualização em simulação disponível)"
+            "repairErrorCorrectionTooltip": "{label} (pré-visualização em simulação disponível)",
+            "errorCorrectionBadge": "Correção de erros",
+            "itemsInFolder": "{count} itens em /{folder}",
+            "repairNoChangesWritten": "(nenhuma alteração gravada)"
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",
@@ -3758,7 +3822,11 @@
             "keepFirstFound": "A primeira encontrada",
             "selectAllButOne": "Selecionar todas menos uma por grupo",
             "everyCopyTicked": "todas as cópias assinaladas",
-            "everyCopyTickedHint": "Desmarque uma cópia em cada grupo destacado: caso contrário, seriam eliminadas todas."
+            "everyCopyTickedHint": "Desmarque uma cópia em cada grupo destacado: caso contrário, seriam eliminadas todas.",
+            "modeExactHint": "Idênticos byte a byte",
+            "modeNonIdenticalHint": "Semelhança perceptual ou de texto, sem exclusão automática",
+            "potentialWasteSelected": "desperdício potencial (selecionados)",
+            "similarityDistance": "{similarity}, dist. {distance}"
         },
         "diskUsage": {
             "title": "Uso de Disco",
@@ -4377,7 +4445,9 @@
                 "next": "Próximo",
                 "scanQr": "Adicione este segredo ao seu aplicativo de autenticação (Google Authenticator, Authy, Microsoft Authenticator). Ou insira a chave manualmente:",
                 "setup": "Autenticação de dois fatores",
-                "verify": "Verificar e ativar"
+                "verify": "Verificar e ativar",
+                "active": "2FA ativa",
+                "inactive": "2FA inativa"
             }
         },
         "vaultSync": {
@@ -4824,7 +4894,7 @@
             "pagesBranch": "Branch",
             "pagesPath": "Caminho",
             "authMethod": "Autenticação",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autorizar",
             "modePat": "Token de acesso",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Autorizar com GitHub\" na tela de conexão para autenticar via Device Flow. O token é armazenado no cofre.",
@@ -4836,7 +4906,12 @@
             "branchList": "Lista de ramos",
             "noBranches": "Nenhum ramo encontrado",
             "rawUrlCopied": "URL bruto copiado",
-            "working": "em curso"
+            "working": "em curso",
+            "pagesDnsIssue": "Problema de DNS detectado",
+            "releaseAssetOne": "{count} recurso",
+            "releaseAssetMany": "{count} recursos",
+            "repoPrivate": "Privado",
+            "repoPublic": "Público"
         },
         "filenNotes": {
             "title": "Notas criptografadas",
@@ -5613,7 +5688,9 @@
             "stopCompare": "Parar",
             "compareStopped": "Comparação parada.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "A comparação lê ambas as pastas e todas as pastas dentro delas. Numa árvore grande pode demorar um pouco, e pode pará-la."
+            "compareStartHint": "A comparação lê ambas as pastas e todas as pastas dentro delas. Numa árvore grande pode demorar um pouco, e pode pará-la.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[cópia]"
         },
         "accountLock": {
             "title": "Escolha uma conta",

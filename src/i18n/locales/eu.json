@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Erregistratu artxibo-formatuak eta Fitxategi-esploratzailearen menuak",
             "fileAssociationIntegrationDesc": "Aldaketak berehala aplikatzen dira eta eguneraketetan mantentzen dira. Windows-ek bereizita kudeatzen ditu zure aplikazio lehenetsiak.",
             "fileAssociationIntegrationPortable": "Instalatu AeroFTP Windows integrazioa aldatzeko.",
-            "fileAssociationIntegrationAdmin": "Windows-ek administratzaile-baimena eska dezake aukera hauek aldatzeko."
+            "fileAssociationIntegrationAdmin": "Windows-ek administratzaile-baimena eska dezake aukera hauek aldatzeko.",
+            "migrationServerProfilesFound": "{count} zerbitzari profil aurkitu dira enkriptatu gabeko biltegian",
+            "migrationAiSettingsFound": "AI konfigurazioa aurkitu da enkriptatu gabeko biltegian",
+            "migrationOauthFound": "{count} OAuth kredentzial aurkitu dira enkriptatu gabeko biltegian",
+            "fontSystemInstall": "sisteman instalatu",
+            "fontSizeMin": "min",
+            "fontSizeMax": "max"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Maila librea hilean 25 kreditura mugatuta dago",
                 "fourshared": "Berrezarri baimena eskuz tokena baliogabetzen bada"
             },
-            "profilesLoadFailed": "Gordetako zerbitzariak ezin izan dira irakurri: {error}"
+            "profilesLoadFailed": "Gordetako zerbitzariak ezin izan dira irakurri: {error}",
+            "cleanupSummary": "{count} fitxategi, {size} askatuta"
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab taldea",
                 "apRole": "Sortzailea, garatzailea, mantentzailea, diseinukidea",
                 "ekRole": "Ikertzailea, kalitatea bermatzeko ingeniaria, diseinukidea"
-            }
+            },
+            "madeBy": "{author}-ek"
         },
         "support": {
             "title": "Lagundu AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Proton Drive CLI erabiltzen du - instalatu, hasi saioa nabigatzailean, AeroFTP da GUI",
             "twakeDesc": "Twake Drive (5 GB doan)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, iturburu irekiko hodei frantsesa (Cozy Cloud orain horren zati da) 5 GB doan",
-            "discoverTwake": "Linagoraren iturburu irekiko hodei europarra, orain Cozy Cloud-en etxe berria (5 GB doan)"
+            "discoverTwake": "Linagoraren iturburu irekiko hodei europarra, orain Cozy Cloud-en etxe berria (5 GB doan)",
+            "sourceforgeProject": "Proiektua (Unixname)",
+            "opendriveNotApiKey": "(ez da zure OpenDrive API gakoa)",
+            "endpoint": "Amaiera-puntua",
+            "accountId": "Kontuaren IDa"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Pasahitza berretsi",
             "minLength": "Gutxienez 8 karaktere",
             "autoLockTimeout": "Auto-blokeatzeko denbora-muga",
-            "enable": "Gaitu"
+            "enable": "Gaitu",
+            "setupBootstrapDescription": "Gako-katea ez dago erabilgarri: pasahitz nagusiarekin abiarazteko modua"
         },
         "search": {
             "remote_placeholder": "Bilatu urruneko fitxategiak...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Helbide elektronikoa",
             "add": "Gehitu",
             "remove": "Kendu",
-            "none": "Ez da baimenik ezarri"
+            "none": "Ez da baimenik ezarri",
+            "anyoneWithLink": "Esteka duen edonor"
         },
         "locking": {
             "lock": "Blokeatu fitxategia",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Ez da ezer transferitzen: sinkronizazio osoak zer egingo lukeen aurreikusten du, laginetik kalkulatuta. aeroftp-cli sync --dry-run komandoaren (eta rclone-ren --dry-run) interfaze grafikoaren baliokidea da.",
             "templateImportPathPairs": "Txantiloi honetako bide-bikote erabilgarriak (lokala/urrunekoa): {count}. AeroSync leiho batek zehazki bikote batekin egiten du lan, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra gera dadin, eta inportatu berriro.",
             "templateNamePlaceholder": "adib. Gaueko babeskopia S3-ra",
-            "templateDescPlaceholder": "Zertarako den txantiloi hau (aukerakoa)"
+            "templateDescPlaceholder": "Zertarako den txantiloi hau (aukerakoa)",
+            "templateExportCliDesc": "aeroftp-cli sync komandoaren bilgarria ({shell})"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} sarrerako token, {output} irteerako token, hornitzaileak zenbatu bezala",
                 "breakdownCache": "{input} sarrerako token, {output} irteerako token, promptaren cachetik {cacheRead} irakurri dira, {cacheWritten} idatzi dira, hornitzaileak zenbatu bezala"
+            },
+            "executeOperations": "Exekutatu {count} eragiketa",
+            "coding": {
+                "dryRun": "proba-exekuzioa",
+                "apply": "aplikatu",
+                "timedOutAfter": "Denbora-muga gainditu da {seconds}s ondoren.",
+                "restore": {
+                    "previewNote": "Honek kontrol-puntuko leheneratze-ekintzen aurrebista erakusten du fitxategiak aldatu gabe.",
+                    "dangerNote": "Arrisku handiko leheneratze honek fitxategien uneko edukia gainidatz dezake eta kontrol-puntuan existitzen ez ziren fitxategiak ezaba ditzake.",
+                    "wouldRewrite": "Berridatziko lirateke",
+                    "rewritten": "Berridatzita",
+                    "wouldDelete": "Ezabatuko lirateke",
+                    "deleted": "Ezabatuta",
+                    "wouldSkip": "Saltatuko lirateke",
+                    "skipped": "Saltatuta",
+                    "existedAtCheckpoint": "kontrol-puntuan existitzen zen",
+                    "absentAtCheckpoint": "kontrol-puntuan ez zegoen"
+                },
+                "checks": {
+                    "exitSummary": "irteera-kodea {code} · {seconds}s",
+                    "continueOnFailure": "Egiaztapen guztiak exekutatzen ditu, bat huts egin arren.",
+                    "stopOnFailure": "Huts egiten duen lehen egiaztapenean gelditzen da."
+                },
+                "diagnostics": {
+                    "none": "Ez da diagnostikorik jakinarazi."
+                },
+                "search": {
+                    "none": "Ez da bat-etortzerik aurkitu."
+                },
+                "git": {
+                    "noStagedDiff": "Ez dago prestatutako aldaketen diff irteerarik.",
+                    "noUnstagedDiff": "Ez dago prestatu gabeko aldaketen diff irteerarik.",
+                    "staged": "prestatuta",
+                    "unstaged": "prestatu gabe",
+                    "commitApproval": "Git commit onarpena",
+                    "stageApproval": "Git prestaketa onarpena",
+                    "commitNote": "Honek git commit bat sortzen du uneko indize prestatutik. Berrikusi lehenik coding_git_status eta coding_git_diff staged=true erabiliz.",
+                    "stagePreviewNote": "Honek aurrez erakusten du eskatutako zein bide prestatuko liratekeen; indizea ez da aldatuko.",
+                    "stageNote": "Honek git indizea aldatzen du eskatutako bideetarako."
+                },
+                "patch": {
+                    "validateNote": "Honek adabakia balioztatzen du fitxategiak aldatu gabe.",
+                    "applyNote": "Arrisku handiko aplikazio eskaera honek fitxategiak idazten ditu backendak aplikatu aurreko kontrol puntu bat sortu ondoren.",
+                    "hideDiff": "Ezkutatu diff bateratua",
+                    "showDiff": "Erakutsi diff bateratua"
+                }
             }
         },
         "archive": {
@@ -3401,7 +3462,10 @@
             "encryptedTooltip": "AES-256 bidez zifratuta. Edukia eta fitxategi-izenak konfidentzialak dira; pasahitza behar da irekitzeko.",
             "resetDefaults": "Berrezarri lehenetsia",
             "scrubErrorCorrectionTooltip": "{label} (zifratutako hashak egiaztatzen ditu)",
-            "repairErrorCorrectionTooltip": "{label} (proba-exekuzioaren aurrebista erabilgarri)"
+            "repairErrorCorrectionTooltip": "{label} (proba-exekuzioaren aurrebista erabilgarri)",
+            "errorCorrectionBadge": "Erroreak zuzentzea",
+            "itemsInFolder": "{count} elementu /{folder} karpetan",
+            "repairNoChangesWritten": "(ez da aldaketarik idatzi)"
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",
@@ -3758,7 +3822,11 @@
             "keepFirstFound": "Aurkitutako lehena",
             "selectAllButOne": "Hautatu bat izan ezik denak talde bakoitzean",
             "everyCopyTicked": "kopia guztiak markatuta",
-            "everyCopyTickedHint": "Kendu marka kopia bati nabarmendutako talde bakoitzean: bestela guztiak ezabatuko dira."
+            "everyCopyTickedHint": "Kendu marka kopia bati nabarmendutako talde bakoitzean: bestela guztiak ezabatuko dira.",
+            "modeExactHint": "Byte mailan berdinak",
+            "modeNonIdenticalHint": "Pertzepziozko edo testu antzekotasuna, ezabatze automatikorik gabe",
+            "potentialWasteSelected": "balizko xahutzea (hautatuak)",
+            "similarityDistance": "{similarity}, dist. {distance}"
         },
         "diskUsage": {
             "title": "Diskoaren erabilera",
@@ -4377,7 +4445,9 @@
                 "next": "Hurrengoa",
                 "scanQr": "Gehitu sekretu hau zure autentifikazio aplikaziora (Google Authenticator, Authy, Microsoft Authenticator). Edo sartu gako manuala:",
                 "setup": "Bi faktoreko autentifikazioa",
-                "verify": "Egiaztatu eta gaitu"
+                "verify": "Egiaztatu eta gaitu",
+                "active": "2FA aktibatuta",
+                "inactive": "2FA desaktibatuta"
             }
         },
         "vaultSync": {
@@ -4843,7 +4913,7 @@
             "pagesBranch": "Adarra",
             "pagesPath": "Bidea",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Baimendu",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4855,7 +4925,12 @@
             "branchList": "Adarren zerrenda",
             "noBranches": "Ez da adarrik aurkitu",
             "rawUrlCopied": "URL gordina kopiatu da",
-            "working": "lanean"
+            "working": "lanean",
+            "pagesDnsIssue": "DNS arazo bat detektatu da",
+            "releaseAssetOne": "{count} baliabide",
+            "releaseAssetMany": "{count} baliabide",
+            "repoPrivate": "Pribatua",
+            "repoPublic": "Publikoa"
         },
         "filenNotes": {
             "title": "Enkriptatutako oharrak",
@@ -5632,7 +5707,9 @@
             "stopCompare": "Gelditu",
             "compareStopped": "Konparazioa geldituta.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Konparazioak bi karpetak eta haien azpiko karpeta guztiak irakurtzen ditu. Zuhaitz handi batean denbora pixka bat har dezake, eta gelditu dezakezu."
+            "compareStartHint": "Konparazioak bi karpetak eta haien azpiko karpeta guztiak irakurtzen ditu. Zuhaitz handi batean denbora pixka bat har dezake, eta gelditu dezakezu.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopia]"
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

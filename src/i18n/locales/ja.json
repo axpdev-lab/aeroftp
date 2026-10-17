@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "アーカイブ形式とエクスプローラーのメニューを登録",
             "fileAssociationIntegrationDesc": "変更はすぐに適用され、更新時にも保持されます。既定のアプリは Windows が個別に管理します。",
             "fileAssociationIntegrationPortable": "Windows との統合を変更するには、AeroFTP をインストールしてください。",
-            "fileAssociationIntegrationAdmin": "これらのオプションを変更する際に、Windows が管理者の許可を求める場合があります。"
+            "fileAssociationIntegrationAdmin": "これらのオプションを変更する際に、Windows が管理者の許可を求める場合があります。",
+            "migrationServerProfilesFound": "暗号化されていないストレージで {count} 件のサーバープロファイルが見つかりました",
+            "migrationAiSettingsFound": "暗号化されていないストレージで AI 設定が見つかりました",
+            "migrationOauthFound": "暗号化されていないストレージで {count} 件の OAuth 資格情報が見つかりました",
+            "fontSystemInstall": "システムへのインストール",
+            "fontSizeMin": "最小",
+            "fontSizeMax": "最大"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "無料枠は月 25 クレジットまで",
                 "fourshared": "トークンが失効した場合は手動で再認可してください"
             },
-            "profilesLoadFailed": "保存されたサーバーを読み取れませんでした: {error}"
+            "profilesLoadFailed": "保存されたサーバーを読み取れませんでした: {error}",
+            "cleanupSummary": "{count} ファイル、{size} を解放"
         },
         "statusBar": {
             "connected": "接続済み",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab チーム",
                 "apRole": "創設者、開発者、メンテナー、共同デザイナー",
                 "ekRole": "研究者、品質保証エンジニア、共同デザイナー"
-            }
+            },
+            "madeBy": "制作：{author}"
         },
         "support": {
             "title": "AeroFTPを支援",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Proton Drive CLI を使用します - インストールし、ブラウザーでサインイン、AeroFTP が GUI です",
             "twakeDesc": "Twake Drive(無料5GB)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace、フランス発のオープンソースクラウド(Cozy Cloud は現在その一部)、5 GB 無料",
-            "discoverTwake": "Linagora によるオープンソースの欧州製クラウド、現在は Cozy Cloud の新たな拠点(5 GB 無料)"
+            "discoverTwake": "Linagora によるオープンソースの欧州製クラウド、現在は Cozy Cloud の新たな拠点(5 GB 無料)",
+            "sourceforgeProject": "プロジェクト (Unixname)",
+            "opendriveNotApiKey": "(OpenDrive の API キーではありません)",
+            "endpoint": "エンドポイント",
+            "accountId": "アカウント ID"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -2131,7 +2143,8 @@
             "email_placeholder": "メールアドレス",
             "add": "追加",
             "remove": "削除",
-            "none": "権限が設定されていません"
+            "none": "権限が設定されていません",
+            "anyoneWithLink": "リンクを知っている全員"
         },
         "locking": {
             "lock": "ファイルをロック",
@@ -2277,7 +2290,8 @@
             "canaryDryRun": "何も転送されません。これはサンプルから計算した、完全同期で行われる内容のプレビューです。CLI コマンド aeroftp-cli sync --dry-run（および rclone の --dry-run）の GUI 版です。",
             "templateImportPathPairs": "このテンプレート内の使用可能なローカル/リモートのパスペア: {count}。AeroSync のウィンドウはちょうど 1 つのペアで動作するため、何もインポートされませんでした。ペアが 1 つだけになるようにテンプレートを編集してから、もう一度インポートしてください。",
             "templateNamePlaceholder": "例: S3 への夜間バックアップ",
-            "templateDescPlaceholder": "このテンプレートの用途 (任意)"
+            "templateDescPlaceholder": "このテンプレートの用途 (任意)",
+            "templateExportCliDesc": "aeroftp-cli sync のラッパー ({shell})"
         },
         "ui": {
             "syncing": "同期中...",
@@ -3147,6 +3161,52 @@
             "tokens": {
                 "breakdown": "入力 {input} トークン、出力 {output} トークン、プロバイダーによる集計",
                 "breakdownCache": "入力 {input} トークン、出力 {output} トークン、プロンプトキャッシュからの読み取り {cacheRead}、プロンプトキャッシュへの書き込み {cacheWritten}、プロバイダーによる集計"
+            },
+            "executeOperations": "{count} 件の操作を実行",
+            "coding": {
+                "dryRun": "ドライラン",
+                "apply": "適用",
+                "timedOutAfter": "{seconds}s 後にタイムアウトしました。",
+                "restore": {
+                    "previewNote": "ファイルを変更せずに、チェックポイントの復元操作をプレビューします。",
+                    "dangerNote": "この高リスクの復元は、現在のファイル内容を上書きし、チェックポイント時点で存在しなかったファイルを削除する可能性があります。",
+                    "wouldRewrite": "書き換え予定",
+                    "rewritten": "書き換え済み",
+                    "wouldDelete": "削除予定",
+                    "deleted": "削除済み",
+                    "wouldSkip": "スキップ予定",
+                    "skipped": "スキップ済み",
+                    "existedAtCheckpoint": "チェックポイント時点で存在",
+                    "absentAtCheckpoint": "チェックポイント時点で不在"
+                },
+                "checks": {
+                    "exitSummary": "終了コード {code} · {seconds}s",
+                    "continueOnFailure": "いずれかが失敗してもすべてのチェックを実行します。",
+                    "stopOnFailure": "最初に失敗したチェックで停止します。"
+                },
+                "diagnostics": {
+                    "none": "診断は報告されていません。"
+                },
+                "search": {
+                    "none": "一致するものが見つかりません。"
+                },
+                "git": {
+                    "noStagedDiff": "ステージ済みの差分出力はありません。",
+                    "noUnstagedDiff": "未ステージの差分出力はありません。",
+                    "staged": "ステージ済み",
+                    "unstaged": "未ステージ",
+                    "commitApproval": "Git コミットの承認",
+                    "stageApproval": "Git ステージの承認",
+                    "commitNote": "現在のステージ済みインデックスから git コミットを作成します。先に staged=true で coding_git_status と coding_git_diff を確認してください。",
+                    "stagePreviewNote": "要求されたパスのうちどれがステージされるかをプレビューします。インデックスは変更されません。",
+                    "stageNote": "要求されたパスについて git インデックスを変更します。"
+                },
+                "patch": {
+                    "validateNote": "ファイルを変更せずにパッチを検証します。",
+                    "applyNote": "この高リスクな適用リクエストは、バックエンドが適用前のチェックポイントを作成した後にファイルを書き込みます。",
+                    "hideDiff": "統合差分を非表示",
+                    "showDiff": "統合差分を表示"
+                }
             }
         },
         "archive": {
@@ -3366,7 +3426,10 @@
             "encryptedTooltip": "AES-256で暗号化。内容とファイル名は機密で、開くにはパスワードが必要です。",
             "resetDefaults": "デフォルトに戻す",
             "scrubErrorCorrectionTooltip": "{label}（暗号ハッシュを検証）",
-            "repairErrorCorrectionTooltip": "{label}（ドライランでプレビュー可能）"
+            "repairErrorCorrectionTooltip": "{label}（ドライランでプレビュー可能）",
+            "errorCorrectionBadge": "誤り訂正",
+            "itemsInFolder": "/{folder} 内の {count} 項目",
+            "repairNoChangesWritten": "(変更は書き込まれていません)"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",
@@ -3723,7 +3786,11 @@
             "keepFirstFound": "最初に見つかったもの",
             "selectAllButOne": "グループごとに 1 つを除いてすべて選択",
             "everyCopyTicked": "すべての複製が選択済み",
-            "everyCopyTickedHint": "強調表示された各グループで 1 つの選択を外してください。このままではすべての複製が削除されます。"
+            "everyCopyTickedHint": "強調表示された各グループで 1 つの選択を外してください。このままではすべての複製が削除されます。",
+            "modeExactHint": "バイト単位で同一",
+            "modeNonIdenticalHint": "知覚的またはテキストの類似度、自動削除なし",
+            "potentialWasteSelected": "潜在的な無駄（選択済み）",
+            "similarityDistance": "{similarity}、距離 {distance}"
         },
         "diskUsage": {
             "title": "ディスク使用量",
@@ -4345,7 +4412,8 @@
             "setupTitle": "マスターパスワードの設定",
             "setupTooltip": "マスターパスワードの設定",
             "tooShort": "パスワードは8文字以上である必要があります",
-            "unlock": "ロック解除"
+            "unlock": "ロック解除",
+            "setupBootstrapDescription": "キーリングを利用できません: マスターパスワードのブートストラップモード"
         },
         "migration": {
             "checking": "セキュリティ状態を確認中...",
@@ -4377,7 +4445,9 @@
                 "next": "次へ",
                 "scanQr": "このシークレットを認証アプリに追加してください（Google Authenticator、Authy、Microsoft Authenticator）。または手動キーを入力：",
                 "setup": "二要素認証",
-                "verify": "確認して有効化"
+                "verify": "確認して有効化",
+                "active": "2FA 有効",
+                "inactive": "2FA 無効"
             }
         },
         "vaultSync": {
@@ -4824,7 +4894,7 @@
             "pagesBranch": "ブランチ",
             "pagesPath": "パス",
             "authMethod": "認証",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "認証",
             "modePat": "アクセストークン",
             "modeApp": "App (.pem)",
             "oauthHint": "接続画面で「GitHubで認証」を使用してDevice Flowで認証します。トークンはVaultに安全に保存されます。",
@@ -4836,7 +4906,12 @@
             "branchList": "ブランチ一覧",
             "noBranches": "ブランチが見つかりません",
             "rawUrlCopied": "Raw URL をコピーしました",
-            "working": "処理中"
+            "working": "処理中",
+            "pagesDnsIssue": "DNS の問題を検出しました",
+            "releaseAssetOne": "{count} 個のアセット",
+            "releaseAssetMany": "{count} 個のアセット",
+            "repoPrivate": "プライベート",
+            "repoPublic": "パブリック"
         },
         "filenNotes": {
             "title": "暗号化ノート",
@@ -5613,7 +5688,9 @@
             "stopCompare": "停止",
             "compareStopped": "比較を停止しました。",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "比較では、両方のフォルダーとその下のすべてのフォルダーを読み取ります。大きなツリーでは時間がかかることがありますが、途中で停止できます。"
+            "compareStartHint": "比較では、両方のフォルダーとその下のすべてのフォルダーを読み取ります。大きなツリーでは時間がかかることがありますが、途中で停止できます。",
+            "progressDelta": "[差分]",
+            "progressCopy": "[コピー]"
         },
         "accountLock": {
             "title": "アカウントを選択",

@@ -340,7 +340,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                             {/* Credits */}
                             <div className="text-center pt-2 border-t border-gray-200 dark:border-gray-800 space-y-1">
                                 <p className="text-xs text-gray-500 flex items-center justify-center gap-1 font-mono">
-                                    {t('about.madeWith')} <Heart size={12} className="text-red-500" /> by AxpDev
+                                    {t('about.madeWith')} <Heart size={12} className="text-red-500" /> {t('about.madeBy', { author: 'AxpDev' })}
                                 </p>
                                 <p className="text-[10px] text-gray-400 dark:text-gray-600 font-mono">
                                     {t('about.aiCredits')}

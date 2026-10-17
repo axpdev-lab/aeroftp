@@ -7,6 +7,7 @@ import type { PanelEndpoint } from '../types/aerofile';
 import type { ServerProfile } from '../types';
 import { getEndpointLabel } from '../utils/panelEndpoints';
 import { getServerIcon } from './IntroHub/ServerCard';
+import { useTranslation } from '../i18n';
 
 export interface PanelEndpointSelectorProps {
     endpoint: PanelEndpoint;
@@ -30,6 +31,7 @@ export const PanelEndpointSelector: React.FC<PanelEndpointSelectorProps> = ({
     onChooseLocalFolder,
     onChooseRemoteProfile,
 }) => {
+    const t = useTranslation();
     const [open, setOpen] = React.useState(false);
     const rootRef = React.useRef<HTMLDivElement>(null);
     const endpointLabel = getEndpointLabel(endpoint);
@@ -62,7 +64,7 @@ export const PanelEndpointSelector: React.FC<PanelEndpointSelectorProps> = ({
                     <span className="font-semibold text-gray-500 dark:text-gray-400">{compactLabel}</span>
                 )}
                 <span className="truncate max-w-[6.5rem]">
-                    {endpoint.kind === 'local' ? 'Local' : endpointLabel}
+                    {endpoint.kind === 'local' ? t('browser.local') : endpointLabel}
                 </span>
                 <ChevronDown size={12} className="text-gray-400 shrink-0" />
             </button>

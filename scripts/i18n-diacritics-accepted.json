@@ -410,6 +410,34 @@
       "folded": "inna",
       "twin": "inną",
       "reason": "Nominative subject of the sentence (\"Trwa inna autoryzacja\", another authorization is in progress): inna is the correct form, inną is the accusative or instrumental."
+    },
+    "es\u001fai.coding.patch.validateNote\u001fEsto valida el parche sin modificar archivos.": {
+      "locale": "es",
+      "key": "ai.coding.patch.validateNote",
+      "folded": "valida",
+      "twin": "válida",
+      "reason": "Valida is the third-person present of the verb validar (it validates the patch), not the adjective válida."
+    },
+    "gl\u001fai.coding.patch.validateNote\u001fIsto valida o parche sen modificar ficheiros.": {
+      "locale": "gl",
+      "key": "ai.coding.patch.validateNote",
+      "folded": "valida",
+      "twin": "válida",
+      "reason": "Valida is the third-person present of the verb validar (it validates the patch), not the adjective válida."
+    },
+    "pt\u001fai.coding.patch.validateNote\u001fIsso valida o patch sem alterar arquivos.": {
+      "locale": "pt",
+      "key": "ai.coding.patch.validateNote",
+      "folded": "valida",
+      "twin": "válida",
+      "reason": "Valida is the third-person present of the verb validar (it validates the patch), not the adjective válida."
+    },
+    "ro\u001fai.coding.restore.existedAtCheckpoint\u001fexista la punctul de control": {
+      "locale": "ro",
+      "key": "ai.coding.restore.existedAtCheckpoint",
+      "folded": "exista",
+      "twin": "există",
+      "reason": "Exista is the imperfect of a exista (the file existed at the checkpoint), not the present există."
     }
   }
 }

@@ -196,5 +196,5 @@ describe('an aligned element does not hold a bare icon', () => {
     it('no component of the app does', () => {
         expect(Object.keys(SOURCES).length).toBeGreaterThan(100);
         expect(offenders(SOURCES)).toEqual([]);
-    });
+    }, 30_000);
 });

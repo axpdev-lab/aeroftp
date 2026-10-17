@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Arşiv biçimlerini ve Dosya Gezgini menülerini kaydet",
             "fileAssociationIntegrationDesc": "Değişiklikler hemen uygulanır ve güncellemeler sırasında korunur. Windows, varsayılan uygulamalarınızı ayrı olarak yönetir.",
             "fileAssociationIntegrationPortable": "Windows bütünleşmesini değiştirmek için AeroFTP uygulamasını yükleyin.",
-            "fileAssociationIntegrationAdmin": "Windows, bu seçenekleri değiştirmek için yönetici izni isteyebilir."
+            "fileAssociationIntegrationAdmin": "Windows, bu seçenekleri değiştirmek için yönetici izni isteyebilir.",
+            "migrationServerProfilesFound": "Şifrelenmemiş depolamada {count} sunucu profili bulundu",
+            "migrationAiSettingsFound": "Şifrelenmemiş depolamada AI yapılandırması bulundu",
+            "migrationOauthFound": "Şifrelenmemiş depolamada {count} OAuth kimlik bilgisi bulundu",
+            "fontSystemInstall": "sisteme kurulum",
+            "fontSizeMin": "min",
+            "fontSizeMax": "maks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Ücretsiz katman ayda 25 krediyle sınırlıdır",
                 "fourshared": "Token iptal edilirse yetkilendirmeyi elle yeniden yapın"
             },
-            "profilesLoadFailed": "Kayıtlı sunucularınız okunamadı: {error}"
+            "profilesLoadFailed": "Kayıtlı sunucularınız okunamadı: {error}",
+            "cleanupSummary": "{count} dosya, {size} boşaltıldı"
         },
         "statusBar": {
             "connected": "Bağlı",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab Ekibi",
                 "apRole": "Kurucu, geliştirici, bakımcı, ortak tasarımcı",
                 "ekRole": "Araştırmacı, kalite güvence mühendisi, ortak tasarımcı"
-            }
+            },
+            "madeBy": "{author} tarafından"
         },
         "support": {
             "title": "AeroFTP'yi Destekle",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Proton Drive CLI kullanır - kurun, tarayıcıda oturum açın, AeroFTP GUI'dir",
             "twakeDesc": "Twake Drive (5 GB ücretsiz)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Fransız açık kaynaklı bulut (Cozy Cloud artık onun bir parçası) 5 GB ücretsiz ile",
-            "discoverTwake": "Linagora'nın açık kaynaklı Avrupa bulutu, artık Cozy Cloud'un yeni yuvası (5 GB ücretsiz)"
+            "discoverTwake": "Linagora'nın açık kaynaklı Avrupa bulutu, artık Cozy Cloud'un yeni yuvası (5 GB ücretsiz)",
+            "sourceforgeProject": "Proje (Unixname)",
+            "opendriveNotApiKey": "(OpenDrive API anahtarınız değil)",
+            "endpoint": "Uç Nokta",
+            "accountId": "Hesap ID'si"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Parolayı onayla",
             "minLength": "En az 8 karakter",
             "autoLockTimeout": "Otomatik kilitleme süresi",
-            "enable": "Etkinleştir"
+            "enable": "Etkinleştir",
+            "setupBootstrapDescription": "Anahtarlık kullanılamıyor: ana şifreyle önyükleme modu"
         },
         "search": {
             "remote_placeholder": "Uzak dosyaları ara...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "E-posta adresi",
             "add": "Ekle",
             "remove": "Kaldır",
-            "none": "İzin ayarlanmamış"
+            "none": "İzin ayarlanmamış",
+            "anyoneWithLink": "Bağlantıya sahip olan herkes"
         },
         "locking": {
             "lock": "Dosyayı Kilitle",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Hiçbir şey aktarılmaz: bu, tam bir eşitlemenin ne yapacağının örnekten hesaplanan bir önizlemesidir. CLI komutu aeroftp-cli sync --dry-run (ve rclone'un --dry-run) komutunun grafik karşılığıdır.",
             "templateImportPathPairs": "Bu şablondaki kullanılabilir yerel/uzak yol çiftleri: {count}. Bir AeroSync penceresi tam olarak bir çiftle çalışır, bu yüzden hiçbir şey içe aktarılmadı. Şablonu tek bir çift kalacak şekilde düzenleyin, ardından yeniden içe aktarın.",
             "templateNamePlaceholder": "ör. S3'e gecelik yedekleme",
-            "templateDescPlaceholder": "Bu şablonun ne için olduğu (isteğe bağlı)"
+            "templateDescPlaceholder": "Bu şablonun ne için olduğu (isteğe bağlı)",
+            "templateExportCliDesc": "aeroftp-cli sync sarmalayıcısı ({shell})"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} giriş tokeni, {output} çıkış tokeni, sağlayıcının sayımına göre",
                 "breakdownCache": "{input} giriş tokeni, {output} çıkış tokeni, istem önbelleğinden {cacheRead} okundu, ona {cacheWritten} yazıldı, sağlayıcının sayımına göre"
+            },
+            "executeOperations": "{count} işlemi yürüt",
+            "coding": {
+                "dryRun": "deneme çalıştırması",
+                "apply": "uygula",
+                "timedOutAfter": "{seconds}s sonra zaman aşımına uğradı.",
+                "restore": {
+                    "previewNote": "Bu, dosyaları değiştirmeden kontrol noktası geri yükleme işlemlerinin önizlemesini gösterir.",
+                    "dangerNote": "Bu yüksek riskli geri yükleme, mevcut dosya içeriklerinin üzerine yazabilir ve kontrol noktasında bulunmayan dosyaları silebilir.",
+                    "wouldRewrite": "Yeniden yazılacak",
+                    "rewritten": "Yeniden yazıldı",
+                    "wouldDelete": "Silinecek",
+                    "deleted": "Silindi",
+                    "wouldSkip": "Atlanacak",
+                    "skipped": "Atlandı",
+                    "existedAtCheckpoint": "kontrol noktasında mevcuttu",
+                    "absentAtCheckpoint": "kontrol noktasında yoktu"
+                },
+                "checks": {
+                    "exitSummary": "çıkış kodu {code} · {seconds}s",
+                    "continueOnFailure": "Biri başarısız olsa bile tüm denetimleri çalıştırır.",
+                    "stopOnFailure": "İlk başarısız denetimde durur."
+                },
+                "diagnostics": {
+                    "none": "Bildirilen tanılama yok."
+                },
+                "search": {
+                    "none": "Eşleşme bulunamadı."
+                },
+                "git": {
+                    "noStagedDiff": "Hazırlanmış değişiklikler için diff çıktısı yok.",
+                    "noUnstagedDiff": "Hazırlanmamış değişiklikler için diff çıktısı yok.",
+                    "staged": "hazırlanmış",
+                    "unstaged": "hazırlanmamış",
+                    "commitApproval": "Git Commit Onayı",
+                    "stageApproval": "Git Hazırlama Onayı",
+                    "commitNote": "Bu, mevcut hazırlanmış dizinden bir git commit'i oluşturur. Önce staged=true ile coding_git_status ve coding_git_diff çıktılarını inceleyin.",
+                    "stagePreviewNote": "Bu, istenen yollardan hangilerinin hazırlanacağını önizler; dizin değişmez.",
+                    "stageNote": "Bu, istenen yollar için git dizinini değiştirir."
+                },
+                "patch": {
+                    "validateNote": "Bu, dosyaları değiştirmeden yamayı doğrular.",
+                    "applyNote": "Bu yüksek riskli uygulama isteği, arka uç uygulama öncesi bir kontrol noktası oluşturduktan sonra dosyaları yazar.",
+                    "hideDiff": "Birleşik diff'i gizle",
+                    "showDiff": "Birleşik diff'i göster"
+                }
             }
         },
         "archive": {
@@ -3401,7 +3462,10 @@
             "encryptedTooltip": "AES-256 ile şifreli. İçerik ve dosya adları gizlidir; açmak için parola gerekir.",
             "resetDefaults": "Varsayılana sıfırla",
             "scrubErrorCorrectionTooltip": "{label} (şifreleme karmalarını doğrular)",
-            "repairErrorCorrectionTooltip": "{label} (deneme önizlemesi kullanılabilir)"
+            "repairErrorCorrectionTooltip": "{label} (deneme önizlemesi kullanılabilir)",
+            "errorCorrectionBadge": "Hata Düzeltme",
+            "itemsInFolder": "/{folder} içinde {count} öğe",
+            "repairNoChangesWritten": "(hiçbir değişiklik yazılmadı)"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",
@@ -3758,7 +3822,11 @@
             "keepFirstFound": "İlk bulunan",
             "selectAllButOne": "Her grupta biri hariç tümünü seç",
             "everyCopyTicked": "tüm kopyalar işaretli",
-            "everyCopyTickedHint": "Vurgulanan her grupta bir kopyanın işaretini kaldırın: aksi hâlde tüm kopyalar silinir."
+            "everyCopyTickedHint": "Vurgulanan her grupta bir kopyanın işaretini kaldırın: aksi hâlde tüm kopyalar silinir.",
+            "modeExactHint": "Bayt bayt aynı",
+            "modeNonIdenticalHint": "Algısal veya metin benzerliği, otomatik silme yok",
+            "potentialWasteSelected": "olası boşa harcanan (seçili)",
+            "similarityDistance": "{similarity}, mes. {distance}"
         },
         "diskUsage": {
             "title": "Disk Kullanımı",
@@ -4377,7 +4445,9 @@
                 "next": "İleri",
                 "scanQr": "Bu gizli anahtarı kimlik doğrulama uygulamanıza ekleyin (Google Authenticator, Authy, Microsoft Authenticator). Veya manuel anahtarı girin:",
                 "setup": "İki faktörlü kimlik doğrulama",
-                "verify": "Doğrula ve etkinleştir"
+                "verify": "Doğrula ve etkinleştir",
+                "active": "2FA Etkin",
+                "inactive": "2FA Devre Dışı"
             }
         },
         "vaultSync": {
@@ -4824,7 +4894,7 @@
             "pagesBranch": "Dal",
             "pagesPath": "Yol",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Yetkilendir",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4836,7 +4906,12 @@
             "branchList": "Dal listesi",
             "noBranches": "Dal bulunamadı",
             "rawUrlCopied": "Ham URL kopyalandı",
-            "working": "çalışıyor"
+            "working": "çalışıyor",
+            "pagesDnsIssue": "DNS sorunu algılandı",
+            "releaseAssetOne": "{count} dosya",
+            "releaseAssetMany": "{count} dosya",
+            "repoPrivate": "Özel",
+            "repoPublic": "Herkese açık"
         },
         "filenNotes": {
             "title": "Şifreli Notlar",
@@ -5613,7 +5688,9 @@
             "stopCompare": "Durdur",
             "compareStopped": "Karşılaştırma durduruldu.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Karşılaştırma her iki klasörü ve altındaki tüm klasörleri okur. Büyük bir ağaçta biraz zaman alabilir ve durdurabilirsiniz."
+            "compareStartHint": "Karşılaştırma her iki klasörü ve altındaki tüm klasörleri okur. Büyük bir ağaçta biraz zaman alabilir ve durdurabilirsiniz.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopya]"
         },
         "accountLock": {
             "title": "Bir hesap seçin",

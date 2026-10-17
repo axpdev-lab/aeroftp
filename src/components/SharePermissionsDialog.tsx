@@ -162,7 +162,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
               {permissions.map(p => (
                 <div key={`${p.target_type}-${p.target}`} className="px-5 py-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm truncate">{p.target || 'Anyone with link'}</div>
+                    <div className="text-sm truncate">{p.target || t('sharing.anyoneWithLink')}</div>
                     <div className="text-xs text-gray-400">{p.target_type} - {roleLabel(p.role)}</div>
                   </div>
                   {p.role !== 'owner' && (

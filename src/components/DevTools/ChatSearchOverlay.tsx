@@ -159,7 +159,7 @@ const ChatSearchOverlayImpl: React.FC<ChatSearchOverlayProps> = ({
                                 : 'text-gray-500 hover:text-gray-300'
                         }`}
                     >
-                        {role === 'all' ? 'All' : role === 'user' ? 'User' : 'AI'}
+                        {role === 'all' ? t('ai.search.filterAll') : role === 'user' ? t('ai.search.filterUser') : t('ai.search.filterAI')}
                     </button>
                 ))}
             </div>
@@ -182,7 +182,7 @@ const ChatSearchOverlayImpl: React.FC<ChatSearchOverlayProps> = ({
                 <span className="text-[10px] text-gray-500 min-w-[50px] text-center">
                     {matches.length > 0
                         ? `${activeMatchIndex + 1}/${matches.length}`
-                        : query.length >= 2 ? 'No results' : ''
+                        : query.length >= 2 ? t('ai.search.noResults') : ''
                     }
                 </span>
             </div>

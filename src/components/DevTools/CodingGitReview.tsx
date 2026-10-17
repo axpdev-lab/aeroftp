@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { CheckCircle2, FileDiff, GitBranch, GitCommit, GitPullRequest, ShieldAlert } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 import { statusCounts } from './aiChatCodingGit';
 import type {
     CodingGitCommitResult,
@@ -103,50 +104,54 @@ const StatusSummary: React.FC<{ status: CodingGitStatusResult }> = ({ status }) 
     </>
 );
 
-const DiffSummary: React.FC<{ diff: CodingGitDiffResult }> = ({ diff }) => (
-    <>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-            <span className={chipClass}>{diff.file_count} file{diff.file_count === 1 ? '' : 's'}</span>
-            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-100">
-                +{diff.total_additions}
-            </span>
-            <span className="rounded-full border border-red-400/20 bg-red-400/10 px-2 py-0.5 text-[10px] text-red-100">
-                -{diff.total_deletions}
-            </span>
-            {diff.truncated && (
-                <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-100">
-                    truncated
+const DiffSummary: React.FC<{ diff: CodingGitDiffResult }> = ({ diff }) => {
+    const t = useTranslation();
+    return (
+        <>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+                <span className={chipClass}>{diff.file_count} file{diff.file_count === 1 ? '' : 's'}</span>
+                <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-100">
+                    +{diff.total_additions}
                 </span>
-            )}
-        </div>
-        {diff.stats.length > 0 && (
-            <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2">
-                <div className="space-y-1">
-                    {diff.stats.slice(0, 12).map(stat => (
-                        <div key={stat.path} className="flex items-center gap-2">
-                            <span className="w-16 shrink-0 font-mono text-[10px] text-emerald-200/70">+{stat.additions}</span>
-                            <span className="w-16 shrink-0 font-mono text-[10px] text-red-200/70">-{stat.deletions}</span>
-                            <span className="min-w-0 truncate font-mono text-[11px] text-white/75" title={stat.path}>{stat.path}</span>
-                            {stat.binary && <span className="text-[10px] text-white/40">binary</span>}
-                        </div>
-                    ))}
-                    {diff.stats.length > 12 && <div className="text-[10px] text-white/40">+{diff.stats.length - 12} more</div>}
+                <span className="rounded-full border border-red-400/20 bg-red-400/10 px-2 py-0.5 text-[10px] text-red-100">
+                    -{diff.total_deletions}
+                </span>
+                {diff.truncated && (
+                    <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-100">
+                        truncated
+                    </span>
+                )}
+            </div>
+            {diff.stats.length > 0 && (
+                <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2">
+                    <div className="space-y-1">
+                        {diff.stats.slice(0, 12).map(stat => (
+                            <div key={stat.path} className="flex items-center gap-2">
+                                <span className="w-16 shrink-0 font-mono text-[10px] text-emerald-200/70">+{stat.additions}</span>
+                                <span className="w-16 shrink-0 font-mono text-[10px] text-red-200/70">-{stat.deletions}</span>
+                                <span className="min-w-0 truncate font-mono text-[11px] text-white/75" title={stat.path}>{stat.path}</span>
+                                {stat.binary && <span className="text-[10px] text-white/40">binary</span>}
+                            </div>
+                        ))}
+                        {diff.stats.length > 12 && <div className="text-[10px] text-white/40">+{diff.stats.length - 12} more</div>}
+                    </div>
                 </div>
-            </div>
-        )}
-        {diff.diff ? (
-            <pre className="mt-3 max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/75">
-                {diff.diff}
-            </pre>
-        ) : (
-            <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2 text-white/55">
-                No {diff.staged ? 'staged' : 'unstaged'} diff output.
-            </div>
-        )}
-    </>
-);
+            )}
+            {diff.diff ? (
+                <pre className="mt-3 max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/75">
+                    {diff.diff}
+                </pre>
+            ) : (
+                <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2 text-white/55">
+                    {diff.staged ? t('ai.coding.git.noStagedDiff') : t('ai.coding.git.noUnstagedDiff')}
+                </div>
+            )}
+        </>
+    );
+};
 
 export const CodingGitReview: React.FC<CodingGitReviewProps> = ({ data }) => {
+    const t = useTranslation();
     const result = data.result;
     const title = isStatusResult(data)
         ? 'Git Status'
@@ -197,10 +202,10 @@ export const CodingGitReview: React.FC<CodingGitReviewProps> = ({ data }) => {
                 <div className="flex flex-wrap items-center gap-1.5">
                     {status?.branch && <span className={chipClass}>{status.branch}</span>}
                     {status?.head && <span className={chipClass}>{status.head}</span>}
-                    {isDiffResult(data) && <span className={chipClass}>{data.result.staged ? 'staged' : 'unstaged'}</span>}
+                    {isDiffResult(data) && <span className={chipClass}>{data.result.staged ? t('ai.coding.git.staged') : t('ai.coding.git.unstaged')}</span>}
                     {(isStageResult(data) || isCommitResult(data)) && data.result.dry_run && (
                         <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] text-cyan-100">
-                            dry run
+                            {t('ai.coding.dryRun')}
                         </span>
                     )}
                     {isCommitResult(data) && data.result.commit_hash && (
@@ -262,6 +267,7 @@ export const CodingGitApprovalPreview: React.FC<CodingGitApprovalPreviewProps> =
     dryRun,
     commitMessage,
 }) => {
+    const t = useTranslation();
     if (toolName !== 'coding_git_stage' && toolName !== 'coding_git_commit') return null;
     const isCommit = toolName === 'coding_git_commit';
     const Icon = isCommit ? GitCommit : GitPullRequest;
@@ -269,7 +275,7 @@ export const CodingGitApprovalPreview: React.FC<CodingGitApprovalPreviewProps> =
         <div className="mt-3 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-xs">
             <div className="flex items-center gap-2 text-sm font-semibold text-red-200">
                 <Icon size={14} />
-                <span>{isCommit ? 'Git Commit Approval' : 'Git Stage Approval'}</span>
+                <span>{isCommit ? t('ai.coding.git.commitApproval') : t('ai.coding.git.stageApproval')}</span>
             </div>
             {workspaceRoot && (
                 <p className="mt-1 truncate font-mono text-[11px] text-white/45" title={workspaceRoot}>
@@ -278,10 +284,10 @@ export const CodingGitApprovalPreview: React.FC<CodingGitApprovalPreviewProps> =
             )}
             <div className="mt-2 rounded-lg border border-red-400/25 bg-red-400/10 p-2 text-red-50/85">
                 {isCommit
-                    ? 'This creates a git commit from the current staged index. Review coding_git_status and coding_git_diff with staged=true first.'
+                    ? t('ai.coding.git.commitNote')
                     : dryRun
-                        ? 'This previews which requested paths would be staged; the index will not change.'
-                        : 'This changes the git index for the requested paths.'}
+                        ? t('ai.coding.git.stagePreviewNote')
+                        : t('ai.coding.git.stageNote')}
             </div>
             {isCommit && commitMessage && (
                 <div className="mt-2 rounded-lg border border-white/10 bg-white/5 p-2">

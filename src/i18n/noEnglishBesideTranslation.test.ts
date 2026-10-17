@@ -16,7 +16,23 @@ import { parseAst } from 'vite';
  * in a template literal, where the literal text holds a word. Shortcut key
  * names (`(Ctrl+S)`), Aero product names and a version prefix are not prose
  * and pass. The text belongs in the translation, with the variable part as a
- * `{placeholder}`. Text next to `{t()}` in JSX is not covered.
+ * `{placeholder}`.
+ *
+ * JSX has two more shapes of the same defect, and they are found here too.
+ * A JSX child expression that renders a string literal: `{dryRun ? 'Would
+ * delete' : 'Deleted'}`, `{busy && 'Loading...'}`, `{label || 'Copy'}`,
+ * `{`${n} server profiles found`}`. And JSX text written next to a translated
+ * sibling: `{t('cloud.cleanupDone')}: {n} files, {size} freed`. Every locale
+ * rendered those words in English.
+ *
+ * In JSX a `t('x') || 'Fallback'` passes: the fallback is dead code
+ * (noPhantomKeys.test.ts), never shown. So do CSS in a `<style>` element, size
+ * and time units, file extensions and HTML entities. Short names that read as
+ * words but are not prose (S3 storage classes, pricing tiers, a provider name
+ * after a dash) are allowed by file and exact text in JSX_NEUTRAL, and an
+ * entry that no longer matches a hit fails, so the list cannot outlive its
+ * reason. JSX text with no translated sibling and JSX attributes (`title`,
+ * `placeholder`) are not covered.
  */
 
 const SOURCES = import.meta.glob<string>(
@@ -54,13 +70,91 @@ function literalText(node: Node): string | null {
 
 const isProse = (text: string) => PROSE.test(text.replace(NEUTRAL, ''));
 
-function offenders(sources: Record<string, string>): string[] {
-    const out: string[] = [];
+/** Units, file extensions and HTML entities: neutral where JSX renders them. */
+const JSX_TOKENS = /&[a-z]+;|(?<![\w.])\.[a-z][a-z0-9]*\b|(?<![A-Za-z])(?:B|KB|MB|GB|TB|ms|min|px)(?![A-Za-z])/g;
+
+const isJsxProse = (text: string) => isProse(text.replace(JSX_TOKENS, ''));
+
+/** Text JSX renders as it is, by file. Each entry must still match a hit. */
+const JSX_NEUTRAL: Record<string, string[]> = {
+    // S3 storage-class badges and the update's package format.
+    'src/App.tsx': ['IA', '1Z-IA', 'Glacier', 'Glacier IR', 'Deep', 'IT', 'RR', 'deb'],
+    // The protocol id shown when a profile has none.
+    'src/components/BridgeSourcePanel.tsx': ['ftp'],
+    'src/components/ExportImportDialog.tsx': ['ftp'],
+    'src/components/MountManagerDialog.tsx': ['ftp'],
+    'src/components/ServerHealthCheck.tsx': ['ftp'],
+    'src/components/SpeedTestDialog.tsx': ['ftp'],
+    'src/components/common/ProfileRail.tsx': ['ftp'],
+    // Log source and test runner tags.
+    'src/components/DebugPanel.tsx': ['RUST', 'JS', 'rust', 'js'],
+    // GitLab merge request, GitHub pull request.
+    'src/components/GitHubWriteModeIndicator.tsx': ['MR', 'PR'],
+    'src/components/SiteCommand/SiteCommandDialog.tsx': ['· TLS'],
+    'src/components/Preview/viewers/AudioPlayer.tsx': ['// CYBER'],
+    'src/components/DevTools/GeminiCodeBlock.tsx': ['OK'],
+    // End of file, where a patch hunk expected more lines.
+    'src/components/DevTools/CodingPatchReview.tsx': ['EOF'],
+    // Pricing tier badges.
+    'src/components/AISettings/ProviderMarketplace.tsx': ['FREE', 'FREEMIUM', 'PAID'],
+    // The trash dialog title names its provider.
+    'src/components/BoxTrashManager.tsx': ['- Box'],
+    'src/components/DropboxTrashManager.tsx': ['- Dropbox'],
+    'src/components/GoogleDriveTrashManager.tsx': ['- Google Drive'],
+    'src/components/JottacloudTrashManager.tsx': ['- Jottacloud'],
+    'src/components/KoofrTrashManager.tsx': ['- Koofr'],
+    'src/components/MegaTrashManager.tsx': ['- MEGA'],
+    'src/components/OneDriveTrashManager.tsx': ['- OneDrive'],
+    'src/components/ZohoTrashManager.tsx': ['- Zoho WorkDrive'],
+    // The font preview sample.
+    'src/components/SettingsPanel.tsx': ['- AaBbCcDd 123'],
+};
+
+const squash = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+/**
+ * The string nodes a JSX child expression renders: both arms of a conditional,
+ * the right of `&&`, both sides of `||` and `??` unless the left is a
+ * translation (then the right is a dead fallback), and a template literal
+ * with no `t()` in it (one with `t()` is the template check above).
+ */
+function rendered(node: Node, out: Node[]): void {
+    if (literalText(node) !== null) out.push(node);
+    else if (node.type === 'TemplateLiteral' && !(node.expressions as Node[]).some(containsT)) out.push(node);
+    else if (node.type === 'ConditionalExpression') {
+        rendered(node.consequent as Node, out);
+        rendered(node.alternate as Node, out);
+    } else if (node.type === 'LogicalExpression') {
+        if (node.operator !== '&&' && containsT(node.left as Node)) return;
+        if (node.operator !== '&&') rendered(node.left as Node, out);
+        rendered(node.right as Node, out);
+    } else if (['ParenthesizedExpression', 'TSAsExpression', 'TSNonNullExpression'].includes(node.type)) {
+        rendered(node.expression as Node, out);
+    }
+}
+
+const renderedText = (node: Node) =>
+    literalText(node) ?? (node.quasis as Array<{ value: { cooked: string } }>).map((quasi) => quasi.value.cooked).join(' ');
+
+const isStyleElement = (node: Node) =>
+    node.type === 'JSXElement' && ((node.openingElement as Node).name as { name?: string }).name === 'style';
+
+function scan(sources: Record<string, string>, allowed: Record<string, string[]> = {}): { found: string[]; unused: string[] } {
+    const found: string[] = [];
+    const unused = new Set(Object.entries(allowed).flatMap(([file, texts]) => texts.map((text) => `${file} ${text}`)));
     for (const [file, source] of Object.entries(sources)) {
+        const name = file.replace(/^\//, '');
         const program = parseAst(source, { lang: file.endsWith('.tsx') ? 'tsx' : 'ts' }, file) as unknown as Node;
-        const report = (node: Node) => {
-            const line = source.slice(0, node.start).split('\n').length;
-            out.push(`${file.replace(/^\//, '')}:${line} ${source.slice(node.start, node.end).replace(/\s+/g, ' ').slice(0, 90)}`);
+        const report = (node: Node, start = node.start) => {
+            const line = source.slice(0, start).split('\n').length;
+            const entry = `${name}:${line} ${squash(source.slice(start, node.end)).slice(0, 90)}`;
+            if (!found.includes(entry)) found.push(entry);
+        };
+        const neutral = (text: string) => {
+            const key = `${name} ${squash(text)}`;
+            if (!allowed[name]?.includes(squash(text))) return !isJsxProse(text);
+            unused.delete(key);
+            return true;
         };
         const visit = (node: Node) => {
             if (node.type === 'BinaryExpression' && node.operator === '+') {
@@ -73,12 +167,29 @@ function offenders(sources: Record<string, string>): string[] {
                 const quasis = node.quasis as Array<{ value: { cooked: string } }>;
                 if (quasis.some((quasi) => isProse(quasi.value.cooked))) report(node);
             }
+            if (isStyleElement(node)) return;
+            if (node.type === 'JSXElement' || node.type === 'JSXFragment') {
+                const kids = node.children as Node[];
+                const translated = kids.some((kid) => kid.type === 'JSXExpressionContainer' && containsT(kid));
+                for (const kid of kids) {
+                    if (kid.type === 'JSXExpressionContainer') {
+                        const strings: Node[] = [];
+                        rendered(kid.expression as Node, strings);
+                        if (strings.map((string) => neutral(renderedText(string))).includes(false)) report(kid);
+                    }
+                    if (kid.type === 'JSXText' && translated && !neutral(kid.value as string)) {
+                        report(kid, kid.start + (kid.value as string).search(/\S/));
+                    }
+                }
+            }
             children(node).forEach(visit);
         };
         visit(program);
     }
-    return out;
+    return { found, unused: [...unused] };
 }
+
+const offenders = (sources: Record<string, string>) => scan(sources).found;
 
 describe('a translated string is not glued to English in the code', () => {
     it('finds the shapes it is meant to find, and passes the neutral ones', () => {
@@ -101,8 +212,37 @@ describe('a translated string is not glued to English in the code', () => {
         ]);
     });
 
+    it('finds the JSX shapes, and passes the neutral ones', () => {
+        const sample = [
+            "const a = <span>{dryRun ? 'Would delete' : 'Deleted'}</span>;",
+            "const b = <span>{busy && 'Loading...'}</span>;",
+            "const c = <span>{label || 'Copy'}</span>;",
+            "const d = <span>{`${n} server profiles found`}</span>;",
+            "const e = <p>{t('cloud.cleanupDone')}: {n} files, {size} freed</p>;",
+            "const f = <span>{t('common.copy') || 'Copy'}</span>;",
+            "const g = <span>{dryRun ? t('a.dryRun') : t('a.apply')}</span>;",
+            "const h = <span>{isZip ? '.aerozip' : '.aerovault'} {`${size} MB`} {ms < 1 ? '<1ms' : `${ms}ms`}</span>;",
+            "const i = <h2>{t('contextMenu.trashTitle')} - Box &middot; (MB)</h2>;",
+            "const j = <style>{`@keyframes blink { from { opacity: 0 } }`}</style>;",
+            "const k = <span>{tier === 'free' ? 'FREE' : 'PAID'}</span>;",
+            "const l = <p>{t('a.b')} <strong>{name}</strong></p>;",
+        ].join('\n');
+        const allowed = { 'sample.tsx': ['FREE', 'PAID', '- Box &middot; (MB)', 'never seen'] };
+        expect(scan({ 'sample.tsx': sample }, allowed)).toEqual({
+            found: [
+                "sample.tsx:1 {dryRun ? 'Would delete' : 'Deleted'}",
+                "sample.tsx:2 {busy && 'Loading...'}",
+                "sample.tsx:3 {label || 'Copy'}",
+                'sample.tsx:4 {`${n} server profiles found`}',
+                'sample.tsx:5 files,',
+                'sample.tsx:5 freed',
+            ],
+            unused: ['sample.tsx never seen'],
+        });
+    });
+
     it('no source file of the app does', () => {
         expect(Object.keys(SOURCES).length).toBeGreaterThan(100);
-        expect(offenders(SOURCES)).toEqual([]);
-    });
+        expect(scan(SOURCES, JSX_NEUTRAL)).toEqual({ found: [], unused: [] });
+    }, 30_000);
 });

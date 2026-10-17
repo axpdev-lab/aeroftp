@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "ចុះបញ្ជីទម្រង់ឯកសារបណ្ណសារ និងម៉ឺនុយកម្មវិធីរុករកឯកសារ",
             "fileAssociationIntegrationDesc": "ការផ្លាស់ប្តូរមានប្រសិទ្ធភាពភ្លាមៗ ហើយត្រូវបានរក្សាទុកពេលធ្វើបច្ចុប្បន្នភាព។ Windows គ្រប់គ្រងកម្មវិធីលំនាំដើមរបស់អ្នកដោយឡែក។",
             "fileAssociationIntegrationPortable": "ដំឡើង AeroFTP ដើម្បីផ្លាស់ប្តូរការរួមបញ្ចូលជាមួយ Windows។",
-            "fileAssociationIntegrationAdmin": "Windows អាចស្នើសុំសិទ្ធិអ្នកគ្រប់គ្រង ដើម្បីផ្លាស់ប្តូរជម្រើសទាំងនេះ។"
+            "fileAssociationIntegrationAdmin": "Windows អាចស្នើសុំសិទ្ធិអ្នកគ្រប់គ្រង ដើម្បីផ្លាស់ប្តូរជម្រើសទាំងនេះ។",
+            "migrationServerProfilesFound": "បានរកឃើញទម្រង់ម៉ាស៊ីនបម្រើ {count} នៅក្នុងឃ្លាំងផ្ទុកដែលមិនបានអ៊ិនគ្រីប",
+            "migrationAiSettingsFound": "បានរកឃើញការកំណត់ AI នៅក្នុងឃ្លាំងផ្ទុកដែលមិនបានអ៊ិនគ្រីប",
+            "migrationOauthFound": "បានរកឃើញព័ត៌មានសម្ងាត់ OAuth {count} នៅក្នុងឃ្លាំងផ្ទុកដែលមិនបានអ៊ិនគ្រីប",
+            "fontSystemInstall": "ដំឡើងក្នុងប្រព័ន្ធ",
+            "fontSizeMin": "អប្បបរមា",
+            "fontSizeMax": "អតិបរមា"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "កម្រិតឥតគិតថ្លៃកំណត់ត្រឹម 25 ក្រេឌីតក្នុងមួយខែ",
                 "fourshared": "អនុញ្ញាតឡើងវិញដោយដៃ ប្រសិនបើ token ត្រូវបានដកហូត"
             },
-            "profilesLoadFailed": "មិនអាចអានម៉ាស៊ីនមេដែលបានរក្សាទុករបស់អ្នកបានទេ: {error}"
+            "profilesLoadFailed": "មិនអាចអានម៉ាស៊ីនមេដែលបានរក្សាទុករបស់អ្នកបានទេ: {error}",
+            "cleanupSummary": "ឯកសារ {count}, ទំហំបានដោះលែង {size}"
         },
         "statusBar": {
             "connected": "បានតភ្ជាប់",
@@ -1600,7 +1607,8 @@
                 "title": "ក្រុម Axpdev Lab",
                 "apRole": "ស្ថាបនិក អ្នកអភិវឌ្ឍន៍ អ្នកថែទាំ សហអ្នករចនា",
                 "ekRole": "អ្នកស្រាវជ្រាវ វិស្វករធានាគុណភាព សហអ្នករចនា"
-            }
+            },
+            "madeBy": "ដោយ {author}"
         },
         "support": {
             "title": "គាំទ្រ AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "ប្រើ Proton Drive CLI - ដំឡើង, ចូលក្នុងកម្មវិធីរុករក, AeroFTP គឺ GUI",
             "twakeDesc": "Twake Drive (5 GB ឥតគិតថ្លៃ)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace ជាការផ្ទុកពពកប្រភពបើកចំហរបស់បារាំង (Cozy Cloud ឥឡូវនេះជាផ្នែកមួយរបស់វា) ជាមួយ 5 GB ឥតគិតថ្លៃ",
-            "discoverTwake": "ការផ្ទុកពពកអឺរ៉ុបប្រភពបើកចំហដោយ Linagora ឥឡូវនេះជាទីតាំងថ្មីរបស់ Cozy Cloud (5 GB ឥតគិតថ្លៃ)"
+            "discoverTwake": "ការផ្ទុកពពកអឺរ៉ុបប្រភពបើកចំហដោយ Linagora ឥឡូវនេះជាទីតាំងថ្មីរបស់ Cozy Cloud (5 GB ឥតគិតថ្លៃ)",
+            "sourceforgeProject": "គម្រោង (Unixname)",
+            "opendriveNotApiKey": "(មិនមែនជាសោ API OpenDrive របស់អ្នកទេ)",
+            "endpoint": "ចំណុចបញ្ចប់",
+            "accountId": "ID គណនី"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "បញ្ជាក់ពាក្យសម្ងាត់",
             "minLength": "អប្បបរមា ៨ តួអក្សរ",
             "autoLockTimeout": "រយៈពេលចាក់សោស្វ័យប្រវត្តិ",
-            "enable": "បើក"
+            "enable": "បើក",
+            "setupBootstrapDescription": "Keyring មិនអាចប្រើបាន: របៀបចាប់ផ្តើមដោយពាក្យសម្ងាត់មេ"
         },
         "search": {
             "remote_placeholder": "ស្វែងរកឯកសារពីចម្ងាយ...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "អាសយដ្ឋានអ៊ីមែល",
             "add": "បន្ថែម",
             "remove": "ដកចេញ",
-            "none": "គ្មានការអនុញ្ញាតត្រូវបានកំណត់"
+            "none": "គ្មានការអនុញ្ញាតត្រូវបានកំណត់",
+            "anyoneWithLink": "អ្នកណាដែលមានតំណ"
         },
         "locking": {
             "lock": "ចាក់សោឯកសារ",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "គ្មានអ្វីត្រូវបានផ្ទេរទេ៖ វាបង្ហាញមើលជាមុននូវអ្វីដែលការធ្វើសមកាលកម្មពេញលេញនឹងធ្វើ ដោយគណនាពីគំរូ។ វាជាសមមូល GUI នៃពាក្យបញ្ជា aeroftp-cli sync --dry-run (និង --dry-run របស់ rclone)។",
             "templateImportPathPairs": "គូផ្លូវ មូលដ្ឋាន/ពីចម្ងាយ ដែលអាចប្រើបានក្នុងគំរូនេះ៖ {count}។ បង្អួច AeroSync ដំណើរការជាមួយគូតែមួយគត់ ដូច្នេះគ្មានអ្វីត្រូវបាននាំចូលទេ។ សូមកែសម្រួលគំរូឱ្យនៅសល់តែគូមួយ រួចនាំចូលម្ដងទៀត។",
             "templateNamePlaceholder": "ឧ. ការបម្រុងទុកពេលយប់ទៅ S3",
-            "templateDescPlaceholder": "គំរូនេះសម្រាប់អ្វី (ស្រេចចិត្ត)"
+            "templateDescPlaceholder": "គំរូនេះសម្រាប់អ្វី (ស្រេចចិត្ត)",
+            "templateExportCliDesc": "ស្គ្រីបរុំសម្រាប់ aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} ថូខឹនបញ្ចូល, {output} ថូខឹនលទ្ធផល, តាមការរាប់របស់អ្នកផ្តល់សេវា",
                 "breakdownCache": "{input} ថូខឹនបញ្ចូល, {output} ថូខឹនលទ្ធផល, {cacheRead} បានអានពីឃ្លាំងសម្ងាត់ប្រូមភ្ត៍, {cacheWritten} បានសរសេរចូលទៅក្នុងវា, តាមការរាប់របស់អ្នកផ្តល់សេវា"
+            },
+            "executeOperations": "អនុវត្តប្រតិបត្តិការ {count}",
+            "coding": {
+                "dryRun": "ការសាកល្បង",
+                "apply": "អនុវត្ត",
+                "timedOutAfter": "អស់ពេលបន្ទាប់ពី {seconds}s។",
+                "restore": {
+                    "previewNote": "វាបង្ហាញការមើលជាមុននៃសកម្មភាពស្ដារពីចំណុចត្រួតពិនិត្យ ដោយមិនផ្លាស់ប្ដូរឯកសារ។",
+                    "dangerNote": "ការស្ដារដែលមានហានិភ័យខ្ពស់នេះអាចសរសេរជាន់លើខ្លឹមសារឯកសារបច្ចុប្បន្ន និងលុបឯកសារដែលមិនមាននៅចំណុចត្រួតពិនិត្យ។",
+                    "wouldRewrite": "នឹងសរសេរឡើងវិញ",
+                    "rewritten": "បានសរសេរឡើងវិញ",
+                    "wouldDelete": "នឹងលុប",
+                    "deleted": "បានលុប",
+                    "wouldSkip": "នឹងរំលង",
+                    "skipped": "បានរំលង",
+                    "existedAtCheckpoint": "មាននៅចំណុចត្រួតពិនិត្យ",
+                    "absentAtCheckpoint": "មិនមាននៅចំណុចត្រួតពិនិត្យ"
+                },
+                "checks": {
+                    "exitSummary": "កូដចេញ {code} · {seconds}s",
+                    "continueOnFailure": "ដំណើរការការត្រួតពិនិត្យទាំងអស់ ទោះបីមួយបរាជ័យក៏ដោយ។",
+                    "stopOnFailure": "ឈប់នៅការត្រួតពិនិត្យដំបូងដែលបរាជ័យ។"
+                },
+                "diagnostics": {
+                    "none": "គ្មានការវិនិច្ឆ័យត្រូវបានរាយការណ៍ទេ។"
+                },
+                "search": {
+                    "none": "រកមិនឃើញការផ្គូផ្គងទេ។"
+                },
+                "git": {
+                    "noStagedDiff": "គ្មានលទ្ធផល diff សម្រាប់ការផ្លាស់ប្តូរដែលបានរៀបចំទេ។",
+                    "noUnstagedDiff": "គ្មានលទ្ធផល diff សម្រាប់ការផ្លាស់ប្តូរដែលមិនទាន់រៀបចំទេ។",
+                    "staged": "បានរៀបចំ",
+                    "unstaged": "មិនទាន់រៀបចំ",
+                    "commitApproval": "ការអនុម័ត Git commit",
+                    "stageApproval": "ការអនុម័តការរៀបចំ Git",
+                    "commitNote": "វាបង្កើត git commit ពីលិបិក្រមដែលបានរៀបចំបច្ចុប្បន្ន។ សូមពិនិត្យ coding_git_status និង coding_git_diff ជាមួយ staged=true ជាមុនសិន។",
+                    "stagePreviewNote": "វាបង្ហាញការមើលជាមុនថាផ្លូវណាខ្លះដែលបានស្នើនឹងត្រូវរៀបចំ ហើយលិបិក្រមនឹងមិនផ្លាស់ប្តូរទេ។",
+                    "stageNote": "វាផ្លាស់ប្តូរលិបិក្រម git សម្រាប់ផ្លូវដែលបានស្នើ។"
+                },
+                "patch": {
+                    "validateNote": "វាផ្ទៀងផ្ទាត់បំណះដោយមិនផ្លាស់ប្តូរឯកសារ។",
+                    "applyNote": "សំណើអនុវត្តដែលមានគ្រោះថ្នាក់ខ្ពស់នេះសរសេរឯកសារបន្ទាប់ពី backend បង្កើតចំណុចត្រួតពិនិត្យមុនការអនុវត្ត។",
+                    "hideDiff": "លាក់ diff រួម",
+                    "showDiff": "បង្ហាញ diff រួម"
+                }
             }
         },
         "archive": {
@@ -3401,7 +3462,10 @@
             "encryptedTooltip": "អ៊ីនគ្រីបដោយ AES-256។ មាតិកា និងឈ្មោះឯកសារ​ជាការសម្ងាត់; ត្រូវការពាក្យសម្ងាត់ដើម្បីបើក។",
             "resetDefaults": "កំណត់ឡើងវិញ​ជាលំនាំដើម",
             "scrubErrorCorrectionTooltip": "{label} (ផ្ទៀងផ្ទាត់ហាសនៃការអ៊ិនគ្រីប)",
-            "repairErrorCorrectionTooltip": "{label} (អាចមើលជាមុនដោយការសាកល្បង)"
+            "repairErrorCorrectionTooltip": "{label} (អាចមើលជាមុនដោយការសាកល្បង)",
+            "errorCorrectionBadge": "ការកែកំហុស",
+            "itemsInFolder": "ធាតុ {count} នៅក្នុង /{folder}",
+            "repairNoChangesWritten": "(មិនបានសរសេរការផ្លាស់ប្តូរទេ)"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",
@@ -3758,7 +3822,11 @@
             "keepFirstFound": "រកឃើញមុនគេ",
             "selectAllButOne": "ជ្រើសទាំងអស់លើកលែងមួយក្នុងមួយក្រុម",
             "everyCopyTicked": "ច្រកចម្លងទាំងអស់ត្រូវបានធីក",
-            "everyCopyTickedHint": "ដកធីកច្បាប់ចម្លងមួយក្នុងក្រុមដែលបានបន្លិចនីមួយៗ៖ បើមិនដូច្នេះទេច្បាប់ចម្លងទាំងអស់នឹងត្រូវលុប។"
+            "everyCopyTickedHint": "ដកធីកច្បាប់ចម្លងមួយក្នុងក្រុមដែលបានបន្លិចនីមួយៗ៖ បើមិនដូច្នេះទេច្បាប់ចម្លងទាំងអស់នឹងត្រូវលុប។",
+            "modeExactHint": "ដូចគ្នាគ្រប់បៃ",
+            "modeNonIdenticalHint": "ភាពស្រដៀងគ្នាតាមការយល់ឃើញ ឬអត្ថបទ គ្មានការលុបស្វ័យប្រវត្តិ",
+            "potentialWasteSelected": "ការខ្ជះខ្ជាយដែលអាចមាន (បានជ្រើស)",
+            "similarityDistance": "{similarity}, ចម្ងាយ {distance}"
         },
         "diskUsage": {
             "title": "ការប្រើប្រាស់ថាស",
@@ -4377,7 +4445,9 @@
                 "next": "បន្ទាប់",
                 "scanQr": "តែមត្រូវសម្ងាត់នេះទៅកម្មវិធីផ្ទៀងផ្ទាត់របស់អ្នក (Google Authenticator, Authy, Microsoft Authenticator)។ ឬបញ្ចូលសោដា​ដៃដោយណ។",
                 "setup": "ការផ្ទៀងផ្ទាត់ពីរក្រិត",
-                "verify": "ផ្ទៀងផ្ទាត់ និងបើក"
+                "verify": "ផ្ទៀងផ្ទាត់ និងបើក",
+                "active": "2FA សកម្ម",
+                "inactive": "2FA អសកម្ម"
             }
         },
         "vaultSync": {
@@ -4843,7 +4913,7 @@
             "pagesBranch": "សាខា",
             "pagesPath": "ផ្លូវ",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "អនុញ្ញាត",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4855,7 +4925,12 @@
             "branchList": "បញ្ជីមែកធាង",
             "noBranches": "រកមិនឃើញសាខាទេ",
             "rawUrlCopied": "បានចម្លង URL ដើម",
-            "working": "កំពុងដំណើរការ"
+            "working": "កំពុងដំណើរការ",
+            "pagesDnsIssue": "បានរកឃើញបញ្ហា DNS",
+            "releaseAssetOne": "ឯកសារ {count}",
+            "releaseAssetMany": "ឯកសារ {count}",
+            "repoPrivate": "ឯកជន",
+            "repoPublic": "សាធារណៈ"
         },
         "filenNotes": {
             "title": "កំណត់ត្រាដែលបានអ៊ិនគ្រីប",
@@ -5632,7 +5707,9 @@
             "stopCompare": "បញ្ឈប់",
             "compareStopped": "បានបញ្ឈប់ការប្រៀបធៀប។",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "ការប្រៀបធៀបអានថតទាំងពីរ និងរាល់ថតនៅក្រោមពួកវា។ លើមែកធាងធំ វាអាចចំណាយពេលយូរ ហើយអ្នកអាចបញ្ឈប់វាបាន។"
+            "compareStartHint": "ការប្រៀបធៀបអានថតទាំងពីរ និងរាល់ថតនៅក្រោមពួកវា។ លើមែកធាងធំ វាអាចចំណាយពេលយូរ ហើយអ្នកអាចបញ្ឈប់វាបាន។",
+            "progressDelta": "[ដែលតា]",
+            "progressCopy": "[ចម្លង]"
         },
         "accountLock": {
             "title": "ជ្រើសរើសគណនី",
