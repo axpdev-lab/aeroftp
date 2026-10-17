@@ -14,6 +14,8 @@ pub const CODE_HUMAN_VERIFICATION_REQUIRED: i64 = 9001;
 pub const CODE_ADDRESS_MISSING: i64 = 33_102;
 /// `incubating/account/js/src/accountApi.ts`: the domain is external.
 pub const CODE_DOMAIN_EXTERNAL: i64 = 33_103;
+/// `errorCodes.ts`: a node with the same name already exists.
+pub const CODE_ALREADY_EXISTS: i64 = 2500;
 
 #[derive(Debug, Error)]
 pub enum ProtonError {
@@ -55,6 +57,28 @@ pub enum ProtonError {
     /// The browser sign-in was cancelled by the user.
     #[error("Proton sign-in cancelled")]
     SignInCancelled,
+
+    /// A block storage URL answered 404: its token expired and a fresh one
+    /// must be requested for that block (`fileDownloader.ts`).
+    #[error("Proton storage token expired")]
+    StorageTokenExpired,
+
+    /// A downloaded block or manifest failed its integrity check.
+    #[error("Proton integrity check failed: {0}")]
+    Integrity(String),
+
+    /// A node with the same name exists in the folder (API code 2500).
+    /// `draft_client_uid` is set when the conflict is an unfinished upload.
+    #[error("an item with this name already exists")]
+    AlreadyExists {
+        link_id: Option<String>,
+        draft_client_uid: Option<String>,
+        is_draft: bool,
+    },
+
+    /// The node, path or volume does not exist (API code 2501).
+    #[error("not found on Proton Drive: {0}")]
+    NotFound(String),
 
     /// A response did not have the shape the SDK expects.
     #[error("unexpected Proton response: {0}")]
