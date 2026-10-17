@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "Chiffré avec AES-256. Le contenu et les noms de fichiers sont confidentiels ; le mot de passe est requis pour ouvrir.",
             "resetDefaults": "Réinitialiser",
             "scrubErrorCorrectionTooltip": "{label} (vérifie les hachages de chiffrement)",
-            "repairErrorCorrectionTooltip": "{label} (aperçu en simulation disponible)"
+            "repairErrorCorrectionTooltip": "{label} (aperçu en simulation disponible)",
+            "repairDryRunNoDamage": "Simulation : aucun dommage ; rien à réparer. Rien n'a été écrit.",
+            "repairDryRunCannotRepair": "Simulation : aucun des {damaged} segment(s) endommagé(s) n'est réparable. Rien n'a été écrit.",
+            "repairDryRunCanRepair": "Simulation : {repaired} segment(s) endommagé(s) réparable(s). Rien n'a été écrit.",
+            "repairDryRunMetadata": "Simulation : l'en-tête ou le manifeste du coffre peut être reconstruit à partir de la parité. Rien n'a été écrit.",
+            "metadataRepaired": "En-tête ou manifeste du coffre reconstruit à partir de la parité.",
+            "repairMetadataSuccess": "Réparation terminée : en-tête ou manifeste du coffre reconstruit à partir de la parité"
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "L'appareil portable a été déconnecté. Rebranchez le câble et rouvrez-le.",
             "portable_needs_replug": "Non monté par le bureau. Débranchez et rebranchez le câble, puis rouvrez-le.",
             "volumes_need_mount_observe": "Dans le snap, les volumes apparaissent une fois l'autorisation mount-observe connectée. Exécutez ceci dans un terminal, puis revenez à AeroFTP :",
-            "volumes_unavailable": "Impossible de lire les volumes montés."
+            "volumes_unavailable": "Impossible de lire les volumes montés.",
+            "portable_device": "Appareil portable"
         },
         "viewMode": {
             "list": "Liste",

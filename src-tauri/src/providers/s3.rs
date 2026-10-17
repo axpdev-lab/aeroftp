@@ -10514,6 +10514,7 @@ mod tests {
             let temp = tempfile::tempdir().unwrap();
             let config_path = temp.path().join("rclone.conf");
             let servers = vec![crate::rclone_import::RcloneExportServer {
+                id: "marker-live".into(),
                 name: "marker-live".into(),
                 host: endpoint.clone(),
                 port: 443,

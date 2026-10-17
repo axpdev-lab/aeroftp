@@ -4758,7 +4758,7 @@ const App: React.FC = () => {
       setActivePortableDeviceId(session.deviceId);
 
       const displayName =
-        profile?.name || session.displayName || device.displayName || 'Portable device';
+        profile?.name || session.displayName || device.displayName || t('sidebar.portable_device');
       // PLACES-only opens stay providerId 'mtp'; saved device profiles use mtp-portable.
       const providerId = profile?.providerId || 'mtp';
       const mtpParams: ConnectionParams = {

@@ -838,6 +838,180 @@ pub fn ftp_tls_mode_for_export(
     }
 }
 
+// ============ Export identity ============
+
+/// The secret an exporter writes for the profile with id `profile_id`.
+///
+/// Both export surfaces (CLI `collect_export_scaffold`, GUI
+/// `export_bridge_config`) key the map they hand to `export_*` by profile id,
+/// the key the vault keeps the secret under (`server_<id>`). It was keyed by
+/// name, so two profiles of one name (a list saved before names were unique)
+/// both went out with the second one's secret. A profile with no id has
+/// nothing in the vault, and nothing here.
+pub fn export_secret<'a>(
+    passwords: &'a HashMap<String, String>,
+    profile_id: &str,
+) -> Option<&'a str> {
+    if profile_id.is_empty() {
+        return None;
+    }
+    passwords
+        .get(profile_id)
+        .map(String::as_str)
+        .filter(|s| !s.is_empty())
+}
+
+/// The entry names one exported file gives out, so that no two profiles are
+/// written under one name.
+///
+/// Most formats find an entry by the name it is written under. A second
+/// `[Sessions\Lab]` or `Host Lab` does not add a session: it is merged into
+/// the first or never reached (ssh takes the first `Host` that matches), and a
+/// second mc alias or PuTTY registry key of that name replaces the first,
+/// while the export counted both. Two profiles reach one name when a list
+/// saved before names were unique holds two of it, or when a format's own
+/// character rules map two names onto one (`my lab` and `my_lab` are one lftp
+/// bookmark). The later one gets the first free `-2`, `-3`, ..., as rclone,
+/// Cyberduck and Duplicacy already did.
+///
+/// Every name the file can write is reserved up front, so a suffixed name
+/// never takes the one a later profile is called by.
+pub struct ExportEntryNames {
+    fold_case: bool,
+    reserved: std::collections::HashSet<String>,
+    used: std::collections::HashSet<String>,
+}
+
+impl ExportEntryNames {
+    /// For a format that tells `Lab` from `lab` (ssh `Host`, AWS sections, mc
+    /// aliases, lftp bookmarks, FileZilla sites). `names`: the name each
+    /// profile handed to the exporter would be written under, in the
+    /// format's own form.
+    pub fn exact<I, S>(names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        Self::with_case(names, false)
+    }
+
+    /// For a format that keeps its entries where `Lab` and `lab` are one name:
+    /// the Windows registry and INI files (WinSCP, PuTTY, MobaXterm), and file
+    /// names on the file systems macOS and Windows use (Cyberduck).
+    pub fn ignoring_case<I, S>(names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        Self::with_case(names, true)
+    }
+
+    fn with_case<I, S>(names: I, fold_case: bool) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut out = Self {
+            fold_case,
+            reserved: std::collections::HashSet::new(),
+            used: std::collections::HashSet::new(),
+        };
+        out.reserved = names.into_iter().map(|n| out.key(n.as_ref())).collect();
+        out
+    }
+
+    /// Names the format already gives a meaning of its own, such as the
+    /// session WinSCP and PuTTY load as their defaults: a profile called that
+    /// goes out under the next free suffix like any other collision.
+    pub fn with_taken<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        for name in names {
+            let key = self.key(name.as_ref());
+            self.used.insert(key);
+        }
+        self
+    }
+
+    fn key(&self, name: &str) -> String {
+        if self.fold_case {
+            name.to_lowercase()
+        } else {
+            name.to_string()
+        }
+    }
+
+    /// `name` if no entry has it yet, otherwise the first free `name-2`,
+    /// `name-3`, ... that no profile is called by either.
+    pub fn claim(&mut self, name: &str) -> String {
+        if self.used.insert(self.key(name)) {
+            return name.to_string();
+        }
+        let mut n = 2u32;
+        loop {
+            let candidate = format!("{name}-{n}");
+            let key = self.key(&candidate);
+            if !self.reserved.contains(&key) && self.used.insert(key) {
+                return candidate;
+            }
+            n += 1;
+        }
+    }
+}
+
+/// Two profiles named "Lab", as a list saved before names were unique can
+/// hold: `a` with id `id-a` and secret `secret-a`, `b` with `id-b` and
+/// `secret-b`, built from profile JSON as the GUI export builds them.
+#[cfg(test)]
+pub(crate) fn two_profiles_named_lab<T: serde::de::DeserializeOwned>(
+    a: serde_json::Value,
+    b: serde_json::Value,
+) -> (Vec<T>, HashMap<String, String>) {
+    let servers = [(a, "id-a"), (b, "id-b")]
+        .into_iter()
+        .map(|(mut profile, id)| {
+            profile["id"] = id.into();
+            profile["name"] = "Lab".into();
+            serde_json::from_value(profile).expect("export server shape")
+        })
+        .collect();
+    let passwords = HashMap::from([
+        ("id-a".to_string(), "secret-a".to_string()),
+        ("id-b".to_string(), "secret-b".to_string()),
+    ]);
+    (servers, passwords)
+}
+
+/// What an importer read back, as sorted `(name, host, secret)`.
+#[cfg(test)]
+pub(crate) fn names_hosts_secrets(
+    servers: &[crate::profile_export::ServerProfileExport],
+) -> Vec<(String, String, String)> {
+    let mut out: Vec<_> = servers
+        .iter()
+        .map(|s| {
+            (
+                s.name.clone(),
+                s.host.clone(),
+                s.credential.clone().unwrap_or_default(),
+            )
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// `[(name, host, secret)]` as owned strings, to compare with
+/// [`names_hosts_secrets`].
+#[cfg(test)]
+pub(crate) fn owned3(rows: &[(&str, &str, &str)]) -> Vec<(String, String, String)> {
+    rows.iter()
+        .map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string()))
+        .collect()
+}
+
 // ============ Export outcome ============
 
 /// A profile an exporter was handed and did not write, with the reason.
@@ -1170,5 +1344,58 @@ mod tests {
             assert_eq!(mode & 0o777, 0o600);
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The map is keyed by id: two profiles of one name each find their own
+    /// secret, and a profile with no id finds none, even under an empty key.
+    #[test]
+    fn export_secret_is_looked_up_by_profile_id() {
+        let passwords = HashMap::from([
+            ("id-a".to_string(), "secret-a".to_string()),
+            ("id-b".to_string(), "secret-b".to_string()),
+            (String::new(), "orphan".to_string()),
+            ("id-empty".to_string(), String::new()),
+        ]);
+        assert_eq!(export_secret(&passwords, "id-a"), Some("secret-a"));
+        assert_eq!(export_secret(&passwords, "id-b"), Some("secret-b"));
+        assert_eq!(export_secret(&passwords, ""), None);
+        assert_eq!(export_secret(&passwords, "id-empty"), None);
+        assert_eq!(export_secret(&passwords, "Lab"), None);
+    }
+
+    #[test]
+    fn export_entry_names_never_give_one_name_twice() {
+        // Two of one name, and a third whose real name is the first suffix:
+        // the suffix steps aside for the profile called by it.
+        for mut names in [
+            ExportEntryNames::exact(["Lab", "Lab", "Lab-2"]),
+            ExportEntryNames::ignoring_case(["Lab", "Lab", "Lab-2"]),
+        ] {
+            assert_eq!(names.claim("Lab"), "Lab");
+            assert_eq!(names.claim("Lab"), "Lab-3");
+            assert_eq!(names.claim("Lab-2"), "Lab-2");
+        }
+
+        // Where the registry or the file system compares without case.
+        let mut names = ExportEntryNames::ignoring_case(["Lab", "lab", "LAB-2"]);
+        assert_eq!(names.claim("Lab"), "Lab");
+        assert_eq!(names.claim("lab"), "lab-3");
+        assert_eq!(names.claim("LAB-2"), "LAB-2");
+
+        // Where the format tells them apart, both keep their names.
+        let mut names = ExportEntryNames::exact(["Lab", "lab"]);
+        assert_eq!(names.claim("Lab"), "Lab");
+        assert_eq!(names.claim("lab"), "lab");
+
+        // A name the format keeps for itself is never given out.
+        let mut names = ExportEntryNames::ignoring_case(["Default Settings", "default settings"])
+            .with_taken(["Default Settings"]);
+        assert_eq!(names.claim("Default Settings"), "Default Settings-2");
+        assert_eq!(names.claim("default settings"), "default settings-3");
+
+        // A name nobody reserved is still given once.
+        let mut names = ExportEntryNames::exact(Vec::<String>::new());
+        assert_eq!(names.claim("x"), "x");
+        assert_eq!(names.claim("x"), "x-2");
     }
 }

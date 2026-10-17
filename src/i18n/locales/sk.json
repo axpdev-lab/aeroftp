@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "Šifrované pomocou AES-256. Obsah a názvy súborov sú dôverné; na otvorenie je potrebné heslo.",
             "resetDefaults": "Obnoviť predvolené",
             "scrubErrorCorrectionTooltip": "{label} (overí šifrovacie haše)",
-            "repairErrorCorrectionTooltip": "{label} (k dispozícii náhľad skúšobného behu)"
+            "repairErrorCorrectionTooltip": "{label} (k dispozícii náhľad skúšobného behu)",
+            "repairDryRunNoDamage": "Skúšobný beh: žiadne poškodenie; nie je čo opravovať. Nič nebolo zapísané.",
+            "repairDryRunCannotRepair": "Skúšobný beh: žiadnu z poškodených častí ({damaged}) nemožno opraviť. Nič nebolo zapísané.",
+            "repairDryRunCanRepair": "Skúšobný beh: počet poškodených častí, ktoré možno opraviť: {repaired}. Nič nebolo zapísané.",
+            "repairDryRunMetadata": "Skúšobný beh: hlavičku alebo manifest trezoru možno obnoviť z parity. Nič nebolo zapísané.",
+            "metadataRepaired": "Z parity bola obnovená hlavička alebo manifest trezoru.",
+            "repairMetadataSuccess": "Oprava dokončená: z parity bola obnovená hlavička alebo manifest trezoru"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "Prenosné zariadenie bolo odpojené. Znova zapojte kábel a otvorte ho znova.",
             "portable_needs_replug": "Nie je pripojené desktopom. Odpojte a znova zapojte kábel a potom ho znova otvorte.",
             "volumes_need_mount_observe": "V balíku snap sa zväzky zobrazia po pripojení oprávnenia mount-observe. Spustite toto v termináli a potom sa vráťte do AeroFTP:",
-            "volumes_unavailable": "Pripojené zväzky sa nepodarilo načítať."
+            "volumes_unavailable": "Pripojené zväzky sa nepodarilo načítať.",
+            "portable_device": "Prenosné zariadenie"
         },
         "viewMode": {
             "list": "Zoznam",

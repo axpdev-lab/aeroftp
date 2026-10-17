@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "AES-256 titkosítással. A tartalom és a fájlnevek bizalmasak; a megnyitáshoz jelszó szükséges.",
             "resetDefaults": "Alapértelmezett visszaállítása",
             "scrubErrorCorrectionTooltip": "{label} (ellenőrzi a titkosítási hasheket)",
-            "repairErrorCorrectionTooltip": "{label} (próbafuttatásos előnézet elérhető)"
+            "repairErrorCorrectionTooltip": "{label} (próbafuttatásos előnézet elérhető)",
+            "repairDryRunNoDamage": "Próbafuttatás: nincs sérülés; nincs mit javítani. Nem történt írás.",
+            "repairDryRunCannotRepair": "Próbafuttatás: a(z) {damaged} sérült darabból egyik sem javítható. Nem történt írás.",
+            "repairDryRunCanRepair": "Próbafuttatás: {repaired} sérült darab javítható. Nem történt írás.",
+            "repairDryRunMetadata": "Próbafuttatás: a széf fejléce vagy manifesztje újraépíthető a paritásból. Nem történt írás.",
+            "metadataRepaired": "A széf fejléce vagy manifesztje a paritásból újraépült.",
+            "repairMetadataSuccess": "Javítás kész: a széf fejléce vagy manifesztje a paritásból újraépült"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "A hordozható eszköz lecsatlakozott. Csatlakoztassa újra a kábelt, és nyissa meg újra.",
             "portable_needs_replug": "Az asztal nem csatolta fel. Húzza ki, majd dugja vissza a kábelt, és nyissa meg újra.",
             "volumes_need_mount_observe": "A snapben a kötetek akkor jelennek meg, ha a mount-observe engedély csatlakoztatva van. Futtassa ezt egy terminálban, majd térjen vissza az AeroFTP-be:",
-            "volumes_unavailable": "Nem sikerült beolvasni a csatolt köteteket."
+            "volumes_unavailable": "Nem sikerült beolvasni a csatolt köteteket.",
+            "portable_device": "Hordozható eszköz"
         },
         "viewMode": {
             "list": "Lista",
