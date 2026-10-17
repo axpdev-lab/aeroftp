@@ -358,6 +358,9 @@ windows = { version = "0.58", features = [
     # MTP portable-device provider (APPENDIX-MTP Phase 3): WPD COM + hotplug wake.
     "Win32_Devices_PortableDevices",
     "Win32_System_Com",
+    # PuTTY session names are in the ANSI code page (putty_import.rs):
+    # WideCharToMultiByte / MultiByteToWideChar with CP_ACP.
+    "Win32_Globalization",
 ] }
 # Windows Registry access for auto-update install-format detection.
 # Walks HKLM/HKCU `Software\Microsoft\Windows\CurrentVersion\Uninstall`
