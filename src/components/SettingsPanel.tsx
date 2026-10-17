@@ -3782,8 +3782,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 // an empty one is a real answer, not a missing list.
                                                                                 const decided = result.profilesAfterDecisions !== undefined && result.profilesAfterDecisions !== null;
                                                                                 if (Array.isArray(importedProfiles) && (importedProfiles.length > 0 || decided)) {
-                                                                                    await storeSavedServerProfiles(importedProfiles);
-                                                                                    setServers(importedProfiles);
+                                                                                    // As stored: a name another profile holds comes back as " (1)".
+                                                                                    setServers(await storeSavedServerProfiles(importedProfiles));
                                                                                     onServersChanged?.();
                                                                                 }
                                                                             }

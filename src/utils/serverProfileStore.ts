@@ -257,7 +257,8 @@ export const mergeSavedServerProfile = async (
             next.push(await updater(profile));
         }
         result = found ? next : profiles;
-        if (found) await storeSavedServerProfiles(result, connectionMetadata, read.userId);
+        // As stored: a name another profile holds comes back as " (1)".
+        if (found) result = await storeSavedServerProfiles(result, connectionMetadata, read.userId);
     };
 
     const queued = profileWriteQueue.then(run, run);

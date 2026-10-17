@@ -424,4 +424,14 @@ describe('the saved-profile list shown after a write', () => {
             expect(line).toMatch(/setServers\(await storeSavedServerProfiles\(|const stored = await storeSavedServerProfiles\(/);
         }
     });
+
+    it('Settings never shows the list it sent once the write has stored it', () => {
+        const lines = settingsSource.split('\n');
+        const writes = lines.flatMap((line, i) => (/await storeSavedServerProfiles\(\w+/.test(line) && !line.trim().startsWith('//') ? [i] : []));
+        expect(writes.length).toBeGreaterThan(0);
+        for (const i of writes) {
+            const sent = /await storeSavedServerProfiles\((\w+)/.exec(lines[i])![1];
+            expect(lines.slice(i, i + 3).join('\n')).not.toMatch(new RegExp(`setServers\\(${sent}\\)`));
+        }
+    });
 });

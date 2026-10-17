@@ -362,6 +362,18 @@ describe('account-bound profile writes', () => {
         });
     });
 
+    it('resolves a merge to the list the write stored', async () => {
+        // A rename onto a name another profile holds is stored as " (1)": a
+        // view that keeps the merge's result must show that name.
+        const other = sampleProfile({ id: 'srv_2', name: 'Lab' });
+        const stored = [sampleProfile({ name: 'Lab (1)' }), other];
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile(), other] })
+            .mockResolvedValueOnce(stored);
+
+        await expect(mergeSavedServerProfile('srv_1', profile => ({ ...profile, name: 'Lab' }))).resolves.toEqual(stored);
+    });
+
     it('awaits an updater before writing the merged profile', async () => {
         let release: (profile: ServerProfile) => void = () => {};
         const gate = new Promise<ServerProfile>(resolve => {
