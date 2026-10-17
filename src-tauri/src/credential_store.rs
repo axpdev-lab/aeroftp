@@ -502,6 +502,18 @@ fn claim_lock_fallback_dir() -> Option<PathBuf> {
     }
 }
 
+/// The keyring lock file, locked by this process. The lock ends when this is
+/// dropped, not when the last descriptor of the file closes: a child another
+/// thread forks meanwhile holds a copy of every descriptor until it execs,
+/// and the lock belongs to the open file description that copy shares.
+struct HeldLock(std::fs::File);
+
+impl Drop for HeldLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
 /// Lock `path` exclusively, waiting up to `wait` for another holder. The OS
 /// releases the lock when its holder exits, so a crash leaves nothing stale.
 fn acquire_claim_lock(path: &Path, wait: std::time::Duration) -> Result<ClaimLock, String> {
@@ -518,7 +530,7 @@ fn acquire_claim_lock(path: &Path, wait: std::time::Duration) -> Result<ClaimLoc
         match file.try_lock() {
             Ok(()) => {
                 return Ok(ClaimLock {
-                    _guard: Box::new(file),
+                    _guard: Box::new(HeldLock(file)),
                 })
             }
             Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
@@ -2162,8 +2174,8 @@ mod tests {
     mod keyring_slots {
         use super::super::{
             acquire_claim_lock, claim_lock_dir, claim_slot_in, load_passphrase_in, release_slot_in,
-            ClaimLock, CredentialError, KeyringSlot, PassphraseSlots, SlotContent, VaultKeyFile,
-            VaultKeyMode, BASE64, PASSPHRASE_LEN,
+            ClaimLock, CredentialError, HeldLock, KeyringSlot, PassphraseSlots, SlotContent,
+            VaultKeyFile, VaultKeyMode, BASE64, PASSPHRASE_LEN,
         };
         use base64::Engine as _;
         use std::cell::{Cell, RefCell};
@@ -2453,8 +2465,18 @@ mod tests {
             let second = acquire_claim_lock(&path, Duration::from_millis(200));
             assert!(second.is_err(), "taken while held");
 
+            // A child forked by another thread holds a copy of the descriptor
+            // until it execs: the lock still ends with the guard.
+            let inherited = first
+                ._guard
+                .downcast_ref::<HeldLock>()
+                .expect("the keyring lock is a file lock")
+                .0
+                .try_clone()
+                .unwrap();
             drop(first);
             assert!(acquire_claim_lock(&path, Duration::ZERO).is_ok());
+            drop(inherited);
         }
 
         #[test]
