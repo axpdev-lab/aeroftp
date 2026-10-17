@@ -6976,8 +6976,11 @@ fn tracing_level_from_rust_log(value: &str) -> Option<tracing::Level> {
 /// Crates whose own debug and trace output carries secrets verbatim, held at
 /// INFO whatever `-v`, `-vv` or `RUST_LOG` asks for. suppaftp writes every
 /// control-channel line at TRACE, the login's `PASS <password>` included, and
-/// every custom command at DEBUG before it validates the line.
-const SECRET_BEARING_LOG_TARGETS: &[&str] = &["suppaftp"];
+/// every custom command at DEBUG before it validates the line. pgp (rpgp,
+/// under the native Proton Drive client) writes the secret-key material of
+/// every key it parses, in hex, at DEBUG: Proton's encrypted account and
+/// node keys (seen in a debug run by L2 Debby, with every packet dumped).
+const SECRET_BEARING_LOG_TARGETS: &[&str] = &["suppaftp", "pgp"];
 
 /// The per-target filter of the CLI subscriber: `level` for everything, capped
 /// at INFO for [`SECRET_BEARING_LOG_TARGETS`]. A quieter `level` stays quieter.
@@ -77875,6 +77878,9 @@ mod tests {
         assert!(at_trace.would_enable("suppaftp::async_ftp::tokio_ftp", &Level::INFO));
         assert!(!at_trace.would_enable("suppaftp::async_ftp::tokio_ftp", &Level::DEBUG));
         assert!(!cli_log_targets(Level::WARN).would_enable("suppaftp", &Level::INFO));
+        // rpgp's key parser dumps secret-key material at DEBUG.
+        assert!(!at_trace.would_enable("pgp::packet::secret_key_parser", &Level::DEBUG));
+        assert!(at_trace.would_enable("pgp::packet::secret_key_parser", &Level::INFO));
     }
 
     #[test]
