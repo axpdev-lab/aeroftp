@@ -41,7 +41,10 @@ use super::api::ProtonApi;
 use super::client::{DriveClient, Quota};
 use super::download::DownloadOutcome;
 use super::drive_crypto::Verified;
-use super::error::ProtonError;
+use super::error::{
+    ProtonError, CODES_NOT_ENOUGH_PERMISSIONS, CODES_NO_SPACE, CODE_MAX_FILE_SIZE_FOR_FREE_USER,
+    CODE_NOT_EXISTS,
+};
 use super::nodes::Node;
 use super::{account, app_version, vault};
 use crate::providers::proton::ProtonConfig;
@@ -309,6 +312,20 @@ pub fn map_error(path: &str, error: ProtonError) -> ProviderError {
         error @ (ProtonError::Integrity(_)
         | ProtonError::Crypto(_)
         | ProtonError::RevisionUnsupported) => ProviderError::TransferFailed(error.to_string()),
+        ProtonError::Api { code, .. } if code == CODE_NOT_EXISTS => {
+            ProviderError::NotFound(path.to_string())
+        }
+        ProtonError::Api { code, message, .. } if CODES_NOT_ENOUGH_PERMISSIONS.contains(&code) => {
+            ProviderError::PermissionDenied(format!("{path}: {message}"))
+        }
+        ProtonError::Api { code, message, .. } if code == CODE_MAX_FILE_SIZE_FOR_FREE_USER => {
+            ProviderError::FileTooLarge(format!("{path}: {message}"))
+        }
+        ProtonError::Api { code, message, .. } if CODES_NO_SPACE.contains(&code) => {
+            ProviderError::ServerError(format!(
+                "Proton Drive has no space left for {path}: {message}"
+            ))
+        }
         error @ (ProtonError::Api { .. } | ProtonError::Decode(_)) => {
             ProviderError::ServerError(error.to_string())
         }
@@ -1616,6 +1633,28 @@ mod tests {
         assert!(matches!(
             map_error("/x", ProtonError::Timeout),
             ProviderError::Timeout
+        ));
+        let api = |code: i64| ProtonError::Api {
+            status: 422,
+            code,
+            message: "from Proton".into(),
+        };
+        assert!(matches!(map_error("/x", api(2501)), ProviderError::NotFound(ref p) if p == "/x"));
+        assert!(matches!(
+            map_error("/x", api(2011)),
+            ProviderError::PermissionDenied(_)
+        ));
+        assert!(matches!(
+            map_error("/x", api(200_003)),
+            ProviderError::FileTooLarge(_)
+        ));
+        assert!(matches!(
+            map_error("/x", api(200_002)),
+            ProviderError::ServerError(ref t) if t.contains("no space left")
+        ));
+        assert!(matches!(
+            map_error("/x", api(2000)),
+            ProviderError::ServerError(_)
         ));
         assert!(matches!(
             map_error(
