@@ -184,6 +184,9 @@ pub fn configure_webkit_compositing() {
         },
     );
 
+    // Gate G3 (scripts/snap-gui-check.sh) requires the Accelerated line from
+    // the confined snap and fails on the other two; the wording is pinned by
+    // .github/scripts/test_snap_gui_check.py.
     let record = match decision {
         Decision::RespectOverride => (
             false,

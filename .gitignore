@@ -129,9 +129,12 @@ run-clean.sh
 !/scripts/publish-sourceforge.sh
 # Exception: snap gates and stage-package staleness audit (#460, #462)
 !/scripts/snap-abi-check.sh
+!/scripts/snap-gpu-lint-check.sh
 !/scripts/snap-gui-check.sh
 !/scripts/snap-portal-check.sh
 !/scripts/snap-stale-packages.mjs
+# Exception: the AppImage permission check of the "Fix AppImage" step
+!/scripts/appimage-permissions-check.sh
 # Exception: Linux ACL packaging contracts for AeroRsync (G4)
 !/scripts/assert-linux-acl-packaging.sh
 # Exception: re-emits the aerorsync module as a standalone crate, so the CI can

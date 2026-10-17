@@ -608,14 +608,10 @@ jobs:
           # the following release), confirming the delta download applies.
 
           # The repackaged image must keep Fix 4: no file executable by its
-          # owner only, no folder other than 755.
-          BAD=$(unsquashfs -ll -o "$("$APPIMAGE" --appimage-offset)" "$APPIMAGE" \
-            | awk '($1 ~ /^-..x/ && substr($1,10,1) != "x") || ($1 ~ /^d/ && $1 != "drwxr-xr-x") {print $1, $NF}')
-          if [ -n "$BAD" ]; then
-            echo "::error::AppImage entries not runnable or readable by every user:"
-            echo "$BAD"
-            exit 1
-          fi
+          # owner only, no folder other than 755. A script rather than a pipe
+          # into awk: this step has no pipefail, and the script fails on a
+          # listing it cannot read instead of passing it.
+          "$GITHUB_WORKSPACE/scripts/appimage-permissions-check.sh" "$APPIMAGE"
 
       - name: Assert Linux ACL packaging contracts
         if: matrix.target == 'linux'

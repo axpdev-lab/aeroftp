@@ -15,9 +15,10 @@
 #
 # Two independent passes, because they fail for different reasons:
 #
-#   1. Content check (authoritative here, always runs). Unpacks the snap and
+#   1. Content check (authoritative here, always runs). Lists the snap and
 #      looks for provider-owned files. It needs only `unsquashfs`, so it never
-#      degrades into "could not verify" on a runner.
+#      degrades into "could not verify" on a runner. A listing it cannot read
+#      line by line is an error, never a clean snap.
 #   2. `snapcraft lint`, when snapcraft is available. Its `gpu:` warnings are
 #      the upstream wording of the same defect, and its remaining `library:`
 #      warnings are printed for a human to judge one by one. Those are NOT
@@ -26,16 +27,19 @@
 #      blanket-ignored. On disposable GitHub-hosted runners it uses sudo to
 #      access the build action's LXD provider and lint inside core22; failure
 #      to run is an environment error. Elsewhere an unavailable
-#      linter leaves the lint half UNVERIFIED, never OK. Tested with stub
-#      tools: .github/scripts/test_snap_gpu_lint_check.py.
+#      linter leaves the lint half UNVERIFIED, never OK. A lint that ran
+#      without announcing the gpu linter, or whose report holds a line that
+#      is neither a header nor a record, is UNVERIFIED everywhere. Tested
+#      with stub tools: .github/scripts/test_snap_gpu_lint_check.py.
 #
 # Usage:
 #   scripts/snap-gpu-lint-check.sh <snap-file>
 #   scripts/snap-gpu-lint-check.sh <snap-file> --no-snapcraft   # content only
 #
 # Exit codes: 0 = no provider-owned GPU userspace inside the snap,
-#             1 = the snap ships its own, 2 = usage / environment error
-#             (including an unverified lint on a GitHub-hosted runner).
+#             1 = the snap ships its own, 2 = usage / environment error,
+#             a listing or lint report the gate cannot read, or an
+#             unverified lint on a GitHub-hosted runner.
 
 set -euo pipefail
 
@@ -101,16 +105,6 @@ if ! unsquashfs -l "$SNAP_FILE" >"$LIST" 2>"$TMP/list.err"; then
   exit 2
 fi
 
-ENTRIES="$(grep -c '' "$LIST" || true)"
-# A snap that lists as (almost) nothing is a broken read, not a clean snap.
-# Without this, an empty listing would sail through the loop below and be
-# reported as "no provider-owned GPU userspace", which is the same false green
-# in a different disguise.
-if [ "$ENTRIES" -lt 2 ]; then
-  echo "::error::listing $SNAP_FILE produced $ENTRIES entries; refusing to read that as a clean snap" >&2
-  exit 2
-fi
-
 # Files the provider owns. Anything matching these inside the app snap is a
 # duplicate of something `mesa-core22` will mount at $SNAP/graphics, which is
 # precisely what `graphics-core22-cleanup` exists to strip.
@@ -121,11 +115,34 @@ fi
 # Each listing line is a whole path and nothing else, so a name containing
 # spaces stays intact; that is why `-l` is used rather than the `-ll` long
 # format, whose trailing path would have to be cut out of columns.
+#
+# Every line has to be in that shape, and it is counted. `unsquashfs -l` prints
+# the root as `squashfs-root` and every entry below it as `squashfs-root/<path>`,
+# with no header (measured on 4.5, 4.6.1 and 4.7.5, the releases in jammy,
+# noble and resolute). The match below works on the path with that prefix
+# removed, so a listing in any other shape (relative paths, `./`, a header the
+# gate has never seen) used to skip every line and print OK over a snap it had
+# not read. A line that is not the root or a prefixed entry is now a listing
+# this gate cannot read, which is an error and never a clean snap.
 OFFENDERS=()
-while IFS= read -r entry; do
+UNREAD=()
+ROOTS=0
+ENTRIES=0
+# `|| [ -n "$entry" ]`: a last line without a newline is still an entry.
+while IFS= read -r entry || [ -n "$entry" ]; do
+  case "$entry" in
+    squashfs-root)
+      ROOTS=$((ROOTS + 1))
+      continue
+      ;;
+    squashfs-root/*) ;;
+    *)
+      UNREAD+=("$entry")
+      continue
+      ;;
+  esac
+  ENTRIES=$((ENTRIES + 1))
   rel="${entry#squashfs-root/}"
-  # The root entry itself carries no prefix to strip: skip it.
-  [ "$rel" = "$entry" ] && continue
   case "$rel" in
     graphics | graphics/*) continue ;;
     # Both forms on purpose: paths are relative once the `squashfs-root/`
@@ -143,6 +160,18 @@ while IFS= read -r entry; do
       ;;
   esac
 done <"$LIST"
+
+# What was recognised has to add up to a snap: one root, no unread line, and
+# `meta/snap.yaml`, which every snap carries. An empty or near-empty listing
+# fails here too: that is a broken read, not a clean snap.
+if [ "${#UNREAD[@]}" -gt 0 ] || [ "$ROOTS" -ne 1 ] ||
+  ! grep -qxF 'squashfs-root/meta/snap.yaml' "$LIST"; then
+  echo "::error::cannot read the listing of $SNAP_FILE: ${#UNREAD[@]} line(s) outside squashfs-root/, root listed $ROOTS time(s), $ENTRIES entries; refusing to read that as a clean snap" >&2
+  if [ "${#UNREAD[@]}" -gt 0 ]; then
+    printf '    unread: %s\n' "${UNREAD[@]:0:5}" >&2
+  fi
+  exit 2
+fi
 
 echo "Snap:    $SNAP_FILE"
 echo "Listed:  $ENTRIES entries"
@@ -243,11 +272,57 @@ if grep -qE "^${STAMP}[[:space:]]*(-[[:space:]]*)?gpu:" "$LINT_OUT"; then
   exit 1
 fi
 
+# Everything below reads the report as clean unless it says otherwise, so
+# first make sure it is a report this gate can read at all.
+#
+# snapcraft announces every linter it starts ("Running linter: gpu",
+# run_linters in snapcraft/linters/linters.py) and skips a linter that
+# snapcraft.yaml ignores without printing anything, so a missing announcement
+# means the gpu linter never ran: ignored by `lint: ignore: [gpu]`, or
+# announced in words this gate does not know. Neither is a clean lint.
+if ! grep -qE "^${STAMP}[[:space:]]*Running linter: gpu[[:space:]]*\$" "$LINT_OUT"; then
+  echo "::error::snapcraft lint never announced the gpu linter ('Running linter: gpu'); lint is UNVERIFIED"
+  exit 2
+fi
+
 # A report and even a zero exit can coexist with failed library checks.
 # Seen in the first real managed-mode run: 662 /bin/bash GLIBC loader errors
 # followed by "Lint warnings:" and exit 0. Never print OK over that failure.
 if grep -qE ': .*version .+ not found \(required by ' "$LINT_OUT"; then
   echo "::error::snapcraft library checks encountered loader errors; lint is UNVERIFIED"
+  exit 2
+fi
+
+# From the first linter announcement on, snapcraft prints only more
+# announcements and the report: a "Lint OK:", "Lint warnings:", "Lint errors:"
+# or "Lint information:" header, each followed by "- <linter>: ..." records
+# (`report` in the same file; seen on snapcraft 9.1.4 in CI). The gpu: match
+# above only knows that shape, so a finding in any other shape (another
+# bullet, another header, a linter that was renamed) would read as clean. Any
+# line here that is not an announcement, a header, or a record of a linter
+# announced above is a report this gate cannot read.
+LINTERS=" "
+UNREAD=()
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%$'\r'}"
+  [[ $line =~ ^${STAMP}[[:space:]]*(.*)$ ]] && line="${BASH_REMATCH[2]}"
+  if [[ $line =~ ^Running\ linter:\ ([A-Za-z0-9_-]+)[[:space:]]*$ ]]; then
+    LINTERS+="${BASH_REMATCH[1]} "
+    continue
+  fi
+  # Before the first announcement: provider and instance progress.
+  [ "$LINTERS" = " " ] && continue
+  [[ $line =~ ^[[:space:]]*$ ]] && continue
+  [[ $line =~ ^Lint\ (OK|warnings|errors|information):$ ]] && continue
+  if [[ $line =~ ^-\ ([A-Za-z0-9_-]+):\  ]] && [[ $LINTERS == *" ${BASH_REMATCH[1]} "* ]]; then
+    continue
+  fi
+  UNREAD+=("$line")
+done <"$LINT_OUT"
+if [ "${#UNREAD[@]}" -gt 0 ]; then
+  echo
+  echo "::error::cannot read the snapcraft lint report: ${#UNREAD[@]} line(s) are neither a report header nor a record of a linter that ran; lint is UNVERIFIED"
+  printf '    unread: %s\n' "${UNREAD[@]:0:5}"
   exit 2
 fi
 

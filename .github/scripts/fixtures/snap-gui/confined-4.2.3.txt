@@ -1,0 +1,93 @@
+Warning: Schema “org.gnome.system.locale” has path “/system/locale/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+Warning: Schema “org.gnome.system.proxy” has path “/system/proxy/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+Warning: Schema “org.gnome.system.proxy.http” has path “/system/proxy/http/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+Warning: Schema “org.gnome.system.proxy.https” has path “/system/proxy/https/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+Warning: Schema “org.gnome.system.proxy.ftp” has path “/system/proxy/ftp/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+Warning: Schema “org.gnome.system.proxy.socks” has path “/system/proxy/socks/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+[2026-10-17][01:46:22][ftp_client_gui_lib::linux_egl][INFO] WebKit accelerated compositing enabled: EGL is usable on X11
+[2026-10-17][01:46:22][ftp_client_gui_lib::linux_rttime][INFO] RLIMIT_RTTIME left as inherited
+[2026-10-17][01:46:22][ftp_client_gui_lib::ui_server][INFO] UI server on 127.0.0.1:14321 serves 262 embedded assets
+[2026-10-17][01:46:22][ftp_client_gui_lib][INFO] Verified AeroFTP UI server on 127.0.0.1:14321
+[2026-10-17][01:46:22][ftp_client_gui_lib::providers::mtp::linux_hotplug][INFO] MTP hotplug: watching kernel uevents for USB add/remove
+[2026-10-17][01:46:22][ftp_client_gui_lib::filesystem][WARN] mount-watcher: cannot open /proc/mounts: Permission denied (os error 13)
+[2026-10-17][01:46:22][ftp_client_gui_lib][INFO] Main window: square corners, the screen has no compositor, so transparent pixels would show black
+
+** (aeroftp:42741): WARNING **: 01:46:23.041: Could not open /sys/class/dmi/id/chassis_type: Failed to open file “/sys/class/dmi/id/chassis_type”: Permission denied
+
+** (aeroftp:42741): WARNING **: 01:46:23.041: Could not open /sys/firmware/acpi/pm_profile: Failed to open file “/sys/firmware/acpi/pm_profile”: Permission denied
+
+(aeroftp:42741): IBUS-WARNING **: 01:46:23.060: Failed to mkdir /home/runner/snap/aeroftp/x1/.config/ibus/bus: Not a directory
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+[2026-10-17][01:46:23][ftp_client_gui_lib][INFO] Splash screen created
+[2026-10-17][01:46:23][ftp_client_gui_lib::tray_badge][INFO] Linux tray menu icon hook installed
+[2026-10-17][01:46:23][ftp_client_gui_lib::tray_badge][INFO] tray menu icon attached: Sync Now
+[2026-10-17][01:46:23][ftp_client_gui_lib::tray_badge][INFO] tray menu icon attached: Pause Sync
+[2026-10-17][01:46:23][ftp_client_gui_lib::tray_badge][INFO] tray menu icon attached: Open Cloud Folder
+[2026-10-17][01:46:23][ftp_client_gui_lib::tray_badge][INFO] tray menu icon attached: Check for Updates
+[2026-10-17][01:46:23][ftp_client_gui_lib::tray_badge][INFO] tray menu icon attached: Show AeroFTP
+[2026-10-17][01:46:23][ftp_client_gui_lib::tray_badge][INFO] tray menu icon attached: Quit
+[2026-10-17][01:46:23][ftp_client_gui_lib][INFO] System tray icon initialized
+
+(aeroftp:42741): libayatana-appindicator-WARNING **: 01:46:23.153: Unable to get the session bus: Failed to execute child process “dbus-launch” (No such file or directory)
+
+(aeroftp:42741): LIBDBUSMENU-GLIB-WARNING **: 01:46:23.153: Unable to get session bus: Failed to execute child process “dbus-launch” (No such file or directory)
+
+** (WebKitWebProcess:43005): WARNING **: 01:46:23.803: Could not open /sys/class/dmi/id/chassis_type: Failed to open file “/sys/class/dmi/id/chassis_type”: Permission denied
+
+** (WebKitWebProcess:42993): WARNING **: 01:46:23.803: Could not open /sys/class/dmi/id/chassis_type: Failed to open file “/sys/class/dmi/id/chassis_type”: Permission denied
+
+** (WebKitWebProcess:42993): WARNING **: 01:46:23.803: Could not open /sys/firmware/acpi/pm_profile: Failed to open file “/sys/firmware/acpi/pm_profile”: Permission denied
+
+** (WebKitWebProcess:43005): WARNING **: 01:46:23.803: Could not open /sys/firmware/acpi/pm_profile: Failed to open file “/sys/firmware/acpi/pm_profile”: Permission denied
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][WARN] Keyring account vault-passphrase-snap could not be read (Platform secure storage failure: DBus error: /usr/bin/dbus-launch terminated abnormally without any error message); not writing it
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][WARN] first_run_init: OS keyring unavailable (Encryption error: Failed to write vault key to system keyring: no free account); using on-disk vault.key fallback (portable/no-keyring mode)
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential vault opened and cached
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Universal credential vault initialized (system keyring mode)
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][WARN] Keyring account vault-passphrase-snap could not be read (Platform secure storage failure: DBus error: /usr/bin/dbus-launch terminated abnormally without any error message); not writing it
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][WARN] OS keyring unavailable (Encryption error: Failed to write vault key to system keyring: no free account); keeping on-disk vault.key (portable/no-keyring mode)
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential vault opened and cached
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential stored: config_server_profiles
+[2026-10-17][01:46:24][ftp_client_gui_lib][INFO] Finishing startup (app_ready)
+[2026-10-17][01:46:24][ftp_client_gui_lib][INFO] Splash minimum wait: 337.598846ms
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential deleted: config_server_groups
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential deleted: config_favorite_servers
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential deleted: config_favorite_servers
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential deleted: config_server_groups
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential deleted: config_favorite_servers
+[2026-10-17][01:46:24][ftp_client_gui_lib::credential_store][INFO] Credential deleted: config_server_groups
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] Splash screen closed
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] App menu set (deferred)
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready pre-show: is_visible=false
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready pre-show: is_minimized=false
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready pre-show: is_focused=false
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready pre-show: scale_factor=1
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready pre-show: outer_position=(30, 50)
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready pre-show: inner_size=1540x900
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready pre-show: monitor=Some("screen") size=1600x1000 origin=(0, 0)
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] Main window shown
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready post-show: is_visible=false
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready post-show: is_minimized=false
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready post-show: is_focused=false
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready post-show: scale_factor=1
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready post-show: outer_position=(30, 50)
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready post-show: inner_size=1540x900
+[2026-10-17][01:46:25][ftp_client_gui_lib][INFO] [diag #290] app_ready post-show: monitor=Some("screen") size=1600x1000 origin=(0, 0)
+[2026-10-17][01:46:26][ftp_client_gui_lib][INFO] [diag #290] app_ready +300ms: is_visible=true
+[2026-10-17][01:46:26][ftp_client_gui_lib][INFO] [diag #290] app_ready +300ms: is_minimized=false
+[2026-10-17][01:46:26][ftp_client_gui_lib][INFO] [diag #290] app_ready +300ms: is_focused=true
+[2026-10-17][01:46:26][ftp_client_gui_lib][INFO] [diag #290] app_ready +300ms: scale_factor=1
+[2026-10-17][01:46:26][ftp_client_gui_lib][INFO] [diag #290] app_ready +300ms: outer_position=(30, 50)
+[2026-10-17][01:46:26][ftp_client_gui_lib][INFO] [diag #290] app_ready +300ms: inner_size=1540x900
+[2026-10-17][01:46:26][ftp_client_gui_lib][INFO] [diag #290] app_ready +300ms: monitor=Some("screen") size=1600x1000 origin=(0, 0)
+[2026-10-17][01:46:27][ftp_client_gui_lib][INFO] [diag #290] app_ready +1200ms: is_visible=true
+[2026-10-17][01:46:27][ftp_client_gui_lib][INFO] [diag #290] app_ready +1200ms: is_minimized=false
+[2026-10-17][01:46:27][ftp_client_gui_lib][INFO] [diag #290] app_ready +1200ms: is_focused=true
+[2026-10-17][01:46:27][ftp_client_gui_lib][INFO] [diag #290] app_ready +1200ms: scale_factor=1
+[2026-10-17][01:46:27][ftp_client_gui_lib][INFO] [diag #290] app_ready +1200ms: outer_position=(30, 50)
+[2026-10-17][01:46:27][ftp_client_gui_lib][INFO] [diag #290] app_ready +1200ms: inner_size=1540x900
+[2026-10-17][01:46:27][ftp_client_gui_lib][INFO] [diag #290] app_ready +1200ms: monitor=Some("screen") size=1600x1000 origin=(0, 0)
+[2026-10-17][01:46:29][ftp_client_gui_lib][INFO] Checking for updates... Current: v4.2.3, Format: snap
+[2026-10-17][01:46:29][ftp_client_gui_lib][INFO] No update available. Current: v4.2.3, Latest: v4.2.3

@@ -78,10 +78,23 @@ jobs:
       - name: Emitter guard fails when git status fails
         run: python3 -m unittest discover -s .github/scripts -p test_aerorsync_emit_guard.py -v
 
-      # The snap gate's lint pass, with stub snapcraft and unsquashfs: a gpu:
+      # The snap gate's two passes, with stub snapcraft and unsquashfs: a gpu:
       # finding fails it, and a linter that never ran is UNVERIFIED, never OK.
+      # The snap and AppImage gates below read text from tools this repo does
+      # not pin, and each one fails on output it cannot read instead of
+      # passing it. The snap gates run only on tags and dispatches, so this is
+      # where a pull request exercises them.
       - name: Snap GPU gate reads the snapcraft lint report
         run: python3 -m unittest discover -s .github/scripts -p test_snap_gpu_lint_check.py -v
+
+      - name: Snap ABI gate reads every ELF and every objdump answer
+        run: python3 -m unittest discover -s .github/scripts -p test_snap_abi_check.py -v
+
+      - name: Snap GUI gate requires the app's own EGL and app_ready lines
+        run: python3 -m unittest discover -s .github/scripts -p test_snap_gui_check.py -v
+
+      - name: AppImage permission check reads every line of the listing
+        run: python3 -m unittest discover -s .github/scripts -p test_appimage_permissions_check.py -v
 
       - name: Frontend unit tests (vitest)
         run: npm run test:unit
