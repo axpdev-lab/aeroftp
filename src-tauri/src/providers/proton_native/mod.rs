@@ -118,9 +118,12 @@ mod live_tests {
 
     /// Live, on a real Proton account: one browser sign-in, then the whole
     /// Drive round trip the provider needs, inside a fresh test folder in My
-    /// Files. Uploaded files stay there (in `keep/`) so they can be opened in
-    /// the official web and Android apps: that is the acceptance test for the
-    /// upload format. Prints counts and hashes only, never file names.
+    /// Files. The folder goes to the trash at the end, failed run included
+    /// (test folders never outlive their test). With
+    /// `AEROFTP_PROTON_LIVE_KEEP=1` it stays, so the uploaded files in
+    /// `keep/` can be opened in the official web and Android apps, the
+    /// acceptance test for the upload format; delete it after that check.
+    /// Prints counts and hashes only, never file names.
     ///
     /// `cargo test --lib --features proton-native proton_native::live_tests::live_drive_round_trip -- --ignored --nocapture`
     #[tokio::test]
@@ -147,8 +150,9 @@ mod live_tests {
             .await
             .expect("My Files");
 
-        // Every step runs inside `catch_unwind`, so the revoke below runs
-        // even when a step fails.
+        // Every step runs inside `catch_unwind`, so the cleanup and the revoke
+        // below run even when a step fails.
+        let created: std::sync::Mutex<Option<(String, String)>> = Default::default();
         let outcome = std::panic::AssertUnwindSafe(async {
             let root = drive.root().await.expect("root");
             let listing = drive.children(&root).await.expect("root listing");
@@ -165,6 +169,7 @@ mod live_tests {
                 .create_folder(&root, &folder_name)
                 .await
                 .expect("mkdir");
+            *created.lock().unwrap() = Some((folder_id.clone(), folder_name.clone()));
             let folder = drive.node(&folder_id).await.expect("folder node");
             assert!(folder.is_folder() && folder.hash_key.is_some());
             eprintln!("STEP mkdir: ok");
@@ -310,13 +315,25 @@ mod live_tests {
             let quota = drive.quota().await.expect("quota");
             assert!(quota.total > 0);
             eprintln!("STEP quota: used {} of {} bytes", quota.used, quota.total);
-
-            eprintln!(
-                "KEEP the test folder for the web and Android check: My Files/{folder_name}/keep (small.txt, big.bin, sub/c.txt)"
-            );
         })
         .catch_unwind()
         .await;
+        let keep = std::env::var("AEROFTP_PROTON_LIVE_KEEP").is_ok_and(|value| value == "1");
+        let created = created.lock().unwrap().take();
+        if let Some((folder_id, folder_name)) = created {
+            if keep {
+                eprintln!(
+                    "KEEP the test folder for the web and Android check, then delete it: My Files/{folder_name}/keep (small.txt, big.bin, sub/c.txt)"
+                );
+            } else {
+                match drive.trash(&[&folder_id]).await {
+                    Ok(()) => eprintln!("CLEANUP the test folder is in the trash"),
+                    Err(error) => {
+                        eprintln!("CLEANUP failed, delete My Files/{folder_name} by hand: {error}")
+                    }
+                }
+            }
+        }
         // The session is revoked whatever happened above, so a failed run
         // never leaves a live session behind.
         let revoked = auth::sign_out(&api).await;
