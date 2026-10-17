@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} storage",
             "portable_disconnected": "Na-disconnect ang portable na device: {name}",
             "portable_unplugged": "Nadiskonekta ang portable na device. Ikabit muli ang cable at buksan ito ulit.",
-            "portable_needs_replug": "Hindi naka-mount ng desktop. I-unplug at i-plug muli ang cable, tapos buksan ulit."
+            "portable_needs_replug": "Hindi naka-mount ng desktop. I-unplug at i-plug muli ang cable, tapos buksan ulit.",
+            "volumes_need_mount_observe": "Sa snap, lumalabas ang mga volume kapag nakakonekta na ang pahintulot na mount-observe. Patakbuhin ito sa terminal, pagkatapos ay bumalik sa AeroFTP:",
+            "volumes_unavailable": "Hindi mabasa ang mga naka-mount na volume."
         },
         "viewMode": {
             "list": "Listahan",

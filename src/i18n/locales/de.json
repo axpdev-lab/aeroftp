@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} Speicher",
             "portable_disconnected": "Tragbares Gerät getrennt: {name}",
             "portable_unplugged": "Das tragbare Gerät wurde getrennt. Kabel erneut anschließen und erneut öffnen.",
-            "portable_needs_replug": "Vom Desktop nicht eingehängt. Kabel abziehen und wieder einstecken, dann erneut öffnen."
+            "portable_needs_replug": "Vom Desktop nicht eingehängt. Kabel abziehen und wieder einstecken, dann erneut öffnen.",
+            "volumes_need_mount_observe": "Im Snap erscheinen Laufwerke, sobald die Berechtigung mount-observe verbunden ist. Führen Sie dies in einem Terminal aus und kehren Sie dann zu AeroFTP zurück:",
+            "volumes_unavailable": "Die eingehängten Laufwerke konnten nicht gelesen werden."
         },
         "viewMode": {
             "list": "Liste",

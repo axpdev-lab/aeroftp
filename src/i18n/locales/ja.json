@@ -3557,7 +3557,9 @@
             "portable_storages": "{count} 個のストレージ",
             "portable_disconnected": "ポータブルデバイスを切断しました：{name}",
             "portable_unplugged": "ポータブルデバイスが切断されました。ケーブルを再接続して、もう一度開いてください。",
-            "portable_needs_replug": "デスクトップにマウントされていません。ケーブルを抜き差ししてから、もう一度開いてください。"
+            "portable_needs_replug": "デスクトップにマウントされていません。ケーブルを抜き差ししてから、もう一度開いてください。",
+            "volumes_need_mount_observe": "snap では、mount-observe 権限を接続するとボリュームが表示されます。ターミナルで次を実行し、AeroFTP に戻ってください：",
+            "volumes_unavailable": "マウントされているボリュームを読み取れませんでした。"
         },
         "viewMode": {
             "list": "リスト",

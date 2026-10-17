@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} stockage(s)",
             "portable_disconnected": "Appareil portable déconnecté : {name}",
             "portable_unplugged": "L'appareil portable a été déconnecté. Rebranchez le câble et rouvrez-le.",
-            "portable_needs_replug": "Non monté par le bureau. Débranchez et rebranchez le câble, puis rouvrez-le."
+            "portable_needs_replug": "Non monté par le bureau. Débranchez et rebranchez le câble, puis rouvrez-le.",
+            "volumes_need_mount_observe": "Dans le snap, les volumes apparaissent une fois l'autorisation mount-observe connectée. Exécutez ceci dans un terminal, puis revenez à AeroFTP :",
+            "volumes_unavailable": "Impossible de lire les volumes montés."
         },
         "viewMode": {
             "list": "Liste",

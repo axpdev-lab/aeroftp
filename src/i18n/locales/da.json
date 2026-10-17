@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} lagerenheder",
             "portable_disconnected": "Bærbar enhed afbrudt: {name}",
             "portable_unplugged": "Den bærbare enhed blev afbrudt. Sæt kablet i igen, og åbn den igen.",
-            "portable_needs_replug": "Ikke monteret af skrivebordet. Træk kablet ud og sæt det i igen, og åbn det derefter igen."
+            "portable_needs_replug": "Ikke monteret af skrivebordet. Træk kablet ud og sæt det i igen, og åbn det derefter igen.",
+            "volumes_need_mount_observe": "I snap'en vises drev, når tilladelsen mount-observe er tilsluttet. Kør dette i en terminal, og vend derefter tilbage til AeroFTP:",
+            "volumes_unavailable": "Kunne ikke læse de monterede drev."
         },
         "viewMode": {
             "list": "Liste",

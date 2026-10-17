@@ -18,6 +18,7 @@ import {
   MtpDeviceInfo,
 } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
+import { VolumesUnavailable, volumesUnavailableReason, type VolumesUnavailableReason } from './volumesUnavailable';
 import { formatBytes } from '../utils/formatters';
 import { findGvfsMtpMount, isPathOnOrUnderMount, portableDeviceNeedsReplug } from '../utils/gvfsMtpMount';
 import {
@@ -259,6 +260,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
   const [unmountedPartitions, setUnmountedPartitions] = useState<UnmountedPartition[]>([]);
   const [volumesLoading, setVolumesLoading] = useState(false);
+  const [volumesUnavailable, setVolumesUnavailable] = useState<VolumesUnavailableReason | null>(null);
   const [ejectingMount, setEjectingMount] = useState<string | null>(null);
   const [mountingDevice, setMountingDevice] = useState<string | null>(null);
   const [portableDevices, setPortableDevices] = useState<MtpDeviceInfo[]>([]);
@@ -370,9 +372,12 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       if (mountedRef.current) {
         setVolumes(vols);
         setUnmountedPartitions(unmounted);
+        setVolumesUnavailable(null);
       }
-    } catch {
-      // Backend command not available yet
+    } catch (err) {
+      // Say why the list is empty (a snap without mount-observe, or a failed
+      // read) instead of leaving the section blank.
+      if (mountedRef.current) setVolumesUnavailable(volumesUnavailableReason(err));
     }
   }, []);
 
@@ -811,6 +816,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
               <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
               {t('common.loading')}
             </div>
+          )}
+          {!volumesLoading && volumes.length === 0 && volumesUnavailable && (
+            <VolumesUnavailable reason={volumesUnavailable} t={t} />
           )}
           {volumes.map((vol) => {
             const usedBytes = vol.total_bytes - vol.free_bytes;

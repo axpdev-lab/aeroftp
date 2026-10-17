@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} almacenamentos",
             "portable_disconnected": "Dispositivo portátil desconectado: {name}",
             "portable_unplugged": "Desconectouse o dispositivo portátil. Volva conectar o cable e ábrao de novo.",
-            "portable_needs_replug": "Non montado polo escritorio. Desconecta e volve conectar o cable e ábreo de novo."
+            "portable_needs_replug": "Non montado polo escritorio. Desconecta e volve conectar o cable e ábreo de novo.",
+            "volumes_need_mount_observe": "No snap, os volumes aparecen cando se conecta o permiso mount-observe. Executa isto nun terminal e volve a AeroFTP:",
+            "volumes_unavailable": "Non se puideron ler os volumes montados."
         },
         "viewMode": {
             "list": "Lista",

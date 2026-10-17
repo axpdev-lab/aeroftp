@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} lagringsutrymmen",
             "portable_disconnected": "Bärbar enhet frånkopplad: {name}",
             "portable_unplugged": "Den bärbara enheten kopplades bort. Anslut kabeln igen och öppna den på nytt.",
-            "portable_needs_replug": "Inte monterat av skrivbordet. Dra ur och sätt i kabeln igen, öppna sedan igen."
+            "portable_needs_replug": "Inte monterat av skrivbordet. Dra ur och sätt i kabeln igen, öppna sedan igen.",
+            "volumes_need_mount_observe": "I snap visas volymer när behörigheten mount-observe är ansluten. Kör detta i en terminal och gå sedan tillbaka till AeroFTP:",
+            "volumes_unavailable": "Det gick inte att läsa de monterade volymerna."
         },
         "viewMode": {
             "list": "Lista",

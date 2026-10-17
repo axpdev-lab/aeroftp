@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} tallennustilaa",
             "portable_disconnected": "Kannettavan laitteen yhteys katkaistu: {name}",
             "portable_unplugged": "Kannettava laite irrotettiin. Kytke kaapeli uudelleen ja avaa se uudelleen.",
-            "portable_needs_replug": "Ei työpöydän liittämä. Irrota ja kytke kaapeli uudelleen, ja avaa sitten uudelleen."
+            "portable_needs_replug": "Ei työpöydän liittämä. Irrota ja kytke kaapeli uudelleen, ja avaa sitten uudelleen.",
+            "volumes_need_mount_observe": "Snapissa taltiot näkyvät, kun mount-observe-oikeus on yhdistetty. Suorita tämä päätteessä ja palaa sitten AeroFTP:hen:",
+            "volumes_unavailable": "Liitettyjä taltioita ei voitu lukea."
         },
         "viewMode": {
             "list": "Lista",

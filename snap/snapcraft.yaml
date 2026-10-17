@@ -126,6 +126,11 @@ apps:
     plugs:
       - home
       - removable-media
+      # The volume list and the mount watcher read /proc/mounts. snapd never
+      # connects mount-observe on its own, so without
+      # `snap connect aeroftp:mount-observe` the sidebar says how to connect
+      # it instead of listing volumes (MOUNT_OBSERVE_NOT_CONNECTED).
+      - mount-observe
       - network
       - network-bind
       # The UI loads from http://127.0.0.1, and inside a snap GLib asks the

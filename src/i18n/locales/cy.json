@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} storfa",
             "portable_disconnected": "Dyfais gludadwy wedi'i datgysylltu: {name}",
             "portable_unplugged": "Datgysylltwyd y ddyfais gludadwy. Ail-blygiwch y cebl a'i hagor eto.",
-            "portable_needs_replug": "Heb ei osod gan y bwrdd gwaith. Dad-blygiwch ac ail-blygiwch y cebl, yna ei agor eto."
+            "portable_needs_replug": "Heb ei osod gan y bwrdd gwaith. Dad-blygiwch ac ail-blygiwch y cebl, yna ei agor eto.",
+            "volumes_need_mount_observe": "Yn y snap, mae cyfrolau'n ymddangos unwaith y bydd y caniatâd mount-observe wedi'i gysylltu. Rhedwch hyn mewn terfynell, yna dychwelwch i AeroFTP:",
+            "volumes_unavailable": "Methwyd darllen y cyfrolau sydd wedi'u gosod."
         },
         "viewMode": {
             "list": "Rhestr",
