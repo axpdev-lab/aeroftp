@@ -34,8 +34,14 @@ pub mod account;
 pub mod api;
 pub mod app_version;
 pub mod auth;
+pub mod client;
+pub mod download;
+pub mod drive_crypto;
 pub mod error;
+pub mod management;
+pub mod nodes;
 pub mod session;
+pub mod upload;
 
 pub use error::ProtonError;
 
@@ -100,6 +106,204 @@ mod live_tests {
             eprintln!("PROTON_SESSION_OPEN for {hold} s");
             tokio::time::sleep(std::time::Duration::from_secs(hold)).await;
         }
+        auth::sign_out(&api).await.expect("revoke the test session");
+        eprintln!("PROTON_SESSION_REVOKED");
+    }
+
+    /// Live, on a real Proton account: one browser sign-in, then the whole
+    /// Drive round trip the provider needs, inside a fresh test folder in My
+    /// Files. Uploaded files stay there (in `keep/`) so they can be opened in
+    /// the official web and Android apps: that is the acceptance test for the
+    /// upload format. Prints counts and hashes only, never file names.
+    ///
+    /// `cargo test --lib --features proton-native proton_native::live_tests::live_drive_round_trip -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "live: needs a person to sign in to Proton in the browser"]
+    async fn live_drive_round_trip() {
+        use sha1::{Digest, Sha1};
+        use std::sync::Arc;
+
+        let api = Arc::new(api::ProtonApi::new(app_version::app_version()));
+        let pending = auth::begin_browser_sign_in(&api, auth::DEFAULT_ACCOUNT_HOST)
+            .await
+            .expect("session fork");
+        eprintln!("{THIRD_PARTY_DISCLOSURE}");
+        eprintln!("PROTON_SIGN_IN_URL {}", pending.sign_in_url());
+        let cancel = CancellationToken::new();
+        let session = auth::wait_for_browser_sign_in(&api, pending, &cancel)
+            .await
+            .expect("browser sign-in");
+        let account = account::load_account(&api, &session.key_password)
+            .await
+            .expect("key unlock");
+        let drive = client::DriveClient::open(Arc::clone(&api), account)
+            .await
+            .expect("My Files");
+
+        let root = drive.root().await.expect("root");
+        let listing = drive.children(&root).await.expect("root listing");
+        let undecryptable = listing.iter().filter(|n| n.name.is_err()).count();
+        eprintln!(
+            "STEP root: {} item(s), {} with undecryptable names",
+            listing.len(),
+            undecryptable
+        );
+
+        let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+        let folder_name = format!("aeroftp-native-test-{stamp}");
+        let folder_id = drive
+            .create_folder(&root, &folder_name)
+            .await
+            .expect("mkdir");
+        let folder = drive.node(&folder_id).await.expect("folder node");
+        assert!(folder.is_folder() && folder.hash_key.is_some());
+        eprintln!("STEP mkdir: ok");
+
+        let keep_id = drive
+            .create_folder(&folder, "keep")
+            .await
+            .expect("mkdir keep");
+        let keep = drive.node(&keep_id).await.expect("keep node");
+
+        // A small file and a multi-block one (9 MiB = 3 blocks).
+        let small: Vec<u8> = b"AeroFTP native Proton Drive upload test\n".repeat(20);
+        let mut big = vec![0u8; 9 * 1024 * 1024];
+        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut big);
+        let mtime = chrono::DateTime::from_timestamp(1_760_000_000, 0);
+        let mut uploaded = Vec::new();
+        for (name, data) in [("small.txt", &small), ("big.bin", &big)] {
+            let mut reader = &data[..];
+            let id = drive
+                .upload_new_file(&keep, name, &mut reader, data.len() as u64, mtime, |_| {})
+                .await
+                .unwrap_or_else(|e| panic!("upload {name}: {e}"));
+            uploaded.push((id, data.clone()));
+        }
+        eprintln!("STEP upload: 2 file(s)");
+
+        for (id, data) in &uploaded {
+            let node = drive.node(id).await.expect("uploaded node");
+            assert_eq!(
+                node.size(),
+                data.len() as u64,
+                "size from extended attributes"
+            );
+            assert_eq!(
+                node.xattr.modification_time, mtime,
+                "mtime from extended attributes"
+            );
+            let mut out = Vec::new();
+            let outcome = drive
+                .download(&node, &mut out, |_| {})
+                .await
+                .expect("download");
+            assert_eq!(&out, data, "downloaded content differs");
+            let expected = hex::encode(Sha1::digest(data));
+            assert_eq!(outcome.sha1, expected);
+            assert_eq!(node.xattr.sha1.as_deref(), Some(expected.as_str()));
+            eprintln!(
+                "STEP download: {} bytes in {} block(s), sha1 ok",
+                outcome.bytes, outcome.blocks
+            );
+        }
+
+        // Rename, subfolder, move, conflict, trash, permanent delete.
+        let work_id = drive
+            .create_folder(&folder, "work")
+            .await
+            .expect("mkdir work");
+        let work = drive.node(&work_id).await.expect("work node");
+        let mut reader = &small[..];
+        let file_id = drive
+            .upload_new_file(
+                &work,
+                "a.txt",
+                &mut reader,
+                small.len() as u64,
+                None,
+                |_| {},
+            )
+            .await
+            .expect("upload a.txt");
+        let mut reader = &small[..];
+        let conflict = drive
+            .upload_new_file(
+                &work,
+                "a.txt",
+                &mut reader,
+                small.len() as u64,
+                None,
+                |_| {},
+            )
+            .await;
+        assert!(
+            matches!(conflict, Err(ProtonError::AlreadyExists { .. })),
+            "a second a.txt must be refused: {conflict:?}"
+        );
+        let file = drive.node(&file_id).await.expect("a.txt");
+        drive.rename(&file, "b.txt").await.expect("rename");
+        let renamed = drive.node(&file_id).await.expect("b.txt");
+        assert_eq!(renamed.display_name(), Some("b.txt"));
+        eprintln!("STEP rename: ok");
+
+        let sub_id = drive.create_folder(&work, "sub").await.expect("mkdir sub");
+        let sub = drive.node(&sub_id).await.expect("sub node");
+        drive
+            .move_node(&renamed, &sub, Some("c.txt"))
+            .await
+            .expect("move");
+        let moved = drive.node(&file_id).await.expect("moved");
+        assert_eq!(moved.parent_link_id.as_deref(), Some(sub_id.as_str()));
+        assert_eq!(moved.display_name(), Some("c.txt"));
+        let mut out = Vec::new();
+        drive
+            .download(&moved, &mut out, |_| {})
+            .await
+            .expect("download after move");
+        assert_eq!(out, small, "content must survive the move");
+        eprintln!("STEP move: ok");
+
+        // Moving a folder keeps its children readable.
+        let resolved = drive
+            .resolve_path(&format!("/{folder_name}/work/sub/c.txt"))
+            .await
+            .expect("path resolution");
+        assert_eq!(resolved.link_id, file_id);
+        drive.move_node(&sub, &keep, None).await.expect("dirmove");
+        drive.forget_all().await;
+        let resolved = drive
+            .resolve_path(&format!("/{folder_name}/keep/sub/c.txt"))
+            .await
+            .expect("path after dirmove");
+        let mut out = Vec::new();
+        drive
+            .download(&resolved, &mut out, |_| {})
+            .await
+            .expect("download after dirmove");
+        assert_eq!(out, small);
+        eprintln!("STEP dirmove: ok");
+
+        drive.trash(&[&work_id]).await.expect("trash");
+        drive.delete_permanently(&[&work_id]).await.expect("delete");
+        drive.forget_all().await;
+        let folder = drive.node(&folder_id).await.expect("folder again");
+        let left: Vec<_> = drive
+            .children(&folder)
+            .await
+            .expect("folder listing")
+            .iter()
+            .filter_map(|n| n.display_name().map(str::to_string))
+            .collect();
+        assert_eq!(left, vec!["keep".to_string()], "work/ must be gone");
+        eprintln!("STEP trash+delete: ok");
+
+        let quota = drive.quota().await.expect("quota");
+        assert!(quota.total > 0);
+        eprintln!("STEP quota: used {} of {} bytes", quota.used, quota.total);
+
+        eprintln!(
+            "KEEP the test folder for the web and Android check: My Files/{folder_name}/keep (small.txt, big.bin, sub/c.txt)"
+        );
         auth::sign_out(&api).await.expect("revoke the test session");
         eprintln!("PROTON_SESSION_REVOKED");
     }

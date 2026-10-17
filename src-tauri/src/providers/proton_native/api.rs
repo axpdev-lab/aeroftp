@@ -31,7 +31,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::{Mutex, RwLock};
 
-use super::error::{ProtonError, CODE_HUMAN_VERIFICATION_REQUIRED, CODE_OK};
+use super::error::{ProtonError, CODE_ALREADY_EXISTS, CODE_HUMAN_VERIFICATION_REQUIRED, CODE_OK};
 use super::session::SessionTokens;
 
 /// Official API host used by the Proton Drive apps and the SDK CLI
@@ -44,6 +44,9 @@ const ACCEPT_PROTON_JSON: &str = "application/vnd.protonmail.v1+json";
 
 /// `apiClient.ts`: `DEFAULT_TIMEOUT_MS`.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// `apiService.ts`: storage (block) requests get 600 s.
+const STORAGE_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// Proton success code for multi-item responses.
 const CODE_MULTI_OK: i64 = 1001;
@@ -91,6 +94,8 @@ type TokensListener = Box<dyn Fn(&SessionTokens) + Send + Sync>;
 /// The Proton API client: one per signed-in account.
 pub struct ProtonApi {
     http: reqwest::Client,
+    /// Block transfers to the storage hosts, with the longer timeout.
+    storage_http: reqwest::Client,
     base_url: String,
     app_version: String,
     policy: RetryPolicy,
@@ -140,8 +145,15 @@ impl ProtonApi {
             .timeout(REQUEST_TIMEOUT)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
+        let storage_http = reqwest::Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
+            .connect_timeout(REQUEST_TIMEOUT)
+            .timeout(STORAGE_TIMEOUT)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             http,
+            storage_http,
             base_url: base_url.trim_end_matches('/').to_string(),
             app_version,
             policy: RetryPolicy::SDK,
@@ -207,6 +219,15 @@ impl ProtonApi {
     ) -> Result<T, ProtonError> {
         self.request(Method::POST, path, &[], Some(body), true)
             .await
+    }
+
+    /// Authenticated `PUT` with a JSON body.
+    pub async fn put<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &Value,
+    ) -> Result<T, ProtonError> {
+        self.request(Method::PUT, path, &[], Some(body), true).await
     }
 
     /// Authenticated `DELETE`.
@@ -392,6 +413,177 @@ impl ProtonApi {
         }
     }
 
+    /// `GET` of a block from a storage host: `url` is the `BareURL` the API
+    /// returned, used verbatim, with its `pm-storage-token`. The session
+    /// headers go along, as the official CLI's host client sends them. A 404
+    /// is [`ProtonError::StorageTokenExpired`]; timeouts, network errors, 429
+    /// and 5xx are retried like API calls.
+    pub async fn storage_get(&self, url: &str, token: &str) -> Result<bytes::Bytes, ProtonError> {
+        let mut attempt: u32 = 0;
+        loop {
+            self.fail_fast_if_blocked()?;
+            let mut builder = self
+                .storage_http
+                .get(url)
+                .header("pm-storage-token", token)
+                .header("x-pm-appversion", &self.app_version)
+                .header("Language", "en");
+            if let Some(tokens) = self.tokens.read().await.clone() {
+                builder = builder
+                    .header("x-pm-uid", &tokens.uid)
+                    .bearer_auth(tokens.access_token.expose_secret());
+            }
+            let response = match builder.send().await {
+                Ok(response) => response,
+                Err(error) => {
+                    let limit = if error.is_timeout() {
+                        self.policy.max_timeout_attempts
+                    } else {
+                        self.policy.max_network_attempts
+                    };
+                    if attempt + 1 < limit {
+                        attempt += 1;
+                        tokio::time::sleep(self.policy.network_error_delay).await;
+                        continue;
+                    }
+                    return Err(ProtonError::Network(error.to_string()));
+                }
+            };
+            let status = response.status();
+            self.note_answer(status);
+            if status == StatusCode::NOT_FOUND {
+                return Err(ProtonError::StorageTokenExpired);
+            }
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                let wait = response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(crate::providers::retry_after::parse_retry_after_seconds)
+                    .filter(|wait| !wait.is_zero())
+                    .unwrap_or(self.policy.default_429_delay);
+                if self.note_429() {
+                    return Err(ProtonError::RateLimited {
+                        retry_after_secs: self.policy.cool_down.as_secs(),
+                    });
+                }
+                attempt += 1;
+                tokio::time::sleep(wait).await;
+                continue;
+            }
+            if status.is_server_error() && !self.note_5xx() && attempt == 0 {
+                attempt += 1;
+                tokio::time::sleep(self.policy.server_error_delay).await;
+                continue;
+            }
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|error| ProtonError::Network(error.to_string()))?;
+            if !status.is_success() {
+                return decode_answer::<serde_json::Value>(status, &bytes).and(Err(
+                    ProtonError::Api {
+                        status: status.as_u16(),
+                        code: 0,
+                        message: "storage request failed".into(),
+                    },
+                ));
+            }
+            return Ok(bytes);
+        }
+    }
+
+    /// `POST` of an encrypted block to a storage host
+    /// (`upload/apiService.ts::uploadBlock`): multipart with one part named
+    /// `Block`, filename `blob`, octet-stream. A 404 is
+    /// [`ProtonError::StorageTokenExpired`]; transient failures are retried.
+    pub async fn storage_post_block(
+        &self,
+        url: &str,
+        token: &str,
+        block: bytes::Bytes,
+    ) -> Result<(), ProtonError> {
+        let mut attempt: u32 = 0;
+        loop {
+            self.fail_fast_if_blocked()?;
+            let part = reqwest::multipart::Part::stream(block.clone())
+                .file_name("blob")
+                .mime_str("application/octet-stream")
+                .map_err(|error| ProtonError::Network(error.to_string()))?;
+            let form = reqwest::multipart::Form::new().part("Block", part);
+            let mut builder = self
+                .storage_http
+                .post(url)
+                .header("pm-storage-token", token)
+                .header("x-pm-appversion", &self.app_version)
+                .header("Language", "en")
+                .multipart(form);
+            if let Some(tokens) = self.tokens.read().await.clone() {
+                builder = builder
+                    .header("x-pm-uid", &tokens.uid)
+                    .bearer_auth(tokens.access_token.expose_secret());
+            }
+            let response = match builder.send().await {
+                Ok(response) => response,
+                Err(error) => {
+                    let limit = if error.is_timeout() {
+                        self.policy.max_timeout_attempts
+                    } else {
+                        self.policy.max_network_attempts
+                    };
+                    if attempt + 1 < limit {
+                        attempt += 1;
+                        tokio::time::sleep(self.policy.network_error_delay).await;
+                        continue;
+                    }
+                    return Err(ProtonError::Network(error.to_string()));
+                }
+            };
+            let status = response.status();
+            self.note_answer(status);
+            if status == StatusCode::NOT_FOUND {
+                return Err(ProtonError::StorageTokenExpired);
+            }
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                let wait = response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(crate::providers::retry_after::parse_retry_after_seconds)
+                    .filter(|wait| !wait.is_zero())
+                    .unwrap_or(self.policy.default_429_delay);
+                if self.note_429() {
+                    return Err(ProtonError::RateLimited {
+                        retry_after_secs: self.policy.cool_down.as_secs(),
+                    });
+                }
+                attempt += 1;
+                tokio::time::sleep(wait).await;
+                continue;
+            }
+            if status.is_server_error() && !self.note_5xx() && attempt == 0 {
+                attempt += 1;
+                tokio::time::sleep(self.policy.server_error_delay).await;
+                continue;
+            }
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|error| ProtonError::Network(error.to_string()))?;
+            if !status.is_success() {
+                decode_answer::<serde_json::Value>(status, &bytes)?;
+                return Err(ProtonError::Api {
+                    status: status.as_u16(),
+                    code: 0,
+                    message: "block upload failed".into(),
+                });
+            }
+            // A 200 can still carry a Proton error code.
+            decode_answer::<serde_json::Value>(status, &bytes).map(|_| ())?;
+            return Ok(());
+        }
+    }
+
     /// `apiClient.ts::refreshSessionIfPossible`. Returns true when the caller
     /// should retry with the current tokens.
     async fn refresh_if_possible(&self, rejected_access_token: &str) -> Result<bool, ProtonError> {
@@ -486,6 +678,23 @@ fn decode_answer<T: DeserializeOwned>(status: StatusCode, bytes: &[u8]) -> Resul
     if status.is_success() && success_code {
         return serde_json::from_slice(bytes)
             .map_err(|error| ProtonError::Decode(error.to_string()));
+    }
+
+    if code == CODE_ALREADY_EXISTS {
+        let details = error_body.details.as_ref();
+        let text = |key: &str| {
+            details
+                .and_then(|d| d.get(key))
+                .and_then(Value::as_str)
+                .filter(|v| !v.is_empty())
+                .map(str::to_owned)
+        };
+        let draft_revision = text("ConflictDraftRevisionID");
+        return Err(ProtonError::AlreadyExists {
+            link_id: text("ConflictLinkID"),
+            draft_client_uid: text("ConflictDraftClientUID"),
+            is_draft: draft_revision.is_some(),
+        });
     }
 
     if code == CODE_HUMAN_VERIFICATION_REQUIRED {

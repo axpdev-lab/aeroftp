@@ -82,13 +82,13 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --lib --tests --features proton-native -- -D warnings
       # `proton_native` is a substring filter: a rename would make this step
-      # compile the crate, run nothing and exit 0. 26 is what it runs today
-      # (the live sign-in test is #[ignore] and needs a person at a browser);
+      # compile the crate, run nothing and exit 0. 39 is what it runs today
+      # (the two live tests are #[ignore] and need a person at a browser);
       # a floor, because the module is meant to grow.
       - name: Unit suite
         working-directory: src-tauri
         run: |
           set -o pipefail
           cargo test --lib --features proton-native proton_native | tee /tmp/proton-native-unit.log
-          ../scripts/assert-tests-ran.sh /tmp/proton-native-unit.log 26 \
+          ../scripts/assert-tests-ran.sh /tmp/proton-native-unit.log 39 \
             "proton_native unit suite"
