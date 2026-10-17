@@ -8463,12 +8463,13 @@ mod infinity_refusal_tests {
     async fn a_server_that_never_answers_is_not_asked_again_right_away() {
         let (mut provider, asked, server) = provider_against(None, None).await;
         assert!(provider.list_recursive("/").await.is_err());
-        let started = std::time::Instant::now();
         assert!(provider.list_recursive("/").await.is_err());
         server.abort();
-        assert_eq!(asked.load(Ordering::SeqCst), 1);
         // The second scan goes straight to the walk, without the header cap.
-        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        // The cap is only ever waited on a `Depth: infinity` request, which
+        // the server counts on arrival, so the count proves it without timing
+        // a scan that a loaded runner can slow down.
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

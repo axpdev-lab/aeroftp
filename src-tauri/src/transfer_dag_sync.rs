@@ -2532,21 +2532,64 @@ mod tests {
 
     // ---- graph build cost (F2-T12) ---------------------------------------
 
-    #[test]
-    fn sync_graph_build_cost_is_well_under_50ms() {
-        // The watch loop rebuilds the sync graph every cycle; the build must
-        // stay far below the filesystem-watcher cooldown.
-        let items: Vec<SyncDagItem> = (0..1000)
-            .map(|i| SyncDagItem::new(format!("file-{i}.bin"), SyncDagAction::Upload))
-            .collect();
+    /// How long `graphs` `from_sync_plan` builds of `items` take. The graphs
+    /// are kept until the clock is read, so freeing them is never counted.
+    fn sync_graph_build_time(items: &[SyncDagItem], graphs: usize) -> Duration {
         let start = Instant::now();
-        let sync_dag = TransferDagBuilder::from_sync_plan(&items);
+        let built: Vec<_> = (0..graphs)
+            .map(|_| TransferDagBuilder::from_sync_plan(items))
+            .collect();
         let elapsed = start.elapsed();
+        assert!(built.iter().all(|dag| dag.files.len() == items.len()));
+        elapsed
+    }
 
-        assert_eq!(sync_dag.files.len(), 1000);
+    /// A sync graph costs in proportion to its plan: one plan of ten thousand
+    /// files costs what ten plans of a thousand cost, while one quadratic step
+    /// makes the single plan about ten times dearer. That ratio is pinned, not
+    /// a number of milliseconds: a fixed budget measures the runner as much as
+    /// the builder (a 50 ms budget failed at 57 ms on a Windows CI job running
+    /// thousands of tests in parallel). Both sides build the same number of
+    /// files, so they run for about as long and a busy runner preempts either
+    /// one alike; a short build timed against a long one slips between
+    /// preemptions that the long one cannot. Each side keeps the fastest of
+    /// several interleaved runs, so a stall of the test process inflates one
+    /// run and not the ratio.
+    ///
+    /// Since DAG-P2-04 a sync run no longer builds this graph for the whole
+    /// plan (each admitted transfer expands its own shaped graph), so the
+    /// build is off the watch loop; the builder still has to stay linear for
+    /// any caller that builds a graph for a whole plan.
+    #[test]
+    fn sync_graph_build_cost_grows_linearly_with_the_plan() {
+        const FILES: usize = 1_000;
+        const SCALE: usize = 10;
+        const RUNS: usize = 7;
+        // Linear sits at 1, quadratic at SCALE: the bound is about a factor of
+        // three from either.
+        const MAX_RATIO: f64 = 3.0;
+
+        let plan = |files: usize| -> Vec<SyncDagItem> {
+            (0..files)
+                .map(|i| SyncDagItem::new(format!("file-{i}.bin"), SyncDagAction::Upload))
+                .collect()
+        };
+        let small = plan(FILES);
+        let large = plan(FILES * SCALE);
+        let mut best_split = Duration::MAX;
+        let mut best_whole = Duration::MAX;
+        for _ in 0..RUNS {
+            best_split = best_split.min(sync_graph_build_time(&small, SCALE));
+            best_whole = best_whole.min(sync_graph_build_time(&large, 1));
+        }
+
+        let ratio = best_whole.as_secs_f64() / best_split.as_secs_f64().max(f64::MIN_POSITIVE);
         assert!(
-            elapsed < Duration::from_millis(50),
-            "1000-file sync graph build took {elapsed:?}, budget is 50ms"
+            ratio < MAX_RATIO,
+            "one plan of {} files cost {ratio:.2}x what {SCALE} plans of {FILES} cost \
+             ({best_whole:?} against {best_split:?}); a linear build stays near 1x, the bound \
+             is {MAX_RATIO}x",
+            FILES * SCALE
         );
     }
 

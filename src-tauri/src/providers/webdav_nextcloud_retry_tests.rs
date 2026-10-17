@@ -487,7 +487,18 @@ async fn a_missing_disk_source_is_not_retried_as_a_network_failure() {
     let body = PartBody::disk_slice(directory.path().join("absent.bin"), 0, 3);
     let started = Instant::now();
     assert!(provider.upload_part_body(&handle, 1, body).await.is_err());
-    assert!(started.elapsed() < Duration::from_secs(1));
+    let elapsed = started.elapsed();
+    // Read as a network failure, the missing file fails every attempt alike,
+    // so the send retries the most times it may, each after at least the base
+    // delay (3 s in all by default). Bounding by that rather than by one
+    // second leaves a loaded runner seconds of room.
+    let config = crate::providers::http_retry::HttpRetryConfig::default();
+    let retried = Duration::from_millis(config.base_delay_ms) * config.max_retries;
+    assert!(
+        elapsed < retried,
+        "a missing disk source was retried: {elapsed:?}, {} retries take at least {retried:?}",
+        config.max_retries
+    );
     assert!(server.requests("PUT").len() <= 1);
 }
 

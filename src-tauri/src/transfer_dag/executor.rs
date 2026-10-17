@@ -1729,7 +1729,9 @@ mod tests {
         // the AIMD cooldown is armed to the server-provided value (clamped)
         // instead of the configured default — no marker re-parse in the
         // controller.
-        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+        use crate::transfer_dag::adaptive::{
+            assert_cooldown_armed_between, AdaptiveClass, AimdConfig, AimdController,
+        };
         use crate::transfer_dag::error::TransferErrorKind;
         use std::time::{Duration, Instant};
 
@@ -1762,22 +1764,18 @@ mod tests {
             Some(Arc::clone(&controller)),
         )
         .await;
+        let after = Instant::now();
 
         // Concurrency halved as before (8 -> 4).
         assert_eq!(controller.target(AdaptiveClass::File), 4);
 
-        // The cooldown must be armed approximately to `before + 45s`, NOT
-        // to the default 5 s cooldown. A 1 s tolerance around the lower
-        // bound absorbs scheduling and lock-acquire overhead.
+        // The cooldown must be armed to 45 s past the congestion event, NOT
+        // to the default 5 s cooldown. The event happens inside the run, so
+        // the deadline lies between 45 s past `before` and 45 s past `after`.
         let until = controller
             .cooldown_until(AdaptiveClass::File)
             .expect("cooldown must be armed after a congestion event");
-        let armed = until.saturating_duration_since(before);
-        assert!(
-            armed >= Duration::from_secs(44) && armed <= Duration::from_secs(46),
-            "expected ~45s (server-provided hint), got {:?}",
-            armed
-        );
+        assert_cooldown_armed_between(until, before, after, Duration::from_secs(45));
     }
 
     #[tokio::test]
@@ -1786,7 +1784,8 @@ mod tests {
         // strings; the adapter lifts it once into TransferError.retry_after.
         use crate::providers::ProviderError;
         use crate::transfer_dag::adaptive::{
-            embed_retry_after_marker, AdaptiveClass, AimdConfig, AimdController,
+            assert_cooldown_armed_between, embed_retry_after_marker, AdaptiveClass, AimdConfig,
+            AimdController,
         };
         use std::time::{Duration, Instant};
 
@@ -1818,17 +1817,13 @@ mod tests {
             Some(Arc::clone(&controller)),
         )
         .await;
+        let after = Instant::now();
 
         assert_eq!(controller.target(AdaptiveClass::File), 4);
         let until = controller
             .cooldown_until(AdaptiveClass::File)
             .expect("cooldown must be armed");
-        let armed = until.saturating_duration_since(before);
-        assert!(
-            armed >= Duration::from_secs(44) && armed <= Duration::from_secs(46),
-            "expected ~45s, got {:?}",
-            armed
-        );
+        assert_cooldown_armed_between(until, before, after, Duration::from_secs(45));
     }
 
     #[tokio::test]
@@ -3177,7 +3172,9 @@ mod tests {
     /// Retry-After on a continuing congestion failure arms the controller cooldown.
     #[tokio::test]
     async fn continuing_failure_honors_typed_retry_after() {
-        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+        use crate::transfer_dag::adaptive::{
+            assert_cooldown_armed_between, AdaptiveClass, AimdConfig, AimdController,
+        };
         use std::time::Instant;
 
         let mut dag = TransferDag::default();
@@ -3207,15 +3204,12 @@ mod tests {
         )
         .await
         .expect("Ok");
+        let after = Instant::now();
         assert_eq!(controller.target(AdaptiveClass::File), 4);
         let until = controller
             .cooldown_until(AdaptiveClass::File)
             .expect("cooldown armed");
-        let armed = until.saturating_duration_since(before);
-        assert!(
-            armed >= Duration::from_secs(44) && armed <= Duration::from_secs(46),
-            "expected ~45s, got {armed:?}"
-        );
+        assert_cooldown_armed_between(until, before, after, Duration::from_secs(45));
     }
 
     /// AIMD kill switch leaves the target at the honest ceiling on continuing
