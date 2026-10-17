@@ -2,9 +2,12 @@
 //!
 //! The root `/` is the account's My Files folder, as in rclone's
 //! `protondrive` backend. Paths are resolved by listing each folder on the
-//! way; the answers are kept for [`PATH_CACHE_TTL`] and dropped at every
-//! write of this provider, so a listing seconds old answers the next lookup
-//! instead of a new walk.
+//! way; the answers are kept for [`PATH_CACHE_TTL`], shared with the
+//! provider's transfer clones, so a listing seconds old answers the next
+//! lookup instead of a new walk. A write forgets the path it touched and
+//! everything under it; the folders above keep their entries, so a `stat` of
+//! a parent right after a write can show its previous size and time until the
+//! entry expires. Listings themselves are never cached.
 //!
 //! Semantics, in the words of the trait:
 //! - `delete` moves the item to the Proton trash (as the CLI wrapper does);
@@ -322,8 +325,11 @@ pub fn map_error(path: &str, error: ProtonError) -> ProviderError {
             ProviderError::FileTooLarge(format!("{path}: {message}"))
         }
         ProtonError::Api { code, message, .. } if CODES_NO_SPACE.contains(&code) => {
+            // "storage quota" is what the shared classifier
+            // (`sync::classify_sync_error`) reads as QuotaExceeded, which is
+            // never retried; "no space left" would also match a full local disk.
             ProviderError::ServerError(format!(
-                "Proton Drive has no space left for {path}: {message}"
+                "Proton Drive storage quota exceeded for {path}: {message}"
             ))
         }
         error @ (ProtonError::Api { .. } | ProtonError::Decode(_)) => {
@@ -1668,10 +1674,24 @@ mod tests {
             map_error("/x", api(200_003)),
             ProviderError::FileTooLarge(_)
         ));
-        assert!(matches!(
-            map_error("/x", api(200_002)),
-            ProviderError::ServerError(ref t) if t.contains("no space left")
-        ));
+        // A full drive is a quota error to the transfer engine: never retried.
+        for code in [200_001, 200_002, 200_100, 200_101] {
+            let error =
+                crate::transfer_dag::TransferError::from_provider(&map_error("/x", api(code)));
+            assert_eq!(
+                error.kind,
+                crate::transfer_dag::TransferErrorKind::QuotaExceeded,
+                "{code}"
+            );
+            assert_eq!(
+                error.retry,
+                crate::transfer_dag::RetryDirective::Never,
+                "{code}"
+            );
+        }
+        let too_large =
+            crate::transfer_dag::TransferError::from_provider(&map_error("/x", api(200_003)));
+        assert_eq!(too_large.retry, crate::transfer_dag::RetryDirective::Never);
         assert!(matches!(
             map_error("/x", api(2000)),
             ProviderError::ServerError(_)
