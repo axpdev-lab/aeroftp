@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "Terenkripsi dengan AES-256. Konten dan nama file bersifat rahasia; kata sandi diperlukan untuk membuka.",
             "resetDefaults": "Atur ulang ke bawaan",
             "scrubErrorCorrectionTooltip": "{label} (memverifikasi hash sandi)",
-            "repairErrorCorrectionTooltip": "{label} (pratinjau dry-run tersedia)"
+            "repairErrorCorrectionTooltip": "{label} (pratinjau dry-run tersedia)",
+            "repairDryRunNoDamage": "Dry-run: tidak ada kerusakan; tidak ada yang perlu diperbaiki. Tidak ada yang ditulis.",
+            "repairDryRunCannotRepair": "Dry-run: tidak satu pun dari {damaged} chunk yang rusak dapat diperbaiki. Tidak ada yang ditulis.",
+            "repairDryRunCanRepair": "Dry-run: {repaired} chunk yang rusak dapat diperbaiki. Tidak ada yang ditulis.",
+            "repairDryRunMetadata": "Dry-run: header atau manifes vault dapat dibangun ulang dari paritas. Tidak ada yang ditulis.",
+            "metadataRepaired": "Header atau manifes vault telah dibangun ulang dari paritas.",
+            "repairMetadataSuccess": "Perbaikan selesai: header atau manifes vault dibangun ulang dari paritas"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "Perangkat portabel terputus. Colokkan kembali kabelnya dan buka lagi.",
             "portable_needs_replug": "Tidak dimuat oleh desktop. Cabut dan colokkan kembali kabelnya, lalu buka lagi.",
             "volumes_need_mount_observe": "Di snap, volume muncul setelah izin mount-observe terhubung. Jalankan ini di terminal, lalu kembali ke AeroFTP:",
-            "volumes_unavailable": "Tidak dapat membaca volume yang terpasang."
+            "volumes_unavailable": "Tidak dapat membaca volume yang terpasang.",
+            "portable_device": "Perangkat portabel"
         },
         "viewMode": {
             "list": "Daftar",
