@@ -48,6 +48,11 @@
 #           The remaining lru 0.7.8 is pinned by reed-solomon-erasure 6.0.0; its cache
 #           key is Vec<usize>, whose Drop cannot panic, so the advisory precondition is
 #           unreachable. Added the scoped, documented exception below.)
+# Reviewed: 2026-10-17 (RUSTSEC-2026-0370/0371/0372 freshly published 2026-10-16:
+#           zvariant, zbus_names and zvariant_derive UNMAINTAINED, folded into
+#           zbus 6.0.0 the same day. No published consumer requires zbus 6 yet and
+#           the plugin releases past the tauri =2.11.0 pin still require zbus ^5,
+#           so no upgrade clears them. Ignored the three IDs, see the section below.)
 
 [advisories]
 ignore = [
@@ -383,6 +388,53 @@ ignore = [
     # Tauri-transitive ignores above). Revisit when Tauri bumps notify-rust / plist.
     "RUSTSEC-2026-0194",  # quick-xml duplicate-attr quadratic DoS (runtime path patched to 0.41; rest Tauri-transitive, app-owned XML)
     "RUSTSEC-2026-0195",  # quick-xml NsReader memory-exhaustion DoS (runtime path patched to 0.41; rest Tauri-transitive, app-owned XML)
+
+    # ----------------------------------------------------------------
+    # zvariant / zbus_names / zvariant_derive unmaintained (folded into zbus 6)
+    # ----------------------------------------------------------------
+    # RUSTSEC-2026-0370 (zvariant), RUSTSEC-2026-0371 (zbus_names) and
+    # RUSTSEC-2026-0372 (zvariant_derive), published 2026-10-16. UNMAINTAINED,
+    # not vulnerabilities: upstream stopped publishing the three as standalone
+    # crates because zbus 6.0.0 (released the same day) absorbs them as its
+    # `wire` and `names` modules and its own derive macros (z-galaxy/zbus#2043).
+    # No release of the three is marked patched, so every zbus 4.x and 5.x
+    # graph carries them. Two instances of each sit in Cargo.lock:
+    #
+    #   zbus 5 line (zvariant 5.15.0, zvariant_derive 5.15.0, zbus_names 4.3.4):
+    #     zbus 5.19.0 <- tauri-plugin-single-instance 2.4.5 <- aeroftp
+    #     zbus 5.19.0 <- notify-rust 4.18.0 <- tauri-plugin-notification 2.4.0 <- aeroftp
+    #   Compiled into the Linux binary only (both edges are cfg(linux) /
+    #   cfg(unix, not macOS)). The D-Bus client the single-instance handoff and
+    #   desktop notifications use, talking to the user's own session bus. It
+    #   never sees network data.
+    #
+    #   zbus 4 line (zvariant 4.2.0, zvariant_derive 4.2.0, zbus_names 3.0.0):
+    #     zbus 4.4.0 <- secret-service 4.0.0 <- keyring 3.6.3 <- aeroftp
+    #   Present in Cargo.lock but compiled on NO target. keyring's
+    #   `sync-secret-service` feature (the one we enable) uses dbus-secret-service
+    #   over libdbus; secret-service/zbus are its optional `async-secret-service`
+    #   path, which Cargo.lock lists although nothing activates it
+    #   (`cargo tree --target all -i zbus@4.4.0` prints nothing).
+    #
+    # Why no upgrade clears them, measured 2026-10-17 against crates.io and with
+    # targeted `cargo update -p` on each crate above: the newest notify-rust
+    # (4.18.2), tauri-plugin-notification (2.7.0), tauri-plugin-single-instance
+    # (2.5.4), their 3.0.0-alpha.3 lines and secret-service 5.2.0 all still
+    # require zbus ^5. The plugin releases past 2.4.x also require tauri ^2.12,
+    # which the tauri =2.11.0 pin and the runtime layer hold (Cargo.toml) rule
+    # out, so `cargo update -p` leaves both plugins where they are. keyring 4
+    # would not help either: its zbus-secret-service-keyring-store 1.0.1 store
+    # needs zbus ^5.
+    #
+    # Exit path: the zbus 5 line leaves when tauri-plugin-single-instance and
+    # notify-rust publish on zbus 6 and we can take them (for single-instance
+    # that means the tauri pin migration, unless a 2.4.x release moves); the
+    # zbus 4 line leaves when keyring (or its optional zbus store) moves to
+    # zbus 6. Each ID covers both lines, so the three ignores are removed
+    # together once neither line is left in Cargo.lock.
+    "RUSTSEC-2026-0370",  # zvariant unmaintained (merged into zbus 6; zbus 5 Linux-only D-Bus client, zbus 4 lock-only)
+    "RUSTSEC-2026-0371",  # zbus_names unmaintained (merged into zbus 6; same two paths)
+    "RUSTSEC-2026-0372",  # zvariant_derive unmaintained (merged into zbus 6; same two paths)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is

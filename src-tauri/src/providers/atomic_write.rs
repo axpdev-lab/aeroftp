@@ -619,6 +619,14 @@ pub(crate) mod temp_claim {
     mod tests {
         use super::*;
 
+        /// End a writer's claim as `ClaimedTemp` does: unlocked, then closed.
+        /// A close alone leaves the lock held by a child another test thread
+        /// forks meanwhile, until that child execs: the lock belongs to the
+        /// open file description, which its inherited descriptor shares.
+        fn end_claim(file: std::fs::File) {
+            file.unlock().unwrap();
+        }
+
         fn failing_lock(_file: &std::fs::File) -> std::result::Result<(), std::fs::TryLockError> {
             Err(std::fs::TryLockError::Error(Error::from_raw_os_error(
                 libc::EOPNOTSUPP,
@@ -742,7 +750,7 @@ pub(crate) mod temp_claim {
                 Some(ErrorKind::AlreadyExists),
                 "a fresh download took a live writer's part"
             );
-            drop(live);
+            end_claim(live);
             std::fs::write(&temp, b"a stale part").unwrap();
             let fresh = create_fresh(&temp);
             assert!(
@@ -778,9 +786,9 @@ pub(crate) mod temp_claim {
                 Some(ErrorKind::AlreadyExists)
             );
             assert!(temp.exists(), "a live writer's part was removed");
-            drop(live);
+            end_claim(live);
             let claim = open_to_append(&temp).expect("a stale part");
-            drop(claim);
+            end_claim(claim);
             super::super::remove_temp_unless_live(&temp).expect("a stale part goes");
             assert!(!temp.exists());
             super::super::remove_temp_unless_live(&temp).expect("nothing there is fine");

@@ -37,12 +37,14 @@ describe('clipboard writes', () => {
         expect(Object.keys(sources).length).toBeGreaterThan(100);
     });
 
+    // Blanking the comments of every source file took 3.4 s under a load average
+    // of 26 and timed out at vitest's default 5 s under one of 21.
     it('go through copyText, never straight to navigator.clipboard', () => {
         const offenders = Object.entries(sources)
             .filter(([path]) => path !== './clipboard.ts')
             .flatMap(([path, text]) => webClipboardLines(text).map(n => `${path}:${n}`));
         expect(offenders).toEqual([]);
-    });
+    }, 30_000);
 
     it('the web clipboard check sees every spelling it is meant to see', () => {
         // The check above passes on a clean tree, which is also what a blind

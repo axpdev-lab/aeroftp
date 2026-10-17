@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "Salattu AES-256:llä. Sisältö ja tiedostonimet ovat luottamuksellisia; avaaminen vaatii salasanan.",
             "resetDefaults": "Palauta oletukset",
             "scrubErrorCorrectionTooltip": "{label} (tarkistaa salaustiivisteet)",
-            "repairErrorCorrectionTooltip": "{label} (koeajon esikatselu saatavilla)"
+            "repairErrorCorrectionTooltip": "{label} (koeajon esikatselu saatavilla)",
+            "repairDryRunNoDamage": "Koeajo: ei vaurioita; ei korjattavaa. Mitään ei kirjoitettu.",
+            "repairDryRunCannotRepair": "Koeajo: yhtäkään {damaged} vaurioituneesta osasta ei voida korjata. Mitään ei kirjoitettu.",
+            "repairDryRunCanRepair": "Koeajo: {repaired} vaurioitunutta osaa voidaan korjata. Mitään ei kirjoitettu.",
+            "repairDryRunMetadata": "Koeajo: holvin otsikko tai manifesti voidaan rakentaa uudelleen pariteetista. Mitään ei kirjoitettu.",
+            "metadataRepaired": "Holvin otsikko tai manifesti rakennettiin uudelleen pariteetista.",
+            "repairMetadataSuccess": "Korjaus valmis: holvin otsikko tai manifesti rakennettiin uudelleen pariteetista"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "Kannettava laite irrotettiin. Kytke kaapeli uudelleen ja avaa se uudelleen.",
             "portable_needs_replug": "Ei työpöydän liittämä. Irrota ja kytke kaapeli uudelleen, ja avaa sitten uudelleen.",
             "volumes_need_mount_observe": "Snapissa taltiot näkyvät, kun mount-observe-oikeus on yhdistetty. Suorita tämä päätteessä ja palaa sitten AeroFTP:hen:",
-            "volumes_unavailable": "Liitettyjä taltioita ei voitu lukea."
+            "volumes_unavailable": "Liitettyjä taltioita ei voitu lukea.",
+            "portable_device": "Kannettava laite"
         },
         "viewMode": {
             "list": "Lista",

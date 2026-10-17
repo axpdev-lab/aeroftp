@@ -32,6 +32,12 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex, RwLock};
 
+mod incremental;
+pub use incremental::{
+    prepare_incremental, run_pair_incremental_cycle, IncrementalHints, IncrementalPlan,
+    IncrementalPrep, LocalChanges, REMOTE_WORK_LIMIT,
+};
+
 /// Sync task to be executed
 #[derive(Debug, Clone)]
 pub enum SyncTask {
@@ -706,7 +712,11 @@ impl CloudService {
                 // by size alone). It is the time read when the transfer ended,
                 // not now: a same-size edit made later in the cycle must stay a
                 // change the next cycle sees.
-                if matches!(action, SyncAction::Upload | SyncAction::Download) && !c.is_dir {
+                if matches!(
+                    action,
+                    SyncAction::Upload | SyncAction::Download | SyncAction::KeepBoth
+                ) && !c.is_dir
+                {
                     if let Some(landed) = self
                         .landed
                         .lock()
@@ -730,6 +740,13 @@ impl CloudService {
     /// unchanged instead of a spurious conflict:
     /// - `Upload` converged remote onto local  -> record local
     /// - `Download` converged local onto remote -> record remote
+    /// - `KeepBoth` moved the local copy aside under a conflict name and put
+    ///   the remote copy at the path -> record remote, as for `Download`.
+    ///   Recording nothing left the old baseline, against which the path
+    ///   (the remote copy, changed) and the remote both read as changed: the
+    ///   next cycle saw the same conflict and set aside another copy, one
+    ///   per cycle. The copy set aside is a new local file the next cycle
+    ///   sends.
     /// - `Skip` records the AUTHORITATIVE side for the direction: local for
     ///   send-only (LocalToRemote), remote for receive-only (RemoteToLocal),
     ///   either for Bidirectional (Skip there means Identical). Recording the
@@ -747,7 +764,7 @@ impl CloudService {
     ///   deleted here, and a kept one must stay tracked.
     ///
     /// Returns `None` for actions that must not advance the baseline
-    /// (`AskUser`, `KeepBoth`); deletes are handled by the caller.
+    /// (`AskUser`); deletes are handled by the caller.
     fn baseline_entry_for(
         action: &SyncAction,
         direction: CompareDirection,
@@ -757,7 +774,7 @@ impl CloudService {
     ) -> Option<SyncIndexEntry> {
         let info = match action {
             SyncAction::Upload => local_info,
-            SyncAction::Download => remote_info,
+            SyncAction::Download | SyncAction::KeepBoth => remote_info,
             SyncAction::Skip if !is_dir && (local_info.is_none() || remote_info.is_none()) => {
                 return None;
             }
@@ -1080,32 +1097,7 @@ impl CloudService {
                 Ok(action) => match action {
                     SyncAction::AskUser => {
                         result.conflicts += 1;
-                        // Add to conflicts list (capped at 10K to prevent unbounded growth)
-                        let mut conflicts = self.conflicts.write().await;
-                        if conflicts.len() < 10_000 {
-                            conflicts.push(FileConflict {
-                                relative_path: comparison.relative_path.clone(),
-                                local_modified: comparison
-                                    .local_info
-                                    .as_ref()
-                                    .and_then(|i| i.modified),
-                                remote_modified: comparison
-                                    .remote_info
-                                    .as_ref()
-                                    .and_then(|i| i.modified),
-                                local_size: comparison
-                                    .local_info
-                                    .as_ref()
-                                    .map(|i| i.size)
-                                    .unwrap_or(0),
-                                remote_size: comparison
-                                    .remote_info
-                                    .as_ref()
-                                    .map(|i| i.size)
-                                    .unwrap_or(0),
-                                status: comparison.status.clone(),
-                            });
-                        }
+                        self.push_conflict(comparison).await;
                     }
                     _ => Self::record_sync_action(&mut result, comparison, &action),
                 },
@@ -1187,6 +1179,22 @@ impl CloudService {
         }
 
         Ok(result)
+    }
+
+    /// Add a conflict left for the user to the list (capped at 10K to prevent
+    /// unbounded growth).
+    async fn push_conflict(&self, comparison: &FileComparison) {
+        let mut conflicts = self.conflicts.write().await;
+        if conflicts.len() < 10_000 {
+            conflicts.push(FileConflict {
+                relative_path: comparison.relative_path.clone(),
+                local_modified: comparison.local_info.as_ref().and_then(|i| i.modified),
+                remote_modified: comparison.remote_info.as_ref().and_then(|i| i.modified),
+                local_size: comparison.local_info.as_ref().map_or(0, |i| i.size),
+                remote_size: comparison.remote_info.as_ref().map_or(0, |i| i.size),
+                status: comparison.status.clone(),
+            });
+        }
     }
 
     fn record_sync_action(
@@ -1841,6 +1849,12 @@ impl CloudService {
                         .download(&remote_info.path, &local_path.to_string_lossy(), None)
                         .await
                         .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                    // The original path now holds the remote copy, as after a
+                    // Download: it keeps the remote time, and the baseline
+                    // records it (see `baseline_entry_for`).
+                    if let Some(ref mtime) = remote_info.modified {
+                        crate::preserve_remote_mtime_dt(&local_path, Some(*mtime));
+                    }
                 }
             }
             SyncAction::DeleteRemote if !comparison.is_dir => {
@@ -1871,7 +1885,10 @@ impl CloudService {
         }
 
         if landed
-            && matches!(action, SyncAction::Upload | SyncAction::Download)
+            && matches!(
+                action,
+                SyncAction::Upload | SyncAction::Download | SyncAction::KeepBoth
+            )
             && !comparison.is_dir
         {
             self.note_landed(config, &comparison.relative_path);
@@ -1891,9 +1908,7 @@ impl CloudService {
 /// cd/mkdir/ensure is handled inside the plan builders; callers no longer
 /// duplicate it.
 ///
-/// The overlay stack is composed here from config state: crypt is resolved from
-/// the saved profile first, then AeroCompress wraps it as the outer layer when
-/// `config.compress_enabled` is true.
+/// The overlay stack is composed by [`open_aerocloud_provider`].
 ///
 /// `store` is passed explicitly (from_cache() or opened vault) so CLI and GUI
 /// paths both work. `config` must have protocol_type resolved (CLI does the
@@ -1904,6 +1919,38 @@ pub async fn sync_one_config(
     app: Option<AppHandle>,
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
+    let mut provider = open_aerocloud_provider(&config, store).await?;
+
+    // NOTE: explicit cd/mkdir that used to sit between wrap and service here
+    // (and in the old inner) has been removed: build_sync_plan_with_provider
+    // (used by both preview and perform) centralizes ensure_remote.
+
+    let mut svc = CloudService::new();
+    if let Some(handle) = app {
+        svc.set_app_handle(handle);
+    }
+    svc.init(config.clone()).await;
+
+    let sync_result = if dry_run {
+        svc.preview_full_sync_with_provider(&mut *provider).await
+    } else {
+        svc.perform_full_sync_with_provider(&mut *provider).await
+    };
+
+    let _ = provider.disconnect().await;
+
+    sync_result
+}
+
+/// Connect the provider of an AeroCloud config and compose its overlay
+/// stack: crypt is resolved from the saved profile first, then AeroCompress
+/// wraps it as the outer layer when `config.compress_enabled` is true. Every
+/// AeroCloud cycle, full or incremental, reaches the remote through this
+/// stack, so names an overlay rewrites are rewritten the same way on both.
+pub(crate) async fn open_aerocloud_provider(
+    config: &CloudConfig,
+    store: Option<&credential_store::CredentialStore>,
+) -> Result<Box<dyn StorageProvider>, String> {
     if !config.enabled {
         return Err("AeroCloud is not enabled".to_string());
     }
@@ -1929,7 +1976,7 @@ pub async fn sync_one_config(
             .to_string()
     })?;
 
-    let mut provider = cloud_provider_factory::create_cloud_provider(&config)
+    let mut provider = cloud_provider_factory::create_cloud_provider(config)
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
 
@@ -1948,26 +1995,103 @@ pub async fn sync_one_config(
             config.compress_level,
         ));
     }
+    Ok(provider)
+}
 
-    // NOTE: explicit cd/mkdir that used to sit between wrap and service here
-    // (and in the old inner) has been removed: build_sync_plan_with_provider
-    // (used by both preview and perform) centralizes ensure_remote.
+/// What a connected provider said about how a pair may be scanned, for the
+/// background scheduler to remember between cycles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProviderScanTraits {
+    /// [`StorageProvider::min_full_scan_interval`] of the composed stack.
+    pub min_full_scan_interval: Option<Duration>,
+    /// [`StorageProvider::reports_exact_size`] of the composed stack: the
+    /// incremental pass reads local sizes against the baseline only when it
+    /// is true.
+    pub exact_sizes: bool,
+}
 
+impl ProviderScanTraits {
+    pub(crate) fn of(provider: &dyn StorageProvider) -> Self {
+        Self {
+            min_full_scan_interval: provider.min_full_scan_interval(),
+            exact_sizes: provider.reports_exact_size(),
+        }
+    }
+}
+
+/// One pair's background cycle: what it did, whether it scanned the whole
+/// remote folder, and what the provider said about scanning.
+#[derive(Debug, Clone)]
+pub struct PairCycleReport {
+    pub result: SyncOperationResult,
+    /// Whether the cycle listed the whole remote folder (a full sync).
+    pub ran_full_scan: bool,
+    /// `None` when the cycle never connected.
+    pub traits: Option<ProviderScanTraits>,
+    /// The paths an incremental pass could not sync, for the worker to try
+    /// again (a full scan reads them all anyway, and reports none).
+    pub failed_paths: Vec<FailedPath>,
+}
+
+/// A pair's background cycle that failed. A failure after the connection
+/// still carries what the provider said about scanning: the floor it
+/// declared holds the next scans of the pair back even while the error
+/// lasts, and a failure that dropped it would let a fallback scan run every
+/// cycle.
+#[derive(Debug, Clone)]
+pub struct PairCycleError {
+    pub message: String,
+    /// `None` when the cycle never connected.
+    pub traits: Option<ProviderScanTraits>,
+}
+
+impl PairCycleError {
+    pub(crate) fn before_connecting(message: String) -> Self {
+        Self {
+            message,
+            traits: None,
+        }
+    }
+}
+
+/// A path an incremental pass could not sync, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailedPath {
+    /// Relative to the pair's local folder.
+    pub key: String,
+    pub error: String,
+}
+
+/// A full sync of one pair, for the background worker: [`sync_one_config`]
+/// that also reports the provider's scan traits.
+pub async fn run_pair_full_cycle(
+    config: CloudConfig,
+    store: Option<&credential_store::CredentialStore>,
+    app: Option<AppHandle>,
+) -> Result<PairCycleReport, PairCycleError> {
+    let mut provider = open_aerocloud_provider(&config, store)
+        .await
+        .map_err(PairCycleError::before_connecting)?;
+    let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
     if let Some(handle) = app {
         svc.set_app_handle(handle);
     }
-    svc.init(config.clone()).await;
-
-    let sync_result = if dry_run {
-        svc.preview_full_sync_with_provider(&mut *provider).await
-    } else {
-        svc.perform_full_sync_with_provider(&mut *provider).await
-    }?;
-
+    svc.init(config).await;
+    let result = svc.perform_full_sync_with_provider(&mut *provider).await;
     let _ = provider.disconnect().await;
-
-    Ok(sync_result)
+    match result {
+        Ok(result) => Ok(PairCycleReport {
+            result,
+            ran_full_scan: true,
+            traits: Some(traits),
+            failed_paths: Vec::new(),
+        }),
+        Err(message) => Err(PairCycleError {
+            message,
+            traits: Some(traits),
+        }),
+    }
 }
 
 /// State that a folder pair is compared by size only: a warning the first
@@ -2132,12 +2256,11 @@ mod baseline_tests {
     }
 
     #[test]
-    fn askuser_keepboth_deletes_do_not_advance_baseline() {
+    fn askuser_and_deletes_do_not_advance_baseline() {
         let local = fi(1, 1);
         let remote = fi(2, 2);
         for action in [
             SyncAction::AskUser,
-            SyncAction::KeepBoth,
             SyncAction::DeleteLocal,
             SyncAction::DeleteRemote,
         ] {

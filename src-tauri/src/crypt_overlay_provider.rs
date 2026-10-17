@@ -1532,6 +1532,11 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.listing_is_authoritative()
     }
 
+    fn min_full_scan_interval(&self) -> Option<std::time::Duration> {
+        // A full scan through the wrapper is a full scan of the inner backend.
+        self.inner.min_full_scan_interval()
+    }
+
     fn reports_exact_size(&self) -> bool {
         // rclone / AeroCrypt v3 map the ciphertext size to the exact plaintext
         // size; legacy AeroCrypt v1/v2 defer (return ciphertext length). Tell the

@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "使用 AES-256 加密。内容和文件名均为机密，打开需要密码。",
             "resetDefaults": "重置为默认",
             "scrubErrorCorrectionTooltip": "{label}（校验密文哈希）",
-            "repairErrorCorrectionTooltip": "{label}（可试运行预览）"
+            "repairErrorCorrectionTooltip": "{label}（可试运行预览）",
+            "repairDryRunNoDamage": "试运行：无损坏；无需修复。未写入任何内容。",
+            "repairDryRunCannotRepair": "试运行：{damaged} 个损坏的数据块均无法修复。未写入任何内容。",
+            "repairDryRunCanRepair": "试运行：{repaired} 个损坏的数据块可以修复。未写入任何内容。",
+            "repairDryRunMetadata": "试运行：可以从校验数据重建保险库头部或清单。未写入任何内容。",
+            "metadataRepaired": "已从校验数据重建保险库头部或清单。",
+            "repairMetadataSuccess": "修复完成：已从校验数据重建保险库头部或清单"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "便携设备已断开连接。请重新插入电缆并再次打开。",
             "portable_needs_replug": "桌面未挂载。请拔下并重新插入电缆，然后再次打开。",
             "volumes_need_mount_observe": "在 snap 中，连接 mount-observe 权限后才会显示卷。请在终端中运行以下命令，然后返回 AeroFTP：",
-            "volumes_unavailable": "无法读取已挂载的卷。"
+            "volumes_unavailable": "无法读取已挂载的卷。",
+            "portable_device": "便携设备"
         },
         "viewMode": {
             "list": "列表",
