@@ -261,9 +261,10 @@ Pass `--breakdown` to wrap the array in `{ profiles, summary, breakdown }`; the 
 ### Profile Matching
 
 The CLI matches profiles in this order:
-1. **Exact name** (case-insensitive)
-2. **Exact ID** (internal UUID)
-3. **Substring match** - if only one profile matches, it connects. If multiple match, an error lists the candidates
+1. **Index** - the 1-based number `aeroftp-cli profiles` shows. A selector made only of digits is always read as an index, so select a profile whose name is a number by its id
+2. **Exact name** (case-insensitive)
+3. **Exact ID** (internal UUID)
+4. **Substring match** - if only one profile matches, that profile is selected. If multiple match, an error lists the candidates
 
 ```bash
 $ aeroftp-cli ls --profile "SSH" /
@@ -1773,7 +1774,12 @@ aeroftp-cli export filezilla --output ./sitemanager.xml
 # Any other bridge target, e.g. restic env script or s3cmd config
 aeroftp-cli export restic --output ./restic-env.sh
 aeroftp-cli export s3cmd  --output ./.s3cfg
+
+# Only some profiles: index, name (any case), id, or a unique substring
+aeroftp-cli export rclone --profiles "NAS,srv_1792220220358_7cks9su5d,3" --output ./rclone.conf
 ```
+
+`--profiles` takes a comma-separated list, and each selector picks a profile the way `--profile` does (see Profile Matching above). Without it every exportable profile is exported. A selector that picks nothing is listed with the skipped profiles, with the reason (`no profile matches 'NAS2'`, `no profile at index 9 (range 1..=8)`), and the rest is exported. One rule is stricter than `--profile`: a name that two profiles share, possible in a vault saved before names were unique, picks neither and the reason lists both ids, because the export would otherwise write the credentials of whichever comes first; select one by id. The command exits 4 when nothing was exported, whatever the reason.
 
 OAuth profiles **are** exported to rclone for every provider that has a matching rclone backend: Google Drive, Dropbox, OneDrive, Box, pCloud Drive, Yandex Disk, Zoho WorkDrive and Jottacloud. Each remote is written with the profile's `token` and the `client_id` and `client_secret` configured in AeroFTP for that provider, so it is usable and refreshable without re-authorising. This requires all three to be in the vault, which is the case for a profile you authorised in AeroFTP with your own OAuth app, and rclone can refresh the token only while that app is still the one configured: after switching to another app, authorise the profile again before exporting. When any of the three is missing, the remote is still written and a comment tells you to run `rclone config reconnect "<remote>:"` before use, rather than emitting a silently broken half-remote. Zoho WorkDrive also carries `region` (mapped to rclone's TLD slug, so AeroFTP `us` becomes rclone `com`) and `root_folder_id` when the profile is pinned to a workspace or team folder.
 
