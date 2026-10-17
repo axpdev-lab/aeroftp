@@ -144,6 +144,25 @@ test('a report this reader cannot read is refused, not read as clean', () => {
     assert.equal(r.findings, undefined, name);
   }
   assert.match(readValidateReport(unreadable['block next to flow'], 3).error, /1 flow-style record/);
+
+  // A passing verdict does not make a report readable: records this reader
+  // did not see would otherwise become "no findings". Exit 0, as appstreamcli
+  // exits when it says Passed: yes.
+  const unreadableWhenPassed = {
+    'JSON without Issues': '---\n{ "File": "x", "Validator": "1.1.2", "Passed": "yes" }\n',
+    'JSON with Issues null': '---\n{ "Issues": null, "Passed": "yes" }\n',
+    'block without Issues': '---\nFile: x\nValidator: 1.0.2\nPassed: yes\n',
+    'block records under a renamed key': '---\nFile: x\nFindings:\n- tag: x\n  severity: error\nPassed: yes\n',
+    'block records indented under Issues': '---\nFile: x\nIssues:\n  - tag: x\n    severity: error\nPassed: yes\n',
+  };
+  for (const [name, text] of Object.entries(unreadableWhenPassed)) {
+    const r = readValidateReport(text, 0);
+    assert.ok(r.error, `${name}: ${JSON.stringify(r)}`);
+    assert.equal(r.findings, undefined, name);
+  }
+  // An explicit empty list with a passing verdict is the one empty answer.
+  assert.deepEqual(readValidateReport('---\nFile: x\nIssues: []\nPassed: yes\n', 0), { findings: [], format: 'block' });
+  assert.deepEqual(readValidateReport('---\n{ "Issues": [], "Passed": "yes" }\n', 0), { findings: [], format: 'json' });
 });
 
 test('the gate gives the same verdict on the same file from either version', (t) => {

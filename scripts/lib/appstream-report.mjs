@@ -99,9 +99,14 @@ function readFlowDocument(doc) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { error: 'appstreamcli emitted a JSON-shaped report whose top level is not an object' };
   }
-  const issues = parsed.Issues ?? [];
+  // Every non-empty report captured carries an Issues list. A missing or null
+  // one is a shape nobody has measured, and reading it as "no issues" would let
+  // records under a renamed key pass as a clean report behind "Passed": "yes".
+  const issues = parsed.Issues;
   if (!Array.isArray(issues)) {
-    return { error: 'appstreamcli emitted a JSON-shaped report whose Issues is not a list' };
+    return {
+      error: `appstreamcli emitted a JSON-shaped report whose Issues is ${issues === undefined ? 'missing' : 'not a list'}`,
+    };
   }
   const findings = [];
   for (const [i, issue] of issues.entries()) {
@@ -172,6 +177,18 @@ function readBlockDocument(out) {
         `appstreamcli emitted ${flowRecords} flow-style record(s) that this parser does not read ` +
         `(it read ${findings.length} block-style). The report format changed: fix the parser, do not skip the gate.`,
     };
+  }
+  // Every non-empty 1.0.2 report measured has a top-level `Issues:` key with
+  // its records under it. Without that key, or with a bare `Issues:` in which
+  // this parser read no record, `Passed: yes` would turn records it never saw
+  // (a renamed key, an indented list) into a clean report. `Issues: []` is the
+  // one empty list that reads as an answer.
+  const issuesKey = /^Issues:[ \t]*(\[[ \t]*\])?[ \t]*$/m.exec(out);
+  if (!issuesKey) {
+    return { error: 'appstreamcli emitted a block report without a top-level Issues list' };
+  }
+  if (!issuesKey[1] && !findings.length) {
+    return { error: 'appstreamcli emitted an Issues list in which this parser read no record' };
   }
   // `Passed:` is the last top-level key of every 1.0.2 report measured, so a
   // report without it may have been cut short after the records that were
