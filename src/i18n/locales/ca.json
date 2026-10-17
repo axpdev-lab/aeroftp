@@ -3404,7 +3404,10 @@
             "repairErrorCorrectionTooltip": "{label} (previsualització en simulació disponible)",
             "repairDryRunNoDamage": "Simulació: sense danys; res a reparar.",
             "repairDryRunCannotRepair": "Simulació: no es pot reparar cap dels {damaged} fragment(s) danyat(s). No s'ha escrit res.",
-            "repairDryRunCanRepair": "Simulació: es poden reparar {repaired} fragment(s) danyat(s). No s'ha escrit res."
+            "repairDryRunCanRepair": "Simulació: es poden reparar {repaired} fragment(s) danyat(s). No s'ha escrit res.",
+            "repairDryRunMetadata": "Simulació: la capçalera o el manifest del vault es poden reconstruir a partir de la paritat. No s'ha escrit res.",
+            "metadataRepaired": "S'ha reconstruït la capçalera o el manifest del vault a partir de la paritat.",
+            "repairMetadataSuccess": "Reparació completa: s'ha reconstruït la capçalera o el manifest del vault a partir de la paritat"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",
@@ -3599,7 +3602,8 @@
             "portable_unplugged": "El dispositiu portàtil s'ha desconnectat. Torneu a connectar el cable i obriu-lo de nou.",
             "portable_needs_replug": "No està muntat per l'escriptori. Desconnecteu i torneu a connectar el cable i obriu-lo de nou.",
             "volumes_need_mount_observe": "Al snap, els volums apareixen quan es connecta el permís mount-observe. Executa això en un terminal i torna a AeroFTP:",
-            "volumes_unavailable": "No s'han pogut llegir els volums muntats."
+            "volumes_unavailable": "No s'han pogut llegir els volums muntats.",
+            "portable_device": "Dispositiu portàtil"
         },
         "viewMode": {
             "list": "Llista",

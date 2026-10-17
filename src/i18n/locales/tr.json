@@ -3404,7 +3404,10 @@
             "repairErrorCorrectionTooltip": "{label} (deneme önizlemesi kullanılabilir)",
             "repairDryRunNoDamage": "Deneme: hasar yok; onarılacak bir şey yok.",
             "repairDryRunCannotRepair": "Deneme: {damaged} hasarlı parçanın hiçbiri onarılamaz. Hiçbir şey yazılmadı.",
-            "repairDryRunCanRepair": "Deneme: {repaired} hasarlı parça onarılabilir. Hiçbir şey yazılmadı."
+            "repairDryRunCanRepair": "Deneme: {repaired} hasarlı parça onarılabilir. Hiçbir şey yazılmadı.",
+            "repairDryRunMetadata": "Deneme: kasa başlığı veya manifestosu pariteden yeniden oluşturulabilir. Hiçbir şey yazılmadı.",
+            "metadataRepaired": "Kasa başlığı veya manifestosu pariteden yeniden oluşturuldu.",
+            "repairMetadataSuccess": "Onarım tamamlandı: kasa başlığı veya manifestosu pariteden yeniden oluşturuldu"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",
@@ -3599,7 +3602,8 @@
             "portable_unplugged": "Taşınabilir cihaz bağlantısı kesildi. Kabloyu yeniden takın ve tekrar açın.",
             "portable_needs_replug": "Masaüstü tarafından bağlanmadı. Kabloyu çıkarıp yeniden takın, sonra tekrar açın.",
             "volumes_need_mount_observe": "Snap içinde birimler, mount-observe izni bağlandığında görünür. Bunu bir terminalde çalıştırın, ardından AeroFTP'ye dönün:",
-            "volumes_unavailable": "Bağlı birimler okunamadı."
+            "volumes_unavailable": "Bağlı birimler okunamadı.",
+            "portable_device": "Taşınabilir cihaz"
         },
         "viewMode": {
             "list": "Liste",

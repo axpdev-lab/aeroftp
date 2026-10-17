@@ -16,7 +16,8 @@ import { parseAst } from 'vite';
  * in a template literal, where the literal text holds a word. A variable used
  * there is followed to its closest declaration before it in the same file: the
  * vault repair dialog put `const prefix = dry ? 'Dry-run: ' : ''` in front of
- * its translated result. Shortcut key names (`(Ctrl+S)`), Aero product names,
+ * its translated result, and a portable device named itself `|| 'Portable
+ * device'` in a translated error. Shortcut key names (`(Ctrl+S)`), Aero product names,
  * rclone crypt and a version prefix are not prose and pass. The text belongs in
  * the translation, with the variable part as a `{placeholder}`. Text next to
  * `{t()}` in JSX is not covered.
@@ -58,12 +59,16 @@ function literalText(node: Node): string | null {
 const isProse = (text: string) => PROSE.test(text.replace(NEUTRAL, ''));
 
 // The texts a declaration can evaluate to: a literal, either branch of a
-// condition, or the value side of `&&` (an `||` fallback after t() is not one).
+// condition, the value side of `&&`, or either side of `||` / `??`. A fallback
+// after t() is not one: t() always returns a non-empty string, so it never shows.
 function texts(node: Node): string[] {
     const text = literalText(node);
     if (text !== null) return [text];
     if (node.type === 'ConditionalExpression') return [...texts(node.consequent as Node), ...texts(node.alternate as Node)];
-    if (node.type === 'LogicalExpression' && node.operator === '&&') return texts(node.right as Node);
+    if (node.type === 'LogicalExpression') {
+        if (node.operator === '&&') return texts(node.right as Node);
+        if (!containsT(node.left as Node)) return [...texts(node.left as Node), ...texts(node.right as Node)];
+    }
     return [];
 }
 
@@ -126,6 +131,10 @@ describe('a translated string is not glued to English in the code', () => {
             "const k = `${label} · ${t('aerocrypt.lock')}`;",
             "const tail = dry && ' (no changes written)';",
             "const m = t('vault.close') + tail;",
+            "const name = profile?.name || device.displayName || 'Portable device';",
+            "const n = `${t('sidebar.portable_open_failed')}: ${name}`;",
+            "const shown = t('vault.close') || 'Close';",
+            "const o = t('vault.open') + shown;",
         ].join('\n');
         expect(offenders({ 'sample.ts': sample })).toEqual([
             "sample.ts:1 t('vault.scrubErrorCorrection') + ' (verify cipher hashes)'",
@@ -134,6 +143,7 @@ describe('a translated string is not glued to English in the code', () => {
             "sample.ts:4 'Error: ' + t('common.failed')",
             "sample.ts:11 `${prefix}${t('vault.noDamageNothing')}`",
             "sample.ts:15 t('vault.close') + tail",
+            "sample.ts:17 `${t('sidebar.portable_open_failed')}: ${name}`",
         ]);
     });
 

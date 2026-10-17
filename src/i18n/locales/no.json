@@ -3404,7 +3404,10 @@
             "repairErrorCorrectionTooltip": "{label} (forhåndsvisning med tørrkjøring tilgjengelig)",
             "repairDryRunNoDamage": "Tørrkjøring: ingen skade; ingenting å reparere.",
             "repairDryRunCannotRepair": "Tørrkjøring: ingen av {damaged} skadde del(er) kan repareres. Ingenting ble skrevet.",
-            "repairDryRunCanRepair": "Tørrkjøring: {repaired} skadde del(er) kan repareres. Ingenting ble skrevet."
+            "repairDryRunCanRepair": "Tørrkjøring: {repaired} skadde del(er) kan repareres. Ingenting ble skrevet.",
+            "repairDryRunMetadata": "Tørrkjøring: vault-headeren eller manifestet kan bygges opp igjen fra paritet. Ingenting ble skrevet.",
+            "metadataRepaired": "Vault-headeren eller manifestet ble bygd opp igjen fra paritet.",
+            "repairMetadataSuccess": "Reparasjon fullført: vault-headeren eller manifestet ble bygd opp igjen fra paritet"
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",
@@ -3599,7 +3602,8 @@
             "portable_unplugged": "Den bærbare enheten ble frakoblet. Koble til kabelen igjen og åpne den på nytt.",
             "portable_needs_replug": "Ikke montert av skrivebordet. Trekk ut og sett i kabelen på nytt, og åpne deretter på nytt.",
             "volumes_need_mount_observe": "I snap vises volumer når tillatelsen mount-observe er koblet til. Kjør dette i en terminal, og gå deretter tilbake til AeroFTP:",
-            "volumes_unavailable": "Kunne ikke lese de monterte volumene."
+            "volumes_unavailable": "Kunne ikke lese de monterte volumene.",
+            "portable_device": "Bærbar enhet"
         },
         "viewMode": {
             "list": "Liste",

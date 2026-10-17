@@ -3404,7 +3404,10 @@
             "repairErrorCorrectionTooltip": "{label} (förhandsvisning via provkörning tillgänglig)",
             "repairDryRunNoDamage": "Provkörning: inga skador; inget att reparera.",
             "repairDryRunCannotRepair": "Provkörning: inget av {damaged} skadade segment kan repareras. Inget skrevs.",
-            "repairDryRunCanRepair": "Provkörning: {repaired} skadade segment kan repareras. Inget skrevs."
+            "repairDryRunCanRepair": "Provkörning: {repaired} skadade segment kan repareras. Inget skrevs.",
+            "repairDryRunMetadata": "Provkörning: valvets header eller manifest kan byggas upp igen från paritet. Inget skrevs.",
+            "metadataRepaired": "Valvets header eller manifest byggdes upp igen från paritet.",
+            "repairMetadataSuccess": "Reparation klar: valvets header eller manifest byggdes upp igen från paritet"
         },
         "cryptomator": {
             "title": "Cryptomator-valv",
@@ -3599,7 +3602,8 @@
             "portable_unplugged": "Den bärbara enheten kopplades bort. Anslut kabeln igen och öppna den på nytt.",
             "portable_needs_replug": "Inte monterat av skrivbordet. Dra ur och sätt i kabeln igen, öppna sedan igen.",
             "volumes_need_mount_observe": "I snap visas volymer när behörigheten mount-observe är ansluten. Kör detta i en terminal och gå sedan tillbaka till AeroFTP:",
-            "volumes_unavailable": "Det gick inte att läsa de monterade volymerna."
+            "volumes_unavailable": "Det gick inte att läsa de monterade volymerna.",
+            "portable_device": "Bärbar enhet"
         },
         "viewMode": {
             "list": "Lista",

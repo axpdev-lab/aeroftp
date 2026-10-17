@@ -3404,7 +3404,10 @@
             "repairErrorCorrectionTooltip": "{label} (voorbeeld via dry-run beschikbaar)",
             "repairDryRunNoDamage": "Dry-run: geen schade; niets te repareren.",
             "repairDryRunCannotRepair": "Dry-run: geen van de {damaged} beschadigde chunk(s) kan worden hersteld. Er is niets geschreven.",
-            "repairDryRunCanRepair": "Dry-run: {repaired} beschadigde chunk(s) kunnen worden hersteld. Er is niets geschreven."
+            "repairDryRunCanRepair": "Dry-run: {repaired} beschadigde chunk(s) kunnen worden hersteld. Er is niets geschreven.",
+            "repairDryRunMetadata": "Dry-run: de vault-header of het manifest kan uit de pariteit worden herbouwd. Er is niets geschreven.",
+            "metadataRepaired": "Vault-header of manifest uit de pariteit herbouwd.",
+            "repairMetadataSuccess": "Reparatie voltooid: vault-header of manifest uit de pariteit herbouwd"
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",
@@ -3599,7 +3602,8 @@
             "portable_unplugged": "Het draagbare apparaat is losgekoppeld. Sluit de kabel opnieuw aan en open het opnieuw.",
             "portable_needs_replug": "Niet gekoppeld door het bureaublad. Haal de kabel eruit en steek hem weer in, en open het daarna opnieuw.",
             "volumes_need_mount_observe": "In de snap verschijnen volumes zodra de mount-observe-machtiging is gekoppeld. Voer dit uit in een terminal en keer dan terug naar AeroFTP:",
-            "volumes_unavailable": "De gemounte volumes konden niet worden gelezen."
+            "volumes_unavailable": "De gemounte volumes konden niet worden gelezen.",
+            "portable_device": "Draagbaar apparaat"
         },
         "viewMode": {
             "list": "Lijst",

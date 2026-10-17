@@ -3404,7 +3404,10 @@
             "repairErrorCorrectionTooltip": "{label} (proba-exekuzioaren aurrebista erabilgarri)",
             "repairDryRunNoDamage": "Proba-exekuzioa: kalterik ez; ez dago zer konpondurik.",
             "repairDryRunCannotRepair": "Proba-exekuzioa: kaltetutako {damaged} zatietatik bat ere ezin da konpondu. Ez da ezer idatzi.",
-            "repairDryRunCanRepair": "Proba-exekuzioa: kaltetutako {repaired} zati konpon daitezke. Ez da ezer idatzi."
+            "repairDryRunCanRepair": "Proba-exekuzioa: kaltetutako {repaired} zati konpon daitezke. Ez da ezer idatzi.",
+            "repairDryRunMetadata": "Proba-exekuzioa: vault-aren goiburua edo manifestua paritatetik berreraiki daiteke. Ez da ezer idatzi.",
+            "metadataRepaired": "Vault-aren goiburua edo manifestua paritatetik berreraiki da.",
+            "repairMetadataSuccess": "Konponketa osatuta: vault-aren goiburua edo manifestua paritatetik berreraikita"
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",
@@ -3599,7 +3602,8 @@
             "portable_unplugged": "Gailu eramangarria deskonektatu da. Konektatu kablea berriro eta ireki berriro.",
             "portable_needs_replug": "Mahaigainak ez du muntatu. Deskonektatu eta konektatu berriro kablea, eta ireki berriro.",
             "volumes_need_mount_observe": "Snap-ean, bolumenak mount-observe baimena konektatzen denean agertzen dira. Exekutatu hau terminal batean eta itzuli AeroFTP-ra:",
-            "volumes_unavailable": "Ezin izan dira muntatutako bolumenak irakurri."
+            "volumes_unavailable": "Ezin izan dira muntatutako bolumenak irakurri.",
+            "portable_device": "Gailu eramangarria"
         },
         "viewMode": {
             "list": "Zerrenda",

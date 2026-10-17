@@ -3404,7 +3404,10 @@
             "repairErrorCorrectionTooltip": "{label} (có thể chạy thử để xem trước)",
             "repairDryRunNoDamage": "Chạy thử: không có hư hỏng; không có gì để sửa.",
             "repairDryRunCannotRepair": "Chạy thử: không thể sửa chunk nào trong số {damaged} chunk bị hỏng. Không có gì được ghi.",
-            "repairDryRunCanRepair": "Chạy thử: có thể sửa {repaired} chunk bị hỏng. Không có gì được ghi."
+            "repairDryRunCanRepair": "Chạy thử: có thể sửa {repaired} chunk bị hỏng. Không có gì được ghi.",
+            "repairDryRunMetadata": "Chạy thử: có thể dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ. Không có gì được ghi.",
+            "metadataRepaired": "Đã dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ.",
+            "repairMetadataSuccess": "Đã sửa xong: đã dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",
@@ -3599,7 +3602,8 @@
             "portable_unplugged": "Thiết bị di động đã bị ngắt kết nối. Cắm lại cáp và mở lại thiết bị.",
             "portable_needs_replug": "Chưa được máy tính gắn kết. Rút rồi cắm lại cáp, sau đó mở lại.",
             "volumes_need_mount_observe": "Trong snap, các ổ đĩa sẽ xuất hiện sau khi kết nối quyền mount-observe. Chạy lệnh này trong terminal, rồi quay lại AeroFTP:",
-            "volumes_unavailable": "Không thể đọc các ổ đĩa đã gắn."
+            "volumes_unavailable": "Không thể đọc các ổ đĩa đã gắn.",
+            "portable_device": "Thiết bị di động"
         },
         "viewMode": {
             "list": "Danh sách",
