@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Y cyntaf a ganfuwyd",
             "selectAllButOne": "Dewis pob un ond un ym mhob grŵp",
             "everyCopyTicked": "pob copi wedi'i dicio",
-            "everyCopyTickedHint": "Dad-diciwch un copi ym mhob grŵp a amlygwyd: fel arall byddai pob copi'n cael ei ddileu.",
+            "everyCopyTickedHint": "Dad-diciwch o leiaf un copi ym mhob grŵp a amlygwyd: gyda phob copi wedi'i dicio, byddent i gyd yn cael eu dileu.",
             "modeExactHint": "Union yr un fath beit wrth beit",
             "modeNonIdenticalHint": "Tebygrwydd canfyddiadol neu destun, dim dileu awtomatig",
             "potentialWasteSelected": "gwastraff posibl (wedi'u dewis)",

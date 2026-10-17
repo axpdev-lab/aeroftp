@@ -74,16 +74,32 @@ function literalText(node: Node): string | null {
 
 const isProse = (text: string) => PROSE.test(text.replace(NEUTRAL, ''));
 
+// A value that is never falsy because a translation always comes out of it:
+// t() returns a non-empty string. `(ready && t('x')) || 'Ready'` is not one, and
+// shows its English fallback whenever ready is false. `??` returns an empty
+// string on its left as it is, so only its left side counts.
+function neverFalsy(node: Node): boolean {
+    if (isT(node)) return true;
+    if (node.type === 'ConditionalExpression') return neverFalsy(node.consequent as Node) && neverFalsy(node.alternate as Node);
+    if (node.type === 'LogicalExpression') {
+        if (node.operator === '||') return neverFalsy(node.left as Node) || neverFalsy(node.right as Node);
+        if (node.operator === '&&') return neverFalsy(node.left as Node) && neverFalsy(node.right as Node);
+        return neverFalsy(node.left as Node);
+    }
+    if (['ParenthesizedExpression', 'TSAsExpression', 'TSNonNullExpression'].includes(node.type)) return neverFalsy(node.expression as Node);
+    return false;
+}
+
 // The texts a declaration can evaluate to: a literal, either branch of a
 // condition, the value side of `&&`, or either side of `||` / `??`. A fallback
-// after t() is not one: t() always returns a non-empty string, so it never shows.
+// after a value that is never falsy is not one, since it never shows.
 function texts(node: Node): string[] {
     const text = literalText(node);
     if (text !== null) return [text];
     if (node.type === 'ConditionalExpression') return [...texts(node.consequent as Node), ...texts(node.alternate as Node)];
     if (node.type === 'LogicalExpression') {
         if (node.operator === '&&') return texts(node.right as Node);
-        if (!containsT(node.left as Node)) return [...texts(node.left as Node), ...texts(node.right as Node)];
+        if (!neverFalsy(node.left as Node)) return [...texts(node.left as Node), ...texts(node.right as Node)];
     }
     return [];
 }
@@ -153,7 +169,8 @@ const squash = (text: string) => text.replace(/\s+/g, ' ').trim();
 /**
  * The string nodes a JSX child expression renders: the same cases as texts(),
  * plus a template literal with no `t()` in it (one with `t()` is the template
- * check above) and TypeScript wrappers.
+ * check above), the operands of a `+` with no `t()` in it (one with `t()` is
+ * the concatenation check above) and TypeScript wrappers.
  */
 function rendered(node: Node, out: Node[]): void {
     if (literalText(node) !== null) out.push(node);
@@ -162,8 +179,11 @@ function rendered(node: Node, out: Node[]): void {
         rendered(node.consequent as Node, out);
         rendered(node.alternate as Node, out);
     } else if (node.type === 'LogicalExpression') {
-        if (node.operator !== '&&' && containsT(node.left as Node)) return;
+        if (node.operator !== '&&' && neverFalsy(node.left as Node)) return;
         if (node.operator !== '&&') rendered(node.left as Node, out);
+        rendered(node.right as Node, out);
+    } else if (node.type === 'BinaryExpression' && node.operator === '+' && !containsT(node)) {
+        rendered(node.left as Node, out);
         rendered(node.right as Node, out);
     } else if (['ParenthesizedExpression', 'TSAsExpression', 'TSNonNullExpression'].includes(node.type)) {
         rendered(node.expression as Node, out);
@@ -235,7 +255,7 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
             }
             if (node.type === 'JSXElement' || node.type === 'JSXFragment') {
                 const kids = node.children as Node[];
-                const translated = kids.some((kid) => kid.type === 'JSXExpressionContainer' && containsT(kid));
+                const translated = kids.some((kid) => kid.type !== 'JSXText' && containsT(kid));
                 for (const kid of kids) {
                     if (kid.type === 'JSXExpressionContainer') {
                         const strings: Node[] = [];
@@ -287,6 +307,8 @@ describe('a translated string is not glued to English in the code', () => {
             "const q = `${quiet}${t('vault.close')}`;",
             "const label2 = 'Some text';",
             "const fmt = (label2: string) => `${label2}${t('vault.close')}`;",
+            "const state = (ready && t('vault.open')) || 'Closed';",
+            "const r = `${state}${t('vault.close')}`;",
         ].join('\n');
         expect(offenders({ 'sample.ts': sample })).toEqual([
             "sample.ts:1 t('vault.scrubErrorCorrection') + ' (verify cipher hashes)'",
@@ -297,6 +319,7 @@ describe('a translated string is not glued to English in the code', () => {
             "sample.ts:15 t('vault.close') + tail",
             "sample.ts:17 `${t('sidebar.portable_open_failed')}: ${name}`",
             "sample.ts:22 `${prefix2}${t('vault.close')}`",
+            "sample.ts:29 `${state}${t('vault.close')}`",
         ]);
     });
 
@@ -314,6 +337,10 @@ describe('a translated string is not glued to English in the code', () => {
             "const j = <style>{`@keyframes blink { from { opacity: 0 } }`}</style>;",
             "const k = <span>{tier === 'free' ? 'FREE' : 'PAID'}</span>;",
             "const l = <p>{t('a.b')} <strong>{name}</strong></p>;",
+            "const m = <span>{count + ' files'}</span>;",
+            "const n = <span>{(ready && t('a.ready')) || 'Ready'}</span>;",
+            "const o = <p><strong>{t('a.done')}</strong> files</p>;",
+            "const p = <span>{(ok ? t('a.x') : t('a.y')) || 'Fallback'} {size + 'px'}</span>;",
         ].join('\n');
         const allowed = { 'sample.tsx': ['FREE', 'PAID', '- Box &middot; (MB)', 'never seen'] };
         expect(scan({ 'sample.tsx': sample }, allowed)).toEqual({
@@ -324,6 +351,9 @@ describe('a translated string is not glued to English in the code', () => {
                 'sample.tsx:4 {`${n} server profiles found`}',
                 'sample.tsx:5 files,',
                 'sample.tsx:5 freed',
+                "sample.tsx:13 {count + ' files'}",
+                "sample.tsx:14 {(ready && t('a.ready')) || 'Ready'}",
+                'sample.tsx:15 files',
             ],
             unused: ['sample.tsx never seen'],
         });

@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Aurkitutako lehena",
             "selectAllButOne": "Hautatu bat izan ezik denak talde bakoitzean",
             "everyCopyTicked": "kopia guztiak markatuta",
-            "everyCopyTickedHint": "Kendu marka kopia bati nabarmendutako talde bakoitzean: bestela guztiak ezabatuko dira.",
+            "everyCopyTickedHint": "Kendu marka gutxienez kopia bati nabarmendutako talde bakoitzean: kopia guztiak markatuta badaude, denak ezabatuko lirateke.",
             "modeExactHint": "Byte mailan berdinak",
             "modeNonIdenticalHint": "Pertzepziozko edo testu antzekotasuna, ezabatze automatikorik gabe",
             "potentialWasteSelected": "balizko xahutzea (hautatuak)",

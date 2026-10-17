@@ -3828,7 +3828,7 @@
             "keepFirstFound": "A primeira encontrada",
             "selectAllButOne": "Selecionar todas menos uma por grupo",
             "everyCopyTicked": "todas as cópias assinaladas",
-            "everyCopyTickedHint": "Desmarque uma cópia em cada grupo destacado: caso contrário, seriam eliminadas todas.",
+            "everyCopyTickedHint": "Desmarque pelo menos uma cópia em cada grupo destacado: com todas as cópias assinaladas, seriam todas eliminadas.",
             "modeExactHint": "Idênticos byte a byte",
             "modeNonIdenticalHint": "Semelhança perceptual ou de texto, sem exclusão automática",
             "potentialWasteSelected": "desperdício potencial (selecionados)",

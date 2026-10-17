@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Prvú nájdenú",
             "selectAllButOne": "Vybrať všetky okrem jednej v každej skupine",
             "everyCopyTicked": "označené všetky kópie",
-            "everyCopyTickedHint": "V každej zvýraznenej skupine odznačte jednu kópiu: inak sa zmažú všetky.",
+            "everyCopyTickedHint": "V každej zvýraznenej skupine odznačte aspoň jednu kópiu: ak sú označené všetky kópie, zmažú sa všetky.",
             "modeExactHint": "Zhodné bajt po bajte",
             "modeNonIdenticalHint": "Percepčná alebo textová podobnosť, bez automatického mazania",
             "potentialWasteSelected": "potenciálne zbytočné (vybrané)",

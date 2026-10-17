@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Eerst gevonden",
             "selectAllButOne": "Alles op één na per groep selecteren",
             "everyCopyTicked": "alle kopieën aangevinkt",
-            "everyCopyTickedHint": "Vink in elke gemarkeerde groep één kopie uit: anders worden alle kopieën verwijderd.",
+            "everyCopyTickedHint": "Vink in elke gemarkeerde groep ten minste één kopie uit: als alle kopieën aangevinkt zijn, zouden ze allemaal verwijderd worden.",
             "modeExactHint": "Byte voor byte identiek",
             "modeNonIdenticalHint": "Perceptuele of tekstuele gelijkenis, geen automatisch verwijderen",
             "potentialWasteSelected": "mogelijk verspild (geselecteerd)",

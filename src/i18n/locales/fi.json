@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Ensin löytynyt",
             "selectAllButOne": "Valitse kaikki paitsi yksi ryhmää kohden",
             "everyCopyTicked": "kaikki kopiot valittu",
-            "everyCopyTickedHint": "Poista valinta yhdeltä kopiolta jokaisessa korostetussa ryhmässä: muuten kaikki poistetaan.",
+            "everyCopyTickedHint": "Poista valinta vähintään yhdeltä kopiolta jokaisessa korostetussa ryhmässä: jos kaikki kopiot ovat valittuina, ne kaikki poistettaisiin.",
             "modeExactHint": "Tavu tavulta identtinen",
             "modeNonIdenticalHint": "Havaintoon perustuva tai tekstin samankaltaisuus, ei automaattista poistoa",
             "potentialWasteSelected": "mahdollinen hukka (valitut)",

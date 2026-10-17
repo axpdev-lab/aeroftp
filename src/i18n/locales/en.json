@@ -2307,7 +2307,7 @@
             "keepFirstFound": "First found",
             "selectAllButOne": "Select all but one per group",
             "everyCopyTicked": "every copy ticked",
-            "everyCopyTickedHint": "Untick one copy in each highlighted group: this would delete every copy.",
+            "everyCopyTickedHint": "Untick at least one copy in each highlighted group: with every copy ticked, all of them would be deleted.",
             "modeExactHint": "Byte-identical",
             "modeNonIdenticalHint": "Perceptual or text similarity, no auto-delete",
             "potentialWasteSelected": "potential waste (selected)",

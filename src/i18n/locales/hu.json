@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Elsőként talált",
             "selectAllButOne": "Csoportonként egy kivételével mind kijelölése",
             "everyCopyTicked": "minden másolat kijelölve",
-            "everyCopyTickedHint": "Vegye ki a jelölést egy másolatról minden kiemelt csoportban: különben mind törlődik.",
+            "everyCopyTickedHint": "Minden kiemelt csoportban vegye ki a jelölést legalább egy másolatról: ha minden másolat ki van jelölve, mindegyik törlődne.",
             "modeExactHint": "Bájtra azonos",
             "modeNonIdenticalHint": "Észlelési vagy szöveges hasonlóság, nincs automatikus törlés",
             "potentialWasteSelected": "lehetséges pazarlás (kijelölt)",

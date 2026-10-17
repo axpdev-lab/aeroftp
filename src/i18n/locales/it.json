@@ -4245,7 +4245,7 @@
             "keepFirstFound": "La prima trovata",
             "selectAllButOne": "Seleziona tutte tranne una per gruppo",
             "everyCopyTicked": "tutte le copie selezionate",
-            "everyCopyTickedHint": "Deseleziona una copia in ogni gruppo evidenziato: così le cancelleresti tutte.",
+            "everyCopyTickedHint": "Deseleziona almeno una copia in ogni gruppo evidenziato: con tutte le copie selezionate, verrebbero eliminate tutte.",
             "modeExactHint": "Identici byte per byte",
             "modeNonIdenticalHint": "Somiglianza percettiva o testuale, nessuna eliminazione automatica",
             "potentialWasteSelected": "spreco potenziale (selezionati)",

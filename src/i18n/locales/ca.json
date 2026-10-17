@@ -3828,7 +3828,7 @@
             "keepFirstFound": "El primer trobat",
             "selectAllButOne": "Selecciona tots menys un per grup",
             "everyCopyTicked": "totes les còpies marcades",
-            "everyCopyTickedHint": "Desmarqueu una còpia de cada grup destacat: així s'esborrarien totes les còpies.",
+            "everyCopyTickedHint": "Desmarqueu almenys una còpia de cada grup destacat: amb totes les còpies marcades, s'esborrarien totes.",
             "modeExactHint": "Idèntic byte a byte",
             "modeNonIdenticalHint": "Semblança perceptiva o de text, sense supressió automàtica",
             "potentialWasteSelected": "desaprofitament potencial (seleccionats)",

@@ -3792,7 +3792,7 @@
             "keepFirstFound": "最初に見つかったもの",
             "selectAllButOne": "グループごとに 1 つを除いてすべて選択",
             "everyCopyTicked": "すべての複製が選択済み",
-            "everyCopyTickedHint": "強調表示された各グループで 1 つの選択を外してください。このままではすべての複製が削除されます。",
+            "everyCopyTickedHint": "強調表示された各グループで、少なくとも 1 つの複製の選択を外してください。すべての複製が選択されたままだと、すべて削除されます。",
             "modeExactHint": "バイト単位で同一",
             "modeNonIdenticalHint": "知覚的またはテキストの類似度、自動削除なし",
             "potentialWasteSelected": "潜在的な無駄（選択済み）",

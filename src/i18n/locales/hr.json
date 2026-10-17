@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Prva pronađena",
             "selectAllButOne": "Odaberi sve osim jedne po grupi",
             "everyCopyTicked": "označene sve kopije",
-            "everyCopyTickedHint": "U svakoj istaknutoj grupi odznačite jednu kopiju: inače bi se izbrisale sve.",
+            "everyCopyTickedHint": "U svakoj istaknutoj grupi odznačite barem jednu kopiju: ako su označene sve kopije, sve bi se izbrisale.",
             "modeExactHint": "Identično bajt po bajt",
             "modeNonIdenticalHint": "Perceptivna ili tekstualna sličnost, bez automatskog brisanja",
             "potentialWasteSelected": "potencijalno uzalud potrošeno (odabrano)",

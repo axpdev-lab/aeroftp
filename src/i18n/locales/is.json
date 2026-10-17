@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Fannst fyrst",
             "selectAllButOne": "Velja allt nema eitt í hverjum hópi",
             "everyCopyTicked": "öll afrit valin",
-            "everyCopyTickedHint": "Taktu hakið af einu afriti í hverjum auðkenndum hópi: annars eyðast öll afritin.",
+            "everyCopyTickedHint": "Taktu hakið af að minnsta kosti einu afriti í hverjum auðkenndum hópi: ef öll afritin eru valin yrði þeim öllum eytt.",
             "modeExactHint": "Eins bæti fyrir bæti",
             "modeNonIdenticalHint": "Skynjunar- eða textalíkindi, engin sjálfvirk eyðing",
             "potentialWasteSelected": "hugsanleg sóun (valið)",

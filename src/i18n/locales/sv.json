@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Först hittad",
             "selectAllButOne": "Markera alla utom en per grupp",
             "everyCopyTicked": "alla kopior markerade",
-            "everyCopyTickedHint": "Avmarkera en kopia i varje markerad grupp: annars raderas alla kopior.",
+            "everyCopyTickedHint": "Avmarkera minst en kopia i varje framhävd grupp: om alla kopior är markerade skulle alla raderas.",
             "modeExactHint": "Identiska byte för byte",
             "modeNonIdenticalHint": "Perceptuell eller textuell likhet, ingen automatisk borttagning",
             "potentialWasteSelected": "potentiellt slöseri (markerade)",

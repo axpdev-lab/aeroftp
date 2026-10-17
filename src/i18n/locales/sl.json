@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Prvo najdeno",
             "selectAllButOne": "Izberi vse razen ene v vsaki skupini",
             "everyCopyTicked": "označene vse kopije",
-            "everyCopyTickedHint": "V vsaki označeni skupini odznačite eno kopijo: sicer bodo izbrisane vse.",
+            "everyCopyTickedHint": "V vsaki poudarjeni skupini odznačite vsaj eno kopijo: če so označene vse kopije, bodo izbrisane vse.",
             "modeExactHint": "Enako bajt za bajtom",
             "modeNonIdenticalHint": "Zaznavna ali besedilna podobnost, brez samodejnega brisanja",
             "potentialWasteSelected": "morebiti zapravljeno (izbrano)",

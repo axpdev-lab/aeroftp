@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Ditemui dahulu",
             "selectAllButOne": "Pilih semua kecuali satu bagi setiap kumpulan",
             "everyCopyTicked": "semua salinan ditanda",
-            "everyCopyTickedHint": "Nyahtanda satu salinan dalam setiap kumpulan yang diserlahkan: jika tidak, semua salinan akan dipadam.",
+            "everyCopyTickedHint": "Nyahtanda sekurang-kurangnya satu salinan dalam setiap kumpulan yang diserlahkan: jika semua salinan ditanda, kesemuanya akan dipadam.",
             "modeExactHint": "Sama bait demi bait",
             "modeNonIdenticalHint": "Keserupaan persepsi atau teks, tiada padam automatik",
             "potentialWasteSelected": "potensi dibazirkan (dipilih)",

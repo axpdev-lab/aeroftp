@@ -3234,8 +3234,8 @@
                     "commitApproval": "Git Commit Onayı",
                     "stageApproval": "Git Hazırlama Onayı",
                     "commitNote": "Bu, mevcut hazırlanmış dizinden bir git commit'i oluşturur. Önce staged=true ile coding_git_status ve coding_git_diff çıktılarını inceleyin.",
-                    "stagePreviewNote": "Bu, istenen yollardan hangilerinin hazırlanacağını önizler; dizin değişmez.",
-                    "stageNote": "Bu, istenen yollar için git dizinini değiştirir."
+                    "stagePreviewNote": "Bu, istenen yollardan hangilerinin hazırlanacağını önizler; indeks değişmez.",
+                    "stageNote": "Bu, istenen yollar için git indeksini değiştirir."
                 },
                 "patch": {
                     "validateNote": "Bu, dosyaları değiştirmeden yamayı doğrular.",
@@ -3828,7 +3828,7 @@
             "keepFirstFound": "İlk bulunan",
             "selectAllButOne": "Her grupta biri hariç tümünü seç",
             "everyCopyTicked": "tüm kopyalar işaretli",
-            "everyCopyTickedHint": "Vurgulanan her grupta bir kopyanın işaretini kaldırın: aksi hâlde tüm kopyalar silinir.",
+            "everyCopyTickedHint": "Vurgulanan her grupta en az bir kopyanın işaretini kaldırın: tüm kopyalar işaretliyse hepsi silinir.",
             "modeExactHint": "Bayt bayt aynı",
             "modeNonIdenticalHint": "Algısal veya metin benzerliği, otomatik silme yok",
             "potentialWasteSelected": "olası boşa harcanan (seçili)",

@@ -3828,7 +3828,7 @@
             "keepFirstFound": "처음 찾은 것",
             "selectAllButOne": "그룹마다 하나만 빼고 모두 선택",
             "everyCopyTicked": "모든 사본이 선택됨",
-            "everyCopyTickedHint": "강조된 각 그룹에서 사본 하나의 선택을 해제하세요. 이대로면 모든 사본이 삭제됩니다.",
+            "everyCopyTickedHint": "강조된 각 그룹에서 사본을 하나 이상 선택 해제하세요. 모든 사본이 선택된 상태이면 모두 삭제됩니다.",
             "modeExactHint": "바이트 단위로 동일",
             "modeNonIdenticalHint": "지각적 또는 텍스트 유사도, 자동 삭제 없음",
             "potentialWasteSelected": "잠재적 낭비 (선택됨)",

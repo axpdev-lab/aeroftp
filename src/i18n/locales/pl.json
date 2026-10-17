@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Pierwszą znalezioną",
             "selectAllButOne": "Zaznacz wszystkie oprócz jednej w grupie",
             "everyCopyTicked": "zaznaczone wszystkie kopie",
-            "everyCopyTickedHint": "W każdej wyróżnionej grupie odznacz jedną kopię: inaczej zostaną usunięte wszystkie.",
+            "everyCopyTickedHint": "W każdej wyróżnionej grupie odznacz co najmniej jedną kopię: jeśli zaznaczone będą wszystkie kopie, zostaną usunięte wszystkie.",
             "modeExactHint": "Identyczne bajt w bajt",
             "modeNonIdenticalHint": "Podobieństwo percepcyjne lub tekstowe, bez automatycznego usuwania",
             "potentialWasteSelected": "potencjalnie zmarnowane (zaznaczone)",

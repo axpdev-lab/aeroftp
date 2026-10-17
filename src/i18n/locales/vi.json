@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Tìm thấy đầu tiên",
             "selectAllButOne": "Chọn tất cả trừ một trong mỗi nhóm",
             "everyCopyTicked": "đã chọn mọi bản sao",
-            "everyCopyTickedHint": "Bỏ chọn một bản sao trong mỗi nhóm được tô sáng: nếu không, mọi bản sao sẽ bị xóa.",
+            "everyCopyTickedHint": "Bỏ chọn ít nhất một bản sao trong mỗi nhóm được tô sáng: nếu chọn mọi bản sao, tất cả sẽ bị xóa.",
             "modeExactHint": "Giống hệt từng byte",
             "modeNonIdenticalHint": "Tương đồng cảm quan hoặc văn bản, không tự động xóa",
             "potentialWasteSelected": "lãng phí tiềm năng (đã chọn)",

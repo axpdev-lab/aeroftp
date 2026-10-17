@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Iliyopatikana kwanza",
             "selectAllButOne": "Chagua zote isipokuwa moja kwa kila kundi",
             "everyCopyTicked": "nakala zote zimetiwa alama",
-            "everyCopyTickedHint": "Ondoa alama kwenye nakala moja katika kila kundi lililoangaziwa: vinginevyo nakala zote zitafutwa.",
+            "everyCopyTickedHint": "Ondoa alama kwenye angalau nakala moja katika kila kundi lililoangaziwa: nakala zote zikiwa zimetiwa alama, zote zitafutwa.",
             "modeExactHint": "Sawa baiti kwa baiti",
             "modeNonIdenticalHint": "Ufanano wa kimtazamo au wa maandishi, hakuna kufuta kiotomatiki",
             "potentialWasteSelected": "upotevu unaowezekana (zilizochaguliwa)",

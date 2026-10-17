@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Pertama ditemukan",
             "selectAllButOne": "Pilih semua kecuali satu per grup",
             "everyCopyTicked": "semua salinan dicentang",
-            "everyCopyTickedHint": "Hapus centang satu salinan di setiap grup yang disorot: jika tidak, semua salinan akan dihapus.",
+            "everyCopyTickedHint": "Hapus centang setidaknya satu salinan di setiap grup yang disorot: jika semua salinan dicentang, semuanya akan dihapus.",
             "modeExactHint": "Identik byte demi byte",
             "modeNonIdenticalHint": "Kemiripan perseptual atau teks, tanpa hapus otomatis",
             "potentialWasteSelected": "potensi terbuang (dipilih)",

@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Først fundet",
             "selectAllButOne": "Vælg alle på nær én pr. gruppe",
             "everyCopyTicked": "alle kopier markeret",
-            "everyCopyTickedHint": "Fjern markeringen fra én kopi i hver fremhævet gruppe: ellers slettes alle kopier.",
+            "everyCopyTickedHint": "Fjern markeringen fra mindst én kopi i hver fremhævet gruppe: med alle kopier markeret ville de alle blive slettet.",
             "modeExactHint": "Byte for byte identisk",
             "modeNonIdenticalHint": "Perceptuel eller tekstlig lighed, ingen automatisk sletning",
             "potentialWasteSelected": "potentielt spild (valgte)",

@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Pirmo atrasto",
             "selectAllButOne": "Atlasīt visus, izņemot vienu katrā grupā",
             "everyCopyTicked": "atzīmētas visas kopijas",
-            "everyCopyTickedHint": "Katrā izceltajā grupā noņemiet atzīmi vienai kopijai: citādi tiks dzēstas visas.",
+            "everyCopyTickedHint": "Katrā izceltajā grupā noņemiet atzīmi vismaz vienai kopijai: ja atzīmētas visas kopijas, tiktu dzēstas tās visas.",
             "modeExactHint": "Identiski baitu pa baitam",
             "modeNonIdenticalHint": "Uztveres vai teksta līdzība, bez automātiskas dzēšanas",
             "potentialWasteSelected": "iespējamais izšķērdējums (atlasīts)",

@@ -3828,7 +3828,7 @@
             "keepFirstFound": "Zuerst gefunden",
             "selectAllButOne": "Alle bis auf eine je Gruppe auswählen",
             "everyCopyTicked": "alle Kopien markiert",
-            "everyCopyTickedHint": "Entfernen Sie in jeder hervorgehobenen Gruppe die Markierung einer Kopie: sonst werden alle gelöscht.",
+            "everyCopyTickedHint": "Entfernen Sie in jeder hervorgehobenen Gruppe die Markierung von mindestens einer Kopie: Sind alle Kopien markiert, würden sie alle gelöscht.",
             "modeExactHint": "Byte für Byte identisch",
             "modeNonIdenticalHint": "Wahrnehmungs- oder Textähnlichkeit, kein automatisches Löschen",
             "potentialWasteSelected": "potenziell verschwendet (ausgewählt)",
