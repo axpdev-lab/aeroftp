@@ -1,10 +1,13 @@
-//! Proton Drive, native Rust client (Tier 0, development only).
+//! Proton Drive, native Rust client.
 //!
-//! This is the in-process successor to [`super::proton`], which drives
-//! Proton's official `proton-drive` CLI. It is compiled only with the
-//! `proton-native` feature, which is off by default and never shipped: the
-//! CLI wrapper stays the production path until this module passes the gates
-//! recorded in the roadmap appendix (`APPENDIX-PROTON-DRIVE/TODO.md`).
+//! The in-process alternative to [`super::proton`], which drives Proton's
+//! official `proton-drive` CLI. A profile chooses it with the option
+//! `proton_mode = "native"` (the API tab of the Proton Drive form); a profile
+//! without the option stays on the CLI. It is compiled only with the
+//! `proton-native` cargo feature, off by default: a build without it refuses
+//! a native profile instead of falling back to the CLI. [`provider`] is the
+//! `StorageProvider`, [`commands`] the sign-in commands and [`vault`] where
+//! the session is kept.
 //!
 //! Where the code comes from: the logic is ported from Proton's own Proton
 //! Drive SDK (<https://github.com/ProtonDriveApps/sdk>, MIT, Copyright (c)
