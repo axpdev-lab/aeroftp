@@ -543,10 +543,20 @@ impl ProtonNativeProvider {
         );
     }
 
-    /// Drops every resolved path, for this connection and its clones:
-    /// called after each write.
+    /// Drops every resolved path, for this connection and its clones.
     fn invalidate(&mut self) {
         self.paths().clear();
+    }
+
+    /// Drops what a write at `path` made stale, for this connection and its
+    /// clones: `path` itself and everything under it. The folders above keep
+    /// their entries: a child written, moved or trashed changes no folder's
+    /// link, and keeping them spares the next write a walk from the root
+    /// (an upload of many small files re-listed every parent before).
+    fn forget_path(&self, path: &str) {
+        let below = format!("{}/", path.trim_end_matches('/'));
+        self.paths()
+            .retain(|cached, _| cached != path && !cached.starts_with(&below));
     }
 
     /// The active children of `folder`, cached under `folder_path`. Entries
@@ -1007,7 +1017,7 @@ impl StorageProvider for ProtonNativeProvider {
         let result = self
             .upload_into(local_path, &parent, &remote, &name, &progress)
             .await;
-        self.invalidate();
+        self.forget_path(&remote);
         result?;
         progress.complete();
         Ok(())
@@ -1021,7 +1031,7 @@ impl StorageProvider for ProtonNativeProvider {
             .create_folder(&parent.link_id, &name)
             .await
             .map_err(|error| map_error(&target, error));
-        self.invalidate();
+        self.forget_path(&target);
         result.map(|_| ())
     }
 
@@ -1033,7 +1043,7 @@ impl StorageProvider for ProtonNativeProvider {
             .trash(&[&info.link_id])
             .await
             .map_err(|error| map_error(&target, error));
-        self.invalidate();
+        self.forget_path(&target);
         result?;
         self.trashed().insert(target, info.link_id);
         Ok(())
@@ -1082,7 +1092,7 @@ impl StorageProvider for ProtonNativeProvider {
             .delete_permanently(&[&link_id])
             .await
             .map_err(|error| map_error(&target, error));
-        self.invalidate();
+        self.forget_path(&target);
         self.trashed().remove(&target);
         result.map(|()| true)
     }
@@ -1110,7 +1120,8 @@ impl StorageProvider for ProtonNativeProvider {
                 .move_node(&source.link_id, &new_parent.link_id, new_name)
                 .await
         };
-        self.invalidate();
+        self.forget_path(&from);
+        self.forget_path(&to);
         result.map_err(|error| match error {
             ProtonError::AlreadyExists { .. } => ProviderError::AlreadyExists(to.clone()),
             other => map_error(&from, other),
@@ -1901,6 +1912,35 @@ mod tests {
         assert_eq!(p.checksum_capability("/").algorithms, vec!["sha1"]);
     }
 
+    /// Uploads into one folder resolve it once: a write forgets only what it
+    /// made stale, so the next upload does not walk the parents again (the
+    /// many-small-files upload of the rclone comparison re-listed them).
+    #[tokio::test]
+    async fn uploads_into_one_folder_resolve_it_once() {
+        let (mut p, drive) = provider();
+        let dir = tempfile::tempdir().unwrap();
+        let first = local_file_with(&dir, "one.txt", b"1");
+        p.upload(&first, "/docs/one.txt", None).await.unwrap();
+        let walks = drive.count("children");
+        for name in ["two.txt", "three.txt", "four.txt"] {
+            let local = local_file_with(&dir, name, name.as_bytes());
+            p.upload(&local, &format!("/docs/{name}"), None)
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            drive.count("children"),
+            walks,
+            "the parent was walked again"
+        );
+
+        // What a write touches is forgotten, with what is below it.
+        assert!(p.exists("/docs/sub").await.unwrap());
+        p.rename("/docs/sub", "/docs/moved").await.unwrap();
+        assert!(!p.exists("/docs/sub").await.unwrap());
+        assert!(p.exists("/docs/moved").await.unwrap());
+    }
+
     /// Clones share the connection and its caches: a write through one drops
     /// what the others resolved, and a purge finds what another one trashed.
     #[tokio::test]
@@ -1921,9 +1961,15 @@ mod tests {
         assert_eq!(drive.count("trash-scan"), 0, "the clone's trash is known");
 
         let caps = p.transfer_capabilities();
-        assert_eq!(caps.file_parallel, crate::transfer_dag::Capability::Supported);
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
         assert_eq!(caps.max_file_slots, Some(MAX_SESSIONS));
-        assert_eq!(caps.list_parallel, crate::transfer_dag::Capability::Supported);
+        assert_eq!(
+            caps.list_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
 
         assert!(matches!(
             ProtonNativeProvider::new(config()).clone_for_transfer(),
