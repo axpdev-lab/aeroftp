@@ -522,61 +522,46 @@ async fn read_window_in_memory(
     Ok(buffer.into_inner().unwrap_or_else(|e| e.into_inner()))
 }
 
-/// RAII guard: removes the `.aerosegtmp` file on drop unless `commit()` is
-/// called. Guarantees no partial temp survives an error, a fallback, or a
-/// cancellation (the F-1 lesson: every new transfer path is cancellable and
+/// Create the segmented temporary at `temp`, sized to `total_size`, and
+/// claimed: the value it returns owns the temporary from the blocking step
+/// that creates it, and removes it, still claimed, unless it is published (see
+/// [`SegmentedTemp`]). No partial temporary survives an error, a fallback or
+/// a cancellation (the F-1 lesson: every new transfer path is cancellable and
 /// leaves no debris).
-struct TempFileGuard {
-    path: PathBuf,
-    committed: bool,
-}
-
-impl TempFileGuard {
-    fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            committed: false,
-        }
-    }
-
-    fn commit(&mut self) {
-        self.committed = true;
-    }
-}
-
-impl Drop for TempFileGuard {
-    fn drop(&mut self) {
-        if !self.committed {
-            let _ = std::fs::remove_file(&self.path);
-        }
-    }
-}
-
-/// Create the segmented temporary at `temp`, sized to `total_size`, with its
-/// guard armed in the same blocking step that creates it.
 ///
 /// Run in `spawn_blocking`, whose task finishes even when its caller stops
 /// awaiting it: Ctrl-C drops a transfer, and the step creates the file
-/// anyway. Its guard then goes with the task's output and removes the file.
-/// Armed after the await, as it was, the guard missed that file, and a size
+/// anyway. The value then goes with the task's output and removes the file.
+/// Armed after the await, as its guard was, it missed that file, and a size
 /// that could not be reserved (a full disk) returned before arming it: both
 /// left a temporary as large as the download (2 runs in 30 of Ctrl-C at a
 /// random moment on 4.2.3, 2026-10-16).
-fn create_segmented_temp(
+pub(crate) fn create_segmented_temp(
     temp: PathBuf,
     total_size: u64,
-) -> std::io::Result<(TempFileGuard, std::fs::File)> {
+) -> std::io::Result<SegmentedTemp> {
     #[cfg(unix)]
-    let file = crate::providers::atomic_write::temp_claim::create_fresh(&temp)?;
+    let claim = crate::providers::atomic_write::temp_claim::create_fresh(&temp)?;
+    #[cfg(unix)]
+    let sized = claim.file().set_len(total_size);
+    // Windows locks are not advisory: the windows write through handles of
+    // their own, so the handle is closed at once, as before.
     #[cfg(not(unix))]
-    let file = std::fs::OpenOptions::new()
+    let sized = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(&temp)?;
-    let guard = TempFileGuard::new(temp);
-    file.set_len(total_size)?;
-    Ok((guard, file))
+        .open(&temp)?
+        .set_len(total_size);
+    let made = SegmentedTemp {
+        held: Some(ClaimedTemp {
+            path: temp,
+            #[cfg(unix)]
+            _claim: claim,
+        }),
+    };
+    sized?;
+    Ok(made)
 }
 
 /// What a segmented run hands back to its caller.
@@ -618,22 +603,14 @@ pub struct SegmentedTemp {
 }
 
 /// The temporary's path and the claim on it. Whoever holds this value owns
-/// the temporary; the claim is released when it is dropped.
+/// the temporary; the claim is released when it is dropped, unlocked, even
+/// while a child another thread spawned holds a copy of its descriptor (see
+/// `atomic_write::temp_claim::Claimed`).
 #[derive(Debug)]
 struct ClaimedTemp {
     path: PathBuf,
     #[cfg(unix)]
-    _claim: std::fs::File,
-}
-
-#[cfg(unix)]
-impl Drop for ClaimedTemp {
-    fn drop(&mut self) {
-        // Closing our descriptor alone leaves the lock alive if a concurrent
-        // fork inherited the same open-file description before exec. The
-        // staging claim ends here even while that inherited copy still exists.
-        let _ = self._claim.unlock();
-    }
+    _claim: crate::providers::atomic_write::temp_claim::Claimed,
 }
 
 impl ClaimedTemp {
@@ -1045,7 +1022,7 @@ pub fn download_job_disk_requests(local_path: &Path) -> Vec<crate::transfer_dag:
 /// This is the single shared engine for splitting a large file into N
 /// gap-free windows downloaded in parallel into a pre-allocated `.aerosegtmp`.
 /// Everything that is *not* transport-specific lives here exactly once: the
-/// range plan, the temp pre-allocation, the [`TempFileGuard`] RAII cleanup
+/// range plan, the temp pre-allocation, the [`SegmentedTemp`] RAII cleanup
 /// (the F-1 lesson), bounded concurrency, progress aggregation, cooperative
 /// cancellation, and the commit/atomic-ready temp.
 ///
@@ -1113,10 +1090,13 @@ where
     // `atomic_write::temp_claim`): a second segmented download of the same
     // file is refused instead of truncating this one's windows, and a stale
     // one is replaced. The windows write through handles of their own, which
-    // an advisory lock leaves alone; Windows locks are not advisory, so there
-    // the handle is closed at once, as before. A completed run hands the claim
-    // to its caller with the temporary (`SegmentedTemp`).
-    let (mut guard, claim) = {
+    // an advisory lock leaves alone. A completed run hands the temporary to
+    // its caller with the claim; any other end of the run removes it while it
+    // is still claimed. Held apart, as a guard and a claim bound together,
+    // the claim dropped first and the temporary was then removed by name:
+    // another download could take it as stale in between and have its own
+    // removed.
+    let segmented = {
         let temp = temp_path.clone();
         let total_size = config.total_size;
         tokio::task::spawn_blocking(move || create_segmented_temp(temp, total_size))
@@ -1124,8 +1104,6 @@ where
             .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
             .map_err(ProviderError::IoError)?
     };
-    #[cfg(not(unix))]
-    drop(claim);
 
     let write_one_range = Arc::new(write_one_range);
     let total_size = config.total_size;
@@ -1151,16 +1129,7 @@ where
     .await?;
 
     match outcome {
-        ConcurrentRangeOutcome::Completed => {
-            guard.commit();
-            Ok(SegmentedRun::Completed(SegmentedTemp {
-                held: Some(ClaimedTemp {
-                    path: temp_path,
-                    #[cfg(unix)]
-                    _claim: claim,
-                }),
-            }))
-        }
+        ConcurrentRangeOutcome::Completed => Ok(SegmentedRun::Completed(segmented)),
         ConcurrentRangeOutcome::ServerIgnoredRange => Ok(SegmentedRun::ServerIgnoredRange),
     }
 }
@@ -1169,7 +1138,7 @@ where
 ///
 /// This is the former shipped JoinSet implementation, retained outside
 /// production solely to regression-gate the promoted graph runner. The caller
-/// owns the [`TempFileGuard`]; this returns the outcome only.
+/// owns the [`SegmentedTemp`]; this returns the outcome only.
 #[cfg(test)]
 pub(crate) async fn run_ranges_via_joinset<W, WFut>(
     ranges: &[(u64, u64)],
@@ -4582,12 +4551,11 @@ mod tests {
     fn dropping_a_temporary_claim_unlocks_even_an_inherited_descriptor() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("claimed.bin");
-        let file = std::fs::File::create(&path).unwrap();
-        file.lock().unwrap();
-        let inherited = file.try_clone().unwrap();
+        let claim = crate::providers::atomic_write::temp_claim::create_fresh(&path).unwrap();
+        let inherited = claim.file().try_clone().unwrap();
         let claim = ClaimedTemp {
             path: path.clone(),
-            _claim: file,
+            _claim: claim,
         };
         let probe = std::fs::File::open(&path).unwrap();
         assert!(probe.try_lock().is_err(), "setup must hold the real lock");

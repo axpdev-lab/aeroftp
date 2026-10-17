@@ -92,7 +92,7 @@ static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 /// writer replaced it in between. Linux only, on a local filesystem (see
 /// `locks_usable`); elsewhere, and where the filesystem cannot lock, the file
 /// is opened as before these locks.
-fn claim_temp(temp: &Path) -> io::Result<std::fs::File> {
+fn claim_temp(temp: &Path) -> io::Result<ClaimedFile> {
     claim_temp_with(temp, |file| file.try_lock())
 }
 
@@ -101,7 +101,7 @@ fn claim_temp(temp: &Path) -> io::Result<std::fs::File> {
 fn claim_temp_with(
     temp: &Path,
     lock: impl Fn(&std::fs::File) -> Result<(), std::fs::TryLockError>,
-) -> io::Result<std::fs::File> {
+) -> io::Result<ClaimedFile> {
     let file = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
@@ -110,11 +110,14 @@ fn claim_temp_with(
     // Windows takes no lock (see above).
     #[cfg(not(unix))]
     let _ = &lock;
+    #[cfg_attr(not(unix), allow(unused_mut))]
+    let mut locked = false;
     #[cfg(unix)]
     if locks_usable(temp) {
         match lock(&file) {
             Ok(()) => {
                 use std::os::unix::fs::MetadataExt;
+                locked = true;
                 let (open, named) = (file.metadata()?, std::fs::symlink_metadata(temp)?);
                 if open.dev() != named.dev() || open.ino() != named.ino() {
                     return Err(io::Error::new(
@@ -138,8 +141,60 @@ fn claim_temp_with(
             Err(std::fs::TryLockError::Error(_)) => {}
         }
     }
-    file.set_len(0)?;
-    Ok(file)
+    if let Err(e) = file.set_len(0) {
+        if locked {
+            let _ = file.unlock();
+        }
+        return Err(e);
+    }
+    Ok(ClaimedFile {
+        file: Some(tokio::fs::File::from_std(file)),
+        locked,
+    })
+}
+
+/// The file this writer writes through, and its claim on it. The claim ends
+/// when this is dropped, unlocked, not when the last descriptor of the file
+/// closes: a child another thread spawns holds a copy of every descriptor of
+/// the process until it execs, and the lock belongs to the open file
+/// description that copy shares, so a claim ended by the close alone stayed
+/// held into the next writer of the file. It is unlocked only where the claim
+/// took a lock (on a network mount an unlock is a call to the server), and
+/// not while a write is still landing: tokio answers a write once it has
+/// handed it to a blocking thread, which holds the file until the write is
+/// done, and an unlock then would let another writer take the temporary while
+/// that write goes into it. The claim then ends with the close, once the write
+/// is done.
+struct ClaimedFile {
+    /// Always present: taken only by `Drop`.
+    file: Option<tokio::fs::File>,
+    locked: bool,
+}
+
+impl std::ops::Deref for ClaimedFile {
+    type Target = tokio::fs::File;
+
+    fn deref(&self) -> &tokio::fs::File {
+        self.file.as_ref().expect("a writer keeps its file")
+    }
+}
+
+impl std::ops::DerefMut for ClaimedFile {
+    fn deref_mut(&mut self) -> &mut tokio::fs::File {
+        self.file.as_mut().expect("a writer keeps its file")
+    }
+}
+
+impl Drop for ClaimedFile {
+    fn drop(&mut self) {
+        let Some(file) = self.file.take().filter(|_| self.locked) else {
+            return;
+        };
+        // `try_into_std` fails exactly while an operation holds the file.
+        if let Ok(file) = file.try_into_std() {
+            let _ = file.unlock();
+        }
+    }
 }
 
 /// Whether locks are used where `path` lives (see `locks_usable_on`).
@@ -532,7 +587,7 @@ async fn write_atomic_chunked_core(
 pub struct StreamingAtomicWriter {
     target: PathBuf,
     temp: PathBuf,
-    file: tokio::fs::File,
+    file: ClaimedFile,
     bytes_written: u64,
     /// Set to `true` immediately before the rename inside `finalize`.
     /// Because `finalize` consumes `self`, no external observer can
@@ -558,7 +613,6 @@ impl StreamingAtomicWriter {
         let file = tokio::task::spawn_blocking(move || claim_temp(&claimed))
             .await
             .map_err(io::Error::other)??;
-        let file = tokio::fs::File::from_std(file);
         Ok(Self {
             target: target.to_path_buf(),
             temp,
@@ -651,7 +705,7 @@ impl StreamingAtomicWriter {
 async fn finalize_steps(
     target: &Path,
     temp: &Path,
-    mut file: tokio::fs::File,
+    mut file: ClaimedFile,
     mode: Option<u32>,
     mtime: Option<(i64, u32)>,
     xattrs: Option<&[crate::aerorsync::real_wire::XattrPair]>,
@@ -805,7 +859,7 @@ impl AsyncWrite for StreamingAtomicWriter {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         let me = self.get_mut();
-        let result = Pin::new(&mut me.file).poll_write(cx, buf);
+        let result = Pin::new(&mut *me.file).poll_write(cx, buf);
         if let Poll::Ready(Ok(n)) = &result {
             me.bytes_written += *n as u64;
         }
@@ -814,12 +868,12 @@ impl AsyncWrite for StreamingAtomicWriter {
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let me = self.get_mut();
-        Pin::new(&mut me.file).poll_flush(cx)
+        Pin::new(&mut *me.file).poll_flush(cx)
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let me = self.get_mut();
-        Pin::new(&mut me.file).poll_shutdown(cx)
+        Pin::new(&mut *me.file).poll_shutdown(cx)
     }
 }
 
@@ -873,6 +927,90 @@ mod tests {
             Some(io::ErrorKind::AlreadyExists)
         );
         assert_eq!(std::fs::read(&temp).unwrap(), b"second");
+    }
+
+    /// A writer dropped without finalize ended its claim by the close alone,
+    /// and a child another thread spawned meanwhile, which holds a copy of
+    /// every descriptor until it execs, kept it held: the next writer of the
+    /// file was refused as another download writing it. The copy kept open
+    /// here is that child's.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_dropped_writers_temporary_is_taken_while_a_copy_of_its_descriptor_is_open() {
+        use std::os::fd::AsFd;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("f.bin");
+        let mut first = StreamingAtomicWriter::new(&target).await.unwrap();
+        first.write_all(b"first").await.unwrap();
+        first.flush().await.unwrap();
+        let inherited = first.file.as_fd().try_clone_to_owned().unwrap();
+        drop(first);
+        let second = StreamingAtomicWriter::new(&target)
+            .await
+            .expect("the dropped writer's claim was still held");
+        drop(second);
+        drop(inherited);
+    }
+
+    /// The other side: tokio answers a write once a blocking thread has it,
+    /// and that thread holds the file until the write is done. A writer
+    /// dropped meanwhile keeps its claim until then; released at the drop, it
+    /// let another writer take the temporary while the write still went into
+    /// it. A FIFO nobody reads holds the write in flight for as long as needed.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_writer_dropped_with_a_write_in_flight_keeps_its_claim_until_the_write_lands() {
+        use std::io::Read;
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let pipe = dir.path().join("pipe");
+        let name = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `name` is a NUL-terminated path that outlives the call.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        // Opened to read too, so the open does not wait for a reader.
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&pipe)
+            .unwrap();
+        file.try_lock().unwrap();
+        let mut writer = ClaimedFile {
+            file: Some(tokio::fs::File::from_std(file)),
+            locked: true,
+        };
+        // Far more than the pipe holds: the write blocks until it is read.
+        let sent = writer.write(&vec![0u8; 1 << 20]).await.unwrap();
+        drop(writer);
+        let mut probe = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&pipe)
+            .unwrap();
+        let held_while_writing = matches!(probe.try_lock(), Err(std::fs::TryLockError::WouldBlock));
+        // Drained before any assertion: a write left blocked would hang the
+        // runtime's shutdown instead of failing the test.
+        let mut read = 0;
+        let mut buf = vec![0u8; 64 * 1024];
+        let mut released = false;
+        for _ in 0..10_000 {
+            if let Ok(n) = probe.read(&mut buf) {
+                read += n;
+            }
+            if read >= sent && probe.try_lock().is_ok() {
+                released = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        assert!(
+            held_while_writing,
+            "the claim ended while a write was still going into the file"
+        );
+        assert!(
+            released,
+            "the claim outlived the write ({read} of {sent} read)"
+        );
     }
     use crate::aerorsync::engine_adapter::{apply_delta_streaming, EngineDeltaOp, MemoryBaseline};
     use std::time::Duration;

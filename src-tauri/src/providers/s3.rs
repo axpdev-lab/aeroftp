@@ -3816,53 +3816,23 @@ impl S3Provider {
         }
 
         // Pre-allocate the temp file. `set_len` reserves the full size up front so
-        // that concurrent seek+writes don't race on file extension. On Unix it
-        // is claimed for the whole run, as the shared engine claims its own
-        // (see `atomic_write::temp_claim`): a second segmented download of the
-        // file is refused instead of truncating this one's windows.
-        #[cfg(unix)]
-        let _claim = {
+        // that concurrent seek+writes don't race on file extension. It is
+        // created as the shared engine creates its own: claimed on Unix for the
+        // whole run (see `atomic_write::temp_claim`), so a second segmented
+        // download of the file is refused instead of truncating this one's
+        // windows, and owned from the blocking step that creates it, so any end
+        // of the run but the publication removes it while it is still claimed.
+        // A local guard armed after the await left the file behind when the
+        // download was dropped during the create or the size could not be
+        // reserved, and removed it by name after the claim had ended.
+        let segmented = {
             let temp = temp_path.clone();
-            let file = tokio::task::spawn_blocking(move || {
-                super::atomic_write::temp_claim::create_fresh(&temp)
+            tokio::task::spawn_blocking(move || {
+                crate::providers::multi_thread::create_segmented_temp(temp, total_size)
             })
             .await
             .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
-            .map_err(ProviderError::IoError)?;
-            file.set_len(total_size).map_err(ProviderError::IoError)?;
-            file.sync_all().map_err(ProviderError::IoError)?;
-            file
-        };
-        #[cfg(not(unix))]
-        {
-            let f = tokio::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(&temp_path)
-                .await
-                .map_err(ProviderError::IoError)?;
-            f.set_len(total_size)
-                .await
-                .map_err(ProviderError::IoError)?;
-            f.sync_all().await.map_err(ProviderError::IoError)?;
-        }
-
-        // RAII guard: remove the temporary on early return unless we mark it committed.
-        struct TempGuard {
-            path: PathBuf,
-            committed: bool,
-        }
-        impl Drop for TempGuard {
-            fn drop(&mut self) {
-                if !self.committed {
-                    let _ = std::fs::remove_file(&self.path);
-                }
-            }
-        }
-        let mut guard = TempGuard {
-            path: temp_path.clone(),
-            committed: false,
+            .map_err(ProviderError::IoError)?
         };
 
         // Bytes each range has in the temporary (lock-free): a range resumed
@@ -3992,7 +3962,7 @@ impl S3Provider {
         // that ignores the header would have served whatever was current at
         // the time. Read the object once more before publishing: on such a
         // backend this is the only thing between it and a file made of two
-        // versions. The guard removes the staged file on the way out.
+        // versions. The temporary is removed on the way out, still claimed.
         if let Some(what) = self.object_moved_since(key, &validator, total_size).await {
             return Err(ProviderError::ParallelRefused(format!(
                 "Object {} {} ({})",
@@ -4002,12 +3972,12 @@ impl S3Provider {
             )));
         }
 
-        // All ranges committed: atomic rename of the temporary onto the final path.
-        tokio::fs::rename(&temp_path, &final_pathbuf)
+        // All ranges committed: atomic rename of the temporary onto the final
+        // path, while it is still claimed.
+        segmented
+            .publish(&final_pathbuf)
             .await
-            .map_err(ProviderError::IoError)?;
-        guard.committed = true;
-        Ok(())
+            .map_err(ProviderError::IoError)
     }
 
     /// `Some(reason)` when a second HEAD describes an object that is not the
