@@ -533,6 +533,9 @@ pub fn apply(
     let backup_by_id = index_by_id(backup);
 
     let mut ops = Vec::new();
+    // Ids of the profiles the list takes as the backup names them: added,
+    // taken over, or kept as a copy.
+    let mut named_by_backup: HashSet<String> = HashSet::new();
     // Resolve each id to the profiles it contributes, in place.
     let mut resolve = |id: &str, ops: &mut Vec<SecretOp>| -> Vec<Value> {
         let local = local_by_id.get(id).copied();
@@ -547,6 +550,7 @@ pub fn apply(
         match (change.kind, decision) {
             (ProfileChangeKind::Added, ProfileDecision::Accept) => {
                 take_backup(inputs, &keys, ops);
+                named_by_backup.insert(id.to_string());
                 bak.cloned().into_iter().collect()
             }
             (ProfileChangeKind::Added, _) => {
@@ -567,6 +571,7 @@ pub fn apply(
             }
             (ProfileChangeKind::Changed, ProfileDecision::Accept) => {
                 take_backup(inputs, &keys, ops);
+                named_by_backup.insert(id.to_string());
                 bak.cloned().into_iter().collect()
             }
             (ProfileChangeKind::Changed, ProfileDecision::Reject) => {
@@ -584,7 +589,9 @@ pub fn apply(
                     .unwrap_or_else(|| {
                         format!("{} (imported)", string_field(b, "name").unwrap_or_default())
                     });
-                let copy = copy_of(inputs, b, &new_id(), name, ops);
+                let copy_id = new_id();
+                named_by_backup.insert(copy_id.clone());
+                let copy = copy_of(inputs, b, &copy_id, name, ops);
                 vec![l.clone(), copy]
             }
         }
@@ -603,11 +610,30 @@ pub fn apply(
             profiles.extend(resolve(id, &mut ops));
         }
     }
+    unique_backup_names(&mut profiles, &named_by_backup);
 
     Ok(PlanOutcome {
         profiles,
         secret_ops: ops,
     })
+}
+
+/// A profile named by the backup whose name another profile of the list
+/// already holds gets the first free " (1)", " (2)", ..., as every import does
+/// (`util::profile_name`); this machine's own profiles keep their names.
+fn unique_backup_names(profiles: &mut [Value], named_by_backup: &HashSet<String>) {
+    let by_backup = |p: &Value| profile_id(p).is_some_and(|id| named_by_backup.contains(id));
+    let mut names = crate::util::profile_name::ProfileNames::of_profiles(
+        profiles.iter().filter(|p| !by_backup(p)),
+    );
+    for profile in profiles.iter_mut().filter(|p| by_backup(p)) {
+        if let Some(name) = string_field(profile, "name") {
+            let claimed = names.claim(&name);
+            if claimed != name {
+                profile["name"] = Value::String(claimed);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -839,6 +865,38 @@ mod tests {
         assert_eq!(op(&out.secret_ops, "server_srv_c"), Some(Some("pw-c")));
         // The rejected addition leaves nothing behind in the vault.
         assert_eq!(op(&out.secret_ops, "server_srv_d"), Some(None));
+    }
+
+    /// A profile named by the backup (added, or kept as a copy) whose name a
+    /// profile of this machine has gets the first free " (1)", as every import
+    /// does; this machine's profiles keep theirs.
+    #[test]
+    fn a_backup_profile_with_a_taken_name_gets_the_next_free_number() {
+        let mut taken = inputs(false);
+        taken.backup.as_mut().unwrap()[2]["name"] = json!("gamma");
+        let decisions = [ProfileDecisionInput {
+            id: "srv_b".into(),
+            decision: ProfileDecision::Both,
+            copy_name: Some("Beta".into()),
+        }];
+        let out = apply(&taken, &decisions, &fp(&taken), &mut || {
+            "srv_copy".to_string()
+        })
+        .unwrap();
+        assert_eq!(
+            ids(&out.profiles),
+            vec!["srv_a", "srv_b", "srv_copy", "srv_c", "srv_d"]
+        );
+        let name = |id: &str| {
+            out.profiles
+                .iter()
+                .find(|p| profile_id(p) == Some(id))
+                .map(|p| p["name"].clone())
+        };
+        assert_eq!(name("srv_b"), Some(json!("Beta")));
+        assert_eq!(name("srv_copy"), Some(json!("Beta (1)")));
+        assert_eq!(name("srv_c"), Some(json!("Gamma")));
+        assert_eq!(name("srv_d"), Some(json!("gamma (1)")));
     }
 
     #[test]

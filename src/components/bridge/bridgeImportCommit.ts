@@ -29,13 +29,13 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
  * the replaced profile back next to its replacement. And a failed write has to
  * propagate, so `commitImportedServers` can restore the backup it took:
  * swallowing it reports a successful import over a vault that has already lost
- * them.
+ * them. The list handed back is the one stored: an imported profile whose
+ * name another profile holds is stored with the first free " (1)", " (2)",
+ * ... (`storeSavedServerProfiles`).
  */
 export async function appendImportedProfiles(newServers: ServerProfile[]): Promise<ServerProfile[]> {
     const { profiles: current, userId } = await readSavedServerProfilesForWrite();
-    const merged = [...current, ...newServers];
-    await storeSavedServerProfiles(merged, false, userId);
-    return merged;
+    return storeSavedServerProfiles([...current, ...newServers], false, userId);
 }
 
 /**

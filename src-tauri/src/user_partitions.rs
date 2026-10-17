@@ -1499,11 +1499,13 @@ pub fn list_active_server_profiles(
     list_server_profiles_for(conn, root_key, user_id)
 }
 
+/// Returns the list stored, whose names [`insert_profiles_with_dek`] made
+/// unique.
 pub fn replace_active_server_profiles(
     conn: &mut Connection,
     root_key: &[u8; 32],
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
     replace_server_profiles_for(conn, root_key, user_id, profiles)
 }
@@ -1536,7 +1538,7 @@ pub fn replace_expected_server_profiles(
     root_key: &[u8; 32],
     expected_user: i64,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     let conn: &Connection = conn;
     // Answer a switch away from a locked account as ACCOUNT_CHANGED, before
     // its DEK lookup can fail as USER_LOCKED.
@@ -1551,9 +1553,10 @@ pub fn replace_expected_server_profiles(
         if active_user_id(&tx)? != Some(user_id) {
             return Err(ACCOUNT_CHANGED.to_string());
         }
-        insert_profiles_with_dek(&tx, &root_secret, user_id, dek, profiles)?;
+        let stored = insert_profiles_with_dek(&tx, &root_secret, user_id, dek, profiles)?;
         tx.commit()
-            .map_err(|e| format!("Commit expected profile replace: {e}"))
+            .map_err(|e| format!("Commit expected profile replace: {e}"))?;
+        Ok(stored)
     })
 }
 
@@ -1611,7 +1614,7 @@ pub fn replace_server_profiles_for(
     root_key: &[u8; 32],
     user_id: i64,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
         write_profiles_with_dek(conn, &root_secret, user_id, dek, profiles)
@@ -1629,25 +1632,44 @@ fn write_profiles_with_dek(
     user_id: i64,
     dek: &SecretKey,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     let tx = conn
         .unchecked_transaction()
         .map_err(|e| format!("Start replace profiles: {e}"))?;
-    insert_profiles_with_dek(&tx, root_secret, user_id, dek, profiles)?;
+    let stored = insert_profiles_with_dek(&tx, root_secret, user_id, dek, profiles)?;
     tx.commit()
         .map_err(|e| format!("Commit replace profiles: {e}"))?;
-    Ok(())
+    Ok(stored)
 }
 
 /// The rows of [`write_profiles_with_dek`], on a transaction the caller holds
-/// and commits.
+/// and commits. Every write of a profile list ends here, so this is where no
+/// two profiles of one name get stored: a profile created, edited or imported
+/// onto a name another one holds gets the first free " (1)", " (2)", ...
+/// (`util::profile_name::unique_profile_names`, against the list being
+/// replaced). Returns the list stored.
 fn insert_profiles_with_dek(
     tx: &Connection,
     root_secret: &SecretKey,
     user_id: i64,
     dek: &SecretKey,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
+    // The list being replaced tells which profile had a name first. One that
+    // cannot be read leaves the order of `profiles` to decide.
+    let previous = read_profiles_with_dek(tx, user_id, dek).unwrap_or_else(|e| {
+        tracing::warn!("Profile names checked without the previous list: {e}");
+        Vec::new()
+    });
+    let (profiles, renamed) = crate::util::profile_name::unique_profile_names(&previous, profiles);
+    for r in &renamed {
+        tracing::info!(
+            "Profile {} saved as {:?}: {:?} is already another profile's name",
+            r.id,
+            r.to,
+            r.from
+        );
+    }
     tx.execute(
         "DELETE FROM server_profiles WHERE user_id = ?1",
         params![user_id],
@@ -1671,7 +1693,7 @@ fn insert_profiles_with_dek(
         )
         .map_err(|e| format!("Insert profile: {e}"))?;
     }
-    Ok(())
+    Ok(profiles)
 }
 
 /// Re-read `user_id`'s server profiles, let `apply` change them, and write
@@ -1696,8 +1718,8 @@ pub fn update_server_profiles_for(
         if !apply(&mut profiles) {
             return Ok((read, false));
         }
-        insert_profiles_with_dek(&tx, &root_secret, user_id, dek, &profiles)?;
-        Ok((profiles, true))
+        let stored = insert_profiles_with_dek(&tx, &root_secret, user_id, dek, &profiles)?;
+        Ok((stored, true))
     })?;
     if written {
         tx.commit()
@@ -3952,7 +3974,7 @@ pub fn cli_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
 pub fn cli_replace_active_server_profiles(
     store: &CredentialStore,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     init_or_migrate_cli(store)?;
     let mut conn = open_or_init_cli()?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -4049,7 +4071,7 @@ pub fn cli_replace_server_profiles_for_user(
     store: &CredentialStore,
     user_id: i64,
     profiles: &[Value],
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     init_or_migrate_cli(store)?;
     let mut conn = open_or_init_cli()?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -4969,7 +4991,7 @@ pub async fn user_partitions_save_active_server_profiles(
     app: AppHandle,
     profiles: Vec<Value>,
     expected_user_id: Option<i64>,
-) -> Result<(), String> {
+) -> Result<Vec<Value>, String> {
     init_or_migrate(&app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -4981,19 +5003,21 @@ pub async fn user_partitions_save_active_server_profiles(
         None => replace_active_server_profiles(&mut conn, &root_key, &profiles),
     };
     root_key.zeroize();
-    result?;
+    // The list stored, whose names the write made unique: the caller shows
+    // this one, not the one it sent.
+    let stored = result?;
     // The blob mirrors the active account; a switch that landed after a bound
     // write leaves it to the next load of the new account.
     if expected_user_id.is_some() && active_user_id(&conn)? != expected_user_id {
-        return Ok(());
+        return Ok(stored);
     }
     // #736: the same mirror the CLI's `save_active_user_profiles` does, so a
     // profile deleted or renamed here is deleted or renamed in the blob too.
     // The partition write already succeeded, so a mirror failure is a warning.
-    if let Err(e) = mirror_active_profiles_to_legacy_blob(&store, &profiles) {
+    if let Err(e) = mirror_active_profiles_to_legacy_blob(&store, &stored) {
         tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
     }
-    Ok(())
+    Ok(stored)
 }
 
 /// N4: copy or move a saved server profile from the ACTIVE (source) user into
@@ -5334,7 +5358,7 @@ pub async fn user_partitions_copy_user(
     // Copy the (credential-free) server profiles into the new user.
     let result = replace_server_profiles_for(&mut conn, &root_key, new_user.id, &profiles);
     root_key.zeroize();
-    result.map(|()| new_user)
+    result.map(|_| new_user)
 }
 
 #[tauri::command]
@@ -5941,6 +5965,48 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM server_profiles", [], |row| row.get(0))
             .expect("profile count");
         assert_eq!(encrypted_count, 2);
+    }
+
+    /// Every write of the list goes through one place, so no window, command
+    /// or import can store two profiles of one name: the one that had the
+    /// name keeps it, the one created or renamed onto it gets " (1)", and the
+    /// list returned is the list stored.
+    #[test]
+    fn no_write_stores_two_profiles_of_one_name() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(2);
+        let root = test_root();
+        let before = list_active_server_profiles(&conn, &root).expect("load migrated profiles");
+
+        let mut profiles = before.clone();
+        profiles
+            .push(json!({"id":"new","name":"profile 0","protocol":"sftp","host":"n.example.com"}));
+        let stored =
+            replace_active_server_profiles(&mut conn, &root, &profiles).expect("add a profile");
+        let names = |list: &[Value]| -> Vec<String> {
+            list.iter()
+                .map(|p| p["name"].as_str().unwrap_or_default().to_string())
+                .collect()
+        };
+        assert_eq!(names(&stored), ["Profile 0", "Profile 1", "profile 0 (1)"]);
+        assert_eq!(
+            list_active_server_profiles(&conn, &root).expect("reload"),
+            stored
+        );
+
+        let (renamed, _) = update_active_server_profiles(&mut conn, &root, |p| {
+            p[1]["name"] = json!("PROFILE 0");
+            true
+        })
+        .expect("rename onto a taken name");
+        assert_eq!(
+            names(&renamed),
+            ["Profile 0", "PROFILE 0 (2)", "profile 0 (1)"]
+        );
+        assert_eq!(
+            list_active_server_profiles(&conn, &root).expect("reload"),
+            renamed
+        );
     }
 
     #[test]

@@ -14856,6 +14856,8 @@ const App: React.FC = () => {
     const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
     const existingIds = new Set(currentServers.map(s => s.id));
 
+    // A name already taken is stored with the first free " (1)", " (2)", ...
+    // (`storeSavedServerProfiles`), as every profile write is.
     const newServers: ServerProfile[] = importedServers
       .filter(s => !existingIds.has(s.id))
       .map(s => ({

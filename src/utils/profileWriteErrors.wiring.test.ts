@@ -38,7 +38,8 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
     const original = { id: 'old', name: 'Original', protocol: 'ftp', host: 'example.test', username: 'user' };
     const servers = [original, { ...original, id: 'other', name: 'Other' }];
     const read = vi.fn(async () => { if (fail === 'read') throw new Error('STORE_NOT_READY'); return structuredClone(servers); });
-    const store = vi.fn(async (_profiles: ServerProfile[]) => { if (fail === 'write') throw new Error('Disk full'); });
+    // Like the real store, a write hands back the list as stored.
+    const store = vi.fn(async (profiles: ServerProfile[]) => { if (fail === 'write') throw new Error('Disk full'); return profiles; });
     const events: Array<{ type: string; detail?: any }> = [];
     class Event { constructor(public type: string, public init?: { detail: unknown }) {} get detail() { return this.init?.detail; } }
     const context: Record<string, any> = {
@@ -205,7 +206,7 @@ describe('saved profile write rejection in production handlers', () => {
     it('does not reset the primary form while persistence is still pending', async () => {
         const f = fixture('none');
         let resolve!: () => void;
-        f.store.mockImplementationOnce(() => new Promise<void>(ok => { resolve = ok; }));
+        f.store.mockImplementationOnce(profiles => new Promise<ServerProfile[]>(ok => { resolve = () => ok(profiles); }));
         const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);
         const pending = fn.handleConnectAndSave();
         await vi.waitFor(() => expect(f.store).toHaveBeenCalled());
@@ -408,6 +409,19 @@ describe('all saved-profile write sites handle persistence failures', () => {
         expect(source).not.toMatch(/try\s*\{\s*await storeSavedServerProfiles\([^\n]*\);\s*\}\s*catch\s*\{\s*(?:\/\*[^*]*\*\/)\s*\}/);
         for (const line of source.split('\n').filter(line => /storeSavedServerProfiles\(.+\)/.test(line) && !line.trim().startsWith('//'))) {
             expect(line).toMatch(/\bawait storeSavedServerProfiles\(/);
+        }
+    });
+});
+
+describe('the saved-profile list shown after a write', () => {
+    // The vault settles the names (" (1)" for a name another profile holds),
+    // and My Servers keeps its own copy (it does not listen to
+    // PROFILES_CHANGED_EVENT), so it must take the list the write hands back.
+    it('My Servers shows the list as stored, not the list it sent', () => {
+        const writes = hub.split('\n').filter(line => /storeSavedServerProfiles\(.+\)/.test(line) && !line.trim().startsWith('//'));
+        expect(writes.length).toBeGreaterThan(0);
+        for (const line of writes) {
+            expect(line).toMatch(/setServers\(await storeSavedServerProfiles\(|const stored = await storeSavedServerProfiles\(/);
         }
     });
 });

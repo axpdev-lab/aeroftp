@@ -67,9 +67,11 @@ export const loadActiveServerProfilesScoped = (): Promise<ScopedServerProfiles> 
  * Replace the active account's profiles. With `expectedUserId` (from
  * {@link loadActiveServerProfilesScoped}) the backend refuses the write with
  * `ACCOUNT_CHANGED` when another account became active since that read.
+ * Resolves to the list stored: a profile saved onto a name another one holds
+ * comes back with the first free " (1)", " (2)", ... (`util::profile_name`).
  */
-export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUserId?: number): Promise<void> =>
-    invoke<void>(
+export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUserId?: number): Promise<ServerProfile[] | undefined> =>
+    invoke<ServerProfile[] | undefined>(
         'user_partitions_save_active_server_profiles',
         expectedUserId === undefined ? { profiles } : { profiles, expectedUserId },
     );

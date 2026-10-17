@@ -1587,11 +1587,12 @@ struct ProfileStepSnapshot {
     blob: Option<String>,
 }
 
+/// Returns the list stored, whose names the write made unique.
 fn save_partition_list(
     store: &crate::credential_store::CredentialStore,
     db: &Path,
     profiles: &[serde_json::Value],
-) -> Result<(), String> {
+) -> Result<Vec<serde_json::Value>, String> {
     let mut conn =
         rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -1690,11 +1691,14 @@ fn apply_profile_decisions(
         // The partition is the list My Servers loads, and loading it
         // realigns the legacy blob to it (#924): writing only the blob would
         // let the next load put back the restored list and drop the decisions.
-        if let Some(db) = db.as_deref() {
-            save_partition_list(store, db, &outcome.profiles)
-                .map_err(|e| format!("save the chosen server list: {e}"))?;
-        }
-        crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &outcome.profiles)?;
+        // The blob takes the list as stored: no two profiles of one name,
+        // with or without a partition (`util::profile_name`).
+        let stored = match db.as_deref() {
+            Some(db) => save_partition_list(store, db, &outcome.profiles)
+                .map_err(|e| format!("save the chosen server list: {e}"))?,
+            None => crate::util::profile_name::unique_profile_names(&[], &outcome.profiles).0,
+        };
+        crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &stored)?;
         Ok(())
     })();
 
@@ -2298,10 +2302,17 @@ fn merge_profile_lists(existing_json: &str, backup_json: &str) -> String {
         .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
         .collect();
 
+    // A backup profile whose name is taken gets the first free " (1)",
+    // " (2)", ..., as every import does (`util::profile_name`).
+    let mut names = crate::util::profile_name::ProfileNames::of_profiles(&existing);
     let mut added = 0usize;
-    for profile in backup {
+    for mut profile in backup {
         if let Some(id) = profile.get("id").and_then(|v| v.as_str()) {
             if !existing_ids.contains(id) {
+                crate::util::profile_name::claim_profile_names(
+                    &mut names,
+                    std::slice::from_mut(&mut profile),
+                );
                 existing.push(profile);
                 added += 1;
             }
@@ -3082,6 +3093,18 @@ mod tests {
 
     /// "Skip existing" unions the backup's list with the local blob. A frozen
     /// local blob put the locally deleted profile back into the union.
+    /// A backup profile whose name a profile of this machine has gets the
+    /// first free " (1)", as every import does.
+    #[test]
+    fn a_merged_backup_profile_with_a_taken_name_gets_the_next_free_number() {
+        let existing = r#"[{"id":"a","name":"Lab"}]"#;
+        let backup = r#"[{"id":"a","name":"Lab"},{"id":"b","name":"lab"},{"id":"c","name":"Lab"}]"#;
+        let merged: Vec<serde_json::Value> =
+            serde_json::from_str(&merge_profile_lists(existing, backup)).unwrap();
+        let names: Vec<&str> = merged.iter().map(|p| p["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Lab", "lab (1)", "Lab (2)"]);
+    }
+
     #[test]
     fn skip_existing_merges_into_the_current_list() {
         let dir = tempfile::tempdir().unwrap();

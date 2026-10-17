@@ -519,8 +519,9 @@ export const upsertFriendProfile = async (b: FriendBinding): Promise<ServerProfi
   };
 
   const others = profiles.filter((p) => p.id !== id);
-  await storeSavedServerProfiles([...others, next], false, profilesUserId);
+  const stored = await storeSavedServerProfiles([...others, next], false, profilesUserId);
   // Saving a friend (received-folder or share flow) auto-activates AeroShare.
   await ensureAeroShareActivated();
-  return next;
+  // As stored: a name another profile holds is stored with " (1)", " (2)", ...
+  return stored.find((p) => p.id === id) ?? next;
 };

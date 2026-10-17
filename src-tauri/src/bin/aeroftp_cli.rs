@@ -94,6 +94,7 @@ use ftp_client_gui_lib::sftp_download_tuning::SftpDownloadPreset;
 use ftp_client_gui_lib::shell_quote::shell_arg;
 use ftp_client_gui_lib::sync_core::mtime::ModifyWindow;
 use ftp_client_gui_lib::user_partitions;
+use ftp_client_gui_lib::util::profile_name::{claim_profile_names, ProfileNames};
 use ftp_client_gui_lib::util::shutdown_signal;
 use ftp_client_gui_lib::util::size::{format_size, parse_size_filter};
 use futures_util::StreamExt;
@@ -13234,8 +13235,10 @@ fn save_active_user_profiles(
     let writing_to_active = is_active_user(store, target.id);
 
     match user_partitions::cli_replace_server_profiles_for_user(store, target.id, profiles) {
-        Ok(()) => {
-            mirror_profiles_to_legacy_blob_if_active(store, target.id, profiles);
+        // The list stored, whose names the write made unique, is the one the
+        // blob mirrors.
+        Ok(stored) => {
+            mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
             Ok(())
         }
         Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => Err(e),
@@ -13249,7 +13252,16 @@ fn save_active_user_profiles(
                         .to_string(),
                 );
             }
-            let serialized = serde_json::to_string(profiles)
+            // No two profiles of one name in the blob either: the list it
+            // holds now decides who had a name first, as the partition does.
+            let previous: Vec<serde_json::Value> = store
+                .get("config_server_profiles")
+                .ok()
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+                .unwrap_or_default();
+            let (profiles, _) =
+                ftp_client_gui_lib::util::profile_name::unique_profile_names(&previous, profiles);
+            let serialized = serde_json::to_string(&profiles)
                 .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
             store
                 .store("config_server_profiles", &serialized)
@@ -22137,7 +22149,7 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore, start_in_tui: bool
                     new_user.id,
                     &profiles,
                 ) {
-                    Ok(()) => eprintln!(
+                    Ok(_) => eprintln!(
                         "{}",
                         paint_blue(&format!(
                             "User '{}' duplicated as '{}' ({} server(s), no passwords copied).",
@@ -38879,6 +38891,7 @@ fn rclone_import_json(
             "oauthTokensStored": summary.oauth_tokens_stored,
             "jottaRefreshStored": summary.jotta_refresh_stored,
             "profilesAppended": summary.profiles_appended,
+            "profilesRenamed": summary.profiles_renamed,
         });
     }
     redacted
@@ -38979,6 +38992,7 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
                         summary.oauth_tokens_stored,
                         summary.jotta_refresh_stored,
                     );
+                    print_profile_renames(&summary.profiles_renamed);
                 } else {
                     println!(
                         "Dry-run: re-run with --apply to write profiles + OAuth tokens into the vault."
@@ -39006,6 +39020,8 @@ struct RcloneApplySummary {
     oauth_tokens_stored: usize,
     jotta_refresh_stored: usize,
     profiles_appended: usize,
+    /// Appended profiles whose name was taken, and the name each got instead.
+    profiles_renamed: Vec<ftp_client_gui_lib::util::profile_name::RenamedProfile>,
 }
 
 /// Map a saved-server protocol identifier to the `OAuthProvider` slug used
@@ -39140,14 +39156,20 @@ async fn apply_rclone_import_to_vault(
         .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
         .collect();
     let mut profiles_appended = 0usize;
+    let mut names = ProfileNames::of_profiles(&profiles);
+    let mut profiles_renamed = Vec::new();
     for server in &result.servers {
         if existing_ids.contains(&server.id) {
             continue;
         }
-        let profile = imported_server_profile(server, |key, secret| {
+        let mut profile = imported_server_profile(server, |key, secret| {
             dual_store_server_cred_checked(&store, scoped_uid, key, secret)
         })
         .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+        profiles_renamed.extend(claim_profile_names(
+            &mut names,
+            std::slice::from_mut(&mut profile),
+        ));
         profiles.push(profile);
         profiles_appended += 1;
     }
@@ -39159,6 +39181,7 @@ async fn apply_rclone_import_to_vault(
         oauth_tokens_stored,
         jotta_refresh_stored,
         profiles_appended,
+        profiles_renamed,
     })
 }
 
@@ -40521,11 +40544,13 @@ async fn cmd_profile_import(
 
     // Append the added profiles, preferring the phase-2 redaction (true
     // credential-presence flags) over the phase-1 preview (flags all false).
-    current.extend(merged_added_profiles(
-        &decision.add_indices,
-        &imported,
-        &restored_by_id,
-    ));
+    let mut added_profiles =
+        merged_added_profiles(&decision.add_indices, &imported, &restored_by_id);
+    let renamed = claim_profile_names(
+        &mut ProfileNames::of_profiles(&current),
+        &mut added_profiles,
+    );
+    current.extend(added_profiles);
 
     if added > 0 {
         if let Err(e) = save_active_user_profiles(cli, &store, &current) {
@@ -40549,6 +40574,8 @@ async fn cmd_profile_import(
                 // one already present: legitimately distinct (different protocol,
                 // crypt overlay, folder, or auth mode), kept, just flagged.
                 "similar": similar,
+                // Added profiles whose name was taken, and the name each got.
+                "renamed": renamed,
                 "total_in_file": imported.len(),
                 "metadata": metadata,
             })
@@ -40562,8 +40589,19 @@ async fn cmd_profile_import(
             tail.push_str(&format!(", {similar} resemble an existing profile"));
         }
         eprintln!("Imported {added} profile(s){tail} from {input}");
+        print_profile_renames(&renamed);
     }
     0
+}
+
+/// One line per imported profile that took another name than its own.
+fn print_profile_renames(renamed: &[ftp_client_gui_lib::util::profile_name::RenamedProfile]) {
+    for r in renamed {
+        eprintln!(
+            "Renamed \"{}\" to \"{}\": a profile already has that name",
+            r.from, r.to
+        );
+    }
 }
 
 /// Pick the JSON to persist for each newly-added profile, preferring the
