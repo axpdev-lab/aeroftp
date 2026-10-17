@@ -6990,9 +6990,10 @@ fn cli_log_targets(level: tracing::Level) -> tracing_subscriber::filter::Targets
 }
 
 /// The subscriber `-v`, `-vv` and `RUST_LOG` install, writing to `writer`:
-/// nothing above `level`, and `targets` per target. Records bridged from the
-/// `log` crate (suppaftp and pgp log through it) pass the same per-target
-/// filter as native `tracing` events.
+/// nothing above `level`, `targets` per target, and never a held crate above
+/// its ceiling ([`cli_log_targets`]). Records bridged from the `log` crate
+/// (suppaftp and pgp log through it) pass the same filters as native
+/// `tracing` events.
 fn cli_log_subscriber<W>(
     level: tracing::Level,
     targets: tracing_subscriber::filter::Targets,
@@ -7008,21 +7009,26 @@ where
         .with_writer(writer)
         .finish()
         .with(targets)
+        // The ceilings as a filter of their own, which every event passes
+        // whatever `targets` asks. Folded into `targets` they could be
+        // outranked: a directive matches as a raw string prefix, so
+        // `suppaftp:=trace` covers suppaftp's modules and, being longer, is
+        // more specific than `suppaftp`.
+        .with(cli_log_targets(tracing::Level::TRACE))
 }
 
 /// What `RUST_LOG` asks the CLI subscriber for: the most verbose level it
 /// names and the per-target filter of its directives, so
 /// `warn,ftp_client_gui_lib::providers=debug` keeps every other crate at WARN
-/// instead of turning on the DEBUG stream of the whole HTTP stack. The crates
-/// [`cli_log_targets`] holds down stay held down, whatever a directive asks
-/// for them or for a module under them. A value that does not parse as
-/// directives applies its most verbose level to every target, as before.
-/// `None` when nothing is turned on.
+/// instead of turning on the DEBUG stream of the whole HTTP stack. A value
+/// that does not parse as directives applies its most verbose level to every
+/// target, as before. `None` when nothing is turned on. The ceilings of the
+/// crates [`cli_log_targets`] holds down are not folded in here:
+/// [`cli_log_subscriber`] applies them as a filter of their own.
 fn cli_log_filter_from_rust_log(
     value: &str,
 ) -> Option<(tracing::Level, tracing_subscriber::filter::Targets)> {
-    use tracing::Level;
-    use tracing_subscriber::filter::{LevelFilter, Targets};
+    use tracing_subscriber::filter::Targets;
 
     // `warning` is the one spelling `tracing_level_from_rust_log` accepts
     // that tracing's parser would read as a target name.
@@ -7041,51 +7047,10 @@ fn cli_log_filter_from_rust_log(
     if directives.is_empty() {
         return None;
     }
-    let Ok(asked) = directives.join(",").parse::<Targets>() else {
+    let Ok(targets) = directives.join(",").parse::<Targets>() else {
         let level = tracing_level_from_rust_log(value)?;
         return Some((level, cli_log_targets(level)));
     };
-
-    // The ceilings, as `cli_log_targets` sets them when everything else is
-    // at TRACE.
-    let ceilings: Vec<(String, LevelFilter)> = cli_log_targets(Level::TRACE)
-        .iter()
-        .map(|(target, ceiling)| (target.to_string(), ceiling))
-        .collect();
-    let ceiling_of = |target: &str| {
-        ceilings
-            .iter()
-            .filter(|(held, _)| target == held || target.starts_with(&format!("{held}::")))
-            .map(|(_, ceiling)| *ceiling)
-            .min()
-    };
-    let mut targets = asked
-        .default_level()
-        .map_or_else(Targets::new, |level| Targets::new().with_default(level));
-    for (target, level) in asked.iter() {
-        if ceilings.iter().any(|(held, _)| held == target) {
-            continue;
-        }
-        let level = ceiling_of(target).map_or(level, |ceiling| level.min(ceiling));
-        targets = targets.with_target(target, level);
-    }
-    // Each held crate gets its own directive at what the value would give
-    // it, capped: more specific than any shorter prefix (`supp=trace`), so
-    // that prefix cannot lift it.
-    for (held, ceiling) in &ceilings {
-        let would_get = [
-            Level::TRACE,
-            Level::DEBUG,
-            Level::INFO,
-            Level::WARN,
-            Level::ERROR,
-        ]
-        .into_iter()
-        .find(|level| asked.would_enable(held, level))
-        .map_or(LevelFilter::OFF, LevelFilter::from_level);
-        targets = targets.with_target(held.as_str(), would_get.min(*ceiling));
-    }
-
     let most_verbose = targets
         .iter()
         .map(|(_, level)| level)
@@ -77879,10 +77844,29 @@ mod tests {
             }
         }
 
-        for level in [Level::TRACE, Level::DEBUG, Level::INFO] {
+        // `-v`/`-vv`, and RUST_LOG values that ask suppaftp for TRACE,
+        // including a raw prefix that is no module path: `suppaftp:` matches
+        // suppaftp's modules and is longer than `suppaftp`.
+        let mut filters: Vec<(String, Level, tracing_subscriber::filter::Targets)> =
+            [Level::TRACE, Level::DEBUG, Level::INFO]
+                .into_iter()
+                .map(|level| (format!("forced {level}"), level, cli_log_targets(level)))
+                .collect();
+        for value in [
+            "trace",
+            "warn,suppaftp=trace",
+            "warn,suppaftp:=trace",
+            "suppaftp:=trace",
+            "warn,suppaftp::async_ftp::tokio_ftp=trace",
+            "warn,s=trace",
+        ] {
+            let (level, targets) = cli_log_filter_from_rust_log(value).expect("a filter");
+            filters.push((format!("RUST_LOG={value}"), level, targets));
+        }
+        for (asked, level, targets) in filters {
             let capture = Capture::default();
             tracing::subscriber::with_default(
-                cli_log_subscriber(level, cli_log_targets(level), capture.clone()),
+                cli_log_subscriber(level, targets, capture.clone()),
                 || {
                     tracing::trace!(
                         target: "suppaftp::async_ftp::tokio_ftp::control",
@@ -77892,17 +77876,17 @@ mod tests {
                         target: "suppaftp::async_ftp::tokio_ftp",
                         "Sending SITE command: CHPASS someuser {SENTINEL}"
                     );
-                    tracing::info!(target: "aeroftp_cli", "positive control");
+                    tracing::info!(target: "suppaftp::async_ftp::tokio_ftp", "positive control");
                 },
             );
             let out = String::from_utf8_lossy(&capture.0.lock().unwrap()).into_owned();
             assert!(
                 out.contains("positive control"),
-                "the capture recorded nothing at {level}, so the absence below would prove nothing: {out:?}"
+                "{asked}: suppaftp recorded nothing at its ceiling, so the absence below would prove nothing: {out:?}"
             );
             assert!(
                 !out.contains(SENTINEL),
-                "suppaftp's wire trace reached the CLI output at {level} with the password in it: {out:?}"
+                "{asked}: suppaftp's wire trace reached the CLI output with the password in it: {out:?}"
             );
         }
 
@@ -77980,50 +77964,94 @@ mod tests {
         assert!(fallback.would_enable("hyper_util", &Level::DEBUG));
     }
 
-    /// Whatever a `RUST_LOG` directive asks for a crate `cli_log_targets`
-    /// holds down (suppaftp writes the FTP password at TRACE), for a module
-    /// under it or for a shorter prefix of its name, it gets no more than
-    /// its ceiling; and a quieter value keeps it quieter.
+    /// Whatever `RUST_LOG` asks, a crate `cli_log_targets` holds down writes
+    /// nothing above its ceiling (suppaftp writes the FTP password at TRACE),
+    /// and does write up to it. Every raw prefix of a module path is tried:
+    /// a directive matches as a string prefix, so `suppaftp:` or `suppaft`
+    /// is as valid as `suppaftp::async_ftp`. The records go through the same
+    /// `log` -> `tracing` bridge the CLI installs, as suppaftp and rpgp log
+    /// through `log`.
     #[test]
     fn rust_log_cannot_lift_a_held_crate_above_its_ceiling() {
+        use std::sync::{Arc, Mutex};
         use tracing::Level;
-        const LEVELS: [Level; 5] = [
-            Level::TRACE,
-            Level::DEBUG,
-            Level::INFO,
-            Level::WARN,
-            Level::ERROR,
+        use tracing_subscriber::filter::LevelFilter;
+
+        #[derive(Clone, Default)]
+        struct Capture(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+            type Writer = Capture;
+            fn make_writer(&'writer self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        // Another test may have installed it already; either way it is the bridge.
+        let _ = tracing_log::LogTracer::init();
+        let levels = [
+            (log::Level::Trace, LevelFilter::TRACE),
+            (log::Level::Debug, LevelFilter::DEBUG),
+            (log::Level::Info, LevelFilter::INFO),
+            (log::Level::Warn, LevelFilter::WARN),
+            (log::Level::Error, LevelFilter::ERROR),
         ];
-        let held: Vec<(String, tracing_subscriber::filter::LevelFilter)> =
-            cli_log_targets(Level::TRACE)
-                .iter()
-                .map(|(target, ceiling)| (target.to_string(), ceiling))
-                .collect();
+        let held: Vec<(String, LevelFilter)> = cli_log_targets(Level::TRACE)
+            .iter()
+            .map(|(target, ceiling)| (target.to_string(), ceiling))
+            .collect();
         assert!(held.iter().any(|(target, _)| target == "suppaftp"));
-        for (target, ceiling) in &held {
-            let prefix = &target[..1];
-            for value in [
-                "trace".to_string(),
-                format!("warn,{target}=trace"),
-                format!("warn,{target}::module=trace"),
-                format!("warn,{prefix}=trace"),
-                format!("{target}=trace,{target}::a::b=trace"),
-            ] {
-                let (_, targets) = cli_log_filter_from_rust_log(&value).unwrap();
-                for module in [target.clone(), format!("{target}::module::deeper")] {
-                    for level in LEVELS {
-                        if tracing_subscriber::filter::LevelFilter::from_level(level) > *ceiling {
+        for (held_crate, ceiling) in &held {
+            let module = format!("{held_crate}::async_ftp::tokio_ftp");
+            let mut values = vec!["trace".to_string()];
+            for end in (1..=module.len()).filter(|end| module.is_char_boundary(*end)) {
+                values.push(format!("{}=trace", &module[..end]));
+                values.push(format!("warn,{}=trace", &module[..end]));
+            }
+            for value in &values {
+                let (level, targets) = cli_log_filter_from_rust_log(value).expect("a filter");
+                let capture = Capture::default();
+                tracing::subscriber::with_default(
+                    cli_log_subscriber(level, targets, capture.clone()),
+                    || {
+                        for target in [held_crate.as_str(), module.as_str()] {
+                            for (log_level, _) in levels {
+                                log::log!(target: target, log_level, "<{target} at {log_level}>");
+                            }
+                        }
+                    },
+                );
+                let out = String::from_utf8_lossy(&capture.0.lock().unwrap()).into_owned();
+                for target in [held_crate.as_str(), module.as_str()] {
+                    for (log_level, filter) in levels {
+                        let line = format!("<{target} at {log_level}>");
+                        if filter > *ceiling {
                             assert!(
-                                !targets.would_enable(&module, &level),
-                                "{value}: {module} at {level} is above its ceiling {ceiling}"
+                                !out.contains(&line),
+                                "RUST_LOG={value}: {line} is above its ceiling {ceiling}"
+                            );
+                        } else if target == module && *ceiling != LevelFilter::OFF {
+                            // Every value asks the module for TRACE: up to the
+                            // ceiling it shows, or the absences prove nothing.
+                            assert!(
+                                out.contains(&line),
+                                "RUST_LOG={value}: {line} missing: {out:?}"
                             );
                         }
                     }
                 }
             }
-            let (_, quiet) = cli_log_filter_from_rust_log("warn").unwrap();
-            assert!(!quiet.would_enable(target, &Level::INFO), "{target}");
         }
+        let (_, quiet) = cli_log_filter_from_rust_log("warn").unwrap();
+        assert!(!quiet.would_enable("suppaftp", &Level::INFO));
     }
 
     #[test]

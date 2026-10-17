@@ -409,6 +409,7 @@ acl-sys = { version = "1.2.2", optional = true }
 
 [dev-dependencies]
 rcgen = "0.14"                                                       # Self-signed certificates for the loopback TLS tests
+tracing-log = "0.2"                                                  # The log -> tracing bridge the CLI installs, for its log filter tests
 
 [features]
 default = ["aerorsync", "local-stt"]
