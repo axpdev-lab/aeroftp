@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} penyimpanan",
             "portable_disconnected": "Perangkat portabel terputus: {name}",
             "portable_unplugged": "Perangkat portabel terputus. Colokkan kembali kabelnya dan buka lagi.",
-            "portable_needs_replug": "Tidak dimuat oleh desktop. Cabut dan colokkan kembali kabelnya, lalu buka lagi."
+            "portable_needs_replug": "Tidak dimuat oleh desktop. Cabut dan colokkan kembali kabelnya, lalu buka lagi.",
+            "volumes_need_mount_observe": "Di snap, volume muncul setelah izin mount-observe terhubung. Jalankan ini di terminal, lalu kembali ke AeroFTP:",
+            "volumes_unavailable": "Tidak dapat membaca volume yang terpasang."
         },
         "viewMode": {
             "list": "Daftar",

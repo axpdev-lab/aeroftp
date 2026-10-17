@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} pohrana",
             "portable_disconnected": "Prijenosni uređaj odspojen: {name}",
             "portable_unplugged": "Prijenosni uređaj je isključen. Ponovno priključite kabel i otvorite ga ponovno.",
-            "portable_needs_replug": "Nije montirano od strane radne površine. Iskopčajte i ponovno utaknite kabel, zatim ga ponovno otvorite."
+            "portable_needs_replug": "Nije montirano od strane radne površine. Iskopčajte i ponovno utaknite kabel, zatim ga ponovno otvorite.",
+            "volumes_need_mount_observe": "U snapu se volumeni prikazuju nakon povezivanja dopuštenja mount-observe. Pokrenite ovo u terminalu, a zatim se vratite u AeroFTP:",
+            "volumes_unavailable": "Nije moguće pročitati montirane volumene."
         },
         "viewMode": {
             "list": "Popis",

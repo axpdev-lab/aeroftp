@@ -18,7 +18,9 @@ import {
   MtpDeviceInfo,
 } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
+import { VolumesUnavailable, readVolumes, type VolumesUnavailableReason } from './volumesUnavailable';
 import { formatBytes } from '../utils/formatters';
+import { readLatest } from '../utils/readLatest';
 import { findGvfsMtpMount, isPathOnOrUnderMount, portableDeviceNeedsReplug } from '../utils/gvfsMtpMount';
 import {
   debounceMtpDevicesChanged,
@@ -259,6 +261,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
   const [unmountedPartitions, setUnmountedPartitions] = useState<UnmountedPartition[]>([]);
   const [volumesLoading, setVolumesLoading] = useState(false);
+  const [volumesUnavailable, setVolumesUnavailable] = useState<VolumesUnavailableReason | null>(null);
   const [ejectingMount, setEjectingMount] = useState<string | null>(null);
   const [mountingDevice, setMountingDevice] = useState<string | null>(null);
   const [portableDevices, setPortableDevices] = useState<MtpDeviceInfo[]>([]);
@@ -280,6 +283,10 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   const volumeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const portableIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  // One sequence per polled list, so an older read never replaces a newer one.
+  const volumesReadRef = useRef(0);
+  const portableMountsReadRef = useRef(0);
+  const automounterReadRef = useRef(0);
 
   // -----------------------------------------------------------------------
   // Persist sidebar mode
@@ -362,27 +369,26 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   // -----------------------------------------------------------------------
 
   const fetchVolumes = useCallback(async () => {
-    try {
-      const [vols, unmounted] = await Promise.all([
-        invoke<VolumeInfo[]>('list_mounted_volumes'),
-        invoke<UnmountedPartition[]>('list_unmounted_partitions').catch(() => [] as UnmountedPartition[]),
-      ]);
-      if (mountedRef.current) {
-        setVolumes(vols);
-        setUnmountedPartitions(unmounted);
-      }
-    } catch {
-      // Backend command not available yet
-    }
+    // A failed read clears the rows and says why (a snap without
+    // mount-observe, or a failed read) instead of leaving the section blank.
+    const { value, latest } = await readLatest(volumesReadRef, () => readVolumes(() => Promise.all([
+      invoke<VolumeInfo[]>('list_mounted_volumes'),
+      invoke<UnmountedPartition[]>('list_unmounted_partitions').catch(() => [] as UnmountedPartition[]),
+    ])));
+    if (!latest || !mountedRef.current) return;
+    setVolumes(value.volumes);
+    setUnmountedPartitions(value.unmounted);
+    setVolumesUnavailable(value.unavailable);
+    setVolumesLoading(false);
   }, []);
 
   useEffect(() => {
     if (!showVolumes) return;
 
+    // The latest read ends the spinner: an earlier one that settles first
+    // would show an empty section before the data arrives.
     setVolumesLoading(true);
-    fetchVolumes().finally(() => {
-      if (mountedRef.current) setVolumesLoading(false);
-    });
+    void fetchVolumes();
 
     // Event-driven: backend mount watcher (poll + inotify on Linux) emits
     // 'volumes-changed' immediately when /proc/mounts or GVFS dir changes.
@@ -449,6 +455,8 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       // on the second click). fetchVolumes() still runs shortly after to
       // reconcile, so a failed-but-reported eject reappears.
       if (mountedRef.current) {
+        // Retire a read started before the eject, which would put the row back.
+        volumesReadRef.current += 1;
         setVolumes(prev => prev.filter(v => v.mount_point !== mountPoint));
       }
       setTimeout(() => { if (mountedRef.current) fetchVolumes(); }, 1500);
@@ -522,23 +530,21 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   }, []);
 
   const fetchPortableMounts = useCallback(async () => {
-    try {
-      const mounts = await invoke<VolumeInfo[]>('list_mounted_volumes');
-      if (mountedRef.current) setPortableMounts(mounts);
-    } catch {
-      if (mountedRef.current) setPortableMounts([]);
-    }
+    const { value, latest } = await readLatest(portableMountsReadRef, () =>
+      invoke<VolumeInfo[]>('list_mounted_volumes').catch(() => [] as VolumeInfo[]),
+    );
+    if (latest && mountedRef.current) setPortableMounts(value);
   }, []);
 
   const fetchMtpAutomounterPresent = useCallback(async () => {
-    try {
-      const present = await invoke<boolean>('mtp_desktop_automounter_present');
-      if (mountedRef.current) setMtpAutomounterPresent(present);
-    } catch {
-      // Missing command / older backend: treat as no automounter so exclusive
-      // path stays clickable (never block opens on a failed probe).
-      if (mountedRef.current) setMtpAutomounterPresent(false);
-    }
+    const { value, latest } = await readLatest(automounterReadRef, () =>
+      invoke<boolean>('mtp_desktop_automounter_present').catch(() => {
+        // Missing command / older backend: treat as no automounter so exclusive
+        // path stays clickable (never block opens on a failed probe).
+        return false;
+      }),
+    );
+    if (latest && mountedRef.current) setMtpAutomounterPresent(value);
   }, []);
 
   useEffect(() => {
@@ -612,13 +618,11 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       // grants one MTP session per physical connection and gvfs took it at plug
       // time. Ask for the mounts now rather than reusing `volumes`, which is
       // only populated while the Other Locations section is expanded.
-      let mounts: VolumeInfo[] = [];
-      try {
-        mounts = await invoke<VolumeInfo[]>('list_mounted_volumes');
-      } catch {
-        // No volume backend: fall through to the exclusive path.
-      }
-      if (mountedRef.current) setPortableMounts(mounts);
+      // No volume backend: no mounts, fall through to the exclusive path.
+      const { value: mounts, latest } = await readLatest(portableMountsReadRef, () =>
+        invoke<VolumeInfo[]>('list_mounted_volumes').catch(() => [] as VolumeInfo[]),
+      );
+      if (latest && mountedRef.current) setPortableMounts(mounts);
       const gvfsPath = findGvfsMtpMount(mounts, device);
       if (gvfsPath) {
         onNavigate(gvfsPath);
@@ -811,6 +815,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
               <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
               {t('common.loading')}
             </div>
+          )}
+          {!volumesLoading && volumes.length === 0 && volumesUnavailable && (
+            <VolumesUnavailable reason={volumesUnavailable} t={t} />
           )}
           {volumes.map((vol) => {
             const usedBytes = vol.total_bytes - vol.free_bytes;

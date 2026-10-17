@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} storan",
             "portable_disconnected": "Peranti mudah alih diputuskan: {name}",
             "portable_unplugged": "Peranti mudah alih telah diputuskan. Colokkan semula kabel dan buka semula.",
-            "portable_needs_replug": "Tidak dipasang oleh desktop. Cabut dan pasang semula kabel, kemudian buka semula."
+            "portable_needs_replug": "Tidak dipasang oleh desktop. Cabut dan pasang semula kabel, kemudian buka semula.",
+            "volumes_need_mount_observe": "Dalam snap, volum muncul setelah kebenaran mount-observe disambungkan. Jalankan ini dalam terminal, kemudian kembali ke AeroFTP:",
+            "volumes_unavailable": "Tidak dapat membaca volum yang dilekapkan."
         },
         "viewMode": {
             "list": "Senarai",

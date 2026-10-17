@@ -211,10 +211,36 @@ const PSEUDO_FS_TYPES: &[&str] = &[
 #[cfg(target_os = "linux")]
 const NETWORK_FS_TYPES: &[&str] = &["nfs", "nfs4", "cifs", "smbfs", "fuse.sshfs"];
 
+/// Error marker of `list_mounted_volumes` when the snap may not read the mount
+/// table: its `mount-observe` plug, which snapd never connects on its own, is
+/// not connected. The sidebar shows the command that connects it.
+#[cfg(target_os = "linux")]
+pub const MOUNT_OBSERVE_NOT_CONNECTED: &str = "MOUNT_OBSERVE_NOT_CONNECTED";
+
+/// The message for a mount table that could not be read: led by
+/// [`MOUNT_OBSERVE_NOT_CONNECTED`] when a snap is refused it, since that is the
+/// one cause the user can fix, the plain error otherwise.
+#[cfg(target_os = "linux")]
+fn mount_table_error(err: &std::io::Error, in_snap: bool) -> String {
+    if in_snap && err.kind() == std::io::ErrorKind::PermissionDenied {
+        format!(
+            "{MOUNT_OBSERVE_NOT_CONNECTED}: cannot read /proc/mounts ({err}); \
+             connect the plug with `sudo snap connect aeroftp:mount-observe`"
+        )
+    } else {
+        format!("Failed to read /proc/mounts: {err}")
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn in_snap() -> bool {
+    std::env::var_os("SNAP").is_some()
+}
+
 #[cfg(target_os = "linux")]
 async fn list_mounted_volumes_linux() -> Result<Vec<VolumeInfo>, String> {
-    let content = std::fs::read_to_string("/proc/mounts")
-        .map_err(|e| format!("Failed to read /proc/mounts: {}", e))?;
+    let content =
+        std::fs::read_to_string("/proc/mounts").map_err(|e| mount_table_error(&e, in_snap()))?;
 
     // Pre-load volume labels from /dev/disk/by-label/
     let label_map = build_label_map();
@@ -2553,7 +2579,7 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
             let mut mounts_file = match std::fs::File::open("/proc/mounts") {
                 Ok(f) => f,
                 Err(e) => {
-                    warn!("mount-watcher: cannot open /proc/mounts: {}", e);
+                    warn!("mount-watcher: {}", mount_table_error(&e, in_snap()));
                     return;
                 }
             };
@@ -3098,6 +3124,35 @@ mod main_thread_tests {
             .await
             .expect("a no-op must still read");
         assert_eq!(props.size, 5);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod mount_table_error_tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn a_snap_refused_the_mount_table_is_told_which_plug_to_connect() {
+        let msg = mount_table_error(&Error::from(ErrorKind::PermissionDenied), true);
+        assert!(msg.starts_with(MOUNT_OBSERVE_NOT_CONNECTED), "{msg}");
+        assert!(msg.contains("snap connect aeroftp:mount-observe"), "{msg}");
+    }
+
+    #[test]
+    fn a_refusal_outside_a_snap_or_another_error_is_not_blamed_on_the_plug() {
+        for (kind, in_snap) in [
+            (ErrorKind::PermissionDenied, false),
+            (ErrorKind::NotFound, true),
+            (ErrorKind::Other, true),
+        ] {
+            let msg = mount_table_error(&Error::from(kind), in_snap);
+            assert!(
+                !msg.contains(MOUNT_OBSERVE_NOT_CONNECTED),
+                "{kind:?} {in_snap}: {msg}"
+            );
+            assert!(msg.starts_with("Failed to read /proc/mounts"), "{msg}");
+        }
     }
 }
 

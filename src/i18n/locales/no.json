@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} lagringsenheter",
             "portable_disconnected": "Bærbar enhet frakoblet: {name}",
             "portable_unplugged": "Den bærbare enheten ble frakoblet. Koble til kabelen igjen og åpne den på nytt.",
-            "portable_needs_replug": "Ikke montert av skrivebordet. Trekk ut og sett i kabelen på nytt, og åpne deretter på nytt."
+            "portable_needs_replug": "Ikke montert av skrivebordet. Trekk ut og sett i kabelen på nytt, og åpne deretter på nytt.",
+            "volumes_need_mount_observe": "I snap vises volumer når tillatelsen mount-observe er koblet til. Kjør dette i en terminal, og gå deretter tilbake til AeroFTP:",
+            "volumes_unavailable": "Kunne ikke lese de monterte volumene."
         },
         "viewMode": {
             "list": "Liste",

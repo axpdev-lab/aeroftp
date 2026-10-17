@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} shramb",
             "portable_disconnected": "Prenosna naprava odklopljena: {name}",
             "portable_unplugged": "Prenosna naprava je bila odklopljena. Ponovno priključite kabel in jo znova odprite.",
-            "portable_needs_replug": "Namizje ni priklopilo. Izklopite in znova vklopite kabel, nato znova odprite."
+            "portable_needs_replug": "Namizje ni priklopilo. Izklopite in znova vklopite kabel, nato znova odprite.",
+            "volumes_need_mount_observe": "V snapu se pogoni prikažejo, ko je dovoljenje mount-observe povezano. To zaženite v terminalu in se nato vrnite v AeroFTP:",
+            "volumes_unavailable": "Priklopljenih pogonov ni bilo mogoče prebrati."
         },
         "viewMode": {
             "list": "Seznam",

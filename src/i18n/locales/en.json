@@ -3969,7 +3969,9 @@
             "switch_to_places": "Switch to places",
             "switch_to_tree": "Switch to folder tree",
             "trash": "Trash",
-            "videos": "Videos"
+            "videos": "Videos",
+            "volumes_need_mount_observe": "In the snap, volumes appear once its mount-observe permission is connected. Run this in a terminal, then return to AeroFTP:",
+            "volumes_unavailable": "Could not read the mounted volumes."
         },
         "statusbar": {
             "activityLog": "Activity Log",

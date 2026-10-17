@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} biltegi",
             "portable_disconnected": "Gailu eramangarria deskonektatuta: {name}",
             "portable_unplugged": "Gailu eramangarria deskonektatu da. Konektatu kablea berriro eta ireki berriro.",
-            "portable_needs_replug": "Mahaigainak ez du muntatu. Deskonektatu eta konektatu berriro kablea, eta ireki berriro."
+            "portable_needs_replug": "Mahaigainak ez du muntatu. Deskonektatu eta konektatu berriro kablea, eta ireki berriro.",
+            "volumes_need_mount_observe": "Snap-ean, bolumenak mount-observe baimena konektatzen denean agertzen dira. Exekutatu hau terminal batean eta itzuli AeroFTP-ra:",
+            "volumes_unavailable": "Ezin izan dira muntatutako bolumenak irakurri."
         },
         "viewMode": {
             "list": "Zerrenda",

@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} saugyklos",
             "portable_disconnected": "Nešiojamasis įrenginys atjungtas: {name}",
             "portable_unplugged": "Nešiojamasis įrenginys buvo atjungtas. Vėl prijunkite kabelį ir atidarykite jį iš naujo.",
-            "portable_needs_replug": "Darbalaukis neprijungė. Atjunkite ir vėl įjunkite kabelį, tada atidarykite iš naujo."
+            "portable_needs_replug": "Darbalaukis neprijungė. Atjunkite ir vėl įjunkite kabelį, tada atidarykite iš naujo.",
+            "volumes_need_mount_observe": "Snap pakete tomai rodomi, kai prijungiamas mount-observe leidimas. Paleiskite tai terminale, tada grįžkite į AeroFTP:",
+            "volumes_unavailable": "Nepavyko nuskaityti prijungtų tomų."
         },
         "viewMode": {
             "list": "Sąrašas",

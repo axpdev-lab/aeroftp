@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} stocări",
             "portable_disconnected": "Dispozitiv portabil deconectat: {name}",
             "portable_unplugged": "Dispozitivul portabil a fost deconectat. Reconectați cablul și deschideți-l din nou.",
-            "portable_needs_replug": "Neînregistrat de desktop. Deconectați și reconectați cablul, apoi deschideți din nou."
+            "portable_needs_replug": "Neînregistrat de desktop. Deconectați și reconectați cablul, apoi deschideți din nou.",
+            "volumes_need_mount_observe": "În snap, volumele apar după ce permisiunea mount-observe este conectată. Rulați aceasta într-un terminal, apoi reveniți la AeroFTP:",
+            "volumes_unavailable": "Nu s-au putut citi volumele montate."
         },
         "viewMode": {
             "list": "Listă",

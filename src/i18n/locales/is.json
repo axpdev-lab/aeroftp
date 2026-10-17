@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} geymslur",
             "portable_disconnected": "Færanlegt tæki aftengt: {name}",
             "portable_unplugged": "Færanlega tækið var aftengt. Tengdu snúruna aftur og opnaðu það aftur.",
-            "portable_needs_replug": "Ekki fest af skjáborðinu. Taktu snúruna úr og settu hana aftur í, opnaðu síðan aftur."
+            "portable_needs_replug": "Ekki fest af skjáborðinu. Taktu snúruna úr og settu hana aftur í, opnaðu síðan aftur.",
+            "volumes_need_mount_observe": "Í snap birtast drif þegar mount-observe heimildin er tengd. Keyrðu þetta í skipanalínu og farðu svo aftur í AeroFTP:",
+            "volumes_unavailable": "Ekki tókst að lesa tengd drif."
         },
         "viewMode": {
             "list": "Listi",

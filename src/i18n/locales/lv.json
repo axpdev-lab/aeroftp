@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} krātuves",
             "portable_disconnected": "Pārnēsājamā ierīce atvienota: {name}",
             "portable_unplugged": "Pārnēsājamā ierīce tika atvienota. Atkārtoti pievienojiet kabeli un atveriet to vēlreiz.",
-            "portable_needs_replug": "Darbvirsma nav pievienojusi. Atvienojiet un atkal pievienojiet kabeli, pēc tam atveriet vēlreiz."
+            "portable_needs_replug": "Darbvirsma nav pievienojusi. Atvienojiet un atkal pievienojiet kabeli, pēc tam atveriet vēlreiz.",
+            "volumes_need_mount_observe": "Snap pakotnē sējumi parādās pēc mount-observe atļaujas pievienošanas. Palaidiet to terminālī un pēc tam atgriezieties AeroFTP:",
+            "volumes_unavailable": "Neizdevās nolasīt pievienotos sējumus."
         },
         "viewMode": {
             "list": "Saraksts",

@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} depolama",
             "portable_disconnected": "Taşınabilir cihaz bağlantısı kesildi: {name}",
             "portable_unplugged": "Taşınabilir cihaz bağlantısı kesildi. Kabloyu yeniden takın ve tekrar açın.",
-            "portable_needs_replug": "Masaüstü tarafından bağlanmadı. Kabloyu çıkarıp yeniden takın, sonra tekrar açın."
+            "portable_needs_replug": "Masaüstü tarafından bağlanmadı. Kabloyu çıkarıp yeniden takın, sonra tekrar açın.",
+            "volumes_need_mount_observe": "Snap içinde birimler, mount-observe izni bağlandığında görünür. Bunu bir terminalde çalıştırın, ardından AeroFTP'ye dönün:",
+            "volumes_unavailable": "Bağlı birimler okunamadı."
         },
         "viewMode": {
             "list": "Liste",

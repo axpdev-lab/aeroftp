@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} magazynów",
             "portable_disconnected": "Urządzenie przenośne odłączone: {name}",
             "portable_unplugged": "Urządzenie przenośne zostało odłączone. Podłącz ponownie kabel i otwórz je jeszcze raz.",
-            "portable_needs_replug": "Nie zamontowane przez pulpit. Odłącz i podłącz ponownie kabel, a następnie otwórz ponownie."
+            "portable_needs_replug": "Nie zamontowane przez pulpit. Odłącz i podłącz ponownie kabel, a następnie otwórz ponownie.",
+            "volumes_need_mount_observe": "W snapie woluminy pojawiają się po połączeniu uprawnienia mount-observe. Uruchom to w terminalu, a następnie wróć do AeroFTP:",
+            "volumes_unavailable": "Nie można odczytać zamontowanych woluminów."
         },
         "viewMode": {
             "list": "Lista",

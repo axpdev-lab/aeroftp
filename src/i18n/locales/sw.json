@@ -3592,7 +3592,9 @@
             "portable_storages": "hifadhi {count}",
             "portable_disconnected": "Kifaa kinachobebeka kimekatwa: {name}",
             "portable_unplugged": "Kifaa kinachobebeka kilikatwa. Chomeka tena kebo na uifungue tena.",
-            "portable_needs_replug": "Haijawekwa na eneo-kazi. Ondoa kebo na uiunganishe tena, kisha fungua tena."
+            "portable_needs_replug": "Haijawekwa na eneo-kazi. Ondoa kebo na uiunganishe tena, kisha fungua tena.",
+            "volumes_need_mount_observe": "Katika snap, diski huonekana ruhusa ya mount-observe ikishaunganishwa. Endesha hii kwenye terminal, kisha rudi kwenye AeroFTP:",
+            "volumes_unavailable": "Imeshindwa kusoma diski zilizopachikwa."
         },
         "viewMode": {
             "list": "Orodha",

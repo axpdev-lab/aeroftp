@@ -3592,7 +3592,9 @@
             "portable_storages": "{count} úložišť",
             "portable_disconnected": "Přenosné zařízení odpojeno: {name}",
             "portable_unplugged": "Přenosné zařízení bylo odpojeno. Znovu zapojte kabel a otevřete ho znovu.",
-            "portable_needs_replug": "Není připojeno desktopem. Odpojte a znovu zapojte kabel a poté jej znovu otevřete."
+            "portable_needs_replug": "Není připojeno desktopem. Odpojte a znovu zapojte kabel a poté jej znovu otevřete.",
+            "volumes_need_mount_observe": "V balíčku snap se svazky zobrazí po připojení oprávnění mount-observe. Spusťte tento příkaz v terminálu a vraťte se do AeroFTP:",
+            "volumes_unavailable": "Připojené svazky se nepodařilo načíst."
         },
         "viewMode": {
             "list": "Seznam",
