@@ -1,0 +1,32 @@
+Running linter.
+Checking build provider availability.
+Launching instance.
+Creating instance from base instance
+Starting instance
+Running linter.
+Unsquashing snap file 'aeroftp_4.2.3_amd64.snap'.
+Installing snap with 'snap install /root/aeroftp_4.2.3_amd64.snap --dangerous'.
+Reading snap metadata...
+Running linters...
+Running linter: gpu
+Running linter: library
+Running linter: metadata
+Lint warnings:
+- library: libasound.so.2: unused library 'usr/lib/x86_64-linux-gnu/libasound.so.2.0.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libayatana-appindicator3.so.1: unused library 'usr/lib/x86_64-linux-gnu/libayatana-appindicator3.so.1.0.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libcaca++.so.0: unused library 'usr/lib/x86_64-linux-gnu/libcaca++.so.0.99.19'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libcolordprivate.so.2: unused library 'usr/lib/x86_64-linux-gnu/libcolordprivate.so.2.0.5'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libdconf.so.1: unused library 'usr/lib/x86_64-linux-gnu/libdconf.so.1.0.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libexslt.so.0: unused library 'usr/lib/x86_64-linux-gnu/libexslt.so.0.8.20'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libgstcheck-1.0.so.0: unused library 'usr/lib/x86_64-linux-gnu/libgstcheck-1.0.so.0.2003.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libgstcontroller-1.0.so.0: unused library 'usr/lib/x86_64-linux-gnu/libgstcontroller-1.0.so.0.2003.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libjacknet.so.0: unused library 'usr/lib/x86_64-linux-gnu/libjacknet.so.0.1.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libjackserver.so.0: unused library 'usr/lib/x86_64-linux-gnu/libjackserver.so.0.1.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: liborc-test-0.4.so.0: unused library 'usr/lib/x86_64-linux-gnu/liborc-test-0.4.so.0.32.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libpulse-simple.so.0: unused library 'usr/lib/x86_64-linux-gnu/libpulse-simple.so.0.1.1'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: librsvg-2.so.2: unused library 'usr/lib/x86_64-linux-gnu/librsvg-2.so.2.48.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libsoup-2.4.so.1: unused library 'usr/lib/x86_64-linux-gnu/libsoup-2.4.so.1.11.2'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libunwind-coredump.so.0: unused library 'usr/lib/x86_64-linux-gnu/libunwind-coredump.so.0.0.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libunwind-ptrace.so.0: unused library 'usr/lib/x86_64-linux-gnu/libunwind-ptrace.so.0.0.0'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libunwind-x86_64.so.8: unused library 'usr/lib/x86_64-linux-gnu/libunwind-x86_64.so.8.0.1'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
+- library: libwoff2enc.so.1.0.2: unused library 'usr/lib/x86_64-linux-gnu/libwoff2enc.so.1.0.2'. (https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter)
