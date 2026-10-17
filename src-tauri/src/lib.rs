@@ -11442,8 +11442,9 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
     info!("Finishing startup ({by})");
 
     // IMPORTANT: Do NOT set APP_READY_DONE here! Setting it early creates a race
-    // condition: rebuild_menu sees the flag, calls app.set_menu() globally, and GTK
-    // applies it to the splash window that hasn't been destroyed yet → menu flash.
+    // condition: rebuild_menu sees the flag and relabels the installed menu (none
+    // yet) instead of replacing the deferred one, which then goes in with the old
+    // labels.
     // The flag is set at the very END, after splash is dead and menu is installed.
 
     // 0. Enforce minimum splash display time (2s) so users can read version/license
@@ -11506,12 +11507,15 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
             }
 
             // 4. Restore saved size/position/maximized state, then show the main
-            // window without a menu (the frontend controls visibility via
-            // toggle_menu_bar). When start_minimized is true (autostart launch +
+            // window without a menu unless Settings turned the bar on
+            // (toggle_menu_bar may ask before the menu exists, so the choice is
+            // applied here). When start_minimized is true (autostart launch +
             // user opt-in) the window stays hidden and the user reaches the app
             // via the tray icon.
             if let Some(main_window) = app_main.get_webview_window("main") {
-                let _ = main_window.remove_menu();
+                if !MAIN_MENU_BAR_VISIBLE.load(Ordering::SeqCst) {
+                    let _ = main_window.remove_menu();
+                }
                 let _ = main_window
                     .restore_state(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED);
                 // Heal a poisoned 0x0 size restored from a saved state (#290) before
@@ -11535,8 +11539,8 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
             }
 
             // 5. LAST (still on the main thread, right after the menu is installed):
-            // let rebuild_menu call app.set_menu() freely and tell the safety
-            // timeout it does not need to fire.
+            // from now on rebuild_menu relabels the installed menu in place, and
+            // the safety timeout does not need to fire.
             APP_READY_DONE.store(true, Ordering::SeqCst);
         });
     }
@@ -11563,8 +11567,8 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
 
 /// Whether the user turned the native menu bar on for the main window
 /// (Settings, through `toggle_menu_bar`). Off by default: the titlebar menus
-/// replace it. `rebuild_menu` reads it, because a global `set_menu` reaches
-/// every window on Linux and would otherwise show the bar the user hid.
+/// replace it. The startup sequence reads it when it installs the app menu,
+/// because Settings may ask before the menu exists.
 static MAIN_MENU_BAR_VISIBLE: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -11716,8 +11720,9 @@ fn rebuild_menu_on_main(
     )
     .map_err(|e| e.to_string())?;
 
-    let file_menu = Submenu::with_items(
+    let file_menu = Submenu::with_id_and_items(
         &app,
+        "menu_file",
         get("file", "File"),
         true,
         &[
@@ -11754,8 +11759,9 @@ fn rebuild_menu_on_main(
     )
     .map_err(|e| e.to_string())?;
 
-    let edit_menu = Submenu::with_items(
+    let edit_menu = Submenu::with_id_and_items(
         &app,
+        "menu_edit",
         get("edit", "Edit"),
         true,
         &[
@@ -11782,8 +11788,9 @@ fn rebuild_menu_on_main(
     )
     .map_err(|e| e.to_string())?;
 
-    let devtools_submenu = Submenu::with_items(
+    let devtools_submenu = Submenu::with_id_and_items(
         &app,
+        "menu_devtools",
         get("devtools", "DevTools"),
         true,
         &[
@@ -11824,8 +11831,9 @@ fn rebuild_menu_on_main(
     )
     .map_err(|e| e.to_string())?;
 
-    let view_menu = Submenu::with_items(
+    let view_menu = Submenu::with_id_and_items(
         &app,
+        "menu_view",
         get("view", "View"),
         true,
         &[
@@ -11854,8 +11862,9 @@ fn rebuild_menu_on_main(
     )
     .map_err(|e| e.to_string())?;
 
-    let help_menu = Submenu::with_items(
+    let help_menu = Submenu::with_id_and_items(
         &app,
+        "menu_help",
         get("help", "Help"),
         true,
         &[
@@ -11881,8 +11890,9 @@ fn rebuild_menu_on_main(
         None::<&str>,
     )
     .map_err(|e| e.to_string())?;
-    let connection_menu = Submenu::with_items(
+    let connection_menu = Submenu::with_id_and_items(
         &app,
+        "menu_connection",
         get("connection", "Connection"),
         true,
         &[&site_command],
@@ -11912,20 +11922,79 @@ fn rebuild_menu_on_main(
             }
         }
     } else {
-        app.set_menu(menu).map_err(|e| e.to_string())?;
-        // GTK just gave the main window the menu too; keep the bar hidden
-        // unless the user turned it on. (macOS has one app-wide menu bar and
-        // ignores per-window menus.)
-        if !MAIN_MENU_BAR_VISIBLE.load(Ordering::SeqCst) {
-            if let Some(main) = app.get_webview_window("main") {
-                let _ = main.remove_menu();
+        // The app menu is installed: give its items the new labels in place.
+        // Installing this menu instead would swap the menu bar of every live
+        // window (the GTK churn behind the appmenu-gtk-module crash, see
+        // `run`) and put the bar back on a main window whose user hid it.
+        relabel_installed_menu(&app, &menu)?;
+    }
+
+    Ok(())
+}
+
+/// Copies the labels of `fresh` onto the installed app menu, item by item,
+/// matched by id (submenus carry ids too). Separators and predefined items
+/// have no label of ours and are left as they are.
+fn relabel_installed_menu(
+    app: &AppHandle,
+    fresh: &tauri::menu::Menu<tauri::Wry>,
+) -> Result<(), String> {
+    use tauri::menu::{MenuId, MenuItemKind};
+
+    fn collect(
+        items: Vec<MenuItemKind<tauri::Wry>>,
+        out: &mut std::collections::HashMap<MenuId, String>,
+    ) {
+        for item in items {
+            match item {
+                MenuItemKind::MenuItem(item) => {
+                    if let Ok(text) = item.text() {
+                        out.insert(item.id().clone(), text);
+                    }
+                }
+                MenuItemKind::Submenu(submenu) => {
+                    if let Ok(text) = submenu.text() {
+                        out.insert(submenu.id().clone(), text);
+                    }
+                    collect(submenu.items().unwrap_or_default(), out);
+                }
+                _ => {}
             }
         }
     }
 
-    // Splash, extract and approval windows: GTK just gave them the menu too.
-    strip_menu_from_secondary_windows(&app);
+    fn relabel(
+        items: Vec<MenuItemKind<tauri::Wry>>,
+        labels: &std::collections::HashMap<MenuId, String>,
+    ) -> usize {
+        let mut changed = 0;
+        for item in items {
+            match item {
+                MenuItemKind::MenuItem(item) => {
+                    if let Some(text) = labels.get(item.id()) {
+                        changed += usize::from(item.set_text(text).is_ok());
+                    }
+                }
+                MenuItemKind::Submenu(submenu) => {
+                    if let Some(text) = labels.get(submenu.id()) {
+                        changed += usize::from(submenu.set_text(text).is_ok());
+                    }
+                    changed += relabel(submenu.items().unwrap_or_default(), labels);
+                }
+                _ => {}
+            }
+        }
+        changed
+    }
 
+    let Some(installed) = app.menu() else {
+        warn!("Native menu relabel skipped: no app menu is installed");
+        return Ok(());
+    };
+    let mut labels = std::collections::HashMap::new();
+    collect(fresh.items().map_err(|e| e.to_string())?, &mut labels);
+    let changed = relabel(installed.items().map_err(|e| e.to_string())?, &labels);
+    info!("Native menu relabelled in place ({changed} items)");
     Ok(())
 }
 
@@ -18743,6 +18812,19 @@ pub fn run() {
             std::env::set_var("GTK_USE_PORTAL", "1");
         }
 
+        // Keep appmenu-gtk-module out of this process. Ubuntu lists it in the
+        // default GTK_MODULES (it is also the global-menu bridge on KDE, MATE
+        // and Budgie), and it rebuilds every GtkMenuBar it finds as a GMenu to
+        // export. On our app menu that rebuild never ends: GTK and GIO signal
+        // each other until the main thread overflows its stack and the app
+        // aborts. It happened whenever a realized window held the bar: the
+        // menu installed after the splash timeout and then rebuilt for the
+        // language, the bar turned on in Settings, the approval window (#1017).
+        // The module stays idle when UBUNTU_MENUPROXY is "0"; forced, not
+        // defaulted, because a session value of "1" would bring the crash
+        // back. Must be set before GTK initializes: modules load in gtk_init.
+        std::env::set_var("UBUNTU_MENUPROXY", "0");
+
         // Pin a stable GTK program name so the window's WM_CLASS is always
         // "aeroftp", regardless of which path launched the binary. GNOME maps a
         // window to its .desktop entry (and thus its icon) by matching WM_CLASS
@@ -19355,8 +19437,9 @@ pub fn run() {
                 MenuItem::with_id(app, "support", "Support Development ❤️", true, None::<&str>)?;
 
             // File menu
-            let file_menu = Submenu::with_items(
+            let file_menu = Submenu::with_id_and_items(
                 app,
+                "menu_file",
                 "File",
                 true,
                 &[
@@ -19390,8 +19473,9 @@ pub fn run() {
             )?;
 
             // Edit menu
-            let edit_menu = Submenu::with_items(
+            let edit_menu = Submenu::with_id_and_items(
                 app,
+                "menu_edit",
                 "Edit",
                 true,
                 &[
@@ -19410,8 +19494,9 @@ pub fn run() {
             )?;
 
             // View menu
-            let devtools_submenu = Submenu::with_items(
+            let devtools_submenu = Submenu::with_id_and_items(
                 app,
+                "menu_devtools",
                 "DevTools",
                 true,
                 &[
@@ -19447,8 +19532,9 @@ pub fn run() {
                 ],
             )?;
 
-            let view_menu = Submenu::with_items(
+            let view_menu = Submenu::with_id_and_items(
                 app,
+                "menu_view",
                 "View",
                 true,
                 &[
@@ -19478,8 +19564,9 @@ pub fn run() {
             let check_update =
                 MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
 
-            let help_menu = Submenu::with_items(
+            let help_menu = Submenu::with_id_and_items(
                 app,
+                "menu_help",
                 "Help",
                 true,
                 &[
@@ -19567,7 +19654,13 @@ pub fn run() {
             // disabled until the frontend reports an active FTP/FTPS session.
             let site_command =
                 MenuItem::with_id(app, "site_command", "SITE Command...", false, None::<&str>)?;
-            let connection_menu = Submenu::with_items(app, "Connection", true, &[&site_command])?;
+            let connection_menu = Submenu::with_id_and_items(
+                app,
+                "menu_connection",
+                "Connection",
+                true,
+                &[&site_command],
+            )?;
 
             let menu = Menu::with_items(
                 app,
