@@ -104,6 +104,30 @@ test('listener ownership checks the local column, not ss wildcard peer addresses
     assert.throws(() => inspectorPid(loopback + '\n' + loopback, 9333));
 });
 
+// The shape of `ss -ltnp 'sport = :PORT'` from iproute2 6.19, header included.
+const SS_HEADER = 'State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess';
+const ssRow = (local, peer = '0.0.0.0:*') => `LISTEN 0      1          ${local}      ${peer}    users:(("aeroftp",pid=123,fd=44))`;
+
+test('the real ss output with its header reads as the owned loopback inspector', () => {
+    assert.equal(inspectorPid(`${SS_HEADER}\n${ssRow('127.0.0.1:9333')}\n`, 9333), 123);
+});
+
+// The refusal used to know three spellings of a wildcard, so the inspector
+// listening on loopback AND on any other spelling was taken as loopback only.
+test('any listener on the port besides 127.0.0.1 refuses, whatever its spelling', () => {
+    for (const local of ['0.0.0.0:9333', '*:9333', '[::]:9333', ':::9333', '0.0.0.0%eth0:9333', '[::]%lo:9333',
+        '*%eth0:9333', '[::ffff:0.0.0.0]:9333', '192.168.1.10:9333', '[::1]:9333']) {
+        const listener = `${SS_HEADER}\n${ssRow('127.0.0.1:9333')}\n${ssRow(local, '[::]:*')}\n`;
+        assert.throws(() => inspectorPid(listener, 9333), /must listen only on 127\.0\.0\.1:9333/, local);
+    }
+});
+
+test('an ss line that is neither the header nor a listener row refuses', () => {
+    for (const odd of ['tcp LISTEN 0 1 127.0.0.1:9333 0.0.0.0:*', 'LISTEN 0 1', 'Netid State Recv-Q Send-Q']) {
+        assert.throws(() => inspectorPid(`${SS_HEADER}\n${ssRow('127.0.0.1:9333')}\n${odd}\n`, 9333), /cannot read/, odd);
+    }
+});
+
 test('normal Tauri launch in src-tauri and direct launch in checkout are both owned', () => {
     const root = mkdtempSync(join(tmpdir(), 'gui-checkout-test-'));
     try {

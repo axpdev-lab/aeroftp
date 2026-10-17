@@ -29,8 +29,21 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
+          checked=0
+          # Assignments, so that set -e sees a failing git: a `for` over
+          # $(git rev-list ...) loops over nothing when git fails, and the
+          # check then printed its success line. A pull request has at least
+          # one commit, so an empty range is a range read wrong.
+          # Tests: .github/scripts/test_dco_check.py
+          total=$(git rev-list --count "$BASE".."$HEAD")
+          if [ "$total" -eq 0 ]; then
+            echo "::error::no commits between $BASE and $HEAD, so no sign-off was checked"
+            exit 1
+          fi
           # Merge commits are exempt: their content is signed off on the branch.
-          for sha in $(git rev-list --no-merges "$BASE".."$HEAD"); do
+          commits=$(git rev-list --no-merges "$BASE".."$HEAD")
+          for sha in $commits; do
+            checked=$((checked + 1))
             author_name=$(git show -s --format='%an' "$sha")
             author_mail=$(git show -s --format='%ae' "$sha")
             case "$author_mail" in
@@ -73,4 +86,8 @@ jobs:
             echo "the Developer Certificate of Origin, see the DCO file in the repo root."
             exit 1
           fi
-          echo "All commits are signed off."
+          if [ "$checked" -eq 0 ]; then
+            echo "Only merge commits in the range ($total), which are exempt."
+          else
+            echo "All commits are signed off ($checked checked)."
+          fi

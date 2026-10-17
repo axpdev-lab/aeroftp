@@ -46,6 +46,20 @@ chk() {
     fi
 }
 
+# Quante righe stampa `git status --porcelain` per le path date, oppure
+# `git fallito`. Un git che fallisce non stampa niente, e `| wc -l` leggeva quel
+# niente come 0, cioe' come "intatto": la sostituzione di comando nasconde lo
+# stato d'uscita anche sotto pipefail.
+# Test: .github/scripts/test_aerorsync_emit_guard.py
+porcelain_lines() {
+    local out
+    if ! out="$(cd "$ROOT" && git status --porcelain -- "$@")"; then
+        echo "git fallito"
+        return 0
+    fi
+    if [ -z "$out" ]; then echo 0; else printf '%s\n' "$out" | wc -l | tr -d ' '; fi
+}
+
 # `lex_path` e' meta' della guardia (l'altra meta' e' la risoluzione fisica) e
 # non e' raggiungibile invocando l'emettitore senza fargli scrivere qualcosa,
 # perche' le forme interessanti puntano fuori dal repository. Viene estratta dal
@@ -84,7 +98,7 @@ bash "$EMIT" "$SCRATCH/a/b/c" >/dev/null 2>&1; chk 0 $? "una destinazione annida
 
 echo "== quello che deve essere rifiutato =="
 bash "$EMIT" "$ROOT/public" >/dev/null 2>&1; chk 1 $? "un albero tracciato dentro il repository"
-chk 0 "$(cd "$ROOT" && git status --porcelain -- public | wc -l | tr -d ' ')" "e quell'albero e' intatto"
+chk 0 "$(porcelain_lines public)" "e quell'albero e' intatto"
 
 bash "$EMIT" "$ROOT/src-tauri/mai-esistita" >/dev/null 2>&1; chk 1 $? "una path nuova dentro un albero sorgente"
 chk 1 "$([ -e "$ROOT/src-tauri/mai-esistita" ] && echo 0 || echo 1)" "e il rifiuto non ha creato niente"
@@ -168,7 +182,7 @@ chk 1 "$([ -e "$SCRATCH/globdir/beta/Cargo.toml" ] && echo 0 || echo 1)" "e nemm
 sibling="$(dirname "$ROOT")/aerorsync-guard-nonexistent"
 bash "$EMIT" "$sibling/../$(basename "$ROOT")" >/dev/null 2>&1; chk 1 $? "un componente inesistente seguito da .. che rientra nel repository"
 chk 1 "$([ -e "$sibling" ] && echo 0 || echo 1)" "e il componente inesistente non e' stato creato"
-chk 0 "$(cd "$ROOT" && git status --porcelain -- Cargo.toml src 2>/dev/null | wc -l | tr -d ' ')" "e la radice del repository e' intatta"
+chk 0 "$(porcelain_lines Cargo.toml src)" "e la radice del repository e' intatta"
 
 echo "scenari: $ok superati, $ko falliti"
 [ "$ko" -eq 0 ]

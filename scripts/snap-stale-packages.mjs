@@ -20,7 +20,10 @@
  *   node scripts/snap-stale-packages.mjs --self-test
  *
  * Exit code is 0 whether or not packages are stale (staleness is data, not an
- * error); it is non-zero only when the audit itself could not be performed.
+ * error); it is 2 when the audit itself could not be performed, which includes
+ * a manifest entry it cannot read, a staged package the archive indexes do not
+ * list, and an index the mirror does not serve: each of those would otherwise
+ * read as "not stale" and skip the rebuild.
  * When $GITHUB_OUTPUT is set it writes `stale=true|false` and `count=<n>`.
  */
 
@@ -164,12 +167,11 @@ async function fetchArchiveIndex(suite, arch) {
       jobs.push(
         (async () => {
           const res = await fetch(url);
-          if (!res.ok) {
-            // A pocket/component can legitimately be absent (e.g. no
-            // -security/multiverse for some suites); only a total miss matters.
-            if (res.status === 404) return null;
-            throw new Error(`GET ${url} -> HTTP ${res.status}`);
-          }
+          // Every pocket and component exists for every base in BASE_SUITE
+          // (all 60 amd64 indexes answered 200 on 2026-10-17), so a 404 is a
+          // mirror that moved, not an empty component. Skipping it compared
+          // the snap against an archive without its updates or security fixes.
+          if (!res.ok) throw new Error(`GET ${url} -> HTTP ${res.status}`);
           const gz = Buffer.from(await res.arrayBuffer());
           return { label, text: gunzipSync(gz).toString('utf8') };
         })(),
@@ -178,14 +180,8 @@ async function fetchArchiveIndex(suite, arch) {
   }
 
   const results = await Promise.all(jobs);
-  let loaded = 0;
-  for (const result of results) {
-    if (!result) continue;
-    absorbPackages(result.text, result.label, best);
-    loaded += 1;
-  }
-  if (loaded === 0) throw new Error(`no archive index could be fetched for ${suite}/${arch}`);
-  return { best, loaded };
+  for (const result of results) absorbPackages(result.text, result.label, best);
+  return { best, loaded: results.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -217,14 +213,22 @@ function readSnapMetadata(snapFile, workDir) {
   // actually made it into the squashfs - the same list the Store scanner reads.
   const block = manifest.match(/^primed-stage-packages:\n((?:-\s.*\n)+)/m);
   if (!block) throw new Error('no primed-stage-packages block in snap/manifest.yaml');
-  const packages = block[1]
-    .split('\n')
-    .filter((line) => line.startsWith('- '))
-    .map((line) => {
-      const entry = line.slice(2).trim();
-      const eq = entry.lastIndexOf('=');
-      return { name: entry.slice(0, eq), version: entry.slice(eq + 1) };
-    });
+  // Each entry is `<package>=<version>` (snapcraft 9.1.4: 188 of 188 in the
+  // 4.2.3 snap). An entry read any other way would not be found in the
+  // archive and would read as not stale, so the audit refuses it instead.
+  const unread = [];
+  const packages = [];
+  for (const line of block[1].split('\n')) {
+    if (line === '') continue;
+    const entry = line.match(/^- ([a-z0-9][a-z0-9+.-]+)=([0-9][A-Za-z0-9.+~:-]*)$/);
+    if (entry) packages.push({ name: entry[1], version: entry[2] });
+    else unread.push(line);
+  }
+  if (unread.length > 0) {
+    throw new Error(
+      `cannot read ${unread.length} primed-stage-packages entr${unread.length === 1 ? 'y' : 'ies'} of snap/manifest.yaml as <package>=<version>:\n  ${unread.join('\n  ')}`,
+    );
+  }
 
   return { base, version, arch, packages };
 }
@@ -319,6 +323,15 @@ async function main() {
       }
     }
 
+    // No part of snapcraft.yaml adds a package repository, so every staged
+    // package comes from the archive: one its indexes do not list was not
+    // compared, and "not stale" would be a guess.
+    if (unknown.length > 0) {
+      throw new Error(
+        `${unknown.length} staged package(s) not found in the ${suite} archive indexes, so their staleness is unverified:\n  ${unknown.map((u) => `${u.name}=${u.version}`).join('\n  ')}`,
+      );
+    }
+
     stale.sort((a, b) => a.name.localeCompare(b.name));
 
     if (asJson) {
@@ -332,10 +345,6 @@ async function main() {
         for (const s of stale) {
           console.log(`  ${s.name}: snap=${s.version}  archive=${s.archive}  (${s.suite})`);
         }
-      }
-      if (unknown.length > 0) {
-        console.log(`\nNot found in the archive indexes (${unknown.length}):`);
-        for (const u of unknown) console.log(`  ${u.name}=${u.version}`);
       }
     }
 

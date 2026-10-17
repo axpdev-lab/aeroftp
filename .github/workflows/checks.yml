@@ -62,6 +62,22 @@ jobs:
       - name: Linux packaging helpers reject unverified downloads and caches
         run: node --test .github/scripts/test-linuxdeploy-pins.cjs
 
+      # The release-side readers of tool output, with stub tools: each one
+      # refuses an output it cannot read instead of passing it as clean.
+      - name: AppImage .zsync pairing reads the published asset list
+        run: python3 -m unittest discover -s .github/scripts -p test_pair_appimage_zsync.py -v
+
+      - name: Snap stale-package audit reads every staged package
+        run: node --test .github/scripts/test-snap-stale-packages.mjs
+
+      # Two checks that read a git command through a command substitution,
+      # which hides its exit status: each now fails when git does.
+      - name: DCO check fails when git cannot read the commit range
+        run: python3 -m unittest discover -s .github/scripts -p test_dco_check.py -v
+
+      - name: Emitter guard fails when git status fails
+        run: python3 -m unittest discover -s .github/scripts -p test_aerorsync_emit_guard.py -v
+
       # The snap gate's lint pass, with stub snapcraft and unsquashfs: a gpu:
       # finding fails it, and a linter that never ran is UNVERIFIED, never OK.
       - name: Snap GPU gate reads the snapcraft lint report
