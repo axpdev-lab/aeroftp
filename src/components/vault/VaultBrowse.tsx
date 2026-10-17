@@ -186,7 +186,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             onClick={state.handleScrub}
                             disabled={state.loading}
                             className="flex items-center gap-1 px-2 py-1 text-xs bg-amber-700 hover:bg-amber-600 text-white rounded"
-                            title={t('vault.scrubErrorCorrection') + ' (verify cipher hashes)'}
+                            title={t('vault.scrubErrorCorrectionTooltip', { label: t('vault.scrubErrorCorrection') })}
                         >
                             <Shield size={14} /> {t('vault.scrubErrorCorrection')}
                         </button>
@@ -194,7 +194,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             onClick={() => { state.setRepairDryRun(true); state.setShowRepairDialog(true); }}
                             disabled={state.loading}
                             className="flex items-center gap-1 px-2 py-1 text-xs bg-rose-700 hover:bg-rose-600 text-white rounded"
-                            title={t('vault.repairErrorCorrection') + ' (dry-run preview available)'}
+                            title={t('vault.repairErrorCorrectionTooltip', { label: t('vault.repairErrorCorrection') })}
                         >
                             <Wrench size={14} /> {t('vault.repairErrorCorrection')}
                         </button>

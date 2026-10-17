@@ -18449,10 +18449,9 @@ const App: React.FC = () => {
                           ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
                           : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                           }`}
-                        title={aeroVaultOverlaySession
-                          ? `AeroVault ON: ${t('toolbar.aerovaultOverlayActive') || 'AeroVault container overlay active. Click to detach.'}`
-                          : `AeroVault: ${t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel.'}`}
-                        aria-label={aeroVaultOverlaySession ? 'AeroVault ON' : 'AeroVault'}
+                        title={aeroVaultOverlaySession ? t('toolbar.aerovaultOverlayActive') : t('toolbar.aerovaultOverlayInactive')}
+                        aria-label="AeroVault"
+                        aria-pressed={!!aeroVaultOverlaySession}
                       >
                         <VaultIcon variant="outline" size={16} className={aeroVaultOverlaySession ? 'text-white' : ''} />
                       </button>
