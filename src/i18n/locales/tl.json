@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "Naka-encrypt gamit ang AES-256. Kumpidensyal ang nilalaman at mga pangalan ng file; kailangan ng password para buksan.",
             "resetDefaults": "I-reset sa default",
             "scrubErrorCorrectionTooltip": "{label} (sinusuri ang mga cipher hash)",
-            "repairErrorCorrectionTooltip": "{label} (maaaring i-preview muna sa dry-run)"
+            "repairErrorCorrectionTooltip": "{label} (maaaring i-preview muna sa dry-run)",
+            "repairDryRunNoDamage": "Dry-run: walang pinsala; walang aayusin. Walang naisulat.",
+            "repairDryRunCannotRepair": "Dry-run: wala sa {damaged} na sirang chunk ang maaayos. Walang naisulat.",
+            "repairDryRunCanRepair": "Dry-run: maaayos ang {repaired} na sirang chunk. Walang naisulat.",
+            "repairDryRunMetadata": "Dry-run: maaaring muling itayo mula sa parity ang header o manifest ng vault. Walang naisulat.",
+            "metadataRepaired": "Muling itinayo mula sa parity ang header o manifest ng vault.",
+            "repairMetadataSuccess": "Tapos na ang pag-aayos: muling itinayo mula sa parity ang header o manifest ng vault"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "Nadiskonekta ang portable na device. Ikabit muli ang cable at buksan ito ulit.",
             "portable_needs_replug": "Hindi naka-mount ng desktop. I-unplug at i-plug muli ang cable, tapos buksan ulit.",
             "volumes_need_mount_observe": "Sa snap, lumalabas ang mga volume kapag nakakonekta na ang pahintulot na mount-observe. Patakbuhin ito sa terminal, pagkatapos ay bumalik sa AeroFTP:",
-            "volumes_unavailable": "Hindi mabasa ang mga naka-mount na volume."
+            "volumes_unavailable": "Hindi mabasa ang mga naka-mount na volume.",
+            "portable_device": "Portable na device"
         },
         "viewMode": {
             "list": "Listahan",

@@ -579,6 +579,8 @@ mod tests {
     }
     #[test]
     fn installer_operation_is_exclusive_cancellable_and_cleans_registry() {
+        // Clearing the user session cancels every registered install.
+        let _guard = crate::user_partitions::test_lock();
         let id = uuid::Uuid::new_v4().to_string();
         let operation = register(887766, &id).unwrap();
         assert!(register(887766, &uuid::Uuid::new_v4().to_string()).is_err());
@@ -597,6 +599,7 @@ mod tests {
     }
     #[test]
     fn cancellation_before_registration_is_scoped_and_prevents_start() {
+        let _guard = crate::user_partitions::test_lock();
         let id = uuid::Uuid::new_v4().to_string();
         cancel_operation(887767, &id).unwrap();
         let other_user = register(887768, &id).unwrap();

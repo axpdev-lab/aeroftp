@@ -3401,7 +3401,13 @@
             "encryptedTooltip": "Šifrováno pomocí AES-256. Obsah a názvy souborů jsou důvěrné; k otevření je nutné heslo.",
             "resetDefaults": "Obnovit výchozí",
             "scrubErrorCorrectionTooltip": "{label} (ověří šifrovací haše)",
-            "repairErrorCorrectionTooltip": "{label} (k dispozici náhled zkušebního běhu)"
+            "repairErrorCorrectionTooltip": "{label} (k dispozici náhled zkušebního běhu)",
+            "repairDryRunNoDamage": "Zkušební běh: žádné poškození; není co opravovat. Nic nebylo zapsáno.",
+            "repairDryRunCannotRepair": "Zkušební běh: žádnou z poškozených částí ({damaged}) nelze opravit. Nic nebylo zapsáno.",
+            "repairDryRunCanRepair": "Zkušební běh: počet poškozených částí, které lze opravit: {repaired}. Nic nebylo zapsáno.",
+            "repairDryRunMetadata": "Zkušební běh: hlavičku nebo manifest trezoru lze obnovit z parity. Nic nebylo zapsáno.",
+            "metadataRepaired": "Z parity byla obnovena hlavička nebo manifest trezoru.",
+            "repairMetadataSuccess": "Oprava dokončena: z parity byla obnovena hlavička nebo manifest trezoru"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -3596,7 +3602,8 @@
             "portable_unplugged": "Přenosné zařízení bylo odpojeno. Znovu zapojte kabel a otevřete ho znovu.",
             "portable_needs_replug": "Není připojeno desktopem. Odpojte a znovu zapojte kabel a poté jej znovu otevřete.",
             "volumes_need_mount_observe": "V balíčku snap se svazky zobrazí po připojení oprávnění mount-observe. Spusťte tento příkaz v terminálu a vraťte se do AeroFTP:",
-            "volumes_unavailable": "Připojené svazky se nepodařilo načíst."
+            "volumes_unavailable": "Připojené svazky se nepodařilo načíst.",
+            "portable_device": "Přenosné zařízení"
         },
         "viewMode": {
             "list": "Seznam",

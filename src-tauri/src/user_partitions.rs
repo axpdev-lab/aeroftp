@@ -440,6 +440,8 @@ fn default_kdf_params() -> user_crypto::Argon2Params {
 }
 
 fn clear_user_session() {
+    #[cfg(test)]
+    assert_test_lock_held();
     if let Ok(mut session) = USER_SESSION.lock() {
         *session = None;
         SESSION_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -451,6 +453,8 @@ fn clear_user_session() {
 }
 
 fn set_user_session(user_id: i64, dek: SecretKey) -> Result<(), String> {
+    #[cfg(test)]
+    assert_test_lock_held();
     let mut session = USER_SESSION
         .lock()
         .map_err(|_| "USER_SESSION_LOCK_POISONED".to_string())?;
@@ -5586,16 +5590,47 @@ pub async fn user_partitions_storage_stats(
     user_storage_stats(&conn)
 }
 
-/// Serializes the tests that prime, hold or clear the session, here and in
-/// the modules whose transactions go through a partition.
+/// Serializes the tests that prime, hold or clear the session, or that read
+/// what clearing it cancels, here and in the modules whose transactions go
+/// through a partition. The session is process-wide: a test that changed it
+/// without this lock would take it from another test in the middle of a
+/// partition call, so [`clear_user_session`] and [`set_user_session`] refuse
+/// to run in a test on a thread that does not hold it.
 #[cfg(test)]
-pub(crate) fn test_lock() -> MutexGuard<'static, ()> {
+pub(crate) fn test_lock() -> TestLock {
     static USER_PARTITION_TEST_LOCK: Mutex<()> = Mutex::new(());
     // Recover from poisoning so a single failing test does not cascade
     // into the rest of the suite as PoisonError.
-    USER_PARTITION_TEST_LOCK
+    let guard = USER_PARTITION_TEST_LOCK
         .lock()
-        .unwrap_or_else(|p| p.into_inner())
+        .unwrap_or_else(|p| p.into_inner());
+    HOLDS_TEST_LOCK.set(true);
+    TestLock { _guard: guard }
+}
+
+#[cfg(test)]
+pub(crate) struct TestLock {
+    _guard: MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl Drop for TestLock {
+    fn drop(&mut self) {
+        HOLDS_TEST_LOCK.set(false);
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static HOLDS_TEST_LOCK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn assert_test_lock_held() {
+    assert!(
+        HOLDS_TEST_LOCK.get(),
+        "a test changed the user session without holding user_partitions::test_lock()"
+    );
 }
 
 /// A partition database file whose active account has a passphrase and is

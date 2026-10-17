@@ -379,6 +379,13 @@ The setup offers a protocol only after its profile connect path has been checked
 
 **Crypt overlays**: rclone-crypt profiles passed the live check. Native AeroCrypt profiles need a check in the running app: a test build derives AeroCrypt keys with reduced Argon2 parameters, so the automated check cannot open a real vault.
 
+### When changes travel
+
+- **Local changes** travel as soon as the watcher reports them (after its debounce and the watcher cooldown). Only the changed paths are synced: each one is compared with the last sync's record on disk first, and the remote is asked about it (one lookup per path, for conflict detection) only when it changed locally. A local delete reaches the remote only when the pair's direction and delete setting allow it, and a local rename moves the remote copy when the remote can rename it, instead of uploading it again. Nothing lists the remote folder for a local change.
+- **Remote changes** made on another device travel with the next **full scan**, which lists the remote folder. A full scan runs at startup (when that option is on), on **Sync now**, and at the sync interval. A provider may declare a minimum interval between two full scans; the pair then scans at the larger of the two. Earlier versions often delivered remote changes sooner, but only because every local change triggered a full rescan of the remote folder.
+- A full scan also runs as a fallback when the watcher reports that it lost events, when more than 500 changed paths would each need a remote lookup, or when the `.aeroignore` rules change. When the provider's minimum interval has not elapsed, the fallback waits for it, and the changes the watcher did report are still synced one by one in the meantime.
+- A local file whose remote copy is gone is left alone until the next full scan: a delete coming from the remote side is decided by the full scan and its safety gate, never by a single lookup.
+
 ---
 
 ## Privacy and Visibility Controls
