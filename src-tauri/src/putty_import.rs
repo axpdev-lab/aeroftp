@@ -371,6 +371,18 @@ pub struct PuttyExportServer {
     pub initial_path: Option<String>,
 }
 
+/// The registry key names one export may write. One key per session, and the
+/// registry compares key names without case: a second key of a name is the
+/// first one, rewritten. `Default Settings` is the session PuTTY loads as its
+/// defaults: a profile called that would set the host of every new session.
+#[cfg(any(test, target_os = "windows"))]
+fn putty_session_names(servers: &[PuttyExportServer]) -> crate::bridge_shared::ExportEntryNames {
+    crate::bridge_shared::ExportEntryNames::ignoring_case(
+        servers.iter().map(|s| encode_putty_name(&s.name)),
+    )
+    .with_taken([encode_putty_name("Default Settings")])
+}
+
 /// Write server profiles back as PuTTY saved sessions under
 /// `HKCU\Software\SimonTatham\PuTTY\Sessions`.
 ///
@@ -398,11 +410,7 @@ pub fn export_putty(
             .map_err(|e| format!("open/create PuTTY Sessions key: {}", e))?;
 
         let mut written = 0usize;
-        // One registry key per session, and the registry compares key names
-        // without case: a second key of a name is the first one, rewritten.
-        let mut names = crate::bridge_shared::ExportEntryNames::ignoring_case(
-            servers.iter().map(|s| encode_putty_name(&s.name)),
-        );
+        let mut names = putty_session_names(servers);
         for server in servers {
             // Only the SSH family maps to a PuTTY session we can drive.
             let proto = server.protocol.as_deref().unwrap_or("sftp");
@@ -667,5 +675,33 @@ mod tests {
         // Metadata-only idempotence: no credential on either side.
         assert!(p1.credential.is_none() && p2.credential.is_none());
         assert_eq!(p1.has_stored_credential, p2.has_stored_credential);
+    }
+
+    /// The keys an export writes: never `Default Settings`, the session PuTTY
+    /// loads as its defaults, in any case, and never one key for two
+    /// profiles (the registry compares key names without case).
+    #[test]
+    fn no_session_key_lands_on_the_defaults_or_on_another_session() {
+        let servers: Vec<PuttyExportServer> =
+            ["Default Settings", "default settings", "Lab", "lab"]
+                .into_iter()
+                .enumerate()
+                .map(|(i, name)| {
+                    serde_json::from_value(serde_json::json!({
+                        "id": format!("id-{i}"), "name": name, "host": "h.example.com",
+                        "port": 22, "username": "u", "protocol": "sftp"
+                    }))
+                    .unwrap()
+                })
+                .collect();
+        let mut names = putty_session_names(&servers);
+        let keys: Vec<String> = servers
+            .iter()
+            .map(|s| names.claim(&encode_putty_name(&s.name)))
+            .collect();
+        assert_eq!(
+            keys,
+            ["Default Settings-2", "default settings-3", "Lab", "lab-2"]
+        );
     }
 }

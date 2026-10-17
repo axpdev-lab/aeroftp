@@ -506,22 +506,19 @@ pub struct WinScpExportServer {
     pub initial_path: Option<String>,
 }
 
-/// A profile name as a WinSCP.ini session name: percent-encoded UTF-8, the
-/// form `url_decode` reads. Encoding the code point instead wrote `€` as
-/// `%20AC`, which reads back as " AC", and `ä` as `%E4`, which is not UTF-8.
+/// URL-encode a profile name as a WinSCP.ini session name.
 fn winscp_session_name(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    for c in name.chars() {
-        if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
-            out.push(c);
-        } else {
-            let mut utf8 = [0u8; 4];
-            for byte in c.encode_utf8(&mut utf8).bytes() {
-                out.push_str(&format!("%{byte:02X}"));
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c.to_string()
+            } else if c == ' ' {
+                "%20".to_string()
+            } else {
+                format!("%{:02X}", c as u32)
             }
-        }
-    }
-    out
+        })
+        .collect()
 }
 
 /// Export AeroFTP server profiles to WinSCP.ini format.
@@ -534,10 +531,13 @@ pub fn export_winscp(
 ) -> Result<usize, String> {
     let mut ini = String::from("; WinSCP session file exported by AeroFTP\n\n");
     let mut exported = 0;
-    // A second `[Sessions\<name>]` is not a second session.
+    // A second `[Sessions\<name>]` is not a second session, and
+    // `[Sessions\Default%20Settings]` is WinSCP's default session, which the
+    // import skips: a profile called that would set the defaults instead.
     let mut names = crate::bridge_shared::ExportEntryNames::ignoring_case(
         servers.iter().map(|s| winscp_session_name(&s.name)),
-    );
+    )
+    .with_taken([winscp_session_name("Default Settings")]);
 
     for server in servers {
         let protocol = server.protocol.as_deref().unwrap_or("ftp");
@@ -840,24 +840,38 @@ FSProtocol=1
         );
     }
 
-    /// A session name is percent-encoded UTF-8, the form the import decodes.
-    /// The code point was encoded instead: "€" came back as " AC".
+    /// `[Sessions\Default%20Settings]` is WinSCP's default session, which the
+    /// import skips: a profile called that, in any case, set the defaults
+    /// instead of adding a session.
     #[test]
-    fn a_session_name_outside_ascii_comes_back_as_written() {
-        let servers: Vec<WinScpExportServer> = vec![serde_json::from_value(serde_json::json!({
-            "id": "id-cafe", "name": "Café € 1", "host": "a.example.com", "port": 21,
-            "username": "u", "protocol": "ftp"
-        }))
-        .unwrap()];
+    fn a_profile_named_default_settings_is_not_written_onto_the_defaults() {
+        let servers: Vec<WinScpExportServer> =
+            [("id-a", "Default Settings"), ("id-b", "default settings")]
+                .into_iter()
+                .map(|(id, name)| {
+                    serde_json::from_value(serde_json::json!({
+                        "id": id, "name": name, "host": format!("{id}.example.com"),
+                        "port": 21, "username": "u", "protocol": "ftp"
+                    }))
+                    .unwrap()
+                })
+                .collect();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("WinSCP.ini");
-        export_winscp(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(export_winscp(&servers, &HashMap::new(), &path).unwrap(), 2);
         let ini = std::fs::read_to_string(&path).unwrap();
         assert!(
-            ini.contains("[Sessions\\Caf%C3%A9%20%E2%82%AC%201]\n"),
+            !ini.to_lowercase()
+                .contains("[sessions\\default%20settings]"),
             "{ini}"
         );
-        let back = import_winscp(&path).unwrap();
-        assert_eq!(back.servers[0].name, "Café € 1");
+        let mut back: Vec<String> = import_winscp(&path)
+            .unwrap()
+            .servers
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        back.sort();
+        assert_eq!(back, ["Default Settings-2", "default settings-3"]);
     }
 }

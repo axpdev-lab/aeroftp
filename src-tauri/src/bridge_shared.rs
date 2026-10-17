@@ -920,6 +920,21 @@ impl ExportEntryNames {
         out
     }
 
+    /// Names the format already gives a meaning of its own, such as the
+    /// session WinSCP and PuTTY load as their defaults: a profile called that
+    /// goes out under the next free suffix like any other collision.
+    pub fn with_taken<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        for name in names {
+            let key = self.key(name.as_ref());
+            self.used.insert(key);
+        }
+        self
+    }
+
     fn key(&self, name: &str) -> String {
         if self.fold_case {
             name.to_lowercase()
@@ -1371,6 +1386,12 @@ mod tests {
         let mut names = ExportEntryNames::exact(["Lab", "lab"]);
         assert_eq!(names.claim("Lab"), "Lab");
         assert_eq!(names.claim("lab"), "lab");
+
+        // A name the format keeps for itself is never given out.
+        let mut names = ExportEntryNames::ignoring_case(["Default Settings", "default settings"])
+            .with_taken(["Default Settings"]);
+        assert_eq!(names.claim("Default Settings"), "Default Settings-2");
+        assert_eq!(names.claim("default settings"), "default settings-3");
 
         // A name nobody reserved is still given once.
         let mut names = ExportEntryNames::exact(Vec::<String>::new());
