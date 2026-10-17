@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Mở cài đặt OAuth",
             "oauthKeysReadFailedTitle": "Không đọc được khóa ứng dụng của {provider}",
             "oauthKeysReadFailed": "AeroFTP không đọc được khóa ứng dụng của {provider} từ kho bảo mật nên không thể đăng nhập. Các khóa không bị thay đổi. Lỗi: {error}",
-            "profileName": "Tên hồ sơ"
+            "profileName": "Tên hồ sơ",
+            "protonNativeTitle": "Ứng dụng khách Proton Drive gốc",
+            "protonNativeBody": "AeroFTP kết nối trực tiếp với Proton Drive, đồng thời mã hóa và giải mã tệp của bạn ngay trên máy tính này. Bạn đăng nhập trên chính trang của Proton trong trình duyệt: AeroFTP không bao giờ thấy mật khẩu của bạn và lưu phiên trong kho mã hóa của mình.",
+            "protonNativeDisclosure": "Đây là ứng dụng của bên thứ ba, không được Proton hỗ trợ chính thức.",
+            "protonSignIn": "Đăng nhập vào Proton",
+            "protonSignInAgain": "Đăng nhập lại",
+            "protonWaitingBrowser": "Hoàn tất đăng nhập trong trình duyệt của bạn...",
+            "protonSignedInAs": "Đã đăng nhập với tên {email}",
+            "protonSignInHelp": "AeroFTP mở trang đăng nhập của Proton trong trình duyệt của bạn. Bạn có thể kết thúc phiên bất cứ lúc nào trong phần cài đặt tài khoản Proton, hoặc tại đây bằng Đăng xuất.",
+            "protonSignOut": "Đăng xuất",
+            "protonSignOutHelp": "Kết thúc phiên trên Proton và xóa phiên khỏi hồ sơ này.",
+            "protonSignInExpired": "Trang đăng nhập đã hết hạn. Hãy đăng nhập lại.",
+            "protonNativeUnavailable": "Bản dựng này không bao gồm ứng dụng khách Proton Drive gốc."
         },
         "browser": {
             "remote": "Từ xa",

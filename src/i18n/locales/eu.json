@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Ireki OAuth ezarpenak",
             "oauthKeysReadFailedTitle": "Ezin dira {provider} zerbitzuaren aplikazio-gakoak irakurri",
             "oauthKeysReadFailed": "AeroFTP-k ezin izan ditu {provider} zerbitzuaren aplikazio-gakoak kutxa gotorretik irakurri, beraz ezin du saioa hasi. Gakoak ez dira aldatu. Errorea: {error}",
-            "profileName": "Profil izena"
+            "profileName": "Profil izena",
+            "protonNativeTitle": "Proton Drive bezero natiboa",
+            "protonNativeBody": "AeroFTP zuzenean konektatzen da Proton Drive-ra, eta ordenagailu honetan zifratzen eta deszifratzen ditu zure fitxategiak. Proton-en beraren orrian hasten duzu saioa nabigatzailean: AeroFTP-k ez du inoiz zure pasahitza ikusten, eta saioa bere kutxa gotor zifratuan gordetzen du.",
+            "protonNativeDisclosure": "Hirugarrenen aplikazio bat da hau, eta Proton-ek ez du ofizialki onartzen.",
+            "protonSignIn": "Hasi saioa Proton-en",
+            "protonSignInAgain": "Hasi saioa berriro",
+            "protonWaitingBrowser": "Amaitu saioa hastea zure nabigatzailean...",
+            "protonSignedInAs": "Saioa hasita honela: {email}",
+            "protonSignInHelp": "AeroFTP-k Proton-en saio-hasierako orria irekitzen du zure nabigatzailean. Saioa edonoiz amai dezakezu zure Proton kontuaren ezarpenetan, edo hemen Amaitu saioa erabiliz.",
+            "protonSignOut": "Amaitu saioa",
+            "protonSignOutHelp": "Saioa amaitzen du Proton-en eta profil honetatik kentzen du.",
+            "protonSignInExpired": "Saio-hasierako orria iraungi da. Hasi saioa berriro.",
+            "protonNativeUnavailable": "Konpilazio honek ez du Proton Drive bezero natiboa barne hartzen."
         },
         "browser": {
             "remote": "Urrunekoa",

@@ -26813,9 +26813,9 @@ fn delete_profile_in_vault(
     // as the GUI delete does.
     #[cfg(feature = "proton-native")]
     if protocol.as_deref() == Some("proton") {
-        ftp_client_gui_lib::providers::proton_native::vault::revoke_saved_session_blocking(
+        ftp_client_gui_lib::providers::proton_native::vault::revoke_saved_session_blocking(Some(
             profile_id,
-        );
+        ));
     }
     for key in ftp_client_gui_lib::per_profile_vault_keys(profile_id, protocol.as_deref()) {
         dual_delete_server_cred(store, scoped_uid, &key);

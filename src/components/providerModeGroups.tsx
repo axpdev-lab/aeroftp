@@ -54,9 +54,19 @@ export interface ProviderMode {
      *  `kind` understood by `bridge_status`. */
     bridgeKind?: BridgeKind;
     /** Shown in the strip but not selectable, and never resolved as the
-     *  active mode: a surface that is announced but not available yet (the
-     *  official Proton Drive API). Its `description` says why. */
+     *  active mode: a surface that is announced but not available yet. Its
+     *  `description` says why. */
     disabled?: boolean;
+    /** Profile options this tab sets, and by which it is told apart from a
+     *  tab of the same protocol: Proton Drive's API and CLI tabs are both
+     *  `proton`, the API one is `proton_mode: 'native'`. A tab without
+     *  options is the one a profile without them belongs to, so it must come
+     *  after the tabs that have some. */
+    options?: Record<string, string>;
+    /** A tab only some builds serve: selectable once the backend answers for
+     *  it (`useProtonNativeAvailable`). A saved profile of that tab still
+     *  resolves to it, so its form can say the build lacks the client. */
+    requires?: 'proton-native';
 }
 
 /** Local bridge helper apps probed by the backend `bridge_status` command. */
@@ -203,12 +213,11 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         },
     },
     {
-        // Same form as Filen: the official API first, then the CLI. Proton
-        // Drive has no API open to third-party apps yet, so the API tab is
-        // announced and disabled; when Proton opens one it becomes the native
-        // connector and the CLI stays as the second surface. Both tabs use
-        // the `proton` protocol, which is why disabled modes are skipped when
-        // the active one is resolved.
+        // Same form as Filen: the API first, then the CLI. The API tab is
+        // AeroFTP's native client (ported from Proton's open-source Drive
+        // SDK), served by builds with the `proton-native` feature; the CLI tab
+        // drives Proton's official CLI. Both tabs use the `proton` protocol and
+        // are told apart by the `proton_mode` option.
         id: 'proton',
         headerLabel: 'Proton Drive Modes',
         headerName: 'Proton Drive',
@@ -219,9 +228,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 activeColor: 'text-purple-500',
                 label: 'API',
                 description:
-                    'Not available yet: Proton Drive has no API open to third-party apps. When Proton opens one, this tab will connect natively, without the CLI.',
-                badge: 'SOON',
-                disabled: true,
+                    "AeroFTP's own Proton Drive client: you sign in on Proton's page in the browser, files are encrypted and decrypted on this computer, and no other app is needed.",
+                options: { proton_mode: 'native' },
+                requires: 'proton-native',
             },
             {
                 protocol: 'proton',
@@ -441,11 +450,20 @@ export function findActiveMode(
     group: ProviderModeGroup,
     activeProviderId: string | null | undefined,
     activeProtocol: string | null | undefined,
+    activeOptions?: object | null,
 ): ProviderMode | null {
+    const options = activeOptions as Record<string, unknown> | null | undefined;
     for (const mode of group.modes) {
-        // A disabled mode shares its protocol with a live one (Proton API and
-        // CLI are both `proton`): it must never be the answer.
+        // A disabled mode is never the answer.
         if (mode.disabled) continue;
+        // A mode that names options is the active one only when the profile
+        // carries them (Proton API and CLI are both `proton`).
+        if (
+            mode.options &&
+            !Object.entries(mode.options).every(([key, value]) => options?.[key] === value)
+        ) {
+            continue;
+        }
         if (mode.providerId) {
             if (mode.providerId === activeProviderId) return mode;
         } else {

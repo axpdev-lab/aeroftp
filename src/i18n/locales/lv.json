@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Atvērt OAuth iestatījumus",
             "oauthKeysReadFailedTitle": "Nevar nolasīt {provider} lietotnes atslēgas",
             "oauthKeysReadFailed": "AeroFTP nevarēja nolasīt {provider} lietotnes atslēgas no glabātuves, tāpēc nevar pieteikties. Atslēgas netika mainītas. Kļūda: {error}",
-            "profileName": "Profila nosaukums"
+            "profileName": "Profila nosaukums",
+            "protonNativeTitle": "Iebūvētais Proton Drive klients",
+            "protonNativeBody": "AeroFTP savienojas tieši ar Proton Drive un šifrē un atšifrē jūsu failus šajā datorā. Jūs pierakstāties paša Proton lapā pārlūkprogrammā: AeroFTP nekad neredz jūsu paroli un glabā sesiju savā šifrētajā glabātuvē.",
+            "protonNativeDisclosure": "Šī ir trešās puses lietotne, ko Proton oficiāli neatbalsta.",
+            "protonSignIn": "Pierakstīties Proton",
+            "protonSignInAgain": "Pierakstieties vēlreiz",
+            "protonWaitingBrowser": "Pabeidziet pierakstīšanos savā pārlūkprogrammā...",
+            "protonSignedInAs": "Pierakstījies kā {email}",
+            "protonSignInHelp": "AeroFTP atver Proton pierakstīšanās lapu jūsu pārlūkprogrammā. Sesiju varat jebkurā laikā beigt sava Proton konta iestatījumos vai šeit ar Izrakstīties.",
+            "protonSignOut": "Izrakstīties",
+            "protonSignOutHelp": "Beidz sesiju Proton un noņem to no šī profila.",
+            "protonSignInExpired": "Pierakstīšanās lapai beidzies derīgums. Pierakstieties vēlreiz.",
+            "protonNativeUnavailable": "Šajā versijā nav iebūvētā Proton Drive klienta."
         },
         "browser": {
             "remote": "Attālināts",

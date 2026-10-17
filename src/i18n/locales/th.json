@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "เปิดการตั้งค่า OAuth",
             "oauthKeysReadFailedTitle": "ไม่สามารถอ่านคีย์แอปของ {provider}",
             "oauthKeysReadFailed": "AeroFTP อ่านคีย์แอปของ {provider} จากห้องนิรภัยไม่ได้ จึงลงชื่อเข้าใช้ไม่ได้ คีย์ไม่ได้ถูกเปลี่ยนแปลง ข้อผิดพลาด: {error}",
-            "profileName": "ชื่อโปรไฟล์"
+            "profileName": "ชื่อโปรไฟล์",
+            "protonNativeTitle": "ไคลเอนต์ Proton Drive แบบเนทีฟ",
+            "protonNativeBody": "AeroFTP เชื่อมต่อกับ Proton Drive โดยตรง และเข้ารหัสและถอดรหัสไฟล์ของคุณบนคอมพิวเตอร์เครื่องนี้ คุณลงชื่อเข้าใช้บนหน้าของ Proton เองในเบราว์เซอร์: AeroFTP ไม่เคยเห็นรหัสผ่านของคุณ และเก็บเซสชันไว้ในห้องนิรภัยที่เข้ารหัสของตน",
+            "protonNativeDisclosure": "นี่เป็นแอปพลิเคชันของบุคคลที่สามที่ไม่ได้รับการสนับสนุนอย่างเป็นทางการจาก Proton",
+            "protonSignIn": "ลงชื่อเข้าใช้ Proton",
+            "protonSignInAgain": "ลงชื่อเข้าใช้อีกครั้ง",
+            "protonWaitingBrowser": "ดำเนินการลงชื่อเข้าใช้ในเบราว์เซอร์ของคุณให้เสร็จสิ้น...",
+            "protonSignedInAs": "ลงชื่อเข้าใช้ในชื่อ {email}",
+            "protonSignInHelp": "AeroFTP จะเปิดหน้าลงชื่อเข้าใช้ของ Proton ในเบราว์เซอร์ของคุณ คุณสามารถสิ้นสุดเซสชันได้ทุกเมื่อในการตั้งค่าบัญชี Proton ของคุณ หรือที่นี่ด้วยปุ่ม ออกจากระบบ",
+            "protonSignOut": "ออกจากระบบ",
+            "protonSignOutHelp": "สิ้นสุดเซสชันบน Proton และนำออกจากโปรไฟล์นี้",
+            "protonSignInExpired": "หน้าลงชื่อเข้าใช้หมดอายุแล้ว ลงชื่อเข้าใช้อีกครั้ง",
+            "protonNativeUnavailable": "บิลด์นี้ไม่มีไคลเอนต์ Proton Drive แบบเนทีฟ"
         },
         "browser": {
             "remote": "ระยะไกล",

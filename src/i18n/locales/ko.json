@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth 설정 열기",
             "oauthKeysReadFailedTitle": "{provider} 앱 키를 읽을 수 없습니다",
             "oauthKeysReadFailed": "AeroFTP가 보관함에서 {provider} 앱 키를 읽지 못해 로그인할 수 없습니다. 키는 변경되지 않았습니다. 오류: {error}",
-            "profileName": "프로필 이름"
+            "profileName": "프로필 이름",
+            "protonNativeTitle": "네이티브 Proton Drive 클라이언트",
+            "protonNativeBody": "AeroFTP는 Proton Drive에 직접 연결하여 이 컴퓨터에서 파일을 암호화하고 복호화합니다. 로그인은 브라우저에서 Proton 자체 페이지를 통해 이루어집니다. AeroFTP는 비밀번호를 절대 보지 않으며 세션을 암호화된 보관함에 보관합니다.",
+            "protonNativeDisclosure": "이 애플리케이션은 Proton이 공식적으로 지원하지 않는 타사 애플리케이션입니다.",
+            "protonSignIn": "Proton에 로그인",
+            "protonSignInAgain": "다시 로그인",
+            "protonWaitingBrowser": "브라우저에서 로그인을 완료하세요...",
+            "protonSignedInAs": "{email}(으)로 로그인됨",
+            "protonSignInHelp": "AeroFTP가 브라우저에서 Proton 로그인 페이지를 엽니다. 세션은 언제든지 Proton 계정 설정에서 또는 여기에서 로그아웃으로 종료할 수 있습니다.",
+            "protonSignOut": "로그아웃",
+            "protonSignOutHelp": "Proton의 세션을 종료하고 이 프로필에서 제거합니다.",
+            "protonSignInExpired": "로그인 페이지가 만료되었습니다. 다시 로그인하세요.",
+            "protonNativeUnavailable": "이 빌드에는 네이티브 Proton Drive 클라이언트가 포함되어 있지 않습니다."
         },
         "browser": {
             "remote": "원격",

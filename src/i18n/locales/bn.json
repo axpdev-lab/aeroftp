@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth সেটিংস খুলুন",
             "oauthKeysReadFailedTitle": "{provider} অ্যাপের কী পড়া যাচ্ছে না",
             "oauthKeysReadFailed": "AeroFTP ভল্ট থেকে {provider} অ্যাপের কী পড়তে পারেনি, তাই সাইন ইন করতে পারছে না। কী পরিবর্তন করা হয়নি। ত্রুটি: {error}",
-            "profileName": "প্রোফাইলের নাম"
+            "profileName": "প্রোফাইলের নাম",
+            "protonNativeTitle": "নেটিভ Proton Drive ক্লায়েন্ট",
+            "protonNativeBody": "AeroFTP সরাসরি Proton Drive-এর সাথে সংযোগ করে এবং এই কম্পিউটারেই আপনার ফাইল এনক্রিপ্ট ও ডিক্রিপ্ট করে। আপনি ব্রাউজারে Proton-এর নিজস্ব পৃষ্ঠায় সাইন ইন করেন: AeroFTP কখনো আপনার পাসওয়ার্ড দেখে না এবং সেশনটি তার এনক্রিপ্টেড ভল্টে রাখে।",
+            "protonNativeDisclosure": "এটি একটি তৃতীয় পক্ষের অ্যাপ্লিকেশন, যা Proton দ্বারা আনুষ্ঠানিকভাবে সমর্থিত নয়।",
+            "protonSignIn": "Proton-এ সাইন ইন করুন",
+            "protonSignInAgain": "আবার সাইন ইন করুন",
+            "protonWaitingBrowser": "আপনার ব্রাউজারে সাইন ইন শেষ করুন...",
+            "protonSignedInAs": "{email} হিসেবে সাইন ইন করা হয়েছে",
+            "protonSignInHelp": "AeroFTP আপনার ব্রাউজারে Proton-এর সাইন-ইন পৃষ্ঠা খোলে। আপনি যেকোনো সময় আপনার Proton অ্যাকাউন্ট সেটিংসে, অথবা এখানে সাইন আউট দিয়ে সেশনটি শেষ করতে পারেন।",
+            "protonSignOut": "সাইন আউট",
+            "protonSignOutHelp": "Proton-এ সেশনটি শেষ করে এবং এই প্রোফাইল থেকে সেটি সরিয়ে দেয়।",
+            "protonSignInExpired": "সাইন-ইন পৃষ্ঠার মেয়াদ শেষ হয়ে গেছে। আবার সাইন ইন করুন।",
+            "protonNativeUnavailable": "এই বিল্ডে নেটিভ Proton Drive ক্লায়েন্ট অন্তর্ভুক্ত নেই।"
         },
         "browser": {
             "remote": "রিমোট",

@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Ouvrir les paramètres OAuth",
             "oauthKeysReadFailedTitle": "Impossible de lire les clés d'application {provider}",
             "oauthKeysReadFailed": "AeroFTP n'a pas pu lire les clés d'application {provider} depuis le coffre-fort, il ne peut donc pas se connecter. Les clés n'ont pas été modifiées. Erreur : {error}",
-            "profileName": "Nom du profil"
+            "profileName": "Nom du profil",
+            "protonNativeTitle": "Client Proton Drive natif",
+            "protonNativeBody": "AeroFTP se connecte directement à Proton Drive et chiffre et déchiffre vos fichiers sur cet ordinateur. Vous vous connectez sur la propre page de Proton dans le navigateur : AeroFTP ne voit jamais votre mot de passe et conserve la session dans son coffre-fort chiffré.",
+            "protonNativeDisclosure": "Il s'agit d'une application tierce qui n'est pas officiellement prise en charge par Proton.",
+            "protonSignIn": "Se connecter à Proton",
+            "protonSignInAgain": "Se reconnecter",
+            "protonWaitingBrowser": "Terminez la connexion dans votre navigateur...",
+            "protonSignedInAs": "Connecté en tant que {email}",
+            "protonSignInHelp": "AeroFTP ouvre la page de connexion de Proton dans votre navigateur. Vous pouvez mettre fin à la session à tout moment dans les paramètres de votre compte Proton, ou ici avec Se déconnecter.",
+            "protonSignOut": "Se déconnecter",
+            "protonSignOutHelp": "Met fin à la session sur Proton et la retire de ce profil.",
+            "protonSignInExpired": "La page de connexion a expiré. Reconnectez-vous.",
+            "protonNativeUnavailable": "Cette version n'inclut pas le client Proton Drive natif."
         },
         "browser": {
             "remote": "Distant",

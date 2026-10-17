@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Avaa OAuth-asetukset",
             "oauthKeysReadFailedTitle": "Palvelun {provider} sovellusavaimia ei voi lukea",
             "oauthKeysReadFailed": "AeroFTP ei voinut lukea palvelun {provider} sovellusavaimia holvista, joten se ei voi kirjautua sisään. Avaimia ei muutettu. Virhe: {error}",
-            "profileName": "Profiilin nimi"
+            "profileName": "Profiilin nimi",
+            "protonNativeTitle": "Natiivi Proton Drive -asiakasohjelma",
+            "protonNativeBody": "AeroFTP muodostaa yhteyden suoraan Proton Driveen ja salaa ja purkaa tiedostosi tällä tietokoneella. Kirjaudut sisään Protonin omalla sivulla selaimessa: AeroFTP ei koskaan näe salasanaasi ja säilyttää istunnon salatussa holvissaan.",
+            "protonNativeDisclosure": "Tämä on kolmannen osapuolen sovellus, jota Proton ei virallisesti tue.",
+            "protonSignIn": "Kirjaudu Protoniin",
+            "protonSignInAgain": "Kirjaudu sisään uudelleen",
+            "protonWaitingBrowser": "Viimeistele kirjautuminen selaimessasi...",
+            "protonSignedInAs": "Kirjautunut käyttäjänä {email}",
+            "protonSignInHelp": "AeroFTP avaa Protonin kirjautumissivun selaimessasi. Voit lopettaa istunnon milloin tahansa Proton-tilisi asetuksissa tai täällä painikkeella Kirjaudu ulos.",
+            "protonSignOut": "Kirjaudu ulos",
+            "protonSignOutHelp": "Lopettaa istunnon Protonissa ja poistaa sen tästä profiilista.",
+            "protonSignInExpired": "Kirjautumissivu vanheni. Kirjaudu sisään uudelleen.",
+            "protonNativeUnavailable": "Tämä versio ei sisällä natiivia Proton Drive -asiakasohjelmaa."
         },
         "browser": {
             "remote": "Etä",

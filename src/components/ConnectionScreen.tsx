@@ -61,6 +61,7 @@ import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
 import { FILEN_BRIDGE_MAX_LENGTH, FILEN_BRIDGE_REJECTED_CHARACTERS, filenBridgeCredentialError } from '../utils/passwordForge';
 import { isFilenDesktopBridge as isFilenDesktopBridgeProvider } from '../utils/filenDesktopBridge';
+import { isProtonNative, useProtonNativeAvailable } from '../utils/protonNative';
 
 // Protocols that can be switched between when editing a saved connection
 const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp'];
@@ -350,6 +351,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [twakeSigningIn, setTwakeSigningIn] = useState(false);
     const [twakeSignInError, setTwakeSignInError] = useState<string | null>(null);
     const twakeSignInTokenRef = useRef<string | null>(null);
+    // Proton Drive native client: browser sign-in through Proton's session
+    // fork. The session goes straight to the vault, never into this form.
+    const protonNativeAvailable = useProtonNativeAvailable();
+    const [protonSigningIn, setProtonSigningIn] = useState(false);
+    const [protonSignInError, setProtonSignInError] = useState<string | null>(null);
+    const [protonSignedIn, setProtonSignedIn] = useState(false);
+    const protonSignInTokenRef = useRef<string | null>(null);
+    // Whether the native Proton Drive form shows, and whether its profile (or,
+    // before the first save, the pending sign-in) has a session.
+    const protonNativeForm = protocol === 'proton' && isProtonNative(connectionParams.options);
+    useEffect(() => {
+        if (!protonNativeForm || !protonNativeAvailable) {
+            setProtonSignedIn(false);
+            return;
+        }
+        let live = true;
+        invoke<{ signedIn: boolean }>('proton_native_status', { profileId: editingProfileId })
+            .then((status) => { if (live) setProtonSignedIn(status.signedIn); })
+            .catch(() => { if (live) setProtonSignedIn(false); });
+        return () => { live = false; };
+    }, [protonNativeForm, protonNativeAvailable, editingProfileId]);
+
     // Reveal toggle for the optional Filen CLI API Key field.
     const [showFilenApiKey, setShowFilenApiKey] = useState(false);
 
@@ -561,7 +584,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const activeBridgeKind = (() => {
         const pid = selectedProviderId || connectionParams.providerId;
         const g = findActiveModeGroup(pid, protocol);
-        return g ? findActiveMode(g, pid, protocol)?.bridgeKind : undefined;
+        return g ? findActiveMode(g, pid, protocol, connectionParams.options)?.bridgeKind : undefined;
     })();
     const isBridgeMode = !!activeBridgeKind;
 
@@ -1170,9 +1193,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const currentProviderId = selectedProviderId || connectionParams.providerId || undefined;
         const group = findActiveModeGroup(currentProviderId, protocol);
         if (!group) return protocol;
-        const mode = findActiveMode(group, currentProviderId, protocol);
+        const mode = findActiveMode(group, currentProviderId, protocol, connectionParams.options);
         return mode?.label || protocol;
-    }, [modeChanged, protocol, selectedProviderId, connectionParams.providerId]);
+    }, [modeChanged, protocol, selectedProviderId, connectionParams.providerId, connectionParams.options]);
 
     const normalizeEndpointForDuplicate = (value?: string) => {
         const raw = (value || '').trim();
@@ -3537,6 +3560,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     connectionParams.protocol,
                     activeProviderId,
                     connectionParams.server,
+                    connectionParams.options,
                 ) && (
                 <ManualStorageField
                     key={`mtb-${editingProfileId || 'new'}`}
@@ -3560,6 +3584,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     connectionParams.protocol,
                     activeProviderId,
                     connectionParams.server,
+                    connectionParams.options,
                 ) && (
                     <div>
                         <Checkbox
@@ -3830,8 +3855,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         <ProviderModeTabs
                             activeProviderId={selectedProviderId || connectionParams.providerId}
                             activeProtocol={protocol}
+                            activeOptions={connectionParams.options}
                             readOnly={false}
-                            onSwitchMode={(newProtocol, newProviderId) => {
+                            onSwitchMode={(newProtocol, newProviderId, modeOptions) => {
+                                // Proton Drive's API and CLI tabs share the `proton`
+                                // protocol: the tab is the client, kept in `proton_mode`.
+                                if (newProtocol === 'proton' && protocol === 'proton') {
+                                    const options = { ...(connectionParams.options || {}) };
+                                    delete options.proton_mode;
+                                    setProtonSignInError(null);
+                                    onConnectionParamsChange({
+                                        ...connectionParams,
+                                        options: { ...options, ...(modeOptions || {}) },
+                                    });
+                                    return;
+                                }
                                 handleProtocolChange(newProtocol as ProviderType, newProviderId);
                             }}
                             onBridgeSaveBlockedChange={setBridgeSaveBlocked}
@@ -5086,6 +5124,109 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         {renderRightColumn({ disabled: !connectionParams.password || !connectionParams.options?.bucket, buttonColorClass: 'bg-blue-600 hover:bg-blue-700' })}
+                                    </div>
+                                ) : protocol === 'proton' && protonNativeForm ? (
+                                    /* Proton Drive, native client: browser sign-in through
+                                       Proton's session fork. The session goes to the vault,
+                                       never into this form; the account email comes back. */
+                                    <div className="grid grid-cols-2 gap-6 items-start">
+                                        <div className="space-y-4">
+                                        <div className="rounded-lg border border-purple-200 dark:border-purple-800/60 bg-purple-50/60 dark:bg-purple-900/10 p-3 text-xs text-gray-600 dark:text-gray-300 space-y-2">
+                                            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{t('connection.protonNativeTitle')}</p>
+                                            <p>{t('connection.protonNativeBody')}</p>
+                                            <p className="text-amber-700 dark:text-amber-400">{t('connection.protonNativeDisclosure')}</p>
+                                        </div>
+                                        {!protonNativeAvailable ? (
+                                            <p className="text-sm text-red-600 dark:text-red-400">{t('connection.protonNativeUnavailable')}</p>
+                                        ) : (
+                                            <>
+                                                <div className="flex items-center gap-3 flex-wrap">
+                                                    <button
+                                                        type="button"
+                                                        disabled={protonSigningIn}
+                                                        onClick={async () => {
+                                                            setProtonSignInError(null);
+                                                            setProtonSigningIn(true);
+                                                            const token = `proton_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                                                            protonSignInTokenRef.current = token;
+                                                            try {
+                                                                const result = await invoke<{ email: string | null }>('proton_native_sign_in', {
+                                                                    params: { profileId: editingProfileId, connectToken: token },
+                                                                });
+                                                                setProtonSignedIn(true);
+                                                                if (result.email) {
+                                                                    onConnectionParamsChange({ ...connectionParams, username: result.email });
+                                                                }
+                                                            } catch (err) {
+                                                                const message = String(err);
+                                                                // A cancel is the user's own choice, not an error.
+                                                                if (message.includes('PROTON_SIGN_IN_EXPIRED')) {
+                                                                    setProtonSignInError(t('connection.protonSignInExpired'));
+                                                                } else if (!message.includes('CONNECT_CANCELLED')) {
+                                                                    setProtonSignInError(message);
+                                                                }
+                                                            } finally {
+                                                                protonSignInTokenRef.current = null;
+                                                                setProtonSigningIn(false);
+                                                            }
+                                                        }}
+                                                        className="px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                                                    >
+                                                        {protonSigningIn && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                                                        {protonSignedIn ? t('connection.protonSignInAgain') : t('connection.protonSignIn')}
+                                                    </button>
+                                                    {protonSigningIn && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const token = protonSignInTokenRef.current;
+                                                                if (token) invoke('cancel_connection', { token }).catch(() => { });
+                                                            }}
+                                                            className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                                                        >
+                                                            {t('common.cancel')}
+                                                        </button>
+                                                    )}
+                                                    {!protonSigningIn && protonSignedIn && (
+                                                        <span className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1 break-all">
+                                                            <Check size={14} /> {t('connection.protonSignedInAs', { email: connectionParams.username || 'Proton' })}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {protonSigningIn && (
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('connection.protonWaitingBrowser')}</p>
+                                                )}
+                                                {protonSignInError && (
+                                                    <p className="text-xs text-red-600 dark:text-red-400 break-words">{protonSignInError}</p>
+                                                )}
+                                                <p className="text-xs text-gray-400/70">{t('connection.protonSignInHelp')}</p>
+                                                {!protonSigningIn && protonSignedIn && (
+                                                    <button
+                                                        type="button"
+                                                        title={t('connection.protonSignOutHelp')}
+                                                        onClick={async () => {
+                                                            setProtonSignInError(null);
+                                                            try {
+                                                                await invoke('proton_native_sign_out', { profileId: editingProfileId });
+                                                                setProtonSignedIn(false);
+                                                            } catch (err) {
+                                                                setProtonSignInError(String(err));
+                                                            }
+                                                        }}
+                                                        className="text-xs text-gray-500 hover:text-red-600 dark:hover:text-red-400 underline"
+                                                    >
+                                                        {t('connection.protonSignOut')}
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                        </div>
+                                        {renderRightColumn({
+                                            disabled: loading || !protonNativeAvailable || !protonSignedIn || protonSigningIn,
+                                            buttonColorClass: 'bg-purple-600 hover:bg-purple-700',
+                                            connectionNameKey: 'Proton Drive',
+                                            showCancelSaveAsNew: true,
+                                        })}
                                     </div>
                                 ) : protocol === 'proton' ? (
                                     /* Proton Drive: same two-column layout as MEGA / Filen.

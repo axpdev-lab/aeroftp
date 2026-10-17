@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "打开 OAuth 设置",
             "oauthKeysReadFailedTitle": "无法读取 {provider} 应用密钥",
             "oauthKeysReadFailed": "AeroFTP 无法从保险库中读取 {provider} 应用密钥，因此无法登录。密钥未被更改。错误：{error}",
-            "profileName": "配置名称"
+            "profileName": "配置名称",
+            "protonNativeTitle": "原生 Proton Drive 客户端",
+            "protonNativeBody": "AeroFTP 直接连接 Proton Drive，并在这台电脑上加密和解密你的文件。你在浏览器中通过 Proton 自己的页面登录：AeroFTP 绝不会看到你的密码，并将会话保存在其加密保险库中。",
+            "protonNativeDisclosure": "这是第三方应用程序，未获得 Proton 的官方支持。",
+            "protonSignIn": "登录 Proton",
+            "protonSignInAgain": "重新登录",
+            "protonWaitingBrowser": "请在浏览器中完成登录...",
+            "protonSignedInAs": "已以 {email} 身份登录",
+            "protonSignInHelp": "AeroFTP 会在你的浏览器中打开 Proton 的登录页面。你可以随时在 Proton 账户设置中结束会话，或在此处使用退出登录。",
+            "protonSignOut": "退出登录",
+            "protonSignOutHelp": "结束 Proton 上的会话，并将其从此配置文件中移除。",
+            "protonSignInExpired": "登录页面已过期。请重新登录。",
+            "protonNativeUnavailable": "此版本不包含原生 Proton Drive 客户端。"
         },
         "browser": {
             "remote": "远程",

@@ -32,7 +32,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, providerSupportsCryptOverlay, supportsStorageQuota, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -3361,7 +3361,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (protocol && supportsStorageQuota(protocol as ProviderType)) {
+    if (protocol && connectionSupportsStorageQuota(protocol as ProviderType, opts)) {
       try {
         const info = await invoke<{ used: number; total: number; free: number; versioningBytes?: number }>('provider_storage_info');
         // Resolve the target profile against the LIVE connection (never
@@ -3388,6 +3388,7 @@ const App: React.FC = () => {
           prof?.protocol ?? liveCp.protocol,
           prof?.providerId ?? liveCp.providerId,
           prof?.host ?? liveCp.server,
+          prof?.options ?? liveCp.options,
         );
         // Many providers ARE in supportsStorageQuota yet a given server
         // exposes no real quota (DriveHQ / CloudMe / jianguoyun WebDAV
@@ -3585,6 +3586,7 @@ const App: React.FC = () => {
       quotaProfile?.protocol ?? cp.protocol,
       quotaProfile?.providerId ?? cp.providerId,
       quotaProfile?.host ?? cp.server,
+      quotaProfile?.options ?? cp.options,
     );
     // The figure the StatusBar showed before this scan first replaced it.
     // Captured inside the functional update, so it is what was on screen at
@@ -3814,7 +3816,7 @@ const App: React.FC = () => {
     if (info.direction !== 'upload') return;
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = liveConnectionParams.protocol;
-    if (protocol && supportsStorageQuota(protocol as ProviderType)) {
+    if (protocol && connectionSupportsStorageQuota(protocol as ProviderType, liveConnectionParams.options)) {
       if (quotaRefreshTimer.current) window.clearTimeout(quotaRefreshTimer.current);
       quotaRefreshTimer.current = window.setTimeout(() => {
         quotaRefreshTimer.current = null;
@@ -7104,6 +7106,7 @@ const App: React.FC = () => {
       role_mfa_token_code: effectiveParams.options?.roleMfaTokenCode || null,
       save_session: effectiveParams.options?.save_session,
       mega_mode: effectiveParams.options?.mega_mode || null,
+      proton_mode: effectiveParams.options?.proton_mode || null,
       session_expires_at: effectiveParams.options?.session_expires_at,
       logout_on_disconnect: effectiveParams.options?.logout_on_disconnect || false,
       private_key_path: effectiveParams.options?.private_key_path || null,

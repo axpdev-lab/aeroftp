@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Fungua mipangilio ya OAuth",
             "oauthKeysReadFailedTitle": "Imeshindwa kusoma funguo za programu ya {provider}",
             "oauthKeysReadFailed": "AeroFTP imeshindwa kusoma funguo za programu ya {provider} kutoka kwenye hifadhi salama, kwa hiyo haiwezi kuingia. Funguo hazikubadilishwa. Hitilafu: {error}",
-            "profileName": "Jina la wasifu"
+            "profileName": "Jina la wasifu",
+            "protonNativeTitle": "Kiteja asilia cha Proton Drive",
+            "protonNativeBody": "AeroFTP inaunganisha moja kwa moja na Proton Drive na husimba na kusimbua faili zako kwenye kompyuta hii. Unaingia kwenye ukurasa wa Proton wenyewe kwenye kivinjari: AeroFTP haioni nenosiri lako kamwe, na huhifadhi kipindi kwenye hazina yake iliyosimbwa.",
+            "protonNativeDisclosure": "Hii ni programu ya mhusika mwingine ambayo haiungwi mkono rasmi na Proton.",
+            "protonSignIn": "Ingia kwenye Proton",
+            "protonSignInAgain": "Ingia tena",
+            "protonWaitingBrowser": "Kamilisha kuingia kwenye kivinjari chako...",
+            "protonSignedInAs": "Umeingia kama {email}",
+            "protonSignInHelp": "AeroFTP hufungua ukurasa wa kuingia wa Proton kwenye kivinjari chako. Unaweza kumaliza kipindi wakati wowote katika mipangilio ya akaunti yako ya Proton, au hapa kwa Ondoka.",
+            "protonSignOut": "Ondoka",
+            "protonSignOutHelp": "Humaliza kipindi kwenye Proton na kukiondoa kwenye wasifu huu.",
+            "protonSignInExpired": "Muda wa ukurasa wa kuingia umeisha. Ingia tena.",
+            "protonNativeUnavailable": "Toleo hili halijumuishi kiteja asilia cha Proton Drive."
         },
         "browser": {
             "remote": "Mbali",

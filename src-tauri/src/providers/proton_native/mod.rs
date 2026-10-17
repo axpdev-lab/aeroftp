@@ -35,6 +35,7 @@ pub mod api;
 pub mod app_version;
 pub mod auth;
 pub mod client;
+pub mod commands;
 pub mod download;
 pub mod drive_crypto;
 pub mod error;

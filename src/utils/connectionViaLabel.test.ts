@@ -15,6 +15,9 @@ describe('connectionViaLabel', () => {
 
     it('keeps the protocol in capitals for everything else', () => {
         expect(connectionViaLabel({ protocol: 'mega', options: { mega_mode: 'native' } })).toBe('MEGA');
+        // The native Proton Drive client is AeroFTP itself, no program between.
+        expect(connectionViaLabel({ protocol: 'proton', options: { proton_mode: 'native' } })).toBe('Proton Drive');
+        expect(connectionViaLabel({ protocol: 'proton', options: { proton_mode: 'cli' } })).toBe('Proton Drive CLI');
         expect(connectionViaLabel({ protocol: 'sftp' })).toBe('SFTP');
         expect(connectionViaLabel({ protocol: 's3', providerId: 'backblaze' })).toBe('S3');
         expect(connectionViaLabel(null)).toBe('FTP');

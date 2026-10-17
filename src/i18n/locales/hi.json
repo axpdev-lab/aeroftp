@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth सेटिंग्स खोलें",
             "oauthKeysReadFailedTitle": "{provider} ऐप कुंजियाँ पढ़ी नहीं जा सकीं",
             "oauthKeysReadFailed": "AeroFTP वॉल्ट से {provider} ऐप कुंजियाँ नहीं पढ़ सका, इसलिए साइन इन नहीं कर सकता। कुंजियाँ बदली नहीं गई हैं। त्रुटि: {error}",
-            "profileName": "प्रोफ़ाइल का नाम"
+            "profileName": "प्रोफ़ाइल का नाम",
+            "protonNativeTitle": "नेटिव Proton Drive क्लाइंट",
+            "protonNativeBody": "AeroFTP सीधे Proton Drive से कनेक्ट होता है और इसी कंप्यूटर पर आपकी फ़ाइलों को एन्क्रिप्ट और डिक्रिप्ट करता है। आप ब्राउज़र में Proton के अपने पेज पर साइन इन करते हैं: AeroFTP आपका पासवर्ड कभी नहीं देखता और सत्र को अपने एन्क्रिप्टेड वॉल्ट में रखता है।",
+            "protonNativeDisclosure": "यह एक तृतीय-पक्ष एप्लिकेशन है, जिसे Proton आधिकारिक रूप से समर्थन नहीं देता।",
+            "protonSignIn": "Proton में साइन इन करें",
+            "protonSignInAgain": "फिर से साइन इन करें",
+            "protonWaitingBrowser": "अपने ब्राउज़र में साइन इन पूरा करें...",
+            "protonSignedInAs": "{email} के रूप में साइन इन है",
+            "protonSignInHelp": "AeroFTP आपके ब्राउज़र में Proton का साइन-इन पेज खोलता है। आप किसी भी समय अपनी Proton खाता सेटिंग्स में, या यहाँ साइन आउट से सत्र समाप्त कर सकते हैं।",
+            "protonSignOut": "साइन आउट",
+            "protonSignOutHelp": "Proton पर सत्र समाप्त करता है और इसे इस प्रोफ़ाइल से हटा देता है।",
+            "protonSignInExpired": "साइन-इन पेज की समय-सीमा समाप्त हो गई। फिर से साइन इन करें।",
+            "protonNativeUnavailable": "इस बिल्ड में नेटिव Proton Drive क्लाइंट शामिल नहीं है।"
         },
         "browser": {
             "remote": "दूरस्थ",

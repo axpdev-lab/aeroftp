@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth 設定を開く",
             "oauthKeysReadFailedTitle": "{provider} のアプリキーを読み取れません",
             "oauthKeysReadFailed": "AeroFTP は保管庫から {provider} のアプリキーを読み取れなかったため、サインインできません。キーは変更されていません。エラー: {error}",
-            "profileName": "プロファイル名"
+            "profileName": "プロファイル名",
+            "protonNativeTitle": "ネイティブ Proton Drive クライアント",
+            "protonNativeBody": "AeroFTP は Proton Drive に直接接続し、このコンピューター上でファイルを暗号化・復号します。サインインはブラウザーで Proton 自身のページから行います。AeroFTP がパスワードを見ることはなく、セッションは暗号化された保管庫に保存されます。",
+            "protonNativeDisclosure": "これは Proton が公式にサポートしていないサードパーティ製アプリケーションです。",
+            "protonSignIn": "Proton にサインイン",
+            "protonSignInAgain": "再度サインイン",
+            "protonWaitingBrowser": "ブラウザでサインインを完了してください...",
+            "protonSignedInAs": "{email} としてサインイン中",
+            "protonSignInHelp": "AeroFTP はブラウザーで Proton のサインインページを開きます。セッションは Proton のアカウント設定から、またはここでサインアウトを使っていつでも終了できます。",
+            "protonSignOut": "サインアウト",
+            "protonSignOutHelp": "Proton 上のセッションを終了し、このプロファイルから削除します。",
+            "protonSignInExpired": "サインインページの有効期限が切れました。再度サインインしてください。",
+            "protonNativeUnavailable": "このビルドにはネイティブ Proton Drive クライアントが含まれていません。"
         },
         "browser": {
             "remote": "リモート",

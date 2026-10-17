@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Agor gosodiadau OAuth",
             "oauthKeysReadFailedTitle": "Methu darllen allweddi ap {provider}",
             "oauthKeysReadFailed": "Methodd AeroFTP â darllen allweddi ap {provider} o'r gladdgell, felly ni all fewngofnodi. Ni newidiwyd yr allweddi. Gwall: {error}",
-            "profileName": "Enw proffil"
+            "profileName": "Enw proffil",
+            "protonNativeTitle": "Cleient Proton Drive brodorol",
+            "protonNativeBody": "Mae AeroFTP yn cysylltu'n uniongyrchol â Proton Drive ac yn amgryptio ac yn dadgryptio eich ffeiliau ar y cyfrifiadur hwn. Rydych yn mewngofnodi ar dudalen Proton ei hun yn y porwr: nid yw AeroFTP byth yn gweld eich cyfrinair, ac mae'n cadw'r sesiwn yn ei goffor wedi'i amgryptio.",
+            "protonNativeDisclosure": "Rhaglen trydydd parti yw hon, nad yw Proton yn ei chefnogi'n swyddogol.",
+            "protonSignIn": "Mewngofnodi i Proton",
+            "protonSignInAgain": "Mewngofnodi eto",
+            "protonWaitingBrowser": "Gorffennwch fewngofnodi yn eich porwr...",
+            "protonSignedInAs": "Wedi mewngofnodi fel {email}",
+            "protonSignInHelp": "Mae AeroFTP yn agor tudalen mewngofnodi Proton yn eich porwr. Gallwch ddod â'r sesiwn i ben unrhyw bryd yng ngosodiadau eich cyfrif Proton, neu yma gydag Allgofnodi.",
+            "protonSignOut": "Allgofnodi",
+            "protonSignOutHelp": "Yn dod â'r sesiwn ar Proton i ben ac yn ei thynnu o'r proffil hwn.",
+            "protonSignInExpired": "Mae'r dudalen fewngofnodi wedi dod i ben. Mewngofnodwch eto.",
+            "protonNativeUnavailable": "Nid yw'r adeiladwaith hwn yn cynnwys y cleient Proton Drive brodorol."
         },
         "browser": {
             "remote": "Pell",

@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Buka tetapan OAuth",
             "oauthKeysReadFailedTitle": "Tidak dapat membaca kunci aplikasi {provider}",
             "oauthKeysReadFailed": "AeroFTP tidak dapat membaca kunci aplikasi {provider} daripada peti besi, jadi tidak boleh log masuk. Kunci tidak diubah. Ralat: {error}",
-            "profileName": "Nama profil"
+            "profileName": "Nama profil",
+            "protonNativeTitle": "Klien Proton Drive asli",
+            "protonNativeBody": "AeroFTP menyambung terus ke Proton Drive dan menyulitkan serta menyahsulit fail anda pada komputer ini. Anda log masuk di halaman Proton sendiri dalam pelayar: AeroFTP tidak pernah melihat kata laluan anda dan menyimpan sesi dalam peti besi disulitkannya.",
+            "protonNativeDisclosure": "Ini ialah aplikasi pihak ketiga yang tidak disokong secara rasmi oleh Proton.",
+            "protonSignIn": "Log masuk ke Proton",
+            "protonSignInAgain": "Log masuk semula",
+            "protonWaitingBrowser": "Selesaikan log masuk dalam pelayar anda...",
+            "protonSignedInAs": "Log masuk sebagai {email}",
+            "protonSignInHelp": "AeroFTP membuka halaman log masuk Proton dalam pelayar anda. Anda boleh menamatkan sesi pada bila-bila masa dalam tetapan akaun Proton anda, atau di sini dengan Log keluar.",
+            "protonSignOut": "Log keluar",
+            "protonSignOutHelp": "Menamatkan sesi di Proton dan mengalih keluarnya daripada profil ini.",
+            "protonSignInExpired": "Halaman log masuk telah tamat tempoh. Log masuk semula.",
+            "protonNativeUnavailable": "Binaan ini tidak termasuk klien Proton Drive asli."
         },
         "browser": {
             "remote": "Jauh",

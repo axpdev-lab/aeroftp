@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Obre la configuració d'OAuth",
             "oauthKeysReadFailedTitle": "No es poden llegir les claus de l'aplicació de {provider}",
             "oauthKeysReadFailed": "AeroFTP no ha pogut llegir les claus de l'aplicació de {provider} de la caixa forta, per això no pot iniciar la sessió. Les claus no s'han modificat. Error: {error}",
-            "profileName": "Nom del perfil"
+            "profileName": "Nom del perfil",
+            "protonNativeTitle": "Client natiu de Proton Drive",
+            "protonNativeBody": "AeroFTP es connecta directament a Proton Drive i xifra i desxifra els teus fitxers en aquest ordinador. Inicies sessió a la pàgina pròpia de Proton al navegador: AeroFTP no veu mai la teva contrasenya i desa la sessió a la seva caixa forta xifrada.",
+            "protonNativeDisclosure": "Aquesta és una aplicació de tercers que Proton no admet oficialment.",
+            "protonSignIn": "Inicia sessió a Proton",
+            "protonSignInAgain": "Torna a iniciar sessió",
+            "protonWaitingBrowser": "Acaba d'iniciar sessió al navegador...",
+            "protonSignedInAs": "Sessió iniciada com a {email}",
+            "protonSignInHelp": "AeroFTP obre la pàgina d'inici de sessió de Proton al navegador. Pots tancar la sessió en qualsevol moment a la configuració del teu compte de Proton, o aquí amb Tanca la sessió.",
+            "protonSignOut": "Tanca la sessió",
+            "protonSignOutHelp": "Tanca la sessió a Proton i la treu d'aquest perfil.",
+            "protonSignInExpired": "La pàgina d'inici de sessió ha caducat. Torna a iniciar sessió.",
+            "protonNativeUnavailable": "Aquesta compilació no inclou el client natiu de Proton Drive."
         },
         "browser": {
             "remote": "Remot",

@@ -5,7 +5,7 @@
 export type ConnectionRoute = {
     protocol?: string | null;
     providerId?: string | null;
-    options?: { mega_mode?: string | null } | null;
+    options?: { mega_mode?: string | null; proton_mode?: string | null } | null;
 };
 
 /**
@@ -18,7 +18,10 @@ export type ConnectionRoute = {
 export function connectionViaLabel(route: ConnectionRoute | null | undefined): string {
     const protocol = (route?.protocol || 'ftp').toLowerCase();
     const providerId = route?.providerId || '';
-    if (protocol === 'proton') return 'Proton Drive CLI';
+    // The native client is AeroFTP itself, so the route is Proton Drive.
+    if (protocol === 'proton') {
+        return route?.options?.proton_mode === 'native' ? 'Proton Drive' : 'Proton Drive CLI';
+    }
     if (protocol === 'mega' && route?.options?.mega_mode === 'megacmd') return 'MEGAcmd';
     if (providerId === 'megacmd' || providerId === 'megacmd-webdav') return 'MEGAcmd (WebDAV)';
     if (providerId === 'filen-desktop-webdav') return 'Filen Desktop (WebDAV)';

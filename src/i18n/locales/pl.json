@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Otwórz ustawienia OAuth",
             "oauthKeysReadFailedTitle": "Nie można odczytać kluczy aplikacji {provider}",
             "oauthKeysReadFailed": "AeroFTP nie mógł odczytać kluczy aplikacji {provider} z sejfu, więc nie może się zalogować. Klucze nie zostały zmienione. Błąd: {error}",
-            "profileName": "Nazwa profilu"
+            "profileName": "Nazwa profilu",
+            "protonNativeTitle": "Natywny klient Proton Drive",
+            "protonNativeBody": "AeroFTP łączy się bezpośrednio z Proton Drive oraz szyfruje i odszyfrowuje Twoje pliki na tym komputerze. Logujesz się na stronie samego Proton w przeglądarce: AeroFTP nigdy nie widzi Twojego hasła i przechowuje sesję w swoim zaszyfrowanym sejfie.",
+            "protonNativeDisclosure": "To jest aplikacja firmy trzeciej, która nie jest oficjalnie obsługiwana przez Proton.",
+            "protonSignIn": "Zaloguj się do Proton",
+            "protonSignInAgain": "Zaloguj się ponownie",
+            "protonWaitingBrowser": "Dokończ logowanie w przeglądarce...",
+            "protonSignedInAs": "Zalogowano jako {email}",
+            "protonSignInHelp": "AeroFTP otwiera stronę logowania Proton w przeglądarce. Sesję możesz zakończyć w dowolnej chwili w ustawieniach konta Proton albo tutaj przyciskiem Wyloguj.",
+            "protonSignOut": "Wyloguj",
+            "protonSignOutHelp": "Kończy sesję w Proton i usuwa ją z tego profilu.",
+            "protonSignInExpired": "Strona logowania wygasła. Zaloguj się ponownie.",
+            "protonNativeUnavailable": "Ta kompilacja nie zawiera natywnego klienta Proton Drive."
         },
         "browser": {
             "remote": "Zdalny",

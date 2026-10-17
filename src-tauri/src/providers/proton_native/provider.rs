@@ -56,7 +56,21 @@ pub const PATH_CACHE_TTL: Duration = Duration::from_secs(30);
 
 const NOT_SIGNED_IN: &str =
     "This profile is not signed in to Proton yet: sign in with Proton, then connect.";
-const NO_PROFILE: &str = "The native Proton Drive client keeps its session with a saved profile: save the profile first, then sign in.";
+
+/// Whether `expected`, a profile's account field, names one of `addresses`:
+/// a full address compares whole, a bare name compares to each address's
+/// local part, both ignoring case.
+fn names_account(expected: &str, addresses: &[&str]) -> bool {
+    let expected = expected.trim().to_lowercase();
+    addresses.iter().any(|address| {
+        let address = address.to_lowercase();
+        if expected.contains('@') {
+            address == expected
+        } else {
+            address.split('@').next() == Some(expected.as_str())
+        }
+    })
+}
 
 /// What the provider needs of a node, without the OpenPGP provider type.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -746,21 +760,52 @@ impl StorageProvider for ProtonNativeProvider {
         self.drive.as_ref().and_then(|drive| drive.account_email())
     }
 
+    /// Opens the profile's saved session. A saved profile that has none takes
+    /// over the unbound one (a sign-in made before the profile was saved),
+    /// once the account it unlocks is the one the profile names.
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        let profile_id = self
-            .config
-            .profile_id
-            .clone()
-            .ok_or_else(|| ProviderError::InvalidConfig(NO_PROFILE.into()))?;
-        let session = vault::load_session(&profile_id)?
-            .ok_or_else(|| ProviderError::AuthenticationFailed(NOT_SIGNED_IN.into()))?;
+        let profile_id = self.config.profile_id.clone();
+        let (session, unbound) = match vault::load_session(profile_id.as_deref())? {
+            Some(session) => (session, false),
+            None if profile_id.is_some() => (
+                vault::load_session(None)?
+                    .ok_or_else(|| ProviderError::AuthenticationFailed(NOT_SIGNED_IN.into()))?,
+                true,
+            ),
+            None => return Err(ProviderError::AuthenticationFailed(NOT_SIGNED_IN.into())),
+        };
+        let source = if unbound { None } else { profile_id.as_deref() };
 
         let api = Arc::new(ProtonApi::new(app_version::app_version()));
         api.set_tokens(Some(session.tokens.clone())).await;
-        api.set_session_store(Arc::new(vault::VaultSession::new(&profile_id, &session)));
+        api.set_session_store(Arc::new(vault::VaultSession::new(source, &session)));
         let account = account::load_account(&api, &session.key_password)
             .await
             .map_err(|error| map_error("/", error))?;
+        if let (true, Some(profile_id)) = (unbound, profile_id.as_deref()) {
+            let addresses: Vec<&str> = account
+                .addresses()
+                .iter()
+                .map(|address| address.email.as_str())
+                .collect();
+            if let Some(expected) = self.config.username.as_deref() {
+                if !names_account(expected, &addresses) {
+                    return Err(ProviderError::AuthenticationFailed(format!(
+                        "The pending Proton sign-in belongs to another account than {expected}: \
+                         sign in with Proton again for this profile."
+                    )));
+                }
+            }
+            let current = super::session::ProtonSession {
+                tokens: api.tokens().await.unwrap_or(session.tokens.clone()),
+                key_password: session.key_password.clone(),
+            };
+            vault::bind_unbound_session(profile_id, &current)?;
+            api.set_session_store(Arc::new(vault::VaultSession::new(
+                Some(profile_id),
+                &current,
+            )));
+        }
         let drive = DriveClient::open(Arc::clone(&api), account)
             .await
             .map_err(|error| map_error("/", error))?;
@@ -1401,6 +1446,7 @@ mod tests {
             binary_path: None,
             connection_mode: crate::providers::ProtonConnectionMode::Native,
             profile_id: Some("srv_test".into()),
+            username: None,
         }
     }
 
@@ -1755,13 +1801,18 @@ mod tests {
             p.list("/").await,
             Err(ProviderError::NotConnected)
         ));
-        let mut none = ProtonNativeProvider::new(ProtonConfig {
-            profile_id: None,
-            ..config()
-        });
-        assert!(matches!(
-            none.connect().await,
-            Err(ProviderError::InvalidConfig(_))
-        ));
+    }
+
+    /// A pending sign-in is taken over only by a profile that names its
+    /// account, or names none.
+    #[test]
+    fn a_profile_names_its_account_by_address_or_bare_name() {
+        let addresses = ["Someone@proton.me", "alias@pm.me"];
+        assert!(names_account("someone@proton.me", &addresses));
+        assert!(names_account(" ALIAS@pm.me ", &addresses));
+        assert!(names_account("someone", &addresses));
+        assert!(!names_account("someone@pm.me", &addresses));
+        assert!(!names_account("other", &addresses));
+        assert!(!names_account("x@y.z", &[]));
     }
 }

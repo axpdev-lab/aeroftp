@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Բացել OAuth կարգավորումները",
             "oauthKeysReadFailedTitle": "Հնարավոր չէ կարդալ {provider}-ի հավելվածի բանալիները",
             "oauthKeysReadFailed": "AeroFTP-ը չկարողացավ կարդալ {provider}-ի հավելվածի բանալիները պահոցից, ուստի չի կարող մուտք գործել։ Բանալիները չեն փոփոխվել։ Սխալ՝ {error}",
-            "profileName": "Պրոֆիլի անուն"
+            "profileName": "Պրոֆիլի անուն",
+            "protonNativeTitle": "Proton Drive-ի բնիկ հաճախորդ",
+            "protonNativeBody": "AeroFTP-ն ուղղակիորեն միանում է Proton Drive-ին և գաղտնագրում ու վերծանում է ձեր ֆայլերը այս համակարգչում։ Դուք մուտք եք գործում դիտարկիչում՝ Proton-ի սեփական էջում. AeroFTP-ն երբեք չի տեսնում ձեր գաղտնաբառը և նիստը պահում է իր գաղտնագրված պահոցում։",
+            "protonNativeDisclosure": "Սա երրորդ կողմի հավելված է, որը պաշտոնապես չի աջակցվում Proton-ի կողմից։",
+            "protonSignIn": "Մուտք գործեք Proton",
+            "protonSignInAgain": "Կրկին մուտք գործեք",
+            "protonWaitingBrowser": "Ավարտեք մուտքը ձեր դիտարկիչում...",
+            "protonSignedInAs": "Մուտք եք գործել որպես {email}",
+            "protonSignInHelp": "AeroFTP-ն բացում է Proton-ի մուտքի էջը ձեր դիտարկիչում։ Դուք կարող եք ցանկացած պահի ավարտել նիստը ձեր Proton հաշվի կարգավորումներում կամ այստեղ՝ Դուրս գալ կոճակով։",
+            "protonSignOut": "Դուրս գալ",
+            "protonSignOutHelp": "Ավարտում է նիստը Proton-ում և հեռացնում այն այս պրոֆիլից։",
+            "protonSignInExpired": "Մուտքի էջի ժամկետը սպառվել է։ Կրկին մուտք գործեք։",
+            "protonNativeUnavailable": "Այս կառուցումը չի ներառում Proton Drive-ի բնիկ հաճախորդը։"
         },
         "browser": {
             "remote": "Հեռավոր",
