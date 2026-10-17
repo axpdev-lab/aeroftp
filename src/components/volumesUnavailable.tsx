@@ -19,6 +19,27 @@ export function volumesUnavailableReason(err: unknown): VolumesUnavailableReason
   return String(err).startsWith(MOUNT_OBSERVE_NOT_CONNECTED) ? 'snap-mount-observe' : 'failed';
 }
 
+/** What the volumes section shows after one read of the volume list. */
+export interface VolumesRead<V, P> {
+  volumes: V[];
+  unmounted: P[];
+  unavailable: VolumesUnavailableReason | null;
+}
+
+/**
+ * Reads the volume list. On failure the section shows no rows and the reason:
+ * rows from an earlier read may name volumes that are no longer mounted, and
+ * they would hide the reason (the plug can be disconnected while AeroFTP runs).
+ */
+export async function readVolumes<V, P>(read: () => Promise<[V[], P[]]>): Promise<VolumesRead<V, P>> {
+  try {
+    const [volumes, unmounted] = await read();
+    return { volumes, unmounted, unavailable: null };
+  } catch (err) {
+    return { volumes: [], unmounted: [], unavailable: volumesUnavailableReason(err) };
+  }
+}
+
 /** Says why the volume list is empty instead of leaving the section blank. */
 export function VolumesUnavailable({
   reason,

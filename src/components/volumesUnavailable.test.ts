@@ -11,6 +11,7 @@ import {
     MOUNT_OBSERVE_NOT_CONNECTED,
     SNAP_CONNECT_MOUNT_OBSERVE,
     VolumesUnavailable,
+    readVolumes,
     volumesUnavailableReason,
 } from './volumesUnavailable';
 
@@ -52,8 +53,39 @@ describe('volumes the snap may not read', () => {
         expect(plugs).toMatch(new RegExp(`^      - ${plug}$`, 'm'));
     });
 
+    it('drops the rows of an earlier read when a read fails, and says why', async () => {
+        const ok = await readVolumes(async () => [['/media/usb'], ['sdb1']] as [string[], string[]]);
+        expect(ok).toEqual({ volumes: ['/media/usb'], unmounted: ['sdb1'], unavailable: null });
+        const refused = await readVolumes<string, string>(async () => {
+            throw `${MOUNT_OBSERVE_NOT_CONNECTED}: cannot read /proc/mounts (Permission denied)`;
+        });
+        expect(refused).toEqual({ volumes: [], unmounted: [], unavailable: 'snap-mount-observe' });
+        const failed = await readVolumes<string, string>(async () => {
+            throw 'Failed to read /proc/mounts: Input/output error';
+        });
+        expect(failed).toEqual({ volumes: [], unmounted: [], unavailable: 'failed' });
+    });
+
     it('is what the sidebar shows when the volume list fails', () => {
-        expect(sidebarSource).toContain('setVolumesUnavailable(volumesUnavailableReason(err))');
+        expect(sidebarSource).toMatch(/readLatest\(volumesReadRef, \(\) => readVolumes\(/);
+        expect(sidebarSource).toContain('setVolumesUnavailable(value.unavailable)');
         expect(sidebarSource).toMatch(/<VolumesUnavailable reason=\{volumesUnavailable\}/);
+    });
+
+    it('lets no older read of a sidebar list replace a newer one', () => {
+        // Every writer of a polled list commits only the latest read.
+        const lines = sidebarSource.split('\n');
+        for (const setter of ['setPortableMounts(', 'setMtpAutomounterPresent(']) {
+            const writers = lines.filter((l) => l.includes(setter));
+            expect(writers.length).toBeGreaterThan(0);
+            for (const w of writers) expect(w).toContain('latest && mountedRef.current');
+        }
+        expect(sidebarSource.match(/readLatest\(portableMountsReadRef,/g)).toHaveLength(2);
+        expect(sidebarSource).toMatch(/readLatest\(automounterReadRef,/);
+        // The volume rows: the latest read, or the eject that retires earlier reads.
+        const volumeWriters = lines.filter((l) => /\bsetVolumes\(/.test(l));
+        expect(volumeWriters).toHaveLength(2);
+        expect(sidebarSource).toMatch(/if \(!latest \|\| !mountedRef\.current\) return;\n\s+setVolumes\(value\.volumes\);/);
+        expect(sidebarSource).toMatch(/volumesReadRef\.current \+= 1;\n\s+setVolumes\(prev => prev\.filter/);
     });
 });
