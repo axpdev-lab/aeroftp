@@ -648,8 +648,8 @@ impl StreamingAtomicWriter {
     ///      (Unix only). ACL apply requires chmod first: a later chmod
     ///      would rewrite the mask.
     ///   3. apply the access ACL on the same file descriptor (Linux B2).
-    ///   4. drop the handle (some kernels require this before rename
-    ///      for cache coherency, mirroring `write_atomic_chunked`).
+    ///   4. keep the handle, and with it the claim on the temp, through
+    ///      the steps below, and on failure until the temp is removed.
     ///   5. apply `mtime` (seconds + nanoseconds) to the temp via the
     ///      `filetime` crate, matching `write_atomic_chunked` semantics.
     ///   6. apply `xattrs` to the temp (B3 / X.4). **Before rename**, so
@@ -662,7 +662,8 @@ impl StreamingAtomicWriter {
     /// classification as `write_atomic_chunked` (a rename failure is a
     /// hard rejection, not a silent classic fallback).
     ///
-    /// On any error, the temp is best-effort removed before returning.
+    /// On any error, the temp is best-effort removed before returning,
+    /// while it is still claimed.
     pub async fn finalize(
         self,
         mode: Option<u32>,
@@ -674,14 +675,14 @@ impl StreamingAtomicWriter {
         let Self {
             target,
             temp,
-            file,
+            mut file,
             bytes_written: _,
             mut committed,
         } = self;
         let result = finalize_steps(
             &target,
             &temp,
-            file,
+            &mut file,
             mode,
             mtime,
             xattrs.as_deref(),
@@ -691,9 +692,12 @@ impl StreamingAtomicWriter {
         )
         .await;
         if result.is_err() {
-            // Best-effort cleanup; we are already on the failure path.
+            // Best-effort cleanup; we are already on the failure path. The
+            // claim is still held: released first, another writer of the
+            // target could take the temp in between and have it removed here.
             let _ = fs::remove_file(&temp).await;
         }
+        drop(file);
         result
     }
 }
@@ -705,7 +709,7 @@ impl StreamingAtomicWriter {
 async fn finalize_steps(
     target: &Path,
     temp: &Path,
-    mut file: ClaimedFile,
+    file: &mut ClaimedFile,
     mode: Option<u32>,
     mtime: Option<(i64, u32)>,
     xattrs: Option<&[crate::aerorsync::real_wire::XattrPair]>,
@@ -789,12 +793,12 @@ async fn finalize_steps(
         }
     }
 
-    // The handle, and with it the claim on the temporary, is held until the
-    // rename: dropped before the time, the extended attributes and the
-    // rename, it let another download take the temporary as stale in between,
-    // and this writer then published that one's half-written file
-    // (verification of #951).
-    let finalized = finalize_after_acl(
+    // The handle, and with it the claim on the temporary, is held by
+    // `finalize` past the rename, and on failure past the removal: dropped
+    // before the time, the extended attributes and the rename, it let another
+    // download take the temporary as stale in between, and this writer then
+    // published that one's half-written file (verification of #951).
+    finalize_after_acl(
         target,
         temp,
         mtime,
@@ -803,9 +807,7 @@ async fn finalize_steps(
         committed,
         warnings,
     )
-    .await;
-    drop(file);
-    finalized
+    .await
 }
 
 async fn finalize_after_acl(
