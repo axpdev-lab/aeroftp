@@ -334,6 +334,7 @@ impl ProtonApi {
     ) -> Result<T, ProtonError> {
         let mut attempt: u32 = 0;
         let mut refreshes: u32 = 0;
+        let what = format!("{method} {path}");
         loop {
             self.fail_fast_if_blocked()?;
 
@@ -362,6 +363,7 @@ impl ProtonApi {
                 None
             };
 
+            let started = Instant::now();
             let response = match builder.send().await {
                 Ok(response) => response,
                 Err(error) => {
@@ -381,6 +383,7 @@ impl ProtonApi {
                         (1, self.policy.general_retry_delay)
                     };
                     if attempt + 1 < limit || attempt == 0 {
+                        log_retry(&what, "network error", delay, attempt);
                         attempt += 1;
                         tokio::time::sleep(delay).await;
                         continue;
@@ -390,6 +393,7 @@ impl ProtonApi {
             };
 
             let status = response.status();
+            log_answer(&what, status, started);
             self.note_answer(status);
 
             if status == StatusCode::TOO_MANY_REQUESTS {
@@ -405,6 +409,7 @@ impl ProtonApi {
                         retry_after_secs: self.policy.cool_down.as_secs(),
                     });
                 }
+                log_retry(&what, "rate limited (429)", wait, attempt);
                 attempt += 1;
                 tokio::time::sleep(wait).await;
                 continue;
@@ -413,6 +418,12 @@ impl ProtonApi {
             if status.is_server_error() {
                 let blocked = self.note_5xx();
                 if attempt == 0 && !blocked {
+                    log_retry(
+                        &what,
+                        "server error",
+                        self.policy.server_error_delay,
+                        attempt,
+                    );
                     attempt += 1;
                     tokio::time::sleep(self.policy.server_error_delay).await;
                     continue;
@@ -448,6 +459,7 @@ impl ProtonApi {
     /// and 5xx are retried like API calls.
     pub async fn storage_get(&self, url: &str, token: &str) -> Result<bytes::Bytes, ProtonError> {
         let mut attempt: u32 = 0;
+        let what = "storage GET block";
         loop {
             self.fail_fast_if_blocked()?;
             let mut builder = self
@@ -461,6 +473,7 @@ impl ProtonApi {
                     .header("x-pm-uid", &tokens.uid)
                     .bearer_auth(tokens.access_token.expose_secret());
             }
+            let started = Instant::now();
             let response = match builder.send().await {
                 Ok(response) => response,
                 Err(error) => {
@@ -470,6 +483,12 @@ impl ProtonApi {
                         self.policy.max_network_attempts
                     };
                     if attempt + 1 < limit {
+                        log_retry(
+                            what,
+                            "network error",
+                            self.policy.network_error_delay,
+                            attempt,
+                        );
                         attempt += 1;
                         tokio::time::sleep(self.policy.network_error_delay).await;
                         continue;
@@ -478,6 +497,7 @@ impl ProtonApi {
                 }
             };
             let status = response.status();
+            log_answer(what, status, started);
             self.note_answer(status);
             if status == StatusCode::NOT_FOUND {
                 return Err(ProtonError::StorageTokenExpired);
@@ -495,11 +515,18 @@ impl ProtonApi {
                         retry_after_secs: self.policy.cool_down.as_secs(),
                     });
                 }
+                log_retry(what, "rate limited (429)", wait, attempt);
                 attempt += 1;
                 tokio::time::sleep(wait).await;
                 continue;
             }
             if status.is_server_error() && !self.note_5xx() && attempt == 0 {
+                log_retry(
+                    what,
+                    "server error",
+                    self.policy.server_error_delay,
+                    attempt,
+                );
                 attempt += 1;
                 tokio::time::sleep(self.policy.server_error_delay).await;
                 continue;
@@ -529,6 +556,7 @@ impl ProtonApi {
         block: bytes::Bytes,
     ) -> Result<(), ProtonError> {
         let mut attempt: u32 = 0;
+        let what = "storage POST block";
         loop {
             self.fail_fast_if_blocked()?;
             let part = reqwest::multipart::Part::stream(block.clone())
@@ -548,6 +576,7 @@ impl ProtonApi {
                     .header("x-pm-uid", &tokens.uid)
                     .bearer_auth(tokens.access_token.expose_secret());
             }
+            let started = Instant::now();
             let response = match builder.send().await {
                 Ok(response) => response,
                 Err(error) => {
@@ -557,6 +586,12 @@ impl ProtonApi {
                         self.policy.max_network_attempts
                     };
                     if attempt + 1 < limit {
+                        log_retry(
+                            what,
+                            "network error",
+                            self.policy.network_error_delay,
+                            attempt,
+                        );
                         attempt += 1;
                         tokio::time::sleep(self.policy.network_error_delay).await;
                         continue;
@@ -565,6 +600,7 @@ impl ProtonApi {
                 }
             };
             let status = response.status();
+            log_answer(what, status, started);
             self.note_answer(status);
             if status == StatusCode::NOT_FOUND {
                 return Err(ProtonError::StorageTokenExpired);
@@ -582,11 +618,18 @@ impl ProtonApi {
                         retry_after_secs: self.policy.cool_down.as_secs(),
                     });
                 }
+                log_retry(what, "rate limited (429)", wait, attempt);
                 attempt += 1;
                 tokio::time::sleep(wait).await;
                 continue;
             }
             if status.is_server_error() && !self.note_5xx() && attempt == 0 {
+                log_retry(
+                    what,
+                    "server error",
+                    self.policy.server_error_delay,
+                    attempt,
+                );
                 attempt += 1;
                 tokio::time::sleep(self.policy.server_error_delay).await;
                 continue;
@@ -706,6 +749,26 @@ impl ProtonApi {
         let newer = saved.access_token.expose_secret() != current.access_token.expose_secret();
         (same_session && newer).then_some(saved)
     }
+}
+
+/// One answer, for the debug log: the method and path (volume and link IDs,
+/// no secret), never the query, a header or a body.
+fn log_answer(what: &str, status: StatusCode, started: Instant) {
+    log::debug!(
+        "Proton {what} -> {} in {} ms",
+        status.as_u16(),
+        started.elapsed().as_millis()
+    );
+}
+
+/// A wait before a retry, as a warning: a rate limit or a server answer that
+/// slows a transfer down is otherwise invisible.
+fn log_retry(what: &str, reason: &str, wait: Duration, attempt: u32) {
+    log::warn!(
+        "Proton {what}: {reason}, retry {} in {} ms",
+        attempt + 1,
+        wait.as_millis()
+    );
 }
 
 /// A failed request or body read. A timeout is its own error, so the
