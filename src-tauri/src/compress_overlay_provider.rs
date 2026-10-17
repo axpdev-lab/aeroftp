@@ -522,6 +522,11 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.listing_is_authoritative()
     }
 
+    fn min_full_scan_interval(&self) -> Option<std::time::Duration> {
+        // A full scan through the wrapper is a full scan of the inner backend.
+        self.inner.min_full_scan_interval()
+    }
+
     fn reports_exact_size(&self) -> bool {
         // Compress changes size; we do not map wire->plain without I/O.
         // Sync honors this and drops size-compare (timestamp-driven).

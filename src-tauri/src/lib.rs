@@ -102,6 +102,7 @@ mod chat_history;
 pub mod cloud_config;
 pub mod cloud_pairs;
 pub mod cloud_provider_factory;
+mod cloud_scan_schedule;
 pub mod cloud_service;
 mod coding_checkpoints;
 mod coding_checks;
@@ -15947,6 +15948,12 @@ async fn trigger_cloud_sync(
             }
         }
     }
+    // "Sync now" is a full scan: the background scheduler counts it, so a
+    // provider's floor between two scans spans it too.
+    cloud_scan_schedule::ledger().record_full_scan(
+        &cloud_scan_schedule::pair_key(&cfg),
+        std::time::Instant::now(),
+    );
     let result =
         cloud_service::sync_one_config(cfg, store.as_ref(), Some(app.clone()), false).await;
 
@@ -16052,50 +16059,256 @@ fn cancel_background_sync_waits() {
         .cancel();
 }
 
-/// Background sync worker: `tokio::select!` event loop
-///
-/// Listens for three trigger sources:
-/// 1. **Scheduler timer**: fires based on `SyncSchedule` (interval + time window)
-/// 2. **Filesystem watcher**: fires when files change in the local sync folder
-/// 3. **Manual trigger**: fires when user clicks "Sync Now" via mpsc channel
-///
-/// Creates its own FTP connection per cycle to avoid conflicts with main UI.
-async fn background_sync_worker(app: AppHandle) {
-    info!("Background sync worker started (Phase 3A+ engine)");
-    let stop_token = background_sync_cancel_token();
+/// Capacity of the watcher channel, in debounced batches. One batch covers a
+/// debounce window, so the channel holds minutes of continuous activity while
+/// a cycle runs; past it the watcher flags the loss and a full scan follows.
+const WATCHER_CHANNEL_CAPACITY: usize = 1024;
 
-    // --- Setup filesystem watcher (Dropbox-style real-time sync) ---
-    let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::channel::<file_watcher::WatcherEvent>(64);
-    let mut watcher: Option<file_watcher::FileWatcher> = None;
-
-    {
-        let config = cloud_config::load_cloud_config();
-        if config.sync_on_change {
-            let local_path = config.local_folder.clone();
-            let mut fw = file_watcher::FileWatcher::new(watcher_tx.clone())
-                .with_debounce_ms(config.watcher_debounce_ms);
-            match fw.start(&local_path, file_watcher::WatcherMode::Auto) {
-                Ok(()) => {
-                    info!("Filesystem watcher active on {}", local_path.display());
-                    let _ = app.emit(
-                        "cloud-watcher-status",
-                        serde_json::json!({
-                            "active": true,
-                            "path": local_path.to_string_lossy(),
-                        }),
-                    );
-                    watcher = Some(fw);
-                }
-                Err(e) => {
-                    warn!("Failed to start filesystem watcher: {}", e);
+/// The enabled AeroCloud pairs as sync configs: every enabled pair of
+/// `cloud_pairs.json`, or the legacy single config when there are none.
+///
+/// FIX-1: resolve protocol_type per-pair from vault (same as CLI pair sync)
+/// before to_cloud_config(), so non-FTP pairs (SFTP/MEGA/S3/...) work in
+/// GUI background worker (not only explicit `aerocloud pair sync`).
+fn enabled_cloud_configs() -> Vec<cloud_config::CloudConfig> {
+    let mut pc = cloud_pairs::load_cloud_pairs_config();
+    if pc.pairs.is_empty() {
+        let legacy = cloud_config::load_cloud_config();
+        return if legacy.enabled { vec![legacy] } else { vec![] };
+    }
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(&store) {
+            for p in &mut pc.pairs {
+                if let Some(proto) = profiles
+                    .iter()
+                    .find(|pr| {
+                        pr.get("name").and_then(|v| v.as_str()) == Some(p.server_profile.as_str())
+                    })
+                    .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
+                {
+                    p.protocol_type = proto.to_string();
                 }
             }
         }
     }
+    pc.pairs
+        .iter()
+        .filter(|p| p.enabled)
+        .map(|p| p.to_cloud_config())
+        .collect()
+}
+
+/// The local folders the watchers cover: those of `configs`, leaving out a
+/// folder inside another (the recursive watch of the outer one covers it).
+fn watched_cloud_folders(configs: &[cloud_config::CloudConfig]) -> Vec<std::path::PathBuf> {
+    let mut folders: Vec<std::path::PathBuf> =
+        configs.iter().map(|c| c.local_folder.clone()).collect();
+    folders.sort();
+    folders.dedup();
+    let all = folders.clone();
+    folders.retain(|folder| {
+        !all.iter()
+            .any(|other| other != folder && folder.starts_with(other))
+    });
+    folders
+}
+
+/// What is left of the watcher cooldown, counted from the worker's last cycle
+/// and from the last manual sync, whichever is later.
+fn watcher_cooldown_left(last_cycle: tokio::time::Instant, cooldown: Duration) -> Duration {
+    let since_manual = match LAST_SYNC_EPOCH.load(Ordering::SeqCst) {
+        0 => Duration::MAX,
+        epoch => Duration::from_secs(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .saturating_sub(epoch),
+        ),
+    };
+    cooldown.saturating_sub(last_cycle.elapsed().min(since_manual))
+}
+
+fn empty_sync_result() -> cloud_service::SyncOperationResult {
+    cloud_service::SyncOperationResult {
+        uploaded: 0,
+        downloaded: 0,
+        deleted: 0,
+        skipped: 0,
+        skipped_details: vec![],
+        conflicts: 0,
+        errors: vec![],
+        duration_secs: 0,
+        file_details: vec![],
+    }
+}
+
+/// Spend the scheduler's tick: its countdown starts again from now.
+fn mark_scheduled_tick_done() {
+    let mut schedule = sync_scheduler::load_sync_schedule();
+    schedule.last_sync = Some(chrono::Utc::now());
+    if let Err(e) = sync_scheduler::save_sync_schedule(&schedule) {
+        warn!("Failed to save the sync schedule: {}", e);
+    }
+}
+
+/// Report a visible background cycle: log, badges, tray, events.
+async fn finish_background_cycle(
+    app: &AppHandle,
+    config: &cloud_config::CloudConfig,
+    result: &cloud_service::SyncOperationResult,
+) {
+    if !result.errors.is_empty() {
+        warn!(
+            "Background sync had errors ({}): first={:?}",
+            result.errors.len(),
+            result.errors.first()
+        );
+    } else {
+        info!(
+            "Background sync completed: {} uploaded, {} downloaded, {} errors",
+            result.uploaded,
+            result.downloaded,
+            result.errors.len()
+        );
+    }
+
+    // Mark sync completed (the watcher cooldown also reads this epoch)
+    LAST_SYNC_EPOCH.store(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        Ordering::SeqCst,
+    );
+
+    // Badge / tray use the (last) legacy config's local for now (Q4 full fanout later)
+    {
+        let local_folder = std::path::Path::new(&config.local_folder);
+        sync_badge::update_directory_state(
+            local_folder,
+            if result.errors.is_empty() {
+                sync_badge::SyncBadgeState::Synced
+            } else {
+                sync_badge::SyncBadgeState::Error
+            },
+        )
+        .await;
+    }
+
+    tray_badge::update_tray_badge(
+        app,
+        if result.errors.is_empty() {
+            tray_badge::TrayBadgeState::Default
+        } else {
+            tray_badge::TrayBadgeState::Error
+        },
+    );
+
+    let _ = app.emit(
+        "cloud-sync-status",
+        serde_json::json!({
+            "status": if result.errors.is_empty() { "active" } else { "error" },
+            "message": format!("Synced: ↑{} ↓{}", result.uploaded, result.downloaded)
+        }),
+    );
+    let _ = app.emit("cloud_sync_complete", result);
+}
+
+/// What one pair runs in a cycle of the background worker.
+enum PairRun {
+    /// List the whole remote folder.
+    Full,
+    /// Sync the watcher's paths one by one.
+    Incremental {
+        plan: Box<cloud_service::IncrementalPlan>,
+        changes: cloud_service::LocalChanges,
+        full_scan_allowed: bool,
+    },
+    /// Its changes settled without the remote, or wait for a full scan.
+    Settled,
+    /// Nothing this cycle.
+    Idle,
+}
+
+/// Background sync worker: evaluate, run, wait.
+///
+/// Each turn decides what every pair does, runs it, then waits for the next
+/// reason to look again:
+/// 1. **Startup** (when configured) and the **scheduler** run a full scan,
+///    listing the whole remote folder. A scheduled tick scans a pair at the
+///    larger of the user's interval and its provider's floor
+///    (`StorageProvider::min_full_scan_interval`).
+/// 2. **Filesystem watcher**: the changed local paths are synced one by one,
+///    without a listing (`cloud_service::prepare_incremental`). A change the
+///    watcher lost, or one too large to sync path by path, asks for a full
+///    scan, which runs once the provider's floor allows.
+/// 3. **Manual "Sync now"** runs through `trigger_cloud_sync`, a full scan.
+///
+/// Changes made on the remote by another device arrive with the next full
+/// scan. Changes that arrive during the cooldown, during a folder transfer or
+/// while a cycle runs wait in the backlog; none is dropped.
+///
+/// Creates its own provider connection per cycle to avoid conflicts with main UI.
+async fn background_sync_worker(app: AppHandle) {
+    use cloud_scan_schedule::{choose_pair_job, ledger, pair_key, PairJob};
+    use cloud_service::{IncrementalPrep, REMOTE_WORK_LIMIT};
+
+    info!("Background sync worker started (Phase 3A+ engine)");
+    let stop_token = background_sync_cancel_token();
+
+    // --- Setup filesystem watchers (Dropbox-style real-time sync) ---
+    // One per synced local folder: every enabled pair's, or the legacy
+    // config's when there are no pairs.
+    let (watcher_tx, mut watcher_rx) =
+        tokio::sync::mpsc::channel::<file_watcher::WatcherEvent>(WATCHER_CHANNEL_CAPACITY);
+    let mut watchers: Vec<file_watcher::FileWatcher> = Vec::new();
+    {
+        let config = cloud_config::load_cloud_config();
+        if config.sync_on_change {
+            for local_path in watched_cloud_folders(&enabled_cloud_configs()) {
+                let mut fw = file_watcher::FileWatcher::new(watcher_tx.clone())
+                    .with_debounce_ms(config.watcher_debounce_ms);
+                match fw.start(&local_path, file_watcher::WatcherMode::Auto) {
+                    Ok(()) => {
+                        info!("Filesystem watcher active on {}", local_path.display());
+                        let _ = app.emit(
+                            "cloud-watcher-status",
+                            serde_json::json!({
+                                "active": true,
+                                "path": local_path.to_string_lossy(),
+                            }),
+                        );
+                        watchers.push(fw);
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to start filesystem watcher on {}: {}",
+                            local_path.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+    let lost_event_flags: Vec<_> = watchers.iter().map(|w| w.lost_events()).collect();
 
     // --- Main event loop ---
+    let mut backlog = cloud_scan_schedule::ChangeBacklog::default();
     let mut is_first_run = true;
-    let mut last_sync_completed = tokio::time::Instant::now() - Duration::from_secs(120); // allow first sync immediately
+    // Allow the first sync immediately.
+    let mut last_sync_completed = tokio::time::Instant::now() - Duration::from_secs(120);
+    // With the scheduler off, the legacy interval is a deadline: a watcher
+    // event used to restart a sleep of the whole interval, so steady editing
+    // kept the scan away for good.
+    let mut legacy_next_scan = tokio::time::Instant::now()
+        + Duration::from_secs(cloud_config::load_cloud_config().sync_interval_secs.max(30));
+    // A scheduled tick is not taken again before this, whatever the schedule
+    // file says: a schedule that cannot be saved must not scan back to back.
+    let mut next_tick_not_before = tokio::time::Instant::now();
+    // The wait below saw an event that lost changes.
+    let mut lost_while_waiting = false;
 
     loop {
         // Check global stop flag
@@ -16125,339 +16338,393 @@ async fn background_sync_worker(app: AppHandle) {
             );
             break;
         }
+        let pair_cfgs = enabled_cloud_configs();
 
-        // Determine trigger source for this cycle
-        let trigger: transfer_pool::SyncTrigger = if is_first_run {
-            is_first_run = false;
-            // Only sync on startup if explicitly configured
-            if config.sync_on_startup {
-                transfer_pool::SyncTrigger::Manual
-            } else {
-                continue; // Skip first run, wait for normal interval
+        // Take in what the watchers reported since the last look. A lost
+        // event names no path: every pair asks for a full scan.
+        let mut lost = std::mem::take(&mut lost_while_waiting);
+        for flag in &lost_event_flags {
+            lost |= flag.swap(false, Ordering::SeqCst);
+        }
+        while let Ok(event) = watcher_rx.try_recv() {
+            lost |= backlog.absorb(event);
+        }
+        if lost {
+            warn!("AeroCloud watcher lost events: each pair asks for a full scan");
+            let mut ledger = ledger();
+            for cfg in &pair_cfgs {
+                ledger.request_full_scan(&pair_key(cfg), "the watcher lost events");
             }
-        } else {
-            // Load scheduler state
-            let schedule = sync_scheduler::load_sync_schedule();
+        }
 
-            // Emit schedule countdown to frontend
-            if let Some(next_secs) = schedule.next_sync_in() {
-                let _ = app.emit(
-                    "cloud-sync-schedule",
-                    serde_json::json!({
-                        "next_sync_in_secs": next_secs,
-                        "enabled": schedule.enabled,
-                        "paused": schedule.paused,
-                        "in_time_window": schedule.is_in_time_window(),
-                    }),
-                );
-            }
-
-            // Compute sleep duration: min of scheduler interval and 5s poll
-            let sleep_secs = if schedule.enabled && !schedule.paused {
-                schedule.next_sync_in().unwrap_or(30).min(30)
+        // Only sync on startup if explicitly configured
+        let startup = std::mem::take(&mut is_first_run) && config.sync_on_startup;
+        let schedule = sync_scheduler::load_sync_schedule();
+        let now = tokio::time::Instant::now();
+        let std_now = std::time::Instant::now();
+        let scheduled_tick = !startup
+            && now >= next_tick_not_before
+            && if schedule.enabled {
+                schedule.should_sync_now()
             } else {
-                config.sync_interval_secs.max(30)
+                // Fallback to legacy interval logic when scheduler is disabled
+                now >= legacy_next_scan
             };
-
-            // Wait using tokio::select!: first event wins
-            tokio::select! {
-                _ = stop_token.cancelled() => {
-                    transfer_pool::SyncTrigger::Stop
-                }
-                // Timer tick (scheduler interval or config interval)
-                _ = tokio::time::sleep(Duration::from_secs(sleep_secs)) => {
-                    // Check if schedule allows sync now
-                    let schedule = sync_scheduler::load_sync_schedule();
-                    if schedule.enabled && schedule.should_sync_now() {
-                        transfer_pool::SyncTrigger::Scheduled
-                    } else if !schedule.enabled {
-                        // Fallback to legacy interval logic when scheduler is disabled
-                        transfer_pool::SyncTrigger::Scheduled
-                    } else {
-                        continue; // Not time yet, loop again
-                    }
-                }
-                // Filesystem watcher event
-                Some(event) = watcher_rx.recv() => {
-                    // Suppress watcher during active folder download/upload
-                    if crate::provider_commands::TRANSFER_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
-                        info!("Watcher trigger suppressed: folder transfer in progress");
-                        while watcher_rx.try_recv().is_ok() {}
-                        continue;
-                    }
-                    // Cooldown: skip watcher triggers too close to last sync
-                    // (prevents loop: sync writes files → watcher detects → re-sync)
-                    // Check both local elapsed AND global epoch (covers manual sync)
-                    let elapsed = last_sync_completed.elapsed().as_secs();
-                    let global_elapsed = {
-                        let last_epoch = LAST_SYNC_EPOCH.load(Ordering::SeqCst);
-                        if last_epoch > 0 {
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs()
-                                .saturating_sub(last_epoch)
-                        } else {
-                            u64::MAX // no sync yet
-                        }
-                    };
-                    let effective_elapsed = elapsed.min(global_elapsed);
-                    if effective_elapsed < config.watcher_cooldown_secs {
-                        info!("Watcher trigger suppressed: {}s since last sync (cooldown {}s)",
-                            effective_elapsed, config.watcher_cooldown_secs);
-                        // Drain any queued watcher events
-                        while watcher_rx.try_recv().is_ok() {}
-                        continue;
-                    }
-                    info!("Watcher trigger: {} paths changed", event.paths.len());
-                    transfer_pool::SyncTrigger::FileChanged(event.paths)
-                }
-            }
-        };
-
-        // Check stop flag after wait
-        if !BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst) {
-            break;
-        }
-
-        // --- Execute sync cycle ---
-        let trigger_label = match &trigger {
-            transfer_pool::SyncTrigger::Scheduled => "scheduled",
-            transfer_pool::SyncTrigger::FileChanged(paths) => {
-                info!("Watcher-triggered sync for {} changed paths", paths.len());
-                "watcher"
-            }
-            transfer_pool::SyncTrigger::Manual => "manual",
-            transfer_pool::SyncTrigger::Stop => break,
-        };
-
-        info!(
-            "Background sync: starting cycle (trigger: {})",
-            trigger_label
+        let user_interval = Duration::from_secs(if schedule.enabled {
+            schedule.interval_secs
+        } else {
+            config.sync_interval_secs.max(30)
+        });
+        // Cooldown: watcher work waits a while after the last sync
+        // (prevents loop: sync writes files → watcher detects → re-sync).
+        // Check both local elapsed AND global epoch (covers manual sync)
+        let cooldown_left = watcher_cooldown_left(
+            last_sync_completed,
+            Duration::from_secs(config.watcher_cooldown_secs),
         );
+        // Defer watcher work during active folder download/upload
+        let transfer_running =
+            crate::provider_commands::TRANSFER_IN_PROGRESS.load(Ordering::SeqCst);
+        let watcher_ready = cooldown_left.is_zero() && !transfer_running;
 
-        // Update tray badge and emit status
-        tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Syncing);
-        let _ = app.emit(
-            "cloud-sync-status",
-            serde_json::json!({
-                "status": "syncing",
-                "message": "Syncing...",
-                "trigger": trigger_label,
-            }),
-        );
+        let jobs: Vec<(cloud_config::CloudConfig, PairJob)> = {
+            let ledger = ledger();
+            pair_cfgs
+                .into_iter()
+                .map(|cfg| {
+                    let job = choose_pair_job(
+                        &ledger,
+                        &pair_key(&cfg),
+                        std_now,
+                        user_interval,
+                        startup,
+                        scheduled_tick,
+                        watcher_ready,
+                    );
+                    (cfg, job)
+                })
+                .collect()
+        };
+        let has_work = jobs.iter().any(|(cfg, job)| match job {
+            PairJob::FullScan => true,
+            PairJob::Changes => !backlog.changes_under(&cfg.local_folder, std_now).is_empty(),
+            PairJob::Idle => false,
+        });
 
-        {
-            let local_folder = std::path::Path::new(&config.local_folder);
-            sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Syncing)
-                .await;
+        // We acquire (previous was false) and hold the guard for the whole
+        // cycle; Drop will store(false) on every path. A sync (manual or
+        // other) in progress: nothing is consumed, and we look again shortly.
+        let guard = if has_work {
+            CloudSyncGuard::acquire()
+        } else {
+            None
+        };
+        let busy = has_work && guard.is_none();
+        if busy {
+            info!("Batch sync skipped: a sync is already in progress");
         }
+        // Whether this turn ran its work; one that could not (another sync,
+        // a locked vault) waits before looking again.
+        let mut progressed = false;
 
-        // Multi-pair support (Task 2): if cloud_pairs.json has entries use them (enabled only);
-        // empty/absent => legacy single CloudConfig back-compat.
-        // FIX-1: resolve protocol_type per-pair from vault (same as CLI pair sync)
-        // before to_cloud_config(), so non-FTP pairs (SFTP/MEGA/S3/...) work in
-        // GUI background worker (not only explicit `aerocloud pair sync`).
-        let store_for_resolution = credential_store::CredentialStore::from_cache();
-        let pair_cfgs: Vec<cloud_config::CloudConfig> = {
-            let mut pc = cloud_pairs::load_cloud_pairs_config();
-            if !pc.pairs.is_empty() {
-                if let Some(ref store) = store_for_resolution {
-                    if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(store) {
-                        for p in &mut pc.pairs {
-                            if let Some(proto) = profiles
-                                .iter()
-                                .find(|pr| {
-                                    pr.get("name").and_then(|v| v.as_str())
-                                        == Some(p.server_profile.as_str())
-                                })
-                                .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
-                            {
-                                p.protocol_type = proto.to_string();
+        if let Some(_guard) = guard {
+            let store = credential_store::CredentialStore::from_cache();
+            // Vault locked: sync_one_config now fail-closes per pair (audit
+            // A-H1), so skip the whole batch quietly here to avoid one error
+            // per pair every cycle. Background sync resumes once unlocked;
+            // the watcher's changes wait in the backlog meanwhile.
+            if store.is_none() {
+                debug!("Background AeroCloud sync skipped: vault is locked");
+            } else {
+                progressed = true;
+                // Plan each pair's watcher changes on the local side first: a
+                // change that settles there (a file the last cycle itself
+                // wrote) needs no connection and no visible cycle.
+                let mut runs: Vec<(cloud_config::CloudConfig, PairRun)> = Vec::new();
+                let mut prep_errors: Vec<String> = Vec::new();
+                for (cfg, job) in jobs {
+                    let key = pair_key(&cfg);
+                    let run = match job {
+                        PairJob::FullScan => PairRun::Full,
+                        PairJob::Idle => PairRun::Idle,
+                        PairJob::Changes => {
+                            let changes = backlog.changes_under(&cfg.local_folder, std_now);
+                            if changes.is_empty() {
+                                PairRun::Idle
+                            } else {
+                                let (hints, full_scan_allowed) = {
+                                    let ledger = ledger();
+                                    (
+                                        ledger.hints(&key, &cfg),
+                                        ledger.full_scan_allowed(&key, std_now),
+                                    )
+                                };
+                                match cloud_service::prepare_incremental(&cfg, &changes, hints) {
+                                    Err(e) => {
+                                        prep_errors.push(e);
+                                        PairRun::Settled
+                                    }
+                                    Ok(IncrementalPrep::Settled { full_scan_wanted }) => {
+                                        if let Some(reason) = full_scan_wanted {
+                                            ledger().request_full_scan(&key, &reason);
+                                        }
+                                        PairRun::Settled
+                                    }
+                                    Ok(IncrementalPrep::FullScanOnly(reason)) => {
+                                        if full_scan_allowed {
+                                            PairRun::Full
+                                        } else {
+                                            // The scan the floor still holds back
+                                            // covers these changes when it runs.
+                                            ledger().request_full_scan(&key, &reason);
+                                            PairRun::Settled
+                                        }
+                                    }
+                                    Ok(IncrementalPrep::Work {
+                                        plan,
+                                        full_scan_wanted,
+                                    }) => {
+                                        let too_large = plan.remote_work() > REMOTE_WORK_LIMIT;
+                                        if full_scan_allowed
+                                            && (too_large || full_scan_wanted.is_some())
+                                        {
+                                            PairRun::Full
+                                        } else {
+                                            if let Some(reason) = full_scan_wanted {
+                                                ledger().request_full_scan(&key, &reason);
+                                            }
+                                            PairRun::Incremental {
+                                                plan,
+                                                changes,
+                                                full_scan_allowed,
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+                    };
+                    runs.push((cfg, run));
+                }
+
+                let visible = !prep_errors.is_empty()
+                    || runs
+                        .iter()
+                        .any(|(_, run)| matches!(run, PairRun::Full | PairRun::Incremental { .. }));
+                let mut retry_paths: Vec<std::path::PathBuf> = Vec::new();
+                let mut agg = empty_sync_result();
+                agg.errors.extend(prep_errors);
+
+                if visible {
+                    let trigger_label = if startup {
+                        "manual"
+                    } else if scheduled_tick {
+                        "scheduled"
+                    } else {
+                        "watcher"
+                    };
+                    info!(
+                        "Background sync: starting cycle (trigger: {})",
+                        trigger_label
+                    );
+                    // Update tray badge and emit status
+                    tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Syncing);
+                    let _ = app.emit(
+                        "cloud-sync-status",
+                        serde_json::json!({
+                            "status": "syncing",
+                            "message": "Syncing...",
+                            "trigger": trigger_label,
+                        }),
+                    );
+                    {
+                        let local_folder = std::path::Path::new(&config.local_folder);
+                        sync_badge::update_directory_state(
+                            local_folder,
+                            sync_badge::SyncBadgeState::Syncing,
+                        )
+                        .await;
                     }
                 }
-                pc.pairs
-                    .iter()
-                    .filter(|p| p.enabled)
-                    .map(|p| p.to_cloud_config())
-                    .collect()
-            } else {
-                let leg = cloud_config::load_cloud_config();
-                if leg.enabled {
-                    vec![leg]
-                } else {
-                    vec![]
-                }
-            }
-        };
 
-        let batch_result: Result<cloud_service::SyncOperationResult, String> =
-            if pair_cfgs.is_empty() {
-                // nothing to do this cycle
-                Ok(cloud_service::SyncOperationResult {
-                    uploaded: 0,
-                    downloaded: 0,
-                    deleted: 0,
-                    skipped: 0,
-                    skipped_details: vec![],
-                    conflicts: 0,
-                    errors: vec![],
-                    duration_secs: 0,
-                    file_details: vec![],
-                })
-            } else if let Some(_guard) = CloudSyncGuard::acquire() {
-                // We acquired (previous was false): run the batch under guard.
-                // Guard Drop will store(false) after the batch on success or any
-                // error path inside the loop. No manual store.
-                let mut agg = cloud_service::SyncOperationResult {
-                    uploaded: 0,
-                    downloaded: 0,
-                    deleted: 0,
-                    skipped: 0,
-                    skipped_details: vec![],
-                    conflicts: 0,
-                    errors: vec![],
-                    duration_secs: 0,
-                    file_details: vec![],
-                };
-                let store = credential_store::CredentialStore::from_cache();
-                // Vault locked: sync_one_config now fail-closes per pair (audit
-                // A-H1), so skip the whole batch quietly here to avoid one error
-                // per pair every cycle. Background sync resumes once unlocked.
-                if store.is_none() {
-                    debug!("Background AeroCloud sync skipped: vault is locked");
-                }
-                for cfg in pair_cfgs.iter().filter(|_| store.is_some()) {
-                    match cloud_service::sync_one_config(
-                        cfg.clone(),
-                        store.as_ref(),
-                        Some(app.clone()),
-                        false,
-                    )
-                    .await
-                    {
-                        Ok(r) => {
+                for (cfg, run) in &mut runs {
+                    let key = pair_key(cfg);
+                    let started = std::time::Instant::now();
+                    let outcome = match std::mem::replace(run, PairRun::Settled) {
+                        PairRun::Full => {
+                            // A full scan answers the floor whatever its outcome:
+                            // it is the traversal the floor spaces out.
+                            ledger().record_full_scan(&key, started);
+                            let outcome = cloud_service::run_pair_full_cycle(
+                                cfg.clone(),
+                                store.as_ref(),
+                                Some(app.clone()),
+                            )
+                            .await;
+                            // A scan that failed read nothing: the pair's changes
+                            // stay in the backlog, for the next pass to try.
+                            *run = if outcome.is_ok() {
+                                PairRun::Full
+                            } else {
+                                PairRun::Idle
+                            };
+                            Some(outcome)
+                        }
+                        PairRun::Incremental {
+                            plan,
+                            changes,
+                            full_scan_allowed,
+                        } => {
+                            let outcome = cloud_service::run_pair_incremental_cycle(
+                                cfg.clone(),
+                                store.as_ref(),
+                                Some(app.clone()),
+                                plan,
+                                full_scan_allowed,
+                            )
+                            .await;
+                            match &outcome {
+                                Ok(report) => {
+                                    for failed in &report.failed_paths {
+                                        if crate::sync::classify_sync_error(
+                                            &failed.error,
+                                            Some(&failed.key),
+                                        )
+                                        .retryable
+                                        {
+                                            retry_paths.push(cfg.local_folder.join(&failed.key));
+                                        }
+                                    }
+                                    if report.ran_full_scan {
+                                        ledger().record_full_scan(&key, started);
+                                        *run = PairRun::Full;
+                                    }
+                                }
+                                // Nothing ran (no connection): the paths come back.
+                                Err(e) if crate::sync::classify_sync_error(e, None).retryable => {
+                                    retry_paths.extend(changes.paths);
+                                }
+                                Err(_) => {}
+                            }
+                            Some(outcome)
+                        }
+                        PairRun::Settled => None,
+                        PairRun::Idle => {
+                            *run = PairRun::Idle;
+                            None
+                        }
+                    };
+                    match outcome {
+                        Some(Ok(report)) => {
+                            if let Some(traits) = report.traits {
+                                ledger().learn(&key, traits);
+                            }
+                            let r = report.result;
                             agg.uploaded += r.uploaded;
                             agg.downloaded += r.downloaded;
                             agg.deleted += r.deleted;
                             agg.skipped += r.skipped;
-                            agg.skipped_details.extend(r.skipped_details.clone());
+                            agg.skipped_details.extend(r.skipped_details);
                             agg.conflicts += r.conflicts;
                             agg.errors.extend(r.errors);
                             agg.duration_secs += r.duration_secs;
                             agg.file_details.extend(r.file_details);
                         }
-                        Err(e) => {
-                            agg.errors.push(e);
-                        }
+                        Some(Err(e)) => agg.errors.push(e),
+                        None => {}
                     }
                 }
-                Ok(agg)
-                // _guard drops here -> store(false)
-            } else {
-                // Respect previous value: a sync (manual or other) is in progress.
-                // Skip the pair batch this cycle; next tick will retry.
-                // We did not acquire so we do not clear (owner will).
-                info!("Batch sync skipped: a sync is already in progress");
-                Ok(cloud_service::SyncOperationResult {
-                    uploaded: 0,
-                    downloaded: 0,
-                    deleted: 0,
-                    skipped: 0,
-                    skipped_details: vec![],
-                    conflicts: 0,
-                    errors: vec![],
-                    duration_secs: 0,
-                    file_details: vec![],
-                })
-            };
 
-        // batch_result is always Ok(agg) with errors collected inside for multi/legacy
-        if let Ok(result) = batch_result {
-            if !result.errors.is_empty() {
-                warn!(
-                    "Background sync had errors ({}): first={:?}",
-                    result.errors.len(),
-                    result.errors.first()
-                );
-            } else {
-                info!(
-                    "Background sync completed: {} uploaded, {} downloaded, {} errors",
-                    result.uploaded,
-                    result.downloaded,
-                    result.errors.len()
-                );
-            }
-
-            // Mark sync completed and drain watcher events generated by the sync itself
-            last_sync_completed = tokio::time::Instant::now();
-            LAST_SYNC_EPOCH.store(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                Ordering::SeqCst,
-            );
-            let drained = {
-                let mut count = 0u32;
-                while watcher_rx.try_recv().is_ok() {
-                    count += 1;
+                // Forget what the cycle covered: a full scan read the pair's
+                // whole folder, a pass or a settle its ready changes. A path
+                // worth retrying comes back after a delay.
+                for (cfg, run) in &runs {
+                    if matches!(run, PairRun::Full) {
+                        backlog.clear_under(&cfg.local_folder);
+                    }
                 }
-                count
-            };
-            if drained > 0 {
-                info!("Drained {} watcher events generated during sync", drained);
+                let roots: Vec<(&std::path::Path, bool)> = runs
+                    .iter()
+                    .map(|(cfg, run)| (cfg.local_folder.as_path(), !matches!(run, PairRun::Idle)))
+                    .collect();
+                backlog.settle(&roots, std_now);
+                backlog.retry(retry_paths, std::time::Instant::now());
+
+                if visible {
+                    finish_background_cycle(&app, &config, &agg).await;
+                    last_sync_completed = tokio::time::Instant::now();
+                }
             }
-
-            // Badge / tray use the (last) legacy config's local for now (Q4 full fanout later)
-            {
-                let local_folder = std::path::Path::new(&config.local_folder);
-                sync_badge::update_directory_state(
-                    local_folder,
-                    if result.errors.is_empty() {
-                        sync_badge::SyncBadgeState::Synced
-                    } else {
-                        sync_badge::SyncBadgeState::Error
-                    },
-                )
-                .await;
-            }
-
-            tray_badge::update_tray_badge(
-                &app,
-                if result.errors.is_empty() {
-                    tray_badge::TrayBadgeState::Default
-                } else {
-                    tray_badge::TrayBadgeState::Error
-                },
-            );
-
-            // Update scheduler last_sync timestamp
-            let mut schedule = sync_scheduler::load_sync_schedule();
-            schedule.last_sync = Some(chrono::Utc::now());
-            let _ = sync_scheduler::save_sync_schedule(&schedule);
-
-            let _ = app.emit(
-                "cloud-sync-status",
-                serde_json::json!({
-                    "status": if result.errors.is_empty() { "active" } else { "error" },
-                    "message": format!("Synced: ↑{} ↓{}", result.uploaded, result.downloaded)
-                }),
-            );
-            let _ = app.emit("cloud_sync_complete", &result);
         }
 
-        // (no per-batch error backoff block; the tokio::select sleep on the
-        // stop channel or schedule already prevents tight loops)
+        if (scheduled_tick || startup) && !busy {
+            // The tick is spent whatever the pairs did (a floor may have held
+            // every one of them back). Incremental cycles never spend it: the
+            // scheduled scan is the only way remote changes arrive.
+            mark_scheduled_tick_done();
+            next_tick_not_before =
+                tokio::time::Instant::now() + user_interval.min(Duration::from_secs(60));
+            if !schedule.enabled {
+                legacy_next_scan = tokio::time::Instant::now() + user_interval;
+            }
+        }
+        if progressed {
+            // Look again at once: the cycle consumed what it ran, so what is
+            // left is new work or nothing.
+            continue;
+        }
+
+        // Nothing to do now: wait for the next scheduled tick, a watcher
+        // event, the end of the cooldown or a path's retry.
+        let mut wait = if schedule.enabled && !schedule.paused {
+            Duration::from_secs(schedule.next_sync_in().unwrap_or(30).min(30))
+        } else if schedule.enabled {
+            Duration::from_secs(30)
+        } else {
+            legacy_next_scan.saturating_duration_since(now)
+        };
+        if !backlog.is_empty() || ledger().any_pending() {
+            wait = wait.min(Duration::from_secs(30));
+            if !cooldown_left.is_zero() {
+                wait = wait.min(cooldown_left);
+            }
+            if let Some(retry) = backlog.next_retry_in(std_now) {
+                wait = wait.min(retry);
+            }
+            if transfer_running {
+                wait = wait.min(Duration::from_secs(5));
+            }
+        }
+        if has_work {
+            // Another sync held the guard, or the vault is locked.
+            wait = wait.min(Duration::from_secs(5));
+        }
+        // Emit schedule countdown to frontend
+        if let Some(next_secs) = schedule.next_sync_in() {
+            let _ = app.emit(
+                "cloud-sync-schedule",
+                serde_json::json!({
+                    "next_sync_in_secs": next_secs,
+                    "enabled": schedule.enabled,
+                    "paused": schedule.paused,
+                    "in_time_window": schedule.is_in_time_window(),
+                }),
+            );
+        }
+        tokio::select! {
+            _ = stop_token.cancelled() => break,
+            _ = tokio::time::sleep(wait.max(Duration::from_millis(500))) => {}
+            Some(event) = watcher_rx.recv() => {
+                lost_while_waiting |= backlog.absorb(event);
+            }
+        }
     }
 
     // --- Cleanup ---
-    if let Some(mut fw) = watcher {
+    for mut fw in watchers {
         fw.stop();
-        info!("Filesystem watcher stopped");
     }
+    info!("Filesystem watcher stopped");
     let _ = app.emit(
         "cloud-watcher-status",
         serde_json::json!({
