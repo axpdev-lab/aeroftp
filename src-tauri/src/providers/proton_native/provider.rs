@@ -792,7 +792,17 @@ impl ProtonNativeProvider {
         let (size, modified) = local_file(local)?;
         let mut report = |sent: u64| progress.report(sent);
         let unique = uuid::Uuid::new_v4().simple().to_string();
-        let temporary = format!(".aeroftp-upload-{}", &unique[..8]);
+        // The temporary name keeps the extension: Proton records the media
+        // type from the name a file is created under, and the web app
+        // previews by it (a bare temporary name made every replacement an
+        // application/octet-stream file).
+        let extension = std::path::Path::new(name)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .filter(|extension| extension.len() <= 16)
+            .map(|extension| format!(".{extension}"))
+            .unwrap_or_default();
+        let temporary = format!(".aeroftp-upload-{}{extension}", &unique[..8]);
         let mut file = tokio::fs::File::open(local).await?;
         let new_link_id = drive
             .upload_new(
@@ -1797,6 +1807,17 @@ mod tests {
             .map(|e| e.name)
             .collect();
         assert_eq!(names.len(), 2, "no temporary or set-aside left: {names:?}");
+        // Created under a name with the extension, so Proton records
+        // text/plain and not application/octet-stream.
+        let temporary: Vec<String> = drive
+            .calls()
+            .into_iter()
+            .filter(|call| call.starts_with("upload-new .aeroftp-upload-"))
+            .collect();
+        assert!(
+            temporary.len() == 1 && temporary[0].ends_with(".txt"),
+            "{temporary:?}"
+        );
     }
 
     #[tokio::test]
