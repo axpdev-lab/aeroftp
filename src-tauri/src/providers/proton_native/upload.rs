@@ -33,6 +33,7 @@ use serde_json::{json, Value};
 use sha1::{Digest, Sha1};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
+use super::api::ProtonApi;
 use super::client::DriveClient;
 use super::drive_crypto;
 use super::error::ProtonError;
@@ -181,6 +182,97 @@ async fn read_block<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>, Pro
     Ok(block)
 }
 
+/// What deletes an unfinished draft.
+enum DraftCleanup {
+    /// A new file's draft node: `POST .../delete_multiple`.
+    File { volume_id: String, link_id: String },
+    /// A draft revision of an existing file: `DELETE .../revisions/{r}`.
+    Revision { path: String },
+}
+
+impl DraftCleanup {
+    async fn run(self, api: &ProtonApi) -> Result<(), ProtonError> {
+        match self {
+            DraftCleanup::File { volume_id, link_id } => api
+                .post::<Value>(
+                    &format!("drive/v2/volumes/{volume_id}/delete_multiple"),
+                    &json!({ "LinkIDs": [link_id] }),
+                )
+                .await
+                .map(|_| ()),
+            DraftCleanup::Revision { path } => api.delete::<Value>(&path).await.map(|_| ()),
+        }
+    }
+}
+
+/// Deletes a draft that its upload left unfinished. A failed upload awaits
+/// [`DraftGuard::clean_up`]; an upload whose future is dropped (a cancelled
+/// transfer) reaches neither the commit nor the error path, and the guard
+/// then spawns the delete on drop, so no orphan draft keeps the name taken.
+///
+/// Once the commit is sent the guard no longer deletes on drop: the commit
+/// may have landed, and the draft would then be the file. A draft left that
+/// way is ours and is replaced by the next upload of the name (the client UID
+/// is the machine's, see `client::machine_client_uid`).
+struct DraftGuard {
+    api: std::sync::Arc<ProtonApi>,
+    cleanup: Option<DraftCleanup>,
+    committing: bool,
+}
+
+impl DraftGuard {
+    fn new(api: &std::sync::Arc<ProtonApi>, cleanup: DraftCleanup) -> Self {
+        Self {
+            api: std::sync::Arc::clone(api),
+            cleanup: Some(cleanup),
+            committing: false,
+        }
+    }
+
+    /// The commit is about to be sent: from here a drop leaves the draft.
+    fn commit_in_flight(&mut self) {
+        self.committing = true;
+    }
+
+    /// The upload committed: the draft is the file now.
+    fn disarm(&mut self) {
+        self.cleanup = None;
+    }
+
+    /// The upload failed (and its commit, if sent, did not land): delete the
+    /// draft now and log a failure to do so.
+    async fn clean_up(&mut self) {
+        if let Some(cleanup) = self.cleanup.take() {
+            if let Err(error) = cleanup.run(&self.api).await {
+                log::warn!("Proton: failed upload draft could not be deleted: {error}");
+            }
+        }
+    }
+}
+
+impl Drop for DraftGuard {
+    fn drop(&mut self) {
+        let Some(cleanup) = self.cleanup.take() else {
+            return;
+        };
+        if self.committing {
+            log::warn!("Proton: upload stopped during its commit; a draft left is replaced by the next upload");
+            return;
+        }
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            log::warn!("Proton: interrupted upload draft left for the next upload to replace");
+            return;
+        };
+        let api = std::sync::Arc::clone(&self.api);
+        runtime.spawn(async move {
+            match cleanup.run(&api).await {
+                Ok(()) => log::info!("Proton: interrupted upload draft deleted"),
+                Err(error) => log::warn!("Proton: interrupted upload draft not deleted: {error}"),
+            }
+        });
+    }
+}
+
 impl<P: PGPProviderSync> DriveClient<P> {
     /// Uploads a new file named `name` into `parent`. Returns the new link
     /// ID. A name already taken is [`ProtonError::AlreadyExists`] with the
@@ -260,6 +352,13 @@ impl<P: PGPProviderSync> DriveClient<P> {
             }
         };
 
+        let mut draft = DraftGuard::new(
+            &self.api,
+            DraftCleanup::File {
+                volume_id: self.volume_id().to_string(),
+                link_id: created.file.id.clone(),
+            },
+        );
         let target = RevisionTarget {
             link_id: &created.file.id,
             revision_id: &created.file.revision_id,
@@ -276,14 +375,14 @@ impl<P: PGPProviderSync> DriveClient<P> {
                 size,
                 modification_time,
                 &mut progress,
+                &mut draft,
             )
             .await;
         if let Err(error) = result {
-            if let Err(cleanup) = self.delete_draft_node(&created.file.id).await {
-                log::warn!("Proton: failed upload draft could not be deleted: {cleanup}");
-            }
+            draft.clean_up().await;
             return Err(error);
         }
+        draft.disarm();
         Ok(created.file.id)
     }
 
@@ -331,6 +430,17 @@ impl<P: PGPProviderSync> DriveClient<P> {
             )
             .await?;
 
+        let mut draft = DraftGuard::new(
+            &self.api,
+            DraftCleanup::Revision {
+                path: format!(
+                    "drive/v2/volumes/{}/files/{}/revisions/{}",
+                    self.volume_id(),
+                    node.link_id,
+                    created.revision.id
+                ),
+            },
+        );
         let target = RevisionTarget {
             link_id: &node.link_id,
             revision_id: &created.revision.id,
@@ -347,20 +457,14 @@ impl<P: PGPProviderSync> DriveClient<P> {
                 size,
                 modification_time,
                 &mut progress,
+                &mut draft,
             )
             .await;
         if let Err(error) = result {
-            let path = format!(
-                "drive/v2/volumes/{}/files/{}/revisions/{}",
-                self.volume_id(),
-                node.link_id,
-                created.revision.id
-            );
-            if let Err(cleanup) = self.api.delete::<Value>(&path).await {
-                log::warn!("Proton: failed revision draft could not be deleted: {cleanup}");
-            }
+            draft.clean_up().await;
             return Err(error);
         }
+        draft.disarm();
         self.forget(&[&node.link_id]).await;
         Ok(())
     }
@@ -387,6 +491,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
         size: u64,
         modification_time: Option<DateTime<Utc>>,
         progress: &mut impl FnMut(u64),
+        draft: &mut DraftGuard,
     ) -> Result<(), ProtonError> {
         let content = self
             .upload_blocks(target, address_key, reader, size, progress)
@@ -424,6 +529,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
             target.link_id,
             target.revision_id
         );
+        draft.commit_in_flight();
         let commit = self
             .api
             .put::<Value>(
@@ -654,6 +760,79 @@ impl<P: PGPProviderSync> DriveClient<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// A signed-in API whose `delete_multiple` counts the drafts it deletes.
+    async fn counting_api() -> (Arc<ProtonApi>, Arc<AtomicUsize>) {
+        let deletes = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&deletes);
+        let app = axum::Router::new().route(
+            "/drive/v2/volumes/{volume}/delete_multiple",
+            axum::routing::post(move || {
+                count.fetch_add(1, Ordering::SeqCst);
+                async { r#"{"Code":1001,"Responses":[]}"# }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let api = ProtonApi::with_base_url(format!("http://{addr}"), "test@1.0.0-alpha".into());
+        api.set_tokens(Some(super::super::session::SessionTokens {
+            uid: "uid".into(),
+            access_token: secrecy::SecretString::from("access".to_string()),
+            refresh_token: None,
+        }))
+        .await;
+        (Arc::new(api), deletes)
+    }
+
+    fn file_draft() -> DraftCleanup {
+        DraftCleanup::File {
+            volume_id: "vol".into(),
+            link_id: "draft-1".into(),
+        }
+    }
+
+    async fn settle(deletes: &AtomicUsize, expected: usize) -> usize {
+        for _ in 0..100 {
+            if deletes.load(Ordering::SeqCst) >= expected {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        deletes.load(Ordering::SeqCst)
+    }
+
+    /// A cancelled transfer drops the upload future: the draft it created is
+    /// deleted all the same, so it cannot keep the name taken.
+    #[tokio::test]
+    async fn a_dropped_upload_deletes_its_draft() {
+        let (api, deletes) = counting_api().await;
+        drop(DraftGuard::new(&api, file_draft()));
+        assert_eq!(settle(&deletes, 1).await, 1);
+    }
+
+    /// Once the commit is sent the draft may already be the file: a drop then
+    /// deletes nothing, and a committed upload never deletes.
+    #[tokio::test]
+    async fn a_committing_or_committed_upload_keeps_its_file() {
+        let (api, deletes) = counting_api().await;
+        let mut committing = DraftGuard::new(&api, file_draft());
+        committing.commit_in_flight();
+        drop(committing);
+        let mut committed = DraftGuard::new(&api, file_draft());
+        committed.disarm();
+        drop(committed);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(deletes.load(Ordering::SeqCst), 0);
+
+        // A failed upload deletes once, at its error path, not again on drop.
+        let mut failed = DraftGuard::new(&api, file_draft());
+        failed.clean_up().await;
+        drop(failed);
+        assert_eq!(settle(&deletes, 2).await, 1);
+    }
 
     #[test]
     fn intended_size_is_rounded_like_the_sdk() {
