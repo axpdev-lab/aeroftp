@@ -3327,7 +3327,7 @@
             "placementDetached": "Adskilt",
             "placementBoth": "Begge",
             "placementEmbeddedDesc": "I beholderen, opdateres ved hver lagring",
-            "placementDetachedDesc": "Tilhorende .aerocorrect-fil",
+            "placementDetachedDesc": "Tilhørende .aerocorrect-fil",
             "placementBothDesc": "I beholderen plus en separat fil",
             "detachedStableStorageNote": "Adskilt paritet holder beholderen byte for byte identisk med et almindeligt boks; eksportér den igen efter redigering af boksen.",
             "detachedHeaderProtectedNote": "Gendannelsesfilen beskytter også vault-headeren og manifest-lokatoren, så selv en beskadiget header kan genopbygges.",

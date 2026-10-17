@@ -3328,7 +3328,7 @@
             "placementBoth": "Ambas",
             "placementEmbeddedDesc": "No contentor, atualizada a cada gravação",
             "placementDetachedDesc": "Ficheiro .aerocorrect ao lado",
-            "placementBothDesc": "No contentor mais um ficheiro a parte",
+            "placementBothDesc": "No contentor mais um ficheiro à parte",
             "detachedStableStorageNote": "A paridade separada mantém o contentor idêntico byte a byte a um cofre normal; reexporte-a após editar o cofre.",
             "detachedHeaderProtectedNote": "O ficheiro de recuperação também protege o cabeçalho do vault e o localizador do manifesto, por isso mesmo um cabeçalho danificado pode ser reconstruído.",
             "exportParity": "Exportar ficheiro de recuperação",

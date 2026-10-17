@@ -3335,7 +3335,7 @@
             "exportingParity": "Exportujem...",
             "exportParityHint": "Zapísať oddelený súbor obnovy .aerocorrect zo súčasných dát",
             "stripParity": "Odstrániť vloženú paritu",
-            "strippingParity": "Odstranujem...",
+            "strippingParity": "Odstraňujem...",
             "stripParityHint": "Odstrániť paritu z kontajnera (zachová sa len ak existuje oddelený súbor obnovy)",
             "parityExported": "Súbor obnovy zapísaný (chránených {bytes} bajtov)",
             "parityExportedEmpty": "Súbor obnovy zapísaný (trezor je prázdny; po pridaní súborov exportujte znova)",

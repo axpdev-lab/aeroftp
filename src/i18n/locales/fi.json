@@ -3333,7 +3333,7 @@
             "detachedHeaderProtectedNote": "Palautustiedosto suojaa myös holvin otsikkoa ja manifestin paikanninta, joten jopa vaurioitunut otsikko voidaan rakentaa uudelleen.",
             "exportParity": "Vie palautustiedosto",
             "exportingParity": "Viedään...",
-            "exportParityHint": "Kirjoita erillinen .aerocorrect-palautustiedosto nykyisesta datasta",
+            "exportParityHint": "Kirjoita erillinen .aerocorrect-palautustiedosto nykyisestä datasta",
             "stripParity": "Poista upotettu pariteetti",
             "strippingParity": "Poistetaan...",
             "stripParityHint": "Poista pariteetti säiliöstä (säilytetään vain, jos erillinen palautustiedosto on olemassa)",

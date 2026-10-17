@@ -3643,7 +3643,7 @@
             "strippingParity": "Rimozione...",
             "stripParityHint": "Elimina la parità nel contenitore (mantenuta solo se esiste un file di ripristino separato)",
             "parityExported": "File di ripristino scritto ({bytes} byte protetti)",
-            "parityExportedEmpty": "File di ripristino scritto (il vault e vuoto; riesporta dopo aver aggiunto file)",
+            "parityExportedEmpty": "File di ripristino scritto (il vault è vuoto; riesporta dopo aver aggiunto file)",
             "parityStripped": "Parità incorporata rimossa; il file di ripristino separato resta",
             "parityStrippedNoRecovery": "Parità incorporata rimossa; questo vault ora non ha dati di ripristino",
             "errorCorrectionDetachedBadge": "Correzione errori (separata)",

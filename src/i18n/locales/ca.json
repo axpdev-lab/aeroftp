@@ -3338,7 +3338,7 @@
             "strippingParity": "Eliminant...",
             "stripParityHint": "Elimina la paritat del contenidor (es conserva només si existeix un fitxer de recuperació separat)",
             "parityExported": "Fitxer de recuperació escrit ({bytes} bytes protegits)",
-            "parityExportedEmpty": "Fitxer de recuperació escrit (la caixa es buida; torna a exportar després d'afegir fitxers)",
+            "parityExportedEmpty": "Fitxer de recuperació escrit (la caixa és buida; torna a exportar després d'afegir fitxers)",
             "parityStripped": "Paritat incrustada eliminada; el fitxer de recuperació separat es manté",
             "parityStrippedNoRecovery": "Paritat incrustada eliminada; aquesta caixa ara no té dades de recuperació",
             "errorCorrectionDetachedBadge": "Correcció d'errors (separada)",

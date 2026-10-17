@@ -3326,7 +3326,7 @@
             "placementEmbedded": "Sisseehitatud",
             "placementDetached": "Eraldi",
             "placementBoth": "Mõlemad",
-            "placementEmbeddedDesc": "Konteineris, varskendatakse iga salvestamisel",
+            "placementEmbeddedDesc": "Konteineris, värskendatakse iga salvestamisel",
             "placementDetachedDesc": "Kaasnev .aerocorrect fail",
             "placementBothDesc": "Konteineris ja eraldi fail",
             "detachedStableStorageNote": "Eraldi pariteet hoiab konteineri bait-baidilt identsena tavalise hoidlaga; ekspordi see uuesti pärast hoidla muutmist.",
