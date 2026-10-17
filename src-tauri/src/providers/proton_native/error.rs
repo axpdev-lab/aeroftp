@@ -16,6 +16,15 @@ pub const CODE_ADDRESS_MISSING: i64 = 33_102;
 pub const CODE_DOMAIN_EXTERNAL: i64 = 33_103;
 /// `errorCodes.ts`: a node with the same name already exists.
 pub const CODE_ALREADY_EXISTS: i64 = 2500;
+/// `errorCodes.ts` `NOT_EXISTS`.
+pub const CODE_NOT_EXISTS: i64 = 2501;
+/// `errorCodes.ts` `NOT_ENOUGH_PERMISSIONS` and `..._TO_GRANT_PERMISSIONS`.
+pub const CODES_NOT_ENOUGH_PERMISSIONS: [i64; 2] = [2011, 2026];
+/// `errorCodes.ts` `MAX_FILE_SIZE_FOR_FREE_USER`.
+pub const CODE_MAX_FILE_SIZE_FOR_FREE_USER: i64 = 200_003;
+/// `errorCodes.ts` `INSUFFICIENT_QUOTA`, `INSUFFICIENT_SPACE`,
+/// `INSUFFICIENT_VOLUME_QUOTA`, `INSUFFICIENT_DEVICE_QUOTA`.
+pub const CODES_NO_SPACE: [i64; 4] = [200_001, 200_002, 200_100, 200_101];
 
 #[derive(Debug, Error)]
 pub enum ProtonError {
