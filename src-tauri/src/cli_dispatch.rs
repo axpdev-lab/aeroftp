@@ -75,6 +75,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "users",
     "peer",
     "profile-add",
+    "profile-auth",
     "profile-duplicate",
     "profile-duplicate-mode",
     "profile-convert-mode",
