@@ -12,6 +12,7 @@ import { createProfileCredentialJournal } from './profileCredentialJournal';
 import { mergeAppSettingsDraft } from './appSettingsDraft';
 import { ConnectScope } from '../gui/connectScope';
 import { normalizeGuiPresentation } from '../gui/presentation';
+import { connectionProfileDefaults } from '../providers/connectionManifest';
 import type { ServerProfile } from '../types';
 
 // Run the production closures, with their captured IPC and React state cells
@@ -57,7 +58,8 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         readSavedServerProfilesForWrite: async () => ({ profiles: await read(), userId: 7 }),
         tryStoreCredential: vi.fn(async () => true), stashFilenApiKey: vi.fn(async () => false),
         aeroCryptOverlayFields: vi.fn(async () => ({})), migrateCryptCredentials: vi.fn(),
-        normalizeMegaOptions: (v: unknown) => v, getDefaultPort: () => 21, findDuplicateProfile: () => undefined,
+        normalizeMegaOptions: (v: unknown) => v, getDefaultPort: () => 21, connectionProfileDefaults,
+        findDuplicateProfile: () => undefined,
         getStorageDedupKey: () => 'dedup', isBlompAuthUrl: () => false,
         syncPersistedModeCredentials: vi.fn(), carryFavoriteServer: vi.fn(), carryServerGroups: vi.fn(),
         deleteModeCredentials: vi.fn(), warnIfSavedByOtherAccount: vi.fn(),
