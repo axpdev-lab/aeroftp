@@ -11,7 +11,131 @@
 
 use crate::credential_store::CredentialStore;
 use crate::providers::oauth2::StoredTokens;
+use serde_json::Value;
 use std::collections::HashSet;
+
+/// Where a profile's sign-in lives, read from the profile itself: its
+/// protocol, its preset and the options that pick a mode.
+///
+/// The state was derived from the protocol alone, as if every profile kept a
+/// password in `server_<id>` or a provider token: every profile that
+/// connects without either read `no_credentials`, so an agent told "not
+/// signed in, skip it" about an anonymous FTP site, an SFTP key, a local
+/// bridge, a phone, or a Proton Drive signed in on its own page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthSource {
+    /// A password or token in `server_<id>`, or the provider's token blob
+    /// (OAuth, Jottacloud).
+    Vault,
+    /// The native Proton Drive session (`proton_native_session_<id>`, or the
+    /// one saved before the profile was).
+    ProtonSession,
+    /// Nothing secret to hold: anonymous FTP and WebDAV, an SFTP key file, the
+    /// local bridges of Filen Desktop (admin/admin unless changed), a portable
+    /// device, a local folder, an AeroShare ticket kept in the profile.
+    NoSecret,
+    /// A session kept by another program, in a place this vault cannot read:
+    /// Proton's official CLI and MEGAcmd.
+    External,
+}
+
+impl AuthSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AuthSource::Vault => "vault",
+            AuthSource::ProtonSession => "proton_session",
+            AuthSource::NoSecret => "no_secret",
+            AuthSource::External => "external",
+        }
+    }
+
+    /// The inverse of [`AuthSource::as_str`], for a profile that carries the
+    /// derived value instead of its options (`mcp::load_safe_profiles`).
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "vault" => AuthSource::Vault,
+            "proton_session" => AuthSource::ProtonSession,
+            "no_secret" => AuthSource::NoSecret,
+            "external" => AuthSource::External,
+            _ => return None,
+        })
+    }
+}
+
+/// A profile option by its canonical key, whichever spelling was saved
+/// (`private_key_path` or `privateKeyPath`), trimmed, `None` when empty.
+fn profile_option<'a>(profile: &'a Value, key: &str) -> Option<&'a str> {
+    profile
+        .get("options")?
+        .as_object()?
+        .iter()
+        .find(|(k, _)| crate::profile_loader::canonicalize_profile_option_key(k) == key)
+        .and_then(|(_, v)| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+}
+
+fn profile_option_is_true(profile: &Value, key: &str) -> bool {
+    profile
+        .get("options")
+        .and_then(Value::as_object)
+        .and_then(|options| {
+            options
+                .iter()
+                .find(|(k, _)| crate::profile_loader::canonicalize_profile_option_key(k) == key)
+        })
+        .is_some_and(|(_, v)| v.as_bool() == Some(true) || v.as_str() == Some("true"))
+}
+
+/// Where this saved profile's sign-in lives. Pure: reads the profile JSON
+/// only, never the vault or the network.
+pub fn profile_auth_source(profile: &Value) -> AuthSource {
+    let protocol = profile
+        .get("protocol")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let provider_id = profile
+        .get("providerId")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let username = profile
+        .get("username")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    match protocol.as_str() {
+        // The GUI's Proton tab saves `proton_mode: "native"`; a profile
+        // without it uses the official CLI, as the provider factory routes it.
+        "proton" | "protondrive" if profile_option(profile, "proton_mode") == Some("native") => {
+            AuthSource::ProtonSession
+        }
+        "proton" | "protondrive" => AuthSource::External,
+        "mega" if profile_option(profile, "mega_mode") == Some("megacmd") => AuthSource::External,
+        _ if matches!(provider_id, "megacmd") => AuthSource::External,
+        // FtpConfig signs in as `anonymous` when the username is empty.
+        "ftp" | "ftps" if username.is_empty() || username.eq_ignore_ascii_case("anonymous") => {
+            AuthSource::NoSecret
+        }
+        "webdav" | "webdavs" if profile_option_is_true(profile, "anonymous") => {
+            AuthSource::NoSecret
+        }
+        "sftp" if profile_option(profile, "private_key_path").is_some() => AuthSource::NoSecret,
+        "mtp" | "wpd" | "portabledevice" | "portable" | "local" | "file" | "localdirectory" => {
+            AuthSource::NoSecret
+        }
+        "peer" | "aeroshare" if profile_option(profile, "peer_ticket").is_some() => {
+            AuthSource::NoSecret
+        }
+        // `profile_loader::apply_local_bridge_credential_defaults` signs in
+        // as admin/admin when nothing is saved.
+        _ if matches!(provider_id, "filen-desktop-webdav" | "filen-desktop-s3") => {
+            AuthSource::NoSecret
+        }
+        _ => AuthSource::Vault,
+    }
+}
 
 /// Vault account that actually holds this profile's OAuth / Jotta blob,
 /// honouring the per-profile key first and the protocol singleton second.
@@ -85,24 +209,43 @@ pub fn oauth_vault_key_for_protocol(protocol: &str) -> Option<&'static str> {
 
 /// Derive a profile's auth readiness from local vault state only: never
 /// touches the network. Returns one of:
-///   - `valid`          : credential present and (for OAuth) not expired
+///   - `valid`          : credential present and (for OAuth) not expired, or
+///     none needed (`AuthSource::NoSecret`)
 ///   - `expired`        : OAuth token past `expires_at` and no refresh token
 ///   - `needs_refresh`  : OAuth token past `expires_at` but refresh token present
 ///   - `no_credentials` : nothing stored; user has not signed in yet
 ///   - `unknown`        : vault entry present but value couldn't be parsed
-///     (legacy/corrupt; treated as "agent should try anyway")
+///     (legacy/corrupt), or a session another program keeps
+///     (`AuthSource::External`): treated as "agent should try anyway"
 ///
-/// `accounts` is a pre-fetched set of vault keys to keep this O(1) per
-/// profile when called in a loop. The store handle is used only to
-/// decrypt OAuth blobs that need the `expires_at` check; password-based
-/// protocols never trigger a decrypt.
+/// `source` is [`profile_auth_source`] of the profile. `accounts` is a
+/// pre-fetched set of vault keys to keep this O(1) per profile when called in
+/// a loop. The store handle is used only to decrypt OAuth blobs that need the
+/// `expires_at` check; password-based protocols never trigger a decrypt.
 pub fn derive_profile_auth_state(
     store: &CredentialStore,
     accounts: &HashSet<String>,
     profile_id: &str,
     protocol: &str,
+    source: AuthSource,
 ) -> &'static str {
     let server_key = format!("server_{}", profile_id);
+    match source {
+        AuthSource::NoSecret => return "valid",
+        // A saved password signs MEGAcmd in again; otherwise only the other
+        // program knows whether its session is alive.
+        AuthSource::External if accounts.contains(&server_key) => return "valid",
+        AuthSource::External => return "unknown",
+        AuthSource::ProtonSession => {
+            let own = format!("proton_native_session_{}", profile_id);
+            return if accounts.contains(&own) || accounts.contains("proton_native_session") {
+                "valid"
+            } else {
+                "no_credentials"
+            };
+        }
+        AuthSource::Vault => {}
+    }
     let oauth_key = oauth_vault_key_for_protocol(protocol);
 
     let has_server = accounts.contains(&server_key);
@@ -141,25 +284,130 @@ pub fn derive_profile_auth_state(
     }
 }
 
-/// Convenience: open the cached vault, snapshot the keyset once, and
-/// derive auth state for a single profile. Returns `unknown` when the
-/// vault isn't open (caller can't distinguish locked-vs-missing without
-/// it, and "unknown" is the safe default that doesn't claim readiness).
-pub fn auth_state_from_cache(profile_id: &str, protocol: &str) -> &'static str {
-    let Some(store) = CredentialStore::from_cache() else {
-        return "unknown";
-    };
-    let accounts: HashSet<String> = store
-        .list_accounts()
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
-    derive_profile_auth_state(&store, &accounts, profile_id, protocol)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    /// Each way a profile signs in, read from the profile as saved.
+    #[test]
+    fn where_a_sign_in_lives_is_read_from_the_profile() {
+        let cases = [
+            (
+                json!({"protocol": "proton", "options": {"proton_mode": "native"}}),
+                AuthSource::ProtonSession,
+            ),
+            (json!({"protocol": "proton"}), AuthSource::External),
+            (
+                json!({"protocol": "proton", "options": {"proton_mode": "cli"}}),
+                AuthSource::External,
+            ),
+            (
+                json!({"protocol": "mega", "options": {"mega_mode": "megacmd"}}),
+                AuthSource::External,
+            ),
+            (json!({"protocol": "mega"}), AuthSource::Vault),
+            (
+                json!({"protocol": "ftp", "username": ""}),
+                AuthSource::NoSecret,
+            ),
+            (
+                json!({"protocol": "ftp", "username": "Anonymous"}),
+                AuthSource::NoSecret,
+            ),
+            (
+                json!({"protocol": "ftp", "username": "alice"}),
+                AuthSource::Vault,
+            ),
+            (
+                json!({"protocol": "webdav", "options": {"anonymous": true}}),
+                AuthSource::NoSecret,
+            ),
+            (
+                json!({"protocol": "webdav", "options": {"anonymous": false}}),
+                AuthSource::Vault,
+            ),
+            (
+                json!({"protocol": "sftp", "options": {"private_key_path": "/k"}}),
+                AuthSource::NoSecret,
+            ),
+            (
+                json!({"protocol": "sftp", "options": {"privateKeyPath": "/k"}}),
+                AuthSource::NoSecret,
+            ),
+            (
+                json!({"protocol": "sftp", "options": {"private_key_path": " "}}),
+                AuthSource::Vault,
+            ),
+            (
+                json!({"protocol": "webdav", "providerId": "filen-desktop-webdav", "username": "u"}),
+                AuthSource::NoSecret,
+            ),
+            (
+                json!({"protocol": "s3", "providerId": "filen-desktop-s3"}),
+                AuthSource::NoSecret,
+            ),
+            (json!({"protocol": "mtp"}), AuthSource::NoSecret),
+            (json!({"protocol": "local"}), AuthSource::NoSecret),
+            (
+                json!({"protocol": "peer", "options": {"peerTicket": "t"}}),
+                AuthSource::NoSecret,
+            ),
+            (json!({"protocol": "peer"}), AuthSource::Vault),
+            (json!({"protocol": "googledrive"}), AuthSource::Vault),
+            (
+                json!({"protocol": "s3", "username": "key"}),
+                AuthSource::Vault,
+            ),
+        ];
+        for (profile, want) in cases {
+            assert_eq!(profile_auth_source(&profile), want, "{profile}");
+            assert_eq!(AuthSource::parse(want.as_str()), Some(want));
+        }
+    }
+
+    /// A profile that connects without `server_<id>` is not "not signed in":
+    /// these all read `no_credentials` while they connected, so an agent
+    /// skipped them.
+    #[test]
+    fn a_profile_that_signs_in_elsewhere_is_not_reported_unsigned() {
+        let dir = tempfile::tempdir().unwrap();
+        // Never opened: none of these sources decrypts anything.
+        let store = CredentialStore::from_verified_key(&dir.path().join("vault.db"), &[7u8; 32]);
+        let id = "srv_1";
+        let state = |accounts: &HashSet<String>, protocol: &str, source: AuthSource| {
+            derive_profile_auth_state(&store, accounts, id, protocol, source)
+        };
+        let none = HashSet::new();
+        assert_eq!(state(&none, "ftp", AuthSource::NoSecret), "valid");
+        assert_eq!(state(&none, "proton", AuthSource::External), "unknown");
+        assert_eq!(state(&none, "mega", AuthSource::External), "unknown");
+        assert_eq!(
+            state(&none, "proton", AuthSource::ProtonSession),
+            "no_credentials"
+        );
+        assert_eq!(state(&none, "ftp", AuthSource::Vault), "no_credentials");
+
+        let own: HashSet<String> = ["proton_native_session_srv_1".to_string()].into();
+        assert_eq!(state(&own, "proton", AuthSource::ProtonSession), "valid");
+        // Signed in before the profile was saved: the session is bound to it
+        // at its first connect.
+        let unbound: HashSet<String> = ["proton_native_session".to_string()].into();
+        assert_eq!(
+            state(&unbound, "proton", AuthSource::ProtonSession),
+            "valid"
+        );
+        // Another profile's session is not this one's.
+        let other: HashSet<String> = ["proton_native_session_srv_2".to_string()].into();
+        assert_eq!(
+            state(&other, "proton", AuthSource::ProtonSession),
+            "no_credentials"
+        );
+
+        let password: HashSet<String> = ["server_srv_1".to_string()].into();
+        assert_eq!(state(&password, "mega", AuthSource::External), "valid");
+        assert_eq!(state(&password, "ftp", AuthSource::Vault), "valid");
+    }
 
     #[test]
     fn oauth_key_mapping_covers_documented_protocols() {

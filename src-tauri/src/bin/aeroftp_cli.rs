@@ -17785,7 +17785,11 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                 let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
                 let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
-                    &store, &accounts, id, proto,
+                    &store,
+                    &accounts,
+                    id,
+                    proto,
+                    ftp_client_gui_lib::profile_auth_state::profile_auth_source(p),
                 );
                 let used = profile_effective_used(p);
                 let total = profile_effective_total(p);
@@ -27566,7 +27570,11 @@ fn safe_profile_records(
             let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
             let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
-                store, &accounts, id, proto,
+                store,
+                &accounts,
+                id,
+                proto,
+                ftp_client_gui_lib::profile_auth_state::profile_auth_source(p),
             );
             safe_profile_record(p, auth_state)
         })
