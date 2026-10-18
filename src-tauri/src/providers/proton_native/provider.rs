@@ -867,6 +867,9 @@ impl ProtonNativeProvider {
     }
 }
 
+/// The floor between two full scans of an AeroCloud folder on this backend.
+const MIN_FULL_SCAN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
 #[async_trait]
 impl StorageProvider for ProtonNativeProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -959,6 +962,16 @@ impl StorageProvider for ProtonNativeProvider {
 
     fn listing_is_authoritative(&self) -> bool {
         !self.shared.skipped_unreadable.load(Ordering::Relaxed)
+    }
+
+    /// Proton's integration rules ask clients to sync with Drive events and not
+    /// to "perform frequent recursive traversals of the file tree" (SDK
+    /// README, "Use event-based sync"), on pain of rate limits for the app and
+    /// the account. Until AeroCloud follows Drive events, a synced folder is
+    /// walked in full at most once an hour; local changes in between still go
+    /// up one path at a time.
+    fn min_full_scan_interval(&self) -> Option<std::time::Duration> {
+        Some(MIN_FULL_SCAN_INTERVAL)
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
@@ -2036,6 +2049,15 @@ mod tests {
         let info = p.storage_info().await.unwrap();
         assert_eq!((info.used, info.total, info.free), (300, 1000, 700));
         assert_eq!(p.checksum_capability("/").algorithms, vec!["sha1"]);
+    }
+
+    #[test]
+    fn aerocloud_walks_a_proton_folder_at_most_once_an_hour() {
+        let (p, _) = provider();
+        assert_eq!(
+            p.min_full_scan_interval(),
+            Some(std::time::Duration::from_secs(3600))
+        );
     }
 
     /// Uploads into one folder resolve it once: a write forgets only what it

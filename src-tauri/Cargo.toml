@@ -420,7 +420,7 @@ rusqlite = { version = "0.32", features = ["bundled", "hooks"] }     # progress_
 tracing-log = "0.2"                                                  # The log -> tracing bridge the CLI installs, for its log filter tests
 
 [features]
-default = ["aerorsync", "local-stt"]
+default = ["aerorsync", "local-stt", "proton-native"]
 custom-protocol = ["tauri/custom-protocol"]
 # Explicit opt-in for the vault-seeding Docker harness helper. Never default.
 # Its source stays outside src/bin so Tauri cannot rediscover a gated target.
@@ -454,9 +454,11 @@ aerorsync = ["dep:xxhash-rust", "dep:posix-acl", "dep:acl-sys"]
 local-stt = ["dep:hound", "dep:whisper-rs"]
 
 # proton-native: in-process Proton Drive client ported from Proton's official
-# Drive SDK (src/providers/proton_native). Development only, never default,
-# never shipped: the production path is the official CLI wrapper
-# (providers/proton.rs) until the roadmap gates in APPENDIX-PROTON-DRIVE pass.
+# Drive SDK (src/providers/proton_native), on Proton's own Rust crypto crates.
+# Default-on: a Proton profile chooses it per profile (the API tab, option
+# proton_mode = "native"); every existing profile keeps the official CLI
+# wrapper (providers/proton.rs), and a build without this feature refuses a
+# native profile instead of falling back to the CLI.
 proton-native = ["dep:proton-crypto-account"]
 
 # Strada C: Docker-harness lane cfg flags. Declared here so

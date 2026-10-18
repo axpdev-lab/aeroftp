@@ -3,8 +3,8 @@
 //! The in-process alternative to [`super::proton`], which drives Proton's
 //! official `proton-drive` CLI. A profile chooses it with the option
 //! `proton_mode = "native"` (the API tab of the Proton Drive form); a profile
-//! without the option stays on the CLI. It is compiled only with the
-//! `proton-native` cargo feature, off by default: a build without it refuses
+//! without the option stays on the CLI. It is compiled with the
+//! `proton-native` cargo feature, on by default: a build without it refuses
 //! a native profile instead of falling back to the CLI. [`provider`] is the
 //! `StorageProvider`, [`commands`] the sign-in commands and [`vault`] where
 //! the session is kept.

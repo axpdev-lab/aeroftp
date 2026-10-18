@@ -178,7 +178,9 @@ jobs:
       # entirely while keeping the native rsync driver on. Cargo.toml
       # documents that exact combination as the workaround for the same
       # drift, so this lane is not inventing a configuration, it is running
-      # the one already declared.
+      # the one already declared. `proton-native` is added back by name: it is
+      # a default feature, and its tests (the native Proton Drive client) must
+      # run on Windows too.
       #
       # One declared limit, leaning the way that costs us: the configuration
       # under test is NOT the shipping one (speech is off), so this proves the
@@ -210,7 +212,7 @@ jobs:
         timeout-minutes: 40
         env:
           AEROFTP_EMBED_TEST_MANIFEST: "1"
-        run: cargo test --locked --lib --no-default-features --features aerorsync --no-run --config 'build.warnings="deny"'
+        run: cargo test --locked --lib --no-default-features --features aerorsync,proton-native --no-run --config 'build.warnings="deny"'
 
       # The step after this one must run the binary built above and compile
       # nothing. Until 2026-10-11 it recompiled the whole lib first, 6m42s to
@@ -231,7 +233,7 @@ jobs:
           AEROFTP_EMBED_TEST_MANIFEST: "1"
           CARGO_LOG: cargo::core::compiler::fingerprint=info
         run: |
-          $messages = cargo test --locked --lib --no-default-features --features aerorsync --no-run --message-format=json
+          $messages = cargo test --locked --lib --no-default-features --features aerorsync,proton-native --no-run --message-format=json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $artifacts = @($messages | ForEach-Object { $_ | ConvertFrom-Json } |
             Where-Object { $_.reason -eq 'compiler-artifact' })
@@ -263,4 +265,4 @@ jobs:
         # Its own budget, like the expensive steps in the delta-sync Linux jobs:
         # if this step dies it has to die naming itself.
         timeout-minutes: 45
-        run: cargo test --locked --lib --no-default-features --features aerorsync --no-fail-fast
+        run: cargo test --locked --lib --no-default-features --features aerorsync,proton-native --no-fail-fast
