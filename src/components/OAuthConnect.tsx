@@ -252,7 +252,11 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                   {copiedUri ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">{t('connection.oauth.redirectUriHelp')}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {t(provider === 'googledrive' || provider === 'googlephotos'
+                  ? 'connection.oauth.redirectUriNoteGoogle'
+                  : 'connection.oauth.redirectUriHelp')}
+              </p>
             </div>
           )}
 

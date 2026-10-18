@@ -46,6 +46,27 @@ async function render(provider: Provider) {
 const field = (name: 'Id' | 'Secret') => container.querySelector<HTMLInputElement>(`input[placeholder="connection.oauth.enterClient${name}"]`)!;
 
 describe.each<Provider>(['googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk'])('%s OAuth form', provider => {
+    it('shows the backend callback with the appropriate registration guidance', async () => {
+        const callback = provider === 'onedrive' || provider === 'pcloud' || provider === 'yandexdisk'
+            ? 'http://localhost:49172/callback'
+            : 'http://127.0.0.1:49172/callback';
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation((command: string, args: { account?: string }) =>
+            command === 'oauth2_redirect_uri' ? Promise.resolve(callback) : previous(command, args));
+        await render(provider);
+        expect(container.querySelector('code')?.textContent).toBe(callback);
+        const isGoogle = provider === 'googledrive' || provider === 'googlephotos';
+        expect(container.textContent).toContain(isGoogle
+            ? 'connection.oauth.redirectUriNoteGoogle'
+            : 'connection.oauth.redirectUriHelp');
+        expect(container.textContent).not.toContain(isGoogle
+            ? 'connection.oauth.redirectUriHelp'
+            : 'connection.oauth.redirectUriNoteGoogle');
+        const copyButton = container.querySelector<HTMLButtonElement>('button[title="common.copy"]')!;
+        await act(async () => copyButton.click());
+        expect(mocks.invoke).toHaveBeenCalledWith('copy_to_clipboard', { text: callback });
+    });
+
     it.each(['modern', 'config_oauth_clients', 'config_aeroftp_oauth_settings'])('hydrates the imported %s app pair', async format => {
         const slug = provider === 'googlephotos' ? 'googledrive' : provider;
         vault = format === 'modern'

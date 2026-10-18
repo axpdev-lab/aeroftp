@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Pasirinkite regioną, atitinkantį jūsų Zoho paskyrą (pvz., zoho.eu Europai).",
                 "redirectUri": "Peradresavimo URI",
                 "redirectUriHelp": "Nukopijuokite šį URL ir įklijuokite jį kaip peradresavimo URI savo kūrėjo programos nustatymuose.",
-                "redirectUriNoteGoogle": "Rekomenduojama: sukurkite \"Desktop app\" tipo OAuth Client ID Google Cloud Console (redirect URI nereikalingas). Jei naudojate \"Web application\" tipą, nustatykite redirect URI į http://127.0.0.1.",
+                "redirectUriNoteGoogle": "Rekomenduojama: Google Cloud Console sukurkite „Stalinio kompiuterio programa“ tipo OAuth kliento ID; peradresavimo URI registruoti nereikia. „Žiniatinklio programa“ tipo klientui užregistruokite tiksliai tokį peradresavimo URI, koks rodomas aukščiau, įskaitant prievadą ir kelią /callback.",
                 "enablePhotosApi": "Įsitikinkite, kad Photos Library API įjungta jūsų Google Cloud Console.",
                 "enableDriveApi": "Įsitikinkite, kad Google Drive API įjungta jūsų Google Cloud Console."
             },

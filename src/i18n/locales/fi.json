@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Valitse Zoho-tilisi mukainen alue (esim. zoho.eu Euroopalle).",
                 "redirectUri": "Uudelleenohjaus-URI",
                 "redirectUriHelp": "Kopioi tämä URL ja liitä se uudelleenohjaus-URI:ksi kehittäjäsovelluksesi asetuksiin.",
-                "redirectUriNoteGoogle": "Suositus: luo \"Desktop app\" -tyyppinen OAuth Client ID Google Cloud Consolessa (redirect URI ei tarvita). Jos käytät \"Web application\" -tyyppiä, aseta redirect URI arvoksi http://127.0.0.1.",
+                "redirectUriNoteGoogle": "Suositus: luo Google Cloud Console -palvelussa OAuth-asiakastunnus, jonka tyyppi on ”Työpöytäsovellus”; uudelleenohjauksen URI-osoitetta ei tarvitse rekisteröidä. Jos asiakkaan tyyppi on ”Verkkosovellus”, rekisteröi täsmälleen yllä näkyvä uudelleenohjauksen URI-osoite, mukaan lukien portti ja polku /callback.",
                 "enablePhotosApi": "Varmista, että Photos Library API on käytössä Google Cloud Consolessa.",
                 "enableDriveApi": "Varmista, että Google Drive API on käytössä Google Cloud Consolessa."
             },
