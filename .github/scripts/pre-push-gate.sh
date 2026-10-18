@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
+# Fixtures clear their environment before spawning Node. Use the executable
+# itself instead of an NVM shell wrapper that depends on HOME/NVM_DIR.
+NODE_RUNTIME="$(node -p 'process.execPath')"
+export PATH="$(dirname "$NODE_RUNTIME"):$PATH"
+
 # Keep aligned with the deterministic checks run by GitHub Actions. Task-specific
 # tests supplement this gate; they never replace it.
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
