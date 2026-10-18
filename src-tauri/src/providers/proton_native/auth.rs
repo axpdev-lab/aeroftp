@@ -184,6 +184,13 @@ async fn wait_with_timings(
             Err(other) => return Err(other),
         };
 
+        if cancel.is_cancelled() {
+            return Err(ProtonError::SignInCancelled);
+        }
+        if pending.started.elapsed() > max_poll_time {
+            return Err(ProtonError::SignInTimedOut);
+        }
+
         let key_password = decrypt_key_password(&pending.encryption_key, &status.payload)?;
         let session = ProtonSession {
             tokens: SessionTokens {
@@ -428,6 +435,78 @@ mod tests {
             Some("acc-9".to_owned()),
             "the API client must now carry the new session"
         );
+    }
+
+    #[tokio::test]
+    async fn a_late_fork_response_cannot_replace_the_existing_tokens() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        for cancelled in [true, false] {
+            let cancel = CancellationToken::new();
+            let peer_cancel = cancel.clone();
+            let polls = Arc::new(AtomicUsize::new(0));
+            let peer_polls = Arc::clone(&polls);
+            let payload = seal(&[3u8; 32], &[5u8; 12], br#"{"keyPassword":"late-key"}"#);
+            let app = axum::Router::new().route(
+                "/auth/v4/sessions/forks/{selector}",
+                axum::routing::get(move || {
+                    let cancel = peer_cancel.clone();
+                    let payload = payload.clone();
+                    peer_polls.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if cancelled {
+                            cancel.cancel();
+                        } else {
+                            tokio::time::sleep(Duration::from_millis(1100)).await;
+                        }
+                        format!(
+                            r#"{{"Code":1000,"Payload":"{payload}","UID":"late","AccessToken":"late-token"}}"#
+                        )
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let api = ProtonApi::with_base_url(
+                format!("http://{addr}"),
+                "external-drive-aeroftp@1.2.3-alpha".into(),
+            );
+            api.set_tokens(Some(SessionTokens {
+                uid: "existing".into(),
+                access_token: SecretString::from("existing-token"),
+                refresh_token: None,
+            }))
+            .await;
+            let pending = PendingSignIn {
+                selector: "sel".into(),
+                sign_in_url: String::new(),
+                encryption_key: Zeroizing::new([3u8; 32]),
+                started: Instant::now(),
+            };
+            let result = wait_with_timings(
+                &api,
+                pending,
+                &cancel,
+                Duration::ZERO,
+                Duration::ZERO,
+                if cancelled {
+                    Duration::from_secs(10)
+                } else {
+                    Duration::from_secs(1)
+                },
+            )
+            .await;
+            server.abort();
+            assert_eq!(polls.load(Ordering::SeqCst), 1);
+            if cancelled {
+                assert!(matches!(result, Err(ProtonError::SignInCancelled)));
+            } else {
+                assert!(matches!(result, Err(ProtonError::SignInTimedOut)));
+            }
+            assert_eq!(api.tokens().await.unwrap().uid, "existing");
+        }
     }
 
     #[tokio::test]

@@ -25178,14 +25178,14 @@ async fn proton_status(format: OutputFormat, id: &str, name: &str) -> i32 {
 async fn proton_sign_out(format: OutputFormat, id: &str, name: &str) -> i32 {
     use ftp_client_gui_lib::providers::proton_native::vault;
 
-    let had_session = match vault::load_session(Some(id)) {
-        Ok(session) => session.is_some(),
+    let (session_id, had_session) = match vault::saved_session_target(Some(id)) {
+        Ok(target) => target,
         Err(e) => {
             print_error(format, &e.to_string(), 5);
             return 5;
         }
     };
-    if let Err(e) = vault::end_session(Some(id)).await {
+    if let Err(e) = vault::end_session(session_id).await {
         print_error(format, &format!("Proton sign-out failed: {e}"), 5);
         return 5;
     }
