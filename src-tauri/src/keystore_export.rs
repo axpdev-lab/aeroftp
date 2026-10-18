@@ -1587,11 +1587,12 @@ struct ProfileStepSnapshot {
     blob: Option<String>,
 }
 
+/// Returns the list stored, whose names the write made unique.
 fn save_partition_list(
     store: &crate::credential_store::CredentialStore,
     db: &Path,
     profiles: &[serde_json::Value],
-) -> Result<(), String> {
+) -> Result<Vec<serde_json::Value>, String> {
     let mut conn =
         rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -1690,11 +1691,14 @@ fn apply_profile_decisions(
         // The partition is the list My Servers loads, and loading it
         // realigns the legacy blob to it (#924): writing only the blob would
         // let the next load put back the restored list and drop the decisions.
-        if let Some(db) = db.as_deref() {
-            save_partition_list(store, db, &outcome.profiles)
-                .map_err(|e| format!("save the chosen server list: {e}"))?;
-        }
-        crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &outcome.profiles)?;
+        // The blob takes the list as stored: no two profiles of one name,
+        // with or without a partition (`util::profile_name`).
+        let stored = match db.as_deref() {
+            Some(db) => save_partition_list(store, db, &outcome.profiles)
+                .map_err(|e| format!("save the chosen server list: {e}"))?,
+            None => crate::util::profile_name::unique_profile_names(&[], &outcome.profiles).0,
+        };
+        crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &stored)?;
         Ok(())
     })();
 
@@ -1934,7 +1938,15 @@ fn import_keystore_with_store(
             Err(e) => return Err(from_store_error(e)),
         };
         originals.insert(account.clone(), original);
-        staged.push((account.clone(), value.clone()));
+        // A backup made before profile names were unique can carry two of
+        // one name: the first keeps it, the others get " (1)", " (2)", ...,
+        // as a restored partition is put right below.
+        let value = if account == "config_server_profiles" {
+            with_unique_profile_names(value)
+        } else {
+            value.clone()
+        };
+        staged.push((account.clone(), value));
     }
 
     // Emit importing phase start
@@ -2142,6 +2154,7 @@ fn import_keystore_with_store(
     // out of the restore is written by the plan below, blob included.
     if partition_in_restore {
         if let Some(cfg) = config_dir {
+            put_right_restored_profile_names(store, cfg);
             refresh_legacy_profiles_blob(store, cfg, "import (after restore)");
         }
     }
@@ -2286,6 +2299,38 @@ fn refresh_legacy_profiles_blob(
     }
 }
 
+/// A restored `user_partitions.db` was written whole, not through the
+/// partition's writes, so a backup made before profile names were unique can
+/// bring two profiles of one name back: each list this machine opens gets
+/// the names its next write would store, before the blob mirrors it.
+fn put_right_restored_profile_names(
+    store: &crate::credential_store::CredentialStore,
+    config_dir: &Path,
+) {
+    let db_path = config_dir.join("user_partitions.db");
+    match crate::user_partitions::put_right_profile_names_in_db(store, &db_path) {
+        Ok((0, 0)) => {}
+        Ok((renamed, left)) => tracing::info!(
+            "Keystore import: {renamed} restored profile(s) renamed to a free name; \
+             {left} passphrase account(s) get theirs on their next write"
+        ),
+        Err(e) => tracing::warn!("Keystore import: restored profile names not checked: {e}"),
+    }
+}
+
+/// `list_json` with no two profiles of one name, the first of each name
+/// keeping it; `list_json` as it is when nothing changes or it is not a list.
+fn with_unique_profile_names(list_json: &str) -> String {
+    let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(list_json) else {
+        return list_json.to_string();
+    };
+    let (stored, renamed) = crate::util::profile_name::unique_profile_names(&list, &list);
+    if renamed.is_empty() {
+        return list_json.to_string();
+    }
+    serde_json::to_string(&stored).unwrap_or_else(|_| list_json.to_string())
+}
+
 /// Merge two server profile JSON arrays by "id" field.
 /// Returns union: existing profiles + any backup profiles not already present.
 fn merge_profile_lists(existing_json: &str, backup_json: &str) -> String {
@@ -2298,6 +2343,7 @@ fn merge_profile_lists(existing_json: &str, backup_json: &str) -> String {
         .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
         .collect();
 
+    let before = existing.clone();
     let mut added = 0usize;
     for profile in backup {
         if let Some(id) = profile.get("id").and_then(|v| v.as_str()) {
@@ -2307,6 +2353,10 @@ fn merge_profile_lists(existing_json: &str, backup_json: &str) -> String {
             }
         }
     }
+    // The merged list goes to the blob without the partition's write: a
+    // backup profile whose name is taken gets the first free " (1)",
+    // " (2)", ..., by the rule that write applies (`util::profile_name`).
+    let (existing, _) = crate::util::profile_name::unique_profile_names(&before, &existing);
 
     if added > 0 {
         tracing::info!(
@@ -3080,8 +3130,105 @@ mod tests {
         );
     }
 
+    /// A backup made before profile names were unique, restored whole with
+    /// "Overwrite" and no review: the restored partition and the blob come out
+    /// with no two profiles of one name (the first keeps it), so `--profile`
+    /// and the lists can tell them apart before any write.
+    #[test]
+    fn an_overwrite_restore_of_an_older_backup_stores_no_two_profiles_of_one_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let old = vec![profile("srv_a", "Lab"), profile("srv_b", "lab")];
+        let root = store.derive_user_partition_wrapping_key();
+        {
+            let mut conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+            crate::user_partitions::migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+            let user = crate::user_partitions::active_user_id(&conn)
+                .unwrap()
+                .unwrap();
+            crate::user_partitions::store_profiles_as_an_older_build(&conn, &root, user, &old);
+        }
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&old).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&cfg.join("user_partitions.db"))
+                .unwrap()
+                .unwrap(),
+        );
+        let backup = dir.path().join("older.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let restored_cfg = dir.path().join("restored");
+        let same_machine = throwaway_store(dir.path(), "same-vault.db");
+        import_keystore_with_store(
+            &same_machine,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&restored_cfg),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let expected = vec![profile("srv_a", "Lab"), profile("srv_b", "lab (1)")];
+        assert_eq!(my_servers(&same_machine, &restored_cfg), expected);
+        assert_eq!(blob_of(&same_machine), expected);
+    }
+
+    /// The same backup without a partition (vault only): the blob it carries
+    /// is the list, and it is stored with no two profiles of one name.
+    #[test]
+    fn a_vault_only_restore_of_an_older_backup_stores_no_two_profiles_of_one_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&vec![profile("srv_a", "Lab"), profile("srv_b", "Lab")]).unwrap(),
+        );
+        let backup = dir.path().join("vault-only.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let other_machine = throwaway_store(dir.path(), "other-vault.db");
+        import_keystore_with_store(
+            &other_machine,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            blob_of(&other_machine),
+            vec![profile("srv_a", "Lab"), profile("srv_b", "Lab (1)")]
+        );
+    }
+
     /// "Skip existing" unions the backup's list with the local blob. A frozen
     /// local blob put the locally deleted profile back into the union.
+    /// A backup profile whose name a profile of this machine has gets the
+    /// first free " (1)", as every import does.
+    #[test]
+    fn a_merged_backup_profile_with_a_taken_name_gets_the_next_free_number() {
+        let existing = r#"[{"id":"a","name":"Lab"}]"#;
+        let backup = r#"[{"id":"a","name":"Lab"},{"id":"b","name":"lab"},{"id":"c","name":"Lab"}]"#;
+        let merged: Vec<serde_json::Value> =
+            serde_json::from_str(&merge_profile_lists(existing, backup)).unwrap();
+        let names: Vec<&str> = merged.iter().map(|p| p["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Lab", "lab (1)", "Lab (2)"]);
+    }
+
     #[test]
     fn skip_existing_merges_into_the_current_list() {
         let dir = tempfile::tempdir().unwrap();

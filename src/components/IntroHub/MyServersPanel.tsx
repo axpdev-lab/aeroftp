@@ -815,8 +815,7 @@ export function MyServersPanel({
                 setOverIdx(null);
                 return;
             }
-            await storeSavedServerProfiles(updated, false, profilesUserId);
-            setServers(updated);
+            setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
         } catch (err) {
             logger.warn('Saved profile operation failed', err);
             window.dispatchEvent(new CustomEvent('aeroftp-toast', {
@@ -1404,21 +1403,23 @@ export function MyServersPanel({
             // SavedServers duplicate handler. The list has no id/order sort (array
             // position IS the order), so prepending made the copy jump to the top.
             const updated = [...currentServers, dup];
-            await storeSavedServerProfiles(updated, false, profilesUserId);
-            setServers(updated);
+            const stored = await storeSavedServerProfiles(updated, false, profilesUserId);
+            setServers(stored);
+            // The name the copy was stored with: " (1)" when another holds it.
+            const copy = stored.find(s => s.id === dup.id) ?? dup;
             // Log the same two entries as an edit that overlaps an existing profile,
             // so the duplicate action is traceable: a "potential duplicate" warning
             // (the copy shares the source's endpoint+username) then a confirmation.
-            const dedupKey = getStorageDedupKey(dup);
+            const dedupKey = getStorageDedupKey(copy);
             logActivity(
                 'PROFILE_DUPLICATE',
-                `Duplicate profile detected: "${dup.name}" overlaps with "${server.name}"`,
+                `Duplicate profile detected: "${copy.name}" overlaps with "${server.name}"`,
                 'success',
                 `dedupKey=${dedupKey}`,
             );
             logActivity(
                 'PROFILE_SAVE',
-                `Profile duplicated: "${server.name}" → "${dup.name}"`,
+                `Profile duplicated: "${server.name}" → "${copy.name}"`,
                 'success',
                 `dedupKey=${dedupKey}`,
             );
@@ -1444,8 +1445,7 @@ export function MyServersPanel({
             if (trimmed && trimmed !== server.name) {
                 const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
                 const updated = currentServers.map(s => s.id === server.id ? { ...s, name: trimmed } : s);
-                await storeSavedServerProfiles(updated, false, profilesUserId);
-                setServers(updated);
+                setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
             }
             setRenamingId(null);
         } catch (err) {
@@ -1516,8 +1516,7 @@ export function MyServersPanel({
             if (!deleteTarget) return;
             const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
             const updated = currentServers.filter(s => s.id !== deleteTarget.id);
-            await storeSavedServerProfiles(updated, false, profilesUserId);
-            setServers(updated);
+            setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
             deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
             // Drop the deleted profile from any group it belonged to (#320).
             pruneServerFromGroups(deleteTarget.id).catch(() => {});

@@ -603,6 +603,12 @@ pub fn apply(
             profiles.extend(resolve(id, &mut ops));
         }
     }
+    // A profile the backup adds, renames or copies onto a name this
+    // machine's list holds gets the first free " (1)", " (2)", ...; this
+    // machine's own profiles keep their names. The rule every profile write
+    // applies (`util::profile_name`), against the list the plan was read
+    // from: the partition the write lands in may already be the backup's.
+    let (profiles, _) = crate::util::profile_name::unique_profile_names(&inputs.local, &profiles);
 
     Ok(PlanOutcome {
         profiles,
@@ -839,6 +845,38 @@ mod tests {
         assert_eq!(op(&out.secret_ops, "server_srv_c"), Some(Some("pw-c")));
         // The rejected addition leaves nothing behind in the vault.
         assert_eq!(op(&out.secret_ops, "server_srv_d"), Some(None));
+    }
+
+    /// A profile named by the backup (added, or kept as a copy) whose name a
+    /// profile of this machine has gets the first free " (1)", as every import
+    /// does; this machine's profiles keep theirs.
+    #[test]
+    fn a_backup_profile_with_a_taken_name_gets_the_next_free_number() {
+        let mut taken = inputs(false);
+        taken.backup.as_mut().unwrap()[2]["name"] = json!("gamma");
+        let decisions = [ProfileDecisionInput {
+            id: "srv_b".into(),
+            decision: ProfileDecision::Both,
+            copy_name: Some("Beta".into()),
+        }];
+        let out = apply(&taken, &decisions, &fp(&taken), &mut || {
+            "srv_copy".to_string()
+        })
+        .unwrap();
+        assert_eq!(
+            ids(&out.profiles),
+            vec!["srv_a", "srv_b", "srv_copy", "srv_c", "srv_d"]
+        );
+        let name = |id: &str| {
+            out.profiles
+                .iter()
+                .find(|p| profile_id(p) == Some(id))
+                .map(|p| p["name"].clone())
+        };
+        assert_eq!(name("srv_b"), Some(json!("Beta")));
+        assert_eq!(name("srv_copy"), Some(json!("Beta (1)")));
+        assert_eq!(name("srv_c"), Some(json!("Gamma")));
+        assert_eq!(name("srv_d"), Some(json!("gamma (1)")));
     }
 
     #[test]

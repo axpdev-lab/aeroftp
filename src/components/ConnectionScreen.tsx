@@ -1218,25 +1218,27 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    const persistProfilesForSave = async (profiles: ServerProfile[], credentials?: ProfileCredentialJournal, userId?: number): Promise<boolean> => {
+    const persistProfilesForSave = async (profiles: ServerProfile[], credentials?: ProfileCredentialJournal, userId?: number): Promise<ServerProfile[] | null> => {
         // `userId` binds the write to the account the list was read from (see
         // readSavedServerProfilesForWrite): a switch in between refuses it.
+        // The list returned is the one stored, names included: a name another
+        // profile holds is stored with " (1)", " (2)", ... (null: not saved).
         try {
             credentials?.assertReady();
-            await storeSavedServerProfiles(profiles, false, userId);
+            const stored = await storeSavedServerProfiles(profiles, false, userId);
             credentials?.commit();
-            return true;
+            return stored;
         } catch (err) {
             try {
                 await credentials?.rollback();
             } catch (restoreError) {
                 logger.warn('Saved profile credential restoration failed', restoreError);
                 setGitHubAlert({ title: t('toast.saveFailed'), message: `${String(err)}; ${String(restoreError)}`, type: 'error' });
-                return false;
+                return null;
             }
             logger.warn('Saved profiles could not be written for Save', err);
             setGitHubAlert({ title: t('toast.saveFailed'), message: String(err), type: 'error' });
-            return false;
+            return null;
         }
     };
 
@@ -1459,7 +1461,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 return s;
             });
 
-            if (!(await persistProfilesForSave(updatedServers, credentials, profilesUserId))) return;
+            const storedServers = await persistProfilesForSave(updatedServers, credentials, profilesUserId);
+            if (!storedServers) return;
             if (duplicate) {
                 // The duplicate is recorded in the Activity Log only. A blocking/
                 // flashing alert on save was pure friction (it appeared for a flash
@@ -1482,7 +1485,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
             await syncPersistedModeCredentials(editingProfileId);
             setSavedServersUpdate(Date.now());
-            const savedServer = updatedServers.find((s) => s.id === editingProfileId);
+            const savedServer = storedServers.find((s) => s.id === editingProfileId);
             if (savedServer) {
                 logActivity(
                     'PROFILE_SAVE',
@@ -1532,7 +1535,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             };
 
             const newServers = [...existingServers, newServer];
-            if (!(await persistProfilesForSave(newServers, credentials, profilesUserId))) return;
+            const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId);
+            if (!storedServers) return;
             if (duplicate) {
                 // Activity-Log only (no flashing alert on save); see the edit path.
                 const dedupKey = getStorageDedupKey({
@@ -1553,13 +1557,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
             await syncPersistedModeCredentials(newId);
             setSavedServersUpdate(Date.now());
+            const savedServer = storedServers.find((s) => s.id === newId) ?? newServer;
             logActivity(
                 'PROFILE_SAVE',
-                `Profile saved: "${newServer.name}"`,
+                `Profile saved: "${savedServer.name}"`,
                 'success',
-                `dedupKey=${getStorageDedupKey(newServer)}`,
+                `dedupKey=${getStorageDedupKey(savedServer)}`,
             );
-            void warnIfSavedByOtherAccount(newServer, undefined, t, logActivity);
+            void warnIfSavedByOtherAccount(savedServer, undefined, t, logActivity);
         }
         return true;
     };
@@ -1754,9 +1759,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         );
         // A failed write keeps the editor open with the edits, and logs no
         // "Profile updated".
+        let stored: ServerProfile[];
         try {
             credentials.assertReady();
-            await storeSavedServerProfiles(updated, false, profilesUserId);
+            stored = await storeSavedServerProfiles(updated, false, profilesUserId);
             credentials.commit();
         } catch (err) {
             try {
@@ -1771,7 +1777,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             return;
         }
         setSavedServersUpdate(Date.now());
-        const savedServer = updated.find((s) => s.id === editingProfileId);
+        const savedServer = stored.find((s) => s.id === editingProfileId);
         if (savedServer) {
             logActivity(
                 'PROFILE_SAVE',
@@ -1788,7 +1794,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             handleCancelEdit();
             setGitHubAlert({
                 title: t('common.save'),
-                message: saveName,
+                // As stored: " (1)" when another profile holds the name.
+                message: savedServer?.name ?? saveName,
                 type: 'info',
             });
         }
@@ -1969,7 +1976,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         } else {
             newServers.push(newServer);
         }
-        if (!(await persistProfilesForSave(newServers, credentials, profilesUserId))) return;
+        const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId);
+        if (!storedServers) return;
         // Persist the duplicate's own per-mode credential snapshots (issue
         // #215): the original keeps its own, so this only writes the new id.
         await syncPersistedModeCredentials(newId);
@@ -1983,7 +1991,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSavedServersUpdate(Date.now());
         // MU-7: compared with the original, so a copy of the same account
         // says nothing new and a copy re-pointed elsewhere is probed.
-        void warnIfSavedByOtherAccount(newServer, originalServer, t, logActivity);
+        void warnIfSavedByOtherAccount(storedServers.find((s) => s.id === newServer.id) ?? newServer, originalServer, t, logActivity);
 
         // Reset form
         endEditSession();
@@ -2099,7 +2107,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Replace in slot: remove original, insert new at the same index
         const newServers = [...existingServers];
         newServers.splice(originalIdx, 1, newServer);
-        if (!(await persistProfilesForSave(newServers, credentials, profilesUserId))) return;
+        const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId);
+        if (!storedServers) return;
         // Migrate the persisted per-mode credential snapshots from the old id
         // to the converted one (or clear them when the opt-in is off), so a
         // later mode switch on the converted profile restores without asking.
@@ -2115,7 +2124,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // MU-7: a convert stays on the same account, which the comparison
         // with the original skips; only a convert that lands on a different
         // account identity is probed.
-        void warnIfSavedByOtherAccount(newServer, originalServer, t, logActivity);
+        void warnIfSavedByOtherAccount(storedServers.find((s) => s.id === newServer.id) ?? newServer, originalServer, t, logActivity);
 
         // 10s Undo toast (via window event so we don't need to plumb a
         // toast handle through props; App.tsx listens for
@@ -3650,9 +3659,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             customIconUrl: v.customIconUrl,
             options: { ...(s.options || {}), peerLocalFolder: v.localFolder },
         } : s);
-        await storeSavedServerProfiles(updated, false, profilesUserId);
+        const stored = await storeSavedServerProfiles(updated, false, profilesUserId);
         setSavedServersUpdate(Date.now());
-        const saved = updated.find((s) => s.id === id);
+        const saved = stored.find((s) => s.id === id);
         if (saved) {
             logActivity('PROFILE_SAVE', `Profile updated: "${saved.name}"`, 'success', `dedupKey=${getStorageDedupKey(saved)}`);
         }

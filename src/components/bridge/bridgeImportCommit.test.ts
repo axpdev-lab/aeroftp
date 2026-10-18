@@ -41,9 +41,24 @@ describe('the import callback and the commit helper together', () => {
         vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
             state.writes += 1;
             state.profiles = [...profiles];
+            return state.profiles;
         });
         return state;
     };
+
+    // The vault, not the import, settles the names: one already held is
+    // stored with " (1)", and the list handed back is the one stored.
+    it('hands back the list as the vault stored it, names included', async () => {
+        const vault = fakeVault([base]);
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
+            vault.profiles = profiles.map((p, i) => (i > 0 && p.name === base.name ? { ...p, name: `${p.name} (1)` } : p));
+            return vault.profiles;
+        });
+        const imported: ServerProfile = { ...base, id: 'imported' };
+        const merged = await appendImportedProfiles([imported]);
+        expect(merged.map(s => s.name)).toEqual([base.name, `${base.name} (1)`]);
+        expect(merged).toEqual(vault.profiles);
+    });
 
     it('does not resurrect the profile it just replaced when that leaves the vault empty', async () => {
         const vault = fakeVault([base]);
@@ -67,7 +82,7 @@ describe('the import callback and the commit helper together', () => {
         vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
             calls += 1;
             if (calls === 2) throw new Error('vault write failed');
-            await write(profiles);
+            return write(profiles);
         });
         const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
         const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
@@ -87,7 +102,7 @@ describe('the import callback and the commit helper together', () => {
         vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
             calls += 1;
             if (calls >= 2) throw new Error('vault write failed');
-            await write(profiles);
+            return write(profiles);
         });
         const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
         const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),

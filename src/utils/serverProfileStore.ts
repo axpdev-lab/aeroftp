@@ -3,6 +3,7 @@
 
 import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
+import { uniqueProfileNames } from './uniqueProfileName';
 import {
     accountChangeGeneration,
     loadActiveServerProfiles,
@@ -182,19 +183,33 @@ export interface ProfilesChangedDetail {
 let profilesWriteGeneration = 0;
 export const savedProfilesGeneration = (): number => profilesWriteGeneration + accountChangeGeneration();
 
+/**
+ * Resolves to the list stored. No two profiles share a name: one saved onto a
+ * name another profile holds is stored with the first free " (1)", " (2)",
+ * ... (`util::profile_name` in the backend, `uniqueProfileNames` for the
+ * legacy store), so a caller that keeps the list shows this one, and the
+ * change event carries it.
+ */
 export const storeSavedServerProfiles = async (
     profiles: ServerProfile[],
     connectionMetadata = false,
     expectedUserId?: number,
-): Promise<void> => {
+): Promise<ServerProfile[]> => {
     const accountBefore = accountChangeGeneration();
+    let stored: ServerProfile[];
     try {
-        await saveActiveServerProfiles(profiles, expectedUserId);
+        const written = await saveActiveServerProfiles(profiles, expectedUserId);
+        stored = Array.isArray(written) ? written : profiles;
     } catch (error) {
         // A list bound to an account never falls back to the legacy store,
         // which has no accounts.
         if (expectedUserId !== undefined || !canUseLegacyProfileFallback(error)) throw error;
-        await secureStore(SAVED_SERVERS_ACCOUNT, profiles);
+        // The list the legacy store holds decides which profile had a name
+        // first, as the partition's does in the backend: a profile saved in
+        // front of the one holding its name must not take the name from it.
+        const held = (await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT)) ?? readLocalProfiles();
+        stored = uniqueProfileNames(Array.isArray(held) ? held : [], profiles);
+        await secureStore(SAVED_SERVERS_ACCOUNT, stored);
     }
     profilesWriteGeneration += 1;
     try {
@@ -205,11 +220,12 @@ export const storeSavedServerProfiles = async (
     try {
         const sameAccount = accountChangeGeneration() === accountBefore;
         window.dispatchEvent(new CustomEvent<ProfilesChangedDetail>(PROFILES_CHANGED_EVENT, {
-            detail: sameAccount ? { connectionMetadata, profiles } : { connectionMetadata },
+            detail: sameAccount ? { connectionMetadata, profiles: stored } : { connectionMetadata },
         }));
     } catch {
         // SSR / non-DOM environment: dispatch is a best-effort notification.
     }
+    return stored;
 };
 
 export const mergeSavedServerProfile = async (
@@ -241,7 +257,8 @@ export const mergeSavedServerProfile = async (
             next.push(await updater(profile));
         }
         result = found ? next : profiles;
-        if (found) await storeSavedServerProfiles(result, connectionMetadata, read.userId);
+        // As stored: a name another profile holds comes back as " (1)".
+        if (found) result = await storeSavedServerProfiles(result, connectionMetadata, read.userId);
     };
 
     const queued = profileWriteQueue.then(run, run);
