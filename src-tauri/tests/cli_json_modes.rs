@@ -10,8 +10,11 @@
 //! vault, each command is run in both modes and must leave exactly one JSON
 //! document on stdout.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 /// `rclone obscure 'json modes probe secret'`: the import stores it, so the
 /// profile has a credential to export.
@@ -30,13 +33,8 @@ fn describe(out: &Output) -> String {
 
 /// The CLI on the vault in `config`, with nothing of this machine's.
 fn cli(config: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
+    isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), config)
         .args(args)
-        .env("XDG_CONFIG_HOME", config)
-        .env("XDG_DATA_HOME", config)
-        .env("HOME", config)
-        .env("APPDATA", config)
-        .env("LOCALAPPDATA", config)
         .env("AEROFTP_MASTER_PASSWORD", "json modes probe vault")
         .env("AEROFTP_PROFILE_PASSWORD", "json modes probe profile file")
         .env(
@@ -87,7 +85,7 @@ fn vault_with_one_profile(config: &Path) -> String {
 
 #[test]
 fn the_import_and_export_families_answer_in_json_under_machine_and_format_json() {
-    let config = tempfile::tempdir().unwrap();
+    let config = isolated_cli::root();
     let dir = config.path();
     let conf = vault_with_one_profile(dir);
     let out_conf = dir.join("out.conf");
@@ -135,7 +133,7 @@ fn the_import_and_export_families_answer_in_json_under_machine_and_format_json()
 
 #[test]
 fn the_keystore_family_answers_in_json_under_machine_and_format_json() {
-    let config = tempfile::tempdir().unwrap();
+    let config = isolated_cli::root();
     let dir = config.path();
     vault_with_one_profile(dir);
     let backup = dir.join("backup.aeroftp-keystore");
@@ -162,7 +160,7 @@ fn the_keystore_family_answers_in_json_under_machine_and_format_json() {
 
 #[test]
 fn text_mode_stays_text() {
-    let config = tempfile::tempdir().unwrap();
+    let config = isolated_cli::root();
     let dir = config.path();
     vault_with_one_profile(dir);
 

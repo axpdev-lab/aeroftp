@@ -14,8 +14,11 @@
 //! bookmark `Lab_Box`. On an isolated vault, profiles created by
 //! `import rclone --apply`.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 /// `rclone obscure 'cli export secret a'` and `'cli export secret b'`
 /// (rclone v1.75.2): the import stores them in the vault revealed.
@@ -33,13 +36,8 @@ fn describe(out: &Output) -> String {
 
 /// The CLI on the vault in `config`, with nothing of this machine's.
 fn cli(config: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
+    isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), config)
         .args(args)
-        .env("XDG_CONFIG_HOME", config)
-        .env("XDG_DATA_HOME", config)
-        .env("HOME", config)
-        .env("APPDATA", config)
-        .env("LOCALAPPDATA", config)
         .env(
             "AEROFTP_MASTER_PASSWORD",
             "export secrets by id probe vault",
@@ -64,7 +62,7 @@ fn hosts_and_secrets<'a>(
 fn every_export_writes_each_profile_with_its_own_secret() {
     use ftp_client_gui_lib::{filezilla_import, lftp_import, rclone_import, winscp_import};
 
-    let config = tempfile::tempdir().unwrap();
+    let config = isolated_cli::root();
     let conf = config.path().join("rclone.conf");
     std::fs::write(
         &conf,
