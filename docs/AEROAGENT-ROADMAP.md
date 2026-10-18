@@ -47,6 +47,7 @@ boundaries apply to every extension.
 
 | ID | Remaining scope | Acceptance before calling it done |
 |---|---|---|
+| AA26-03B | Optional provider-native deferred/hosted tool search beyond the shipped provider-neutral selector. | Negotiate the adapter capability, preserve tool identity and tool/result replay, keep the backend approval boundary, and test a deterministic local-selector fallback when the provider path is unavailable. |
 | AA26-04 | Recoverable, compactable conversation state beyond the current foreground budget ledger and chat history. | Define a versioned event/replay contract; recover a stopped multi-step turn without repeating a completed write; preserve tool/result pairing across compaction; test cancellation and redacted persistence. Evaluate provider response chaining only after deciding retention and deletion policy. |
 | AA26-11 | Progressive skill discovery and activation. The project-rules loader is not a `SKILL.md` runtime. | Load only skill metadata during discovery, instructions on activation and referenced resources when needed; preserve provenance and trust; test hostile paths, oversized content and tool approvals. |
 | AA26-20 | Bind a workspace to exact saved deploy-profile IDs and produce a read-only deploy/verify plan. Existing remote tools alone do not provide that binding. | Resolve credentials by backend handle, identify staging/production and destination root, show the artifact plan and verify stat/hash/quota without writing. Test a changed or removed profile and a failed lookup. |
