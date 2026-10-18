@@ -17,6 +17,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use futures_util::StreamExt;
 use proton_crypto_account::proton_crypto::crypto::PGPProviderSync;
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
@@ -33,6 +34,9 @@ const BLOCK_PAGE_SIZE: u32 = 20;
 const BLOCK_INTEGRITY_RETRIES: u32 = 1;
 /// The SDK refreshes expired storage tokens without a cap; the port caps it.
 const TOKEN_REFRESH_LIMIT: u32 = 5;
+/// Blocks of one file fetched at once (`fileDownloader.ts::MAX_DOWNLOAD_BLOCK_SIZE`).
+/// They are still written in index order.
+const BLOCKS_IN_FLIGHT: usize = 10;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -206,17 +210,24 @@ impl<P: PGPProviderSync> DriveClient<P> {
             }
             let mut blocks = page.blocks;
             blocks.sort_by_key(|b| b.index);
-            for block in blocks {
-                // RevisionReader.cs: indices must be consecutive from 1.
-                if block.index != next_index {
+            // RevisionReader.cs: indices must be consecutive from 1.
+            for (offset, block) in blocks.iter().enumerate() {
+                let expected = next_index + offset as u64;
+                if block.index != expected {
                     return Err(ProtonError::Integrity(format!(
-                        "expected block {next_index}, got {}",
+                        "expected block {expected}, got {}",
                         block.index
                     )));
                 }
-                let (plain, digest) = self
-                    .fetch_block(node, &revision.revision_id, session_key, block)
-                    .await?;
+            }
+            // Fetched up to BLOCKS_IN_FLIGHT at a time, handed over in order.
+            let mut fetched =
+                futures_util::stream::iter(blocks.into_iter().map(|block| {
+                    self.fetch_block(node, &revision.revision_id, session_key, block)
+                }))
+                .buffered(BLOCKS_IN_FLIGHT);
+            while let Some(result) = fetched.next().await {
+                let (plain, digest) = result?;
                 sha1.update(&plain);
                 out.write_all(&plain).await.map_err(ProtonError::LocalIo)?;
                 written += plain.len() as u64;
