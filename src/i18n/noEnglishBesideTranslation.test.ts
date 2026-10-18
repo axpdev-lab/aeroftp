@@ -145,7 +145,8 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     // GitLab merge request, GitHub pull request.
     'src/components/GitHubWriteModeIndicator.tsx': ['MR', 'PR'],
     'src/components/SiteCommand/SiteCommandDialog.tsx': ['· TLS'],
-    'src/components/Preview/viewers/AudioPlayer.tsx': ['// CYBER'],
+    // The player badge: its cyber theme and the OpenGL visualizer mode.
+    'src/components/Preview/viewers/AudioPlayer.tsx': ['// CYBER', 'GL'],
     'src/components/DevTools/GeminiCodeBlock.tsx': ['OK'],
     // End of file, where a patch hunk expected more lines.
     'src/components/DevTools/CodingPatchReview.tsx': ['EOF'],
@@ -168,13 +169,17 @@ const squash = (text: string) => text.replace(/\s+/g, ' ').trim();
 
 /**
  * The string nodes a JSX child expression renders: the same cases as texts(),
- * plus a template literal with no `t()` in it (one with `t()` is the template
- * check above), the operands of a `+` with no `t()` in it (one with `t()` is
- * the concatenation check above) and TypeScript wrappers.
+ * plus a template literal with no `t()` in it, both its text and what its
+ * interpolations render (one with `t()` is the template check above), the
+ * operands of a `+` with no `t()` in it (one with `t()` is the concatenation
+ * check above) and TypeScript wrappers.
  */
 function rendered(node: Node, out: Node[]): void {
     if (literalText(node) !== null) out.push(node);
-    else if (node.type === 'TemplateLiteral' && !(node.expressions as Node[]).some(containsT)) out.push(node);
+    else if (node.type === 'TemplateLiteral' && !(node.expressions as Node[]).some(containsT)) {
+        out.push(node);
+        (node.expressions as Node[]).forEach((expression) => rendered(expression, out));
+    }
     else if (node.type === 'ConditionalExpression') {
         rendered(node.consequent as Node, out);
         rendered(node.alternate as Node, out);
@@ -341,6 +346,7 @@ describe('a translated string is not glued to English in the code', () => {
             "const n = <span>{(ready && t('a.ready')) || 'Ready'}</span>;",
             "const o = <p><strong>{t('a.done')}</strong> files</p>;",
             "const p = <span>{(ok ? t('a.x') : t('a.y')) || 'Fallback'} {size + 'px'}</span>;",
+            "const q = <span>{`${'Delete'} ${count}`} {`${ok ? 'Done' : ''} ${n} MB`}</span>;",
         ].join('\n');
         const allowed = { 'sample.tsx': ['FREE', 'PAID', '- Box &middot; (MB)', 'never seen'] };
         expect(scan({ 'sample.tsx': sample }, allowed)).toEqual({
@@ -354,6 +360,8 @@ describe('a translated string is not glued to English in the code', () => {
                 "sample.tsx:13 {count + ' files'}",
                 "sample.tsx:14 {(ready && t('a.ready')) || 'Ready'}",
                 'sample.tsx:15 files',
+                "sample.tsx:17 {`${'Delete'} ${count}`}",
+                "sample.tsx:17 {`${ok ? 'Done' : ''} ${n} MB`}",
             ],
             unused: ['sample.tsx never seen'],
         });
