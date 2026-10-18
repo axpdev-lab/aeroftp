@@ -9,7 +9,7 @@
 //! (`ensure_connected`), and above the multi-thread cutoff the file is
 //! split into N gap-free windows, each fetched over its **own** REST+RETR
 //! connection (`ftp_download_one_range`) into a single pre-allocated
-//! `.aerotmp` then atomically renamed. N ranges = N independent
+//! `.aerosegtmp` then atomically renamed. N ranges = N independent
 //! connections, the same model as the SFTP pool (PD-SFTP-2). No control or
 //! data connection is shared.
 //!
@@ -24,7 +24,7 @@
 //! Loopback has no bandwidth/latency bottleneck, so the N=1 vs N=4
 //! wall-clock is expected to be close: this gate proves **correctness**
 //! (N real independent connections, byte-identical SHA-256, the new code
-//! path executed, strict short-read gate, no `.aerotmp` residue,
+//! path executed, strict short-read gate, no download temporary left,
 //! non-regression) rather than a WAN speedup, which is latency-bound and
 //! noted honestly in the master, not faked here.
 
@@ -33,6 +33,10 @@
 
 #![cfg(unix)]
 
+#[path = "support/download_temps.rs"]
+mod download_temps;
+
+use download_temps::download_temps_in;
 use std::time::Instant;
 
 use ftp_client_gui_lib::providers::types::{FtpConfig, FtpTlsMode};
@@ -136,15 +140,10 @@ async fn ftp_intra_file_concurrent_range_is_byte_identical() {
     let e4 = t4.elapsed();
     assert_eq!(src_hash, sha256_file(&n4), "N=4 intra-file byte mismatch");
 
-    // Strict temp hygiene: no `.aerotmp` residue beside either output.
-    assert!(
-        !tmp_root.join("n1.bin.aerotmp").exists(),
-        "N=1 left an .aerotmp residue"
-    );
-    assert!(
-        !tmp_root.join("n4.bin.aerotmp").exists(),
-        "N=4 intra-file left an .aerotmp residue"
-    );
+    // Strict temp hygiene: no download temporary beside either output (N=1
+    // writes a `.aerotmp`, N=4 the engine's `.aerosegtmp`).
+    let left = download_temps_in(&tmp_root);
+    assert!(left.is_empty(), "a download temporary was left: {left:?}");
 
     // Parallelism preserved up to the FTP cap, never silently serialised.
     assert!(
