@@ -3021,6 +3021,10 @@ mod mcp_parity_tests {
             "one-call connect probe for a client with no session; AeroAgent reads the live connection from `gui_state` and checks a saved server with `remote_storage_quota` or `server_exec`",
         ),
         (
+            "aeroftp_profile_auth",
+            "headless authorization of a saved profile (OAuth, device flow, GitHub App) for a client with no window; in the app the user signs that profile in through the connection dialog, and AeroAgent does not write client secrets or a PEM into the vault",
+        ),
+        (
             "aeroftp_debug_snapshot",
             "triage for an external client that cannot see the app; in the app the user has the Debug panel, and the log does not need to travel to the AI provider",
         ),

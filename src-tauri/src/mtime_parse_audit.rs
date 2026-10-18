@@ -33,6 +33,11 @@ const ALLOWED: &[(&str, usize, &str)] = &[
         "OAuth token expiry of an imported rclone remote, the export header's timestamp and a constant cut-over time of old exports: none is a file time",
     ),
     (
+        "profile_auth.rs",
+        1,
+        "GitHub App installation-token expiry, not a file time",
+    ),
+    (
         "providers/drime_cloud.rs",
         2,
         "producer: Drime `updated_at` to `modified`",
