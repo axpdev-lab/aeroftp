@@ -11,7 +11,10 @@
 //! MCP server and the CLI can hold the same session, so the refresh runs
 //! under the cross-process [`RefreshLease`] the OAuth providers use, and a
 //! process that finds a newer pair in the vault adopts it (see
-//! [`super::api::SessionStore`]). Two copies of one session on two devices
+//! [`super::api::SessionStore`]). Profiles of one session (a duplicate shares
+//! its original's) take one lease, keyed on the session, and a refresh writes
+//! the new pair to every key that holds it, or the others keep a refresh
+//! token Proton has already rotated away. Two copies of one session on two devices
 //! (an export imported elsewhere) still rotate apart: the first to refresh
 //! keeps the session and the other must sign in again.
 //!
@@ -208,11 +211,69 @@ pub fn revoke_saved_session_blocking(profile_id: Option<&str>) {
     }
 }
 
+/// The lease slug of a session's refresh: one per session UID, so the
+/// profiles that share a session refresh it one at a time, across processes
+/// too. Hashed, since it becomes a file name and a UID is not one.
+fn refresh_lease_slug(uid: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(uid.as_bytes());
+    format!("proton_native_{}", hex::encode(&digest[..12]))
+}
+
+/// The other copies of a session among `saved` (keys other than `own_key`
+/// whose session has the UID of `tokens`), each with `tokens` in place of the
+/// pair it holds and its own key password kept.
+fn copies_to_update(
+    own_key: &str,
+    tokens: &SessionTokens,
+    saved: impl IntoIterator<Item = (String, ProtonSession)>,
+) -> Vec<(String, ProtonSession)> {
+    saved
+        .into_iter()
+        .filter(|(key, session)| key != own_key && session.tokens.uid == tokens.uid)
+        .map(|(key, session)| {
+            let updated = ProtonSession {
+                tokens: tokens.clone(),
+                key_password: session.key_password,
+            };
+            (key, updated)
+        })
+        .collect()
+}
+
+/// Writes refreshed `tokens` to every other key that holds the same session.
+/// Proton rotates the refresh token, so a duplicate left with the old one
+/// could no longer refresh, even after the other's refresh was long done,
+/// and ended with an expired session.
+fn share_refreshed_tokens(own_key: &str, tokens: &SessionTokens) {
+    let Ok(store) = open_store() else {
+        return;
+    };
+    let saved = store
+        .list_accounts()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|account| account.starts_with(SESSION_KEY_PREFIX) || account == UNBOUND_SESSION_KEY)
+        .filter_map(|account| {
+            let session = read(&store, &account).ok().flatten()?;
+            Some((account, session))
+        })
+        .collect::<Vec<_>>();
+    for (key, session) in copies_to_update(own_key, tokens, saved) {
+        if let Err(error) = store_session(key.strip_prefix(SESSION_KEY_PREFIX), &session) {
+            log::warn!("Proton: a profile sharing the session kept the old tokens: {error}");
+        }
+    }
+}
+
 /// The [`SessionStore`] of one vault key: refreshes are serialized across
-/// processes with the OAuth [`RefreshLease`] keyed on the session's vault
-/// key, and the refreshed tokens are saved with the unchanged key password.
+/// processes and across the profiles of one session with the OAuth
+/// [`RefreshLease`] keyed on the session, and the refreshed tokens are saved
+/// with the unchanged key password, to this key and to every key that holds
+/// the same session.
 pub struct VaultSession {
     profile_id: Option<String>,
+    uid: String,
     key_password: secrecy::SecretString,
 }
 
@@ -220,6 +281,7 @@ impl VaultSession {
     pub fn new(profile_id: Option<&str>, session: &ProtonSession) -> Self {
         Self {
             profile_id: profile_id.map(str::to_string),
+            uid: session.tokens.uid.clone(),
             key_password: session.key_password.clone(),
         }
     }
@@ -228,7 +290,7 @@ impl VaultSession {
 #[async_trait::async_trait]
 impl SessionStore for VaultSession {
     async fn lock(&self) -> Option<Box<dyn Send>> {
-        RefreshLease::acquire(&session_key(self.profile_id.as_deref()))
+        RefreshLease::acquire(&refresh_lease_slug(&self.uid))
             .await
             .map(|lease| Box::new(lease) as Box<dyn Send>)
     }
@@ -253,13 +315,14 @@ impl SessionStore for VaultSession {
             // start will find the old pair and sign in again.
             log::warn!("Proton: refreshed session not saved: {error}");
         }
+        share_refreshed_tokens(&session_key(self.profile_id.as_deref()), tokens);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use secrecy::SecretString;
+    use secrecy::{ExposeSecret, SecretString};
 
     fn session(uid: &str) -> ProtonSession {
         ProtonSession {
@@ -290,6 +353,48 @@ mod tests {
         ));
         assert!(!session_shared("uid-1", [session("uid-2")]));
         assert!(!session_shared("uid-1", []));
+    }
+
+    /// Codex on #1293: a duplicate shares its original's session, but the
+    /// refresh lease and the save were per profile, so a refresh of one left
+    /// the other with a rotated refresh token and an expired session.
+    #[test]
+    fn a_refresh_reaches_every_profile_of_the_session() {
+        assert_eq!(refresh_lease_slug("uid-1"), refresh_lease_slug("uid-1"));
+        assert_ne!(refresh_lease_slug("uid-1"), refresh_lease_slug("uid-2"));
+        assert!(refresh_lease_slug("a/b\\c")
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_'));
+
+        let mut duplicate = session("uid-1");
+        duplicate.key_password = SecretString::from("duplicate key".to_string());
+        let refreshed = SessionTokens {
+            uid: "uid-1".into(),
+            access_token: SecretString::from("a2".to_string()),
+            refresh_token: Some(SecretString::from("r2".to_string())),
+        };
+        let own = session_key(Some("srv_a"));
+        let updated = copies_to_update(
+            &own,
+            &refreshed,
+            [
+                (own.clone(), session("uid-1")),
+                (session_key(Some("srv_b")), duplicate),
+                (session_key(Some("srv_c")), session("uid-2")),
+            ],
+        );
+        assert_eq!(updated.len(), 1, "only the other copy of the session");
+        let (key, copy) = &updated[0];
+        assert_eq!(key, &session_key(Some("srv_b")));
+        assert_eq!(copy.tokens.access_token.expose_secret(), "a2");
+        assert_eq!(
+            copy.tokens
+                .refresh_token
+                .as_ref()
+                .map(|r| r.expose_secret().to_string()),
+            Some("r2".to_string())
+        );
+        assert_eq!(copy.key_password.expose_secret(), "duplicate key");
     }
 
     #[test]

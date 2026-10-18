@@ -346,11 +346,48 @@ pub fn map_error(path: &str, error: ProtonError) -> ProviderError {
     }
 }
 
+/// The renames of an AEAD replacement (see `replace_by_new_file`): the old
+/// file goes aside, the new one, uploaded under a temporary name, takes
+/// `name`, then the old one is trashed. Each failure undoes the steps before
+/// it, so the name keeps either file.
+async fn swap_in_replacement(
+    drive: Arc<dyn DriveOps>,
+    old_link_id: String,
+    new_link_id: String,
+    name: String,
+    remote: String,
+) -> Result<(), ProviderError> {
+    let aside = crate::providers::set_aside_name(&name);
+    if let Err(error) = drive.rename(&old_link_id, &aside).await {
+        let _ = drive.trash(&[&new_link_id]).await;
+        return Err(map_error(&remote, error));
+    }
+    if let Err(error) = drive.rename(&new_link_id, &name).await {
+        let undone = drive.rename(&old_link_id, &name).await;
+        let _ = drive.trash(&[&new_link_id]).await;
+        let error = map_error(&remote, error);
+        return Err(match undone {
+            Ok(()) => error,
+            Err(undo) => ProviderError::Other(format!(
+                "replacing {remote} stopped halfway: {error}; the old file is now {} ({})",
+                join(&split(&remote).map(|(p, _)| p).unwrap_or_default(), &aside),
+                map_error(&remote, undo)
+            )),
+        });
+    }
+    if let Err(error) = drive.trash(&[&old_link_id]).await {
+        log::warn!("Proton: the replaced copy of {remote} stays as {aside}: {error}");
+    }
+    Ok(())
+}
+
 /// `path` as an absolute path without `.`, `..`, empty or trailing parts.
-/// `..` above the root stays at the root.
+/// `..` above the root stays at the root. Only `/` separates: a Proton name
+/// may hold a backslash or end in a space, and `/a\b` or `/report.txt ` is
+/// that name, not `/a/b` or `/report.txt` (which can exist beside it).
 pub fn normalize(path: &str) -> String {
     let mut parts: Vec<&str> = Vec::new();
-    for part in path.split(['/', '\\']) {
+    for part in path.split('/') {
         match part {
             "" | "." => {}
             ".." => {
@@ -570,8 +607,7 @@ impl ProtonNativeProvider {
     }
 
     fn absolute(&self, path: &str) -> String {
-        let path = path.trim();
-        if path.starts_with('/') || path.starts_with('\\') {
+        if path.starts_with('/') {
             normalize(path)
         } else {
             normalize(&format!("{}/{path}", self.current_path))
@@ -816,28 +852,25 @@ impl ProtonNativeProvider {
             .await
             .map_err(|error| map_error(remote, error))?;
 
-        let aside = crate::providers::set_aside_name(name);
-        if let Err(error) = drive.rename(old_link_id, &aside).await {
-            let _ = drive.trash(&[&new_link_id]).await;
-            return Err(map_error(remote, error));
+        // From here on the path is held by renames, and a cancelled caller
+        // drops this future: dropped between the two renames, it left the old
+        // file under its set-aside name, the new one under the temporary name
+        // and nothing at the path, with the undo never run. The swap runs on a
+        // task of its own, which a dropped handle does not stop, so it ends
+        // with the name taken by one of the two files either way.
+        let swap = tokio::spawn(swap_in_replacement(
+            drive,
+            old_link_id.to_string(),
+            new_link_id,
+            name.to_string(),
+            remote.to_string(),
+        ));
+        match swap.await {
+            Ok(result) => result,
+            Err(stopped) => Err(ProviderError::Other(format!(
+                "replacing {remote} stopped: {stopped}"
+            ))),
         }
-        if let Err(error) = drive.rename(&new_link_id, name).await {
-            let undone = drive.rename(old_link_id, name).await;
-            let _ = drive.trash(&[&new_link_id]).await;
-            let error = map_error(remote, error);
-            return Err(match undone {
-                Ok(()) => error,
-                Err(undo) => ProviderError::Other(format!(
-                    "replacing {remote} stopped halfway: {error}; the old file is now {} ({})",
-                    join(&split(remote).map(|(p, _)| p).unwrap_or_default(), &aside),
-                    map_error(remote, undo)
-                )),
-            });
-        }
-        if let Err(error) = drive.trash(&[old_link_id]).await {
-            log::warn!("Proton: the replaced copy of {remote} stays as {aside}: {error}");
-        }
-        Ok(())
     }
 
     /// The trashed item that was `path`: the one this session trashed, else
@@ -1128,10 +1161,31 @@ impl StorageProvider for ProtonNativeProvider {
                 "{target} is not a folder"
             )));
         }
-        // Proton trashes a folder with its content, so only one that lists
-        // empty is sent (the trait's promise, round 2 of the 4.2.1 review).
+        // Proton trashes a folder with its content, so only one that holds
+        // nothing is sent (the trait's promise, round 2 of the 4.2.1 review).
         self.refuse_non_empty_dir(&target).await?;
         self.delete(&target).await
+    }
+
+    /// Every child counts, also one whose name cannot be decrypted. The
+    /// listing leaves those out, so the trait's check on it passed a folder
+    /// whose only children were unreadable, and Proton trashed it with them.
+    async fn refuse_non_empty_dir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let target = self.absolute(path);
+        let folder = self.resolve_folder(&target).await?;
+        let children = self
+            .drive()?
+            .children(&folder.link_id)
+            .await
+            .map_err(|error| map_error(&target, error))?;
+        if children.is_empty() {
+            Ok(())
+        } else {
+            Err(crate::providers::directory_not_empty(
+                &target,
+                children.len(),
+            ))
+        }
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1335,7 +1389,12 @@ mod tests {
         calls: Mutex<Vec<String>>,
         /// `download` writes this many bytes, then fails its manifest check.
         corrupt_download: Mutex<Option<usize>>,
+        /// The next rename to this name says it was reached, then waits for
+        /// the release: (name, reached, release).
+        rename_gate: Mutex<Option<RenameGate>>,
     }
+
+    type RenameGate = (String, Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>);
 
     impl FakeDrive {
         fn new() -> Arc<Self> {
@@ -1550,6 +1609,15 @@ mod tests {
 
         async fn rename(&self, link_id: &str, new_name: &str) -> Result<(), ProtonError> {
             self.log(format!("rename {link_id} {new_name}"));
+            let gate = self.rename_gate.lock().unwrap().take();
+            if let Some((gated, reached, release)) = gate {
+                if gated == new_name {
+                    reached.notify_one();
+                    release.notified().await;
+                } else {
+                    *self.rename_gate.lock().unwrap() = Some((gated, reached, release));
+                }
+            }
             let parent = self.get(link_id).parent.unwrap();
             self.taken(&parent, new_name)?;
             self.nodes.lock().unwrap().get_mut(link_id).unwrap().name = Some(new_name.into());
@@ -1639,10 +1707,75 @@ mod tests {
         assert_eq!(normalize("/"), "/");
         assert_eq!(normalize("/a/./b/../c/"), "/a/c");
         assert_eq!(normalize("../../x"), "/x");
-        assert_eq!(normalize("a\\b"), "/a/b");
+        assert_eq!(normalize("a\\b"), "/a\\b");
+        assert_eq!(normalize("/report.txt "), "/report.txt ");
         assert_eq!(split("/a/b.txt"), Some(("/a".into(), "b.txt".into())));
         assert_eq!(split("/b.txt"), Some(("/".into(), "b.txt".into())));
         assert_eq!(split("/"), None);
+    }
+
+    /// Codex on #1293: the path was trimmed, so `/report.txt ` reached
+    /// `/report.txt`, which Proton keeps as another file beside it. A read
+    /// and a delete reach the file the path names.
+    #[tokio::test]
+    async fn a_name_ending_in_a_space_is_not_the_name_without_it() {
+        let drive = FakeDrive::new();
+        drive.insert("plain", Some("root"), Some("report.txt"), false, b"plain");
+        drive.insert(
+            "spaced",
+            Some("root"),
+            Some("report.txt "),
+            false,
+            b"spaced",
+        );
+        let mut provider =
+            ProtonNativeProvider::with_drive(config(), Arc::clone(&drive) as Arc<dyn DriveOps>);
+
+        assert_eq!(
+            provider.download_to_bytes("/report.txt ").await.unwrap(),
+            b"spaced"
+        );
+        assert_eq!(
+            provider.download_to_bytes("/report.txt").await.unwrap(),
+            b"plain"
+        );
+        provider.delete("/report.txt ").await.unwrap();
+        assert!(drive.get("spaced").trashed);
+        assert!(!drive.get("plain").trashed);
+    }
+
+    /// Codex on #1293: a backslash was read as a separator, so `/a\b` reached
+    /// `b` in the folder `a`. It is one name in Proton.
+    #[tokio::test]
+    async fn a_backslash_is_part_of_a_name_not_a_separator() {
+        let drive = FakeDrive::new();
+        drive.insert("folder", Some("root"), Some("a"), true, b"");
+        drive.insert("nested", Some("folder"), Some("b"), false, b"nested");
+        drive.insert("slashed", Some("root"), Some("a\\b"), false, b"backslash");
+        let mut provider =
+            ProtonNativeProvider::with_drive(config(), Arc::clone(&drive) as Arc<dyn DriveOps>);
+
+        assert_eq!(
+            provider.download_to_bytes("/a\\b").await.unwrap(),
+            b"backslash"
+        );
+        assert_eq!(provider.download_to_bytes("/a/b").await.unwrap(), b"nested");
+        provider.delete("/a\\b").await.unwrap();
+        assert!(drive.get("slashed").trashed);
+        assert!(!drive.get("nested").trashed);
+    }
+
+    /// Codex on #1293: a folder whose only child has a name that cannot be
+    /// decrypted listed empty, and `rmdir` trashed it with that child.
+    #[tokio::test]
+    async fn rmdir_refuses_a_folder_whose_only_child_is_unreadable() {
+        let (mut provider, drive) = provider();
+        drive.insert("hidden", Some("empty"), None, false, b"secret");
+
+        let refused = provider.rmdir("/empty").await;
+        assert!(refused.is_err(), "{refused:?}");
+        assert!(!drive.get("empty").trashed);
+        assert!(!drive.get("hidden").trashed);
     }
 
     #[test]
@@ -1831,6 +1964,58 @@ mod tests {
             temporary.len() == 1 && temporary[0].ends_with(".txt"),
             "{temporary:?}"
         );
+    }
+
+    /// Codex on #1293: a cancelled upload dropped the replacement between
+    /// its two renames, leaving the old file under its set-aside name, the
+    /// new one under the temporary name and nothing at the path. The swap now
+    /// runs to its end on a task of its own.
+    #[tokio::test]
+    async fn a_replacement_cancelled_between_its_renames_still_ends_with_the_name_taken() {
+        let (mut p, drive) = provider();
+        drive.nodes.lock().unwrap().get_mut("a").unwrap().aead = true;
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        *drive.rename_gate.lock().unwrap() =
+            Some(("a.txt".into(), Arc::clone(&reached), Arc::clone(&release)));
+        let dir = tempfile::tempdir().unwrap();
+        let newer = local_file_with(&dir, "a.txt", b"alpha two");
+
+        let upload = tokio::spawn(async move { p.upload(&newer, "/docs/a.txt", None).await });
+        reached.notified().await;
+        // The caller is cancelled with the old file aside and the new one
+        // still under its temporary name.
+        upload.abort();
+        let _ = upload.await;
+        release.notify_one();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !drive.get("a").trashed {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the swap did not finish: {:?}",
+                drive.calls()
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let now = drive
+            .active_named("docs", "a.txt")
+            .expect("the path holds a file");
+        assert_eq!(drive.get(&now).content, b"alpha two");
+        let leftovers: Vec<String> = drive
+            .nodes
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|n| {
+                !n.trashed
+                    && n.name
+                        .as_deref()
+                        .is_some_and(|n| n.starts_with(".aeroftp-"))
+            })
+            .filter_map(|n| n.name.clone())
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
     }
 
     #[tokio::test]
