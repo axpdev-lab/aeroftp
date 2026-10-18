@@ -6846,14 +6846,28 @@ fn tracing_level_from_rust_log(value: &str) -> Option<tracing::Level> {
 /// every custom command at DEBUG before it validates the line.
 const SECRET_BEARING_LOG_TARGETS: &[&str] = &["suppaftp"];
 
+/// Crates held at ERROR. pgp (rpgp, under the native Proton Drive client)
+/// writes the secret-key material of every key it parses, in hex, at DEBUG
+/// (Proton's encrypted account and node keys, seen in a debug run by L2
+/// Debby), and a harmless "packet header mismatch" WARN each time it writes a
+/// new node key, about two per uploaded file.
+const ERROR_ONLY_LOG_TARGETS: &[&str] = &["pgp"];
+
 /// The per-target filter of the CLI subscriber: `level` for everything, capped
-/// at INFO for [`SECRET_BEARING_LOG_TARGETS`]. A quieter `level` stays quieter.
+/// at INFO for [`SECRET_BEARING_LOG_TARGETS`] and at ERROR for
+/// [`ERROR_ONLY_LOG_TARGETS`]. A quieter `level` stays quieter.
 fn cli_log_targets(level: tracing::Level) -> tracing_subscriber::filter::Targets {
     let capped = std::cmp::min(level, tracing::Level::INFO);
-    SECRET_BEARING_LOG_TARGETS.iter().fold(
+    let targets = SECRET_BEARING_LOG_TARGETS.iter().fold(
         tracing_subscriber::filter::Targets::new().with_default(level),
         |targets, target| targets.with_target(*target, capped),
-    )
+    );
+    let errors_only = std::cmp::min(level, tracing::Level::ERROR);
+    ERROR_ONLY_LOG_TARGETS
+        .iter()
+        .fold(targets, |targets, target| {
+            targets.with_target(*target, errors_only)
+        })
 }
 
 /// The subscriber `-v`, `-vv` and `RUST_LOG` install, writing to `writer`:
@@ -26784,6 +26798,12 @@ fn delete_profile_in_vault(
     // dual-delete from the vault + the scoped user's partition; best-effort per
     // key (a key absent for this profile kind is a no-op).
     let scoped_uid = scoped_credential_user_id(cli, store);
+    // A native Proton Drive session is ended on Proton before its key goes,
+    // as the GUI delete does.
+    #[cfg(feature = "proton-native")]
+    if protocol.as_deref() == Some("proton") {
+        ftp_client_gui_lib::providers::proton_native::vault::end_session_blocking(Some(profile_id));
+    }
     for key in ftp_client_gui_lib::per_profile_vault_keys(profile_id, protocol.as_deref()) {
         dual_delete_server_cred(store, scoped_uid, &key);
     }
@@ -38850,6 +38870,10 @@ fn rclone_import_json(
                 s.options.as_ref()
             ),
             "hasCredential": s.credential.is_some(),
+            // A secret that is not a password travels beside the profile: an
+            // OAuth token, a Jottacloud refresh token, a native Proton Drive
+            // session. `hasCredential` stays false for those.
+            "hasProviderSecret": result.provider_secrets.contains_key(&s.id),
         })).collect::<Vec<_>>(),
         "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
         "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
@@ -39114,6 +39138,25 @@ async fn apply_rclone_import_to_vault(
                 )
                 .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
                 jotta_refresh_stored += 1;
+            }
+        }
+        // The cached session of an rclone `protondrive` remote, under the key
+        // the native Proton Drive client reads.
+        if let Some(ref session_json) = secrets.proton_native_session {
+            if protocol == "proton" {
+                dual_store_typed_cred_checked(
+                    &store,
+                    scoped_uid,
+                    &format!("proton_native_session_{}", profile_id),
+                    "proton_native_session",
+                    session_json,
+                )
+                .map_err(|e| {
+                    format!(
+                        "vault write failed for proton session {}: {}",
+                        profile_id, e
+                    )
+                })?;
             }
         }
     }
@@ -39420,6 +39463,25 @@ struct ExportCollected {
     skipped: Vec<(String, String)>,
 }
 
+/// Whether a profile of `protocol` exports only with a password in the vault.
+/// Three kinds carry none, and an empty `server_<id>` is legitimate for them:
+/// key-auth SFTP (the key path is in `options.private_key_path` and becomes
+/// rclone's `key_file`), the #128-D OAuth providers (token and BYO client
+/// injected from the vault at export time) and Proton Drive (the native
+/// session is injected at export time; a CLI profile, or a native one not
+/// signed in, is skipped by the exporter with its own reason, which says more
+/// than "no credential in vault").
+fn export_needs_vault_secret(protocol: &str, options: Option<&serde_json::Value>) -> bool {
+    let has_sftp_key = protocol == "sftp"
+        && options
+            .and_then(|o| o.get("private_key_path"))
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.trim().is_empty());
+    let is_rclone_oauth =
+        ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(protocol).is_some();
+    !(has_sftp_key || is_rclone_oauth || protocol == "proton")
+}
+
 /// Pull every profile the `--profiles` selectors pick (or all profiles if
 /// `None`) from the vault, decoding `server_<id>` credentials. A selector that
 /// picks nothing is recorded as skipped, under the selector as typed.
@@ -39543,27 +39605,7 @@ fn collect_export_scaffold(
             out.skipped.push((name.to_string(), reason));
             continue;
         }
-        // SFTP profiles authenticate by SSH key (path in
-        // `options.private_key_path`), so an empty vault password is
-        // legitimate for them. Everything else genuinely needs a stored
-        // secret. Key-auth SFTP must still reach export_rclone, which emits
-        // the `key_file` reference from `options`.
-        let has_sftp_key = protocol == "sftp"
-            && options
-                .as_ref()
-                .and_then(|o| o.get("private_key_path"))
-                .and_then(|v| v.as_str())
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
-
-        // #128-D: OAuth-token providers (Drive/Dropbox/OneDrive/Box/pCloud/
-        // Yandex) carry no `server_<id>` password; their token + BYO
-        // client_id/secret are injected from the vault at export time, so an
-        // empty vault password is legitimate (like key-auth SFTP).
-        let is_rclone_oauth =
-            ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol).is_some();
-
-        if secret.is_empty() && !has_sftp_key && !is_rclone_oauth {
+        if secret.is_empty() && export_needs_vault_secret(&protocol, options.as_ref()) {
             out.skipped
                 .push((name.to_string(), "no credential in vault".to_string()));
             continue;
@@ -39744,6 +39786,12 @@ async fn cmd_export_rclone(
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
+            &mut options,
+            &store,
+            &p.protocol,
+            &p.id,
+        );
+        ftp_client_gui_lib::bridge_commands::inject_rclone_proton_export_options(
             &mut options,
             &store,
             &p.protocol,
@@ -41138,6 +41186,28 @@ fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportRe
         format!(
             "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from {source}, and existing files are never overwritten."
         )
+    }
+}
+
+#[cfg(test)]
+mod export_vault_secret_tests {
+    use super::export_needs_vault_secret;
+
+    /// A native Proton Drive profile has no password, only a session that the
+    /// export injects: the pre-filter turned it away as "no credential in
+    /// vault" before the exporter could write it (found live by L2 Debby).
+    #[test]
+    fn proton_oauth_and_key_auth_sftp_export_without_a_vault_password() {
+        let native = serde_json::json!({ "proton_mode": "native" });
+        assert!(!export_needs_vault_secret("proton", Some(&native)));
+        assert!(!export_needs_vault_secret("proton", None));
+        assert!(!export_needs_vault_secret("googledrive", None));
+        let key = serde_json::json!({ "private_key_path": "/home/u/.ssh/id_ed25519" });
+        assert!(!export_needs_vault_secret("sftp", Some(&key)));
+
+        assert!(export_needs_vault_secret("sftp", None));
+        assert!(export_needs_vault_secret("ftp", None));
+        assert!(export_needs_vault_secret("s3", Some(&native)));
     }
 }
 
@@ -77989,6 +78059,11 @@ mod tests {
         assert!(at_trace.would_enable("suppaftp::async_ftp::tokio_ftp", &Level::INFO));
         assert!(!at_trace.would_enable("suppaftp::async_ftp::tokio_ftp", &Level::DEBUG));
         assert!(!cli_log_targets(Level::WARN).would_enable("suppaftp", &Level::INFO));
+        // rpgp dumps secret-key material at DEBUG and warns on every key it
+        // writes: errors only.
+        assert!(!at_trace.would_enable("pgp::packet::secret_key_parser", &Level::DEBUG));
+        assert!(!at_trace.would_enable("pgp::packet::packet_sum", &Level::WARN));
+        assert!(at_trace.would_enable("pgp::packet::packet_sum", &Level::ERROR));
     }
 
     /// `RUST_LOG=warn,<one crate>=debug` turns on DEBUG for that crate only:
@@ -85800,6 +85875,38 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         // What is left still says what was found.
         assert!(printed.contains("\"rcloneCryptEnabled\":true"), "{printed}");
         assert!(printed.contains("\"hasCredential\":true"), "{printed}");
+    }
+
+    /// An imported Proton Drive session is reported as a provider secret and
+    /// never printed: not the tokens, not the key password.
+    #[test]
+    fn rclone_import_json_reports_a_proton_session_without_printing_it() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[pd]\ntype = protondrive\nusername = someone@proton.me\nclient_uid = uid-1\n\
+             client_access_token = AccessTokenPlain5\nclient_refresh_token = RefreshTokenPlain6\n\
+             client_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+        )
+        .expect("write the config");
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).expect("import");
+        let printed =
+            serde_json::to_string(&rclone_import_json(&result, false, None)).expect("serialize");
+        for secret in [
+            "AccessTokenPlain5",
+            "RefreshTokenPlain6",
+            "key-password-1",
+            "a2V5LXBhc3N3b3JkLTE=",
+        ] {
+            assert!(!printed.contains(secret), "'{secret}' on stdout: {printed}");
+        }
+        let expected = cfg!(feature = "proton-native");
+        assert!(
+            printed.contains(&format!("\"hasProviderSecret\":{expected}")),
+            "{printed}"
+        );
+        assert!(printed.contains("\"hasCredential\":false"), "{printed}");
     }
 
     /// Records the offset of every `resume_download` and counts whole

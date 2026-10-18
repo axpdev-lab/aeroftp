@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth-ის პარამეტრების გახსნა",
             "oauthKeysReadFailedTitle": "{provider}-ის აპის გასაღებების წაკითხვა ვერ მოხერხდა",
             "oauthKeysReadFailed": "AeroFTP-მა ვერ წაიკითხა {provider}-ის აპის გასაღებები საცავიდან, ამიტომ ვერ შედის სისტემაში. გასაღებები არ შეცვლილა. შეცდომა: {error}",
-            "profileName": "პროფილის სახელი"
+            "profileName": "პროფილის სახელი",
+            "protonNativeTitle": "Proton Drive-ის მშობლიური კლიენტი",
+            "protonNativeBody": "AeroFTP პირდაპირ უკავშირდება Proton Drive-ს და ამ კომპიუტერზე შიფრავს და შიფრს ხსნის თქვენს ფაილებს. შესვლა ხდება ბრაუზერში, თავად Proton-ის გვერდზე: AeroFTP არასოდეს ხედავს თქვენს პაროლს და სესიას ინახავს თავის დაშიფრულ საცავში.",
+            "protonNativeDisclosure": "ეს არის მესამე მხარის აპლიკაცია, რომელსაც Proton ოფიციალურად არ უჭერს მხარს.",
+            "protonSignIn": "Proton-ში შესვლა",
+            "protonSignInAgain": "ხელახლა შესვლა",
+            "protonWaitingBrowser": "დაასრულეთ შესვლა თქვენს ბრაუზერში...",
+            "protonSignedInAs": "შესული ხართ როგორც {email}",
+            "protonSignInHelp": "AeroFTP ხსნის Proton-ის შესვლის გვერდს თქვენს ბრაუზერში. სესიის დასრულება ნებისმიერ დროს შეგიძლიათ Proton-ის ანგარიშის პარამეტრებში, ან აქ, ღილაკით გასვლა.",
+            "protonSignOut": "გასვლა",
+            "protonSignOutHelp": "ასრულებს სესიას Proton-ზე და შლის მას ამ პროფილიდან.",
+            "protonSignInExpired": "შესვლის გვერდს ვადა გაუვიდა. შედით ხელახლა.",
+            "protonNativeUnavailable": "ეს ვერსია არ შეიცავს Proton Drive-ის მშობლიურ კლიენტს."
         },
         "browser": {
             "remote": "დისტანციური",

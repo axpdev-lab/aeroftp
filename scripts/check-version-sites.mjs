@@ -208,6 +208,7 @@ const MANIFEST_ACCEPTED = new Map([
   ['src-tauri/peer-l0/Cargo.toml', 'a spike sub-crate with its own version lifecycle, not shipped as the app'],
   ['tests/portal-chooser/fake-portal/Cargo.toml', 'a test fixture, never shipped'],
   ['src-tauri/vendor/unrar/Cargo.toml', 'third-party unrar wrapper, retaining its upstream crate version and independent lifecycle'],
+  ['src-tauri/vendor/proton-rpgp/Cargo.toml', "Proton's proton-rpgp vendored with its pqc feature optional, keeping the upstream crate version until a release on ml-kem 0.3 replaces the copy"],
 ]);
 const manifestVersion = (rel) => {
   const text = read(rel);

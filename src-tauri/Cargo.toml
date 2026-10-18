@@ -221,6 +221,10 @@ crypto_secretbox = "0.1"                                               # XSalsa2
 # MEGA Integration (Quick Connect Beta v0.5.0)
 secrecy = "0.10"
 zeroize = { version = "1", features = ["derive"] }
+# Proton Drive native client (feature `proton-native`, off by default): Proton's
+# official account cryptography crate, pure Rust backend (rpgp), no Go toolchain.
+# Its `proton-rpgp` is patched below so it resolves next to russh.
+proton-crypto-account = { version = "0.20.1", default-features = false, features = ["rustpgp"], optional = true }
 subtle = "2"
 ring = "0.17.14"
 
@@ -416,7 +420,7 @@ rusqlite = { version = "0.32", features = ["bundled", "hooks"] }     # progress_
 tracing-log = "0.2"                                                  # The log -> tracing bridge the CLI installs, for its log filter tests
 
 [features]
-default = ["aerorsync", "local-stt"]
+default = ["aerorsync", "local-stt", "proton-native"]
 custom-protocol = ["tauri/custom-protocol"]
 # Explicit opt-in for the vault-seeding Docker harness helper. Never default.
 # Its source stays outside src/bin so Tauri cannot rediscover a gated target.
@@ -448,6 +452,14 @@ aerorsync = ["dep:xxhash-rust", "dep:posix-acl", "dep:acl-sys"]
 # macOS the speech stack already lives behind `cfg(target_os = "macos")`
 # stubs (Web Speech API used instead), so this feature is a no-op there.
 local-stt = ["dep:hound", "dep:whisper-rs"]
+
+# proton-native: in-process Proton Drive client ported from Proton's official
+# Drive SDK (src/providers/proton_native), on Proton's own Rust crypto crates.
+# Default-on: a Proton profile chooses it per profile (the API tab, option
+# proton_mode = "native"); every existing profile keeps the official CLI
+# wrapper (providers/proton.rs), and a build without this feature refuses a
+# native profile instead of falling back to the CLI.
+proton-native = ["dep:proton-crypto-account"]
 
 # Strada C: Docker-harness lane cfg flags. Declared here so
 # `#[cfg(ci_lane3)]` does not surface `unexpected_cfgs` warnings under
@@ -526,6 +538,11 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # 0.5.8 wrapper plus owned redirection metadata. Native UnRAR stays unchanged.
 # See vendor/unrar/AEROFTP-PATCH.md for provenance and the removal condition.
 unrar = { path = "vendor/unrar" }
+# proton-rpgp 0.9.0 with post-quantum algorithms opt-in instead of always on:
+# upstream's `pgp/pqc` pins `kem` 0.3.0-pre.0, which cannot resolve next to
+# russh's `ml-kem` 0.3. Reached only by the `proton-native` feature. See
+# vendor/proton-rpgp/AEROFTP-PATCH.md for the change list and removal condition.
+proton-rpgp = { path = "vendor/proton-rpgp" }
 n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35e827f642635a1028606f0bbd4e9c530ae0" }
 # suppaftp: the v12.1.0 release commit plus ONE method,
 # `ControlSocket::buffered_reply_bytes()`, on the tokio control guard, so the

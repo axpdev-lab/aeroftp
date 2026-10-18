@@ -842,6 +842,9 @@ pub struct ProviderConnectionParams {
     pub save_session: Option<bool>,
     /// Backend selection for MEGA: "native" or "megacmd"
     pub mega_mode: Option<String>,
+    /// Client for Proton Drive: "cli" (the default when absent) or "native".
+    #[serde(default)]
+    pub proton_mode: Option<String>,
     /// Session expiry timestamp (MEGA)
     pub session_expires_at: Option<i64>,
     /// MEGA: whether to logout/clear session on disconnect
@@ -1225,6 +1228,13 @@ impl ProviderConnectionParams {
             }
             if let Some(logout) = self.logout_on_disconnect {
                 extra.insert("logout_on_disconnect".to_string(), logout.to_string());
+            }
+        }
+
+        // Proton Drive: which client. Absent means the official CLI.
+        if provider_type == ProviderType::Proton {
+            if let Some(mode) = self.proton_mode.as_deref().filter(|m| !m.is_empty()) {
+                extra.insert("proton_mode".to_string(), mode.to_string());
             }
         }
 
@@ -14768,6 +14778,29 @@ mod tests {
     /// flag to the key `SwiftConfig::from_provider_config` actually reads, so a
     /// rename on either side fails here instead of silently disarming the guard
     /// for every Swift profile, which is how v4.1.8 got into this state.
+    /// The GUI's Proton mode reaches the provider options; without one the
+    /// profile stays a CLI profile, and the mode never leaks to another type.
+    #[test]
+    fn the_proton_mode_reaches_the_provider_only_for_proton() {
+        let mut params = s3_params(None);
+        params.protocol = "proton".to_string();
+        params.server = "drive.proton.me".to_string();
+        let config = params.to_provider_config().expect("config");
+        assert!(!config.extra.contains_key("proton_mode"));
+
+        params.proton_mode = Some("native".to_string());
+        let config = params.to_provider_config().expect("config");
+        assert_eq!(
+            config.extra.get("proton_mode").map(String::as_str),
+            Some("native")
+        );
+
+        params.protocol = "s3".to_string();
+        params.server = "https://s3.example.com".to_string();
+        let config = params.to_provider_config().expect("config");
+        assert!(!config.extra.contains_key("proton_mode"));
+    }
+
     #[test]
     fn swift_cleartext_opt_in_reaches_the_provider_only_when_asked() {
         let mut params = s3_params(None);
@@ -14825,6 +14858,7 @@ mod tests {
             role_mfa_token_code: None,
             save_session: None,
             mega_mode: None,
+            proton_mode: None,
             session_expires_at: None,
             logout_on_disconnect: None,
             private_key_path: None,

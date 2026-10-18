@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Åbn OAuth-indstillinger",
             "oauthKeysReadFailedTitle": "Kan ikke læse appnøgler til {provider}",
             "oauthKeysReadFailed": "AeroFTP kunne ikke læse appnøglerne til {provider} fra boksen, så den kan ikke logge ind. Nøglerne er ikke ændret. Fejl: {error}",
-            "profileName": "Profilnavn"
+            "profileName": "Profilnavn",
+            "protonNativeTitle": "Indbygget Proton Drive-klient",
+            "protonNativeBody": "AeroFTP forbinder direkte til Proton Drive og krypterer og dekrypterer dine filer på denne computer. Du logger ind på Protons egen side i browseren: AeroFTP ser aldrig din adgangskode og gemmer sessionen i sin krypterede boks.",
+            "protonNativeDisclosure": "Dette er et tredjepartsprogram, som ikke officielt understøttes af Proton.",
+            "protonSignIn": "Log ind på Proton",
+            "protonSignInAgain": "Log ind igen",
+            "protonWaitingBrowser": "Afslut login i din browser...",
+            "protonSignedInAs": "Logget ind som {email}",
+            "protonSignInHelp": "AeroFTP åbner Protons loginside i din browser. Du kan afslutte sessionen når som helst i dine Proton-kontoindstillinger eller her med Log ud.",
+            "protonSignOut": "Log ud",
+            "protonSignOutHelp": "Afslutter sessionen hos Proton og fjerner den fra denne profil.",
+            "protonSignInExpired": "Loginsiden er udløbet. Log ind igen.",
+            "protonNativeUnavailable": "Denne build indeholder ikke den indbyggede Proton Drive-klient."
         },
         "browser": {
             "remote": "Ekstern",

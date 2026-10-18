@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Отвори OAuth подешавања",
             "oauthKeysReadFailedTitle": "Није могуће прочитати кључеве апликације за {provider}",
             "oauthKeysReadFailed": "AeroFTP није успео да прочита кључеве апликације за {provider} из сефа, па не може да се пријави. Кључеви нису промењени. Грешка: {error}",
-            "profileName": "Назив профила"
+            "profileName": "Назив профила",
+            "protonNativeTitle": "Изворни клијент за Proton Drive",
+            "protonNativeBody": "AeroFTP се директно повезује са услугом Proton Drive и шифрује и дешифрује ваше датотеке на овом рачунару. Пријављујете се на сопственој страници услуге Proton у прегледачу: AeroFTP никад не види вашу лозинку и сесију чува у свом шифрованом трезору.",
+            "protonNativeDisclosure": "Ово је апликација треће стране коју Proton званично не подржава.",
+            "protonSignIn": "Пријавите се на Proton",
+            "protonSignInAgain": "Пријавите се поново",
+            "protonWaitingBrowser": "Завршите пријаву у прегледачу...",
+            "protonSignedInAs": "Пријављени сте као {email}",
+            "protonSignInHelp": "AeroFTP отвара страницу за пријаву на Proton у вашем прегледачу. Сесију можете завршити у било ком тренутку у подешавањима свог Proton налога или овде помоћу Одјави се.",
+            "protonSignOut": "Одјави се",
+            "protonSignOutHelp": "Завршава сесију на услузи Proton и уклања је из овог профила.",
+            "protonSignInExpired": "Страница за пријаву је истекла. Пријавите се поново.",
+            "protonNativeUnavailable": "Ова верзија не укључује изворни клијент за Proton Drive."
         },
         "browser": {
             "remote": "Удаљено",

@@ -2081,6 +2081,8 @@ pub(crate) fn relocate_secret_kind(credential_key: &str) -> &'static str {
         "onedrive_drive_id"
     } else if credential_key.starts_with("onedrive_drive_type_") {
         "onedrive_drive_type"
+    } else if credential_key.starts_with("proton_native_session_") {
+        "proton_native_session"
     } else {
         // Unknown prefix from a future per_profile_vault_keys entry: still
         // dual-write under a stable generic type rather than dropping it.

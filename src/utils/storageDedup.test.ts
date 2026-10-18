@@ -76,6 +76,15 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(profiles[0])).toBe(getStorageDedupKey(profiles[1]));
     });
 
+    it('Proton profiles of one account are one drive, in either mode', () => {
+        const cli = make({ id: 'c', protocol: 'proton', username: 'Someone@Proton.me' });
+        const native = make({ id: 'n', protocol: 'proton', username: 'someone@proton.me' });
+        const other = make({ id: 'o', protocol: 'proton', username: 'other@proton.me' });
+        expect(getStorageDedupKey(native)).toBe('api:proton:someone@proton.me');
+        expect(getStorageDedupKey(cli)).toBe(getStorageDedupKey(native));
+        expect(getStorageDedupKey(other)).not.toBe(getStorageDedupKey(native));
+    });
+
     it('case 2: Filen with different usernames keeps two keys', () => {
         const profiles = [
             make({

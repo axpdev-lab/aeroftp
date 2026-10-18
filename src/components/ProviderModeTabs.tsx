@@ -25,6 +25,7 @@ import {
 import { protocolBadgeRank } from './providerCatalog';
 import BridgeStatusBanner from './BridgeStatusBanner';
 import type { ProviderType } from '../types';
+import { useProtonNativeAvailable } from '../utils/protonNative';
 
 interface ProviderModeTabsProps {
     /** Active form providerId (may be undefined when the user picked a
@@ -34,9 +35,17 @@ interface ProviderModeTabsProps {
     /** Active form protocol. Used as a fallback match key for
      *  preset-less modes. */
     activeProtocol: string | null | undefined;
+    /** Active form options: tell apart the tabs of one protocol that differ
+     *  by an option (Proton Drive's `proton_mode`). */
+    activeOptions?: object | null;
     /** Called when the operator clicks a sub-tab. Should route through
-     *  the form's own `handleProtocolChange(newProtocol, newProviderId?)`. */
-    onSwitchMode: (protocol: ProviderType, providerId?: string) => void;
+     *  the form's own `handleProtocolChange(newProtocol, newProviderId?)`;
+     *  `options` are the tab's own (`ProviderMode.options`). */
+    onSwitchMode: (
+        protocol: ProviderType,
+        providerId?: string,
+        options?: Record<string, string>,
+    ) => void;
     /** When true the strip is shown but locked: it only indicates the
      *  current mode and chips cannot be clicked. Issue #215 (resolved):
      *  edit mode now allows switching surfaces within the same provider
@@ -60,6 +69,7 @@ interface ProviderModeTabsProps {
 export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
     activeProviderId,
     activeProtocol,
+    activeOptions,
     onSwitchMode,
     readOnly,
     className,
@@ -67,8 +77,11 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
     onBridgeUiStateChange,
 }) => {
     const t = useTranslation();
+    const protonNativeAvailable = useProtonNativeAvailable();
     const group = findActiveModeGroup(activeProviderId, activeProtocol);
-    const active = group ? findActiveMode(group, activeProviderId, activeProtocol) : null;
+    const active = group
+        ? findActiveMode(group, activeProviderId, activeProtocol, activeOptions)
+        : null;
     const bridgeKind = active?.bridgeKind;
 
     // Tabs follow the same order the Add Service badges do (#347). Sorted here
@@ -140,9 +153,12 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                 </span>
                 {orderedModes.map(mode => {
                     const isActive = active === mode;
-                    // Announced but not available (e.g. the Proton Drive API):
-                    // visible, never selectable, its description as the tooltip.
-                    const unavailable = !!mode.disabled;
+                    // Announced but not available, or served only by builds
+                    // that include it (the native Proton Drive client):
+                    // visible, not selectable.
+                    const missingFromBuild =
+                        mode.requires === 'proton-native' && !protonNativeAvailable && !isActive;
+                    const unavailable = !!mode.disabled || missingFromBuild;
                     return (
                         <button
                             key={mode.providerId || `proto-${mode.protocol}-${mode.label}`}
@@ -151,8 +167,16 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                             aria-selected={isActive}
                             aria-disabled={unavailable || (!!readOnly && !isActive)}
                             disabled={unavailable || (!!readOnly && !isActive)}
-                            onClick={() => { if (!readOnly && !unavailable) onSwitchMode(mode.protocol, mode.providerId); }}
-                            title={unavailable ? mode.description : readOnly && !isActive ? lockedHint : mode.description}
+                            onClick={() => { if (!readOnly && !unavailable) onSwitchMode(mode.protocol, mode.providerId, mode.options); }}
+                            title={
+                                missingFromBuild
+                                    ? 'Not included in this build of AeroFTP.'
+                                    : unavailable
+                                    ? mode.description
+                                    : readOnly && !isActive
+                                    ? lockedHint
+                                    : mode.description
+                            }
                             className={
                                 isActive
                                     ? `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium border bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 ${mode.activeColor}`

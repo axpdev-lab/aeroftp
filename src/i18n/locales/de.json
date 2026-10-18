@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth-Einstellungen öffnen",
             "oauthKeysReadFailedTitle": "App-Schlüssel für {provider} können nicht gelesen werden",
             "oauthKeysReadFailed": "AeroFTP konnte die App-Schlüssel für {provider} nicht aus dem Tresor lesen und kann sich daher nicht anmelden. Die Schlüssel wurden nicht geändert. Fehler: {error}",
-            "profileName": "Profilname"
+            "profileName": "Profilname",
+            "protonNativeTitle": "Nativer Proton Drive-Client",
+            "protonNativeBody": "AeroFTP verbindet sich direkt mit Proton Drive und ver- und entschlüsselt Ihre Dateien auf diesem Computer. Sie melden sich auf der eigenen Seite von Proton im Browser an: AeroFTP sieht Ihr Passwort nie und bewahrt die Sitzung in seinem verschlüsselten Tresor auf.",
+            "protonNativeDisclosure": "Dies ist eine Drittanbieter-Anwendung, die von Proton nicht offiziell unterstützt wird.",
+            "protonSignIn": "Bei Proton anmelden",
+            "protonSignInAgain": "Erneut anmelden",
+            "protonWaitingBrowser": "Schließen Sie die Anmeldung in Ihrem Browser ab...",
+            "protonSignedInAs": "Angemeldet als {email}",
+            "protonSignInHelp": "AeroFTP öffnet die Anmeldeseite von Proton in Ihrem Browser. Sie können die Sitzung jederzeit in Ihren Proton-Kontoeinstellungen beenden oder hier mit Abmelden.",
+            "protonSignOut": "Abmelden",
+            "protonSignOutHelp": "Beendet die Sitzung bei Proton und entfernt sie aus diesem Profil.",
+            "protonSignInExpired": "Die Anmeldeseite ist abgelaufen. Melden Sie sich erneut an.",
+            "protonNativeUnavailable": "Dieser Build enthält den nativen Proton Drive-Client nicht."
         },
         "browser": {
             "remote": "Remote",

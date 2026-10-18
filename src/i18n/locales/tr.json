@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "OAuth ayarlarını aç",
             "oauthKeysReadFailedTitle": "{provider} uygulama anahtarları okunamıyor",
             "oauthKeysReadFailed": "AeroFTP, {provider} uygulama anahtarlarını kasadan okuyamadığı için oturum açamıyor. Anahtarlar değiştirilmedi. Hata: {error}",
-            "profileName": "Profil adı"
+            "profileName": "Profil adı",
+            "protonNativeTitle": "Yerel Proton Drive istemcisi",
+            "protonNativeBody": "AeroFTP doğrudan Proton Drive'a bağlanır ve dosyalarınızı bu bilgisayarda şifreler ve şifresini çözer. Tarayıcıda Proton'un kendi sayfasında giriş yaparsınız: AeroFTP parolanızı asla görmez ve oturumu şifreli kasasında saklar.",
+            "protonNativeDisclosure": "Bu, Proton tarafından resmi olarak desteklenmeyen üçüncü taraf bir uygulamadır.",
+            "protonSignIn": "Proton'a giriş yap",
+            "protonSignInAgain": "Tekrar giriş yap",
+            "protonWaitingBrowser": "Tarayıcınızda girişi tamamlayın...",
+            "protonSignedInAs": "{email} olarak giriş yapıldı",
+            "protonSignInHelp": "AeroFTP, Proton'un giriş sayfasını tarayıcınızda açar. Oturumu istediğiniz zaman Proton hesap ayarlarınızdan veya burada Oturumu kapat ile sonlandırabilirsiniz.",
+            "protonSignOut": "Oturumu kapat",
+            "protonSignOutHelp": "Proton'daki oturumu sonlandırır ve bu profilden kaldırır.",
+            "protonSignInExpired": "Giriş sayfasının süresi doldu. Tekrar giriş yapın.",
+            "protonNativeUnavailable": "Bu derleme yerel Proton Drive istemcisini içermiyor."
         },
         "browser": {
             "remote": "Uzak",

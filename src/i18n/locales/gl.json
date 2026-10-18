@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Abrir axustes de OAuth",
             "oauthKeysReadFailedTitle": "Non se poden ler as claves da aplicación de {provider}",
             "oauthKeysReadFailed": "AeroFTP non puido ler as claves da aplicación de {provider} do cofre, polo que non pode iniciar sesión. As claves non se modificaron. Erro: {error}",
-            "profileName": "Nome do perfil"
+            "profileName": "Nome do perfil",
+            "protonNativeTitle": "Cliente nativo de Proton Drive",
+            "protonNativeBody": "AeroFTP conéctase directamente a Proton Drive e cifra e descifra os teus ficheiros neste ordenador. Inicias sesión na propia páxina de Proton no navegador: AeroFTP nunca ve o teu contrasinal e garda a sesión no seu cofre cifrado.",
+            "protonNativeDisclosure": "Esta é unha aplicación de terceiros que Proton non admite oficialmente.",
+            "protonSignIn": "Iniciar sesión en Proton",
+            "protonSignInAgain": "Iniciar sesión de novo",
+            "protonWaitingBrowser": "Remata de iniciar sesión no teu navegador...",
+            "protonSignedInAs": "Sesión iniciada como {email}",
+            "protonSignInHelp": "AeroFTP abre a páxina de inicio de sesión de Proton no teu navegador. Podes pechar a sesión cando queiras na configuración da túa conta de Proton, ou aquí con Pechar sesión.",
+            "protonSignOut": "Pechar sesión",
+            "protonSignOutHelp": "Pecha a sesión en Proton e quítaa deste perfil.",
+            "protonSignInExpired": "A páxina de inicio de sesión caducou. Inicia sesión de novo.",
+            "protonNativeUnavailable": "Esta compilación non inclúe o cliente nativo de Proton Drive."
         },
         "browser": {
             "remote": "Remoto",

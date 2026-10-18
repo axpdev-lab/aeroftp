@@ -325,7 +325,19 @@
             "oauthKeysOpenSettings": "Открыть настройки OAuth",
             "oauthKeysReadFailedTitle": "Не удалось прочитать ключи приложения {provider}",
             "oauthKeysReadFailed": "AeroFTP не смог прочитать ключи приложения {provider} из хранилища, поэтому не может выполнить вход. Ключи не были изменены. Ошибка: {error}",
-            "profileName": "Имя профиля"
+            "profileName": "Имя профиля",
+            "protonNativeTitle": "Встроенный клиент Proton Drive",
+            "protonNativeBody": "AeroFTP подключается к Proton Drive напрямую и шифрует и расшифровывает ваши файлы на этом компьютере. Вход выполняется на собственной странице Proton в браузере: AeroFTP никогда не видит ваш пароль и хранит сессию в своём зашифрованном хранилище.",
+            "protonNativeDisclosure": "Это стороннее приложение, которое официально не поддерживается Proton.",
+            "protonSignIn": "Войти в Proton",
+            "protonSignInAgain": "Войти снова",
+            "protonWaitingBrowser": "Завершите вход в браузере...",
+            "protonSignedInAs": "Вы вошли как {email}",
+            "protonSignInHelp": "AeroFTP открывает страницу входа Proton в вашем браузере. Завершить сессию можно в любой момент в настройках аккаунта Proton или здесь кнопкой Выйти.",
+            "protonSignOut": "Выйти",
+            "protonSignOutHelp": "Завершает сессию в Proton и удаляет её из этого профиля.",
+            "protonSignInExpired": "Срок действия страницы входа истёк. Войдите снова.",
+            "protonNativeUnavailable": "Эта сборка не включает встроенный клиент Proton Drive."
         },
         "browser": {
             "remote": "Удалённый",

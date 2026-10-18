@@ -314,6 +314,80 @@ struct MappedProfile {
     /// persists (`refresh_token`/`token_endpoint`/`username`), bound to the
     /// new per-profile vault key on import. Issue #214.
     jotta_refresh: Option<String>,
+    /// rclone `protondrive` cached session converted to the JSON the native
+    /// Proton Drive client keeps under `proton_native_session_<id>`.
+    proton_session: Option<String>,
+}
+
+/// The `proton_mode` an imported Proton Drive profile gets: the native client
+/// when this build has it, else the official CLI (which keeps its own session,
+/// so an imported rclone session is then left out).
+fn imported_proton_mode() -> &'static str {
+    if cfg!(feature = "proton-native") {
+        "native"
+    } else {
+        "cli"
+    }
+}
+
+/// Key of the native Proton Drive session in the options the rclone export
+/// path hands to [`export_rclone`] (never in a saved profile).
+pub const PROTON_SESSION_OPTION: &str = "proton_native_session";
+
+/// rclone's `protondrive` cached session as the JSON the native Proton Drive
+/// client stores (`StoredSession`: `uid`, `access_token`, `refresh_token`,
+/// `key_password`). rclone keeps `client_uid`, `client_access_token`,
+/// `client_refresh_token` and `client_salted_key_pass`, the last being the
+/// key password that unlocks the account keys (the same secret the browser
+/// sign-in hands over), base64-encoded by Proton-API-Bridge
+/// (`common/user.go`). `None` unless all four are present and the key
+/// password decodes.
+fn rclone_proton_session_to_aeroftp(remote: &RcloneRemote) -> Option<String> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    let field = |key: &str| remote.get(key).map(|v| v.trim()).filter(|v| !v.is_empty());
+    let uid = field("client_uid")?;
+    let access_token = field("client_access_token")?;
+    let refresh_token = field("client_refresh_token")?;
+    let key_password = STANDARD
+        .decode(field("client_salted_key_pass")?)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .filter(|password| !password.is_empty())?;
+    Some(
+        serde_json::json!({
+            "uid": uid,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "key_password": key_password,
+        })
+        .to_string(),
+    )
+}
+
+/// The reverse of [`rclone_proton_session_to_aeroftp`]: the `client_*` lines
+/// rclone's `protondrive` backend reads its cached session from. `None` when
+/// the session lacks a field rclone needs (it requires all four).
+fn aeroftp_proton_session_to_rclone(session_json: &str) -> Option<[(&'static str, String); 4]> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    let value: serde_json::Value = serde_json::from_str(session_json).ok()?;
+    let field = |key: &str| {
+        value
+            .get(key)
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    Some([
+        ("client_uid", field("uid")?),
+        ("client_access_token", field("access_token")?),
+        ("client_refresh_token", field("refresh_token")?),
+        (
+            "client_salted_key_pass",
+            STANDARD.encode(field("key_password")?.as_bytes()),
+        ),
+    ])
 }
 
 /// Convert an rclone `token = {...}` blob to the JSON shape AeroFTP's vault
@@ -672,6 +746,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -693,6 +768,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -762,6 +838,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -798,6 +875,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -817,6 +895,7 @@ fn map_remote(
             // with how `.aeroftp` exports carry credentials.
             oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -832,6 +911,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -847,6 +927,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -862,6 +943,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -877,6 +959,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: None,
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -902,6 +985,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -940,6 +1024,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -956,6 +1041,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -986,6 +1072,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -1019,6 +1106,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -1075,6 +1163,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -1093,6 +1182,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -1125,6 +1215,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -1145,6 +1236,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: None,
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -1160,6 +1252,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: None,
             jotta_refresh: rclone_jotta_to_aeroftp(remote),
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -1193,6 +1286,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -1209,6 +1303,7 @@ fn map_remote(
             initial_path: None,
             oauth_token: None,
             jotta_refresh: None,
+            proton_session: None,
             credential_warning: None,
         }),
 
@@ -1247,6 +1342,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -1287,6 +1383,7 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
             })
         }
@@ -1326,7 +1423,44 @@ fn map_remote(
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
+                proton_session: None,
                 credential_warning: None,
+            })
+        }
+
+        // ---- Proton Drive ----
+        // The account password (and mailbox password, 2FA seed) is never
+        // imported: the native client signs in through Proton's browser page
+        // and never holds one. The cached session rclone keeps comes along,
+        // so the profile connects at once; from then on the two share it, and
+        // Proton rotates the refresh token, so the first to refresh keeps the
+        // session (rclone then logs in again with its password, AeroFTP asks
+        // for a new sign-in).
+        "protondrive" => {
+            let mode = imported_proton_mode();
+            let session = (mode == "native")
+                .then(|| rclone_proton_session_to_aeroftp(remote))
+                .flatten();
+            let warning = if mode != "native" {
+                "this build reaches Proton Drive through the official CLI: sign in with `proton-drive auth login`; rclone's saved session was left out"
+            } else if session.is_some() {
+                "rclone's saved session was imported and is now shared with rclone: the first of the two to refresh it keeps it, the other signs in again"
+            } else {
+                "the remote holds no complete saved session: sign in with Proton in                  AeroFTP after the import"
+            };
+            Ok(MappedProfile {
+                protocol: "proton".to_string(),
+                provider_id: None,
+                host: "drive.proton.me".to_string(),
+                port: 443,
+                username: get_str("username").unwrap_or(name).to_string(),
+                password: None,
+                options: Some(serde_json::json!({ "proton_mode": mode })),
+                initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
+                proton_session: session,
+                credential_warning: Some(warning.to_string()),
             })
         }
 
@@ -1716,6 +1850,8 @@ pub const IMPORT_SECRET_OPTION_KEYS: &[&str] = &[
     // The SFTP key passphrase a profile keeps in its options, which the
     // rclone exporter writes as `key_file_pass` (review of #980).
     "key_passphrase",
+    // The native Proton Drive session the export path injects.
+    PROTON_SESSION_OPTION,
 ];
 
 /// `options` without the keys in [`IMPORT_SECRET_OPTION_KEYS`], for output.
@@ -1795,7 +1931,10 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                 // rclone stores in plain in the remote section, so a fresh
                 // device can refresh the imported token (rclone refreshes an
                 // AeroFTP-minted token only with the same OAuth app).
-                if mapped.oauth_token.is_some() || mapped.jotta_refresh.is_some() {
+                if mapped.oauth_token.is_some()
+                    || mapped.jotta_refresh.is_some()
+                    || mapped.proton_session.is_some()
+                {
                     let (oauth_client_id, oauth_client_secret) = if mapped.oauth_token.is_some() {
                         let pick = |k: &str| {
                             remote
@@ -1813,6 +1952,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                         crate::profile_export::ProviderSecrets {
                             oauth: mapped.oauth_token,
                             jotta_refresh: mapped.jotta_refresh,
+                            proton_native_session: mapped.proton_session,
                             oauth_client_id,
                             oauth_client_secret,
                             ..Default::default()
@@ -2089,6 +2229,17 @@ fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Op
         ),
         // rclone v1.75.1 refuses the remote outright: "ImageKit.io public key
         // is required".
+        "proton" if proton_mode_of(server) != "native" => Some(
+            "AeroFTP reaches this profile through Proton's own CLI, which keeps the \
+             session in its keyring, so the vault holds nothing rclone's protondrive \
+             backend can use. Create the remote with `rclone config`."
+                .to_string(),
+        ),
+        "proton" if proton_session_of(server).is_none() => Some(
+            "the profile is not signed in to Proton: sign in with Proton in AeroFTP, \
+             then export again"
+                .to_string(),
+        ),
         "imagekit" if imagekit_public_key(server.options.as_ref()).is_none() => Some(
             "rclone's imagekit backend requires the account public key, and this \
              profile has none: AeroFTP signs with the private key only, so a profile \
@@ -2098,6 +2249,26 @@ fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Op
         ),
         _ => None,
     }
+}
+
+/// The `proton_mode` option of a Proton Drive profile (`cli` when absent).
+fn proton_mode_of(server: &RcloneExportServer) -> &str {
+    server
+        .options
+        .as_ref()
+        .and_then(|o| o.get("proton_mode"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("cli")
+}
+
+/// The `client_*` lines of the native session the export path injected.
+fn proton_session_of(server: &RcloneExportServer) -> Option<[(&'static str, String); 4]> {
+    server
+        .options
+        .as_ref()
+        .and_then(|o| o.get(PROTON_SESSION_OPTION))
+        .and_then(|v| v.as_str())
+        .and_then(aeroftp_proton_session_to_rclone)
 }
 
 /// rclone's s3 backend has no `bucket` key. A pinned bucket is exported as
@@ -2992,6 +3163,28 @@ pub fn export_rclone(
                      # with 402 \"rclone access not allowed for this user tier\".\n",
                 );
             }
+            "proton" => {
+                // Reached only by a native profile with a saved session:
+                // `rclone_required_field_missing` turns the others away. The
+                // four `client_*` lines are rclone's cached login, which it
+                // uses before any password login. No password is written:
+                // AeroFTP never holds the account password.
+                body.push_str("type = protondrive\n");
+                if !server.username.is_empty() {
+                    body.push_str(&format!("username = {}\n", ini_value(&server.username)));
+                }
+                if let Some(lines) = proton_session_of(server) {
+                    for (key, value) in lines {
+                        body.push_str(&format!("{key} = {}\n", ini_value(&value)));
+                    }
+                }
+                notes.push_str(
+                    "# Proton Drive: this remote shares AeroFTP's session. Proton rotates\n\
+                     # the refresh token, so the first of the two to refresh keeps it. Add\n\
+                     # the account password with `rclone config` so rclone can sign in again\n\
+                     # on its own.\n",
+                );
+            }
             "filen" => {
                 // rclone's `filen` backend marks `email`, `password` AND
                 // `api_key` all Required, and obtains the api_key only via the
@@ -3610,6 +3803,193 @@ mod tests {
         assert!(outcome.skipped.is_empty(), "{:?}", outcome.skipped);
     }
 
+    /// The cached login of an rclone `protondrive` remote, as rclone writes
+    /// it: `client_salted_key_pass` is the base64 of the key password.
+    const PROTON_REMOTE: &str = "[pd]\ntype = protondrive\nusername = someone@proton.me\n\
+        password = NOT-A-REAL-OBSCURED-VALUE\nclient_uid = uid-1\n\
+        client_access_token = access-1\nclient_refresh_token = refresh-1\n\
+        client_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n";
+
+    /// An rclone `protondrive` remote becomes a Proton Drive profile whose
+    /// session (key password decoded) lands in the provider secrets, and the
+    /// account password never comes along.
+    #[test]
+    fn a_protondrive_remote_imports_its_session_and_never_the_password() {
+        let path = tmp_write(
+            PROTON_REMOTE,
+            &format!("aeroftp-test-proton-import-{}.conf", std::process::id()),
+        );
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        let server = result
+            .servers
+            .iter()
+            .find(|s| s.name == "pd")
+            .expect("imported");
+        assert_eq!(server.protocol.as_deref(), Some("proton"));
+        assert_eq!(server.username, "someone@proton.me");
+        assert!(
+            server.credential.is_none(),
+            "the account password stays out"
+        );
+        let mode = server
+            .options
+            .as_ref()
+            .and_then(|o| o.get("proton_mode"))
+            .cloned();
+        assert_eq!(mode, Some(serde_json::json!(imported_proton_mode())));
+
+        let secrets = result.provider_secrets.get(&server.id);
+        if cfg!(feature = "proton-native") {
+            let session: serde_json::Value = serde_json::from_str(
+                secrets
+                    .and_then(|s| s.proton_native_session.as_deref())
+                    .expect("session imported"),
+            )
+            .unwrap();
+            assert_eq!(
+                session,
+                serde_json::json!({
+                    "uid": "uid-1",
+                    "access_token": "access-1",
+                    "refresh_token": "refresh-1",
+                    "key_password": "key-password-1",
+                })
+            );
+        } else {
+            assert!(secrets
+                .and_then(|s| s.proton_native_session.as_ref())
+                .is_none());
+        }
+        assert_eq!(result.warnings.len(), 1, "the shared session is reported");
+        // A Rust line continuation lost in an edit once left 18 spaces inside.
+        assert!(
+            !result.warnings[0].reason.contains("  "),
+            "{:?}",
+            result.warnings[0].reason
+        );
+    }
+
+    #[test]
+    fn a_protondrive_remote_without_a_complete_session_asks_for_a_sign_in() {
+        let partial = PROTON_REMOTE.replace("client_refresh_token = refresh-1\n", "");
+        let path = tmp_write(
+            &partial,
+            &format!("aeroftp-test-proton-partial-{}.conf", std::process::id()),
+        );
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        let server = result
+            .servers
+            .iter()
+            .find(|s| s.name == "pd")
+            .expect("imported");
+        assert!(!result.provider_secrets.contains_key(&server.id));
+        assert!(
+            result.warnings[0].reason.contains("sign in"),
+            "{}",
+            result.warnings[0].reason
+        );
+    }
+
+    /// A native profile exports as rclone's cached login, and that file
+    /// imports back to the very same session.
+    #[test]
+    fn a_native_proton_profile_round_trips_through_rclone() {
+        let session = r#"{"uid":"uid-1","access_token":"access-1","refresh_token":"refresh-1","key_password":"key-password-1"}"#;
+        let mut server = export_server(
+            "pd",
+            "proton",
+            Some(serde_json::json!({
+                "proton_mode": "native",
+                PROTON_SESSION_OPTION: session,
+            })),
+        );
+        server.username = "someone@proton.me".into();
+        let (outcome, conf) = export_to_string(&[server], "proton-native");
+        assert_eq!(outcome.exported, 1, "{conf}");
+        for line in [
+            "type = protondrive",
+            "username = someone@proton.me",
+            "client_uid = uid-1",
+            "client_access_token = access-1",
+            "client_refresh_token = refresh-1",
+            "client_salted_key_pass = a2V5LXBhc3N3b3JkLTE=",
+        ] {
+            assert!(conf.contains(line), "missing {line:?} in\n{conf}");
+        }
+        assert!(
+            !conf.contains("password ="),
+            "no password is written:\n{conf}"
+        );
+
+        let path = tmp_write(
+            &conf,
+            &format!("aeroftp-test-proton-roundtrip-{}.conf", std::process::id()),
+        );
+        let back = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        if cfg!(feature = "proton-native") {
+            let id = &back.servers[0].id;
+            let imported = back.provider_secrets[id]
+                .proton_native_session
+                .clone()
+                .expect("session back");
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&imported).unwrap(),
+                serde_json::from_str::<serde_json::Value>(session).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn a_cli_or_signed_out_proton_profile_is_skipped_with_its_reason() {
+        let cli = export_server("cli", "proton", None);
+        let signed_out = export_server(
+            "out",
+            "proton",
+            Some(serde_json::json!({ "proton_mode": "native" })),
+        );
+        let (outcome, conf) = export_to_string(&[cli, signed_out], "proton-skipped");
+        assert_eq!(outcome.exported, 0, "{conf}");
+        assert!(!conf.contains("type = protondrive"), "{conf}");
+        let reason = |name: &str| {
+            outcome
+                .skipped
+                .iter()
+                .find(|s| s.name == name)
+                .map(|s| s.reason.clone())
+                .unwrap_or_default()
+        };
+        assert!(
+            reason("cli").contains("Proton's own CLI"),
+            "{}",
+            reason("cli")
+        );
+        assert!(reason("out").contains("not signed in"), "{}", reason("out"));
+    }
+
+    /// The JSON the importer writes is the native client's `StoredSession`.
+    #[cfg(feature = "proton-native")]
+    #[test]
+    fn the_imported_session_is_what_the_native_client_reads() {
+        let mut remote = RcloneRemote::new();
+        for (key, value) in [
+            ("client_uid", "uid-1"),
+            ("client_access_token", "access-1"),
+            ("client_refresh_token", "refresh-1"),
+            ("client_salted_key_pass", "a2V5LXBhc3N3b3JkLTE="),
+        ] {
+            remote.insert(key.to_string(), value.to_string());
+        }
+        let json = rclone_proton_session_to_aeroftp(&remote).expect("complete");
+        let stored: crate::providers::proton_native::session::StoredSession =
+            serde_json::from_str(&json).expect("a StoredSession");
+        assert_eq!(stored.key_password, "key-password-1");
+        assert_eq!(stored.refresh_token.as_deref(), Some("refresh-1"));
+    }
+
     /// L-10. An export where everything is refused used to be indistinguishable
     /// from a successful one: `Ok(0)` and a success envelope, while the
     /// adjacent "nothing selected" case exits 4.
@@ -3641,9 +4021,14 @@ mod tests {
     #[test]
     fn every_gated_protocol_writes_a_section_with_a_backend() {
         for proto in crate::bridge_shared::bridge_supported_protocols("rclone") {
-            // Zoho needs both, Cloudinary its cloud name and ImageKit its
-            // public key, or they are skipped for the reasons above.
+            // Zoho needs both, Cloudinary its cloud name, ImageKit its
+            // public key and Proton Drive a native session, or they are
+            // skipped for the reasons above.
             let options = match *proto {
+                "proton" => Some(serde_json::json!({
+                    "proton_mode": "native",
+                    PROTON_SESSION_OPTION: r#"{"uid":"u","access_token":"a","refresh_token":"r","key_password":"k"}"#,
+                })),
                 "zohoworkdrive" => {
                     Some(serde_json::json!({ "region": "us", "root_folder_id": "abc123" }))
                 }

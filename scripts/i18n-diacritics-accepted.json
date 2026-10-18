@@ -411,6 +411,20 @@
       "twin": "inną",
       "reason": "Nominative subject of the sentence (\"Trwa inna autoryzacja\", another authorization is in progress): inna is the correct form, inną is the accusative or instrumental."
     },
+    "pl\u001fconnection.activeSessions\u001fAktywne sesje": {
+      "locale": "pl",
+      "key": "connection.activeSessions",
+      "folded": "sesje",
+      "twin": "sesję",
+      "reason": "sesje is the nominative plural (sessions), correct here; the accented twin sesję is the accusative singular."
+    },
+    "pl\u001fai.history.sessions\u001fSesje": {
+      "locale": "pl",
+      "key": "ai.history.sessions",
+      "folded": "sesje",
+      "twin": "sesję",
+      "reason": "sesje is the nominative plural (sessions), correct here; the accented twin sesję is the accusative singular."
+    },
     "es\u001fai.coding.patch.validateNote\u001fEsto valida el parche sin modificar archivos.": {
       "locale": "es",
       "key": "ai.coding.patch.validateNote",
