@@ -88,7 +88,7 @@ impl ConnectionPool {
         let profile_id = resolve_profile_id(server_query)?;
 
         // Expired authentication is never returned from a hot pooled session.
-        {
+        let expired = {
             let mut conns = self.connections.lock().await;
             if let Some(entry) = conns.get(&profile_id) {
                 if authentication_current(entry.auth_deadline, Utc::now().timestamp()) {
@@ -98,7 +98,12 @@ impl ConnectionPool {
                 }
             }
             // Existing users of the old Arc may finish; a new request gets a fresh token.
-            conns.remove(&profile_id);
+            conns.remove(&profile_id)
+        };
+        if let Some(entry) = expired {
+            tokio::spawn(async move {
+                disconnect_outside_lock(entry).await;
+            });
         }
 
         // Create new connection

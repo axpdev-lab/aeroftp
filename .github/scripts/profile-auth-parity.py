@@ -100,7 +100,11 @@ with tempfile.TemporaryDirectory(prefix='profile-auth-', dir=source.parent) as d
             auth('headless-drive', {'action': 'cancel'})
         finally:
             process.terminate()
-            process.communicate(timeout=10)
+            try:
+                process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
         print('MCP and CLI share authorization configuration and pending state without exposing client secrets.')
 
     if '--mcp-only' in sys.argv:

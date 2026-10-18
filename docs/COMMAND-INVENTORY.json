@@ -162,7 +162,7 @@
   },
   "app_version": "4.2.3",
   "cli": {
-    "count": 97,
+    "count": 98,
     "subcommands": [
       {
         "about": "Show detailed server info, account, and storage quota",
@@ -401,6 +401,10 @@
         "name": "profile-add"
       },
       {
+        "about": "Authorize a saved profile without opening a browser on this machine. Read action=configure|begin|finish|status|cancel from a JSON object. Configure: client_id/client_secret/region; GitHub: mode, app_id, installation_id and pem. Finish: callback_url or code+state; 4shared: oauth_token+verifier. Secret values remain in the vault",
+        "name": "profile-auth"
+      },
+      {
         "about": "Convert a profile to a different mode (replaces the original, issue #215)",
         "name": "profile-convert-mode"
       },
@@ -556,24 +560,29 @@
   },
   "counts": {
     "agent_tools": 39,
-    "cli_subcommands": 97,
+    "cli_subcommands": 98,
     "mcp_by_namespace": {
-      "aeroftp_": 38,
+      "aeroftp_": 39,
       "other": 1,
       "remote_": 36,
       "server_": 2
     },
     "mcp_tools_aliases": 38,
-    "mcp_tools_primary": 39,
-    "mcp_tools_total": 77,
+    "mcp_tools_primary": 40,
+    "mcp_tools_total": 78,
     "tauri_commands": 785
   },
   "mcp": {
-    "count": 77,
+    "count": 78,
     "tools": [
       {
         "description": "Return diagnostics about the running MCP process itself...",
         "name": "aeroftp_mcp_info",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Authorize a saved profile headlessly. Configure client_id/client_secret/region (GitHub: mode, app_id, installation_id, pem), begin for the public authorization URL or device user code, then finish with callback_url or code+state (4shared: oauth_token+verifier). Also supports status and cancel. Tokens, PEMs, PKCE and request-token secrets remain in the encrypted vault.",
+        "name": "aeroftp_profile_auth",
         "namespace": "aeroftp_"
       },
       {

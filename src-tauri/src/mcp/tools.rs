@@ -1116,7 +1116,9 @@ pub async fn execute_tool(
                 };
                 let request = args.get("request").ok_or("Auth request is required")?;
                 let result = crate::profile_auth::execute(&scope, profile, request).await?;
-                pool.invalidate(&server).await;
+                if let Some(id) = profile.get("id").and_then(Value::as_str) {
+                    pool.invalidate(id).await;
+                }
                 Ok::<Value, String>(result)
             }
             .await;
