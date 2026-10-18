@@ -2146,6 +2146,23 @@ mod missing_path_vocabulary_tests {
     }
 }
 
+/// Item names a transfer lists beside its reason.
+///
+/// The names are chosen by the user and can contain any word a classifier
+/// keys on (`quota`, `timeout`, `404`). They stay in the message the user
+/// reads. Classification stops before this marker, so the name is not a
+/// reason. See `without_unclassified_items`.
+pub(crate) const UNCLASSIFIED_ITEM_LIST: &str = "\nFailed items: ";
+
+/// The part of `raw` that may be classified: everything before
+/// [`UNCLASSIFIED_ITEM_LIST`]. A message without the marker is unchanged.
+pub(crate) fn without_unclassified_items(raw: &str) -> &str {
+    match raw.split_once(UNCLASSIFIED_ITEM_LIST) {
+        Some((head, _)) => head,
+        None => raw,
+    }
+}
+
 /// Provider error type
 #[derive(Error, Debug)]
 #[allow(dead_code)]
