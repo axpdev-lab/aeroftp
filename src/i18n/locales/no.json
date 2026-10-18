@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Registrer arkivformater og menyer i Filutforsker",
             "fileAssociationIntegrationDesc": "Endringene trer i kraft nå og beholdes ved oppdateringer. Windows administrerer standardappene dine separat.",
             "fileAssociationIntegrationPortable": "Installer AeroFTP for å endre integrasjonen med Windows.",
-            "fileAssociationIntegrationAdmin": "Windows kan be om administratortillatelse for å endre disse alternativene."
+            "fileAssociationIntegrationAdmin": "Windows kan be om administratortillatelse for å endre disse alternativene.",
+            "migrationServerProfilesFound": "{count} serverprofiler funnet i ukryptert lagring",
+            "migrationAiSettingsFound": "AI-konfigurasjon funnet i ukryptert lagring",
+            "migrationOauthFound": "{count} OAuth-legitimasjoner funnet i ukryptert lagring",
+            "fontSystemInstall": "systeminstallasjon",
+            "fontSizeMin": "min",
+            "fontSizeMax": "maks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Gratisnivået er begrenset til 25 kreditter per måned",
                 "fourshared": "Autoriser manuelt på nytt hvis tokenet tilbakekalles"
             },
-            "profilesLoadFailed": "Kunne ikke lese de lagrede serverne dine: {error}"
+            "profilesLoadFailed": "Kunne ikke lese de lagrede serverne dine: {error}",
+            "cleanupSummary": "{count} filer, {size} frigjort"
         },
         "statusBar": {
             "connected": "Tilkoblet",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab-teamet",
                 "apRole": "Grunnlegger, utvikler, vedlikeholder, meddesigner",
                 "ekRole": "Forsker, kvalitetssikringsingeniør, meddesigner"
-            }
+            },
+            "madeBy": "av {author}"
         },
         "support": {
             "title": "Støtt AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Bruker Proton Drive CLI - installer, logg inn i nettleseren, AeroFTP er GUI-en",
             "twakeDesc": "Twake Drive (5 GB gratis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, fransk open source-sky (Cozy Cloud er nå en del av den) med 5 GB gratis",
-            "discoverTwake": "Europeisk open source-sky fra Linagora, nå hjemsted for Cozy Cloud (5 GB gratis)"
+            "discoverTwake": "Europeisk open source-sky fra Linagora, nå hjemsted for Cozy Cloud (5 GB gratis)",
+            "sourceforgeProject": "Prosjekt (Unixname)",
+            "opendriveNotApiKey": "(ikke OpenDrive API-nøkkelen din)",
+            "endpoint": "Endepunkt",
+            "accountId": "Konto-ID"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Bekreft passord",
             "minLength": "Minimum 8 tegn",
             "autoLockTimeout": "Tidsavbrudd for autolås",
-            "enable": "Aktiver"
+            "enable": "Aktiver",
+            "setupBootstrapDescription": "Nøkkelring utilgjengelig: oppstartsmodus med hovedpassord"
         },
         "search": {
             "remote_placeholder": "Søk i eksterne filer...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "E-postadresse",
             "add": "Legg til",
             "remove": "Fjern",
-            "none": "Ingen tillatelser satt"
+            "none": "Ingen tillatelser satt",
+            "anyoneWithLink": "Alle med lenken"
         },
         "locking": {
             "lock": "Lås fil",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Ingenting overføres: dette viser hva en full synkronisering ville gjort, beregnet fra utvalget. Det er den grafiske motparten til CLI-kommandoen aeroftp-cli sync --dry-run (og rclones --dry-run).",
             "templateImportPathPairs": "Brukbare sti-par (lokal/ekstern) i denne malen: {count}. Et AeroSync-vindu arbeider med nøyaktig ett par, så ingenting ble importert. Rediger malen slik at det bare står igjen ett par, og importer den deretter på nytt.",
             "templateNamePlaceholder": "f.eks. Nattlig sikkerhetskopi til S3",
-            "templateDescPlaceholder": "Hva denne malen brukes til (valgfritt)"
+            "templateDescPlaceholder": "Hva denne malen brukes til (valgfritt)",
+            "templateExportCliDesc": "Innpakningsskript for aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} inndatatokener, {output} utdatatokener, slik leverandøren har talt",
                 "breakdownCache": "{input} inndatatokener, {output} utdatatokener, {cacheRead} lest fra prompt-hurtigbufferen, {cacheWritten} skrevet til den, slik leverandøren har talt"
+            },
+            "executeOperations": "Utfør {count} operasjon(er)",
+            "coding": {
+                "dryRun": "tørrkjøring",
+                "apply": "bruk",
+                "timedOutAfter": "Tidsavbrudd etter {seconds}s.",
+                "restore": {
+                    "previewNote": "Dette forhåndsviser gjenopprettingshandlinger fra kontrollpunktet uten å endre filer.",
+                    "dangerNote": "Denne høyrisikogjenopprettingen kan overskrive gjeldende filinnhold og slette filer som ikke fantes ved kontrollpunktet.",
+                    "wouldRewrite": "Ville skrevet om",
+                    "rewritten": "Skrevet om",
+                    "wouldDelete": "Ville slettet",
+                    "deleted": "Slettet",
+                    "wouldSkip": "Ville hoppet over",
+                    "skipped": "Hoppet over",
+                    "existedAtCheckpoint": "fantes ved kontrollpunktet",
+                    "absentAtCheckpoint": "manglet ved kontrollpunktet"
+                },
+                "checks": {
+                    "exitSummary": "avslutningskode {code} · {seconds}s",
+                    "continueOnFailure": "Kjører alle kontroller selv om én feiler.",
+                    "stopOnFailure": "Stopper ved den første kontrollen som feiler."
+                },
+                "diagnostics": {
+                    "none": "Ingen diagnostikk rapportert."
+                },
+                "search": {
+                    "none": "Ingen treff funnet."
+                },
+                "git": {
+                    "noStagedDiff": "Ingen diff-utdata for klargjorte endringer.",
+                    "noUnstagedDiff": "Ingen diff-utdata for ikke-klargjorte endringer.",
+                    "staged": "klargjort",
+                    "unstaged": "ikke klargjort",
+                    "commitApproval": "Godkjenning av Git-commit",
+                    "stageApproval": "Godkjenning av Git-klargjøring",
+                    "commitNote": "Dette oppretter en git-commit fra den gjeldende klargjorte indeksen. Gå først gjennom coding_git_status og coding_git_diff med staged=true.",
+                    "stagePreviewNote": "Dette forhåndsviser hvilke forespurte stier som ville blitt klargjort; indeksen endres ikke.",
+                    "stageNote": "Dette endrer git-indeksen for de forespurte stiene."
+                },
+                "patch": {
+                    "validateNote": "Dette validerer patchen uten å endre filer.",
+                    "applyNote": "Denne høyrisikoforespørselen om bruk skriver filer etter at backend har opprettet et kontrollpunkt før bruk.",
+                    "hideDiff": "Skjul samlet diff",
+                    "showDiff": "Vis samlet diff"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Tørrkjøring: {repaired} skadde del(er) kan repareres. Ingenting ble skrevet.",
             "repairDryRunMetadata": "Tørrkjøring: vault-headeren eller manifestet kan bygges opp igjen fra paritet. Ingenting ble skrevet.",
             "metadataRepaired": "Vault-headeren eller manifestet ble bygd opp igjen fra paritet.",
-            "repairMetadataSuccess": "Reparasjon fullført: vault-headeren eller manifestet ble bygd opp igjen fra paritet"
+            "repairMetadataSuccess": "Reparasjon fullført: vault-headeren eller manifestet ble bygd opp igjen fra paritet",
+            "errorCorrectionBadge": "Feilkorrigering",
+            "itemsInFolder": "{count} elementer i /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Først funnet",
             "selectAllButOne": "Velg alle unntatt én per gruppe",
             "everyCopyTicked": "alle kopier merket",
-            "everyCopyTickedHint": "Fjern merket fra én kopi i hver uthevet gruppe: ellers slettes alle kopiene."
+            "everyCopyTickedHint": "Fjern merket fra minst én kopi i hver uthevet gruppe: med alle kopiene merket ville alle blitt slettet.",
+            "modeExactHint": "Byte for byte identisk",
+            "modeNonIdenticalHint": "Perseptuell eller tekstlig likhet, ingen automatisk sletting",
+            "potentialWasteSelected": "potensielt bortkastet (valgte)",
+            "similarityDistance": "{similarity}, avst. {distance}"
         },
         "diskUsage": {
             "title": "Diskbruk",
@@ -4384,7 +4451,9 @@
                 "next": "Neste",
                 "scanQr": "Legg til denne hemmeligheten i autentiseringsappen din (Google Authenticator, Authy, Microsoft Authenticator). Eller skriv inn nøkkelen manuelt:",
                 "setup": "Tofaktorautentisering",
-                "verify": "Bekreft & Aktiver"
+                "verify": "Bekreft & Aktiver",
+                "active": "2FA aktiv",
+                "inactive": "2FA inaktiv"
             }
         },
         "vaultSync": {
@@ -4850,7 +4919,7 @@
             "pagesBranch": "Gren",
             "pagesPath": "Sti",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autoriser",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4862,7 +4931,12 @@
             "branchList": "Liste over grener",
             "noBranches": "Fant ingen grener",
             "rawUrlCopied": "Rå URL kopiert",
-            "working": "arbeider"
+            "working": "arbeider",
+            "pagesDnsIssue": "DNS-problem oppdaget",
+            "releaseAssetOne": "{count} fil",
+            "releaseAssetMany": "{count} filer",
+            "repoPrivate": "Privat",
+            "repoPublic": "Offentlig"
         },
         "filenNotes": {
             "title": "Krypterte notater",
@@ -5639,7 +5713,9 @@
             "stopCompare": "Stopp",
             "compareStopped": "Sammenligningen er stoppet.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Sammenligningen leser begge mappene og alle mapper under dem. På et stort tre kan det ta en stund, og du kan stoppe den."
+            "compareStartHint": "Sammenligningen leser begge mappene og alle mapper under dem. På et stort tre kan det ta en stund, og du kan stoppe den.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopi]"
         },
         "accountLock": {
             "title": "Velg en konto",

@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { Search, TimerReset } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 import { searchMatchLocation } from './aiChatCodingSearch';
 import type { CodingSearchMatch, CodingSearchResultData } from './aiChatTypes';
 
@@ -34,6 +35,7 @@ const MatchRow: React.FC<{ match: CodingSearchMatch }> = ({ match }) => {
 };
 
 export const CodingSearchReview: React.FC<CodingSearchReviewProps> = ({ data }) => {
+    const t = useTranslation();
     const { result } = data;
     const tone = result.timed_out ? 'text-amber-200' : 'text-emerald-200';
     const StateIcon = result.timed_out ? TimerReset : Search;
@@ -81,7 +83,7 @@ export const CodingSearchReview: React.FC<CodingSearchReviewProps> = ({ data }) 
                 </div>
             ) : (
                 <div className="mt-2 text-[11px] text-white/55">
-                    {result.timed_out ? `Timed out after ${result.timeout_secs}s.` : 'No matches found.'}
+                    {result.timed_out ? t('ai.coding.timedOutAfter', { seconds: result.timeout_secs }) : t('ai.coding.search.none')}
                 </div>
             )}
         </div>

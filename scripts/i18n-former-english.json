@@ -5,7 +5,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "f1657aa2e8e33f24e6e24081de9d6c1b019ef4a95b7cbe66f8e1ed67f37f6a71",
+    "enHash": "9dfcbc6696a6c0b5c0e9f663406e46d6bff05515c9f33d7f33e6160c65828d5e",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -316,6 +316,9 @@
         "devtools.title": [
             "DevTools"
         ],
+        "duplicates.everyCopyTickedHint": [
+            "Untick one copy in each highlighted group: this would delete every copy."
+        ],
         "duplicates.title": [
             "Find Duplicates"
         ],
@@ -346,6 +349,9 @@
         ],
         "github.installationIdPlaceholder": [
             "Installation ID (e.g. 117087346)"
+        ],
+        "github.modeAuthorize": [
+            "OAuth"
         ],
         "github.pemStoredInVault": [
             "Your PEM key is now encrypted (AES-256) and stored securely in the vault. For your safety, delete or secure the original .pem file — AeroFTP no longer needs it."

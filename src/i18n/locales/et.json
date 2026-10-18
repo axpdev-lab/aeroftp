@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Registreeri arhiivivormingud ja File Exploreri menüüd",
             "fileAssociationIntegrationDesc": "Muudatused jõustuvad kohe ja säilivad uuendamisel. Windows haldab sinu vaikerakendusi eraldi.",
             "fileAssociationIntegrationPortable": "Windowsiga integreerimise muutmiseks paigalda AeroFTP.",
-            "fileAssociationIntegrationAdmin": "Windows võib nende valikute muutmiseks küsida administraatori luba."
+            "fileAssociationIntegrationAdmin": "Windows võib nende valikute muutmiseks küsida administraatori luba.",
+            "migrationServerProfilesFound": "Krüptimata salvestusruumist leiti {count} serveriprofiili",
+            "migrationAiSettingsFound": "Krüptimata salvestusruumist leiti AI seadistus",
+            "migrationOauthFound": "Krüptimata salvestusruumist leiti {count} OAuth mandaati",
+            "fontSystemInstall": "süsteemi paigaldus",
+            "fontSizeMin": "min",
+            "fontSizeMax": "max"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Tasuta tase on piiratud 25 krediidiga kuus",
                 "fourshared": "Kui token tühistatakse, volitage käsitsi uuesti"
             },
-            "profilesLoadFailed": "Salvestatud servereid ei õnnestunud lugeda: {error}"
+            "profilesLoadFailed": "Salvestatud servereid ei õnnestunud lugeda: {error}",
+            "cleanupSummary": "{count} faili, vabastati {size}"
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Labi meeskond",
                 "apRole": "Asutaja, arendaja, hooldaja, kaasdisainer",
                 "ekRole": "Teadur, kvaliteedi tagamise insener, kaasdisainer"
-            }
+            },
+            "madeBy": "{author} poolt"
         },
         "support": {
             "title": "Toeta AeroFTP-d",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI",
             "twakeDesc": "Twake Drive (5 GB tasuta)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Prantsuse avatud lähtekoodiga pilv (Cozy Cloud on nüüd selle osa) 5 GB tasuta",
-            "discoverTwake": "Linagora avatud lähtekoodiga Euroopa pilv, nüüd Cozy Cloud'i uus kodu (5 GB tasuta)"
+            "discoverTwake": "Linagora avatud lähtekoodiga Euroopa pilv, nüüd Cozy Cloud'i uus kodu (5 GB tasuta)",
+            "sourceforgeProject": "Projekt (Unixname)",
+            "opendriveNotApiKey": "(mitte teie OpenDrive API võti)",
+            "endpoint": "Lõpp-punkt",
+            "accountId": "Konto ID"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Kinnitage parool",
             "minLength": "Vähemalt 8 märki",
             "autoLockTimeout": "Automaatse lukustuse aeg",
-            "enable": "Luba"
+            "enable": "Luba",
+            "setupBootstrapDescription": "Võtmehoidla pole saadaval: peaparooliga alglaadimisrežiim"
         },
         "search": {
             "remote_placeholder": "Otsi kaugfaile...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "E-posti aadress",
             "add": "Lisa",
             "remove": "Eemalda",
-            "none": "Õigusi pole määratud"
+            "none": "Õigusi pole määratud",
+            "anyoneWithLink": "Igaüks, kellel on link"
         },
         "locking": {
             "lock": "Lukusta fail",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Midagi ei edastata: see näitab eelvaadet, mida täielik sünkroonimine teeks, arvutatuna valimi põhjal. See on käsu aeroftp-cli sync --dry-run (ja rclone'i --dry-run) graafilise liidese vaste.",
             "templateImportPathPairs": "Kasutatavad teepaarid (kohalik/kaug) selles mallis: {count}. AeroSynci aken töötab täpselt ühe paariga, seega ei imporditud midagi. Muuda malli nii, et alles jääks ainult üks paar, ja impordi see seejärel uuesti.",
             "templateNamePlaceholder": "nt Öine varundus S3-sse",
-            "templateDescPlaceholder": "Milleks see mall on mõeldud (valikuline)"
+            "templateDescPlaceholder": "Milleks see mall on mõeldud (valikuline)",
+            "templateExportCliDesc": "aeroftp-cli sync ümbrisskript ({shell})"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} sisendtokenit, {output} väljundtokenit, teenusepakkuja arvestuse järgi",
                 "breakdownCache": "{input} sisendtokenit, {output} väljundtokenit, {cacheRead} loetud viiba vahemälust, {cacheWritten} sinna kirjutatud, teenusepakkuja arvestuse järgi"
+            },
+            "executeOperations": "Käivita toiminguid: {count}",
+            "coding": {
+                "dryRun": "proovikäik",
+                "apply": "rakenda",
+                "timedOutAfter": "Aegus {seconds}s järel.",
+                "restore": {
+                    "previewNote": "See kuvab kontrollpunkti taastamise toimingute eelvaate ilma faile muutmata.",
+                    "dangerNote": "See kõrge riskiga taastamine võib üle kirjutada failide praeguse sisu ja kustutada failid, mida kontrollpunktis ei olnud.",
+                    "wouldRewrite": "Kirjutataks üle",
+                    "rewritten": "Üle kirjutatud",
+                    "wouldDelete": "Kustutataks",
+                    "deleted": "Kustutatud",
+                    "wouldSkip": "Jäetaks vahele",
+                    "skipped": "Vahele jäetud",
+                    "existedAtCheckpoint": "oli kontrollpunktis olemas",
+                    "absentAtCheckpoint": "puudus kontrollpunktis"
+                },
+                "checks": {
+                    "exitSummary": "väljumiskood {code} · {seconds}s",
+                    "continueOnFailure": "Käivitab kõik kontrollid, isegi kui mõni ebaõnnestub.",
+                    "stopOnFailure": "Peatub esimese ebaõnnestunud kontrolli juures."
+                },
+                "diagnostics": {
+                    "none": "Diagnostikat ei teatatud."
+                },
+                "search": {
+                    "none": "Vasteid ei leitud."
+                },
+                "git": {
+                    "noStagedDiff": "Ettevalmistatud muudatuste diff-väljund puudub.",
+                    "noUnstagedDiff": "Ettevalmistamata muudatuste diff-väljund puudub.",
+                    "staged": "ettevalmistatud",
+                    "unstaged": "ettevalmistamata",
+                    "commitApproval": "Git-i sissekande kinnitamine",
+                    "stageApproval": "Git-i ettevalmistamise kinnitamine",
+                    "commitNote": "See loob praegusest ettevalmistatud indeksist git-i sissekande (commit). Vaadake esmalt üle coding_git_status ja coding_git_diff parameetriga staged=true.",
+                    "stagePreviewNote": "See näitab eelvaates, millised soovitud teed ette valmistataks; indeks ei muutu.",
+                    "stageNote": "See muudab git-i indeksit soovitud teede jaoks."
+                },
+                "patch": {
+                    "validateNote": "See valideerib paiga ilma faile muutmata.",
+                    "applyNote": "See kõrge ohuga rakendamistaotlus kirjutab failid pärast seda, kui taustaprogramm on loonud rakendamiseelse kontrollpunkti.",
+                    "hideDiff": "Peida ühtne diff",
+                    "showDiff": "Näita ühtset diffi"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Proovikäik: {repaired} kahjustatud tükki saab parandada. Midagi ei kirjutatud.",
             "repairDryRunMetadata": "Proovikäik: hoidla päise või manifesti saab pariteedist taastada. Midagi ei kirjutatud.",
             "metadataRepaired": "Hoidla päis või manifest taastati pariteedist.",
-            "repairMetadataSuccess": "Parandamine lõpetatud: hoidla päis või manifest taastati pariteedist"
+            "repairMetadataSuccess": "Parandamine lõpetatud: hoidla päis või manifest taastati pariteedist",
+            "errorCorrectionBadge": "Vigade parandus",
+            "itemsInFolder": "{count} üksust kaustas /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Esimesena leitud",
             "selectAllButOne": "Vali kõik peale ühe igas rühmas",
             "everyCopyTicked": "kõik koopiad märgitud",
-            "everyCopyTickedHint": "Eemalda igas esiletõstetud rühmas ühelt koopialt märge: muidu kustutatakse kõik."
+            "everyCopyTickedHint": "Eemalda igas esiletõstetud rühmas vähemalt ühelt koopialt märge: kui kõik koopiad on märgitud, kustutataks need kõik.",
+            "modeExactHint": "Baithaaval identne",
+            "modeNonIdenticalHint": "Tajupõhine või tekstiline sarnasus, automaatset kustutamist pole",
+            "potentialWasteSelected": "potentsiaalselt raisatud (valitud)",
+            "similarityDistance": "{similarity}, kaugus {distance}"
         },
         "diskUsage": {
             "title": "Kettakasutus",
@@ -4384,7 +4451,9 @@
                 "next": "Edasi",
                 "scanQr": "Lisage see saladus oma autentimisrakendusse (Google Authenticator, Authy, Microsoft Authenticator). Või sisestage käsitsi võti:",
                 "setup": "Kaheastmeline autentimine",
-                "verify": "Kinnita ja luba"
+                "verify": "Kinnita ja luba",
+                "active": "2FA aktiivne",
+                "inactive": "2FA mitteaktiivne"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Haru",
             "pagesPath": "Tee",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autoriseeri",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Harude loend",
             "noBranches": "Harusid ei leitud",
             "rawUrlCopied": "Toor-URL kopeeritud",
-            "working": "töötab"
+            "working": "töötab",
+            "pagesDnsIssue": "Tuvastati DNS-i probleem",
+            "releaseAssetOne": "{count} fail",
+            "releaseAssetMany": "{count} faili",
+            "repoPrivate": "Privaatne",
+            "repoPublic": "Avalik"
         },
         "filenNotes": {
             "title": "Krüpteeritud märkmed",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Peata",
             "compareStopped": "Võrdlus peatatud.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Võrdlus loeb mõlemat kausta ja kõiki nende all olevaid kaustu. Suure puu puhul võib see veidi aega võtta ja saate selle peatada."
+            "compareStartHint": "Võrdlus loeb mõlemat kausta ja kõiki nende all olevaid kaustu. Suure puu puhul võib see veidi aega võtta ja saate selle peatada.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[koopia]"
         },
         "accountLock": {
             "title": "Vali konto",

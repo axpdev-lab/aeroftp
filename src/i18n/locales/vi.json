@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Đăng ký các định dạng tệp nén và trình đơn của Trình khám phá tệp",
             "fileAssociationIntegrationDesc": "Các thay đổi có hiệu lực ngay và được giữ lại khi cập nhật. Windows quản lý riêng các ứng dụng mặc định của bạn.",
             "fileAssociationIntegrationPortable": "Cài đặt AeroFTP để thay đổi tích hợp Windows.",
-            "fileAssociationIntegrationAdmin": "Windows có thể yêu cầu quyền quản trị viên để thay đổi các tùy chọn này."
+            "fileAssociationIntegrationAdmin": "Windows có thể yêu cầu quyền quản trị viên để thay đổi các tùy chọn này.",
+            "migrationServerProfilesFound": "Tìm thấy {count} hồ sơ máy chủ trong bộ nhớ chưa mã hóa",
+            "migrationAiSettingsFound": "Tìm thấy cấu hình AI trong bộ nhớ chưa mã hóa",
+            "migrationOauthFound": "Tìm thấy {count} thông tin xác thực OAuth trong bộ nhớ chưa mã hóa",
+            "fontSystemInstall": "cài đặt hệ thống",
+            "fontSizeMin": "tối thiểu",
+            "fontSizeMax": "tối đa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Gói miễn phí giới hạn 25 tín dụng mỗi tháng",
                 "fourshared": "Hãy ủy quyền lại thủ công nếu token bị thu hồi"
             },
-            "profilesLoadFailed": "Không thể đọc các máy chủ đã lưu của bạn: {error}"
+            "profilesLoadFailed": "Không thể đọc các máy chủ đã lưu của bạn: {error}",
+            "cleanupSummary": "{count} tệp, đã giải phóng {size}"
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -1600,7 +1607,8 @@
                 "title": "Nhóm Axpdev Lab",
                 "apRole": "Nhà sáng lập, nhà phát triển, người bảo trì, người đồng thiết kế",
                 "ekRole": "Nhà nghiên cứu, kỹ sư đảm bảo chất lượng, người đồng thiết kế"
-            }
+            },
+            "madeBy": "bởi {author}"
         },
         "support": {
             "title": "Hỗ trợ AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Sử dụng CLI Proton Drive - cài đặt, đăng nhập trên trình duyệt, AeroFTP là GUI",
             "twakeDesc": "Twake Drive (5 GB miễn phí)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, đám mây mã nguồn mở của Pháp (Cozy Cloud giờ đây là một phần của nó) với 5 GB miễn phí",
-            "discoverTwake": "Đám mây mã nguồn mở châu Âu của Linagora, giờ đây là ngôi nhà mới của Cozy Cloud (5 GB miễn phí)"
+            "discoverTwake": "Đám mây mã nguồn mở châu Âu của Linagora, giờ đây là ngôi nhà mới của Cozy Cloud (5 GB miễn phí)",
+            "sourceforgeProject": "Dự án (Unixname)",
+            "opendriveNotApiKey": "(không phải khóa API OpenDrive của bạn)",
+            "endpoint": "Điểm cuối",
+            "accountId": "ID tài khoản"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Xác nhận mật khẩu",
             "minLength": "Tối thiểu 8 ký tự",
             "autoLockTimeout": "Thời gian tự động khóa",
-            "enable": "Bật"
+            "enable": "Bật",
+            "setupBootstrapDescription": "Keyring không khả dụng: chế độ khởi tạo bằng mật khẩu chính"
         },
         "search": {
             "remote_placeholder": "Tìm kiếm tệp từ xa...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Địa chỉ email",
             "add": "Thêm",
             "remove": "Xóa",
-            "none": "Chưa có quyền nào được đặt"
+            "none": "Chưa có quyền nào được đặt",
+            "anyoneWithLink": "Bất kỳ ai có liên kết"
         },
         "locking": {
             "lock": "Khóa tệp",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Không có gì được chuyển: thao tác này xem trước những gì một đồng bộ đầy đủ sẽ làm, được tính từ mẫu. Đây là phiên bản GUI tương đương của lệnh aeroftp-cli sync --dry-run (và --dry-run của rclone).",
             "templateImportPathPairs": "Các cặp đường dẫn cục bộ/từ xa dùng được trong mẫu này: {count}. Một cửa sổ AeroSync làm việc với đúng một cặp, nên không có gì được nhập. Hãy sửa mẫu để chỉ giữ lại một cặp, rồi nhập lại.",
             "templateNamePlaceholder": "ví dụ: Sao lưu hằng đêm lên S3",
-            "templateDescPlaceholder": "Mẫu này dùng để làm gì (tùy chọn)"
+            "templateDescPlaceholder": "Mẫu này dùng để làm gì (tùy chọn)",
+            "templateExportCliDesc": "Trình bao bọc aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} token đầu vào, {output} token đầu ra, theo số liệu của nhà cung cấp",
                 "breakdownCache": "{input} token đầu vào, {output} token đầu ra, {cacheRead} đọc từ bộ nhớ đệm prompt, {cacheWritten} ghi vào đó, theo số liệu của nhà cung cấp"
+            },
+            "executeOperations": "Thực thi {count} thao tác",
+            "coding": {
+                "dryRun": "chạy thử",
+                "apply": "áp dụng",
+                "timedOutAfter": "Hết thời gian chờ sau {seconds}s.",
+                "restore": {
+                    "previewNote": "Thao tác này xem trước các hành động khôi phục điểm kiểm tra mà không thay đổi tệp.",
+                    "dangerNote": "Thao tác khôi phục rủi ro cao này có thể ghi đè nội dung tệp hiện tại và xóa các tệp không tồn tại tại điểm kiểm tra.",
+                    "wouldRewrite": "Sẽ ghi lại",
+                    "rewritten": "Đã ghi lại",
+                    "wouldDelete": "Sẽ xóa",
+                    "deleted": "Đã xóa",
+                    "wouldSkip": "Sẽ bỏ qua",
+                    "skipped": "Đã bỏ qua",
+                    "existedAtCheckpoint": "đã tồn tại tại điểm kiểm tra",
+                    "absentAtCheckpoint": "không có tại điểm kiểm tra"
+                },
+                "checks": {
+                    "exitSummary": "mã thoát {code} · {seconds}s",
+                    "continueOnFailure": "Chạy tất cả kiểm tra ngay cả khi một kiểm tra thất bại.",
+                    "stopOnFailure": "Dừng ở kiểm tra thất bại đầu tiên."
+                },
+                "diagnostics": {
+                    "none": "Không có chẩn đoán nào được báo cáo."
+                },
+                "search": {
+                    "none": "Không tìm thấy kết quả khớp."
+                },
+                "git": {
+                    "noStagedDiff": "Không có đầu ra diff cho các thay đổi trong chỉ mục.",
+                    "noUnstagedDiff": "Không có đầu ra diff cho các thay đổi ngoài chỉ mục.",
+                    "staged": "trong chỉ mục",
+                    "unstaged": "ngoài chỉ mục",
+                    "commitApproval": "Phê duyệt commit Git",
+                    "stageApproval": "Phê duyệt đưa vào chỉ mục Git",
+                    "commitNote": "Thao tác này tạo một git commit từ chỉ mục hiện tại. Hãy xem lại coding_git_status và coding_git_diff với staged=true trước.",
+                    "stagePreviewNote": "Thao tác này xem trước những đường dẫn được yêu cầu nào sẽ được đưa vào chỉ mục; chỉ mục sẽ không thay đổi.",
+                    "stageNote": "Thao tác này thay đổi chỉ mục git cho các đường dẫn được yêu cầu."
+                },
+                "patch": {
+                    "validateNote": "Thao tác này xác thực bản vá mà không thay đổi tệp.",
+                    "applyNote": "Yêu cầu áp dụng rủi ro cao này ghi tệp sau khi backend tạo điểm kiểm tra trước khi áp dụng.",
+                    "hideDiff": "Ẩn diff hợp nhất",
+                    "showDiff": "Hiện diff hợp nhất"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Chạy thử: có thể sửa {repaired} chunk bị hỏng. Không có gì được ghi.",
             "repairDryRunMetadata": "Chạy thử: có thể dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ. Không có gì được ghi.",
             "metadataRepaired": "Đã dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ.",
-            "repairMetadataSuccess": "Đã sửa xong: đã dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ"
+            "repairMetadataSuccess": "Đã sửa xong: đã dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ",
+            "errorCorrectionBadge": "Sửa lỗi",
+            "itemsInFolder": "{count} mục trong /{folder}"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Tìm thấy đầu tiên",
             "selectAllButOne": "Chọn tất cả trừ một trong mỗi nhóm",
             "everyCopyTicked": "đã chọn mọi bản sao",
-            "everyCopyTickedHint": "Bỏ chọn một bản sao trong mỗi nhóm được tô sáng: nếu không, mọi bản sao sẽ bị xóa."
+            "everyCopyTickedHint": "Bỏ chọn ít nhất một bản sao trong mỗi nhóm được tô sáng: nếu chọn mọi bản sao, tất cả sẽ bị xóa.",
+            "modeExactHint": "Giống hệt từng byte",
+            "modeNonIdenticalHint": "Tương đồng cảm quan hoặc văn bản, không tự động xóa",
+            "potentialWasteSelected": "lãng phí tiềm năng (đã chọn)",
+            "similarityDistance": "{similarity}, khoảng cách {distance}"
         },
         "diskUsage": {
             "title": "Sử dụng đĩa",
@@ -4384,7 +4451,9 @@
                 "next": "Tiếp theo",
                 "scanQr": "Thêm bí mật này vào ứng dụng xác thực của bạn (Google Authenticator, Authy, Microsoft Authenticator). Hoặc nhập khóa thủ công:",
                 "setup": "Xác thực hai yếu tố",
-                "verify": "Xác minh & Bật"
+                "verify": "Xác minh & Bật",
+                "active": "2FA đang bật",
+                "inactive": "2FA đang tắt"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Nhánh",
             "pagesPath": "Đường dẫn",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Ủy quyền",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Danh sách nhánh",
             "noBranches": "Không tìm thấy nhánh",
             "rawUrlCopied": "Đã sao chép URL thô",
-            "working": "đang chạy"
+            "working": "đang chạy",
+            "pagesDnsIssue": "Phát hiện sự cố DNS",
+            "releaseAssetOne": "{count} tệp",
+            "releaseAssetMany": "{count} tệp",
+            "repoPrivate": "Riêng tư",
+            "repoPublic": "Công khai"
         },
         "filenNotes": {
             "title": "Ghi chú mã hóa",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Dừng",
             "compareStopped": "Đã dừng so sánh.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "So sánh sẽ đọc cả hai thư mục và mọi thư mục bên dưới. Với cây thư mục lớn, quá trình này có thể mất một lúc, và bạn có thể dừng lại."
+            "compareStartHint": "So sánh sẽ đọc cả hai thư mục và mọi thư mục bên dưới. Với cây thư mục lớn, quá trình này có thể mất một lúc, và bạn có thể dừng lại.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[bản sao]"
         },
         "accountLock": {
             "title": "Chọn tài khoản",

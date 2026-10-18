@@ -308,7 +308,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                   {dnsHealth && (
                     <div className={`flex items-center gap-1.5 text-xs ${dnsHealth.healthy ? 'text-green-500' : 'text-amber-500'}`}>
                       {dnsHealth.healthy ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-                      <span>{dnsHealth.healthy ? (t('github.pagesDnsHealthy') || 'DNS configured correctly') : (dnsHealth.reason || 'DNS issue detected')}</span>
+                      <span>{dnsHealth.healthy ? (t('github.pagesDnsHealthy') || 'DNS configured correctly') : (dnsHealth.reason || t('github.pagesDnsIssue'))}</span>
                     </div>
                   )}
                 </div>

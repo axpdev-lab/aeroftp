@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Регистриране на архивни формати и менюта в Проводника",
             "fileAssociationIntegrationDesc": "Промените влизат в сила веднага и се запазват при актуализации. Windows управлява приложенията по подразбиране отделно.",
             "fileAssociationIntegrationPortable": "Инсталирайте AeroFTP, за да промените интеграцията с Windows.",
-            "fileAssociationIntegrationAdmin": "Windows може да поиска администраторско разрешение за промяна на тези опции."
+            "fileAssociationIntegrationAdmin": "Windows може да поиска администраторско разрешение за промяна на тези опции.",
+            "migrationServerProfilesFound": "Открити са {count} сървърни профила в некриптирано хранилище",
+            "migrationAiSettingsFound": "Открита е AI конфигурация в некриптирано хранилище",
+            "migrationOauthFound": "Открити са {count} OAuth идентификационни данни в некриптирано хранилище",
+            "fontSystemInstall": "системна инсталация",
+            "fontSizeMin": "мин",
+            "fontSizeMax": "макс"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Безплатното ниво е ограничено до 25 кредита на месец",
                 "fourshared": "Упълномощете ръчно отново, ако токенът бъде отменен"
             },
-            "profilesLoadFailed": "Запазените ви сървъри не можаха да бъдат прочетени: {error}"
+            "profilesLoadFailed": "Запазените ви сървъри не можаха да бъдат прочетени: {error}",
+            "cleanupSummary": "{count} файла, освободени {size}"
         },
         "statusBar": {
             "connected": "Свързан",
@@ -1600,7 +1607,8 @@
                 "title": "Екипът на Axpdev Lab",
                 "apRole": "Основател, разработчик, поддържащ, съдизайнер",
                 "ekRole": "Изследовател, инженер по осигуряване на качеството, съдизайнер"
-            }
+            },
+            "madeBy": "от {author}"
         },
         "support": {
             "title": "Подкрепете AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Използва Proton Drive CLI - инсталирайте го, впишете се в браузъра, AeroFTP е GUI",
             "twakeDesc": "Twake Drive (5 GB безплатно)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, френски облак с отворен код (Cozy Cloud вече е част от него) с 5 GB безплатно",
-            "discoverTwake": "Европейски облак с отворен код от Linagora, вече дом на Cozy Cloud (5 GB безплатно)"
+            "discoverTwake": "Европейски облак с отворен код от Linagora, вече дом на Cozy Cloud (5 GB безплатно)",
+            "sourceforgeProject": "Проект (Unixname)",
+            "opendriveNotApiKey": "(не вашият API ключ за OpenDrive)",
+            "endpoint": "Крайна точка",
+            "accountId": "ID на акаунт"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Потвърждаване на парола",
             "minLength": "Минимум 8 символа",
             "autoLockTimeout": "Време за автоматично заключване",
-            "enable": "Активиране"
+            "enable": "Активиране",
+            "setupBootstrapDescription": "Ключодържателят е недостъпен: режим на първоначално зареждане с главна парола"
         },
         "search": {
             "remote_placeholder": "Търсене на отдалечени файлове...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Имейл адрес",
             "add": "Добавяне",
             "remove": "Премахване",
-            "none": "Няма зададени разрешения"
+            "none": "Няма зададени разрешения",
+            "anyoneWithLink": "Всеки с връзката"
         },
         "locking": {
             "lock": "Заключване на файла",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Нищо не се прехвърля: това показва какво би направила пълна синхронизация, изчислено от извадката. Това е GUI еквивалентът на командата aeroftp-cli sync --dry-run (и на --dry-run на rclone).",
             "templateImportPathPairs": "Използваеми двойки пътища (локален/отдалечен) в този шаблон: {count}. Прозорецът на AeroSync работи с точно една двойка, затова нищо не беше импортирано. Редактирайте шаблона така, че да остане само една двойка, и след това го импортирайте отново.",
             "templateNamePlaceholder": "напр. Нощно резервно копие в S3",
-            "templateDescPlaceholder": "За какво служи този шаблон (по избор)"
+            "templateDescPlaceholder": "За какво служи този шаблон (по избор)",
+            "templateExportCliDesc": "Обвивка за aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Синхронизиране...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} входни токена, {output} изходни токена, според отчитането на доставчика",
                 "breakdownCache": "{input} входни токена, {output} изходни токена, {cacheRead} прочетени от кеша на промпта, {cacheWritten} записани в него, според отчитането на доставчика"
+            },
+            "executeOperations": "Изпълнение на операции: {count}",
+            "coding": {
+                "dryRun": "пробно изпълнение",
+                "apply": "прилагане",
+                "timedOutAfter": "Времето изтече след {seconds}s.",
+                "restore": {
+                    "previewNote": "Това показва преглед на действията за възстановяване от контролна точка, без да променя файлове.",
+                    "dangerNote": "Това високорисково възстановяване може да презапише текущото съдържание на файловете и да изтрие файлове, които не са съществували в контролната точка.",
+                    "wouldRewrite": "Ще бъдат презаписани",
+                    "rewritten": "Презаписани",
+                    "wouldDelete": "Ще бъдат изтрити",
+                    "deleted": "Изтрити",
+                    "wouldSkip": "Ще бъдат пропуснати",
+                    "skipped": "Пропуснати",
+                    "existedAtCheckpoint": "съществуваше в контролната точка",
+                    "absentAtCheckpoint": "липсваше в контролната точка"
+                },
+                "checks": {
+                    "exitSummary": "код на изход {code} · {seconds}s",
+                    "continueOnFailure": "Изпълнява всички проверки, дори ако някоя се провали.",
+                    "stopOnFailure": "Спира при първата неуспешна проверка."
+                },
+                "diagnostics": {
+                    "none": "Няма докладвана диагностика."
+                },
+                "search": {
+                    "none": "Няма намерени съвпадения."
+                },
+                "git": {
+                    "noStagedDiff": "Няма изход от diff за промените в индекса.",
+                    "noUnstagedDiff": "Няма изход от diff за промените извън индекса.",
+                    "staged": "в индекса",
+                    "unstaged": "извън индекса",
+                    "commitApproval": "Одобрение на Git къмит",
+                    "stageApproval": "Одобрение на Git индексиране",
+                    "commitNote": "Това създава git къмит от текущия индекс. Първо прегледайте coding_git_status и coding_git_diff със staged=true.",
+                    "stagePreviewNote": "Това показва предварително кои от заявените пътища биха били индексирани; индексът няма да се промени.",
+                    "stageNote": "Това променя git индекса за заявените пътища."
+                },
+                "patch": {
+                    "validateNote": "Това валидира пача, без да променя файлове.",
+                    "applyNote": "Тази заявка за прилагане с висок риск записва файлове, след като бекендът създаде контролна точка преди прилагането.",
+                    "hideDiff": "Скриване на унифицирания diff",
+                    "showDiff": "Показване на унифицирания diff"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Пробно изпълнение: брой повредени парчета, които могат да бъдат поправени: {repaired}. Нищо не е записано.",
             "repairDryRunMetadata": "Пробно изпълнение: заглавката или манифестът на трезора могат да бъдат възстановени от четността. Нищо не е записано.",
             "metadataRepaired": "Заглавката или манифестът на трезора бяха възстановени от четността.",
-            "repairMetadataSuccess": "Поправката завърши: заглавката или манифестът на трезора бяха възстановени от четността"
+            "repairMetadataSuccess": "Поправката завърши: заглавката или манифестът на трезора бяха възстановени от четността",
+            "errorCorrectionBadge": "Корекция на грешки",
+            "itemsInFolder": "{count} елемента в /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator трезор",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Първия намерен",
             "selectAllButOne": "Избери всички освен по едно от група",
             "everyCopyTicked": "всички копия са отметнати",
-            "everyCopyTickedHint": "Махнете отметката от едно копие във всяка откроена група: така биха се изтрили всички копия."
+            "everyCopyTickedHint": "Махнете отметката от поне едно копие във всяка откроена група: ако всички копия са отметнати, всички ще бъдат изтрити.",
+            "modeExactHint": "Идентични байт по байт",
+            "modeNonIdenticalHint": "Перцептивна или текстова прилика, без автоматично изтриване",
+            "potentialWasteSelected": "потенциално загубено (избрани)",
+            "similarityDistance": "{similarity}, разст. {distance}"
         },
         "diskUsage": {
             "title": "Използване на диска",
@@ -4384,7 +4451,9 @@
                 "next": "Напред",
                 "scanQr": "Добавете този секрет във вашето приложение за удостоверяване (Google Authenticator, Authy, Microsoft Authenticator). Или въведете ключа ръчно:",
                 "setup": "Двуфакторно удостоверяване",
-                "verify": "Потвърди и активирай"
+                "verify": "Потвърди и активирай",
+                "active": "2FA активна",
+                "inactive": "2FA неактивна"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Клон",
             "pagesPath": "Път",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Авторизирай",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Списък с клонове",
             "noBranches": "Не са намерени клонове",
             "rawUrlCopied": "Суровият URL адрес е копиран",
-            "working": "работи"
+            "working": "работи",
+            "pagesDnsIssue": "Открит е проблем с DNS",
+            "releaseAssetOne": "{count} файл",
+            "releaseAssetMany": "{count} файла",
+            "repoPrivate": "Частно",
+            "repoPublic": "Публично"
         },
         "filenNotes": {
             "title": "Криптирани бележки",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Стоп",
             "compareStopped": "Сравнението е спряно.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Сравнението чете двете папки и всички папки в тях. При голямо дърво може да отнеме време, а можете да го спрете."
+            "compareStartHint": "Сравнението чете двете папки и всички папки в тях. При голямо дърво може да отнеме време, а можете да го спрете.",
+            "progressDelta": "[делта]",
+            "progressCopy": "[копие]"
         },
         "accountLock": {
             "title": "Изберете акаунт",

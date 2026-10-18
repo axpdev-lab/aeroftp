@@ -3032,7 +3032,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 {!isPeer && (
                 <div>
                     <label className="block text-sm font-medium mb-1.5">
-                        {isSourceForge ? 'Project (Unixname)' : `${t('browser.remote')} ${t('browser.path')}`}
+                        {isSourceForge ? t('protocol.sourceforgeProject') : `${t('browser.remote')} ${t('browser.path')}`}
                     </label>
                     {isSourceForge ? (
                         <div className="flex items-center gap-0">
@@ -4667,7 +4667,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </button>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-gray-400 mt-2">{t('protocol.opendriveAuthHelp')} (not your OpenDrive API key)</p>
+                                        <p className="text-xs text-gray-400 mt-2">{t('protocol.opendriveAuthHelp')} {t('protocol.opendriveNotApiKey')}</p>
                                         </div>
 
                                         {renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-cyan-600 hover:bg-cyan-700' })}
@@ -4726,9 +4726,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 : 'border-gray-600 text-gray-400 hover:border-gray-400'
                                                         }`}
                                                     >
-                                                        {mode === 'authorize' && 'Authorize'}
-                                                        {mode === 'pat' && 'Access Token'}
-                                                        {mode === 'app' && 'App (.pem)'}
+                                                        {mode === 'authorize' && t('github.modeAuthorize')}
+                                                        {mode === 'pat' && t('github.modePat')}
+                                                        {mode === 'app' && t('github.modeApp')}
                                                     </button>
                                                     );
                                                 })}

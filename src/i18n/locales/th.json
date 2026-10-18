@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "ลงทะเบียนรูปแบบไฟล์บีบอัดและเมนูของตัวสำรวจไฟล์",
             "fileAssociationIntegrationDesc": "การเปลี่ยนแปลงจะมีผลทันทีและคงอยู่เมื่ออัปเดต Windows จัดการแอปเริ่มต้นของคุณแยกต่างหาก",
             "fileAssociationIntegrationPortable": "ติดตั้ง AeroFTP เพื่อเปลี่ยนการผสานกับ Windows",
-            "fileAssociationIntegrationAdmin": "Windows อาจขอสิทธิ์ผู้ดูแลระบบเพื่อเปลี่ยนตัวเลือกเหล่านี้"
+            "fileAssociationIntegrationAdmin": "Windows อาจขอสิทธิ์ผู้ดูแลระบบเพื่อเปลี่ยนตัวเลือกเหล่านี้",
+            "migrationServerProfilesFound": "พบโปรไฟล์เซิร์ฟเวอร์ {count} รายการในที่เก็บข้อมูลที่ไม่ได้เข้ารหัส",
+            "migrationAiSettingsFound": "พบการตั้งค่า AI ในที่เก็บข้อมูลที่ไม่ได้เข้ารหัส",
+            "migrationOauthFound": "พบข้อมูลรับรอง OAuth {count} รายการในที่เก็บข้อมูลที่ไม่ได้เข้ารหัส",
+            "fontSystemInstall": "ติดตั้งในระบบ",
+            "fontSizeMin": "ต่ำสุด",
+            "fontSizeMax": "สูงสุด"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "ระดับฟรีจำกัดที่ 25 เครดิตต่อเดือน",
                 "fourshared": "อนุญาตใหม่ด้วยตนเองหากโทเค็นถูกเพิกถอน"
             },
-            "profilesLoadFailed": "ไม่สามารถอ่านเซิร์ฟเวอร์ที่บันทึกไว้ของคุณได้: {error}"
+            "profilesLoadFailed": "ไม่สามารถอ่านเซิร์ฟเวอร์ที่บันทึกไว้ของคุณได้: {error}",
+            "cleanupSummary": "{count} ไฟล์, คืนพื้นที่ {size}"
         },
         "statusBar": {
             "connected": "เชื่อมต่อแล้ว",
@@ -1600,7 +1607,8 @@
                 "title": "ทีม Axpdev Lab",
                 "apRole": "ผู้ก่อตั้ง นักพัฒนา ผู้ดูแลโครงการ ผู้ร่วมออกแบบ",
                 "ekRole": "นักวิจัย วิศวกรประกันคุณภาพ ผู้ร่วมออกแบบ"
-            }
+            },
+            "madeBy": "โดย {author}"
         },
         "support": {
             "title": "สนับสนุน AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "ใช้ Proton Drive CLI - ติดตั้ง, ลงชื่อเข้าในเบราว์เซอร์, AeroFTP คือ GUI",
             "twakeDesc": "Twake Drive (ฟรี 5 GB)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace คลาวด์โอเพนซอร์สสัญชาติฝรั่งเศส (Cozy Cloud เป็นส่วนหนึ่งของมันแล้ว) พร้อม 5 GB ฟรี",
-            "discoverTwake": "คลาวด์โอเพนซอร์สยุโรปโดย Linagora ปัจจุบันเป็นบ้านใหม่ของ Cozy Cloud (5 GB ฟรี)"
+            "discoverTwake": "คลาวด์โอเพนซอร์สยุโรปโดย Linagora ปัจจุบันเป็นบ้านใหม่ของ Cozy Cloud (5 GB ฟรี)",
+            "sourceforgeProject": "โปรเจกต์ (Unixname)",
+            "opendriveNotApiKey": "(ไม่ใช่คีย์ API ของ OpenDrive)",
+            "endpoint": "ปลายทาง",
+            "accountId": "ID บัญชี"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "ยืนยันรหัสผ่าน",
             "minLength": "ขั้นต่ำ 8 ตัวอักษร",
             "autoLockTimeout": "ระยะเวลาล็อกอัตโนมัติ",
-            "enable": "เปิดใช้งาน"
+            "enable": "เปิดใช้งาน",
+            "setupBootstrapDescription": "คีย์ริงไม่พร้อมใช้งาน: โหมดบูตสแตรปด้วยรหัสผ่านหลัก"
         },
         "search": {
             "remote_placeholder": "ค้นหาไฟล์ระยะไกล...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "ที่อยู่อีเมล",
             "add": "เพิ่ม",
             "remove": "ลบ",
-            "none": "ไม่ได้ตั้งสิทธิ์"
+            "none": "ไม่ได้ตั้งสิทธิ์",
+            "anyoneWithLink": "ทุกคนที่มีลิงก์"
         },
         "locking": {
             "lock": "ล็อกไฟล์",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "ไม่มีการถ่ายโอนใดๆ: นี่เป็นการแสดงตัวอย่างสิ่งที่การซิงค์เต็มรูปแบบจะทำ คำนวณจากตัวอย่าง เป็นรูปแบบ GUI ของคำสั่ง aeroftp-cli sync --dry-run (และ --dry-run ของ rclone)",
             "templateImportPathPairs": "คู่เส้นทางภายในเครื่อง/ระยะไกลที่ใช้ได้ในเทมเพลตนี้: {count} หน้าต่าง AeroSync ทำงานกับคู่เส้นทางเพียงคู่เดียวพอดี จึงไม่มีการนำเข้าใด ๆ แก้ไขเทมเพลตให้เหลือเพียงคู่เดียว แล้วนำเข้าอีกครั้ง",
             "templateNamePlaceholder": "เช่น สำรองข้อมูลกลางคืนไปยัง S3",
-            "templateDescPlaceholder": "เทมเพลตนี้ใช้ทำอะไร (ไม่บังคับ)"
+            "templateDescPlaceholder": "เทมเพลตนี้ใช้ทำอะไร (ไม่บังคับ)",
+            "templateExportCliDesc": "สคริปต์ครอบ aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "โทเคนอินพุต {input}, โทเคนเอาต์พุต {output}, ตามที่ผู้ให้บริการนับ",
                 "breakdownCache": "โทเคนอินพุต {input}, โทเคนเอาต์พุต {output}, อ่านจากแคชพรอมต์ {cacheRead}, เขียนลงแคชพรอมต์ {cacheWritten}, ตามที่ผู้ให้บริการนับ"
+            },
+            "executeOperations": "ดำเนินการ {count} รายการ",
+            "coding": {
+                "dryRun": "รันทดสอบ",
+                "apply": "นำไปใช้",
+                "timedOutAfter": "หมดเวลาหลังจาก {seconds}s",
+                "restore": {
+                    "previewNote": "แสดงตัวอย่างการดำเนินการกู้คืนจากจุดตรวจสอบโดยไม่เปลี่ยนแปลงไฟล์",
+                    "dangerNote": "การกู้คืนที่มีความเสี่ยงสูงนี้อาจเขียนทับเนื้อหาไฟล์ปัจจุบันและลบไฟล์ที่ไม่มีอยู่ ณ จุดตรวจสอบ",
+                    "wouldRewrite": "จะเขียนใหม่",
+                    "rewritten": "เขียนใหม่แล้ว",
+                    "wouldDelete": "จะลบ",
+                    "deleted": "ลบแล้ว",
+                    "wouldSkip": "จะข้าม",
+                    "skipped": "ข้ามแล้ว",
+                    "existedAtCheckpoint": "มีอยู่ ณ จุดตรวจสอบ",
+                    "absentAtCheckpoint": "ไม่มีอยู่ ณ จุดตรวจสอบ"
+                },
+                "checks": {
+                    "exitSummary": "รหัสออก {code} · {seconds}s",
+                    "continueOnFailure": "รันการตรวจสอบทั้งหมดแม้ว่าจะมีรายการหนึ่งล้มเหลว",
+                    "stopOnFailure": "หยุดที่การตรวจสอบแรกที่ล้มเหลว"
+                },
+                "diagnostics": {
+                    "none": "ไม่มีการรายงานการวินิจฉัย"
+                },
+                "search": {
+                    "none": "ไม่พบรายการที่ตรงกัน"
+                },
+                "git": {
+                    "noStagedDiff": "ไม่มีผลลัพธ์ diff ของการเปลี่ยนแปลงที่สเตจแล้ว",
+                    "noUnstagedDiff": "ไม่มีผลลัพธ์ diff ของการเปลี่ยนแปลงที่ยังไม่ได้สเตจ",
+                    "staged": "สเตจแล้ว",
+                    "unstaged": "ยังไม่ได้สเตจ",
+                    "commitApproval": "การอนุมัติคอมมิต Git",
+                    "stageApproval": "การอนุมัติการสเตจ Git",
+                    "commitNote": "การดำเนินการนี้จะสร้างคอมมิต git จากดัชนีที่สเตจไว้ในปัจจุบัน โปรดตรวจสอบ coding_git_status และ coding_git_diff ด้วย staged=true ก่อน",
+                    "stagePreviewNote": "การดำเนินการนี้จะแสดงตัวอย่างว่าพาธที่ขอใดบ้างจะถูกสเตจ โดยดัชนีจะไม่เปลี่ยนแปลง",
+                    "stageNote": "การดำเนินการนี้จะเปลี่ยนดัชนี git สำหรับพาธที่ขอ"
+                },
+                "patch": {
+                    "validateNote": "การดำเนินการนี้จะตรวจสอบแพตช์โดยไม่เปลี่ยนแปลงไฟล์",
+                    "applyNote": "คำขอนำไปใช้ที่มีความเสี่ยงสูงนี้จะเขียนไฟล์หลังจากแบ็กเอนด์สร้างจุดตรวจสอบก่อนนำไปใช้",
+                    "hideDiff": "ซ่อน diff แบบรวม",
+                    "showDiff": "แสดง diff แบบรวม"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "รันทดสอบ: สามารถซ่อมชังก์ที่เสียหายได้ {repaired} ชังก์ ไม่มีการเขียนข้อมูลใดๆ",
             "repairDryRunMetadata": "รันทดสอบ: สามารถสร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีได้ ไม่มีการเขียนข้อมูลใดๆ",
             "metadataRepaired": "สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว",
-            "repairMetadataSuccess": "ซ่อมเสร็จสมบูรณ์: สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว"
+            "repairMetadataSuccess": "ซ่อมเสร็จสมบูรณ์: สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว",
+            "errorCorrectionBadge": "การแก้ไขข้อผิดพลาด",
+            "itemsInFolder": "{count} รายการใน /{folder}"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "พบเป็นอันแรก",
             "selectAllButOne": "เลือกทั้งหมดยกเว้นหนึ่งในแต่ละกลุ่ม",
             "everyCopyTicked": "ติ๊กสำเนาครบทุกอัน",
-            "everyCopyTickedHint": "ยกเลิกการติ๊กสำเนาหนึ่งอันในแต่ละกลุ่มที่ไฮไลต์ มิฉะนั้นสำเนาทั้งหมดจะถูกลบ"
+            "everyCopyTickedHint": "ยกเลิกการติ๊กสำเนาอย่างน้อยหนึ่งอันในแต่ละกลุ่มที่ไฮไลต์ หากติ๊กสำเนาครบทุกอัน สำเนาทั้งหมดจะถูกลบ",
+            "modeExactHint": "เหมือนกันทุกไบต์",
+            "modeNonIdenticalHint": "ความคล้ายคลึงทางการรับรู้หรือข้อความ ไม่ลบอัตโนมัติ",
+            "potentialWasteSelected": "อาจสูญเปล่า (ที่เลือก)",
+            "similarityDistance": "{similarity}, ระยะ {distance}"
         },
         "diskUsage": {
             "title": "การใช้พื้นที่ดิสก์",
@@ -4384,7 +4451,9 @@
                 "next": "ถัดไป",
                 "scanQr": "เพิ่มรหัสลับนี้ในแอปยืนยันตัวตนของคุณ (Google Authenticator, Authy, Microsoft Authenticator) หรือป้อนคีย์ด้วยตนเอง:",
                 "setup": "การยืนยันตัวตนสองขั้นตอน",
-                "verify": "ยืนยัน & เปิดใช้งาน"
+                "verify": "ยืนยัน & เปิดใช้งาน",
+                "active": "2FA ใช้งานอยู่",
+                "inactive": "2FA ไม่ได้ใช้งาน"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "สาขา",
             "pagesPath": "เส้นทาง",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "อนุญาต",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "รายการสาขา",
             "noBranches": "ไม่พบสาขา",
             "rawUrlCopied": "คัดลอก URL ดิบแล้ว",
-            "working": "กำลังทำงาน"
+            "working": "กำลังทำงาน",
+            "pagesDnsIssue": "ตรวจพบปัญหา DNS",
+            "releaseAssetOne": "{count} ไฟล์",
+            "releaseAssetMany": "{count} ไฟล์",
+            "repoPrivate": "ส่วนตัว",
+            "repoPublic": "สาธารณะ"
         },
         "filenNotes": {
             "title": "บันทึกเข้ารหัส",
@@ -5620,7 +5694,9 @@
             "stopCompare": "หยุด",
             "compareStopped": "หยุดการเปรียบเทียบแล้ว",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "การเปรียบเทียบจะอ่านทั้งสองโฟลเดอร์และทุกโฟลเดอร์ที่อยู่ภายใต้ หากโครงสร้างมีขนาดใหญ่อาจใช้เวลาสักครู่ และคุณสามารถหยุดได้"
+            "compareStartHint": "การเปรียบเทียบจะอ่านทั้งสองโฟลเดอร์และทุกโฟลเดอร์ที่อยู่ภายใต้ หากโครงสร้างมีขนาดใหญ่อาจใช้เวลาสักครู่ และคุณสามารถหยุดได้",
+            "progressDelta": "[เดลตา]",
+            "progressCopy": "[สำเนา]"
         },
         "accountLock": {
             "title": "เลือกบัญชี",

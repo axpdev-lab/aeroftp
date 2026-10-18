@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Registruoti archyvų formatus ir failų naršyklės meniu",
             "fileAssociationIntegrationDesc": "Pakeitimai įsigalioja iš karto ir išlieka atnaujinant. Windows atskirai tvarko numatytąsias programas.",
             "fileAssociationIntegrationPortable": "Įdiekite AeroFTP, kad galėtumėte pakeisti integraciją su Windows.",
-            "fileAssociationIntegrationAdmin": "Windows gali paprašyti administratoriaus leidimo pakeisti šias parinktis."
+            "fileAssociationIntegrationAdmin": "Windows gali paprašyti administratoriaus leidimo pakeisti šias parinktis.",
+            "migrationServerProfilesFound": "Neužšifruotoje saugykloje rasta serverio profilių: {count}",
+            "migrationAiSettingsFound": "Neužšifruotoje saugykloje rasta AI konfigūracija",
+            "migrationOauthFound": "Neužšifruotoje saugykloje rasta OAuth prisijungimo duomenų: {count}",
+            "fontSystemInstall": "diegimas sistemoje",
+            "fontSizeMin": "min",
+            "fontSizeMax": "maks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Nemokamas lygis apribotas 25 kreditais per mėnesį",
                 "fourshared": "Jei prieigos raktas atšauktas, autorizuokite iš naujo rankiniu būdu"
             },
-            "profilesLoadFailed": "Nepavyko nuskaityti išsaugotų serverių: {error}"
+            "profilesLoadFailed": "Nepavyko nuskaityti išsaugotų serverių: {error}",
+            "cleanupSummary": "{count} failų, atlaisvinta {size}"
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Lab komanda",
                 "apRole": "Įkūrėjas, kūrėjas, prižiūrėtojas, dizaino bendraautoris",
                 "ekRole": "Tyrėjas, kokybės užtikrinimo inžinierius, dizaino bendraautoris"
-            }
+            },
+            "madeBy": "bendrovės {author}"
         },
         "support": {
             "title": "Palaikykite AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Naudoja Proton Drive CLI - įdiekite, prisijunkite naršyklėje, AeroFTP yra GUI",
             "twakeDesc": "Twake Drive (5 GB nemokamai)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, prancūziškas atvirojo kodo debesis (Cozy Cloud dabar yra jo dalis) su 5 GB nemokamai",
-            "discoverTwake": "Linagora atvirojo kodo Europos debesis, dabar naujieji Cozy Cloud namai (5 GB nemokamai)"
+            "discoverTwake": "Linagora atvirojo kodo Europos debesis, dabar naujieji Cozy Cloud namai (5 GB nemokamai)",
+            "sourceforgeProject": "Projektas (Unixname)",
+            "opendriveNotApiKey": "(ne jūsų OpenDrive API raktas)",
+            "endpoint": "Galinis taškas",
+            "accountId": "Paskyros ID"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Patvirtinkite slaptažodį",
             "minLength": "Mažiausiai 8 simboliai",
             "autoLockTimeout": "Automatinio užrakinimo laikas",
-            "enable": "Įjungti"
+            "enable": "Įjungti",
+            "setupBootstrapDescription": "Raktų saugykla nepasiekiama: paleidimo režimas su pagrindiniu slaptažodžiu"
         },
         "search": {
             "remote_placeholder": "Ieškoti nuotolinių failų...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "El. pašto adresas",
             "add": "Pridėti",
             "remove": "Pašalinti",
-            "none": "Leidimų nėra nustatyta"
+            "none": "Leidimų nėra nustatyta",
+            "anyoneWithLink": "Bet kas, turintis nuorodą"
         },
         "locking": {
             "lock": "Užrakinti failą",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Niekas neperkeliama: tai parodo, ką darytų visas sinchronizavimas, apskaičiuota iš imties. Tai komandos aeroftp-cli sync --dry-run (ir rclone --dry-run) grafinis atitikmuo.",
             "templateImportPathPairs": "Naudotinos kelių poros (vietinis/nuotolinis) šiame šablone: {count}. AeroSync langas dirba su lygiai viena pora, todėl nieko neimportuota. Redaguokite šabloną taip, kad liktų tik viena pora, tada importuokite jį dar kartą.",
             "templateNamePlaceholder": "pvz. Naktinė atsarginė kopija į S3",
-            "templateDescPlaceholder": "Kam skirtas šis šablonas (nebūtina)"
+            "templateDescPlaceholder": "Kam skirtas šis šablonas (nebūtina)",
+            "templateExportCliDesc": "aeroftp-cli sync apvalkalas ({shell})"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} įvesties žetonų, {output} išvesties žetonų, pagal teikėjo skaičiavimą",
                 "breakdownCache": "{input} įvesties žetonų, {output} išvesties žetonų, {cacheRead} perskaityta iš užklausos talpyklos, {cacheWritten} įrašyta į ją, pagal teikėjo skaičiavimą"
+            },
+            "executeOperations": "Vykdyti operacijas: {count}",
+            "coding": {
+                "dryRun": "bandomasis vykdymas",
+                "apply": "taikyti",
+                "timedOutAfter": "Baigėsi laikas po {seconds}s.",
+                "restore": {
+                    "previewNote": "Tai parodo atkūrimo iš kontrolinio taško veiksmų peržiūrą nekeičiant failų.",
+                    "dangerNote": "Šis didelės rizikos atkūrimas gali perrašyti dabartinį failų turinį ir ištrinti failus, kurių kontroliniame taške nebuvo.",
+                    "wouldRewrite": "Būtų perrašyta",
+                    "rewritten": "Perrašyta",
+                    "wouldDelete": "Būtų ištrinta",
+                    "deleted": "Ištrinta",
+                    "wouldSkip": "Būtų praleista",
+                    "skipped": "Praleista",
+                    "existedAtCheckpoint": "buvo kontroliniame taške",
+                    "absentAtCheckpoint": "nebuvo kontroliniame taške"
+                },
+                "checks": {
+                    "exitSummary": "išėjimo kodas {code} · {seconds}s",
+                    "continueOnFailure": "Vykdo visus patikrinimus, net jei vienas nepavyksta.",
+                    "stopOnFailure": "Sustoja ties pirmu nepavykusiu patikrinimu."
+                },
+                "diagnostics": {
+                    "none": "Diagnostikos pranešimų nėra."
+                },
+                "search": {
+                    "none": "Atitikmenų nerasta."
+                },
+                "git": {
+                    "noStagedDiff": "Nėra paruoštų pakeitimų diff išvesties.",
+                    "noUnstagedDiff": "Nėra neparuoštų pakeitimų diff išvesties.",
+                    "staged": "paruošta",
+                    "unstaged": "neparuošta",
+                    "commitApproval": "Git užfiksavimo patvirtinimas",
+                    "stageApproval": "Git paruošimo patvirtinimas",
+                    "commitNote": "Tai sukuria git užfiksavimą (commit) iš dabartinio paruošto indekso. Pirmiausia peržiūrėkite coding_git_status ir coding_git_diff su staged=true.",
+                    "stagePreviewNote": "Tai parodo peržiūrą, kurie prašomi keliai būtų paruošti; indeksas nepasikeis.",
+                    "stageNote": "Tai pakeičia git indeksą prašomiems keliams."
+                },
+                "patch": {
+                    "validateNote": "Tai patikrina pataisą nekeičiant failų.",
+                    "applyNote": "Ši didelės rizikos taikymo užklausa įrašo failus po to, kai foninė sistema sukuria kontrolinį tašką prieš taikymą.",
+                    "hideDiff": "Slėpti suvienodintą diff",
+                    "showDiff": "Rodyti suvienodintą diff"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Bandomasis vykdymas: pažeistų fragmentų, kuriuos galima pataisyti: {repaired}. Nieko neįrašyta.",
             "repairDryRunMetadata": "Bandomasis vykdymas: saugyklos antraštę arba manifestą galima atkurti iš lyginumo. Nieko neįrašyta.",
             "metadataRepaired": "Iš lyginumo atkurta saugyklos antraštė arba manifestas.",
-            "repairMetadataSuccess": "Taisymas baigtas: iš lyginumo atkurta saugyklos antraštė arba manifestas"
+            "repairMetadataSuccess": "Taisymas baigtas: iš lyginumo atkurta saugyklos antraštė arba manifestas",
+            "errorCorrectionBadge": "Klaidų taisymas",
+            "itemsInFolder": "{count} elementų aplanke /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Pirmą rastą",
             "selectAllButOne": "Pažymėti visus, išskyrus vieną kiekvienoje grupėje",
             "everyCopyTicked": "pažymėtos visos kopijos",
-            "everyCopyTickedHint": "Kiekvienoje pažymėtoje grupėje atžymėkite vieną kopiją: kitaip bus ištrintos visos."
+            "everyCopyTickedHint": "Kiekvienoje paryškintoje grupėje atžymėkite bent vieną kopiją: jei pažymėtos visos kopijos, būtų ištrintos visos.",
+            "modeExactHint": "Identiški baitas į baitą",
+            "modeNonIdenticalHint": "Suvokimo arba teksto panašumas, be automatinio trynimo",
+            "potentialWasteSelected": "galimai švaistoma (pasirinkta)",
+            "similarityDistance": "{similarity}, atst. {distance}"
         },
         "diskUsage": {
             "title": "Disko naudojimas",
@@ -4384,7 +4451,9 @@
                 "next": "Toliau",
                 "scanQr": "Pridėkite šį slaptodį į savo autentifikatoriaus programą (Google Authenticator, Authy, Microsoft Authenticator). Arba įveskite rankinį raktą:",
                 "setup": "Dviejų veiksnių autentifikavimas",
-                "verify": "Patikrinti ir įjungti"
+                "verify": "Patikrinti ir įjungti",
+                "active": "2FA aktyvus",
+                "inactive": "2FA neaktyvus"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Šaka",
             "pagesPath": "Kelias",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autorizuoti",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Šakų sąrašas",
             "noBranches": "Šakų nerasta",
             "rawUrlCopied": "Neapdorotas URL nukopijuotas",
-            "working": "dirbama"
+            "working": "dirbama",
+            "pagesDnsIssue": "Aptikta DNS problema",
+            "releaseAssetOne": "{count} failas",
+            "releaseAssetMany": "Failų: {count}",
+            "repoPrivate": "Privati",
+            "repoPublic": "Vieša"
         },
         "filenNotes": {
             "title": "Šifruotos užrašai",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Stabdyti",
             "compareStopped": "Palyginimas sustabdytas.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Palyginimas nuskaito abu aplankus ir visus juose esančius aplankus. Dideliame medyje tai gali užtrukti, o jį galite sustabdyti."
+            "compareStartHint": "Palyginimas nuskaito abu aplankus ir visus juose esančius aplankus. Dideliame medyje tai gali užtrukti, o jį galite sustabdyti.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopija]"
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

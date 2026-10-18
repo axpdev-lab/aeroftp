@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Rekisteröi arkistomuodot ja Resurssienhallinnan valikot",
             "fileAssociationIntegrationDesc": "Muutokset tulevat voimaan heti ja säilyvät päivityksissä. Windows hallitsee oletussovelluksia erikseen.",
             "fileAssociationIntegrationPortable": "Asenna AeroFTP muuttaaksesi Windows-integraatiota.",
-            "fileAssociationIntegrationAdmin": "Windows saattaa pyytää järjestelmänvalvojan oikeuksia näiden asetusten muuttamiseen."
+            "fileAssociationIntegrationAdmin": "Windows saattaa pyytää järjestelmänvalvojan oikeuksia näiden asetusten muuttamiseen.",
+            "migrationServerProfilesFound": "Salaamattomasta tallennustilasta löytyi {count} palvelinprofiilia",
+            "migrationAiSettingsFound": "Salaamattomasta tallennustilasta löytyi tekoälyasetuksia",
+            "migrationOauthFound": "Salaamattomasta tallennustilasta löytyi {count} OAuth-tunnistetietoa",
+            "fontSystemInstall": "järjestelmäasennus",
+            "fontSizeMin": "min",
+            "fontSizeMax": "maks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Ilmainen taso on rajattu 25 krediittiin kuukaudessa",
                 "fourshared": "Valtuuta uudelleen manuaalisesti, jos token peruutetaan"
             },
-            "profilesLoadFailed": "Tallennettuja palvelimia ei voitu lukea: {error}"
+            "profilesLoadFailed": "Tallennettuja palvelimia ei voitu lukea: {error}",
+            "cleanupSummary": "{count} tiedostoa, {size} vapautettu"
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -1600,7 +1607,8 @@
                 "title": "Axpdev Labin tiimi",
                 "apRole": "Perustaja, kehittäjä, ylläpitäjä, yhteissuunnittelija",
                 "ekRole": "Tutkija, laadunvarmistusinsinööri, yhteissuunnittelija"
-            }
+            },
+            "madeBy": "{author}:n toimesta"
         },
         "support": {
             "title": "Tue AeroFTP:tä",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Käyttää Proton Drive CLI:tä - asenna, kirjaudu selaimessa, AeroFTP on GUI",
             "twakeDesc": "Twake Drive (5 Gt ilmaiseksi)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, ranskalainen avoimen lähdekoodin pilvi (Cozy Cloud on nyt osa sitä) 5 Gt ilmaiseksi",
-            "discoverTwake": "Linagoran avoimen lähdekoodin eurooppalainen pilvi, nyt Cozy Cloudin uusi koti (5 Gt ilmaiseksi)"
+            "discoverTwake": "Linagoran avoimen lähdekoodin eurooppalainen pilvi, nyt Cozy Cloudin uusi koti (5 Gt ilmaiseksi)",
+            "sourceforgeProject": "Projekti (Unixname)",
+            "opendriveNotApiKey": "(ei OpenDrive API -avaimesi)",
+            "endpoint": "Päätepiste",
+            "accountId": "Tilin ID"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Vahvista salasana",
             "minLength": "Vähintään 8 merkkiä",
             "autoLockTimeout": "Automaattilukituksen aikakatkaisu",
-            "enable": "Ota käyttöön"
+            "enable": "Ota käyttöön",
+            "setupBootstrapDescription": "Avainnippu ei käytettävissä: käynnistystila pääsalasanalla"
         },
         "search": {
             "remote_placeholder": "Hae etätiedostoista...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Sähköpostiosoite",
             "add": "Lisää",
             "remove": "Poista",
-            "none": "Ei käyttöoikeuksia asetettu"
+            "none": "Ei käyttöoikeuksia asetettu",
+            "anyoneWithLink": "Kuka tahansa, jolla on linkki"
         },
         "locking": {
             "lock": "Lukitse tiedosto",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Mitään ei siirretä: tämä esikatselee, mitä täysi synkronointi tekisi, laskettuna otoksesta. Se on CLI-komennon aeroftp-cli sync --dry-run (ja rclonen --dry-run) graafinen vastine.",
             "templateImportPathPairs": "Käyttökelpoiset polkuparit (paikallinen/etä) tässä mallissa: {count}. AeroSync-ikkuna käsittelee tasan yhtä paria, joten mitään ei tuotu. Muokkaa mallia niin, että siihen jää vain yksi pari, ja tuo se sitten uudelleen.",
             "templateNamePlaceholder": "esim. Yöllinen varmuuskopio S3:een",
-            "templateDescPlaceholder": "Mihin tätä mallia käytetään (valinnainen)"
+            "templateDescPlaceholder": "Mihin tätä mallia käytetään (valinnainen)",
+            "templateExportCliDesc": "aeroftp-cli sync -kääreskripti ({shell})"
         },
         "ui": {
             "syncing": "Synkronoidaan...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} syötetokenia, {output} vastaustokenia, palveluntarjoajan laskemana",
                 "breakdownCache": "{input} syötetokenia, {output} vastaustokenia, {cacheRead} luettu kehotteen välimuistista, {cacheWritten} kirjoitettu siihen, palveluntarjoajan laskemana"
+            },
+            "executeOperations": "Suorita {count} toiminto(a)",
+            "coding": {
+                "dryRun": "koeajo",
+                "apply": "käytä",
+                "timedOutAfter": "Aikakatkaisu {seconds}s jälkeen.",
+                "restore": {
+                    "previewNote": "Tämä esikatselee tarkistuspisteen palautustoimintoja muuttamatta tiedostoja.",
+                    "dangerNote": "Tämä korkean riskin palautus voi korvata tiedostojen nykyisen sisällön ja poistaa tiedostoja, joita ei ollut tarkistuspisteessä.",
+                    "wouldRewrite": "Kirjoitettaisiin uudelleen",
+                    "rewritten": "Kirjoitettu uudelleen",
+                    "wouldDelete": "Poistettaisiin",
+                    "deleted": "Poistettu",
+                    "wouldSkip": "Ohitettaisiin",
+                    "skipped": "Ohitettu",
+                    "existedAtCheckpoint": "oli olemassa tarkistuspisteessä",
+                    "absentAtCheckpoint": "puuttui tarkistuspisteestä"
+                },
+                "checks": {
+                    "exitSummary": "poistumiskoodi {code} · {seconds}s",
+                    "continueOnFailure": "Suorittaa kaikki tarkistukset, vaikka jokin epäonnistuisi.",
+                    "stopOnFailure": "Pysähtyy ensimmäiseen epäonnistuneeseen tarkistukseen."
+                },
+                "diagnostics": {
+                    "none": "Diagnostiikkaa ei raportoitu."
+                },
+                "search": {
+                    "none": "Osumia ei löytynyt."
+                },
+                "git": {
+                    "noStagedDiff": "Valmisteltujen muutosten diff-tuloste on tyhjä.",
+                    "noUnstagedDiff": "Valmistelemattomien muutosten diff-tuloste on tyhjä.",
+                    "staged": "valmisteltu",
+                    "unstaged": "valmistelematon",
+                    "commitApproval": "Git-commitin hyväksyntä",
+                    "stageApproval": "Git-valmistelun hyväksyntä",
+                    "commitNote": "Tämä luo git-commitin nykyisestä valmistellusta indeksistä. Tarkista ensin coding_git_status ja coding_git_diff parametrilla staged=true.",
+                    "stagePreviewNote": "Tämä esikatselee, mitkä pyydetyistä poluista valmisteltaisiin; indeksi ei muutu.",
+                    "stageNote": "Tämä muuttaa git-indeksiä pyydettyjen polkujen osalta."
+                },
+                "patch": {
+                    "validateNote": "Tämä vahvistaa korjaustiedoston muuttamatta tiedostoja.",
+                    "applyNote": "Tämä korkean riskin käyttöpyyntö kirjoittaa tiedostot sen jälkeen, kun taustajärjestelmä on luonut käyttöä edeltävän palautuspisteen.",
+                    "hideDiff": "Piilota yhtenäinen diff",
+                    "showDiff": "Näytä yhtenäinen diff"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Koeajo: {repaired} vaurioitunutta osaa voidaan korjata. Mitään ei kirjoitettu.",
             "repairDryRunMetadata": "Koeajo: holvin otsikko tai manifesti voidaan rakentaa uudelleen pariteetista. Mitään ei kirjoitettu.",
             "metadataRepaired": "Holvin otsikko tai manifesti rakennettiin uudelleen pariteetista.",
-            "repairMetadataSuccess": "Korjaus valmis: holvin otsikko tai manifesti rakennettiin uudelleen pariteetista"
+            "repairMetadataSuccess": "Korjaus valmis: holvin otsikko tai manifesti rakennettiin uudelleen pariteetista",
+            "errorCorrectionBadge": "Virheenkorjaus",
+            "itemsInFolder": "{count} kohdetta kansiossa /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Ensin löytynyt",
             "selectAllButOne": "Valitse kaikki paitsi yksi ryhmää kohden",
             "everyCopyTicked": "kaikki kopiot valittu",
-            "everyCopyTickedHint": "Poista valinta yhdeltä kopiolta jokaisessa korostetussa ryhmässä: muuten kaikki poistetaan."
+            "everyCopyTickedHint": "Poista valinta vähintään yhdeltä kopiolta jokaisessa korostetussa ryhmässä: jos kaikki kopiot ovat valittuina, ne kaikki poistettaisiin.",
+            "modeExactHint": "Tavu tavulta identtinen",
+            "modeNonIdenticalHint": "Havaintoon perustuva tai tekstin samankaltaisuus, ei automaattista poistoa",
+            "potentialWasteSelected": "mahdollinen hukka (valitut)",
+            "similarityDistance": "{similarity}, etäis. {distance}"
         },
         "diskUsage": {
             "title": "Levyn käyttö",
@@ -4384,7 +4451,9 @@
                 "next": "Seuraava",
                 "scanQr": "Lisää tämä salaisuus todennussovellukseesi (Google Authenticator, Authy, Microsoft Authenticator). Tai syötä avain manuaalisesti:",
                 "setup": "Kaksivaiheinen todennus",
-                "verify": "Vahvista & Ota käyttöön"
+                "verify": "Vahvista & Ota käyttöön",
+                "active": "2FA käytössä",
+                "inactive": "2FA ei käytössä"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Haara",
             "pagesPath": "Polku",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Valtuuta",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Haaraluettelo",
             "noBranches": "Haaroja ei löytynyt",
             "rawUrlCopied": "Raaka URL kopioitu",
-            "working": "työskentelee"
+            "working": "työskentelee",
+            "pagesDnsIssue": "DNS-ongelma havaittu",
+            "releaseAssetOne": "{count} tiedosto",
+            "releaseAssetMany": "{count} tiedostoa",
+            "repoPrivate": "Yksityinen",
+            "repoPublic": "Julkinen"
         },
         "filenNotes": {
             "title": "Salatut muistiinpanot",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Pysäytä",
             "compareStopped": "Vertailu pysäytetty.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Vertailu lukee molemmat kansiot ja kaikki niiden alla olevat kansiot. Suurella puulla se voi kestää hetken, ja voit pysäyttää sen."
+            "compareStartHint": "Vertailu lukee molemmat kansiot ja kaikki niiden alla olevat kansiot. Suurella puulla se voi kestää hetken, ja voit pysäyttää sen.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopio]"
         },
         "accountLock": {
             "title": "Valitse tili",

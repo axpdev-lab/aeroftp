@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Daftarkan format arkib dan menu Penjelajah Fail",
             "fileAssociationIntegrationDesc": "Perubahan berkuat kuasa serta-merta dan dikekalkan semasa kemas kini. Windows mengurus aplikasi lalai anda secara berasingan.",
             "fileAssociationIntegrationPortable": "Pasang AeroFTP untuk mengubah penyepaduan Windows.",
-            "fileAssociationIntegrationAdmin": "Windows mungkin meminta kebenaran pentadbir untuk mengubah pilihan ini."
+            "fileAssociationIntegrationAdmin": "Windows mungkin meminta kebenaran pentadbir untuk mengubah pilihan ini.",
+            "migrationServerProfilesFound": "{count} profil pelayan ditemui dalam storan tidak disulitkan",
+            "migrationAiSettingsFound": "Konfigurasi AI ditemui dalam storan tidak disulitkan",
+            "migrationOauthFound": "{count} kelayakan OAuth ditemui dalam storan tidak disulitkan",
+            "fontSystemInstall": "pasang pada sistem",
+            "fontSizeMin": "min",
+            "fontSizeMax": "maks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Peringkat percuma terhad kepada 25 kredit sebulan",
                 "fourshared": "Beri kebenaran semula secara manual jika token dibatalkan"
             },
-            "profilesLoadFailed": "Pelayan yang disimpan tidak dapat dibaca: {error}"
+            "profilesLoadFailed": "Pelayan yang disimpan tidak dapat dibaca: {error}",
+            "cleanupSummary": "{count} fail, {size} dibebaskan"
         },
         "statusBar": {
             "connected": "Disambung",
@@ -1600,7 +1607,8 @@
                 "title": "Pasukan Axpdev Lab",
                 "apRole": "Pengasas, pembangun, penyelenggara, pereka bersama",
                 "ekRole": "Penyelidik, jurutera jaminan kualiti, pereka bersama"
-            }
+            },
+            "madeBy": "oleh {author}"
         },
         "support": {
             "title": "Sokong AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Menggunakan CLI Proton Drive - pasang, log masuk dalam pelayar, AeroFTP ialah GUI",
             "twakeDesc": "Twake Drive (5 GB percuma)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, awan sumber terbuka dari Perancis (Cozy Cloud kini menjadi sebahagian daripadanya) dengan 5 GB percuma",
-            "discoverTwake": "Awan Eropah sumber terbuka oleh Linagora, kini rumah baharu Cozy Cloud (5 GB percuma)"
+            "discoverTwake": "Awan Eropah sumber terbuka oleh Linagora, kini rumah baharu Cozy Cloud (5 GB percuma)",
+            "sourceforgeProject": "Projek (Unixname)",
+            "opendriveNotApiKey": "(bukan kunci API OpenDrive anda)",
+            "endpoint": "Titik Akhir",
+            "accountId": "ID Akaun"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Sahkan kata laluan",
             "minLength": "Minimum 8 aksara",
             "autoLockTimeout": "Tempoh kunci automatik",
-            "enable": "Aktifkan"
+            "enable": "Aktifkan",
+            "setupBootstrapDescription": "Cincin kunci tidak tersedia: mod bootstrap kata laluan utama"
         },
         "search": {
             "remote_placeholder": "Cari fail jauh...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Alamat e-mel",
             "add": "Tambah",
             "remove": "Buang",
-            "none": "Tiada kebenaran ditetapkan"
+            "none": "Tiada kebenaran ditetapkan",
+            "anyoneWithLink": "Sesiapa sahaja yang mempunyai pautan"
         },
         "locking": {
             "lock": "Kunci Fail",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Tiada apa-apa dipindahkan: ini memaparkan pratonton perkara yang akan dilakukan oleh penyegerakan penuh, dikira daripada sampel. Ia adalah padanan GUI bagi perintah aeroftp-cli sync --dry-run (dan --dry-run rclone).",
             "templateImportPathPairs": "Pasangan laluan tempatan/jauh yang boleh digunakan dalam templat ini: {count}. Tetingkap AeroSync berfungsi dengan tepat satu pasangan, jadi tiada apa-apa yang diimport. Sunting templat supaya tinggal satu pasangan sahaja, kemudian import semula.",
             "templateNamePlaceholder": "cth. Sandaran malam ke S3",
-            "templateDescPlaceholder": "Untuk apa templat ini (pilihan)"
+            "templateDescPlaceholder": "Untuk apa templat ini (pilihan)",
+            "templateExportCliDesc": "Pembalut aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Menyegerak...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} token input, {output} token output, seperti yang dikira oleh penyedia",
                 "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca daripada cache prompt, {cacheWritten} ditulis ke dalamnya, seperti yang dikira oleh penyedia"
+            },
+            "executeOperations": "Laksanakan {count} operasi",
+            "coding": {
+                "dryRun": "larian uji",
+                "apply": "guna",
+                "timedOutAfter": "Tamat masa selepas {seconds}s.",
+                "restore": {
+                    "previewNote": "Ini mempratonton tindakan pemulihan titik semak tanpa mengubah fail.",
+                    "dangerNote": "Pemulihan berisiko tinggi ini boleh menulis ganti kandungan fail semasa dan memadam fail yang tidak wujud pada titik semak.",
+                    "wouldRewrite": "Akan ditulis semula",
+                    "rewritten": "Ditulis semula",
+                    "wouldDelete": "Akan dipadam",
+                    "deleted": "Dipadam",
+                    "wouldSkip": "Akan dilangkau",
+                    "skipped": "Dilangkau",
+                    "existedAtCheckpoint": "wujud pada titik semak",
+                    "absentAtCheckpoint": "tiada pada titik semak"
+                },
+                "checks": {
+                    "exitSummary": "kod keluar {code} · {seconds}s",
+                    "continueOnFailure": "Menjalankan semua semakan walaupun satu gagal.",
+                    "stopOnFailure": "Berhenti pada semakan pertama yang gagal."
+                },
+                "diagnostics": {
+                    "none": "Tiada diagnostik dilaporkan."
+                },
+                "search": {
+                    "none": "Tiada padanan ditemui."
+                },
+                "git": {
+                    "noStagedDiff": "Tiada keluaran diff untuk perubahan yang disediakan.",
+                    "noUnstagedDiff": "Tiada keluaran diff untuk perubahan yang belum disediakan.",
+                    "staged": "disediakan",
+                    "unstaged": "belum disediakan",
+                    "commitApproval": "Kelulusan Komit Git",
+                    "stageApproval": "Kelulusan Penyediaan Git",
+                    "commitNote": "Ini mencipta komit git daripada indeks yang disediakan semasa. Semak coding_git_status dan coding_git_diff dengan staged=true terlebih dahulu.",
+                    "stagePreviewNote": "Ini mempratonton laluan yang diminta yang akan disediakan; indeks tidak akan berubah.",
+                    "stageNote": "Ini mengubah indeks git untuk laluan yang diminta."
+                },
+                "patch": {
+                    "validateNote": "Ini mengesahkan tampalan tanpa mengubah fail.",
+                    "applyNote": "Permintaan penggunaan berisiko tinggi ini menulis fail selepas backend mencipta titik semak sebelum penggunaan.",
+                    "hideDiff": "Sembunyikan diff bersatu",
+                    "showDiff": "Tunjukkan diff bersatu"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Larian uji: {repaired} ketulan yang rosak boleh dibaiki. Tiada apa-apa yang ditulis.",
             "repairDryRunMetadata": "Larian uji: pengepala atau manifes bilik kebal boleh dibina semula daripada pariti. Tiada apa-apa yang ditulis.",
             "metadataRepaired": "Pengepala atau manifes bilik kebal telah dibina semula daripada pariti.",
-            "repairMetadataSuccess": "Pembaikan selesai: pengepala atau manifes bilik kebal dibina semula daripada pariti"
+            "repairMetadataSuccess": "Pembaikan selesai: pengepala atau manifes bilik kebal dibina semula daripada pariti",
+            "errorCorrectionBadge": "Pembetulan Ralat",
+            "itemsInFolder": "{count} item dalam /{folder}"
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Ditemui dahulu",
             "selectAllButOne": "Pilih semua kecuali satu bagi setiap kumpulan",
             "everyCopyTicked": "semua salinan ditanda",
-            "everyCopyTickedHint": "Nyahtanda satu salinan dalam setiap kumpulan yang diserlahkan: jika tidak, semua salinan akan dipadam."
+            "everyCopyTickedHint": "Nyahtanda sekurang-kurangnya satu salinan dalam setiap kumpulan yang diserlahkan: jika semua salinan ditanda, kesemuanya akan dipadam.",
+            "modeExactHint": "Sama bait demi bait",
+            "modeNonIdenticalHint": "Keserupaan persepsi atau teks, tiada padam automatik",
+            "potentialWasteSelected": "potensi dibazirkan (dipilih)",
+            "similarityDistance": "{similarity}, jarak {distance}"
         },
         "diskUsage": {
             "title": "Penggunaan Cakera",
@@ -4384,7 +4451,9 @@
                 "next": "Seterusnya",
                 "scanQr": "Tambah rahsia ini ke aplikasi pengesah anda (Google Authenticator, Authy, Microsoft Authenticator). Atau masukkan kunci manual:",
                 "setup": "Pengesahan Dua Faktor",
-                "verify": "Sahkan & Aktifkan"
+                "verify": "Sahkan & Aktifkan",
+                "active": "2FA Aktif",
+                "inactive": "2FA Tidak Aktif"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Cabang",
             "pagesPath": "Laluan",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Benarkan",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Senarai cabang",
             "noBranches": "Tiada cabang ditemui",
             "rawUrlCopied": "URL mentah disalin",
-            "working": "sedang berjalan"
+            "working": "sedang berjalan",
+            "pagesDnsIssue": "Isu DNS dikesan",
+            "releaseAssetOne": "{count} aset",
+            "releaseAssetMany": "{count} aset",
+            "repoPrivate": "Peribadi",
+            "repoPublic": "Awam"
         },
         "filenNotes": {
             "title": "Nota Tersulit",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Henti",
             "compareStopped": "Perbandingan dihentikan.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Perbandingan membaca kedua-dua folder dan semua folder di bawahnya. Pada pokok yang besar, ia mungkin mengambil sedikit masa, dan anda boleh menghentikannya."
+            "compareStartHint": "Perbandingan membaca kedua-dua folder dan semua folder di bawahnya. Pada pokok yang besar, ia mungkin mengambil sedikit masa, dan anda boleh menghentikannya.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[salinan]"
         },
         "accountLock": {
             "title": "Pilih akaun",

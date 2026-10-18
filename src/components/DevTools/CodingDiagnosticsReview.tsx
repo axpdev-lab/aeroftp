@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { AlertTriangle, CheckCircle2, Stethoscope, TimerReset, XCircle } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 import { diagnosticLocation } from './aiChatCodingDiagnostics';
 import type { CodingDiagnostic, CodingDiagnosticsResultData } from './aiChatTypes';
 
@@ -43,6 +44,7 @@ const DiagnosticRow: React.FC<{ diagnostic: CodingDiagnostic }> = ({ diagnostic 
 };
 
 export const CodingDiagnosticsReview: React.FC<CodingDiagnosticsReviewProps> = ({ data }) => {
+    const t = useTranslation();
     const { result } = data;
     const tone = result.timed_out
         ? 'text-amber-200'
@@ -94,7 +96,7 @@ export const CodingDiagnosticsReview: React.FC<CodingDiagnosticsReviewProps> = (
                 </div>
             ) : (
                 <div className="mt-2 text-[11px] text-white/55">
-                    {result.timed_out ? `Timed out after ${result.timeout_secs}s.` : 'No diagnostics reported.'}
+                    {result.timed_out ? t('ai.coding.timedOutAfter', { seconds: result.timeout_secs }) : t('ai.coding.diagnostics.none')}
                 </div>
             )}
         </div>

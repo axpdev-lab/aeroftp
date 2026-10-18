@@ -551,7 +551,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             <p className="text-xs text-gray-400 text-center">
                                 {exportFormat === 'aerosync'
                                     ? t('syncPanel.templateExportDesc')
-                                    : `aeroftp-cli sync wrapper (${exportFormat === 'pwsh' ? 'PowerShell' : 'bash'})`}
+                                    : t('syncPanel.templateExportCliDesc', { shell: exportFormat === 'pwsh' ? 'PowerShell' : 'bash' })}
                             </p>
                             {/* Ehud #347 (18352619): both fields carried their name in the
                                 placeholder alone, so typing into one erased the only thing

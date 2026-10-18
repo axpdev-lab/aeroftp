@@ -1213,7 +1213,13 @@
             "fileAssociationRegisterArchives": "Registriraj arhivske formate i izbornike Eksplorera",
             "fileAssociationIntegrationDesc": "Promjene se primjenjuju odmah i zadržavaju se tijekom ažuriranja. Windows zasebno upravlja zadanim aplikacijama.",
             "fileAssociationIntegrationPortable": "Instalirajte AeroFTP da biste promijenili integraciju sa sustavom Windows.",
-            "fileAssociationIntegrationAdmin": "Windows može zatražiti administratorsku dozvolu za promjenu ovih opcija."
+            "fileAssociationIntegrationAdmin": "Windows može zatražiti administratorsku dozvolu za promjenu ovih opcija.",
+            "migrationServerProfilesFound": "Profili poslužitelja pronađeni u nekriptiranoj pohrani: {count}",
+            "migrationAiSettingsFound": "AI konfiguracija pronađena u nekriptiranoj pohrani",
+            "migrationOauthFound": "OAuth vjerodajnice pronađene u nekriptiranoj pohrani: {count}",
+            "fontSystemInstall": "instalacija u sustav",
+            "fontSizeMin": "min",
+            "fontSizeMax": "maks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1399,7 +1405,8 @@
                 "cloudinary": "Besplatna razina ograničena je na 25 kredita mjesečno",
                 "fourshared": "Ručno ponovno autorizirajte ako je token opozvan"
             },
-            "profilesLoadFailed": "Spremljeni poslužitelji nisu se mogli pročitati: {error}"
+            "profilesLoadFailed": "Spremljeni poslužitelji nisu se mogli pročitati: {error}",
+            "cleanupSummary": "{count} datoteka, oslobođeno {size}"
         },
         "statusBar": {
             "connected": "Povezano",
@@ -1600,7 +1607,8 @@
                 "title": "Tim Axpdev Laba",
                 "apRole": "Osnivač, programer, održavatelj, sudizajner",
                 "ekRole": "Istraživač, inženjer za osiguranje kvalitete, sudizajner"
-            }
+            },
+            "madeBy": "u tvrtki {author}"
         },
         "support": {
             "title": "Podrži AeroFTP",
@@ -2021,7 +2029,11 @@
             "protonTooltip": "Koristi Proton Drive CLI - instalirajte, prijavite se u pregledniku, AeroFTP je GUI",
             "twakeDesc": "Twake Drive (5 GB besplatno)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francuski open source oblak (Cozy Cloud je sada dio njega) s 5 GB besplatno",
-            "discoverTwake": "Europski open source oblak tvrtke Linagora, sada dom Cozy Clouda (5 GB besplatno)"
+            "discoverTwake": "Europski open source oblak tvrtke Linagora, sada dom Cozy Clouda (5 GB besplatno)",
+            "sourceforgeProject": "Projekt (Unixname)",
+            "opendriveNotApiKey": "(nije vaš OpenDrive API ključ)",
+            "endpoint": "Krajnja točka",
+            "accountId": "ID računa"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -2131,7 +2143,8 @@
             "confirmPassword": "Potvrdite lozinku",
             "minLength": "Minimalno 8 znakova",
             "autoLockTimeout": "Vrijeme auto-zaključavanja",
-            "enable": "Omogući"
+            "enable": "Omogući",
+            "setupBootstrapDescription": "Privjesak ključeva nedostupan: način pokretanja s glavnom lozinkom"
         },
         "search": {
             "remote_placeholder": "Pretraži udaljene datoteke...",
@@ -2166,7 +2179,8 @@
             "email_placeholder": "Email adresa",
             "add": "Dodaj",
             "remove": "Ukloni",
-            "none": "Nema postavljenih dozvola"
+            "none": "Nema postavljenih dozvola",
+            "anyoneWithLink": "Svatko tko ima poveznicu"
         },
         "locking": {
             "lock": "Zaključaj datoteku",
@@ -2312,7 +2326,8 @@
             "canaryDryRun": "Ništa se ne prenosi: ovo prikazuje pretpregled onoga što bi učinila potpuna sinkronizacija, izračunato iz uzorka. To je grafički ekvivalent naredbe aeroftp-cli sync --dry-run (i --dry-run alata rclone).",
             "templateImportPathPairs": "Upotrebljivi parovi putanja (lokalna/udaljena) u ovom predlošku: {count}. Prozor AeroSync radi s točno jednim parom, pa ništa nije uvezeno. Uredite predložak tako da ostane samo jedan par, a zatim ga ponovno uvezite.",
             "templateNamePlaceholder": "npr. Noćna sigurnosna kopija na S3",
-            "templateDescPlaceholder": "Čemu služi ovaj predložak (neobavezno)"
+            "templateDescPlaceholder": "Čemu služi ovaj predložak (neobavezno)",
+            "templateExportCliDesc": "Omotač za aeroftp-cli sync ({shell})"
         },
         "ui": {
             "syncing": "Sinkronizacija...",
@@ -3182,6 +3197,52 @@
             "tokens": {
                 "breakdown": "{input} ulaznih tokena, {output} izlaznih tokena, prema brojanju pružatelja",
                 "breakdownCache": "{input} ulaznih tokena, {output} izlaznih tokena, {cacheRead} pročitano iz predmemorije prompta, {cacheWritten} zapisano u nju, prema brojanju pružatelja"
+            },
+            "executeOperations": "Izvrši operacije: {count}",
+            "coding": {
+                "dryRun": "probni rad",
+                "apply": "primijeni",
+                "timedOutAfter": "Isteklo vrijeme nakon {seconds}s.",
+                "restore": {
+                    "previewNote": "Ovo prikazuje pregled radnji vraćanja iz kontrolne točke bez mijenjanja datoteka.",
+                    "dangerNote": "Ovo vraćanje visokog rizika može prepisati trenutačni sadržaj datoteka i izbrisati datoteke koje nisu postojale u kontrolnoj točki.",
+                    "wouldRewrite": "Bilo bi prepisano",
+                    "rewritten": "Prepisano",
+                    "wouldDelete": "Bilo bi izbrisano",
+                    "deleted": "Izbrisano",
+                    "wouldSkip": "Bilo bi preskočeno",
+                    "skipped": "Preskočeno",
+                    "existedAtCheckpoint": "postojala u kontrolnoj točki",
+                    "absentAtCheckpoint": "nije postojala u kontrolnoj točki"
+                },
+                "checks": {
+                    "exitSummary": "izlazni kod {code} · {seconds}s",
+                    "continueOnFailure": "Pokreće sve provjere čak i ako jedna ne uspije.",
+                    "stopOnFailure": "Zaustavlja se na prvoj neuspjeloj provjeri."
+                },
+                "diagnostics": {
+                    "none": "Nije prijavljena nijedna dijagnostika."
+                },
+                "search": {
+                    "none": "Nema pronađenih podudaranja."
+                },
+                "git": {
+                    "noStagedDiff": "Nema diff izlaza za pripremljene promjene.",
+                    "noUnstagedDiff": "Nema diff izlaza za nepripremljene promjene.",
+                    "staged": "pripremljeno",
+                    "unstaged": "nepripremljeno",
+                    "commitApproval": "Odobrenje Git commita",
+                    "stageApproval": "Odobrenje Git pripreme",
+                    "commitNote": "Ovo stvara git commit iz trenutnog pripremljenog indeksa. Najprije pregledajte coding_git_status i coding_git_diff sa staged=true.",
+                    "stagePreviewNote": "Ovo prikazuje pregled koje bi zatražene putanje bile pripremljene; indeks se neće promijeniti.",
+                    "stageNote": "Ovo mijenja git indeks za zatražene putanje."
+                },
+                "patch": {
+                    "validateNote": "Ovo provjerava zakrpu bez mijenjanja datoteka.",
+                    "applyNote": "Ovaj visokorizični zahtjev za primjenu zapisuje datoteke nakon što pozadinski sustav stvori kontrolnu točku prije primjene.",
+                    "hideDiff": "Sakrij objedinjeni diff",
+                    "showDiff": "Prikaži objedinjeni diff"
+                }
             }
         },
         "archive": {
@@ -3407,7 +3468,9 @@
             "repairDryRunCanRepair": "Probni rad: broj oštećenih dijelova koje je moguće popraviti: {repaired}. Ništa nije zapisano.",
             "repairDryRunMetadata": "Probni rad: zaglavlje ili manifest trezora moguće je obnoviti iz pariteta. Ništa nije zapisano.",
             "metadataRepaired": "Iz pariteta je obnovljeno zaglavlje ili manifest trezora.",
-            "repairMetadataSuccess": "Popravak dovršen: iz pariteta je obnovljeno zaglavlje ili manifest trezora"
+            "repairMetadataSuccess": "Popravak dovršen: iz pariteta je obnovljeno zaglavlje ili manifest trezora",
+            "errorCorrectionBadge": "Ispravak pogrešaka",
+            "itemsInFolder": "{count} stavki u /{folder}"
         },
         "cryptomator": {
             "title": "Cryptomator Trezor",
@@ -3765,7 +3828,11 @@
             "keepFirstFound": "Prva pronađena",
             "selectAllButOne": "Odaberi sve osim jedne po grupi",
             "everyCopyTicked": "označene sve kopije",
-            "everyCopyTickedHint": "U svakoj istaknutoj grupi odznačite jednu kopiju: inače bi se izbrisale sve."
+            "everyCopyTickedHint": "U svakoj istaknutoj grupi odznačite barem jednu kopiju: ako su označene sve kopije, sve bi se izbrisale.",
+            "modeExactHint": "Identično bajt po bajt",
+            "modeNonIdenticalHint": "Perceptivna ili tekstualna sličnost, bez automatskog brisanja",
+            "potentialWasteSelected": "potencijalno uzalud potrošeno (odabrano)",
+            "similarityDistance": "{similarity}, udalj. {distance}"
         },
         "diskUsage": {
             "title": "Korištenje diska",
@@ -4384,7 +4451,9 @@
                 "next": "Dalje",
                 "scanQr": "Dodajte ovu tajnu u vašu autentifikatorsku aplikaciju (Google Authenticator, Authy, Microsoft Authenticator). Ili unesite ručni ključ:",
                 "setup": "Dvofaktorska autentifikacija",
-                "verify": "Provjeri i omogući"
+                "verify": "Provjeri i omogući",
+                "active": "2FA aktivna",
+                "inactive": "2FA neaktivna"
             }
         },
         "vaultSync": {
@@ -4831,7 +4900,7 @@
             "pagesBranch": "Grana",
             "pagesPath": "Putanja",
             "authMethod": "Authentication",
-            "modeAuthorize": "OAuth",
+            "modeAuthorize": "Autoriziraj",
             "modePat": "Access Token",
             "modeApp": "App (.pem)",
             "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
@@ -4843,7 +4912,12 @@
             "branchList": "Popis grana",
             "noBranches": "Nisu pronađene grane",
             "rawUrlCopied": "Sirovi URL kopiran",
-            "working": "radi"
+            "working": "radi",
+            "pagesDnsIssue": "Otkriven problem s DNS-om",
+            "releaseAssetOne": "{count} datoteka",
+            "releaseAssetMany": "Datoteke: {count}",
+            "repoPrivate": "Privatni",
+            "repoPublic": "Javni"
         },
         "filenNotes": {
             "title": "Šifrirane bilješke",
@@ -5620,7 +5694,9 @@
             "stopCompare": "Zaustavi",
             "compareStopped": "Usporedba zaustavljena.",
             "comparePair": "{left} ↔ {right}",
-            "compareStartHint": "Usporedba čita obje mape i sve mape unutar njih. Na velikom stablu može potrajati, a možete je zaustaviti."
+            "compareStartHint": "Usporedba čita obje mape i sve mape unutar njih. Na velikom stablu može potrajati, a možete je zaustaviti.",
+            "progressDelta": "[delta]",
+            "progressCopy": "[kopija]"
         },
         "accountLock": {
             "title": "Odaberite račun",

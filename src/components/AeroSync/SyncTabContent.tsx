@@ -491,7 +491,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                         variant={pct > 0 ? 'gradient' : 'indeterminate'}
                     />
                     <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 truncate">
-                        {progress.used_delta ? '[delta] ' : '[copy] '}
+                        {progress.used_delta ? t('aerosync.progressDelta') : t('aerosync.progressCopy')}{' '}
                         {progress.current_path}
                     </div>
                 </div>
