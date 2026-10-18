@@ -2,6 +2,10 @@
 
 > _Last updated: 2026-06-28_
 
+For the current delivered foundations and remaining proposals, use the
+[AeroAgent roadmap](AEROAGENT-ROADMAP.md), reconciled against main on
+2026-10-18. The counts and examples below describe the June 2026 snapshot.
+
 AeroAgent is AeroFTP's integrated AI assistant with **60+ agent tools (35+ exposed over MCP)** across 9 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands. The v4.1.0 coding tools are GUI-only and are not exposed over MCP, so the MCP-exposed count is unchanged.
 
 > Full test results, prompt examples, and provider compatibility matrix available at [docs.aeroftp.app/aeroagent](https://docs.aeroftp.app/aeroagent)
