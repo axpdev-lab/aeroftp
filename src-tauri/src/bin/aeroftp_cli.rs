@@ -3075,6 +3075,15 @@ enum Commands {
         #[command(subcommand)]
         command: AliasCommands,
     },
+    /// Sign a Proton Drive profile on AeroFTP's own client in or out
+    ///
+    /// For profiles on AeroFTP's native Proton Drive client (`profile-add
+    /// --protocol proton --proton-mode native`). A profile on Proton's official
+    /// CLI signs in with `proton-drive auth login` instead.
+    Proton {
+        #[command(subcommand)]
+        command: ProtonCommands,
+    },
     /// Toggle an opt-in shell alias (default: aero) on or off
     ///
     /// Creates or removes a symlink in the user's local bin directory
@@ -3428,6 +3437,14 @@ enum Commands {
         /// Only valid for `--protocol filen`. Inline value is visible in `ps`.
         #[arg(long, value_name = "KEY")]
         filen_api_key: Option<String>,
+        /// Proton Drive client, as the API and CLI tabs of the GUI form:
+        /// `native` is AeroFTP's own client (then `aeroftp-cli proton sign-in
+        /// <SELECTOR>`), `cli` drives Proton's official `proton-drive` CLI
+        /// (signed in with `proton-drive auth login`). Default: `native` in a
+        /// build with the native client, `cli` otherwise. Only valid for
+        /// `--protocol proton`.
+        #[arg(long, value_name = "MODE", value_parser = ["native", "cli"])]
+        proton_mode: Option<String>,
     },
     /// Duplicate a saved server profile inside the vault
     ///
@@ -5791,6 +5808,47 @@ enum AliasCommands {
     },
     /// List all aliases
     List,
+}
+
+#[derive(Subcommand, Clone)]
+enum ProtonCommands {
+    /// Sign the profile in on Proton's page in the browser
+    ///
+    /// Opens Proton's sign-in page in the system browser and waits, up to ten
+    /// minutes, until you sign in there; Ctrl-C cancels. The page can be
+    /// opened on any device: on an interactive terminal its address is also
+    /// printed, and `--no-browser` prints it without opening a browser. The
+    /// address carries a one-time key, so it is never written to stdout, a log
+    /// or JSON output, and a sign-in with no way to show it (no browser, stderr
+    /// not a terminal) stops. A new sign-in replaces the profile's session and
+    /// ends the old one on Proton.
+    SignIn {
+        /// Profile selector: index, name or id, as `profiles` shows them.
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+        /// Do not open a browser: print the sign-in address on the terminal,
+        /// to open on another device.
+        #[arg(long)]
+        no_browser: bool,
+    },
+    /// End the profile's session on Proton and remove it from the vault
+    ///
+    /// The session stays alive on Proton while another saved profile (a
+    /// duplicate) uses it. The profile itself is kept.
+    SignOut {
+        /// Profile selector: index, name or id, as `profiles` shows them.
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+    },
+    /// Whether the profile has a saved Proton session, as the GUI form shows
+    ///
+    /// Read from the vault only, without contacting Proton: a session Proton
+    /// has ended elsewhere still counts until the next connect finds out.
+    Status {
+        /// Profile selector: index, name or id, as `profiles` shows them.
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -24831,6 +24889,323 @@ fn canonical_protocol_and_provider<'a>(
     }
 }
 
+/// The `options` a new Proton Drive profile is saved with, the way the API and
+/// CLI tabs of the GUI form save them: `{"proton_mode": "native"}` for
+/// AeroFTP's own client, nothing for Proton's official CLI (a profile without
+/// the option is a CLI profile). `requested` is `--proton-mode`; without it the
+/// build decides, as the GUI form and the rclone import do. `None` for any
+/// other protocol.
+fn proton_profile_options(
+    protocol: &str,
+    requested: Option<&str>,
+) -> Result<Option<serde_json::Map<String, serde_json::Value>>, String> {
+    if protocol != "proton" {
+        return match requested {
+            Some(_) => Err("--proton-mode is only valid for --protocol proton".to_string()),
+            None => Ok(None),
+        };
+    }
+    let native_build = cfg!(feature = "proton-native");
+    let native = match requested {
+        Some("native") if !native_build => {
+            return Err(
+                "this build has no native Proton Drive client: use --proton-mode cli".to_string(),
+            )
+        }
+        Some("native") => true,
+        Some("cli") => false,
+        Some(other) => {
+            return Err(format!(
+                "Invalid --proton-mode '{other}': use native or cli"
+            ))
+        }
+        None => native_build,
+    };
+    Ok(native.then(|| {
+        let mut options = serde_json::Map::new();
+        options.insert("proton_mode".into(), serde_json::json!("native"));
+        options
+    }))
+}
+
+/// Whether profile options select the native Proton Drive client.
+fn is_native_proton_options(options: Option<&serde_json::Map<String, serde_json::Value>>) -> bool {
+    options
+        .and_then(|options| options.get("proton_mode"))
+        .and_then(|mode| mode.as_str())
+        == Some("native")
+}
+
+/// The id and name of a saved profile on the native Proton Drive client, or
+/// why `proton sign-in` / `sign-out` cannot take it.
+fn native_proton_profile(profile: &serde_json::Value) -> Result<(String, String), String> {
+    let name = profile
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed")
+        .to_string();
+    if profile.get("protocol").and_then(|v| v.as_str()) != Some("proton") {
+        return Err(format!("'{name}' is not a Proton Drive profile"));
+    }
+    if !is_native_proton_options(profile.get("options").and_then(|o| o.as_object())) {
+        return Err(format!(
+            "'{name}' uses Proton's official CLI, which signs in with `proton-drive auth login`; \
+             a profile on AeroFTP's own client is created with `profile-add --protocol proton --proton-mode native`"
+        ));
+    }
+    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    if id.is_empty() {
+        return Err(format!("Profile '{name}' has no id"));
+    }
+    Ok((id.to_string(), name))
+}
+
+/// Shows Proton's sign-in page: opens it with `open_browser` unless
+/// `no_browser`, and writes its address to `terminal` only when stderr is
+/// interactive. The address carries a one-time key for the sign-in, so it
+/// goes nowhere else: not to stdout, a log or JSON output. `Err` when nothing
+/// could show the page.
+fn show_proton_sign_in_page(
+    url: &str,
+    no_browser: bool,
+    interactive: bool,
+    open_browser: impl FnOnce(&str) -> Result<(), String>,
+    terminal: &mut dyn std::io::Write,
+) -> Result<(), String> {
+    let opened = if no_browser {
+        Err("--no-browser".to_string())
+    } else {
+        open_browser(url)
+    };
+    if interactive {
+        let lead = if opened.is_ok() {
+            "If no browser opened, open this page on any device:"
+        } else {
+            "Open this page in a browser, on any device:"
+        };
+        return writeln!(terminal, "{lead}\n{url}").map_err(|e| e.to_string());
+    }
+    opened.map_err(|reason| {
+        format!(
+            "cannot show Proton's sign-in page: no browser opened ({reason}) and stderr is not a \
+             terminal to print its address on; run the sign-in in a terminal"
+        )
+    })
+}
+
+/// `aeroftp-cli proton sign-in | sign-out <SELECTOR>`.
+async fn cmd_proton(
+    cli: &Cli,
+    format: OutputFormat,
+    command: &ProtonCommands,
+    cancelled: Arc<AtomicBool>,
+) -> i32 {
+    let selector = match command {
+        ProtonCommands::SignIn { selector, .. }
+        | ProtonCommands::SignOut { selector }
+        | ProtonCommands::Status { selector } => selector,
+    };
+    // Opening the vault also unlocks the store the session is written to.
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(profiles) => profiles,
+        Err(e) => {
+            print_error(format, &format!("Failed to read profiles: {e}"), 5);
+            return 5;
+        }
+    };
+    let profile = match resolve_profile_selector(&profiles, selector) {
+        Ok(index) => &profiles[index],
+        Err(e) => {
+            print_error(format, &format!("Profile lookup failed: {e}"), 2);
+            return 2;
+        }
+    };
+    let (id, name) = match native_proton_profile(profile) {
+        Ok(found) => found,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    #[cfg(not(feature = "proton-native"))]
+    {
+        let _ = (id, name, cancelled);
+        print_error(format, "this build has no native Proton Drive client", 7);
+        7
+    }
+    #[cfg(feature = "proton-native")]
+    match command {
+        ProtonCommands::SignIn { no_browser, .. } => {
+            proton_sign_in(format, &id, &name, *no_browser, cancelled).await
+        }
+        ProtonCommands::SignOut { .. } => proton_sign_out(format, &id, &name).await,
+        ProtonCommands::Status { .. } => proton_status(format, &id, &name).await,
+    }
+}
+
+/// Signs the native profile `id` in through the same `sign_in` the GUI's
+/// Sign in button runs: fork, Proton's page, wait, key unlock, save (ending
+/// the session it replaces).
+#[cfg(feature = "proton-native")]
+async fn proton_sign_in(
+    format: OutputFormat,
+    id: &str,
+    name: &str,
+    no_browser: bool,
+    cancelled: Arc<AtomicBool>,
+) -> i32 {
+    use ftp_client_gui_lib::providers::proton_native::{commands, THIRD_PARTY_DISCLOSURE};
+    use std::io::IsTerminal;
+
+    let interactive = std::io::stderr().is_terminal();
+    if no_browser && !interactive {
+        print_error(
+            format,
+            "--no-browser prints the sign-in address on the terminal, and stderr is not one",
+            5,
+        );
+        return 5;
+    }
+    let cancel = tokio_util::sync::CancellationToken::new();
+    // Ctrl-C sets the CLI's cancel flag (its global handler): it ends the wait.
+    let watcher = {
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            while !cancelled.load(Ordering::Relaxed) {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            cancel.cancel();
+        })
+    };
+    eprintln!("{THIRD_PARTY_DISCLOSURE}");
+    eprintln!(
+        "Signing '{name}' in to Proton: waiting for the sign-in on Proton's page (it expires after ten minutes, Ctrl-C cancels)."
+    );
+    let page_failed = std::cell::Cell::new(false);
+    let result = commands::sign_in(Some(id), &cancel, |url| {
+        show_proton_sign_in_page(
+            url,
+            no_browser,
+            interactive,
+            |url| open::that(url).map_err(|e| e.to_string()),
+            &mut std::io::stderr(),
+        )
+        .inspect_err(|_| page_failed.set(true))
+    })
+    .await;
+    watcher.abort();
+    match result {
+        Ok(email) => {
+            match format {
+                OutputFormat::Json => print_json(&serde_json::json!({
+                    "status": "ok",
+                    "id": id,
+                    "name": name,
+                    "email": email,
+                })),
+                OutputFormat::Text => match email {
+                    Some(email) => println!("Signed '{name}' in to Proton as {email}."),
+                    None => println!("Signed '{name}' in to Proton."),
+                },
+            }
+            0
+        }
+        Err(_) if cancel.is_cancelled() => {
+            print_error(format, "Proton sign-in cancelled", 130);
+            130
+        }
+        Err(e) if e == commands::SIGN_IN_EXPIRED => {
+            print_error(
+                format,
+                "Proton's sign-in page expired (ten minutes) before the sign-in",
+                8,
+            );
+            8
+        }
+        Err(e) if page_failed.get() => {
+            print_error(format, &e, 5);
+            5
+        }
+        Err(e) => {
+            print_error(format, &e, 6);
+            6
+        }
+    }
+}
+
+/// Whether the native profile `id` has a saved session, through the GUI's
+/// own status command (so a profile without a session of its own counts the
+/// unbound one its first connect takes over, as there).
+#[cfg(feature = "proton-native")]
+async fn proton_status(format: OutputFormat, id: &str, name: &str) -> i32 {
+    use ftp_client_gui_lib::providers::proton_native::commands;
+
+    let signed_in = match commands::proton_native_status(Some(id.to_string())).await {
+        Ok(status) => status.signed_in,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    match format {
+        OutputFormat::Json => print_json(&serde_json::json!({
+            "id": id,
+            "name": name,
+            "signed_in": signed_in,
+        })),
+        OutputFormat::Text => {
+            if signed_in {
+                println!("'{name}' is signed in to Proton.");
+            } else {
+                println!("'{name}' is not signed in: run `aeroftp-cli proton sign-in {id}`.");
+            }
+        }
+    }
+    0
+}
+
+/// Ends the native profile's session on Proton (unless another saved profile
+/// uses it) and removes it from the vault, as the GUI's Sign out does.
+#[cfg(feature = "proton-native")]
+async fn proton_sign_out(format: OutputFormat, id: &str, name: &str) -> i32 {
+    use ftp_client_gui_lib::providers::proton_native::vault;
+
+    let had_session = match vault::load_session(Some(id)) {
+        Ok(session) => session.is_some(),
+        Err(e) => {
+            print_error(format, &e.to_string(), 5);
+            return 5;
+        }
+    };
+    if let Err(e) = vault::end_session(Some(id)).await {
+        print_error(format, &format!("Proton sign-out failed: {e}"), 5);
+        return 5;
+    }
+    match format {
+        OutputFormat::Json => print_json(&serde_json::json!({
+            "status": "ok",
+            "id": id,
+            "name": name,
+            "signed_out": had_session,
+        })),
+        OutputFormat::Text => {
+            if had_session {
+                println!("Signed '{name}' out of Proton.");
+            } else {
+                println!("'{name}' had no saved Proton session.");
+            }
+        }
+    }
+    0
+}
+
 /// Create a brand-new profile entry from a set of CLI flags. Validates
 /// the protocol against the registry the GUI uses, applies the same
 /// default port table, and writes the resulting JSON object straight
@@ -24859,6 +25234,7 @@ fn cmd_profile_add(
     favicon_url: Option<&str>,
     skip_delta_eligibility_prompt: bool,
     filen_api_key: Option<&str>,
+    proton_mode: Option<&str>,
 ) -> i32 {
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
@@ -24902,6 +25278,9 @@ fn cmd_profile_add(
         "gitlab",
         "immich",
         "pixelunion",
+        // Proton Drive, through AeroFTP's own client or Proton's official
+        // CLI (`--proton-mode`).
+        "proton",
         // Blomp = OpenStack Swift (40 GB free). Accepted as a friendly alias;
         // normalized to protocol "swift" + providerId "blomp" below so every
         // downstream consumer keyed on "swift" works unchanged.
@@ -24931,6 +25310,14 @@ fn cmd_profile_add(
         );
         return 5;
     }
+    let profile_options = match proton_profile_options(&proto_lower, proton_mode) {
+        Ok(options) => options,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let native_proton = is_native_proton_options(profile_options.as_ref());
     let manual_total_bytes = match manual_total {
         Some(s) => match parse_manual_total_size(s) {
             Ok(b) if b > 0 => Some(b),
@@ -24994,6 +25381,7 @@ fn cmd_profile_add(
         color,
         resolved_provider_id,
         manual_total_bytes,
+        profile_options,
         public_url_base,
         custom_icon_url,
         favicon_url,
@@ -25066,6 +25454,11 @@ fn cmd_profile_add(
                 "credential_seeded": seeded_credential,
                 "filen_api_key_seeded": seeded_filen_api_key,
             });
+            let mut out = out;
+            if proto_lower == "proton" {
+                out["proton_mode"] =
+                    serde_json::json!(if native_proton { "native" } else { "cli" });
+            }
             println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
         }
         _ => {
@@ -25081,6 +25474,11 @@ fn cmd_profile_add(
                     ""
                 }
             );
+            if native_proton {
+                eprintln!("Sign in with `aeroftp-cli proton sign-in {new_id}`.");
+            } else if proto_lower == "proton" {
+                eprintln!("This profile uses Proton's official CLI: sign in with `proton-drive auth login`.");
+            }
         }
     }
     0
@@ -25109,6 +25507,7 @@ fn persist_new_profile_entry(
     color: Option<&str>,
     provider_id: Option<&str>,
     manual_total_bytes: Option<u64>,
+    profile_options: Option<serde_json::Map<String, serde_json::Value>>,
     public_url_base: Option<&str>,
     custom_icon_url: Option<&str>,
     favicon_url: Option<&str>,
@@ -25179,9 +25578,11 @@ fn persist_new_profile_entry(
             serde_json::Value::String(pid.to_string()),
         );
     }
+    let mut options = profile_options.unwrap_or_default();
     if let Some(mtb) = manual_total_bytes {
-        let mut options = serde_json::Map::new();
         options.insert("manualTotalBytes".into(), serde_json::json!(mtb));
+    }
+    if !options.is_empty() {
         entry.insert("options".into(), serde_json::Value::Object(options));
     }
     // Top-level ServerProfile fields (outside `options`) that the GUI Edit modal
@@ -25674,6 +26075,10 @@ fn interactive_new_profile(
         }
     }
 
+    // A Proton Drive profile gets the client `profile-add` gives it without
+    // `--proton-mode`, so the two CLI ways to create one agree.
+    let profile_options = proton_profile_options(&protocol, None)?;
+    let native_proton = is_native_proton_options(profile_options.as_ref());
     let (id, name) = persist_new_profile_entry(
         cli,
         store,
@@ -25687,17 +26092,23 @@ fn interactive_new_profile(
         None,
         provider_id.as_deref(),
         None,
+        profile_options,
         None,
         None,
         None,
         false,
         false,
     )?;
+    let next_step = if native_proton {
+        format!("Sign in with `aeroftp-cli proton sign-in {id}`.")
+    } else {
+        "Add credentials in the GUI Edit modal.".to_string()
+    };
     eprintln!(
         "{}",
         paint_green(&format!(
-            "Profile '{}' created ({}, port {}, id={}). Add credentials in the GUI Edit modal.",
-            name, protocol, port, id
+            "Profile '{}' created ({}, port {}, id={}). {}",
+            name, protocol, port, id, next_step
         ))
     );
     Ok(Some(id))
@@ -41186,6 +41597,189 @@ fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportRe
         format!(
             "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from {source}, and existing files are never overwritten."
         )
+    }
+}
+
+#[cfg(test)]
+mod proton_profile_cli_tests {
+    use super::{
+        is_native_proton_options, native_proton_profile, proton_profile_options,
+        show_proton_sign_in_page, Cli, Commands, ProtonCommands,
+    };
+    use clap::Parser;
+
+    const URL: &str = "https://account.proton.me/auth-ext#one-time-key";
+
+    #[test]
+    fn a_proton_profile_is_saved_with_the_client_the_gui_tab_saves() {
+        let native = proton_profile_options("proton", Some("native"));
+        if cfg!(feature = "proton-native") {
+            let native = native.expect("native build").expect("options");
+            assert_eq!(
+                native.get("proton_mode"),
+                Some(&serde_json::json!("native"))
+            );
+            assert!(is_native_proton_options(Some(&native)));
+            // Without --proton-mode the build decides, as the GUI form opens
+            // on its API tab and the rclone import picks the native client.
+            assert_eq!(proton_profile_options("proton", None), Ok(Some(native)));
+        } else {
+            assert!(native.is_err());
+            assert_eq!(proton_profile_options("proton", None), Ok(None));
+        }
+        // The CLI tab saves no mode: a profile without one is a CLI profile.
+        assert_eq!(proton_profile_options("proton", Some("cli")), Ok(None));
+        assert!(!is_native_proton_options(None));
+        assert_eq!(proton_profile_options("ftp", None), Ok(None));
+        for protocol in ["ftp", "s3", "mega"] {
+            assert!(proton_profile_options(protocol, Some("native")).is_err());
+            assert!(proton_profile_options(protocol, Some("cli")).is_err());
+        }
+        assert!(proton_profile_options("proton", Some("megacmd")).is_err());
+    }
+
+    #[test]
+    fn sign_in_takes_only_a_profile_on_the_native_client() {
+        let profile = |protocol: &str, options: serde_json::Value| serde_json::json!({ "id": "srv_1", "name": "P", "protocol": protocol, "options": options });
+        assert_eq!(
+            native_proton_profile(&profile(
+                "proton",
+                serde_json::json!({ "proton_mode": "native" })
+            )),
+            Ok(("srv_1".to_string(), "P".to_string()))
+        );
+        for options in [
+            serde_json::Value::Null,
+            serde_json::json!({}),
+            serde_json::json!({ "proton_mode": "cli" }),
+        ] {
+            let refused = native_proton_profile(&profile("proton", options)).unwrap_err();
+            assert!(refused.contains("proton-drive auth login"), "{refused}");
+        }
+        let refused = native_proton_profile(&profile(
+            "mega",
+            serde_json::json!({ "proton_mode": "native" }),
+        ))
+        .unwrap_err();
+        assert!(refused.contains("not a Proton Drive profile"), "{refused}");
+    }
+
+    /// The sign-in address carries a one-time key: it goes to an interactive
+    /// terminal and nowhere else, neither in an error nor when stderr is not
+    /// a terminal.
+    #[test]
+    fn the_sign_in_address_reaches_only_an_interactive_terminal() {
+        let show = |no_browser: bool, interactive: bool, browser: Result<(), String>| {
+            let mut opened = false;
+            let mut terminal = Vec::new();
+            let result = show_proton_sign_in_page(
+                URL,
+                no_browser,
+                interactive,
+                |url| {
+                    assert_eq!(url, URL);
+                    opened = true;
+                    browser
+                },
+                &mut terminal,
+            );
+            (result, opened, String::from_utf8(terminal).expect("utf-8"))
+        };
+
+        let (result, opened, terminal) = show(false, true, Ok(()));
+        assert!(
+            result.is_ok() && opened && terminal.contains(URL),
+            "{terminal}"
+        );
+        let (result, opened, terminal) = show(false, true, Err("no display".into()));
+        assert!(
+            result.is_ok() && opened && terminal.contains(URL),
+            "{terminal}"
+        );
+        let (result, opened, terminal) = show(true, true, Ok(()));
+        assert!(
+            result.is_ok() && !opened && terminal.contains(URL),
+            "{terminal}"
+        );
+
+        let (result, opened, terminal) = show(false, false, Ok(()));
+        assert!(
+            result.is_ok() && opened && terminal.is_empty(),
+            "{terminal}"
+        );
+        let (result, opened, terminal) = show(false, false, Err("no display".into()));
+        let error = result.unwrap_err();
+        assert!(opened && terminal.is_empty(), "{terminal}");
+        assert!(
+            !error.contains("https://") && !error.contains("one-time-key"),
+            "{error}"
+        );
+        let (result, opened, terminal) = show(true, false, Ok(()));
+        assert!(
+            result.is_err() && !opened && terminal.is_empty(),
+            "{terminal}"
+        );
+    }
+
+    #[test]
+    fn proton_commands_and_the_mode_flag_parse() {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let parsed = Cli::try_parse_from(["aeroftp", "proton", "sign-in", "2", "--no-browser"])
+                    .expect("sign-in");
+                assert!(matches!(
+                    parsed.command,
+                    Commands::Proton {
+                        command: ProtonCommands::SignIn { ref selector, no_browser: true }
+                    } if selector == "2"
+                ));
+                let parsed =
+                    Cli::try_parse_from(["aeroftp", "proton", "sign-out", "Proton API"]).expect("sign-out");
+                assert!(matches!(
+                    parsed.command,
+                    Commands::Proton { command: ProtonCommands::SignOut { ref selector } }
+                        if selector == "Proton API"
+                ));
+                let parsed = Cli::try_parse_from(["aeroftp", "proton", "status", "1"]).expect("status");
+                assert!(matches!(
+                    parsed.command,
+                    Commands::Proton { command: ProtonCommands::Status { ref selector } } if selector == "1"
+                ));
+                let add = |mode: &str| {
+                    Cli::try_parse_from([
+                        "aeroftp", "profile-add", "--name", "P", "--protocol", "proton", "--proton-mode", mode,
+                    ])
+                };
+                for mode in ["native", "cli"] {
+                    match add(mode).expect("profile-add").command {
+                        Commands::ProfileAdd { proton_mode, .. } => {
+                            assert_eq!(proton_mode.as_deref(), Some(mode))
+                        }
+                        _ => panic!("not profile-add"),
+                    }
+                }
+                assert!(add("api").is_err());
+
+                // Every Proton message that asks for a sign-in quotes this
+                // command: it has to be one this binary runs.
+                let hint = ftp_client_gui_lib::providers::proton_native::SIGN_IN_HINT;
+                let quoted = hint
+                    .split('`')
+                    .nth(1)
+                    .unwrap_or_else(|| panic!("no command quoted in: {hint}"))
+                    .replace("<profile>", "3");
+                let parsed = Cli::try_parse_from(quoted.split_whitespace())
+                    .unwrap_or_else(|e| panic!("{quoted}: {e}"));
+                assert!(matches!(
+                    parsed.command,
+                    Commands::Proton { command: ProtonCommands::SignIn { ref selector, .. } }
+                        if selector == "3"
+                ));
+            })
+            .expect("spawn")
+            .join()
+            .expect("parse thread");
     }
 }
 
@@ -74232,6 +74826,7 @@ async fn main() {
             favicon_url,
             skip_delta_eligibility_prompt,
             filen_api_key,
+            proton_mode,
         } => cmd_profile_add(
             &cli,
             format,
@@ -74253,6 +74848,7 @@ async fn main() {
             favicon_url.as_deref(),
             *skip_delta_eligibility_prompt,
             filen_api_key.as_deref(),
+            proton_mode.as_deref(),
         ),
         Commands::ProfileDuplicate {
             selector,
@@ -75404,6 +76000,7 @@ async fn main() {
         }
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
         Commands::Alias { command } => cmd_alias(command, format),
+        Commands::Proton { command } => cmd_proton(&cli, format, command, cancelled.clone()).await,
         Commands::AliasToggle { name, bin_dir } => {
             cmd_alias_toggle(name, bin_dir.as_deref(), format)
         }

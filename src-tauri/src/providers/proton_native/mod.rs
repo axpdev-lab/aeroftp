@@ -56,6 +56,20 @@ pub use error::ProtonError;
 pub const THIRD_PARTY_DISCLOSURE: &str =
     "This is a third-party application not officially supported by Proton.";
 
+/// How a profile signs in to Proton, in the words of every message that asks
+/// for it: the app's button and the CLI command, both, so a message never
+/// sends a CLI user to a GUI they may not have, or the reverse. A macro, so
+/// constant texts can `concat!` it.
+macro_rules! sign_in_hint {
+    () => {
+        "sign in with Proton in the AeroFTP app, or run `aeroftp-cli proton sign-in <profile>`"
+    };
+}
+pub(crate) use sign_in_hint;
+
+/// [`sign_in_hint!`] for texts built at run time.
+pub const SIGN_IN_HINT: &str = sign_in_hint!();
+
 /// The SDK commit the ports in this module follow. Bump it only together with
 /// a re-read of the ported files at the new commit.
 pub const SDK_REFERENCE_COMMIT: &str = "8ffae00";

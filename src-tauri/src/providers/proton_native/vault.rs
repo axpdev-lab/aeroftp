@@ -97,7 +97,12 @@ fn parse(json: &str) -> Result<ProtonSession, ProviderError> {
         .map(ProtonSession::from)
         .map_err(|_| {
             ProviderError::AuthenticationFailed(
-                "the saved Proton session is unreadable; sign in to Proton again".into(),
+                concat!(
+                    "the saved Proton session is unreadable: ",
+                    super::sign_in_hint!(),
+                    " again"
+                )
+                .into(),
             )
         })
 }
@@ -682,7 +687,11 @@ mod tests {
     fn an_unreadable_saved_session_asks_for_a_new_sign_in() {
         let error = parse("{not json").expect_err("refused");
         assert!(
-            matches!(error, ProviderError::AuthenticationFailed(ref text) if text.contains("sign in")),
+            matches!(
+                error,
+                ProviderError::AuthenticationFailed(ref text)
+                    if text.contains(crate::providers::proton_native::SIGN_IN_HINT)
+            ),
             "{error:?}"
         );
         let ok = parse(r#"{"uid":"u","access_token":"a","key_password":"k"}"#).expect("parsed");
