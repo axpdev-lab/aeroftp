@@ -147,8 +147,9 @@ pub async fn resumable_part_len(final_path: &Path) -> u64 {
 /// `AtomicFile` and `ResumableFile` write `<final>.aerotmp`, and so does the
 /// delta writer (`aerorsync`, which keeps its own copy of these rules because
 /// it may not name app code). Each holds an exclusive lock on the temporary it
-/// writes for as long as it writes; the lock goes with the handle, so it ends
-/// with the writer however the writer ends. A temporary found at the name is
+/// writes for as long as it writes; the lock goes with the writer, so it ends
+/// with the writer however the writer ends (see [`Claimed`] and
+/// [`ClaimedWriter`](super::ClaimedWriter)). A temporary found at the name is
 /// then a live writer's while its lock is held, and stale otherwise (a
 /// download killed, or dropped while its create was on its way): a live one is
 /// left alone and the new download fails on it, a stale one is replaced.
@@ -178,28 +179,83 @@ pub(crate) mod temp_claim {
         Unknown,
     }
 
+    /// A temporary this process holds: its file, and the claim on it.
+    ///
+    /// The claim ends when this is dropped, unlocked, not when the last
+    /// descriptor of the file closes: a child another thread spawns holds a
+    /// copy of every descriptor of the process until it execs, and the lock
+    /// belongs to the open file description that copy shares, so a claim
+    /// ended by the close alone stayed held into the next download of the
+    /// file. It is unlocked only where the claim took a lock: where none was
+    /// taken there is nothing to release, and on a network mount the unlock
+    /// would be a call to the server.
+    #[derive(Debug)]
+    pub(crate) struct Claimed {
+        /// Always present: taken only by [`Self::into_parts`].
+        file: Option<std::fs::File>,
+        locked: bool,
+    }
+
+    impl Claimed {
+        fn new(file: std::fs::File, locked: bool) -> Self {
+            Self {
+                file: Some(file),
+                locked,
+            }
+        }
+
+        /// The claimed file. Only Unix code reads it: elsewhere the claim
+        /// takes no lock, and nothing is done through it.
+        #[cfg(unix)]
+        pub(crate) fn file(&self) -> &std::fs::File {
+            self.file.as_ref().expect("a claim keeps its file")
+        }
+
+        /// Whether the claim took a lock (see the module doc for where it
+        /// does not).
+        #[cfg(all(test, target_os = "linux"))]
+        pub(crate) fn locked(&self) -> bool {
+            self.locked
+        }
+
+        /// The file and whether its claim took a lock, for a holder that ends
+        /// the claim itself.
+        pub(crate) fn into_parts(mut self) -> (std::fs::File, bool) {
+            let file = self.file.take().expect("a claim keeps its file");
+            (file, self.locked)
+        }
+    }
+
+    impl Drop for Claimed {
+        fn drop(&mut self) {
+            if let Some(file) = self.file.as_ref().filter(|_| self.locked) {
+                let _ = file.unlock();
+            }
+        }
+    }
+
     /// Create the temporary at `temp` and claim it. One already there is
     /// replaced when stale, and refused otherwise.
-    pub(crate) fn create(temp: &Path) -> Result<std::fs::File> {
+    pub(crate) fn create(temp: &Path) -> Result<Claimed> {
         create_with(temp, try_lock)
     }
 
     /// Open the temporary at `temp` to go on writing it (a resume), and claim
     /// it: refused while another writer holds it.
-    pub(crate) fn open_to_append(temp: &Path) -> Result<std::fs::File> {
+    pub(crate) fn open_to_append(temp: &Path) -> Result<Claimed> {
         let file = std::fs::OpenOptions::new()
             .append(true)
             .open(temp)
             .map_err(|e| name_too_long(e, temp))?;
-        claim(&file, temp, try_lock)?;
-        Ok(file)
+        let locked = claim(&file, temp, try_lock)?;
+        Ok(Claimed::new(file, locked))
     }
 
     /// Create the temporary of a download that starts over (a fresh resumable
     /// part, a segmented run): a stale one is replaced, a live one refused;
     /// where the locks are not used, one found there is discarded, as before
     /// them.
-    pub(crate) fn create_fresh(temp: &Path) -> Result<std::fs::File> {
+    pub(crate) fn create_fresh(temp: &Path) -> Result<Claimed> {
         create_fresh_with(temp, try_lock, locks_usable)
     }
 
@@ -207,7 +263,7 @@ pub(crate) mod temp_claim {
         temp: &Path,
         lock: impl Fn(&std::fs::File) -> std::result::Result<(), std::fs::TryLockError>,
         usable: impl Fn(&Path) -> bool,
-    ) -> Result<std::fs::File> {
+    ) -> Result<Claimed> {
         if usable(temp) {
             return create_with(temp, lock);
         }
@@ -221,11 +277,12 @@ pub(crate) mod temp_claim {
                 tracing::debug!("could not discard {}: {e}", temp.display());
             }
         }
-        std::fs::OpenOptions::new()
+        let file = std::fs::OpenOptions::new()
             .create_new(true)
             .write(true)
             .open(temp)
-            .map_err(|e| name_too_long(e, temp))
+            .map_err(|e| name_too_long(e, temp))?;
+        Ok(Claimed::new(file, false))
     }
 
     /// Remove the temporary at `temp` unless a live writer holds it: a stale
@@ -247,7 +304,7 @@ pub(crate) mod temp_claim {
     fn create_with(
         temp: &Path,
         lock: impl Fn(&std::fs::File) -> std::result::Result<(), std::fs::TryLockError>,
-    ) -> Result<std::fs::File> {
+    ) -> Result<Claimed> {
         let mut probed = false;
         loop {
             match std::fs::OpenOptions::new()
@@ -259,8 +316,8 @@ pub(crate) mod temp_claim {
                     // A lock this filesystem cannot take keeps the file, as
                     // before these locks: the file this call made is never
                     // left behind by a failed claim.
-                    claim(&file, temp, &lock)?;
-                    return Ok(file);
+                    let locked = claim(&file, temp, &lock)?;
+                    return Ok(Claimed::new(file, locked));
                 }
                 Err(taken) if taken.kind() == ErrorKind::AlreadyExists && !probed => {
                     probed = true;
@@ -429,20 +486,20 @@ pub(crate) mod temp_claim {
         }
     }
 
-    /// Lock `file`, opened at `path`, for this writer. Refused when another
-    /// writer holds it, or when the name no longer points at this file (it
-    /// was replaced between the open and the lock); a lock this filesystem
-    /// cannot take is not an error.
+    /// Lock `file`, opened at `path`, for this writer, and say whether a lock
+    /// was taken. Refused when another writer holds it, or when the name no
+    /// longer points at this file (it was replaced between the open and the
+    /// lock); a lock this filesystem cannot take is not an error, and no lock.
     fn claim(
         file: &std::fs::File,
         path: &Path,
         lock: impl Fn(&std::fs::File) -> std::result::Result<(), std::fs::TryLockError>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if !locks_usable(path) {
-            return Ok(());
+            return Ok(false);
         }
         match lock(file) {
-            Ok(()) if same_file(file, path) => Ok(()),
+            Ok(()) if same_file(file, path) => Ok(true),
             Ok(()) => Err(Error::new(
                 ErrorKind::AlreadyExists,
                 format!(
@@ -451,7 +508,7 @@ pub(crate) mod temp_claim {
                 ),
             )),
             Err(std::fs::TryLockError::WouldBlock) => Err(in_use(path)),
-            Err(std::fs::TryLockError::Error(_)) => Ok(()),
+            Err(std::fs::TryLockError::Error(_)) => Ok(false),
         }
     }
 
@@ -619,12 +676,38 @@ pub(crate) mod temp_claim {
     mod tests {
         use super::*;
 
-        /// End a writer's claim as `ClaimedTemp` does: unlocked, then closed.
-        /// A close alone leaves the lock held by a child another test thread
-        /// forks meanwhile, until that child execs: the lock belongs to the
-        /// open file description, which its inherited descriptor shares.
-        fn end_claim(file: std::fs::File) {
-            file.unlock().unwrap();
+        /// The full `aeroftp-cli` suite of #1279: a claim ended by the close
+        /// alone stayed held by a child another test thread spawned, until
+        /// that child exec'd, and the next claim of the part was refused. The
+        /// copy of the descriptor kept open here is that child's: the claim
+        /// still ends when it is dropped.
+        #[test]
+        fn a_dropped_claim_ends_while_a_copy_of_its_descriptor_is_open() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let claim = create(&temp).unwrap();
+            assert!(claim.locked(), "a local temporary is locked");
+            let inherited = claim.file().try_clone().unwrap();
+            drop(claim);
+            let again = open_to_append(&temp);
+            assert!(
+                again.is_ok(),
+                "a dropped claim was still held: {:?}",
+                again.err()
+            );
+            drop(inherited);
+        }
+
+        /// Where the claim takes no lock it says so, and its drop has nothing
+        /// to release (on NFS and SMB, where none is taken, an unlock would be
+        /// a call to the server).
+        #[test]
+        fn a_claim_that_takes_no_lock_says_so() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            assert!(!create_with(&temp, failing_lock).unwrap().locked());
+            let fresh = create_fresh_with(&temp, try_lock, |_| false).unwrap();
+            assert!(!fresh.locked());
         }
 
         fn failing_lock(_file: &std::fs::File) -> std::result::Result<(), std::fs::TryLockError> {
@@ -750,7 +833,7 @@ pub(crate) mod temp_claim {
                 Some(ErrorKind::AlreadyExists),
                 "a fresh download took a live writer's part"
             );
-            end_claim(live);
+            drop(live);
             std::fs::write(&temp, b"a stale part").unwrap();
             let fresh = create_fresh(&temp);
             assert!(
@@ -786,9 +869,9 @@ pub(crate) mod temp_claim {
                 Some(ErrorKind::AlreadyExists)
             );
             assert!(temp.exists(), "a live writer's part was removed");
-            end_claim(live);
+            drop(live);
             let claim = open_to_append(&temp).expect("a stale part");
-            end_claim(claim);
+            drop(claim);
             super::super::remove_temp_unless_live(&temp).expect("a stale part goes");
             assert!(!temp.exists());
             super::super::remove_temp_unless_live(&temp).expect("nothing there is fine");
@@ -827,12 +910,66 @@ pub fn remove_temp_unless_live(temp: &Path) -> std::io::Result<()> {
 
 /// Run a claim, which is filesystem work, off the async runtime.
 async fn claimed(
-    claim: impl FnOnce() -> std::io::Result<std::fs::File> + Send + 'static,
-) -> std::io::Result<fs::File> {
-    let file = tokio::task::spawn_blocking(claim)
+    claim: impl FnOnce() -> std::io::Result<temp_claim::Claimed> + Send + 'static,
+) -> std::io::Result<ClaimedWriter> {
+    let (file, locked) = tokio::task::spawn_blocking(claim)
         .await
-        .map_err(std::io::Error::other)??;
-    Ok(fs::File::from_std(file))
+        .map_err(std::io::Error::other)??
+        .into_parts();
+    Ok(ClaimedWriter {
+        file: Some(fs::File::from_std(file)),
+        locked,
+    })
+}
+
+/// The file a download writer writes through, and its claim on it (see
+/// [`temp_claim::Claimed`], whose rules this keeps for a tokio file).
+///
+/// The claim ends when this is dropped, unlocked, unless a write is still
+/// landing: tokio answers a write once it has handed it to a blocking thread,
+/// which holds the file until the write is done, and an unlock then would let
+/// another download take the part while that write goes into it. The claim
+/// then ends with the close, once the write is done.
+pub(crate) struct ClaimedWriter {
+    /// Always present: taken only by `Drop`.
+    file: Option<fs::File>,
+    locked: bool,
+}
+
+impl ClaimedWriter {
+    /// A file written with no claim (in place, the destination itself).
+    fn unclaimed(file: fs::File) -> Self {
+        Self {
+            file: Some(file),
+            locked: false,
+        }
+    }
+}
+
+impl std::ops::Deref for ClaimedWriter {
+    type Target = fs::File;
+
+    fn deref(&self) -> &fs::File {
+        self.file.as_ref().expect("a writer keeps its file")
+    }
+}
+
+impl std::ops::DerefMut for ClaimedWriter {
+    fn deref_mut(&mut self) -> &mut fs::File {
+        self.file.as_mut().expect("a writer keeps its file")
+    }
+}
+
+impl Drop for ClaimedWriter {
+    fn drop(&mut self) {
+        let Some(file) = self.file.take().filter(|_| self.locked) else {
+            return;
+        };
+        // `try_into_std` fails exactly while an operation holds the file.
+        if let Ok(file) = file.try_into_std() {
+            let _ = file.unlock();
+        }
+    }
 }
 
 /// A guard that writes to a temp file and renames on commit.
@@ -841,7 +978,7 @@ async fn claimed(
 pub struct AtomicFile {
     temp_path: PathBuf,
     final_path: PathBuf,
-    file: tokio::fs::File,
+    file: ClaimedWriter,
     committed: bool,
     inplace: bool,
 }
@@ -864,12 +1001,14 @@ impl AtomicFile {
         }
 
         let file = if inplace {
-            fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&temp_path)
-                .await?
+            ClaimedWriter::unclaimed(
+                fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(&temp_path)
+                    .await?,
+            )
         } else {
             let temp = temp_path.clone();
             let file = claimed(move || temp_claim::create(&temp)).await?;
@@ -946,7 +1085,7 @@ pub struct ResumableFile {
     temp_path: PathBuf,
     final_path: PathBuf,
     record_path: PathBuf,
-    file: tokio::fs::File,
+    file: ClaimedWriter,
     committed: bool,
     /// Byte offset we are resuming from (0 = fresh download).
     offset: u64,
@@ -1105,7 +1244,11 @@ impl ResumableFile {
                 // Resume: open existing file in append mode.
                 let opened = if inplace {
                     // The destination itself, which the caller measured.
-                    fs::OpenOptions::new().append(true).open(&temp_path).await
+                    fs::OpenOptions::new()
+                        .append(true)
+                        .open(&temp_path)
+                        .await
+                        .map(ClaimedWriter::unclaimed)
                 } else {
                     // The part is claimed before its length is read: while
                     // another writer holds it, it is refused, not appended to.
@@ -1135,12 +1278,14 @@ impl ResumableFile {
         } else {
             // Fresh: create new file
             let file = if inplace {
-                fs::OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .open(&temp_path)
-                    .await?
+                ClaimedWriter::unclaimed(
+                    fs::OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(true)
+                        .open(&temp_path)
+                        .await?,
+                )
             } else {
                 let temp = temp_path.clone();
                 let file = claimed(move || temp_claim::create(&temp)).await?;
@@ -1184,12 +1329,14 @@ impl ResumableFile {
         }
 
         let file = if inplace {
-            fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&temp_path)
-                .await?
+            ClaimedWriter::unclaimed(
+                fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(&temp_path)
+                    .await?,
+            )
         } else {
             // RESUME-01: open_fresh's contract is to discard any existing partial
             // data. A stale `.aerotmp` from a previous interrupted download would
@@ -1293,6 +1440,8 @@ impl Drop for ResumableFile {
                 self.temp_path.display()
             );
         }
+        // The claim on the part ends with `file`, dropped after this: the
+        // next download of the file can go on from it at once.
     }
 }
 
@@ -1332,6 +1481,91 @@ mod tests {
         third.write_all(b"new").await.unwrap();
         third.commit().await.unwrap();
         assert_eq!(std::fs::read(path).unwrap(), b"new");
+    }
+
+    /// Follow-up of #1279: a resumable writer dropped with its part ended its
+    /// claim by the close alone, and a child another thread spawned meanwhile,
+    /// which holds a copy of every descriptor until it execs, kept it held: the
+    /// next download of the file, a retry for one, was refused as another
+    /// download writing the part. The copy kept open here is that child's.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_dropped_writers_part_is_resumed_while_a_copy_of_its_descriptor_is_open() {
+        use std::os::fd::AsFd;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let mut part = ResumableFile::open_in(path, false).await.unwrap();
+        part.write_all(b"first").await.unwrap();
+        part.file_mut().flush().await.unwrap();
+        let inherited = part.file_mut().as_fd().try_clone_to_owned().unwrap();
+        drop(part);
+        let resumed = ResumableFile::open_in(path, false)
+            .await
+            .expect("the dropped writer's claim was still held");
+        assert_eq!(resumed.offset(), 5);
+        drop(inherited);
+    }
+
+    /// The other side: tokio answers a write once a blocking thread has it,
+    /// and that thread holds the file until the write is done. A writer
+    /// dropped meanwhile keeps its claim until then; released at the drop, it
+    /// let another download take the part while the write still went into it.
+    /// A FIFO nobody reads holds the write in flight for as long as needed.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_writer_dropped_with_a_write_in_flight_keeps_its_claim_until_the_write_lands() {
+        use std::io::Read;
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let pipe = dir.path().join("pipe");
+        let name = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `name` is a NUL-terminated path that outlives the call.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        // Opened to read too, so the open does not wait for a reader.
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&pipe)
+            .unwrap();
+        file.try_lock().unwrap();
+        let mut writer = ClaimedWriter {
+            file: Some(fs::File::from_std(file)),
+            locked: true,
+        };
+        // Far more than the pipe holds: the write blocks until it is read.
+        let sent = writer.write(&vec![0u8; 1 << 20]).await.unwrap();
+        drop(writer);
+        let mut probe = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&pipe)
+            .unwrap();
+        let held_while_writing = matches!(probe.try_lock(), Err(std::fs::TryLockError::WouldBlock));
+        // Drained before any assertion: a write left blocked would hang the
+        // runtime's shutdown instead of failing the test.
+        let mut read = 0;
+        let mut buf = vec![0u8; 64 * 1024];
+        let mut released = false;
+        for _ in 0..10_000 {
+            if let Ok(n) = probe.read(&mut buf) {
+                read += n;
+            }
+            if read >= sent && probe.try_lock().is_ok() {
+                released = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        assert!(
+            held_while_writing,
+            "the claim ended while a write was still going into the file"
+        );
+        assert!(
+            released,
+            "the claim outlived the write ({read} of {sent} read)"
+        );
     }
 
     /// Review of round 2 of #951: a `.aerotmp` left by a download that was
