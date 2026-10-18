@@ -12,7 +12,7 @@ const DEAD_URL: &str = "ftp://127.0.0.1:9/object";
 #[test]
 fn invalid_multi_thread_cutoff_env_is_ignored_by_non_download_commands() {
     // G4: a command that never downloads must not even look at the cutoff.
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let output = isolated_cli::command(
         std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
         config.path(),
@@ -26,7 +26,7 @@ fn invalid_multi_thread_cutoff_env_is_ignored_by_non_download_commands() {
 
 #[test]
 fn invalid_multi_thread_cutoff_flag_is_a_usage_error() {
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let output = isolated_cli::command(
         std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
         config.path(),
@@ -49,7 +49,7 @@ fn invalid_multi_thread_cutoff_flag_is_a_usage_error() {
 
 #[test]
 fn invalid_multi_thread_cutoff_env_names_the_variable() {
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let output = isolated_cli::command(
         std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
         config.path(),
@@ -70,7 +70,7 @@ fn invalid_multi_thread_cutoff_env_names_the_variable() {
 fn non_finite_multi_thread_cutoff_env_is_a_usage_error() {
     // The parser rejects NaN/negative values instead of saturating to 0
     // (a 0 cutoff would segment every file).
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let output = isolated_cli::command(
         std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
         config.path(),
@@ -91,7 +91,7 @@ fn non_finite_multi_thread_cutoff_env_is_a_usage_error() {
 fn flag_wins_over_env_in_the_error_source() {
     // G5: flag and env both set (to different invalid values): the error
     // reports the flag value and must NOT blame the environment.
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let output = isolated_cli::command(
         std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
         config.path(),

@@ -1243,8 +1243,12 @@ mod tests {
     /// --lib lane without adding another full CLI build to that workflow.
     #[test]
     fn cli_integration_fixture_uses_private_portable_state() {
-        let root = tempfile::tempdir().unwrap();
+        let root = cli_integration_fixture::root();
         let source = std::env::current_exe().unwrap();
+        // This must succeed without the fixture's cross-volume copy fallback.
+        // On Windows a system TempDir is usually C: while target/ lives on D:.
+        std::fs::hard_link(&source, root.path().join("same-volume-probe"))
+            .expect("the fixture must support a hard link to the test executable");
         let out = cli_integration_fixture::command(&source, root.path())
             .args([
                 "--exact",

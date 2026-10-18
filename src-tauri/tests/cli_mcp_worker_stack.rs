@@ -23,7 +23,7 @@ const WORKER_STACK: usize = 1024 * 1024;
 
 #[test]
 fn the_mcp_server_answers_on_half_a_worker_stack() {
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let mut child = isolated_cli::command(
         std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
         config.path(),

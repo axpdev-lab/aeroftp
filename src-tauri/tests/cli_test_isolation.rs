@@ -13,7 +13,9 @@ use std::path::Path;
 #[test]
 fn two_cli_fixtures_write_independent_private_vaults() {
     let source = Path::new(env!("CARGO_BIN_EXE_aeroftp-cli"));
-    let root = tempfile::tempdir().unwrap();
+    let root = isolated_cli::root();
+    std::fs::hard_link(source, root.path().join("same-volume-probe"))
+        .expect("integration scratch must support a hard link to the CLI");
     let leaf = if cfg!(debug_assertions) {
         "aeroftp-dev"
     } else {

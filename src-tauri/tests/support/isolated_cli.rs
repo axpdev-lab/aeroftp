@@ -12,6 +12,22 @@ use std::sync::Mutex;
 
 static PREPARE: Mutex<()> = Mutex::new(());
 
+/// Cargo places integration scratch on the target volume. Lib tests have no
+/// CARGO_TARGET_TMPDIR, so keep their fixture beside the test executable.
+/// System temp may be a small tmpfs or a different Windows drive: putting a
+/// fixture there would copy the GiB-sized binary instead of hard-linking it.
+pub fn root() -> tempfile::TempDir {
+    let executable = std::env::current_exe().expect("test executable");
+    let parent = option_env!("CARGO_TARGET_TMPDIR")
+        .map(Path::new)
+        .unwrap_or_else(|| executable.parent().expect("test executable directory"));
+    std::fs::create_dir_all(parent).expect("test scratch directory");
+    tempfile::Builder::new()
+        .prefix("aeroftp-cli-")
+        .tempdir_in(parent)
+        .expect("fixture on the executable volume")
+}
+
 pub fn executable(source: &Path, root: &Path) -> PathBuf {
     let _prepare = PREPARE.lock().unwrap_or_else(|e| e.into_inner());
     let dir = root.join("cli");

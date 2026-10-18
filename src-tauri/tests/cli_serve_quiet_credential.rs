@@ -15,7 +15,7 @@ use std::time::Duration;
 /// the first stderr line it prints, or `None` if it prints nothing in time.
 fn first_quiet_stderr_line(mode: &str) -> Option<String> {
     let folder = tempfile::tempdir().expect("served folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let mut child = isolated_cli::command(
         std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
         config.path(),

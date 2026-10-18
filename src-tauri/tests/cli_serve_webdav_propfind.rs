@@ -44,7 +44,7 @@ fn serve() -> Served {
     std::fs::create_dir(folder.path().join("docs")).expect("docs");
     std::fs::write(folder.path().join("docs").join("a.txt"), b"a").expect("a.txt");
     std::fs::create_dir(folder.path().join("empty")).expect("empty");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let port = TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
         .expect("free port")

@@ -62,7 +62,7 @@ fn snapshot(folder: &Path) -> Vec<(String, Vec<u8>)> {
 #[test]
 fn a_marker_write_refused_by_the_server_names_no_way_around_it() {
     let served = tempfile::tempdir().expect("served folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let kits = tempfile::tempdir().expect("kit folder");
     let cli = |args: &[&str]| {
         let mut cmd = isolated_cli::command(

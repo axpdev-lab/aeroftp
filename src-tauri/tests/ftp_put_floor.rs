@@ -316,7 +316,7 @@ async fn cli_put_to_ftp_has_no_half_second_settle() {
     let url = format!("ftp://testuser:testpass@127.0.0.1:{}/", server.port);
     // tokio::process, not std: the fake server lives on this same runtime, so
     // a blocking wait would starve the very tasks the child is talking to.
-    let config = tempfile::tempdir().expect("isolated CLI state");
+    let config = isolated_cli::root();
     let child = tokio::process::Command::from(isolated_cli::command(
         std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
         config.path(),

@@ -62,7 +62,7 @@ fn hosts_and_secrets<'a>(
 fn every_export_writes_each_profile_with_its_own_secret() {
     use ftp_client_gui_lib::{filezilla_import, lftp_import, rclone_import, winscp_import};
 
-    let config = tempfile::tempdir().unwrap();
+    let config = isolated_cli::root();
     let conf = config.path().join("rclone.conf");
     std::fs::write(
         &conf,

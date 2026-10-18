@@ -59,7 +59,7 @@ fn describe(out: &Output) -> String {
 #[test]
 fn an_init_without_a_kit_path_writes_nothing_and_the_next_run_needs_no_force() {
     let remote = tempfile::tempdir().expect("remote folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
 
     for extra in [&[][..], &["--format", "json"][..]] {
         let refused = crypt_init(remote.path(), config.path(), extra);
@@ -91,7 +91,7 @@ fn an_init_without_a_kit_path_writes_nothing_and_the_next_run_needs_no_force() {
 #[test]
 fn an_init_whose_kit_path_cannot_be_written_writes_nothing() {
     let remote = tempfile::tempdir().expect("remote folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
 
     let unwritable = [
         config.path().join("no-such-folder").join("kit.txt"),
@@ -116,7 +116,7 @@ fn an_init_whose_kit_path_cannot_be_written_writes_nothing() {
 #[test]
 fn the_kit_an_init_writes_describes_the_marker_it_wrote() {
     let remote = tempfile::tempdir().expect("remote folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let kit_folder = tempfile::tempdir().expect("kit folder");
     let kit = kit_folder.path().join("kit.txt");
 
@@ -147,7 +147,7 @@ fn the_kit_an_init_writes_describes_the_marker_it_wrote() {
 #[test]
 fn a_refused_init_leaves_no_generated_keyfile_and_no_kit() {
     let remote = tempfile::tempdir().expect("remote folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let kits = tempfile::tempdir().expect("kit folder");
     let keyfile = kits.path().join("vault.key");
     let keyfile_arg = keyfile.to_str().expect("utf-8 path");
@@ -197,7 +197,7 @@ fn a_refused_init_leaves_no_generated_keyfile_and_no_kit() {
 #[test]
 fn an_init_whose_config_write_fails_leaves_no_generated_keyfile() {
     let remote = tempfile::tempdir().expect("remote folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let kits = tempfile::tempdir().expect("kit folder");
     let keyfile = kits.path().join("vault.key");
     let kit = kits.path().join("kit.txt");
@@ -234,7 +234,7 @@ fn a_refused_headerless_init_leaves_no_config_in_the_keystore() {
     use std::time::{Duration, Instant};
 
     let served = tempfile::tempdir().expect("served folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let kits = tempfile::tempdir().expect("kit folder");
     let port = TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
@@ -326,7 +326,7 @@ fn declining_the_kit_at_a_terminal_writes_nothing() {
     use std::time::{Duration, Instant};
 
     let remote = tempfile::tempdir().expect("remote folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
 
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -419,7 +419,7 @@ fn link_to(_target: &Path, _folder: &Path) -> Option<std::path::PathBuf> {
 #[test]
 fn a_kit_path_that_is_the_keyfile_is_refused_before_anything_is_written() {
     let remote = tempfile::tempdir().expect("remote folder");
-    let config = tempfile::tempdir().expect("isolated config");
+    let config = isolated_cli::root();
     let kits = tempfile::tempdir().expect("kit folder");
     let keyfile = kits.path().join("vault.key");
     let content = ftp_client_gui_lib::aerocrypt::generate_keyfile_v1();

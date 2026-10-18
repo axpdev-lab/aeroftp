@@ -85,7 +85,7 @@ fn vault_with_one_profile(config: &Path) -> String {
 
 #[test]
 fn the_import_and_export_families_answer_in_json_under_machine_and_format_json() {
-    let config = tempfile::tempdir().unwrap();
+    let config = isolated_cli::root();
     let dir = config.path();
     let conf = vault_with_one_profile(dir);
     let out_conf = dir.join("out.conf");
@@ -133,7 +133,7 @@ fn the_import_and_export_families_answer_in_json_under_machine_and_format_json()
 
 #[test]
 fn the_keystore_family_answers_in_json_under_machine_and_format_json() {
-    let config = tempfile::tempdir().unwrap();
+    let config = isolated_cli::root();
     let dir = config.path();
     vault_with_one_profile(dir);
     let backup = dir.join("backup.aeroftp-keystore");
@@ -160,7 +160,7 @@ fn the_keystore_family_answers_in_json_under_machine_and_format_json() {
 
 #[test]
 fn text_mode_stays_text() {
-    let config = tempfile::tempdir().unwrap();
+    let config = isolated_cli::root();
     let dir = config.path();
     vault_with_one_profile(dir);
 
