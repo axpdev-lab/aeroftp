@@ -668,6 +668,42 @@ pub fn export_cyberduck(
 mod tests {
     use super::*;
 
+    #[test]
+    fn backblaze_s3_and_native_b2_keep_their_bookmark_protocol() {
+        for (kind, provider_id) in [("s3", "backblaze"), ("b2", "backblaze-b2")] {
+            let xml = S3_DUCK
+                .replace("<string>s3</string>", &format!("<string>{kind}</string>"))
+                .replace("s3.wasabisys.com", "s3.us-west-004.backblazeb2.com");
+            let mut profiles = Vec::new();
+            let mut skipped = Vec::new();
+            ingest_duck(&xml, &mut profiles, &mut skipped);
+            assert!(skipped.is_empty());
+            assert_eq!(profiles[0].provider_id.as_deref(), Some(provider_id));
+            let export: CyberduckExportServer =
+                serde_json::from_value(serde_json::to_value(&profiles[0]).unwrap()).unwrap();
+            let output = tempfile::tempdir().unwrap();
+            assert_eq!(
+                export_cyberduck(&[export], &HashMap::new(), output.path())
+                    .unwrap()
+                    .exported,
+                1
+            );
+            let bookmark = std::fs::read_dir(output.path())
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            let mut round_trip = Vec::new();
+            ingest_duck(
+                &std::fs::read_to_string(bookmark).unwrap(),
+                &mut round_trip,
+                &mut skipped,
+            );
+            assert_eq!(round_trip[0].provider_id.as_deref(), Some(provider_id));
+        }
+    }
+
     const SFTP_DUCK: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

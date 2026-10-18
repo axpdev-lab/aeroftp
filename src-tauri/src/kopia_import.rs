@@ -495,6 +495,41 @@ pub fn export_kopia(
 mod tests {
     use super::*;
 
+    #[test]
+    fn backblaze_s3_and_native_b2_keep_their_backend_and_credentials() {
+        for (kind, config, provider_id, key) in [
+            (
+                "s3",
+                serde_json::json!({"endpoint":"s3.us-west-004.backblazeb2.com", "bucket":"bucket", "accessKeyID":"synthetic-id", "secretAccessKey":"synthetic-secret"}),
+                "backblaze",
+                "accessKeyID",
+            ),
+            (
+                "b2",
+                serde_json::json!({"bucket":"bucket", "keyID":"synthetic-id", "key":"synthetic-secret"}),
+                "backblaze-b2",
+                "keyID",
+            ),
+        ] {
+            let input = serde_json::json!({"storage":{"type":kind, "config":config}});
+            let imported = import_str(&input.to_string());
+            let profile = &imported.servers[0];
+            assert_eq!(profile.provider_id.as_deref(), Some(provider_id));
+            assert_eq!(profile.username, "synthetic-id");
+            assert_eq!(profile.credential.as_deref(), Some("synthetic-secret"));
+            let export: KopiaExportServer =
+                serde_json::from_value(serde_json::to_value(profile).unwrap()).unwrap();
+            let block = storage_block(&export, Some("synthetic-secret")).unwrap();
+            assert_eq!(block["storage"]["type"], kind);
+            assert_eq!(block["storage"]["config"][key], "synthetic-id");
+            let reimported = import_str(&block.to_string());
+            let round_trip = &reimported.servers[0];
+            assert_eq!(round_trip.provider_id.as_deref(), Some(provider_id));
+            assert_eq!(round_trip.username, "synthetic-id");
+            assert_eq!(round_trip.credential.as_deref(), Some("synthetic-secret"));
+        }
+    }
+
     fn import_str(json: &str) -> KopiaImportResult {
         let tmp = std::env::temp_dir().join(format!(
             "aeroftp-kopia-{}.config",
