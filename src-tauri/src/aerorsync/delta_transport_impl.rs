@@ -80,10 +80,13 @@ use crate::aerorsync::remote_command::{EffectiveMetadataFlags, RemoteCommandSpec
 use crate::aerorsync::russh_session_transport::RusshSessionTransport;
 use crate::aerorsync::ssh_transport::{SshRemoteShellTransport, SshTransportConfig};
 use crate::aerorsync::streaming_writer::{StreamingAtomicWriter, WriteAtomicError};
-// Every reader of the temp suffix here, in the library and in the tests, sits
-// behind `cfg(unix)`: it names the slot the symlink path reuses.
+// Every reader of these here, in the library and in the tests, sits behind
+// `cfg(unix)`: the symlink commit, which clears a stale `<local>.aerotmp` and
+// makes its link under a name of its own.
 #[cfg(unix)]
-use crate::aerorsync::streaming_writer::{temp_sibling, TEMP_SUFFIX};
+use crate::aerorsync::streaming_writer::{
+    remove_temp_unless_live, temp_path_for, temp_sibling, TEMP_SUFFIX,
+};
 use crate::aerorsync::transport::{
     CancelHandle, RawRemoteShellTransport, RemoteShellTransport, TransportProbe,
 };
@@ -758,8 +761,8 @@ fn symlink_target_is_safe(target: &str) -> bool {
 
 /// Y-RSC.4: materialise a downloaded symlink entry at `local_path` with
 /// the create-at-temp-name + atomic-rename discipline of the regular
-/// download path (`<target>.aerotmp` → rename; the rename is the
-/// commit, so a kill-9 mid-create leaves the original path untouched).
+/// download path (a temp name → rename; the rename is the commit, so a
+/// kill-9 mid-create leaves the original path untouched).
 ///
 /// Every failure maps to [`RsyncError::HardRejection`] on purpose: a
 /// soft error would send `transfer_with_delta` down the classic SFTP
@@ -778,6 +781,20 @@ async fn create_symlink_atomic(
     local_path: &Path,
     remote_path: &str,
 ) -> Result<(), TransferError> {
+    create_symlink_atomic_with(entry, local_path, remote_path, || async {}).await
+}
+
+/// [`create_symlink_atomic`] with a step run between the link's creation
+/// and its rename, so a test can act in between.
+async fn create_symlink_atomic_with<Between>(
+    entry: &FileListEntry,
+    local_path: &Path,
+    remote_path: &str,
+    between: impl FnOnce() -> Between,
+) -> Result<(), TransferError>
+where
+    Between: std::future::Future<Output = ()>,
+{
     let Some(target) = entry.symlink_target.as_deref().filter(|t| !t.is_empty()) else {
         return Err(TransferError::Hard {
             detail: format!(
@@ -803,12 +820,30 @@ async fn create_symlink_atomic(
                 ),
             });
         }
-        // Same deterministic temp name as `StreamingAtomicWriter` (the
-        // writer's temp was discarded just above, so the slot is free);
-        // clear any stale leftover before `symlink`, which has
-        // create-new semantics and would otherwise fail with EEXIST.
-        let temp_path = temp_sibling(local_path, TEMP_SUFFIX);
-        let _ = fs::remove_file(&temp_path).await;
+        // The download's own `<local>.aerotmp` was discarded just above.
+        // One found there now is another download's: removed when stale,
+        // and the commit is refused while a live one holds it. Removed by
+        // name, it went from under that download, which then failed at its
+        // rename.
+        let claimed = temp_sibling(local_path, TEMP_SUFFIX);
+        tokio::task::spawn_blocking(move || remove_temp_unless_live(&claimed))
+            .await
+            .map_err(std::io::Error::other)
+            .and_then(|removed| removed)
+            .map_err(|e| TransferError::Hard {
+                detail: format!(
+                    "cannot commit symlink {} -> {}: {}",
+                    local_path.display(),
+                    target,
+                    e
+                ),
+            })?;
+        // The link is made under a name of its own, never at
+        // `<local>.aerotmp`: a writer that finds a link there removes it as
+        // a leftover, and with this one removed between its creation and
+        // its rename, the rename would publish that writer's temporary at
+        // `local_path` in place of the link.
+        let temp_path = temp_path_for(local_path);
         fs::symlink(target, &temp_path)
             .await
             .map_err(|e| TransferError::Hard {
@@ -833,6 +868,7 @@ async fn create_symlink_atomic(
                 times_outcome
             );
         }
+        between().await;
         if let Err(e) = fs::rename(&temp_path, local_path).await {
             let _ = fs::remove_file(&temp_path).await;
             return Err(TransferError::Hard {
@@ -848,7 +884,7 @@ async fn create_symlink_atomic(
     }
     #[cfg(not(unix))]
     {
-        let _ = local_path;
+        let _ = (local_path, between);
         Err(TransferError::Hard {
             detail: format!(
                 "remote {} is a symbolic link (target {}); symlink creation is not supported on \
@@ -3078,10 +3114,9 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, TransferError::Hard { .. }));
         assert!(!dest.exists(), "unsafe symlink must not be materialised");
-        let mut temp_os = dest.as_os_str().to_owned();
-        temp_os.push(TEMP_SUFFIX);
-        assert!(
-            !std::path::Path::new(&temp_os).exists(),
+        assert_eq!(
+            temporaries_of(&dest),
+            Vec::<std::ffi::OsString>::new(),
             "no temp may be left behind on refusal"
         );
     }
@@ -3118,12 +3153,11 @@ mod tests {
             std::fs::read_link(&dest).unwrap(),
             PathBuf::from("rel/tgt.bin")
         );
-        let temp = {
-            let mut os = dest.as_os_str().to_os_string();
-            os.push(TEMP_SUFFIX);
-            PathBuf::from(os)
-        };
-        assert!(!temp.exists(), "temp must be renamed away, never leaked");
+        assert_eq!(
+            temporaries_of(&dest),
+            Vec::<std::ffi::OsString>::new(),
+            "temp must be renamed away, never leaked"
+        );
     }
 
     /// Pin for the symlink's OWN mtime: `create_symlink_atomic` must
@@ -3522,12 +3556,11 @@ mod tests {
         let meta = std::fs::symlink_metadata(&local).unwrap();
         assert!(meta.file_type().is_symlink(), "local must be a symlink");
         assert_eq!(std::fs::read_link(&local).unwrap(), PathBuf::from(target));
-        let temp = {
-            let mut os = local.as_os_str().to_os_string();
-            os.push(TEMP_SUFFIX);
-            PathBuf::from(os)
-        };
-        assert!(!temp.exists(), "streaming + symlink temps must be gone");
+        assert_eq!(
+            temporaries_of(&local),
+            Vec::<std::ffi::OsString>::new(),
+            "streaming + symlink temps must be gone"
+        );
     }
 
     #[cfg(unix)]
@@ -3756,12 +3789,11 @@ mod tests {
             observed.to_string_lossy()
         );
         assert_eq!(observed, PathBuf::from(&relative_target));
-        let temp = {
-            let mut os = local.as_os_str().to_os_string();
-            os.push(TEMP_SUFFIX);
-            PathBuf::from(os)
-        };
-        assert!(!temp.exists(), "no temp leftovers after live download");
+        assert_eq!(
+            temporaries_of(&local),
+            Vec::<std::ffi::OsString>::new(),
+            "no temp leftovers after live download"
+        );
     }
 
     /// A real peer that negotiates a compressor we cannot drive must fail
@@ -5325,5 +5357,116 @@ PY"#
 
         // The original target was never touched (no rename on the abandon path).
         assert_eq!(std::fs::read(&target).unwrap(), b"original-content");
+    }
+
+    /// The names next to `local` that begin as its temporaries do: the
+    /// writer's `<name>.aerotmp`, and the symlink commit's link, which has a
+    /// name of its own after that. Links are listed too: `exists()` follows
+    /// a link, and one to nothing reads as absent.
+    #[cfg(unix)]
+    fn temporaries_of(local: &Path) -> Vec<std::ffi::OsString> {
+        let mut begins = local.file_name().unwrap().to_os_string();
+        begins.push(TEMP_SUFFIX);
+        let begins = begins.to_string_lossy().into_owned();
+        std::fs::read_dir(local.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| name.to_string_lossy().starts_with(&begins))
+            .collect()
+    }
+
+    /// A symlink entry named `name`, pointing at `target`.
+    #[cfg(unix)]
+    fn link_entry(name: &str, target: &str) -> crate::aerorsync::real_wire::FileListEntry {
+        crate::aerorsync::real_wire::FileListEntry {
+            flags: 1 << 13,
+            path: name.to_string(),
+            size: target.len() as i64,
+            mtime: 1_700_000_000,
+            mtime_nsec: Some(0),
+            mode: 0o120_777,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some(target.to_string()),
+            xattrs: None,
+            acls: None,
+        }
+    }
+
+    /// The symlink commit removed `<local>.aerotmp` by name before making its
+    /// link, whoever held it: another download of the same file writing its
+    /// temporary there lost it, and failed at its rename.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_symlink_commit_is_refused_while_another_download_writes_the_file() {
+        use tokio::io::AsyncWriteExt;
+        let dir = fresh_tempdir();
+        let local = dir.path().join("f.lnk");
+        let mut live = StreamingAtomicWriter::new(&local).await.unwrap();
+        live.write_all(b"the other download").await.unwrap();
+        live.flush().await.unwrap();
+
+        let refused =
+            create_symlink_atomic(&link_entry("f.lnk", "t.bin"), &local, "/remote/f.lnk").await;
+        assert_eq!(
+            std::fs::read(live.temp_path()).map_err(|e| e.kind()),
+            Ok(b"the other download".to_vec()),
+            "the other download's temporary was removed"
+        );
+        assert!(
+            std::fs::symlink_metadata(&local).is_err(),
+            "a link was committed"
+        );
+        assert!(
+            matches!(refused, Err(TransferError::Hard { .. })),
+            "{refused:?}"
+        );
+        live.finalize(None, None, None, None, false)
+            .await
+            .expect("the other download lost its temporary");
+        assert_eq!(std::fs::read(&local).unwrap(), b"the other download");
+    }
+
+    /// The symlink commit made its link at `<local>.aerotmp`, the name every
+    /// download writer of the file uses, and a writer starting there between
+    /// the link's creation and its rename removes a link it finds as a
+    /// leftover (before, it opened through it): the rename would then publish
+    /// that writer's temporary at the local path in place of the link, and
+    /// the writer would fail at its own rename.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_writer_starting_during_a_symlink_commit_leaves_the_link_alone() {
+        use tokio::io::AsyncWriteExt;
+        let dir = fresh_tempdir();
+        let local = dir.path().join("f.lnk");
+        let mut started = None;
+        let slot = &mut started;
+        let at = &local;
+        create_symlink_atomic_with(
+            &link_entry("f.lnk", "t.bin"),
+            &local,
+            "/remote/f.lnk",
+            move || async move {
+                *slot = Some(StreamingAtomicWriter::new(at).await.expect("writer"));
+            },
+        )
+        .await
+        .expect("commit");
+
+        assert!(std::fs::symlink_metadata(&local)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read_link(&local).unwrap(), PathBuf::from("t.bin"));
+        let mut writer = started.expect("the writer started during the commit");
+        writer.write_all(b"the later download").await.unwrap();
+        writer
+            .finalize(None, None, None, None, false)
+            .await
+            .expect("the writer lost its temporary");
+        assert_eq!(std::fs::read(&local).unwrap(), b"the later download");
     }
 }

@@ -91,7 +91,8 @@ static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 /// name must still point at the file the lock was taken on, or another
 /// writer replaced it in between. Linux only, on a local filesystem (see
 /// `locks_usable`); elsewhere, and where the filesystem cannot lock, the file
-/// is opened as before these locks.
+/// is opened as before these locks. It is never opened through a link (see
+/// `open_temp`).
 fn claim_temp(temp: &Path) -> io::Result<ClaimedFile> {
     claim_temp_with(temp, |file| file.try_lock())
 }
@@ -102,11 +103,7 @@ fn claim_temp_with(
     temp: &Path,
     lock: impl Fn(&std::fs::File) -> Result<(), std::fs::TryLockError>,
 ) -> io::Result<ClaimedFile> {
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(false)
-        .open(temp)?;
+    let file = open_temp(temp)?;
     // Windows takes no lock (see above).
     #[cfg(not(unix))]
     let _ = &lock;
@@ -120,24 +117,10 @@ fn claim_temp_with(
                 locked = true;
                 let (open, named) = (file.metadata()?, std::fs::symlink_metadata(temp)?);
                 if open.dev() != named.dev() || open.ino() != named.ino() {
-                    return Err(io::Error::new(
-                        io::ErrorKind::AlreadyExists,
-                        format!(
-                            "{} was replaced by another download while it was opened",
-                            temp.display()
-                        ),
-                    ));
+                    return Err(replaced(temp));
                 }
             }
-            Err(std::fs::TryLockError::WouldBlock) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    format!(
-                        "another download of this file is writing {}",
-                        temp.display()
-                    ),
-                ));
-            }
+            Err(std::fs::TryLockError::WouldBlock) => return Err(in_use(temp)),
             Err(std::fs::TryLockError::Error(_)) => {}
         }
     }
@@ -197,15 +180,210 @@ impl Drop for ClaimedFile {
     }
 }
 
+/// Open the temporary at `temp` to write it, created if absent, never
+/// through a link. No writer writes through one, and the symlink commit
+/// makes its link under a name of its own, so a link at the name is a
+/// leftover: an earlier version made the commit's link there, and one killed
+/// before its rename left it pointing wherever the peer chose. Opened through,
+/// it had the claim empty the file it points to where no lock is taken, and
+/// create a missing one. It is removed as a link (see `remove_leftover_link`)
+/// and the open is tried once more.
+fn open_temp(temp: &Path) -> io::Result<std::fs::File> {
+    let open = || {
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).write(true).truncate(false);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NOFOLLOW);
+        options.open(temp)
+    };
+    match open() {
+        // The name is looked at, not the error: a link fails the open with
+        // ELOOP on Linux and macOS, and with EMLINK on FreeBSD.
+        Err(_) if is_link(temp) => {
+            remove_leftover_link(temp)?;
+            open()
+        }
+        opened => opened,
+    }
+}
+
+fn is_link(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|found| found.file_type().is_symlink())
+}
+
+/// Remove the leftover link at `temp` (see `open_temp`), if the name still
+/// holds one. Two writers that find the same leftover both go to remove it,
+/// and the one that looked first would remove by its name the temporary the
+/// other made there in between. A link takes no lock, so the look and the
+/// removal are made together under a lock on the folder, held for those two
+/// steps only, which every remover of such a link takes (the application's
+/// writers too, in its copy of these rules). Where the claim takes no lock,
+/// neither does this, nor where the folder's lock cannot be taken (see
+/// `lock_folder`).
+fn remove_leftover_link(temp: &Path) -> io::Result<()> {
+    remove_leftover_link_with(temp, || {})
+}
+
+/// [`remove_leftover_link`] with a step run between the look and the
+/// removal, so a test can act in between.
+fn remove_leftover_link_with(temp: &Path, between: impl FnOnce()) -> io::Result<()> {
+    #[cfg(unix)]
+    let folder = if locks_usable(temp) {
+        lock_folder(temp)
+    } else {
+        None
+    };
+    let removed = remove_if_link(temp, between);
+    #[cfg(unix)]
+    if let Some(folder) = folder {
+        // Ended by an unlock, not by the close (see `ClaimedFile`).
+        let _ = folder.unlock();
+    }
+    removed
+}
+
+/// The folder `temp` is in, opened and locked, or `None` where it cannot
+/// be: a folder this process may write but not read cannot be opened, and a
+/// filesystem can refuse the lock. The removal then goes on without it, as
+/// the claim goes on without a lock it cannot take, rather than leaving the
+/// link to refuse every later claim of the file.
+#[cfg(unix)]
+fn lock_folder(temp: &Path) -> Option<std::fs::File> {
+    let folder = std::fs::File::open(folder_of(temp)).ok()?;
+    folder.lock().ok()?;
+    Some(folder)
+}
+
+fn remove_if_link(temp: &Path, between: impl FnOnce()) -> io::Result<()> {
+    if !is_link(temp) {
+        return Ok(());
+    }
+    between();
+    unless_gone(std::fs::remove_file(temp))
+}
+
+/// The folder `path` is in.
+#[cfg(unix)]
+fn folder_of(path: &Path) -> &Path {
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    }
+}
+
+/// Remove a stale temporary at `temp`, by the rules of [`claim_temp`], for
+/// a writer that does not write it (the symlink commit, whose link has a name
+/// of its own) and would otherwise leave it behind. One a live writer holds,
+/// or one put at the name while it was opened, is refused with
+/// `AlreadyExists`; a stale one is removed while this call holds its lock; a
+/// link is removed as a link (see `open_temp`). Where the claim takes no lock
+/// nothing tells a live temporary from a stale one, and it is left alone.
+#[cfg(unix)]
+pub(crate) fn remove_temp_unless_live(temp: &Path) -> io::Result<()> {
+    remove_temp_unless_live_with(temp, |file| file.try_lock())
+}
+
+/// [`remove_temp_unless_live`] with the lock given, so a test can have it
+/// fail.
+#[cfg(unix)]
+fn remove_temp_unless_live_with(
+    temp: &Path,
+    lock: impl Fn(&std::fs::File) -> Result<(), std::fs::TryLockError>,
+) -> io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let found = match std::fs::symlink_metadata(temp) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        found => found?,
+    };
+    if found.file_type().is_symlink() {
+        return remove_leftover_link(temp);
+    }
+    if !found.is_file() || !locks_usable(temp) {
+        return Ok(());
+    }
+    // Read only: the lock needs no more, and a temporary a writer killed after
+    // giving it the peer's mode (`finalize` sets it before the rename) can be
+    // read-only. O_NONBLOCK: a FIFO put at the name since the look would
+    // otherwise hold the open.
+    let file = match std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(temp)
+    {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        file => file?,
+    };
+    match lock(&file) {
+        Ok(()) => {
+            let removed = remove_locked(temp, &file);
+            // Ended by an unlock, not by the close, as a writer's claim is
+            // (see `ClaimedFile`): a temporary whose removal failed stays at
+            // the name, and a child spawned meanwhile, which holds a copy of
+            // the descriptor until it execs, would keep it locked against the
+            // next writer.
+            let _ = file.unlock();
+            removed
+        }
+        Err(std::fs::TryLockError::WouldBlock) => Err(in_use(temp)),
+        Err(std::fs::TryLockError::Error(_)) => Ok(()),
+    }
+}
+
+/// Remove `temp` if the name still points at `file`, which the caller holds
+/// locked.
+#[cfg(unix)]
+fn remove_locked(temp: &Path, file: &std::fs::File) -> io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    let open = file.metadata()?;
+    match std::fs::symlink_metadata(temp) {
+        Ok(named) if named.dev() == open.dev() && named.ino() == open.ino() => {
+            unless_gone(std::fs::remove_file(temp))
+        }
+        Ok(_) => Err(replaced(temp)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// `done`, with a temporary that went away meanwhile taken as removed: its
+/// own writer committed or removed it, and nothing is left to remove.
+fn unless_gone(done: io::Result<()>) -> io::Result<()> {
+    match done {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        done => done,
+    }
+}
+
+/// The refusal of a temporary another writer is writing.
+#[cfg(unix)]
+fn in_use(temp: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!(
+            "another download of this file is writing {}",
+            temp.display()
+        ),
+    )
+}
+
+/// The refusal of a temporary whose name was taken over between its open
+/// and its lock.
+#[cfg(unix)]
+fn replaced(temp: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!(
+            "{} was replaced by another download while it was opened",
+            temp.display()
+        ),
+    )
+}
+
 /// Whether locks are used where `path` lives (see `locks_usable_on`).
 #[cfg(target_os = "linux")]
 fn locks_usable(path: &Path) -> bool {
     use std::os::unix::ffi::OsStrExt;
-    let dir = match path.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent,
-        _ => Path::new("."),
-    };
-    let Ok(dir) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else {
+    let Ok(dir) = std::ffi::CString::new(folder_of(path).as_os_str().as_bytes()) else {
         return false;
     };
     let mut stat = std::mem::MaybeUninit::<libc::statfs>::uninit();
@@ -300,8 +478,9 @@ pub(crate) fn temp_sibling(target: &Path, suffix: &str) -> PathBuf {
 /// process id, a monotonic counter, and the hi-res clock so two
 /// concurrent transfers to the same `local_path` do not race on the
 /// same `.aerotmp` filename. The shape is still human-readable and
-/// collision-recovery friendly for the stale-temp path below.
-fn temp_path_for(local: &Path) -> PathBuf {
+/// collision-recovery friendly for the stale-temp path below. The
+/// symlink commit (`delta_transport_impl`) makes its link under one too.
+pub(crate) fn temp_path_for(local: &Path) -> PathBuf {
     let counter = TEMP_SUFFIX_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1568,6 +1747,288 @@ mod tests {
         let reread = read_access_acl_model_fd(file.as_raw_fd()).expect("reread");
         assert_eq!(reread.mask_obj, Some(4));
         assert!(reread.names.iter().any(|n| n.id == 65534 && n.access == 4));
+    }
+
+    /// A link at the temporary's name, left by a symlink download killed
+    /// between making its link there and renaming it, points wherever the
+    /// peer chose inside the download folder. The writer opened through it:
+    /// on Linux the claim then refused the name (the lock was on the file the
+    /// link points to) and the download fell back to the classic one; where
+    /// no lock is taken it emptied that file (see
+    /// `a_claim_that_takes_no_lock_never_empties_what_a_link_points_to`). The
+    /// link is removed, never followed, and the writer takes the name.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_link_at_the_temporary_is_removed_and_what_it_points_to_is_kept() {
+        let dir = fresh_tempdir();
+        let target = dir.path().join("f.bin");
+        let temp = temp_path_for_streaming(&target);
+        let sibling = dir.path().join("sibling.bin");
+        std::fs::write(&sibling, b"sibling content").unwrap();
+        std::os::unix::fs::symlink("sibling.bin", &temp).unwrap();
+
+        let mut writer = StreamingAtomicWriter::new(&target)
+            .await
+            .expect("a link at the temporary's name refused the writer");
+        assert!(std::fs::symlink_metadata(&temp).unwrap().is_file());
+        writer.write_all(b"downloaded").await.unwrap();
+        writer
+            .finalize(None, None, None, None, false)
+            .await
+            .expect("finalize");
+        assert_eq!(std::fs::read(&sibling).unwrap(), b"sibling content");
+        assert!(std::fs::symlink_metadata(&target).unwrap().is_file());
+        assert_eq!(std::fs::read(&target).unwrap(), b"downloaded");
+    }
+
+    /// The same link pointing at a name nothing holds: the open, which
+    /// creates what it reaches, made a file there before the claim could
+    /// refuse it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_dangling_link_at_the_temporary_creates_nothing_where_it_points() {
+        let dir = fresh_tempdir();
+        let target = dir.path().join("f.bin");
+        let temp = temp_path_for_streaming(&target);
+        std::os::unix::fs::symlink("chosen-by-the-peer.bin", &temp).unwrap();
+
+        let opened = StreamingAtomicWriter::new(&target).await;
+        assert_eq!(
+            std::fs::symlink_metadata(dir.path().join("chosen-by-the-peer.bin"))
+                .err()
+                .map(|e| e.kind()),
+            Some(io::ErrorKind::NotFound),
+            "the open created the file the link points to"
+        );
+        opened.expect("a dangling link at the temporary's name refused the writer");
+        assert!(std::fs::symlink_metadata(&temp).unwrap().is_file());
+    }
+
+    /// Where the claim takes no lock (outside Linux, on NFS and SMB mounts,
+    /// and where the filesystem cannot lock, as here) nothing looked at what
+    /// the open had reached before emptying it: the file the link points to.
+    #[cfg(unix)]
+    #[test]
+    fn a_claim_that_takes_no_lock_never_empties_what_a_link_points_to() {
+        let dir = fresh_tempdir();
+        let temp = dir.path().join("f.bin.aerotmp");
+        let sibling = dir.path().join("sibling.bin");
+        std::fs::write(&sibling, b"sibling content").unwrap();
+        std::os::unix::fs::symlink("sibling.bin", &temp).unwrap();
+        let cannot_lock = |_: &std::fs::File| {
+            Err(std::fs::TryLockError::Error(io::Error::from(
+                io::ErrorKind::Unsupported,
+            )))
+        };
+
+        let claimed = claim_temp_with(&temp, cannot_lock).expect("claim");
+        assert_eq!(std::fs::read(&sibling).unwrap(), b"sibling content");
+        assert!(std::fs::symlink_metadata(&temp).unwrap().is_file());
+        drop(claimed);
+    }
+
+    /// A temporary nobody holds is removed for the symlink commit, which does
+    /// not write it and would leave it behind. One a live writer holds is
+    /// refused (`a_symlink_commit_is_refused_while_another_download_writes_the_file`,
+    /// in `delta_transport_impl`).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_stale_temporary_is_removed_for_a_writer_that_does_not_write_it() {
+        let dir = fresh_tempdir();
+        let temp = dir.path().join("f.lnk.aerotmp");
+        std::fs::write(&temp, b"left by a killed download").unwrap();
+        remove_temp_unless_live(&temp).expect("a stale temporary was refused");
+        assert!(std::fs::symlink_metadata(&temp).is_err(), "it was kept");
+        remove_temp_unless_live(&temp).expect("an absent temporary was refused");
+    }
+
+    /// A stale temporary whose removal fails stays at the name. Its lock
+    /// ended with the close alone, and a copy of the descriptor (a child
+    /// another thread spawned, until it execs; the duplicate kept here) kept
+    /// it locked: the next writer of the file was refused as another download
+    /// writing it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_stale_temporary_that_cannot_be_removed_is_left_unlocked() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tempdir();
+        let folder = dir.path().join("read-only");
+        std::fs::create_dir(&folder).unwrap();
+        let temp = folder.join("f.lnk.aerotmp");
+        std::fs::write(&temp, b"left by a killed download").unwrap();
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let writable = |folder: &Path| {
+            std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o755)).unwrap()
+        };
+        // A folder without write permission still takes a removal from root:
+        // nothing to check there.
+        if std::fs::write(folder.join("probe"), b"").is_ok() {
+            eprintln!("skipping: this user removes files from a read-only folder");
+            writable(&folder);
+            return;
+        }
+        let inherited = std::cell::RefCell::new(None);
+        let lock_and_copy = |file: &std::fs::File| {
+            *inherited.borrow_mut() = Some(file.try_clone().unwrap());
+            file.try_lock()
+        };
+
+        let kept = remove_temp_unless_live_with(&temp, lock_and_copy);
+        let probe = std::fs::OpenOptions::new().write(true).open(&temp).unwrap();
+        let free = probe.try_lock().is_ok();
+        drop(inherited);
+        writable(&folder);
+        assert_eq!(
+            kept.err().map(|e| e.kind()),
+            Some(io::ErrorKind::PermissionDenied)
+        );
+        assert!(
+            free,
+            "the kept temporary stayed locked while a copy of its descriptor was open"
+        );
+    }
+
+    /// Where the claim takes no lock nothing tells a live temporary from a
+    /// stale one: removed by name, a live one went from under its writer.
+    #[cfg(unix)]
+    #[test]
+    fn a_temporary_that_cannot_be_locked_is_left_alone() {
+        let dir = fresh_tempdir();
+        let temp = dir.path().join("f.lnk.aerotmp");
+        std::fs::write(&temp, b"maybe a live download").unwrap();
+        let cannot_lock = |_: &std::fs::File| {
+            Err(std::fs::TryLockError::Error(io::Error::from(
+                io::ErrorKind::Unsupported,
+            )))
+        };
+        remove_temp_unless_live_with(&temp, cannot_lock).expect("refused");
+        assert_eq!(std::fs::read(&temp).unwrap(), b"maybe a live download");
+    }
+
+    /// A link left at the temporary's name is removed as a link: the file it
+    /// points to stays as it was.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_at_the_temporary_is_removed_as_a_link_for_a_writer_that_does_not_write_it() {
+        let dir = fresh_tempdir();
+        let temp = dir.path().join("f.lnk.aerotmp");
+        let sibling = dir.path().join("sibling.bin");
+        std::fs::write(&sibling, b"sibling content").unwrap();
+        std::os::unix::fs::symlink("sibling.bin", &temp).unwrap();
+        remove_temp_unless_live(&temp).expect("a leftover link was refused");
+        assert!(
+            std::fs::symlink_metadata(&temp).is_err(),
+            "the link was kept"
+        );
+        assert_eq!(std::fs::read(&sibling).unwrap(), b"sibling content");
+    }
+
+    /// What the name holds when a leftover link is removed is looked at
+    /// again: a regular file there now is the temporary another writer made
+    /// after removing the same leftover, and is kept.
+    #[cfg(unix)]
+    #[test]
+    fn a_leftover_link_replaced_before_its_removal_is_kept() {
+        let dir = fresh_tempdir();
+        let temp = dir.path().join("f.bin.aerotmp");
+        std::fs::write(&temp, b"the other writer").unwrap();
+        remove_leftover_link(&temp).unwrap();
+        assert_eq!(std::fs::read(&temp).unwrap(), b"the other writer");
+    }
+
+    /// CodeRabbit on #1290: two writers that found the same leftover link both
+    /// removed it by name, and the one that looked first could remove the live
+    /// temporary the other had made there meanwhile. The other writer here
+    /// starts between the first one's look and its removal, and is given the
+    /// time to remove the link and make its temporary: it waits for the
+    /// folder lock instead.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_leftover_link_is_removed_while_no_other_writer_can_replace_it() {
+        let dir = fresh_tempdir();
+        let temp = dir.path().join("f.bin.aerotmp");
+        std::os::unix::fs::symlink("sibling.bin", &temp).unwrap();
+        let mut other = None;
+        remove_leftover_link_with(&temp, || {
+            let temp = temp.clone();
+            other = Some(std::thread::spawn(move || {
+                remove_leftover_link(&temp).unwrap();
+                std::fs::write(&temp, b"the other writer").unwrap();
+            }));
+            std::thread::sleep(Duration::from_millis(200));
+        })
+        .unwrap();
+        other.unwrap().join().unwrap();
+        assert_eq!(
+            std::fs::read(&temp).map_err(|e| e.kind()),
+            Ok(b"the other writer".to_vec()),
+            "the other writer's temporary was removed"
+        );
+    }
+
+    /// CodeRabbit on #1290: a folder this process may write but not read
+    /// cannot be opened, and that made the folder lock an error: a leftover
+    /// link there refused every claim of the file and every symlink commit
+    /// of it, for as long as it stayed. Such a folder is one whose lock
+    /// cannot be taken, and the link is removed without it, as the claim
+    /// goes on without a lock it cannot take.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_leftover_link_in_a_folder_that_cannot_be_opened_is_still_removed() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tempdir();
+        let folder = dir.path().join("write-only");
+        std::fs::create_dir(&folder).unwrap();
+        let sibling = folder.join("sibling.bin");
+        std::fs::write(&sibling, b"the sibling").unwrap();
+        let claimed = folder.join("f.bin.aerotmp");
+        let committed = folder.join("g.bin.aerotmp");
+        std::os::unix::fs::symlink("sibling.bin", &claimed).unwrap();
+        std::os::unix::fs::symlink("sibling.bin", &committed).unwrap();
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o300)).unwrap();
+        let readable = |folder: &Path| {
+            std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o755)).unwrap()
+        };
+        // Root opens a folder it cannot read: nothing to check there.
+        if std::fs::File::open(&folder).is_ok() {
+            eprintln!("skipping: this user opens a folder it cannot read");
+            readable(&folder);
+            return;
+        }
+
+        let claim = claim_temp(&claimed).map(drop);
+        let removed = remove_temp_unless_live(&committed);
+        readable(&folder);
+        assert_eq!(claim.map_err(|e| e.kind()), Ok(()));
+        assert!(
+            std::fs::symlink_metadata(&claimed).is_ok_and(|found| found.is_file()),
+            "the claim did not make its temporary in place of the link"
+        );
+        assert_eq!(removed.map_err(|e| e.kind()), Ok(()));
+        assert_eq!(
+            std::fs::symlink_metadata(&committed)
+                .map(|_| ())
+                .map_err(|e| e.kind()),
+            Err(io::ErrorKind::NotFound),
+            "the leftover link was kept"
+        );
+        assert_eq!(std::fs::read(&sibling).unwrap(), b"the sibling");
+    }
+
+    /// CodeRabbit on #1290: a writer killed between giving its temporary the
+    /// peer's mode and the rename leaves it read-only, and the lock was taken
+    /// through a writable open: refused, and every symlink commit of the file
+    /// failed on it until it was removed by hand.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_read_only_stale_temporary_is_removed_for_a_writer_that_does_not_write_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_tempdir();
+        let temp = dir.path().join("f.lnk.aerotmp");
+        std::fs::write(&temp, b"left by a killed download").unwrap();
+        std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(0o444)).unwrap();
+        remove_temp_unless_live(&temp).expect("a read-only stale temporary was refused");
+        assert!(std::fs::symlink_metadata(&temp).is_err(), "it was kept");
     }
 
     #[tokio::test]
