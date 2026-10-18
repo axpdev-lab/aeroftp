@@ -150,7 +150,7 @@
             "downloadMegacmd": "Stiahnuť MEGAcmd",
             "rememberSession": "Zapamätať reláciu (24 hod.)",
             "sessionKeysStored": "Kľúče relácie bezpečne uložené v systémovom úložisku kľúčov",
-            "logoutOnDisconnect": "Odhlasit pri odpojeni",
+            "logoutOnDisconnect": "Odhlásiť pri odpojení",
             "logoutOnDisconnectDesc": "Ukončiť reláciu MEGAcmd pri zatvorení pripojenia",
             "megaConnectionNamePlaceholder": "Názov pripojenia (napr. Môj osobný MEGA)",
             "endToEndEncrypted": "Koncové šifrované pripojenie",
