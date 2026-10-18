@@ -25,6 +25,7 @@
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::{DateTime, SecondsFormat, Utc};
+use futures_util::{FutureExt, StreamExt};
 use proton_crypto_account::proton_crypto::crypto::{
     PGPProviderSync, SessionKey, SessionKeyAlgorithm,
 };
@@ -48,12 +49,20 @@ const BLOCKS_PER_URL_REQUEST: usize = 5;
 /// Block uploads in flight across all uploads of one client
 /// (`upload/queue.ts::MAX_CONCURRENT_UPLOAD_SIZE`, ten blocks).
 pub(crate) const MAX_BLOCK_UPLOADS_IN_FLIGHT: usize = 10;
+/// Batches of one file being sent while the next is encrypted: the SDK keeps
+/// encrypting into a buffer of 15 blocks while earlier ones upload
+/// (`streamUploader.ts::MAX_BUFFERED_BLOCKS`). Two batches of five, plus the
+/// one being prepared, is that buffer.
+const BATCHES_IN_FLIGHT: usize = 2;
 /// `streamUploader.ts::MAX_BLOCK_UPLOAD_RETRIES`.
 const BLOCK_UPLOAD_RETRIES: u32 = 3;
 /// The SDK refreshes an expired block token without a cap; the port caps it.
 const TOKEN_REFRESH_LIMIT: u32 = 5;
 /// Our own stale drafts are replaced at most this many times (C#: 3).
 const DRAFT_CONFLICT_RETRIES: u32 = 3;
+/// `upload/index.ts::SMALL_FILE_SIZE_LIMIT`: content under this, with the
+/// SDK's 10% margin for the encryption, goes up in one request.
+const SMALL_FILE_SIZE_LIMIT: u64 = 128 * 1024;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -79,6 +88,13 @@ struct CreateRevisionResponse {
 struct CreatedRevision {
     #[serde(rename = "ID")]
     id: String,
+}
+
+/// `SmallUploadResponseDto`.
+#[derive(Deserialize)]
+struct SmallUploadResponse {
+    #[serde(rename = "LinkID")]
+    link_id: String,
 }
 
 #[derive(Deserialize)]
@@ -146,6 +162,85 @@ fn verification_token(code: &[u8], encrypted_block: &[u8]) -> Vec<u8> {
         .enumerate()
         .map(|(i, byte)| byte ^ encrypted_block.get(i).copied().unwrap_or(0))
         .collect()
+}
+
+/// `fileUploader.ts::startUpload`: the single-request path, when the
+/// content plus a 10% margin for its encryption stays under 128 KiB. The
+/// official CLI turns the SDK's `DriveSmallFileUpload` flag on.
+fn takes_small_upload(size: u64) -> bool {
+    size.saturating_mul(11) < SMALL_FILE_SIZE_LIMIT * 10
+}
+
+/// `blockVerifier.ts::SmallFileBlockVerifier`: with no draft to ask, the
+/// verification code is the last 32 bytes of the content key packet.
+fn small_file_verification_code(content_key_packet: &[u8]) -> Result<&[u8], ProtonError> {
+    content_key_packet
+        .len()
+        .checked_sub(32)
+        .map(|start| &content_key_packet[start..])
+        .ok_or_else(|| {
+            ProtonError::Decode("the content key packet is shorter than 32 bytes".into())
+        })
+}
+
+/// Encrypts a block with the content key and proves it decrypts with the
+/// key Proton knows; a failed check re-encrypts once
+/// (`MAX_BLOCK_ENCRYPTION_RETRIES`).
+fn encrypt_verified_block<P: PGPProviderSync>(
+    provider: &P,
+    plain: &[u8],
+    content_key: &P::SessionKey,
+    verification_key: &P::SessionKey,
+    index: u64,
+) -> Result<Vec<u8>, ProtonError> {
+    let encrypted = drive_crypto::encrypt_block(provider, plain, content_key)?;
+    if drive_crypto::decrypt_block(provider, &encrypted, verification_key).is_ok() {
+        return Ok(encrypted);
+    }
+    let encrypted = drive_crypto::encrypt_block(provider, plain, content_key)?;
+    drive_crypto::decrypt_block(provider, &encrypted, verification_key)
+        .map_err(|_| ProtonError::Integrity(format!("block {index} failed its verification")))?;
+    Ok(encrypted)
+}
+
+/// What a small upload sends besides the node's own fields
+/// (`smallFileUploader.ts::buildPayloads`).
+struct SmallContent {
+    /// The encrypted content, its signature and verification token; none
+    /// for an empty file, which has no block.
+    block: Option<(bytes::Bytes, String, String)>,
+    manifest_signature: String,
+    xattr: String,
+}
+
+impl SmallContent {
+    /// The `Metadata` part, then the `ContentBlock` part when there is one.
+    fn form(&self, mut metadata: Value) -> Vec<super::api::FormPart> {
+        let (signature, token) = match &self.block {
+            Some((_, signature, token)) => (json!(signature), json!(token)),
+            None => (Value::Null, Value::Null),
+        };
+        metadata["ManifestSignature"] = json!(self.manifest_signature);
+        metadata["ContentBlockEncSignature"] = signature;
+        metadata["ContentBlockVerificationToken"] = token;
+        metadata["XAttr"] = json!(self.xattr);
+        metadata["ChecksumVerified"] = json!(false);
+        let mut parts = vec![super::api::FormPart {
+            name: "Metadata",
+            file_name: "Metadata",
+            mime: "application/json",
+            data: bytes::Bytes::from(metadata.to_string()),
+        }];
+        if let Some((encrypted, _, _)) = &self.block {
+            parts.push(super::api::FormPart {
+                name: "ContentBlock",
+                file_name: "ContentBlock",
+                mime: "application/octet-stream",
+                data: encrypted.clone(),
+            });
+        }
+        parts
+    }
 }
 
 /// The `Common` extended attributes of a file (`extendedAttributes.ts`).
@@ -323,6 +418,57 @@ impl<P: PGPProviderSync> DriveClient<P> {
             .essence_str()
             .to_string();
 
+        if takes_small_upload(size) {
+            let packet = BASE64
+                .decode(content_key_packet.trim())
+                .map_err(|_| ProtonError::Decode("content key packet is not base64".into()))?;
+            let content = self
+                .prepare_small_content(
+                    reader,
+                    size,
+                    modification_time,
+                    &node.key,
+                    &node_public,
+                    &content_key,
+                    &packet,
+                    &address_key,
+                )
+                .await?;
+            let form = content.form(json!({
+                "ParentLinkID": parent.link_id,
+                "Name": armored_name,
+                "NameHash": hash,
+                "NodePassphrase": node.armored_passphrase,
+                "NodePassphraseSignature": node.armored_passphrase_signature,
+                "SignatureEmail": email,
+                "NodeKey": node.armored_key,
+                "MIMEType": mime_type,
+                "ContentKeyPacket": content_key_packet,
+                "ContentKeyPacketSignature": content_key_signature,
+                "Photo": Value::Null,
+            }));
+            let path = format!("drive/v2/volumes/{}/files/small", self.volume_id());
+            let mut conflicts = 0;
+            let created: SmallUploadResponse = loop {
+                match self.api.post_form(&path, &form).await {
+                    Ok(created) => break created,
+                    // manager.ts::handleConflictError: our own stale draft of
+                    // this name goes, and the upload is sent again.
+                    Err(ProtonError::AlreadyExists {
+                        link_id: Some(link_id),
+                        draft_client_uid: Some(owner),
+                        is_draft: true,
+                    }) if owner == self.client_uid && conflicts < DRAFT_CONFLICT_RETRIES => {
+                        conflicts += 1;
+                        self.delete_draft_node(&link_id).await?;
+                    }
+                    Err(error) => return Err(error),
+                }
+            };
+            progress(size);
+            return Ok(created.link_id);
+        }
+
         let body = json!({
             "ParentLinkID": parent.link_id,
             "Name": armored_name,
@@ -418,6 +564,53 @@ impl<P: PGPProviderSync> DriveClient<P> {
             .map_err(|error| ProtonError::Crypto(error.to_string()))?;
         let (email, address_key) = self.signing_identity()?;
 
+        if takes_small_upload(size) {
+            // `loadVerificationDataForExistingSmallFile`: the code comes from
+            // the file's content key packet, which the node does not keep.
+            let packet = self
+                .load_details(std::slice::from_ref(&node.link_id))
+                .await?
+                .into_iter()
+                .next()
+                .and_then(|details| details.file)
+                .map(|file| file.content_key_packet)
+                .filter(|packet| !packet.is_empty())
+                .ok_or_else(|| ProtonError::Decode("the file has no content key packet".into()))?;
+            let packet = BASE64
+                .decode(packet.trim())
+                .map_err(|_| ProtonError::Decode("content key packet is not base64".into()))?;
+            let content = self
+                .prepare_small_content(
+                    reader,
+                    size,
+                    modification_time,
+                    node_key,
+                    &node_public,
+                    content_key,
+                    &packet,
+                    &address_key,
+                )
+                .await?;
+            let form = content.form(json!({
+                "CurrentRevisionID": current.revision_id,
+                "SignatureEmail": email,
+            }));
+            let _: SmallUploadResponse = self
+                .api
+                .post_form(
+                    &format!(
+                        "drive/v2/volumes/{}/files/{}/revisions/small",
+                        self.volume_id(),
+                        node.link_id
+                    ),
+                    &form,
+                )
+                .await?;
+            progress(size);
+            self.forget(&[&node.link_id]).await;
+            return Ok(());
+        }
+
         let created: CreateRevisionResponse = self
             .api
             .post(
@@ -471,6 +664,81 @@ impl<P: PGPProviderSync> DriveClient<P> {
         draft.disarm();
         self.forget(&[&node.link_id]).await;
         Ok(())
+    }
+
+    /// Reads the whole content, encrypts and verifies its one block, and
+    /// signs the manifest and the extended attributes
+    /// (`smallFileUploader.ts::buildPayloads`).
+    #[allow(clippy::too_many_arguments)]
+    async fn prepare_small_content<R: AsyncRead + Unpin>(
+        &self,
+        reader: &mut R,
+        size: u64,
+        modification_time: Option<DateTime<Utc>>,
+        node_key: &P::PrivateKey,
+        node_public: &P::PublicKey,
+        content_key: &P::SessionKey,
+        content_key_packet: &[u8],
+        address_key: &P::PrivateKey,
+    ) -> Result<SmallContent, ProtonError> {
+        let provider = self.provider();
+        let mut plain = Vec::with_capacity(size as usize);
+        reader
+            .take(size + 1)
+            .read_to_end(&mut plain)
+            .await
+            .map_err(ProtonError::LocalIo)?;
+        // The content must be exactly what was announced, or the file changed
+        // while it was read.
+        if plain.len() as u64 != size {
+            return Err(ProtonError::Integrity(format!(
+                "read {} bytes, expected {size}",
+                plain.len()
+            )));
+        }
+        let sha1 = hex::encode(Sha1::digest(&plain));
+        let (block, manifest, block_sizes) = if plain.is_empty() {
+            (None, Vec::new(), Vec::new())
+        } else {
+            let code = small_file_verification_code(content_key_packet)?;
+            let verification_key = drive_crypto::decrypt_session_key_b64(
+                provider,
+                &BASE64.encode(content_key_packet),
+                node_key,
+            )?;
+            let encrypted =
+                encrypt_verified_block(provider, &plain, content_key, &verification_key, 1)?;
+            let token = verification_token(code, &encrypted);
+            let signature = drive_crypto::encrypt_block_signature(
+                provider,
+                &plain,
+                address_key,
+                content_key,
+                node_public,
+            )?;
+            let (digest, _) = drive_crypto::encrypted_block_hash(&encrypted);
+            (
+                Some((
+                    bytes::Bytes::from(encrypted),
+                    signature,
+                    BASE64.encode(token),
+                )),
+                digest,
+                vec![size],
+            )
+        };
+        let manifest_signature = drive_crypto::sign_detached(provider, &manifest, address_key)?;
+        let xattr = drive_crypto::encrypt_extended_attributes(
+            provider,
+            &file_extended_attributes(size, &block_sizes, &sha1, modification_time),
+            node_public,
+            address_key,
+        )?;
+        Ok(SmallContent {
+            block,
+            manifest_signature,
+            xattr,
+        })
     }
 
     /// `upload/apiService.ts::deleteDraft`.
@@ -609,6 +877,9 @@ impl<P: PGPProviderSync> DriveClient<P> {
         let mut total: u64 = 0;
         let mut index: u64 = 0;
         let mut pending: Vec<PreparedBlock> = Vec::new();
+        let mut pending_bytes: u64 = 0;
+        let mut in_flight = futures_util::stream::FuturesUnordered::new();
+        let mut sent: u64 = 0;
         let expected_blocks = size.div_ceil(BLOCK_SIZE as u64);
 
         loop {
@@ -623,19 +894,15 @@ impl<P: PGPProviderSync> DriveClient<P> {
                 sha1.update(&plain);
                 total += plain.len() as u64;
                 block_sizes.push(plain.len() as u64);
+                pending_bytes += plain.len() as u64;
 
-                // Encrypt, then prove to Proton the block decrypts with the
-                // key it knows; a failed check re-encrypts once.
-                let mut encrypted =
-                    drive_crypto::encrypt_block(provider, &plain, target.content_key)?;
-                if drive_crypto::decrypt_block(provider, &encrypted, &verification_key).is_err() {
-                    encrypted = drive_crypto::encrypt_block(provider, &plain, target.content_key)?;
-                    drive_crypto::decrypt_block(provider, &encrypted, &verification_key).map_err(
-                        |_| {
-                            ProtonError::Integrity(format!("block {index} failed its verification"))
-                        },
-                    )?;
-                }
+                let encrypted = encrypt_verified_block(
+                    provider,
+                    &plain,
+                    target.content_key,
+                    &verification_key,
+                    index,
+                )?;
                 let token = verification_token(&verification_code, &encrypted);
                 let enc_signature = drive_crypto::encrypt_block_signature(
                     provider,
@@ -655,12 +922,28 @@ impl<P: PGPProviderSync> DriveClient<P> {
             }
             if pending.len() >= BLOCKS_PER_URL_REQUEST || (at_end && !pending.is_empty()) {
                 let batch = std::mem::take(&mut pending);
-                self.send_blocks(target, &batch).await?;
-                progress(total);
+                let bytes = std::mem::take(&mut pending_bytes);
+                while in_flight.len() >= BATCHES_IN_FLIGHT {
+                    if let Some(done) = in_flight.next().await {
+                        sent += done?;
+                        progress(sent);
+                    }
+                }
+                in_flight
+                    .push(async move { self.send_blocks(target, &batch).await.map(|()| bytes) });
+            }
+            // Between blocks, finished batches report and the others advance.
+            while let Some(Some(done)) = in_flight.next().now_or_never() {
+                sent += done?;
+                progress(sent);
             }
             if at_end {
                 break;
             }
+        }
+        while let Some(done) = in_flight.next().await {
+            sent += done?;
+            progress(sent);
         }
 
         Ok(UploadedContent {
@@ -885,6 +1168,67 @@ mod tests {
         );
         let without_time = file_extended_attributes(0, &[], "x", None);
         assert!(!without_time.contains("ModificationTime"));
+    }
+
+    /// `fileUploader.ts`: the content plus a 10% margin must stay under
+    /// 128 KiB, so 119 156 bytes go in one request and one more byte does not.
+    #[test]
+    fn the_small_path_takes_what_the_sdk_sends_in_one_request() {
+        assert!(takes_small_upload(0));
+        assert!(takes_small_upload(4096));
+        assert!(takes_small_upload(119_156));
+        assert!(!takes_small_upload(119_157));
+        assert!(!takes_small_upload(SMALL_FILE_SIZE_LIMIT));
+        assert!(!takes_small_upload(u64::MAX));
+    }
+
+    #[test]
+    fn a_small_file_verification_code_is_the_last_32_bytes_of_its_key_packet() {
+        let packet: Vec<u8> = (0u8..40).collect();
+        assert_eq!(small_file_verification_code(&packet).unwrap(), &packet[8..]);
+        assert!(small_file_verification_code(&packet[..31]).is_err());
+    }
+
+    /// The block's signature and token ride in the metadata, and the block
+    /// is a part of its own; an empty file sends neither, with nulls.
+    #[test]
+    fn a_small_upload_form_carries_a_block_only_when_there_is_one() {
+        let with_block = SmallContent {
+            block: Some((
+                bytes::Bytes::from_static(b"cipher"),
+                "enc-signature".into(),
+                "token".into(),
+            )),
+            manifest_signature: "manifest".into(),
+            xattr: "xattr".into(),
+        };
+        let form = with_block.form(json!({ "ParentLinkID": "p" }));
+        assert_eq!(form.len(), 2);
+        assert_eq!((form[0].name, form[0].file_name), ("Metadata", "Metadata"));
+        assert_eq!(form[0].mime, "application/json");
+        let metadata: Value = serde_json::from_slice(&form[0].data).unwrap();
+        assert_eq!(metadata["ParentLinkID"], json!("p"));
+        assert_eq!(metadata["ManifestSignature"], json!("manifest"));
+        assert_eq!(metadata["ContentBlockEncSignature"], json!("enc-signature"));
+        assert_eq!(metadata["ContentBlockVerificationToken"], json!("token"));
+        assert_eq!(metadata["XAttr"], json!("xattr"));
+        assert_eq!(metadata["ChecksumVerified"], json!(false));
+        assert_eq!(
+            (form[1].name, form[1].file_name),
+            ("ContentBlock", "ContentBlock")
+        );
+        assert_eq!(&form[1].data[..], b"cipher");
+
+        let empty = SmallContent {
+            block: None,
+            manifest_signature: "manifest".into(),
+            xattr: "xattr".into(),
+        };
+        let form = empty.form(json!({}));
+        assert_eq!(form.len(), 1);
+        let metadata: Value = serde_json::from_slice(&form[0].data).unwrap();
+        assert_eq!(metadata["ContentBlockEncSignature"], Value::Null);
+        assert_eq!(metadata["ContentBlockVerificationToken"], Value::Null);
     }
 
     #[tokio::test]

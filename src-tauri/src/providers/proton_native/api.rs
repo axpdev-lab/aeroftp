@@ -113,6 +113,33 @@ pub trait SessionStore: Send + Sync {
     fn save(&self, tokens: &SessionTokens);
 }
 
+/// One part of a multipart form sent to the API host.
+pub struct FormPart {
+    pub name: &'static str,
+    pub file_name: &'static str,
+    pub mime: &'static str,
+    pub data: bytes::Bytes,
+}
+
+/// What a request carries.
+#[derive(Clone, Copy)]
+enum Body<'a> {
+    Json(&'a Value),
+    Form(&'a [FormPart]),
+}
+
+fn form_of(parts: &[FormPart]) -> Result<reqwest::multipart::Form, ProtonError> {
+    let mut form = reqwest::multipart::Form::new();
+    for part in parts {
+        let field = reqwest::multipart::Part::stream(part.data.clone())
+            .file_name(part.file_name)
+            .mime_str(part.mime)
+            .map_err(send_error)?;
+        form = form.part(part.name, field);
+    }
+    Ok(form)
+}
+
 /// The Proton API client: one per signed-in account.
 pub struct ProtonApi {
     http: reqwest::Client,
@@ -247,7 +274,18 @@ impl ProtonApi {
         path: &str,
         body: &Value,
     ) -> Result<T, ProtonError> {
-        self.request(Method::POST, path, &[], Some(body), true)
+        self.request(Method::POST, path, &[], Some(Body::Json(body)), true)
+            .await
+    }
+
+    /// Authenticated `POST` of a multipart form to the API host
+    /// (`apiService.ts::postFormData`), as the small-file upload sends it.
+    pub async fn post_form<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        parts: &[FormPart],
+    ) -> Result<T, ProtonError> {
+        self.request(Method::POST, path, &[], Some(Body::Form(parts)), true)
             .await
     }
 
@@ -257,7 +295,8 @@ impl ProtonApi {
         path: &str,
         body: &Value,
     ) -> Result<T, ProtonError> {
-        self.request(Method::PUT, path, &[], Some(body), true).await
+        self.request(Method::PUT, path, &[], Some(Body::Json(body)), true)
+            .await
     }
 
     /// Authenticated `DELETE`.
@@ -329,7 +368,7 @@ impl ProtonApi {
         method: Method,
         path: &str,
         query: &[(&str, String)],
-        body: Option<&Value>,
+        body: Option<Body<'_>>,
         authenticated: bool,
     ) -> Result<T, ProtonError> {
         let mut attempt: u32 = 0;
@@ -347,8 +386,11 @@ impl ProtonApi {
             if !query.is_empty() {
                 builder = builder.query(query);
             }
-            if let Some(body) = body {
-                builder = builder.json(body);
+            match body {
+                Some(Body::Json(body)) => builder = builder.json(body),
+                // A form is consumed by its send, so every attempt builds its own.
+                Some(Body::Form(parts)) => builder = builder.multipart(form_of(parts)?),
+                None => {}
             }
             let sent_access_token = if authenticated {
                 let tokens = self.tokens.read().await.clone();
@@ -1290,6 +1332,84 @@ mod tests {
             FAST.max_consecutive_429 as usize,
             "a blocked client must not reach the server"
         );
+    }
+
+    /// The small-file upload posts a multipart form to the API host with the
+    /// session headers. A form is consumed by its send, so the retry after a
+    /// 5xx must carry a full form of its own, not an empty body.
+    #[tokio::test]
+    async fn a_form_reaches_the_api_host_whole_on_every_attempt() {
+        // What each attempt carried: its session uid and its raw body.
+        type Attempts = Arc<std::sync::Mutex<Vec<(Option<String>, Vec<u8>)>>>;
+        let seen: Attempts = Arc::default();
+        let record = Arc::clone(&seen);
+        let app = axum::Router::new().route(
+            "/drive/v2/volumes/vol/files/small",
+            axum::routing::post(
+                move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                    let record = Arc::clone(&record);
+                    async move {
+                        let uid = headers
+                            .get("x-pm-uid")
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_owned);
+                        let mut seen = record.lock().unwrap();
+                        seen.push((uid, body.to_vec()));
+                        if seen.len() == 1 {
+                            (axum::http::StatusCode::BAD_GATEWAY, String::new())
+                        } else {
+                            (
+                                axum::http::StatusCode::OK,
+                                r#"{"Code":1000,"LinkID":"l","RevisionID":"r"}"#.to_string(),
+                            )
+                        }
+                    }
+                },
+            ),
+        );
+        let api = ProtonApi::with_base_url(
+            serve(app).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+
+        let parts = [
+            FormPart {
+                name: "Metadata",
+                file_name: "Metadata",
+                mime: "application/json",
+                data: bytes::Bytes::from_static(br#"{"ParentLinkID":"p"}"#),
+            },
+            FormPart {
+                name: "ContentBlock",
+                file_name: "ContentBlock",
+                mime: "application/octet-stream",
+                data: bytes::Bytes::from_static(b"encrypted-block"),
+            },
+        ];
+        let answer: Value = api
+            .post_form("drive/v2/volumes/vol/files/small", &parts)
+            .await
+            .unwrap();
+        assert_eq!(answer["LinkID"], serde_json::json!("l"));
+
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2, "one retry after the 502");
+        for (uid, body) in seen.iter() {
+            assert_eq!(uid.as_deref(), Some("uid-1"));
+            let body = String::from_utf8_lossy(body);
+            assert!(
+                body.contains(r#"name="Metadata"; filename="Metadata""#),
+                "{body}"
+            );
+            assert!(body.contains(r#"{"ParentLinkID":"p"}"#), "{body}");
+            assert!(
+                body.contains(r#"name="ContentBlock"; filename="ContentBlock""#),
+                "{body}"
+            );
+            assert!(body.contains("encrypted-block"), "{body}");
+        }
     }
 
     /// A 5xx is retried exactly once.
