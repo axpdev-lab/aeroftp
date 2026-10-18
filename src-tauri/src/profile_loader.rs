@@ -223,7 +223,13 @@ pub fn profile_connection_extra(
         for (key, value) in crate::connection_manifest::default_options(spec, preset) {
             // Missing mode identifies a legacy CLI profile. Creation already
             // materializes the native default in the saved options.
-            if provider_type == ProviderType::Proton && key == "proton_mode" {
+            // Transport modes on saved FTP profiles retain the provider's
+            // legacy fallback, including imported ftpsMode. New profiles
+            // already store the manifest's TLS default at creation.
+            if (provider_type == ProviderType::Proton && key == "proton_mode")
+                || (matches!(provider_type, ProviderType::Ftp | ProviderType::Ftps)
+                    && canonicalize_profile_option_key(&key) == "tls_mode")
+            {
                 continue;
             }
             if provider_type == ProviderType::S3

@@ -226,7 +226,18 @@ pub fn resolve_profile(
                 "Connection option '{key}' must be a string, boolean or number"
             ));
         }
-        merged.insert(saved_option_key(key, &spec.token), value.clone());
+        let saved_key = saved_option_key(key, &spec.token);
+        let canonical_key = crate::profile_loader::canonicalize_profile_option_key(&saved_key);
+        // An alias supplied by the caller overrides the same option's default,
+        // using its saved spelling rather than persisting two competing keys.
+        let saved_key = merged
+            .keys()
+            .find(|existing| {
+                crate::profile_loader::canonicalize_profile_option_key(existing) == canonical_key
+            })
+            .cloned()
+            .unwrap_or(saved_key);
+        merged.insert(saved_key, value.clone());
     }
     if let Some(mode) = merged.get("mega_mode") {
         if !matches!(mode.as_str(), Some("native" | "megacmd")) {
@@ -234,7 +245,10 @@ pub fn resolve_profile(
         }
     }
     for (key, allowed) in [
-        ("tlsMode", &["none", "explicit", "implicit", "auto"][..]),
+        (
+            "tlsMode",
+            &["none", "explicit", "implicit", "explicit_if_available"][..],
+        ),
         ("webdavScheme", &["http", "https", "auto"][..]),
     ] {
         if let Some(value) = merged.get(key) {
@@ -311,6 +325,133 @@ pub fn resolve_profile(
 
 #[cfg(test)]
 mod tests {
+    use crate::providers::{FtpConfig, FtpTlsMode, ProviderConfig, ProviderType};
+    use serde_json::json;
+
+    fn ftp_mode(profile: &serde_json::Value, kind: ProviderType) -> FtpTlsMode {
+        let (extra, _) =
+            crate::profile_loader::profile_connection_extra(profile, kind, "synthetic.test");
+        FtpConfig::from_provider_config(&ProviderConfig {
+            name: "synthetic".into(),
+            provider_type: kind,
+            host: "synthetic.test".into(),
+            port: Some(21),
+            username: None,
+            password: None,
+            initial_path: None,
+            extra,
+        })
+        .unwrap()
+        .tls_mode
+    }
+
+    #[test]
+    fn saved_ftp_modes_survive_creation_defaults() {
+        for (protocol, kind, options, expected) in [
+            ("ftp", ProviderType::Ftp, json!({}), FtpTlsMode::None),
+            ("ftps", ProviderType::Ftps, json!({}), FtpTlsMode::Implicit),
+            (
+                "ftps",
+                ProviderType::Ftps,
+                json!({"ftpsMode":"explicit"}),
+                FtpTlsMode::Explicit,
+            ),
+            (
+                "ftps",
+                ProviderType::Ftps,
+                json!({"ftpsMode":"explicit","tlsMode":"implicit"}),
+                FtpTlsMode::Implicit,
+            ),
+        ] {
+            let saved = json!({"protocol":protocol,"port":21,"options":options});
+            assert_eq!(ftp_mode(&saved, kind), expected, "{saved}");
+        }
+        let created = super::resolve_profile(
+            "ftp",
+            None,
+            Some("synthetic.test"),
+            None,
+            None,
+            None,
+            &json!({}),
+        )
+        .unwrap();
+        assert_eq!(ftp_mode(&created, ProviderType::Ftp), FtpTlsMode::Explicit);
+    }
+
+    #[test]
+    fn accepted_ftp_tls_modes_reach_the_backend_unchanged() {
+        for (mode, expected) in [
+            ("none", FtpTlsMode::None),
+            ("explicit", FtpTlsMode::Explicit),
+            ("implicit", FtpTlsMode::Implicit),
+            ("explicit_if_available", FtpTlsMode::ExplicitIfAvailable),
+        ] {
+            let saved = super::resolve_profile(
+                "ftp",
+                None,
+                Some("synthetic.test"),
+                None,
+                None,
+                None,
+                &json!({"tlsMode":mode}),
+            )
+            .unwrap();
+            assert_eq!(ftp_mode(&saved, ProviderType::Ftp), expected);
+        }
+        assert!(super::resolve_profile(
+            "ftp",
+            None,
+            Some("synthetic.test"),
+            None,
+            None,
+            None,
+            &json!({"tlsMode":"auto"}),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn caller_option_aliases_replace_the_default_saved_key() {
+        for (protocol, options, key, expected) in [
+            (
+                "mega",
+                json!({"megaMode":"megacmd"}),
+                "mega_mode",
+                json!("megacmd"),
+            ),
+            (
+                "mega",
+                json!({"saveSession":false}),
+                "save_session",
+                json!(false),
+            ),
+            (
+                "proton",
+                json!({"protonMode":"cli"}),
+                "proton_mode",
+                json!("cli"),
+            ),
+        ] {
+            let saved =
+                super::resolve_profile(protocol, None, None, None, None, None, &options).unwrap();
+            assert_eq!(saved["options"][key], expected, "{saved}");
+            let kind = super::provider_type(protocol).unwrap();
+            let (extra, _) = crate::profile_loader::profile_connection_extra(&saved, kind, "");
+            let expected = expected
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| expected.to_string());
+            assert_eq!(extra.get(key), Some(&expected));
+            for alias in options.as_object().unwrap().keys() {
+                assert!(
+                    saved["options"].get(alias).is_none(),
+                    "duplicate alias: {saved}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn secret_option_aliases_are_rejected_before_persistence() {
         let accepted: Vec<_> = ["accessKey", "access_key", "keyPassphrase", "key_passphrase"]
