@@ -16,6 +16,9 @@
 //! it records every command, with the moment it arrived, so the wire itself
 //! is asserted on, not a constant.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::collections::HashMap;
 use std::io::Write as _;
 use std::sync::{Arc, Mutex};
@@ -313,15 +316,19 @@ async fn cli_put_to_ftp_has_no_half_second_settle() {
     let url = format!("ftp://testuser:testpass@127.0.0.1:{}/", server.port);
     // tokio::process, not std: the fake server lives on this same runtime, so
     // a blocking wait would starve the very tasks the child is talking to.
-    let child = tokio::process::Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
-        .args([
-            "--quiet",
-            "put",
-            &url,
-            local.to_str().unwrap(),
-            "/floor.bin",
-        ])
-        .output();
+    let config = tempfile::tempdir().expect("isolated CLI state");
+    let child = tokio::process::Command::from(isolated_cli::command(
+        std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
+        config.path(),
+    ))
+    .args([
+        "--quiet",
+        "put",
+        &url,
+        local.to_str().unwrap(),
+        "/floor.bin",
+    ])
+    .output();
     let output = match tokio::time::timeout(Duration::from_secs(30), child).await {
         Ok(o) => o.expect("spawn aeroftp-cli put"),
         Err(_) => panic!("aeroftp-cli put to a loopback server did not finish in 30 s"),

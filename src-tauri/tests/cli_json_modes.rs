@@ -10,8 +10,11 @@
 //! vault, each command is run in both modes and must leave exactly one JSON
 //! document on stdout.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 /// `rclone obscure 'json modes probe secret'`: the import stores it, so the
 /// profile has a credential to export.
@@ -30,13 +33,8 @@ fn describe(out: &Output) -> String {
 
 /// The CLI on the vault in `config`, with nothing of this machine's.
 fn cli(config: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
+    isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), config)
         .args(args)
-        .env("XDG_CONFIG_HOME", config)
-        .env("XDG_DATA_HOME", config)
-        .env("HOME", config)
-        .env("APPDATA", config)
-        .env("LOCALAPPDATA", config)
         .env("AEROFTP_MASTER_PASSWORD", "json modes probe vault")
         .env("AEROFTP_PROFILE_PASSWORD", "json modes probe profile file")
         .env(

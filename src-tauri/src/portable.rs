@@ -18,6 +18,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+#[cfg(test)]
+#[path = "../tests/support/isolated_cli.rs"]
+mod cli_integration_fixture;
+
 const MARKER_FILENAME: &str = "portable.marker";
 const PORTABLE_DATA_DIRNAME: &str = "data";
 const AEROFTP_DATA_RELEASE_LEAF: &str = "aeroftp";
@@ -52,6 +56,12 @@ pub fn is_portable() -> bool {
 /// Portable data root: `<exe-dir>/data`. None when not portable.
 fn portable_data_root() -> Option<PathBuf> {
     portable_root().map(|root| root.join(PORTABLE_DATA_DIRNAME))
+}
+
+/// Resolve portable scratch without creating it. A later creation failure
+/// must stay a failure, never fall back to the installed user's cache.
+pub(crate) fn portable_scratch_dir() -> Option<PathBuf> {
+    portable_data_root().map(|root| root.join(aeroftp_data_leaf()).join("scratch"))
 }
 
 /// Ensure a directory exists with secure permissions when portable.
@@ -1226,6 +1236,70 @@ fn normalize_windows_path(path: &std::path::Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The same executable fixture the CLI integration tests use must choose
+    /// portable state on native Windows too, where APPDATA redirection alone
+    /// does not change the Known Folder API. This runs in the existing Windows
+    /// --lib lane without adding another full CLI build to that workflow.
+    #[test]
+    fn cli_integration_fixture_uses_private_portable_state() {
+        let root = tempfile::tempdir().unwrap();
+        let source = std::env::current_exe().unwrap();
+        let out = cli_integration_fixture::command(&source, root.path())
+            .args([
+                "--exact",
+                "portable::tests::cli_integration_fixture_child_probe",
+                "--nocapture",
+            ])
+            .env("AEROFTP_TEST_PORTABLE_ROOT", root.path())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(String::from_utf8_lossy(&out.stdout).contains("private portable state verified"));
+        let leaf = aeroftp_data_leaf();
+        assert!(root.path().join("cli/data").join(leaf).is_dir());
+        assert!(!root.path().join(leaf).exists());
+        // A second launch in this fixture reuses the binary and state.
+        assert_eq!(
+            cli_integration_fixture::executable(&source, root.path()),
+            root.path().join("cli").join(source.file_name().unwrap())
+        );
+    }
+
+    #[test]
+    fn cli_integration_fixture_child_probe() {
+        let Some(root) = std::env::var_os("AEROFTP_TEST_PORTABLE_ROOT") else {
+            return;
+        };
+        let expected = PathBuf::from(root)
+            .canonicalize()
+            .unwrap()
+            .join("cli/data")
+            .join(aeroftp_data_leaf());
+        assert!(is_portable());
+        assert_eq!(
+            aeroftp_data_root().unwrap().canonicalize().unwrap(),
+            expected
+        );
+        assert_eq!(
+            credential_store_dir().unwrap().canonicalize().unwrap(),
+            expected
+        );
+        assert_eq!(
+            crate::util::scratch::scratch_dir_path()
+                .parent()
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            expected
+        );
+        println!("private portable state verified");
+    }
 
     #[test]
     fn legacy_migration_never_replays_old_wal_over_restored_profiles() {

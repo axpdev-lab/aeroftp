@@ -7,9 +7,12 @@
 //! (`RUST_MIN_STACK`, which tokio's threads inherit), so the margin is pinned
 //! too, and the server must answer and exit cleanly.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -21,24 +24,20 @@ const WORKER_STACK: usize = 1024 * 1024;
 #[test]
 fn the_mcp_server_answers_on_half_a_worker_stack() {
     let config = tempfile::tempdir().expect("isolated config");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
-        .arg("mcp")
-        // Isolated on every platform (`dirs` reads XDG/HOME on Unix,
-        // APPDATA/LOCALAPPDATA on Windows); the master password keeps the
-        // new vault away from the OS keyring.
-        .env("XDG_CONFIG_HOME", config.path())
-        .env("XDG_DATA_HOME", config.path())
-        .env("HOME", config.path())
-        .env("APPDATA", config.path())
-        .env("LOCALAPPDATA", config.path())
-        .env("AEROFTP_MASTER_PASSWORD", "mcp-worker-stack-fixture")
-        .env("RUST_MIN_STACK", WORKER_STACK.to_string())
-        .env_remove("RUST_LOG")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn aeroftp-cli mcp");
+    let mut child = isolated_cli::command(
+        std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
+        config.path(),
+    )
+    .arg("mcp")
+    // Private portable state on every OS, with no keyring access.
+    .env("AEROFTP_MASTER_PASSWORD", "mcp-worker-stack-fixture")
+    .env("RUST_MIN_STACK", WORKER_STACK.to_string())
+    .env_remove("RUST_LOG")
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("spawn aeroftp-cli mcp");
     // Drained from the start, so a chatty server never blocks on a full pipe.
     let stderr_pipe = child.stderr.take().expect("stderr");
     let stderr = std::thread::spawn(move || {

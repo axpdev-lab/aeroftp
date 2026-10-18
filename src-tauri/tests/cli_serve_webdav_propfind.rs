@@ -9,6 +9,9 @@
 //! was refused as "already exists". A missing path is now `404`, as RFC 4918
 //! section 9.1 wants, and as `GET` on the same server already answered.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, Command, Output, Stdio};
@@ -46,20 +49,19 @@ fn serve() -> Served {
         .and_then(|l| l.local_addr())
         .expect("free port")
         .port();
-    let child = Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
-        .args(["serve", "webdav"])
-        .arg(folder.path())
-        .args(["--addr", &format!("127.0.0.1:{port}")])
-        .env("XDG_CONFIG_HOME", config.path())
-        .env("HOME", config.path())
-        .env("APPDATA", config.path())
-        .env("LOCALAPPDATA", config.path())
-        .env_remove("RUST_LOG")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("serve webdav");
+    let child = isolated_cli::command(
+        std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
+        config.path(),
+    )
+    .args(["serve", "webdav"])
+    .arg(folder.path())
+    .args(["--addr", &format!("127.0.0.1:{port}")])
+    .env_remove("RUST_LOG")
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .expect("serve webdav");
     let deadline = Instant::now() + LIMIT;
     while TcpStream::connect(("127.0.0.1", port)).is_err() {
         assert!(Instant::now() < deadline, "serve webdav did not listen");
@@ -179,16 +181,15 @@ async fn a_propfind_still_describes_what_is_there() {
 fn the_cli_does_not_see_a_missing_file_as_a_directory() {
     let served = serve();
     let out = output_within_limit(
-        Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
-            .args(["--format", "json", "stat"])
-            .arg(format!("webdav://127.0.0.1:{}/", served.port))
-            .arg("/missing.txt")
-            .env("XDG_CONFIG_HOME", served.config.path())
-            .env("HOME", served.config.path())
-            .env("APPDATA", served.config.path())
-            .env("LOCALAPPDATA", served.config.path())
-            .env_remove("RUST_LOG")
-            .stdin(Stdio::null()),
+        isolated_cli::command(
+            std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
+            served.config.path(),
+        )
+        .args(["--format", "json", "stat"])
+        .arg(format!("webdav://127.0.0.1:{}/", served.port))
+        .arg("/missing.txt")
+        .env_remove("RUST_LOG")
+        .stdin(Stdio::null()),
         "aeroftp-cli stat",
     );
     assert_eq!(

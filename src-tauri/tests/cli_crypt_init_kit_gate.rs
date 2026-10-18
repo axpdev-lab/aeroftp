@@ -9,23 +9,22 @@
 //! "already exists" unless it passed `--force`. Nothing is written now until
 //! the kit has somewhere to go.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::path::Path;
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Child, Output, Stdio};
 
 const PASSWORD: &str = "kit gate probe: correct horse battery staple 2026";
 
 /// `aeroftp-cli crypt init <remote> /vault --with-header` with every config
 /// directory isolated and stdin closed, so the run is non-interactive.
 fn crypt_init(remote: &Path, config: &Path, extra: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
+    isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), config)
         .args(["crypt", "init"])
         .arg(remote)
         .args(["/vault", "--with-header", "--password", PASSWORD])
         .args(extra)
-        .env("XDG_CONFIG_HOME", config)
-        .env("HOME", config)
-        .env("APPDATA", config)
-        .env("LOCALAPPDATA", config)
         .env_remove("AEROFTP_CRYPT_PASSWORD")
         .env_remove("RUST_LOG")
         .stdin(Stdio::null())
@@ -242,12 +241,9 @@ fn a_refused_headerless_init_leaves_no_config_in_the_keystore() {
         .expect("free port")
         .port();
     let cli = |args: &[&str]| {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"));
+        let mut cmd =
+            isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), config.path());
         cmd.args(args)
-            .env("XDG_CONFIG_HOME", config.path())
-            .env("HOME", config.path())
-            .env("APPDATA", config.path())
-            .env("LOCALAPPDATA", config.path())
             .env("AEROFTP_MASTER_PASSWORD", "kit gate probe vault")
             .env_remove("AEROFTP_CRYPT_PASSWORD")
             .env_remove("RUST_LOG");
@@ -340,7 +336,10 @@ fn declining_the_kit_at_a_terminal_writes_nothing() {
             pixel_height: 0,
         })
         .expect("pty");
-    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_aeroftp-cli"));
+    let mut cmd = CommandBuilder::new(isolated_cli::executable(
+        Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
+        config.path(),
+    ));
     cmd.args(["crypt", "init"]);
     cmd.arg(remote.path());
     cmd.args(["/vault", "--with-header", "--password", PASSWORD]);

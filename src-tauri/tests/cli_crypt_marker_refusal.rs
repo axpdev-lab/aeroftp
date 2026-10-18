@@ -14,10 +14,13 @@
 //! naming the opt-in. With `--allow-non-atomic` the marker is replaced
 //! through the set-aside, and no copy of the old one is left behind.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Child, Output, Stdio};
 use std::time::{Duration, Instant};
 
 const PASSWORD: &str = "marker refusal probe: correct horse battery staple 2026";
@@ -62,12 +65,11 @@ fn a_marker_write_refused_by_the_server_names_no_way_around_it() {
     let config = tempfile::tempdir().expect("isolated config");
     let kits = tempfile::tempdir().expect("kit folder");
     let cli = |args: &[&str]| {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"));
+        let mut cmd = isolated_cli::command(
+            std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
+            config.path(),
+        );
         cmd.args(args)
-            .env("XDG_CONFIG_HOME", config.path())
-            .env("HOME", config.path())
-            .env("APPDATA", config.path())
-            .env("LOCALAPPDATA", config.path())
             .env("AEROFTP_MASTER_PASSWORD", "marker refusal probe vault")
             .env_remove("AEROFTP_CRYPT_PASSWORD")
             .env_remove("RUST_LOG");
