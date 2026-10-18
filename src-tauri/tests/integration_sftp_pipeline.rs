@@ -9,7 +9,7 @@
 //! channel. The gate proves **byte-identical output** (serial == pipelined
 //! == source SHA-256) across sizes that exercise the chunk/window/tail
 //! boundaries (sub-chunk, exact chunk, multi-batch + partial tail, large),
-//! plus F-1: zero `.aerotmp` residue on success and on the error path.
+//! plus F-1: no download temporary left on success and on the error path.
 //!
 //! Cancellation parity: the plain `download()` serial loop has no
 //! cancellation token (it is drop-cancelled, and `AtomicFile`'s temp guard
@@ -30,6 +30,8 @@
 
 #![cfg(unix)]
 
+#[path = "support/download_temps.rs"]
+mod download_temps;
 #[path = "support/scoped_env.rs"]
 mod scoped_env;
 
@@ -37,6 +39,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 use std::time::Instant;
 
+use download_temps::download_temps_in;
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
 use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::StorageProvider;
@@ -109,19 +112,6 @@ fn deterministic_blob(seed: usize, len: usize) -> Vec<u8> {
         *b = ((seed * 131 + j * 7) % 251) as u8;
     }
     buf
-}
-
-fn aerotmp_residue(dir: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.to_string_lossy().contains(".aerotmp") {
-                out.push(p);
-            }
-        }
-    }
-    out
 }
 
 #[tokio::test]
@@ -205,9 +195,10 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
             pipe_h, src,
             "pipelined != source for {name} (NOT byte-identical)"
         );
+        let left = download_temps_in(&out_root);
         assert!(
-            aerotmp_residue(&out_root).is_empty(),
-            "F-1: .aerotmp residue after {name}"
+            left.is_empty(),
+            "F-1: download temporary left after {name}: {left:?}"
         );
 
         let mib = *len as f64 / 1_048_576.0;
@@ -220,7 +211,8 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
     }
 
     // Error path with the flag on: a missing remote must Err and leave no
-    // .aerotmp behind (AtomicFile temp guard, same as the serial path).
+    // download temporary behind (AtomicFile temp guard, same as the serial
+    // path).
     let flag = ScopedEnv::set(PIPELINE, "8");
     let err_out = out_root.join("missing.out");
     let err = base
@@ -232,12 +224,13 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
         .await;
     drop(flag);
     assert!(err.is_err(), "missing remote must error with the flag on");
+    let left = download_temps_in(&out_root);
     assert!(
-        aerotmp_residue(&out_root).is_empty(),
-        "F-1: .aerotmp residue after error path"
+        left.is_empty(),
+        "F-1: download temporary left after the error path: {left:?}"
     );
 
-    eprintln!("PD-PIPE-1: serial == pipelined == source for all sizes; zero .aerotmp residue");
+    eprintln!("PD-PIPE-1: serial == pipelined == source for all sizes; no temporary left");
 }
 
 /// PD-PIPE-2 live validation: the read pipeline is now **active on the
@@ -247,8 +240,9 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
 /// --multi-thread-cutoff 1M`) with `AEROFTP_SFTP_READ_PIPELINE` **off** and
 /// then **on**: both must be byte-identical to the source (so each N=4
 /// range window, now pipelined K reads deep on its own session, assembles
-/// exactly the same bytes at the same offsets), with zero `.aerotmp`
-/// residue. Off==on==source is the diff-0 proof; the timing line is a
+/// exactly the same bytes at the same offsets), with no download temporary
+/// left (the engine's `.aerosegtmp` included). Off==on==source is the diff-0
+/// proof; the timing line is a
 /// non-gating observation (compounds with PD-PIPE-1). The capability flip
 /// is asserted so a silent single-stream fallback fails the run.
 #[tokio::test]
@@ -342,14 +336,15 @@ async fn sftp_read_pipeline_is_byte_identical_on_the_pooled_path() {
         "pool flag-on != source (NOT byte-identical: PD-PIPE-2 broke the pooled path)"
     );
 
+    let left = download_temps_in(&out_root);
     assert!(
-        aerotmp_residue(&out_root).is_empty(),
-        "F-1: .aerotmp residue after the pooled path"
+        left.is_empty(),
+        "F-1: download temporary left after the pooled path: {left:?}"
     );
 
     eprintln!(
         "PD-PIPE-2 pooled: file={:.0} MiB  N={} flag-off {:.2}s ({:.1} MiB/s)  \
-         flag-on {:.2}s ({:.1} MiB/s)  off==on==source  zero .aerotmp",
+         flag-on {:.2}s ({:.1} MiB/s)  off==on==source  no temporary left",
         total_mib,
         STREAMS,
         off_s,

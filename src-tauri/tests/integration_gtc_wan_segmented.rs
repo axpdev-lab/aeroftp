@@ -28,6 +28,10 @@
 
 #![cfg(unix)]
 
+#[path = "support/download_temps.rs"]
+mod download_temps;
+
+use download_temps::download_temps_in;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -41,7 +45,6 @@ use ftp_client_gui_lib::provider_transfer_executor::{
     provider_segmented_download_eligible, run_provider_segmented_download, SegmentCutoff,
 };
 use ftp_client_gui_lib::providers::ftp::FtpProvider;
-use ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for;
 use ftp_client_gui_lib::providers::s3::S3Provider;
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
 use ftp_client_gui_lib::providers::types::{FtpConfig, FtpTlsMode, S3Config, SftpConfig};
@@ -360,11 +363,11 @@ async fn gtc_gui_sftp_segmented_byte_identical_vs_single_stream() {
         "segmented sha must match source byte-for-byte",
     );
 
-    // No .aerotmp residue after success.
-    let tmp = aerotmp_path_for(&dst4);
+    // No download temporary left after success.
+    let left = download_temps_in(&dst_root);
     assert!(
-        !tmp.exists(),
-        ".aerotmp must be renamed away on success: {tmp:?}",
+        left.is_empty(),
+        "the temporary must be renamed away on success: {left:?}",
     );
 
     let speedup = e1.as_secs_f64() / e4.as_secs_f64().max(1e-6);
@@ -444,9 +447,10 @@ async fn gtc_aerosync_sftp_segmented_download_byte_identity_speed_band() {
         src_sha,
         "segmented sync sha must match source byte-for-byte",
     );
+    let left = download_temps_in(&segmented_root);
     assert!(
-        !aerotmp_path_for(&segmented_file).exists(),
-        ".aerotmp must be renamed away after segmented sync success",
+        left.is_empty(),
+        "the temporary must be renamed away after segmented sync success: {left:?}",
     );
 
     let speedup = e1.as_secs_f64() / e4.as_secs_f64().max(1e-6);
@@ -468,12 +472,12 @@ async fn gtc_aerosync_sftp_segmented_download_byte_identity_speed_band() {
 }
 
 // ---------------------------------------------------------------------
-// Test 2: cooperative cancel leaves no .aerotmp / no partial dst
+// Test 2: cooperative cancel leaves no temporary / no partial dst
 // ---------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "live WAN: GTC-1/2 cancel cleanup against axpbuntu (vault required)"]
-async fn gtc_gui_sftp_segmented_cancel_leaves_no_aerotmp() {
+async fn gtc_gui_sftp_segmented_cancel_leaves_no_temporary() {
     let Some(creds) = load_sftp_creds() else {
         eprintln!("SKIP: SFTP credentials unavailable in vault");
         return;
@@ -495,7 +499,6 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_aerotmp() {
     let _ = std::fs::remove_dir_all(&dst_root);
     std::fs::create_dir_all(&dst_root).unwrap();
     let dst = dst_root.join("cancelled.bin");
-    let tmp = aerotmp_path_for(&dst);
 
     let segments = provider_segmented_download_eligible(
         &base,
@@ -514,8 +517,8 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_aerotmp() {
     // SEGMENTED_DOWNLOAD_SUB_READ_SIZE is 64 MiB > window size, so the
     // inner loop has exactly one iteration to observe the cancel).
     // Pre-cancel is deterministic and validates the same invariant we
-    // care about: TempFileGuard removes the `.aerotmp`, no atomic
-    // rename leaks a partial file at `dst`.
+    // care about: the engine's `SegmentedTemp` removes its `.aerosegtmp`, no
+    // atomic rename leaks a partial file at `dst`.
     let cancel = CancellationToken::new();
     cancel.cancel();
 
@@ -534,16 +537,17 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_aerotmp() {
         outcome.is_err(),
         "cancelled segmented download must surface Err, got {outcome:?}",
     );
+    let left = download_temps_in(&dst_root);
     assert!(
-        !tmp.exists(),
-        "TempFileGuard must remove the .aerotmp on cancel: {tmp:?}",
+        left.is_empty(),
+        "the cancelled run must remove its temporary: {left:?}",
     );
     assert!(
         !dst.exists(),
         "final destination must NOT exist after cancel (no atomic rename happened): {dst:?}",
     );
 
-    eprintln!("GTC-1/2 SFTP cancel @ axpbuntu: outcome=Err  .aerotmp=absent  dst=absent  ok",);
+    eprintln!("GTC-1/2 SFTP cancel @ axpbuntu: outcome=Err  temporary=absent  dst=absent  ok",);
 
     let _ = base.disconnect().await;
     let _ = std::fs::remove_dir_all(&dst_root);
@@ -716,9 +720,10 @@ async fn gtc_gui_ftp_segmented_byte_identical_vs_single_stream() {
     .expect("FTP segmented must succeed (validates read_range ensure_connected fix)");
     let e4 = t4.elapsed();
     assert_eq!(sha256_file(&dst4), src_sha, "FTP segmented sha mismatch");
+    let left = download_temps_in(&dst_root);
     assert!(
-        !aerotmp_path_for(&dst4).exists(),
-        ".aerotmp must be renamed away after FTP segmented success",
+        left.is_empty(),
+        "the temporary must be renamed away after FTP segmented success: {left:?}",
     );
 
     let speedup = e1.as_secs_f64() / e4.as_secs_f64().max(1e-6);
@@ -1029,9 +1034,10 @@ async fn gtc_gui_s3_segmented_byte_identical_vs_single_stream() {
     .expect("S3 segmented must succeed (validates HttpClonePool path)");
     let e4 = t4.elapsed();
     assert_eq!(sha256_file(&dst4), src_sha, "S3 segmented sha mismatch");
+    let left = download_temps_in(&dst_root);
     assert!(
-        !aerotmp_path_for(&dst4).exists(),
-        ".aerotmp must be renamed away after S3 segmented success",
+        left.is_empty(),
+        "the temporary must be renamed away after S3 segmented success: {left:?}",
     );
 
     let speedup = e1.as_secs_f64() / e4.as_secs_f64().max(1e-6);

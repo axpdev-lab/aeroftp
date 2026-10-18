@@ -29,6 +29,10 @@
 
 #![cfg(unix)]
 
+#[path = "support/download_temps.rs"]
+mod download_temps;
+
+use download_temps::download_temps_in;
 use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use std::time::Instant;
@@ -214,8 +218,8 @@ async fn sftp_connection_pool_parallel_download_is_real_and_byte_identical() {
 /// windows, each over its own independent SSH connection, and re-assembled.
 /// The gate is **correctness**: byte-identical SHA-256 across source / N=1 /
 /// N=4 proves the range plan + strict-length per-window writer + offset
-/// assembly are correct, and zero `.aerotmp` residue proves the
-/// TempFileGuard + atomic rename. The intra-file path is taken
+/// assembly are correct, and no download temporary left proves the
+/// engine's `SegmentedTemp` + atomic rename. The intra-file path is taken
 /// deterministically (cutoff 8 MiB < file size, streams = 4) and the
 /// capability flip is asserted, so a silent single-stream fallback fails
 /// the run.
@@ -297,15 +301,10 @@ async fn sftp_intra_file_concurrent_range_is_byte_identical() {
     let e4 = t4.elapsed();
     assert_eq!(src_hash, sha256_file(&n4), "N=4 intra-file byte mismatch");
 
-    // Strict temp hygiene: no `.aerotmp` residue beside either output.
-    assert!(
-        !tmp_root.join("n1.bin.aerotmp").exists(),
-        "N=1 left an .aerotmp residue"
-    );
-    assert!(
-        !tmp_root.join("n4.bin.aerotmp").exists(),
-        "N=4 intra-file left an .aerotmp residue"
-    );
+    // Strict temp hygiene: no download temporary beside either output (N=1
+    // writes a `.aerotmp` or `.aeroardtmp`, N=4 the engine's `.aerosegtmp`).
+    let left = download_temps_in(&tmp_root);
+    assert!(left.is_empty(), "a download temporary was left: {left:?}");
 
     eprintln!(
         "PD-SFTP-2 intra-file: file={:.0} MiB  N=1 {:.2}s ({:.1} MiB/s)  N={} {:.2}s ({:.1} MiB/s)  SHA-256 identical",
@@ -1097,7 +1096,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
 /// from an integration test, so this reproduces its behaviour with the
 /// same provider-`read_range` window writer: N independent pooled SFTP
 /// connections, one per gap-free window, each seek-writing its window at
-/// the absolute offset into the engine's single pre-allocated `.aerotmp`,
+/// the absolute offset into the engine's single pre-allocated `.aerosegtmp`,
 /// atomically promoted on success.
 async fn pget_via_shared_engine(
     base: &SftpProvider,
@@ -1222,7 +1221,8 @@ async fn pget_via_shared_engine(
 ///   advertises strict concurrent range (the converged pool-backed path,
 ///   not a silent locked-single fallback);
 /// - the assembled file is byte-identical SHA-256 at N=1 and N=4;
-/// - no `.aerotmp` residue (the engine's RAII + the atomic rename);
+/// - no download temporary left (the engine's `SegmentedTemp` + the atomic
+///   rename);
 /// - N=4 wall-clock is not catastrophically worse than N=1 (the N real
 ///   connections are not silently serialised; loopback has no bandwidth
 ///   bottleneck so only catastrophic serialisation is caught, noted
@@ -1305,16 +1305,10 @@ async fn pd_cli_conv_e_pget_segmented_is_byte_identical() {
     let e4 = t4.elapsed();
     assert_eq!(src_hash, sha256_file(&n4), "N=4 segmented byte mismatch");
 
-    // Strict temp hygiene: the engine's RAII + atomic rename leave no
-    // `.aerotmp` residue beside either output.
-    assert!(
-        !tmp_root.join("n1.bin.aerotmp").exists(),
-        "N=1 left an .aerotmp residue"
-    );
-    assert!(
-        !tmp_root.join("n4.bin.aerotmp").exists(),
-        "N=4 left an .aerotmp residue"
-    );
+    // Strict temp hygiene: the engine's `SegmentedTemp` + atomic rename leave
+    // no download temporary beside either output.
+    let left = download_temps_in(&tmp_root);
+    assert!(left.is_empty(), "a download temporary was left: {left:?}");
 
     assert!(
         e4 <= e1 * 3,
@@ -1322,7 +1316,7 @@ async fn pd_cli_conv_e_pget_segmented_is_byte_identical() {
     );
 
     eprintln!(
-        "PD-CLI-CONV-E pget: file={:.0} MiB  N=1 {:.2}s ({:.1} MiB/s)  N=4 {:.2}s ({:.1} MiB/s)  SHA-256 identical, single .aerotmp, atomically promoted",
+        "PD-CLI-CONV-E pget: file={:.0} MiB  N=1 {:.2}s ({:.1} MiB/s)  N=4 {:.2}s ({:.1} MiB/s)  SHA-256 identical, single .aerosegtmp, atomically promoted",
         total_mib,
         e1.as_secs_f64(),
         total_mib / e1.as_secs_f64(),

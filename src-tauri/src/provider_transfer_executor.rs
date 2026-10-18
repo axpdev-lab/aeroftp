@@ -380,8 +380,8 @@ impl SegmentedDownloadError {
 /// `primary.clone_for_transfer()` is honestly supported.
 ///
 /// On exit: `local_path` is renamed atomically from its `.aerosegtmp`
-/// sibling on success; on any error the engine's `TempFileGuard`
-/// drops the temp.
+/// sibling on success; on any error the engine's `SegmentedTemp` removes
+/// the temporary while it still holds its claim.
 pub async fn run_provider_segmented_download(
     primary: &mut dyn StorageProvider,
     remote_path: &str,
