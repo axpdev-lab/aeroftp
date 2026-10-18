@@ -204,6 +204,7 @@ pub(crate) mod test_env {
     }
 }
 pub mod portal_chooser;
+pub mod profile_auth;
 pub mod profile_loader;
 mod rsync_output;
 pub mod storage_dedup;

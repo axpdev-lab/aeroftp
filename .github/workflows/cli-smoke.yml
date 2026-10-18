@@ -6,6 +6,8 @@ on:
     paths:
       - 'src-tauri/src/bin/aeroftp_cli.rs'
       - 'src-tauri/src/providers/**'
+      - 'src-tauri/src/profile_auth*.rs'
+      - '.github/scripts/profile-auth-parity.py'
       - 'src-tauri/Cargo.toml'
       - '.github/workflows/cli-smoke.yml'
   pull_request:
@@ -13,6 +15,8 @@ on:
     paths:
       - 'src-tauri/src/bin/aeroftp_cli.rs'
       - 'src-tauri/src/providers/**'
+      - 'src-tauri/src/profile_auth*.rs'
+      - '.github/scripts/profile-auth-parity.py'
       - 'src-tauri/Cargo.toml'
       - '.github/workflows/cli-smoke.yml'
   workflow_dispatch:
@@ -148,6 +152,13 @@ jobs:
             perl -e 'use Locale::Maketext::Simple; print "OK\n"'
           fi
           cargo build --release --bin aeroftp-cli
+
+      - name: Headless profile auth and credential consumption
+        if: runner.os == 'Linux'
+        working-directory: src-tauri
+        env:
+          CLI_BIN: ${{ matrix.cli_bin }}
+        run: python3 ../.github/scripts/profile-auth-parity.py "$CLI_BIN"
 
       - name: Version and help smoke
         working-directory: src-tauri

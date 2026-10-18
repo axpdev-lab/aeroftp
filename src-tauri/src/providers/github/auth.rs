@@ -40,12 +40,16 @@ pub struct DeviceTokenResponse {
 
 /// Request a device code from GitHub
 pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
+    request_device_code_at("https://github.com/login/device/code").await
+}
+
+pub(crate) async fn request_device_code_at(endpoint: &str) -> Result<DeviceCodeResponse, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let resp = client
-        .post("https://github.com/login/device/code")
+        .post(endpoint)
         .header("Accept", "application/json")
         .header("Content-Type", "application/x-www-form-urlencoded")
         .header("User-Agent", "AeroFTP")
@@ -70,6 +74,19 @@ pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
 
 /// Poll for the access token after user has authorized
 pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<String, String> {
+    poll_for_token_at(
+        "https://github.com/login/oauth/access_token",
+        device_code,
+        interval,
+    )
+    .await
+}
+
+pub(crate) async fn poll_for_token_at(
+    endpoint: &str,
+    device_code: &str,
+    interval: u64,
+) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
@@ -91,7 +108,7 @@ pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<String, 
             GITHUB_APP_CLIENT_ID, device_code
         );
         let resp = client
-            .post("https://github.com/login/oauth/access_token")
+            .post(endpoint)
             .header("Accept", "application/json")
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("User-Agent", "AeroFTP")
@@ -184,6 +201,17 @@ pub async fn get_installation_token(
     app_id: &str,
     installation_id: &str,
 ) -> Result<InstallationTokenResponse, String> {
+    let endpoint =
+        format!("https://api.github.com/app/installations/{installation_id}/access_tokens");
+    get_installation_token_at(&endpoint, pem_contents, app_id, installation_id).await
+}
+
+pub(crate) async fn get_installation_token_at(
+    endpoint: &str,
+    pem_contents: &str,
+    app_id: &str,
+    installation_id: &str,
+) -> Result<InstallationTokenResponse, String> {
     info!("GitHub App: generating JWT for app_id={}", app_id);
     let jwt = generate_app_jwt(pem_contents, app_id)?;
     info!(
@@ -196,13 +224,8 @@ pub async fn get_installation_token(
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let url = format!(
-        "https://api.github.com/app/installations/{}/access_tokens",
-        installation_id
-    );
-
     let resp = client
-        .post(&url)
+        .post(endpoint)
         .header("Accept", "application/vnd.github+json")
         .header("Authorization", format!("Bearer {}", jwt))
         .header("X-GitHub-Api-Version", "2022-11-28")

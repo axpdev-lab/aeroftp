@@ -102,6 +102,9 @@ pub fn derive_profile_auth_state(
     profile_id: &str,
     protocol: &str,
 ) -> &'static str {
+    if protocol.eq_ignore_ascii_case("github") {
+        return crate::profile_auth::saved_github_readiness(store, profile_id, None, None);
+    }
     let server_key = format!("server_{}", profile_id);
     let oauth_key = oauth_vault_key_for_protocol(protocol);
 

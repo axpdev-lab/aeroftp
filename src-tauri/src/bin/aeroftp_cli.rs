@@ -3429,6 +3429,16 @@ enum Commands {
         #[arg(long, value_name = "KEY")]
         filen_api_key: Option<String>,
     },
+    /// Authorize a saved profile without opening a browser on this machine.
+    /// Read action=configure|begin|finish|status|cancel from a JSON object.
+    /// Configure: client_id/client_secret/region; GitHub: mode, app_id,
+    /// installation_id and pem. Finish: callback_url or code+state;
+    /// 4shared: oauth_token+verifier. Secret values remain in the vault.
+    ProfileAuth {
+        selector: String,
+        #[arg(long, value_name = "PATH")]
+        request_json_file: String,
+    },
     /// Duplicate a saved server profile inside the vault
     ///
     /// Copies the profile (config + any stored credential) under a fresh
@@ -17798,9 +17808,18 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
             .map(|(p, number)| {
                 let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
-                let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
-                    &store, &accounts, id, proto,
-                );
+                let auth_state = if proto.eq_ignore_ascii_case("github") {
+                    ftp_client_gui_lib::profile_auth::saved_github_readiness(
+                        &store,
+                        id,
+                        Some(p),
+                        scoped_credential_user_id(cli, &store),
+                    )
+                } else {
+                    ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
+                        &store, &accounts, id, proto,
+                    )
+                };
                 let used = profile_effective_used(p);
                 let total = profile_effective_total(p);
                 // Honor the provenance the GUI/scan persisted; only fall
@@ -24876,6 +24895,7 @@ fn cmd_profile_add(
         "mega",
         "dropbox",
         "googledrive",
+        "googlephotos",
         "onedrive",
         "box",
         "pcloud",
@@ -24961,6 +24981,19 @@ fn cmd_profile_add(
         Ok(v) => v,
         Err(code) => return code,
     };
+    if proto_lower == "googlephotos" && !cfg!(debug_assertions) {
+        print_error(format, "Google Photos is available only in DEV builds", 5);
+        return 5;
+    }
+    if let Some(raw) = credential_value.as_deref() {
+        let profile = serde_json::json!({"protocol":proto_lower});
+        if let Err(error) =
+            ftp_client_gui_lib::profile_auth::validate_server_seed(None, &profile, raw)
+        {
+            print_error(format, &error, 5);
+            return 5;
+        }
+    }
     let resolved_port = port.unwrap_or(match proto_lower.as_str() {
         "ftp" | "ftps" => 21,
         "sftp" => 22,
@@ -27061,6 +27094,41 @@ fn read_credential_source(
         unreachable!("checked sources_count above");
     };
 
+    if credential_json.is_some() || credential_json_file.is_some() {
+        let value: serde_json::Value =
+            serde_json::from_str(&credential_value).expect("JSON validated above");
+        let supported = match &value {
+            serde_json::Value::String(secret) => !secret.is_empty(),
+            serde_json::Value::Object(object) => {
+                object.keys().all(|key| {
+                    matches!(
+                        key.as_str(),
+                        "username" | "password" | "api_key" | "access_token"
+                    )
+                }) && object.values().all(|value| value.is_string())
+                    && ["password", "api_key", "access_token"]
+                        .iter()
+                        .filter(|key| object.contains_key(**key))
+                        .count()
+                        == 1
+                    && ["password", "api_key", "access_token"]
+                        .iter()
+                        .filter(|key| {
+                            object
+                                .get(**key)
+                                .and_then(|value| value.as_str())
+                                .is_some_and(|value| !value.is_empty())
+                        })
+                        .count()
+                        == 1
+            }
+            _ => false,
+        };
+        if !supported {
+            print_error(format, "Credential JSON must contain one nonempty password, api_key or access_token, with an optional username; OAuth bootstrap uses profile-auth", 5);
+            return Err(5);
+        }
+    }
     Ok(Some(credential_value))
 }
 
@@ -27127,6 +27195,19 @@ fn cmd_profile_set_password(
         }
     };
     let target = &profiles[target_idx];
+    let scope = ftp_client_gui_lib::profile_auth::AuthScope {
+        store: &store,
+        user_id: scoped_credential_user_id(cli, &store),
+    };
+    if let Err(error) = ftp_client_gui_lib::profile_auth::validate_server_seed(
+        Some(&scope),
+        target,
+        &credential_value,
+    ) {
+        print_error(format, &error, 5);
+        return 5;
+    }
+
     let target_id = target
         .get("id")
         .and_then(|v| v.as_str())
@@ -27561,7 +27642,11 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
         Err(_) => return Ok(vec![]),
     };
 
-    Ok(safe_profile_records(&store, &profiles))
+    Ok(safe_profile_records(
+        &store,
+        &profiles,
+        scoped_credential_user_id(cli, &store),
+    ))
 }
 
 /// Build the agent-facing records for a list of saved profiles, listing the vault
@@ -27572,6 +27657,7 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
 fn safe_profile_records(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     profiles: &[serde_json::Value],
+    user_id: Option<i64>,
 ) -> Vec<serde_json::Value> {
     // List vault keys ONCE; per-profile auth-state derivation then checks
     // existence in this set instead of issuing N decryptions.
@@ -27585,9 +27671,18 @@ fn safe_profile_records(
         .map(|p| {
             let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
-            let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
-                store, &accounts, id, proto,
-            );
+            let auth_state = if proto.eq_ignore_ascii_case("github") {
+                ftp_client_gui_lib::profile_auth::saved_github_readiness(
+                    store,
+                    id,
+                    Some(p),
+                    user_id,
+                )
+            } else {
+                ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
+                    store, &accounts, id, proto,
+                )
+            };
             safe_profile_record(p, auth_state)
         })
         .collect()
@@ -29130,32 +29225,10 @@ fn profile_value_to_provider_config(
             scoped_credential_user_id(cli, store),
             &format!("server_{}", id),
         ) {
-            Some(password_str) => {
-                // The vault stores just the password as a plain string
-                // Try to parse as JSON first (legacy format), fall back to raw string
-                if let Ok(cred) = serde_json::from_str::<serde_json::Value>(&password_str) {
-                    if let Some(obj) = cred.as_object() {
-                        let u = obj
-                            .get("username")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let p = obj
-                            .get("password")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        (if u.is_empty() { username.clone() } else { u }, p)
-                    } else {
-                        // JSON but not an object - treat as raw password string
-                        let raw = password_str.trim_matches('"').to_string();
-                        (username.clone(), raw)
-                    }
-                } else {
-                    // Raw password string (current format from GUI)
-                    (username.clone(), password_str)
-                }
-            }
+            Some(password_str) => ftp_client_gui_lib::profile_loader::parse_server_credential(
+                &password_str,
+                &username,
+            ),
             None => (username.clone(), String::new()),
         }
     } else {
@@ -29385,553 +29458,6 @@ fn profile_value_to_provider_config(
     };
 
     Ok((config, initial_path))
-}
-
-/// Run OAuth2 browser authorization flow from CLI.
-/// Opens the browser for the user to authorize, waits for the callback, saves tokens to vault.
-/// `profile_id` scopes the resulting tokens to a server profile vault key
-/// (`oauth_<provider>_<profile_id>`); pass an empty string to keep the legacy
-/// singleton key for compatibility. Issue #214.
-async fn cli_oauth_browser_auth(
-    protocol: &str,
-    store: &CredentialStore,
-    profile_id: &str,
-) -> Result<(), String> {
-    use ftp_client_gui_lib::providers::{
-        oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback},
-        OAuth2Manager, OAuthConfig,
-    };
-
-    let oauth_settings = load_oauth_client_config(store, protocol);
-    if oauth_settings.0.is_empty() {
-        return Err(format!("No OAuth client credentials found for '{}'. Configure Client ID and Client Secret in AeroFTP GUI Settings > Cloud Providers.", protocol));
-    }
-
-    // Provider-specific fixed ports (must match registered redirect URIs)
-    let fixed_port: u16 = match protocol {
-        "box" => 9484,
-        "dropbox" => 17548,
-        "onedrive" => 27154,
-        "pcloud" => 17384,
-        "zohoworkdrive" => 18765,
-        "yandexdisk" => 19847,
-        _ => 0,
-    };
-
-    let (listener, port) = if fixed_port > 0 {
-        bind_callback_listener_on_port(fixed_port).await
-    } else {
-        bind_callback_listener().await
-    }
-    .map_err(|e| {
-        format!(
-            "Failed to bind callback listener on port {}: {}",
-            fixed_port, e
-        )
-    })?;
-
-    let config = match protocol {
-        "googledrive" => OAuthConfig::google_with_port(&oauth_settings.0, &oauth_settings.1, port),
-        "dropbox" => OAuthConfig::dropbox_with_port(&oauth_settings.0, &oauth_settings.1, port),
-        "onedrive" => OAuthConfig::onedrive_with_port(&oauth_settings.0, &oauth_settings.1, port),
-        "box" => OAuthConfig::box_cloud_with_port(&oauth_settings.0, &oauth_settings.1, port),
-        "pcloud" => {
-            let region = store
-                .get("oauth_pcloud_region")
-                .unwrap_or_else(|_| "us".to_string());
-            OAuthConfig::pcloud_with_port(&oauth_settings.0, &oauth_settings.1, port, &region)
-        }
-        "zohoworkdrive" => {
-            let region = store
-                .get("oauth_zohoworkdrive_region")
-                .unwrap_or_else(|_| "us".to_string());
-            OAuthConfig::zoho_with_port(&oauth_settings.0, &oauth_settings.1, port, &region)
-        }
-        "yandexdisk" => {
-            OAuthConfig::yandex_disk_with_port(&oauth_settings.0, &oauth_settings.1, port)
-        }
-        other => return Err(format!("OAuth not supported for: {}", other)),
-    }
-    .with_profile_id(profile_id);
-
-    let manager = OAuth2Manager::new();
-    let (auth_url, expected_state) = manager
-        .start_auth_flow(&config)
-        .await
-        .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
-
-    // Try to open browser automatically
-    eprintln!("\nAuthorize in your browser:");
-    eprintln!("  {}\n", auth_url);
-    if open::that(&auth_url).is_err() {
-        eprintln!("Could not open browser automatically. Please open the URL above manually.");
-    }
-    eprintln!("Waiting for authorization... (press Ctrl+C to cancel)");
-
-    // Wait for callback with 5-minute timeout
-    let callback_state = expected_state.clone();
-    let callback_handle =
-        tokio::spawn(async move { wait_for_callback(listener, &callback_state).await });
-    let (code, state) =
-        tokio::time::timeout(tokio::time::Duration::from_secs(300), callback_handle)
-            .await
-            .map_err(|_| "Timeout: no response within 5 minutes".to_string())?
-            .map_err(|e| format!("Callback error: {}", e))?
-            .map_err(|e| format!("Callback error: {}", e))?;
-
-    if state != expected_state {
-        return Err("OAuth state mismatch - possible CSRF attack".to_string());
-    }
-
-    // Exchange code for tokens
-    manager
-        .complete_auth_flow(&config, &code, &expected_state)
-        .await
-        .map_err(|e| format!("Token exchange failed: {}", e))?;
-
-    Ok(())
-}
-
-/// Create an OAuth provider by protocol name (used for retry after re-authorization)
-fn create_oauth_provider_by_protocol(
-    protocol: &str,
-    store: &CredentialStore,
-    profile_id: &str,
-) -> Result<Box<dyn StorageProvider>, String> {
-    use ftp_client_gui_lib::providers::{
-        dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
-        types::BoxConfig, types::PCloudConfig, zoho_workdrive::ZohoWorkdriveConfig, BoxProvider,
-        DropboxProvider, GoogleDriveProvider, OAuth2Manager, OAuthProvider, OneDriveProvider,
-        PCloudProvider, YandexDiskProvider, ZohoWorkdriveProvider,
-    };
-
-    let oauth_settings = load_oauth_client_config(store, protocol);
-    match protocol {
-        "googledrive" => Ok(Box::new(
-            GoogleDriveProvider::new(GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1))
-                .with_profile_id(profile_id),
-        )),
-        "dropbox" => Ok(Box::new(
-            DropboxProvider::new(DropboxConfig::new(&oauth_settings.0, &oauth_settings.1))
-                .with_profile_id(profile_id),
-        )),
-        "onedrive" => Ok(Box::new(
-            OneDriveProvider::new(OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1))
-                .with_profile_id(profile_id),
-        )),
-        "box" => Ok(Box::new(
-            BoxProvider::new(BoxConfig {
-                client_id: oauth_settings.0,
-                client_secret: oauth_settings.1,
-            })
-            .with_profile_id(profile_id),
-        )),
-        "pcloud" => {
-            let region = store
-                .get("oauth_pcloud_region")
-                .unwrap_or_else(|_| "us".to_string());
-            Ok(Box::new(
-                PCloudProvider::new(PCloudConfig {
-                    client_id: oauth_settings.0,
-                    client_secret: oauth_settings.1,
-                    region,
-                })
-                .with_profile_id(profile_id),
-            ))
-        }
-        "zohoworkdrive" => {
-            let region = store
-                .get("oauth_zohoworkdrive_region")
-                .unwrap_or_else(|_| "us".to_string());
-            Ok(Box::new(
-                ZohoWorkdriveProvider::new(ZohoWorkdriveConfig::new(
-                    &oauth_settings.0,
-                    &oauth_settings.1,
-                    &region,
-                ))
-                .with_profile_id(profile_id),
-            ))
-        }
-        "yandexdisk" => {
-            let manager = OAuth2Manager::new();
-            let tokens = manager
-                .load_tokens(OAuthProvider::YandexDisk, profile_id)
-                .map_err(|e| format!("No Yandex tokens: {}", e))?;
-            Ok(Box::new(YandexDiskProvider::new(
-                tokens.access_token.clone(),
-                None,
-            )))
-        }
-        "fourshared" => {
-            use ftp_client_gui_lib::providers::{
-                fourshared::FourSharedProvider, types::FourSharedConfig,
-            };
-
-            // Read consumer key/secret - try individual keys first (GUI format), then legacy JSON
-            let (ck, cs) = {
-                let (k, s) = load_oauth_client_config(store, "fourshared");
-                if !k.is_empty() {
-                    (k, s)
-                } else {
-                    let json = store
-                        .get("fourshared_oauth_settings")
-                        .map_err(|e| format!("No 4shared OAuth settings in vault: {}", e))?;
-                    #[derive(serde::Deserialize)]
-                    struct Fs {
-                        consumer_key: String,
-                        consumer_secret: String,
-                    }
-                    let fs: Fs = serde_json::from_str(&json)
-                        .map_err(|e| format!("Failed to parse 4shared settings: {}", e))?;
-                    (fs.consumer_key, fs.consumer_secret)
-                }
-            };
-            let (at, ats) = {
-                let data = ftp_client_gui_lib::bridge_commands::resolve_profile_oauth_token(
-                    store,
-                    "fourshared",
-                    profile_id,
-                )
-                .ok_or_else(|| {
-                    "No 4shared access tokens in vault. Authorize from GUI first.".to_string()
-                })?;
-                data.split_once(':')
-                    .map(|(t, s)| (t.to_string(), s.to_string()))
-                    .ok_or_else(|| "Invalid 4shared token format".to_string())?
-            };
-
-            let fs_config = FourSharedConfig {
-                consumer_key: ck,
-                consumer_secret: secrecy::SecretString::from(cs),
-                access_token: secrecy::SecretString::from(at),
-                access_token_secret: secrecy::SecretString::from(ats),
-            };
-
-            Ok(Box::new(FourSharedProvider::new(fs_config)))
-        }
-        other => Err(format!("Unknown OAuth protocol: {}", other)),
-    }
-}
-
-/// Try to create an OAuth provider directly from vault tokens (for --profile with OAuth providers)
-async fn try_create_oauth_provider(
-    protocol: &str,
-    profile_name: &str,
-    initial_path: &str,
-    store: &ftp_client_gui_lib::credential_store::CredentialStore,
-    quiet: bool,
-    provider_id: Option<&str>,
-    profile_id: &str,
-) -> Option<Result<(Box<dyn StorageProvider>, String), i32>> {
-    use ftp_client_gui_lib::providers::{
-        dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
-        types::BoxConfig, types::PCloudConfig, zoho_workdrive::ZohoWorkdriveConfig, BoxProvider,
-        DropboxProvider, GoogleDriveProvider, OAuth2Manager, OAuthProvider, OneDriveProvider,
-        PCloudProvider, ZohoWorkdriveProvider,
-    };
-
-    type OAuthCreateFn =
-        Box<dyn FnOnce(&CredentialStore) -> Result<Box<dyn StorageProvider>, String>>;
-    let (oauth_provider, create_fn): (OAuthProvider, OAuthCreateFn) = match protocol {
-        "googledrive" => {
-            let oauth_settings = load_oauth_client_config(store, "googledrive");
-            let pid = profile_id.to_string();
-            (
-                OAuthProvider::Google,
-                Box::new(move |_| {
-                    let config = GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
-                    Ok(
-                        Box::new(GoogleDriveProvider::new(config).with_profile_id(pid))
-                            as Box<dyn StorageProvider>,
-                    )
-                }),
-            )
-        }
-        "dropbox" => {
-            let oauth_settings = load_oauth_client_config(store, "dropbox");
-            let pid = profile_id.to_string();
-            (
-                OAuthProvider::Dropbox,
-                Box::new(move |_| {
-                    let config = DropboxConfig::new(&oauth_settings.0, &oauth_settings.1);
-                    Ok(Box::new(DropboxProvider::new(config).with_profile_id(pid))
-                        as Box<dyn StorageProvider>)
-                }),
-            )
-        }
-        "onedrive" => {
-            let oauth_settings = load_oauth_client_config(store, "onedrive");
-            let pid = profile_id.to_string();
-            (
-                OAuthProvider::OneDrive,
-                Box::new(move |_| {
-                    let config = OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
-                    Ok(Box::new(OneDriveProvider::new(config).with_profile_id(pid))
-                        as Box<dyn StorageProvider>)
-                }),
-            )
-        }
-        "box" => {
-            let oauth_settings = load_oauth_client_config(store, "box");
-            let pid = profile_id.to_string();
-            (
-                OAuthProvider::Box,
-                Box::new(move |_| {
-                    let config = BoxConfig {
-                        client_id: oauth_settings.0,
-                        client_secret: oauth_settings.1,
-                    };
-                    Ok(Box::new(BoxProvider::new(config).with_profile_id(pid))
-                        as Box<dyn StorageProvider>)
-                }),
-            )
-        }
-        "pcloud" => {
-            let oauth_settings = load_oauth_client_config(store, "pcloud");
-            let region = store
-                .get("oauth_pcloud_region")
-                .unwrap_or_else(|_| "us".to_string());
-            let pid = profile_id.to_string();
-            (
-                OAuthProvider::PCloud,
-                Box::new(move |_| {
-                    let config = PCloudConfig {
-                        client_id: oauth_settings.0,
-                        client_secret: oauth_settings.1,
-                        region,
-                    };
-                    Ok(Box::new(PCloudProvider::new(config).with_profile_id(pid))
-                        as Box<dyn StorageProvider>)
-                }),
-            )
-        }
-        "zohoworkdrive" => {
-            let oauth_settings = load_oauth_client_config(store, "zohoworkdrive");
-            let region = store
-                .get("oauth_zohoworkdrive_region")
-                .unwrap_or_else(|_| "us".to_string());
-            let pid = profile_id.to_string();
-            (
-                OAuthProvider::ZohoWorkdrive,
-                Box::new(move |_| {
-                    let config =
-                        ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region);
-                    Ok(
-                        Box::new(ZohoWorkdriveProvider::new(config).with_profile_id(pid))
-                            as Box<dyn StorageProvider>,
-                    )
-                }),
-            )
-        }
-        "yandexdisk" => {
-            // Yandex uses OAuth2 but creates provider with raw token
-            let pid = profile_id.to_string();
-            (
-                OAuthProvider::YandexDisk,
-                Box::new(move |_| {
-                    let manager = OAuth2Manager::new();
-                    let tokens = manager
-                        .load_tokens(OAuthProvider::YandexDisk, &pid)
-                        .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
-                    Ok(
-                        Box::new(ftp_client_gui_lib::providers::YandexDiskProvider::new(
-                            tokens.access_token.clone(),
-                            None,
-                        )) as Box<dyn StorageProvider>,
-                    )
-                }),
-            )
-        }
-        "fourshared" => {
-            // 4shared uses OAuth1 - handle separately from the OAuth2 flow
-            use ftp_client_gui_lib::providers::{
-                fourshared::FourSharedProvider, types::FourSharedConfig,
-            };
-
-            // Consumer key/secret are the app-level singletons
-            // `oauth_fourshared_client_id` / `_client_secret`, resolved through
-            // the shared helper so a legacy `config_oauth_clients` blob is
-            // honoured too; `fourshared_oauth_settings` is the older 4shared-only
-            // JSON shape and stays as the last fallback.
-            let fs_app = load_oauth_client_config(store, "fourshared");
-            let (consumer_key, consumer_secret) = if !fs_app.0.is_empty() {
-                fs_app
-            } else if let Ok(json) = store.get("fourshared_oauth_settings") {
-                #[derive(serde::Deserialize)]
-                struct FsSettings {
-                    consumer_key: String,
-                    consumer_secret: String,
-                }
-                match serde_json::from_str::<FsSettings>(&json) {
-                    Ok(s) => (s.consumer_key, s.consumer_secret),
-                    Err(_) => {
-                        eprintln!("Error: No 4shared OAuth settings found in vault. Configure consumer_key/consumer_secret in AeroFTP GUI first.");
-                        return Some(Err(6));
-                    }
-                }
-            } else {
-                eprintln!("Error: No 4shared OAuth settings found in vault. Configure consumer_key/consumer_secret in AeroFTP GUI first.");
-                return Some(Err(6));
-            };
-
-            // Tokens stored as "token:token_secret" under the per-profile key
-            // `oauth_fourshared_<id>`, legacy singleton `oauth_fourshared`.
-            let (access_token, access_secret) = if let Some(data) =
-                ftp_client_gui_lib::bridge_commands::resolve_profile_oauth_token(
-                    store,
-                    "fourshared",
-                    profile_id,
-                ) {
-                if let Some((t, s)) = data.split_once(':') {
-                    (t.to_string(), s.to_string())
-                } else {
-                    eprintln!("Error: Invalid 4shared token format in vault.");
-                    return Some(Err(6));
-                }
-            } else {
-                eprintln!("Error: No 4shared access tokens found in vault. Authorize 4shared from AeroFTP GUI first.");
-                return Some(Err(6));
-            };
-
-            let fs_config = FourSharedConfig {
-                consumer_key,
-                consumer_secret: secrecy::SecretString::from(consumer_secret),
-                access_token: secrecy::SecretString::from(access_token),
-                access_token_secret: secrecy::SecretString::from(access_secret),
-            };
-
-            let mut provider = FourSharedProvider::new(fs_config);
-            if let Err(e) = provider.connect().await {
-                eprintln!("Error: 4shared connection failed: {}", e);
-                return Some(Err(6));
-            }
-            let preset_suffix = provider_id
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(|p| format!(" [{}]", p))
-                .unwrap_or_default();
-            print_profile_banner_once(
-                profile_name,
-                format!("4SHARED via OAuth1{}", preset_suffix),
-                quiet,
-            );
-            return Some(Ok((
-                Box::new(provider) as Box<dyn StorageProvider>,
-                initial_path.to_string(),
-            )));
-        }
-        _ => return None,
-    };
-
-    // Check if tokens exist - if not, offer browser authorization.
-    // Tokens are stored under `oauth_<protocol>` in the same vault both the
-    // GUI and CLI read. A missing key here usually means the user has not
-    // authorized this provider yet from the GUI on this machine (issue #196).
-    let manager = OAuth2Manager::new();
-    let needs_auth = !manager.has_tokens(oauth_provider, profile_id);
-
-    if needs_auth {
-        let token_key = format!("oauth_{}", protocol);
-        if !std::io::stdin().is_terminal() {
-            eprintln!(
-                "Error: No OAuth tokens for profile '{}' (vault key '{}' not found). \
-                 Authorize {} from the AeroFTP GUI (Connect via this profile or open Settings > Cloud Providers), \
-                 then re-run this command.",
-                profile_name, token_key, protocol
-            );
-            return Some(Err(6));
-        }
-        eprintln!(
-            "No OAuth tokens found for profile '{}' (vault key '{}' not found). \
-             Starting browser authorization...",
-            profile_name, token_key
-        );
-        match cli_oauth_browser_auth(protocol, store, profile_id).await {
-            Ok(()) => eprintln!("Authorization successful!"),
-            Err(e) => {
-                eprintln!("Error: Authorization failed: {}", e);
-                return Some(Err(6));
-            }
-        }
-    }
-
-    // Create provider
-    let mut provider = match create_fn(store) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Error: Failed to create provider: {}", e);
-            return Some(Err(5));
-        }
-    };
-
-    // Surface the preset id (providerId) in the banner so a saved profile
-    // that took the OAuth path is immediately distinguishable from one
-    // that took the WebDAV / FTP preset path of the same vendor (e.g.
-    // `pcloud` OAuth vs `pcloud-webdav` preset). #196 follow-up.
-    let preset_suffix = provider_id
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|p| format!(" [{}]", p))
-        .unwrap_or_default();
-    print_profile_banner_once(
-        profile_name,
-        format!("{} via OAuth{}", protocol.to_uppercase(), preset_suffix),
-        quiet,
-    );
-
-    // Connect - if token expired, offer re-authorization. We always
-    // print the underlying error so the user can tell `invalid_grant`
-    // (genuine refresh expiry, re-auth is the right answer) from
-    // transient causes (rate limit, 5xx, network) where re-auth doesn't
-    // help. Investigated under issue #196 (Windows OAuth-rerun bug):
-    // the catch-all branch used to swallow Box / Google `400 invalid_grant`
-    // responses and just say "Token expired or invalid".
-    if let Err(e) = provider.connect().await {
-        if !std::io::stdin().is_terminal() {
-            eprintln!(
-                "Error: OAuth connection failed: {}. Run interactively to re-authorize.",
-                e
-            );
-            return Some(Err(6));
-        }
-        eprintln!("OAuth connect failed: {}", e);
-        eprintln!("Starting browser re-authorization (Ctrl+C to cancel if the cause above is not an expired/revoked token)...");
-        match cli_oauth_browser_auth(protocol, store, profile_id).await {
-            Ok(()) => {
-                eprintln!("Re-authorization successful! Reconnecting...");
-                // Recreate provider with fresh tokens
-                // We need to recreate since create_fn was consumed - rebuild inline
-                let mut retry_provider =
-                    match create_oauth_provider_by_protocol(protocol, store, profile_id) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            eprintln!("Error: Failed to recreate provider: {}", e);
-                            return Some(Err(5));
-                        }
-                    };
-                if let Err(e2) = retry_provider.connect().await {
-                    eprintln!("Error: Connection failed after re-authorization: {}", e2);
-                    return Some(Err(6));
-                }
-                return Some(Ok((retry_provider, initial_path.to_string())));
-            }
-            Err(e2) => {
-                eprintln!("Error: Re-authorization failed: {}", e2);
-                return Some(Err(6));
-            }
-        }
-    }
-
-    Some(Ok((provider, initial_path.to_string())))
-}
-
-/// Load OAuth client_id and client_secret from vault settings.
-///
-/// Thin wrapper over the shared resolver: this used to be a second copy of the
-/// same three-shape lookup, and the copy the `.aeroftp` export did NOT use, so
-/// export and connect could disagree about whether an app existed.
-fn load_oauth_client_config(store: &CredentialStore, provider: &str) -> (String, String) {
-    ftp_client_gui_lib::bridge_commands::resolve_oauth_client_config(store, provider)
 }
 
 use ftp_client_gui_lib::credential_store::CredentialStore;
@@ -30327,32 +29853,36 @@ async fn create_and_connect_with(
                             };
                             return Ok((provider, path, metadata));
                         }
-                        let name = profile
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unnamed");
                         let initial_path = profile
                             .get("initialPath")
                             .and_then(|v| v.as_str())
                             .unwrap_or("/");
-                        let provider_id = profile.get("providerId").and_then(|v| v.as_str());
                         // Per-profile OAuth vault key (issue #214): when the
                         // saved server carries an id we scope the token to
                         // that profile, otherwise fall back to the legacy
                         // singleton key by passing an empty string.
-                        let profile_id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                        if let Some(result) = try_create_oauth_provider(
-                            protocol,
-                            name,
-                            initial_path,
-                            &store,
-                            cli.quiet,
-                            provider_id,
-                            profile_id,
+                        let scope = ftp_client_gui_lib::profile_auth::AuthScope {
+                            store: &store,
+                            user_id: scoped_credential_user_id(cli, &store),
+                        };
+                        let authenticated = ftp_client_gui_lib::profile_auth::provider_for_profile(
+                            &scope, &profile,
                         )
                         .await
-                        {
-                            let (mut p, path) = result?;
+                        .map_err(|error| {
+                            print_error(format, &error, 6);
+                            6
+                        })?;
+                        if let Some(mut p) = authenticated {
+                            p.connect().await.map_err(|error| {
+                                print_error(
+                                    format,
+                                    &format!("{}; authorize with profile-auth", error),
+                                    6,
+                                );
+                                6
+                            })?;
+                            let path = initial_path.to_string();
                             // KE-B3 / KE-B2: OAuth path returns an already-connected
                             // provider. Apply OneDrive and Drive runtime knobs
                             // after the connect so the setters take effect on
@@ -74507,6 +74037,51 @@ async fn main() {
             *skip_delta_eligibility_prompt,
             filen_api_key.as_deref(),
         ),
+        Commands::ProfileAuth {
+            selector,
+            request_json_file,
+        } => async {
+            let store = open_vault(&cli).map_err(|error| {
+                print_error(format, &error, 5);
+                5
+            })?;
+            let profiles = load_active_user_profiles(&cli, &store).map_err(|error| {
+                print_error(format, &error, 5);
+                5
+            })?;
+            let profile = match match_profile_by_query(&profiles, selector) {
+                ProfileMatch::One(profile) => profile,
+                _ => {
+                    print_error(format, "Profile must match exactly one saved server", 5);
+                    return Err(5);
+                }
+            };
+            let raw = std::fs::read_to_string(request_json_file).map_err(|error| {
+                print_error(format, &format!("Cannot read auth request: {error}"), 5);
+                5
+            })?;
+            let request: serde_json::Value = serde_json::from_str(&raw).map_err(|_| {
+                print_error(format, "Auth request must be a JSON object", 5);
+                5
+            })?;
+            let scope = ftp_client_gui_lib::profile_auth::AuthScope {
+                store: &store,
+                user_id: scoped_credential_user_id(&cli, &store),
+            };
+            let result = ftp_client_gui_lib::profile_auth::execute(&scope, profile, &request)
+                .await
+                .map_err(|error| {
+                    print_error(format, &error, 6);
+                    6
+                })?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&result).unwrap_or_default()
+            );
+            Ok::<i32, i32>(0)
+        }
+        .await
+        .unwrap_or_else(|code| code),
         Commands::ProfileDuplicate {
             selector,
             name,
@@ -83869,7 +83444,19 @@ mod tests {
 
     #[test]
     fn test_read_credential_source_credential_json_valid() {
-        let json = r#"{"apiKey":"abc123"}"#;
+        let unsupported = r#"{"apiKey":"abc123"}"#;
+        assert_eq!(
+            read_credential_source(
+                OutputFormat::Text,
+                None,
+                None,
+                false,
+                Some(unsupported),
+                None
+            ),
+            Err(5)
+        );
+        let json = r#"{"api_key":"abc123"}"#;
         let got = read_credential_source(OutputFormat::Text, None, None, false, Some(json), None);
         assert_eq!(got, Ok(Some(json.to_string())));
     }
@@ -83892,7 +83479,19 @@ mod tests {
     fn test_read_credential_source_credential_json_file_valid() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("cred.json");
-        let body = r#"{"token":"t-42"}"#;
+        std::fs::write(&path, r#"{"token":"t-42"}"#).unwrap();
+        assert_eq!(
+            read_credential_source(
+                OutputFormat::Text,
+                None,
+                None,
+                false,
+                None,
+                Some(path.to_str().unwrap())
+            ),
+            Err(5)
+        );
+        let body = r#"{"access_token":"t-42"}"#;
         std::fs::write(&path, body).unwrap();
         let got = read_credential_source(
             OutputFormat::Text,

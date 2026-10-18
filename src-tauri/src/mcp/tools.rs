@@ -84,6 +84,23 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
             category: RateCategory::ReadOnly,
         },
         McpToolDef {
+            name: "aeroftp_profile_auth",
+            description: "Authorize a saved profile headlessly. Configure client_id/client_secret/region (GitHub: mode, app_id, installation_id, pem), begin for the public authorization URL or device user code, then finish with callback_url or code+state (4shared: oauth_token+verifier). Also supports status and cancel. Tokens, PEMs, PKCE and request-token secrets remain in the encrypted vault.",
+            input_schema: json!({"type":"object","properties":{
+                "server":{"type":"string"},
+                "request":{"type":"object","properties":{
+                    "action":{"type":"string","enum":["configure","begin","finish","status","cancel"]},
+                    "client_id":{"type":"string"},"client_secret":{"type":"string"},"region":{"type":"string"},
+                    "mode":{"type":"string","enum":["authorize","app","pat"]},
+                    "app_id":{"type":"string"},"installation_id":{"type":"string"},"pem":{"type":"string"},
+                    "redirect_port":{"type":"integer","minimum":1,"maximum":65535},
+                    "callback_url":{"type":"string"},"code":{"type":"string"},"state":{"type":"string"},
+                    "oauth_token":{"type":"string"},"verifier":{"type":"string"}
+                },"required":["action"]}
+            },"required":["server","request"]}),
+            category: RateCategory::Mutative,
+        },
+        McpToolDef {
             name: "aeroftp_close_connection",
             description: "Close a pooled server connection explicitly...",
             input_schema: json!({ "type": "object", "properties": {
@@ -1078,6 +1095,34 @@ pub async fn execute_tool(
             {
                 Ok(v) => finish(tool_name, Some(&profile), None, ok(v), start),
                 Err(e) => finish(tool_name, Some(&profile), None, err(e), start),
+            }
+        }
+        "aeroftp_profile_auth" => {
+            let server = match get_str(args, "server") {
+                Ok(value) => value,
+                Err(error) => return finish(tool_name, None, None, err(error), start),
+            };
+            let result = async {
+                security::validate_server_query(&server)?;
+                let store = crate::credential_store::CredentialStore::from_cache()
+                    .ok_or("Vault is not open")?;
+                let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
+                let profile = crate::mcp::pool::find_unique_profile(&profiles, &server)?;
+                let user_id =
+                    crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+                let scope = crate::profile_auth::AuthScope {
+                    store: &store,
+                    user_id,
+                };
+                let request = args.get("request").ok_or("Auth request is required")?;
+                let result = crate::profile_auth::execute(&scope, profile, request).await?;
+                pool.invalidate(&server).await;
+                Ok::<Value, String>(result)
+            }
+            .await;
+            match result {
+                Ok(value) => finish(tool_name, Some(&server), None, ok(value), start),
+                Err(error) => finish(tool_name, Some(&server), None, err(error), start),
             }
         }
         "aeroftp_close_connection" => {
