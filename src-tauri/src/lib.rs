@@ -18933,6 +18933,10 @@ pub fn run() {
                 // node key, about two per uploaded file: harmless, and noise
                 // in the DebugPanel. Its DEBUG output dumps key material.
                 .level_for("pgp", log::LevelFilter::Error)
+                // zbus logs its D-Bus handshake and object-server spans at
+                // INFO (`write_command; command=Auth(...)`, raw Hello bytes),
+                // a dozen lines on every start; its warnings and errors stay.
+                .filter(|metadata| gui_log_admits(metadata.target(), metadata.level()))
                 // Stdout, the log file and the Webview fan-out (the `log://log`
                 // event consumed by the in-app DebugPanel). The file target is
                 // an explicit folder rather than the default `LogDir`, which
@@ -21043,6 +21047,54 @@ pub fn run() {
         ])
         .run(tauri::tauri_build_context!())
         .expect("error while running tauri application");
+}
+
+/// Dependency targets the GUI log keeps only from WARN up: what they write at
+/// INFO is protocol chatter. `tracing::span` is where `tracing`'s log support
+/// writes span creation for crates such as zbus.
+const GUI_LOG_WARN_ONLY_TARGETS: &[&str] = &["zbus", "tracing::span"];
+
+/// Whether a record reaches the GUI log sinks (stdout, file, DebugPanel), on
+/// top of the per-crate levels: a listed target and its submodules (`zbus`,
+/// `zbus::connection::handshake::common`, not `zbus_names`) pass from WARN up.
+fn gui_log_admits(target: &str, level: log::Level) -> bool {
+    let quiet = GUI_LOG_WARN_ONLY_TARGETS.iter().any(|quiet| {
+        target
+            .strip_prefix(quiet)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
+    });
+    !quiet || level <= log::Level::Warn
+}
+
+#[cfg(test)]
+mod gui_log_filter_tests {
+    use super::gui_log_admits;
+    use log::Level;
+
+    #[test]
+    fn zbus_chatter_stays_out_and_its_warnings_and_our_lines_stay_in() {
+        // The targets of the lines a 4.2.3 start wrote at INFO.
+        for target in [
+            "zbus",
+            "zbus::connection",
+            "zbus::connection::handshake::common",
+            "tracing::span",
+        ] {
+            assert!(!gui_log_admits(target, Level::Info), "{target}");
+            assert!(gui_log_admits(target, Level::Warn), "{target}");
+            assert!(gui_log_admits(target, Level::Error), "{target}");
+        }
+        for target in [
+            "ftp_client_gui_lib::linux_egl",
+            "aeroftp",
+            "zbus_names",
+            "zbusx",
+            "tracing::spanner",
+        ] {
+            assert!(gui_log_admits(target, Level::Info), "{target}");
+            assert!(gui_log_admits(target, Level::Trace), "{target}");
+        }
+    }
 }
 
 // ─── Tracing -> log bridge ────────────────────────────────────────────────

@@ -1794,7 +1794,14 @@ impl CredentialStore {
             .lock()
             .map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
         let mut vault = Self::read_vault(&self.vault_path)?;
-        vault.entries.remove(account);
+        // Deleting a name with nothing stored under it succeeds as before, but
+        // leaves the vault file alone and claims no deletion: the GUI consumes
+        // the legacy `config_server_groups`/`config_favorite_servers` blobs on
+        // every start, which rewrote the vault and logged four deletions.
+        if vault.entries.remove(account).is_none() {
+            tracing::debug!("Credential delete: nothing stored under {}", account);
+            return Ok(());
+        }
         Self::write_vault(&self.vault_path, &vault)?;
         info!("Credential deleted: {}", account);
         Ok(())
@@ -2037,6 +2044,33 @@ pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
 #[cfg(test)]
 mod tests {
     use super::{keyring_account_for, CredentialStore};
+
+    #[test]
+    fn deleting_an_absent_credential_succeeds_and_leaves_the_vault_file_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fixture-vault.json");
+        std::fs::write(
+            &path,
+            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
+        )
+        .unwrap();
+        let store = CredentialStore::from_verified_key(&path, &[24; 32]);
+        store
+            .store("kept_fixture", "ARTIFICIAL-TEST-VALUE")
+            .unwrap();
+        // Trailing blank lines parse fine but any rewrite drops them, so they
+        // show whether the file was written again.
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend_from_slice(b"\n\n");
+        std::fs::write(&path, &bytes).unwrap();
+
+        assert!(store.delete("absent_fixture").is_ok());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        assert!(store.delete("kept_fixture").is_ok());
+        assert_ne!(std::fs::read(&path).unwrap(), bytes);
+        assert!(store.get("kept_fixture").is_err());
+    }
 
     #[test]
     fn gui_config_transaction_preserves_concurrent_deltas_and_saved_secret() {
