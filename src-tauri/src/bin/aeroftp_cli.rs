@@ -3428,6 +3428,17 @@ enum Commands {
         /// Only valid for `--protocol filen`. Inline value is visible in `ps`.
         #[arg(long, value_name = "KEY")]
         filen_api_key: Option<String>,
+        /// Nonsecret connection options, merged over protocol and preset defaults.
+        /// Examples: {"bucket":"data","region":"eu-west-1"}, {"drive_id":"123"},
+        /// {"anonymous":true,"webdavScheme":"http"}. Secrets belong in the vault.
+        #[arg(long, value_name = "JSON", conflicts_with = "options_json_file")]
+        options_json: Option<String>,
+        /// Read nonsecret connection options from a JSON file.
+        #[arg(long, value_name = "PATH", conflicts_with = "options_json")]
+        options_json_file: Option<String>,
+        /// MEGA transport mode saved on the profile.
+        #[arg(long, value_parser = ["native", "megacmd"])]
+        mega_mode: Option<String>,
     },
     /// Duplicate a saved server profile inside the vault
     ///
@@ -24812,24 +24823,8 @@ fn run_self_subcommand(args: &[&str]) -> i32 {
     }
 }
 
-/// Canonicalize a friendly protocol alias to the form persisted in the vault.
-///
-/// Blomp is an OpenStack Swift deployment; the GUI registry preset stores it as
-/// protocol `swift` + providerId `blomp`. `profile-add --protocol blomp` is
-/// accepted as a friendly alias and normalized to the same canonical pair, so
-/// every downstream consumer keyed on `swift` (connect dispatch, capability
-/// matrix, feature lists) works without a scattered per-alias special case. An
-/// explicit `--provider-id` always wins.
-fn canonical_protocol_and_provider<'a>(
-    proto_lower: &'a str,
-    provider_id: Option<&'a str>,
-) -> (&'a str, Option<&'a str>) {
-    if proto_lower == "blomp" {
-        ("swift", provider_id.or(Some("blomp")))
-    } else {
-        (proto_lower, provider_id)
-    }
-}
+#[cfg(test)]
+use ftp_client_gui_lib::connection_manifest::canonical_protocol_and_provider;
 
 /// Create a brand-new profile entry from a set of CLI flags. Validates
 /// the protocol against the registry the GUI uses, applies the same
@@ -24859,6 +24854,9 @@ fn cmd_profile_add(
     favicon_url: Option<&str>,
     skip_delta_eligibility_prompt: bool,
     filen_api_key: Option<&str>,
+    options_json: Option<&str>,
+    options_json_file: Option<&str>,
+    mega_mode: Option<&str>,
 ) -> i32 {
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
@@ -24866,59 +24864,102 @@ fn cmd_profile_add(
         return 5;
     }
     let proto_lower = protocol.to_lowercase();
-    const KNOWN_PROTOCOLS: &[&str] = &[
-        "ftp",
-        "ftps",
-        "sftp",
-        "webdav",
-        "webdavs",
-        "s3",
-        "mega",
-        "dropbox",
-        "googledrive",
-        "onedrive",
-        "box",
-        "pcloud",
-        "zohoworkdrive",
-        "fourshared",
-        "filen",
-        "internxt",
-        "kdrive",
-        "koofr",
-        "drime",
-        "filelu",
-        "yandexdisk",
-        "opendrive",
-        "jottacloud",
-        "azure",
-        "b2",
-        "backblaze",
-        "imagekit",
-        "uploadcare",
-        "cloudinary",
-        "tabdigital",
-        "felicloud",
-        "github",
-        "gitlab",
-        "immich",
-        "pixelunion",
-        // Blomp = OpenStack Swift (40 GB free). Accepted as a friendly alias;
-        // normalized to protocol "swift" + providerId "blomp" below so every
-        // downstream consumer keyed on "swift" works unchanged.
-        "blomp",
-    ];
-    if !KNOWN_PROTOCOLS.contains(&proto_lower.as_str()) {
-        print_error(
-            format,
-            &format!(
-                "Unknown protocol '{}'. Supported: {}",
-                protocol,
-                KNOWN_PROTOCOLS.join(", ")
-            ),
-            5,
-        );
-        return 5;
+    let canonical = ftp_client_gui_lib::connection_manifest::connection_spec(protocol)
+        .map(|spec| spec.token.as_str())
+        .unwrap_or("");
+    for (present, allowed, flag) in [
+        (cli.container.is_some(), canonical == "azure", "--container"),
+        (
+            cli.bucket.is_some(),
+            matches!(canonical, "s3" | "azure" | "backblaze" | "cloudinary"),
+            "--bucket",
+        ),
+        (
+            cli.region.is_some(),
+            matches!(canonical, "s3" | "swift" | "pcloud"),
+            "--region",
+        ),
+        (
+            cli.tls.is_some(),
+            matches!(canonical, "ftp" | "ftps"),
+            "--tls",
+        ),
+        (cli.key.is_some(), canonical == "sftp", "--key"),
+        (mega_mode.is_some(), canonical == "mega", "--mega-mode"),
+    ] {
+        if present && !allowed {
+            print_error(format, &format!("{flag} does not apply to {protocol}"), 5);
+            return 5;
+        }
     }
+    let mut options = match (options_json, options_json_file) {
+        (Some(_), Some(_)) => {
+            print_error(format, "Choose --options-json or --options-json-file", 5);
+            return 5;
+        }
+        (inline, file) => {
+            let contents = match file {
+                Some(path) => match std::fs::read_to_string(path) {
+                    Ok(value) => Some(value),
+                    Err(error) => {
+                        print_error(
+                            format,
+                            &format!("Cannot read connection options: {error}"),
+                            5,
+                        );
+                        return 5;
+                    }
+                },
+                None => inline.map(str::to_owned),
+            };
+            match contents {
+                Some(value) => match serde_json::from_str::<serde_json::Value>(&value) {
+                    Ok(serde_json::Value::Object(value)) => value,
+                    _ => {
+                        print_error(format, "Connection options must be a JSON object", 5);
+                        return 5;
+                    }
+                },
+                None => serde_json::Map::new(),
+            }
+        }
+    };
+    if let Some(value) = &cli.bucket {
+        options.insert("bucket".into(), serde_json::json!(value));
+    }
+    if let Some(value) = &cli.container {
+        options.insert("container".into(), serde_json::json!(value));
+    }
+    if let Some(value) = &cli.region {
+        options.insert("region".into(), serde_json::json!(value));
+    }
+    if let Some(value) = &cli.tls {
+        options.insert("tlsMode".into(), serde_json::json!(value));
+    }
+    if cli.insecure {
+        options.insert("verifyCert".into(), serde_json::json!(false));
+    }
+    if let Some(value) = &cli.key {
+        options.insert("privateKeyPath".into(), serde_json::json!(value));
+    }
+    if let Some(value) = mega_mode {
+        options.insert("mega_mode".into(), serde_json::json!(value));
+    }
+    let resolved = match ftp_client_gui_lib::connection_manifest::resolve_profile(
+        protocol,
+        provider_id,
+        host,
+        port,
+        username,
+        initial_path,
+        &serde_json::Value::Object(options),
+    ) {
+        Ok(profile) => profile,
+        Err(error) => {
+            print_error(format, &error, 5);
+            return 5;
+        }
+    };
     // Issue #230: the Filen CLI API key is a Filen-only credential. Reject it on
     // any other protocol so a mistyped profile does not silently carry a dead
     // vault entry.
@@ -24961,12 +25002,7 @@ fn cmd_profile_add(
         Ok(v) => v,
         Err(code) => return code,
     };
-    let resolved_port = port.unwrap_or(match proto_lower.as_str() {
-        "ftp" | "ftps" => 21,
-        "sftp" => 22,
-        "webdav" | "webdavs" => 443,
-        _ => 0,
-    });
+    let resolved_port = resolved["port"].as_u64().unwrap_or(443) as u16;
     let store = match open_vault(cli) {
         Ok(s) => s,
         Err(e) => {
@@ -24974,21 +25010,17 @@ fn cmd_profile_add(
             return 5;
         }
     };
-    let resolved_initial_path = initial_path.unwrap_or("/");
-    // Blomp is an OpenStack Swift deployment. Persist it in the canonical form
-    // the GUI registry uses (protocol "swift" + providerId "blomp") so the
-    // connect dispatch, capability matrix and feature lists — all keyed on
-    // "swift" — apply without a per-alias special case.
-    let (stored_protocol, resolved_provider_id) =
-        canonical_protocol_and_provider(&proto_lower, provider_id);
+    let resolved_initial_path = resolved["initialPath"].as_str().unwrap_or("/");
+    let stored_protocol = resolved["protocol"].as_str().unwrap_or(protocol);
+    let resolved_provider_id = resolved.get("providerId").and_then(|value| value.as_str());
     let (new_id, stored_name) = match persist_new_profile_entry(
         cli,
         &store,
         trimmed_name,
         stored_protocol,
-        host,
+        resolved["host"].as_str(),
         resolved_port,
-        username,
+        resolved["username"].as_str(),
         resolved_initial_path,
         local_initial_path,
         color,
@@ -24999,6 +25031,7 @@ fn cmd_profile_add(
         favicon_url,
         skip_delta_eligibility_prompt,
         filen_api_key.is_some(),
+        resolved.get("options"),
     ) {
         Ok(created) => created,
         Err(e) => {
@@ -25061,7 +25094,10 @@ fn cmd_profile_add(
             let out = serde_json::json!({
                 "id": new_id,
                 "name": stored_name,
-                "protocol": proto_lower,
+                "protocol": stored_protocol,
+                "providerId": resolved_provider_id,
+                "host": resolved["host"],
+                "options": resolved["options"],
                 "port": resolved_port,
                 "credential_seeded": seeded_credential,
                 "filen_api_key_seeded": seeded_filen_api_key,
@@ -25072,7 +25108,7 @@ fn cmd_profile_add(
             println!(
                 "Created profile '{}' ({}, port {}) with id={}{}",
                 stored_name,
-                proto_lower,
+                stored_protocol,
                 resolved_port,
                 new_id,
                 if seeded_credential {
@@ -25114,6 +25150,7 @@ fn persist_new_profile_entry(
     favicon_url: Option<&str>,
     skip_delta_eligibility_prompt: bool,
     has_filen_api_key: bool,
+    profile_options: Option<&serde_json::Value>,
 ) -> Result<(String, String), String> {
     let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, store) {
         Ok(p) => p,
@@ -25179,9 +25216,14 @@ fn persist_new_profile_entry(
             serde_json::Value::String(pid.to_string()),
         );
     }
+    let mut options = profile_options
+        .and_then(|value| value.as_object())
+        .cloned()
+        .unwrap_or_default();
     if let Some(mtb) = manual_total_bytes {
-        let mut options = serde_json::Map::new();
         options.insert("manualTotalBytes".into(), serde_json::json!(mtb));
+    }
+    if !options.is_empty() {
         entry.insert("options".into(), serde_json::Value::Object(options));
     }
     // Top-level ServerProfile fields (outside `options`) that the GUI Edit modal
@@ -25237,12 +25279,8 @@ fn protocol_needs_network_fields(protocol: &str) -> bool {
 
 /// The default port shown in the New(N) prompt for a network protocol.
 fn default_port_for_protocol(protocol: &str) -> u16 {
-    match protocol {
-        "ftp" | "ftps" => 21,
-        "sftp" => 22,
-        "webdav" | "webdavs" => 443,
-        _ => 0,
-    }
+    ftp_client_gui_lib::connection_manifest::connection_spec(protocol)
+        .map_or(0, |spec| spec.default_port)
 }
 
 /// One catalog connection method flattened with its company context, the unit the
@@ -25692,6 +25730,7 @@ fn interactive_new_profile(
         None,
         false,
         false,
+        None,
     )?;
     eprintln!(
         "{}",
@@ -27777,15 +27816,9 @@ async fn create_and_connect_for_agent(
     }
 
     // Build provider config
-    let provider_type = match protocol.to_uppercase().as_str() {
-        "FTP" => ftp_client_gui_lib::providers::ProviderType::Ftp,
-        "FTPS" => ftp_client_gui_lib::providers::ProviderType::Ftps,
-        "SFTP" => ftp_client_gui_lib::providers::ProviderType::Sftp,
-        "WEBDAV" | "WEBDAVS" => ftp_client_gui_lib::providers::ProviderType::WebDav,
-        "S3" => ftp_client_gui_lib::providers::ProviderType::S3,
-        "GITHUB" => ftp_client_gui_lib::providers::ProviderType::GitHub,
-        "GITLAB" => ftp_client_gui_lib::providers::ProviderType::GitLab,
-        other => return Err(format!("Protocol '{}' on server '{}' is not supported for agent server_exec. Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab, MTP.", other, profile_name)),
+    let provider_type = match ProviderType::from_lowercase(protocol) {
+        Some(kind) if matches!(kind, ProviderType::Ftp | ProviderType::Ftps | ProviderType::Sftp | ProviderType::WebDav | ProviderType::S3 | ProviderType::GitHub | ProviderType::GitLab) => kind,
+        _ => return Err(format!("Protocol '{}' on server '{}' is not supported for agent server_exec. Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab, MTP.", protocol.to_uppercase(), profile_name)),
     };
 
     // AGENT-03: apply provider-specific options (S3 bucket/region/endpoint, Azure
@@ -29172,69 +29205,29 @@ fn profile_value_to_provider_config(
         &mut cred_pass,
     );
 
-    let provider_type = match protocol {
-        "ftp" => ProviderType::Ftp,
-        "ftps" => ProviderType::Ftps,
-        "sftp" => ProviderType::Sftp,
-        "webdav" => ProviderType::WebDav,
-        "s3" => ProviderType::S3,
-        "mega" => ProviderType::Mega,
-        "proton" | "protondrive" => ProviderType::Proton,
-        "azure" => ProviderType::Azure,
-        "filen" => ProviderType::Filen,
-        "internxt" => ProviderType::Internxt,
-        "jottacloud" => ProviderType::Jottacloud,
-        "filelu" => ProviderType::FileLu,
-        "koofr" => ProviderType::Koofr,
-        "opendrive" => ProviderType::OpenDrive,
-        "kdrive" => ProviderType::KDrive,
-        "github" => ProviderType::GitHub,
-        "gitlab" => ProviderType::GitLab,
-        // Blomp is an OpenStack Swift deployment. New profiles persist the
-        // canonical form (protocol "swift" + providerId "blomp"; see
-        // canonical_protocol_and_provider), so the "blomp" arm here is only
-        // legacy-profile compatibility for entries created before that
-        // normalization. Both route to the Swift provider.
-        "swift" | "blomp" => ProviderType::Swift,
-        "yandexdisk" => ProviderType::YandexDisk,
-        "googledrive" => ProviderType::GoogleDrive,
-        "dropbox" => ProviderType::Dropbox,
-        "onedrive" => ProviderType::OneDrive,
-        "box" => ProviderType::Box,
-        "pcloud" => ProviderType::PCloud,
-        "zohoworkdrive" => ProviderType::ZohoWorkdrive,
-        "fourshared" => ProviderType::FourShared,
-        "drime" => ProviderType::DrimeCloud,
-        "immich" => ProviderType::Immich,
-        "twake" | "twakedrive" => ProviderType::Twake,
-        "imagekit" | "image_kit" => ProviderType::ImageKit,
-        "uploadcare" | "upload_care" => ProviderType::Uploadcare,
-        "cloudinary" => ProviderType::Cloudinary,
-        "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
-        // MTP is fingerprint → open_device (connect_mtp_device_profile), not factory.
-        "mtp" => {
-            print_error(
-                format,
-                "MTP device profiles open via fingerprint match (aeroftp-cli --profile \"…\"), not ProviderFactory host connect. Use create_and_connect / --profile path.",
-                7,
-            );
-            return Err(7);
+    let provider_type = match ProviderType::from_lowercase(protocol) {
+        Some(kind)
+            if !matches!(
+                kind,
+                ProviderType::Mtp | ProviderType::AeroVaultMount | ProviderType::Peer
+            ) =>
+        {
+            kind
         }
         _ => {
             print_error(
                 format,
-                &format!("Unsupported protocol in profile: {}", protocol),
+                &format!("Unsupported or managed protocol in profile: {protocol}"),
                 7,
             );
             return Err(7);
         }
     };
 
-    // Build extra from profile options and CLI overrides
-    let mut extra = HashMap::new();
-
-    // Load provider-specific options from profile
-    apply_profile_options(&mut extra, profile);
+    // Shared saved-profile defaults, option normalization, and alias handling.
+    let (mut extra, resolved_host) =
+        ftp_client_gui_lib::profile_loader::profile_connection_extra(profile, provider_type, &host);
+    host = resolved_host;
     // Bind Jottacloud to its per-profile refresh chain, the key the GUI
     // writes. Unbound, the CLI rotated the legacy singleton while the GUI
     // rotated `jottacloud_refresh_<id>`: two live chains on one station,
@@ -74232,6 +74225,9 @@ async fn main() {
             favicon_url,
             skip_delta_eligibility_prompt,
             filen_api_key,
+            options_json,
+            options_json_file,
+            mega_mode,
         } => cmd_profile_add(
             &cli,
             format,
@@ -74253,6 +74249,9 @@ async fn main() {
             favicon_url.as_deref(),
             *skip_delta_eligibility_prompt,
             filen_api_key.as_deref(),
+            options_json.as_deref(),
+            options_json_file.as_deref(),
+            mega_mode.as_deref(),
         ),
         Commands::ProfileDuplicate {
             selector,
@@ -77087,12 +77086,12 @@ mod tests {
 
         // Default ports mirror cmd_profile_add's resolution.
         assert_eq!(default_port_for_protocol("ftp"), 21);
-        assert_eq!(default_port_for_protocol("ftps"), 21);
+        assert_eq!(default_port_for_protocol("ftps"), 990);
         assert_eq!(default_port_for_protocol("sftp"), 22);
         assert_eq!(default_port_for_protocol("webdav"), 443);
         assert_eq!(default_port_for_protocol("webdavs"), 443);
-        assert_eq!(default_port_for_protocol("s3"), 0);
-        assert_eq!(default_port_for_protocol("mega"), 0);
+        assert_eq!(default_port_for_protocol("s3"), 443);
+        assert_eq!(default_port_for_protocol("mega"), 443);
     }
 
     #[test]

@@ -11,7 +11,8 @@
  * Add new providers here as they are tested and validated.
  */
 
-import { ProviderConfig, ProviderCategory, BaseProtocol, ProviderRegistry } from './types';
+import type { ProviderConfig, ProviderCategory, BaseProtocol, ProviderRegistry } from './types';
+import { getConnectionPreset } from './connectionManifest';
 
 // ============================================================================
 // Cloudflare R2 jurisdictions
@@ -325,10 +326,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'credentials',
             },
         ],
-        defaults: {
-            server: 'api.uploadcare.com',
-            port: 443,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -376,10 +373,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'credentials',
             },
         ],
-        defaults: {
-            server: 'api.cloudinary.com',
-            port: 443,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -418,10 +411,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'credentials',
             },
         ],
-        defaults: {
-            server: 'api.imagekit.io',
-            port: 443,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -514,9 +503,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: false,
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -559,10 +545,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Exact bucket name (case-sensitive)',
             },
         ],
-        defaults: {
-            // Native API discovers apiUrl/downloadUrl during b2_authorize_account.
-            // No endpoint field needed.
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -608,10 +590,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'auto',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -664,10 +642,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: false,
-            endpointTemplate: 's3.{region}.megas4.com',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -709,11 +683,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'auto',
-            endpointTemplate: '{accountId}{jurisdiction}.r2.cloudflarestorage.com',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -756,11 +725,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'auto',
-            endpointTemplate: 'https://storage.googleapis.com',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -783,11 +747,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.secretAccessKey, label: 'Secret Key', helpText: 'Console → Access Keys → Secret Key' },
             { ...COMMON_FIELDS.bucket, placeholder: 'my-filebase-bucket', helpText: 'Console → Buckets → Bucket name' },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'auto',
-            endpoint: 'https://s3.filebase.io',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -820,10 +779,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'auto',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -870,10 +825,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: false,
-            endpointTemplate: 'https://s3.{region}.wasabisys.com',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -934,11 +885,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: false,
-            region: 'eu-de',
-            endpointTemplate: 'https://s3.{region}.cloud-object-storage.appdomain.cloud',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -974,10 +920,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'global',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -1016,10 +958,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: false,
-            endpointTemplate: 'https://oss-{region}.aliyuncs.com',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -1062,10 +1000,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: false,
-            endpointTemplate: 'https://cos.{region}.myqcloud.com',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -1113,11 +1047,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'global',
-            endpoint: 's5lu.com',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -1140,11 +1069,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'Yandex Cloud Console → Service Accounts → Static Access Keys → Secret Key' },
             { ...COMMON_FIELDS.bucket, helpText: 'Yandex Cloud Console → Object Storage → Bucket name' },
         ],
-        defaults: {
-            pathStyle: false,
-            region: 'ru-central1',
-            endpoint: 'https://storage.yandexcloud.net',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -1182,10 +1106,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: false,
-            endpointTemplate: 'https://{region}.digitaloceanspaces.com',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -1217,10 +1137,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'us-east-1',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -1250,10 +1166,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Your MinIO server address (without https://)',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'us-east-1',
-        },
         features: {
             shareLink: true,
             sync: true,
@@ -1285,12 +1197,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Your Quotaless bucket name',
             },
         ],
-        defaults: {
-            pathStyle: true,
-            region: 'us-east-1',
-            endpoint: 'https://io.quotaless.cloud:8000',
-            basePath: '/personal-files',
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1328,15 +1234,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Filen Desktop serves every top-level folder of your Filen drive as an S3 bucket. Pick the folder to open. Files directly in the Filen root are not reachable over S3: use the native Filen connection or the Filen Desktop WebDAV bridge for those.',
             },
         ],
-        defaults: {
-            port: 1800,
-            endpoint: 'https://local.s3.filen.io:1800',
-            region: 'filen',
-            pathStyle: true,
-            // Filen Desktop S3 in HTTPS uses a self-signed certificate
-            // (loopback). Disable cert verification by default for this preset.
-            verifyCert: false,
-        },
         features: { shareLink: false, sync: true },
         healthCheckUrl: 'https://local.s3.filen.io:1800',
         helpUrl: 'https://docs.filen.io/docs/desktop/network-drive',
@@ -1372,11 +1269,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'From S3Drive: same "Setup with Rclone" page, copy the secret_access_key value.' },
             { ...COMMON_FIELDS.bucket, placeholder: 'your-s3drive-bucket', helpText: 'The bucket created for your S3Drive account (visible in the S3Drive desktop app or in your generated rclone.conf).' },
         ],
-        defaults: {
-            endpoint: 'https://storage.kapsa.io',
-            region: 'us-east-1',
-            pathStyle: true,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1406,12 +1298,8 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#008BF6',
         stable: true,
         fields: [],
-        defaults: {},
-        features: {
-            shareLink: false,
-            sync: true,
-        },
         healthCheckUrl: 'https://webdav.4shared.com',
+        features: { shareLink: false, sync: true },
         helpUrl: 'https://www.4shared.com/developer/docs/index.jsp',
         signupUrl: 'https://www.4shared.com/reg0.jsp',
     },
@@ -1428,11 +1316,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
             { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular 4shared login password' },
         ],
-        defaults: {
-            server: 'https://webdav.4shared.com',
-            port: 443,
-            basePath: '/',
-        },
         features: { shareLink: false, sync: true },
         healthCheckUrl: 'https://webdav.4shared.com',
         helpUrl: 'https://www.4shared.com/developer/docs/index.jsp',
@@ -1455,10 +1338,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.username, placeholder: 'Your CloudMe username' },
             { ...COMMON_FIELDS.password },
         ],
-        defaults: {
-            server: 'https://webdav.cloudme.com/{username}',
-            port: 443,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1480,10 +1359,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.username, placeholder: 'Your DriveHQ username' },
             { ...COMMON_FIELDS.password },
         ],
-        defaults: {
-            server: 'https://webdav.drivehq.com',
-            port: 443,
-        },
         features: {
             shareLink: false, // DriveHQ has separate API for sharing
             sync: true,
@@ -1509,11 +1384,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Account Settings, Security, Passwords for external applications (not your mailbox password)',
             },
         ],
-        defaults: {
-            server: 'https://webdav.cloud.mail.ru',
-            port: 443,
-            basePath: '/',
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1546,16 +1416,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Koofr → Preferences → Password → App Passwords (not your login password)',
             },
         ],
-        defaults: {
-            // The server URL already contains `/dav/Koofr` in its path; the
-            // remote base path must therefore be `/` so the joined request
-            // URL stays `https://app.koofr.net/dav/Koofr/...` instead of
-            // doubling up to `https://app.koofr.net/dav/Koofr/dav/Koofr/...`,
-            // which Koofr rejects with "Invalid credentials". Issue #126.
-            server: 'https://app.koofr.net/dav/Koofr',
-            port: 443,
-            basePath: '/',
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1575,13 +1435,6 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#D9272E',
         stable: true,
         fields: [],
-        defaults: {
-            server: 'http://127.0.0.1:4443/',
-            port: 4443,
-            basePath: '/',
-            anonymous: true,
-            webdavScheme: 'http',
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1619,12 +1472,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Set in Filen Desktop > Network Drive > WebDAV. Maximum 32 characters; . , : ; " \' \\ / | _ - are rejected. Not your Filen account password. Leave empty to try "admin".',
             },
         ],
-        defaults: {
-            server: 'local.webdav.filen.io',
-            port: 1900,
-            basePath: '/',
-            webdavScheme: 'http',
-        },
         features: { shareLink: false, sync: true },
         healthCheckUrl: 'http://local.webdav.filen.io:1900',
         helpUrl: 'https://docs.filen.io/docs/desktop/network-drive',
@@ -1652,11 +1499,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
             { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular OpenDrive login password' },
         ],
-        defaults: {
-            server: 'https://webdav.opendrive.com',
-            port: 443,
-            basePath: '/',
-        },
         features: { shareLink: false, sync: true },
         healthCheckUrl: 'https://webdav.opendrive.com',
         helpUrl: 'https://www.opendrive.com/webdav',
@@ -1675,11 +1517,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
             { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular pCloud login password' },
         ],
-        defaults: {
-            server: 'https://webdav.pcloud.com',
-            port: 443,
-            basePath: '/',
-        },
         features: { shareLink: false, sync: true },
         healthCheckUrl: 'https://webdav.pcloud.com',
         helpUrl: 'https://help.pcloud.com/article/webdav',
@@ -1706,11 +1543,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'your@yandex.com' },
             { ...COMMON_FIELDS.password, label: 'App Password', helpText: 'Generate an app password at id.yandex.com (not your login password)' },
         ],
-        defaults: {
-            server: 'https://webdav.yandex.ru',
-            port: 443,
-            basePath: '/',
-        },
         features: { shareLink: false, sync: true },
         healthCheckUrl: 'https://webdav.yandex.ru',
         helpUrl: 'https://yandex.com/support/disk/',
@@ -1739,11 +1571,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Account Settings → Security Options → App Passwords (not your login password)',
             },
         ],
-        defaults: {
-            server: 'https://dav.jianguoyun.com/dav',
-            port: 443,
-            basePath: '/dav/',
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1780,10 +1607,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'My Page → Apps Connection → Generate Apps Password (not your login password)',
             },
         ],
-        defaults: {
-            port: 443,
-            basePath: '/dav/',
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1806,10 +1629,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.username, placeholder: 'Your Seafile email' },
             { ...COMMON_FIELDS.password },
         ],
-        defaults: {
-            server: 'https://plus.seafile.com/seafdav/',
-            port: 443,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1844,9 +1663,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'server' as const,
             },
         ],
-        defaults: {
-            port: 23,
-        },
         features: {
             sync: true,
         },
@@ -1874,11 +1690,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Password or use SSH key authentication',
             },
         ],
-        defaults: {
-            server: 'frs.sourceforge.net',
-            port: 22,
-            basePath: '/home/frs/project/',
-        },
         features: {
             sync: false,
         },
@@ -1914,10 +1725,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'credentials',
             },
         ],
-        defaults: {
-            server: 'https://webdav.filelu.com',
-            port: 443,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1939,10 +1746,6 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.username, placeholder: 'Your Quotaless username' },
             { ...COMMON_FIELDS.password },
         ],
-        defaults: {
-            server: 'https://io.quotaless.cloud:8080/webdav',
-            port: 8080,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -1975,9 +1778,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Use an App Token for better security'
             },
         ],
-        defaults: {
-            basePath: '/remote.php/dav/files/{username}/',
-        },
         endpoints: {
             webdavPath: '/remote.php/dav/files/{username}/',
             shareLink: '/ocs/v2.php/apps/files_sharing/api/v1/shares',
@@ -2019,24 +1819,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Use an App Token from Settings → Security → Devices for better security (required if 2FA is on).',
             },
         ],
-        defaults: {
-            // Default to the fie.nl region (EU continental). Users on other
-            // regional shards (DE, IT, SE, LV per the TAB.DIGITAL data-centre
-            // map) open Advanced and edit the subdomain once. The {username}
-            // template in `server` IS resolved at connect time by
-            // WebDavConfig::from_provider_config (Rust backend).
-            //
-            // basePath is intentionally omitted: confirmed empirically on
-            // fie.nl.tab.digital that PROPFIND /remote.php/dav/files/<u>/
-            // with Depth: 1 returns 404 in some Cloudflare-fronted edge
-            // configurations, while the WebDAV auto-detect during connect
-            // (which uses Depth: 0 on the same path) succeeds. Letting the
-            // auto-detect drive the initial listing avoids the discrepancy
-            // and is the path the connect screen takes when basePath is
-            // unset. See issue #175 + 32677df6.
-            server: 'https://fie.nl.tab.digital/remote.php/dav/files/{username}/',
-            port: 443,
-        },
         endpoints: {
             webdavPath: '/remote.php/dav/files/{username}/',
             shareLink: '/ocs/v2.php/apps/files_sharing/api/v1/shares',
@@ -2078,11 +1860,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Use an App Token from Settings → Security for better security',
             },
         ],
-        defaults: {
-            server: 'https://cloud.felicloud.com/remote.php/dav/files/{username}/',
-            port: 443,
-            basePath: '/remote.php/dav/files/{username}/',
-        },
         endpoints: {
             webdavPath: '/remote.php/dav/files/{username}/',
             shareLink: '/ocs/v2.php/apps/files_sharing/api/v1/shares',
@@ -2126,15 +1903,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'credentials',
             },
         ],
-        defaults: {
-            server: 'https://authenticate.blomp.com',
-            port: 443,
-            // Blomp's Keystone is HTTPS but its object store is cleartext on
-            // port 8080, which offers no TLS at all. That is this deployment,
-            // not a reason to disarm the downgrade guard for every Swift
-            // account, so the exception lives on the profile that needs it.
-            allowCleartextStorage: true,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -2180,10 +1948,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'advanced',
             }
         ],
-        defaults: {
-            save_session: true,
-            mega_mode: 'native',
-        },
         features: {
             shareLink: true, // Assuming MEGA supports it
             sync: true,
@@ -2218,11 +1982,7 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'credentials',
             },
         ],
-        defaults: {},
-        features: {
-            shareLink: true,
-            sync: true,
-        },
+        features: { shareLink: true, sync: true },
         healthCheckUrl: 'https://filelu.com/api/',
         helpUrl: 'https://filelu.com/pages/api',
         signupUrl: 'https://filelu.com/register/',
@@ -2256,10 +2016,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'credentials',
             },
         ],
-        defaults: {
-            server: 'ftp.filelu.com',
-            port: 21,
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -2297,11 +2053,6 @@ export const PROVIDERS: ProviderConfig[] = [
                 group: 'credentials',
             },
         ],
-        defaults: {
-            server: 'ftp.filelu.com',
-            port: 990,
-            tls_mode: 'implicit',
-        },
         features: {
             shareLink: false,
             sync: true,
@@ -2311,6 +2062,11 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://filelu.com/register/',
     },
 ];
+
+// Connection defaults have one owner shared with Rust; this registry owns presentation.
+for (const provider of PROVIDERS) {
+    provider.defaults = getConnectionPreset(provider.id)?.defaults;
+}
 
 // ============================================================================
 // Provider Registry Implementation
@@ -2401,6 +2157,7 @@ const MEGA_S4_LEGACY_ENDPOINT_TEMPLATE = 's3.{region}.s4.mega.io';
  */
 export const resolveS3Endpoint = (providerId: string | undefined, region?: string, extraParams?: Record<string, string>): string | null => {
     if (!providerId) return null;
+    providerId = getConnectionPreset(providerId)?.id ?? providerId;
     const provider = providerRegistry.getById(providerId);
     if (!provider) return null;
 
@@ -2454,12 +2211,8 @@ const isExplicitS3Host = (host?: string | null): boolean => {
  * preselects). Undefined for presets that need neither.
  */
 export const presetDefaultS3Region = (providerId?: string): string | undefined => {
-    const provider = providerId ? getProviderById(providerId) : undefined;
-    if (!provider) return undefined;
-    if (provider.defaults?.region) return provider.defaults.region;
-    if (!provider.defaults?.endpointTemplate) return undefined;
-    const field = provider.fields?.find(f => f.key === 'region');
-    return field?.type === 'select' ? field.options?.[0]?.value : undefined;
+    const preset = providerId ? getConnectionPreset(providerId) : undefined;
+    return preset?.defaults.region || (preset?.defaults.endpointTemplate ? preset.firstRegion ?? undefined : undefined);
 };
 
 /**
@@ -2507,6 +2260,7 @@ export const resolveProfileS3Location = (
     options: { endpoint?: unknown; region?: unknown; accountId?: unknown; jurisdiction?: unknown } | null | undefined,
     host?: string | null,
 ): { endpoint: string | null; region?: string; signingRegion: string } => {
+    providerId = providerId ? getConnectionPreset(providerId)?.id ?? providerId : undefined;
     const storedRegion = typeof options?.region === 'string' && options.region.trim() ? options.region.trim() : undefined;
     const storedEndpoint = typeof options?.endpoint === 'string' ? options.endpoint.trim() : '';
     const signing = (region?: string) => region || 'us-east-1';
