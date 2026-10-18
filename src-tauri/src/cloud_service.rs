@@ -2914,17 +2914,21 @@ mod baseline_tests {
             started.elapsed()
         );
 
-        // Left alone past the window: no wait.
+        // Left alone past the window: no wait. Tokio's clock is paused around
+        // this one call, so it moves only if the call sleeps, and a loaded
+        // runner cannot move it; the file's age is still read on the real
+        // clock.
         std::fs::write(&file, b"payload").unwrap();
         tokio::time::sleep(window + std::time::Duration::from_millis(50)).await;
-        let started = std::time::Instant::now();
-        CloudService::wait_until_quiet(
-            &file,
-            window,
-            tokio::time::Instant::now() + SEND_QUIET_BOUND,
-        )
-        .await;
-        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        tokio::time::pause();
+        let started = tokio::time::Instant::now();
+        CloudService::wait_until_quiet(&file, window, started + SEND_QUIET_BOUND).await;
+        assert_eq!(
+            tokio::time::Instant::now(),
+            started,
+            "a file left alone past the window is read without a wait"
+        );
+        tokio::time::resume();
 
         // Written without pause: the bound ends the wait.
         std::fs::write(&file, b"payload").unwrap();
