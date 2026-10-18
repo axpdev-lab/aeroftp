@@ -50,6 +50,25 @@ const PARTITION_TYPE: &str = "proton_native_session";
 /// How long a profile delete waits for the revoke before it gives up.
 const REVOKE_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// How long a refresh, a sign-in, a sign-out or a delete waits for a
+/// session's lease. Longer than a refresh can hold it (its request times out
+/// after 30 s) and than a lease left by a crashed holder lives (30 s): one
+/// not taken by then is held by something stuck, and a change of the key is
+/// refused rather than made without it.
+const EXCLUSIVE_WAIT: Duration = Duration::from_secs(45);
+
+/// Serializes, inside this process, every look-and-write of a session key:
+/// a refresh writes a key only if it still holds the session, and nothing
+/// may change it between that look and that write. Across processes the
+/// session's lease does the same. Held over synchronous code only.
+static SESSION_WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn session_writes() -> std::sync::MutexGuard<'static, ()> {
+    SESSION_WRITES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// The vault key of the session saved for `profile_id`, or the unbound key.
 pub fn session_key(profile_id: Option<&str>) -> String {
     match profile_id {
@@ -140,14 +159,43 @@ fn session_shared(uid: &str, others: impl IntoIterator<Item = ProtonSession>) ->
     others.into_iter().any(|other| other.tokens.uid == uid)
 }
 
-/// The refresh lease of the session saved under `key`, if there is one.
-/// A sign-in, a sign-out or a delete holds it while it changes the key: a
-/// refresh of that session writes every key that holds it (see
-/// [`share_with`]), and must not write over the change.
-async fn lease_of_saved(key: &str) -> Option<RefreshLease> {
-    let store = open_store().ok()?;
-    let uid = read(&store, key).ok().flatten()?.tokens.uid;
-    RefreshLease::acquire(&refresh_lease_slug(&uid)).await
+/// The lease of `slug`, waited for up to [`EXCLUSIVE_WAIT`].
+async fn acquire_exclusive(slug: &str) -> Option<RefreshLease> {
+    let started = std::time::Instant::now();
+    loop {
+        if let Some(lease) = RefreshLease::acquire(slug).await {
+            return Some(lease);
+        }
+        if started.elapsed() >= EXCLUSIVE_WAIT {
+            return None;
+        }
+    }
+}
+
+/// Whether a change of a key may go ahead: where the key holds no session
+/// there is nothing to collide with; where it does, only with that session's
+/// lease, since the refresh that holds it would write the old session back
+/// over the change.
+fn exclusive<L>(holds_a_session: bool, lease: Option<L>) -> Result<Option<L>, ProviderError> {
+    match (holds_a_session, lease) {
+        (false, _) => Ok(None),
+        (true, Some(lease)) => Ok(Some(lease)),
+        (true, None) => Err(ProviderError::Other(
+            "the Proton session is being refreshed elsewhere and did not let go; try again in a moment"
+                .into(),
+        )),
+    }
+}
+
+/// The refresh lease of the session saved under `key`, for a sign-in, a
+/// sign-out or a delete to hold while it changes the key (see [`exclusive`]).
+async fn lease_of_saved(key: &str) -> Result<Option<RefreshLease>, ProviderError> {
+    let store = open_store()?;
+    let Some(saved) = read(&store, key).ok().flatten() else {
+        return exclusive(false, None);
+    };
+    let lease = acquire_exclusive(&refresh_lease_slug(&saved.tokens.uid)).await;
+    exclusive(true, lease)
 }
 
 /// Moves the unbound session to `profile_id`, the profile that just connected
@@ -156,7 +204,8 @@ pub async fn bind_unbound_session(
     profile_id: &str,
     session: &ProtonSession,
 ) -> Result<(), ProviderError> {
-    let _lease = lease_of_saved(UNBOUND_SESSION_KEY).await;
+    let _lease = lease_of_saved(UNBOUND_SESSION_KEY).await?;
+    let _writes = session_writes();
     store_session(Some(profile_id), session)?;
     delete_session(None)
 }
@@ -167,8 +216,9 @@ pub async fn replace_session(
     profile_id: Option<&str>,
     session: &ProtonSession,
 ) -> Result<(), ProviderError> {
-    let _lease = lease_of_saved(&session_key(profile_id)).await;
+    let _lease = lease_of_saved(&session_key(profile_id)).await?;
     revoke_saved_session(profile_id).await;
+    let _writes = session_writes();
     store_session(profile_id, session)
 }
 
@@ -176,8 +226,9 @@ pub async fn replace_session(
 /// still uses it) and removes it from the vault: a sign-out, or a profile
 /// delete.
 pub async fn end_session(profile_id: Option<&str>) -> Result<(), ProviderError> {
-    let _lease = lease_of_saved(&session_key(profile_id)).await;
+    let _lease = lease_of_saved(&session_key(profile_id)).await?;
     revoke_saved_session(profile_id).await;
+    let _writes = session_writes();
     delete_session(profile_id)
 }
 
@@ -315,9 +366,9 @@ impl SessionKeys for VaultKeys {
 /// a sign-in, a sign-out or a delete of that profile since the look changed
 /// it, and writing the looked-at copy would bring the old session back over
 /// the new one. Those hold the session's lease while they change the key
-/// (see [`lease_of_saved`]), and the refresh holds it too, so the look again
-/// and the write are not split by one. `between` runs after the first look,
-/// for a test to change a key there.
+/// (see [`lease_of_saved`]), and the refresh holds it too; inside a process
+/// [`SESSION_WRITES`] keeps the look again and the write together. `between`
+/// runs after the first look, for a test to change a key there.
 fn share_with(
     keys: &dyn SessionKeys,
     own_key: &str,
@@ -331,6 +382,7 @@ fn share_with(
         .collect::<Vec<_>>();
     between();
     for (key, session) in copies_to_update(own_key, tokens, saved) {
+        let _writes = session_writes();
         let still_shared = keys
             .read(&key)
             .is_some_and(|now| now.tokens.uid == tokens.uid);
@@ -344,10 +396,38 @@ fn share_with(
     }
 }
 
-fn share_refreshed_tokens(own_key: &str, tokens: &SessionTokens) {
-    if let Ok(store) = open_store() {
-        share_with(&VaultKeys(store), own_key, tokens, || {});
+/// Saves refreshed `tokens` under `own_key`, the key the session `uid` was
+/// opened from, then in every other key that holds that session. The own key
+/// too is written only if it still holds that session: a sign-in or a
+/// sign-out made while the refresh was on its way changed it, and the old
+/// session written back would undo it.
+fn save_refreshed(
+    keys: &dyn SessionKeys,
+    own_key: &str,
+    uid: &str,
+    key_password: &secrecy::SecretString,
+    tokens: &SessionTokens,
+) {
+    {
+        let _writes = session_writes();
+        let still_ours = keys.read(own_key).is_some_and(|now| now.tokens.uid == uid);
+        if still_ours {
+            let session = ProtonSession {
+                tokens: tokens.clone(),
+                key_password: key_password.clone(),
+            };
+            if let Err(error) = keys.write(own_key, &session) {
+                // The session stays usable in this process; the next process
+                // to start will find the old pair and sign in again.
+                log::warn!("Proton: refreshed session not saved: {error}");
+            }
+        } else {
+            log::info!(
+                "Proton: the profile's session changed while it was refreshed; the refreshed tokens are not saved"
+            );
+        }
     }
+    share_with(keys, own_key, tokens, || {});
 }
 
 /// The [`SessionStore`] of one vault key: refreshes are serialized across
@@ -374,7 +454,7 @@ impl VaultSession {
 #[async_trait::async_trait]
 impl SessionStore for VaultSession {
     async fn lock(&self) -> Option<Box<dyn Send>> {
-        RefreshLease::acquire(&refresh_lease_slug(&self.uid))
+        acquire_exclusive(&refresh_lease_slug(&self.uid))
             .await
             .map(|lease| Box::new(lease) as Box<dyn Send>)
     }
@@ -390,16 +470,16 @@ impl SessionStore for VaultSession {
     }
 
     fn save(&self, tokens: &SessionTokens) {
-        let session = ProtonSession {
-            tokens: tokens.clone(),
-            key_password: self.key_password.clone(),
-        };
-        if let Err(error) = store_session(self.profile_id.as_deref(), &session) {
-            // The session stays usable in this process; the next process to
-            // start will find the old pair and sign in again.
-            log::warn!("Proton: refreshed session not saved: {error}");
+        match open_store() {
+            Ok(store) => save_refreshed(
+                &VaultKeys(store),
+                &session_key(self.profile_id.as_deref()),
+                &self.uid,
+                &self.key_password,
+                tokens,
+            ),
+            Err(error) => log::warn!("Proton: refreshed session not saved: {error}"),
         }
-        share_refreshed_tokens(&session_key(self.profile_id.as_deref()), tokens);
     }
 }
 
@@ -539,6 +619,61 @@ mod tests {
         share_with(&keys, &a, &refreshed("uid-1"), || {});
         assert_eq!(
             keys.read(&b).unwrap().tokens.access_token.expose_secret(),
+            "a2"
+        );
+    }
+
+    /// Codex on 764193046: a sign-in waited 10 s for the lease of a slow
+    /// refresh, went ahead without it, and the refresh then saved the old
+    /// session over it. A key that holds a session changes only under its
+    /// lease, and the refresh writes its own key back only if that key still
+    /// holds the session it refreshed.
+    #[test]
+    fn a_session_key_changes_only_under_its_lease() {
+        assert!(matches!(exclusive::<()>(false, None), Ok(None)));
+        assert!(matches!(exclusive(true, Some(())), Ok(Some(()))));
+        assert!(exclusive::<()>(true, None).is_err());
+    }
+
+    #[test]
+    fn a_refresh_does_not_save_over_a_sign_in_of_its_own_profile() {
+        let a = session_key(Some("srv_a"));
+        let keys = MapKeys(std::sync::Mutex::new(
+            [(a.clone(), session("uid-new"))].into_iter().collect(),
+        ));
+        save_refreshed(
+            &keys,
+            &a,
+            "uid-1",
+            &SecretString::from("k".to_string()),
+            &refreshed("uid-1"),
+        );
+        assert_eq!(keys.read(&a).unwrap().tokens.uid, "uid-new");
+
+        // Signed out meanwhile: the key is not brought back.
+        let keys = MapKeys(std::sync::Mutex::new(std::collections::HashMap::new()));
+        save_refreshed(
+            &keys,
+            &a,
+            "uid-1",
+            &SecretString::from("k".to_string()),
+            &refreshed("uid-1"),
+        );
+        assert!(keys.read(&a).is_none());
+
+        // Still its own session: saved.
+        let keys = MapKeys(std::sync::Mutex::new(
+            [(a.clone(), session("uid-1"))].into_iter().collect(),
+        ));
+        save_refreshed(
+            &keys,
+            &a,
+            "uid-1",
+            &SecretString::from("k".to_string()),
+            &refreshed("uid-1"),
+        );
+        assert_eq!(
+            keys.read(&a).unwrap().tokens.access_token.expose_secret(),
             "a2"
         );
     }
