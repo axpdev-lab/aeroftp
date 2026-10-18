@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "আপনার Zoho অ্যাকাউন্টের সাথে মিলে যায় এমন অঞ্চল নির্বাচন করুন (যেমন ইউরোপের জন্য zoho.eu)।",
                 "redirectUri": "রিডাইরেক্ট URI",
                 "redirectUriHelp": "এই URL কপি করুন এবং আপনার ডেভেলপার অ্যাপ সেটিংসে রিডাইরেক্ট URI হিসেবে পেস্ট করুন।",
-                "redirectUriNoteGoogle": "সুপারিশ: Google Cloud Console-এ একটি \"Desktop app\" OAuth Client ID তৈরি করুন (কোনো redirect URI প্রয়োজন নেই)। যদি \"Web application\" টাইপ ব্যবহার করেন, redirect URI হিসেবে http://127.0.0.1 সেট করুন।",
+                "redirectUriNoteGoogle": "পরামর্শ: Google Cloud Console-এ \"ডেস্কটপ অ্যাপ\" ধরনের একটি OAuth Client ID তৈরি করুন; কোনো রিডাইরেক্ট URI নিবন্ধন করতে হবে না। \"ওয়েব অ্যাপ্লিকেশন\" ধরনের ক্লায়েন্টের জন্য উপরে দেখানো রিডাইরেক্ট URI-টি হুবহু নিবন্ধন করুন, এর পোর্ট এবং /callback পাথসহ।",
                 "enablePhotosApi": "আপনার Google Cloud Console-এ Photos Library API সক্রিয় আছে কিনা নিশ্চিত করুন।",
                 "enableDriveApi": "আপনার Google Cloud Console-এ Google Drive API সক্রিয় আছে কিনা নিশ্চিত করুন।"
             },

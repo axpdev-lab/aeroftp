@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "选择与您的 Zoho 帐户匹配的区域（例如 zoho.eu 对应欧洲）。",
                 "redirectUri": "重定向 URI",
                 "redirectUriHelp": "复制此 URL 并将其粘贴为您的开发者应用设置中的重定向 URI。",
-                "redirectUriNoteGoogle": "建议：在 Google Cloud Console 中创建\"Desktop app\"类型的 OAuth Client ID（无需 redirect URI）。如果使用\"Web application\"类型，请将 redirect URI 设置为 http://127.0.0.1。",
+                "redirectUriNoteGoogle": "建议：在 Google Cloud Console 中创建“桌面应用”类型的 OAuth 客户端 ID，无需注册重定向 URI。如果使用“Web 应用”类型的客户端，请完整、准确地注册上方显示的重定向 URI，包括其端口和 /callback 路径。",
                 "enablePhotosApi": "确保在您的 Google Cloud Console 中启用了 Photos Library API。",
                 "enableDriveApi": "确保在您的 Google Cloud Console 中启用了 Google Drive API。"
             },
