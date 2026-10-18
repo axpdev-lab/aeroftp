@@ -374,6 +374,79 @@ fn is_transient(msg: &str) -> bool {
         || lower.contains("429")
 }
 
+/// proton-drive expands a local path holding `*`, `?`, `[` or `{` as a glob
+/// (`cli/src/commands/fileSystem/localPath.ts`), for the upload source and the
+/// download folder alike, so `a [1].txt` matched nothing ("No paths
+/// matched"). Each of those, and `(` (an extglob opener once the path is a
+/// glob), goes inside a one-character class, which matches it literally on
+/// every platform; a path without them is passed as it is. Remote paths are
+/// never globbed. On Unix a backslash in a name has no escape the CLI's glob
+/// accepts, so such a path is refused with the reason instead of failing on
+/// a pattern.
+fn literal_local_path_for_cli(path: &str) -> Result<String, ProviderError> {
+    if !path.contains(['*', '?', '[', '{']) {
+        return Ok(path.to_string());
+    }
+    #[cfg(not(windows))]
+    if path.contains('\\') {
+        return Err(ProviderError::InvalidPath(format!(
+            "{path}: proton-drive reads a local path holding * ? [ or {{ as a pattern, and a \
+             backslash in it cannot be escaped; rename the file or use the API mode"
+        )));
+    }
+    let mut literal = String::with_capacity(path.len() + 8);
+    for c in path.chars() {
+        if matches!(c, '*' | '?' | '[' | '{' | '(') {
+            literal.push('[');
+            literal.push(c);
+            literal.push(']');
+        } else {
+            literal.push(c);
+        }
+    }
+    Ok(literal)
+}
+
+/// The name proton-drive gives a downloaded file
+/// (`downloadPathValidation.ts::sanitizePathSegmentForLocalFilesystem`):
+/// control characters and `< > : " | ? * \ /` become `_` on every platform,
+/// `.` and `..` become `_` and `__`, and on Windows a reserved device name
+/// gets a leading `_` and trailing dots and spaces become `_`.
+fn cli_local_name(name: &str) -> String {
+    let mut segment: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_control()
+                || matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\\' | '/')
+            {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    match segment.as_str() {
+        "" | "." => return "_".to_string(),
+        ".." => return "__".to_string(),
+        _ => {}
+    }
+    if cfg!(windows) {
+        let stem = segment.split('.').next().unwrap_or("").to_ascii_uppercase();
+        let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+            || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+                && stem.len() == 4
+                && matches!(stem.as_bytes()[3], b'1'..=b'9'));
+        if reserved {
+            segment.insert(0, '_');
+        }
+        let kept = segment.trim_end_matches(['.', ' ']).len();
+        let trailing = segment.len() - kept;
+        segment.truncate(kept);
+        segment.push_str(&"_".repeat(trailing));
+    }
+    segment
+}
+
 fn normalize_local_path_for_cli(path: &str) -> String {
     #[cfg(windows)]
     {
@@ -1031,7 +1104,13 @@ impl StorageProvider for ProtonCliProvider {
         tokio::fs::create_dir_all(&temp_dir)
             .await
             .map_err(ProviderError::IoError)?;
-        let temp_dir_s = temp_dir.to_string_lossy().into_owned();
+        let temp_dir_s = match literal_local_path_for_cli(&temp_dir.to_string_lossy()) {
+            Ok(path) => path,
+            Err(error) => {
+                let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+                return Err(error);
+            }
+        };
         let result = async {
             self.run_cli(
                 &[
@@ -1051,7 +1130,9 @@ impl StorageProvider for ProtonCliProvider {
             )
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {e}")))?;
-            let downloaded = temp_dir.join(&remote_name);
+            // proton-drive writes the file under a name safe on every
+            // platform, `"` or `?` turned into `_` on Linux too.
+            let downloaded = temp_dir.join(cli_local_name(&remote_name));
             if let Some(parent) = final_path.parent() {
                 if !parent.as_os_str().is_empty() {
                     tokio::fs::create_dir_all(parent)
@@ -1138,6 +1219,15 @@ impl StorageProvider for ProtonCliProvider {
         } else {
             let (dir, staged) = stage_local_as_dest(&local_cli, &dest_name)?;
             (Some(dir), staged.to_string_lossy().into_owned())
+        };
+        let upload_path = match literal_local_path_for_cli(&upload_path) {
+            Ok(path) => path,
+            Err(error) => {
+                if let Some(dir) = staging_dir {
+                    let _ = std::fs::remove_dir_all(&dir);
+                }
+                return Err(error);
+            }
         };
         let result = self
             .run_cli(
@@ -2016,6 +2106,137 @@ mod cli_sequence_tests {
                     && a.get(1).map(|s| s.as_str()) == Some(sub)
             })
             .collect()
+    }
+
+    /// proton-drive globs a local path holding * ? [ or {: a file named
+    /// with brackets matched nothing and was never uploaded. The path now
+    /// reaches it with those characters inside classes, which the glob
+    /// matches literally (the shim globs like the CLI).
+    #[test]
+    fn local_paths_and_names_follow_the_clis_rules() {
+        assert_eq!(
+            literal_local_path_for_cli("/a/b c.txt").unwrap(),
+            "/a/b c.txt"
+        );
+        assert_eq!(
+            literal_local_path_for_cli("/a (1).txt").unwrap(),
+            "/a (1).txt"
+        );
+        assert_eq!(
+            literal_local_path_for_cli("/d [1]/f{2}*?(3).txt").unwrap(),
+            "/d [[]1]/f[{]2}[*][?][(]3).txt"
+        );
+        assert_eq!(cli_local_name("plain.txt"), "plain.txt");
+        assert_eq!(
+            cli_local_name("a\"b?c*d|e<f>g:h.txt"),
+            "a_b_c_d_e_f_g_h.txt"
+        );
+        assert_eq!(cli_local_name("tab\there"), "tab_here");
+        assert_eq!(cli_local_name(".."), "__");
+        assert_eq!(cli_local_name("."), "_");
+        if cfg!(windows) {
+            assert_eq!(cli_local_name("con.txt"), "_con.txt");
+            assert_eq!(cli_local_name("COM1"), "_COM1");
+            assert_eq!(cli_local_name("COM0"), "COM0");
+            assert_eq!(cli_local_name("trail. ."), "trail___");
+        } else {
+            assert_eq!(cli_local_name("con.txt"), "con.txt");
+            assert_eq!(cli_local_name("trail. ."), "trail. .");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_local_name_with_glob_characters_is_uploaded_literally() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let local = dir.join("brackets [x] {y} (z) *?.txt");
+        std::fs::write(&local, "CONTENT").unwrap();
+        let mut p = provider(&shim);
+        p.upload(
+            local.to_str().unwrap(),
+            "/my-files/scratch/brackets [x] {y} (z) *?.txt",
+            None,
+        )
+        .await
+        .unwrap();
+        let argv = read_argv(&dir);
+        let uploads = verbs(&argv, "upload");
+        assert_eq!(uploads.len(), 1, "{argv:?}");
+        let local_arg = uploads[0].iter().rev().nth(1).unwrap();
+        assert!(
+            local_arg.ends_with("brackets [[]x] [{]y} [(]z) [*][?].txt"),
+            "{local_arg}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The download folder is globbed too: one with brackets in its name
+    /// matched nothing.
+    #[tokio::test]
+    async fn a_download_into_a_folder_with_glob_characters_lands() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let dest = dir.join("dest [1] {2}");
+        std::fs::create_dir_all(&dest).unwrap();
+        let mut p = provider(&shim);
+        p.download(
+            "/my-files/scratch/notes.txt",
+            dest.join("notes.txt").to_str().unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("notes.txt")).unwrap(),
+            "REMOTE-CONTENT"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// proton-drive writes `"` and `?` as `_` on Linux too: the file was
+    /// downloaded, then not found under its own name.
+    #[tokio::test]
+    async fn a_download_finds_the_file_under_the_name_the_cli_wrote() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let dest = dir.join("out");
+        std::fs::create_dir_all(&dest).unwrap();
+        let mut p = provider(&shim);
+        p.download(
+            "/my-files/scratch/apos'trophe \"quote\" q?.txt",
+            dest.to_str().unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("apos'trophe \"quote\" q?.txt")).unwrap(),
+            "REMOTE-CONTENT"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// On Unix a backslash in a globbed path has no escape the CLI accepts:
+    /// the upload is refused with the reason, before any CLI run.
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn a_globbed_local_path_with_a_backslash_is_refused_before_the_cli() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let local = dir.join("back\\slash [k].txt");
+        std::fs::write(&local, "CONTENT").unwrap();
+        let mut p = provider(&shim);
+        let error = p
+            .upload(
+                local.to_str().unwrap(),
+                "/my-files/scratch/back\\slash [k].txt",
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ProviderError::InvalidPath(_)), "{error:?}");
+        assert!(verbs(&read_argv(&dir), "upload").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
