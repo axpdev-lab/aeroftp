@@ -349,33 +349,49 @@ pub fn map_error(path: &str, error: ProtonError) -> ProviderError {
 /// The renames of an AEAD replacement (see `replace_by_new_file`): the old
 /// file goes aside, the new one, uploaded under a temporary name, takes
 /// `name`, then the old one is trashed. Each failure undoes the steps before
-/// it, so the name keeps either file.
+/// it, so the name keeps either file. The cached path is dropped here, on
+/// every way out: the caller's own drop after its await does not run once it
+/// is cancelled, and every clone would go on resolving the path to the
+/// trashed file until the cache entry aged out.
 async fn swap_in_replacement(
     drive: Arc<dyn DriveOps>,
+    shared: Arc<SharedState>,
     old_link_id: String,
     new_link_id: String,
     name: String,
     remote: String,
 ) -> Result<(), ProviderError> {
-    let aside = crate::providers::set_aside_name(&name);
-    if let Err(error) = drive.rename(&old_link_id, &aside).await {
-        let _ = drive.trash(&[&new_link_id]).await;
-        return Err(map_error(&remote, error));
+    let result = swap_names(&drive, &old_link_id, &new_link_id, &name, &remote).await;
+    forget_path_in(&shared, &remote);
+    result
+}
+
+async fn swap_names(
+    drive: &Arc<dyn DriveOps>,
+    old_link_id: &str,
+    new_link_id: &str,
+    name: &str,
+    remote: &str,
+) -> Result<(), ProviderError> {
+    let aside = crate::providers::set_aside_name(name);
+    if let Err(error) = drive.rename(old_link_id, &aside).await {
+        let _ = drive.trash(&[new_link_id]).await;
+        return Err(map_error(remote, error));
     }
-    if let Err(error) = drive.rename(&new_link_id, &name).await {
-        let undone = drive.rename(&old_link_id, &name).await;
-        let _ = drive.trash(&[&new_link_id]).await;
-        let error = map_error(&remote, error);
+    if let Err(error) = drive.rename(new_link_id, name).await {
+        let undone = drive.rename(old_link_id, name).await;
+        let _ = drive.trash(&[new_link_id]).await;
+        let error = map_error(remote, error);
         return Err(match undone {
             Ok(()) => error,
             Err(undo) => ProviderError::Other(format!(
                 "replacing {remote} stopped halfway: {error}; the old file is now {} ({})",
-                join(&split(&remote).map(|(p, _)| p).unwrap_or_default(), &aside),
-                map_error(&remote, undo)
+                join(&split(remote).map(|(p, _)| p).unwrap_or_default(), &aside),
+                map_error(remote, undo)
             )),
         });
     }
-    if let Err(error) = drive.trash(&[&old_link_id]).await {
+    if let Err(error) = drive.trash(&[old_link_id]).await {
         log::warn!("Proton: the replaced copy of {remote} stays as {aside}: {error}");
     }
     Ok(())
@@ -551,6 +567,17 @@ struct SharedState {
     skipped_unreadable: AtomicBool,
 }
 
+/// [`ProtonNativeProvider::forget_path`] on the state the clones of one
+/// connection share, for a task that outlives the provider's borrow.
+fn forget_path_in(shared: &SharedState, path: &str) {
+    let below = format!("{}/", path.trim_end_matches('/'));
+    shared
+        .paths
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .retain(|cached, _| cached != path && !cached.starts_with(&below));
+}
+
 /// Proton Drive through the native client.
 pub struct ProtonNativeProvider {
     config: ProtonConfig,
@@ -642,9 +669,7 @@ impl ProtonNativeProvider {
     /// link, and keeping them spares the next write a walk from the root
     /// (an upload of many small files re-listed every parent before).
     fn forget_path(&self, path: &str) {
-        let below = format!("{}/", path.trim_end_matches('/'));
-        self.paths()
-            .retain(|cached, _| cached != path && !cached.starts_with(&below));
+        forget_path_in(&self.shared, path);
     }
 
     /// The active children of `folder`, cached under `folder_path`. Entries
@@ -860,6 +885,7 @@ impl ProtonNativeProvider {
         // with the name taken by one of the two files either way.
         let swap = tokio::spawn(swap_in_replacement(
             drive,
+            Arc::clone(&self.shared),
             old_link_id.to_string(),
             new_link_id,
             name.to_string(),
@@ -962,7 +988,7 @@ impl StorageProvider for ProtonNativeProvider {
                 tokens: api.tokens().await.unwrap_or(session.tokens.clone()),
                 key_password: session.key_password.clone(),
             };
-            vault::bind_unbound_session(profile_id, &current)?;
+            vault::bind_unbound_session(profile_id, &current).await?;
             api.set_session_store(Arc::new(vault::VaultSession::new(
                 Some(profile_id),
                 &current,
@@ -1974,6 +2000,9 @@ mod tests {
     async fn a_replacement_cancelled_between_its_renames_still_ends_with_the_name_taken() {
         let (mut p, drive) = provider();
         drive.nodes.lock().unwrap().get_mut("a").unwrap().aead = true;
+        // The path is cached, and a clone shares that cache.
+        p.stat("/docs/a.txt").await.unwrap();
+        let mut clone = p.clone_connected().unwrap();
         let reached = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
         *drive.rename_gate.lock().unwrap() =
@@ -2002,6 +2031,12 @@ mod tests {
             .active_named("docs", "a.txt")
             .expect("the path holds a file");
         assert_eq!(drive.get(&now).content, b"alpha two");
+        // Codex on 2c8cfe3fc: the cached path was dropped only by the
+        // cancelled caller, so the clone still read the trashed file.
+        assert_eq!(
+            clone.download_to_bytes("/docs/a.txt").await.unwrap(),
+            b"alpha two"
+        );
         let leftovers: Vec<String> = drive
             .nodes
             .lock()

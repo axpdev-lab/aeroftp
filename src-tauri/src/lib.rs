@@ -17250,7 +17250,9 @@ async fn purge_profile_secrets(
     // so a deleted profile leaves no live session behind.
     #[cfg(feature = "proton-native")]
     if protocol.as_deref() == Some("proton") {
-        providers::proton_native::vault::revoke_saved_session(Some(&profile_id)).await;
+        if let Err(error) = providers::proton_native::vault::end_session(Some(&profile_id)).await {
+            log::warn!("Proton: the deleted profile's session was not removed: {error}");
+        }
     }
     Ok(purge_profile_secret_keys(
         &profile_id,

@@ -102,8 +102,9 @@ pub async fn sign_in(
     };
     // A session this one replaces is ended on Proton first (unless another
     // saved profile still uses it), so a re-sign-in leaves none behind.
-    vault::revoke_saved_session(profile_id).await;
-    vault::store_session(profile_id, &session).map_err(|error| error.to_string())?;
+    vault::replace_session(profile_id, &session)
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(email)
 }
 
@@ -137,8 +138,9 @@ pub async fn proton_native_sign_in(
 #[tauri::command]
 pub async fn proton_native_sign_out(profile_id: Option<String>) -> Result<(), String> {
     let profile_id = profile(&profile_id);
-    vault::revoke_saved_session(profile_id).await;
-    vault::delete_session(profile_id).map_err(|error| error.to_string())
+    vault::end_session(profile_id)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 /// Whether the profile has a saved session. Also the frontend's probe for a
