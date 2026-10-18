@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Pilih wilayah yang sesuai dengan akun Zoho Anda (mis. zoho.eu untuk Eropa).",
                 "redirectUri": "URI Pengalihan",
                 "redirectUriHelp": "Salin URL ini dan tempelkan sebagai URI Pengalihan di pengaturan aplikasi pengembang Anda.",
-                "redirectUriNoteGoogle": "Disarankan: buat OAuth Client ID bertipe \"Desktop app\" di Google Cloud Console (tidak perlu redirect URI). Jika menggunakan tipe \"Web application\", atur redirect URI ke http://127.0.0.1.",
+                "redirectUriNoteGoogle": "Disarankan: buat ID klien OAuth bertipe \"Aplikasi desktop\" di Google Cloud Console; tidak perlu mendaftarkan URI pengalihan. Untuk klien bertipe \"Aplikasi web\", daftarkan URI pengalihan persis seperti yang ditampilkan di atas, termasuk port dan jalur /callback.",
                 "enablePhotosApi": "Pastikan Photos Library API diaktifkan di Google Cloud Console Anda.",
                 "enableDriveApi": "Pastikan Google Drive API diaktifkan di Google Cloud Console Anda."
             },

@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Dewiswch y rhanbarth sy'n cyfateb i'ch cyfrif Zoho (e.e. zoho.eu ar gyfer Ewrop).",
                 "redirectUri": "URI Ailgyfeirio",
                 "redirectUriHelp": "Copïwch yr URL hwn a'i ludo fel yr URI Ailgyfeirio yng ngosodiadau eich ap datblygwr.",
-                "redirectUriNoteGoogle": "Argymhellir: crëwch OAuth Clïent ID math \"Desktop app\" yn Google Cloud Console (dim angen redirect URI). Os ydych yn defnyddio'r math \"Web application\", gosodwch y redirect URI i http://127.0.0.1.",
+                "redirectUriNoteGoogle": "Argymhellir: creu ID cleient OAuth o’r math \"Ap bwrdd gwaith\" yn Google Cloud Console; nid oes angen cofrestru URI ailgyfeirio. Ar gyfer cleient o’r math \"Cymhwysiad gwe\", cofrestrwch yr union URI ailgyfeirio a ddangosir uchod, gan gynnwys ei borthladd a’r llwybr /callback.",
                 "enablePhotosApi": "Gwnewch yn siŵr bod Photos Library API wedi ei alluogi yn Google Cloud Console.",
                 "enableDriveApi": "Gwnewch yn siŵr bod Google Drive API wedi ei alluogi yn Google Cloud Console."
             },

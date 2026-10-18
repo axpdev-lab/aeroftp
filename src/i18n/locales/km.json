@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "ជ្រើសរើសតំបន់ដែលត្រូវនឹងគណនី Zoho របស់អ្នក (ឧទាហរណ៍ zoho.eu សម្រាប់អឺរ៉ុប)។",
                 "redirectUri": "URI បញ្ជូនបន្ត",
                 "redirectUriHelp": "ចម្លង URL នេះ ហើយបិទភ្ជាប់វាជា URI បញ្ជូនបន្ត នៅក្នុងការកំណត់កម្មវិធីអ្នកអភិវឌ្ឍន៍របស់អ្នក។",
-                "redirectUriNoteGoogle": "ណែនាំ: បង្កើត OAuth Client ID ប្រភេទ \"Desktop app\" នៅក្នុង Google Cloud Console (មិនត្រូវការ redirect URI)។ បើប្រើប្រភេទ \"Web application\" សូមកំណត់ redirect URI ទៅ http://127.0.0.1។",
+                "redirectUriNoteGoogle": "ការណែនាំ៖ បង្កើតលេខសម្គាល់កម្មវិធីអតិថិជន OAuth ប្រភេទ «កម្មវិធីលើកុំព្យូទ័រ» នៅក្នុង Google Cloud Console; មិនចាំបាច់ចុះឈ្មោះ URI បញ្ជូនបន្តទេ។ សម្រាប់កម្មវិធីអតិថិជនប្រភេទ «កម្មវិធីបណ្ដាញ» សូមចុះឈ្មោះ URI បញ្ជូនបន្តឱ្យត្រូវគ្នាទាំងស្រុងនឹង URI ដែលបង្ហាញខាងលើ រួមទាំងច្រក និងផ្លូវ /callback។",
                 "enablePhotosApi": "សូមប្រាកដថា Photos Library API ត្រូវបានបើកនៅក្នុង Google Cloud Console របស់អ្នក។",
                 "enableDriveApi": "សូមប្រាកដថា Google Drive API ត្រូវបានបើកនៅក្នុង Google Cloud Console របស់អ្នក។"
             },

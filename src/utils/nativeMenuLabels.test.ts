@@ -30,14 +30,30 @@ describe('the native menu follows the language', () => {
         expect(appSource).toContain("invoke('rebuild_menu', { labels: nativeMenuLabels(t) })");
     });
 
-    it('keeps a hidden native menu bar hidden after a rebuild', () => {
-        // A global set_menu reaches every window on Linux; the main window's
-        // visibility is the user's choice (toggle_menu_bar).
-        // Not a name match: the rebuild must read the flag and remove the menu
-        // when it is off, and the toggle must write it.
-        const body = libRs.slice(libRs.indexOf('fn rebuild_menu_on_main('), libRs.indexOf('\n}\n', libRs.indexOf('fn rebuild_menu_on_main(')));
-        expect(body).toMatch(/if !MAIN_MENU_BAR_VISIBLE\.load\([^)]*\)\s*\{[^}]*get_webview_window\("main"\)[^}]*\.remove_menu\(\)/);
-        const toggle = libRs.slice(libRs.indexOf('fn toggle_menu_bar('), libRs.indexOf('fn rebuild_menu('));
-        expect(toggle).toMatch(/MAIN_MENU_BAR_VISIBLE\.store\(visible,/);
+    it('relabels the installed menu in place, with appmenu-gtk-module kept out', () => {
+        // appmenu-gtk-module (in Ubuntu's default GTK_MODULES) recursed on the
+        // app menu bar until the main thread overflowed its stack whenever a
+        // realized window held it: a rebuild that installed the menu again
+        // after startup aborted the app, so did turning the bar on.
+        const fnBody = (name: string) => {
+            const start = libRs.indexOf(`fn ${name}(`);
+            return libRs.slice(start, libRs.indexOf('\n}\n', start));
+        };
+        const rebuild = fnBody('rebuild_menu_on_main');
+        expect(rebuild).toMatch(/\} else \{[^}]*relabel_installed_menu\(&app, &menu\)/);
+        expect(rebuild).not.toMatch(/set_menu\(|remove_menu\(/);
+        // Forced before GTK starts, not defaulted: a session value of "1"
+        // would load the module again.
+        const run = fnBody('run');
+        const proxy = run.indexOf('std::env::set_var("UBUNTU_MENUPROXY", "0");');
+        expect(proxy).toBeGreaterThan(-1);
+        expect(run.slice(Math.max(0, proxy - 120), proxy)).not.toMatch(/var_os\("UBUNTU_MENUPROXY"\)/);
+        expect(proxy).toBeLessThan(run.indexOf('tauri::Builder::default()'));
+        // Settings may ask for the bar before the menu exists; the startup
+        // sequence applies the stored choice instead of always removing it.
+        expect(fnBody('toggle_menu_bar')).toMatch(/MAIN_MENU_BAR_VISIBLE\.store\(visible,/);
+        expect(fnBody('finish_startup')).toMatch(
+            /if !MAIN_MENU_BAR_VISIBLE\.load\([^)]*\) \{\s*let _ = main_window\.remove_menu\(\);/,
+        );
     });
 });

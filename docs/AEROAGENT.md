@@ -5,6 +5,10 @@
 **Status**: Public architecture overview
 **Tool catalog**: Built-in tool suite + extensible via plugins
 
+For the code-grounded status of the MCP client, scoped workers, GUI control and
+the remaining 2.0 proposals, see the [AeroAgent roadmap](AEROAGENT-ROADMAP.md).
+The architecture and tool tables below are the June 2026 overview.
+
 ---
 
 ## Overview

@@ -149,16 +149,18 @@ mod tests {
         assert!((new - 10.0).abs() < 1e-9);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn acquire_returns_immediately_when_tokens_available() {
         let limiter = TpsLimiter::new(10.0, 5.0);
-        let started = Instant::now();
+        let started = tokio::time::Instant::now();
         for _ in 0..5 {
             limiter.acquire().await;
         }
         // 5 tokens are pre-loaded so all 5 acquires should complete
-        // without sleeping: the bucket starts at full burst capacity.
-        assert!(started.elapsed() < Duration::from_millis(50));
+        // without sleeping: the bucket starts at full burst capacity. The
+        // paused clock moves only when an acquire sleeps, so no sleep at all
+        // leaves it exactly where it was, however loaded the runner is.
+        assert_eq!(tokio::time::Instant::now(), started);
     }
 
     #[tokio::test]

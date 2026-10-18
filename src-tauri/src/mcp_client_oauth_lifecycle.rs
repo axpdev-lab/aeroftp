@@ -1393,14 +1393,17 @@ mod tests {
             Err(OAuthError::PendingUnavailable)
         ));
     }
-    #[tokio::test]
-    async fn partition_lock_and_user_switch_cancel_shared_attempts() {
+    #[test]
+    fn partition_lock_and_user_switch_cancel_shared_attempts() {
+        let _guard = user_partitions::test_lock();
         let token = CancellationToken::new();
         let _lease = shared()
             .register_operation(i64::MAX, "hook-test", token.clone(), true)
             .unwrap();
-        crate::user_partitions::user_partitions_lock_session()
-            .await
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(user_partitions::user_partitions_lock_session())
             .unwrap();
         assert!(token.is_cancelled());
     }

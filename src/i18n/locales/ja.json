@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Zoho アカウントに対応するリージョンを選択してください（例: ヨーロッパの場合は zoho.eu）。",
                 "redirectUri": "リダイレクト URI",
                 "redirectUriHelp": "この URL をコピーし、開発者アプリの設定でリダイレクト URI として貼り付けてください。",
-                "redirectUriNoteGoogle": "推奨: Google Cloud Console で「Desktop app」タイプの OAuth Client ID を作成してください（redirect URI は不要です）。「Web application」タイプを使用する場合は、redirect URI を http://127.0.0.1 に設定してください。",
+                "redirectUriNoteGoogle": "推奨: Google Cloud Console で「デスクトップ アプリ」タイプの OAuth クライアント ID を作成してください。リダイレクト URI の登録は不要です。「ウェブ アプリケーション」タイプのクライアントの場合は、上に表示されたリダイレクト URI を、ポートと /callback パスを含めて正確に登録してください。",
                 "enablePhotosApi": "Google Cloud ConsoleでPhotos Library APIが有効になっていることを確認してください。",
                 "enableDriveApi": "Google Cloud ConsoleでGoogle Drive APIが有効になっていることを確認してください。"
             },

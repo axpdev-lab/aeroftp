@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Pilih rantau yang sepadan dengan akaun Zoho anda (cth. zoho.eu untuk Eropah).",
                 "redirectUri": "URI Ubah Hala",
                 "redirectUriHelp": "Salin URL ini dan tampalkan sebagai URI Ubah Hala dalam tetapan aplikasi pembangun anda.",
-                "redirectUriNoteGoogle": "Disyorkan: cipta OAuth Client ID jenis \"Desktop app\" dalam Google Cloud Console (tiada redirect URI diperlukan). Jika menggunakan jenis \"Web application\", tetapkan redirect URI kepada http://127.0.0.1.",
+                "redirectUriNoteGoogle": "Disyorkan: cipta ID klien OAuth jenis \"Aplikasi desktop\" dalam Google Cloud Console; tiada URI ubah hala yang perlu didaftarkan. Untuk klien jenis \"Aplikasi web\", daftarkan URI ubah hala yang sama tepat seperti yang dipaparkan di atas, termasuk port dan laluan /callback.",
                 "enablePhotosApi": "Pastikan Photos Library API didayakan dalam Google Cloud Console anda.",
                 "enableDriveApi": "Pastikan Google Drive API didayakan dalam Google Cloud Console anda."
             },

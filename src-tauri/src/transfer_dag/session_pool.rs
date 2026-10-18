@@ -677,12 +677,14 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    /// Runs on tokio's paused clock, which the pool's deadline reads: any wait
+    /// for a session would move it, and a loaded runner cannot.
+    #[tokio::test(start_paused = true)]
     async fn ftp_adapter_does_not_retry_a_closed_pool() {
         let pool = Arc::new(FtpSessionPool::empty_for_test(500));
         pool.close().await.expect("close");
         let handle = TransferSessionPoolHandle::ftp("ftp-batch", pool);
-        let started = std::time::Instant::now();
+        let started = tokio::time::Instant::now();
         let error = match handle.acquire().await {
             Err(error) => error,
             Ok(_) => panic!("a closed pool cannot hand out a lease"),
@@ -691,10 +693,10 @@ mod tests {
             matches!(error, SessionPoolError::Closed { .. }),
             "closed is not a timeout: {error}"
         );
-        assert!(
-            started.elapsed() < std::time::Duration::from_millis(200),
-            "a closed pool must not be retried: {:?}",
-            started.elapsed()
+        assert_eq!(
+            tokio::time::Instant::now(),
+            started,
+            "a closed pool must fail at once, not wait for a session"
         );
     }
 }

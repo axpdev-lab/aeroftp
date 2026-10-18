@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Selecteer de regio die overeenkomt met uw Zoho-account (bijv. zoho.eu voor Europa).",
                 "redirectUri": "Omleidings-URI",
                 "redirectUriHelp": "Kopieer deze URL en plak deze als omleidings-URI in de instellingen van uw ontwikkelaarsapp.",
-                "redirectUriNoteGoogle": "Aanbevolen: maak een \"Desktop app\" OAuth Client ID aan in Google Cloud Console (geen redirect URI nodig). Als u het type \"Web application\" gebruikt, stel dan de redirect URI in op http://127.0.0.1.",
+                "redirectUriNoteGoogle": "Aanbevolen: maak in Google Cloud Console een OAuth-client-ID van het type \"Desktop-app\"; het registreren van een omleidings-URI is niet nodig. Registreer voor een client van het type \"Webapplicatie\" exact de hierboven getoonde omleidings-URI, inclusief de poort en het pad /callback.",
                 "enablePhotosApi": "Zorg ervoor dat Photos Library API is ingeschakeld in uw Google Cloud Console.",
                 "enableDriveApi": "Zorg ervoor dat Google Drive API is ingeschakeld in uw Google Cloud Console."
             },

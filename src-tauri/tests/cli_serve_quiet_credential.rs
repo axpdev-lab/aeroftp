@@ -3,8 +3,11 @@
 //! and nobody could know its password. A generated credential is now shown
 //! even under `--quiet`, alone, on stderr.
 
+#[path = "support/isolated_cli.rs"]
+mod isolated_cli;
+
 use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -12,24 +15,21 @@ use std::time::Duration;
 /// the first stderr line it prints, or `None` if it prints nothing in time.
 fn first_quiet_stderr_line(mode: &str) -> Option<String> {
     let folder = tempfile::tempdir().expect("served folder");
-    let config = tempfile::tempdir().expect("isolated config");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
-        .args(["--quiet", "serve", mode])
-        .arg(folder.path())
-        .args(["--addr", "0.0.0.0:0", "--allow-remote-bind"])
-        // The config dir is isolated on every platform (`dirs` reads
-        // XDG/HOME on Unix, APPDATA/LOCALAPPDATA on Windows), and no log
-        // filter is inherited: the first stderr line must be the CLI's own.
-        .env("XDG_CONFIG_HOME", config.path())
-        .env("HOME", config.path())
-        .env("APPDATA", config.path())
-        .env("LOCALAPPDATA", config.path())
-        .env_remove("RUST_LOG")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn aeroftp-cli");
+    let config = isolated_cli::root();
+    let mut child = isolated_cli::command(
+        std::path::Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")),
+        config.path(),
+    )
+    .args(["--quiet", "serve", mode])
+    .arg(folder.path())
+    .args(["--addr", "0.0.0.0:0", "--allow-remote-bind"])
+    // No inherited log filter: the first stderr line must be the CLI's own.
+    .env_remove("RUST_LOG")
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("spawn aeroftp-cli");
     let stderr = child.stderr.take().expect("stderr");
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {

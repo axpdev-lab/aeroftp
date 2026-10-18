@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Chọn khu vực phù hợp với tài khoản Zoho của bạn (vd: zoho.eu cho Châu Âu).",
                 "redirectUri": "URI chuyển hướng",
                 "redirectUriHelp": "Sao chép URL này và dán làm URI chuyển hướng trong cài đặt ứng dụng nhà phát triển của bạn.",
-                "redirectUriNoteGoogle": "Khuyến nghị: tạo OAuth Client ID loại \"Desktop app\" trong Google Cloud Console (không cần redirect URI). Nếu dùng loại \"Web application\", đặt redirect URI thành http://127.0.0.1.",
+                "redirectUriNoteGoogle": "Khuyến nghị: tạo ID ứng dụng OAuth thuộc loại \"Ứng dụng dành cho máy tính\" trong Google Cloud Console; không cần đăng ký URI chuyển hướng. Đối với ứng dụng thuộc loại \"Ứng dụng web\", hãy đăng ký chính xác URI chuyển hướng hiển thị ở trên, bao gồm cổng và đường dẫn /callback.",
                 "enablePhotosApi": "Đảm bảo Photos Library API được bật trong Google Cloud Console của bạn.",
                 "enableDriveApi": "Đảm bảo Google Drive API được bật trong Google Cloud Console của bạn."
             },

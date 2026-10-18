@@ -1347,6 +1347,27 @@ impl AimdController {
     }
 }
 
+/// Asserts that a cooldown deadline was armed `cooldown` past a moment
+/// between `before` and `after`, the instants a test reads just before and
+/// just after the call that arms it. The bounds are exact, so a runner that
+/// stalls the test between the two reads widens the window instead of
+/// failing a fixed tolerance around `before`.
+#[cfg(test)]
+pub(crate) fn assert_cooldown_armed_between(
+    until: Instant,
+    before: Instant,
+    after: Instant,
+    cooldown: Duration,
+) {
+    assert!(
+        until >= before + cooldown && until <= after + cooldown,
+        "expected a {cooldown:?} cooldown armed between the two reads ({:?} apart), \
+         it ends {:?} after the first",
+        after.saturating_duration_since(before),
+        until.saturating_duration_since(before)
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1801,17 +1822,12 @@ mod tests {
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         let before = Instant::now();
         ctrl.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_secs(45)));
+        let after = Instant::now();
         let until = ctrl
             .cooldown_until(AdaptiveClass::File)
             .expect("on_congestion_with_hint must arm cooldown_until");
-        let elapsed = until.saturating_duration_since(before);
-        // 45 s honored, ±1 s slack for the Instant::now() calls bracketing
-        // the operation.
-        assert!(
-            elapsed >= Duration::from_secs(44) && elapsed <= Duration::from_secs(46),
-            "expected ~45s cooldown, got {:?}",
-            elapsed
-        );
+        // 45 s honored.
+        assert_cooldown_armed_between(until, before, after, Duration::from_secs(45));
         // Multiplicative decrease still happens (8 -> 4) regardless of hint.
         assert_eq!(ctrl.target(AdaptiveClass::File), 4);
     }
@@ -1834,12 +1850,13 @@ mod tests {
         let ctrl_lo = AimdController::new(8, 1, 1, 1, cfg);
         let before_lo = Instant::now();
         ctrl_lo.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_millis(200)));
+        let after_lo = Instant::now();
         let until_lo = ctrl_lo.cooldown_until(AdaptiveClass::File).unwrap();
-        let elapsed_lo = until_lo.saturating_duration_since(before_lo);
-        assert!(
-            elapsed_lo >= Duration::from_millis(900) && elapsed_lo <= Duration::from_millis(1100),
-            "expected ~1s (lower clamp), got {:?}",
-            elapsed_lo
+        assert_cooldown_armed_between(
+            until_lo,
+            before_lo,
+            after_lo,
+            AimdController::MIN_HINT_COOLDOWN,
         );
 
         // Upper clamp: a 3600 s hint against a 5 s default cooldown must
@@ -1847,25 +1864,22 @@ mod tests {
         let ctrl_hi = AimdController::new(8, 1, 1, 1, cfg);
         let before_hi = Instant::now();
         ctrl_hi.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_secs(3600)));
+        let after_hi = Instant::now();
         let until_hi = ctrl_hi.cooldown_until(AdaptiveClass::File).unwrap();
-        let elapsed_hi = until_hi.saturating_duration_since(before_hi);
-        assert!(
-            elapsed_hi >= Duration::from_secs(49) && elapsed_hi <= Duration::from_secs(51),
-            "expected ~50s (upper clamp), got {:?}",
-            elapsed_hi
+        assert_cooldown_armed_between(
+            until_hi,
+            before_hi,
+            after_hi,
+            cfg.cooldown * AimdController::MAX_HINT_MULTIPLIER,
         );
 
         // None hint: behavior unchanged, cooldown matches the default.
         let ctrl_default = AimdController::new(8, 1, 1, 1, cfg);
         let before_d = Instant::now();
         ctrl_default.on_congestion_with_hint(AdaptiveClass::File, None);
+        let after_d = Instant::now();
         let until_d = ctrl_default.cooldown_until(AdaptiveClass::File).unwrap();
-        let elapsed_d = until_d.saturating_duration_since(before_d);
-        assert!(
-            elapsed_d >= Duration::from_secs(4) && elapsed_d <= Duration::from_secs(6),
-            "expected ~5s (default cooldown), got {:?}",
-            elapsed_d
-        );
+        assert_cooldown_armed_between(until_d, before_d, after_d, cfg.cooldown);
     }
 
     #[test]
@@ -1883,11 +1897,12 @@ mod tests {
             AimdController::new_for_provider(8, 1, 1, 1, Some(ProviderType::GoogleDrive), cfg);
         let before = Instant::now();
         ctrl.on_congestion_with_hint(AdaptiveClass::Api, None);
+        let after = Instant::now();
         let until = ctrl
             .cooldown_until(AdaptiveClass::Api)
             .expect("provider retry-after hint must arm cooldown_until");
-        let elapsed = until.saturating_duration_since(before);
-        assert!(elapsed >= Duration::from_secs(29) && elapsed <= Duration::from_secs(31));
+        // The installed Google Drive hint: retry after 30 s.
+        assert_cooldown_armed_between(until, before, after, Duration::from_secs(30));
     }
 
     #[test]

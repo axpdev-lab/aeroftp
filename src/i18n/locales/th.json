@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "เลือกภูมิภาคที่ตรงกับบัญชี Zoho ของคุณ (เช่น zoho.eu สำหรับยุโรป)",
                 "redirectUri": "URI เปลี่ยนเส้นทาง",
                 "redirectUriHelp": "คัดลอก URL นี้และวางเป็น URI เปลี่ยนเส้นทางในการตั้งค่าแอปนักพัฒนาของคุณ",
-                "redirectUriNoteGoogle": "แนะนำ: สร้าง OAuth Client ID ประเภท \"Desktop app\" ใน Google Cloud Console (ไม่ต้องใช้ redirect URI) หากใช้ประเภท \"Web application\" ให้ตั้ง redirect URI เป็น http://127.0.0.1",
+                "redirectUriNoteGoogle": "แนะนำ: สร้างรหัสไคลเอ็นต์ OAuth ประเภท \"แอปเดสก์ท็อป\" ใน Google Cloud Console โดยไม่ต้องลงทะเบียน URI การเปลี่ยนเส้นทาง สำหรับไคลเอ็นต์ประเภท \"เว็บแอปพลิเคชัน\" ให้ลงทะเบียน URI การเปลี่ยนเส้นทางให้ตรงกับที่แสดงด้านบนทุกประการ รวมถึงพอร์ตและเส้นทาง /callback",
                 "enablePhotosApi": "ตรวจสอบให้แน่ใจว่า Photos Library API เปิดใช้งานใน Google Cloud Console ของคุณ",
                 "enableDriveApi": "ตรวจสอบให้แน่ใจว่า Google Drive API เปิดใช้งานใน Google Cloud Console ของคุณ"
             },

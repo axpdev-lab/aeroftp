@@ -39,9 +39,13 @@ jobs:
   # (clippy ~8m + cargo test ~42m + bundle ~61m serial). This job runs
   # them on their own ubuntu-22.04 runner so the 4-leg matrix can bundle
   # in parallel. Coverage unchanged; wall clock ~max(50, 61).
+  # The limit fits a run without a Rust cache: when the cache of main is
+  # evicted, `cargo test` spends up to an hour compiling before ~35 minutes
+  # of tests (measured 2026-10-18), and a 90-minute limit then cancelled
+  # every pull request and main itself, the one run that saves the cache.
   linux-validate:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - name: Free disk space (Linux)
         run: |

@@ -29,6 +29,9 @@ pub fn staging_dir(bytes: u64) -> Result<PathBuf, String> {
 /// confinement roots), or to attempt a metadata-only hardlink. A caller that
 /// falls back to copying must check room before writing the payload.
 pub fn scratch_dir_path() -> PathBuf {
+    if let Some(dir) = crate::portable::portable_scratch_dir() {
+        return dir;
+    }
     match dirs::cache_dir() {
         Some(cache) => cache
             .join(crate::portable::aeroftp_data_leaf_for_debug(cfg!(

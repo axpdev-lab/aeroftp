@@ -32,6 +32,12 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex, RwLock};
 
+mod incremental;
+pub use incremental::{
+    prepare_incremental, run_pair_incremental_cycle, IncrementalHints, IncrementalPlan,
+    IncrementalPrep, LocalChanges, REMOTE_WORK_LIMIT,
+};
+
 /// Sync task to be executed
 #[derive(Debug, Clone)]
 pub enum SyncTask {
@@ -140,6 +146,78 @@ struct SyncPlan {
     index: Option<SyncIndex>,
     local_str: String,
     remote_str: String,
+    /// Baseline paths gone from both sides, forgotten when the cycle ends
+    /// clean (see [`CloudService::gone_on_both`]).
+    gone_on_both: Vec<String>,
+}
+
+/// Which paths the scans of a pair list, by the rules `scan_local_folder` and
+/// `scan_remote_folder_with_provider` apply: `.aeroignore`, the exclude list,
+/// the excluded folders. Local links and unreadable local folders are the
+/// bound's part (see `CloudService::bound_local_scan_paths`). The full sync
+/// forgets by it what is gone from both sides, and the incremental pass picks
+/// by it the paths it syncs, so the two read the same rules.
+struct ScanScope {
+    aeroignore: Option<crate::sync_ignore::AeroIgnore>,
+    excludes: crate::sync_exclude::ExcludeMatcher,
+    excluded_folders: Vec<String>,
+}
+
+impl ScanScope {
+    fn new(config: &CloudConfig) -> Result<Self, String> {
+        Ok(Self {
+            aeroignore: crate::sync_ignore::AeroIgnore::load(&config.local_folder),
+            // An invalid configured exclude fails the cycle, as it fails the scan.
+            excludes: crate::sync::compile_excludes(&config.exclude_patterns)?,
+            excluded_folders: config
+                .excluded_folders
+                .iter()
+                .map(|folder| folder.trim_matches('/').to_string())
+                .filter(|folder| !folder.is_empty())
+                .collect(),
+        })
+    }
+
+    fn decision(&self, key: &str, is_dir: bool) -> crate::sync_ignore::ScanDecision {
+        crate::sync_ignore::scan_decision(self.aeroignore.as_ref(), key, is_dir, &self.excludes)
+    }
+
+    /// Whether `key` is an excluded folder or sits under one.
+    fn excluded_folder(&self, key: &str) -> bool {
+        self.excluded_folders.iter().any(|folder| {
+            key == folder
+                || key
+                    .strip_prefix(folder.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    }
+
+    /// Whether the scans walk down to `key`: no folder above it is left out.
+    fn reaches(&self, key: &str) -> bool {
+        key.match_indices('/').all(|(end, _)| {
+            let folder = &key[..end];
+            self.decision(folder, true) != crate::sync_ignore::ScanDecision::Skip
+                && !self.excluded_folder(folder)
+        })
+    }
+
+    /// Whether both scans list `key` itself. The remote scan lists an
+    /// excluded folder itself (it only does not walk into it) and the local
+    /// scan does not, so the stricter local rule is the one both meet.
+    fn lists(&self, key: &str, is_dir: bool) -> bool {
+        validate_relative_path(key).is_ok()
+            && self.reaches(key)
+            && self.decision(key, is_dir) == crate::sync_ignore::ScanDecision::Keep
+            && !(is_dir && self.excluded_folder(key))
+    }
+
+    /// Whether the scans walk into the folder `key`.
+    fn walks(&self, key: &str) -> bool {
+        validate_relative_path(key).is_ok()
+            && self.reaches(key)
+            && self.decision(key, true) != crate::sync_ignore::ScanDecision::Skip
+            && !self.excluded_folder(key)
+    }
 }
 
 /// A file conflict that needs resolution
@@ -578,12 +656,9 @@ impl CloudService {
     /// baselined). See [`Self::post_sync_baseline`] for how it is computed.
     fn save_post_sync_index(
         &self,
-        local: &str,
-        remote: &str,
-        comparisons: &[FileComparison],
+        plan: &SyncPlan,
         result: &SyncOperationResult,
         config: &CloudConfig,
-        prior_index: Option<&SyncIndex>,
     ) {
         // Only persist on a clean run (no errors) to avoid advancing the
         // "last known good" snapshot on a partial/broken cycle. The one thing
@@ -591,8 +666,19 @@ impl CloudService {
         // changing while it uploaded: without it the next cycle reads the
         // remote's last send, possibly torn, as the newer copy.
         if !result.errors.is_empty() {
-            self.save_unsettled_into(local, remote, comparisons, prior_index);
+            self.save_unsettled_into(
+                &plan.local_str,
+                &plan.remote_str,
+                &plan.comparisons,
+                plan.index.as_ref(),
+            );
             return;
+        }
+        let mut files = self.post_sync_baseline(&plan.comparisons, config, plan.index.as_ref());
+        // Gone on both sides: nothing left to track. Kept, the entry would
+        // read a file created later at the same path as synced, and deleted.
+        for key in &plan.gone_on_both {
+            files.remove(key);
         }
         let idx = SyncIndex {
             // Carried over from #854 when the two branches met here: the index
@@ -601,9 +687,9 @@ impl CloudService {
             // migration rewrote on read.
             version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
-            local_path: local.to_string(),
-            remote_path: remote.to_string(),
-            files: self.post_sync_baseline(comparisons, config, prior_index),
+            local_path: plan.local_str.clone(),
+            remote_path: plan.remote_str.clone(),
+            files,
             unverified_keys: Default::default(),
         };
         if let Err(e) = save_sync_index(&idx) {
@@ -676,7 +762,8 @@ impl CloudService {
     /// Skip) leaves the prior entry untouched. Rebuilding from `comparisons`
     /// alone would drop every Identical file and silently wipe the baseline,
     /// and removing an entry on anything but a delete would turn a file that
-    /// was synced back into a new one.
+    /// was synced back into a new one. A path gone from both sides is in no
+    /// comparison: the caller forgets it (see [`Self::gone_on_both`]).
     fn post_sync_baseline(
         &self,
         comparisons: &[FileComparison],
@@ -706,7 +793,11 @@ impl CloudService {
                 // by size alone). It is the time read when the transfer ended,
                 // not now: a same-size edit made later in the cycle must stay a
                 // change the next cycle sees.
-                if matches!(action, SyncAction::Upload | SyncAction::Download) && !c.is_dir {
+                if matches!(
+                    action,
+                    SyncAction::Upload | SyncAction::Download | SyncAction::KeepBoth
+                ) && !c.is_dir
+                {
                     if let Some(landed) = self
                         .landed
                         .lock()
@@ -730,6 +821,13 @@ impl CloudService {
     /// unchanged instead of a spurious conflict:
     /// - `Upload` converged remote onto local  -> record local
     /// - `Download` converged local onto remote -> record remote
+    /// - `KeepBoth` moved the local copy aside under a conflict name and put
+    ///   the remote copy at the path -> record remote, as for `Download`.
+    ///   Recording nothing left the old baseline, against which the path
+    ///   (the remote copy, changed) and the remote both read as changed: the
+    ///   next cycle saw the same conflict and set aside another copy, one
+    ///   per cycle. The copy set aside is a new local file the next cycle
+    ///   sends.
     /// - `Skip` records the AUTHORITATIVE side for the direction: local for
     ///   send-only (LocalToRemote), remote for receive-only (RemoteToLocal),
     ///   either for Bidirectional (Skip there means Identical). Recording the
@@ -747,7 +845,7 @@ impl CloudService {
     ///   deleted here, and a kept one must stay tracked.
     ///
     /// Returns `None` for actions that must not advance the baseline
-    /// (`AskUser`, `KeepBoth`); deletes are handled by the caller.
+    /// (`AskUser`); deletes are handled by the caller.
     fn baseline_entry_for(
         action: &SyncAction,
         direction: CompareDirection,
@@ -757,7 +855,7 @@ impl CloudService {
     ) -> Option<SyncIndexEntry> {
         let info = match action {
             SyncAction::Upload => local_info,
-            SyncAction::Download => remote_info,
+            SyncAction::Download | SyncAction::KeepBoth => remote_info,
             SyncAction::Skip if !is_dir && (local_info.is_none() || remote_info.is_none()) => {
                 return None;
             }
@@ -869,6 +967,18 @@ impl CloudService {
         let prior_count = index.as_ref().map_or(0, |i| i.files.len());
         let local_len = local_files.len();
         let remote_len = remote_files.len();
+        // Only a scan that saw the whole tree can say a path is gone.
+        let gone_on_both = if local_complete && remote_complete {
+            Self::gone_on_both(
+                config,
+                &local_str,
+                &local_files,
+                &remote_files,
+                index.as_ref(),
+            )?
+        } else {
+            Vec::new()
+        };
 
         // Enable checksum comparison when provider supplies content hashes (e.g. FileLu)
         let has_checksums = remote_files.values().any(|f| f.checksum.is_some());
@@ -950,6 +1060,7 @@ impl CloudService {
             index,
             local_str,
             remote_str,
+            gone_on_both,
         })
     }
 
@@ -1032,14 +1143,10 @@ impl CloudService {
         // Scan both sides, build the index-aware comparison set, and apply the
         // mass-delete safety gate (shared with the `--dry-run` preview so both
         // derive from byte-identical inputs).
-        let SyncPlan {
-            comparisons,
-            index,
-            local_str,
-            remote_str,
-        } = self
+        let plan = self
             .build_sync_plan_with_provider(provider, &config, true)
             .await?;
+        let comparisons = &plan.comparisons;
 
         let total_files = comparisons.len() as u32;
         let mut result = SyncOperationResult {
@@ -1080,32 +1187,7 @@ impl CloudService {
                 Ok(action) => match action {
                     SyncAction::AskUser => {
                         result.conflicts += 1;
-                        // Add to conflicts list (capped at 10K to prevent unbounded growth)
-                        let mut conflicts = self.conflicts.write().await;
-                        if conflicts.len() < 10_000 {
-                            conflicts.push(FileConflict {
-                                relative_path: comparison.relative_path.clone(),
-                                local_modified: comparison
-                                    .local_info
-                                    .as_ref()
-                                    .and_then(|i| i.modified),
-                                remote_modified: comparison
-                                    .remote_info
-                                    .as_ref()
-                                    .and_then(|i| i.modified),
-                                local_size: comparison
-                                    .local_info
-                                    .as_ref()
-                                    .map(|i| i.size)
-                                    .unwrap_or(0),
-                                remote_size: comparison
-                                    .remote_info
-                                    .as_ref()
-                                    .map(|i| i.size)
-                                    .unwrap_or(0),
-                                status: comparison.status.clone(),
-                            });
-                        }
+                        self.push_conflict(comparison).await;
                     }
                     _ => Self::record_sync_action(&mut result, comparison, &action),
                 },
@@ -1144,14 +1226,7 @@ impl CloudService {
         }
 
         // Persist the post-sync baseline (index) for delete propagation on next cycles.
-        self.save_post_sync_index(
-            &local_str,
-            &remote_str,
-            &comparisons,
-            &result,
-            &config,
-            index.as_ref(),
-        );
+        self.save_post_sync_index(&plan, &result, &config);
 
         // After the save, which a cycle with errors skips: the baseline of a
         // file that kept changing while it uploaded is what makes the next
@@ -1187,6 +1262,22 @@ impl CloudService {
         }
 
         Ok(result)
+    }
+
+    /// Add a conflict left for the user to the list (capped at 10K to prevent
+    /// unbounded growth).
+    async fn push_conflict(&self, comparison: &FileComparison) {
+        let mut conflicts = self.conflicts.write().await;
+        if conflicts.len() < 10_000 {
+            conflicts.push(FileConflict {
+                relative_path: comparison.relative_path.clone(),
+                local_modified: comparison.local_info.as_ref().and_then(|i| i.modified),
+                remote_modified: comparison.remote_info.as_ref().and_then(|i| i.modified),
+                local_size: comparison.local_info.as_ref().map_or(0, |i| i.size),
+                remote_size: comparison.remote_info.as_ref().map_or(0, |i| i.size),
+                status: comparison.status.clone(),
+            });
+        }
     }
 
     fn record_sync_action(
@@ -1257,6 +1348,61 @@ impl CloudService {
         );
         locals.retain(|path, _| !bound.covers(path));
         remotes.retain(|path, _| !bound.covers(path));
+    }
+
+    /// The baseline paths gone from both sides since the last cycle: deleted
+    /// here and on another device in between. The compare reads only the
+    /// scanned paths, so no comparison names them, and the carry-forward of
+    /// [`Self::post_sync_baseline`] kept them for good: a file created later
+    /// at one of them read as synced before and deleted on the other side
+    /// (a new local file deleted locally, a new remote one on the remote).
+    ///
+    /// For complete scans only (the caller's check), and only for paths both
+    /// scans would list: a path the rules leave out (`.aeroignore`, the
+    /// exclude list, an excluded folder), or one behind a local link or an
+    /// unreadable local folder, is absent from both by design and keeps its
+    /// entry. Forgetting a path never deletes anything: a file the scans
+    /// missed without saying so is at worst copied back where it was deleted,
+    /// which is the side the delete safety gate errs on too.
+    fn gone_on_both(
+        config: &CloudConfig,
+        local_root: &str,
+        locals: &HashMap<String, FileInfo>,
+        remotes: &HashMap<String, FileInfo>,
+        index: Option<&SyncIndex>,
+    ) -> Result<Vec<String>, String> {
+        let Some(index) = index else {
+            return Ok(Vec::new());
+        };
+        let scope = ScanScope::new(config)?;
+        let candidates: Vec<&str> = index
+            .files
+            .iter()
+            .filter(|(key, entry)| {
+                !locals.contains_key(*key)
+                    && !remotes.contains_key(*key)
+                    && scope.lists(key, entry.is_dir)
+            })
+            .map(|(key, _)| key.as_str())
+            .collect();
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        // What `bound_local_scan_paths` leaves out, for these paths: a local
+        // link or unreadable folder above one, or the path itself a link. The
+        // scans' own bound probes only the paths the remote lists.
+        let bound = crate::sync_core::ScanBound::for_sync(
+            local_root,
+            std::iter::empty(),
+            candidates.iter().copied(),
+            &crate::sync_core::ScanBoundaries::default(),
+            crate::sync_core::ScanBoundaries::default(),
+        );
+        Ok(candidates
+            .into_iter()
+            .filter(|key| !bound.covers(key))
+            .map(str::to_string)
+            .collect())
     }
 
     /// Scan local folder and build file info map.
@@ -1841,6 +1987,12 @@ impl CloudService {
                         .download(&remote_info.path, &local_path.to_string_lossy(), None)
                         .await
                         .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                    // The original path now holds the remote copy, as after a
+                    // Download: it keeps the remote time, and the baseline
+                    // records it (see `baseline_entry_for`).
+                    if let Some(ref mtime) = remote_info.modified {
+                        crate::preserve_remote_mtime_dt(&local_path, Some(*mtime));
+                    }
                 }
             }
             SyncAction::DeleteRemote if !comparison.is_dir => {
@@ -1871,7 +2023,10 @@ impl CloudService {
         }
 
         if landed
-            && matches!(action, SyncAction::Upload | SyncAction::Download)
+            && matches!(
+                action,
+                SyncAction::Upload | SyncAction::Download | SyncAction::KeepBoth
+            )
             && !comparison.is_dir
         {
             self.note_landed(config, &comparison.relative_path);
@@ -1891,9 +2046,7 @@ impl CloudService {
 /// cd/mkdir/ensure is handled inside the plan builders; callers no longer
 /// duplicate it.
 ///
-/// The overlay stack is composed here from config state: crypt is resolved from
-/// the saved profile first, then AeroCompress wraps it as the outer layer when
-/// `config.compress_enabled` is true.
+/// The overlay stack is composed by [`open_aerocloud_provider`].
 ///
 /// `store` is passed explicitly (from_cache() or opened vault) so CLI and GUI
 /// paths both work. `config` must have protocol_type resolved (CLI does the
@@ -1904,6 +2057,38 @@ pub async fn sync_one_config(
     app: Option<AppHandle>,
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
+    let mut provider = open_aerocloud_provider(&config, store).await?;
+
+    // NOTE: explicit cd/mkdir that used to sit between wrap and service here
+    // (and in the old inner) has been removed: build_sync_plan_with_provider
+    // (used by both preview and perform) centralizes ensure_remote.
+
+    let mut svc = CloudService::new();
+    if let Some(handle) = app {
+        svc.set_app_handle(handle);
+    }
+    svc.init(config.clone()).await;
+
+    let sync_result = if dry_run {
+        svc.preview_full_sync_with_provider(&mut *provider).await
+    } else {
+        svc.perform_full_sync_with_provider(&mut *provider).await
+    };
+
+    let _ = provider.disconnect().await;
+
+    sync_result
+}
+
+/// Connect the provider of an AeroCloud config and compose its overlay
+/// stack: crypt is resolved from the saved profile first, then AeroCompress
+/// wraps it as the outer layer when `config.compress_enabled` is true. Every
+/// AeroCloud cycle, full or incremental, reaches the remote through this
+/// stack, so names an overlay rewrites are rewritten the same way on both.
+pub(crate) async fn open_aerocloud_provider(
+    config: &CloudConfig,
+    store: Option<&credential_store::CredentialStore>,
+) -> Result<Box<dyn StorageProvider>, String> {
     if !config.enabled {
         return Err("AeroCloud is not enabled".to_string());
     }
@@ -1929,7 +2114,7 @@ pub async fn sync_one_config(
             .to_string()
     })?;
 
-    let mut provider = cloud_provider_factory::create_cloud_provider(&config)
+    let mut provider = cloud_provider_factory::create_cloud_provider(config)
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
 
@@ -1948,26 +2133,103 @@ pub async fn sync_one_config(
             config.compress_level,
         ));
     }
+    Ok(provider)
+}
 
-    // NOTE: explicit cd/mkdir that used to sit between wrap and service here
-    // (and in the old inner) has been removed: build_sync_plan_with_provider
-    // (used by both preview and perform) centralizes ensure_remote.
+/// What a connected provider said about how a pair may be scanned, for the
+/// background scheduler to remember between cycles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProviderScanTraits {
+    /// [`StorageProvider::min_full_scan_interval`] of the composed stack.
+    pub min_full_scan_interval: Option<Duration>,
+    /// [`StorageProvider::reports_exact_size`] of the composed stack: the
+    /// incremental pass reads local sizes against the baseline only when it
+    /// is true.
+    pub exact_sizes: bool,
+}
 
+impl ProviderScanTraits {
+    pub(crate) fn of(provider: &dyn StorageProvider) -> Self {
+        Self {
+            min_full_scan_interval: provider.min_full_scan_interval(),
+            exact_sizes: provider.reports_exact_size(),
+        }
+    }
+}
+
+/// One pair's background cycle: what it did, whether it scanned the whole
+/// remote folder, and what the provider said about scanning.
+#[derive(Debug, Clone)]
+pub struct PairCycleReport {
+    pub result: SyncOperationResult,
+    /// Whether the cycle listed the whole remote folder (a full sync).
+    pub ran_full_scan: bool,
+    /// `None` when the cycle never connected.
+    pub traits: Option<ProviderScanTraits>,
+    /// The paths an incremental pass could not sync, for the worker to try
+    /// again (a full scan reads them all anyway, and reports none).
+    pub failed_paths: Vec<FailedPath>,
+}
+
+/// A pair's background cycle that failed. A failure after the connection
+/// still carries what the provider said about scanning: the floor it
+/// declared holds the next scans of the pair back even while the error
+/// lasts, and a failure that dropped it would let a fallback scan run every
+/// cycle.
+#[derive(Debug, Clone)]
+pub struct PairCycleError {
+    pub message: String,
+    /// `None` when the cycle never connected.
+    pub traits: Option<ProviderScanTraits>,
+}
+
+impl PairCycleError {
+    pub(crate) fn before_connecting(message: String) -> Self {
+        Self {
+            message,
+            traits: None,
+        }
+    }
+}
+
+/// A path an incremental pass could not sync, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailedPath {
+    /// Relative to the pair's local folder.
+    pub key: String,
+    pub error: String,
+}
+
+/// A full sync of one pair, for the background worker: [`sync_one_config`]
+/// that also reports the provider's scan traits.
+pub async fn run_pair_full_cycle(
+    config: CloudConfig,
+    store: Option<&credential_store::CredentialStore>,
+    app: Option<AppHandle>,
+) -> Result<PairCycleReport, PairCycleError> {
+    let mut provider = open_aerocloud_provider(&config, store)
+        .await
+        .map_err(PairCycleError::before_connecting)?;
+    let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
     if let Some(handle) = app {
         svc.set_app_handle(handle);
     }
-    svc.init(config.clone()).await;
-
-    let sync_result = if dry_run {
-        svc.preview_full_sync_with_provider(&mut *provider).await
-    } else {
-        svc.perform_full_sync_with_provider(&mut *provider).await
-    }?;
-
+    svc.init(config).await;
+    let result = svc.perform_full_sync_with_provider(&mut *provider).await;
     let _ = provider.disconnect().await;
-
-    Ok(sync_result)
+    match result {
+        Ok(result) => Ok(PairCycleReport {
+            result,
+            ran_full_scan: true,
+            traits: Some(traits),
+            failed_paths: Vec::new(),
+        }),
+        Err(message) => Err(PairCycleError {
+            message,
+            traits: Some(traits),
+        }),
+    }
 }
 
 /// State that a folder pair is compared by size only: a warning the first
@@ -2132,12 +2394,11 @@ mod baseline_tests {
     }
 
     #[test]
-    fn askuser_keepboth_deletes_do_not_advance_baseline() {
+    fn askuser_and_deletes_do_not_advance_baseline() {
         let local = fi(1, 1);
         let remote = fi(2, 2);
         for action in [
             SyncAction::AskUser,
-            SyncAction::KeepBoth,
             SyncAction::DeleteLocal,
             SyncAction::DeleteRemote,
         ] {
@@ -2791,17 +3052,21 @@ mod baseline_tests {
             started.elapsed()
         );
 
-        // Left alone past the window: no wait.
+        // Left alone past the window: no wait. Tokio's clock is paused around
+        // this one call, so it moves only if the call sleeps, and a loaded
+        // runner cannot move it; the file's age is still read on the real
+        // clock.
         std::fs::write(&file, b"payload").unwrap();
         tokio::time::sleep(window + std::time::Duration::from_millis(50)).await;
-        let started = std::time::Instant::now();
-        CloudService::wait_until_quiet(
-            &file,
-            window,
-            tokio::time::Instant::now() + SEND_QUIET_BOUND,
-        )
-        .await;
-        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        tokio::time::pause();
+        let started = tokio::time::Instant::now();
+        CloudService::wait_until_quiet(&file, window, started + SEND_QUIET_BOUND).await;
+        assert_eq!(
+            tokio::time::Instant::now(),
+            started,
+            "a file left alone past the window is read without a wait"
+        );
+        tokio::time::resume();
 
         // Written without pause: the bound ends the wait.
         std::fs::write(&file, b"payload").unwrap();
@@ -3476,6 +3741,422 @@ mod baseline_tests {
             complete,
             "absent local root stays a complete empty map (empty-side gate covers it)"
         );
+    }
+
+    // ---- a path gone from both sides leaves the baseline ----
+
+    /// A remote folder held in memory, listed in full (an authoritative
+    /// listing). Listing `broken` fails, which leaves the scan incomplete.
+    #[derive(Default)]
+    struct MemoryProvider {
+        cwd: String,
+        /// Absolute path -> (content, time).
+        stored: HashMap<String, (Vec<u8>, String)>,
+        broken: Option<String>,
+    }
+
+    impl MemoryProvider {
+        /// A file another device put on the remote.
+        fn put(&mut self, path: &str, content: &[u8]) {
+            self.stored.insert(
+                path.to_string(),
+                (content.to_vec(), Utc::now().to_rfc3339()),
+            );
+        }
+
+        fn entry(&self, path: &str) -> Option<ProviderRemoteEntry> {
+            let (content, time) = self.stored.get(path)?;
+            let name = path.rsplit('/').next().unwrap_or(path).to_string();
+            let mut entry = ProviderRemoteEntry::file(name, path.to_string(), content.len() as u64);
+            entry.modified = Some(time.clone());
+            Some(entry)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for MemoryProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "memory".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<ProviderRemoteEntry>, ProviderError> {
+            if self.broken.as_deref() == Some(self.cwd.as_str()) {
+                return Err(ProviderError::Other("listing failed".to_string()));
+            }
+            let prefix = format!("{}/", self.cwd);
+            let mut folders = std::collections::BTreeSet::new();
+            let mut out = Vec::new();
+            for path in self.stored.keys() {
+                let Some(rest) = path.strip_prefix(&prefix) else {
+                    continue;
+                };
+                match rest.split_once('/') {
+                    Some((folder, _)) => {
+                        folders.insert(folder.to_string());
+                    }
+                    None => out.extend(self.entry(path)),
+                }
+            }
+            out.extend(folders.into_iter().map(|folder| {
+                let path = format!("{prefix}{folder}");
+                ProviderRemoteEntry::directory(folder, path)
+            }));
+            Ok(out)
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok(self.cwd.clone())
+        }
+        async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.cwd = path.trim_end_matches('/').to_string();
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let (content, _) = self
+                .stored
+                .get(remote_path)
+                .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+            std::fs::write(local_path, content).map_err(|e| ProviderError::Other(e.to_string()))
+        }
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.stored
+                .get(remote_path)
+                .map(|(content, _)| content.clone())
+                .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            local_path: &str,
+            remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let content =
+                std::fs::read(local_path).map_err(|e| ProviderError::Other(e.to_string()))?;
+            let time: DateTime<Utc> = std::fs::metadata(local_path)
+                .and_then(|meta| meta.modified())
+                .map_err(|e| ProviderError::Other(e.to_string()))?
+                .into();
+            self.stored
+                .insert(remote_path.to_string(), (content, time.to_rfc3339()));
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.stored
+                .remove(path)
+                .map(|_| ())
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<ProviderRemoteEntry, ProviderError> {
+            self.entry(path)
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            self.stored
+                .get(path)
+                .map(|(content, _)| content.len() as u64)
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.stored.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("memory".to_string())
+        }
+    }
+
+    /// Run `body` with the sync index under a scratch `XDG_CONFIG_HOME`, which
+    /// moves the AeroFTP data root on Linux only. Synchronous, so the shared
+    /// environment lock (a std mutex) is never held across an `.await`.
+    #[cfg(target_os = "linux")]
+    fn with_scratch_index(body: impl std::future::Future<Output = ()>) {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(body)
+        }));
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    const GONE_REMOTE: &str = "/gone-on-both";
+
+    fn gone_config(local: &std::path::Path) -> CloudConfig {
+        CloudConfig {
+            enabled: true,
+            local_folder: local.to_path_buf(),
+            remote_folder: GONE_REMOTE.into(),
+            sync_direction: CompareDirection::Bidirectional,
+            ..Default::default()
+        }
+    }
+
+    /// Sync `names` up in a first clean cycle, then delete `gone.txt` here and,
+    /// as another device would, on the remote.
+    async fn synced_then_gone_on_both(
+        svc: &CloudService,
+        provider: &mut MemoryProvider,
+        local: &std::path::Path,
+        names: &[&str],
+    ) {
+        for name in names {
+            let path = local.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, name).unwrap();
+        }
+        svc.init(gone_config(local)).await;
+        let first = svc.perform_full_sync_with_provider(provider).await.unwrap();
+        assert!(first.errors.is_empty(), "{:?}", first.errors);
+        assert_eq!(first.file_details.len(), names.len());
+        std::fs::remove_file(local.join("gone.txt")).unwrap();
+        provider.stored.remove(&format!("{GONE_REMOTE}/gone.txt"));
+    }
+
+    /// A file deleted here and on another device between two cycles is in
+    /// neither scan, so no comparison named it and its baseline entry stayed
+    /// for good. A file created later at that path then read as synced before
+    /// and was deleted on the other side: a new local file deleted locally, a
+    /// new remote one on the remote. The clean cycle that sees the path gone
+    /// from both complete scans forgets it, and each new file is copied.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_path_gone_from_both_sides_is_forgotten_so_a_new_file_there_is_copied() {
+        with_scratch_index(async {
+            for new_on_remote in [false, true] {
+                let local = tempfile::tempdir().unwrap();
+                let mut provider = MemoryProvider::default();
+                let svc = CloudService::new();
+                synced_then_gone_on_both(
+                    &svc,
+                    &mut provider,
+                    local.path(),
+                    &["keep.txt", "gone.txt"],
+                )
+                .await;
+
+                let second = svc
+                    .perform_full_sync_with_provider(&mut provider)
+                    .await
+                    .unwrap();
+                assert!(second.errors.is_empty(), "{:?}", second.errors);
+                let baseline = svc.load_index(&gone_config(local.path())).unwrap();
+                assert!(baseline.files.contains_key("keep.txt"));
+                assert!(
+                    !baseline.files.contains_key("gone.txt"),
+                    "a path gone from both sides stays in the baseline"
+                );
+
+                let remote_path = format!("{GONE_REMOTE}/gone.txt");
+                if new_on_remote {
+                    provider.put(&remote_path, b"a new remote file");
+                } else {
+                    std::fs::write(local.path().join("gone.txt"), b"a new local file").unwrap();
+                }
+                let third = svc
+                    .perform_full_sync_with_provider(&mut provider)
+                    .await
+                    .unwrap();
+                assert!(third.errors.is_empty(), "{:?}", third.errors);
+                assert_eq!(third.deleted, 0, "new on the remote: {new_on_remote}");
+                let expected: &[u8] = if new_on_remote {
+                    b"a new remote file"
+                } else {
+                    b"a new local file"
+                };
+                assert_eq!(
+                    std::fs::read(local.path().join("gone.txt")).unwrap(),
+                    expected
+                );
+                assert_eq!(provider.stored[&remote_path].0, expected);
+            }
+        });
+    }
+
+    /// Both sides emptied (the folder cleared here and on the remote): the
+    /// mass-delete gate trips on the empty sides, and the cycle still forgets
+    /// what is gone from both. Kept, the old names would read as synced once
+    /// the folder fills again, and a new file reusing one would be deleted.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_folder_emptied_on_both_sides_leaves_an_empty_baseline() {
+        with_scratch_index(async {
+            let local = tempfile::tempdir().unwrap();
+            let mut provider = MemoryProvider::default();
+            let svc = CloudService::new();
+            synced_then_gone_on_both(
+                &svc,
+                &mut provider,
+                local.path(),
+                &["gone.txt", "sub/a.txt"],
+            )
+            .await;
+            std::fs::remove_dir_all(local.path().join("sub")).unwrap();
+            provider.stored.clear();
+            let second = svc
+                .perform_full_sync_with_provider(&mut provider)
+                .await
+                .unwrap();
+            assert!(second.errors.is_empty(), "{:?}", second.errors);
+            let baseline = svc.load_index(&gone_config(local.path())).unwrap();
+            assert!(baseline.files.is_empty(), "{:?}", baseline.files.keys());
+        });
+    }
+
+    /// A path the scans leave out by design is absent from both of them and is
+    /// not gone: `.aeroignore`, the exclude list, an excluded folder (and what
+    /// is under it), a local link or what sits behind one. Only the plain
+    /// path the scans would list is forgotten.
+    #[test]
+    fn a_path_the_scans_leave_out_keeps_its_entry() {
+        let local = tempfile::tempdir().unwrap();
+        #[cfg(unix)]
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(local.path().join(".aeroignore"), "ignored/\n").unwrap();
+        let keys = [
+            ("gone.txt", false),
+            ("debug.log", false),
+            ("cache", true),
+            ("cache/blob.bin", false),
+            ("private", true),
+            ("private/notes.txt", false),
+            ("ignored/a.txt", false),
+        ];
+        #[cfg(unix)]
+        {
+            let target = outside.path();
+            std::fs::write(target.join("f"), b"f").unwrap();
+            std::os::unix::fs::symlink(target, local.path().join("linked")).unwrap();
+            std::os::unix::fs::symlink(target.join("f"), local.path().join("link.txt")).unwrap();
+        }
+        let links: &[(&str, bool)] = if cfg!(unix) {
+            &[("linked/a.txt", false), ("link.txt", false)]
+        } else {
+            &[]
+        };
+        let config = CloudConfig {
+            local_folder: local.path().to_path_buf(),
+            exclude_patterns: vec!["*.log".to_string(), "cache".to_string()],
+            excluded_folders: vec!["/private/".to_string()],
+            ..Default::default()
+        };
+        let index = SyncIndex {
+            version: SYNC_INDEX_VERSION,
+            last_sync: Utc::now(),
+            local_path: local.path().to_string_lossy().into_owned(),
+            remote_path: GONE_REMOTE.to_string(),
+            files: keys
+                .iter()
+                .chain(links)
+                .map(|(key, is_dir)| {
+                    let entry = SyncIndexEntry {
+                        size: 1,
+                        modified: None,
+                        is_dir: *is_dir,
+                    };
+                    (key.to_string(), entry)
+                })
+                .collect(),
+            unverified_keys: Default::default(),
+        };
+        let gone = CloudService::gone_on_both(
+            &config,
+            &local.path().to_string_lossy(),
+            &HashMap::new(),
+            &HashMap::new(),
+            Some(&index),
+        )
+        .unwrap();
+        assert_eq!(gone, vec!["gone.txt".to_string()]);
+    }
+
+    /// A scan that did not see the whole tree cannot say a path is gone: the
+    /// cycle forgets nothing, whichever side was incomplete.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_incomplete_scan_forgets_nothing() {
+        use std::os::unix::fs::PermissionsExt;
+        with_scratch_index(async {
+            for remote_incomplete in [true, false] {
+                let local = tempfile::tempdir().unwrap();
+                let mut provider = MemoryProvider::default();
+                let svc = CloudService::new();
+                synced_then_gone_on_both(
+                    &svc,
+                    &mut provider,
+                    local.path(),
+                    &["keep.txt", "gone.txt", "sub/a.txt"],
+                )
+                .await;
+                let drafts = local.path().join("drafts");
+                if remote_incomplete {
+                    provider.broken = Some(format!("{GONE_REMOTE}/sub"));
+                } else {
+                    // Listed but not searchable: its entries cannot be stated.
+                    std::fs::create_dir(&drafts).unwrap();
+                    std::fs::write(drafts.join("note.txt"), b"x").unwrap();
+                    std::fs::set_permissions(&drafts, std::fs::Permissions::from_mode(0o400))
+                        .unwrap();
+                }
+                let second = svc.perform_full_sync_with_provider(&mut provider).await;
+                if !remote_incomplete {
+                    std::fs::set_permissions(&drafts, std::fs::Permissions::from_mode(0o700))
+                        .unwrap();
+                }
+                let second = second.unwrap();
+                assert!(second.errors.is_empty(), "{:?}", second.errors);
+                let baseline = svc.load_index(&gone_config(local.path())).unwrap();
+                assert!(
+                    baseline.files.contains_key("gone.txt"),
+                    "forgotten on an incomplete scan (remote incomplete: {remote_incomplete})"
+                );
+            }
+        });
     }
 }
 

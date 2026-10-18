@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Ընտրեք ձեր Zoho հաշվին համապատասխանող տարածաշրջանը (օրինակ՝ zoho.eu Եվրոպայի համար):",
                 "redirectUri": "Վերահղման URI",
                 "redirectUriHelp": "Պատճենեք այս URL-ը և տեղադրեք այն որպես Redirect URI ձեր մշակողի հավելվածի կարգավորումներում։",
-                "redirectUriNoteGoogle": "Խորհուրդ է տրվում՝ ստեղծեք “Desktop app” տեսակի OAuth Client ID Google Cloud Console-ում (վերահղման URI անհրաժեշտ չէ)։ Եթե օգտագործում եք “Web application” տեսակը, որպես վերահղման URI սահմանեք http://127.0.0.1 հասցեն։",
+                "redirectUriNoteGoogle": "Խորհուրդ է տրվում․ Google Cloud Console-ում ստեղծեք «Սեղանադիր հավելված» տեսակի OAuth հաճախորդի ID․ վերահղման URI գրանցելու կարիք չկա։ «Վեբ հավելված» տեսակի հաճախորդի համար գրանցեք վերևում ցուցադրված վերահղման URI-ն՝ ճշգրիտ ներառելով պորտը և /callback ուղին։",
                 "enablePhotosApi": "Համոզվեք, որ Photos Library API-ն միացված է ձեր Google Cloud Console-ում։",
                 "enableDriveApi": "Համոզվեք, որ Google Drive API-ն միացված է ձեր Google Cloud Console-ում։"
             },

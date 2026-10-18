@@ -17110,47 +17110,53 @@ mod tests {
         assert_eq!(state.in_flight_transfers.load(Ordering::SeqCst), 0);
     }
 
-    #[tokio::test]
+    // The two tests below run on tokio's paused clock, which moves only to
+    // the next timer, so what they measure is the drain's own waiting and
+    // not how long a loaded runner kept the test from running.
+    #[tokio::test(start_paused = true)]
     async fn drain_in_flight_transfers_returns_immediately_when_zero() {
         let state = ProviderState::new();
-        let started = Instant::now();
+        let started = tokio::time::Instant::now();
         drain_in_flight_transfers(&state, Duration::from_secs(5)).await;
-        assert!(
-            started.elapsed() < Duration::from_millis(50),
-            "drain on idle state must not wait, took {:?}",
-            started.elapsed()
+        assert_eq!(
+            tokio::time::Instant::now(),
+            started,
+            "drain on idle state must not wait"
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn drain_in_flight_transfers_waits_for_guard_drop() {
+        const DROP_AFTER: Duration = Duration::from_millis(100);
         let state = Arc::new(ProviderState::new());
         let guard = TransferOperationGuard::acquire(&state);
         let state_clone = Arc::clone(&state);
         // Drop the guard after a short delay; drain must observe the
         // decrement (via the notify) and return promptly after.
         let dropper = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(DROP_AFTER).await;
             drop(guard);
             // touch state_clone so the borrow lives long enough on
             // older rustc versions
             let _ = state_clone.in_flight_transfers.load(Ordering::SeqCst);
         });
 
-        let started = Instant::now();
+        let started = tokio::time::Instant::now();
         drain_in_flight_transfers(&state, Duration::from_secs(5)).await;
         let elapsed = started.elapsed();
         dropper.await.unwrap();
 
         assert_eq!(state.in_flight_transfers.load(Ordering::SeqCst), 0);
         assert!(
-            elapsed >= Duration::from_millis(80),
+            elapsed >= DROP_AFTER,
             "drain must wait for the guard, only waited {:?}",
             elapsed
         );
+        // Each wait of the drain is capped at 1 s, so a missed notification
+        // still wakes it, at that cap: woken by the drop means before it.
         assert!(
-            elapsed < Duration::from_millis(1500),
-            "drain must wake up promptly after the notify, took {:?}",
+            elapsed < Duration::from_secs(1),
+            "drain must wake up on the notify, not on its 1 s re-check; took {:?}",
             elapsed
         );
     }

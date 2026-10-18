@@ -200,7 +200,7 @@
                 "zohoRegionHelp": "Veldu svæðið sem passar við Zoho reikninginn þinn (t.d. zoho.eu fyrir Evrópu).",
                 "redirectUri": "Tilvísunar-URI",
                 "redirectUriHelp": "Afritaðu þessa slóð og límiðu hana sem tilvísunar-URI í stillingum forritarans þíns.",
-                "redirectUriNoteGoogle": "Mælt með: búðu til \"Desktop app\" OAuth Client ID í Google Cloud Console (engin redirect URI þarf). Ef þú notar \"Web application\" gerð, stilltu redirect URI á http://127.0.0.1.",
+                "redirectUriNoteGoogle": "Mælt er með að búa til OAuth-biðlaraauðkenni af gerðinni „Skjáborðsforrit“ í Google Cloud Console; ekki þarf að skrá URI fyrir tilvísun. Fyrir biðlara af gerðinni „Vefforrit“ skal skrá nákvæmlega það URI fyrir tilvísun sem birtist hér að ofan, ásamt gáttinni og slóðinni /callback.",
                 "enablePhotosApi": "Gangið úr skugga um að Photos Library API sé virkt í Google Cloud Console.",
                 "enableDriveApi": "Gangið úr skugga um að Google Drive API sé virkt í Google Cloud Console."
             },

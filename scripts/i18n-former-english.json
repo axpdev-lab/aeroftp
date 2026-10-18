@@ -5,7 +5,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "d1c0a3a6584c0089bbeae2c7bd41e93ca9a00acf00f30af04c8da12e7a352a14",
+    "enHash": "9dfcbc6696a6c0b5c0e9f663406e46d6bff05515c9f33d7f33e6160c65828d5e",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -259,7 +259,8 @@
             "No devices yet — click Detect"
         ],
         "connection.oauth.redirectUriNoteGoogle": [
-            "Google accepts any loopback port. Copy this as the Authorized Redirect URI in your Google Cloud Console."
+            "Google accepts any loopback port. Copy this as the Authorized Redirect URI in your Google Cloud Console.",
+            "Recommended: create a \"Desktop app\" OAuth Client ID in Google Cloud Console (no redirect URI needed). If using \"Web application\" type, set the redirect URI to http://127.0.0.1."
         ],
         "connection.securityEncryption": [
             "AES-256-GCM encryption with Argon2id key derivation for local storage"

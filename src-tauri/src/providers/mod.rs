@@ -1251,6 +1251,19 @@ pub trait StorageProvider: Send + Sync {
         true
     }
 
+    /// The shortest time this backend asks to leave between two full
+    /// recursive scans of a synced folder, `None` when it asks for none.
+    ///
+    /// AeroCloud's scheduler runs a pair's full scan at the larger of the
+    /// user's interval and this floor; local changes between two scans travel
+    /// one path at a time, without a listing. A backend whose terms rule out
+    /// frequent recursive traversals declares its floor here. An overlay
+    /// forwards its inner provider's, so a crypt or compress layer cannot hide
+    /// it.
+    fn min_full_scan_interval(&self) -> Option<std::time::Duration> {
+        None
+    }
+
     /// Hard-delete a path bypassing the provider's recycle bin.
     ///
     /// `delete()` on consumer-cloud providers (Google Drive, Dropbox, OneDrive,
