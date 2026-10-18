@@ -1448,7 +1448,7 @@ fn map_remote(
             } else {
                 concat!(
                     "the remote holds no complete saved session: after the import, ",
-                    crate::providers::proton_native::sign_in_hint!()
+                    crate::providers::proton_sign_in_hint!()
                 )
             };
             Ok(MappedProfile {
@@ -2241,7 +2241,7 @@ fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Op
         "proton" if proton_session_of(server).is_none() => Some(
             concat!(
                 "the profile is not signed in to Proton: ",
-                crate::providers::proton_native::sign_in_hint!(),
+                crate::providers::proton_sign_in_hint!(),
                 ", then export again"
             )
             .to_string(),

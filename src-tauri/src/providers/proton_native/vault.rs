@@ -99,7 +99,7 @@ fn parse(json: &str) -> Result<ProtonSession, ProviderError> {
             ProviderError::AuthenticationFailed(
                 concat!(
                     "the saved Proton session is unreadable: ",
-                    super::sign_in_hint!(),
+                    crate::providers::proton_sign_in_hint!(),
                     " again"
                 )
                 .into(),
@@ -690,7 +690,7 @@ mod tests {
             matches!(
                 error,
                 ProviderError::AuthenticationFailed(ref text)
-                    if text.contains(crate::providers::proton_native::SIGN_IN_HINT)
+                    if text.contains(crate::providers::PROTON_SIGN_IN_HINT)
             ),
             "{error:?}"
         );

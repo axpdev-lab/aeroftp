@@ -24965,6 +24965,7 @@ fn native_proton_profile(profile: &serde_json::Value) -> Result<(String, String)
 /// interactive. The address carries a one-time key for the sign-in, so it
 /// goes nowhere else: not to stdout, a log or JSON output. `Err` when nothing
 /// could show the page.
+#[cfg(feature = "proton-native")]
 fn show_proton_sign_in_page(
     url: &str,
     no_browser: bool,
@@ -41602,12 +41603,15 @@ fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportRe
 
 #[cfg(test)]
 mod proton_profile_cli_tests {
+    #[cfg(feature = "proton-native")]
+    use super::show_proton_sign_in_page;
     use super::{
-        is_native_proton_options, native_proton_profile, proton_profile_options,
-        show_proton_sign_in_page, Cli, Commands, ProtonCommands,
+        is_native_proton_options, native_proton_profile, proton_profile_options, Cli, Commands,
+        ProtonCommands,
     };
     use clap::Parser;
 
+    #[cfg(feature = "proton-native")]
     const URL: &str = "https://account.proton.me/auth-ext#one-time-key";
 
     #[test]
@@ -41668,6 +41672,7 @@ mod proton_profile_cli_tests {
     /// terminal and nowhere else, neither in an error nor when stderr is not
     /// a terminal.
     #[test]
+    #[cfg(feature = "proton-native")]
     fn the_sign_in_address_reaches_only_an_interactive_terminal() {
         let show = |no_browser: bool, interactive: bool, browser: Result<(), String>| {
             let mut opened = false;
@@ -41763,7 +41768,7 @@ mod proton_profile_cli_tests {
 
                 // Every Proton message that asks for a sign-in quotes this
                 // command: it has to be one this binary runs.
-                let hint = ftp_client_gui_lib::providers::proton_native::SIGN_IN_HINT;
+                let hint = ftp_client_gui_lib::providers::PROTON_SIGN_IN_HINT;
                 let quoted = hint
                     .split('`')
                     .nth(1)

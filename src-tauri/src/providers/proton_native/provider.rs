@@ -62,7 +62,7 @@ pub const PATH_CACHE_TTL: Duration = Duration::from_secs(30);
 
 const NOT_SIGNED_IN: &str = concat!(
     "This profile is not signed in to Proton yet: ",
-    super::sign_in_hint!(),
+    crate::providers::proton_sign_in_hint!(),
     ", then connect."
 );
 
@@ -301,7 +301,7 @@ pub fn map_error(path: &str, error: ProtonError) -> ProviderError {
         ProtonError::AlreadyExists { .. } => ProviderError::AlreadyExists(path.to_string()),
         ProtonError::InvalidName(reason) => ProviderError::InvalidPath(format!("{path}: {reason}")),
         ProtonError::SessionExpired | ProtonError::NotSignedIn => ProviderError::AuthenticationFailed(
-            concat!("The Proton session has ended: ", super::sign_in_hint!(), " again.").into(),
+            concat!("The Proton session has ended: ", crate::providers::proton_sign_in_hint!(), " again.").into(),
         ),
         // A lost connection, so the app's silent reconnect runs: its connect
         // opens the session now saved for the profile, as Connect would.
@@ -984,7 +984,7 @@ impl StorageProvider for ProtonNativeProvider {
                     return Err(ProviderError::AuthenticationFailed(format!(
                         "The pending Proton sign-in belongs to another account than {expected}: \
                          {hint} again for this profile.",
-                        hint = super::SIGN_IN_HINT
+                        hint = crate::providers::PROTON_SIGN_IN_HINT
                     )));
                 }
             }
@@ -1813,7 +1813,7 @@ mod tests {
     /// user who has no app to press it in.
     #[test]
     fn a_message_that_asks_for_a_sign_in_names_the_app_and_the_cli() {
-        let hint = crate::providers::proton_native::SIGN_IN_HINT;
+        let hint = crate::providers::PROTON_SIGN_IN_HINT;
         assert!(hint.contains("AeroFTP app"), "{hint}");
         assert!(hint.contains("aeroftp-cli proton sign-in"), "{hint}");
         for text in [
@@ -1846,7 +1846,7 @@ mod tests {
             assert!(matches!(
                 map_error("/", ended),
                 ProviderError::AuthenticationFailed(ref t)
-                    if t.contains(crate::providers::proton_native::SIGN_IN_HINT)
+                    if t.contains(crate::providers::PROTON_SIGN_IN_HINT)
             ));
         }
         // The app reconnects silently only on a lost connection.

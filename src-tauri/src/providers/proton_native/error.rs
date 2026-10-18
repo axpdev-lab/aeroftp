@@ -60,7 +60,7 @@ pub enum ProtonError {
     RateLimited { retry_after_secs: u64 },
 
     /// The session can no longer be refreshed: the user must sign in again.
-    #[error("the Proton session expired: {hint}", hint = super::SIGN_IN_HINT)]
+    #[error("the Proton session expired: {hint}", hint = crate::providers::PROTON_SIGN_IN_HINT)]
     SessionExpired,
 
     /// A new sign-in saved another session for this profile and ended the
@@ -69,7 +69,7 @@ pub enum ProtonError {
     SessionReplaced,
 
     /// A call that needs a session ran without one.
-    #[error("not signed in to Proton: {hint}", hint = super::SIGN_IN_HINT)]
+    #[error("not signed in to Proton: {hint}", hint = crate::providers::PROTON_SIGN_IN_HINT)]
     NotSignedIn,
 
     /// The browser sign-in was not completed in time.
