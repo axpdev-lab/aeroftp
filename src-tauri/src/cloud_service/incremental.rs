@@ -19,18 +19,17 @@
 
 use super::{
     open_aerocloud_provider, CloudService, FailedPath, PairCycleError, PairCycleReport,
-    ProviderScanTraits, SkippedEntry, SyncOperationResult,
+    ProviderScanTraits, ScanScope, SkippedEntry, SyncOperationResult,
 };
 use crate::cloud_config::{CloudConfig, CloudSyncStatus};
 use crate::credential_store;
 use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 use crate::sync::{
     build_comparison_results_with_index, decide_sync_action, load_sync_index, local_changed_since,
-    normalize_relative_key, save_sync_index, validate_relative_path, CompareOptions,
-    FileComparison, FileInfo, SyncAction, SyncIndex, SyncIndexEntry, SyncStatus,
-    SYNC_INDEX_VERSION,
+    normalize_relative_key, save_sync_index, CompareOptions, FileComparison, FileInfo, SyncAction,
+    SyncIndex, SyncIndexEntry, SyncStatus, SYNC_INDEX_VERSION,
 };
-use crate::sync_ignore::{AeroIgnore, ScanDecision};
+use crate::sync_ignore::AeroIgnore;
 use chrono::{DateTime, Utc};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -179,64 +178,6 @@ fn related(a: &str, b: &str) -> bool {
     a == b || is_under(a, b) || is_under(b, a)
 }
 
-/// The scan's rules for which paths a pair syncs: `.aeroignore`, the
-/// exclude list, the excluded folders.
-struct Scope {
-    aeroignore: Option<AeroIgnore>,
-    excludes: crate::sync_exclude::ExcludeMatcher,
-    excluded_folders: Vec<String>,
-}
-
-impl Scope {
-    fn new(config: &CloudConfig) -> Result<Self, String> {
-        Ok(Self {
-            aeroignore: AeroIgnore::load(&config.local_folder),
-            // An invalid configured exclude fails the pass, as it fails the scan.
-            excludes: crate::sync::compile_excludes(&config.exclude_patterns)?,
-            excluded_folders: config
-                .excluded_folders
-                .iter()
-                .map(|folder| folder.trim_matches('/').to_string())
-                .filter(|folder| !folder.is_empty())
-                .collect(),
-        })
-    }
-
-    fn decision(&self, key: &str, is_dir: bool) -> ScanDecision {
-        crate::sync_ignore::scan_decision(self.aeroignore.as_ref(), key, is_dir, &self.excludes)
-    }
-
-    fn excluded_folder(&self, key: &str) -> bool {
-        self.excluded_folders
-            .iter()
-            .any(|folder| key == folder || is_under(key, folder))
-    }
-
-    /// Whether the scan walks down to `key`: no folder above it is left out.
-    fn reaches(&self, key: &str) -> bool {
-        key.match_indices('/').all(|(end, _)| {
-            let dir = &key[..end];
-            self.decision(dir, true) != ScanDecision::Skip && !self.excluded_folder(dir)
-        })
-    }
-
-    /// Whether the scan lists `key` itself.
-    fn lists(&self, key: &str, is_dir: bool) -> bool {
-        validate_relative_path(key).is_ok()
-            && self.reaches(key)
-            && self.decision(key, is_dir) == ScanDecision::Keep
-            && !(is_dir && self.excluded_folder(key))
-    }
-
-    /// Whether the scan walks into the folder `key`.
-    fn walks(&self, key: &str) -> bool {
-        validate_relative_path(key).is_ok()
-            && self.reaches(key)
-            && self.decision(key, true) != ScanDecision::Skip
-            && !self.excluded_folder(key)
-    }
-}
-
 /// Reads local paths the way the full scan does: links are not followed.
 struct Disk<'a> {
     root: &'a Path,
@@ -304,7 +245,7 @@ impl<'a> Disk<'a> {
     fn walk(
         &mut self,
         key: &str,
-        scope: &Scope,
+        scope: &ScanScope,
         out: &mut BTreeMap<String, Local>,
         budget: &mut usize,
     ) -> Result<(), ()> {
@@ -396,7 +337,7 @@ fn plan(
                 .to_string(),
         ));
     }
-    let scope = Scope::new(config)?;
+    let scope = ScanScope::new(config)?;
     let mut disk = Disk::new(root);
     let mut full_scan_wanted = None;
 
@@ -535,7 +476,7 @@ fn plan_renames(
     candidates: &[(String, String)],
     index: &mut SyncIndex,
     disk: &mut Disk<'_>,
-    scope: &Scope,
+    scope: &ScanScope,
     config: &CloudConfig,
 ) -> Vec<PlannedRename> {
     let mut planned = Vec::new();
