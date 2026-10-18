@@ -1478,6 +1478,12 @@ impl StorageProvider for MegaNativeProvider {
             return Ok(());
         }
 
+        if self.config.password.expose_secret().is_empty() {
+            return Err(ProviderError::AuthenticationFailed(
+                "MEGA password is required when no saved session is available".into(),
+            ));
+        }
+
         let prelogin: MegaPreloginWire = self
             .command_with_retry(json!({
                 "a": "us0",
@@ -2744,6 +2750,44 @@ mod tests {
     fn mega_error_code_mapping_keeps_auth_specific_errors() {
         let err = map_mega_error_code(-14);
         assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+    }
+
+    #[tokio::test]
+    async fn connect_without_password_fails_auth_before_sending_a_login_command() {
+        use crate::providers::StorageProvider;
+        use std::sync::{atomic::AtomicUsize, atomic::Ordering, Arc};
+
+        let requests = Arc::new(AtomicUsize::new(0));
+        let received = Arc::clone(&requests);
+        let app = axum::Router::new().fallback(axum::routing::post(move || {
+            received.fetch_add(1, Ordering::SeqCst);
+            async { axum::Json(json!([{ "v": 1 }])) }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+        let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+            email: "test@example.invalid".into(),
+            password: secrecy::SecretString::new(String::new().into()),
+            two_factor_code: None,
+            totp_secret: None,
+            save_session: false,
+            logout_on_disconnect: None,
+            connection_mode: crate::providers::types::MegaConnectionMode::Native,
+        });
+        provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+
+        let result = provider.connect().await;
+        server.abort();
+        assert!(
+            matches!(
+                result,
+                Err(ProviderError::AuthenticationFailed(_) | ProviderError::InvalidConfig(_))
+            ),
+            "empty credentials must fail as auth/config, got {result:?}"
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 0);
     }
 
     #[test]

@@ -32,38 +32,39 @@ pub fn mega_base64_decode(value: &str) -> MegaCryptoResult<Vec<u8>> {
 
 // ─── KDF ──────────────────────────────────────────────────────────────────
 
-/// MEGA v1 KDF: 65536 rounds of AES-ECB with 4-byte password chunks.
+/// MEGA v1 KDF: 65536 rounds of AES-ECB across the password's 4-word keys.
 /// Returns a 16-byte password key.
 pub fn kdf_v1(password: &[u8]) -> MegaCryptoResult<[u8; 16]> {
-    let mut key = [0u8; 16];
-
-    // Process password in 16-byte chunks, XOR-accumulate through 65536 AES rounds
-    for chunk_start in (0..password.len()).step_by(16) {
-        let mut chunk = [0u8; 16];
-        let chunk_end = std::cmp::min(chunk_start + 16, password.len());
-        chunk[..chunk_end - chunk_start].copy_from_slice(&password[chunk_start..chunk_end]);
-
-        // XOR chunk into key
-        for (k, c) in key.iter_mut().zip(chunk.iter()) {
-            *k ^= c;
-        }
-
-        // 65536 rounds of AES-ECB with the current key as both data and key derivation input
-        let mut pkey = [
-            0x93, 0xC4, 0x67, 0xE3, 0x7D, 0xB0, 0xC7, 0xA4, 0xD1, 0xBE, 0x3F, 0x81, 0x01, 0x52,
-            0xCB, 0x56,
-        ]; // MEGA constant
-        for _ in 0..65536 {
-            let cipher = Aes128::new(GenericArray::from_slice(&key));
-            let mut block = GenericArray::clone_from_slice(&pkey);
-            cipher.encrypt_block(&mut block);
-            pkey.copy_from_slice(&block);
-        }
-
-        key = pkey;
+    let password = std::str::from_utf8(password)
+        .map_err(|_| ProviderError::InvalidConfig("MEGA v1 password must be valid UTF-8".into()))?;
+    // Match the legacy JavaScript charCodeAt packing, including overlapping bits
+    // from UTF-16 code units above 0xff. Raw UTF-8 bytes produce a different key.
+    let mut words =
+        zeroize::Zeroizing::new(vec![0u32; password.encode_utf16().count().div_ceil(4)]);
+    for (i, code_unit) in password.encode_utf16().enumerate() {
+        words[i / 4] |= u32::from(code_unit) << (24 - (i % 4) * 8);
     }
+    let ciphers: Vec<_> = words
+        .chunks(4)
+        .map(|chunk| {
+            let mut key = zeroize::Zeroizing::new([0u8; 16]);
+            for (word, destination) in chunk.iter().zip(key.chunks_exact_mut(4)) {
+                destination.copy_from_slice(&word.to_be_bytes());
+            }
+            Aes128::new(GenericArray::from_slice(&key[..]))
+        })
+        .collect();
 
-    Ok(key)
+    let mut block = GenericArray::from([
+        0x93, 0xC4, 0x67, 0xE3, 0x7D, 0xB0, 0xC7, 0xA4, 0xD1, 0xBE, 0x3F, 0x81, 0x01, 0x52, 0xCB,
+        0x56,
+    ]);
+    for _ in 0..65536 {
+        for cipher in &ciphers {
+            cipher.encrypt_block(&mut block);
+        }
+    }
+    Ok(block.into())
 }
 
 /// MEGA v2 KDF: PBKDF2-HMAC-SHA512, 100 000 iterations.
@@ -81,21 +82,15 @@ pub fn kdf_v2(password: &[u8], salt: &[u8]) -> MegaCryptoResult<([u8; 16], [u8; 
     Ok((password_key, user_hash))
 }
 
-/// MEGA v1 username hash: email XOR-folded into 8 bytes, 16384 AES-ECB rounds.
+/// MEGA v1 username hash: email XOR-folded into 16 bytes, 16384 AES-ECB rounds.
 pub fn username_hash_v1(email: &str, password_key: &[u8; 16]) -> MegaCryptoResult<[u8; 8]> {
     let email_lower = email.trim().to_lowercase();
     let email_bytes = email_lower.as_bytes();
 
-    // XOR-fold email into 8 bytes
-    let mut hash = [0u8; 8];
-    for (i, &byte) in email_bytes.iter().enumerate() {
-        hash[i % 8] ^= byte;
-    }
-
-    // Expand 8 bytes to 16 for AES block
     let mut block = [0u8; 16];
-    block[..8].copy_from_slice(&hash);
-    block[8..].copy_from_slice(&hash);
+    for (i, &byte) in email_bytes.iter().enumerate() {
+        block[i % 16] ^= byte;
+    }
 
     // 16384 AES-ECB rounds
     let cipher = Aes128::new(GenericArray::from_slice(password_key));
@@ -106,7 +101,7 @@ pub fn username_hash_v1(email: &str, password_key: &[u8; 16]) -> MegaCryptoResul
     }
 
     let mut result = [0u8; 8];
-    result.copy_from_slice(&block[..4]);
+    result[..4].copy_from_slice(&block[..4]);
     result[4..].copy_from_slice(&block[8..12]);
     Ok(result)
 }
@@ -634,6 +629,47 @@ mod tests {
     fn mega_base64_roundtrip_single_zero_byte() {
         assert_eq!(mega_base64_encode(&[0]), "AA");
         assert_eq!(mega_base64_decode("AA").unwrap(), vec![0]);
+    }
+
+    #[test]
+    fn username_hash_v1_matches_megas_legacy_login_vectors() {
+        // MEGA webclient stringhash, pinned at 4e7a2c31:
+        // https://github.com/meganz/webclient/blob/4e7a2c31ded96a077a6fd4819e7f08cdba3ece22/js/crypto.js#L1063
+        let key = hex::decode("00112233445566778899aabbccddeeff")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        for (email, expected) in [
+            ("  TEST@EXAMPLE.COM  ", "766f01e1a6db34b8"),
+            ("a@example.invalid", "ad04988c0a9f339d"),
+            (
+                "long.account.name+legacy@example.invalid",
+                "152e58cc01316b8f",
+            ),
+        ] {
+            assert_eq!(
+                hex::encode(username_hash_v1(email, &key).unwrap()),
+                expected,
+                "{email}"
+            );
+        }
+    }
+
+    #[test]
+    fn kdf_v1_matches_megas_multiblock_and_unicode_password_vectors() {
+        // MEGA webclient prepare_key and the SDK's utf8_to_a32forjs mapping:
+        // https://github.com/meganz/webclient/blob/4e7a2c31ded96a077a6fd4819e7f08cdba3ece22/js/crypto.js#L44
+        for (password, expected) in [
+            ("0123456789abcdefX", "8a353d2af7ba760177544c9ecb722bf3"),
+            (
+                "correct horse battery staple",
+                "57d978ef82e99ea50ab00045e8614d7b",
+            ),
+            ("motdepasse-é🔒", "225a482e9ab222da45844a0e52ed00ca"),
+            ("short password", "b4eed9fbfd24473b8a121eb6062ed4ca"),
+        ] {
+            assert_eq!(hex::encode(kdf_v1(password.as_bytes()).unwrap()), expected);
+        }
     }
 
     #[test]
