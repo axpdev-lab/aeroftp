@@ -3,7 +3,7 @@
 # src/providers/proton.rs. It records argv and fakes just enough behaviour for
 # the provider sequences under test. It is a checked-in executable on purpose:
 # see `link_shim` in that module for why the tests must not write it themselves.
-import json, os, pathlib, sys
+import glob, json, os, pathlib, sys
 
 # State lives next to the path this script was invoked through. The tests
 # reach it through a per-test symlink, so that path is the symlink, never the
@@ -25,6 +25,34 @@ if os.path.exists(os.path.join(HERE, "signed_out")):
     print("Error: You need to login first. Run `proton-drive auth login`.", file=sys.stderr)
     sys.exit(1)
 sub = args[1] if len(args) > 1 else ""
+# proton-drive reads a local path holding * ? [ or { as a glob, the upload
+# sources and the download folder alike
+# (cli/src/commands/fileSystem/localPath.ts); a pattern that matches nothing
+# fails before any transfer.
+def resolve_local(path):
+    if not any(c in path for c in "*?[{"):
+        return [path]
+    matches = sorted(glob.glob(path))
+    if not matches:
+        print("No paths matched: %s" % path, file=sys.stderr)
+        sys.exit(1)
+    return matches
+if verb == "filesystem" and sub in ("upload", "download"):
+    positional, rest = [], iter(range(2, len(args)))
+    for i in rest:
+        if args[i] in ("-f", "-d"):
+            next(rest, None)
+        elif not args[i].startswith("-"):
+            positional.append(i)
+    if sub == "upload":
+        for i in positional[:-1]:
+            resolve_local(args[i])
+    elif positional:
+        folders = resolve_local(args[positional[-1]])
+        if len(folders) != 1:
+            print("Expected exactly one local path", file=sys.stderr)
+            sys.exit(1)
+        args[positional[-1]] = folders[0]
 
 
 def emit_transfer_failure(failures):
@@ -58,7 +86,10 @@ if verb == "filesystem" and sub in ("upload", "download") and failing.exists():
 if verb == "filesystem" and sub == "download":
     dest = pathlib.Path(args[-1])
     remote = args[-2]
-    name = pathlib.Path(remote).name
+    # The name proton-drive writes: control characters and < > : " | ? * \
+    # become _ (downloadPathValidation.ts), on every platform.
+    name = "".join("_" if ord(c) < 32 or ord(c) == 127 or c in '<>:"|?*\\' else c
+                   for c in pathlib.Path(remote).name)
     dest.mkdir(parents=True, exist_ok=True)
     target = dest / name
     if "-f" in args:
