@@ -212,9 +212,11 @@ pub fn resolve_profile(
             || normalized == "twofactorcode"
             || normalized == "rolemfatokencode"
             || normalized.contains("password")
+            || normalized.contains("passphrase")
             || normalized.contains("secret")
             || normalized.contains("token")
             || normalized.contains("apikey")
+            || normalized == "accesskey"
             || normalized == "privatekey"
         {
             return Err(format!("'{key}' is a credential or ephemeral field; store secrets through the credential commands"));
@@ -305,4 +307,57 @@ pub fn resolve_profile(
         }
     }
     Ok(profile)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn secret_option_aliases_are_rejected_before_persistence() {
+        let accepted: Vec<_> = ["accessKey", "access_key", "keyPassphrase", "key_passphrase"]
+            .into_iter()
+            .filter(|key| {
+                let options =
+                    serde_json::json!({(*key):"synthetic secret","container":"synthetic-container"});
+                super::resolve_profile("azure", None, None, None, None, None, &options).is_ok()
+            })
+            .collect();
+        assert!(accepted.is_empty(), "Secret fields persisted: {accepted:?}");
+    }
+
+    #[test]
+    fn legacy_proton_mode_is_preserved_while_new_profiles_materialize_native() {
+        let profile = serde_json::json!({"protocol":"proton","host":"","options":{}});
+        let (extra, _) = crate::profile_loader::profile_connection_extra(
+            &profile,
+            crate::providers::ProviderType::Proton,
+            "",
+        );
+        let config = crate::providers::ProviderConfig {
+            name: "synthetic".into(),
+            provider_type: crate::providers::ProviderType::Proton,
+            host: "".into(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: None,
+            extra,
+        };
+        assert_eq!(
+            crate::providers::proton::ProtonConfig::from_provider_config(&config)
+                .unwrap()
+                .connection_mode,
+            crate::providers::proton::ProtonConnectionMode::Cli
+        );
+        let created = super::resolve_profile(
+            "proton",
+            None,
+            None,
+            None,
+            None,
+            None,
+            &serde_json::json!({}),
+        )
+        .unwrap();
+        assert_eq!(created["options"]["proton_mode"], "native");
+    }
 }

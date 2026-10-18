@@ -221,6 +221,11 @@ pub fn profile_connection_extra(
             .and_then(crate::connection_manifest::preset)
             .filter(|preset| preset.protocol == spec.token);
         for (key, value) in crate::connection_manifest::default_options(spec, preset) {
+            // Missing mode identifies a legacy CLI profile. Creation already
+            // materializes the native default in the saved options.
+            if provider_type == ProviderType::Proton && key == "proton_mode" {
+                continue;
+            }
             if provider_type == ProviderType::S3
                 && matches!(key.as_str(), "region" | "endpoint" | "pathStyle")
             {

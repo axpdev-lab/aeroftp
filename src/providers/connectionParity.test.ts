@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { getDefaultPort, getProtocolInfo } from '../components/ProtocolSelector';
 import { PROVIDERS } from './registry';
-import { presetConnectionOptions } from './connectionManifest';
+import { connectionManifest, connectionProfileDefaults, presetConnectionOptions } from './connectionManifest';
 
 describe('connection metadata used by saved profiles', () => {
+    it('native tile defaults cannot select a preset belonging to a different transport', () => {
+        for (const protocol of connectionManifest.protocols) {
+            const defaults = connectionProfileDefaults(protocol.token);
+            const preset = PROVIDERS.find(provider => provider.id === defaults.providerId);
+            if (preset) expect(preset.protocol, protocol.token).toBe(protocol.token);
+        }
+    });
     it('selecting any preset preserves all of its material connection options', () => {
         for (const provider of PROVIDERS) {
             for (const [key, value] of Object.entries(provider.defaults ?? {})) {

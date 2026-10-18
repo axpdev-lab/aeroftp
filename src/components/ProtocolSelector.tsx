@@ -174,7 +174,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
     },
     {
         type: 'ftps', name: 'FTPS', icon: <Lock size={16} />,
-        description: t('protocol.ftpDesc'), badge: 'TLS',
+        description: t('protocol.ftpsDesc'), badge: 'TLS',
         color: 'text-blue-500', tooltip: t('protocol.ftpTooltip'),
     },
     {

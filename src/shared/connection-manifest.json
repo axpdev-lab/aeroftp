@@ -320,7 +320,6 @@
       "frontend": true,
       "defaultOptions": {},
       "requiredOptions": [],
-      "nativeProviderId": "koofr",
       "devOnly": false
     },
     {
