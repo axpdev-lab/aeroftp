@@ -12,6 +12,26 @@ use std::sync::Mutex;
 
 static PREPARE: Mutex<()> = Mutex::new(());
 
+/// A fixture root on the volume of the test binaries, so `executable` can
+/// hard-link the CLI instead of copying it. The system temp directory is often
+/// another filesystem (a tmpfs `/tmp`, or C: temp beside a D: workspace on the
+/// Windows runners), where every fixture would copy the debug CLI, over a GiB,
+/// and parallel tests run out of space. Integration tests get Cargo's
+/// `CARGO_TARGET_TMPDIR`; a lib test, which has none, uses its own directory.
+pub fn root() -> std::io::Result<tempfile::TempDir> {
+    let base = match option_env!("CARGO_TARGET_TMPDIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => std::env::current_exe()?
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(std::env::temp_dir),
+    };
+    std::fs::create_dir_all(&base)?;
+    tempfile::Builder::new()
+        .prefix("aeroftp-cli-fixture-")
+        .tempdir_in(base)
+}
+
 pub fn executable(source: &Path, root: &Path) -> PathBuf {
     let _prepare = PREPARE.lock().unwrap_or_else(|e| e.into_inner());
     let dir = root.join("cli");

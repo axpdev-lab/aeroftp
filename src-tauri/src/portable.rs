@@ -1243,7 +1243,7 @@ mod tests {
     /// --lib lane without adding another full CLI build to that workflow.
     #[test]
     fn cli_integration_fixture_uses_private_portable_state() {
-        let root = tempfile::tempdir().unwrap();
+        let root = cli_integration_fixture::root().unwrap();
         let source = std::env::current_exe().unwrap();
         let out = cli_integration_fixture::command(&source, root.path())
             .args([
