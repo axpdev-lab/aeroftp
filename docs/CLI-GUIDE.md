@@ -1985,7 +1985,27 @@ aeroftp-cli profile-add \
     --credential-json '{"accessKeyId":"AKIA...","secretAccessKey":"..."}'
 ```
 
-`--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
+`--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `proton`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
+
+A Proton Drive profile (`--protocol proton`) takes `--proton-mode`, the API and CLI tabs of the GUI form: `native` is AeroFTP's own client, signed in with [`proton sign-in`](#proton---sign-a-native-proton-drive-profile-in-or-out); `cli` drives Proton's official `proton-drive` CLI, signed in with `proton-drive auth login`. Without the flag the profile gets the native client in a build that has it, as the GUI form and `import rclone` do. The flag is refused on any other protocol.
+
+```bash
+aeroftp-cli profile-add --name "Proton" --protocol proton --proton-mode native
+aeroftp-cli proton sign-in "Proton"
+```
+
+### proton - Sign a Native Proton Drive Profile In or Out
+
+```bash
+aeroftp-cli proton sign-in "Proton"             # opens Proton's page in the browser
+aeroftp-cli proton sign-in "Proton" --no-browser  # prints the page address instead
+aeroftp-cli proton status "Proton"
+aeroftp-cli proton sign-out "Proton"
+```
+
+For profiles on AeroFTP's own Proton Drive client (`profile-add --protocol proton --proton-mode native`); a profile on the official CLI is refused and pointed to `proton-drive auth login`. `sign-in` runs the GUI's Sign in: it opens Proton's sign-in page in the system browser and waits, up to ten minutes, until you sign in there (Ctrl-C cancels), then unlocks the account keys and saves the session in the vault under the profile. The page can be opened on any device. On an interactive terminal its address is also printed, and `--no-browser` prints it without opening a browser, for a host without one. The address carries a one-time key for this sign-in, so it is written only to an interactive stderr: never to stdout, a log or `--json` output, and a sign-in that has no way to show it (no browser opened and stderr is not a terminal) stops with exit 5. A new sign-in replaces the profile's session and ends the old one on Proton. Exit codes: 0 signed in, 6 the sign-in failed, 8 the page expired, 130 cancelled.
+
+`status` reports whether the profile has a saved session (`signed_in` in `--json`), read from the vault without contacting Proton. `sign-out` ends the session on Proton and removes it from the vault, keeping the profile; the session stays alive while another saved profile (a duplicate) uses it. `profile-delete` ends the session the same way.
 
 ### profile-duplicate - Duplicate a Saved Profile
 

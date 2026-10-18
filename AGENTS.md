@@ -484,7 +484,9 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 **Browser-authorized or profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Twake Drive (OAuth2 with PKCE on the user's own instance)
 
-**Through the vendor's own CLI**: Proton Drive (the official `proton-drive` CLI, signed in with `proton-drive auth login`; its session stays in Proton's keyring and AeroFTP never sees it)
+**Signed in on the provider's own page**: Proton Drive on AeroFTP's native client (`profile-add --protocol proton --proton-mode native`, then `aeroftp-cli proton sign-in <SELECTOR>` on Proton's page in the browser; `proton status` and `proton sign-out` read and end the session saved in the vault)
+
+**Through the vendor's own CLI**: Proton Drive with `--proton-mode cli` (the official `proton-drive` CLI, signed in with `proton-drive auth login`; its session stays in Proton's keyring and AeroFTP never sees it)
 
 `df` and quota fields are provider-dependent. For several object-storage providers, `about` and `df` may omit quota data because the upstream API does not expose `storage_info`.
 
