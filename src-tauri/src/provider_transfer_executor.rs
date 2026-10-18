@@ -375,6 +375,11 @@ impl SegmentedDownloadError {
 /// for any retry/fallback envelope: this function returns `Ok(())` on
 /// success and `Err(_)` on hard failure (no implicit fallback).
 ///
+/// Every range read is charged to the process-wide speed limiter
+/// (`transfer_dag::throttle`) before it is made: `read_range` goes around the
+/// byte loops the limiter paces, so a capped download through this path ran at
+/// full speed on every pool.
+///
 /// On entry: `segments >= 2`, `file_size` at/above the threshold the caller's
 /// `SegmentCutoff` produced in [`provider_segmented_download_eligible`], and
 /// `primary.clone_for_transfer()` is honestly supported.
@@ -391,8 +396,33 @@ pub async fn run_provider_segmented_download(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     cancel_token: CancellationToken,
 ) -> Result<(), SegmentedDownloadError> {
+    run_provider_segmented_download_with(
+        crate::transfer_dag::governor::global(),
+        primary,
+        remote_path,
+        local_path,
+        file_size,
+        segments,
+        on_progress,
+        cancel_token,
+    )
+    .await
+}
+
+/// [`run_provider_segmented_download`] charging an explicit governor.
+#[allow(clippy::too_many_arguments)]
+async fn run_provider_segmented_download_with(
+    governor: Arc<crate::transfer_dag::governor::GlobalTransferGovernor>,
+    primary: &mut dyn StorageProvider,
+    remote_path: &str,
+    local_path: &str,
+    file_size: u64,
+    segments: usize,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    cancel_token: CancellationToken,
+) -> Result<(), SegmentedDownloadError> {
     use crate::providers::multi_thread::{
-        parallel_refused, range_read_failed, range_source_changed_through,
+        parallel_refused, range_read_failed, range_source_changed_through, read_range_paced_with,
         read_range_source_through, replace_failed_range_worker, run_concurrent_range_download,
         settle_range_attempt, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
         SegmentedRun,
@@ -494,6 +524,7 @@ pub async fn run_provider_segmented_download(
             let pool = pool.clone();
             let remote = remote_owned.clone();
             let validator = validator.clone();
+            let governor = governor.clone();
             async move {
                 use std::sync::atomic::Ordering;
                 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -527,14 +558,18 @@ pub async fn run_provider_segmented_download(
                                 "Transfer cancelled by user".to_string(),
                             ));
                         }
-                        let sub_len = (window_len - written)
-                            .min(segmented_sub_read_size(segments, window_len));
-                        let data = provider
-                            .read_range(&remote, start_off + written, sub_len)
-                            .await
-                            .map_err(|e| {
-                                range_read_failed("segmented download", start_off + written, e)
-                            })?;
+                        let data = read_range_paced_with(
+                            &governor,
+                            provider.as_mut(),
+                            &remote,
+                            start_off + written,
+                            window_len - written,
+                            segmented_sub_read_size(segments, window_len),
+                        )
+                        .await
+                        .map_err(|e| {
+                            range_read_failed("segmented download", start_off + written, e)
+                        })?;
                         if data.is_empty() {
                             let _ = provider.disconnect().await;
                             return Err(ProviderError::TransferFailed(format!(
@@ -2948,20 +2983,35 @@ mod tests {
     /// A server that stops answering once, at `at`, on one connection: the
     /// read that covers `at` returns only the bytes before it, the next one
     /// (starting at `at`) times out, and every later read is served. The
-    /// content is `(offset % 251)`; `reads` gets the offset of every read.
+    /// content is `(offset % 251)`; `reads` gets the offset of every read,
+    /// `timeline` its start (on tokio's clock) and length. `size` is what
+    /// `stat` reports for the object.
     struct StallOnce {
         at: u64,
+        size: u64,
         fired: std::sync::atomic::AtomicBool,
         reads: std::sync::Mutex<Vec<u64>>,
+        timeline: std::sync::Mutex<Vec<(tokio::time::Instant, u64)>>,
         clones: std::sync::atomic::AtomicUsize,
     }
 
     impl StallOnce {
         fn at(at: u64) -> Arc<Self> {
+            Self::sized(at, 2 * 1024 * 1024)
+        }
+
+        /// A server that never stalls, for an object of `size` bytes.
+        fn serving(size: u64) -> Arc<Self> {
+            Self::sized(u64::MAX, size)
+        }
+
+        fn sized(at: u64, size: u64) -> Arc<Self> {
             Arc::new(Self {
                 at,
+                size,
                 fired: std::sync::atomic::AtomicBool::new(false),
                 reads: std::sync::Mutex::new(Vec::new()),
+                timeline: std::sync::Mutex::new(Vec::new()),
                 clones: std::sync::atomic::AtomicUsize::new(0),
             })
         }
@@ -2973,6 +3023,10 @@ mod tests {
         ) -> Result<Vec<u8>, crate::providers::ProviderError> {
             use std::sync::atomic::Ordering;
             self.reads.lock().unwrap().push(offset);
+            self.timeline
+                .lock()
+                .unwrap()
+                .push((tokio::time::Instant::now(), length));
             let mut end = offset + length;
             if !self.fired.load(Ordering::SeqCst) {
                 if offset == self.at {
@@ -3184,7 +3238,7 @@ mod tests {
                 return Ok(crate::providers::RemoteEntry::file(
                     "large.bin".to_string(),
                     "/large.bin".to_string(),
-                    2 * 1024 * 1024,
+                    ranges.stall.as_ref().map_or(2 * 1024 * 1024, |s| s.size),
                 ));
             }
             Err(crate::providers::ProviderError::NotSupported(
@@ -3360,6 +3414,153 @@ mod tests {
         assert_eq!(second_window, vec![MIB, MIB + 1000, MIB + 1000]);
         // Two workers for the windows, one more for the retry.
         assert_eq!(stall.clones.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
+    /// A segmented download under a speed limit never reads ahead of it: by
+    /// any moment, the reads made add up to no more than the limiter's bucket
+    /// had granted (one second of the cap to start, then the cap), and every
+    /// byte is charged once. It used to charge nothing, so a download large
+    /// enough to be segmented (GUI, sync, cross-profile) ignored the limit.
+    #[tokio::test(start_paused = true)]
+    async fn segmented_download_reads_no_faster_than_the_speed_limit() {
+        use crate::transfer_dag::governor::{
+            GlobalTransferGovernor, GovernorConfig, TransferDirection,
+        };
+        const MIB: u64 = 1024 * 1024;
+        let size = 12 * MIB;
+        let cap = 2 * MIB;
+        let stall = StallOnce::serving(size);
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: Some(stall.clone()),
+        };
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ranges);
+        let governor = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: 0,
+            bandwidth_bps: 0,
+            endpoint_slots: 4,
+            disk_device_slots: 4,
+        });
+        governor.set_transfer_limits(0, cap);
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("large.bin");
+        let started = tokio::time::Instant::now();
+        run_provider_segmented_download_with(
+            governor.clone(),
+            &mut provider,
+            "/large.bin",
+            target.to_str().unwrap(),
+            size,
+            4,
+            None,
+            CancellationToken::new(),
+        )
+        .await
+        .expect("a capped segmented download completes");
+
+        let mut timeline = stall.timeline.lock().unwrap().clone();
+        timeline.sort_by_key(|(at, _)| *at);
+        let mut read = 0u64;
+        for (at, length) in &timeline {
+            read += length;
+            let allowed = cap as f64 * (*at - started).as_secs_f64() + cap as f64;
+            assert!(
+                read as f64 <= allowed + 1024.0,
+                "{read} bytes read by {:?}, the limit allows {allowed:.0}",
+                *at - started
+            );
+        }
+        assert_eq!(read, size);
+        assert_eq!(
+            governor
+                .directional_bandwidth(TransferDirection::Download)
+                .granted_bytes(),
+            size
+        );
+        let file = std::fs::read(&target).unwrap();
+        assert_eq!(file.len() as u64, size);
+        for (o, byte) in file.iter().enumerate() {
+            assert_eq!(*byte, ((o as u64) % 251) as u8, "byte mismatch at {o}");
+        }
+    }
+
+    /// The in-order reader (`hashsum`, `dedupe`) holds the speed limit the
+    /// same way: no read runs ahead of what the bucket had granted, and every
+    /// byte is charged once. It charged each read after it came, so the first
+    /// read of every worker went through unpaced.
+    #[tokio::test(start_paused = true)]
+    async fn an_in_order_read_reads_no_faster_than_the_speed_limit() {
+        use crate::transfer_dag::governor::{
+            GlobalTransferGovernor, GovernorConfig, TransferDirection,
+        };
+        const MIB: u64 = 1024 * 1024;
+        let size = 12 * MIB;
+        let cap = 2 * MIB;
+        let stall = StallOnce::serving(size);
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: Some(stall.clone()),
+        };
+        let mut primary = FlakyDownloadProvider::fail_first(0);
+        primary.ranges = Some(ranges);
+        let workers = (0..4)
+            .map(|_| primary.clone_for_transfer().unwrap())
+            .collect();
+        let governor = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: 0,
+            bandwidth_bps: 0,
+            endpoint_slots: 4,
+            disk_device_slots: 4,
+        });
+        governor.set_transfer_limits(0, cap);
+        let started = tokio::time::Instant::now();
+        let mut seen = 0u64;
+        let (read, _workers) = crate::providers::multi_thread::read_in_order_with(
+            &governor,
+            workers,
+            "/large.bin",
+            size,
+            None,
+            3 * MIB,
+            &CancellationToken::new(),
+            |bytes| seen += bytes.len() as u64,
+        )
+        .await;
+        read.expect("a capped in-order read completes");
+
+        let mut timeline = stall.timeline.lock().unwrap().clone();
+        timeline.sort_by_key(|(at, _)| *at);
+        let mut sent = 0u64;
+        for (at, length) in &timeline {
+            sent += length;
+            let allowed = cap as f64 * (*at - started).as_secs_f64() + cap as f64;
+            assert!(
+                sent as f64 <= allowed + 1024.0,
+                "{sent} bytes read by {:?}, the limit allows {allowed:.0}",
+                *at - started
+            );
+        }
+        assert_eq!(sent, size);
+        assert_eq!(seen, size);
+        assert_eq!(
+            governor
+                .directional_bandwidth(TransferDirection::Download)
+                .granted_bytes(),
+            size
+        );
     }
 
     #[tokio::test]

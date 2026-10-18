@@ -88,7 +88,7 @@ use ftp_client_gui_lib::profile_loader::{
 };
 use ftp_client_gui_lib::providers::{
     FileVersion, ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry,
-    ShareLinkOptions, StorageProvider, TrashEntry, MAX_DOWNLOAD_TO_BYTES,
+    ShareLinkOptions, StorageProvider, TrashEntry,
 };
 use ftp_client_gui_lib::sftp_download_tuning::SftpDownloadPreset;
 use ftp_client_gui_lib::shell_quote::shell_arg;
@@ -30538,6 +30538,8 @@ struct ServeHttpState {
     base_path: String,
     auth_token: Option<String>,
     warnings: ServedWarnings,
+    /// The speed limiter a served file pays.
+    governor: Arc<ftp_client_gui_lib::transfer_dag::governor::GlobalTransferGovernor>,
 }
 
 /// Where a served request shows the warnings its provider call left (a
@@ -30725,6 +30727,18 @@ fn print_generated_credential_when_quiet(user: Option<&str>, secret: &str) {
     match user {
         Some(user) => eprintln!("Generated login: user {user}, password {secret}"),
         None => eprintln!("Generated password/token: {secret}"),
+    }
+}
+
+/// The secret a serve banner shows: one the server generated, which only
+/// the banner can tell; never one the user set, which it copied into every
+/// terminal and log the banner reached (`hide_env_values` keeps the same
+/// secret out of `--help`, and the JSON banner showed only a generated one).
+fn served_secret_shown(secret: &str, generated: bool) -> &str {
+    if generated {
+        secret
+    } else {
+        "the one you set (not shown)"
     }
 }
 
@@ -31176,43 +31190,36 @@ fn build_file_head_response(entry: &RemoteEntry) -> Response {
     response
 }
 
-fn build_file_get_response(
+/// The response sending `start..end` of a file: 206 with its Content-Range
+/// for a satisfiable Range request, 200 with the whole file otherwise. The
+/// body is the served stream, so a file of any size goes out at the pace the
+/// speed limiter allows, not after it was read whole into memory (which
+/// refused files over 500 MiB with 413).
+fn build_file_stream_response(
     entry: &RemoteEntry,
-    bytes: Vec<u8>,
-    range: Option<&HeaderValue>,
+    reader: ftp_client_gui_lib::providers::served_file::ServedReader,
+    start: u64,
+    end: u64,
+    partial: bool,
 ) -> Response {
     let content_type = guess_content_type(entry);
-    let total = bytes.len();
-
-    if let Some(range_val) = range {
-        if let Some((start, end)) = parse_range_header(range_val.to_str().unwrap_or(""), total) {
-            let sliced = bytes[start..=end].to_vec();
-            let content_range = format!("bytes {}-{}/{}", start, end, total);
-            let mut response = Response::new(Body::from(sliced));
-            *response.status_mut() = StatusCode::PARTIAL_CONTENT;
-            if let Ok(value) = HeaderValue::from_str(&content_type) {
-                response.headers_mut().insert(CONTENT_TYPE, value);
-            }
-            if let Ok(cl) = HeaderValue::from_str(&(end - start + 1).to_string()) {
-                response.headers_mut().insert(CONTENT_LENGTH, cl);
-            }
-            if let Ok(cr) = HeaderValue::from_str(&content_range) {
-                response.headers_mut().insert(CONTENT_RANGE, cr);
-            }
-            response
-                .headers_mut()
-                .insert(ACCEPT_RANGES, HeaderValue::from_static("bytes"));
-            return response;
-        }
-    }
-
-    let mut response = Response::new(Body::from(bytes));
-    *response.status_mut() = StatusCode::OK;
+    let mut response = Response::new(Body::from_stream(tokio_util::io::ReaderStream::new(reader)));
+    *response.status_mut() = if partial {
+        StatusCode::PARTIAL_CONTENT
+    } else {
+        StatusCode::OK
+    };
     if let Ok(value) = HeaderValue::from_str(&content_type) {
         response.headers_mut().insert(CONTENT_TYPE, value);
     }
-    if let Ok(length) = HeaderValue::from_str(&total.to_string()) {
+    if let Ok(length) = HeaderValue::from_str(&(end - start).to_string()) {
         response.headers_mut().insert(CONTENT_LENGTH, length);
+    }
+    if partial {
+        let content_range = format!("bytes {}-{}/{}", start, end - 1, entry.size);
+        if let Ok(value) = HeaderValue::from_str(&content_range) {
+            response.headers_mut().insert(CONTENT_RANGE, value);
+        }
     }
     response
         .headers_mut()
@@ -31363,28 +31370,42 @@ async fn serve_http_response(
             if head_only {
                 return build_file_head_response(&entry);
             }
-
-            if entry.size > MAX_DOWNLOAD_TO_BYTES {
-                return serve_error_response(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    &format!(
-                        "File too large for serve http MVP ({} > {} bytes)",
-                        entry.size, MAX_DOWNLOAD_TO_BYTES
-                    ),
-                );
-            }
-
-            let bytes = match provider.download_to_bytes(&remote_path).await {
-                Ok(bytes) => bytes,
-                Err(error) => {
-                    return serve_error_response(
-                        provider_error_to_status_code(&error),
-                        &error.to_string(),
-                    )
-                }
+            // The stream takes the provider window by window: other clients
+            // are served between its reads, not after the whole file.
+            drop(provider);
+            let range = range
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| parse_range_header(value, entry.size as usize))
+                .map(|(start, end)| (start as u64, end as u64 + 1));
+            use ftp_client_gui_lib::providers::served_file::{open_served_file, open_served_range};
+            let served = match range {
+                Some((start, end)) => open_served_range(
+                    state.governor.clone(),
+                    state.provider.clone(),
+                    remote_path,
+                    start,
+                    end,
+                )
+                .await
+                .map(|reader| (reader, start, end)),
+                None => open_served_file(
+                    state.governor.clone(),
+                    state.provider.clone(),
+                    remote_path,
+                    0,
+                    entry.size,
+                )
+                .await
+                .map(|(reader, len)| (reader, 0, len)),
             };
-
-            build_file_get_response(&entry, bytes, range)
+            match served {
+                Ok((reader, start, end)) => {
+                    build_file_stream_response(&entry, reader, start, end, range.is_some())
+                }
+                Err(error) => {
+                    serve_error_response(provider_error_to_status_code(&error), &error.to_string())
+                }
+            }
         }
         Err(ProviderError::NotFound(_)) => match provider.list(&remote_path).await {
             Ok(mut entries) => {
@@ -31513,6 +31534,7 @@ async fn cmd_serve_http(
         base_path: base_path.clone(),
         auth_token: auth_token.clone(),
         warnings: ServedWarnings::stderr(format),
+        governor: ftp_client_gui_lib::transfer_dag::governor::global(),
     };
 
     let app = Router::new()
@@ -31527,6 +31549,9 @@ async fn cmd_serve_http(
             return 1;
         }
     };
+    // Listening for SIGINT/SIGTERM before the banner says the server can be
+    // stopped: one sent right after it ended the process without its drain.
+    let stop = shutdown_signal();
 
     if matches!(format, OutputFormat::Json) {
         println!(
@@ -31546,7 +31571,10 @@ async fn cmd_serve_http(
         eprintln!("Remote base path: {}", state.base_path);
         if let Some(token) = auth_token.as_deref() {
             eprintln!("Authentication: enabled (Basic auth or Bearer token)");
-            eprintln!("Use any username and this password/token: {}", token);
+            eprintln!(
+                "Use any username and this password/token: {}",
+                served_secret_shown(token, generated_auth_token)
+            );
         } else {
             eprintln!("Authentication: disabled for local loopback access");
         }
@@ -31562,7 +31590,7 @@ async fn cmd_serve_http(
             // shutdown_signal() awaits both SIGINT and SIGTERM so systemd /
             // Docker / any well-behaved supervisor can request a clean
             // shutdown without needing SIGKILL.
-            let _ = shutdown_signal().await;
+            let _ = stop.await;
         })
         .await;
 
@@ -32103,6 +32131,7 @@ async fn cmd_serve_webdav(
         base_path: base_path.clone(),
         auth_token: auth_token.clone(),
         warnings: ServedWarnings::stderr(format),
+        governor: ftp_client_gui_lib::transfer_dag::governor::global(),
     };
 
     let app = webdav_app(state.clone());
@@ -32114,6 +32143,9 @@ async fn cmd_serve_webdav(
             return 1;
         }
     };
+    // Listening for SIGINT/SIGTERM before the banner says the server can be
+    // stopped: one sent right after it ended the process without its drain.
+    let stop = shutdown_signal();
 
     if matches!(format, OutputFormat::Json) {
         println!(
@@ -32133,7 +32165,10 @@ async fn cmd_serve_webdav(
         eprintln!("Remote base path: {}", state.base_path);
         if let Some(token) = auth_token.as_deref() {
             eprintln!("Authentication: enabled (Basic auth or Bearer token)");
-            eprintln!("Use any username and this password/token: {}", token);
+            eprintln!(
+                "Use any username and this password/token: {}",
+                served_secret_shown(token, generated_auth_token)
+            );
         } else {
             eprintln!("Authentication: disabled for local loopback access");
         }
@@ -32146,7 +32181,7 @@ async fn cmd_serve_webdav(
 
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            let _ = shutdown_signal().await;
+            let _ = stop.await;
         })
         .await;
 
@@ -32166,9 +32201,11 @@ async fn cmd_serve_webdav(
 
 mod serve_ftp_backend {
     use super::*;
+    use ftp_client_gui_lib::providers::served_file::open_served_file;
+    use ftp_client_gui_lib::transfer_dag::governor::GlobalTransferGovernor;
     use std::fmt::Debug;
     use std::path::{Path, PathBuf};
-    use tokio::io::AsyncRead;
+    use tokio::io::{AsyncRead, AsyncSeekExt, AsyncWriteExt};
     use unftp_core::auth::{
         AuthenticationError, Authenticator, Credentials, DefaultUser, Principal,
     };
@@ -32245,6 +32282,8 @@ mod serve_ftp_backend {
     pub struct AeroFtpBackend {
         provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
         base_path: String,
+        /// The speed limiter a resumed download pays.
+        governor: Arc<GlobalTransferGovernor>,
     }
 
     impl std::fmt::Debug for AeroFtpBackend {
@@ -32260,7 +32299,15 @@ mod serve_ftp_backend {
             Self {
                 provider,
                 base_path,
+                governor: ftp_client_gui_lib::transfer_dag::governor::global(),
             }
+        }
+
+        /// This backend paying `governor` instead of the process limiter.
+        #[cfg(test)]
+        pub(crate) fn with_governor(mut self, governor: Arc<GlobalTransferGovernor>) -> Self {
+            self.governor = governor;
+            self
         }
 
         fn resolve_path(&self, path: &Path) -> FtpResult<String> {
@@ -32283,6 +32330,13 @@ mod serve_ftp_backend {
     #[async_trait::async_trait]
     impl StorageBackend<DefaultUser> for AeroFtpBackend {
         type Metadata = AeroFtpMeta;
+
+        /// REST: `get` serves from the offset and `put` writes after it.
+        /// Without it the server answered REST with 502, so no download it
+        /// sent could be resumed.
+        fn supported_features(&self) -> u32 {
+            unftp_core::storage::FEATURE_RESTART
+        }
 
         async fn metadata<P: AsRef<Path> + Send + Debug>(
             &self,
@@ -32340,27 +32394,26 @@ mod serve_ftp_backend {
             start_pos: u64,
         ) -> FtpResult<Box<dyn AsyncRead + Send + Sync + Unpin>> {
             let remote = self.resolve_path(path.as_ref())?;
-            let mut p = self.provider.lock().await;
-            // Download to memory and serve as cursor
-            let data = if start_pos > 0 {
-                let size = p.size(&remote).await.unwrap_or(0);
-                let len = size.saturating_sub(start_pos);
-                p.read_range(&remote, start_pos, len)
-                    .await
-                    .or_else(|_| {
-                        // Fallback: download full and slice
-                        tokio::runtime::Handle::current().block_on(async {
-                            let full = p.download_to_bytes(&remote).await?;
-                            Ok(full[start_pos as usize..].to_vec())
-                        })
-                    })
-                    .map_err(Self::provider_err_to_ftp)?
-            } else {
-                p.download_to_bytes(&remote)
-                    .await
-                    .map_err(Self::provider_err_to_ftp)?
-            };
-            Ok(Box::new(std::io::Cursor::new(data)))
+            let size = self
+                .provider
+                .lock()
+                .await
+                .size(&remote)
+                .await
+                .map_err(Self::provider_err_to_ftp)?;
+            // Streamed in windows paid to the speed limiter, from the offset
+            // a REST asked for. The whole file went to memory first (a file
+            // over 500 MiB could not be served) and out unpaced.
+            open_served_file(
+                self.governor.clone(),
+                self.provider.clone(),
+                remote,
+                start_pos,
+                size,
+            )
+            .await
+            .map(|(reader, _)| reader)
+            .map_err(Self::provider_err_to_ftp)
         }
 
         async fn put<
@@ -32371,30 +32424,63 @@ mod serve_ftp_backend {
             _user: &DefaultUser,
             mut input: R,
             path: P,
-            _start_pos: u64,
+            start_pos: u64,
         ) -> FtpResult<u64> {
             let remote = self.resolve_path(path.as_ref())?;
-            // Write input to tempfile, then upload
-            let tmp = tempfile::NamedTempFile::new()
-                .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
+            let local = |e: std::io::Error| FtpError::new(FtpErrorKind::LocalError, e);
+            // Write input to a staging file on disk, then upload
+            let dir = ftp_client_gui_lib::util::scratch::staging_dir(start_pos)
+                .map_err(|e| FtpError::new(FtpErrorKind::LocalError, std::io::Error::other(e)))?;
+            let tmp = tempfile::NamedTempFile::new_in(&dir).map_err(local)?;
             let tmp_path = tmp.path().to_string_lossy().to_string();
-            {
-                let mut file = tokio::fs::File::create(&tmp_path)
+            if start_pos > 0 {
+                // APPE (the file's size) or REST then STOR (the client's
+                // offset): what comes is written after the first `start_pos`
+                // bytes the file already holds. They were dropped, so an
+                // append replaced the file with the appended bytes alone.
+                let held = self
+                    .provider
+                    .lock()
                     .await
-                    .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
-                tokio::io::copy(&mut input, &mut file)
+                    .size(&remote)
                     .await
-                    .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
+                    .map_err(Self::provider_err_to_ftp)?;
+                if held < start_pos {
+                    return Err(FtpError::new(
+                        FtpErrorKind::PermanentFileNotAvailable,
+                        std::io::Error::other(format!(
+                            "{remote} holds {held} bytes, the upload resumes at {start_pos}"
+                        )),
+                    ));
+                }
+                self.provider
+                    .lock()
+                    .await
+                    .download(&remote, &tmp_path, None)
+                    .await
+                    .map_err(Self::provider_err_to_ftp)?;
             }
-            let size = tokio::fs::metadata(&tmp_path)
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(start_pos == 0)
+                .open(&tmp_path)
                 .await
-                .map(|m| m.len())
-                .unwrap_or(0);
+                .map_err(local)?;
+            file.set_len(start_pos).await.map_err(local)?;
+            file.seek(std::io::SeekFrom::Start(start_pos))
+                .await
+                .map_err(local)?;
+            let written = tokio::io::copy(&mut input, &mut file)
+                .await
+                .map_err(local)?;
+            file.flush().await.map_err(local)?;
+            drop(file);
             let mut p = self.provider.lock().await;
             p.upload(&tmp_path, &remote, None)
                 .await
                 .map_err(Self::provider_err_to_ftp)?;
-            Ok(size)
+            Ok(written)
         }
 
         async fn del<P: AsRef<Path> + Send + Debug>(
@@ -32547,6 +32633,9 @@ async fn cmd_serve_ftp(
             return 99;
         }
     };
+    // Listening for SIGINT/SIGTERM before the banner says the server can be
+    // stopped: one sent right after it ended the process without its cleanup.
+    let stop = shutdown_signal();
 
     if matches!(format, OutputFormat::Json) {
         println!(
@@ -32570,7 +32659,10 @@ async fn cmd_serve_ftp(
         if let Some(credentials) = auth_credentials.as_ref() {
             eprintln!("Authentication: enabled");
             eprintln!("Username: {}", credentials.username);
-            eprintln!("Password: {}", credentials.password);
+            eprintln!(
+                "Password: {}",
+                served_secret_shown(&credentials.password, credentials.generated)
+            );
         } else {
             eprintln!("Authentication: disabled for local loopback access");
         }
@@ -32594,7 +32686,7 @@ async fn cmd_serve_ftp(
                 return 1;
             }
         }
-        _ = shutdown_signal() => {
+        _ = stop => {
             if !quiet {
                 eprintln!("Shutdown signal received, stopping FTP server...");
             }
@@ -32610,6 +32702,9 @@ async fn cmd_serve_ftp(
 
 mod serve_sftp {
     use super::*;
+    use ftp_client_gui_lib::providers::multi_thread::read_requested_range;
+    use ftp_client_gui_lib::providers::served_file;
+    use ftp_client_gui_lib::transfer_dag::governor::GlobalTransferGovernor;
     use russh::server::{
         Auth, ChannelOpenHandle, Handler as SshHandler, Msg, Server as SshServer, Session,
     };
@@ -32622,6 +32717,11 @@ mod serve_sftp {
     const SSH_FXP_OPEN: u8 = 3;
     const SSH_FXP_CLOSE: u8 = 4;
     const SSH_FXP_READ: u8 = 5;
+    /// The most one READ answers, as OpenSSH's sftp-server does (its 256 KiB
+    /// message limit less header room). A client that asks for more gets a
+    /// shorter reply, which SFTP allows; the length was read and paid whole,
+    /// up to 4 GiB in one reply.
+    const SFTP_MAX_READ_LENGTH: u32 = 255 * 1024;
     const SSH_FXP_WRITE: u8 = 6;
     const SSH_FXP_LSTAT: u8 = 7;
     const SSH_FXP_FSTAT: u8 = 8;
@@ -32744,12 +32844,72 @@ mod serve_sftp {
         buf
     }
 
+    /// Up to `len` bytes at `offset` of a file staged for reading.
+    fn read_staged(
+        staged: &tempfile::NamedTempFile,
+        offset: u64,
+        len: u32,
+    ) -> Result<Vec<u8>, String> {
+        served_file::read_staged(staged, offset, u64::from(len)).map_err(|e| e.to_string())
+    }
+
+    /// `path` staged whole on disk for a backend that cannot read it by
+    /// range ([`served_file::stage_for_reading`]), on a thread of its own as
+    /// every provider call of the handler is.
+    fn stage_for_reading(
+        provider: &Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+        rt: &Arc<ProviderRuntime>,
+        path: &str,
+    ) -> Result<tempfile::NamedTempFile, String> {
+        let remote = path.to_string();
+        let provider = provider.clone();
+        let rt = rt.clone();
+        std::thread::spawn(move || {
+            rt.block_on(served_file::stage_for_reading(&provider, &remote, 0))
+        })
+        .join()
+        .map_err(|_| "provider worker failed".to_string())?
+        .map_err(|e| e.to_string())
+    }
+
+    /// The runtime the provider calls of every served session run on. Its
+    /// last owner can be async code (`run` at shutdown, or a session task the
+    /// main runtime drops), where dropping a `Runtime` panics because it
+    /// would wait for the runtime's threads: SIGTERM ended `serve sftp` with
+    /// that panic. It is shut down in the background instead.
+    pub struct ProviderRuntime(Option<tokio::runtime::Runtime>);
+
+    impl ProviderRuntime {
+        pub fn new(worker_threads: usize) -> std::io::Result<Self> {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .worker_threads(worker_threads)
+                .build()
+                .map(|rt| Self(Some(rt)))
+        }
+    }
+
+    impl std::ops::Deref for ProviderRuntime {
+        type Target = tokio::runtime::Runtime;
+        fn deref(&self) -> &Self::Target {
+            self.0.as_ref().expect("the runtime lives until dropped")
+        }
+    }
+
+    impl Drop for ProviderRuntime {
+        fn drop(&mut self) {
+            if let Some(rt) = self.0.take() {
+                rt.shutdown_background();
+            }
+        }
+    }
+
     #[allow(dead_code)]
     pub struct AeroSftpServer {
         provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
         base_path: String,
         auth_credentials: Option<ServeAuthCredentials>,
-        rt: Arc<tokio::runtime::Runtime>,
+        rt: Arc<ProviderRuntime>,
     }
 
     impl SshServer for AeroSftpServer {
@@ -32771,11 +32931,16 @@ mod serve_sftp {
         handles: HashMap<String, String>,
         /// Handles opened for writing, by handle.
         writes: HashMap<String, SpooledWrite>,
+        /// Files open for reading whose backend could not read them by
+        /// range, staged on disk by handle until CLOSE.
+        staged_reads: HashMap<String, tempfile::NamedTempFile>,
         next_handle: u64,
         dir_read: std::collections::HashSet<String>,
         sftp_buf: Vec<u8>,
         /// Dedicated runtime for blocking provider calls from within async SSH handler
-        rt: Arc<tokio::runtime::Runtime>,
+        rt: Arc<ProviderRuntime>,
+        /// The speed limiter every READ pays.
+        governor: Arc<GlobalTransferGovernor>,
     }
 
     #[cfg(test)]
@@ -32783,7 +32948,7 @@ mod serve_sftp {
         /// A handler on `provider` serving `/`, without authentication.
         pub(crate) fn for_tests(
             provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
-            rt: Arc<tokio::runtime::Runtime>,
+            rt: Arc<ProviderRuntime>,
         ) -> Self {
             Self::new(provider, "/".to_string(), None, rt)
         }
@@ -32791,6 +32956,12 @@ mod serve_sftp {
         /// The reply to one SFTP packet (type byte first, no length).
         pub(crate) fn answer(&mut self, packet: &[u8]) -> Vec<u8> {
             self.process_sftp(packet)
+        }
+
+        /// This handler paying `governor` instead of the process limiter.
+        pub(crate) fn with_governor(mut self, governor: Arc<GlobalTransferGovernor>) -> Self {
+            self.governor = governor;
+            self
         }
     }
 
@@ -32800,7 +32971,7 @@ mod serve_sftp {
             provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
             base_path: String,
             auth_credentials: Option<ServeAuthCredentials>,
-            rt: Arc<tokio::runtime::Runtime>,
+            rt: Arc<ProviderRuntime>,
         ) -> Self {
             Self {
                 provider,
@@ -32808,10 +32979,12 @@ mod serve_sftp {
                 auth_credentials,
                 handles: HashMap::new(),
                 writes: HashMap::new(),
+                staged_reads: HashMap::new(),
                 next_handle: 0,
                 dir_read: std::collections::HashSet::new(),
                 sftp_buf: Vec::new(),
                 rt,
+                governor: ftp_client_gui_lib::transfer_dag::governor::global(),
             }
         }
 
@@ -32844,6 +33017,19 @@ mod serve_sftp {
                             $body
                         });
                         let _ = tx.send(r);
+                    });
+                    rx.recv().unwrap_or_else(|_| {
+                        Err(ProviderError::Other("provider worker failed".into()))
+                    })
+                }};
+                // The same, with `$p` the shared provider, for a call that
+                // takes its lock itself.
+                ($provider:expr, $rt:expr, move |$p:ident| $body:expr) => {{
+                    let $p = $provider.clone();
+                    let __rt = $rt.clone();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    std::thread::spawn(move || {
+                        let _ = tx.send(__rt.block_on(async { $body }));
                     });
                     rx.recv().unwrap_or_else(|_| {
                         Err(ProviderError::Other("provider worker failed".into()))
@@ -33073,15 +33259,41 @@ mod serve_sftp {
                     let id = parse_u32!();
                     let handle = parse_string!();
                     let offset = parse_u64!();
-                    let len = parse_u32!();
+                    let len = parse_u32!().min(SFTP_MAX_READ_LENGTH);
                     let Some(path) = self.handles.get(&handle).cloned() else {
                         return make_status(id, SSH_FX_FAILURE, "invalid handle");
                     };
-                    let rp = path.clone();
-                    match prov!(provider, rt, async |p| p
-                        .read_range(&rp, offset, len as u64)
-                        .await)
-                    {
+                    let read = match self.staged_reads.get(&handle) {
+                        Some(staged) => read_staged(staged, offset, len),
+                        None => {
+                            let rp = path.clone();
+                            let governor = self.governor.clone();
+                            match prov!(provider, rt, move |p| read_requested_range(
+                                &governor,
+                                &p,
+                                &rp,
+                                offset,
+                                u64::from(len)
+                            )
+                            .await)
+                            {
+                                Ok(data) => Ok(data),
+                                // A backend that cannot read this by range: one
+                                // download to disk, which every later READ of
+                                // the handle answers from. The whole file was
+                                // downloaded again into memory for each READ.
+                                Err(_) => match stage_for_reading(&provider, &rt, &path) {
+                                    Ok(staged) => {
+                                        let read = read_staged(&staged, offset, len);
+                                        self.staged_reads.insert(handle.clone(), staged);
+                                        read
+                                    }
+                                    Err(e) => Err(e),
+                                },
+                            }
+                        }
+                    };
+                    match read {
                         Ok(data) if data.is_empty() => make_status(id, SSH_FX_EOF, ""),
                         Ok(file_data) => {
                             let mut reply = Vec::new();
@@ -33091,26 +33303,7 @@ mod serve_sftp {
                             reply.extend_from_slice(&file_data);
                             reply
                         }
-                        Err(_) => {
-                            let rp2 = path.clone();
-                            match prov!(provider, rt, async |p| p.download_to_bytes(&rp2).await) {
-                                Ok(full) => {
-                                    let start = (offset as usize).min(full.len());
-                                    let end = (start + len as usize).min(full.len());
-                                    if start >= full.len() {
-                                        make_status(id, SSH_FX_EOF, "")
-                                    } else {
-                                        let mut reply = Vec::new();
-                                        reply.push(SSH_FXP_DATA);
-                                        write_u32(&mut reply, id);
-                                        write_u32(&mut reply, (end - start) as u32);
-                                        reply.extend_from_slice(&full[start..end]);
-                                        reply
-                                    }
-                                }
-                                Err(_) => make_status(id, SSH_FX_FAILURE, "read failed"),
-                            }
-                        }
+                        Err(e) => make_status(id, SSH_FX_FAILURE, &format!("read failed: {e}")),
                     }
                 }
                 SSH_FXP_WRITE => {
@@ -33144,6 +33337,7 @@ mod serve_sftp {
                     let handle = parse_string!();
                     self.handles.remove(&handle);
                     self.dir_read.remove(&handle);
+                    self.staged_reads.remove(&handle);
                     // A written file reaches the backend here, and the client
                     // hears whether it did: an OK for bytes that were never
                     // stored is the failure this replaces.
@@ -33472,23 +33666,20 @@ mod serve_sftp {
             }
         };
 
+        // Listening for SIGINT/SIGTERM before saying the server can be
+        // stopped: one sent right after it ended the process uncleanly.
+        let stop = shutdown_signal();
         if !quiet {
             eprintln!("Press Ctrl+C to stop.");
         }
 
         // Create a single dedicated runtime for provider calls (shared across all clients)
-        let sftp_rt = Arc::new(
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .worker_threads(2)
-                .build()
-                .expect("sftp provider runtime"),
-        );
+        let sftp_rt = Arc::new(ProviderRuntime::new(2).expect("sftp provider runtime"));
 
         let cancelled = Arc::new(AtomicBool::new(false));
         let cancelled_clone = cancelled.clone();
         tokio::spawn(async move {
-            let _ = shutdown_signal().await;
+            let _ = stop.await;
             cancelled_clone.store(true, Ordering::Relaxed);
         });
 
@@ -33597,7 +33788,10 @@ async fn cmd_serve_sftp(
         if let Some(credentials) = auth_credentials.as_ref() {
             eprintln!("Authentication: enabled");
             eprintln!("Username: {}", credentials.username);
-            eprintln!("Password: {}", credentials.password);
+            eprintln!(
+                "Password: {}",
+                served_secret_shown(&credentials.password, credentials.generated)
+            );
         } else {
             eprintln!("Authentication: disabled for local loopback access");
         }
@@ -34341,25 +34535,6 @@ async fn cmd_get(
 const PGET_MIN_FILE_SIZE: u64 = 4 * 1024 * 1024; // 4 MB minimum for segmented download
 const PGET_SUB_READ_SIZE: u64 = 64 * 1024 * 1024; // 64 MB max per read_range call
 
-/// How the windows of `pget` read under `limit_bps` (`--limit-rate`, or the
-/// `--bwlimit` schedule): the size of each `read_range`, and whether each is
-/// charged to the process-wide limiter first. `read_range` goes around the
-/// limiter the streamed downloads pace through, so a capped `pget` ran at full
-/// speed; each read is now about one second of the cap (at least 256 KiB, at
-/// most the 64 MiB the uncapped windows read), charged before it is made.
-fn pget_sub_reads(limit_bps: Option<u64>) -> (u64, bool) {
-    match limit_bps {
-        Some(bps) => (
-            bps.clamp(
-                ftp_client_gui_lib::transfer_dag::throttle::OWNED_BODY_CHUNK_BYTES as u64,
-                PGET_SUB_READ_SIZE,
-            ),
-            true,
-        ),
-        None => (PGET_SUB_READ_SIZE, false),
-    }
-}
-
 /// Effective pget segment count.
 ///
 /// The shared planner (`plan_segment_count`) owns the window math: hard cap
@@ -34435,7 +34610,7 @@ async fn pget_segmented_download(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        open_after_transfer, range_read_failed, range_source_changed_through,
+        open_after_transfer, range_read_failed, range_source_changed_through, read_range_paced,
         read_range_source_through, replace_failed_range_worker, report_download_fallback,
         run_concurrent_range_download, settle_range_attempt, ConcurrentRangeConfig,
         ConcurrentRangeOutcome, RangeMark, SegmentedRun,
@@ -34610,7 +34785,6 @@ async fn pget_segmented_download(
         max_parallel: effective_parallel_workers(cli).min(actual_segments),
     };
 
-    let (sub_read_size, paced) = pget_sub_reads(cli_speed_limit_bps(cli));
     let write_one_range = move |start_off: u64,
                                 end_off: u64,
                                 temp_path: PathBuf,
@@ -34653,18 +34827,21 @@ async fn pget_segmented_download(
                             "Transfer cancelled by user".to_string(),
                         ));
                     }
-                    let sub_len = (window_len - written).min(sub_read_size);
-                    if paced {
-                        ftp_client_gui_lib::transfer_dag::throttle::charge(
-                            ftp_client_gui_lib::transfer_dag::governor::TransferDirection::Download,
-                            sub_len,
-                        )
-                        .await;
-                    }
-                    let data = provider
-                        .read_range(&remote, start_off + written, sub_len)
-                        .await
-                        .map_err(|e| range_read_failed("pget", start_off + written, e))?;
+                    // `read_range` goes around the limiter the streamed
+                    // downloads pace through, so a capped `pget` ran at full
+                    // speed (40 MiB in 141 ms at 1M, where `get` takes 39 s).
+                    // Under any cap the process carries (`--limit-rate`,
+                    // `--bwlimit`, `AEROFTP_GLOBAL_BANDWIDTH_BPS`) each read
+                    // is about one second of it, charged before it is made.
+                    let data = read_range_paced(
+                        provider.as_mut(),
+                        &remote,
+                        start_off + written,
+                        window_len - written,
+                        PGET_SUB_READ_SIZE,
+                    )
+                    .await
+                    .map_err(|e| range_read_failed("pget", start_off + written, e))?;
                     if data.is_empty() {
                         // Hard error, never a soft short-read: read_range has no
                         // HTTP-200 semantics, so this is not ServerIgnoredRange
@@ -43615,8 +43792,9 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
 
         let cancel = std::sync::Arc::new(AtomicBool::new(false));
         let cancel_sig = cancel.clone();
+        let stop = shutdown_signal();
         tokio::spawn(async move {
-            let _ = shutdown_signal().await;
+            let _ = stop.await;
             cancel_sig.store(true, Ordering::Relaxed);
         });
 
@@ -43864,8 +44042,9 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
 
     let cancel = std::sync::Arc::new(AtomicBool::new(false));
     let cancel_sig = cancel.clone();
+    let stop = shutdown_signal();
     tokio::spawn(async move {
-        let _ = shutdown_signal().await;
+        let _ = stop.await;
         cancel_sig.store(true, Ordering::Relaxed);
     });
 
@@ -46592,45 +46771,6 @@ fn remote_parent_dir(remote_path: &str) -> Option<String> {
 // contract: docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md. No
 // automated upload: the report is paste-ready.
 
-/// RAII guard that switches SIGPIPE handling to `SIG_IGN` for the lifetime
-/// of the guard, restoring the previous handler on drop.
-///
-/// Why: the CLI default is `SIG_DFL` so that pipe-friendly invocations like
-/// `aeroftp ls | head` terminate quietly. The benchmark does not write to a
-/// user-facing pipe (its stdout/stderr go to a per-profile log file via
-/// shell redirection), and stray broken-pipe signals from inside reqwest /
-/// tokio during long multipart uploads (notably observed on S3 Backblaze
-/// during the 2026-05-07 community sweep, rc=141 mid-run) would kill the
-/// entire sweep. Ignoring SIGPIPE for the benchmark window converts those
-/// faults into ordinary `io::Error` that the upload path can surface.
-struct SigpipeIgnoreGuard {
-    #[cfg(unix)]
-    previous: libc::sighandler_t,
-}
-
-impl SigpipeIgnoreGuard {
-    fn new() -> Self {
-        #[cfg(unix)]
-        {
-            let previous = unsafe { libc::signal(libc::SIGPIPE, libc::SIG_IGN) };
-            Self { previous }
-        }
-        #[cfg(not(unix))]
-        {
-            Self {}
-        }
-    }
-}
-
-impl Drop for SigpipeIgnoreGuard {
-    fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::signal(libc::SIGPIPE, self.previous);
-        }
-    }
-}
-
 /// The CLI narration of a benchmark run on stderr: the phase lines and the
 /// progress bars, both silent under `--quiet` and under JSON output.
 struct CliBenchmarkObserver {
@@ -46821,10 +46961,6 @@ async fn cmd_benchmark(
             return 5;
         }
     }
-
-    // Hold this for the entire benchmark lifetime: see SigpipeIgnoreGuard
-    // doc-comment for the rationale (Backblaze multipart SIGPIPE workaround).
-    let _sigpipe_guard = SigpipeIgnoreGuard::new();
 
     // Resolve the whole plan before connecting, so bad sizes, operations or
     // --file-count / --file-size fail before we connect or transfer anything.
@@ -49342,8 +49478,17 @@ async fn dedupe_hash_remote_sha256(
     let mut offset = 0u64;
     let mut used_ranges = false;
     while offset < size {
-        let len = CHUNK.min(size - offset);
-        match provider.read_range(path, offset, len).await {
+        // Paid to the speed limiter before it is made: `read_range` leaves the
+        // limiter to its caller.
+        match ftp_client_gui_lib::providers::multi_thread::read_range_paced(
+            provider.as_mut(),
+            path,
+            offset,
+            size - offset,
+            CHUNK,
+        )
+        .await
+        {
             Ok(chunk) => {
                 if chunk.is_empty() {
                     // A digest of the bytes before the end would be the
@@ -54184,6 +54329,9 @@ async fn cmd_ncdu(
 #[allow(dead_code)]
 mod fuse_mount {
     use super::*;
+    use ftp_client_gui_lib::providers::multi_thread::read_requested_range;
+    use ftp_client_gui_lib::providers::served_file::{read_staged, stage_for_reading};
+    use ftp_client_gui_lib::transfer_dag::governor::GlobalTransferGovernor;
     // T-DEBT-13c: fuser 0.17 newtype migration. The integer args used in
     // 0.16 (`u64` ino/fh/lock_owner, `i32` flags, `u32` write_flags) are
     // now strongly-typed wrappers; we keep the body in `u64`/`i32` for
@@ -54266,6 +54414,11 @@ mod fuse_mount {
         /// Next available inode number
         next_inode: Mutex<u64>,
         quiet: bool,
+        /// The speed limiter every read pays.
+        governor: Arc<GlobalTransferGovernor>,
+        /// inode -> the file staged on disk for a backend that cannot read
+        /// it by range, until it is released or uploaded again.
+        staged_reads: Mutex<HashMap<u64, Arc<tempfile::NamedTempFile>>>,
     }
 
     impl AeroFuseFs {
@@ -54337,7 +54490,77 @@ mod fuse_mount {
                 cache: Mutex::new(cache),
                 next_inode: Mutex::new(2),
                 quiet,
+                governor: ftp_client_gui_lib::transfer_dag::governor::global(),
+                staged_reads: Mutex::new(HashMap::new()),
             }
+        }
+
+        /// This filesystem paying `governor` instead of the process limiter.
+        #[cfg(test)]
+        pub(crate) fn with_governor(mut self, governor: Arc<GlobalTransferGovernor>) -> Self {
+            self.governor = governor;
+            self
+        }
+
+        /// The bytes one FUSE read of `len` at `offset` of `path` asks the
+        /// remote for, at most `read_chunk_size` of them. The kernel chose the
+        /// length, so the read is paid to the speed limiter whole and before it
+        /// is made ([`read_requested_range`]).
+        pub(crate) fn read_remote(
+            &self,
+            path: &str,
+            offset: u64,
+            len: u64,
+        ) -> Result<Vec<u8>, ProviderError> {
+            self.rt.block_on(read_requested_range(
+                &self.governor,
+                &self.provider,
+                path,
+                offset,
+                len.min(self.read_chunk_size),
+            ))
+        }
+
+        /// One FUSE read: by range ([`Self::read_remote`]) or, once that
+        /// fails for a file, from the copy of it staged on disk, which every
+        /// later read of the file answers from until it is released. The
+        /// whole file was downloaded into memory for each such read, and a
+        /// file over 64 MiB could not be read at all.
+        pub(crate) fn read_or_stage(
+            &self,
+            ino: u64,
+            path: &str,
+            offset: u64,
+            len: u64,
+        ) -> Result<Vec<u8>, String> {
+            let len = len.min(self.read_chunk_size);
+            let staged = self.staged_reads.lock().unwrap().get(&ino).cloned();
+            let staged = match staged {
+                Some(staged) => staged,
+                None => match self.read_remote(path, offset, len) {
+                    Ok(data) => return Ok(data),
+                    Err(_) => {
+                        let room = self.get_cached(ino).map(|c| c.attr.size).unwrap_or(0);
+                        let staged = self
+                            .rt
+                            .block_on(stage_for_reading(&self.provider, path, room))
+                            .map_err(|e| e.to_string())?;
+                        let staged = Arc::new(staged);
+                        self.staged_reads
+                            .lock()
+                            .unwrap()
+                            .insert(ino, staged.clone());
+                        staged
+                    }
+                },
+            };
+            read_staged(&staged, offset, len).map_err(|e| e.to_string())
+        }
+
+        /// Forget the staged copy of `ino`, if one was made: the file was
+        /// released, or uploaded again. The next read reads the remote.
+        pub(crate) fn drop_staged(&self, ino: u64) {
+            self.staged_reads.lock().unwrap().remove(&ino);
         }
 
         /// Invalidate cache for a directory (force re-listing on next access).
@@ -54724,41 +54947,11 @@ mod fuse_mount {
                 return;
             };
 
-            let provider = self.provider.clone();
-            let len = size as u64;
             // T-DEBT-13c: `offset` is already `u64` after the fuser 0.17
             // newtype migration; no cast required.
-            let off = offset;
-            let read_chunk_size = self.read_chunk_size;
-
-            let result = self.rt.block_on(async {
-                let mut p = provider.lock().await;
-                p.read_range(&path, off, len.min(read_chunk_size)).await
-            });
-
-            match result {
+            match self.read_or_stage(ino, &path, offset, u64::from(size)) {
                 Ok(data) => reply.data(&data),
-                Err(_) => {
-                    // Fallback: download full file (for providers without range support)
-                    // Safety cap: refuse to download files >64MB in fallback to prevent OOM
-                    let file_size = self.get_cached(ino).map(|c| c.attr.size).unwrap_or(0);
-                    if file_size > 64 * 1024 * 1024 {
-                        reply.error(Errno::EIO); // Too large for in-memory fallback
-                        return;
-                    }
-                    let result = self.rt.block_on(async {
-                        let mut p = provider.lock().await;
-                        p.download_to_bytes(&path).await
-                    });
-                    match result {
-                        Ok(data) => {
-                            let end = (off as usize + size as usize).min(data.len());
-                            let start = (off as usize).min(data.len());
-                            reply.data(&data[start..end]);
-                        }
-                        Err(_) => reply.error(Errno::EIO),
-                    }
-                }
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
@@ -54929,6 +55122,8 @@ mod fuse_mount {
                     },
                 );
                 self.flush_ok.lock().unwrap().insert(ino);
+                // The remote file changed: a staged copy of it is stale.
+                self.drop_staged(ino);
                 reply.ok();
             } else {
                 // Do NOT mark as flushed - release will keep the tempfile
@@ -54947,6 +55142,7 @@ mod fuse_mount {
             reply: ReplyEmpty,
         ) {
             let ino: u64 = ino.0;
+            self.drop_staged(ino);
             if let Some(tmp_path) = self.write_buffers.lock().unwrap().remove(&ino) {
                 if self.flush_ok.lock().unwrap().remove(&ino) {
                     // Flush succeeded - safe to delete tempfile
@@ -55298,6 +55494,9 @@ mod fuse_mount {
         let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
 
         let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+        // Listening for SIGINT/SIGTERM before saying the mount can be ended:
+        // one sent in between ended the process with the mount left behind.
+        let stop = shutdown_signal();
         if !quiet {
             eprintln!(
                 "Mounting {} on {} ({}, cache TTL {}s)",
@@ -55319,6 +55518,7 @@ mod fuse_mount {
             knobs,
             quiet,
             format,
+            stop,
         )
         .await
     }
@@ -55371,6 +55571,7 @@ mod fuse_mount {
         knobs: super::MountKnobs,
         quiet: bool,
         format: OutputFormat,
+        stop: impl std::future::Future,
     ) -> i32 {
         let provider_arc = Arc::new(AsyncMutex::new(provider));
 
@@ -55449,7 +55650,7 @@ mod fuse_mount {
         // path `session` is dropped → FUSE unmount runs → kernel releases
         // the mountpoint. Previously the mount lived forever because the
         // blocking `mount2` had no cancellation surface.
-        let _ = shutdown_signal().await;
+        let _ = stop.await;
         drop(session);
 
         // Cleanup
@@ -55549,6 +55750,9 @@ mod fuse_mount {
             }
         };
 
+        // Listening for SIGINT/SIGTERM before saying the mount can be ended:
+        // one sent in between ended the process with the mount left behind.
+        let stop = shutdown_signal();
         if !quiet {
             eprintln!(
                 "Mounting unlocked vault on {} (read-only{})",
@@ -55574,6 +55778,7 @@ mod fuse_mount {
             super::MountKnobs::default(),
             quiet,
             format,
+            stop,
         )
         .await
     }
@@ -55664,6 +55869,7 @@ async fn cmd_mount_windows(
         base_path,
         auth_token: None, // local-only WebDAV bridge for Windows mount - no auth needed
         warnings: ServedWarnings::stderr(format),
+        governor: ftp_client_gui_lib::transfer_dag::governor::global(),
     };
 
     let app = webdav_app(state.clone());
@@ -55677,11 +55883,13 @@ async fn cmd_mount_windows(
         }
     };
 
-    // Spawn WebDAV server in background
+    // Spawn WebDAV server in background, listening for SIGINT/SIGTERM from
+    // here: the task's first poll can come after a signal sent meanwhile.
+    let stop = shutdown_signal();
     let server_handle = tokio::spawn(async move {
         axum::serve(listener, app)
             .with_graceful_shutdown(async {
-                let _ = shutdown_signal().await;
+                let _ = stop.await;
             })
             .await
     });
@@ -56128,6 +56336,10 @@ async fn cmd_daemon_start(
     let generated_auth_token = auth_token.is_none();
     let daemon_token = normalize_optional_token(auth_token).unwrap_or_else(generate_auth_token);
 
+    // Listening for SIGINT/SIGTERM before the runtime files exist: a signal
+    // sent once they do ended the process and left them behind.
+    let stop = shutdown_signal();
+
     // In foreground mode (for now - proper daemonization would use fork)
     // Write PID file and addr
     let pid = std::process::id();
@@ -56207,7 +56419,7 @@ async fn cmd_daemon_start(
 
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            let _ = shutdown_signal().await;
+            let _ = stop.await;
         })
         .await;
 
@@ -62908,7 +63120,8 @@ async fn digest_in_order(
     digest: &mut LocalDigest,
 ) -> Result<Option<u64>, ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
-        range_source_changed_through, read_in_order, read_range_source_through, IN_ORDER_WINDOW,
+        range_source_changed_through, read_in_order, read_range_paced, read_range_source_through,
+        IN_ORDER_WINDOW,
     };
 
     let Ok(before) = read_range_source_through(provider, path).await else {
@@ -62932,14 +63145,15 @@ async fn digest_in_order(
         // the end means the object is shorter than it was listed.
         let mut at = 0u64;
         while at < size {
-            let len = (size - at).min(IN_ORDER_WINDOW);
-            let data = provider.read_range(path, at, len).await?;
+            // Paid to the speed limiter before it is made, as the windows of
+            // `read_in_order` are.
+            let data = read_range_paced(provider, path, at, size - at, IN_ORDER_WINDOW).await?;
             if data.is_empty() {
                 return Err(ProviderError::TransferFailed(format!(
                     "{path} ended at byte {at}, before the {size} bytes it was read for"
                 )));
             }
-            let take = data.len().min(len as usize);
+            let take = data.len().min((size - at) as usize);
             digest.update(&data[..take]);
             at += take as u64;
         }
@@ -63184,8 +63398,8 @@ mod hashsum_digest_tests {
             if self.refuse_in_memory {
                 return Err(ProviderError::TransferFailed(format!(
                     "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
-                    (MAX_DOWNLOAD_TO_BYTES + 1) as f64 / 1_048_576.0,
-                    MAX_DOWNLOAD_TO_BYTES as f64 / 1_048_576.0,
+                    (ftp_client_gui_lib::providers::MAX_DOWNLOAD_TO_BYTES + 1) as f64 / 1_048_576.0,
+                    ftp_client_gui_lib::providers::MAX_DOWNLOAD_TO_BYTES as f64 / 1_048_576.0,
                 )));
             }
             if remote_path != self.path {
@@ -71319,6 +71533,49 @@ fn install_mcp_signal_guard() {
 
 // ── Main ───────────────────────────────────────────────────────────
 
+/// SIGPIPE stays ignored, as the Rust runtime sets it before `main`: a write
+/// to a peer that hung up is then an `io::Error` that a transfer or a server
+/// handles. The CLI used to restore the default action so that
+/// `aeroftp-cli ls | head` ends quietly, and that made every socket write a
+/// way to kill the process: a client of `serve ftp` that closed its
+/// connection at once ended the server (exit 141), and a broken pipe inside a
+/// long upload ended the whole run (the benchmark carried its own guard
+/// against it). The CLI's own output is the one place where a closed pipe
+/// should still end it quietly: `print!` panics there, and this hook turns
+/// that panic into the end the default action gave, killed by SIGPIPE with
+/// nothing printed.
+fn end_like_sigpipe_when_output_is_closed() {
+    #[cfg(unix)]
+    {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let message = info
+                .payload()
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| info.payload().downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            if is_closed_output_panic(message) {
+                unsafe {
+                    libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+                    libc::raise(libc::SIGPIPE);
+                }
+                std::process::exit(128 + libc::SIGPIPE);
+            }
+            previous(info);
+        }));
+    }
+}
+
+/// The panic `print!` / `eprint!` raise when the pipe they write to was
+/// closed by its reader (EPIPE), as opposed to any other failure to print.
+#[cfg(unix)]
+fn is_closed_output_panic(message: &str) -> bool {
+    (message.starts_with("failed printing to stdout")
+        || message.starts_with("failed printing to stderr"))
+        && message.ends_with(&format!("(os error {})", libc::EPIPE))
+}
+
 #[tokio::main]
 async fn main() {
     // Serve multipart part buffers from mmap, so a freed part goes back to the
@@ -71326,11 +71583,7 @@ async fn main() {
     // docs for the measurement).
     ftp_client_gui_lib::alloc_tuning::tune_for_transfer_buffers();
 
-    // Reset SIGPIPE to default behavior (exit silently on broken pipe)
-    #[cfg(unix)]
-    unsafe {
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
+    end_like_sigpipe_when_output_is_closed();
 
     // Pin the rustls CryptoProvider for this (CLI) process before any TLS
     // connector is built. Shared with the GUI binary so both take ONE code path
@@ -79429,26 +79682,6 @@ mod tests {
         assert_eq!(partial_resume_plan(0, Some(0)), ResumePlan::Complete);
     }
 
-    /// `--limit-rate` did not hold on `pget` and `get --segments`: their
-    /// windows read through `read_range`, which the limiter never saw (40 MiB
-    /// in 141 ms at 1M, where `get` takes 39 s). Under a cap each read is about
-    /// one second of it, and is charged to the limiter first.
-    #[test]
-    fn a_capped_pget_reads_in_paced_steps() {
-        assert_eq!(pget_sub_reads(None), (PGET_SUB_READ_SIZE, false));
-        assert_eq!(pget_sub_reads(Some(1024 * 1024)), (1024 * 1024, true));
-        assert_eq!(
-            pget_sub_reads(Some(1)),
-            (256 * 1024, true),
-            "at least 256 KiB"
-        );
-        assert_eq!(
-            pget_sub_reads(Some(u64::MAX)),
-            (PGET_SUB_READ_SIZE, true),
-            "at most the uncapped read"
-        );
-    }
-
     #[test]
     fn speed_limit_arms_the_governor_from_limit_rate_then_bwlimit() {
         let mut cli = test_cli();
@@ -79946,6 +80179,7 @@ mod tests {
             base_path,
             auth_token: None,
             warnings: ServedWarnings::stderr(OutputFormat::Text),
+            governor: ftp_client_gui_lib::transfer_dag::governor::global(),
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -94724,6 +94958,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             base_path: "/".to_string(),
             auth_token: None,
             warnings,
+            governor: ftp_client_gui_lib::transfer_dag::governor::global(),
         };
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -94765,6 +95000,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 base_path: "/".to_string(),
                 auth_token: None,
                 warnings: ServedWarnings::stderr(OutputFormat::Text),
+                governor: ftp_client_gui_lib::transfer_dag::governor::global(),
             };
             let mut headers = HeaderMap::new();
             headers.insert(
@@ -94866,6 +95102,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             base_path: "/".to_string(),
             auth_token: None,
             warnings: ServedWarnings::stderr(OutputFormat::Text),
+            governor: ftp_client_gui_lib::transfer_dag::governor::global(),
         };
         let mut headers = HeaderMap::new();
         headers.insert("Destination", HeaderValue::from_static(destination));
@@ -94933,6 +95170,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             base_path: "/".to_string(),
             auth_token: None,
             warnings: ServedWarnings::stderr(OutputFormat::Text),
+            governor: ftp_client_gui_lib::transfer_dag::governor::global(),
         };
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -95365,13 +95603,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     /// the directory stays, and RMDIR still removes it.
     #[test]
     fn served_sftp_remove_refuses_a_directory_and_rmdir_removes_it() {
-        let rt = Arc::new(
-            tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(1)
-                .enable_all()
-                .build()
-                .expect("runtime"),
-        );
+        let rt = Arc::new(serve_sftp::ProviderRuntime::new(1).expect("runtime"));
         let provider = served_provider_with_an_empty_directory();
         let mut handler = serve_sftp::AeroSftpHandler::for_tests(provider.clone(), rt.clone());
         // SSH_FXP_REMOVE (13) or SSH_FXP_RMDIR (15), id 7, path `/d`.
@@ -95395,6 +95627,299 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         let reply = handler.answer(&packet(15));
         assert_eq!(status(&reply), 0, "SSH_FX_OK");
         assert!(!rt.block_on(served_directory_is_there(&provider)));
+    }
+
+    /// Only a closed output pipe ends the CLI quietly: the panic `print!`
+    /// raises on EPIPE, read from the real `io::Error` text, on stdout or
+    /// stderr; any other failure to print, or any other panic, is left to the
+    /// default hook.
+    #[cfg(unix)]
+    #[test]
+    fn only_a_closed_output_pipe_ends_the_cli_quietly() {
+        let closed = std::io::Error::from_raw_os_error(libc::EPIPE);
+        let full = std::io::Error::from_raw_os_error(libc::ENOSPC);
+        assert!(is_closed_output_panic(&format!(
+            "failed printing to stdout: {closed}"
+        )));
+        assert!(is_closed_output_panic(&format!(
+            "failed printing to stderr: {closed}"
+        )));
+        assert!(!is_closed_output_panic(&format!(
+            "failed printing to stdout: {full}"
+        )));
+        assert!(!is_closed_output_panic(&format!(
+            "a socket write failed: {closed}"
+        )));
+    }
+
+    /// A local folder served as the remote, holding `/big.bin` of `size`
+    /// bytes, and a private speed limiter with a cap high enough that no test
+    /// waits on it: what it granted is what was paid.
+    fn served_folder_and_limiter(
+        size: usize,
+    ) -> (
+        tempfile::TempDir,
+        Vec<u8>,
+        ServedProvider,
+        Arc<ftp_client_gui_lib::transfer_dag::governor::GlobalTransferGovernor>,
+    ) {
+        use ftp_client_gui_lib::transfer_dag::governor::{GlobalTransferGovernor, GovernorConfig};
+        let dir = tempfile::tempdir().unwrap();
+        let content: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
+        std::fs::write(dir.path().join("big.bin"), &content).unwrap();
+        let root = dir.path().to_path_buf();
+        // On a thread of its own: an async test may build this too, and its
+        // runtime cannot block on another one.
+        let folder = std::thread::spawn(move || {
+            let mut folder =
+                ftp_client_gui_lib::providers::directory::DirectoryProvider::local(root);
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap()
+                .block_on(folder.connect())
+                .map(|()| folder)
+        })
+        .join()
+        .unwrap()
+        .expect("connect the served folder");
+        let provider: Box<dyn StorageProvider> = Box::new(folder);
+        let governor = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: 0,
+            bandwidth_bps: 0,
+            endpoint_slots: 4,
+            disk_device_slots: 4,
+        });
+        governor.set_transfer_limits(0, 1 << 40);
+        (dir, content, Arc::new(AsyncMutex::new(provider)), governor)
+    }
+
+    fn paid_for(
+        governor: &ftp_client_gui_lib::transfer_dag::governor::GlobalTransferGovernor,
+    ) -> u64 {
+        governor
+            .directional_bandwidth(
+                ftp_client_gui_lib::transfer_dag::governor::TransferDirection::Download,
+            )
+            .granted_bytes()
+    }
+
+    /// Every READ `serve sftp` answers is paid to the speed limiter. It read
+    /// with `read_range`, which leaves the limiter to its caller, so a capped
+    /// server served at full speed.
+    #[test]
+    fn served_sftp_reads_pay_the_speed_limit() {
+        let rt = Arc::new(serve_sftp::ProviderRuntime::new(1).expect("runtime"));
+        let (_dir, content, provider, governor) = served_folder_and_limiter(256 * 1024);
+        let mut handler =
+            serve_sftp::AeroSftpHandler::for_tests(provider, rt).with_governor(governor.clone());
+        let handle =
+            sftp_packets::handle_of(&handler.answer(&sftp_packets::open(1, "/big.bin", 1)));
+        let first =
+            sftp_packets::data_of(&handler.answer(&sftp_packets::read(2, &handle, 0, 32768)));
+        let second =
+            sftp_packets::data_of(&handler.answer(&sftp_packets::read(3, &handle, 100_000, 65536)));
+        assert_eq!(first, content[..32768]);
+        assert_eq!(second, content[100_000..165_536]);
+        assert_eq!(paid_for(&governor), 32768 + 65536);
+    }
+
+    /// A READ is answered with at most 255 KiB, as OpenSSH's `sftp-server`
+    /// answers, and only that much is paid and read. The length the client
+    /// sent was read whole, up to 4 GiB for one packet.
+    #[test]
+    fn a_served_sftp_read_is_clamped() {
+        let rt = Arc::new(serve_sftp::ProviderRuntime::new(1).expect("runtime"));
+        let (_dir, content, provider, governor) = served_folder_and_limiter(1024 * 1024);
+        let mut handler =
+            serve_sftp::AeroSftpHandler::for_tests(provider, rt).with_governor(governor.clone());
+        let handle =
+            sftp_packets::handle_of(&handler.answer(&sftp_packets::open(1, "/big.bin", 1)));
+        let data =
+            sftp_packets::data_of(&handler.answer(&sftp_packets::read(2, &handle, 0, 1024 * 1024)));
+        assert!(data == content[..255 * 1024], "{} bytes", data.len());
+        assert_eq!(paid_for(&governor), 255 * 1024);
+    }
+
+    /// `serve sftp` of a backend that cannot read a range downloads the file
+    /// once per handle, to disk, and answers every READ of the handle from
+    /// there. Each READ downloaded the whole file again, into memory.
+    #[test]
+    fn served_sftp_reads_without_ranges_download_once_per_handle() {
+        let rt = Arc::new(serve_sftp::ProviderRuntime::new(1).expect("runtime"));
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/f.bin".to_string(), b"0123456789".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let provider: ServedProvider = Arc::new(AsyncMutex::new(provider));
+        let mut handler = serve_sftp::AeroSftpHandler::for_tests(provider.clone(), rt);
+        let handle = sftp_packets::handle_of(&handler.answer(&sftp_packets::open(1, "/f.bin", 1)));
+        let read = |handler: &mut serve_sftp::AeroSftpHandler, id, handle: &[u8], at, len| {
+            sftp_packets::data_of(&handler.answer(&sftp_packets::read(id, handle, at, len)))
+        };
+        assert_eq!(read(&mut handler, 2, &handle, 2, 3), b"234");
+        // The file changes on the backend: the open handle reads the copy it
+        // downloaded, so no READ downloaded it again.
+        provider
+            .blocking_lock()
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake")
+            .remote_files
+            .insert("/f.bin".to_string(), b"abcdefghij".to_vec());
+        assert_eq!(read(&mut handler, 3, &handle, 5, 10), b"56789");
+        handler.answer(&sftp_packets::close(4, &handle));
+        let handle = sftp_packets::handle_of(&handler.answer(&sftp_packets::open(5, "/f.bin", 1)));
+        assert_eq!(read(&mut handler, 6, &handle, 0, 4), b"abcd");
+    }
+
+    /// A download `serve ftp` resumes (REST) is paid to the speed limiter: the
+    /// tail it reads in one range went around the limiter.
+    #[tokio::test]
+    async fn a_resumed_served_ftp_download_pays_the_speed_limit() {
+        use tokio::io::AsyncReadExt;
+        use unftp_core::storage::StorageBackend;
+        let (_dir, content, provider, governor) = served_folder_and_limiter(256 * 1024);
+        let backend = serve_ftp_backend::AeroFtpBackend::new(provider, "/".to_string())
+            .with_governor(governor.clone());
+        let mut served = Vec::new();
+        backend
+            .get(&unftp_core::auth::DefaultUser, "/big.bin", 1000)
+            .await
+            .expect("a resumed download")
+            .read_to_end(&mut served)
+            .await
+            .unwrap();
+        assert_eq!(served, content[1000..]);
+        assert_eq!(paid_for(&governor), content.len() as u64 - 1000);
+    }
+
+    /// A backend that cannot read a range still serves a resumed download:
+    /// the whole file, then the part the client asked for. The fallback ran
+    /// `Handle::block_on` inside the async `get`, and tokio panics there.
+    #[tokio::test]
+    async fn a_resumed_served_ftp_download_without_ranges_serves_the_tail() {
+        use tokio::io::AsyncReadExt;
+        use unftp_core::storage::StorageBackend;
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/f.bin".to_string(), b"0123456789".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let backend = serve_ftp_backend::AeroFtpBackend::new(
+            Arc::new(AsyncMutex::new(provider)),
+            "/".to_string(),
+        );
+        let user = unftp_core::auth::DefaultUser;
+        for (start, tail) in [(3, &b"3456789"[..]), (10, &b""[..]), (99, &b""[..])] {
+            let mut served = Vec::new();
+            backend
+                .get(&user, "/f.bin", start)
+                .await
+                .expect("a resumed download")
+                .read_to_end(&mut served)
+                .await
+                .unwrap();
+            assert_eq!(served, tail, "from {start}");
+        }
+    }
+
+    /// Every read `mount` answers is paid to the speed limiter, at the length
+    /// the kernel asked for.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mount_reads_pay_the_speed_limit() {
+        let (_dir, content, provider, governor) = served_folder_and_limiter(256 * 1024);
+        let fs = fuse_mount::AeroFuseFs::new(
+            provider,
+            "/".to_string(),
+            1,
+            true,
+            true,
+            MountKnobs::default(),
+        )
+        .with_governor(governor.clone());
+        assert_eq!(
+            fs.read_remote("/big.bin", 4096, 8192).unwrap(),
+            content[4096..12288]
+        );
+        assert_eq!(paid_for(&governor), 8192);
+    }
+
+    /// `mount` of a backend that cannot read a range downloads the file once,
+    /// to disk, and answers every read from there until the file is
+    /// released. Each read downloaded the whole file again, into memory, and
+    /// a file over 64 MiB could not be read.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mount_reads_without_ranges_download_once_until_released() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/f.bin".to_string(), b"0123456789".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let provider: ServedProvider = Arc::new(AsyncMutex::new(provider));
+        let fs = fuse_mount::AeroFuseFs::new(
+            provider.clone(),
+            "/".to_string(),
+            1,
+            true,
+            true,
+            MountKnobs::default(),
+        );
+        let ino = 42;
+        assert_eq!(fs.read_or_stage(ino, "/f.bin", 2, 3).unwrap(), b"234");
+        // The file changes on the backend: the reads answer from the copy.
+        provider
+            .blocking_lock()
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake")
+            .remote_files
+            .insert("/f.bin".to_string(), b"abcdefghij".to_vec());
+        assert_eq!(fs.read_or_stage(ino, "/f.bin", 5, 10).unwrap(), b"56789");
+        assert!(fs.read_or_stage(ino, "/f.bin", 99, 10).unwrap().is_empty());
+        fs.drop_staged(ino);
+        assert_eq!(fs.read_or_stage(ino, "/f.bin", 0, 4).unwrap(), b"abcd");
+    }
+
+    /// A file `serve http` sends, whole or in the range a client asked, is
+    /// streamed from windows paid to the speed limiter. It was read whole
+    /// into memory and sent unpaced, and a file over 500 MiB was refused.
+    #[tokio::test]
+    async fn a_served_http_file_is_streamed_and_pays_the_speed_limit() {
+        let (_dir, content, provider, governor) = served_folder_and_limiter(3 * 1024 * 1024);
+        let state = ServeHttpState {
+            provider,
+            provider_label: "folder".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings: ServedWarnings::stderr(OutputFormat::Text),
+            governor: governor.clone(),
+        };
+        let body = |response: Response| async move {
+            axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("the served body")
+        };
+
+        let whole = serve_http_response(state.clone(), "big.bin".to_string(), false, None).await;
+        assert_eq!(whole.status(), StatusCode::OK);
+        assert_eq!(
+            whole.headers()[CONTENT_LENGTH],
+            content.len().to_string().as_str()
+        );
+        assert!(body(whole).await == content[..]);
+        assert_eq!(paid_for(&governor), content.len() as u64);
+
+        let range = HeaderValue::from_static("bytes=1000-1999");
+        let part =
+            serve_http_response(state.clone(), "big.bin".to_string(), false, Some(&range)).await;
+        assert_eq!(part.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            part.headers()[CONTENT_RANGE],
+            format!("bytes 1000-1999/{}", content.len()).as_str()
+        );
+        assert_eq!(part.headers()[CONTENT_LENGTH], "1000");
+        assert!(body(part).await == content[1000..2000]);
+        assert_eq!(paid_for(&governor), content.len() as u64 + 1000);
     }
 
     /// Packets for the served SFTP write tests: OPEN, WRITE, CLOSE, READ.
@@ -95425,6 +95950,20 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             string(&mut p, handle);
             p
         }
+        pub fn read(id: u32, handle: &[u8], offset: u64, len: u32) -> Vec<u8> {
+            let mut p = vec![5u8];
+            p.extend_from_slice(&id.to_be_bytes());
+            string(&mut p, handle);
+            p.extend_from_slice(&offset.to_be_bytes());
+            p.extend_from_slice(&len.to_be_bytes());
+            p
+        }
+        /// The bytes of an SSH_FXP_DATA reply.
+        pub fn data_of(reply: &[u8]) -> Vec<u8> {
+            assert_eq!(reply[0], 103, "SSH_FXP_DATA expected, got {reply:?}");
+            let len = u32::from_be_bytes(reply[5..9].try_into().unwrap()) as usize;
+            reply[9..9 + len].to_vec()
+        }
         /// The handle of an SSH_FXP_HANDLE reply, or the panic says what came.
         pub fn handle_of(reply: &[u8]) -> Vec<u8> {
             assert_eq!(reply[0], 102, "SSH_FXP_HANDLE expected, got {reply:?}");
@@ -95445,15 +95984,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     ) -> (
         serve_sftp::AeroSftpHandler,
         ServedProvider,
-        Arc<tokio::runtime::Runtime>,
+        Arc<serve_sftp::ProviderRuntime>,
     ) {
-        let rt = Arc::new(
-            tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(1)
-                .enable_all()
-                .build()
-                .expect("runtime"),
-        );
+        let rt = Arc::new(serve_sftp::ProviderRuntime::new(1).expect("runtime"));
         let provider: Box<dyn StorageProvider> = Box::new(fake);
         let provider = Arc::new(AsyncMutex::new(provider));
         let handler = serve_sftp::AeroSftpHandler::for_tests(provider.clone(), rt.clone());
