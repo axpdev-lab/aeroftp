@@ -190,6 +190,21 @@ impl ProtonCliProvider {
             if output.status.success() {
                 return Ok(stdout);
             }
+            // A transfer that failed for some of its items says only "N
+            // item(s) failed to upload" on stderr; why each one failed is in
+            // the summary on stdout. Classify from those reasons. A full
+            // drive is not transient and returns here, so it is not retried
+            // as an unknown server error. A timeout or a 429 on an item uses
+            // the same retry limit as any other transient CLI error, and the
+            // last attempt still returns the classified summary.
+            if let Some(failures) = transfer_failures(&stdout) {
+                let classified = classify_transfer_failures(&failures);
+                if is_transient(&failure_reasons(&failures)) && attempt < MAX_RETRIES {
+                    last_err = classified;
+                    continue;
+                }
+                return Err(classified);
+            }
 
             let combined = if stderr.trim().is_empty() {
                 stdout.trim().to_string()
@@ -407,6 +422,99 @@ fn redact_cli_args(args: &[&str]) -> Vec<String> {
         out.push((*arg).to_string());
     }
     out
+}
+
+/// The failed items of a `filesystem upload|download -j` summary, as (name,
+/// reason) pairs: `{"failedItems":N,"failures":[{"name","error"}]}`, where
+/// `error` is `<SDK error class>: <API message>`. `None` when `stdout` is not
+/// such a summary, or lists no failure.
+fn transfer_failures(stdout: &str) -> Option<Vec<(String, String)>> {
+    let summary: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+    let failures: Vec<(String, String)> = summary
+        .get("failures")?
+        .as_array()?
+        .iter()
+        .map(|failure| {
+            let field = |key: &str| {
+                failure
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            (field("name"), field("error"))
+        })
+        .collect();
+    (!failures.is_empty()).then_some(failures)
+}
+
+/// `name: error` for each failed item, joined for the message the user reads.
+fn failure_detail(failures: &[(String, String)]) -> String {
+    failures
+        .iter()
+        .map(|(name, error)| format!("{name}: {error}"))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// The error texts alone, which is what is classified and what is retried.
+fn failure_reasons(failures: &[(String, String)]) -> String {
+    failures
+        .iter()
+        .map(|(_, error)| error.as_str())
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// The classified text, then the item list. The list stays in the message and
+/// is not classified: `TransferError::from_provider` reads the whole string,
+/// and a file called `Storage quota exceeded.txt` would otherwise be a full
+/// drive that is never retried.
+fn show_with_items(classified: &str, detail: &str) -> String {
+    format!(
+        "{classified}{}{detail}",
+        super::types::UNCLASSIFIED_ITEM_LIST
+    )
+}
+
+/// Classify a partly failed transfer by its reasons only: the item names stay
+/// out of the match, so a file called `quota.txt` that failed for another
+/// reason is not a full drive. The JSON carries no error code (the CLI prints
+/// only the class and the API message), so a full drive is told by the
+/// message, and only on the class the SDK gives an API refusal of input
+/// (`ValidationError`): a local failure (`Error: ENOSPC ... <path>`) carries
+/// the local path, where any word can appear.
+fn classify_transfer_failures(failures: &[(String, String)]) -> ProviderError {
+    let detail = failure_detail(failures);
+    let reasons = failure_reasons(failures);
+    if failures.iter().any(|(_, error)| is_storage_full(error)) {
+        return ProviderError::ServerError(show_with_items(
+            &format!("Storage quota exceeded ({reasons})"),
+            &detail,
+        ));
+    }
+    let shown = show_with_items(&reasons, &detail);
+    match classify_cli_error(&reasons) {
+        ProviderError::NotFound(_) => ProviderError::NotFound(shown),
+        ProviderError::PermissionDenied(_) => ProviderError::PermissionDenied(shown),
+        ProviderError::AlreadyExists(_) => ProviderError::AlreadyExists(shown),
+        ProviderError::ServerError(_) => ProviderError::ServerError(shown),
+        other => other,
+    }
+}
+
+/// A Proton refusal for a full drive: API codes 200001, 200002, 200100 and
+/// 200101, which the SDK raises as a plain `ValidationError` and the CLI's
+/// JSON reduces to `ValidationError: <API message>`.
+fn is_storage_full(error: &str) -> bool {
+    let Some(message) = error.strip_prefix("ValidationError:") else {
+        return false;
+    };
+    let lower = message.to_lowercase();
+    lower.contains("quota")
+        || lower.contains("insufficient space")
+        || lower.contains("not enough space")
+        || lower.contains("out of storage")
 }
 
 fn classify_cli_error(msg: &str) -> ProviderError {
@@ -929,6 +1037,9 @@ impl StorageProvider for ProtonCliProvider {
                 &[
                     "filesystem",
                     "download",
+                    // JSON: a summary with a reason per failed item, and no
+                    // interactive prompt.
+                    "-j",
                     "-f",
                     "remove",
                     "-d",
@@ -1033,6 +1144,11 @@ impl StorageProvider for ProtonCliProvider {
                 &[
                     "filesystem",
                     "upload",
+                    // Without JSON, proton-drive 0.9.0 opens its upgrade page
+                    // in the browser after every upload that fails on a full
+                    // drive (`storageQuotaUpsell.ts`): one tab per file of a
+                    // recursive upload. JSON also gives a reason per item.
+                    "-j",
                     "-f",
                     "create-new-revision",
                     "-d",
@@ -1671,6 +1787,97 @@ mod tests {
             ProviderError::AuthenticationFailed(_) => {}
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn only_a_transfer_summary_that_lists_failures_is_read_as_one() {
+        assert_eq!(transfer_failures(""), None);
+        assert_eq!(transfer_failures("[]"), None);
+        assert_eq!(transfer_failures("Transfer summary:"), None);
+        assert_eq!(
+            transfer_failures(r#"{"failedItems":0,"failures":[]}"#),
+            None
+        );
+        assert_eq!(
+            transfer_failures(r#"{"failedItems":1,"failures":[{"name":"a","error":"E: m"}]}"#),
+            Some(vec![("a".to_string(), "E: m".to_string())])
+        );
+    }
+
+    /// A full drive is read from the API's refusal, never from a name or a
+    /// local path: either can hold any word.
+    #[test]
+    fn a_full_drive_is_read_from_the_refusal_never_from_a_name() {
+        let classify = |name: &str, error: &str| {
+            classify_transfer_failures(&[(name.to_string(), error.to_string())])
+        };
+        let is_quota = |error: &ProviderError| error.to_string().contains("Storage quota exceeded");
+        assert!(is_quota(&classify(
+            "a.txt",
+            "ValidationError: Insufficient storage quota"
+        )));
+        assert!(!is_quota(&classify(
+            "quota.txt",
+            "APICodeError: Something went wrong"
+        )));
+        assert!(!is_quota(&classify(
+            "x",
+            "Error: EACCES: permission denied, open '/home/u/quota/x'"
+        )));
+        assert!(matches!(
+            classify("gone.txt", "NotFoundAPIError: Node not found"),
+            ProviderError::NotFound(ref t) if t.contains("gone.txt")
+        ));
+    }
+
+    /// The upload path wraps the summary as `TransferFailed`, and that string
+    /// is classified again. The file name is in the message the user reads and
+    /// not in the class: `Storage quota exceeded.txt` failing for another
+    /// reason is not a full drive, which would never be retried.
+    #[test]
+    fn a_file_named_like_a_quota_error_is_not_a_full_drive() {
+        let classified = |name: &str, error: &str| {
+            let failure = classify_transfer_failures(&[(name.to_string(), error.to_string())]);
+            ProviderError::TransferFailed(format!("Upload failed: {failure}"))
+        };
+        let refused = crate::transfer_dag::TransferError::from_provider(&classified(
+            "Storage quota exceeded.txt",
+            "APICodeError: Something went wrong",
+        ));
+        assert!(
+            refused.message.contains("Storage quota exceeded.txt"),
+            "{}",
+            refused.message
+        );
+        assert_ne!(
+            refused.kind,
+            crate::transfer_dag::TransferErrorKind::QuotaExceeded,
+            "{}",
+            refused.message
+        );
+        assert_ne!(
+            refused.retry,
+            crate::transfer_dag::RetryDirective::Never,
+            "{}",
+            refused.message
+        );
+
+        let full = crate::transfer_dag::TransferError::from_provider(&classified(
+            "Storage quota exceeded.txt",
+            "ValidationError: Insufficient storage quota",
+        ));
+        assert_eq!(
+            full.kind,
+            crate::transfer_dag::TransferErrorKind::QuotaExceeded,
+            "{}",
+            full.message
+        );
+        assert_eq!(full.retry, crate::transfer_dag::RetryDirective::Never);
+        assert!(
+            full.message.contains("Storage quota exceeded.txt"),
+            "{}",
+            full.message
+        );
     }
 }
 
@@ -2413,5 +2620,105 @@ mod cli_sequence_tests {
         assert!(staged.starts_with(&staging));
         assert_eq!(std::fs::read(&staged).unwrap(), b"proton staging on disk");
         let _ = std::fs::remove_dir_all(&staging);
+    }
+
+    /// proton-drive 0.9.0 opens its upgrade page in the browser after every
+    /// upload that fails on a full drive, unless it runs with JSON, so a
+    /// recursive upload to a full drive opened one tab per file. And the
+    /// reason was only in the summary on stdout: the error read "1 item(s)
+    /// failed to upload", which the transfer engine retries.
+    #[tokio::test]
+    async fn an_upload_to_a_full_drive_opens_no_browser_and_reads_as_quota() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("transfer-fails.json"),
+            r#"[{"name":"a.txt","error":"ValidationError: Insufficient storage quota"}]"#,
+        )
+        .unwrap();
+        let local = dir.join("a.txt");
+        std::fs::write(&local, "x").unwrap();
+        let mut p = provider(&shim);
+        let err = p
+            .upload(local.to_str().unwrap(), "/my-files/a.txt", None)
+            .await
+            .expect_err("the drive is full");
+        assert!(
+            !dir.join("browser.log").exists(),
+            "the upload let proton-drive open the browser"
+        );
+        let refused = crate::transfer_dag::TransferError::from_provider(&err);
+        assert_eq!(
+            refused.kind,
+            crate::transfer_dag::TransferErrorKind::QuotaExceeded,
+            "{err}"
+        );
+        assert_eq!(
+            refused.retry,
+            crate::transfer_dag::RetryDirective::Never,
+            "{err}"
+        );
+        assert_eq!(
+            verbs(&read_argv(&dir), "upload").len(),
+            1,
+            "a full drive was retried"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_failed_download_says_why_its_item_failed() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("transfer-fails.json"),
+            r#"[{"name":"report.txt","error":"NotFoundAPIError: Node not found"}]"#,
+        )
+        .unwrap();
+        let dest = dir.join("got.txt");
+        let mut p = provider(&shim);
+        let err = p
+            .download("/my-files/report.txt", dest.to_str().unwrap(), None)
+            .await
+            .expect_err("the item failed");
+        let text = err.to_string();
+        assert!(
+            text.contains("report.txt: NotFoundAPIError: Node not found"),
+            "{text}"
+        );
+        let argv = read_argv(&dir);
+        assert!(
+            verbs(&argv, "download")[0].iter().any(|a| a == "-j"),
+            "{argv:?}"
+        );
+        assert_eq!(
+            verbs(&argv, "download").len(),
+            1,
+            "a missing item was retried: {argv:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A per-item timeout is in the JSON summary, not on stderr. It is
+    /// transient, so the transfer is attempted again; the second run succeeds.
+    #[tokio::test]
+    async fn a_transient_item_failure_is_retried() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("transfer-fails-once.json"),
+            r#"[{"name":"a.txt","error":"APICodeError: request timed out"}]"#,
+        )
+        .unwrap();
+        let local = dir.join("a.txt");
+        std::fs::write(&local, "x").unwrap();
+        let mut p = provider(&shim);
+        p.upload(local.to_str().unwrap(), "/my-files/a.txt", None)
+            .await
+            .expect("the timed-out item was not retried");
+        let argv = read_argv(&dir);
+        let uploads = verbs(&argv, "upload");
+        assert_eq!(uploads.len(), 2, "expected one retry, got {uploads:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

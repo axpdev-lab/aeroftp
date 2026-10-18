@@ -363,6 +363,10 @@ pub fn message_names_a_cancellation(message: &str) -> bool {
 /// alone. They now ask [`message_names_a_cancellation`], which lives here so
 /// that the sentence is true of the vocabulary as well as of the scheduling.
 fn classify_raw_message(raw: &str) -> TransferErrorKind {
+    // The same cut as `classification_text`. These earlier needles run before
+    // that function, so a name parked after the marker must already be gone
+    // here: `503` or `cancelled` in a file name is not that failure.
+    let raw = crate::providers::types::without_unclassified_items(raw);
     let lower = raw.to_lowercase();
 
     if message_names_a_cancellation(&lower) {

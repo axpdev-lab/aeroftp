@@ -25,6 +25,36 @@ if os.path.exists(os.path.join(HERE, "signed_out")):
     print("Error: You need to login first. Run `proton-drive auth login`.", file=sys.stderr)
     sys.exit(1)
 sub = args[1] if len(args) > 1 else ""
+
+
+def emit_transfer_failure(failures):
+    if "-j" in args or "--json" in args:
+        print(json.dumps({"transferredItems": 0, "transferredBytes": 0, "skippedItems": 0,
+                          "failedItems": len(failures), "failures": failures}))
+    else:
+        print("Transfer summary:")
+        for item in failures:
+            print("  - %s: %s" % (item["name"], item["error"]))
+        if sub == "upload" and any("quota" in item["error"].lower() for item in failures):
+            with open(os.path.join(HERE, "browser.log"), "a") as f:
+                f.write("upsell\n")
+    print("%d item(s) failed to %s" % (len(failures), sub), file=sys.stderr)
+    sys.exit(1)
+# A transfer that fails once, then succeeds: the provider retries a transient
+# item error (a timeout, a 429) and must not treat the first summary as final.
+once = pathlib.Path(HERE, "transfer-fails-once.json")
+if verb == "filesystem" and sub in ("upload", "download") and once.exists():
+    failures = json.loads(once.read_text())
+    once.unlink()
+    emit_transfer_failure(failures)
+# A transfer that fails for its items, the way proton-drive 0.9.0 reports it:
+# the summary on stdout (JSON with -j), "N item(s) failed" on stderr, exit 1.
+# Without -j a failure on a full drive also opens the upgrade page in the
+# browser (cli/src/commands/fileSystem/storageQuotaUpsell.ts), which this
+# stand-in records in browser.log instead.
+failing = pathlib.Path(HERE, "transfer-fails.json")
+if verb == "filesystem" and sub in ("upload", "download") and failing.exists():
+    emit_transfer_failure(json.loads(failing.read_text()))
 if verb == "filesystem" and sub == "download":
     dest = pathlib.Path(args[-1])
     remote = args[-2]
