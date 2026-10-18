@@ -98,7 +98,12 @@ fn serve_ftp_outlives_clients_that_hang_up_at_once() {
 #[test]
 fn a_listing_into_a_closed_pipe_ends_quietly() {
     let folder = tempfile::tempdir().expect("listed folder");
-    for n in 0..3000 {
+    // A short name is 15 bytes a line. Three thousand of them are about 45 KiB,
+    // which fits in the default pipe (64 KiB on Linux), so the child can write
+    // the whole listing and exit 0 before stdout is closed below. Twenty
+    // thousand names are about 300 KiB: the write blocks in the pipe, and
+    // closing it is delivered as EPIPE.
+    for n in 0..20_000 {
         std::fs::write(folder.path().join(format!("file-{n:05}.txt")), b"x").unwrap();
     }
     let config = isolated_cli::root();
