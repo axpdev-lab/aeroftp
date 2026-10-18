@@ -150,13 +150,13 @@ pub async fn load_account(
     api: &ProtonApi,
     key_password: &SecretString,
 ) -> Result<ProtonAccount<impl PGPProviderSync>, ProtonError> {
-    let users: UsersResponse = api.get("/core/v4/users", &[]).await?;
-    let addresses: AddressesResponse = api
-        .get(
-            "/core/v4/addresses",
-            &[("Page", "0".to_string()), ("PageSize", "50".to_string())],
-        )
-        .await?;
+    // Independent reads, sent together: each connect waited for the user
+    // before asking for the addresses. Concurrent 401s share one refresh.
+    let address_page = [("Page", "0".to_string()), ("PageSize", "50".to_string())];
+    let (users, addresses): (UsersResponse, AddressesResponse) = tokio::try_join!(
+        api.get("/core/v4/users", &[]),
+        api.get("/core/v4/addresses", &address_page),
+    )?;
     let secret = KeySecret::new(key_password.expose_secret().as_bytes().to_vec());
 
     // Key import runs the S2K of every private key: CPU work that must not

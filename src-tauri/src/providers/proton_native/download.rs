@@ -184,31 +184,25 @@ impl<P: PGPProviderSync> DriveClient<P> {
         };
 
         let mut next_index: u64 = 1;
-        let mut manifest_signature: Option<String> = None;
+
         let mut thumbnails: Vec<(i64, Vec<u8>)> = Vec::new();
         let mut block_digests: Vec<Vec<u8>> = Vec::new();
         let mut sha1 = Sha1::new();
         let mut written: u64 = 0;
-        let mut first_page = true;
 
-        loop {
-            let page = self
-                .revision_page(node, &revision.revision_id, next_index, BLOCK_PAGE_SIZE)
-                .await?;
-            if first_page {
-                first_page = false;
-                manifest_signature = page.manifest_signature.filter(|s| !s.is_empty());
-                for thumbnail in page.thumbnails {
-                    let hash = BASE64.decode(thumbnail.hash.trim()).map_err(|_| {
-                        ProtonError::Integrity("thumbnail hash is not base64".into())
-                    })?;
-                    thumbnails.push((thumbnail.thumbnail_type, hash));
-                }
-            }
-            if page.blocks.is_empty() {
-                break;
-            }
-            let mut blocks = page.blocks;
+        let mut page = self
+            .revision_page(node, &revision.revision_id, next_index, BLOCK_PAGE_SIZE)
+            .await?;
+        let manifest_signature = page.manifest_signature.take().filter(|s| !s.is_empty());
+        for thumbnail in std::mem::take(&mut page.thumbnails) {
+            let hash = BASE64
+                .decode(thumbnail.hash.trim())
+                .map_err(|_| ProtonError::Integrity("thumbnail hash is not base64".into()))?;
+            thumbnails.push((thumbnail.thumbnail_type, hash));
+        }
+        // apiService.ts: pages are read until one comes back empty.
+        while !page.blocks.is_empty() {
+            let mut blocks = std::mem::take(&mut page.blocks);
             blocks.sort_by_key(|b| b.index);
             // RevisionReader.cs: indices must be consecutive from 1.
             for (offset, block) in blocks.iter().enumerate() {
@@ -220,21 +214,32 @@ impl<P: PGPProviderSync> DriveClient<P> {
                     )));
                 }
             }
-            // Fetched up to BLOCKS_IN_FLIGHT at a time, handed over in order.
-            let mut fetched =
-                futures_util::stream::iter(blocks.into_iter().map(|block| {
+            // The next page is read while this one's blocks download, as the
+            // SDK's generator does, so the empty page that ends every file
+            // costs no round trip of its own.
+            let following = next_index + blocks.len() as u64;
+            let next_page =
+                self.revision_page(node, &revision.revision_id, following, BLOCK_PAGE_SIZE);
+            let this_page = async {
+                // Fetched up to BLOCKS_IN_FLIGHT at a time, handed over in order.
+                let mut fetched = futures_util::stream::iter(blocks.into_iter().map(|block| {
                     self.fetch_block(node, &revision.revision_id, session_key, block)
                 }))
                 .buffered(BLOCKS_IN_FLIGHT);
-            while let Some(result) = fetched.next().await {
-                let (plain, digest) = result?;
-                sha1.update(&plain);
-                out.write_all(&plain).await.map_err(ProtonError::LocalIo)?;
-                written += plain.len() as u64;
-                progress(written);
-                block_digests.push(digest);
-                next_index += 1;
-            }
+                while let Some(result) = fetched.next().await {
+                    let (plain, digest) = result?;
+                    sha1.update(&plain);
+                    out.write_all(&plain).await.map_err(ProtonError::LocalIo)?;
+                    written += plain.len() as u64;
+                    progress(written);
+                    block_digests.push(digest);
+                    next_index += 1;
+                }
+                Ok::<(), ProtonError>(())
+            };
+            let (next, done) = tokio::join!(next_page, this_page);
+            done?;
+            page = next?;
         }
         out.flush().await.map_err(ProtonError::LocalIo)?;
 
