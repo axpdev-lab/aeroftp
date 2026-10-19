@@ -139,10 +139,14 @@ test('a partially unreadable block list fails instead of retaining only its info
     '  - severity: error\n    tag: xml-markup-invalid\n',
     '- { severity: error, tag: xml-markup-invalid }\n',
     '- unreadable\n',
+    '-\n  tag: xml-markup-invalid\n  severity: error\n',
+    '  tag: xml-markup-invalid\n  severity: error\n',
   ]) {
-    const report = `Issues:\n${info}${item}Passed: no\n`;
-    assert.ok(readValidateReport(report, 3).error, item);
-    assert.notEqual(gate(t, 'accepted.xml', report).status, 0, item);
+    for (const issues of [info + item, item + info]) {
+      const report = `Issues:\n${issues}Passed: no\n`;
+      assert.ok(readValidateReport(report, 3).error, item);
+      assert.notEqual(gate(t, 'accepted.xml', report).status, 0, item);
+    }
   }
 });
 

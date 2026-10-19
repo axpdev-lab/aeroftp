@@ -645,9 +645,8 @@ pub(crate) fn create_segmented_temp(
     // their own, so the handle is closed at once, as before.
     #[cfg(windows)]
     let sized = {
-        use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+        use std::os::windows::fs::OpenOptionsExt;
         const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
         // Open the reparse point itself without truncating it or its target.
         // Validate the opened handle before resizing, so a path substitution
         // cannot make this check authorize a different file. Deny sharing
@@ -660,9 +659,9 @@ pub(crate) fn create_segmented_temp(
             .share_mode(0)
             .open(&temp)?;
         let metadata = file.metadata()?;
-        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 || !metadata.is_file() {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
             return Err(std::io::Error::other(
-                "Refusing a reparse point or non-file at the segmented temporary",
+                "Refusing a link or non-file at the segmented temporary",
             ));
         }
         // Existing regular temporaries must start empty, including holes in

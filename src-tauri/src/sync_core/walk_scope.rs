@@ -152,7 +152,7 @@ impl WalkScope {
             absolute_delete_root: (root.starts_with(['/', '\\'])
                 || (root.as_bytes().get(1) == Some(&b':')
                     && matches!(root.as_bytes().get(2), Some(b'/' | b'\\'))))
-            .then(|| walk_path_key(root)),
+            .then(|| walk_path_key(&root.replace('\\', "/"))),
         }
     }
 
@@ -162,9 +162,21 @@ impl WalkScope {
     /// rather than letting an arbitrary child listing expand its authority.
     /// Repo-relative answers are rooted before becoming deletion authority.
     pub fn for_delete(root: &str, resolved_root: Option<&str>) -> Self {
+        let requested = Self::new(root);
         match resolved_root.filter(|path| !path.is_empty()) {
-            Some(path) => Self::new(&walk_path_key(path)),
-            None => Self::new(root),
+            Some(path) => {
+                let agreement = agreement_key(path);
+                let suffix = &requested.suffix;
+                if suffix.is_empty()
+                    || agreement == format!("/{suffix}")
+                    || agreement.ends_with(&format!("/{suffix}"))
+                {
+                    Self::new(&walk_path_key(&path.replace('\\', "/")))
+                } else {
+                    requested
+                }
+            }
+            None => requested,
         }
     }
 
@@ -925,6 +937,34 @@ mod tests {
         learned.learn_root_listing(&[file("a", "/X/a")]);
         assert_eq!(
             learned.place_to_delete("/x", "/X/a", false),
+            WalkStep::OutsideRoot
+        );
+    }
+
+    #[test]
+    fn deletion_resolution_cannot_replace_the_requested_root_with_an_ancestor() {
+        for resolved in ["/", "/elsewhere", "/photo"] {
+            let mut scope = WalkScope::for_delete("/photos", Some(resolved));
+            assert_eq!(
+                scope.place_to_delete("/photos", "/elsewhere/a", false),
+                WalkStep::OutsideRoot
+            );
+            assert_eq!(
+                scope.place_to_delete("/photos", "/photos/a", false),
+                WalkStep::Follow
+            );
+        }
+    }
+
+    #[test]
+    fn backslash_absolute_delete_roots_keep_their_requested_authority() {
+        let mut scope = WalkScope::for_delete("\\Documents\\Photos", None);
+        assert_eq!(
+            scope.place_to_delete("\\Documents\\Photos", "/Documents/Photos/x", false),
+            WalkStep::Follow
+        );
+        assert_eq!(
+            scope.place_to_delete("\\Documents\\Photos", "/elsewhere/x", false),
             WalkStep::OutsideRoot
         );
     }

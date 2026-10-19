@@ -511,6 +511,31 @@ pub fn delete_session(owner: SessionOwner, profile_id: Option<&str>) -> Result<(
     Ok(())
 }
 
+/// Remove a failed local duplicate without revoking its source's shared
+/// remote session. The fresh destination still uses normal mutation guards.
+pub fn discard_session_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+) -> Result<(), ProviderError> {
+    let profile_id = profile_id.to_string();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| ProviderError::Other(format!("Proton session runtime: {error}")))?;
+        runtime.block_on(async {
+            let store = open_store()?;
+            let _keys = lock_keys(mutation_keys(owner, Some(&profile_id))?).await?;
+            let key = saved_key(&store, owner, Some(&profile_id))?;
+            let _lease = lease_of_saved(owner, &key).await?;
+            let _writes = session_writes();
+            delete_session(owner, Some(&profile_id))
+        })
+    })
+    .join()
+    .map_err(|_| ProviderError::Other("Proton duplicate cleanup stopped unexpectedly".into()))?
+}
+
 /// True when another key among `others` holds a session with `uid`: a
 /// duplicated profile shares its original's session, and revoking it for
 /// one would sign the other out.
@@ -901,12 +926,11 @@ impl SessionKeys for VaultKeys {
         // Determine owners before writing the global fallback. An identically
         // named key in another partition can hold a different session.
         let mut owners = if let Some(profile) = key.strip_prefix(SESSION_KEY_PREFIX) {
-            crate::user_partitions::profile_credential_owner_ids(profile, key).unwrap_or_else(
-                |error| {
+            crate::user_partitions::profile_credential_owner_ids(&self.store, profile, key)
+                .unwrap_or_else(|error| {
                     log::warn!("Proton: shared session owners could not be read: {error}");
                     Vec::new()
-                },
-            )
+                })
         } else if let Some(user) = key
             .strip_prefix(USER_UNBOUND_PREFIX)
             .and_then(|user| user.parse::<i64>().ok())

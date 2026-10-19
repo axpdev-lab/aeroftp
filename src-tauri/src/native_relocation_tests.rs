@@ -199,6 +199,70 @@ fn native_cross_user_relocation_is_guarded_and_atomic() {
             .any(|profile| profile["id"] == id)
     };
 
+    // Owner discovery must use the stored HMAC profile identity even before
+    // a profile has a native credential mirror.
+    seed("no-mirror-source", "no-mirror-uid");
+    let no_mirror_key = vault::session_key(Some("no-mirror-source"));
+    conn.execute(
+        "DELETE FROM user_credentials WHERE credential_id=?1",
+        params![no_mirror_key],
+    )
+    .unwrap();
+    assert_eq!(
+        profile_credential_owner_ids(&store, "no-mirror-source", &no_mirror_key).unwrap(),
+        vec![source_id]
+    );
+    relocate("no-mirror-source", "no-mirror-target", true).unwrap();
+    assert_pair(&target_raw("no-mirror-target"), "no-mirror-uid", "r1");
+
+    // A missing source mirror must not borrow another user's global value,
+    // even when the source also has a profile with that same raw ID.
+    seed("foreign-fallback-source", "source-only-uid");
+    vault::store_session(
+        vault::SessionOwner::for_user(Some(active)),
+        Some("foreign-fallback-source"),
+        &session("foreign-owner-uid", "foreign"),
+    )
+    .unwrap();
+    let foreign_key = vault::session_key(Some("foreign-fallback-source"));
+    conn.execute(
+        "DELETE FROM user_credentials WHERE user_id=?1 AND credential_id=?2",
+        params![source_id, foreign_key],
+    )
+    .unwrap();
+    relocate("foreign-fallback-source", "foreign-fallback-target", true).unwrap();
+    assert!(read_credential_with_dek(
+        &conn,
+        target.id,
+        &target_dek,
+        &vault::session_key(Some("foreign-fallback-target"))
+    )
+    .unwrap()
+    .is_none());
+    assert_pair(
+        &store.get(&foreign_key).unwrap(),
+        "foreign-owner-uid",
+        "foreign",
+    );
+
+    // Rolling back a failed duplicate removes only the local destination,
+    // without revoking or deleting its source's shared session.
+    let saved = seed("discard-source", "discard-uid");
+    let raw = serde_json::to_string(&StoredSession::from(&saved)).unwrap();
+    vault::restore_session_blocking(owner, "discard-copy", &raw).unwrap();
+    vault::discard_session_blocking(owner, "discard-copy").unwrap();
+    assert!(vault::load_session(owner, Some("discard-copy"))
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        vault::load_session(owner, Some("discard-source"))
+            .unwrap()
+            .unwrap()
+            .tokens
+            .uid,
+        "discard-uid"
+    );
+
     // R1 is captured under the key locks. A real refresh store saves R2 in
     // another thread before relocation acquires its UID lease. A retained
     // SessionHold in the caller would deadlock this worker's partition mirror.

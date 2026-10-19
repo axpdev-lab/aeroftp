@@ -2207,13 +2207,15 @@ async fn clear_crypt_overlay_inner(state: &ProviderState, full: bool) -> bool {
     state.cancel_storage_reads();
     let removed = {
         let mut guard = state.provider.lock().await;
-        crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
+        let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
+        if full {
+            state.invalidate_overlay_key_cache();
+        }
+        removed
     };
     state.overlay_wrapped.store(false, Ordering::SeqCst);
     if full {
         state.active_crypt_overlay.store(false, Ordering::SeqCst);
-        // Hard lock / teardown: the cached keys must not survive.
-        state.invalidate_overlay_key_cache();
     }
     removed
 }

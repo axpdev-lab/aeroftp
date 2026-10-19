@@ -2002,7 +2002,21 @@ fn relocate_server_profile_and_credentials(
         conn, user_id, dek, key,
     )? {
         Some(raw) => Ok(Some(raw)),
-        None => get_optional_secret(store, key),
+        None => {
+            let profile = key
+                .strip_prefix("proton_native_session_")
+                .ok_or_else(|| "INVALID_NATIVE_SESSION_KEY".to_string())?;
+            let owners = profile_credential_owner_ids(store, profile, key)?;
+            // A global value cannot be attributed safely when several users
+            // own this key and the requested user's partition has no value.
+            if owners.as_slice() == [user_id]
+                || (owners.is_empty() && legacy_credential_owner_id()? == Some(user_id))
+            {
+                get_optional_secret(store, key)
+            } else {
+                Ok(None)
+            }
+        }
     };
 
     #[cfg(feature = "proton-native")]
@@ -2121,8 +2135,11 @@ fn relocate_server_profile_and_credentials(
 }
 
 #[cfg(all(test, feature = "proton-native"))]
+type NativeRelocationHook = Option<Box<dyn FnMut(&str)>>;
+
+#[cfg(all(test, feature = "proton-native"))]
 thread_local! {
-    static NATIVE_RELOCATION_HOOK: RefCell<Option<Box<dyn FnMut(&str)>>> = const { RefCell::new(None) };
+    static NATIVE_RELOCATION_HOOK: RefCell<NativeRelocationHook> = const { RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -3138,10 +3155,14 @@ pub fn resolve_credential_for_user(
 /// mirror has not been written yet. Refresh propagation must never attribute
 /// another profile's secret to whichever user happens to be active now.
 pub(crate) fn profile_credential_owner_ids(
+    store: &CredentialStore,
     profile_id: &str,
     credential_id: &str,
 ) -> Result<Vec<i64>, String> {
     let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let profile_uid = user_crypto::metadata_tag(&root_secret, b"profile-uid", profile_id)?;
     let mut statement = conn
         .prepare(
             "SELECT user_id FROM server_profiles WHERE profile_uid = ?1
@@ -3149,7 +3170,7 @@ pub(crate) fn profile_credential_owner_ids(
         )
         .map_err(|e| format!("Prepare credential owners: {e}"))?;
     let rows = statement
-        .query_map(params![profile_id, credential_id], |row| row.get(0))
+        .query_map(params![profile_uid, credential_id], |row| row.get(0))
         .map_err(|e| format!("Read credential owners: {e}"))?;
     rows.collect::<rusqlite::Result<Vec<i64>>>()
         .map_err(|e| format!("Read credential owner row: {e}"))
@@ -5410,30 +5431,30 @@ pub async fn user_partitions_relocate_server_profile(
     target_user_id: i64,
     profile_id: String,
     new_profile_id: String,
-    mut target_passphrase: Option<String>,
+    target_passphrase: Option<String>,
     move_profile: bool,
 ) -> Result<ProfileRelocation, String> {
+    let target_passphrase = target_passphrase.map(Zeroizing::new);
     init_or_migrate(&app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut conn = open_or_init(&app)?;
     let source_user_id = active_user_id(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = relocate_server_profile_and_credentials(
-        &mut conn,
-        &store,
-        &root_key,
-        source_user_id,
-        target_user_id,
-        &profile_id,
-        &new_profile_id,
-        target_passphrase.as_deref(),
-        move_profile,
-    );
-    root_key.zeroize();
-    if let Some(passphrase) = target_passphrase.as_mut() {
-        passphrase.zeroize();
-    }
-    result
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    tokio::task::spawn_blocking(move || {
+        relocate_server_profile_and_credentials(
+            &mut conn,
+            &store,
+            &root_key,
+            source_user_id,
+            target_user_id,
+            &profile_id,
+            &new_profile_id,
+            target_passphrase.as_deref().map(String::as_str),
+            move_profile,
+        )
+    })
+    .await
+    .map_err(|error| format!("Profile relocation task failed: {error}"))?
 }
 
 /// Generic per-user setting access (MU-4 foundation). Settings are keyed by

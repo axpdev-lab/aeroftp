@@ -26418,10 +26418,47 @@ fn cmd_profile_duplicate(
                     let target_key = format!("{}_{}", base, new_id);
                     #[cfg(feature = "proton-native")]
                     if base == "proton_native_session" {
-                        let _ = ftp_client_gui_lib::providers::proton_native::vault::restore_session_blocking(
-                            ftp_client_gui_lib::providers::proton_native::vault::SessionOwner::for_user(scoped_uid),
-                            &new_id, &value,
-                        );
+                        use ftp_client_gui_lib::providers::proton_native::vault;
+                        let owner = vault::SessionOwner::for_user(scoped_uid);
+                        if let Err(error) = vault::restore_session_blocking(owner, &new_id, &value)
+                        {
+                            // Roll back the copy, never its source. Cleanup is
+                            // local: remote revocation could sign the source out.
+                            let profile_rollback = match scoped_uid {
+                                Some(user_id) => ftp_client_gui_lib::user_partitions::cli_update_server_profiles_for_user(
+                                    &store,
+                                    user_id,
+                                    |current| {
+                                        let before = current.len();
+                                        current.retain(|profile| profile.get("id").and_then(|id| id.as_str()) != Some(new_id.as_str()));
+                                        current.len() != before
+                                    },
+                                ).map(|(stored, _)| mirror_profiles_to_legacy_blob_if_active(&store, user_id, &stored)),
+                                None => Err("COPY_ROLLBACK_OWNER_UNKNOWN".to_string()),
+                            };
+                            let session_rollback = vault::discard_session_blocking(owner, &new_id);
+                            for key in ftp_client_gui_lib::per_profile_vault_keys_for_delete(
+                                &new_id, protocol,
+                            ) {
+                                if key != format!("proton_native_session_{new_id}") {
+                                    dual_delete_server_cred(&store, scoped_uid, &key);
+                                }
+                            }
+                            let mut message =
+                                format!("Failed to restore the copied Proton session: {error}");
+                            if let Err(rollback) = profile_rollback {
+                                message.push_str(&format!(
+                                    "; removing incomplete profile {new_id} failed: {rollback}"
+                                ));
+                            }
+                            if let Err(rollback) = session_rollback {
+                                message.push_str(&format!(
+                                    "; local session cleanup failed: {rollback}"
+                                ));
+                            }
+                            print_error(format, &message, 5);
+                            return 5;
+                        }
                         continue;
                     }
                     let kind =

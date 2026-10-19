@@ -165,6 +165,9 @@ function readBlockDocument(out) {
       continue;
     }
     let field = null;
+    if (/^ *-$/.test(line)) {
+      return { error: 'appstreamcli emitted a block list item this parser cannot read' };
+    }
     const item = /^( *)-\s+(.*)$/.exec(line);
     if (item && (issueIndent === null || item[1].length <= issueIndent + 2)) {
       const indent = item[1].length;
@@ -182,6 +185,8 @@ function readBlockDocument(out) {
       if (!field) return { error: 'appstreamcli emitted a block list item this parser cannot read' };
     } else if (cur) {
       field = new RegExp(`^ {${issueIndent + 2}}([A-Za-z_]+):[ \\t]*(.*)$`).exec(line);
+    } else if (line.trim()) {
+      return { error: 'appstreamcli emitted content before the first block issue that this parser cannot read' };
     }
     if (!field || !cur) continue;
     const [, key, value] = field;
