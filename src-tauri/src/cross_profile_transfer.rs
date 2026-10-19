@@ -156,7 +156,7 @@ pub async fn copy_one_file_with_options(
     // Ensure every ancestor exists. One mkdir of the immediate parent fails
     // when that parent is itself missing (SFTP, FTPS, Filen, Koofr).
     check_copy_cancel(&options.cancel_token)?;
-    ensure_parent_dir(dest, dest_path).await;
+    ensure_parent_dir(dest, dest_path, &options.cancel_token).await?;
 
     // Try delta transfer first (SFTP-only today). Returns None for non-SFTP
     // destinations or when downcast/probe declines: in both cases we proceed
@@ -489,11 +489,26 @@ pub async fn plan_transfer(
 /// mkdir error is ignored here: an existing folder often answers with a
 /// protocol code that is not `AlreadyExists`, and the upload that follows
 /// is what reports a parent that is really missing.
-async fn ensure_parent_dir(dest: &mut dyn StorageProvider, dest_path: &str) {
+async fn ensure_parent_dir(
+    dest: &mut dyn StorageProvider,
+    dest_path: &str,
+    cancel: &CancellationToken,
+) -> Result<(), ProviderError> {
+    check_copy_cancel(cancel)?;
+    // The overlay's upload owns parent creation and its plaintext-folder
+    // refusal. Precreating through mkdir would bypass that refusal by making
+    // a parallel encrypted tree before upload can inspect the missing parent.
+    if dest
+        .as_any_mut()
+        .is::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+    {
+        return Ok(());
+    }
     let Some(parent) = remote_parent_dir(dest_path) else {
-        return;
+        return Ok(());
     };
     for ancestor in crate::community_benchmark::benchmark_mkdir_ladder(&parent) {
+        check_copy_cancel(cancel)?;
         match dest.mkdir(&ancestor).await {
             Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
             Err(err) => {
@@ -501,6 +516,7 @@ async fn ensure_parent_dir(dest: &mut dyn StorageProvider, dest_path: &str) {
             }
         }
     }
+    check_copy_cancel(cancel)
 }
 
 /// The folder a remote file lives in, split on `/` so a Windows host does

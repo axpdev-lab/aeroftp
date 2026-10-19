@@ -6476,6 +6476,7 @@ mod tests {
         files: Mutex<HashMap<String, Vec<u8>>>,
         dirs: Mutex<Vec<String>>,
         fail_list_permission: bool,
+        cancel_after_mkdir: Option<tokio_util::sync::CancellationToken>,
     }
 
     impl StrictMemProvider {
@@ -6484,6 +6485,7 @@ mod tests {
                 files: Mutex::new(HashMap::new()),
                 dirs: Mutex::new(seed.iter().map(|s| s.to_string()).collect()),
                 fail_list_permission: false,
+                cancel_after_mkdir: None,
             }
         }
         fn with_permission_denied_list(seed: &[&str]) -> Self {
@@ -6577,6 +6579,9 @@ mod tests {
             if !dirs.iter().any(|d| d == p) {
                 dirs.push(p.to_string());
             }
+            if let Some(cancel) = &self.cancel_after_mkdir {
+                cancel.cancel();
+            }
             Ok(())
         }
         async fn delete(&mut self, p: &str) -> Result<(), ProviderError> {
@@ -6593,6 +6598,13 @@ mod tests {
             Ok(())
         }
         async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
+            let name = p.rsplit('/').next().unwrap_or(p).to_string();
+            if let Some(data) = self.files.lock().unwrap().get(p) {
+                return Ok(RemoteEntry::file(name, p.to_string(), data.len() as u64));
+            }
+            if self.dirs.lock().unwrap().iter().any(|d| d == p) {
+                return Ok(RemoteEntry::directory(name, p.to_string()));
+            }
             Err(ProviderError::NotFound(p.to_string()))
         }
         async fn size(&mut self, p: &str) -> Result<u64, ProviderError> {
@@ -6607,6 +6619,106 @@ mod tests {
         }
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("strict-mem".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_profile_stop_during_mkdir_starts_no_later_destination_write() {
+        use crate::cross_profile_transfer::{copy_one_file_with_options, CrossProfileCopyOptions};
+
+        let mut source = MemProvider::new();
+        source.seed_raw_file("/source.txt", b"payload");
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let mut dest = StrictMemProvider::with_dirs(&[]);
+        dest.cancel_after_mkdir = Some(cancel.clone());
+        let error = copy_one_file_with_options(
+            &mut source,
+            &mut dest,
+            "/source.txt",
+            "/nested/deep/deeper/file.txt",
+            None,
+            CrossProfileCopyOptions {
+                cancel_token: cancel,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("Stop during the first mkdir must end the copy");
+
+        assert!(error.to_string().contains("cancelled"), "{error}");
+        assert_eq!(dest.dir_list(), vec!["/nested".to_string()]);
+        assert!(dest.file_paths().is_empty(), "no upload after Stop");
+    }
+
+    #[tokio::test]
+    async fn cross_profile_copy_refuses_plaintext_parents_without_encrypted_siblings() {
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let seed = ["/Vault", "/Vault/Plain", "/Vault/Plain/Deep"];
+            let mut source = MemProvider::new();
+            source.seed_raw_file("/source.txt", b"secret payload");
+            let mut dest = CryptOverlayProvider::new(
+                Box::new(StrictMemProvider::with_dirs(&seed)),
+                keys,
+                "/Vault",
+            );
+            let error = crate::cross_profile_transfer::copy_one_file(
+                &mut source,
+                &mut dest,
+                "/source.txt",
+                "/Vault/Plain/Deep/file.txt",
+                None,
+            )
+            .await
+            .expect_err("the actual cross-profile path must preserve the #390 refusal");
+
+            assert!(matches!(error, ProviderError::InvalidPath(ref msg) if msg.contains("#390")));
+            let inner = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            assert!(inner.file_paths().is_empty(), "no upload on refusal");
+            assert_eq!(inner.dir_list(), seed.map(str::to_string));
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_profile_copy_still_creates_a_genuine_new_encrypted_tree() {
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let mut source = MemProvider::new();
+            source.seed_raw_file("/source.txt", b"secret payload");
+            let mut dest = CryptOverlayProvider::new(
+                Box::new(StrictMemProvider::with_dirs(&["/Vault"])),
+                keys,
+                "/Vault",
+            );
+            crate::cross_profile_transfer::copy_one_file(
+                &mut source,
+                &mut dest,
+                "/source.txt",
+                "/Vault/Fresh/Deep/file.txt",
+                None,
+            )
+            .await
+            .expect("a genuinely missing encrypted tree is still created by upload");
+
+            let inner = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            let files = inner.file_paths();
+            assert_eq!(files.len(), 1);
+            assert!(files
+                .iter()
+                .all(|p| !p.contains("Fresh") && !p.contains("file.txt")));
+            assert!(inner.dir_list().iter().all(|p| !p.contains("Fresh")));
         }
     }
 
