@@ -100,6 +100,9 @@ pub async fn sign_in(
         tokens,
         key_password: session.key_password,
     };
+    if cancel.is_cancelled() {
+        return Err(sign_in_error(ProtonError::SignInCancelled));
+    }
     // A session this one replaces is ended on Proton first (unless another
     // saved profile still uses it), so a re-sign-in leaves none behind.
     vault::replace_session(profile_id, &session)
@@ -138,7 +141,8 @@ pub async fn proton_native_sign_in(
 #[tauri::command]
 pub async fn proton_native_sign_out(profile_id: Option<String>) -> Result<(), String> {
     let profile_id = profile(&profile_id);
-    vault::end_session(profile_id)
+    let (target, _) = vault::saved_session_target(profile_id).map_err(|error| error.to_string())?;
+    vault::end_session(target)
         .await
         .map_err(|error| error.to_string())
 }
@@ -151,10 +155,8 @@ pub async fn proton_native_status(
     profile_id: Option<String>,
 ) -> Result<ProtonNativeStatus, String> {
     let profile_id = profile(&profile_id);
-    let signed_in = match vault::load_session(profile_id) {
-        Ok(Some(_)) => true,
-        Ok(None) if profile_id.is_some() => matches!(vault::load_session(None), Ok(Some(_))),
-        Ok(None) => false,
+    let signed_in = match vault::saved_session_target(profile_id) {
+        Ok((_, signed_in)) => signed_in,
         Err(error) => {
             log::warn!("Proton native: session state unknown: {error}");
             false

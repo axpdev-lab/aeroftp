@@ -190,6 +190,21 @@ impl ProtonCliProvider {
             if output.status.success() {
                 return Ok(stdout);
             }
+            // A transfer that failed for some of its items says only "N
+            // item(s) failed to upload" on stderr; why each one failed is in
+            // the summary on stdout. Classify from those reasons. A full
+            // drive is not transient and returns here, so it is not retried
+            // as an unknown server error. A timeout or a 429 on an item uses
+            // the same retry limit as any other transient CLI error, and the
+            // last attempt still returns the classified summary.
+            if let Some(failures) = transfer_failures(&stdout) {
+                let classified = classify_transfer_failures(&failures);
+                if is_transient(&failure_reasons(&failures)) && attempt < MAX_RETRIES {
+                    last_err = classified;
+                    continue;
+                }
+                return Err(classified);
+            }
 
             let combined = if stderr.trim().is_empty() {
                 stdout.trim().to_string()
@@ -359,6 +374,79 @@ fn is_transient(msg: &str) -> bool {
         || lower.contains("429")
 }
 
+/// proton-drive expands a local path holding `*`, `?`, `[` or `{` as a glob
+/// (`cli/src/commands/fileSystem/localPath.ts`), for the upload source and the
+/// download folder alike, so `a [1].txt` matched nothing ("No paths
+/// matched"). Each of those, and `(` (an extglob opener once the path is a
+/// glob), goes inside a one-character class, which matches it literally on
+/// every platform; a path without them is passed as it is. Remote paths are
+/// never globbed. On Unix a backslash in a name has no escape the CLI's glob
+/// accepts, so such a path is refused with the reason instead of failing on
+/// a pattern.
+fn literal_local_path_for_cli(path: &str) -> Result<String, ProviderError> {
+    if !path.contains(['*', '?', '[', '{']) {
+        return Ok(path.to_string());
+    }
+    #[cfg(not(windows))]
+    if path.contains('\\') {
+        return Err(ProviderError::InvalidPath(format!(
+            "{path}: proton-drive reads a local path holding * ? [ or {{ as a pattern, and a \
+             backslash in it cannot be escaped; rename the file or use the API mode"
+        )));
+    }
+    let mut literal = String::with_capacity(path.len() + 8);
+    for c in path.chars() {
+        if matches!(c, '*' | '?' | '[' | '{' | '(') {
+            literal.push('[');
+            literal.push(c);
+            literal.push(']');
+        } else {
+            literal.push(c);
+        }
+    }
+    Ok(literal)
+}
+
+/// The name proton-drive gives a downloaded file
+/// (`downloadPathValidation.ts::sanitizePathSegmentForLocalFilesystem`):
+/// control characters and `< > : " | ? * \ /` become `_` on every platform,
+/// `.` and `..` become `_` and `__`, and on Windows a reserved device name
+/// gets a leading `_` and trailing dots and spaces become `_`.
+fn cli_local_name(name: &str) -> String {
+    let mut segment: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_control()
+                || matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\\' | '/')
+            {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    match segment.as_str() {
+        "" | "." => return "_".to_string(),
+        ".." => return "__".to_string(),
+        _ => {}
+    }
+    if cfg!(windows) {
+        let stem = segment.split('.').next().unwrap_or("").to_ascii_uppercase();
+        let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+            || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+                && stem.len() == 4
+                && matches!(stem.as_bytes()[3], b'1'..=b'9'));
+        if reserved {
+            segment.insert(0, '_');
+        }
+        let kept = segment.trim_end_matches(['.', ' ']).len();
+        let trailing = segment.len() - kept;
+        segment.truncate(kept);
+        segment.push_str(&"_".repeat(trailing));
+    }
+    segment
+}
+
 fn normalize_local_path_for_cli(path: &str) -> String {
     #[cfg(windows)]
     {
@@ -407,6 +495,99 @@ fn redact_cli_args(args: &[&str]) -> Vec<String> {
         out.push((*arg).to_string());
     }
     out
+}
+
+/// The failed items of a `filesystem upload|download -j` summary, as (name,
+/// reason) pairs: `{"failedItems":N,"failures":[{"name","error"}]}`, where
+/// `error` is `<SDK error class>: <API message>`. `None` when `stdout` is not
+/// such a summary, or lists no failure.
+fn transfer_failures(stdout: &str) -> Option<Vec<(String, String)>> {
+    let summary: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+    let failures: Vec<(String, String)> = summary
+        .get("failures")?
+        .as_array()?
+        .iter()
+        .map(|failure| {
+            let field = |key: &str| {
+                failure
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            (field("name"), field("error"))
+        })
+        .collect();
+    (!failures.is_empty()).then_some(failures)
+}
+
+/// `name: error` for each failed item, joined for the message the user reads.
+fn failure_detail(failures: &[(String, String)]) -> String {
+    failures
+        .iter()
+        .map(|(name, error)| format!("{name}: {error}"))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// The error texts alone, which is what is classified and what is retried.
+fn failure_reasons(failures: &[(String, String)]) -> String {
+    failures
+        .iter()
+        .map(|(_, error)| error.as_str())
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// The classified text, then the item list. The list stays in the message and
+/// is not classified: `TransferError::from_provider` reads the whole string,
+/// and a file called `Storage quota exceeded.txt` would otherwise be a full
+/// drive that is never retried.
+fn show_with_items(classified: &str, detail: &str) -> String {
+    format!(
+        "{classified}{}{detail}",
+        super::types::UNCLASSIFIED_ITEM_LIST
+    )
+}
+
+/// Classify a partly failed transfer by its reasons only: the item names stay
+/// out of the match, so a file called `quota.txt` that failed for another
+/// reason is not a full drive. The JSON carries no error code (the CLI prints
+/// only the class and the API message), so a full drive is told by the
+/// message, and only on the class the SDK gives an API refusal of input
+/// (`ValidationError`): a local failure (`Error: ENOSPC ... <path>`) carries
+/// the local path, where any word can appear.
+fn classify_transfer_failures(failures: &[(String, String)]) -> ProviderError {
+    let detail = failure_detail(failures);
+    let reasons = failure_reasons(failures);
+    if failures.iter().any(|(_, error)| is_storage_full(error)) {
+        return ProviderError::ServerError(show_with_items(
+            &format!("Storage quota exceeded ({reasons})"),
+            &detail,
+        ));
+    }
+    let shown = show_with_items(&reasons, &detail);
+    match classify_cli_error(&reasons) {
+        ProviderError::NotFound(_) => ProviderError::NotFound(shown),
+        ProviderError::PermissionDenied(_) => ProviderError::PermissionDenied(shown),
+        ProviderError::AlreadyExists(_) => ProviderError::AlreadyExists(shown),
+        ProviderError::ServerError(_) => ProviderError::ServerError(shown),
+        other => other,
+    }
+}
+
+/// A Proton refusal for a full drive: API codes 200001, 200002, 200100 and
+/// 200101, which the SDK raises as a plain `ValidationError` and the CLI's
+/// JSON reduces to `ValidationError: <API message>`.
+fn is_storage_full(error: &str) -> bool {
+    let Some(message) = error.strip_prefix("ValidationError:") else {
+        return false;
+    };
+    let lower = message.to_lowercase();
+    lower.contains("quota")
+        || lower.contains("insufficient space")
+        || lower.contains("not enough space")
+        || lower.contains("out of storage")
 }
 
 fn classify_cli_error(msg: &str) -> ProviderError {
@@ -923,12 +1104,21 @@ impl StorageProvider for ProtonCliProvider {
         tokio::fs::create_dir_all(&temp_dir)
             .await
             .map_err(ProviderError::IoError)?;
-        let temp_dir_s = temp_dir.to_string_lossy().into_owned();
+        let temp_dir_s = match literal_local_path_for_cli(&temp_dir.to_string_lossy()) {
+            Ok(path) => path,
+            Err(error) => {
+                let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+                return Err(error);
+            }
+        };
         let result = async {
             self.run_cli(
                 &[
                     "filesystem",
                     "download",
+                    // JSON: a summary with a reason per failed item, and no
+                    // interactive prompt.
+                    "-j",
                     "-f",
                     "remove",
                     "-d",
@@ -940,7 +1130,9 @@ impl StorageProvider for ProtonCliProvider {
             )
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {e}")))?;
-            let downloaded = temp_dir.join(&remote_name);
+            // proton-drive writes the file under a name safe on every
+            // platform, `"` or `?` turned into `_` on Linux too.
+            let downloaded = temp_dir.join(cli_local_name(&remote_name));
             if let Some(parent) = final_path.parent() {
                 if !parent.as_os_str().is_empty() {
                     tokio::fs::create_dir_all(parent)
@@ -1028,11 +1220,25 @@ impl StorageProvider for ProtonCliProvider {
             let (dir, staged) = stage_local_as_dest(&local_cli, &dest_name)?;
             (Some(dir), staged.to_string_lossy().into_owned())
         };
+        let upload_path = match literal_local_path_for_cli(&upload_path) {
+            Ok(path) => path,
+            Err(error) => {
+                if let Some(dir) = staging_dir {
+                    let _ = std::fs::remove_dir_all(&dir);
+                }
+                return Err(error);
+            }
+        };
         let result = self
             .run_cli(
                 &[
                     "filesystem",
                     "upload",
+                    // Without JSON, proton-drive 0.9.0 opens its upgrade page
+                    // in the browser after every upload that fails on a full
+                    // drive (`storageQuotaUpsell.ts`): one tab per file of a
+                    // recursive upload. JSON also gives a reason per item.
+                    "-j",
                     "-f",
                     "create-new-revision",
                     "-d",
@@ -1672,6 +1878,97 @@ mod tests {
             other => panic!("{other:?}"),
         }
     }
+
+    #[test]
+    fn only_a_transfer_summary_that_lists_failures_is_read_as_one() {
+        assert_eq!(transfer_failures(""), None);
+        assert_eq!(transfer_failures("[]"), None);
+        assert_eq!(transfer_failures("Transfer summary:"), None);
+        assert_eq!(
+            transfer_failures(r#"{"failedItems":0,"failures":[]}"#),
+            None
+        );
+        assert_eq!(
+            transfer_failures(r#"{"failedItems":1,"failures":[{"name":"a","error":"E: m"}]}"#),
+            Some(vec![("a".to_string(), "E: m".to_string())])
+        );
+    }
+
+    /// A full drive is read from the API's refusal, never from a name or a
+    /// local path: either can hold any word.
+    #[test]
+    fn a_full_drive_is_read_from_the_refusal_never_from_a_name() {
+        let classify = |name: &str, error: &str| {
+            classify_transfer_failures(&[(name.to_string(), error.to_string())])
+        };
+        let is_quota = |error: &ProviderError| error.to_string().contains("Storage quota exceeded");
+        assert!(is_quota(&classify(
+            "a.txt",
+            "ValidationError: Insufficient storage quota"
+        )));
+        assert!(!is_quota(&classify(
+            "quota.txt",
+            "APICodeError: Something went wrong"
+        )));
+        assert!(!is_quota(&classify(
+            "x",
+            "Error: EACCES: permission denied, open '/home/u/quota/x'"
+        )));
+        assert!(matches!(
+            classify("gone.txt", "NotFoundAPIError: Node not found"),
+            ProviderError::NotFound(ref t) if t.contains("gone.txt")
+        ));
+    }
+
+    /// The upload path wraps the summary as `TransferFailed`, and that string
+    /// is classified again. The file name is in the message the user reads and
+    /// not in the class: `Storage quota exceeded.txt` failing for another
+    /// reason is not a full drive, which would never be retried.
+    #[test]
+    fn a_file_named_like_a_quota_error_is_not_a_full_drive() {
+        let classified = |name: &str, error: &str| {
+            let failure = classify_transfer_failures(&[(name.to_string(), error.to_string())]);
+            ProviderError::TransferFailed(format!("Upload failed: {failure}"))
+        };
+        let refused = crate::transfer_dag::TransferError::from_provider(&classified(
+            "Storage quota exceeded.txt",
+            "APICodeError: Something went wrong",
+        ));
+        assert!(
+            refused.message.contains("Storage quota exceeded.txt"),
+            "{}",
+            refused.message
+        );
+        assert_ne!(
+            refused.kind,
+            crate::transfer_dag::TransferErrorKind::QuotaExceeded,
+            "{}",
+            refused.message
+        );
+        assert_ne!(
+            refused.retry,
+            crate::transfer_dag::RetryDirective::Never,
+            "{}",
+            refused.message
+        );
+
+        let full = crate::transfer_dag::TransferError::from_provider(&classified(
+            "Storage quota exceeded.txt",
+            "ValidationError: Insufficient storage quota",
+        ));
+        assert_eq!(
+            full.kind,
+            crate::transfer_dag::TransferErrorKind::QuotaExceeded,
+            "{}",
+            full.message
+        );
+        assert_eq!(full.retry, crate::transfer_dag::RetryDirective::Never);
+        assert!(
+            full.message.contains("Storage quota exceeded.txt"),
+            "{}",
+            full.message
+        );
+    }
 }
 
 /// Shim tests for upload/download/purge argv. Unix-only: the shim is a Python
@@ -1809,6 +2106,137 @@ mod cli_sequence_tests {
                     && a.get(1).map(|s| s.as_str()) == Some(sub)
             })
             .collect()
+    }
+
+    /// proton-drive globs a local path holding * ? [ or {: a file named
+    /// with brackets matched nothing and was never uploaded. The path now
+    /// reaches it with those characters inside classes, which the glob
+    /// matches literally (the shim globs like the CLI).
+    #[test]
+    fn local_paths_and_names_follow_the_clis_rules() {
+        assert_eq!(
+            literal_local_path_for_cli("/a/b c.txt").unwrap(),
+            "/a/b c.txt"
+        );
+        assert_eq!(
+            literal_local_path_for_cli("/a (1).txt").unwrap(),
+            "/a (1).txt"
+        );
+        assert_eq!(
+            literal_local_path_for_cli("/d [1]/f{2}*?(3).txt").unwrap(),
+            "/d [[]1]/f[{]2}[*][?][(]3).txt"
+        );
+        assert_eq!(cli_local_name("plain.txt"), "plain.txt");
+        assert_eq!(
+            cli_local_name("a\"b?c*d|e<f>g:h.txt"),
+            "a_b_c_d_e_f_g_h.txt"
+        );
+        assert_eq!(cli_local_name("tab\there"), "tab_here");
+        assert_eq!(cli_local_name(".."), "__");
+        assert_eq!(cli_local_name("."), "_");
+        if cfg!(windows) {
+            assert_eq!(cli_local_name("con.txt"), "_con.txt");
+            assert_eq!(cli_local_name("COM1"), "_COM1");
+            assert_eq!(cli_local_name("COM0"), "COM0");
+            assert_eq!(cli_local_name("trail. ."), "trail___");
+        } else {
+            assert_eq!(cli_local_name("con.txt"), "con.txt");
+            assert_eq!(cli_local_name("trail. ."), "trail. .");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_local_name_with_glob_characters_is_uploaded_literally() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let local = dir.join("brackets [x] {y} (z) *?.txt");
+        std::fs::write(&local, "CONTENT").unwrap();
+        let mut p = provider(&shim);
+        p.upload(
+            local.to_str().unwrap(),
+            "/my-files/scratch/brackets [x] {y} (z) *?.txt",
+            None,
+        )
+        .await
+        .unwrap();
+        let argv = read_argv(&dir);
+        let uploads = verbs(&argv, "upload");
+        assert_eq!(uploads.len(), 1, "{argv:?}");
+        let local_arg = uploads[0].iter().rev().nth(1).unwrap();
+        assert!(
+            local_arg.ends_with("brackets [[]x] [{]y} [(]z) [*][?].txt"),
+            "{local_arg}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The download folder is globbed too: one with brackets in its name
+    /// matched nothing.
+    #[tokio::test]
+    async fn a_download_into_a_folder_with_glob_characters_lands() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let dest = dir.join("dest [1] {2}");
+        std::fs::create_dir_all(&dest).unwrap();
+        let mut p = provider(&shim);
+        p.download(
+            "/my-files/scratch/notes.txt",
+            dest.join("notes.txt").to_str().unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("notes.txt")).unwrap(),
+            "REMOTE-CONTENT"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// proton-drive writes `"` and `?` as `_` on Linux too: the file was
+    /// downloaded, then not found under its own name.
+    #[tokio::test]
+    async fn a_download_finds_the_file_under_the_name_the_cli_wrote() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let dest = dir.join("out");
+        std::fs::create_dir_all(&dest).unwrap();
+        let mut p = provider(&shim);
+        p.download(
+            "/my-files/scratch/apos'trophe \"quote\" q?.txt",
+            dest.to_str().unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("apos'trophe \"quote\" q?.txt")).unwrap(),
+            "REMOTE-CONTENT"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// On Unix a backslash in a globbed path has no escape the CLI accepts:
+    /// the upload is refused with the reason, before any CLI run.
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn a_globbed_local_path_with_a_backslash_is_refused_before_the_cli() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let local = dir.join("back\\slash [k].txt");
+        std::fs::write(&local, "CONTENT").unwrap();
+        let mut p = provider(&shim);
+        let error = p
+            .upload(
+                local.to_str().unwrap(),
+                "/my-files/scratch/back\\slash [k].txt",
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ProviderError::InvalidPath(_)), "{error:?}");
+        assert!(verbs(&read_argv(&dir), "upload").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
@@ -2413,5 +2841,105 @@ mod cli_sequence_tests {
         assert!(staged.starts_with(&staging));
         assert_eq!(std::fs::read(&staged).unwrap(), b"proton staging on disk");
         let _ = std::fs::remove_dir_all(&staging);
+    }
+
+    /// proton-drive 0.9.0 opens its upgrade page in the browser after every
+    /// upload that fails on a full drive, unless it runs with JSON, so a
+    /// recursive upload to a full drive opened one tab per file. And the
+    /// reason was only in the summary on stdout: the error read "1 item(s)
+    /// failed to upload", which the transfer engine retries.
+    #[tokio::test]
+    async fn an_upload_to_a_full_drive_opens_no_browser_and_reads_as_quota() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("transfer-fails.json"),
+            r#"[{"name":"a.txt","error":"ValidationError: Insufficient storage quota"}]"#,
+        )
+        .unwrap();
+        let local = dir.join("a.txt");
+        std::fs::write(&local, "x").unwrap();
+        let mut p = provider(&shim);
+        let err = p
+            .upload(local.to_str().unwrap(), "/my-files/a.txt", None)
+            .await
+            .expect_err("the drive is full");
+        assert!(
+            !dir.join("browser.log").exists(),
+            "the upload let proton-drive open the browser"
+        );
+        let refused = crate::transfer_dag::TransferError::from_provider(&err);
+        assert_eq!(
+            refused.kind,
+            crate::transfer_dag::TransferErrorKind::QuotaExceeded,
+            "{err}"
+        );
+        assert_eq!(
+            refused.retry,
+            crate::transfer_dag::RetryDirective::Never,
+            "{err}"
+        );
+        assert_eq!(
+            verbs(&read_argv(&dir), "upload").len(),
+            1,
+            "a full drive was retried"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_failed_download_says_why_its_item_failed() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("transfer-fails.json"),
+            r#"[{"name":"report.txt","error":"NotFoundAPIError: Node not found"}]"#,
+        )
+        .unwrap();
+        let dest = dir.join("got.txt");
+        let mut p = provider(&shim);
+        let err = p
+            .download("/my-files/report.txt", dest.to_str().unwrap(), None)
+            .await
+            .expect_err("the item failed");
+        let text = err.to_string();
+        assert!(
+            text.contains("report.txt: NotFoundAPIError: Node not found"),
+            "{text}"
+        );
+        let argv = read_argv(&dir);
+        assert!(
+            verbs(&argv, "download")[0].iter().any(|a| a == "-j"),
+            "{argv:?}"
+        );
+        assert_eq!(
+            verbs(&argv, "download").len(),
+            1,
+            "a missing item was retried: {argv:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A per-item timeout is in the JSON summary, not on stderr. It is
+    /// transient, so the transfer is attempted again; the second run succeeds.
+    #[tokio::test]
+    async fn a_transient_item_failure_is_retried() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("transfer-fails-once.json"),
+            r#"[{"name":"a.txt","error":"APICodeError: request timed out"}]"#,
+        )
+        .unwrap();
+        let local = dir.join("a.txt");
+        std::fs::write(&local, "x").unwrap();
+        let mut p = provider(&shim);
+        p.upload(local.to_str().unwrap(), "/my-files/a.txt", None)
+            .await
+            .expect("the timed-out item was not retried");
+        let argv = read_argv(&dir);
+        let uploads = verbs(&argv, "upload");
+        assert_eq!(uploads.len(), 2, "expected one retry, got {uploads:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

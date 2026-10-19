@@ -3,7 +3,7 @@
 # src/providers/proton.rs. It records argv and fakes just enough behaviour for
 # the provider sequences under test. It is a checked-in executable on purpose:
 # see `link_shim` in that module for why the tests must not write it themselves.
-import json, os, pathlib, sys
+import glob, json, os, pathlib, sys
 
 # State lives next to the path this script was invoked through. The tests
 # reach it through a per-test symlink, so that path is the symlink, never the
@@ -25,10 +25,71 @@ if os.path.exists(os.path.join(HERE, "signed_out")):
     print("Error: You need to login first. Run `proton-drive auth login`.", file=sys.stderr)
     sys.exit(1)
 sub = args[1] if len(args) > 1 else ""
+# proton-drive reads a local path holding * ? [ or { as a glob, the upload
+# sources and the download folder alike
+# (cli/src/commands/fileSystem/localPath.ts); a pattern that matches nothing
+# fails before any transfer.
+def resolve_local(path):
+    if not any(c in path for c in "*?[{"):
+        return [path]
+    matches = sorted(glob.glob(path))
+    if not matches:
+        print("No paths matched: %s" % path, file=sys.stderr)
+        sys.exit(1)
+    return matches
+if verb == "filesystem" and sub in ("upload", "download"):
+    positional, rest = [], iter(range(2, len(args)))
+    for i in rest:
+        if args[i] in ("-f", "-d"):
+            next(rest, None)
+        elif not args[i].startswith("-"):
+            positional.append(i)
+    if sub == "upload":
+        for i in positional[:-1]:
+            resolve_local(args[i])
+    elif positional:
+        folders = resolve_local(args[positional[-1]])
+        if len(folders) != 1:
+            print("Expected exactly one local path", file=sys.stderr)
+            sys.exit(1)
+        args[positional[-1]] = folders[0]
+
+
+def emit_transfer_failure(failures):
+    if "-j" in args or "--json" in args:
+        print(json.dumps({"transferredItems": 0, "transferredBytes": 0, "skippedItems": 0,
+                          "failedItems": len(failures), "failures": failures}))
+    else:
+        print("Transfer summary:")
+        for item in failures:
+            print("  - %s: %s" % (item["name"], item["error"]))
+        if sub == "upload" and any("quota" in item["error"].lower() for item in failures):
+            with open(os.path.join(HERE, "browser.log"), "a") as f:
+                f.write("upsell\n")
+    print("%d item(s) failed to %s" % (len(failures), sub), file=sys.stderr)
+    sys.exit(1)
+# A transfer that fails once, then succeeds: the provider retries a transient
+# item error (a timeout, a 429) and must not treat the first summary as final.
+once = pathlib.Path(HERE, "transfer-fails-once.json")
+if verb == "filesystem" and sub in ("upload", "download") and once.exists():
+    failures = json.loads(once.read_text())
+    once.unlink()
+    emit_transfer_failure(failures)
+# A transfer that fails for its items, the way proton-drive 0.9.0 reports it:
+# the summary on stdout (JSON with -j), "N item(s) failed" on stderr, exit 1.
+# Without -j a failure on a full drive also opens the upgrade page in the
+# browser (cli/src/commands/fileSystem/storageQuotaUpsell.ts), which this
+# stand-in records in browser.log instead.
+failing = pathlib.Path(HERE, "transfer-fails.json")
+if verb == "filesystem" and sub in ("upload", "download") and failing.exists():
+    emit_transfer_failure(json.loads(failing.read_text()))
 if verb == "filesystem" and sub == "download":
     dest = pathlib.Path(args[-1])
     remote = args[-2]
-    name = pathlib.Path(remote).name
+    # The name proton-drive writes: control characters and < > : " | ? * \
+    # become _ (downloadPathValidation.ts), on every platform.
+    name = "".join("_" if ord(c) < 32 or ord(c) == 127 or c in '<>:"|?*\\' else c
+                   for c in pathlib.Path(remote).name)
     dest.mkdir(parents=True, exist_ok=True)
     target = dest / name
     if "-f" in args:

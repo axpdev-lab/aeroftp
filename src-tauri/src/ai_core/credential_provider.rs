@@ -32,6 +32,16 @@ pub struct ServerProfile {
     /// the transport family). Empty when it was not derived.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub protocol_class: String,
+    /// Where the profile's sign-in lives
+    /// ([`crate::profile_auth_state::profile_auth_source`]): derived here for
+    /// the same reason as `crypt_overlay`, since the options it reads do not
+    /// survive `mcp::load_safe_profiles`.
+    #[serde(default = "default_auth_source", skip_serializing)]
+    pub auth_source: crate::profile_auth_state::AuthSource,
+}
+
+fn default_auth_source() -> crate::profile_auth_state::AuthSource {
+    crate::profile_auth_state::AuthSource::Vault
 }
 
 impl ServerProfile {
@@ -69,6 +79,12 @@ impl ServerProfile {
                 crate::crypt_overlay_provider::profile_protocol_class(p).to_string()
             });
 
+        let auth_source = p
+            .get("authSource")
+            .and_then(|v| v.as_str())
+            .and_then(crate::profile_auth_state::AuthSource::parse)
+            .unwrap_or_else(|| crate::profile_auth_state::profile_auth_source(p));
+
         Some(Self {
             id: p.get("id")?.as_str()?.to_string(),
             name: str_or("name", ""),
@@ -86,6 +102,7 @@ impl ServerProfile {
                 .map(String::from),
             crypt_overlay,
             protocol_class,
+            auth_source,
         })
     }
 }

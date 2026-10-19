@@ -18,6 +18,7 @@
 //! Combine with axum's `with_graceful_shutdown(...)`, `tokio::select!`, or
 //! a `CancellationToken` to trigger coordinated teardown.
 
+use std::future::Future;
 use std::io;
 
 /// Which signal ended up triggering shutdown. Exposed so callers can log
@@ -30,42 +31,47 @@ pub enum ShutdownSignal {
     Terminate,
 }
 
-/// Await the first shutdown signal. Returns which signal fired.
+/// The first shutdown signal, listened to from the moment this is called:
+/// a signal that arrives before the returned future is first awaited still
+/// ends it. Returns which signal fired.
+///
+/// Call it before telling anyone the process is ready to be stopped (a
+/// "Press Ctrl+C" banner, a mount, a daemon's runtime files): it listened
+/// only once first polled, and a SIGTERM sent in between killed the process
+/// without its teardown. It must be called inside a Tokio runtime.
 ///
 /// Calling this more than once is supported but each call installs its own
-/// handler; CLI binaries should await it exactly once at the top of their
-/// serve loop and propagate the resolution into a `CancellationToken`.
-pub async fn shutdown_signal() -> io::Result<ShutdownSignal> {
+/// listeners; CLI binaries should take it exactly once per serve loop and
+/// propagate the resolution into a `CancellationToken`.
+pub fn shutdown_signal() -> impl Future<Output = io::Result<ShutdownSignal>> + Send + 'static {
     #[cfg(unix)]
-    {
+    let listening = {
         use tokio::signal::unix::{signal, SignalKind};
-
-        let mut sigint = signal(SignalKind::interrupt())?;
-        let mut sigterm = signal(SignalKind::terminate())?;
-
-        tokio::select! {
-            _ = sigint.recv() => Ok(ShutdownSignal::Interrupt),
-            _ = sigterm.recv() => Ok(ShutdownSignal::Terminate),
-        }
-    }
+        signal(SignalKind::interrupt())
+            .and_then(|interrupt| Ok((interrupt, signal(SignalKind::terminate())?)))
+    };
 
     #[cfg(windows)]
-    {
+    let listening = {
         use tokio::signal::windows::{ctrl_break, ctrl_c};
+        ctrl_c().and_then(|interrupt| Ok((interrupt, ctrl_break()?)))
+    };
 
-        let mut c_c = ctrl_c()?;
-        let mut c_break = ctrl_break()?;
-
-        tokio::select! {
-            _ = c_c.recv() => Ok(ShutdownSignal::Interrupt),
-            _ = c_break.recv() => Ok(ShutdownSignal::Terminate),
+    async move {
+        #[cfg(any(unix, windows))]
+        {
+            let (mut interrupt, mut terminate) = listening?;
+            tokio::select! {
+                _ = interrupt.recv() => Ok(ShutdownSignal::Interrupt),
+                _ = terminate.recv() => Ok(ShutdownSignal::Terminate),
+            }
         }
-    }
 
-    #[cfg(not(any(unix, windows)))]
-    {
-        // Fallback for hypothetical targets: SIGINT only.
-        tokio::signal::ctrl_c().await?;
-        Ok(ShutdownSignal::Interrupt)
+        #[cfg(not(any(unix, windows)))]
+        {
+            // Fallback for hypothetical targets: SIGINT only.
+            tokio::signal::ctrl_c().await?;
+            Ok(ShutdownSignal::Interrupt)
+        }
     }
 }

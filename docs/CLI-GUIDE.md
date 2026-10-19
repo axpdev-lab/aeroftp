@@ -203,7 +203,7 @@ aeroftp-cli sync /mnt/archive ./photos /2026 --direction upload
 - A listing shows a symbolic link only when it points to a file inside the folder (with that file's size and date). A link to a folder, a link that leaves the folder and a link that points nowhere are left out, and the command prints a warning naming them.
 - A file uploaded into the folder keeps the modification time of its source, so the next `sync` does not read the copy as newer.
 - A path that names a file opens its folder, with the file as the path, the same as a URL whose path names a remote file.
-- `hashsum`, `check --checksum` and `sync --checksum` get md5, sha1, sha256, sha512 or blake3 computed by reading the file in place, with no download. `df` reports the filesystem that holds the folder, `cp` copies inside it (staged beside the destination, then renamed onto it), and an interrupted transfer resumes from the bytes the partial copy holds. `get`, `put` and `sync` move whole files, one at a time; `serve sftp` and a resumed `serve ftp` read a served file by range.
+- `hashsum`, `check --checksum` and `sync --checksum` get md5, sha1, sha256, sha512 or blake3 computed by reading the file in place, with no download. `df` reports the filesystem that holds the folder, `cp` copies inside it (staged beside the destination, then renamed onto it), and an interrupted transfer resumes from the bytes the partial copy holds. `get`, `put` and `sync` move whole files, one at a time; every `serve` mode and `mount` read a served file by range.
 - `sync` with two local folders and no REMOTE keeps using the local-to-local copier (`aeroftp-cli sync /a /b`). Give a REMOTE other than `/` to sync against the first folder as a remote with the full sync engine.
 
 ### Password Handling
@@ -1190,7 +1190,9 @@ aeroftp-cli serve sftp ./public --addr 0.0.0.0:2222 --allow-remote-bind
 
 Any of the four modes serves a folder of this machine instead of a remote (see [A Local Folder as the Remote](#a-local-folder-as-the-remote)): the folder is the jail root, nothing outside it can be reached.
 
-All serve modes expose any AeroFTP provider (S3, MEGA, WebDAV, FTP, etc.) or a local folder as a local server of the chosen protocol, and stop with Ctrl+C. Every mode listens on loopback by default; a non-loopback `--addr` is refused unless `--allow-remote-bind` is given. On a loopback address no login is asked unless you set one. On any other address a login is always required: HTTP and WebDAV take `--auth-token`, generated and printed at start when it is not given; FTP and SFTP take `--auth-user` and `--auth-password`, where a missing user is `aeroftp` and a missing password is generated and printed at start. With `--quiet` only a generated credential is printed (one line on stderr); with `--format json` it is the `generated_auth_token` (HTTP, WebDAV) or `generated_auth_password` (FTP, SFTP) field.
+All serve modes expose any AeroFTP provider (S3, MEGA, WebDAV, FTP, etc.) or a local folder as a local server of the chosen protocol, and stop with Ctrl+C. Every mode listens on loopback by default; a non-loopback `--addr` is refused unless `--allow-remote-bind` is given. On a loopback address no login is asked unless you set one. On any other address a login is always required: HTTP and WebDAV take `--auth-token`, generated and printed at start when it is not given; FTP and SFTP take `--auth-user` and `--auth-password`, where a missing user is `aeroftp` and a missing password is generated and printed at start. With `--quiet` only a generated credential is printed (one line on stderr); with `--format json` it is the `generated_auth_token` (HTTP, WebDAV) or `generated_auth_password` (FTP, SFTP) field. A credential you set is never printed: the banner shows `the one you set (not shown)`. Ctrl+C or SIGTERM stops a server cleanly from the moment its banner is printed.
+
+A served file goes out as it is read, in windows paid to `--limit-rate`, so a file of any size can be served and the cap holds. HTTP and WebDAV answer a `Range` request with `206 Partial Content`. FTP accepts `REST` to resume a download, and writes `APPE` (or `REST` then `STOR`) after the bytes the file already holds; an offset past the end of the file is refused. SFTP answers a READ with at most 255 KiB, as OpenSSH's `sftp-server` does. A backend that cannot read part of a file is downloaded once into the AeroFTP cache folder (never the temporary folder) and served from there; a file it lists as empty, such as a Google Docs document, is served as what it downloads to.
 
 ### daemon - Background Service
 
@@ -1983,7 +1985,27 @@ aeroftp-cli profile-add \
     --credential-json '{"accessKeyId":"AKIA...","secretAccessKey":"..."}'
 ```
 
-`--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
+`--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `proton`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
+
+A Proton Drive profile (`--protocol proton`) takes `--proton-mode`, the API and CLI tabs of the GUI form: `native` is AeroFTP's own client, signed in with [`proton sign-in`](#proton---sign-a-native-proton-drive-profile-in-or-out); `cli` drives Proton's official `proton-drive` CLI, signed in with `proton-drive auth login`. Without the flag the profile gets the native client in a build that has it, as the GUI form and `import rclone` do. The flag is refused on any other protocol.
+
+```bash
+aeroftp-cli profile-add --name "Proton" --protocol proton --proton-mode native
+aeroftp-cli proton sign-in "Proton"
+```
+
+### proton - Sign a Native Proton Drive Profile In or Out
+
+```bash
+aeroftp-cli proton sign-in "Proton"             # opens Proton's page in the browser
+aeroftp-cli proton sign-in "Proton" --no-browser  # prints the page address instead
+aeroftp-cli proton status "Proton"
+aeroftp-cli proton sign-out "Proton"
+```
+
+For profiles on AeroFTP's own Proton Drive client (`profile-add --protocol proton --proton-mode native`); a profile on the official CLI is refused and pointed to `proton-drive auth login`. `sign-in` runs the GUI's Sign in: it opens Proton's sign-in page in the system browser and waits, up to ten minutes, until you sign in there (Ctrl-C cancels), then unlocks the account keys and saves the session in the vault under the profile. The page can be opened on any device. On an interactive terminal its address is also printed, and `--no-browser` prints it without opening a browser, for a host without one. The address carries a one-time key for this sign-in, so it is written only to an interactive stderr: never to stdout, a log or `--json` output, and a sign-in that has no way to show it (no browser opened and stderr is not a terminal) stops with exit 5. A new sign-in replaces the profile's session and ends the old one on Proton. Exit codes: 0 signed in, 6 the sign-in failed, 8 the page expired, 130 cancelled.
+
+`status` reports whether the profile has a saved session (`signed_in` in `--json`), read from the vault without contacting Proton. `sign-out` ends the session on Proton and removes it from the vault, keeping the profile; the session stays alive while another saved profile (a duplicate) uses it. `profile-delete` ends the session the same way.
 
 ### profile-duplicate - Duplicate a Saved Profile
 
@@ -2703,7 +2725,7 @@ aeroftp-cli get sftp://user@host /large-file.iso --limit-rate 5M
 aeroftp-cli get sftp://user@host /large-file.iso --bwlimit "08:00,512k 18:00,off"
 ```
 
-The cap is process-wide and protocol-independent: it is enforced by the transfer governor where the bytes move (the HTTP download and upload streams, every multipart part, the FTP data channel, the SFTP loops), so it holds on S3, WebDAV, FTP/FTPS, Azure, Backblaze B2 and the HTTP cloud providers as well as on SFTP and MEGA. Concurrent files and parts share the one budget: `--parallel 8 --limit-rate 5M` moves at most 5 MiB/s in total, not per file. The `--bwlimit` schedule is resolved once at startup. Owned request bodies (S3 signed parts, B2 parts) are paced in 256 KiB slices, so a low cap still produces a smooth rate rather than one burst per part.
+The cap is process-wide and protocol-independent: it is enforced by the transfer governor where the bytes move (the HTTP download and upload streams, every multipart part, the FTP data channel, the SFTP loops), so it holds on S3, WebDAV, FTP/FTPS, Azure, Backblaze B2 and the HTTP cloud providers as well as on SFTP and MEGA. Concurrent files and parts share the one budget: `--parallel 8 --limit-rate 5M` moves at most 5 MiB/s in total, not per file. The `--bwlimit` schedule is resolved once at startup. Owned request bodies (S3 signed parts, B2 parts) are paced in 256 KiB slices, so a low cap still produces a smooth rate rather than one burst per part. Segmented downloads (`pget`, `get --segments`, and the large files that `get -r`, `sync` and the app split into ranges) charge each range before reading it, about one second of the cap per read, so the cap holds from the first byte instead of after one read per segment. Servers and mounts pay the cap for what they send: `serve http`, `serve webdav` and `serve ftp` read a file in windows paid before each is read, and `serve sftp` and `mount` pay each read their client asks for before making it, so a capped server or mount serves at the cap too.
 
 ### Encoding Issues
 

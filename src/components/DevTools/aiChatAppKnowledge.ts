@@ -528,14 +528,14 @@ Other Plan controls: direction, speed mode, verification after each transfer, ca
 3. Restart the app completely: close and reopen
 
 **Common issues**:
-- **White/blank screen**: WebKitGTK rendering issue on Linux. Set WEBKIT_DISABLE_DMABUF_RENDERER=1 environment variable before launching.
+- **Window blank, see-through or partly painted (Linux)**: WebKitGTK drawing in software on a transparent window. AeroFTP keeps the window opaque by itself when it detects that; if it still happens, launch with AEROFTP_SQUARE_CORNERS=1 (Flatpak: \`flatpak override --user --env=AEROFTP_SQUARE_CORNERS=1 com.aeroftp.AeroFTP\`) and report the startup log line that starts with "WebKit".
 - **Slow performance**: Close unused tabs in AeroTools. Disable visualizer in AeroPlayer. Check if filesystem watcher is overloaded.
 - **OAuth not working**: Disconnect and reconnect the cloud provider to refresh tokens.
 - **Theme not applying**: Switch to a different theme and back. Reload the app.
 - **Snap permissions**: Snap confinement may block access to some directories. Use \`snap connect aeroftp:removable-media\` for external drives.
 
 **Linux-specific**:
-- Wayland: AeroFTP runs on XWayland by default. Environment variable WEBKIT_DISABLE_DMABUF_RENDERER=1 fixes most rendering issues.
+- Wayland: AeroFTP runs natively on Wayland (GTK picks Wayland first); only the snap runs on X11 (it sets GDK_BACKEND=x11). AeroFTP already sets WEBKIT_DISABLE_DMABUF_RENDERER=1 when the variable is absent; WEBKIT_DISABLE_DMABUF_RENDERER=0 opts into WebKit's GPU (DMA-BUF) renderer, except in the Flatpak, whose launcher still forces 1.
 - inotify limits: AeroCloud/watcher may fail silently if inotify watch limit is reached. Increase it with sysctl.
 
 **Reporting bugs**: Visit the AeroFTP GitHub repository Issues page. Include: app version (Help → About), OS, steps to reproduce, Debug Panel output.

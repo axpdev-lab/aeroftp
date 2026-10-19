@@ -74,6 +74,7 @@ pub mod s3;
 pub(crate) mod s3_delta;
 pub mod s3_delta_baseline;
 pub mod s3_delta_plan;
+pub mod served_file;
 pub mod sftp;
 #[cfg(test)]
 mod share_link_capability_guard;
@@ -101,6 +102,22 @@ pub const AEROFTP_USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION
 /// the major version (`AeroFTP/3`) keeps the device stable across patch and
 /// minor releases. `CARGO_PKG_VERSION_MAJOR` is provided by cargo at compile time.
 pub const AEROFTP_WEBDAV_USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION_MAJOR"));
+
+/// How a profile signs in to Proton Drive's native client, in the words of
+/// every message that asks for it: the app's button and the CLI command, both,
+/// so a message never sends a CLI user to a GUI they may not have, or the
+/// reverse. A macro, so constant texts can `concat!` it. It lives here, not in
+/// `proton_native`, because code built without the `proton-native` feature
+/// (the rclone import) compiles texts that name it too.
+macro_rules! proton_sign_in_hint {
+    () => {
+        "sign in with Proton in the AeroFTP app, or run `aeroftp-cli proton sign-in <profile>`"
+    };
+}
+pub(crate) use proton_sign_in_hint;
+
+/// [`proton_sign_in_hint!`] for texts built at run time.
+pub const PROTON_SIGN_IN_HINT: &str = proton_sign_in_hint!();
 
 pub use types::*;
 // GAP-A01: retry infrastructure ready: integration into providers deferred to v2.5.0

@@ -97,7 +97,12 @@ fn parse(json: &str) -> Result<ProtonSession, ProviderError> {
         .map(ProtonSession::from)
         .map_err(|_| {
             ProviderError::AuthenticationFailed(
-                "the saved Proton session is unreadable; sign in to Proton again".into(),
+                concat!(
+                    "the saved Proton session is unreadable: ",
+                    crate::providers::proton_sign_in_hint!(),
+                    " again"
+                )
+                .into(),
             )
         })
 }
@@ -222,9 +227,30 @@ pub async fn replace_session(
     store_session(profile_id, session)
 }
 
-/// Ends the session of `profile_id` on Proton (unless another saved profile
-/// still uses it) and removes it from the vault: a sign-out, or a profile
-/// delete.
+/// Resolve the session a status or explicit sign-out sees. Profile deletion
+/// keeps using end_session directly and never consumes an unbound session.
+pub fn saved_session_target(
+    profile_id: Option<&str>,
+) -> Result<(Option<&str>, bool), ProviderError> {
+    resolve_session_target(profile_id, |id| {
+        load_session(id).map(|session| session.is_some())
+    })
+}
+
+fn resolve_session_target(
+    profile_id: Option<&str>,
+    mut has_session: impl FnMut(Option<&str>) -> Result<bool, ProviderError>,
+) -> Result<(Option<&str>, bool), ProviderError> {
+    if has_session(profile_id)? {
+        return Ok((profile_id, true));
+    }
+    if profile_id.is_some() && has_session(None)? {
+        return Ok((None, true));
+    }
+    Ok((profile_id, false))
+}
+
+/// End exactly the indicated vault entry, for sign-out or profile deletion.
 pub async fn end_session(profile_id: Option<&str>) -> Result<(), ProviderError> {
     let _lease = lease_of_saved(&session_key(profile_id)).await?;
     revoke_saved_session(profile_id).await;
@@ -500,6 +526,38 @@ mod tests {
     }
 
     #[test]
+    fn status_and_sign_out_choose_the_same_saved_session() {
+        for (own, unbound, expected) in [
+            (true, true, (Some("profile"), true)),
+            (true, false, (Some("profile"), true)),
+            (false, true, (None, true)),
+            (false, false, (Some("profile"), false)),
+        ] {
+            let resolved = resolve_session_target(Some("profile"), |id| {
+                Ok(if id.is_some() { own } else { unbound })
+            })
+            .unwrap();
+            assert_eq!(resolved, expected);
+        }
+        assert_eq!(
+            resolve_session_target(None, |_| Ok(true)).unwrap(),
+            (None, true)
+        );
+        assert_eq!(
+            resolve_session_target(None, |_| Ok(false)).unwrap(),
+            (None, false)
+        );
+        let error = resolve_session_target(Some("profile"), |id| {
+            assert!(
+                id.is_some(),
+                "an unreadable profile must not sign out another session"
+            );
+            Err(ProviderError::Other("unreadable synthetic session".into()))
+        });
+        assert!(error.is_err());
+    }
+
+    #[test]
     fn the_key_is_per_profile_and_matches_the_export_list() {
         assert_eq!(session_key(Some("srv_1")), "proton_native_session_srv_1");
         assert_eq!(session_key(None), UNBOUND_SESSION_KEY);
@@ -682,7 +740,11 @@ mod tests {
     fn an_unreadable_saved_session_asks_for_a_new_sign_in() {
         let error = parse("{not json").expect_err("refused");
         assert!(
-            matches!(error, ProviderError::AuthenticationFailed(ref text) if text.contains("sign in")),
+            matches!(
+                error,
+                ProviderError::AuthenticationFailed(ref text)
+                    if text.contains(crate::providers::PROTON_SIGN_IN_HINT)
+            ),
             "{error:?}"
         );
         let ok = parse(r#"{"uid":"u","access_token":"a","key_password":"k"}"#).expect("parsed");

@@ -3748,6 +3748,10 @@ fn looks_like_a_path(token: &str) -> bool {
 /// token, because a relative path is not recognisable by shape and the caller
 /// is the authority on what it was operating on.
 fn classification_text(raw: &str, file_path: Option<&str>) -> String {
+    // Names listed after the marker are the user's, same as a path, and a
+    // spaced name has no shape that the token rule below can drop. The marker
+    // is the cut: what follows is still in the text the user reads.
+    let raw = crate::providers::types::without_unclassified_items(raw);
     let named = file_path.unwrap_or_default().to_lowercase();
     // The caller's path is removed as a SUBSTRING, before anything is split on
     // whitespace, because a path may contain spaces and most of them do. Token

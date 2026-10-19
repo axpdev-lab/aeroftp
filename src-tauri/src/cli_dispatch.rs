@@ -71,6 +71,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "tui",
     "pwd",
     "profiles",
+    "proton",
     "groups",
     "users",
     "peer",
@@ -236,6 +237,7 @@ mod tests {
             (vec!["aeroftp-cli", "ls"], DispatchRoute::Cli),
             (vec!["aero", "ls"], DispatchRoute::Cli),
             (vec!["aeroftp", "mcp"], DispatchRoute::Cli),
+            (vec!["aeroftp", "proton", "status", "2"], DispatchRoute::Cli),
             (
                 vec!["aeroftp", "sottocomando-inesistente"],
                 DispatchRoute::Gui,

@@ -330,6 +330,66 @@ pub fn range_read_failed(what: &str, offset: u64, e: ProviderError) -> ProviderE
     }
 }
 
+/// One `read_range` of a file read in ranges, paid to the speed limiter
+/// before it is made: at most `remaining` bytes from `offset`, `uncapped` of
+/// them when no cap is set, about one second of the cap when one is
+/// ([`crate::transfer_dag::throttle::range_read_pacing`]). `read_range` leaves
+/// the limiter to its caller, so the engines that copy a file in ranges read
+/// through here.
+pub async fn read_range_paced(
+    provider: &mut dyn super::StorageProvider,
+    path: &str,
+    offset: u64,
+    remaining: u64,
+    uncapped: u64,
+) -> Result<Vec<u8>, ProviderError> {
+    let governor = crate::transfer_dag::governor::global();
+    read_range_paced_with(&governor, provider, path, offset, remaining, uncapped).await
+}
+
+/// [`read_range_paced`] against an explicit governor.
+pub async fn read_range_paced_with(
+    governor: &crate::transfer_dag::governor::GlobalTransferGovernor,
+    provider: &mut dyn super::StorageProvider,
+    path: &str,
+    offset: u64,
+    remaining: u64,
+    uncapped: u64,
+) -> Result<Vec<u8>, ProviderError> {
+    use crate::transfer_dag::governor::TransferDirection;
+    let (read_size, paced) = crate::transfer_dag::throttle::range_read_pacing_with(
+        governor,
+        TransferDirection::Download,
+        uncapped,
+    );
+    let len = remaining.min(read_size);
+    if paced {
+        governor.charge(TransferDirection::Download, len).await;
+    }
+    provider.read_range(path, offset, len).await
+}
+
+/// The `len` bytes at `offset` a client asked for, for a server that answers
+/// reads whose length its client chose (`serve sftp`, `serve ftp` resuming a
+/// download, `mount`). The reply cannot be cut to one second of the cap the
+/// way [`read_range_paced`] cuts a read, so the whole request is paid to the
+/// speed limiter first: a charge made after the read lets the first read of
+/// every client through unpaced. The charge is taken before `provider` is
+/// locked, so a read waiting on the limiter does not hold up a listing another
+/// client of the same server asked for. A server holds the process
+/// governor ([`crate::transfer_dag::governor::global`]); a test passes its own.
+pub async fn read_requested_range(
+    governor: &crate::transfer_dag::governor::GlobalTransferGovernor,
+    provider: &tokio::sync::Mutex<Box<dyn super::StorageProvider>>,
+    path: &str,
+    offset: u64,
+    len: u64,
+) -> Result<Vec<u8>, ProviderError> {
+    use crate::transfer_dag::governor::TransferDirection;
+    governor.charge(TransferDirection::Download, len).await;
+    provider.lock().await.read_range(path, offset, len).await
+}
+
 /// How long a range worker waits to say goodbye on a connection that failed:
 /// the server may be the one not answering, and the retry waits on it.
 pub(crate) const FAILED_RANGE_DISCONNECT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -392,7 +452,42 @@ pub const IN_ORDER_WINDOW: u64 = 8 * 1024 * 1024;
 /// once more through one of them before trusting the bytes, and close them.
 /// After a failure, the workers of the windows still in flight are dropped
 /// with them.
+///
+/// Every read is paid to the speed limiter before it is made
+/// ([`read_range_paced`]).
 pub async fn read_in_order<F>(
+    workers: Vec<Box<dyn super::StorageProvider>>,
+    remote_path: &str,
+    size: u64,
+    validator: Option<String>,
+    window: u64,
+    cancel: &CancellationToken,
+    consume: F,
+) -> (
+    Result<(), ProviderError>,
+    Vec<Box<dyn super::StorageProvider>>,
+)
+where
+    F: FnMut(&[u8]),
+{
+    let governor = crate::transfer_dag::governor::global();
+    read_in_order_with(
+        &governor,
+        workers,
+        remote_path,
+        size,
+        validator,
+        window,
+        cancel,
+        consume,
+    )
+    .await
+}
+
+/// [`read_in_order`] paying an explicit governor.
+#[allow(clippy::too_many_arguments)]
+pub async fn read_in_order_with<F>(
+    governor: &crate::transfer_dag::governor::GlobalTransferGovernor,
     workers: Vec<Box<dyn super::StorageProvider>>,
     remote_path: &str,
     size: u64,
@@ -423,7 +518,7 @@ where
             .map(|i| {
                 let start = i * window;
                 let end = (start + window).min(size) - 1;
-                read_window_in_memory(&pool, remote_path, start, end, &validator, cancel)
+                read_window_in_memory(governor, &pool, remote_path, start, end, &validator, cancel)
             })
             .buffered(streams);
         let mut outcome = Ok(());
@@ -443,6 +538,7 @@ where
 
 /// One window of [`read_in_order`], `[start, end]` inclusive, into memory.
 async fn read_window_in_memory(
+    governor: &crate::transfer_dag::governor::GlobalTransferGovernor,
     pool: &tokio::sync::Mutex<std::collections::VecDeque<Box<dyn super::StorageProvider>>>,
     remote_path: &str,
     start: u64,
@@ -468,19 +564,20 @@ async fn read_window_in_memory(
                     if cancel.is_cancelled() {
                         return Err(ProviderError::Cancelled);
                     }
-                    let len = end - at + 1;
-                    let data = worker
-                        .read_range(remote_path, at, len)
-                        .await
-                        .map_err(|e| range_read_failed("in-order read", at, e))?;
-                    // Charged here, not in `read_range`, which leaves the
-                    // limiter to its caller; for the bytes that came, so a
-                    // short read is not paid as a full one.
-                    crate::transfer_dag::throttle::charge(
-                        crate::transfer_dag::governor::TransferDirection::Download,
-                        data.len() as u64,
+                    let left = end - at + 1;
+                    // Charged before it is made, like every read of a file in
+                    // ranges: charged after it came, the first read of each
+                    // worker went through unpaced.
+                    let data = read_range_paced_with(
+                        governor,
+                        worker.as_mut(),
+                        remote_path,
+                        at,
+                        left,
+                        left,
                     )
-                    .await;
+                    .await
+                    .map_err(|e| range_read_failed("in-order read", at, e))?;
                     if data.is_empty() {
                         // The object ended before the size it was read for:
                         // a shorter file, which no retry makes longer.
@@ -489,7 +586,7 @@ async fn read_window_in_memory(
                             end + 1
                         )));
                     }
-                    let take = data.len().min(len as usize);
+                    let take = data.len().min(left as usize);
                     let offset = (at - start) as usize;
                     buffer.lock().unwrap_or_else(|e| e.into_inner())[offset..offset + take]
                         .copy_from_slice(&data[..take]);
@@ -5197,5 +5294,236 @@ mod tests {
             "an object that moved must be handed back to a single stream"
         );
         assert!(!local.exists(), "no file may be published");
+    }
+
+    /// A server's provider whose every `read_range` notes when it ran, how
+    /// much the speed limiter had granted by then and how long it was.
+    struct RequestedRangeServer {
+        governor: Arc<crate::transfer_dag::governor::GlobalTransferGovernor>,
+        reads: ReadLog,
+    }
+
+    #[async_trait::async_trait]
+    impl super::super::StorageProvider for RequestedRangeServer {
+        async fn read_range(
+            &mut self,
+            _path: &str,
+            offset: u64,
+            len: u64,
+        ) -> Result<Vec<u8>, ProviderError> {
+            let granted = self
+                .governor
+                .directional_bandwidth(crate::transfer_dag::governor::TransferDirection::Download)
+                .granted_bytes();
+            self.reads
+                .lock()
+                .unwrap()
+                .push((tokio::time::Instant::now(), granted, len));
+            Ok((offset..offset + len).map(window_server::byte_at).collect())
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> super::super::ProviderType {
+            super::super::ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "requested-range".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            _path: &str,
+        ) -> Result<Vec<super::super::RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<super::super::RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("requested-range".to_string())
+        }
+    }
+
+    type SharedServer = Arc<tokio::sync::Mutex<Box<dyn super::super::StorageProvider>>>;
+    /// When each read ran, what had been paid by then, how long it was.
+    type ReadLog = Arc<std::sync::Mutex<Vec<(tokio::time::Instant, u64, u64)>>>;
+
+    fn requested_range_server(
+        cap: u64,
+    ) -> (
+        Arc<crate::transfer_dag::governor::GlobalTransferGovernor>,
+        SharedServer,
+        ReadLog,
+    ) {
+        use crate::transfer_dag::governor::{GlobalTransferGovernor, GovernorConfig};
+        let governor = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: 0,
+            bandwidth_bps: 0,
+            endpoint_slots: 4,
+            disk_device_slots: 4,
+        });
+        governor.set_transfer_limits(0, cap);
+        let reads = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let server: SharedServer =
+            Arc::new(tokio::sync::Mutex::new(Box::new(RequestedRangeServer {
+                governor: governor.clone(),
+                reads: reads.clone(),
+            })));
+        (governor, server, reads)
+    }
+
+    /// Four clients of one server reading what they asked for, as `serve
+    /// sftp` and `mount` answer them: every read was paid before it was made,
+    /// none ran ahead of what the limit allows by then, and every byte was
+    /// charged once. `serve sftp`, `serve ftp` and `mount` read with no charge
+    /// at all, so a capped server served at full speed.
+    #[tokio::test(start_paused = true)]
+    async fn a_requested_range_is_paid_before_it_is_read() {
+        const KIB: u64 = 1024;
+        let cap = 1024 * KIB;
+        let request = 256 * KIB;
+        let (governor, server, reads) = requested_range_server(cap);
+        let started = tokio::time::Instant::now();
+        let clients: Vec<_> = (0..4u64)
+            .map(|client| {
+                let governor = governor.clone();
+                let server = server.clone();
+                tokio::spawn(async move {
+                    for n in 0..8u64 {
+                        let offset = (client * 8 + n) * request;
+                        let data =
+                            read_requested_range(&governor, &server, "/big.bin", offset, request)
+                                .await
+                                .expect("a requested range is read");
+                        assert_eq!(data.len() as u64, request);
+                        assert_eq!(data[0], window_server::byte_at(offset));
+                    }
+                })
+            })
+            .collect();
+        for client in clients {
+            client.await.unwrap();
+        }
+
+        let reads = reads.lock().unwrap().clone();
+        assert_eq!(reads.len(), 32);
+        let mut read = 0u64;
+        for (at, granted, len) in &reads {
+            read += len;
+            assert!(
+                read <= *granted,
+                "{read} bytes read with {granted} paid for: a read ran before it was paid"
+            );
+            let allowed = cap as f64 * (*at - started).as_secs_f64() + cap as f64;
+            assert!(
+                read as f64 <= allowed + 1024.0,
+                "{read} bytes read by {:?}, the limit allows {allowed:.0}",
+                *at - started
+            );
+        }
+        assert_eq!(
+            governor
+                .directional_bandwidth(crate::transfer_dag::governor::TransferDirection::Download)
+                .granted_bytes(),
+            32 * request
+        );
+    }
+
+    /// A read waiting on the limiter leaves the server's provider to the
+    /// other clients: a listing asked for meanwhile is answered at once, not
+    /// after the read's turn at the limiter.
+    #[tokio::test(start_paused = true)]
+    async fn a_read_waiting_on_the_limit_leaves_the_provider_free() {
+        use crate::transfer_dag::governor::TransferDirection;
+        let cap = 1024 * 1024;
+        let (governor, server, reads) = requested_range_server(cap);
+        governor.charge(TransferDirection::Download, cap).await;
+        let waiting = {
+            let governor = governor.clone();
+            let server = server.clone();
+            tokio::spawn(async move {
+                read_requested_range(&governor, &server, "/big.bin", 0, cap).await
+            })
+        };
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
+        }
+        let listing = tokio::time::timeout(std::time::Duration::from_millis(10), async {
+            server.lock().await.list("/").await
+        })
+        .await;
+        assert!(
+            matches!(listing, Ok(Ok(_))),
+            "a listing waited behind a read that was waiting on the limiter"
+        );
+        assert!(
+            reads.lock().unwrap().is_empty(),
+            "the read did not wait on the limiter"
+        );
+        assert_eq!(waiting.await.unwrap().unwrap().len() as u64, cap);
     }
 }
