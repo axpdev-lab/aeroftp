@@ -8,8 +8,9 @@
 
 use crate::ai_tools::{create_temp_provider, load_saved_servers, SavedServerInfo};
 use crate::cross_profile_transfer::{
-    copy_one_file_with_options, plan_transfer, should_skip_existing, CrossProfileCopyOptions,
-    CrossProfileTransferEntry, CrossProfileTransferPlan, CrossProfileTransferRequest,
+    copy_one_file_with_options, failures_with_tally_gap, plan_transfer, should_skip_existing,
+    CrossProfileCopyOptions, CrossProfileFileFailure, CrossProfileTransferEntry,
+    CrossProfileTransferPlan, CrossProfileTransferRequest,
 };
 use crate::transfer_domain::{
     TransferBatchConfig, TransferDirection, TransferEntry, TransferFailure, TransferFailureKind,
@@ -225,6 +226,9 @@ struct CrossProfileBatchCounters {
     terminal: AtomicU64,
     bytes_transferred: AtomicU64,
     cancel_emitted: AtomicBool,
+    /// File errors already counted in `failed`. A std mutex: `emit_file_error`
+    /// is synchronous and does not hold the guard across an await.
+    failures: std::sync::Mutex<Vec<CrossProfileFileFailure>>,
 }
 
 impl CrossProfileBatchCounters {
@@ -236,7 +240,24 @@ impl CrossProfileBatchCounters {
             terminal: AtomicU64::new(0),
             bytes_transferred: AtomicU64::new(0),
             cancel_emitted: AtomicBool::new(false),
+            failures: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    fn record_failure(&self, failure: CrossProfileFileFailure) {
+        self.failures
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(failure);
+    }
+
+    fn take_failures(&self) -> Vec<CrossProfileFileFailure> {
+        std::mem::take(
+            &mut *self
+                .failures
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        )
     }
 }
 
@@ -457,6 +478,11 @@ impl CrossProfileExecutor {
     fn emit_file_error(&self, entry: &TransferEntry, err: &crate::providers::ProviderError) {
         self.counters.failed.fetch_add(1, Ordering::Relaxed);
         self.counters.terminal.fetch_add(1, Ordering::Relaxed);
+        self.counters.record_failure(CrossProfileFileFailure {
+            source_path: entry.remote_path.clone(),
+            dest_path: entry.local_path.clone(),
+            error: err.to_string(),
+        });
         emit_transfer_event(
             &self.app,
             TransferEvent {
@@ -711,15 +737,10 @@ pub async fn cross_profile_execute(
         let bytes_transferred = counters.bytes_transferred.load(Ordering::Relaxed);
         let gap =
             crate::cross_profile_transfer::transfer_tally_gap(total, transferred, skipped, failed);
-        let mut failures = Vec::new();
         if gap > 0 {
             failed += gap;
-            failures.push(crate::cross_profile_transfer::CrossProfileFileFailure {
-                source_path: String::new(),
-                dest_path: String::new(),
-                error: format!("{gap} planned file(s) left the run without a result"),
-            });
         }
+        let failures = failures_with_tally_gap(counters.take_failures(), gap);
         let was_cancelled = batch_result.cancelled || cancelled.is_cancelled();
 
         if was_cancelled {

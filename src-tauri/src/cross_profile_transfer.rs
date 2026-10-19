@@ -575,6 +575,23 @@ pub fn transfer_tally_gap(planned: u64, transferred: u64, skipped: u64, failed: 
     planned.saturating_sub(accounted)
 }
 
+/// Named file failures already counted in `failed`, plus one unnamed row when
+/// `gap` files never received an outcome. A zero gap leaves the list as it is,
+/// so a file that already has a row is not recorded twice.
+pub fn failures_with_tally_gap(
+    mut failures: Vec<CrossProfileFileFailure>,
+    gap: u64,
+) -> Vec<CrossProfileFileFailure> {
+    if gap > 0 {
+        failures.push(CrossProfileFileFailure {
+            source_path: String::new(),
+            dest_path: String::new(),
+            error: format!("{gap} planned file(s) left the run without a result"),
+        });
+    }
+    failures
+}
+
 /// A headed AeroCrypt source that was read raw puts `.aerocrypt.tsv` in the
 /// plan. Copying that plan writes ciphertext and reports success.
 pub fn plan_includes_raw_crypt_marker(entries: &[CrossProfileTransferEntry]) -> bool {
@@ -907,6 +924,28 @@ mod tests {
         assert_eq!(transfer_tally_gap(9, 8, 0, 0), 1);
         assert_eq!(transfer_tally_gap(9, 7, 1, 1), 0);
         assert_eq!(transfer_tally_gap(3, 4, 0, 0), 0);
+    }
+
+    #[test]
+    fn named_failures_stay_and_the_gap_adds_one_unnamed_row() {
+        let named = CrossProfileFileFailure {
+            source_path: "/src/a".to_string(),
+            dest_path: "/dst/a".to_string(),
+            error: "write failed".to_string(),
+        };
+        assert_eq!(
+            failures_with_tally_gap(vec![named.clone()], 0),
+            vec![named.clone()]
+        );
+        let with_gap = failures_with_tally_gap(vec![named.clone()], 2);
+        assert_eq!(with_gap.len(), 2);
+        assert_eq!(with_gap[0], named);
+        assert_eq!(with_gap[1].source_path, "");
+        assert_eq!(with_gap[1].dest_path, "");
+        assert_eq!(
+            with_gap[1].error,
+            "2 planned file(s) left the run without a result"
+        );
     }
 
     #[test]

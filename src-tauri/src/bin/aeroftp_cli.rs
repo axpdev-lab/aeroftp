@@ -65460,8 +65460,13 @@ async fn cmd_transfer_doctor(
             return code;
         }
     };
-    let source_path = resolve_cli_remote_path(&src_base, source_path);
-    let dest_path = resolve_cli_remote_path(&dst_base, dest_path);
+    // Follow-up commands repeat the typed arguments. The resolved path is
+    // what the plan uses. Feeding it back through the resolver rejects a
+    // profile base that itself contains "..".
+    let source_path_input = source_path;
+    let dest_path_input = dest_path;
+    let source_path = resolve_cli_remote_path(&src_base, source_path_input);
+    let dest_path = resolve_cli_remote_path(&dst_base, dest_path_input);
 
     let request = CrossProfileTransferRequest {
         source_profile: source_profile.to_string(),
@@ -65555,8 +65560,8 @@ async fn cmd_transfer_doctor(
         suggested_next_command: suggest_transfer_apply(
             source_profile,
             dest_profile,
-            &source_path,
-            &dest_path,
+            source_path_input,
+            dest_path_input,
             recursive,
         ),
         ec_enabled: None,
@@ -65632,8 +65637,13 @@ async fn cmd_transfer_profiles(
             return code;
         }
     };
-    let source_path = resolve_cli_remote_path(&src_base, source_path);
-    let dest_path = resolve_cli_remote_path(&dst_base, dest_path);
+    // Follow-up commands repeat the typed arguments. The resolved path is
+    // what the plan uses. Feeding it back through the resolver rejects a
+    // profile base that itself contains "..".
+    let source_path_input = source_path;
+    let dest_path_input = dest_path;
+    let source_path = resolve_cli_remote_path(&src_base, source_path_input);
+    let dest_path = resolve_cli_remote_path(&dst_base, dest_path_input);
 
     // Build request
     let request = CrossProfileTransferRequest {
@@ -65678,7 +65688,7 @@ async fn cmd_transfer_profiles(
             eprintln!("Nothing to transfer.");
             eprintln!(
                 "Next: {}",
-                suggest_transfer_verify(dest_profile, &dest_path, 0)
+                suggest_transfer_verify(dest_profile, dest_path_input, 0)
             );
         }
         if matches!(format, OutputFormat::Json) {
@@ -65692,7 +65702,7 @@ async fn cmd_transfer_profiles(
                 "total_bytes": 0,
                 "duration_ms": 0,
                 "dry_run": dry_run,
-                "suggested_next_command": suggest_transfer_verify(dest_profile, &dest_path, 0),
+                "suggested_next_command": suggest_transfer_verify(dest_profile, dest_path_input, 0),
             }));
         }
         let _ = source.disconnect().await;
@@ -65721,8 +65731,8 @@ async fn cmd_transfer_profiles(
                 suggest_transfer_apply(
                     source_profile,
                     dest_profile,
-                    &source_path,
-                    &dest_path,
+                    source_path_input,
+                    dest_path_input,
                     recursive
                 )
             );
@@ -65733,8 +65743,8 @@ async fn cmd_transfer_profiles(
                 "suggested_next_command": suggest_transfer_apply(
                     source_profile,
                     dest_profile,
-                    &source_path,
-                    &dest_path,
+                    source_path_input,
+                    dest_path_input,
                     recursive
                 ),
             }));
@@ -65766,7 +65776,7 @@ async fn cmd_transfer_profiles(
         );
         eprintln!(
             "Next: {}",
-            suggest_transfer_verify(dest_profile, &dest_path, summary.planned_files)
+            suggest_transfer_verify(dest_profile, dest_path_input, summary.planned_files)
         );
     }
     if matches!(format, OutputFormat::Json) {
@@ -65783,7 +65793,7 @@ async fn cmd_transfer_profiles(
             "dry_run": summary.dry_run,
             "suggested_next_command": suggest_transfer_verify(
                 dest_profile,
-                &dest_path,
+                dest_path_input,
                 summary.planned_files
             ),
         }));
@@ -81969,6 +81979,24 @@ mod tests {
             try_resolve_cli_remote_path("/base", "front/includes").unwrap(),
             "/base/front/includes"
         );
+    }
+
+    #[test]
+    fn a_base_containing_dotdot_resolves_once_and_the_result_is_rejected() {
+        let once = try_resolve_cli_remote_path("../vault", "notes.txt").unwrap();
+        assert_eq!(once, "../vault/notes.txt");
+        assert!(matches!(
+            try_resolve_cli_remote_path("../vault", &once),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert_eq!(
+            try_resolve_cli_remote_path("../vault", "notes.txt").unwrap(),
+            once
+        );
+        let suggested = suggest_transfer_apply("SRC", "DST", "notes.txt", "out.txt", false);
+        assert!(suggested.contains("notes.txt"));
+        assert!(suggested.contains("out.txt"));
+        assert!(!suggested.contains(".."));
     }
 
     // ── UX-01: truncate_str is UTF-8 boundary safe ─────────────────────
