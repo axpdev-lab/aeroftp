@@ -127,6 +127,10 @@ pub struct CrossProfileTransferSummary {
     pub transferred_files: u64,
     pub skipped_files: u64,
     pub failed_files: u64,
+    /// Planned files that did not land in transferred, skipped, or failed
+    /// before reconciliation, plus per-file errors when the runner has them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failures: Vec<crate::cross_profile_transfer::CrossProfileFileFailure>,
     pub total_bytes: u64,
     pub duration_ms: u64,
 }
@@ -703,8 +707,19 @@ pub async fn cross_profile_execute(
         let duration_ms = start.elapsed().as_millis() as u64;
         let transferred = counters.transferred.load(Ordering::Relaxed);
         let skipped = counters.skipped.load(Ordering::Relaxed);
-        let failed = counters.failed.load(Ordering::Relaxed);
+        let mut failed = counters.failed.load(Ordering::Relaxed);
         let bytes_transferred = counters.bytes_transferred.load(Ordering::Relaxed);
+        let gap =
+            crate::cross_profile_transfer::transfer_tally_gap(total, transferred, skipped, failed);
+        let mut failures = Vec::new();
+        if gap > 0 {
+            failed += gap;
+            failures.push(crate::cross_profile_transfer::CrossProfileFileFailure {
+                source_path: String::new(),
+                dest_path: String::new(),
+                error: format!("{gap} planned file(s) left the run without a result"),
+            });
+        }
         let was_cancelled = batch_result.cancelled || cancelled.is_cancelled();
 
         if was_cancelled {
@@ -748,6 +763,7 @@ pub async fn cross_profile_execute(
             transferred_files: transferred,
             skipped_files: skipped,
             failed_files: failed,
+            failures,
             total_bytes: bytes_transferred,
             duration_ms,
         })
