@@ -16,6 +16,8 @@ fn headless_flows_round_trip() {
             .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
             .unwrap();
         std::fs::write(root.path().join("portable.marker"), b"").unwrap();
+        let empty_path = root.path().join("no-external-tools");
+        std::fs::create_dir(&empty_path).unwrap();
         let output = std::process::Command::new(child)
             .args([
                 "--exact",
@@ -24,6 +26,7 @@ fn headless_flows_round_trip() {
                 "--test-threads=1",
             ])
             .env("AEROFTP_AUTH_FIXTURE_CHILD", "1")
+            .env("PATH", &empty_path)
             .env("AEROFTP_MASTER_PASSWORD", "synthetic auth fixture master")
             .env("XDG_CONFIG_HOME", root.path().join("config"))
             .env("XDG_DATA_HOME", root.path().join("data"))
@@ -208,18 +211,9 @@ async fn round_trip() {
         gaps.push("GitHub Device Flow readiness ignores its token slot");
     }
 
-    let pem = std::process::Command::new("openssl")
-        .args([
-            "genpkey",
-            "-algorithm",
-            "RSA",
-            "-pkeyopt",
-            "rsa_keygen_bits:2048",
-        ])
-        .output()
-        .unwrap();
-    assert!(pem.status.success());
-    let pem = String::from_utf8(pem.stdout).unwrap();
+    // Public synthetic key, used only against the loopback mock App. Compiling
+    // it into the test removes any runtime OpenSSL or fixture-file dependency.
+    let pem = include_str!("../tests/fixtures/profile-auth/github-app-test-key.pem");
     execute_at(&scope,&github,&json!({"action":"configure","mode":"app","app_id":"123","installation_id":"456","pem":pem}),&endpoints).await.unwrap();
     assert!(provider_at(&scope, &github, &endpoints)
         .await
