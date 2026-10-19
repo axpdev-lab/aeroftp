@@ -1,0 +1,1120 @@
+{
+  "version": 1,
+  "protocols": [
+    {
+      "token": "ftp",
+      "backend": "ftp",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 21,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {
+        "tlsMode": "explicit"
+      },
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "ftps",
+      "backend": "ftps",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 990,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {
+        "tlsMode": "implicit"
+      },
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "sftp",
+      "backend": "sftp",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 22,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "webdav",
+      "backend": "webdav",
+      "aliases": [
+        "webdavs"
+      ],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "s3",
+      "backend": "s3",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [
+        "bucket"
+      ],
+      "devOnly": false
+    },
+    {
+      "token": "aerocloud",
+      "backend": "aerocloud",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 21,
+      "creation": "runtime",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "googledrive",
+      "backend": "googledrive",
+      "aliases": [
+        "drive"
+      ],
+      "credentialKind": "oauth2",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "googledrive",
+      "devOnly": false
+    },
+    {
+      "token": "dropbox",
+      "backend": "dropbox",
+      "aliases": [],
+      "credentialKind": "oauth2",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "dropbox",
+      "devOnly": false
+    },
+    {
+      "token": "onedrive",
+      "backend": "onedrive",
+      "aliases": [],
+      "credentialKind": "oauth2",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "onedrive",
+      "devOnly": false
+    },
+    {
+      "token": "mega",
+      "backend": "mega",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {
+        "mega_mode": "native",
+        "save_session": true
+      },
+      "requiredOptions": [],
+      "nativeProviderId": "mega",
+      "devOnly": false,
+      "defaultHost": "mega.nz"
+    },
+    {
+      "token": "proton",
+      "backend": "proton",
+      "aliases": [
+        "protondrive"
+      ],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {
+        "proton_mode": "native"
+      },
+      "requiredOptions": [],
+      "nativeProviderId": "proton",
+      "devOnly": false
+    },
+    {
+      "token": "box",
+      "backend": "box",
+      "aliases": [],
+      "credentialKind": "oauth2",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "box",
+      "devOnly": false
+    },
+    {
+      "token": "pcloud",
+      "backend": "pcloud",
+      "aliases": [],
+      "credentialKind": "oauth2",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "pcloud",
+      "devOnly": false
+    },
+    {
+      "token": "azure",
+      "backend": "azure",
+      "aliases": [
+        "azureblob"
+      ],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [
+        "container"
+      ],
+      "nativeProviderId": "azure",
+      "devOnly": false
+    },
+    {
+      "token": "filen",
+      "backend": "filen",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "filen",
+      "devOnly": false
+    },
+    {
+      "token": "fourshared",
+      "backend": "fourshared",
+      "aliases": [
+        "4shared"
+      ],
+      "credentialKind": "oauth1",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "4shared",
+      "devOnly": false
+    },
+    {
+      "token": "zohoworkdrive",
+      "backend": "zohoworkdrive",
+      "aliases": [],
+      "credentialKind": "oauth2",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "zohoworkdrive",
+      "devOnly": false
+    },
+    {
+      "token": "internxt",
+      "backend": "internxt",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "internxt",
+      "devOnly": false
+    },
+    {
+      "token": "kdrive",
+      "backend": "kdrive",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [
+        "drive_id"
+      ],
+      "nativeProviderId": "kdrive",
+      "devOnly": false
+    },
+    {
+      "token": "jottacloud",
+      "backend": "jottacloud",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "drime",
+      "backend": "drimecloud",
+      "aliases": [
+        "drimecloud"
+      ],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "drime",
+      "devOnly": false
+    },
+    {
+      "token": "filelu",
+      "backend": "filelu",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "filelu",
+      "devOnly": false,
+      "defaultHost": "filelu.com",
+      "defaultUsername": "api-key"
+    },
+    {
+      "token": "koofr",
+      "backend": "koofr",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "opendrive",
+      "backend": "opendrive",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "opendrive",
+      "devOnly": false,
+      "defaultHost": "dev.opendrive.com"
+    },
+    {
+      "token": "yandexdisk",
+      "backend": "yandexdisk",
+      "aliases": [
+        "yandex"
+      ],
+      "credentialKind": "oauth2",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "yandexdisk",
+      "devOnly": false
+    },
+    {
+      "token": "github",
+      "backend": "github",
+      "aliases": [],
+      "credentialKind": "github",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "github",
+      "devOnly": false
+    },
+    {
+      "token": "gitlab",
+      "backend": "gitlab",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "gitlab",
+      "devOnly": false
+    },
+    {
+      "token": "swift",
+      "backend": "swift",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "googlephotos",
+      "backend": "googlephotos",
+      "aliases": [
+        "photos"
+      ],
+      "credentialKind": "oauth2",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": true
+    },
+    {
+      "token": "immich",
+      "backend": "immich",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 2283,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "immich",
+      "devOnly": false,
+      "defaultUsername": "api-key"
+    },
+    {
+      "token": "twake",
+      "backend": "twake",
+      "aliases": [
+        "twakedrive",
+        "cozy"
+      ],
+      "credentialKind": "sign_in",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "twake",
+      "devOnly": false
+    },
+    {
+      "token": "imagekit",
+      "backend": "imagekit",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "imagekit",
+      "devOnly": false,
+      "defaultHost": "api.imagekit.io"
+    },
+    {
+      "token": "uploadcare",
+      "backend": "uploadcare",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "nativeProviderId": "uploadcare",
+      "devOnly": false,
+      "defaultHost": "api.uploadcare.com"
+    },
+    {
+      "token": "backblaze",
+      "backend": "backblaze",
+      "aliases": [
+        "b2",
+        "backblazeb2"
+      ],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [
+        "bucket"
+      ],
+      "nativeProviderId": "backblaze-native",
+      "devOnly": false,
+      "defaultHost": "api.backblazeb2.com"
+    },
+    {
+      "token": "cloudinary",
+      "backend": "cloudinary",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [
+        "cloud_name"
+      ],
+      "nativeProviderId": "cloudinary",
+      "devOnly": false,
+      "defaultHost": "api.cloudinary.com"
+    },
+    {
+      "token": "peer",
+      "backend": "peer",
+      "aliases": [
+        "aeroshare"
+      ],
+      "credentialKind": "server",
+      "defaultPort": 443,
+      "creation": "managed",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "mtp",
+      "backend": "mtp",
+      "aliases": [
+        "wpd",
+        "portabledevice",
+        "portable"
+      ],
+      "credentialKind": "server",
+      "defaultPort": 0,
+      "creation": "managed",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "local",
+      "backend": "local",
+      "aliases": [
+        "file",
+        "localdirectory"
+      ],
+      "credentialKind": "server",
+      "defaultPort": 0,
+      "creation": "runtime",
+      "frontend": false,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
+      "token": "aerovaultmount",
+      "backend": "aerovaultmount",
+      "aliases": [],
+      "credentialKind": "none",
+      "defaultPort": 0,
+      "creation": "runtime",
+      "frontend": false,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    }
+  ],
+  "aliases": {
+    "blomp": {
+      "protocol": "swift",
+      "providerId": "blomp"
+    },
+    "tabdigital": {
+      "protocol": "webdav",
+      "providerId": "tabdigital"
+    },
+    "felicloud": {
+      "protocol": "webdav",
+      "providerId": "felicloud"
+    },
+    "pixelunion": {
+      "protocol": "immich",
+      "providerId": "pixelunion"
+    },
+    "webdavs": {
+      "protocol": "webdav",
+      "options": {
+        "webdavScheme": "https"
+      }
+    }
+  },
+  "presetAliases": {
+    "backblaze-b2": "backblaze",
+    "azure-blob": "azure"
+  },
+  "presets": [
+    {
+      "id": "custom-s3",
+      "protocol": "s3",
+      "generic": true,
+      "defaults": {},
+      "firstRegion": null
+    },
+    {
+      "id": "uploadcare",
+      "protocol": "uploadcare",
+      "generic": false,
+      "defaults": {
+        "server": "api.uploadcare.com",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "cloudinary",
+      "protocol": "cloudinary",
+      "generic": false,
+      "defaults": {
+        "server": "api.cloudinary.com",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "imagekit",
+      "protocol": "imagekit",
+      "generic": false,
+      "defaults": {
+        "server": "api.imagekit.io",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "custom-webdav",
+      "protocol": "webdav",
+      "generic": true,
+      "defaults": {},
+      "firstRegion": null
+    },
+    {
+      "id": "amazon-s3",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false
+      },
+      "firstRegion": "us-east-1"
+    },
+    {
+      "id": "backblaze-native",
+      "protocol": "backblaze",
+      "generic": false,
+      "defaults": {},
+      "firstRegion": null
+    },
+    {
+      "id": "backblaze",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "auto"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "mega-s4",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false,
+        "endpointTemplate": "s3.{region}.megas4.com"
+      },
+      "firstRegion": "eu-amsterdam-1"
+    },
+    {
+      "id": "cloudflare-r2",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "auto",
+        "endpointTemplate": "{accountId}{jurisdiction}.r2.cloudflarestorage.com"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "google-cloud-storage",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "auto",
+        "endpointTemplate": "https://storage.googleapis.com"
+      },
+      "firstRegion": "auto"
+    },
+    {
+      "id": "filebase",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "auto",
+        "endpoint": "https://s3.filebase.io"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "idrive-e2",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "auto"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "wasabi",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false,
+        "endpointTemplate": "https://s3.{region}.wasabisys.com"
+      },
+      "firstRegion": "us-east-1"
+    },
+    {
+      "id": "ibm-cos",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false,
+        "region": "eu-de",
+        "endpointTemplate": "https://s3.{region}.cloud-object-storage.appdomain.cloud"
+      },
+      "firstRegion": "eu-de"
+    },
+    {
+      "id": "storj",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "global"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "alibaba-oss",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false,
+        "endpointTemplate": "https://oss-{region}.aliyuncs.com"
+      },
+      "firstRegion": "cn-hangzhou"
+    },
+    {
+      "id": "tencent-cos",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false,
+        "endpointTemplate": "https://cos.{region}.myqcloud.com"
+      },
+      "firstRegion": "ap-guangzhou"
+    },
+    {
+      "id": "filelu-s3",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "global",
+        "endpoint": "s5lu.com"
+      },
+      "firstRegion": "global"
+    },
+    {
+      "id": "yandex-storage",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false,
+        "region": "ru-central1",
+        "endpoint": "https://storage.yandexcloud.net"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "digitalocean-spaces",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false,
+        "endpointTemplate": "https://{region}.digitaloceanspaces.com"
+      },
+      "firstRegion": "nyc3"
+    },
+    {
+      "id": "oracle-cloud",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "us-east-1"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "minio",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "us-east-1"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "quotaless-s3",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "us-east-1",
+        "endpoint": "https://io.quotaless.cloud:8000",
+        "basePath": "/personal-files"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "filen-desktop-s3",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "port": 1800,
+        "endpoint": "https://local.s3.filen.io:1800",
+        "region": "filen",
+        "pathStyle": true,
+        "verifyCert": false
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "s3drive",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "endpoint": "https://storage.kapsa.io",
+        "region": "us-east-1",
+        "pathStyle": true
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "4shared",
+      "protocol": "fourshared",
+      "generic": false,
+      "defaults": {},
+      "firstRegion": null
+    },
+    {
+      "id": "4shared-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://webdav.4shared.com",
+        "port": 443,
+        "basePath": "/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "cloudme",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://webdav.cloudme.com/{username}",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "drivehq",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://webdav.drivehq.com",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "mailru-cloud",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://webdav.cloud.mail.ru",
+        "port": 443,
+        "basePath": "/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "koofr",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://app.koofr.net/dav/Koofr",
+        "port": 443,
+        "basePath": "/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "megacmd-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "http://127.0.0.1:4443/",
+        "port": 4443,
+        "basePath": "/",
+        "anonymous": true,
+        "webdavScheme": "http"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "filen-desktop-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "local.webdav.filen.io",
+        "port": 1900,
+        "basePath": "/",
+        "webdavScheme": "http"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "opendrive-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://webdav.opendrive.com",
+        "port": 443,
+        "basePath": "/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "pcloud-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://webdav.pcloud.com",
+        "port": 443,
+        "basePath": "/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "yandexdisk-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://webdav.yandex.ru",
+        "port": 443,
+        "basePath": "/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "jianguoyun",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://dav.jianguoyun.com/dav",
+        "port": 443,
+        "basePath": "/dav/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "infinicloud",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "port": 443,
+        "basePath": "/dav/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "seafile",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://plus.seafile.com/seafdav/",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "hetzner-storage-box",
+      "protocol": "sftp",
+      "generic": false,
+      "defaults": {
+        "port": 23
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "sourceforge",
+      "protocol": "sftp",
+      "generic": false,
+      "defaults": {
+        "server": "frs.sourceforge.net",
+        "port": 22,
+        "basePath": "/home/frs/project/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "filelu-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://webdav.filelu.com",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "quotaless-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://io.quotaless.cloud:8080/webdav",
+        "port": 8080
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "nextcloud",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "basePath": "/remote.php/dav/files/{username}/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "tabdigital",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://fie.nl.tab.digital/remote.php/dav/files/{username}/",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "felicloud",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://cloud.felicloud.com/remote.php/dav/files/{username}/",
+        "port": 443,
+        "basePath": "/remote.php/dav/files/{username}/"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "blomp",
+      "protocol": "swift",
+      "generic": false,
+      "defaults": {
+        "server": "https://authenticate.blomp.com",
+        "port": 443,
+        "allowCleartextStorage": true
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "mega",
+      "protocol": "mega",
+      "generic": false,
+      "defaults": {
+        "save_session": true,
+        "mega_mode": "native"
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "filelu",
+      "protocol": "filelu",
+      "generic": false,
+      "defaults": {},
+      "firstRegion": null
+    },
+    {
+      "id": "filelu-ftp",
+      "protocol": "ftp",
+      "generic": false,
+      "defaults": {
+        "server": "ftp.filelu.com",
+        "port": 21
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "filelu-ftps",
+      "protocol": "ftps",
+      "generic": false,
+      "defaults": {
+        "server": "ftp.filelu.com",
+        "port": 990,
+        "tls_mode": "implicit"
+      },
+      "firstRegion": null
+    }
+  ],
+  "identities": {
+    "pixelunion": "immich"
+  }
+}

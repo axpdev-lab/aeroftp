@@ -203,6 +203,7 @@ pub(crate) mod test_env {
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
+pub mod connection_manifest;
 pub mod portal_chooser;
 pub mod profile_loader;
 mod rsync_output;

@@ -6,6 +6,7 @@
  * Dropdown for selecting storage protocol (FTP, WebDAV, S3, etc.)
  */
 
+import { connectionProtocol } from '../providers/connectionManifest';
 import React, { useState } from 'react';
 import { Checkbox } from './ui/Checkbox';
 import {
@@ -32,7 +33,7 @@ import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplatePara
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { Bucket } from './connectionMethodIcons';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
-import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, ProtonDriveLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, TwakeLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
+import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, ProtonDriveLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, TwakeLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
 
 // Google Drive, Google Photos, Dropbox and OneDrive used to be redrawn here as
 // local copies. The 2026 mark refresh (#347, Ehud) updated the canonical ones in
@@ -111,14 +112,16 @@ export const isSecureBadge = (badge?: string): boolean =>
 
 // Helper to get protocols with translations
 // We define this function outside the component to avoid re-creating the array on every render
-const getProtocols = (t: (key: string, params?: Record<string, string>) => string): ProtocolInfo[] => [
+const withConnectionDefaults = (entries: Array<Omit<ProtocolInfo, 'defaultPort'>>): ProtocolInfo[] =>
+    entries.map(entry => ({ ...entry, defaultPort: connectionProtocol(entry.type)?.defaultPort ?? 21 }));
+
+const getProtocols = (t: (key: string, params?: Record<string, string>) => string): ProtocolInfo[] => withConnectionDefaults([
     // Traditional Server Protocols
     {
         type: 'ftp',
         name: 'FTP',
         icon: <Server size={16} />,
         description: t('protocol.ftpDesc'),
-        defaultPort: 21,
         badge: 'TLS',
         color: 'text-blue-500',
         tooltip: t('protocol.ftpTooltip'),
@@ -128,7 +131,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'SFTP',
         icon: <Lock size={16} />,
         description: t('protocol.sftpDesc'),
-        defaultPort: 22,
         badge: 'SSH',
         color: 'text-emerald-500',
         tooltip: t('protocol.sftpTooltip'),
@@ -138,7 +140,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'WebDAV',
         icon: <Cloud size={16} />,
         description: t('protocol.webdavDesc'),
-        defaultPort: 443,
         badge: 'TLS',
         color: 'text-orange-500',
         tooltip: t('protocol.webdavTooltip'),
@@ -148,7 +149,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'S3',
         icon: <AwsS3Logo size={18} />,
         description: t('protocol.s3Desc'),
-        defaultPort: 443,
         badge: 'HMAC',
         color: 'text-amber-600',
         tooltip: t('protocol.s3Tooltip'),
@@ -158,7 +158,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Azure Blob',
         icon: <AzureLogo size={18} />,
         description: t('protocol.azureDesc'),
-        defaultPort: 443,
         badge: 'HMAC',
         color: 'text-blue-500',
         tooltip: t('protocol.azureTooltip'),
@@ -168,11 +167,21 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'SourceForge',
         icon: <SourceForgeLogo size={18} />,
         description: t('protocol.sourceforgeDesc'),
-        defaultPort: 22,
         badge: 'SFTP',
         color: 'text-orange-500',
         tooltip: t('protocol.sourceforgeTooltip'),
         providerId: 'sourceforge',
+    },
+    {
+        type: 'ftps', name: 'FTPS', icon: <Lock size={16} />,
+        description: t('protocol.ftpsDesc'), badge: 'TLS',
+        color: 'text-blue-500', tooltip: t('protocol.ftpTooltip'),
+    },
+    {
+        type: 'gitlab', name: 'GitLab', icon: <GitLabLogo size={18} />,
+        description: t('protocol.gitlabDesc'), badge: 'API',
+        color: 'text-orange-500', isCloudStorage: true, category: 'service',
+        tooltip: t('protocol.gitlabTooltip'),
     },
     // Service Providers (GitHub first, then cloud services)
     {
@@ -180,7 +189,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'GitHub',
         icon: <GitHubLogo size={18} />,
         description: t('protocol.githubDesc'),
-        defaultPort: 443,
         badge: 'API',
         color: 'text-gray-400',
         isCloudStorage: true,
@@ -192,7 +200,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Google Drive',
         icon: <GoogleDriveLogo size={18} />,
         description: t('protocol.googledriveDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
@@ -204,7 +211,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Google Photos',
         icon: <GooglePhotosLogo size={18} />,
         description: t('protocol.googlephotosDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
@@ -215,7 +221,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'OneDrive',
         icon: <OneDriveLogo size={18} />,
         description: t('protocol.onedriveDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
@@ -226,7 +231,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Dropbox',
         icon: <DropboxLogo size={18} />,
         description: t('protocol.dropboxDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
@@ -237,7 +241,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'MEGA',
         icon: <MegaLogo size={18} />,
         description: t('protocol.megaDesc'),
-        defaultPort: 443,
         badge: 'E2E 128-bit',
         color: 'text-red-600',
         isCloudStorage: true,
@@ -248,7 +251,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Proton Drive',
         icon: <ProtonDriveLogo size={18} />,
         description: t('protocol.protonDesc'),
-        defaultPort: 443,
         badge: 'CLI',
         color: 'text-slate-500',
         isCloudStorage: true,
@@ -259,7 +261,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Box',
         icon: <BoxLogo size={18} />,
         description: t('protocol.boxDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
@@ -270,7 +271,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Zoho WorkDrive',
         icon: <ZohoWorkDriveLogo size={18} />,
         description: t('protocol.zohoworkdriveDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
@@ -281,7 +281,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Filen',
         icon: <FilenLogo size={18} />,
         description: t('protocol.filenDesc'),
-        defaultPort: 443,
         badge: 'E2E 256-bit',
         color: 'text-emerald-600',
         isCloudStorage: true,
@@ -292,7 +291,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Drime',
         icon: <DrimeCloudLogo size={18} />,
         description: t('protocol.drimeDesc'),
-        defaultPort: 443,
         badge: 'API',
         color: 'text-green-500',
         isCloudStorage: true,
@@ -303,7 +301,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'FileLu',
         icon: <FileLuLogo size={18} />,
         description: t('protocol.fileluDesc'),
-        defaultPort: 443,
         badge: 'API',
         color: 'text-violet-500',
         isCloudStorage: true,
@@ -314,7 +311,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: '4shared',
         icon: <FourSharedLogo size={18} />,
         description: t('protocol.foursharedDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
@@ -325,7 +321,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'kDrive',
         icon: <KDriveLogo size={18} />,
         description: t('protocol.kdriveDesc'),
-        defaultPort: 443,
         badge: 'API',
         color: 'text-blue-500',
         isCloudStorage: true,
@@ -336,7 +331,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Jottacloud',
         icon: <JottacloudLogo size={18} />,
         description: t('protocol.jottacloudDesc'),
-        defaultPort: 443,
         badge: 'API',
         color: 'text-purple-500',
         isCloudStorage: true,
@@ -347,7 +341,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Koofr',
         icon: <KoofrLogo size={18} />,
         description: t('protocol.koofrDesc'),
-        defaultPort: 443,
         badge: 'API',
         color: 'text-green-500',
         isCloudStorage: true,
@@ -358,7 +351,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Twake Drive',
         icon: <TwakeLogo size={18} />,
         description: t('protocol.twakeDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         color: 'text-sky-500',
         isCloudStorage: true,
@@ -369,7 +361,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Felicloud',
         icon: <FeliCloudLogo size={18} />,
         description: t('protocol.felicloudDesc'),
-        defaultPort: 443,
         badge: 'API OCS',
         color: 'text-orange-500',
         isCloudStorage: true,
@@ -382,7 +373,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'TAB.DIGITAL',
         icon: <TabDigitalLogo size={18} />,
         description: t('protocol.tabdigitalDesc'),
-        defaultPort: 443,
         badge: 'API OCS',
         color: 'text-emerald-500',
         isCloudStorage: true,
@@ -395,7 +385,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'OpenDrive',
         icon: <OpenDriveLogo size={18} />,
         description: t('protocol.opendriveDesc'),
-        defaultPort: 443,
         badge: 'API',
         color: 'text-cyan-500',
         isCloudStorage: true,
@@ -406,7 +395,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Yandex Disk',
         icon: <YandexDiskLogo size={18} />,
         description: t('protocol.yandexdiskDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         color: 'text-yellow-500',
         isCloudStorage: true,
@@ -417,7 +405,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Internxt',
         icon: <InternxtLogo size={18} />,
         description: t('protocol.internxtDesc'),
-        defaultPort: 443,
         badge: 'E2E 256-bit',
         color: 'text-blue-600',
         isCloudStorage: true,
@@ -428,7 +415,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'pCloud Drive',
         icon: <PCloudLogo size={18} />,
         description: t('protocol.pcloudDesc'),
-        defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
@@ -442,7 +428,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         name: 'Blomp',
         icon: <BlompLogo size={18} />,
         description: t('protocol.blompDesc'),
-        defaultPort: 443,
         badge: 'Swift',
         color: 'text-purple-500',
         isCloudStorage: true,
@@ -457,57 +442,59 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         // through a fallback.
         providerId: 'blomp',
     },
-];
+]);
 
 // Temporary fallback for getProtocolInfo when called outside component (no t function available)
 // This returns a protocol info with English fallbacks for description/tooltip
-const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
-    { type: 'ftp', name: 'FTP', icon: <Server size={16} />, description: 'File Transfer Protocol', defaultPort: 21, badge: 'TLS', color: 'text-blue-500', tooltip: 'FTP with configurable TLS encryption' },
-    { type: 'sftp', name: 'SFTP', icon: <Lock size={16} />, description: 'SSH File Transfer', defaultPort: 22, badge: 'SSH', color: 'text-emerald-500', tooltip: 'SFTP over SSH' },
-    { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, description: 'Nextcloud, CloudMe, Koofr', defaultPort: 443, badge: 'TLS', color: 'text-orange-500', tooltip: 'WebDAV protocol' },
-    { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, description: 'AWS S3, MinIO, R2, B2', defaultPort: 443, badge: 'HMAC', color: 'text-amber-600', tooltip: 'S3-compatible storage' },
-    { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', defaultPort: 443, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
-    { type: 'sftp' as const, name: 'SourceForge', icon: <SourceForgeLogo size={18} />, description: 'SourceForge File Release System', defaultPort: 22, badge: 'SFTP', color: 'text-orange-500', tooltip: 'Upload releases to SourceForge via SFTP', providerId: 'sourceforge' },
-    { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, description: 'Personal cloud sync', defaultPort: 21, badge: 'Sync', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Turn any server into your personal cloud' },
-    { type: 'googledrive', name: 'Google Drive', icon: <GoogleDriveLogo size={18} />, description: 'Google Drive (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Drive OAuth2' },
-    { type: 'googlephotos', name: 'Google Photos', icon: <GooglePhotosLogo size={18} />, description: 'Google Photos (read + upload)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Photos Library API' },
-    { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'OneDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
-    { type: 'dropbox', name: 'Dropbox', icon: <DropboxLogo size={18} />, description: 'Dropbox (2 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Dropbox OAuth2' },
-    { type: 'mega', name: 'MEGA', icon: <MegaLogo size={18} />, description: 'MEGA (20 GB free)', defaultPort: 443, badge: 'E2E 128-bit', color: 'text-red-600', isCloudStorage: true, tooltip: 'MEGA E2E encryption' },
-    { type: 'proton', name: 'Proton Drive', icon: <ProtonDriveLogo size={18} />, description: 'Connects through the Proton Drive CLI', defaultPort: 443, badge: 'CLI', color: 'text-slate-500', isCloudStorage: true, tooltip: 'Uses the Proton Drive CLI (user-installed, browser sign-in)' },
-    { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Box (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
-    { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Zoho WorkDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
-    { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud (10 GB free)', defaultPort: 443, badge: 'E2E 256-bit', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption (Argon2id v3 / PBKDF2 v2)' },
-    { type: 'drime', name: 'Drime', icon: <DrimeCloudLogo size={18} />, description: 'Drime (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime: Bearer Token auth' },
-    { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', defaultPort: 443, badge: 'API', color: 'text-sky-500', isCloudStorage: true, tooltip: 'FileLu: API Key auth, 1 GB free' },
-    { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '4shared (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
-    { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Infomaniak kDrive (15 GB free)', defaultPort: 443, badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive API Token' },
-    { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud: Login Token auth' },
-    { type: 'koofr', name: 'Koofr', icon: <KoofrLogo size={18} />, description: 'Koofr Cloud (10 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Koofr: Email + App Password auth' },
-    { type: 'opendrive', name: 'OpenDrive', icon: <OpenDriveLogo size={18} />, description: 'OpenDrive Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-cyan-500', isCloudStorage: true, tooltip: 'OpenDrive - 5GB free cloud storage, username/password authentication' },
-    { type: 'yandexdisk', name: 'Yandex Disk', icon: <YandexDiskLogo size={18} />, description: 'Yandex Disk (5 GB free)', defaultPort: 443, badge: 'OAuth', color: 'text-yellow-500', isCloudStorage: true, tooltip: 'Yandex Disk: OAuth2 token auth' },
-    { type: 'github', name: 'GitHub', icon: <GitHubLogo size={18} />, description: 'GitHub Repository (filesystem)', defaultPort: 443, badge: 'API', color: 'text-gray-400', isCloudStorage: true, tooltip: 'Browse GitHub repos as filesystem. Uploads create commits.' },
-    { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E 256-bit', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
-    { type: 'pcloud', name: 'pCloud Drive', icon: <PCloudLogo size={18} />, description: 'pCloud Drive (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud Drive OAuth2' },
-    { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud: Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
-    { type: 'webdav', name: 'TAB.DIGITAL', icon: <TabDigitalLogo size={18} />, description: 'TAB.DIGITAL (8 GB free, Nextcloud-based, EU)', defaultPort: 443, badge: 'API OCS', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'TAB.DIGITAL: Nextcloud-as-a-service, 8GB free, regional subdomains (fie.nl, fie.de, ...)', providerId: 'tabdigital' },
-    { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich: Self-hosted photo/video management, API key auth' },
-    { type: 'twake', name: 'Twake Drive', icon: <TwakeLogo size={18} />, description: 'Twake Workplace drive (5 GB free, EU)', defaultPort: 443, badge: 'OAuth', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Twake Drive (Linagora, Cozy Cloud is now part of Twake Workplace): sign in on your own instance, no app to register' },
-    { type: 'imagekit', name: 'ImageKit', icon: <ImageKitLogo size={18} />, description: 'Media CDN + storage (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'ImageKit: private key auth, filesystem-style media library' },
-    { type: 'uploadcare', name: 'Uploadcare', icon: <UploadcareLogo size={18} />, description: 'EU media CDN (3 GB free)', defaultPort: 443, badge: 'EU', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'Uploadcare: public + secret key, flat media library' },
-    { type: 'cloudinary', name: 'Cloudinary', icon: <CloudinaryLogo size={18} />, description: 'Media CDN (25 credits/month free)', defaultPort: 443, badge: 'API', color: 'text-indigo-600', isCloudStorage: true, tooltip: 'Cloudinary: api_key + api_secret, REST + Upload API, dynamic folders' },
-    { type: 'backblaze', name: 'Backblaze B2', icon: <Flame size={18} />, description: 'Backblaze B2 native API v4', defaultPort: 443, badge: 'API', color: 'text-red-600', isCloudStorage: true, tooltip: 'Backblaze B2 native: applicationKeyId + applicationKey, large-file workflow, server-side copy' },
+const PROTOCOLS_FALLBACK: ProtocolInfo[] = withConnectionDefaults([
+    { type: 'ftps', name: 'FTPS', icon: <Lock size={16} />, description: 'FTPS', badge: 'TLS', color: 'text-blue-500', tooltip: 'FTPS' },
+    { type: 'gitlab', name: 'GitLab', icon: <GitLabLogo size={18} />, description: 'GitLab', badge: 'API', color: 'text-orange-500', isCloudStorage: true, tooltip: 'GitLab' },
+    { type: 'ftp', name: 'FTP', icon: <Server size={16} />, description: 'File Transfer Protocol', badge: 'TLS', color: 'text-blue-500', tooltip: 'FTP with configurable TLS encryption' },
+    { type: 'sftp', name: 'SFTP', icon: <Lock size={16} />, description: 'SSH File Transfer', badge: 'SSH', color: 'text-emerald-500', tooltip: 'SFTP over SSH' },
+    { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, description: 'Nextcloud, CloudMe, Koofr', badge: 'TLS', color: 'text-orange-500', tooltip: 'WebDAV protocol' },
+    { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, description: 'AWS S3, MinIO, R2, B2', badge: 'HMAC', color: 'text-amber-600', tooltip: 'S3-compatible storage' },
+    { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
+    { type: 'sftp' as const, name: 'SourceForge', icon: <SourceForgeLogo size={18} />, description: 'SourceForge File Release System', badge: 'SFTP', color: 'text-orange-500', tooltip: 'Upload releases to SourceForge via SFTP', providerId: 'sourceforge' },
+    { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, description: 'Personal cloud sync', badge: 'Sync', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Turn any server into your personal cloud' },
+    { type: 'googledrive', name: 'Google Drive', icon: <GoogleDriveLogo size={18} />, description: 'Google Drive (15 GB free)', badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Drive OAuth2' },
+    { type: 'googlephotos', name: 'Google Photos', icon: <GooglePhotosLogo size={18} />, description: 'Google Photos (read + upload)', badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Photos Library API' },
+    { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'OneDrive (5 GB free)', badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
+    { type: 'dropbox', name: 'Dropbox', icon: <DropboxLogo size={18} />, description: 'Dropbox (2 GB free)', badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Dropbox OAuth2' },
+    { type: 'mega', name: 'MEGA', icon: <MegaLogo size={18} />, description: 'MEGA (20 GB free)', badge: 'E2E 128-bit', color: 'text-red-600', isCloudStorage: true, tooltip: 'MEGA E2E encryption' },
+    { type: 'proton', name: 'Proton Drive', icon: <ProtonDriveLogo size={18} />, description: 'Connects through the Proton Drive CLI', badge: 'CLI', color: 'text-slate-500', isCloudStorage: true, tooltip: 'Uses the Proton Drive CLI (user-installed, browser sign-in)' },
+    { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Box (10 GB free)', badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
+    { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Zoho WorkDrive (5 GB free)', badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
+    { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud (10 GB free)', badge: 'E2E 256-bit', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption (Argon2id v3 / PBKDF2 v2)' },
+    { type: 'drime', name: 'Drime', icon: <DrimeCloudLogo size={18} />, description: 'Drime (20 GB free)', badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime: Bearer Token auth' },
+    { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', badge: 'API', color: 'text-sky-500', isCloudStorage: true, tooltip: 'FileLu: API Key auth, 1 GB free' },
+    { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '4shared (15 GB free)', badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
+    { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Infomaniak kDrive (15 GB free)', badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive API Token' },
+    { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5 GB free)', badge: 'API', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud: Login Token auth' },
+    { type: 'koofr', name: 'Koofr', icon: <KoofrLogo size={18} />, description: 'Koofr Cloud (10 GB free)', badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Koofr: Email + App Password auth' },
+    { type: 'opendrive', name: 'OpenDrive', icon: <OpenDriveLogo size={18} />, description: 'OpenDrive Cloud (5 GB free)', badge: 'API', color: 'text-cyan-500', isCloudStorage: true, tooltip: 'OpenDrive - 5GB free cloud storage, username/password authentication' },
+    { type: 'yandexdisk', name: 'Yandex Disk', icon: <YandexDiskLogo size={18} />, description: 'Yandex Disk (5 GB free)', badge: 'OAuth', color: 'text-yellow-500', isCloudStorage: true, tooltip: 'Yandex Disk: OAuth2 token auth' },
+    { type: 'github', name: 'GitHub', icon: <GitHubLogo size={18} />, description: 'GitHub Repository (filesystem)', badge: 'API', color: 'text-gray-400', isCloudStorage: true, tooltip: 'Browse GitHub repos as filesystem. Uploads create commits.' },
+    { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', badge: 'E2E 256-bit', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
+    { type: 'pcloud', name: 'pCloud Drive', icon: <PCloudLogo size={18} />, description: 'pCloud Drive (10 GB free)', badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud Drive OAuth2' },
+    { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud: Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
+    { type: 'webdav', name: 'TAB.DIGITAL', icon: <TabDigitalLogo size={18} />, description: 'TAB.DIGITAL (8 GB free, Nextcloud-based, EU)', badge: 'API OCS', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'TAB.DIGITAL: Nextcloud-as-a-service, 8GB free, regional subdomains (fie.nl, fie.de, ...)', providerId: 'tabdigital' },
+    { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich: Self-hosted photo/video management, API key auth' },
+    { type: 'twake', name: 'Twake Drive', icon: <TwakeLogo size={18} />, description: 'Twake Workplace drive (5 GB free, EU)', badge: 'OAuth', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Twake Drive (Linagora, Cozy Cloud is now part of Twake Workplace): sign in on your own instance, no app to register' },
+    { type: 'imagekit', name: 'ImageKit', icon: <ImageKitLogo size={18} />, description: 'Media CDN + storage (20 GB free)', badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'ImageKit: private key auth, filesystem-style media library' },
+    { type: 'uploadcare', name: 'Uploadcare', icon: <UploadcareLogo size={18} />, description: 'EU media CDN (3 GB free)', badge: 'EU', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'Uploadcare: public + secret key, flat media library' },
+    { type: 'cloudinary', name: 'Cloudinary', icon: <CloudinaryLogo size={18} />, description: 'Media CDN (25 credits/month free)', badge: 'API', color: 'text-indigo-600', isCloudStorage: true, tooltip: 'Cloudinary: api_key + api_secret, REST + Upload API, dynamic folders' },
+    { type: 'backblaze', name: 'Backblaze B2', icon: <Flame size={18} />, description: 'Backblaze B2 native API v4', badge: 'API', color: 'text-red-600', isCloudStorage: true, tooltip: 'Backblaze B2 native: applicationKeyId + applicationKey, large-file workflow, server-side copy' },
     // Portable MTP/WPD: open from PLACES or a saved device profile (Add Services > Devices).
-    { type: 'mtp', name: 'Portable (MTP)', icon: <Smartphone size={18} />, description: 'Phone or camera over MTP/WPD', defaultPort: 0, badge: 'USB', color: 'text-slate-500', tooltip: 'Whole-file portable-device session; open from PLACES or a saved device profile in My Servers' },
-];
+    { type: 'mtp', name: 'Portable (MTP)', icon: <Smartphone size={18} />, description: 'Phone or camera over MTP/WPD', badge: 'USB', color: 'text-slate-500', tooltip: 'Whole-file portable-device session; open from PLACES or a saved device profile in My Servers' },
+]);
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
     if (!type) return null;
-    return PROTOCOLS_FALLBACK.find(p => p.type === type) || PROTOCOLS_FALLBACK[0];
+    return PROTOCOLS_FALLBACK.find(p => p.type === type) ?? null;
 };
 
 export const getDefaultPort = (type: ProviderType): number => {
-    return getProtocolInfo(type)?.defaultPort || 21;
+    return connectionProtocol(type)?.defaultPort ?? 21;
 };
 
 export const isOAuthProtocol = (type: ProviderType): boolean => {

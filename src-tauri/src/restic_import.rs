@@ -514,6 +514,46 @@ pub fn export_restic(
 mod tests {
     use super::*;
 
+    #[test]
+    fn backblaze_s3_and_native_b2_keep_their_backend_and_credentials() {
+        let env = |key: &str| match key {
+            "AWS_ACCESS_KEY_ID" => Some("s3-key-id".into()),
+            "AWS_SECRET_ACCESS_KEY" => Some("synthetic-s3-secret".into()),
+            "B2_ACCOUNT_ID" => Some("native-key-id".into()),
+            "B2_ACCOUNT_KEY" => Some("synthetic-native-secret".into()),
+            _ => None,
+        };
+        for (url, provider_id, user, secret, prefix, env_key) in [
+            (
+                "s3:https://s3.us-west-004.backblazeb2.com/bucket",
+                "backblaze",
+                "s3-key-id",
+                "synthetic-s3-secret",
+                "s3:",
+                "AWS_ACCESS_KEY_ID",
+            ),
+            (
+                "b2:bucket",
+                "backblaze-b2",
+                "native-key-id",
+                "synthetic-native-secret",
+                "b2:",
+                "B2_ACCOUNT_ID",
+            ),
+        ] {
+            let imported = import_restic_repo_url(url, &env).unwrap();
+            let profile = &imported.servers[0];
+            assert_eq!(profile.provider_id.as_deref(), Some(provider_id));
+            assert_eq!(profile.username, user);
+            assert_eq!(profile.credential.as_deref(), Some(secret));
+            let export: ResticExportServer =
+                serde_json::from_value(serde_json::to_value(profile).unwrap()).unwrap();
+            let (repository, credentials) = restic_repo_for(&export, secret).unwrap();
+            assert!(repository.starts_with(prefix), "{repository}");
+            assert!(credentials.contains(&(env_key, user.to_string())));
+        }
+    }
+
     // ---- parse_restic_repo: every documented scheme ----
 
     #[test]

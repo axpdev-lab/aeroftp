@@ -674,6 +674,53 @@ pub fn export_duplicacy(
 mod tests {
     use super::*;
 
+    #[test]
+    fn backblaze_s3_and_native_b2_keep_their_backend_and_credentials() {
+        for (storage, provider_id, user, secret, key) in [
+            (
+                "s3://s3.us-west-004.backblazeb2.com/bucket",
+                "backblaze",
+                "s3-key-id",
+                "synthetic-s3-secret",
+                "s3_id",
+            ),
+            (
+                "b2://bucket",
+                "backblaze-b2",
+                "native-key-id",
+                "synthetic-native-secret",
+                "b2_id",
+            ),
+        ] {
+            let fixture = serde_json::json!([{
+                "name":"backblaze", "id":"synthetic", "repository":"", "encrypted":true,
+                "storage":storage,
+                "keys":{"s3_id":"s3-key-id", "s3_secret":"synthetic-s3-secret",
+                        "b2_id":"native-key-id", "b2_key":"synthetic-native-secret"}
+            }]);
+            let root = tempfile::tempdir().unwrap();
+            let input = root.path().join("preferences");
+            std::fs::write(&input, fixture.to_string()).unwrap();
+            let imported = import_duplicacy_with_env(&input, &|_| None).unwrap();
+            let profile = &imported.servers[0];
+            assert_eq!(profile.provider_id.as_deref(), Some(provider_id));
+            assert_eq!(profile.username, user);
+            assert_eq!(profile.credential.as_deref(), Some(secret));
+            let export: DuplicacyExportServer =
+                serde_json::from_value(serde_json::to_value(profile).unwrap()).unwrap();
+            let (url, keys) = duplicacy_storage_for(&export, Some(secret)).unwrap();
+            assert_eq!(
+                url.starts_with("b2://"),
+                provider_id == "backblaze-b2",
+                "{url}"
+            );
+            assert_eq!(keys[key], user);
+            assert!(keys
+                .get(if key == "s3_id" { "b2_id" } else { "s3_id" })
+                .is_none());
+        }
+    }
+
     const FIXTURE: &str = r#"[
       { "name":"b2store", "id":"snap-b2", "repository":"", "encrypted":true,
         "storage":"b2://my-bucket",

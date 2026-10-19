@@ -99,6 +99,9 @@ jobs:
       - name: Frontend unit tests (vitest)
         run: npm run test:unit
 
+      - name: Shared connection manifest and one-surface mutation guard
+        run: node .github/scripts/check-connection-manifest.mjs --self-test
+
       # Stripped diacritics are invisible to i18n:validate: the value is
       # present, is not a placeholder and is the right length, it is simply
       # spelled wrong. The class grew for eight months across eight commits

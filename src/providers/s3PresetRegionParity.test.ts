@@ -4,15 +4,15 @@
 import { describe, it, expect } from 'vitest';
 import profileLoaderRs from '../../src-tauri/src/profile_loader.rs?raw';
 import { PROVIDERS } from './registry';
+import { connectionManifest } from './connectionManifest';
 
-// The default signing region of an S3 preset is declared twice: the registry
-// `defaults.region` (GUI) and `s3_profile_default_region` in profile_loader.rs
-// (CLI, MCP, bridge). They had drifted: Filen Desktop S3 declared `filen` in
-// the registry and nothing in Rust, so a CLI profile without a stored region
-// signed with us-east-1. This keeps the two tables identical.
+// Both consumers use the shared manifest; selectable region fields stay in
+// the presentation registry and must retain the manifest's first selection.
 function rustDefaultRegions(): Record<string, string> {
-    const body = profileLoaderRs.split('fn s3_profile_default_region')[1]?.split('\n}\n')[0] ?? '';
-    return Object.fromEntries([...body.matchAll(/"([a-z0-9-]+)" => Some\("([a-z0-9-]+)"\)/g)].map(m => [m[1], m[2]]));
+    expect(profileLoaderRs).toContain('crate::connection_manifest::preset(provider_id)');
+    return Object.fromEntries(connectionManifest.presets
+        .filter(p => p.protocol === 's3' && p.defaults.region)
+        .map(p => [p.id, p.defaults.region!]));
 }
 
 describe('S3 preset default region parity (registry vs Rust loader)', () => {
@@ -23,5 +23,10 @@ describe('S3 preset default region parity (registry vs Rust loader)', () => {
         const rust = rustDefaultRegions();
         expect(Object.keys(rust).length).toBeGreaterThan(0);
         expect(rust).toEqual(registry);
+        for (const provider of PROVIDERS.filter(p => p.protocol === 's3' && p.defaults?.endpointTemplate && !p.defaults.region)) {
+            const field = provider.fields.find(f => f.key === 'region' && f.type === 'select');
+            expect(connectionManifest.presets.find(p => p.id === provider.id)?.firstRegion ?? undefined,
+                `${provider.id} first selectable region`).toEqual(field?.options?.[0]?.value);
+        }
     });
 });

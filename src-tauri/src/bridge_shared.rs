@@ -63,7 +63,7 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
         "cloudflare" | "r2" => "cloudflare-r2",
         "digitalocean" | "digitaloceanspaces" => "digitalocean-spaces",
         "wasabi" => "wasabi",
-        "backblaze" | "b2" => "backblaze-b2",
+        "backblaze" | "b2" => "backblaze",
         "linode" | "linodeobjectstorage" => "linode-object-storage",
         "scaleway" => "scaleway",
         "stackpath" => "stackpath",
@@ -111,7 +111,7 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
         return "wasabi";
     }
     if h.contains("backblazeb2.com") || h.contains(".b2-") {
-        return "backblaze-b2";
+        return "backblaze";
     }
     if h.contains("linodeobjects.com") {
         return "linode-object-storage";

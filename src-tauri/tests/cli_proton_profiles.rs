@@ -170,3 +170,86 @@ fn proton_mode_and_sign_in_refuse_what_is_not_a_proton_profile() {
     let out = cli(root, &["proton", "sign-out", "no such profile"]);
     assert_eq!(out.status.code(), Some(2), "{}", describe(&out));
 }
+
+#[tokio::test]
+async fn proton_alias_preserves_manifest_options_and_explicit_client_after_saving() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let out = cli(
+        root,
+        &[
+            "--json",
+            "profile-add",
+            "--name",
+            "alias options",
+            "--protocol",
+            "protondrive",
+            "--proton-mode",
+            "cli",
+            "--options-json",
+            r#"{"protonMode":"native","saveSession":true}"#,
+            "--manual-total",
+            "123456",
+            "--initial-path",
+            "/synthetic",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let added: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(added["protocol"], "proton");
+    assert_eq!(added["proton_mode"], "cli");
+
+    let text = cli(
+        root,
+        &[
+            "profile-add",
+            "--name",
+            "alias text",
+            "--protocol",
+            "protondrive",
+            "--proton-mode",
+            "cli",
+        ],
+    );
+    assert_eq!(text.status.code(), Some(0), "{}", describe(&text));
+    assert!(
+        String::from_utf8_lossy(&text.stderr).contains("proton-drive auth login"),
+        "{}",
+        describe(&text)
+    );
+
+    let export = root.join("alias.aeroftp");
+    let out = isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), root)
+        .args(["profile-export", "--output", export.to_str().unwrap()])
+        .env("AEROFTP_PROFILE_PASSWORD", "synthetic alias export")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
+        export.to_string_lossy().into_owned(),
+        "synthetic alias export".into(),
+        Some(std::collections::HashSet::new()),
+    )
+    .await
+    .unwrap();
+    let saved = preview["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|profile| profile["id"] == added["id"])
+        .unwrap();
+    assert_eq!(saved["protocol"], "proton");
+    assert_eq!(saved["initialPath"], "/synthetic");
+    let options = saved["options"].as_object().unwrap();
+    assert_eq!(options["proton_mode"], "cli");
+    assert!(!options.contains_key("protonMode"));
+    assert_eq!(
+        options
+            .get("saveSession")
+            .or_else(|| options.get("save_session"))
+            .and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(options["manualTotalBytes"], 123456);
+}
