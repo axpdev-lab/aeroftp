@@ -758,14 +758,14 @@
     "logoId": "proton",
     "country": "CH",
     "freeGb": 5,
-    "freeNote": "CLI",
+    "freeNote": "E2E",
     "freeRequiresCard": false,
     "regions": [
       "CH"
     ],
     "protocols": [
       {
-        "label": "CLI",
+        "label": "API / CLI",
         "protocol": "proton",
         "providerId": null,
         "paid": false,
