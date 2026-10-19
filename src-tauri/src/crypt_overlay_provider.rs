@@ -631,6 +631,15 @@ impl CryptOverlayProvider {
         &mut self,
         plain_target: &str,
     ) -> Result<Option<String>, ProviderError> {
+        self.phantom_plaintext_parent_checked(plain_target, &mut std::collections::HashSet::new())
+            .await
+    }
+
+    async fn phantom_plaintext_parent_checked(
+        &mut self,
+        plain_target: &str,
+        checked: &mut std::collections::HashSet<String>,
+    ) -> Result<Option<String>, ProviderError> {
         // A relative target resolves against the current on-wire dir, which is not
         // known here without a round trip; the frontend cwd re-read on overlay-arm
         // covers that seam. Absolute targets are what the upload UI actually sends.
@@ -655,6 +664,11 @@ impl CryptOverlayProvider {
         }
         let mut ancestor = parent.as_str();
         while ancestor != self.scope && ancestor != "/" && !ancestor.is_empty() {
+            // A successful earlier walk checked this ancestor and everything
+            // above it. The caller discards the cache before any mutation.
+            if checked.contains(ancestor) {
+                break;
+            }
             // A real encrypted directory may coexist with a raw plaintext
             // sibling. It already identifies the intended destination, so
             // that sibling must not prevent creating children inside it.
@@ -662,6 +676,7 @@ impl CryptOverlayProvider {
             if !self.inner.exists(&encrypted).await? && self.inner.exists(ancestor).await? {
                 return Ok(Some(ancestor.to_string()));
             }
+            checked.insert(ancestor.to_string());
             ancestor = ancestor.rsplit_once('/').map_or("", |(parent, _)| parent);
         }
         Ok(None)
@@ -673,10 +688,14 @@ impl CryptOverlayProvider {
     pub(crate) async fn check_directory_creation(
         &mut self,
         path: &str,
+        checked: &mut std::collections::HashSet<String>,
     ) -> Result<(), ProviderError> {
         self.map(path, true, AccessKind::Write)?;
         let child = format!("{}/.aeroftp-directory-probe", path.trim_end_matches('/'));
-        if let Some(parent) = self.phantom_plaintext_parent(&child).await? {
+        if let Some(parent) = self
+            .phantom_plaintext_parent_checked(&child, checked)
+            .await?
+        {
             return Err(ProviderError::InvalidPath(format!("refusing to create an encrypted directory beside plaintext folder {parent:?}; turn the overlay off or choose an encrypted folder (issue #390)")));
         }
         Ok(())
@@ -6538,6 +6557,10 @@ mod tests {
         dirs: Mutex<Vec<String>>,
         fail_list_permission: bool,
         cancel_after_mkdir: Option<tokio_util::sync::CancellationToken>,
+        fail_mkdir: bool,
+        fail_stat: bool,
+        exists_probes: Vec<String>,
+        fail_exists: bool,
     }
 
     impl StrictMemProvider {
@@ -6547,6 +6570,10 @@ mod tests {
                 dirs: Mutex::new(seed.iter().map(|s| s.to_string()).collect()),
                 fail_list_permission: false,
                 cancel_after_mkdir: None,
+                fail_mkdir: false,
+                fail_stat: false,
+                exists_probes: Vec::new(),
+                fail_exists: false,
             }
         }
         fn with_permission_denied_list(seed: &[&str]) -> Self {
@@ -6636,6 +6663,11 @@ mod tests {
             Ok(())
         }
         async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
+            if self.fail_mkdir {
+                return Err(ProviderError::PermissionDenied(
+                    "mkdir fixture refusal".into(),
+                ));
+            }
             let mut dirs = self.dirs.lock().unwrap();
             if !dirs.iter().any(|d| d == p) {
                 dirs.push(p.to_string());
@@ -6659,6 +6691,11 @@ mod tests {
             Ok(())
         }
         async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
+            if self.fail_stat {
+                return Err(ProviderError::PermissionDenied(
+                    "stat fixture refusal".into(),
+                ));
+            }
             let name = p.rsplit('/').next().unwrap_or(p).to_string();
             if let Some(data) = self.files.lock().unwrap().get(p) {
                 return Ok(RemoteEntry::file(name, p.to_string(), data.len() as u64));
@@ -6672,6 +6709,12 @@ mod tests {
             Err(ProviderError::NotFound(p.to_string()))
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
+            self.exists_probes.push(p.to_string());
+            if self.fail_exists {
+                return Err(ProviderError::PermissionDenied(
+                    "probe fixture refusal".into(),
+                ));
+            }
             Ok(self.files.lock().unwrap().contains_key(p)
                 || self.dirs.lock().unwrap().iter().any(|d| d == p))
         }
@@ -6691,6 +6734,112 @@ mod tests {
             size: 0,
             modified: None,
             is_dir: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_directory_creation_accepts_only_proven_directories_after_mkdir_error() {
+        use crate::cross_profile_transfer::ensure_planned_directories;
+        let plan = [planned_directory("/home/user/backup")];
+        let mut existing =
+            StrictMemProvider::with_dirs(&["/home", "/home/user", "/home/user/backup"]);
+        existing.fail_mkdir = true;
+        ensure_planned_directories(&mut existing, &plan, || false)
+            .await
+            .unwrap();
+
+        // The same mkdir refusal must still fail when the next path is missing.
+        existing.dirs.lock().unwrap().pop();
+        let error = ensure_planned_directories(&mut existing, &plan, || false)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, ProviderError::TransferFailed(ref e) if e.contains("mkdir fixture refusal"))
+        );
+
+        existing
+            .files
+            .lock()
+            .unwrap()
+            .insert("/home/user/backup".into(), b"file".to_vec());
+        let error = ensure_planned_directories(&mut existing, &plan, || false)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ProviderError::AlreadyExists(ref p) if p == "/home/user/backup"));
+
+        // A stat error cannot erase the original mkdir failure or prove safety.
+        existing.fail_stat = true;
+        let error = ensure_planned_directories(&mut existing, &plan, || false)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, ProviderError::TransferFailed(ref e) if e.contains("mkdir fixture refusal") && !e.contains("stat fixture refusal"))
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_directory_preflight_probes_shared_ancestors_once_per_run() {
+        use crate::cross_profile_transfer::ensure_planned_directories;
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let mut dest = CryptOverlayProvider::new(
+                Box::new(StrictMemProvider::with_dirs(&["/Vault"])),
+                keys,
+                "/Vault",
+            );
+            let plan = [
+                planned_directory("/Vault/Fresh"),
+                planned_directory("/Vault/Fresh/Left"),
+                planned_directory("/Vault/Fresh/Right"),
+            ];
+            ensure_planned_directories(&mut dest, &plan, || false)
+                .await
+                .unwrap();
+            let inner = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            assert_eq!(
+                inner.exists_probes.len(),
+                6,
+                "two probes per unique fresh ancestor"
+            );
+            assert_eq!(
+                inner
+                    .exists_probes
+                    .iter()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
+                6
+            );
+
+            // A later preflight must not reuse stale safe verdicts from this run.
+            *inner.dirs.lock().unwrap() = vec!["/Vault".into(), "/Vault/Fresh".into()];
+            let error = ensure_planned_directories(&mut dest, &plan, || false)
+                .await
+                .unwrap_err();
+            assert!(matches!(error, ProviderError::InvalidPath(_)));
+            let inner = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            assert_eq!(
+                inner.dir_list(),
+                ["/Vault", "/Vault/Fresh"],
+                "no writes after phantom refusal"
+            );
+
+            inner.fail_exists = true;
+            let error = ensure_planned_directories(&mut dest, &plan, || false)
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(error, ProviderError::PermissionDenied(ref e) if e == "probe fixture refusal")
+            );
         }
     }
 

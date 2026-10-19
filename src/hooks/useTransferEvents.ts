@@ -427,11 +427,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
             { filename: data.filename, error: data.message || '' },
             'error',
           );
-        } else if (data.event_type === 'complete' || data.event_type === 'cancelled') {
+        } else if (data.event_type === 'complete' || data.event_type === 'cancelled' || data.event_type === 'error') {
           const logId = transferIdToLogId.current.get(data.transfer_id);
           if (logId) {
             activityLog.updateEntry(logId, {
-              status: data.event_type === 'cancelled' ? 'error' : 'success',
+              status: data.event_type === 'complete' ? 'success' : 'error',
               message: data.message || '',
             });
             transferIdToLogId.current.delete(data.transfer_id);

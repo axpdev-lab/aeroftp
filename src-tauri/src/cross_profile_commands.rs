@@ -658,7 +658,7 @@ pub async fn cross_profile_execute(
     let stored = take_plan(&state, &request.plan_id).await?;
     let cancelled = register_cancel_token(&state, &transfer_id).await;
 
-    let result = async {
+    let result: Result<CrossProfileTransferSummary, String> = async {
         let plan = stored.plan;
         let total = plan.entries.len() as u64;
         let max_concurrent = CROSS_PROFILE_MAX_CONCURRENT.min(total.max(1) as u32);
@@ -815,8 +815,35 @@ pub async fn cross_profile_execute(
     }
     .await;
 
+    // Every start must have a terminal event, including failures before the
+    // executor exists (destination connection or directory preflight). Stop
+    // takes precedence if it arrived while the failed operation was pending.
+    if let Err(error) = &result {
+        emit_transfer_event(
+            &app,
+            setup_failure_event(&transfer_id, error, cancelled.is_cancelled()),
+        );
+    }
     clear_cancel_token(&state, &transfer_id).await;
     result
+}
+
+fn setup_failure_event(transfer_id: &str, error: &str, cancelled: bool) -> TransferEvent {
+    TransferEvent {
+        event_type: if cancelled { "cancelled" } else { "error" }.to_string(),
+        transfer_id: transfer_id.to_string(),
+        filename: String::new(),
+        direction: "cross-profile".to_string(),
+        message: Some(if cancelled {
+            "Transfer cancelled by user".to_string()
+        } else {
+            error.to_string()
+        }),
+        progress: None,
+        path: None,
+        delta_stats: None,
+        fallback_reason: None,
+    }
 }
 
 /// Cancel an in-progress cross-profile transfer.

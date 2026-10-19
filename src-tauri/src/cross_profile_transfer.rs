@@ -546,10 +546,11 @@ pub async fn ensure_planned_directories(
         .as_any_mut()
         .downcast_mut::<crate::crypt_overlay_provider::CryptOverlayProvider>()
     {
+        let mut checked = std::collections::HashSet::new();
         for directory in directories {
             check_cancel()?;
             overlay
-                .check_directory_creation(&directory.dest_path)
+                .check_directory_creation(&directory.dest_path, &mut checked)
                 .await?;
         }
     }
@@ -562,17 +563,18 @@ pub async fn ensure_planned_directories(
             }
             match dest.mkdir(&ancestor).await {
                 Ok(()) => {}
-                Err(ProviderError::AlreadyExists(_)) => {
-                    // A taken file must not count as an existing directory.
-                    if !dest.stat(&ancestor).await?.is_dir {
-                        return Err(ProviderError::AlreadyExists(ancestor));
+                // Existing ancestors can return generic or permission errors
+                // on mkdir. Only a successful stat proving a directory permits
+                // execution to continue; preserve the mkdir failure otherwise.
+                Err(error) => match dest.stat(&ancestor).await {
+                    Ok(entry) if entry.is_dir => {}
+                    Ok(_) => return Err(ProviderError::AlreadyExists(ancestor)),
+                    Err(_) => {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "cannot create destination directory {ancestor}: {error}"
+                        )))
                     }
-                }
-                Err(error) => {
-                    return Err(ProviderError::TransferFailed(format!(
-                        "cannot create destination directory {ancestor}: {error}"
-                    )))
-                }
+                },
             }
         }
     }
