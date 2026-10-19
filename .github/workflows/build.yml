@@ -39,13 +39,15 @@ jobs:
   # (clippy ~8m + cargo test ~42m + bundle ~61m serial). This job runs
   # them on their own ubuntu-22.04 runner so the 4-leg matrix can bundle
   # in parallel. Coverage unchanged; wall clock ~max(50, 61).
-  # The limit fits a run without a Rust cache: when the cache of main is
-  # evicted, `cargo test` spends up to an hour compiling before ~35 minutes
-  # of tests (measured 2026-10-18), and a 90-minute limit then cancelled
-  # every pull request and main itself, the one run that saves the cache.
+  # The full test-profile build is distinct from clippy's metadata cache.
+  # PR #1306 measured 112m52s compiling/linking before ~29m of tests, in
+  # addition to setup/lint. A second run exhausted the 150m job budget.
+  # Keep the entire suite, give it headroom, and expose build/run timings
+  # separately. Serialize test compilation so large workspace binaries do
+  # not compete for this runner's memory; packaging remains parallel.
   linux-validate:
     runs-on: ubuntu-22.04
-    timeout-minutes: 150
+    timeout-minutes: 210
     steps:
       - name: Free disk space (Linux)
         run: |
@@ -155,9 +157,15 @@ jobs:
         working-directory: src-tauri
         run: cargo check --all-targets --no-default-features --features test-seed --config 'build.warnings="deny"'
 
-      - name: Rust tests
+      - name: Compile all Rust tests
+        timeout-minutes: 150
         working-directory: src-tauri
-        run: cargo test
+        run: /usr/bin/time -v cargo test --locked --no-run --jobs 1
+
+      - name: Run all Rust tests
+        timeout-minutes: 60
+        working-directory: src-tauri
+        run: /usr/bin/time -v cargo test --locked --jobs 1
 
   build-and-release:
     # Required for creating releases and Sigstore keyless signing via GitHub OIDC.
