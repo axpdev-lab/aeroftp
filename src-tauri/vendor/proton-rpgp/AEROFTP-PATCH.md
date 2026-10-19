@@ -8,7 +8,9 @@ The Rust sources, README, CHANGELOG and LICENSE are retained. The upstream
 integration tests and test data are omitted. `Cargo.toml` is the published
 manifest with the changes below and without the test targets.
 
-The `proton-native` feature reaches this crate through `proton-crypto-account` (`rustpgp` backend). AeroFTP enables this feature in default builds; builds without it retain the official CLI connection option.
+Only the optional `proton-native` feature reaches this crate, through
+`proton-crypto-account` (`rustpgp` backend). No default AeroFTP build compiles
+it.
 
 ## Why
 

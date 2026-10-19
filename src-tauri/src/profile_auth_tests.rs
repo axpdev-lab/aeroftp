@@ -45,6 +45,7 @@ fn headless_flows_round_trip() {
         );
         return;
     }
+    let _session_guard = crate::user_partitions::test_lock();
     let executable = std::env::current_exe().unwrap();
     assert!(executable
         .parent()
