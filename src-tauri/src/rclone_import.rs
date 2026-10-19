@@ -1114,13 +1114,11 @@ fn map_remote(
         // ---- OpenStack Swift ----
         "swift" => {
             let auth_url = get_str("auth").unwrap_or("").to_string();
-            let host = auth_url
-                .trim_start_matches("https://")
-                .trim_start_matches("http://")
-                .split('/')
-                .next()
-                .unwrap_or("")
-                .to_string();
+            let host = auth_url.clone();
+            let port = url::Url::parse(&auth_url)
+                .ok()
+                .and_then(|url| url.port_or_known_default())
+                .unwrap_or(443);
             if host.is_empty() {
                 return Err("swift remote has no auth URL".to_string());
             }
@@ -1152,7 +1150,7 @@ fn map_remote(
                 protocol: "swift".to_string(),
                 provider_id: Some("custom-swift".to_string()),
                 host,
-                port: 443,
+                port: u32::from(port),
                 username: get_str("user").unwrap_or("").to_string(),
                 password: get_aeroftp_plain_secret("key", AEROFTP_OBSCURED_SWIFT_UNTIL),
                 options: if options.is_empty() {
@@ -1446,7 +1444,10 @@ fn map_remote(
             } else if session.is_some() {
                 "rclone's saved session was imported and is now shared with rclone: the first of the two to refresh it keeps it, the other signs in again"
             } else {
-                "the remote holds no complete saved session: sign in with Proton in                  AeroFTP after the import"
+                concat!(
+                    "the remote holds no complete saved session: after the import, ",
+                    crate::providers::proton_sign_in_hint!()
+                )
             };
             Ok(MappedProfile {
                 protocol: "proton".to_string(),
@@ -2236,9 +2237,12 @@ fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Op
                 .to_string(),
         ),
         "proton" if proton_session_of(server).is_none() => Some(
-            "the profile is not signed in to Proton: sign in with Proton in AeroFTP, \
-             then export again"
-                .to_string(),
+            concat!(
+                "the profile is not signed in to Proton: ",
+                crate::providers::proton_sign_in_hint!(),
+                ", then export again"
+            )
+            .to_string(),
         ),
         "imagekit" if imagekit_public_key(server.options.as_ref()).is_none() => Some(
             "rclone's imagekit backend requires the account public key, and this \
@@ -3597,6 +3601,20 @@ pub fn export_rclone(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn swift_import_keeps_the_auth_url_consumed_by_the_provider() {
+        let result = parse_rclone_conf(
+            "[swift-test]\ntype = swift\nauth = http://127.0.0.1:8080/identity/v3/auth/tokens\nuser = synthetic\nkey = synthetic\n",
+        );
+        assert_eq!(result.len(), 1);
+        let profile = map_remote("swift-test", &result["swift-test"], None).unwrap();
+        assert_eq!(
+            profile.host,
+            "http://127.0.0.1:8080/identity/v3/auth/tokens"
+        );
+        assert_eq!(profile.port, 8080);
+    }
 
     /// Write `conf` to a uniquely-named temp file and return its path.
     fn tmp_write(conf: &str, name: &str) -> std::path::PathBuf {

@@ -208,6 +208,46 @@ pub fn profile_connection_extra(
     host: &str,
 ) -> (HashMap<String, String>, String) {
     let mut extra = HashMap::new();
+    if let Some(spec) = crate::connection_manifest::provider_spec(provider_type) {
+        let raw_protocol = profile
+            .get("protocol")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&spec.token);
+        let (_, provider_id) = crate::connection_manifest::canonical_protocol_and_provider(
+            raw_protocol,
+            profile.get("providerId").and_then(|v| v.as_str()),
+        );
+        let preset = provider_id
+            .and_then(crate::connection_manifest::preset)
+            .filter(|preset| preset.protocol == spec.token);
+        for (key, value) in crate::connection_manifest::default_options(spec, preset) {
+            // Missing mode identifies a legacy CLI profile. Creation already
+            // materializes the native default in the saved options.
+            // Transport modes on saved FTP profiles retain the provider's
+            // legacy fallback, including imported ftpsMode. New profiles
+            // already store the manifest's TLS default at creation.
+            if (provider_type == ProviderType::Proton && key == "proton_mode")
+                || (matches!(provider_type, ProviderType::Ftp | ProviderType::Ftps)
+                    && canonicalize_profile_option_key(&key) == "tls_mode")
+            {
+                continue;
+            }
+            if provider_type == ProviderType::S3
+                && matches!(key.as_str(), "region" | "endpoint" | "pathStyle")
+            {
+                continue;
+            }
+            insert_profile_option(&mut extra, &key, &value);
+        }
+        if let Some(alias) = crate::connection_manifest::connection_alias(raw_protocol) {
+            for (key, value) in &alias.options {
+                insert_profile_option(&mut extra, key, value);
+            }
+        }
+        if let Some(id) = provider_id {
+            extra.insert("provider_id".into(), id.into());
+        }
+    }
     apply_profile_options(&mut extra, profile);
 
     if provider_type == ProviderType::Azure && !extra.contains_key("container") {
@@ -217,6 +257,14 @@ pub fn profile_connection_extra(
     }
 
     let mut resolved_host = host.to_string();
+    if provider_type == ProviderType::Swift && !host.contains("://") {
+        if let Some(endpoint) = extra
+            .get("endpoint")
+            .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
+        {
+            resolved_host = endpoint.clone();
+        }
+    }
     if provider_type == ProviderType::S3 {
         let provider_id = profile.get("providerId").and_then(|v| v.as_str());
         if let Some(endpoint) = apply_s3_profile_defaults(&mut extra, provider_id, host) {
@@ -324,63 +372,31 @@ pub fn apply_local_bridge_credential_defaults(
     }
 }
 
-/// Region a preset signs with when the profile stores none. Mirrors every
-/// `defaults.region` of an S3 preset in `src/providers/registry.ts`; the
-/// vitest `s3PresetRegionParity.test.ts` fails when the two drift.
+/// Region a preset signs with when the profile stores none: its explicit
+/// default or the first selectable region, shared with the frontend manifest.
 fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "backblaze" => Some("auto"),
-        "cloudflare-r2" => Some("auto"),
-        "google-cloud-storage" => Some("auto"),
-        "idrive-e2" => Some("auto"),
-        "filebase" => Some("auto"),
-        "storj" => Some("global"),
-        "filelu-s3" => Some("global"),
-        "yandex-storage" => Some("ru-central1"),
-        "oracle-cloud" => Some("us-east-1"),
-        "minio" => Some("us-east-1"),
-        "quotaless-s3" => Some("us-east-1"),
-        "ibm-cos" => Some("eu-de"),
-        "filen-desktop-s3" => Some("filen"),
-        "s3drive" => Some("us-east-1"),
-        _ => None,
-    }
+    let preset = crate::connection_manifest::preset(provider_id)?;
+    preset
+        .defaults
+        .get("region")
+        .and_then(serde_json::Value::as_str)
+        .or(preset.first_region.as_deref())
 }
 
-/// Addressing style a preset is known to need. `custom-s3` is deliberately
-/// absent: it is not a preset, and `S3Config` already defaults a custom
-/// endpoint to path-style, which is what self-hosted MinIO/Garage/Ceph need.
+/// Addressing style declared by a preset. Unbranded custom endpoints retain
+/// S3Config's own addressing heuristics.
 fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
-    match provider_id {
-        "backblaze" => Some(true),
-        "mega-s4" => Some(false),
-        "cloudflare-r2" => Some(true),
-        "google-cloud-storage" => Some(true),
-        "idrive-e2" => Some(true),
-        "filebase" => Some(true),
-        "wasabi" => Some(false),
-        "storj" => Some(true),
-        "alibaba-oss" => Some(false),
-        "tencent-cos" => Some(false),
-        "filelu-s3" => Some(true),
-        "yandex-storage" => Some(false),
-        "digitalocean-spaces" => Some(false),
-        "oracle-cloud" => Some(true),
-        "minio" => Some(true),
-        "quotaless-s3" => Some(true),
-        "ibm-cos" => Some(false),
-        _ => None,
-    }
+    crate::connection_manifest::preset(provider_id)?
+        .defaults
+        .get("pathStyle")?
+        .as_bool()
 }
 
 fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "filelu-s3" => Some("s5lu.com"),
-        "filebase" => Some("https://s3.filebase.io"),
-        "yandex-storage" => Some("https://storage.yandexcloud.net"),
-        "quotaless-s3" => Some("https://io.quotaless.cloud:8000"),
-        _ => None,
-    }
+    crate::connection_manifest::preset(provider_id)?
+        .defaults
+        .get("endpoint")?
+        .as_str()
 }
 
 /// Region an explicit endpoint names, read back through the preset's
@@ -454,17 +470,10 @@ fn mega_s4_legacy_region(region: &str) -> bool {
 }
 
 fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "mega-s4" => Some("s3.{region}.megas4.com"),
-        "cloudflare-r2" => Some("{accountId}{jurisdiction}.r2.cloudflarestorage.com"),
-        "google-cloud-storage" => Some("https://storage.googleapis.com"),
-        "wasabi" => Some("https://s3.{region}.wasabisys.com"),
-        "alibaba-oss" => Some("https://oss-{region}.aliyuncs.com"),
-        "tencent-cos" => Some("https://cos.{region}.myqcloud.com"),
-        "digitalocean-spaces" => Some("https://{region}.digitaloceanspaces.com"),
-        "ibm-cos" => Some("https://s3.{region}.cloud-object-storage.appdomain.cloud"),
-        _ => None,
-    }
+    crate::connection_manifest::preset(provider_id)?
+        .defaults
+        .get("endpointTemplate")?
+        .as_str()
 }
 
 /// Resolve S3 preset defaults (region, path_style, endpoint) from the provider

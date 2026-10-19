@@ -60,8 +60,11 @@ use crate::providers::{
 /// elsewhere show within this window.
 pub const PATH_CACHE_TTL: Duration = Duration::from_secs(30);
 
-const NOT_SIGNED_IN: &str =
-    "This profile is not signed in to Proton yet: sign in with Proton, then connect.";
+const NOT_SIGNED_IN: &str = concat!(
+    "This profile is not signed in to Proton yet: ",
+    crate::providers::proton_sign_in_hint!(),
+    ", then connect."
+);
 
 /// Whether `expected`, a profile's account field, names one of `addresses`:
 /// a full address compares whole, a bare name compares to each address's
@@ -298,7 +301,7 @@ pub fn map_error(path: &str, error: ProtonError) -> ProviderError {
         ProtonError::AlreadyExists { .. } => ProviderError::AlreadyExists(path.to_string()),
         ProtonError::InvalidName(reason) => ProviderError::InvalidPath(format!("{path}: {reason}")),
         ProtonError::SessionExpired | ProtonError::NotSignedIn => ProviderError::AuthenticationFailed(
-            "The Proton session has ended: sign in with Proton again.".into(),
+            concat!("The Proton session has ended: ", crate::providers::proton_sign_in_hint!(), " again.").into(),
         ),
         // A lost connection, so the app's silent reconnect runs: its connect
         // opens the session now saved for the profile, as Connect would.
@@ -980,7 +983,8 @@ impl StorageProvider for ProtonNativeProvider {
                 if !names_account(expected, &addresses) {
                     return Err(ProviderError::AuthenticationFailed(format!(
                         "The pending Proton sign-in belongs to another account than {expected}: \
-                         sign in with Proton again for this profile."
+                         {hint} again for this profile.",
+                        hint = crate::providers::PROTON_SIGN_IN_HINT
                     )));
                 }
             }
@@ -1804,6 +1808,23 @@ mod tests {
         assert!(!drive.get("hidden").trashed);
     }
 
+    /// The CLI signs in too, so a message that asks for a sign-in names both
+    /// routes: these said "sign in with Proton", the app's button, to a CLI
+    /// user who has no app to press it in.
+    #[test]
+    fn a_message_that_asks_for_a_sign_in_names_the_app_and_the_cli() {
+        let hint = crate::providers::PROTON_SIGN_IN_HINT;
+        assert!(hint.contains("AeroFTP app"), "{hint}");
+        assert!(hint.contains("aeroftp-cli proton sign-in"), "{hint}");
+        for text in [
+            NOT_SIGNED_IN.to_string(),
+            ProtonError::SessionExpired.to_string(),
+            ProtonError::NotSignedIn.to_string(),
+        ] {
+            assert!(text.contains(hint), "{text}");
+        }
+    }
+
     #[test]
     fn proton_errors_map_to_what_the_user_can_act_on() {
         assert!(matches!(
@@ -1824,7 +1845,8 @@ mod tests {
         for ended in [ProtonError::SessionExpired, ProtonError::NotSignedIn] {
             assert!(matches!(
                 map_error("/", ended),
-                ProviderError::AuthenticationFailed(ref t) if t.contains("sign in")
+                ProviderError::AuthenticationFailed(ref t)
+                    if t.contains(crate::providers::PROTON_SIGN_IN_HINT)
             ));
         }
         // The app reconnects silently only on a lost connection.

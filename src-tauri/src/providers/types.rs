@@ -155,99 +155,12 @@ impl fmt::Display for ProviderType {
 impl ProviderType {
     /// Parse a provider token from a CLI-facing lowercase-ish string.
     pub fn from_lowercase(raw: &str) -> Option<Self> {
-        let normalized: String = raw
-            .trim()
-            .chars()
-            .filter(|ch| !matches!(ch, ' ' | '-' | '_'))
-            .flat_map(|ch| ch.to_lowercase())
-            .collect();
-        match normalized.as_str() {
-            "ftp" => Some(Self::Ftp),
-            "ftps" => Some(Self::Ftps),
-            "sftp" => Some(Self::Sftp),
-            "webdav" | "webdavs" => Some(Self::WebDav),
-            "s3" => Some(Self::S3),
-            "aerocloud" => Some(Self::AeroCloud),
-            "drive" | "googledrive" => Some(Self::GoogleDrive),
-            "dropbox" => Some(Self::Dropbox),
-            "onedrive" => Some(Self::OneDrive),
-            "mega" => Some(Self::Mega),
-            "proton" | "protondrive" => Some(Self::Proton),
-            "box" => Some(Self::Box),
-            "pcloud" => Some(Self::PCloud),
-            "azure" | "azureblob" => Some(Self::Azure),
-            "filen" => Some(Self::Filen),
-            "4shared" | "fourshared" => Some(Self::FourShared),
-            "zohoworkdrive" => Some(Self::ZohoWorkdrive),
-            "internxt" => Some(Self::Internxt),
-            "kdrive" => Some(Self::KDrive),
-            "jottacloud" => Some(Self::Jottacloud),
-            "drime" | "drimecloud" => Some(Self::DrimeCloud),
-            "filelu" => Some(Self::FileLu),
-            "koofr" => Some(Self::Koofr),
-            "opendrive" => Some(Self::OpenDrive),
-            "yandex" | "yandexdisk" => Some(Self::YandexDisk),
-            "github" => Some(Self::GitHub),
-            "gitlab" => Some(Self::GitLab),
-            "swift" => Some(Self::Swift),
-            "photos" | "googlephotos" => Some(Self::GooglePhotos),
-            "immich" => Some(Self::Immich),
-            "twake" | "twakedrive" | "cozy" => Some(Self::Twake),
-            "imagekit" => Some(Self::ImageKit),
-            "uploadcare" => Some(Self::Uploadcare),
-            "b2" | "backblaze" | "backblazeb2" => Some(Self::Backblaze),
-            "cloudinary" => Some(Self::Cloudinary),
-            "peer" | "aeroshare" => Some(Self::Peer),
-            "mtp" | "wpd" | "portabledevice" | "portable" => Some(Self::Mtp),
-            "local" | "file" | "localdirectory" => Some(Self::Local),
-            _ => None,
-        }
+        crate::connection_manifest::provider_type(raw)
     }
 
     /// Get default port for this provider type
     pub fn default_port(&self) -> u16 {
-        match self {
-            ProviderType::Ftp => 21,
-            ProviderType::Ftps => 990,
-            ProviderType::Sftp => 22,
-            ProviderType::WebDav => 443,
-            ProviderType::S3 => 443,
-            ProviderType::AeroCloud => 21, // Uses FTP in background
-            ProviderType::GoogleDrive => 443,
-            ProviderType::Dropbox => 443,
-            ProviderType::OneDrive => 443,
-            ProviderType::Mega => 443,
-            ProviderType::Proton => 443,
-            ProviderType::Box => 443,
-            ProviderType::PCloud => 443,
-            ProviderType::Azure => 443,
-            ProviderType::Filen => 443,
-            ProviderType::FourShared => 443,
-            ProviderType::ZohoWorkdrive => 443,
-            ProviderType::Internxt => 443,
-            ProviderType::KDrive => 443,
-            ProviderType::Jottacloud => 443,
-            ProviderType::DrimeCloud => 443,
-            ProviderType::FileLu => 443,
-            ProviderType::Koofr => 443,
-            ProviderType::OpenDrive => 443,
-            ProviderType::YandexDisk => 443,
-            ProviderType::GitHub => 443,
-            ProviderType::GitLab => 443,
-            ProviderType::Swift => 443,
-            ProviderType::GooglePhotos => 443,
-            ProviderType::Immich => 2283,
-            ProviderType::Twake => 443,
-            ProviderType::ImageKit => 443,
-            ProviderType::Uploadcare => 443,
-            ProviderType::Backblaze => 443,
-            ProviderType::Cloudinary => 443,
-            ProviderType::AeroVaultMount => 0, // local, no network endpoint
-            // Transport is iroh (QUIC + relay); there is no host:port to dial.
-            ProviderType::Peer => 443,
-            ProviderType::Mtp => 0,   // local USB / WPD, no network endpoint
-            ProviderType::Local => 0, // a folder of this machine, no network endpoint
-        }
+        crate::connection_manifest::provider_spec(*self).map_or(0, |spec| spec.default_port)
     }
 
     /// Check if this provider uses encryption by default
@@ -405,6 +318,21 @@ impl ProviderConfig {
     /// Get the effective port (default or specified)
     pub fn effective_port(&self) -> u16 {
         self.port
+            .filter(|port| *port != 0)
+            .or_else(|| {
+                let id = self.extra.get("provider_id").or_else(|| {
+                    self.extra
+                        .get(crate::profile_loader::S3_PROVIDER_ID_META_KEY)
+                })?;
+                let spec = crate::connection_manifest::provider_spec(self.provider_type)?;
+                let preset = crate::connection_manifest::preset(id)
+                    .filter(|preset| preset.protocol == spec.token)?;
+                preset
+                    .defaults
+                    .get("port")?
+                    .as_u64()
+                    .and_then(|port| u16::try_from(port).ok())
+            })
             .unwrap_or_else(|| self.provider_type.default_port())
     }
 }
@@ -2520,6 +2448,65 @@ impl TransferProgressInfo {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_zero_ports_resolve_the_same_defaults_as_new_profiles() {
+        fn config(kind: super::ProviderType, preset: Option<&str>) -> super::ProviderConfig {
+            super::ProviderConfig {
+                name: "synthetic legacy profile".into(),
+                provider_type: kind,
+                host: "example.invalid".into(),
+                port: Some(0),
+                username: None,
+                password: None,
+                initial_path: None,
+                extra: preset
+                    .map(|id| [("provider_id".into(), id.into())].into_iter().collect())
+                    .unwrap_or_default(),
+            }
+        }
+        for spec in &crate::connection_manifest::manifest().protocols {
+            let kind = super::ProviderType::from_lowercase(&spec.token).unwrap();
+            assert_eq!(
+                config(kind, None).effective_port(),
+                spec.default_port,
+                "{}",
+                spec.token
+            );
+        }
+        for preset in &crate::connection_manifest::manifest().presets {
+            let kind = super::ProviderType::from_lowercase(&preset.protocol).unwrap();
+            let expected = preset
+                .defaults
+                .get("port")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(u64::from(kind.default_port()));
+            assert_eq!(
+                u64::from(config(kind, Some(&preset.id)).effective_port()),
+                expected,
+                "{}",
+                preset.id
+            );
+        }
+    }
+
+    #[test]
+    fn saved_connection_aliases_reach_their_native_provider() {
+        use super::ProviderType;
+        for (alias, expected) in [
+            ("blomp", ProviderType::Swift),
+            ("tabdigital", ProviderType::WebDav),
+            ("felicloud", ProviderType::WebDav),
+            ("pixelunion", ProviderType::Immich),
+            ("webdavs", ProviderType::WebDav),
+        ] {
+            assert_eq!(
+                ProviderType::from_lowercase(alias),
+                Some(expected),
+                "{alias}"
+            );
+        }
+    }
+
     /// The needles must match the strings `std` actually prints for a socket
     /// that has died, not the ones they sound like.
     ///

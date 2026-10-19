@@ -6,6 +6,7 @@
  * Initial connection form with Quick Connect and Saved Servers
  */
 
+import { presetConnectionOptions, connectionProfileDefaults } from '../providers/connectionManifest';
 import React, { useState, useEffect, useRef, useMemo, useId } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile, pickSave } from '../utils/pickPath';
@@ -1313,72 +1314,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 password: '',
                 providerId: connectionParams.providerId || selectedProviderId || 'mtp-portable',
             }
-            : protocol === 'uploadcare'
-            ? {
+            : {
                 ...connectionParams,
-                server: connectionParams.server || 'api.uploadcare.com',
-                port: connectionParams.port || 443,
-                providerId: connectionParams.providerId || 'uploadcare',
-            }
-            : protocol === 'imagekit'
-            ? {
-                ...connectionParams,
-                server: connectionParams.server || 'api.imagekit.io',
-                port: connectionParams.port || 443,
-                providerId: connectionParams.providerId || 'imagekit',
-            }
-            : protocol === 'cloudinary'
-            ? {
-                ...connectionParams,
-                server: connectionParams.server || 'api.cloudinary.com',
-                port: connectionParams.port || 443,
-                providerId: connectionParams.providerId || 'cloudinary',
-            }
-            : protocol === 'filelu'
-            ? {
-                ...connectionParams,
-                server: connectionParams.server || 'filelu.com',
-                username: connectionParams.username || 'api-key',
-                port: connectionParams.port || 443,
-            }
-            : protocol === 'opendrive'
-                ? {
-                    ...connectionParams,
-                    server: connectionParams.server || 'dev.opendrive.com',
-                    port: connectionParams.port || 443,
-                }
-            : protocol === 'github'
-                ? {
-                    ...connectionParams,
-                    server: connectionParams.server || '',
-                    port: connectionParams.port || 443,
-                }
-            : protocol === 'immich'
-                ? {
-                    ...connectionParams,
-                    server: connectionParams.server || '',
-                    username: connectionParams.username || 'api-key',
-                    port: connectionParams.port || 443,
-                }
-            : protocol === 'twake'
-                ? {
-                    ...connectionParams,
-                    server: connectionParams.server || '',
-                    port: connectionParams.port || 443,
-                }
-            : protocol === 'backblaze'
-                ? {
-                    ...connectionParams,
-                    server: connectionParams.server || 'api.backblazeb2.com',
-                    port: connectionParams.port || 443,
-                }
-            : selectedProvider?.defaults?.server && !connectionParams.server
-                ? {
-                    ...connectionParams,
-                    server: selectedProvider.defaults.server,
-                    port: connectionParams.port || selectedProvider.defaults.port || getDefaultPort(protocol),
-                }
-            : connectionParams;
+                server: connectionParams.server || connectionProfileDefaults(protocol, connectionParams.providerId).server,
+                port: connectionParams.port || connectionProfileDefaults(protocol, connectionParams.providerId).port,
+                username: connectionParams.username || connectionProfileDefaults(protocol, connectionParams.providerId).username,
+                providerId: connectionParams.providerId || connectionProfileDefaults(protocol, connectionParams.providerId).providerId,
+            };
 
         // MTP save requires a fingerprint (from Detect or hydrated edit profile).
         if (protocol === 'mtp' && !mtpFingerprint?.canonical) return;
@@ -2623,17 +2565,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     port: provider.defaults?.port || getDefaultPort(newProtocol),
                     providerId: provider.id,
                     options: newProtocol === 'mega' ? normalizeMegaOptions() : {
-                        pathStyle: provider.defaults?.pathStyle,
-                        region: provider.defaults?.region,
-                        endpoint: provider.defaults?.endpoint,
-                        anonymous: provider.defaults?.anonymous,
-                        // Propagate WebDAV scheme override (Filen Desktop, MEGAcmd, etc.)
-                        // so the backend builds http://... instead of https://...
-                        webdavScheme: provider.defaults?.webdavScheme,
-                        // Local HTTPS bridges (Filen Desktop S3) use self-signed certs
-                        verifyCert: provider.defaults?.verifyCert,
-                        // Swift catalogs that publish a cleartext object store (Blomp)
-                        allowCleartextStorage: provider.defaults?.allowCleartextStorage,
+                        ...presetConnectionOptions(provider.id),
                     },
                 });
                 onQuickConnectDirsChange({
@@ -2644,19 +2576,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
         }
 
-        const protocolDefaults: Partial<ConnectionParams> = newProtocol === 'uploadcare'
-            ? { server: 'api.uploadcare.com', port: 443, providerId: 'uploadcare' }
-            : newProtocol === 'imagekit'
-            ? { server: 'api.imagekit.io', port: 443, providerId: 'imagekit' }
-            : newProtocol === 'cloudinary'
-            ? { server: 'api.cloudinary.com', port: 443, providerId: 'cloudinary' }
-            : newProtocol === 'filelu'
-            ? { server: 'filelu.com', username: 'api-key', port: 443 }
-            : newProtocol === 'opendrive'
-                ? { server: 'dev.opendrive.com', port: 443 }
-            : newProtocol === 'mega'
-                ? { server: 'mega.nz', port: 443, options: normalizeMegaOptions() }
-                : {};
+        const protocolDefaults = connectionProfileDefaults(newProtocol);
 
         // Reset ALL form fields (clear previous server's credentials)
         onConnectionParamsChange({
@@ -2694,13 +2614,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             providerId: provider.isGeneric ? undefined : provider.id,
             options: {
                 ...connectionParams.options,
-                pathStyle: provider.defaults?.pathStyle,
+                ...presetConnectionOptions(provider.id),
                 region: effectiveRegion,
                 endpoint: resolvedEndpoint,
-                anonymous: provider.defaults?.anonymous,
             },
         };
         onConnectionParamsChange(newParams);
+        onQuickConnectDirsChange({ remoteDir: provider.defaults?.basePath || '', localDir: quickConnectDirs.localDir });
     };
 
     // Dynamic server placeholder based on protocol and provider

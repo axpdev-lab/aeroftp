@@ -302,6 +302,14 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
+    #[cfg(target_os = "linux")]
+    fn node_runtime() -> PathBuf {
+        std::env::split_paths(&std::env::var_os("PATH").expect("PATH"))
+            .map(|dir| dir.join("node"))
+            .find(|path| path.is_file())
+            .expect("Node fixture runtime")
+    }
+
     fn fixture(args: Vec<String>) -> McpServerConfig {
         McpServerConfig {
             id: "sandbox".into(),
@@ -385,7 +393,7 @@ mod tests {
             .join("main.js")
             .to_string_lossy()
             .into_owned()]);
-        config.command = "/usr/bin/node".into();
+        config.command = node_runtime().to_string_lossy().into_owned();
         let grant = crate::mcp_client_install_paths::directory_grant(dir.path()).unwrap();
         config.sandbox.directories = vec![grant];
         let mut command = peer_command(&config).unwrap();
@@ -431,7 +439,7 @@ mod tests {
         )
         .unwrap();
         let mut config = fixture(vec![dir.join("main.js").to_string_lossy().into_owned()]);
-        config.command = "/usr/bin/node".into();
+        config.command = node_runtime().to_string_lossy().into_owned();
         config.sandbox.directories = vec![grant];
         config.sandbox.managed = Some(crate::mcp_client_config::McpManagedInstall {
             manifest_id: "fixture".into(),

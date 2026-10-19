@@ -8,6 +8,12 @@ import { getProviderById, presetDefaultS3Region, resolveProfileS3Location } from
 // (connect, speed test, edit): stored endpoint, then an explicit host, then
 // the preset. Mirrors apply_s3_profile_defaults in profile_loader.rs.
 describe('resolveProfileS3Location', () => {
+    it('resolves an imported preset alias with the canonical signing defaults', () => {
+        const host = 's3.us-west-004.backblazeb2.com';
+        expect(resolveProfileS3Location('backblaze-b2', {}, host))
+            .toEqual(resolveProfileS3Location('backblaze', {}, host));
+    });
+
     it('keeps an endpoint carried only in the host (Cyberduck / restic import)', () => {
         // Before: the template built s3.us-east-1.cloud-object-storage... (no
         // such region) for an IBM bucket imported with its us-south host.

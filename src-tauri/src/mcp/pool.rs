@@ -561,49 +561,7 @@ fn resolve_profile_id(server_query: &str) -> Result<String, String> {
 /// Cloudinary and native B2 were announced and unreachable). Matching ignores
 /// case and common separators used in manually entered profile protocols.
 fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
-    let normalized: String = protocol
-        .trim()
-        .chars()
-        .filter(|ch| !matches!(ch, ' ' | '-' | '_'))
-        .flat_map(|ch| ch.to_uppercase())
-        .collect();
-    Some(match normalized.as_str() {
-        "FTP" => ProviderType::Ftp,
-        "FTPS" => ProviderType::Ftps,
-        "SFTP" => ProviderType::Sftp,
-        "WEBDAV" | "WEBDAVS" => ProviderType::WebDav,
-        "S3" => ProviderType::S3,
-        "GITHUB" => ProviderType::GitHub,
-        "GITLAB" => ProviderType::GitLab,
-        "MEGA" => ProviderType::Mega,
-        "PROTON" | "PROTONDRIVE" => ProviderType::Proton,
-        "AZURE" => ProviderType::Azure,
-        "FILEN" => ProviderType::Filen,
-        "INTERNXT" => ProviderType::Internxt,
-        "KDRIVE" => ProviderType::KDrive,
-        "JOTTACLOUD" => ProviderType::Jottacloud,
-        "DRIMECLOUD" | "DRIME" => ProviderType::DrimeCloud,
-        "FILELU" => ProviderType::FileLu,
-        "KOOFR" => ProviderType::Koofr,
-        "OPENDRIVE" => ProviderType::OpenDrive,
-        "YANDEXDISK" | "YANDEX" => ProviderType::YandexDisk,
-        "SWIFT" => ProviderType::Swift,
-        "IMMICH" => ProviderType::Immich,
-        "TWAKE" | "TWAKEDRIVE" => ProviderType::Twake,
-        "IMAGEKIT" => ProviderType::ImageKit,
-        "UPLOADCARE" => ProviderType::Uploadcare,
-        "CLOUDINARY" => ProviderType::Cloudinary,
-        "B2" | "BACKBLAZE" | "BACKBLAZEB2" => ProviderType::Backblaze,
-        // OAuth2 providers: only if token is present
-        "GOOGLEDRIVE" => ProviderType::GoogleDrive,
-        "DROPBOX" => ProviderType::Dropbox,
-        "ONEDRIVE" => ProviderType::OneDrive,
-        "BOX" => ProviderType::Box,
-        "PCLOUD" => ProviderType::PCloud,
-        "ZOHOWORKDRIVE" | "ZOHO" => ProviderType::ZohoWorkdrive,
-        "FOURSHARED" | "4SHARED" => ProviderType::FourShared,
-        _ => return None,
-    })
+    ProviderType::from_lowercase(protocol)
 }
 
 /// Create a StorageProvider from vault credentials. Supports all non-OAuth2 protocols

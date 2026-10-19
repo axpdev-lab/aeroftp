@@ -202,6 +202,7 @@ async fn round_trip() {
         &accounts,
         "fixture-github",
         "github",
+        crate::profile_auth_state::profile_auth_source(&github),
     ) != "valid"
     {
         gaps.push("GitHub Device Flow readiness ignores its token slot");

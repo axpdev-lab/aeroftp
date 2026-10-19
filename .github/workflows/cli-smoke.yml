@@ -6,6 +6,12 @@ on:
     paths:
       - 'src-tauri/src/bin/aeroftp_cli.rs'
       - 'src-tauri/src/providers/**'
+      - 'src/shared/connection-manifest.json'
+      - 'src-tauri/src/connection_manifest.rs'
+      - 'src-tauri/src/profile_loader.rs'
+      - 'src-tauri/src/rclone_import.rs'
+      - 'src-tauri/src/bridge_shared.rs'
+      - 'src-tauri/examples/connection_profile_parity.rs'
       - 'src-tauri/src/profile_auth*.rs'
       - 'src-tauri/src/mcp/tools.rs'
       - 'src-tauri/src/mcp/pool.rs'
@@ -17,6 +23,12 @@ on:
     paths:
       - 'src-tauri/src/bin/aeroftp_cli.rs'
       - 'src-tauri/src/providers/**'
+      - 'src/shared/connection-manifest.json'
+      - 'src-tauri/src/connection_manifest.rs'
+      - 'src-tauri/src/profile_loader.rs'
+      - 'src-tauri/src/rclone_import.rs'
+      - 'src-tauri/src/bridge_shared.rs'
+      - 'src-tauri/examples/connection_profile_parity.rs'
       - 'src-tauri/src/profile_auth*.rs'
       - 'src-tauri/src/mcp/tools.rs'
       - 'src-tauri/src/mcp/pool.rs'
@@ -157,6 +169,13 @@ jobs:
           fi
           cargo build --release --bin aeroftp-cli
 
+      - name: Saved connection profile parity
+        if: runner.os == 'Linux'
+        working-directory: src-tauri
+        shell: bash
+        env:
+          CLI_BIN: ${{ matrix.cli_bin }}
+        run: cargo run --release --example connection_profile_parity -- "$CLI_BIN"
       - name: Headless profile auth and credential consumption
         if: runner.os == 'Linux'
         working-directory: src-tauri
