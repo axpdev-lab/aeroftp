@@ -3735,15 +3735,30 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Creating directory: {}", full_path);
 
-        until_sftp_ends(&sftp.ended, sftp.create_dir(&full_path))
-            .await
-            .map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::ServerError(format!("Failed to create directory: {}", s))
-                })
-            })?;
-
-        Ok(())
+        match until_sftp_ends(&sftp.ended, sftp.create_dir(&full_path)).await {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                // SFTP v3 servers commonly answer generic Failure for EEXIST.
+                // Only a successful directory stat can turn that into success
+                // for mkdir -p callers. A file or an inconclusive probe cannot.
+                let generic_failure = matches!(
+                    &error,
+                    russh_sftp::client::error::Error::Status(status)
+                        if status.status_code == russh_sftp::protocol::StatusCode::Failure
+                );
+                if generic_failure
+                    && until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
+                        .await
+                        .is_ok_and(|metadata| metadata.is_dir())
+                {
+                    return Err(ProviderError::AlreadyExists(full_path));
+                }
+                Err(classify_sftp_status_err(
+                    error,
+                    "Failed to create directory",
+                ))
+            }
+        }
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -7925,6 +7940,109 @@ mod tests {
         let mut provider = provider_without_a_session();
         provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
         (provider, writes)
+    }
+
+    struct MkdirFailureServer {
+        mkdir_error: russh_sftp::protocol::StatusCode,
+        stat_error: Option<russh_sftp::protocol::StatusCode>,
+        permissions: u32,
+        probes: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl russh_sftp::server::Handler for MkdirFailureServer {
+        type Error = russh_sftp::protocol::StatusCode;
+        fn unimplemented(&self) -> Self::Error {
+            russh_sftp::protocol::StatusCode::OpUnsupported
+        }
+        async fn init(
+            &mut self,
+            _version: u32,
+            _extensions: std::collections::HashMap<String, String>,
+        ) -> Result<russh_sftp::protocol::Version, Self::Error> {
+            Ok(russh_sftp::protocol::Version::new())
+        }
+        async fn mkdir(
+            &mut self,
+            _id: u32,
+            _path: String,
+            _attrs: russh_sftp::protocol::FileAttributes,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            Err(self.mkdir_error)
+        }
+        async fn stat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            self.probes
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if let Some(error) = self.stat_error {
+                return Err(error);
+            }
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    permissions: Some(self.permissions),
+                    ..Default::default()
+                },
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn generic_mkdir_failure_is_already_exists_only_for_a_proven_directory() {
+        use russh_sftp::protocol::StatusCode;
+        for (mkdir_error, stat_error, permissions, directory) in [
+            (StatusCode::Failure, None, 0o040755, true),
+            (StatusCode::Failure, None, 0o100644, false),
+            (StatusCode::Failure, None, 0, false),
+            (StatusCode::Failure, Some(StatusCode::NoSuchFile), 0, false),
+            (
+                StatusCode::Failure,
+                Some(StatusCode::PermissionDenied),
+                0,
+                false,
+            ),
+            (StatusCode::PermissionDenied, None, 0o040755, false),
+        ] {
+            let (client, server) = tokio::io::duplex(1 << 20);
+            let probes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            russh_sftp::server::run(
+                server,
+                MkdirFailureServer {
+                    mkdir_error,
+                    stat_error,
+                    permissions,
+                    probes: probes.clone(),
+                },
+            )
+            .await;
+            let mut provider = provider_without_a_session();
+            provider.sftp = Some(SftpChannel::open(client).await.unwrap());
+            let error = provider
+                .mkdir("/existing")
+                .await
+                .expect_err("mkdir is refused on this server");
+            assert_eq!(
+                matches!(error, ProviderError::AlreadyExists(_)),
+                directory,
+                "{error:?}"
+            );
+            assert_eq!(
+                probes.load(std::sync::atomic::Ordering::Relaxed),
+                usize::from(mkdir_error == StatusCode::Failure)
+            );
+            if !directory {
+                if mkdir_error == StatusCode::PermissionDenied {
+                    assert!(matches!(error, ProviderError::PermissionDenied(_)));
+                } else {
+                    assert!(
+                        matches!(error, ProviderError::ServerError(_)),
+                        "keep the original mkdir failure, not the probe's error"
+                    );
+                }
+            }
+        }
     }
 
     /// An SFTP server that answers every STAT with FAILURE, as some servers

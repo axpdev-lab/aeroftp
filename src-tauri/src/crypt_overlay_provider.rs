@@ -667,6 +667,21 @@ impl CryptOverlayProvider {
         Ok(None)
     }
 
+    /// A recursive copy creates empty directories before upload gets a chance
+    /// to run its guard. Apply the same check, including the directory itself,
+    /// before any mkdir can materialize a parallel encrypted tree.
+    pub(crate) async fn check_directory_creation(
+        &mut self,
+        path: &str,
+    ) -> Result<(), ProviderError> {
+        self.map(path, true, AccessKind::Write)?;
+        let child = format!("{}/.aeroftp-directory-probe", path.trim_end_matches('/'));
+        if let Some(parent) = self.phantom_plaintext_parent(&child).await? {
+            return Err(ProviderError::InvalidPath(format!("refusing to create an encrypted directory beside plaintext folder {parent:?}; turn the overlay off or choose an encrypted folder (issue #390)")));
+        }
+        Ok(())
+    }
+
     /// #390 smart re-anchor support: is the wrapped provider's CURRENT on-wire
     /// cwd a valid location inside the encrypted view? True when the cwd is the
     /// anchor itself or a below-anchor path whose every component decodes as real
@@ -6666,6 +6681,100 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("strict-mem".into())
         }
+    }
+
+    fn planned_directory(path: &str) -> crate::cross_profile_transfer::CrossProfileTransferEntry {
+        crate::cross_profile_transfer::CrossProfileTransferEntry {
+            source_path: path.into(),
+            dest_path: path.into(),
+            display_name: path.into(),
+            size: 0,
+            modified: None,
+            is_dir: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_directory_creation_preserves_crypt_phantom_guard_and_real_trees() {
+        use crate::cross_profile_transfer::ensure_planned_directories;
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let mut dest = CryptOverlayProvider::new(
+                Box::new(StrictMemProvider::with_dirs(&["/Vault", "/Vault/Plain"])),
+                keys,
+                "/Vault",
+            );
+            let plan = [
+                planned_directory("/Vault"),
+                planned_directory("/Vault/Plain/Missing"),
+            ];
+            assert!(ensure_planned_directories(&mut dest, &plan, || false)
+                .await
+                .is_err());
+            let inner = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            assert_eq!(
+                inner.dir_list(),
+                ["/Vault", "/Vault/Plain"],
+                "preflight must precede all writes"
+            );
+        }
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let mut dest = CryptOverlayProvider::new(
+                Box::new(StrictMemProvider::with_dirs(&["/Vault"])),
+                keys,
+                "/Vault",
+            );
+            let plan = [planned_directory("/Vault/Fresh/Empty")];
+            ensure_planned_directories(&mut dest, &plan, || false)
+                .await
+                .unwrap();
+            let encoded = dest
+                .map("/Vault/Fresh/Empty", true, AccessKind::Write)
+                .unwrap();
+            assert!(dest.inner.exists(&encoded).await.unwrap());
+            let inner = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            assert!(!inner
+                .dir_list()
+                .iter()
+                .any(|path| path.contains("Fresh") || path.contains("Empty")));
+            assert!(inner.file_paths().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_directory_creation_stops_on_cancel_and_reports_mkdir_failure() {
+        use crate::cross_profile_transfer::ensure_planned_directories;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let mut dest = StrictMemProvider::with_dirs(&[]);
+        dest.cancel_after_mkdir = Some(cancel.clone());
+        let plan = [planned_directory("/first/second/empty")];
+        assert!(
+            ensure_planned_directories(&mut dest, &plan, || cancel.is_cancelled())
+                .await
+                .is_err()
+        );
+        assert_eq!(dest.dir_list(), ["/first"]);
+
+        let mut detached = DetachedProvider;
+        assert!(
+            ensure_planned_directories(&mut detached, &plan, || false)
+                .await
+                .is_err(),
+            "an empty tree must not succeed when mkdir fails"
+        );
     }
 
     #[tokio::test]

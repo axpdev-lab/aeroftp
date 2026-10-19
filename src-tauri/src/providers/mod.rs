@@ -2162,6 +2162,47 @@ pub async fn delete_non_recursive(
     }
 }
 
+/// Recursive removal still uses the file verb for a file or a symlink.
+/// Only a confirmed directory (including an object-store prefix discovered
+/// by listing) reaches the provider's guarded recursive directory removal.
+pub async fn delete_recursive(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let absolute = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("{}/{path}", provider.pwd().await?)
+    };
+    if crate::sync_core::walk_path_key(&absolute.replace('\\', "/"))
+        .trim_matches('/')
+        .is_empty()
+    {
+        return Err(ProviderError::InvalidPath(
+            "refusing to recursively delete the remote root".into(),
+        ));
+    }
+    match provider.stat(path).await {
+        Ok(entry) if entry.is_walkable_dir() => provider.rmdir_recursive(path).await,
+        Ok(_) => provider.delete(path).await,
+        Err(error) if stat_cannot_describe(&error) => match provider.list(path).await {
+            Ok(children) => {
+                crate::sync_core::listing_to_remove(path, children)?;
+                provider.rmdir_recursive(path).await
+            }
+            Err(list_error) if listing_says_no_folder(&list_error) => {
+                if matches!(error, ProviderError::NotFound(_)) {
+                    Err(error)
+                } else {
+                    provider.delete(path).await
+                }
+            }
+            Err(list_error) => Err(list_error),
+        },
+        Err(error) => Err(error),
+    }
+}
+
 fn is_a_directory(path: &str) -> ProviderError {
     ProviderError::InvalidPath(format!(
         "{path} is a directory: this deletes files only; remove a directory with RMD or RMDIR"
@@ -4252,6 +4293,153 @@ mod non_recursive_delete_tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("scripted".to_string())
         }
+    }
+
+    #[tokio::test]
+    async fn recursive_remove_selects_the_file_verb_and_keeps_failures_closed() {
+        let mut regular = Scripted::new(file, no_child);
+        delete_recursive(&mut regular, "/f").await.unwrap();
+        assert_eq!(regular.calls, ["stat", "delete"]);
+
+        let mut directory = Scripted::new(dir, one_child);
+        delete_recursive(&mut directory, "/d").await.unwrap();
+        assert_eq!(directory.calls, ["stat", "rmdir_recursive"]);
+
+        let mut link = Scripted::new(
+            || {
+                let mut entry = dir()?;
+                entry.is_symlink = true;
+                Ok(entry)
+            },
+            one_child,
+        );
+        delete_recursive(&mut link, "/l").await.unwrap();
+        assert_eq!(link.calls, ["stat", "delete"]);
+
+        let mut denied = Scripted::new(
+            || Err(ProviderError::PermissionDenied("denied".into())),
+            no_child,
+        );
+        assert!(matches!(
+            delete_recursive(&mut denied, "/d").await,
+            Err(ProviderError::PermissionDenied(_))
+        ));
+        assert_eq!(denied.calls, ["stat"]);
+
+        let mut prefix = Scripted::new(not_found, one_child);
+        delete_recursive(&mut prefix, "/d").await.unwrap();
+        assert_eq!(prefix.calls, ["stat", "list", "rmdir_recursive"]);
+
+        let mut stray = Scripted::new(not_found, || {
+            Ok(vec![RemoteEntry::file("other".into(), "/other".into(), 1)])
+        });
+        assert!(delete_recursive(&mut stray, "/d").await.is_err());
+        assert_eq!(stray.calls, ["stat", "list"]);
+
+        for root in ["/", "", ".", "/a/..", "/a/../"] {
+            let mut provider = Scripted::new(dir, one_child);
+            assert!(
+                delete_recursive(&mut provider, root).await.is_err(),
+                "{root:?}"
+            );
+            assert!(
+                provider.calls.is_empty(),
+                "no mutation or listing of {root:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_profile_skip_uses_the_one_way_window_and_size_only_fallback() {
+        use crate::cross_profile_transfer::{should_skip_existing, CrossProfileTransferEntry};
+        let mut dest = Scripted::new(
+            || {
+                let mut entry = file()?;
+                entry.modified = Some("2026-10-19T10:00:10Z".into());
+                Ok(entry)
+            },
+            no_child,
+        );
+        for (modified, size, precision, expected) in [
+            (
+                Some("2026-10-19T12:00:10+02:00"),
+                1,
+                Some(std::time::Duration::from_secs(1)),
+                true,
+            ),
+            (
+                Some("2026-10-19T10:00:12Z"),
+                1,
+                Some(std::time::Duration::from_secs(1)),
+                true,
+            ),
+            (
+                Some("2026-10-19T10:00:13Z"),
+                1,
+                Some(std::time::Duration::from_secs(1)),
+                false,
+            ),
+            (
+                Some("2020-01-01T00:00:00Z"),
+                1,
+                Some(std::time::Duration::from_secs(1)),
+                true,
+            ),
+            (Some("2030-01-01T00:00:00Z"), 1, None, true),
+            (None, 1, Some(std::time::Duration::from_secs(1)), true),
+            (
+                Some("not a date"),
+                1,
+                Some(std::time::Duration::from_secs(1)),
+                true,
+            ),
+            (None, 2, None, false),
+        ] {
+            let source = CrossProfileTransferEntry {
+                source_path: "/src".into(),
+                dest_path: "/f".into(),
+                display_name: "f".into(),
+                size,
+                modified: modified.map(str::to_owned),
+                is_dir: false,
+            };
+            assert_eq!(
+                should_skip_existing(precision, &mut dest, "/f", &source)
+                    .await
+                    .unwrap(),
+                expected,
+                "{source:?}"
+            );
+        }
+        let source = CrossProfileTransferEntry {
+            source_path: "/src".into(),
+            dest_path: "/d".into(),
+            display_name: "d".into(),
+            size: 0,
+            modified: None,
+            is_dir: false,
+        };
+        assert!(
+            !should_skip_existing(None, &mut Scripted::new(dir, no_child), "/d", &source)
+                .await
+                .unwrap()
+        );
+        assert!(!should_skip_existing(
+            None,
+            &mut Scripted::new(not_found, no_child),
+            "/d",
+            &source
+        )
+        .await
+        .unwrap());
+        let mut denied = Scripted::new(
+            || Err(ProviderError::PermissionDenied("denied".into())),
+            no_child,
+        );
+        assert!(matches!(
+            should_skip_existing(None, &mut denied, "/d", &source).await,
+            Err(ProviderError::PermissionDenied(_))
+        ));
     }
 
     /// `rm` without `-r` of a folder that still held files deleted them on

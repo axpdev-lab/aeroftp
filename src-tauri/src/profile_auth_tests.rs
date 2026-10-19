@@ -71,6 +71,50 @@ async fn round_trip() {
     };
     assert_eq!(CredentialStore::init().unwrap(), "OK");
     let store = CredentialStore::from_cache().unwrap();
+    let _user_guard = users::test_lock();
+    // Exercise the GUI/AeroAgent factory in this isolated, synthetic vault.
+    // Missing authorization must reach profile-bound auth, without the old
+    // blanket refusal or an interactive browser flow, for all seven routes.
+    for protocol in [
+        "googledrive",
+        "dropbox",
+        "onedrive",
+        "box",
+        "pcloud",
+        "zohoworkdrive",
+        "fourshared",
+    ] {
+        let id = format!("temp-factory-{protocol}");
+        store
+            .store(
+                "config_server_profiles",
+                &json!([{
+                    "id": id, "name": "synthetic missing authorization", "protocol": protocol,
+                    "host": "", "port": 0, "username": ""
+                }])
+                .to_string(),
+            )
+            .unwrap();
+        let server = crate::ai_tools::load_saved_servers().unwrap().remove(0);
+        match crate::ai_tools::create_temp_provider(&server).await {
+            Ok(_) => panic!("{protocol}: a profile without authorization must not connect"),
+            Err(error) => {
+                assert!(
+                    !error.contains("requires browser authentication"),
+                    "{protocol}: {error}"
+                );
+                assert!(
+                    !error.contains("Unsupported protocol"),
+                    "{protocol}: {error}"
+                );
+                assert!(
+                    error.contains("Connection to") || error.contains("authorization missing"),
+                    "{protocol}: {error}"
+                );
+            }
+        }
+    }
+    store.delete("config_server_profiles").unwrap();
     let scope = AuthScope {
         store: &store,
         user_id: None,

@@ -517,18 +517,20 @@ impl RemoteBackend for TauriRemoteBackend {
         match self {
             TauriRemoteBackend::Active { app } => {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
-                    return p.rmdir_recursive(path).await.map_err(|e| e.to_string());
+                    return crate::providers::delete_recursive(p.as_mut(), path)
+                        .await
+                        .map_err(|e| e.to_string());
                 }
                 // The legacy FtpManager path exposes no recursive remove, and
                 // faking it with a per-entry walk here would hide the failure.
                 Err("recursive delete requires an active provider connection".to_string())
             }
-            TauriRemoteBackend::Temp { provider } => provider
-                .lock()
-                .await
-                .rmdir_recursive(path)
-                .await
-                .map_err(|e| e.to_string()),
+            TauriRemoteBackend::Temp { provider } => {
+                let mut guard = provider.lock().await;
+                crate::providers::delete_recursive(guard.as_mut(), path)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
         }
     }
 

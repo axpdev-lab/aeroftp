@@ -2310,6 +2310,7 @@ async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
 
     if skip_existing {
         match crate::cross_profile_transfer::should_skip_existing(
+            src_provider.mtime_precision(),
             dst_provider.as_mut(),
             &dst_path,
             &entry,
@@ -2453,7 +2454,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     // destination backend. Refuse a leaf its rules forbid up front, before
     // any byte moves and before the dry-run report, so a preview cannot
     // promise a tree the destination would reject halfway through.
-    for entry in &plan.entries {
+    for entry in plan.directories.iter().chain(&plan.entries) {
         crate::restricted_chars::validate_path(dst_provider.provider_type(), &entry.dest_path)
             .map_err(|e| ToolError::Exec(format!("{}: {}", entry.dest_path, e)))?;
     }
@@ -2469,6 +2470,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                 "dst_server": dst_server.name,
                 "dst_path": dst_path,
                 "dry_run": true,
+                "planned_directories": plan.directories.len(),
                 "total_files": plan.total_files,
                 "total_bytes": plan.total_bytes,
                 "max_files": max_files,
@@ -2495,6 +2497,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             "dst_server": dst_server.name,
             "dst_path": dst_path,
             "dry_run": true,
+            "directories": plan.directories,
             "plan": entries,
             "total_files": plan.total_files,
             "total_bytes": plan.total_bytes,
@@ -2505,6 +2508,18 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     }
 
     // ── Execute ──
+    let directories_result = crate::cross_profile_transfer::ensure_planned_directories(
+        dst_provider.as_mut(),
+        &plan.directories,
+        || ctx.cancel_token().is_some_and(|token| token.is_cancelled()),
+    )
+    .await;
+    if let Err(error) = directories_result {
+        let _ = src_provider.disconnect().await;
+        let _ = dst_provider.disconnect().await;
+        crate::ai_core::tools::check_cancelled(ctx)?;
+        return Err(ToolError::Exec(error.to_string()));
+    }
     let total_planned = plan.total_files;
     let mut transferred_files: u64 = 0;
     let mut skipped_files: u64 = 0;
@@ -2522,6 +2537,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         crate::ai_core::tools::check_cancelled(ctx)?;
         if skip_existing {
             match crate::cross_profile_transfer::should_skip_existing(
+                src_provider.mtime_precision(),
                 dst_provider.as_mut(),
                 &entry.dest_path,
                 entry,

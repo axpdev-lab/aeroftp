@@ -42,6 +42,7 @@ struct StoredCrossProfilePlan {
     dest_server: SavedServerInfo,
     request: CrossProfileTransferRequest,
     plan: CrossProfileTransferPlan,
+    source_mtime_precision: Option<Duration>,
     created_at_ms: u64,
 }
 
@@ -110,6 +111,7 @@ pub struct CrossProfilePlanResponse {
     pub source_profile: String,
     pub dest_profile: String,
     pub entries: Vec<CrossProfileTransferEntry>,
+    pub directories: Vec<CrossProfileTransferEntry>,
     pub total_files: u64,
     pub total_bytes: u64,
 }
@@ -267,6 +269,7 @@ struct CrossProfileExecutor {
     source_server: SavedServerInfo,
     dest_server: SavedServerInfo,
     skip_existing: bool,
+    source_mtime_precision: Option<Duration>,
     cancel_token: CancellationToken,
     total: u64,
     speed_meter: crate::transfer_speed::SpeedMeter,
@@ -292,6 +295,7 @@ impl CrossProfileExecutor {
                 Ok(provider) => {
                     let mut dest = ProviderGuard::new(provider, "destination");
                     match should_skip_existing(
+                        self.source_mtime_precision,
                         dest.provider_mut(),
                         &entry.local_path,
                         &entry_to_cross_profile(&entry),
@@ -599,6 +603,9 @@ pub async fn cross_profile_plan(
     let plan = plan_transfer(source.provider_mut(), dest.provider_mut(), &core_request)
         .await
         .map_err(|e| format!("Planning failed: {}", e))?;
+    // FTP learns whether its dates are comparable from the listing used by
+    // planning (MLSD versus LIST), not just from the protocol name.
+    let source_mtime_precision = source.provider_mut().mtime_precision();
     if let Err(err) = source.disconnect().await {
         tracing::warn!(
             "cross-profile: failed to disconnect source provider: {}",
@@ -621,6 +628,7 @@ pub async fn cross_profile_plan(
             dest_server,
             request: core_request,
             plan: plan.clone(),
+            source_mtime_precision,
             created_at_ms: now_ms(),
         },
     )
@@ -633,6 +641,7 @@ pub async fn cross_profile_plan(
         source_profile: plan.source_profile,
         dest_profile: plan.dest_profile,
         entries: plan.entries,
+        directories: plan.directories,
         total_files: plan.total_files,
         total_bytes: plan.total_bytes,
     })
@@ -673,6 +682,20 @@ pub async fn cross_profile_execute(
         );
 
         let start = Instant::now();
+        if !plan.directories.is_empty() {
+            let mut dest = ProviderGuard::new(
+                create_temp_provider(&stored.dest_server).await?,
+                "destination",
+            );
+            let directories_result = crate::cross_profile_transfer::ensure_planned_directories(
+                dest.provider_mut(),
+                &plan.directories,
+                || cancelled.is_cancelled(),
+            )
+            .await;
+            let _ = dest.disconnect().await;
+            directories_result.map_err(|error| error.to_string())?;
+        }
         let counters = Arc::new(CrossProfileBatchCounters::new());
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let cancel_watcher = AbortOnDrop::spawn({
@@ -689,6 +712,7 @@ pub async fn cross_profile_execute(
             source_server: stored.source_server,
             dest_server: stored.dest_server,
             skip_existing: stored.request.skip_existing,
+            source_mtime_precision: stored.source_mtime_precision,
             cancel_token: cancelled.clone(),
             total,
             speed_meter: crate::transfer_speed::SpeedMeter::new(),

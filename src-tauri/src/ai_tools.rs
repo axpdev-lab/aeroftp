@@ -1909,6 +1909,24 @@ pub(crate) async fn create_temp_provider(
             )
         })?;
 
+    // Capture the owner before constructing an OAuth session. A failed user
+    // lookup must not silently become the legacy/global credential scope.
+    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    let scope = crate::profile_auth::AuthScope {
+        store: &store,
+        user_id,
+    };
+    if let Some(mut provider) = crate::profile_auth::provider_for_profile(&scope, profile).await? {
+        provider
+            .connect()
+            .await
+            .map_err(|e| format!("Connection to '{}' failed: {}", server.name, e))?;
+        return crate::crypt_overlay_provider::wrap_connected_provider_for_profile(
+            provider, profile, &store,
+        )
+        .await;
+    }
+
     #[derive(serde::Deserialize)]
     struct SavedCreds {
         #[serde(default)]
@@ -1971,13 +1989,6 @@ pub(crate) async fn create_temp_provider(
         "opendrive" => ProviderType::OpenDrive,
         "yandexdisk" => ProviderType::YandexDisk,
         "twake" => ProviderType::Twake,
-        "googledrive" | "dropbox" | "onedrive" | "box" | "pcloud" | "zohoworkdrive"
-        | "fourshared" => {
-            return Err(format!(
-                "OAuth provider '{}' requires browser authentication. Use the connected session's remote_* tools instead.",
-                server.protocol
-            ));
-        }
         other => return Err(format!("Unsupported protocol: {}", other)),
     };
 

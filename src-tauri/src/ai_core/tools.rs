@@ -1624,7 +1624,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "src_path": {"type": "string", "description": "Remote file path on the source profile"},
                     "dst_server": {"type": "string", "description": "Destination server name or ID"},
                     "dst_path": {"type": "string", "description": "Remote file path on the destination profile"},
-                    "skip_existing": {"type": "boolean", "description": "Skip when destination already has matching size+mtime (default: false)"},
+                    "skip_existing": {"type": "boolean", "description": "Skip equal-size files when destination time is not older; use size only for missing or incomparable times (default: false)"},
                     "dry_run": {"type": "boolean", "description": "Plan without transferring (default: false)"}
                 },
                 "required": ["src_server", "src_path", "dst_server", "dst_path"],
@@ -1662,7 +1662,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "src_path": {"type": "string", "description": "Remote source directory"},
                     "dst_server": {"type": "string", "description": "Destination server name or ID"},
                     "dst_path": {"type": "string", "description": "Remote destination directory"},
-                    "skip_existing": {"type": "boolean", "description": "Skip files where destination already has matching size+mtime (default: false)"},
+                    "skip_existing": {"type": "boolean", "description": "Skip equal-size files when destination time is not older; use size only for missing or incomparable times (default: false)"},
                     "dry_run": {"type": "boolean", "description": "Plan without transferring (default: false)"},
                     "max_files": {"type": "integer", "description": "Soft cap on planned files (default 1000, hard cap 10000). Plans exceeding the cap are rejected: narrow the path first."},
                     "summary_only": {"type": "boolean", "description": "When dry_run=true, return only counters instead of the per-file plan (default: false)"}
