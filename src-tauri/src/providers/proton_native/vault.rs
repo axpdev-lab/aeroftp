@@ -104,6 +104,28 @@ fn session_writes() -> std::sync::MutexGuard<'static, ()> {
 /// the OS lock, so no stale timeout or lock-file stealing is needed.
 struct KeyLease(std::fs::File);
 
+#[cfg(test)]
+type KeyLockTestHook = Option<Box<dyn FnMut(&std::path::Path, &str)>>;
+
+#[cfg(test)]
+thread_local! {
+    static KEY_LOCK_TEST_HOOK: std::cell::RefCell<KeyLockTestHook> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn observe_key_locks_for_test(callback: impl FnMut(&std::path::Path, &str) + 'static) {
+    KEY_LOCK_TEST_HOOK.set(Some(Box::new(callback)));
+}
+
+#[cfg(test)]
+fn key_lock_test_hook(path: &std::path::Path, stage: &str) {
+    KEY_LOCK_TEST_HOOK.with_borrow_mut(|hook| {
+        if let Some(hook) = hook {
+            hook(path, stage);
+        }
+    });
+}
+
 impl Drop for KeyLease {
     fn drop(&mut self) {
         let _ = self.0.unlock();
@@ -121,8 +143,14 @@ async fn lock_key_file(path: &std::path::Path, wait: Duration) -> Result<KeyLeas
     let deadline = std::time::Instant::now() + wait;
     loop {
         match file.try_lock() {
-            Ok(()) => return Ok(KeyLease(file)),
+            Ok(()) => {
+                #[cfg(test)]
+                key_lock_test_hook(path, "acquired");
+                return Ok(KeyLease(file));
+            }
             Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                #[cfg(test)]
+                key_lock_test_hook(path, "contended");
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
             Err(std::fs::TryLockError::WouldBlock) => {

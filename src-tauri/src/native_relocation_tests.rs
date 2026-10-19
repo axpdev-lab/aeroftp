@@ -74,7 +74,21 @@ fn replacement_child() {
         "replacement",
     )))
     .unwrap();
-    std::fs::write(marker.with_extension("started"), b"ready").unwrap();
+    // Observe the actual source-key try_lock result, not readiness before
+    // restore_session: the child might otherwise be delayed until after Move.
+    use sha2::{Digest, Sha256};
+    let source_lock_name = format!(
+        "{}.lock",
+        hex::encode(Sha256::digest(
+            vault::session_key(Some("replacement-source")).as_bytes()
+        ))
+    );
+    let probe_marker = marker.clone();
+    vault::observe_key_locks_for_test(move |path, stage| {
+        if path.file_name().and_then(|name| name.to_str()) == Some(source_lock_name.as_str()) {
+            std::fs::write(probe_marker.with_extension(stage), b"observed").unwrap();
+        }
+    });
     runtime()
         .block_on(vault::restore_session(
             vault::SessionOwner::for_user(Some(owner)),
@@ -440,13 +454,21 @@ fn native_cross_user_relocation_is_guarded_and_atomic() {
                 .spawn()
                 .unwrap();
             let deadline = Instant::now() + Duration::from_secs(10);
-            while !child_marker.with_extension("started").is_file() {
-                assert!(Instant::now() < deadline, "replacement child did not start");
+            while !child_marker.with_extension("contended").is_file() {
+                assert!(
+                    !child_marker.with_extension("acquired").exists()
+                        && !child_marker.with_extension("finished").exists(),
+                    "replacement acquired the source key while relocation held its guard"
+                );
+                assert!(
+                    Instant::now() < deadline,
+                    "replacement child did not reach the source-key lock attempt"
+                );
                 std::thread::sleep(Duration::from_millis(10));
             }
-            std::thread::sleep(Duration::from_millis(200));
             assert!(
-                !child_marker.with_extension("finished").exists(),
+                !child_marker.with_extension("acquired").exists()
+                    && !child_marker.with_extension("finished").exists(),
                 "replacement bypassed relocation's key guard"
             );
             *child_slot.lock().unwrap() = Some(process);
@@ -467,6 +489,8 @@ fn native_cross_user_relocation_is_guarded_and_atomic() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    assert!(marker.with_extension("acquired").is_file());
+    assert!(marker.with_extension("finished").is_file());
     assert_pair(
         &target_raw("replacement-target"),
         "before-replacement-uid",
