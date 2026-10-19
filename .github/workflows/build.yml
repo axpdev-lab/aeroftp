@@ -48,6 +48,8 @@ jobs:
   linux-validate:
     runs-on: ubuntu-22.04
     timeout-minutes: 210
+    env:
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Free disk space (Linux)
         run: |
