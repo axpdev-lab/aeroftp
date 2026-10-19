@@ -55,11 +55,19 @@ fn assert_pair(raw: &str, uid: &str, generation: &str) {
 
 fn replacement_child() {
     let _test = test_lock();
-    CredentialStore::init().unwrap();
+    // This process reopens the suite's existing master-mode vault. init()
+    // reports a locked vault; it does not consume the password environment
+    // variable for an existing one or inherit the parent's cached key/DEK.
+    assert_eq!(CredentialStore::init().unwrap(), "MASTER_PASSWORD_REQUIRED");
+    CredentialStore::unlock_with_master("synthetic native fixture master", None).unwrap();
+    let store = CredentialStore::from_cache().expect("fixture vault explicitly unlocked");
     let owner = std::env::var("AEROFTP_RELOCATION_SOURCE_USER")
         .unwrap()
         .parse()
         .unwrap();
+    let conn = open_or_init_cli().unwrap();
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    unlock_user_transient(&conn, &root_key, owner, Some(SOURCE_PASSWORD)).unwrap();
     let marker = PathBuf::from(std::env::var_os("AEROFTP_RELOCATION_PROBE").unwrap());
     let raw = serde_json::to_string(&StoredSession::from(&session(
         "replacement-uid",
