@@ -324,6 +324,12 @@ pub async fn access_token(
         authorization_header("POST", access_token_url, &creds, &extra_with_verifier)
     };
 
+    // The verifier was signed above but also has to reach the server.
+    let auth = if verifier.is_empty() {
+        auth
+    } else {
+        format!("{auth}, oauth_verifier=\"{}\"", percent_encode(verifier))
+    };
     let client = reqwest::Client::builder()
         .user_agent(crate::providers::AEROFTP_USER_AGENT)
         .build()

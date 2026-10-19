@@ -407,6 +407,37 @@ pub async fn finish_sign_in(
 }
 
 impl TwakePendingSignIn {
+    /// Encrypted-vault representation, never an IPC response.
+    pub(crate) fn to_vault_value(&self) -> serde_json::Value {
+        serde_json::json!({
+            "instance":self.instance, "redirect_uri":self.redirect_uri,
+            "client_id":self.client_id, "client_secret":self.client_secret.expose_secret(),
+            "registration_access_token":self.registration_access_token.expose_secret(),
+            "code_verifier":self.code_verifier.expose_secret(),
+            "state":self.state, "auth_url":self.auth_url,
+        })
+    }
+
+    pub(crate) fn from_vault_value(value: &serde_json::Value) -> Result<Self, String> {
+        let field = |key: &str| {
+            value
+                .get(key)
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+                .ok_or_else(|| "Invalid pending Twake authorization; begin again".to_string())
+        };
+        Ok(Self {
+            instance: field("instance")?,
+            redirect_uri: field("redirect_uri")?,
+            client_id: field("client_id")?,
+            client_secret: SecretString::from(field("client_secret")?),
+            registration_access_token: SecretString::from(field("registration_access_token")?),
+            code_verifier: SecretString::from(field("code_verifier")?),
+            state: field("state")?,
+            auth_url: field("auth_url")?,
+        })
+    }
+
     /// Delete the client registered for this attempt. Called when the sign-in
     /// fails or is cancelled after the registration, so an abandoned attempt
     /// does not leave a client in the user's Connected devices.

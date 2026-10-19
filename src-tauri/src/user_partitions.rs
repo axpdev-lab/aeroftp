@@ -2844,7 +2844,7 @@ fn mirror_credential_for_user_best_effort(
 /// bypass the prefix classifier, which cannot reliably tell `oauth_<p>_<id>`
 /// (a per-user token) from `oauth_<p>_client_id` (machine/app config). Same
 /// best-effort + zero-password semantics as the classifier-gated variant.
-fn mirror_credential_for_user_typed(
+pub(crate) fn mirror_credential_for_user_typed(
     store: &CredentialStore,
     user_id: i64,
     credential_id: &str,
@@ -2991,7 +2991,7 @@ pub fn delete_credential_for_user_dual(
     store
         .delete(credential_id)
         .map_err(|e| format!("Delete credential from vault: {e}"))?;
-    unmirror_credential_for_user_best_effort(user_id, credential_id);
+    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
     Ok(())
 }
 

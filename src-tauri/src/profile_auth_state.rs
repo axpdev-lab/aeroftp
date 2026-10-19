@@ -229,6 +229,9 @@ pub fn derive_profile_auth_state(
     protocol: &str,
     source: AuthSource,
 ) -> &'static str {
+    if protocol.eq_ignore_ascii_case("github") {
+        return crate::profile_auth::saved_github_readiness(store, profile_id, None, None);
+    }
     let server_key = format!("server_{}", profile_id);
     match source {
         AuthSource::NoSecret => return "valid",

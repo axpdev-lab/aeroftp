@@ -430,6 +430,12 @@ impl BoxProvider {
 
     /// Bind this provider to a server profile so OAuth tokens are stored
     /// under the per-profile vault key. Issue #214.
+    /// Keep token refresh in the account selected by the CLI or MCP profile.
+    pub fn with_credential_user(mut self, user_id: Option<i64>) -> Self {
+        self.oauth_manager = self.oauth_manager.with_credential_user(user_id);
+        self
+    }
+
     pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
         self.profile_id = profile_id.into();
         self

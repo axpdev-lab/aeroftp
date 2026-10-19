@@ -133,7 +133,7 @@ impl std::fmt::Display for OAuthProvider {
 }
 
 /// OAuth2 configuration for a provider
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthConfig {
     pub provider: OAuthProvider,
     pub client_id: String,
@@ -538,10 +538,21 @@ pub struct OAuth2Manager {
     /// Callback server port (used in redirect URL generation)
     #[allow(dead_code)]
     callback_port: u16,
+    credential_user: Option<i64>,
     /// Guard to prevent concurrent token refresh (H-04: avoids invalid_grant race).
     /// Shared across clones of the same manager so Dropbox/Box part workers
     /// serialize refresh against the primary.
     refresh_guard: Arc<tokio::sync::Mutex<()>>,
+}
+
+/// Secret PKCE material for an encrypted, profile-bound headless attempt.
+/// Callers must never serialize this into an IPC or CLI response.
+#[derive(Serialize, Deserialize)]
+pub struct HeadlessOAuthFlow {
+    pub config: OAuthConfig,
+    pub state: String,
+    verifier: String,
+    pub expires_at: i64,
 }
 
 impl Clone for OAuth2Manager {
@@ -549,16 +560,79 @@ impl Clone for OAuth2Manager {
         Self {
             pending_verifiers: Arc::clone(&self.pending_verifiers),
             callback_port: self.callback_port,
+            credential_user: self.credential_user,
             refresh_guard: Arc::clone(&self.refresh_guard),
         }
     }
 }
 
 impl OAuth2Manager {
+    /// Bind refresh reads and writes to the account that owns the profile.
+    pub fn with_credential_user(mut self, user_id: Option<i64>) -> Self {
+        self.credential_user = user_id;
+        self
+    }
+    fn mirror_tokens(
+        &self,
+        store: &crate::credential_store::CredentialStore,
+        account: &str,
+        json: &str,
+    ) {
+        if let Some(user) = self.credential_user {
+            crate::user_partitions::mirror_credential_for_user_typed(
+                store, user, account, "oauth", json,
+            );
+        } else {
+            crate::user_partitions::mirror_active_credential(store, account, "oauth", json);
+        }
+    }
+    pub async fn begin_headless(
+        &self,
+        config: OAuthConfig,
+    ) -> Result<(String, HeadlessOAuthFlow), ProviderError> {
+        let (url, state) = self.start_auth_flow(&config).await?;
+        let verifier = self
+            .pending_verifiers
+            .write()
+            .await
+            .remove(&state)
+            .ok_or_else(|| ProviderError::Other("Missing PKCE verifier".into()))?;
+        Ok((
+            url,
+            HeadlessOAuthFlow {
+                config,
+                state,
+                verifier: verifier.secret().clone(),
+                expires_at: chrono::Utc::now().timestamp() + 600,
+            },
+        ))
+    }
+
+    /// Exchange without persisting: the caller owns the explicit user/profile scope.
+    pub async fn finish_headless(
+        &self,
+        pending: &HeadlessOAuthFlow,
+        code: &str,
+        state: &str,
+    ) -> Result<StoredTokens, ProviderError> {
+        if state != pending.state || pending.expires_at <= chrono::Utc::now().timestamp() {
+            return Err(ProviderError::AuthenticationFailed(
+                "Authorization state mismatched or expired; begin again".into(),
+            ));
+        }
+        self.exchange_auth_code(
+            &pending.config,
+            code,
+            PkceCodeVerifier::new(pending.verifier.clone()),
+        )
+        .await
+    }
+
     pub fn new() -> Self {
         Self {
             pending_verifiers: Arc::new(RwLock::new(HashMap::new())),
             callback_port: 0, // Will be assigned dynamically by OS
+            credential_user: None,
             refresh_guard: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
@@ -629,9 +703,18 @@ impl OAuth2Manager {
             })?
         };
 
-        let client = self.create_client(config)?;
+        let tokens = self.exchange_auth_code(config, code, verifier).await?;
+        self.store_tokens(config.provider, &config.profile_id, &tokens)?;
+        Ok(tokens)
+    }
 
-        // Exchange code for tokens
+    async fn exchange_auth_code(
+        &self,
+        config: &OAuthConfig,
+        code: &str,
+        verifier: PkceCodeVerifier,
+    ) -> Result<StoredTokens, ProviderError> {
+        let client = self.create_client(config)?;
         let token_result = client
             .exchange_code(AuthorizationCode::new(code.to_string()))
             .set_pkce_verifier(verifier)
@@ -652,10 +735,6 @@ impl OAuth2Manager {
             token_type: "Bearer".to_string(),
             scopes: config.scopes.clone(),
         };
-
-        // Store in keyring under the profile-bound key (or the legacy key when
-        // `config.profile_id` is empty, preserving historic behaviour).
-        self.store_tokens(config.provider, &config.profile_id, &tokens)?;
 
         info!("OAuth2 tokens obtained for {:?}", config.provider);
 
@@ -796,7 +875,7 @@ impl OAuth2Manager {
             // MUV-4: mirror the refreshed token into the active user's partition
             // (per-profile keys only; the legacy singleton stays vault-only).
             if !profile_id.is_empty() {
-                crate::user_partitions::mirror_active_credential(&store, &account, "oauth", &json);
+                self.mirror_tokens(&store, &account, &json);
             }
             info!("Tokens stored in credential vault for {:?}", provider);
             return Ok(());
@@ -809,9 +888,7 @@ impl OAuth2Manager {
                     .store(&account, &json)
                     .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
                 if !profile_id.is_empty() {
-                    crate::user_partitions::mirror_active_credential(
-                        &store, &account, "oauth", &json,
-                    );
+                    self.mirror_tokens(&store, &account, &json);
                 }
                 info!("Tokens stored in auto-initialized vault for {:?}", provider);
                 return Ok(());
@@ -847,9 +924,12 @@ impl OAuth2Manager {
         // singleton / memory-cache / plaintext-file cascade below.
         if !profile_id.is_empty() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                if let Ok(Some(json)) =
-                    crate::user_partitions::resolve_active_credential(&store, &account)
-                {
+                if let Ok(Some(json)) = match self.credential_user {
+                    Some(user) => {
+                        crate::user_partitions::resolve_credential_for_user(&store, user, &account)
+                    }
+                    None => crate::user_partitions::resolve_active_credential(&store, &account),
+                } {
                     return serde_json::from_str(&json).map_err(|e| {
                         ProviderError::Other(format!("Failed to parse tokens: {}", e))
                     });
@@ -985,7 +1065,13 @@ impl OAuth2Manager {
         }
         // MUV-4: drop the per-profile token from the active user's partition too.
         if !profile_id.is_empty() {
-            crate::user_partitions::unmirror_active_credential(&account);
+            if let Some(user) = self.credential_user {
+                crate::user_partitions::unmirror_credential_for_user_best_effort_any(
+                    user, &account,
+                );
+            } else {
+                crate::user_partitions::unmirror_active_credential(&account);
+            }
         }
 
         // Delete from in-memory cache

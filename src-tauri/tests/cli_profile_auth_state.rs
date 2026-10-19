@@ -82,3 +82,64 @@ fn an_anonymous_site_is_ready_and_a_missing_password_is_not() {
     assert_eq!(state_of(servers, &anonymous), "valid");
     assert_eq!(state_of(servers, &alice), "no_credentials");
 }
+#[test]
+fn manifest_github_auth_modes_reject_server_seeds_before_persistence() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    // Initialize only the private vault. Failed seeding must not add a profile.
+    assert!(json(&cli(root, &["--json", "profiles"]))
+        .as_array()
+        .expect("profiles")
+        .is_empty());
+    for key in ["githubAuthMode", "github_auth_mode"] {
+        for mode in ["app", "authorize"] {
+            let options = serde_json::json!({(key): mode}).to_string();
+            let out = cli(
+                root,
+                &[
+                    "--json",
+                    "profile-add",
+                    "--name",
+                    "refused GitHub seed",
+                    "--protocol",
+                    "github",
+                    "--options-json",
+                    &options,
+                    "--credential-json",
+                    r#"{"access_token":"synthetic-unused-token"}"#,
+                ],
+            );
+            assert_eq!(out.status.code(), Some(5), "{}", describe(&out));
+            assert!(
+                String::from_utf8_lossy(&out.stderr)
+                    .contains("GitHub App and Device Flow use profile-auth"),
+                "{key}={mode}: {}",
+                describe(&out)
+            );
+            assert!(json(&cli(root, &["--json", "profiles"]))
+                .as_array()
+                .expect("profiles")
+                .is_empty());
+        }
+    }
+    let created = json(&cli(
+        root,
+        &[
+            "--json",
+            "profile-add",
+            "--name",
+            "GitHub PAT",
+            "--protocol",
+            "github",
+            "--options-json",
+            r#"{"githubAuthMode":"pat"}"#,
+            "--credential-json",
+            r#"{"access_token":"synthetic-pat"}"#,
+        ],
+    ));
+    let id = created["id"].as_str().expect("id");
+    let profiles = json(&cli(root, &["--json", "profiles"]));
+    assert_eq!(state_of(&profiles, id), "valid");
+    let bootstrap = json(&cli(root, &["--json", "agent-bootstrap"]));
+    assert_eq!(state_of(&bootstrap["profiles"]["servers"], id), "valid");
+}

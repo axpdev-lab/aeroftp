@@ -304,18 +304,28 @@ The selector follows Profile Matching above, and is optional: without one, `pwd`
 
 ### OAuth Providers via Profile
 
-Browser-authorized and profile-backed API providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared, Drime) are best used through saved profiles. Authorize or configure them once in the AeroFTP GUI, then reuse them from the CLI. Note: 4shared uses OAuth 1.0 and works in CLI after completing authorization in the GUI.
+Saved OAuth profiles can be authorized from the CLI or MCP without opening a browser on the server. The same profile-bound vault slots are used for later noninteractive reconnects and token refresh.
 
 ```bash
-# After authorizing Google Drive in the GUI:
-aeroftp-cli ls --profile "My Google Drive" /
-
-# pCloud (long-lived tokens - works immediately)
-aeroftp-cli ls --profile "pCloud" /
-
-# Dropbox
-aeroftp-cli get --profile "My Dropbox" /Documents/report.pdf
+aeroftp-cli profile-add --name "My Google Drive" --protocol googledrive
+# oauth-client.json: {"action":"configure","client_id":"YOUR_CLIENT_ID","client_secret":"YOUR_CLIENT_SECRET"}
+aeroftp-cli profile-auth "My Google Drive" --request-json-file oauth-client.json
+# begin.json: {"action":"begin","redirect_port":19899}
+aeroftp-cli profile-auth "My Google Drive" --request-json-file begin.json
+# Visit authorization_url on your browser machine. Copy the resulting loopback
+# callback URL, including code and state, into finish.json:
+# {"action":"finish","callback_url":"http://127.0.0.1:19899/callback?code=...&state=..."}
+aeroftp-cli profile-auth "My Google Drive" --request-json-file finish.json
+aeroftp-cli --profile "My Google Drive" ls /
 ```
+
+`configure` accepts the OAuth application's `client_id`, `client_secret`, and optional `region` (pCloud or Zoho). Google Drive, Google Photos (DEV only), Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive and Yandex Disk use PKCE with a profile-bound state valid for ten minutes. Register the printed redirect URI with your application where required. A remote browser can receive it through an SSH port forward or supply the complete callback URL to `finish`; the headless process does not need a graphical session. `status` reports readiness and pending state; `cancel` discards the pending attempt. Protect request files containing application secrets.
+
+GitHub uses `configure` with `mode:"authorize"`, then `begin` returns `verification_uri` and `user_code`. Approve the code in your browser and call `finish` with no authorization code; it polls GitHub within the attempt's expiry. For GitHub App mode, configure `mode:"app"`, numeric `app_id` and `installation_id`, and the PEM contents in `pem`. Each new CLI or MCP connection mints an installation token from the encrypted PEM, so an expired token is not reused. Existing GUI PEM references and Device Flow tokens are also readable.
+
+4shared uses `configure` with the consumer key as `client_id` and consumer secret as `client_secret`, then `begin`. After approving its URL, use `finish` with the returned `oauth_token` and optional `verifier`. Twake uses its saved instance host: `begin` dynamically registers a client and `finish` accepts the callback URL or `code` plus `state`.
+
+MCP exposes the identical steps as `aeroftp_profile_auth`, with `server` and a `request` object. Only authorization URLs, device user codes and status metadata are returned. Client secrets, PEMs, PKCE verifiers and tokens stay in the encrypted vault. OAuth providers reject generic `server_<id>` seeding; use the authorization route to populate their typed profile slot.
 
 ### Master Password
 
@@ -1971,7 +1981,7 @@ aeroftp-cli profile-add \
     --username myuser
 ```
 
-Scriptable equivalent of the GUI **New Server** flow and of the interactive shell's `n` action. Can seed the credential in the same step so the new profile is immediately connectable: pass the global `--password-stdin` for a plain secret, or `--credential-json` / `--credential-json-file` for a structured blob (OAuth tokens, API keys). These go into the same `server_<id>` vault key the GUI Edit modal and `profile-set-password` write to, and are mutually exclusive (at most one). Omit them and the profile is created credential-free, exactly as before, to be finished later with `profile-set-password` (below) or the GUI Edit modal. The credential source is read and JSON-validated before the profile is persisted, so a malformed blob fails fast without leaving an orphan profile.
+Scriptable equivalent of the GUI **New Server** flow and of the interactive shell's `n` action. Can seed the credential in the same step so the new profile is immediately connectable: pass the global `--password-stdin` for a plain secret, or `--credential-json` / `--credential-json-file` for a password or API-key wrapper. These go into the same `server_<id>` vault key the GUI Edit modal and `profile-set-password` write to, and are mutually exclusive (at most one). Omit them and the profile is created credential-free, exactly as before, to be finished later with `profile-set-password` (below) or the GUI Edit modal. The credential source is read and JSON-validated before the profile is persisted, so a malformed blob fails fast without leaving an orphan profile.
 
 ```bash
 # Seed a plain password while creating an FTP/SFTP/WebDAV profile
@@ -2050,19 +2060,19 @@ op read "op://AeroFTP/My NAS/password" \
 # Inline (not recommended: visible in `ps` and shell history)
 aeroftp-cli profile-set-password "Test Server" --password "weak-test-pw"
 
-# JSON credential blob (OAuth tokens, API keys, structured creds)
+# JSON credential wrapper for a native API provider
 aeroftp-cli profile-set-password "Backblaze B2" \
-    --credential-json '{"applicationKeyId":"K001...","applicationKey":"K001...secret"}'
+    --credential-json '{"username":"K001...","password":"K001...secret"}'
 
-# JSON blob from a file
-aeroftp-cli profile-set-password "Google Drive" \
-    --credential-json-file ./oauth-tokens.json
+# Read the same supported wrapper from a file
+aeroftp-cli profile-set-password "Backblaze B2" \
+    --credential-json-file ./credential.json
 ```
 
 Writes the per-protocol credential blob into the vault key `server_<id>`, **the exact same place** the GUI Edit modal writes to. A credential written via the CLI is read back by the GUI on the next reload. Two write modes:
 
 - **Single-secret** (`--password*`): stores the raw secret as the credential value. Matches the FTP / SFTP / WebDAV `password` field on the GUI side.
-- **JSON blob** (`--credential-json*`): stores an arbitrary JSON object verbatim. Use this for OAuth tokens, multi-field API key envelopes, or any structured credential. Shape is validated upfront so a typo in the JSON surfaces as exit 5 before the vault write.
+- **JSON blob** (`--credential-json*`): accepts a nonempty JSON string or an object with optional `username` and exactly one nonempty `password`, `api_key`, or `access_token` string. All three secret aliases reach the same provider credential sink. Unsupported fields and ambiguous wrappers fail before the vault write. OAuth token bundles use `profile-auth` instead.
 
 The two modes are **mutually exclusive**: pass exactly one source. Inline `--password` emits a "visible in ps" warning; prefer `--password-env` or `--password-stdin` for production.
 

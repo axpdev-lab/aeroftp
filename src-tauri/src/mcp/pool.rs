@@ -34,6 +34,7 @@ struct PooledConnection {
     profile_name: String,
     protocol: String,
     connected_at: DateTime<Utc>,
+    auth_deadline: Option<i64>,
     requests_served: AtomicU64,
 }
 
@@ -45,6 +46,10 @@ static POOL_EPOCH: std::sync::LazyLock<Instant> = std::sync::LazyLock::new(Insta
 #[inline]
 fn now_ms() -> u64 {
     Instant::now().duration_since(*POOL_EPOCH).as_millis() as u64
+}
+
+pub(crate) fn authentication_current(deadline: Option<i64>, now: i64) -> bool {
+    deadline.is_none_or(|deadline| deadline > now)
 }
 
 /// Connection pool keyed by profile ID.
@@ -82,18 +87,28 @@ impl ConnectionPool {
     ) -> Result<Arc<Mutex<Box<dyn StorageProvider>>>, String> {
         let profile_id = resolve_profile_id(server_query)?;
 
-        // Check for existing pooled connection
-        {
-            let conns = self.connections.lock().await;
+        // Expired authentication is never returned from a hot pooled session.
+        let expired = {
+            let mut conns = self.connections.lock().await;
             if let Some(entry) = conns.get(&profile_id) {
-                entry.last_used_ms.store(now_ms(), Ordering::Relaxed);
-                entry.requests_served.fetch_add(1, Ordering::Relaxed);
-                return Ok(Arc::clone(&entry.provider));
+                if authentication_current(entry.auth_deadline, Utc::now().timestamp()) {
+                    entry.last_used_ms.store(now_ms(), Ordering::Relaxed);
+                    entry.requests_served.fetch_add(1, Ordering::Relaxed);
+                    return Ok(Arc::clone(&entry.provider));
+                }
             }
+            // Existing users of the old Arc may finish; a new request gets a fresh token.
+            conns.remove(&profile_id)
+        };
+        if let Some(entry) = expired {
+            tokio::spawn(async move {
+                disconnect_outside_lock(entry).await;
+            });
         }
 
         // Create new connection
-        let (provider, name, protocol) = create_provider_from_vault(server_query)?;
+        let (provider, name, protocol, auth_deadline) =
+            create_provider_from_vault(server_query).await?;
         let mut connected = provider;
         connected.connect().await.map_err(|e| {
             // Sanitize connection errors to prevent credential leakage to AI clients
@@ -139,6 +154,7 @@ impl ConnectionPool {
             profile_name: name,
             protocol,
             connected_at: Utc::now(),
+            auth_deadline,
             requests_served: AtomicU64::new(1),
         };
 
@@ -327,7 +343,7 @@ async fn disconnect_outside_lock(entry: PooledConnection) {
     }
 }
 
-fn find_unique_profile<'a>(
+pub(crate) fn find_unique_profile<'a>(
     profiles: &'a [serde_json::Value],
     server_query: &str,
 ) -> Result<&'a serde_json::Value, String> {
@@ -553,9 +569,9 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
 ///
 /// Returns the provider, the profile name and the profile's protocol label
 /// (upper-case) so the pool can surface it via `aeroftp://connections`.
-fn create_provider_from_vault(
+async fn create_provider_from_vault(
     server_query: &str,
-) -> Result<(Box<dyn StorageProvider>, String, String), String> {
+) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
     // MUV-5: active-user profiles (see resolve_profile_id). The transient
@@ -632,6 +648,21 @@ fn create_provider_from_vault(
         }
     };
 
+    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    let scope = crate::profile_auth::AuthScope {
+        store: &store,
+        user_id,
+    };
+    if let Some(provider) = crate::profile_auth::provider_for_profile(&scope, matched).await? {
+        let deadline = crate::profile_auth::connection_deadline(&scope, matched)?;
+        return Ok((
+            provider,
+            profile_name.to_string(),
+            protocol.to_uppercase(),
+            deadline,
+        ));
+    }
+
     // For OAuth2 providers, check that we have a valid token
     if (provider_type.requires_oauth2() || matches!(provider_type, ProviderType::FourShared))
         && password.is_empty()
@@ -674,7 +705,12 @@ fn create_provider_from_vault(
     let provider = ProviderFactory::create(&config)
         .map_err(|e| format!("Failed to create provider for '{}': {}", profile_name, e))?;
 
-    Ok((provider, profile_name.to_string(), protocol.to_uppercase()))
+    Ok((
+        provider,
+        profile_name.to_string(),
+        protocol.to_uppercase(),
+        None,
+    ))
 }
 
 #[cfg(test)]
