@@ -1,11 +1,9 @@
 name: Proton Native
 
 # Dedicated workflow for the native Proton Drive client
-# (`src-tauri/src/providers/proton_native/`, feature `proton-native`, off by
-# default and never shipped). build.yml compiles default features only, so
-# without this file the module and its vendored `proton-rpgp` would never be
-# built in CI. It runs on its own runner to stay off linux-validate, which is
-# already close to its 90-minute limit.
+# (`src-tauri/src/providers/proton_native/`, feature `proton-native`, enabled
+# in default release builds). This focused workflow supplements build.yml with
+# the native unit suite and its assertion floor on an independent runner.
 #
 # Triggering policy: path-filtered to the module and to what it reads from
 # the rest of the crate (the providers module for AEROFTP_USER_AGENT,
