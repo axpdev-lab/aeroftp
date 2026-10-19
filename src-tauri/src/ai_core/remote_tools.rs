@@ -534,7 +534,7 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
     // Snapshot vault keyset once so per-profile auth_state derivation is
     // O(1) instead of one decryption per call. When the vault isn't open
     // (rare in MCP, possible in CLI agent context), derivation falls back
-    // to "unknown" via auth_state_from_cache, but here we have the cache.
+    // to "unknown", but here we have the cache.
     let auth_lookup = crate::credential_store::CredentialStore::from_cache().map(|store| {
         let accounts: std::collections::HashSet<String> = store
             .list_accounts()
@@ -565,6 +565,7 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
                         accounts,
                         &p.id,
                         &p.protocol,
+                        p.auth_source,
                     )
                 })
                 .unwrap_or("unknown");

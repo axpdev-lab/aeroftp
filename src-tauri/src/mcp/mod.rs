@@ -147,26 +147,60 @@ pub(crate) fn load_safe_profiles() -> Result<Vec<serde_json::Value>, String> {
     // falls back to the legacy blob during the rollout.
     let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
 
-    Ok(profiles
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
-                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
-                "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-                "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-                "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-                "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
-                "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
-                // G27: the two DERIVED values, not the raw `aeroCryptOverlay`
-                // object. The binding carries `remoteScope`/`localScope`, which
-                // describe where a user's encrypted data lives; this record is
-                // the safe projection handed to an MCP client, so it gets the
-                // answers and not the material they were derived from.
-                "cryptOverlay": crate::crypt_overlay_provider::profile_crypt_overlay_kind(p),
-                "protocolClass": crate::crypt_overlay_provider::profile_protocol_class(p),
-            })
-        })
-        .collect())
+    Ok(profiles.iter().map(safe_profile_record).collect())
+}
+
+/// The record `load_safe_profiles` hands on for one saved profile: no secret,
+/// and the derived answers in place of the options they were read from.
+fn safe_profile_record(p: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+        "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
+        "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+        "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+        "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+        "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+        "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+        "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
+        // G27: the two DERIVED values, not the raw `aeroCryptOverlay`
+        // object. The binding carries `remoteScope`/`localScope`, which
+        // describe where a user's encrypted data lives; this record is
+        // the safe projection handed to an MCP client, so it gets the
+        // answers and not the material they were derived from.
+        "cryptOverlay": crate::crypt_overlay_provider::profile_crypt_overlay_kind(p),
+        "protocolClass": crate::crypt_overlay_provider::profile_protocol_class(p),
+        // Where the sign-in lives, derived from the options this
+        // record drops (`profile_auth_state::profile_auth_source`).
+        "authSource": crate::profile_auth_state::profile_auth_source(p).as_str(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    /// The safe record drops the options, so every answer derived from them
+    /// must travel in it: an MCP client reads `auth_state` from a profile
+    /// rebuilt from this record, and must get what the full profile says.
+    #[test]
+    fn the_safe_record_keeps_where_each_sign_in_lives() {
+        for profile in [
+            json!({"id": "a", "protocol": "proton", "options": {"proton_mode": "native"}}),
+            json!({"id": "b", "protocol": "proton"}),
+            json!({"id": "c", "protocol": "mega", "options": {"mega_mode": "megacmd"}}),
+            json!({"id": "d", "protocol": "sftp", "options": {"private_key_path": "/k"}}),
+            json!({"id": "e", "protocol": "webdav", "options": {"anonymous": true}}),
+            json!({"id": "f", "protocol": "ftp", "username": "alice"}),
+        ] {
+            let rebuilt = crate::ai_core::credential_provider::ServerProfile::from_profile_json(
+                &super::safe_profile_record(&profile),
+            )
+            .expect("profile");
+            assert_eq!(
+                rebuilt.auth_source,
+                crate::profile_auth_state::profile_auth_source(&profile),
+                "{profile}"
+            );
+        }
+    }
 }
