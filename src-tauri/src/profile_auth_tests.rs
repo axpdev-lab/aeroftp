@@ -45,6 +45,7 @@ fn headless_flows_round_trip() {
         );
         return;
     }
+    let _session_guard = crate::user_partitions::test_lock();
     let executable = std::env::current_exe().unwrap();
     assert!(executable
         .parent()
@@ -71,7 +72,6 @@ async fn round_trip() {
     };
     assert_eq!(CredentialStore::init().unwrap(), "OK");
     let store = CredentialStore::from_cache().unwrap();
-    let _user_guard = users::test_lock();
     // Exercise the GUI/AeroAgent factory in this isolated, synthetic vault.
     // Missing authorization must reach profile-bound auth, without the old
     // blanket refusal or an interactive browser flow, for all seven routes.
