@@ -10,8 +10,9 @@ import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { copyText } from '../../utils/clipboard';
 import { SiteReplyView } from './SiteReplyView';
 import { SiteTemplateBar } from './SiteTemplateBar';
-import { SITE_REPLY_TIMEOUT_SECS, maskedEcho, mayChangeFiles, replyText, type SiteCommandReport } from './siteCommand';
+import { SITE_REPLY_TIMEOUT_SECS, maskedEcho, mayChangeFiles, replyText, type SiteCommandReport, type RunSiteCommand } from './siteCommand';
 import { clearSiteTranscript, recordSiteExchange, siteHistory, siteTranscript, type SiteTranscriptEntry } from './siteSessionMemory';
+import { accountChangeGeneration } from '../../utils/userPartitions';
 
 interface SiteCommandDialogProps {
     isOpen: boolean;
@@ -33,9 +34,6 @@ interface SiteCommandDialogProps {
     onFilesChanged: (sessionId: string) => void;
 }
 
-/** Reasons that mean the line itself was refused: keep it in the field to fix it. */
-const INPUT_REASONS = new Set(['empty', 'control_character', 'too_long']);
-
 /** What the dialog reports when the backend had no session to try. */
 const noSession = (): SiteCommandReport => ({
     outcome: 'not_sent', command: 'SITE', verb_kind: 'other', code: null, lines: [],
@@ -53,10 +51,12 @@ interface SiteSessionStatus {
     supported: boolean;
     /** `null` when the session could not be asked (busy with a transfer). */
     encrypted: boolean | null;
+    generation: number | null;
 }
 
 export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, sessionId, sessionLabel, profileId, onClose, onActivity, onFilesChanged }) => {
     const t = useTranslation();
+    const accountEpoch = accountChangeGeneration();
     const modalDrag = useDraggableModal();
     const [line, setLine] = useState('');
     const [sending, setSending] = useState(false);
@@ -67,36 +67,60 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
     // Asked of the backend: an explicit-if-available session may have fallen
     // back to clear text, which the connection settings alone cannot tell.
     const [encrypted, setEncrypted] = useState<boolean | null>(null);
+    const [ready, setReady] = useState(false);
+    const [checking, setChecking] = useState(false);
     const changedFiles = useRef(false);
     // Which opening is on screen: a command that completes after its dialog
     // closed, or after it moved to another session, must not write into the
     // dialog shown now.
-    const opening = useRef<{ sessionId: string; generation: number } | null>(null);
-    const generation = useRef(0);
+    type Opening = { sessionId: string; profileId: string | null; account: number; connection: number | null };
+    const opening = useRef<Opening | null>(null);
+    const flight = useRef<object | null>(null);
+    const statusRead = useRef(0);
     const callbacks = useRef({ onActivity, onFilesChanged });
     useLayoutEffect(() => { callbacks.current = { onActivity, onFilesChanged }; }, [onActivity, onFilesChanged]);
     const inputRef = useRef<HTMLInputElement>(null);
     const endRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
+    const refreshStatus = useCallback(async () => {
+        const target = opening.current;
+        if (!target || target.account !== accountChangeGeneration() || flight.current) return;
+        const read = ++statusRead.current;
+        target.connection = null;
+        setReady(false);
+        setChecking(true);
+        try {
+            const status = await invoke<SiteSessionStatus>('provider_site_session');
+            if (opening.current !== target || read !== statusRead.current || target.account !== accountChangeGeneration()) return;
+            target.connection = status.supported && typeof status.generation === 'number'
+                && Number.isSafeInteger(status.generation) && status.generation >= 0 ? status.generation : null;
+            setEncrypted(status.encrypted);
+            setReady(typeof target.connection === 'number');
+        } catch {
+            if (opening.current === target && read === statusRead.current) setEncrypted(null);
+        } finally {
+            if (opening.current === target && read === statusRead.current) setChecking(false);
+        }
+    }, []);
+
+    useLayoutEffect(() => {
         if (!isOpen) return;
-        generation.current += 1;
-        opening.current = { sessionId, generation: generation.current };
+        const target = { sessionId, profileId, account: accountChangeGeneration(), connection: null };
+        opening.current = target;
+        flight.current = null;
+        setSending(false);
         setTranscript(siteTranscript(sessionId));
         changedFiles.current = false;
         setEncrypted(null);
-        // A status that resolves after this opening ended belongs to another
-        // session: it must not clear the warning of the current one.
-        let current = true;
-        invoke<SiteSessionStatus>('provider_site_session')
-            .then(status => { if (current) setEncrypted(status.encrypted); })
-            .catch(() => { if (current) setEncrypted(null); });
+        void refreshStatus();
         const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         document.documentElement.classList.add('modal-open');
         const focus = window.setTimeout(() => inputRef.current?.focus(), 0);
         return () => {
-            current = false;
             opening.current = null;
+            flight.current = null;
+            statusRead.current += 1;
+            setReady(false);
             setSending(false);
             window.clearTimeout(focus);
             document.documentElement.classList.remove('modal-open');
@@ -106,13 +130,18 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
             setHistoryIndex(null);
             opener?.focus();
         };
-    }, [isOpen, sessionId]);
+    }, [isOpen, sessionId, profileId, accountEpoch, refreshStatus]);
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ block: 'end' });
     }, [transcript]);
 
-    const close = useCallback(() => onClose(changedFiles.current), [onClose]);
+    const close = useCallback(() => {
+        // Retire synchronously, before React commits a closed dialog.
+        opening.current = null;
+        flight.current = null;
+        onClose(changedFiles.current);
+    }, [onClose]);
 
     const flashCopied = useCallback((text: string) => {
         copyText(text).then(() => {
@@ -121,42 +150,68 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
         }).catch(() => { /* nothing was copied: no confirmation shown */ });
     }, []);
 
-    const deliver = useCallback(async (typed: string, echo: string, remember: boolean) => {
-        const args = typed.trim();
-        if (!args || sending) return;
-        const clearDraft = args === line.trim();
+    const deliver = useCallback<RunSiteCommand>(async (prepare) => {
         const sentFrom = opening.current;
+        if (!sentFrom || sentFrom.sessionId !== sessionId || sentFrom.profileId !== profileId
+            || sentFrom.account !== accountChangeGeneration() || typeof sentFrom.connection !== 'number' || flight.current) return false;
+        const operation = {};
+        flight.current = operation;
         setSending(true);
-        let report: SiteCommandReport;
+        const current = () => opening.current === sentFrom && flight.current === operation
+            && sentFrom.account === accountChangeGeneration();
         try {
-            report = await invoke<SiteCommandReport>('provider_site_command', { args, timeoutSecs: SITE_REPLY_TIMEOUT_SECS });
-        } catch {
-            report = noSession();
+            const { line: typed, echo, remember } = await prepare();
+            // Rendering is part of this opening's flight. It cannot send after a
+            // close, profile/account change or replacement opening.
+            if (!current()) return false;
+            const args = typed.trim();
+            if (!args) return false;
+            const clearDraft = args === line.trim();
+            let report: SiteCommandReport;
+            try {
+                report = await invoke<SiteCommandReport>('provider_site_command', {
+                    args, timeoutSecs: SITE_REPLY_TIMEOUT_SECS, generation: sentFrom.connection,
+                });
+            } catch {
+                report = noSession();
+            }
+            // A locked or switched account must not receive the old activity or
+            // session transcript, even if an already-sent command just finished.
+            if (sentFrom.account !== accountChangeGeneration()) return false;
+            // The session the command went to keeps its record even if the dialog
+            // moved on; a session closed meanwhile gets nothing back.
+            const recorded = recordSiteExchange(sessionId, args, echo, report, remember);
+            if (recorded === null) return false;
+            callbacks.current.onActivity(report);
+            if (!current()) {
+                if (mayChangeFiles(report)) callbacks.current.onFilesChanged(sessionId);
+                return false;
+            }
+            if (report.reason === 'connection_changed' || report.reason === 'not_connected') {
+                sentFrom.connection = null;
+                setReady(false);
+            }
+            setTranscript(recorded);
+            if (mayChangeFiles(report)) changedFiles.current = true;
+            // A refusal sent nothing. Keep the draft for a deliberate retry.
+            if (clearDraft && report.outcome !== 'not_sent') setLine('');
+            setHistoryIndex(null);
+            inputRef.current?.focus();
+            return true;
+        } finally {
+            if (flight.current === operation) {
+                flight.current = null;
+                if (opening.current === sentFrom) setSending(false);
+            }
         }
-        // The session the command went to keeps its record even if the dialog
-        // moved on; a session closed meanwhile gets nothing back.
-        const recorded = recordSiteExchange(sessionId, args, echo, report, remember);
-        if (recorded === null) return;
-        callbacks.current.onActivity(report);
-        const now = opening.current;
-        const stillShown = sentFrom !== null && now !== null
-            && now.sessionId === sentFrom.sessionId && now.generation === sentFrom.generation;
-        if (!stillShown) {
-            if (mayChangeFiles(report)) callbacks.current.onFilesChanged(sessionId);
-            return;
-        }
-        setTranscript(recorded);
-        if (mayChangeFiles(report)) changedFiles.current = true;
-        if (clearDraft && !(report.outcome === 'not_sent' && report.reason && INPUT_REASONS.has(report.reason))) setLine('');
-        setHistoryIndex(null);
-        setSending(false);
-        inputRef.current?.focus();
-    }, [line, sending, sessionId]);
+    }, [line, sessionId, profileId]);
+
+    const sendDraft = () => deliver(async () => ({ line: line.trim(), echo: maskedEcho(line.trim()), remember: true }));
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            void deliver(line.trim(), maskedEcho(line.trim()), true);
+            void sendDraft();
         } else if (e.key === 'Escape') {
             e.preventDefault();
             close();
@@ -217,6 +272,10 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
                 )}
 
                 <div className="flex items-center gap-3 px-5 pb-2 text-xs">
+                    {!ready && <button type="button" onClick={() => void refreshStatus()} disabled={checking || sending}
+                        className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40">
+                        {checking ? t('common.loading') : t('common.refresh')}
+                    </button>}
                     <Checkbox checked={hideCodes} onChange={setHideCodes} label={t('siteCommand.hideCodes')} labelClassName="text-xs text-gray-600 dark:text-gray-300" />
                     <span className="flex-1" />
                     {copied && <span className="text-gray-500 dark:text-gray-400">{t('siteCommand.copied')}</span>}
@@ -238,10 +297,11 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
                 </div>
 
                 <SiteTemplateBar
+                    key={`${sessionId}:${profileId ?? ''}:${accountEpoch}`}
                     profileId={profileId}
                     draft={line}
-                    disabled={sending}
-                    onRun={(args, echo, remember) => void deliver(args, echo, remember)}
+                    disabled={sending || !ready}
+                    onRun={deliver}
                 />
 
                 <div className="flex items-center gap-2 px-5 pt-3">
@@ -261,8 +321,8 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
                         className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                     <button
-                        onClick={() => void deliver(line.trim(), maskedEcho(line.trim()), true)}
-                        disabled={sending || line.trim() === ''}
+                        onClick={() => void sendDraft()}
+                        disabled={sending || !ready || line.trim() === ''}
                         className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5"
                     >
                         <Send size={14} /> {sending ? t('siteCommand.sending') : t('siteCommand.send')}

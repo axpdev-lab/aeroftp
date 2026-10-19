@@ -1407,6 +1407,12 @@ impl StorageProvider for FourSharedProvider {
 
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "fourshared",
+                self.api_base(),
+                &super::atomic_write::ResumeSource::account("", self.account_email.as_deref()),
+                &file_id,
+            ),
             |range_header| {
                 let mut req = self.client.get(&url).header("Authorization", &auth);
                 if let Some(range) = range_header {

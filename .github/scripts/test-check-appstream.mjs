@@ -116,6 +116,36 @@ test('a file with no finding at all is an empty report that exits 0', () => {
   assert.ok(readValidateReport('\n', 1).error);
 });
 
+test('every block issue is read even when severity comes before tag', (t) => {
+  const info = '- tag: harmless\n  severity: info\n';
+  const error = '- severity: error\n  tag: xml-markup-invalid\n';
+  for (const issues of [info + error, error + info]) {
+    const report = `Issues:\n${issues}Passed: no\n`;
+    assert.equal(readValidateReport(report, 3).findings.length, 2);
+    const result = gate(t, 'accepted.xml', report);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /xml-markup-invalid/);
+  }
+});
+
+test('a partially unreadable block list fails instead of retaining only its informational issue', (t) => {
+  const info = '- tag: harmless\n  severity: info\n';
+  for (const item of [
+    '- tag: xml-markup-invalid\n',
+    '- severity: error\n',
+    '- tag: xml-markup-invalid\n  severity: info\n  severity: error\n',
+    '- tag: harmless\n  tag: xml-markup-invalid\n  severity: error\n',
+    '- tag: xml-markup-invalid\n  severity: error\n  line: 3oops\n',
+    '  - severity: error\n    tag: xml-markup-invalid\n',
+    '- { severity: error, tag: xml-markup-invalid }\n',
+    '- unreadable\n',
+  ]) {
+    const report = `Issues:\n${info}${item}Passed: no\n`;
+    assert.ok(readValidateReport(report, 3).error, item);
+    assert.notEqual(gate(t, 'accepted.xml', report).status, 0, item);
+  }
+});
+
 test('a report this reader cannot read is refused, not read as clean', () => {
   const json = capture('blocking-1.1.2.txt');
   const block = capture('blocking-1.0.2.txt');

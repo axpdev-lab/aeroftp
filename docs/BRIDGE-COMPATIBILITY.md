@@ -22,8 +22,7 @@ that tool's own config format can express it.
 - **Some AeroFTP-native providers have no external bridge at all** and
   round-trip only through AeroFTP's own `.aeroftp` export: aerocloud, 4shared,
   kDrive, GitHub, GitLab, Immich, Twake and Uploadcare, which no other tool
-  speaks, and FileLu and Proton Drive, whose rclone backends sign in with a
-  secret AeroFTP does not hold (see the asymmetries below).
+  speaks, and FileLu, whose rclone backend needs a different key (see the asymmetries below). Proton Drive can bridge a recoverable native session.
 
 ## Transfer protocols (all 15 tools)
 
@@ -87,6 +86,7 @@ rclone access (the free plan answers 402).
 | Zoho WorkDrive  | IE | zoho       | OAuth token + region + root folder id (a profile without the root folder id is skipped) |
 | Drime           | IE | drime      | API token (default workspace; a remote pinned to a workspace or root folder id is not imported) |
 | Cloudinary      | IE | cloudinary | cloud name + API key + API secret (api.cloudinary.com; a remote on a regional `upload_prefix` is not imported) |
+| Proton Drive    | IE | protondrive | Native mode: cached UID, access/refresh tokens and key password; unsigned native profiles and official CLI profiles are skipped on export |
 | ImageKit        | IE | imagekit   | URL endpoint + public key + private key (a profile created in the app has no public key and is skipped on export) |
 
 ## Per-tool exportable protocols
@@ -96,7 +96,7 @@ way: an importer reads whatever connection types it recognizes in the file.)
 
 | Tool | Exportable protocols |
 |-----|----------------------|
-| rclone | FTP, FTPS, SFTP, WebDAV, S3, MEGA, Internxt, Azure, Swift, Koofr, Jottacloud, Filen, Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex, Zoho WorkDrive, OpenDrive, Backblaze B2, Drime, Cloudinary, ImageKit |
+| rclone | FTP, FTPS, SFTP, WebDAV, S3, MEGA, Internxt, Azure, Swift, Koofr, Jottacloud, Filen, Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex, Zoho WorkDrive, OpenDrive, Backblaze B2, Drime, Cloudinary, ImageKit, Proton Drive |
 | WinSCP | FTP, FTPS, SFTP, WebDAV, S3 |
 | FileZilla | FTP, FTPS, SFTP, S3 |
 | Cyberduck | FTP, FTPS, SFTP, WebDAV, S3 |
@@ -124,12 +124,8 @@ way: an importer reads whatever connection types it recognizes in the file.)
   are: rclone does not obscure these fields. ImageKit also needs the account
   public key, which AeroFTP never uses: only a profile imported from rclone
   holds it, and one created in the app is skipped on export with that reason.
-- **FileLu and Proton Drive** have rclone backends but no bridge. rclone's
-  `filelu` backend signs in with the FileLu Rclone key (`RC_...`), a different
-  key from the Developer API key AeroFTP holds: export skips a FileLu profile
-  and import skips a `filelu` remote, each with that reason. AeroFTP reaches
-  Proton Drive through Proton's own CLI and holds no password for rclone's
-  `protondrive` backend, so export skips it with that reason.
+- **FileLu** has a rclone backend that needs the FileLu Rclone key (`RC_...`), a different key from the Developer API key AeroFTP holds: export skips a FileLu profile and import skips a `filelu` remote, each with that reason.
+- **Proton Drive** imports `protondrive` remotes into native mode and exports a native profile only when its session can be recovered from the unlocked vault. The bridge carries the cached UID, access token, refresh token and key password; it does not need or export the account password. A native profile without a saved session is skipped with a sign-in instruction. Profiles using the official Proton Drive CLI are skipped because that CLI owns its session. Existing AeroFTP profiles without an explicit mode retain CLI behavior. Treat an exported native session as a secret and encrypt the destination configuration.
 - **Cyberduck** imports Backblaze B2 by routing it onto S3, and skips Azure and
   the OAuth providers it can read but cannot represent.
 - **Kopia, Duplicacy and restic** import B2 URLs onto S3 (tagged as Backblaze),
@@ -170,4 +166,4 @@ way: an importer reads whatever connection types it recognizes in the file.)
 ---
 
 *This matrix tracks the shipped bridge code and is updated on every bridge change.
-Last reviewed for v4.1.0.*
+Last reviewed for v4.2.4.*

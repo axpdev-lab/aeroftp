@@ -17885,12 +17885,13 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                         scoped_credential_user_id(cli, &store),
                     )
                 } else {
-                    ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
+                    ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state_for_user(
                         &store,
                         &accounts,
                         id,
                         proto,
                         ftp_client_gui_lib::profile_auth_state::profile_auth_source(p),
+                        scoped_credential_user_id(cli, &store),
                     )
                 };
                 let used = profile_effective_used(p);
@@ -25037,11 +25038,10 @@ fn show_proton_sign_in_page(
         };
         return writeln!(terminal, "{lead}\n{url}").map_err(|e| e.to_string());
     }
-    opened.map_err(|reason| {
-        format!(
-            "cannot show Proton's sign-in page: no browser opened ({reason}) and stderr is not a \
-             terminal to print its address on; run the sign-in in a terminal"
-        )
+    opened.map_err(|_| {
+        "cannot show Proton's sign-in page: no browser opened and stderr is not a \
+         terminal to print its address on; run the sign-in in a terminal"
+            .into()
     })
 }
 
@@ -25095,10 +25095,22 @@ async fn cmd_proton(
     #[cfg(feature = "proton-native")]
     match command {
         ProtonCommands::SignIn { no_browser, .. } => {
-            proton_sign_in(format, &id, &name, *no_browser, cancelled).await
+            proton_sign_in(
+                format,
+                &id,
+                &name,
+                scoped_credential_user_id(cli, &store),
+                *no_browser,
+                cancelled,
+            )
+            .await
         }
-        ProtonCommands::SignOut { .. } => proton_sign_out(format, &id, &name).await,
-        ProtonCommands::Status { .. } => proton_status(format, &id, &name).await,
+        ProtonCommands::SignOut { .. } => {
+            proton_sign_out(format, &id, &name, scoped_credential_user_id(cli, &store)).await
+        }
+        ProtonCommands::Status { .. } => {
+            proton_status(format, &id, &name, scoped_credential_user_id(cli, &store)).await
+        }
     }
 }
 
@@ -25110,6 +25122,7 @@ async fn proton_sign_in(
     format: OutputFormat,
     id: &str,
     name: &str,
+    user_id: Option<i64>,
     no_browser: bool,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
@@ -25141,12 +25154,12 @@ async fn proton_sign_in(
         "Signing '{name}' in to Proton: waiting for the sign-in on Proton's page (it expires after ten minutes, Ctrl-C cancels)."
     );
     let page_failed = std::cell::Cell::new(false);
-    let result = commands::sign_in(Some(id), &cancel, |url| {
+    let result = commands::sign_in_for_user(user_id, Some(id), &cancel, |url| {
         show_proton_sign_in_page(
             url,
             no_browser,
             interactive,
-            |url| open::that(url).map_err(|e| e.to_string()),
+            |url| commands::browser_launch_result(open::that(url)),
             &mut std::io::stderr(),
         )
         .inspect_err(|_| page_failed.set(true))
@@ -25196,16 +25209,17 @@ async fn proton_sign_in(
 /// own status command (so a profile without a session of its own counts the
 /// unbound one its first connect takes over, as there).
 #[cfg(feature = "proton-native")]
-async fn proton_status(format: OutputFormat, id: &str, name: &str) -> i32 {
-    use ftp_client_gui_lib::providers::proton_native::commands;
+async fn proton_status(format: OutputFormat, id: &str, name: &str, user_id: Option<i64>) -> i32 {
+    use ftp_client_gui_lib::providers::proton_native::vault;
 
-    let signed_in = match commands::proton_native_status(Some(id.to_string())).await {
-        Ok(status) => status.signed_in,
-        Err(e) => {
-            print_error(format, &e, 5);
-            return 5;
-        }
-    };
+    let signed_in =
+        match vault::saved_session_target(vault::SessionOwner::for_user(user_id), Some(id)) {
+            Ok((_, signed_in)) => signed_in,
+            Err(e) => {
+                print_error(format, &e.to_string(), 5);
+                return 5;
+            }
+        };
     match format {
         OutputFormat::Json => print_json(&serde_json::json!({
             "id": id,
@@ -25226,17 +25240,18 @@ async fn proton_status(format: OutputFormat, id: &str, name: &str) -> i32 {
 /// Ends the native profile's session on Proton (unless another saved profile
 /// uses it) and removes it from the vault, as the GUI's Sign out does.
 #[cfg(feature = "proton-native")]
-async fn proton_sign_out(format: OutputFormat, id: &str, name: &str) -> i32 {
+async fn proton_sign_out(format: OutputFormat, id: &str, name: &str, user_id: Option<i64>) -> i32 {
     use ftp_client_gui_lib::providers::proton_native::vault;
 
-    let (session_id, had_session) = match vault::saved_session_target(Some(id)) {
+    let owner = vault::SessionOwner::for_user(user_id);
+    let (session_id, had_session) = match vault::saved_session_target(owner, Some(id)) {
         Ok(target) => target,
         Err(e) => {
             print_error(format, &e.to_string(), 5);
             return 5;
         }
     };
-    if let Err(e) = vault::end_session(session_id).await {
+    if let Err(e) = vault::end_session(owner, session_id).await {
         print_error(format, &format!("Proton sign-out failed: {e}"), 5);
         return 5;
     }
@@ -26401,7 +26416,33 @@ fn cmd_profile_duplicate(
             if let Some(base) = source_key.strip_suffix(&source_suffix) {
                 if let Some(value) = read_server_cred(&store, scoped_uid, &source_key) {
                     let target_key = format!("{}_{}", base, new_id);
-                    dual_store_server_cred(&store, scoped_uid, &target_key, &value);
+                    #[cfg(feature = "proton-native")]
+                    if base == "proton_native_session" {
+                        let _ = ftp_client_gui_lib::providers::proton_native::vault::restore_session_blocking(
+                            ftp_client_gui_lib::providers::proton_native::vault::SessionOwner::for_user(scoped_uid),
+                            &new_id, &value,
+                        );
+                        continue;
+                    }
+                    let kind =
+                        if ftp_client_gui_lib::profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
+                            Some("oauth")
+                        } else if base == "proton_native_session" {
+                            Some("proton_native_session")
+                        } else {
+                            None
+                        };
+                    if let Some(kind) = kind {
+                        let _ = dual_store_typed_cred_checked(
+                            &store,
+                            scoped_uid,
+                            &target_key,
+                            kind,
+                            &value,
+                        );
+                    } else {
+                        dual_store_server_cred(&store, scoped_uid, &target_key, &value);
+                    }
                 }
             }
         }
@@ -26615,16 +26656,6 @@ fn cmd_profile_relocate_user(
         }
     };
 
-    // MUV-3: relocate the `server_<id>` secret while the target passphrase is
-    // still live. The vault stays in sync (copy onto the new id, drop the
-    // orphan on a Move) and the secret is mirrored onto the target user's
-    // partition under its scoped DEK.
-    let _ = user_partitions::cli_relocate_server_credential_dual(
-        &store,
-        source_user.id,
-        &relocation,
-        target_passphrase.as_deref(),
-    );
     if let Some(p) = target_passphrase.as_mut() {
         p.zeroize();
     }
@@ -27301,9 +27332,6 @@ fn delete_profile_in_vault(
     if profiles.len() == before {
         return Err(format!("Profile id '{}' not found in vault", profile_id));
     }
-    save_active_user_profiles(cli, store, &profiles)
-        .map_err(|e| format!("Failed to write profiles: {}", e))?;
-
     // Orphan credential cleanup: remove EVERY vault secret scoped to this profile
     // so a delete leaves nothing behind. Same single source of truth
     // (`per_profile_vault_keys`) the GUI `purge_profile_secrets` command and the
@@ -27314,10 +27342,20 @@ fn delete_profile_in_vault(
     // A native Proton Drive session is ended on Proton before its key goes,
     // as the GUI delete does.
     #[cfg(feature = "proton-native")]
-    if protocol.as_deref() == Some("proton") {
-        ftp_client_gui_lib::providers::proton_native::vault::end_session_blocking(Some(profile_id));
-    }
-    for key in ftp_client_gui_lib::per_profile_vault_keys(profile_id, protocol.as_deref()) {
+    ftp_client_gui_lib::providers::proton_native::vault::end_session_blocking(
+        ftp_client_gui_lib::providers::proton_native::vault::SessionOwner::for_user(scoped_uid),
+        Some(profile_id),
+    )
+    .map_err(|error| error.to_string())?;
+    save_active_user_profiles(cli, store, &profiles)
+        .map_err(|e| format!("Failed to write profiles: {}", e))?;
+    for key in
+        ftp_client_gui_lib::per_profile_vault_keys_for_delete(profile_id, protocol.as_deref())
+    {
+        #[cfg(feature = "proton-native")]
+        if key == format!("proton_native_session_{profile_id}") {
+            continue;
+        }
         dual_delete_server_cred(store, scoped_uid, &key);
     }
 
@@ -28159,12 +28197,13 @@ fn safe_profile_records(
                     user_id,
                 )
             } else {
-                ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
+                ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state_for_user(
                     store,
                     &accounts,
                     id,
                     proto,
                     ftp_client_gui_lib::profile_auth_state::profile_auth_source(p),
+                    user_id,
                 )
             };
             safe_profile_record(p, auth_state)
@@ -41501,7 +41540,9 @@ mod proton_profile_cli_tests {
             result.is_ok() && opened && terminal.is_empty(),
             "{terminal}"
         );
-        let (result, opened, terminal) = show(false, false, Err("no display".into()));
+        // open::that includes failed launcher arguments in its error text.
+        let launcher_error = format!("Launcher xdg-open {URL} exited unsuccessfully");
+        let (result, opened, terminal) = show(false, false, Err(launcher_error));
         let error = result.unwrap_err();
         assert!(opened && terminal.is_empty(), "{terminal}");
         assert!(
@@ -44617,7 +44658,11 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
     let mut scan_errors = 0u32;
     let mut exit_code = 0i32;
     let mut capped = false;
-    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(&root);
+    let resolved_root = provider.stat(&root).await.ok().filter(|entry| entry.is_dir);
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::for_delete(
+        &root,
+        resolved_root.as_ref().map(|entry| entry.path.as_str()),
+    );
 
     while let Some((dir, depth)) = stack.pop() {
         if depth >= max_depth {
@@ -45278,6 +45323,9 @@ fn site_failure_message(
             NotSentReason::NotFtp => format!(
                 "SITE commands need an FTP or FTPS connection, and this one is {provider_type}"
             ),
+            NotSentReason::ConnectionChanged => {
+                format!("{label} was not sent: the connection changed; retry on the intended session")
+            }
             NotSentReason::NotConnected
             | NotSentReason::Busy
             | NotSentReason::ReconnectFailed => {
@@ -48835,7 +48883,11 @@ async fn cmd_cleanup(
     let mut orphans: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(path.to_string(), 0)];
     // Cycle guard: every folder is listed once, and only one under `path`.
-    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(path);
+    let resolved_root = provider.stat(path).await.ok().filter(|entry| entry.is_dir);
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::for_delete(
+        path,
+        resolved_root.as_ref().map(|entry| entry.path.as_str()),
+    );
     let max_entries = 100_000usize;
     let mut scanned_entries = 0u64;
     let mut scan_errors = 0u32;
@@ -49114,7 +49166,11 @@ async fn cmd_dedupe(
     let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(path.to_string(), 0)];
     // Cycle guard: every folder is listed once, and only one under `path`.
-    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(path);
+    let resolved_root = provider.stat(path).await.ok().filter(|entry| entry.is_dir);
+    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::for_delete(
+        path,
+        resolved_root.as_ref().map(|entry| entry.path.as_str()),
+    );
     let max_entries = 100_000usize;
     let mut scan_errors = 0u32;
     let mut hash_errors = 0u32;
@@ -86628,9 +86684,13 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         entry.modified = Some("2026-10-15 10:00:00".to_string());
         let version =
             ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint::of(&entry);
-        let mut part = ftp_client_gui_lib::providers::atomic_write::ResumableFile::open_for(
+        let mut part = ftp_client_gui_lib::providers::atomic_write::ResumableFile::open_for_source(
             local.to_str().unwrap(),
             &version,
+            &ftp_client_gui_lib::providers::atomic_write::ResumeSource::new(
+                "test", "fixture", "account", "/f.bin",
+            ),
+            false,
         )
         .await
         .unwrap();

@@ -273,8 +273,8 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       freeNote: 'E2E', healthCheckUrl: 'https://gateway.internxt.com',
       protocols: [{ label: 'API', protocol: 'internxt', category: 'cloud-storage' }] },
     { company: 'Proton Drive', logoId: 'proton', countryCode: 'CH', freeStorageGb: 5,
-      freeNote: 'CLI', healthCheckUrl: 'https://drive-api.proton.me',
-      protocols: [{ label: 'CLI', protocol: 'proton', category: 'cloud-storage' }] },
+      freeNote: 'E2E', healthCheckUrl: 'https://drive-api.proton.me',
+      protocols: [{ label: 'API', labelOverride: 'API / CLI', protocol: 'proton', category: 'cloud-storage' }] },
     { company: 'FileLu', logoId: 'filelu', countryCode: 'US', freeStorageGb: 1,
       healthCheckUrl: 'https://filelu.com',
       protocols: [

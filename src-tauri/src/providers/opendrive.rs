@@ -1964,6 +1964,12 @@ impl StorageProvider for OpenDriveProvider {
 
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "opendrive",
+                &self.endpoint(""),
+                &self.config.username,
+                &resolved,
+            ),
             |range_header| {
                 let mut req = self.client.get(&url_str);
                 if let Some(range) = range_header {

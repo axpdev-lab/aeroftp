@@ -124,6 +124,9 @@ pub struct WalkScope {
     /// Identities of the spellings of the root, letter case kept: what a
     /// recursive delete compares (see [`WalkScope::holds_as_spelled`]).
     identities: Vec<String>,
+    /// An absolute root already names its authority. A listing may teach a
+    /// read another spelling, but cannot authorize deleting outside this one.
+    absolute_delete_root: Option<String>,
 }
 
 impl WalkScope {
@@ -146,6 +149,22 @@ impl WalkScope {
             spellings: vec![position],
             visited: HashSet::from([walk_path_key(root)]),
             identities: vec![walk_path_key(root)],
+            absolute_delete_root: (root.starts_with(['/', '\\'])
+                || (root.as_bytes().get(1) == Some(&b':')
+                    && matches!(root.as_bytes().get(2), Some(b'/' | b'\\'))))
+            .then(|| walk_path_key(root)),
+        }
+    }
+
+    /// A destructive walk may use the provider's explicit resolution of the
+    /// requested root (for example GitLab's repository base or Dropbox's
+    /// canonical case). That answer describes the requested root itself,
+    /// rather than letting an arbitrary child listing expand its authority.
+    /// Repo-relative answers are rooted before becoming deletion authority.
+    pub fn for_delete(root: &str, resolved_root: Option<&str>) -> Self {
+        match resolved_root.filter(|path| !path.is_empty()) {
+            Some(path) => Self::new(&walk_path_key(path)),
+            None => Self::new(root),
         }
     }
 
@@ -269,6 +288,9 @@ impl WalkScope {
     /// `/X/a` is not in `/x`.
     pub fn holds_as_spelled(&self, path: &str) -> bool {
         let identity = walk_path_key(path);
+        if let Some(root) = &self.absolute_delete_root {
+            return is_strictly_under(&identity, root);
+        }
         self.identities
             .iter()
             .any(|root| is_strictly_under(&identity, root))
@@ -903,6 +925,48 @@ mod tests {
         learned.learn_root_listing(&[file("a", "/X/a")]);
         assert_eq!(
             learned.place_to_delete("/x", "/X/a", false),
+            WalkStep::OutsideRoot
+        );
+    }
+
+    #[test]
+    fn listing_aliases_never_expand_absolute_deletion_authority() {
+        let mut scope = WalkScope::new("/root");
+        scope.learn_root_listing(&[file("x.aerotmp", "/outside/root/x.aerotmp")]);
+        assert_eq!(
+            scope.place("/root", "/outside/root/x.aerotmp", false),
+            WalkStep::Follow
+        );
+        assert_eq!(
+            scope.place_to_delete("/root", "/outside/root/x.aerotmp", false),
+            WalkStep::OutsideRoot
+        );
+        assert_eq!(
+            scope.place_to_delete("/root", "/root/x.aerotmp", false),
+            WalkStep::Follow
+        );
+
+        // A provider explicitly resolves the root's case/base, so its real
+        // children remain usable without trusting another listing's aliases.
+        let mut resolved = WalkScope::for_delete("/photos", Some("base/Photos"));
+        resolved.learn_root_listing(&[file("a", "/elsewhere/base/Photos/a")]);
+        assert_eq!(
+            resolved.place_to_delete("/photos", "base/Photos/a", false),
+            WalkStep::Follow
+        );
+        assert_eq!(
+            resolved.place_to_delete("/photos", "/elsewhere/base/Photos/a", false),
+            WalkStep::OutsideRoot
+        );
+        assert_eq!(
+            resolved.place_to_delete("/photos", "base/photos/a", false),
+            WalkStep::OutsideRoot
+        );
+
+        let mut relative = WalkScope::for_delete("www", None);
+        relative.learn_root_listing(&[file("a", "/home/user/www/a")]);
+        assert_eq!(
+            relative.place_to_delete("www", "/home/user/www/a", false),
             WalkStep::Follow
         );
     }

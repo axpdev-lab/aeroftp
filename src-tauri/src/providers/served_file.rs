@@ -114,7 +114,14 @@ fn stream_windows(
     let _ = tx.try_send(Ok(first));
     tokio::spawn(async move {
         while at < end {
-            let next = next_window(&governor, &provider, &path, at, end).await;
+            let next = tokio::select! {
+                biased;
+                // Dropping a client cancels both limiter waits and an in-flight
+                // backend read, including its provider lock. Check closure
+                // first so a ready window cannot begin after the reader left.
+                _ = tx.closed() => return,
+                next = next_window(&governor, &provider, &path, at, end) => next,
+            };
             let failed = next.is_err();
             let item = next
                 .inspect(|data| at += data.len() as u64)
@@ -391,6 +398,140 @@ mod tests {
         assert!(error.to_string().contains("ended at byte"), "{error}");
     }
 
+    #[derive(Default)]
+    struct RangeProbe {
+        reads: std::sync::atomic::AtomicUsize,
+        resumed: std::sync::atomic::AtomicUsize,
+        pending: tokio::sync::Notify,
+        dropped: tokio::sync::Notify,
+        resume: tokio::sync::Notify,
+    }
+
+    struct PendingRange(Arc<RangeProbe>);
+
+    impl Drop for PendingRange {
+        fn drop(&mut self) {
+            self.0.dropped.notify_one();
+        }
+    }
+
+    fn range_provider(probe: Arc<RangeProbe>) -> SharedProvider {
+        let provider: Box<dyn StorageProvider> = Box::new(WholeFilesOnly {
+            content: Vec::new(),
+            downloads: Arc::default(),
+            ignores_ranges: false,
+            range_probe: Some(probe),
+        });
+        Arc::new(tokio::sync::Mutex::new(provider))
+    }
+
+    async fn window_task_stopped(
+        governor: &Arc<GlobalTransferGovernor>,
+        provider: &SharedProvider,
+    ) {
+        // No virtual time or cap change is needed to cancel a blocked read.
+        // Keep the test runnable while the task processes receiver closure.
+        for _ in 0..32 {
+            if Arc::strong_count(governor) == 1 && Arc::strong_count(provider) == 1 {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            Arc::strong_count(governor),
+            1,
+            "window task kept its governor"
+        );
+        assert_eq!(
+            Arc::strong_count(provider),
+            1,
+            "window task kept its provider"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dropping_a_served_reader_cancels_a_pending_backend_read() {
+        use std::sync::atomic::Ordering;
+        let governor = limiter(1 << 40);
+        let probe = Arc::new(RangeProbe::default());
+        let provider = range_provider(probe.clone());
+        let reader = open_served_range(
+            governor.clone(),
+            provider.clone(),
+            "/pending".into(),
+            0,
+            SERVED_WINDOW * 3,
+        )
+        .await
+        .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), probe.pending.notified())
+            .await
+            .expect("the second backend read must be pending");
+        assert_eq!(probe.reads.load(Ordering::SeqCst), 2);
+        assert!(
+            provider.try_lock().is_err(),
+            "the pending read owns the provider"
+        );
+        let charged = paid(&governor);
+        drop(reader);
+        tokio::time::timeout(std::time::Duration::from_secs(1), probe.dropped.notified())
+            .await
+            .expect("reader closure must drop the backend future");
+        window_task_stopped(&governor, &provider).await;
+        assert!(
+            provider.try_lock().is_ok(),
+            "cancellation must release the provider"
+        );
+        // Even making the old backend wait ready cannot revive the dropped task.
+        probe.resume.notify_one();
+        tokio::task::yield_now().await;
+        assert_eq!(probe.resumed.load(Ordering::SeqCst), 0);
+        assert_eq!(probe.reads.load(Ordering::SeqCst), 2);
+        assert_eq!(paid(&governor), charged);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dropping_a_served_reader_cancels_a_drained_governor_wait() {
+        use std::sync::atomic::Ordering;
+        let governor = limiter(1);
+        let probe = Arc::new(RangeProbe::default());
+        let provider = range_provider(probe.clone());
+        let (window, _) = crate::transfer_dag::throttle::range_read_pacing_with(
+            &governor,
+            TransferDirection::Download,
+            SERVED_WINDOW,
+        );
+        let burst = governor
+            .directional_bandwidth(TransferDirection::Download)
+            .burst_bytes();
+        governor
+            .charge(TransferDirection::Download, burst - window)
+            .await;
+        let reader = open_served_range(
+            governor.clone(),
+            provider.clone(),
+            "/rate-limited".into(),
+            0,
+            window * 3,
+        )
+        .await
+        .unwrap();
+        // The first read uses the last tokens. The spawned next window cannot
+        // reach the backend while the one-byte-per-second bucket is drained.
+        tokio::task::yield_now().await;
+        assert_eq!(probe.reads.load(Ordering::SeqCst), 1);
+        let charged = paid(&governor);
+        drop(reader);
+        window_task_stopped(&governor, &provider).await;
+        assert_eq!(probe.reads.load(Ordering::SeqCst), 1);
+        assert_eq!(paid(&governor), charged);
+        // Refilling the bucket later must not charge or issue a detached read.
+        tokio::time::advance(std::time::Duration::from_secs(burst + 1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(probe.reads.load(Ordering::SeqCst), 1);
+        assert_eq!(paid(&governor), charged);
+    }
+
     /// A backend that cannot read a range, and downloads whole files only:
     /// the trait's default answers `NotSupported`, or, with `ignores_ranges`,
     /// a server that sent something else than the range asked
@@ -399,6 +540,7 @@ mod tests {
         content: Vec<u8>,
         downloads: Arc<std::sync::atomic::AtomicUsize>,
         ignores_ranges: bool,
+        range_probe: Option<Arc<RangeProbe>>,
     }
 
     #[async_trait::async_trait]
@@ -497,9 +639,23 @@ mod tests {
         async fn read_range(
             &mut self,
             _path: &str,
-            _offset: u64,
-            _len: u64,
+            offset: u64,
+            len: u64,
         ) -> Result<Vec<u8>, ProviderError> {
+            if let Some(probe) = &self.range_probe {
+                probe
+                    .reads
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if offset > 0 {
+                    let _pending = PendingRange(probe.clone());
+                    probe.pending.notify_one();
+                    probe.resume.notified().await;
+                    probe
+                        .resumed
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+                return Ok(vec![0; len as usize]);
+            }
             Err(if self.ignores_ranges {
                 ProviderError::ParallelRefused("the server ignored Range".to_string())
             } else {
@@ -517,6 +673,7 @@ mod tests {
             content: content.to_vec(),
             downloads: downloads.clone(),
             ignores_ranges,
+            range_probe: None,
         });
         (Arc::new(tokio::sync::Mutex::new(provider)), downloads)
     }

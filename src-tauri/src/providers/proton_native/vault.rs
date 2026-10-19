@@ -2,7 +2,7 @@
 //!
 //! Key `proton_native_session_<profile_id>`, value the [`StoredSession`] JSON.
 //! It is written at sign-in and after every token refresh, mirrored into the
-//! active user's partition like the OAuth tokens (MUV-4), and listed in
+//! captured user's partition like the OAuth tokens (MUV-4), and listed in
 //! `per_profile_vault_keys`, so a profile's delete removes it, its duplicate
 //! copies it and its `.aeroftp` export carries it (owner decision
 //! 2026-10-17, the house rule for every per-profile secret).
@@ -19,11 +19,12 @@
 //! keeps the session and the other must sign in again.
 //!
 //! A sign-in made before its profile is saved (Quick Connect) has no profile
-//! id yet: it goes under the unbound key `proton_native_session`, like the
-//! legacy OAuth singleton, and the first connect of a saved profile without a
+//! id yet: it goes under `proton_native_unbound_user_<user_id>`, and the
+//! first connect of a saved profile without a
 //! session of its own takes it over (`ProtonNativeProvider::connect` checks
 //! the account first). The unbound key belongs to no profile, so it is not in
-//! `per_profile_vault_keys` and is never exported.
+//! `per_profile_vault_keys` and is never exported. The legacy unbound key
+//! `proton_native_session` remains readable by its original account only.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -46,6 +47,34 @@ pub const UNBOUND_SESSION_KEY: &str = "proton_native_session";
 
 /// `credential_type` of the partition mirror.
 const PARTITION_TYPE: &str = "proton_native_session";
+const USER_UNBOUND_PREFIX: &str = "proton_native_unbound_user_";
+
+/// Immutable account ownership. `None` is the pre-partition vault, never an
+/// instruction to look up the active account again after an await or switch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionOwner {
+    user_id: Option<i64>,
+}
+
+impl SessionOwner {
+    pub const fn for_user(user_id: Option<i64>) -> Self {
+        Self { user_id }
+    }
+
+    pub fn current() -> Result<Self, ProviderError> {
+        let store = open_store()?;
+        let user =
+            crate::user_partitions::cli_get_active_user(&store).map_err(ProviderError::Other)?;
+        Ok(Self::for_user(user.map(|user| user.id)))
+    }
+
+    fn key(self, profile_id: Option<&str>) -> String {
+        match (profile_id, self.user_id) {
+            (None, Some(user)) => format!("{USER_UNBOUND_PREFIX}{user}"),
+            _ => session_key(profile_id),
+        }
+    }
+}
 
 /// How long a profile delete waits for the revoke before it gives up.
 const REVOKE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -67,6 +96,279 @@ fn session_writes() -> std::sync::MutexGuard<'static, ()> {
     SESSION_WRITES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// A non-expiring OS lock for a vault key, including a key not created yet.
+/// Keep the file after unlocking: unlinking it could let a second inode be
+/// locked while another process still holds the first one. A crash releases
+/// the OS lock, so no stale timeout or lock-file stealing is needed.
+struct KeyLease(std::fs::File);
+
+impl Drop for KeyLease {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+async fn lock_key_file(path: &std::path::Path, wait: Duration) -> Result<KeyLease, ProviderError> {
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).truncate(false).write(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let file = options
+        .open(path)
+        .map_err(|error| ProviderError::Other(format!("Proton session lock: {error}")))?;
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(KeyLease(file)),
+            Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(ProviderError::Other(
+                    "The Proton session is being changed elsewhere; try again in a moment".into(),
+                ))
+            }
+            Err(std::fs::TryLockError::Error(error)) => {
+                return Err(ProviderError::Other(format!(
+                    "Proton session lock: {error}"
+                )))
+            }
+        }
+    }
+}
+
+fn mutation_keys(
+    owner: SessionOwner,
+    profile_id: Option<&str>,
+) -> Result<Vec<String>, ProviderError> {
+    let mut keys = vec![owner.key(profile_id)];
+    // Guard both names during migration. Resolve the actual source only
+    // after locking, since a competing sign-in may migrate it while we wait.
+    if profile_id.is_none()
+        && owner.user_id.is_some()
+        && crate::user_partitions::legacy_credential_owner_id().map_err(ProviderError::Other)?
+            == owner.user_id
+    {
+        keys.push(UNBOUND_SESSION_KEY.into());
+    }
+    Ok(keys)
+}
+
+async fn lock_keys(mut keys: Vec<String>) -> Result<Vec<KeyLease>, ProviderError> {
+    use sha2::{Digest, Sha256};
+    let directory = crate::portable::aeroftp_data_root()
+        .ok_or_else(|| ProviderError::Other("Could not find AeroFTP data root".into()))?
+        .join("proton_session_locks");
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| ProviderError::Other(format!("Proton session lock directory: {error}")))?;
+    keys.sort_unstable();
+    keys.dedup();
+    let mut leases = Vec::with_capacity(keys.len());
+    // All mutation paths take sorted key locks first, then the session UID
+    // lease. Refreshes take only the UID lease, so neither order can invert.
+    for key in keys {
+        let path = directory.join(format!(
+            "{}.lock",
+            hex::encode(Sha256::digest(key.as_bytes()))
+        ));
+        leases.push(lock_key_file(&path, EXCLUSIVE_WAIT).await?);
+    }
+    Ok(leases)
+}
+
+/// Cross-user relocation resolves partition DEKs on its calling thread, then
+/// takes these guards without retaining USER_SESSION or a SQLite transaction.
+/// Keep the key guards while discovering both UIDs: even an absent destination
+/// must be protected from a concurrent sign-in.
+pub(crate) struct RelocationKeys {
+    keys: Vec<KeyLease>,
+    source_key: String,
+    target_key: String,
+}
+
+pub(crate) struct RelocationGuards {
+    _keys: Vec<KeyLease>,
+    _sessions: Vec<RefreshLease>,
+    source_key: String,
+    target_key: String,
+    source_uid: Option<String>,
+    target_uid: Option<String>,
+    source_vault_uid: Option<String>,
+    target_vault_uid: Option<String>,
+}
+
+fn vault_session(
+    store: &CredentialStore,
+    key: &str,
+) -> Result<Option<ProtonSession>, ProviderError> {
+    match store.get(key) {
+        Ok(raw) => parse(&raw).map(Some),
+        Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(None),
+        Err(error) => Err(ProviderError::Other(format!(
+            "Read Proton relocation session: {error}"
+        ))),
+    }
+}
+
+fn session_uid(raw: Option<&str>) -> Result<Option<String>, ProviderError> {
+    raw.map(parse)
+        .transpose()
+        .map(|session| session.map(|session| session.tokens.uid))
+}
+
+fn relocation_runtime() -> Result<tokio::runtime::Runtime, ProviderError> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| ProviderError::Other(format!("Proton session runtime: {error}")))
+}
+
+pub(crate) fn lock_relocation_keys_blocking(
+    source_profile: &str,
+    target_profile: &str,
+) -> Result<RelocationKeys, ProviderError> {
+    let source_key = session_key(Some(source_profile));
+    let target_key = session_key(Some(target_profile));
+    std::thread::spawn(move || {
+        let keys = relocation_runtime()?
+            .block_on(lock_keys(vec![source_key.clone(), target_key.clone()]))?;
+        Ok(RelocationKeys {
+            keys,
+            source_key,
+            target_key,
+        })
+    })
+    .join()
+    .map_err(|_| {
+        ProviderError::Other("Proton relocation key locking stopped unexpectedly".into())
+    })?
+}
+
+impl RelocationKeys {
+    /// The caller reads both explicit partitions after acquiring the key locks.
+    /// Refreshes can rotate the captured pair while we wait, but cannot change
+    /// its UID. Reread the pair with `with_current_session` after this returns.
+    pub(crate) fn lock_sessions_blocking(
+        self,
+        store: &CredentialStore,
+        source_raw: Option<&str>,
+        target_raw: Option<&str>,
+    ) -> Result<RelocationGuards, ProviderError> {
+        let source_uid = session_uid(source_raw)?;
+        let target_uid = session_uid(target_raw)?;
+        let source_vault_uid =
+            vault_session(store, &self.source_key)?.map(|session| session.tokens.uid);
+        let target_vault_uid =
+            vault_session(store, &self.target_key)?.map(|session| session.tokens.uid);
+        std::thread::spawn(move || {
+            let mut uids: Vec<String> = source_uid
+                .iter()
+                .chain(target_uid.iter())
+                .chain(source_vault_uid.iter())
+                .chain(target_vault_uid.iter())
+                .cloned()
+                .collect();
+            uids.sort_unstable();
+            uids.dedup();
+            let sessions = relocation_runtime()?.block_on(async {
+                let mut sessions = Vec::with_capacity(uids.len());
+                for uid in uids {
+                    if let Some(lease) =
+                        exclusive(true, acquire_exclusive(&refresh_lease_slug(&uid)).await)?
+                    {
+                        sessions.push(lease);
+                    }
+                }
+                Ok::<_, ProviderError>(sessions)
+            })?;
+            Ok(RelocationGuards {
+                _keys: self.keys,
+                _sessions: sessions,
+                source_key: self.source_key,
+                target_key: self.target_key,
+                source_uid,
+                target_uid,
+                source_vault_uid,
+                target_vault_uid,
+            })
+        })
+        .join()
+        .map_err(|_| {
+            ProviderError::Other("Proton relocation session locking stopped unexpectedly".into())
+        })?
+    }
+}
+
+impl RelocationGuards {
+    /// Identical profile IDs can exist in different partitions. Never remove
+    /// another owner's global fallback when only the scoped source held ours.
+    pub(crate) fn source_vault_matches(&self) -> bool {
+        self.source_uid.is_some() && self.source_uid == self.source_vault_uid
+    }
+
+    /// Run profile/partition commit and subsequent vault bookkeeping under the
+    /// same guards. The caller supplies session-free reads of the explicit
+    /// source and target partitions, never an active-user lookup.
+    pub(crate) fn with_current_session<R>(
+        &self,
+        store: &CredentialStore,
+        source_raw: Option<&str>,
+        target_raw: Option<&str>,
+        apply: impl FnOnce(Option<&str>) -> Result<R, String>,
+    ) -> Result<R, String> {
+        let _writes = session_writes();
+        let source_vault =
+            vault_session(store, &self.source_key).map_err(|error| error.to_string())?;
+        let target_vault =
+            vault_session(store, &self.target_key).map_err(|error| error.to_string())?;
+        if session_uid(source_raw).map_err(|error| error.to_string())? != self.source_uid
+            || session_uid(target_raw).map_err(|error| error.to_string())? != self.target_uid
+            || source_vault.as_ref().map(|session| &session.tokens.uid)
+                != self.source_vault_uid.as_ref()
+            || target_vault.as_ref().map(|session| &session.tokens.uid)
+                != self.target_vault_uid.as_ref()
+        {
+            return Err("The Proton session changed during profile relocation; try again".into());
+        }
+        let mut source = source_raw
+            .map(parse)
+            .transpose()
+            .map_err(|error| error.to_string())?;
+        if let Some(session) = &mut source {
+            // A refresh writes the vault before its best-effort partition
+            // mirror. Adopt that exact newer pair only for the same UID.
+            let same = source_vault.filter(|saved| saved.tokens.uid == session.tokens.uid);
+            let same = match same {
+                Some(saved) => Some(saved),
+                None => {
+                    // A prior committed vault-write failure can leave only
+                    // the scoped partition copy. A different local profile
+                    // may since have rotated this UID; it is protected by
+                    // the same held lease, just as in guarded import/restore.
+                    let mut keys = store.list_accounts().map_err(|error| error.to_string())?;
+                    keys.sort_unstable();
+                    keys.into_iter()
+                        .filter(|key| is_session_key(key))
+                        .filter_map(|key| vault_session(store, &key).ok().flatten())
+                        .find(|saved| saved.tokens.uid == session.tokens.uid)
+                }
+            };
+            if let Some(saved) = same {
+                session.tokens = saved.tokens;
+            }
+        }
+        let raw = source
+            .as_ref()
+            .map(|session| {
+                serde_json::to_string(&StoredSession::from(session))
+                    .map(Zeroizing::new)
+                    .map_err(|error| format!("Encode Proton relocation session: {error}"))
+            })
+            .transpose()?;
+        apply(raw.as_deref().map(String::as_str))
+    }
 }
 
 /// The vault key of the session saved for `profile_id`, or the unbound key.
@@ -107,9 +409,30 @@ fn parse(json: &str) -> Result<ProtonSession, ProviderError> {
         })
 }
 
-fn read(store: &CredentialStore, key: &str) -> Result<Option<ProtonSession>, ProviderError> {
-    match crate::user_partitions::resolve_active_credential(store, key) {
-        Ok(Some(json)) => parse(&json).map(Some),
+fn read(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    key: &str,
+) -> Result<Option<ProtonSession>, ProviderError> {
+    let result = match owner.user_id {
+        Some(user) => crate::user_partitions::resolve_credential_for_user(store, user, key),
+        None => Ok(store.get(key).ok().map(Zeroizing::new)),
+    };
+    match result {
+        Ok(Some(json)) => {
+            let mut session = parse(&json)?;
+            // A locked shared copy may not have accepted its mirror. The
+            // vault is written first, so its newer pair for this SAME UID is
+            // authoritative. A different user's session is never adopted.
+            if let Ok(raw) = store.get(key) {
+                if let Ok(saved) = parse(&raw) {
+                    if saved.tokens.uid == session.tokens.uid {
+                        session.tokens = saved.tokens;
+                    }
+                }
+            }
+            Ok(Some(session))
+        }
         Ok(None) => Ok(None),
         Err(error) => Err(ProviderError::Other(format!(
             "the saved Proton session could not be read: {error}"
@@ -119,19 +442,42 @@ fn read(store: &CredentialStore, key: &str) -> Result<Option<ProtonSession>, Pro
 
 /// The session saved for `profile_id` (the unbound one for `None`), `None`
 /// when there is none.
-pub fn load_session(profile_id: Option<&str>) -> Result<Option<ProtonSession>, ProviderError> {
-    read(&open_store()?, &session_key(profile_id))
+pub fn load_session(
+    owner: SessionOwner,
+    profile_id: Option<&str>,
+) -> Result<Option<ProtonSession>, ProviderError> {
+    let store = open_store()?;
+    read(&store, owner, &saved_key(&store, owner, profile_id)?)
 }
 
-/// Saves `session` for `profile_id` in the vault and, for a profile, in the
-/// active user's partition (the unbound key stays vault-only, like the legacy
-/// OAuth singleton).
+fn saved_key(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    profile_id: Option<&str>,
+) -> Result<String, ProviderError> {
+    let own = owner.key(profile_id);
+    if profile_id.is_some() || owner.user_id.is_none() || read(store, owner, &own)?.is_some() {
+        return Ok(own);
+    }
+    // The old global unbound entry belongs only to the legacy account.
+    if crate::user_partitions::legacy_credential_owner_id().map_err(ProviderError::Other)?
+        == owner.user_id
+    {
+        return Ok(UNBOUND_SESSION_KEY.into());
+    }
+    Ok(own)
+}
+
+/// Saves `session` in the vault and the captured user's partition. Unbound
+/// keys include the user id so concurrent sign-ins by different users stay
+/// isolated. `None` ownership is the pre-partition legacy vault.
 pub fn store_session(
+    owner: SessionOwner,
     profile_id: Option<&str>,
     session: &ProtonSession,
 ) -> Result<(), ProviderError> {
     let store = open_store()?;
-    let key = session_key(profile_id);
+    let key = owner.key(profile_id);
     let json = Zeroizing::new(
         serde_json::to_string(&StoredSession::from(session))
             .map_err(|error| ProviderError::Other(format!("session encoding: {error}")))?,
@@ -139,21 +485,29 @@ pub fn store_session(
     store
         .store(&key, &json)
         .map_err(|error| ProviderError::Other(format!("the vault refused the session: {error}")))?;
-    if profile_id.is_some() {
-        crate::user_partitions::mirror_active_credential(&store, &key, PARTITION_TYPE, &json);
+    if let Some(user) = owner.user_id {
+        crate::user_partitions::mirror_credential_for_user_typed(
+            &store,
+            user,
+            &key,
+            PARTITION_TYPE,
+            &json,
+        );
     }
     Ok(())
 }
 
-/// Removes the session saved for `profile_id` from the vault and the active
+/// Removes the session saved for `profile_id` from the vault and the captured
 /// user's partition. Nothing saved is not an error.
-pub fn delete_session(profile_id: Option<&str>) -> Result<(), ProviderError> {
+pub fn delete_session(owner: SessionOwner, profile_id: Option<&str>) -> Result<(), ProviderError> {
     let store = open_store()?;
-    let key = session_key(profile_id);
+    let key = saved_key(&store, owner, profile_id)?;
     store
         .delete(&key)
         .map_err(|error| ProviderError::Other(format!("the vault refused the delete: {error}")))?;
-    crate::user_partitions::unmirror_active_credential(&key);
+    if let Some(user) = owner.user_id {
+        crate::user_partitions::unmirror_credential_for_user_best_effort_any(user, &key);
+    }
     Ok(())
 }
 
@@ -194,46 +548,187 @@ fn exclusive<L>(holds_a_session: bool, lease: Option<L>) -> Result<Option<L>, Pr
 
 /// The refresh lease of the session saved under `key`, for a sign-in, a
 /// sign-out or a delete to hold while it changes the key (see [`exclusive`]).
-async fn lease_of_saved(key: &str) -> Result<Option<RefreshLease>, ProviderError> {
+async fn lease_of_saved(
+    owner: SessionOwner,
+    key: &str,
+) -> Result<Option<RefreshLease>, ProviderError> {
     let store = open_store()?;
-    let Some(saved) = read(&store, key).ok().flatten() else {
-        return exclusive(false, None);
-    };
-    let lease = acquire_exclusive(&refresh_lease_slug(&saved.tokens.uid)).await;
-    exclusive(true, lease)
+    loop {
+        let Some(saved) = read(&store, owner, key)? else {
+            return exclusive(false, None);
+        };
+        let lease = exclusive(
+            true,
+            acquire_exclusive(&refresh_lease_slug(&saved.tokens.uid)).await,
+        )?;
+        // A sign-in may have changed the key while we waited. Never mutate
+        // its replacement while holding only the old session's lease.
+        if read(&store, owner, key)?.is_some_and(|now| now.tokens.uid == saved.tokens.uid) {
+            return Ok(lease);
+        }
+        drop(lease);
+    }
 }
 
 /// Moves the unbound session to `profile_id`, the profile that just connected
 /// with it.
 pub async fn bind_unbound_session(
+    owner: SessionOwner,
     profile_id: &str,
     session: &ProtonSession,
-) -> Result<(), ProviderError> {
-    let _lease = lease_of_saved(UNBOUND_SESSION_KEY).await?;
+) -> Result<ProtonSession, ProviderError> {
+    let store = open_store()?;
+    let mut keys = mutation_keys(owner, None)?;
+    keys.push(owner.key(Some(profile_id)));
+    let _keys = lock_keys(keys).await?;
+    let source_key = saved_key(&store, owner, None)?;
+    let _lease = lease_of_saved(owner, &source_key).await?;
     let _writes = session_writes();
-    store_session(Some(profile_id), session)?;
-    delete_session(None)
+    let current = takeover_session(read(&store, owner, &source_key)?, session)?;
+    if read(&store, owner, &owner.key(Some(profile_id)))?.is_some() {
+        return Err(takeover_changed());
+    }
+    store_session(owner, Some(profile_id), &current)?;
+    store
+        .delete(&source_key)
+        .map_err(|error| ProviderError::Other(error.to_string()))?;
+    if let Some(user) = owner.user_id {
+        crate::user_partitions::unmirror_credential_for_user_best_effort_any(user, &source_key);
+    }
+    Ok(current)
+}
+
+fn takeover_changed() -> ProviderError {
+    ProviderError::AuthenticationFailed(
+        "The pending Proton session changed during connection; connect again".into(),
+    )
+}
+
+/// Called under the source lease. Adopt refreshes of the expected session,
+/// but never consume a newer sign-in or a session another connect took.
+fn takeover_session(
+    current: Option<ProtonSession>,
+    expected: &ProtonSession,
+) -> Result<ProtonSession, ProviderError> {
+    current
+        .filter(|now| now.tokens.uid == expected.tokens.uid)
+        .ok_or_else(takeover_changed)
 }
 
 /// Saves a new sign-in for `profile_id`, after ending on Proton the session
 /// it replaces (unless another saved profile still uses that one).
 pub async fn replace_session(
+    owner: SessionOwner,
     profile_id: Option<&str>,
     session: &ProtonSession,
 ) -> Result<(), ProviderError> {
-    let _lease = lease_of_saved(&session_key(profile_id)).await?;
-    revoke_saved_session(profile_id).await;
+    let store = open_store()?;
+    let _keys = lock_keys(mutation_keys(owner, profile_id)?).await?;
+    let previous_key = saved_key(&store, owner, profile_id)?;
+    let _lease = lease_of_saved(owner, &previous_key).await?;
+    revoke_saved_session(owner, profile_id).await;
     let _writes = session_writes();
-    store_session(profile_id, session)
+    if previous_key != owner.key(profile_id) {
+        store
+            .delete(&previous_key)
+            .map_err(|error| ProviderError::Other(error.to_string()))?;
+        if let Some(user) = owner.user_id {
+            crate::user_partitions::unmirror_credential_for_user_best_effort_any(
+                user,
+                &previous_key,
+            );
+        }
+    }
+    store_session(owner, profile_id, session)
+}
+
+/// Import or duplicate a session without revoking it. This is a mutation of
+/// the destination key too, including when no session was stored there yet.
+/// Hold the imported UID's lease as well, so a duplicate cannot retain a
+/// refresh-token pair another local copy has just rotated.
+pub async fn restore_session(
+    owner: SessionOwner,
+    profile_id: &str,
+    raw: &str,
+) -> Result<(), ProviderError> {
+    let mut session = parse(raw)?;
+    let store = open_store()?;
+    let key = owner.key(Some(profile_id));
+    let _keys = lock_keys(vec![key.clone()]).await?;
+    let previous = read(&store, owner, &key)?;
+    let mut uids = vec![session.tokens.uid.clone()];
+    if let Some(previous) = &previous {
+        uids.push(previous.tokens.uid.clone());
+    }
+    uids.sort_unstable();
+    uids.dedup();
+    let mut leases = Vec::with_capacity(uids.len());
+    for uid in uids {
+        if let Some(lease) = exclusive(true, acquire_exclusive(&refresh_lease_slug(&uid)).await)? {
+            leases.push(lease);
+        }
+    }
+    let _writes = session_writes();
+    let current = read(&store, owner, &key)?;
+    if current.as_ref().map(|saved| &saved.tokens.uid)
+        != previous.as_ref().map(|saved| &saved.tokens.uid)
+    {
+        return Err(takeover_changed());
+    }
+    let same = current
+        .filter(|saved| saved.tokens.uid == session.tokens.uid)
+        .or_else(|| {
+            store
+                .list_accounts()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|key| is_session_key(key))
+                .filter_map(|key| store.get(&key).ok().and_then(|raw| parse(&raw).ok()))
+                .find(|saved| saved.tokens.uid == session.tokens.uid)
+        });
+    if let Some(saved) = same {
+        session.tokens = saved.tokens;
+    }
+    store_session(owner, Some(profile_id), &session)
+}
+
+/// Synchronous profile import/duplicate callers keep their existing atomic
+/// user-selection scope while the async key and UID leases are acquired.
+pub fn restore_session_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+    raw: &str,
+) -> Result<(), ProviderError> {
+    let profile_id = profile_id.to_string();
+    let raw = Zeroizing::new(raw.to_string());
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| ProviderError::Other(format!("Proton session runtime: {error}")))?;
+        runtime.block_on(restore_session(owner, &profile_id, &raw))
+    })
+    .join()
+    .map_err(|_| ProviderError::Other("Proton session restore stopped unexpectedly".into()))?
 }
 
 /// Resolve the session a status or explicit sign-out sees. Profile deletion
 /// keeps using end_session directly and never consumes an unbound session.
 pub fn saved_session_target(
+    owner: SessionOwner,
     profile_id: Option<&str>,
 ) -> Result<(Option<&str>, bool), ProviderError> {
+    saved_session_target_in(&open_store()?, owner, profile_id)
+}
+
+/// Read-only status using the caller's vault handle and captured owner.
+pub fn saved_session_target_in<'a>(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    profile_id: Option<&'a str>,
+) -> Result<(Option<&'a str>, bool), ProviderError> {
     resolve_session_target(profile_id, |id| {
-        load_session(id).map(|session| session.is_some())
+        read(store, owner, &saved_key(store, owner, id)?).map(|session| session.is_some())
     })
 }
 
@@ -251,48 +746,59 @@ fn resolve_session_target(
 }
 
 /// End exactly the indicated vault entry, for sign-out or profile deletion.
-pub async fn end_session(profile_id: Option<&str>) -> Result<(), ProviderError> {
-    let _lease = lease_of_saved(&session_key(profile_id)).await?;
-    revoke_saved_session(profile_id).await;
+pub async fn end_session(
+    owner: SessionOwner,
+    profile_id: Option<&str>,
+) -> Result<(), ProviderError> {
+    let store = open_store()?;
+    let _keys = lock_keys(mutation_keys(owner, profile_id)?).await?;
+    let _lease = lease_of_saved(owner, &saved_key(&store, owner, profile_id)?).await?;
+    revoke_saved_session(owner, profile_id).await;
     let _writes = session_writes();
-    delete_session(profile_id)
+    delete_session(owner, profile_id)
 }
 
 /// [`end_session`] for a synchronous caller (the CLI profile delete): it
 /// runs on a thread of its own with its own runtime, so it works whether or
 /// not the caller is inside a Tokio runtime.
-pub fn end_session_blocking(profile_id: Option<&str>) {
+pub fn end_session_blocking(
+    owner: SessionOwner,
+    profile_id: Option<&str>,
+) -> Result<(), ProviderError> {
     let profile_id = profile_id.map(str::to_string);
     let joined = std::thread::spawn(move || {
         match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
         {
-            Ok(runtime) => {
-                if let Err(error) = runtime.block_on(end_session(profile_id.as_deref())) {
-                    log::warn!("Proton: session not removed: {error}");
-                }
-            }
-            Err(error) => log::warn!("Proton: session not ended, no runtime: {error}"),
+            Ok(runtime) => runtime.block_on(end_session(owner, profile_id.as_deref())),
+            Err(error) => Err(ProviderError::Other(format!(
+                "Proton session runtime: {error}"
+            ))),
         }
     })
     .join();
-    if joined.is_err() {
-        log::warn!("Proton: ending the session stopped unexpectedly");
-    }
+    joined
+        .map_err(|_| ProviderError::Other("Proton session cleanup stopped unexpectedly".into()))?
 }
 
 /// Revokes on Proton the session saved for `profile_id`, best effort, before
 /// a profile delete (or a new sign-in) replaces the key. A session that
 /// another key on this device also holds is left alive. Never fails the
 /// caller: errors are logged.
-pub async fn revoke_saved_session(profile_id: Option<&str>) {
+pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>) {
     let store = match open_store() {
         Ok(store) => store,
         Err(_) => return,
     };
-    let key = session_key(profile_id);
-    let session = match read(&store, &key) {
+    let key = match saved_key(&store, owner, profile_id) {
+        Ok(key) => key,
+        Err(error) => {
+            log::warn!("Proton: saved session owner could not be read: {error}");
+            return;
+        }
+    };
+    let session = match read(&store, owner, &key) {
         Ok(Some(session)) => session,
         Ok(None) => return,
         Err(error) => {
@@ -304,11 +810,8 @@ pub async fn revoke_saved_session(profile_id: Option<&str>) {
         .list_accounts()
         .unwrap_or_default()
         .into_iter()
-        .filter(|account| {
-            (account.starts_with(SESSION_KEY_PREFIX) || account == UNBOUND_SESSION_KEY)
-                && *account != key
-        })
-        .filter_map(|account| read(&store, &account).ok().flatten());
+        .filter(|account| is_session_key(account) && *account != key)
+        .filter_map(|account| store.get(&account).ok().and_then(|raw| parse(&raw).ok()));
     if session_shared(&session.tokens.uid, others) {
         log::info!("Proton: session kept, another saved profile uses it");
         return;
@@ -360,26 +863,85 @@ trait SessionKeys {
     fn write(&self, key: &str, session: &ProtonSession) -> Result<(), ProviderError>;
 }
 
-struct VaultKeys(CredentialStore);
+fn is_session_key(key: &str) -> bool {
+    key.starts_with(SESSION_KEY_PREFIX)
+        || key == UNBOUND_SESSION_KEY
+        || key.starts_with(USER_UNBOUND_PREFIX)
+}
+
+struct VaultKeys {
+    store: CredentialStore,
+    owner: SessionOwner,
+    own_key: String,
+}
 
 impl SessionKeys for VaultKeys {
     fn keys(&self) -> Vec<String> {
-        self.0
+        self.store
             .list_accounts()
             .unwrap_or_default()
             .into_iter()
-            .filter(|account| {
-                account.starts_with(SESSION_KEY_PREFIX) || account == UNBOUND_SESSION_KEY
-            })
+            .filter(|account| is_session_key(account))
             .collect()
     }
 
     fn read(&self, key: &str) -> Option<ProtonSession> {
-        read(&self.0, key).ok().flatten()
+        if key == self.own_key {
+            read(&self.store, self.owner, key).ok().flatten()
+        } else {
+            self.store.get(key).ok().and_then(|raw| parse(&raw).ok())
+        }
     }
 
     fn write(&self, key: &str, session: &ProtonSession) -> Result<(), ProviderError> {
-        store_session(key.strip_prefix(SESSION_KEY_PREFIX), session)
+        let raw = Zeroizing::new(
+            serde_json::to_string(&StoredSession::from(session))
+                .map_err(|error| ProviderError::Other(error.to_string()))?,
+        );
+        // Determine owners before writing the global fallback. An identically
+        // named key in another partition can hold a different session.
+        let mut owners = if let Some(profile) = key.strip_prefix(SESSION_KEY_PREFIX) {
+            crate::user_partitions::profile_credential_owner_ids(profile, key).unwrap_or_else(
+                |error| {
+                    log::warn!("Proton: shared session owners could not be read: {error}");
+                    Vec::new()
+                },
+            )
+        } else if let Some(user) = key
+            .strip_prefix(USER_UNBOUND_PREFIX)
+            .and_then(|user| user.parse::<i64>().ok())
+        {
+            vec![user]
+        } else {
+            Vec::new()
+        };
+        if key == self.own_key {
+            owners.extend(self.owner.user_id);
+        }
+        owners.sort_unstable();
+        owners.dedup();
+        let owners: Vec<i64> = owners
+            .into_iter()
+            .filter(|user| {
+                read(&self.store, SessionOwner::for_user(Some(*user)), key)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|saved| saved.tokens.uid == session.tokens.uid)
+            })
+            .collect();
+        self.store
+            .store(key, &raw)
+            .map_err(|error| ProviderError::Other(error.to_string()))?;
+        for user in owners {
+            crate::user_partitions::mirror_credential_for_user_typed(
+                &self.store,
+                user,
+                key,
+                PARTITION_TYPE,
+                &raw,
+            );
+        }
+        Ok(())
     }
 }
 
@@ -462,14 +1024,16 @@ fn save_refreshed(
 /// with the unchanged key password, to this key and to every key that holds
 /// the same session.
 pub struct VaultSession {
+    owner: SessionOwner,
     profile_id: Option<String>,
     uid: String,
     key_password: secrecy::SecretString,
 }
 
 impl VaultSession {
-    pub fn new(profile_id: Option<&str>, session: &ProtonSession) -> Self {
+    pub fn new(owner: SessionOwner, profile_id: Option<&str>, session: &ProtonSession) -> Self {
         Self {
+            owner,
             profile_id: profile_id.map(str::to_string),
             uid: session.tokens.uid.clone(),
             key_password: session.key_password.clone(),
@@ -486,7 +1050,7 @@ impl SessionStore for VaultSession {
     }
 
     fn load(&self) -> Option<SessionTokens> {
-        match load_session(self.profile_id.as_deref()) {
+        match load_session(self.owner, self.profile_id.as_deref()) {
             Ok(session) => session.map(|session| session.tokens),
             Err(error) => {
                 log::warn!("Proton: saved session not readable: {error}");
@@ -498,8 +1062,12 @@ impl SessionStore for VaultSession {
     fn save(&self, tokens: &SessionTokens) {
         match open_store() {
             Ok(store) => save_refreshed(
-                &VaultKeys(store),
-                &session_key(self.profile_id.as_deref()),
+                &VaultKeys {
+                    store,
+                    owner: self.owner,
+                    own_key: self.owner.key(self.profile_id.as_deref()),
+                },
+                &self.owner.key(self.profile_id.as_deref()),
                 &self.uid,
                 &self.key_password,
                 tokens,
@@ -523,6 +1091,62 @@ mod tests {
             },
             key_password: SecretString::from("k".to_string()),
         }
+    }
+
+    #[test]
+    fn key_guards_cover_absent_sessions_across_processes() {
+        const CHILD: &str = "AEROFTP_PROTON_KEY_GUARD_TEST";
+        const PATH: &str = "AEROFTP_PROTON_KEY_GUARD_PATH";
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        if let Some(mode) = std::env::var_os(CHILD) {
+            let path = std::path::PathBuf::from(std::env::var_os(PATH).unwrap());
+            let result = runtime.block_on(lock_key_file(&path, Duration::ZERO));
+            assert_eq!(result.is_ok(), mode == "free");
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("absent-session.lock");
+        let held = runtime
+            .block_on(lock_key_file(&path, Duration::ZERO))
+            .unwrap();
+        let probe = |mode| {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "providers::proton_native::vault::tests::key_guards_cover_absent_sessions_across_processes", "--test-threads=1"])
+                .env(CHILD, mode).env(PATH, &path).output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        probe("held");
+        drop(held);
+        assert!(
+            path.is_file(),
+            "a persistent lock inode must not be unlinked"
+        );
+        probe("free");
+    }
+
+    #[test]
+    fn takeover_requires_the_expected_uid_and_adopts_its_rotated_pair() {
+        let expected = session("first");
+        assert!(takeover_session(None, &expected).is_err());
+        assert!(takeover_session(Some(session("replacement")), &expected).is_err());
+        let mut refreshed = session("first");
+        refreshed.tokens.access_token = SecretString::from("refreshed".to_string());
+        assert_eq!(
+            takeover_session(Some(refreshed), &expected)
+                .unwrap()
+                .tokens
+                .access_token
+                .expose_secret(),
+            "refreshed"
+        );
     }
 
     #[test]

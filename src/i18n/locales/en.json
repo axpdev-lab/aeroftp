@@ -3074,8 +3074,8 @@
             "tabdigitalTooltip": "TAB.DIGITAL: Independent EU cloud team since 2018, Nextcloud-as-a-service with 8GB free, GDPR compliant, regional subdomains (fie.nl, fie.de, ...)",
             "internxtDesc": "Zero-Knowledge Cloud (1 GB free)",
             "internxtTooltip": "Internxt - Zero-knowledge encrypted cloud, EU-based",
-            "protonDesc": "Connects through the Proton Drive CLI",
-            "protonTooltip": "Uses the Proton Drive CLI - install it, sign in in the browser, AeroFTP is the GUI",
+            "protonDesc": "End-to-end encrypted cloud storage",
+            "protonTooltip": "Use AeroFTP's native client or the official Proton Drive CLI, with browser sign-in.",
             "seafileDesc": "Open-Source Cloud Storage",
             "seafileTooltip": "Seafile - Self-hosted open-source cloud with WebDAV support",
             "kdriveDesc": "Swiss Cloud (15 GB free)",
@@ -6362,6 +6362,7 @@
                 "too_long": "Not sent: the command is longer than 1024 bytes.",
                 "not_ftp": "Not sent: SITE commands need an FTP or FTPS connection.",
                 "not_connected": "Not sent: the session is not connected.",
+                "connection_changed": "Not sent: the connection changed. Retry on the intended session.",
                 "busy": "Not sent: the session is busy with another operation. Try again when it ends.",
                 "reconnect_failed": "Not sent: the session had to reconnect first, and could not."
             },

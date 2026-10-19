@@ -1674,6 +1674,12 @@ impl StorageProvider for JottacloudProvider {
 
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "jottacloud",
+                &self.jfs_url(""),
+                &self.username,
+                &resolved,
+            ),
             |range_header| {
                 let mut req = self.client.get(&url).header(AUTHORIZATION, auth.clone());
                 if let Some(range) = range_header {

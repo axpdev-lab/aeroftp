@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, kamera eller tablet via USB MTP",
             "s3AllowCleartextEndpoint": "Dette endepunkt leverer S3 over almindelig HTTP via et netværk. Accepter det for denne profil: de signerede legitimationsoplysninger og alle filer krydser netværket ukrypteret.",
             "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)",
-            "protonDesc": "Opretter forbindelse via Proton Drive CLI",
-            "protonTooltip": "Bruger Proton Drive CLI - installer den, log ind i browseren, AeroFTP er GUI'en",
+            "protonDesc": "Cloudlager med ende til ende-kryptering",
+            "protonTooltip": "Brug AeroFTP's indbyggede klient eller den officielle Proton Drive CLI med login i browseren.",
             "twakeDesc": "Twake Drive (5 GB gratis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, fransk open source-sky (Cozy Cloud er nu en del af den) med 5 GB gratis",
             "discoverTwake": "Europæisk open source-sky fra Linagora, nu hjemsted for Cozy Cloud (5 GB gratis)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Ikke sendt: SITE-kommandoer kræver en FTP- eller FTPS-forbindelse.",
                 "not_connected": "Ikke sendt: sessionen er ikke forbundet.",
                 "busy": "Ikke sendt: sessionen er optaget af en anden handling. Prøv igen, når den er færdig.",
-                "reconnect_failed": "Ikke sendt: sessionen skulle først genoprette forbindelsen, og det lykkedes ikke."
+                "reconnect_failed": "Ikke sendt: sessionen skulle først genoprette forbindelsen, og det lykkedes ikke.",
+                "connection_changed": "Ikke sendt: forbindelsen er ændret. Prøv igen i den ønskede session."
             },
             "unknown": {
                 "timeout": "Svaret nåede ikke frem i tide.",

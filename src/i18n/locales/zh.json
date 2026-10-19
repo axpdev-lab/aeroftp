@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "通过 USB MTP 连接的手机、相机或平板",
             "s3AllowCleartextEndpoint": "此端点通过网络以明文 HTTP 提供 S3。为此配置文件接受：签名凭据和每个文件都将以未加密方式穿越网络。",
             "discoverFilebase": "Filebase: S3 兼容对象存储（免费 5 GB）",
-            "protonDesc": "通过 Proton Drive CLI 连接",
-            "protonTooltip": "使用 Proton Drive CLI - 安装，在浏览器中登录，AeroFTP 即为 GUI",
+            "protonDesc": "端到端加密云存储",
+            "protonTooltip": "使用 AeroFTP 原生客户端或官方 Proton Drive CLI，通过浏览器登录。",
             "twakeDesc": "Twake Drive(免费 5 GB)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace,法国开源云盘(Cozy Cloud 现已成为其一部分),免费 5 GB",
             "discoverTwake": "Linagora 打造的欧洲开源云盘,现为 Cozy Cloud 的新家(免费 5 GB)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "未发送：SITE 命令需要 FTP 或 FTPS 连接。",
                 "not_connected": "未发送：会话未连接。",
                 "busy": "未发送：会话正忙于其他操作。请在其结束后重试。",
-                "reconnect_failed": "未发送：会话需要先重新连接，但连接失败。"
+                "reconnect_failed": "未发送：会话需要先重新连接，但连接失败。",
+                "connection_changed": "未发送：连接已更改。请在所需会话中重试。"
             },
             "unknown": {
                 "timeout": "未能及时收到响应。",

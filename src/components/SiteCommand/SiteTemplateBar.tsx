@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
 import { loadSavedServerProfiles, mergeSavedServerProfile } from '../../utils/serverProfileStore';
+import type { RunSiteCommand } from './siteCommand';
+import { accountChangeGeneration } from '../../utils/userPartitions';
 
 interface SiteTemplate {
     id: string;
@@ -35,7 +37,7 @@ interface SiteTemplateBarProps {
     /** The free-form line, offered as a template when the user saves it. */
     draft: string;
     disabled: boolean;
-    onRun: (line: string, echo: string, remember: boolean) => void;
+    onRun: RunSiteCommand;
 }
 
 function errorText(error: unknown): string {
@@ -51,6 +53,12 @@ function errorText(error: unknown): string {
  */
 export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, draft, disabled, onRun }) => {
     const t = useTranslation();
+    const account = accountChangeGeneration();
+    const mounted = useRef(false);
+    useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+    const assertCurrent = () => {
+        if (!mounted.current || account !== accountChangeGeneration()) throw new Error(t('siteCommand.notSent.connection_changed'));
+    };
     const [templates, setTemplates] = useState<SiteTemplate[]>([]);
     const [selectedId, setSelectedId] = useState('');
     const [slots, setSlots] = useState<SiteSlot[]>([]);
@@ -97,10 +105,15 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
     const changeTemplates = async (
         change: (current: SiteTemplate[]) => SiteTemplate[] | Promise<SiteTemplate[]>,
     ) => {
+        assertCurrent();
         await mergeSavedServerProfile(profileId, async profile => {
+            assertCurrent();
             const current = profile.siteTemplates ?? [];
-            return { ...profile, siteTemplates: await change(current) };
+            const next = await change(current);
+            assertCurrent();
+            return { ...profile, siteTemplates: next };
         });
+        assertCurrent();
         setRevision(value => value + 1);
     };
 
@@ -108,16 +121,19 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
         if (!selected || disabled) return;
         setError('');
         try {
-            const rendered = await invoke<SiteRender>('site_template_render', {
-                line: selected.line,
-                values: slots.map(slot => ({ name: slot.name, value: values[slot.name] ?? '' })),
+            const completed = await onRun(async () => {
+                const rendered = await invoke<SiteRender>('site_template_render', {
+                    line: selected.line,
+                    values: slots.map(slot => ({ name: slot.name, value: values[slot.name] ?? '' })),
+                });
+                return { line: rendered.line, echo: rendered.echo, remember: !rendered.carries_secret };
             });
+            if (!completed) return;
             setValues(current => {
                 const cleared = { ...current };
                 for (const slot of slots) if (slot.kind === 'secret') cleared[slot.name] = '';
                 return cleared;
             });
-            onRun(rendered.line, rendered.echo, !rendered.carries_secret);
         } catch (err) {
             setError(errorText(err));
         }
@@ -187,6 +203,7 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
                 <select
                     id="site-template"
                     value={selectedId}
+                    disabled={disabled}
                     onChange={event => { setSelectedId(event.target.value); setError(''); setNotice(''); }}
                     className="flex-1 min-w-0 px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                 >
@@ -201,13 +218,14 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
                 <div className="flex items-center gap-2">
                     <input
                         value={saveName}
+                        disabled={disabled}
                         onChange={event => setSaveName(event.target.value)}
                         placeholder={t('siteCommand.saveName')}
                         aria-label={t('siteCommand.saveName')}
                         maxLength={64}
                         className="flex-1 px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                     />
-                    <button type="button" onClick={() => void save()} disabled={saveName.trim() === ''} className="px-2 py-1 text-xs rounded bg-blue-500 text-white disabled:opacity-40">{t('siteCommand.saveConfirm')}</button>
+                    <button type="button" onClick={() => void save()} disabled={disabled || saveName.trim() === ''} className="px-2 py-1 text-xs rounded bg-blue-500 text-white disabled:opacity-40">{t('siteCommand.saveConfirm')}</button>
                 </div>
             )}
             {selected && (
@@ -219,6 +237,7 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
                                 type={slot.kind === 'secret' ? 'password' : 'text'}
                                 inputMode={slot.kind === 'number' ? 'numeric' : undefined}
                                 value={values[slot.name] ?? ''}
+                                disabled={disabled}
                                 autoComplete="off"
                                 spellCheck={false}
                                 aria-label={slot.name}

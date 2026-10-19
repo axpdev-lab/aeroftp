@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telepono, camera, o tablet sa pamamagitan ng USB MTP",
             "s3AllowCleartextEndpoint": "Naghahain ang endpoint na ito ng S3 sa plain HTTP sa kabila ng isang network. Tanggapin ito para sa profile na ito: ang mga nilagdaang kredensyal at bawat file ay tumatawid sa network nang hindi naka-encrypt.",
             "discoverFilebase": "Filebase: S3-compatible na object storage (5 GB libre)",
-            "protonDesc": "Kumokonekta sa pamamagitan ng Proton Drive CLI",
-            "protonTooltip": "Gumagamit ng Proton Drive CLI - i-install, mag-sign in sa browser, ang AeroFTP ang GUI",
+            "protonDesc": "Cloud storage na may end-to-end na pag-encrypt",
+            "protonTooltip": "Gamitin ang katutubong client ng AeroFTP o ang opisyal na Proton Drive CLI, na may pag-sign in sa browser.",
             "twakeDesc": "Twake Drive (5 GB libre)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, French open-source cloud (bahagi na nito ngayon ang Cozy Cloud) na may 5 GB libre",
             "discoverTwake": "Open-source na European cloud ng Linagora, ngayon ang bagong tahanan ng Cozy Cloud (5 GB libre)",
@@ -6370,7 +6370,8 @@
                 "not_ftp": "Hindi naipadala: nangangailangan ng FTP o FTPS na koneksyon ang mga SITE command.",
                 "not_connected": "Hindi naipadala: hindi nakakonekta ang session.",
                 "busy": "Hindi naipadala: abala ang session sa ibang operasyon. Subukan muli kapag tapos na ito.",
-                "reconnect_failed": "Hindi naipadala: kailangang muling kumonekta muna ang session, ngunit hindi ito nagtagumpay."
+                "reconnect_failed": "Hindi naipadala: kailangang muling kumonekta muna ang session, ngunit hindi ito nagtagumpay.",
+                "connection_changed": "Hindi naipadala: nagbago ang koneksyon. Subukang muli sa nilalayong session."
             },
             "unknown": {
                 "timeout": "Hindi dumating sa oras ang tugon.",

@@ -643,7 +643,33 @@ pub(crate) fn create_segmented_temp(
     let sized = claim.file().set_len(total_size);
     // Windows locks are not advisory: the windows write through handles of
     // their own, so the handle is closed at once, as before.
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    let sized = {
+        use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+        // Open the reparse point itself without truncating it or its target.
+        // Validate the opened handle before resizing, so a path substitution
+        // cannot make this check authorize a different file. Deny sharing
+        // until sizing ends; range workers open their handles afterwards.
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .share_mode(0)
+            .open(&temp)?;
+        let metadata = file.metadata()?;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 || !metadata.is_file() {
+            return Err(std::io::Error::other(
+                "Refusing a reparse point or non-file at the segmented temporary",
+            ));
+        }
+        // Existing regular temporaries must start empty, including holes in
+        // the new preallocation. Both changes apply to the validated handle.
+        file.set_len(0).and_then(|()| file.set_len(total_size))
+    };
+    #[cfg(not(any(unix, windows)))]
     let sized = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -2593,6 +2619,53 @@ mod tests {
             !temp.exists(),
             "a temporary that could not be sized was kept"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_segmented_temporary_never_resizes_an_existing_symlink_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("outside.bin");
+        let final_path = dir.path().join("download.bin");
+        let temp = segmented_temp_path_for(&final_path);
+        std::fs::write(&target, b"outside content to preserve").unwrap();
+        std::fs::write(&final_path, b"old destination").unwrap();
+        std::os::windows::fs::symlink_file(&target, &temp).expect(
+            "Windows regression tests require Developer Mode or the symlink creation privilege",
+        );
+        assert!(create_segmented_temp(temp.clone(), 1024 * 1024).is_err());
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"outside content to preserve"
+        );
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"old destination");
+        assert!(std::fs::symlink_metadata(&temp)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_segmented_temporary_never_creates_a_dangling_symlink_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("missing-outside.bin");
+        let final_path = dir.path().join("download.bin");
+        let temp = segmented_temp_path_for(&final_path);
+        std::fs::write(&final_path, b"old destination").unwrap();
+        std::os::windows::fs::symlink_file(&target, &temp).expect(
+            "Windows regression tests require Developer Mode or the symlink creation privilege",
+        );
+        assert!(create_segmented_temp(temp.clone(), 1024 * 1024).is_err());
+        assert_eq!(
+            std::fs::symlink_metadata(&target).unwrap_err().kind(),
+            std::io::ErrorKind::NotFound,
+        );
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"old destination");
+        assert!(std::fs::symlink_metadata(&temp)
+            .unwrap()
+            .file_type()
+            .is_symlink());
     }
 
     const MAX: usize = 16;

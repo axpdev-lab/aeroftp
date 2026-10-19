@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, fotoaparat ali tablica prek USB MTP",
             "s3AllowCleartextEndpoint": "Ta končna točka streže S3 prek nešifriranega HTTP po omrežju. Sprejmite to za ta profil: podpisane poverilnice in vsaka datoteka potujejo prek omrežja nešifrirane.",
             "discoverFilebase": "Filebase: objektna shramba, združljiva s S3 (5 GB brezplačno)",
-            "protonDesc": "Povezuje se prek Proton Drive CLI",
-            "protonTooltip": "Uporablja Proton Drive CLI - namestite, prijavite se v brskalniku, AeroFTP je GUI",
+            "protonDesc": "Shramba v oblaku s šifriranjem od konca do konca",
+            "protonTooltip": "Uporabite vgrajeni odjemalec AeroFTP ali uradni Proton Drive CLI s prijavo v brskalniku.",
             "twakeDesc": "Twake Drive (5 GB brezplačno)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francoski odprtokodni oblak (Cozy Cloud je zdaj njegov del) s 5 GB brezplačno",
             "discoverTwake": "Evropski odprtokodni oblak podjetja Linagora, zdaj dom Cozy Cloud (5 GB brezplačno)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Ni poslano: ukazi SITE zahtevajo povezavo FTP ali FTPS.",
                 "not_connected": "Ni poslano: seja ni povezana.",
                 "busy": "Ni poslano: seja je zasedena z drugo operacijo. Poskusite znova, ko se konča.",
-                "reconnect_failed": "Ni poslano: seja se je morala najprej znova povezati, a ji ni uspelo."
+                "reconnect_failed": "Ni poslano: seja se je morala najprej znova povezati, a ji ni uspelo.",
+                "connection_changed": "Ni poslano: povezava se je spremenila. Poskusite znova v želeni seji."
             },
             "unknown": {
                 "timeout": "Odgovor ni prispel pravočasno.",

@@ -296,6 +296,9 @@ struct CacheEntry {
 
 pub struct FileLuProvider {
     config: FileLuConfig,
+    /// Account-info email, retained for durable download provenance. Until a
+    /// server identifies its account, only this provider instance can resume.
+    resume_account: String,
     client: reqwest::Client,
     connected: bool,
     /// Current working directory (virtual path, e.g. "/Work/Projects")
@@ -319,6 +322,7 @@ impl FileLuProvider {
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             config,
+            resume_account: uuid::Uuid::new_v4().to_string(),
             client,
             connected: false,
             current_path: "/".to_string(),
@@ -1523,6 +1527,9 @@ impl StorageProvider for FileLuProvider {
         let resp = self.get_with_retry(&url).await?;
         let info = Self::parse_api::<AccountInfo>(resp).await?;
 
+        if let Some(email) = info.email.as_deref().filter(|email| !email.is_empty()) {
+            self.resume_account = email.to_string();
+        }
         let email = info.email.unwrap_or_else(|| "FileLu user".to_string());
         filelu_log(&format!("Connected as {}", email));
         self.connected = true;
@@ -1651,6 +1658,12 @@ impl StorageProvider for FileLuProvider {
         // FileLu CDN URLs don't need auth headers
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "filelu",
+                &self.api_base(API_V2_BASE),
+                &self.resume_account,
+                &norm,
+            ),
             |range_header| {
                 let mut req = self.client.get(&direct_url);
                 if let Some(range) = range_header {

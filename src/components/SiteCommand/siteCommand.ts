@@ -20,6 +20,15 @@ export interface SiteCommandReport {
     reason: string | null;
 }
 
+export interface PreparedSiteCommand {
+    line: string;
+    echo: string;
+    remember: boolean;
+}
+
+/** The dialog owns one flight, including any asynchronous template render. */
+export type RunSiteCommand = (prepare: () => Promise<PreparedSiteCommand>) => Promise<boolean>;
+
 /**
  * Whether the SITE entries are active: a connected session whose protocol is
  * FTP or FTPS. `protocol` is the live connection's (App.tsx passes
