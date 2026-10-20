@@ -66,6 +66,15 @@ pub struct CrossProfileTransferResult {
     pub duration_ms: u64,
 }
 
+/// One planned file that did not transfer. `source_path` and `dest_path` are
+/// empty when the runner can only say that the tally does not add up.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CrossProfileFileFailure {
+    pub source_path: String,
+    pub dest_path: String,
+    pub error: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct CrossProfileCopyOptions {
     pub source_size: Option<u64>,
@@ -144,9 +153,10 @@ pub async fn copy_one_file_with_options(
 
     preserve_temp_mtime(&tmp, source_modified);
 
-    // Ensure parent directory exists on destination
+    // Ensure every ancestor exists. One mkdir of the immediate parent fails
+    // when that parent is itself missing (SFTP, FTPS, Filen, Koofr).
     check_copy_cancel(&options.cancel_token)?;
-    ensure_parent_dir(dest, dest_path).await;
+    ensure_parent_dir(dest, dest_path, &options.cancel_token).await?;
 
     // Try delta transfer first (SFTP-only today). Returns None for non-SFTP
     // destinations or when downcast/probe declines: in both cases we proceed
@@ -156,8 +166,8 @@ pub async fn copy_one_file_with_options(
         try_delta_transfer(dest, SyncDirection::Upload, tmp.as_ref(), dest_path).await
     {
         if result.used_delta {
-            // Delta path completed the transfer; we're done.
-            return Ok(());
+            // Delta path completed the transfer; confirm the file is there.
+            return confirm_destination_has_file(dest, dest_path).await;
         }
         if let Some(err) = result.hard_error {
             // Hard error must surface: never silently retry the classic path
@@ -172,9 +182,7 @@ pub async fn copy_one_file_with_options(
     // Classic upload: from temp file to destination
     check_copy_cancel(&options.cancel_token)?;
     dest.upload(&tmp_path, dest_path, None).await?;
-
-    // tmp is dropped here, removing the temp file
-    Ok(())
+    confirm_destination_has_file(dest, dest_path).await
 }
 
 /// Refuse to start a new destination operation after Stop.
@@ -288,8 +296,9 @@ pub async fn collect_source_entries(
         return collect_virtual_root_entries(source, root, recursive).await;
     }
 
-    // Check if root is a file (stat it)
-    let root_stat = source.stat(root).await?;
+    // Check if root is a file (stat it). A prefix-only directory stats as
+    // missing and is recovered from its listing.
+    let root_stat = stat_for_plan(source, root).await?;
 
     if !root_stat.is_dir {
         // Single file
@@ -452,6 +461,12 @@ pub async fn plan_transfer(
         }
     }
 
+    if plan_includes_raw_crypt_marker(&entries) {
+        return Err(ProviderError::InvalidConfig(
+            "overlay not applied: the source plan contains the AeroCrypt marker .aerocrypt.tsv, so this transfer would copy ciphertext. Connect the source through its crypt overlay.".into(),
+        ));
+    }
+
     let total_files = entries.len() as u64;
     let total_bytes = entries.iter().map(|e| e.size).sum();
 
@@ -466,16 +481,141 @@ pub async fn plan_transfer(
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/// Best-effort creation of the parent directory on the destination provider.
-/// Failures are silently ignored because the directory may already exist
-/// or the provider may not require explicit mkdir (e.g. S3).
-async fn ensure_parent_dir(dest: &mut dyn StorageProvider, dest_path: &str) {
-    if let Some(parent) = Path::new(dest_path).parent() {
-        let parent_str = parent.to_string_lossy();
-        if !parent_str.is_empty() && parent_str != "/" {
-            let _ = dest.mkdir(&parent_str).await;
+/// Create every missing ancestor of `dest_path` (mkdir -p).
+///
+/// A single mkdir of the immediate parent fails on path-rooted protocols
+/// when that parent is itself missing (`nested/deep/deeper/tiny.txt` needs
+/// `nested` and `nested/deep` first). `AlreadyExists` is success. Any other
+/// mkdir error is ignored here: an existing folder often answers with a
+/// protocol code that is not `AlreadyExists`, and the upload that follows
+/// is what reports a parent that is really missing.
+async fn ensure_parent_dir(
+    dest: &mut dyn StorageProvider,
+    dest_path: &str,
+    cancel: &CancellationToken,
+) -> Result<(), ProviderError> {
+    check_copy_cancel(cancel)?;
+    // The overlay's upload owns parent creation and its plaintext-folder
+    // refusal. Precreating through mkdir would bypass that refusal by making
+    // a parallel encrypted tree before upload can inspect the missing parent.
+    if dest
+        .as_any_mut()
+        .is::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+    {
+        return Ok(());
+    }
+    let Some(parent) = remote_parent_dir(dest_path) else {
+        return Ok(());
+    };
+    for ancestor in crate::community_benchmark::benchmark_mkdir_ladder(&parent) {
+        check_copy_cancel(cancel)?;
+        match dest.mkdir(&ancestor).await {
+            Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
+            Err(err) => {
+                tracing::debug!("cross-profile: mkdir {}: {}", ancestor, err);
+            }
         }
     }
+    check_copy_cancel(cancel)
+}
+
+/// The folder a remote file lives in, split on `/` so a Windows host does
+/// not rewrite the remote path. `None` when the file sits at the root.
+fn remote_parent_dir(dest_path: &str) -> Option<String> {
+    let trimmed = dest_path.trim_end_matches('/');
+    let (parent, _) = trimmed.rsplit_once('/')?;
+    if parent.trim_start_matches('/').is_empty() {
+        None
+    } else {
+        Some(parent.to_string())
+    }
+}
+
+/// After an upload that returned success, the destination must actually
+/// hold the file. A provider that answers OK and then drops the object
+/// (or renames it away from `dest_path`) used to be counted as transferred.
+/// A stat that fails for any reason other than `NotFound` is not proof the
+/// file is missing, so the upload result stands.
+async fn confirm_destination_has_file(
+    dest: &mut dyn StorageProvider,
+    dest_path: &str,
+) -> Result<(), ProviderError> {
+    match dest.stat(dest_path).await {
+        Ok(_) => Ok(()),
+        Err(ProviderError::NotFound(_)) => Err(ProviderError::TransferFailed(format!(
+            "upload reported success but {dest_path} is not on the destination"
+        ))),
+        Err(err) => {
+            tracing::debug!(
+                "cross-profile: destination stat after upload failed ({}); keeping the upload result",
+                err
+            );
+            Ok(())
+        }
+    }
+}
+
+/// `stat` of an object-store prefix is `NotFound` when the folder is only a
+/// common prefix (S3 HEAD of a key that was never a marker). Listing that
+/// prefix is how `ls` sees it. An empty listing is not proof: a missing
+/// prefix lists as empty too, and stays `NotFound`.
+async fn stat_for_plan(
+    source: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<crate::providers::types::RemoteEntry, ProviderError> {
+    match source.stat(path).await {
+        Ok(entry) => Ok(entry),
+        Err(ProviderError::NotFound(missing)) => match source.list(path).await {
+            Ok(listing) if !listing.is_empty() => {
+                let name = path
+                    .rsplit('/')
+                    .find(|segment| !segment.is_empty())
+                    .unwrap_or(path)
+                    .to_string();
+                Ok(crate::providers::types::RemoteEntry::directory(
+                    name,
+                    path.to_string(),
+                ))
+            }
+            _ => Err(ProviderError::NotFound(missing)),
+        },
+        Err(err) => Err(err),
+    }
+}
+
+/// Planned files with no transferred, skipped, or failed outcome. The runner
+/// adds this gap to `failed` so a result can be reconciled:
+/// `transferred + skipped + failed == planned`.
+pub fn transfer_tally_gap(planned: u64, transferred: u64, skipped: u64, failed: u64) -> u64 {
+    let accounted = transferred.saturating_add(skipped).saturating_add(failed);
+    planned.saturating_sub(accounted)
+}
+
+/// Named file failures already counted in `failed`, plus one unnamed row when
+/// `gap` files never received an outcome. A zero gap leaves the list as it is,
+/// so a file that already has a row is not recorded twice.
+pub fn failures_with_tally_gap(
+    mut failures: Vec<CrossProfileFileFailure>,
+    gap: u64,
+) -> Vec<CrossProfileFileFailure> {
+    if gap > 0 {
+        failures.push(CrossProfileFileFailure {
+            source_path: String::new(),
+            dest_path: String::new(),
+            error: format!("{gap} planned file(s) left the run without a result"),
+        });
+    }
+    failures
+}
+
+/// A headed AeroCrypt source that was read raw puts `.aerocrypt.tsv` in the
+/// plan. Copying that plan writes ciphertext and reports success.
+pub fn plan_includes_raw_crypt_marker(entries: &[CrossProfileTransferEntry]) -> bool {
+    entries.iter().any(|entry| {
+        entry.display_name.trim() == ".aerocrypt.tsv"
+            || entry.source_path == ".aerocrypt.tsv"
+            || entry.source_path.ends_with("/.aerocrypt.tsv")
+    })
 }
 
 /// Ensure a directory path ends with '/'.
@@ -537,7 +677,7 @@ async fn effective_root_stat(
         });
     }
 
-    let stat = source.stat(source_path).await?;
+    let stat = stat_for_plan(source, source_path).await?;
     if stat.name.trim().is_empty() && is_virtual_root_path(&stat.path) {
         Ok(crate::providers::types::RemoteEntry {
             name: "/".to_string(),
@@ -779,5 +919,128 @@ mod tests {
             .expect_err("a folder listed inside itself")
             .to_string();
         assert!(err.contains("cannot transfer / whole"), "{err}");
+    }
+
+    #[test]
+    fn deep_file_parent_chain_includes_every_ancestor() {
+        let parent = remote_parent_dir("/nested/deep/deeper/tiny.txt").expect("parent");
+        assert_eq!(
+            crate::community_benchmark::benchmark_mkdir_ladder(&parent),
+            vec![
+                "/nested".to_string(),
+                "/nested/deep".to_string(),
+                "/nested/deep/deeper".to_string(),
+            ]
+        );
+        assert!(remote_parent_dir("/tiny.txt").is_none());
+    }
+
+    #[test]
+    fn tally_gap_is_the_planned_files_with_no_outcome() {
+        assert_eq!(transfer_tally_gap(9, 8, 0, 0), 1);
+        assert_eq!(transfer_tally_gap(9, 7, 1, 1), 0);
+        assert_eq!(transfer_tally_gap(3, 4, 0, 0), 0);
+    }
+
+    #[test]
+    fn named_failures_stay_and_the_gap_adds_one_unnamed_row() {
+        let named = CrossProfileFileFailure {
+            source_path: "/src/a".to_string(),
+            dest_path: "/dst/a".to_string(),
+            error: "write failed".to_string(),
+        };
+        assert_eq!(
+            failures_with_tally_gap(vec![named.clone()], 0),
+            vec![named.clone()]
+        );
+        let with_gap = failures_with_tally_gap(vec![named.clone()], 2);
+        assert_eq!(with_gap.len(), 2);
+        assert_eq!(with_gap[0], named);
+        assert_eq!(with_gap[1].source_path, "");
+        assert_eq!(with_gap[1].dest_path, "");
+        assert_eq!(
+            with_gap[1].error,
+            "2 planned file(s) left the run without a result"
+        );
+    }
+
+    #[test]
+    fn raw_crypt_marker_names_the_overlay_file() {
+        let marker = CrossProfileTransferEntry {
+            source_path: "/vault/.aerocrypt.tsv".into(),
+            dest_path: "/dst/.aerocrypt.tsv".into(),
+            display_name: ".aerocrypt.tsv".into(),
+            size: 12,
+            modified: None,
+            is_dir: false,
+        };
+        let plain = CrossProfileTransferEntry {
+            display_name: "notes.txt".into(),
+            source_path: "/vault/notes.txt".into(),
+            ..marker.clone()
+        };
+        assert!(plan_includes_raw_crypt_marker(&[marker]));
+        assert!(!plan_includes_raw_crypt_marker(&[plain]));
+    }
+
+    /// S3 (and any prefix store) answers `stat` of a folder with NotFound
+    /// when the folder is only a common prefix. `ls` lists it. The plan must
+    /// follow the listing.
+    #[tokio::test]
+    async fn a_prefix_that_lists_but_does_not_stat_is_still_planned() {
+        use crate::providers::types::RemoteEntry;
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+
+        let mut source = WalkTreeProvider::new(
+            std::collections::HashMap::from([(
+                "/data".to_string(),
+                vec![RemoteEntry::file(
+                    "tiny.txt".into(),
+                    "/data/tiny.txt".into(),
+                    4,
+                )],
+            )]),
+            false,
+        );
+        source.stat_misses.insert("/data".to_string());
+
+        let planned = collect_source_entries(&mut source, "/data", true)
+            .await
+            .expect("prefix listing is a directory");
+        assert_eq!(planned.len(), 1);
+        assert_eq!(planned[0].source_path, "/data/tiny.txt");
+    }
+
+    #[tokio::test]
+    async fn a_plan_that_contains_the_aerocrypt_marker_is_refused() {
+        use crate::providers::types::RemoteEntry;
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+
+        let mut source = WalkTreeProvider::new(
+            std::collections::HashMap::from([(
+                "/vault".to_string(),
+                vec![RemoteEntry::file(
+                    ".aerocrypt.tsv".into(),
+                    "/vault/.aerocrypt.tsv".into(),
+                    20,
+                )],
+            )]),
+            false,
+        );
+        let mut dest = WalkTreeProvider::new(std::collections::HashMap::new(), false);
+        let request = CrossProfileTransferRequest {
+            source_profile: "crypt".into(),
+            dest_profile: "plain".into(),
+            source_path: "/vault".into(),
+            dest_path: "/out".into(),
+            recursive: true,
+            dry_run: true,
+            skip_existing: false,
+        };
+        let err = plan_transfer(&mut source, &mut dest, &request)
+            .await
+            .expect_err("raw marker")
+            .to_string();
+        assert!(err.contains("overlay not applied"), "{err}");
     }
 }
