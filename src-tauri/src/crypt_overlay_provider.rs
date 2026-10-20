@@ -3480,12 +3480,12 @@ pub(crate) mod tests {
             (owner, "scope-a-password", "scope-a-salt"),
             (other, "scope-b-password", "scope-b-salt"),
         ] {
+            users::cli_set_active_user(store, user).unwrap();
             for (kind, value) in [("pw", password), ("salt", salt)] {
-                users::store_credential_for_user_typed_dual(
+                // Exercise the same generic writer used by the GUI.
+                users::store_active_credential_dual(
                     store,
-                    user,
                     &format!("aerocrypt_overlay_{kind}_captured-overlay"),
-                    "crypt",
                     value,
                 )
                 .unwrap();
@@ -3565,6 +3565,24 @@ pub(crate) mod tests {
         )
         .await
         .is_err());
+
+        // Re-entering A's password in the GUI must recover the profile instead
+        // of leaving its only copy in an ambiguous global mirror.
+        users::cli_set_active_user(store, owner).unwrap();
+        users::store_active_credential_dual(
+            store,
+            "aerocrypt_overlay_pw_captured-overlay",
+            "scope-a-password",
+        )
+        .unwrap();
+        users::cli_set_active_user(store, other).unwrap();
+        assert!(wrap_connected_provider_for_profile_in_scope(
+            Box::new(MemProvider::new()),
+            &profile,
+            &scope
+        )
+        .await
+        .is_ok());
 
         // Keyfile lookup keeps the captured owner too, and unreadable paths fail closed.
         let keyfile = missing.path().join("owner.keyfile");

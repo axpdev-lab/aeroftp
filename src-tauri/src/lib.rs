@@ -17344,7 +17344,8 @@ async fn store_credential(
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     // Dual-write. The vault is written for every key (source of truth +
     // fallback); `server_*` (MUV-3) and `ai_apikey_*` (MUV-5) keys are also
-    // mirrored into the active user's partition by the prefix classifier. OAuth
+    // mirrored into the active user's partition by the prefix classifier, as
+    // are the four per-profile overlay secret prefixes. OAuth
     // and GitHub tokens stay vault-only on this generic path: they are mirrored
     // by their own type-explicit call-sites (MUV-4/5).
     user_partitions::store_active_credential_dual(&store, &account, &password)
