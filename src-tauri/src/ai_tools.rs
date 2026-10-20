@@ -1856,31 +1856,6 @@ pub(crate) fn find_server_by_name_or_id(
     }
 }
 
-/// Load provider-specific extra options from the full server profile in vault.
-/// Keys go through `profile_loader::insert_profile_option`, the same
-/// canonicalizer CLI and MCP use. A local alias table here used to miss
-/// `webdavScheme`, `allowCleartextStorage` and the STS set.
-fn load_provider_extra_options(
-    server_id: &str,
-) -> Result<std::collections::HashMap<String, String>, String> {
-    let store = crate::credential_store::CredentialStore::from_cache()
-        .ok_or_else(|| "Vault not open".to_string())?;
-
-    let json = store.get("config_server_profiles").unwrap_or_default();
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap_or_default();
-
-    let mut extra = std::collections::HashMap::new();
-
-    if let Some(profile) = profiles
-        .iter()
-        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(server_id))
-    {
-        crate::profile_loader::apply_profile_options(&mut extra, profile);
-    }
-
-    Ok(extra)
-}
-
 /// Create a temporary StorageProvider from a saved server profile.
 /// Credentials resolved internally from vault: never exposed to caller.
 pub(crate) async fn create_temp_provider(
@@ -1889,14 +1864,19 @@ pub(crate) async fn create_temp_provider(
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
 
-    // Server profiles are stored as an array in "config_server_profiles" vault key
-    // (frontend uses VAULT_PREFIX="config_" + "server_profiles")
-    let profiles_json = store.get("config_server_profiles").map_err(|_| {
-        "No server profiles found in vault. Re-save the server with password.".to_string()
-    })?;
-
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
+    // Capture once before loading profiles or awaiting connection. Both the
+    // profile and every auth/overlay secret must belong to that same account.
+    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    let profiles: Vec<serde_json::Value> = match user_id {
+        Some(id) => crate::user_partitions::cli_list_server_profiles_for_user(&store, id)?,
+        None => {
+            let profiles_json = store.get("config_server_profiles").map_err(|_| {
+                "No server profiles found in vault. Re-save the server with password.".to_string()
+            })?;
+            serde_json::from_str(&profiles_json)
+                .map_err(|e| format!("Failed to parse server profiles: {}", e))?
+        }
+    };
 
     // Find the matching server by ID and extract password
     let profile = profiles
@@ -1909,9 +1889,6 @@ pub(crate) async fn create_temp_provider(
             )
         })?;
 
-    // Capture the owner before constructing an OAuth session. A failed user
-    // lookup must not silently become the legacy/global credential scope.
-    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
     let scope = crate::profile_auth::AuthScope {
         store: &store,
         user_id,
@@ -1921,8 +1898,8 @@ pub(crate) async fn create_temp_provider(
             .connect()
             .await
             .map_err(|e| format!("Connection to '{}' failed: {}", server.name, e))?;
-        return crate::crypt_overlay_provider::wrap_connected_provider_for_profile(
-            provider, profile, &store,
+        return crate::crypt_overlay_provider::wrap_connected_provider_for_profile_in_scope(
+            provider, profile, &scope,
         )
         .await;
     }
@@ -1941,19 +1918,16 @@ pub(crate) async fn create_temp_provider(
     // (migrated from inline password in profile: see ServerProfile.password DEPRECATED)
     // MUV-3: prefer the active user's per-user store, fall back to the legacy
     // vault, then to the inline profile password (legacy/pre-migration).
-    let password =
-        crate::user_partitions::resolve_active_credential(&store, &format!("server_{}", server.id))
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                // Fallback: check inline password in profile (legacy/pre-migration)
-                profile
-                    .get("password")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string()
-            });
+    let password = scope
+        .read_profile(&server.id, &format!("server_{}", server.id))?
+        .unwrap_or_else(|| {
+            // Fallback: check inline password in profile (legacy/pre-migration)
+            profile
+                .get("password")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        });
 
     let creds = SavedCreds {
         server: profile
@@ -1995,7 +1969,8 @@ pub(crate) async fn create_temp_provider(
     let (parsed_host, embedded_port) =
         crate::cloud_provider_factory::parse_server_field(&creds.server);
 
-    let extra = load_provider_extra_options(&server.id)?;
+    let mut extra = std::collections::HashMap::new();
+    crate::profile_loader::apply_profile_options(&mut extra, profile);
 
     // SFTP: rely on the saved server's trust configuration: do not override
     // (auto-trusting host keys would bypass TOFU verification and enable MITM)
@@ -2037,8 +2012,10 @@ pub(crate) async fn create_temp_provider(
     // corruption case) and agent transfer_one/transfer_tree present plaintext
     // paths and encrypt content transparently. Each side is wrapped
     // independently because the source and destination call this separately.
-    crate::crypt_overlay_provider::wrap_connected_provider_for_profile(provider, profile, &store)
-        .await
+    crate::crypt_overlay_provider::wrap_connected_provider_for_profile_in_scope(
+        provider, profile, &scope,
+    )
+    .await
 }
 
 #[tauri::command]

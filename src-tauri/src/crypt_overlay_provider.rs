@@ -1901,19 +1901,28 @@ pub fn resolve_profile_keyfile_digest(
     store: &crate::credential_store::CredentialStore,
     profile_id: &str,
 ) -> Result<Option<[u8; 32]>, String> {
-    let path = crate::user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_keyfile_path_{}", profile_id),
+    let user_id = crate::user_partitions::cli_get_active_user(store)?.map(|user| user.id);
+    resolve_profile_keyfile_digest_in_scope(
+        &crate::profile_auth::AuthScope { store, user_id },
+        profile_id,
     )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .filter(|s| !s.is_empty())
-    .or_else(|| {
-        std::env::var("AEROFTP_CRYPT_OVERLAY_KEYFILE")
-            .ok()
-            .filter(|s| !s.is_empty())
-    });
+}
+
+fn resolve_profile_keyfile_digest_in_scope(
+    scope: &crate::profile_auth::AuthScope<'_>,
+    profile_id: &str,
+) -> Result<Option<[u8; 32]>, String> {
+    let path = scope
+        .read_profile(
+            profile_id,
+            &format!("aerocrypt_overlay_keyfile_path_{}", profile_id),
+        )?
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            std::env::var("AEROFTP_CRYPT_OVERLAY_KEYFILE")
+                .ok()
+                .filter(|s| !s.is_empty())
+        });
     match path {
         None => Ok(None),
         Some(p) => keyfile_digest_from_path(&p).map(Some),
@@ -2329,6 +2338,25 @@ pub async fn wrap_connected_provider_for_profile(
     profile: &serde_json::Value,
     store: &crate::credential_store::CredentialStore,
 ) -> Result<Box<dyn StorageProvider>, String> {
+    if overlay_binding_from_profile(profile).is_none() {
+        return Ok(inner);
+    }
+    let user_id = crate::user_partitions::cli_get_active_user(store)?.map(|user| user.id);
+    wrap_connected_provider_for_profile_in_scope(
+        inner,
+        profile,
+        &crate::profile_auth::AuthScope { store, user_id },
+    )
+    .await
+}
+
+/// Keep every overlay secret bound to the account captured before connection.
+/// `None` is an explicit legacy scope, never a request to rediscover the user.
+pub(crate) async fn wrap_connected_provider_for_profile_in_scope(
+    inner: Box<dyn StorageProvider>,
+    profile: &serde_json::Value,
+    scope: &crate::profile_auth::AuthScope<'_>,
+) -> Result<Box<dyn StorageProvider>, String> {
     let Some(params) = overlay_binding_from_profile(profile) else {
         return Ok(inner);
     };
@@ -2338,15 +2366,10 @@ pub async fn wrap_connected_provider_for_profile(
     // its digest at connect time, BEFORE the password guard (a keyfile-only
     // AeroCrypt vault legally has an empty password). FAIL-CLOSED on an
     // unreadable stored keyfile.
-    let keyfile_digest = resolve_profile_keyfile_digest(store, id)?;
-    let stored_password = crate::user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_pw_{}", id),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .filter(|s| !s.is_empty());
+    let keyfile_digest = resolve_profile_keyfile_digest_in_scope(scope, id)?;
+    let stored_password = scope
+        .read_profile(id, &format!("aerocrypt_overlay_pw_{}", id))?
+        .filter(|s| !s.is_empty());
     // A secret from the environment carries no recorded form.
     let password_from_env = stored_password.is_none();
     let password = stored_password
@@ -2362,25 +2385,14 @@ pub async fn wrap_connected_provider_for_profile(
                 .to_string(),
         ),
     };
-    let stored_salt = crate::user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_salt_{}", id),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string());
+    let stored_salt = scope.read_profile(id, &format!("aerocrypt_overlay_salt_{}", id))?;
     let salt_from_env = stored_salt.is_none();
     let salt = stored_salt
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
-    let local_config_json = crate::user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_config_{}", id),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .filter(|s| !s.is_empty());
+    let local_config_json = scope
+        .read_profile(id, &format!("aerocrypt_overlay_config_{}", id))?
+        .filter(|s| !s.is_empty());
     // with_header comes from the profile binding (overlay_binding_from_profile).
     let params = OverlayUnlockParams {
         local_config_json,
@@ -3436,7 +3448,7 @@ pub fn clear_overlay_in_place(slot: &mut Option<Box<dyn StorageProvider>>) -> bo
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -3447,6 +3459,181 @@ mod tests {
     }
     use std::collections::HashMap;
     use std::sync::Mutex;
+
+    // Runs only inside the existing isolated headless-auth child process.
+    pub(crate) async fn captured_overlay_owner_survives_account_switch(
+        store: &crate::credential_store::CredentialStore,
+        owner: i64,
+        other: i64,
+    ) {
+        use crate::{profile_auth::AuthScope, user_partitions as users};
+        let profile = serde_json::json!({
+            "id": "captured-overlay", "name": "Synthetic scoped overlay", "protocol": "sftp",
+            "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt", "remoteScope": "/Vault"}
+        });
+        for user in [owner, other] {
+            let mut profiles = users::cli_list_server_profiles_for_user(store, user).unwrap();
+            profiles.push(profile.clone());
+            users::cli_replace_server_profiles_for_user(store, user, &profiles).unwrap();
+        }
+        for (user, password, salt) in [
+            (owner, "scope-a-password", "scope-a-salt"),
+            (other, "scope-b-password", "scope-b-salt"),
+        ] {
+            for (kind, value) in [("pw", password), ("salt", salt)] {
+                users::store_credential_for_user_typed_dual(
+                    store,
+                    user,
+                    &format!("aerocrypt_overlay_{kind}_captured-overlay"),
+                    "crypt",
+                    value,
+                )
+                .unwrap();
+            }
+        }
+        let missing = tempfile::tempdir().unwrap();
+        let bad_keyfile = missing
+            .path()
+            .join("missing-keyfile")
+            .to_string_lossy()
+            .into_owned();
+        users::store_credential_for_user_typed_dual(
+            store,
+            other,
+            "aerocrypt_overlay_keyfile_path_captured-overlay",
+            "crypt",
+            &bad_keyfile,
+        )
+        .unwrap();
+        let scope = AuthScope {
+            store,
+            user_id: Some(owner),
+        };
+        // Simulate the switch while the captured owner's connection is pending.
+        users::cli_set_active_user(store, other).unwrap();
+        let mut wrapped = wrap_connected_provider_for_profile_in_scope(
+            Box::new(MemProvider::new()),
+            &profile,
+            &scope,
+        )
+        .await
+        .unwrap();
+        let payload = b"the connected account keeps its own overlay keys";
+        let local = missing.path().join("payload");
+        std::fs::write(&local, payload).unwrap();
+        wrapped
+            .upload(local.to_str().unwrap(), "/Vault/proof.txt", None)
+            .await
+            .unwrap();
+        let overlay = wrapped
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .unwrap();
+        let raw = overlay
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        let paths = raw.raw_paths();
+        assert_eq!(paths.len(), 1);
+        let ciphertext = raw.raw_bytes(&paths[0]).unwrap();
+        let (_, owner_key) = rclone_crypt::derive_keys("scope-a-password", "scope-a-salt").unwrap();
+        let (_, other_key) = rclone_crypt::derive_keys("scope-b-password", "scope-b-salt").unwrap();
+        assert_eq!(
+            rclone_crypt::decrypt_file_content(&ciphertext, &owner_key).unwrap(),
+            payload
+        );
+        assert!(rclone_crypt::decrypt_file_content(&ciphertext, &other_key).is_err());
+
+        // No owner password must not fall back to the current user's same-ID secret.
+        store
+            .delete("aerocrypt_overlay_keyfile_path_captured-overlay")
+            .unwrap();
+        users::delete_credential_for_user_dual(
+            store,
+            owner,
+            "aerocrypt_overlay_pw_captured-overlay",
+        )
+        .unwrap();
+        store
+            .store("aerocrypt_overlay_pw_captured-overlay", "scope-b-password")
+            .unwrap();
+        assert!(wrap_connected_provider_for_profile_in_scope(
+            Box::new(MemProvider::new()),
+            &profile,
+            &scope
+        )
+        .await
+        .is_err());
+
+        // Keyfile lookup keeps the captured owner too, and unreadable paths fail closed.
+        let keyfile = missing.path().join("owner.keyfile");
+        let contents = crate::aerocrypt::generate_keyfile_v1();
+        std::fs::write(&keyfile, &contents).unwrap();
+        users::store_credential_for_user_typed_dual(
+            store,
+            owner,
+            "aerocrypt_overlay_keyfile_path_captured-overlay",
+            "crypt",
+            keyfile.to_str().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_profile_keyfile_digest_in_scope(&scope, "captured-overlay").unwrap(),
+            Some(crate::aerocrypt::keyfile_digest_from_file(contents.as_bytes()).unwrap())
+        );
+        users::store_credential_for_user_typed_dual(
+            store,
+            owner,
+            "aerocrypt_overlay_keyfile_path_captured-overlay",
+            "crypt",
+            &bad_keyfile,
+        )
+        .unwrap();
+        assert!(
+            resolve_profile_keyfile_digest_in_scope(&scope, "captured-overlay")
+                .unwrap_err()
+                .contains("cannot read AeroCrypt keyfile")
+        );
+        // A uniquely owned legacy key remains readable during migration;
+        // explicit legacy scope never rediscovers the currently active user.
+        let legacy = serde_json::json!({"id":"legacy-overlay","name":"Synthetic legacy overlay","protocol":"sftp"});
+        let mut profiles = users::cli_list_server_profiles_for_user(store, owner).unwrap();
+        profiles.push(legacy);
+        users::cli_replace_server_profiles_for_user(store, owner, &profiles).unwrap();
+        store
+            .store("aerocrypt_overlay_pw_legacy-overlay", "legacy-password")
+            .unwrap();
+        assert_eq!(
+            scope
+                .read_profile("legacy-overlay", "aerocrypt_overlay_pw_legacy-overlay")
+                .unwrap()
+                .as_deref(),
+            Some("legacy-password")
+        );
+        users::store_credential_for_user_typed_dual(
+            store,
+            other,
+            "aerocrypt_overlay_pw_legacy-overlay",
+            "crypt",
+            "partition-only-password",
+        )
+        .unwrap();
+        store
+            .store("aerocrypt_overlay_pw_legacy-overlay", "legacy-password")
+            .unwrap();
+        assert_eq!(
+            AuthScope {
+                store,
+                user_id: None
+            }
+            .read_profile("legacy-overlay", "aerocrypt_overlay_pw_legacy-overlay")
+            .unwrap()
+            .as_deref(),
+            Some("legacy-password")
+        );
+        users::cli_set_active_user(store, owner).unwrap();
+    }
 
     // ── Key builders ─────────────────────────────────────────────────────────
 

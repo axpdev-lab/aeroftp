@@ -28,6 +28,9 @@ fn headless_flows_round_trip() {
             .env("AEROFTP_AUTH_FIXTURE_CHILD", "1")
             .env("PATH", &empty_path)
             .env("AEROFTP_MASTER_PASSWORD", "synthetic auth fixture master")
+            .env_remove("AEROFTP_CRYPT_OVERLAY_PASSWORD")
+            .env_remove("AEROFTP_CRYPT_OVERLAY_SALT")
+            .env_remove("AEROFTP_CRYPT_OVERLAY_KEYFILE")
             .env("XDG_CONFIG_HOME", root.path().join("config"))
             .env("XDG_DATA_HOME", root.path().join("data"))
             .env("XDG_CACHE_HOME", root.path().join("cache"))
@@ -96,6 +99,11 @@ async fn round_trip() {
             )
             .unwrap();
         let server = crate::ai_tools::load_saved_servers().unwrap().remove(0);
+        if let Some(user) = users::cli_get_active_user(&store).unwrap() {
+            let profiles: Vec<serde_json::Value> =
+                serde_json::from_str(&store.get("config_server_profiles").unwrap()).unwrap();
+            users::cli_replace_server_profiles_for_user(&store, user.id, &profiles).unwrap();
+        }
         match crate::ai_tools::create_temp_provider(&server).await {
             Ok(_) => panic!("{protocol}: a profile without authorization must not connect"),
             Err(error) => {
@@ -398,6 +406,10 @@ async fn round_trip() {
     if scope.config("corrupt").is_ok() {
         gaps.push("Corrupt non-object auth configuration is accepted");
     }
+    crate::crypt_overlay_provider::tests::captured_overlay_owner_survives_account_switch(
+        &store, active.id, owner.id,
+    )
+    .await;
     server.abort();
     assert!(gaps.is_empty(), "Auth lifecycle gaps: {gaps:?}");
 }
