@@ -54,6 +54,20 @@ pub struct RemoteEntry {
     pub checksum_hex: Option<String>,
 }
 
+/// A directory actually named by the remote tree, including empty folders.
+#[derive(Debug, Clone)]
+pub struct RemoteDirectoryEntry {
+    pub rel_path: String,
+}
+
+/// Compare needs both kinds of entries; transfer callers keep the files-only API.
+pub struct RemoteScanInventory {
+    pub files: Vec<RemoteEntry>,
+    pub directories: Vec<RemoteDirectoryEntry>,
+    pub completeness: ScanCompleteness,
+    pub boundaries: ScanBoundaries,
+}
+
 /// Shared scan tuning.
 #[derive(Debug, Clone, Default)]
 pub struct ScanOptions {
@@ -287,14 +301,79 @@ async fn try_recursive_fastpath(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ScanOptions,
+    directory_rows: Option<&mut Vec<RemoteDirectoryEntry>>,
 ) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>, Vec<UnseenPath>, bool)> {
     let listing = crate::used_scan::provider_list_recursive_fastpath(provider, remote_root).await?;
     if !listing.structured_paths {
         return None;
     }
-    let truncated = listing.truncated;
-    let (results, links, unseen) = adapt_fastpath_entries(listing.entries, remote_root, opts)?;
+    let mut truncated = listing.truncated;
+    let mut file_options = opts.clone();
+    if let Some(rows) = directory_rows {
+        let (directories, cut) = fastpath_directory_rows(&listing.entries, remote_root, opts)?;
+        let room = opts
+            .max_entries
+            .unwrap_or(MAX_SCAN_ENTRIES)
+            .saturating_sub(directories.len());
+        *rows = directories;
+        truncated |= cut;
+        if room == 0 {
+            return Some((Vec::new(), Vec::new(), Vec::new(), true));
+        }
+        file_options.max_entries = Some(room);
+    }
+    let (results, links, unseen) =
+        adapt_fastpath_entries(listing.entries, remote_root, &file_options)?;
+    // The directory inventory spends part of the same cap as files/boundaries.
+    truncated |= results.len() + links.len() + unseen.len()
+        >= file_options.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     Some((results, links, unseen, truncated))
+}
+
+/// S3 has implicit parents as well as explicit empty-folder markers. Derive
+/// parents before filtering leaves: a folder holding only excluded files still
+/// exists. Excluded ancestors prune the whole branch. Never infer from local rows.
+fn fastpath_directory_rows(
+    entries: &[crate::providers::RemoteEntry],
+    root: &str,
+    opts: &ScanOptions,
+) -> Option<(Vec<RemoteDirectoryEntry>, bool)> {
+    let excludes = opts.excludes_or_everything();
+    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
+    let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
+    let mut seen = HashSet::new();
+    let mut rows = Vec::new();
+    for entry in entries {
+        let rel = match rel_from_abs(&entry.path, root) {
+            Some(rel) => rel,
+            None if crate::sync_core::walk_path_key(&entry.path)
+                == crate::sync_core::walk_path_key(root) =>
+            {
+                continue
+            }
+            None => return None,
+        };
+        if crate::sync::validate_relative_path(&rel).is_err() {
+            continue;
+        }
+        let parts: Vec<_> = rel.split('/').collect();
+        let count = parts
+            .len()
+            .saturating_sub(usize::from(!entry.is_walkable_dir()));
+        for n in 1..=count.min(depth) {
+            let parent = parts[..n].join("/");
+            if excludes.is_excluded(&parent) {
+                break;
+            }
+            if seen.insert(parent.clone()) {
+                if rows.len() >= cap {
+                    return Some((rows, true));
+                }
+                rows.push(RemoteDirectoryEntry { rel_path: parent });
+            }
+        }
+    }
+    Some((rows, false))
 }
 
 /// A flat recursive listing as a scan result. `Some` from the fast path means
@@ -1028,6 +1107,56 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+    scan_remote_tree_inventory_internal(
+        provider,
+        remote_root,
+        opts,
+        list_model,
+        cancel,
+        observer,
+        None,
+    )
+    .await
+}
+
+/// The same guarded walk with a bounded directory inventory for GUI Compare.
+pub async fn scan_remote_inventory_with_provider_lock_checked(
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    remote_root: &str,
+    opts: &ScanOptions,
+    list_model: &ProviderListSessionModel,
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    observer: Option<&dyn DagObserver>,
+) -> RemoteScanInventory {
+    let mut directories = Vec::new();
+    let (files, completeness, boundaries) = scan_remote_tree_inventory_internal(
+        provider,
+        remote_root,
+        opts,
+        list_model,
+        cancel,
+        observer,
+        Some(&mut directories),
+    )
+    .await;
+    RemoteScanInventory {
+        files,
+        directories,
+        completeness,
+        boundaries,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn scan_remote_tree_inventory_internal(
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    remote_root: &str,
+    opts: &ScanOptions,
+    list_model: &ProviderListSessionModel,
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    observer: Option<&dyn DagObserver>,
+    mut directory_rows: Option<&mut Vec<RemoteDirectoryEntry>>,
+) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
     // Compiled once for the whole walk; every directory reads this one.
     let excludes = opts.excludes_or_everything();
     if excludes.excludes_everything() {
@@ -1055,15 +1184,29 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         let fast = {
             let mut guard = provider.lock().await;
             match guard.as_mut() {
-                Some(p) => try_recursive_fastpath(p, remote_root, opts).await,
+                Some(p) => {
+                    try_recursive_fastpath(p, remote_root, opts, directory_rows.as_deref_mut())
+                        .await
+                }
                 None => None,
             }
         };
         if let Some((results, links, unseen, raw_truncated)) = fast {
             if let Some(obs) = observer {
                 obs.on_scan_progress(results.len(), 0);
+                obs.on_scan_totals(
+                    results.len(),
+                    directory_rows.as_ref().map_or(0, |rows| rows.len()),
+                    results
+                        .iter()
+                        .fold(0u64, |sum, row| sum.saturating_add(row.size)),
+                );
             }
             return fastpath_scan(results, links, unseen, raw_truncated, opts, &cancel);
+        }
+        // An unusable flat listing must not leave rows in the BFS inventory.
+        if let Some(rows) = directory_rows.as_deref_mut() {
+            rows.clear();
         }
     }
 
@@ -1076,6 +1219,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
             list_model,
             cancel,
             observer,
+            directory_rows,
         )
         .await;
     }
@@ -1125,7 +1269,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         .checked_sub(SCAN_PROGRESS_INTERVAL)
         .unwrap_or_else(std::time::Instant::now);
 
-    let count_dirs = opts.count_dirs_against_cap;
+    let count_dirs = opts.count_dirs_against_cap || directory_rows.is_some();
     while (!queue.is_empty() || in_flight > 0)
         && cap_spent(files_seen, boundaries.len(), dirs_seen, count_dirs) < cap
     {
@@ -1152,7 +1296,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                     "depth_limit",
                     // A queued walk entry is a directory the walk meant to list.
                     Some(true),
-                    cap.saturating_sub(files_seen),
+                    cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                 );
                 continue;
             }
@@ -1194,7 +1338,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                     &mut completeness,
                     batch.skipped_links,
                     batch.links_over_budget,
-                    cap.saturating_sub(files_seen),
+                    cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                 );
                 for file in batch.files {
                     if cap_spent(files_seen, boundaries.len(), dirs_seen, count_dirs) >= cap {
@@ -1221,11 +1365,16 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                         &dir,
                         &mut boundaries,
                         &mut completeness,
-                        cap.saturating_sub(files_seen),
+                        cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                     ) {
                         continue;
                     }
                     dirs_seen += 1;
+                    if let Some(rows) = directory_rows.as_deref_mut() {
+                        rows.push(RemoteDirectoryEntry {
+                            rel_path: dir.rel_prefix.clone(),
+                        });
+                    }
                     queue.push_back(dir);
                 }
             }
@@ -1247,7 +1396,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                         // Only a directory is listed, so only a directory can
                         // fail to list.
                         Some(true),
-                        cap.saturating_sub(files_seen),
+                        cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                     );
                 }
                 eprintln!("[scan_remote_tree] warning: {}", failure.message);
@@ -1290,6 +1439,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     (results, completeness, boundaries)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn scan_remote_tree_locked(
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     remote_root: &str,
@@ -1298,7 +1448,9 @@ async fn scan_remote_tree_locked(
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
+    mut directory_rows: Option<&mut Vec<RemoteDirectoryEntry>>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+    let count_dirs = opts.count_dirs_against_cap || directory_rows.is_some();
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let want_remote_checksum = {
@@ -1338,13 +1490,7 @@ async fn scan_remote_tree_locked(
         // so the tree we report is smaller than the tree that exists. The cap
         // comes first: a directory at the depth limit is still recorded, and a
         // full scan has no room left to record it in.
-        if cap_spent(
-            files_seen,
-            boundaries.len(),
-            dirs_seen,
-            opts.count_dirs_against_cap,
-        ) >= cap
-        {
+        if cap_spent(files_seen, boundaries.len(), dirs_seen, count_dirs) >= cap {
             completeness.truncated = true;
             boundaries.unbounded.get_or_insert("entry_cap");
             break;
@@ -1358,7 +1504,7 @@ async fn scan_remote_tree_locked(
                 "depth_limit",
                 // A queued entry is a directory the walk meant to list.
                 Some(true),
-                cap.saturating_sub(files_seen),
+                cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
             );
             continue;
         }
@@ -1382,7 +1528,7 @@ async fn scan_remote_tree_locked(
             files_seen,
             boundaries.len(),
             dirs_seen,
-            opts.count_dirs_against_cap,
+            count_dirs,
         ));
         let batch = {
             let mut provider_lock = provider.lock().await;
@@ -1415,16 +1561,10 @@ async fn scan_remote_tree_locked(
                     &mut completeness,
                     batch.skipped_links,
                     batch.links_over_budget,
-                    cap.saturating_sub(files_seen),
+                    cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                 );
                 for file in batch.files {
-                    if cap_spent(
-                        files_seen,
-                        boundaries.len(),
-                        dirs_seen,
-                        opts.count_dirs_against_cap,
-                    ) >= cap
-                    {
+                    if cap_spent(files_seen, boundaries.len(), dirs_seen, count_dirs) >= cap {
                         completeness.truncated = true;
                         boundaries.unbounded.get_or_insert("entry_cap");
                         break;
@@ -1437,8 +1577,7 @@ async fn scan_remote_tree_locked(
                 }
                 learn_root_spellings(&mut scope, &batch.root_spellings);
                 for dir in batch.dirs {
-                    if opts.count_dirs_against_cap
-                        && cap_spent(files_seen, boundaries.len(), dirs_seen, true) >= cap
+                    if count_dirs && cap_spent(files_seen, boundaries.len(), dirs_seen, true) >= cap
                     {
                         // Dropping a queued directory drops its whole subtree.
                         completeness.truncated = true;
@@ -1452,11 +1591,16 @@ async fn scan_remote_tree_locked(
                         &dir,
                         &mut boundaries,
                         &mut completeness,
-                        cap.saturating_sub(files_seen),
+                        cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                     ) {
                         continue;
                     }
                     dirs_seen += 1;
+                    if let Some(rows) = directory_rows.as_deref_mut() {
+                        rows.push(RemoteDirectoryEntry {
+                            rel_path: dir.rel_prefix.clone(),
+                        });
+                    }
                     queue.push_back(dir);
                 }
             }
@@ -1475,7 +1619,7 @@ async fn scan_remote_tree_locked(
                         // Only a directory is listed, so only a directory can
                         // fail to list.
                         Some(true),
-                        cap.saturating_sub(files_seen),
+                        cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                     );
                 }
                 eprintln!("[scan_remote_tree] warning: {}", failure.message);
@@ -4519,6 +4663,176 @@ pub(crate) mod tests {
             assert_eq!(boundaries.unseen.len(), 1, "pool={pool}");
             assert_eq!(boundaries.unseen[0].reason, "already_listed", "pool={pool}");
         }
+    }
+
+    async fn inventory_test_walk(tree: WalkTreeProvider, opts: ScanOptions) -> RemoteScanInventory {
+        let holder: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(tree))));
+        let model =
+            crate::provider_transfer_executor::resolve_provider_list_session_model(&holder, 2)
+                .await;
+        scan_remote_inventory_with_provider_lock_checked(holder, "/root", &opts, &model, None, None)
+            .await
+    }
+
+    #[tokio::test]
+    async fn compare_inventory_keeps_empty_folders_without_changing_file_scan() {
+        use crate::providers::RemoteEntry as Listed;
+        for pool in [false, true] {
+            let tree = WalkTreeProvider::new(
+                HashMap::from([
+                    (
+                        "/root".into(),
+                        vec![
+                            Listed::directory("empty".into(), "/root/empty".into()),
+                            Listed::directory("album".into(), "/root/album".into()),
+                        ],
+                    ),
+                    ("/root/empty".into(), vec![]),
+                    (
+                        "/root/album".into(),
+                        vec![Listed::file("a".into(), "/root/album/a".into(), 18)],
+                    ),
+                ]),
+                pool,
+            );
+            let (files, complete, _) =
+                walk_tree(WalkTreeProvider::new(tree.dirs.clone(), pool), None).await;
+            assert_eq!(sorted_rows(&files), ["album/a"]);
+            assert!(complete.is_complete());
+            let inventory = inventory_test_walk(tree, ScanOptions::default()).await;
+            assert!(inventory.completeness.is_complete());
+            assert_eq!(sorted_rows(&inventory.files), ["album/a"]);
+            let mut dirs: Vec<_> = inventory
+                .directories
+                .iter()
+                .map(|d| d.rel_path.as_str())
+                .collect();
+            dirs.sort_unstable();
+            assert_eq!(dirs, ["album", "empty"]);
+            assert_eq!(inventory.files.iter().map(|f| f.size).sum::<u64>(), 18);
+        }
+    }
+
+    #[tokio::test]
+    async fn compare_inventory_bounds_directory_only_trees() {
+        use crate::providers::RemoteEntry as Listed;
+        for pool in [false, true] {
+            let tree = WalkTreeProvider::new(
+                HashMap::from([(
+                    "/root".into(),
+                    (0..4)
+                        .map(|i| Listed::directory(format!("d{i}"), format!("/root/d{i}")))
+                        .collect(),
+                )]),
+                pool,
+            );
+            let inventory = inventory_test_walk(
+                tree,
+                ScanOptions {
+                    max_entries: Some(2),
+                    ..Default::default()
+                },
+            )
+            .await;
+            assert!(!inventory.completeness.is_complete());
+            assert_eq!(inventory.boundaries.unbounded, Some("entry_cap"));
+            assert!(inventory.directories.len() <= 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn compare_inventory_keeps_unreadable_and_depth_boundaries() {
+        use crate::providers::RemoteEntry as Listed;
+        for pool in [false, true] {
+            for depth_limit in [false, true] {
+                let mut tree = WalkTreeProvider::new(
+                    HashMap::from([
+                        (
+                            "/root".into(),
+                            vec![Listed::directory("blocked".into(), "/root/blocked".into())],
+                        ),
+                        ("/root/blocked".into(), vec![]),
+                    ]),
+                    pool,
+                );
+                let mut opts = ScanOptions::default();
+                if depth_limit {
+                    opts.max_depth = Some(1);
+                } else {
+                    tree.unlistable.insert("/root/blocked".into());
+                }
+                let inventory = inventory_test_walk(tree, opts).await;
+                assert!(!inventory.completeness.is_complete());
+                assert_eq!(inventory.directories[0].rel_path, "blocked");
+                assert_eq!(inventory.boundaries.unseen[0].rel_path, "blocked");
+                assert_eq!(
+                    inventory.boundaries.unseen[0].reason,
+                    if depth_limit {
+                        "depth_limit"
+                    } else {
+                        "list_error"
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn compare_fast_inventory_preserves_implicit_parents_and_empty_markers() {
+        use crate::providers::RemoteEntry as Listed;
+        let entries = vec![
+            Listed::file("a.txt".into(), "/root/album/deep/a.txt".into(), 18),
+            Listed::file("b.txt".into(), "/root/album/deep/b.txt".into(), 18),
+            Listed::directory("empty".into(), "/root/empty".into()),
+            Listed::file("secret".into(), "/root/cache/secret".into(), 1),
+        ];
+        let opts = ScanOptions {
+            exclude_patterns: vec!["*.txt".into(), "cache".into()],
+            files_from: Some(HashSet::new()),
+            ..Default::default()
+        };
+        let (dirs, cut) = fastpath_directory_rows(&entries, "/root", &opts).unwrap();
+        assert!(!cut);
+        assert_eq!(
+            dirs.iter().map(|d| d.rel_path.as_str()).collect::<Vec<_>>(),
+            ["album", "album/deep", "empty"]
+        );
+        assert!(adapt_fastpath_entries(entries, "/root", &opts)
+            .unwrap()
+            .0
+            .is_empty());
+    }
+
+    #[test]
+    fn compare_fast_inventory_caps_parents_and_rejects_outside_roots() {
+        use crate::providers::RemoteEntry as Listed;
+        let entries = vec![Listed::file("a".into(), "/root/a/b/c/file".into(), 1)];
+        let (dirs, cut) = fastpath_directory_rows(
+            &entries,
+            "/root",
+            &ScanOptions {
+                max_entries: Some(2),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(cut);
+        assert_eq!(dirs.len(), 2);
+        assert!(fastpath_directory_rows(
+            &[Listed::directory("other".into(), "/rootX/other".into())],
+            "/root",
+            &ScanOptions::default()
+        )
+        .is_none());
+        assert!(fastpath_directory_rows(
+            &[Listed::directory("root".into(), "/root".into())],
+            "/root",
+            &ScanOptions::default()
+        )
+        .unwrap()
+        .0
+        .is_empty());
     }
 
     /// The guard must not refuse a root the provider spells differently from

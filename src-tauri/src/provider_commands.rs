@@ -7717,6 +7717,65 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
             }),
         );
     }
+
+    fn on_scan_totals(&self, files: usize, dirs: usize, bytes: u64) {
+        let _ = self.app.emit(
+            "sync_scan_progress",
+            serde_json::json!({
+                "phase": "remote", "files_found": self.base_count + files,
+                "dirs_found": dirs, "bytes_found": bytes,
+                "progress_id": self.progress_id.as_deref(),
+            }),
+        );
+    }
+}
+
+/// A provider can expose a file and a folder at the same key (S3). The GUI's
+/// single-path map cannot represent both: refuse rather than silently replace
+/// one kind and authorize a plan against an ambiguous namespace.
+fn compare_inventory_rows(
+    root: &str,
+    files: Vec<crate::sync_core::scan::RemoteEntry>,
+    directories: Vec<crate::sync_core::scan::RemoteDirectoryEntry>,
+) -> Result<HashMap<String, crate::sync::FileInfo>, String> {
+    let mut rows = HashMap::new();
+    for entry in files {
+        let rel = entry.rel_path;
+        rows.insert(
+            rel.clone(),
+            crate::sync::FileInfo {
+                name: basename_from_rel_path(&rel),
+                path: format!("{}/{}", root.trim_end_matches('/'), rel),
+                size: entry.size,
+                modified: entry
+                    .mtime
+                    .as_deref()
+                    .and_then(crate::parse_remote_datetime),
+                is_dir: false,
+                checksum_alg: entry.checksum_alg,
+                checksum: entry.checksum_hex,
+            },
+        );
+    }
+    for directory in directories {
+        let rel = directory.rel_path;
+        if rows.get(&rel).is_some_and(|row| !row.is_dir) {
+            return Err(format!("{}: remote path {:?} is both a file and a directory; refusing an ambiguous Compare plan.", crate::SCAN_INCOMPLETE_MARKER, rel));
+        }
+        rows.insert(
+            rel.clone(),
+            crate::sync::FileInfo {
+                name: basename_from_rel_path(&rel),
+                path: format!("{}/{}", root.trim_end_matches('/'), rel),
+                size: 0,
+                modified: None,
+                is_dir: true,
+                checksum_alg: None,
+                checksum: None,
+            },
+        );
+    }
+    Ok(rows)
 }
 
 /// Resolve the keys a crypt-aware compare must normalize the RAW remote listing
@@ -7987,7 +8046,7 @@ pub async fn provider_compare_directories(
 
     // Get remote files via provider. Clone-backed providers use explicit
     // checker/list leases; legacy providers keep the per-directory lock path.
-    let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
+    let mut remote_files: HashMap<String, FileInfo>;
 
     // Pin both listing authority and connection identity. A reconnect during
     // the scan must not let rows from two provider sessions become one
@@ -8021,7 +8080,9 @@ pub async fn provider_compare_directories(
     let mut remote_boundaries = crate::sync_core::ScanBoundaries::default();
     let list_model = resolve_provider_list_session_model(&state.provider, 8).await;
     if list_model.is_clone_pool() {
-        use crate::sync_core::scan::{scan_remote_tree_with_provider_lock_checked, ScanOptions};
+        use crate::sync_core::scan::{
+            scan_remote_inventory_with_provider_lock_checked, ScanOptions,
+        };
 
         if cancel.is_cancelled() {
             return Err(crate::COMPARE_CANCELLED.to_string());
@@ -8038,23 +8099,22 @@ pub async fn provider_compare_directories(
             progress_id: progress_id.clone(),
             base_count: local_files.len(),
         };
-        let (remote_entries, remote_scan, boundaries) =
-            scan_remote_tree_with_provider_lock_checked(
-                state.provider.clone(),
-                &remote_path,
-                &scan_options,
-                &list_model,
-                Some(cancel.shared()),
-                Some(&scan_observer),
-            )
-            .await;
-        remote_boundaries = boundaries;
+        let inventory = scan_remote_inventory_with_provider_lock_checked(
+            state.provider.clone(),
+            &remote_path,
+            &scan_options,
+            &list_model,
+            Some(cancel.shared()),
+            Some(&scan_observer),
+        )
+        .await;
+        remote_boundaries = inventory.boundaries;
 
         // CLAUDE-AV-B3-13: a directory the provider refused to list contributes
         // no rows, which is indistinguishable from the user having deleted its
         // contents. Running the preset remote-to-local then deletes the local
         // copies of files that are still sitting on the provider.
-        crate::ensure_scan_complete("remote", &remote_path, &remote_scan)?;
+        crate::ensure_scan_complete("remote", &remote_path, &inventory.completeness)?;
 
         // The parallel scan stops early when the cancel flag is raised but
         // returns the partial results it gathered. Surface the same
@@ -8064,45 +8124,16 @@ pub async fn provider_compare_directories(
             return Err(crate::COMPARE_CANCELLED.to_string());
         }
 
-        for entry in remote_entries {
-            let relative_path = entry.rel_path;
-            let name = std::path::Path::new(&relative_path)
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_else(|| relative_path.clone());
-            let remote_abs_path = if remote_path.ends_with('/') {
-                format!("{}{}", remote_path, relative_path.trim_start_matches('/'))
-            } else {
-                format!("{}/{}", remote_path, relative_path.trim_start_matches('/'))
-            };
-            let modified = entry
-                .mtime
-                .as_deref()
-                .and_then(crate::parse_remote_datetime);
-
-            let file_info = FileInfo {
-                name,
-                path: remote_abs_path,
-                size: entry.size,
-                modified,
-                is_dir: false,
-                checksum_alg: entry.checksum_alg,
-                checksum: entry.checksum_hex,
-            };
-
-            remote_files.insert(relative_path, file_info);
-        }
-
-        // No `dirs_found` here on purpose: the clone-pool scan returns a flat
-        // list of files (every entry above is `is_dir: false`), so counting them
-        // would report a confident zero rather than "not known on this path".
-        // The frontend reducer keeps the last value it saw for an absent field.
+        let dirs_found = inventory.directories.len();
+        remote_files =
+            compare_inventory_rows(&remote_path, inventory.files, inventory.directories)?;
         let _ = app.emit(
             "sync_scan_progress",
             serde_json::json!({
                 "phase": "remote",
                 "files_found": local_files.len() + remote_files.len(),
-                "bytes_found": remote_files.values().map(|f| f.size).sum::<u64>(),
+                "dirs_found": dirs_found,
+                "bytes_found": remote_files.values().fold(0u64, |sum, row| sum.saturating_add(row.size)),
                 "progress_id": progress_id,
             }),
         );
@@ -13622,6 +13653,73 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compare_inventory_retains_shared_and_remote_only_empty_folders() {
+        use crate::sync_core::scan::{RemoteDirectoryEntry, RemoteEntry};
+        let rows = compare_inventory_rows(
+            "/root",
+            vec![RemoteEntry {
+                rel_path: "album/a".into(),
+                size: 18,
+                mtime: None,
+                checksum_alg: Some("sha256".into()),
+                checksum_hex: Some("a".repeat(64)),
+            }],
+            vec![
+                RemoteDirectoryEntry {
+                    rel_path: "album".into(),
+                },
+                RemoteDirectoryEntry {
+                    rel_path: "shared-empty".into(),
+                },
+                RemoteDirectoryEntry {
+                    rel_path: "remote-empty".into(),
+                },
+            ],
+        )
+        .unwrap();
+        assert!(rows["shared-empty"].is_dir);
+        assert_eq!(rows["remote-empty"].path, "/root/remote-empty");
+        assert_eq!(rows["album/a"].checksum_alg.as_deref(), Some("sha256"));
+        let mut local = rows.clone();
+        local.remove("remote-empty");
+        let report = crate::sync::classify_with_summary(
+            local,
+            rows,
+            &crate::sync::CompareOptions::default(),
+            None,
+        );
+        let actionable: Vec<_> = report
+            .differences
+            .iter()
+            .filter(|r| r.status != crate::sync::SyncStatus::Identical)
+            .collect();
+        assert_eq!(actionable.len(), 1);
+        assert_eq!(actionable[0].relative_path, "remote-empty");
+        assert_eq!(actionable[0].status, crate::sync::SyncStatus::RemoteOnly);
+    }
+
+    #[test]
+    fn compare_inventory_refuses_a_file_and_prefix_at_the_same_remote_path() {
+        use crate::sync_core::scan::{RemoteDirectoryEntry, RemoteEntry};
+        let error = compare_inventory_rows(
+            "/",
+            vec![RemoteEntry {
+                rel_path: "album".into(),
+                size: 0,
+                mtime: None,
+                checksum_alg: None,
+                checksum_hex: None,
+            }],
+            vec![RemoteDirectoryEntry {
+                rel_path: "album".into(),
+            }],
+        )
+        .unwrap_err();
+        assert!(error.contains(crate::SCAN_INCOMPLETE_MARKER));
+        assert!(error.contains("both a file and a directory"));
+    }
 
     /// Folder upload with a skip action: a folder whose listing timed out is
     /// not an empty folder. Read as one, every file in it was uploaded over
