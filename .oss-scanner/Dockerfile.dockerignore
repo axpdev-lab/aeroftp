@@ -1,0 +1,24 @@
+# Docker does not read .gitignore. Keep local builds free of developer-only data
+# and stale build outputs, just like the scanner's anonymous, clean checkout.
+# tools/check adds the public git history in its own layer when needed.
+.git
+**/node_modules
+/dist
+/target
+/src-tauri/target*
+/src-tauri/gen
+/docs/dev
+/CODEX.md
+/CLAUDE.md
+/GROK.md
+**/.env
+**/.env.*
+**/*.local
+**/*.log
+/logs
+/coverage
+/.codex
+/.claude
+/.mcp.json
+/.vscode
+/.idea
