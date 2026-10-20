@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, cameră sau tabletă prin USB MTP",
             "s3AllowCleartextEndpoint": "Acest punct final oferă S3 prin HTTP necriptat printr-o rețea. Acceptați pentru acest profil: acreditările semnate și fiecare fișier traversează rețeaua necriptate.",
             "discoverFilebase": "Filebase: stocare de obiecte compatibilă cu S3 (5 GB gratuit)",
-            "protonDesc": "Se conectează prin CLI-ul Proton Drive",
-            "protonTooltip": "Folosește CLI-ul Proton Drive - instalați, autentificați-vă în browser, AeroFTP este GUI-ul",
+            "protonDesc": "Stocare în cloud cu criptare de la un capăt la altul",
+            "protonTooltip": "Folosiți clientul nativ AeroFTP sau Proton Drive CLI oficial, cu autentificare în browser.",
             "twakeDesc": "Twake Drive (5 GB gratuit)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cloud francez open source (Cozy Cloud face acum parte din el) cu 5 GB gratuit",
             "discoverTwake": "Cloud european open source de la Linagora, acum noua casă a Cozy Cloud (5 GB gratuit)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Netrimis: comenzile SITE necesită o conexiune FTP sau FTPS.",
                 "not_connected": "Netrimis: sesiunea nu este conectată.",
                 "busy": "Netrimis: sesiunea este ocupată cu o altă operațiune. Încercați din nou când se termină.",
-                "reconnect_failed": "Netrimis: sesiunea a trebuit să se reconecteze mai întâi, dar nu a reușit."
+                "reconnect_failed": "Netrimis: sesiunea a trebuit să se reconecteze mai întâi, dar nu a reușit.",
+                "connection_changed": "Nu s-a trimis: conexiunea s-a schimbat. Încercați din nou în sesiunea dorită."
             },
             "unknown": {
                 "timeout": "Răspunsul nu a sosit la timp.",

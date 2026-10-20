@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Teléfono, cámara ou tableta por USB MTP",
             "s3AllowCleartextEndpoint": "Este punto de conexión serve S3 por HTTP sen cifrar a través dunha rede. Acéptao para este perfil: as credenciais asinadas e todos os ficheiros atravesan a rede sen cifrar.",
             "discoverFilebase": "Filebase: almacenamento de obxectos compatible con S3 (5 GB gratis)",
-            "protonDesc": "Conéctase a través do CLI de Proton Drive",
-            "protonTooltip": "Usa o CLI de Proton Drive - instáleo, inicie sesión no navegador, AeroFTP é a GUI",
+            "protonDesc": "Almacenamento na nube con cifrado de extremo a extremo",
+            "protonTooltip": "Usa o cliente nativo de AeroFTP ou o Proton Drive CLI oficial, con inicio de sesión no navegador.",
             "twakeDesc": "Twake Drive (5 GB gratis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, nube francesa de código aberto (Cozy Cloud agora forma parte dela) con 5 GB gratis",
             "discoverTwake": "Nube europea de código aberto de Linagora, agora fogar de Cozy Cloud (5 GB gratis)",
@@ -6370,7 +6370,8 @@
                 "not_ftp": "Non enviado: os comandos SITE precisan unha conexión FTP ou FTPS.",
                 "not_connected": "Non enviado: a sesión non está conectada.",
                 "busy": "Non enviado: a sesión está ocupada con outra operación. Téntao de novo cando remate.",
-                "reconnect_failed": "Non enviado: a sesión tivo que reconectarse primeiro e non puido."
+                "reconnect_failed": "Non enviado: a sesión tivo que reconectarse primeiro e non puido.",
+                "connection_changed": "Non se enviou: a conexión cambiou. Téntao de novo na sesión desexada."
             },
             "unknown": {
                 "timeout": "A resposta non chegou a tempo.",

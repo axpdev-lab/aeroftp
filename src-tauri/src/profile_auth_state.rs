@@ -222,6 +222,34 @@ pub fn oauth_vault_key_for_protocol(protocol: &str) -> Option<&'static str> {
 /// pre-fetched set of vault keys to keep this O(1) per profile when called in
 /// a loop. The store handle is used only to decrypt OAuth blobs that need the
 /// `expires_at` check; password-based protocols never trigger a decrypt.
+pub fn derive_profile_auth_state_for_user(
+    store: &CredentialStore,
+    accounts: &HashSet<String>,
+    profile_id: &str,
+    protocol: &str,
+    source: AuthSource,
+    user_id: Option<i64>,
+) -> &'static str {
+    #[cfg(feature = "proton-native")]
+    if source == AuthSource::ProtonSession {
+        use crate::providers::proton_native::vault::{saved_session_target_in, SessionOwner};
+        return match saved_session_target_in(
+            store,
+            SessionOwner::for_user(user_id),
+            Some(profile_id),
+        ) {
+            Ok((_, true)) => "valid",
+            Ok((_, false)) => "no_credentials",
+            Err(_) => "unknown",
+        };
+    }
+    #[cfg(not(feature = "proton-native"))]
+    let _ = user_id;
+    derive_profile_auth_state(store, accounts, profile_id, protocol, source)
+}
+
+/// Derive readiness from a legacy vault-key snapshot. Callers with an
+/// explicit user use [`derive_profile_auth_state_for_user`] for native sessions.
 pub fn derive_profile_auth_state(
     store: &CredentialStore,
     accounts: &HashSet<String>,

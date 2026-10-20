@@ -3332,7 +3332,7 @@ type ProgressCallback = Option<Box<dyn Fn(u64, u64) + Send>>;
 async fn stream_answer_to_part(
     response: reqwest::Response,
     part: &mut atomic_write::ResumableFile,
-    total_size: u64,
+    total_size: Option<u64>,
     mut overlap: Option<u8>,
     on_progress: &mut ProgressCallback,
 ) -> Result<bool, ProviderError> {
@@ -3359,15 +3359,29 @@ async fn stream_answer_to_part(
             overlap = None;
             data = rest;
         }
+        let next = transferred
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::TransferFailed("download size overflow".to_string()))?;
+        if total_size.is_some_and(|total| next > total) {
+            return Err(ProviderError::TransferFailed(
+                "HTTP download exceeds the declared object size".to_string(),
+            ));
+        }
         part.write_all(data)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        transferred += data.len() as u64;
+        transferred = next;
         if let Some(progress) = on_progress {
-            progress(transferred, total_size);
+            progress(transferred, total_size.unwrap_or(0));
         }
     }
 
+    if overlap.is_none() && total_size.is_some_and(|total| transferred != total) {
+        return Err(ProviderError::TransferFailed(format!(
+            "HTTP download ended at {transferred} of {} bytes",
+            total_size.unwrap()
+        )));
+    }
     Ok(overlap.is_none())
 }
 
@@ -3401,8 +3415,14 @@ impl HttpResume {
     /// Open the part a download of `local_path` goes on from, if any. Out of
     /// place a part whose record names no version is started over here,
     /// before a request is spent on it.
-    async fn open(local_path: &str) -> Result<Self, ProviderError> {
+    async fn open(
+        local_path: &str,
+        source: &atomic_write::ResumeSource,
+    ) -> Result<Self, ProviderError> {
         let mut part = atomic_write::ResumableFile::open_resume(local_path)
+            .await
+            .map_err(ProviderError::IoError)?
+            .bind_source(source)
             .await
             .map_err(ProviderError::IoError)?;
         let unrecorded = !part
@@ -3453,7 +3473,7 @@ impl HttpResume {
                         if stream_answer_to_part(
                             response,
                             &mut part,
-                            total,
+                            Some(total),
                             Some(byte),
                             on_progress,
                         )
@@ -3479,7 +3499,7 @@ impl HttpResume {
                 if let Some(answer) = answer.as_ref() {
                     part.record_source(answer).await;
                 }
-                let total = response.content_length().unwrap_or(0);
+                let total = response.content_length();
                 stream_answer_to_part(response, &mut part, total, None, on_progress).await?;
                 Self::publish(part).await?;
                 Ok(HttpResumeStep::Done)
@@ -3503,14 +3523,24 @@ impl HttpResume {
         answer: Option<&multi_thread::RangeSourceFingerprint>,
         offset: u64,
     ) -> Option<String> {
-        let start = response
+        let range = response
             .headers()
             .get(reqwest::header::CONTENT_RANGE)
             .and_then(|value| value.to_str().ok())
-            .and_then(multi_thread::parse_content_range)
-            .map(|(start, _, _)| start);
-        if start != Some(offset - 1) {
-            return Some("the server answered another range than the one asked".to_string());
+            .and_then(multi_thread::parse_content_range);
+        let Some((start, end, Some(total))) = range else {
+            return Some("the answer does not give a complete Content-Range".to_string());
+        };
+        if start != offset - 1 || total == 0 || end != total - 1 || start > end {
+            return Some(
+                "the server answered another range than the complete tail asked for".to_string(),
+            );
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length != end - start + 1)
+        {
+            return Some("the response length disagrees with its Content-Range".to_string());
         }
         let Some(answer) = answer else {
             return Some("the answer does not give the file's length".to_string());
@@ -3546,6 +3576,7 @@ impl HttpResume {
 pub async fn resume_http_download<S, Fut>(
     local_path: &str,
     what: &str,
+    source: &atomic_write::ResumeSource,
     send: S,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError>
@@ -3554,7 +3585,7 @@ where
     Fut: std::future::Future<Output = Result<reqwest::Response, ProviderError>>,
 {
     let mut on_progress = on_progress;
-    let mut download = HttpResume::open(local_path).await?;
+    let mut download = HttpResume::open(local_path, source).await?;
     loop {
         let resuming = download.range().is_some();
         let response = send(download.range()).await?;
@@ -3579,6 +3610,7 @@ where
 /// then the whole file when the part had to start over.
 pub async fn http_resumable_download<F>(
     local_path: &str,
+    source: &atomic_write::ResumeSource,
     build_request: F,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError>
@@ -3588,6 +3620,7 @@ where
     resume_http_download(
         local_path,
         local_path,
+        source,
         |range| {
             let request = build_request(range.as_deref());
             async move {
@@ -3617,6 +3650,9 @@ mod http_resume_tests {
         tag: &'static str,
         ignore_ranges: bool,
         asked: Vec<Option<String>>,
+        bad_range: Option<&'static str>,
+        bad_body: Vec<u8>,
+        chunked: bool,
     }
 
     fn v1() -> Vec<u8> {
@@ -3638,6 +3674,9 @@ mod http_resume_tests {
             tag,
             ignore_ranges: false,
             asked: Vec::new(),
+            bad_range: None,
+            bad_body: Vec::new(),
+            chunked: false,
         }))
     }
 
@@ -3675,26 +3714,40 @@ mod http_resume_tests {
                                 .and_then(|r| {
                                     r.strip_prefix("bytes=")?.strip_suffix('-')?.parse().ok()
                                 });
-                        let (status, body) = match start {
-                            Some(start) if start >= len => (
-                                format!(
-                                    "416 Range Not Satisfiable\r\nContent-Range: bytes */{len}"
+                        let (status, body) = if let Some(range) = state.bad_range {
+                            (
+                                format!("206 Partial Content\r\nContent-Range: {range}"),
+                                state.bad_body.clone(),
+                            )
+                        } else {
+                            match start {
+                                Some(start) if start >= len => (
+                                    format!(
+                                        "416 Range Not Satisfiable\r\nContent-Range: bytes */{len}"
+                                    ),
+                                    Vec::new(),
                                 ),
-                                Vec::new(),
-                            ),
-                            Some(start) => (
-                                format!(
+                                Some(start) => (
+                                    format!(
                                     "206 Partial Content\r\nContent-Range: bytes {start}-{}/{len}",
                                     len - 1
                                 ),
-                                state.body[start..].to_vec(),
-                            ),
-                            None => ("200 OK".to_string(), state.body.clone()),
+                                    state.body[start..].to_vec(),
+                                ),
+                                None => ("200 OK".to_string(), state.body.clone()),
+                            }
+                        };
+                        let (length, body) = if state.chunked {
+                            let mut framed = format!("{:x}\r\n", body.len()).into_bytes();
+                            framed.extend_from_slice(&body);
+                            framed.extend_from_slice(b"\r\n0\r\n\r\n");
+                            ("Transfer-Encoding: chunked".to_string(), framed)
+                        } else {
+                            (format!("Content-Length: {}", body.len()), body)
                         };
                         (
                             format!(
-                                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nETag: {}\r\nLast-Modified: Wed, 15 Oct 2026 10:00:00 GMT\r\nConnection: close\r\n\r\n",
-                                body.len(),
+                                "HTTP/1.1 {status}\r\n{length}\r\nETag: {}\r\nLast-Modified: Wed, 15 Oct 2026 10:00:00 GMT\r\nConnection: close\r\n\r\n",
                                 state.tag
                             ),
                             body,
@@ -3713,6 +3766,7 @@ mod http_resume_tests {
         let client = reqwest::Client::new();
         http_resumable_download(
             local,
+            &atomic_write::ResumeSource::new("test", url, "account", "/f.bin"),
             |range| {
                 let request = client.get(url);
                 match range {
@@ -3733,6 +3787,11 @@ mod http_resume_tests {
         drop(answer);
         state.lock().unwrap().asked.clear();
         let mut part = atomic_write::ResumableFile::open_fresh(local)
+            .await
+            .unwrap()
+            .bind_source(&atomic_write::ResumeSource::new(
+                "test", url, "account", "/f.bin",
+            ))
             .await
             .unwrap();
         part.record_source(&version).await;
@@ -3799,6 +3858,45 @@ mod http_resume_tests {
         let (requests, landed) = case.run().await;
         assert_eq!(requests, asked(&[Some("bytes=399-")]));
         assert!(landed == v1(), "a wrong file landed");
+    }
+
+    #[tokio::test]
+    async fn a_partial_response_never_publishes_a_short_or_oversized_object() {
+        let mut oversized = v1()[399..].to_vec();
+        oversized.extend_from_slice(b"extra");
+        for (range, body, chunked) in [
+            ("bytes 399-499/1000", v1()[399..500].to_vec(), false),
+            ("bytes 399-1001/1000", oversized.clone(), false),
+            ("bytes 399-999/1000", v1()[399..500].to_vec(), false),
+            ("bytes 399-999/1000", v1()[399..500].to_vec(), true),
+            ("bytes 399-999/1000", oversized, true),
+        ] {
+            let case = Case::new().await;
+            case.leave_part(&v1()[..400]).await;
+            std::fs::write(case.local(), b"old destination").unwrap();
+            {
+                let mut state = case.state.lock().unwrap();
+                state.bad_range = Some(range);
+                state.bad_body = body;
+                state.chunked = chunked;
+            }
+            assert!(
+                download(&case.url, &case.local()).await.is_err(),
+                "{range}, chunked={chunked}"
+            );
+            assert_eq!(std::fs::read(case.local()).unwrap(), b"old destination");
+        }
+    }
+
+    #[tokio::test]
+    async fn another_http_endpoint_cannot_resume_a_same_tagged_part() {
+        let first = Case::new().await;
+        let second = Case::new().await;
+        first.leave_part(&v1()[..400]).await;
+        second.replace(v2(), "\"v1\"");
+        download(&second.url, &first.local()).await.unwrap();
+        assert_eq!(second.state.lock().unwrap().asked, asked(&[None]));
+        assert_eq!(std::fs::read(first.local()).unwrap(), v2());
     }
 
     #[tokio::test]

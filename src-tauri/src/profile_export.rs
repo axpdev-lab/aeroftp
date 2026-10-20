@@ -66,6 +66,32 @@ struct ExportPayload {
 /// #214.
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct ProfileAuthSecrets {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github_pem: Option<String>,
+}
+
+impl ProfileAuthSecrets {
+    pub fn entries(&self) -> [(&'static str, Option<&str>); 3] {
+        let [config, token, pem] = crate::profile_auth::DURABLE_KEY_PREFIXES;
+        [
+            (config, self.config.as_deref()),
+            (token, self.github_token.as_deref()),
+            (pem, self.github_pem.as_deref()),
+        ]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries().iter().all(|(_, value)| value.is_none())
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderSecrets {
     /// Serialized `StoredTokens` JSON for OAuth2 providers (`oauth_<provider>`
     /// vault format). Absent when the profile is not OAuth-based.
@@ -151,6 +177,10 @@ pub struct ProviderSecrets {
     /// signs in again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proton_native_session: Option<String>,
+    /// Durable headless authorization only. PKCE, pending request tokens and
+    /// connection deadlines must never be exported or copied to another ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_auth: Option<ProfileAuthSecrets>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -350,6 +380,7 @@ pub fn export_profiles(
             || s.onedrive_drive_id.is_some()
             || s.onedrive_drive_type.is_some()
             || s.proton_native_session.is_some()
+            || s.profile_auth.as_ref().is_some_and(|auth| !auth.is_empty())
     });
     let any_options_secret = servers.iter().any(|s| options_carry_secrets(&s.options));
     let metadata = ExportMetadata {

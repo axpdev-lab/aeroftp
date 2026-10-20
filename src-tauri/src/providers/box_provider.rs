@@ -1946,6 +1946,15 @@ impl StorageProvider for BoxProvider {
 
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "box",
+                self.api_base(),
+                &super::atomic_write::ResumeSource::account(
+                    &self.profile_id,
+                    self.account_email.as_deref(),
+                ),
+                &file_id,
+            ),
             |range_header| {
                 let mut req = self.client.get(&url).header(AUTHORIZATION, auth.clone());
                 if let Some(range) = range_header {

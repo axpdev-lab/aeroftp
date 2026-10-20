@@ -2207,13 +2207,15 @@ async fn clear_crypt_overlay_inner(state: &ProviderState, full: bool) -> bool {
     state.cancel_storage_reads();
     let removed = {
         let mut guard = state.provider.lock().await;
-        crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
+        let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
+        if full {
+            state.invalidate_overlay_key_cache();
+        }
+        removed
     };
     state.overlay_wrapped.store(false, Ordering::SeqCst);
     if full {
         state.active_crypt_overlay.store(false, Ordering::SeqCst);
-        // Hard lock / teardown: the cached keys must not survive.
-        state.invalidate_overlay_key_cache();
     }
     removed
 }
@@ -6295,26 +6297,49 @@ pub async fn provider_site_command(
     state: State<'_, ProviderState>,
     args: String,
     timeout_secs: Option<u64>,
+    generation: u64,
 ) -> Result<crate::providers::ftp_site::SiteCommandReport, String> {
-    use crate::providers::ftp_site::{self, NotSentReason, SiteOptions, SiteRun};
-
     // A SITE command can change accounts on the server: only the main window
     // sends one, whatever runs in a secondary webview.
     crate::only_main_window(webview.label(), "provider_site_command")?;
+
+    Ok(provider_site_command_inner(&state, &args, timeout_secs, generation).await)
+}
+
+async fn provider_site_command_inner(
+    state: &ProviderState,
+    args: &str,
+    timeout_secs: Option<u64>,
+    generation: u64,
+) -> crate::providers::ftp_site::SiteCommandReport {
+    use crate::providers::ftp_site::{self, NotSentReason, SiteOptions, SiteRun};
 
     let opts = timeout_secs
         .map(SiteOptions::with_reply_timeout_secs)
         .unwrap_or_default();
     let Ok(mut provider_lock) = tokio::time::timeout(SITE_BUSY_WAIT, state.provider.lock()).await
     else {
-        return Ok(SiteRun::not_sent(&args, NotSentReason::Busy).report());
+        return SiteRun::not_sent(args, NotSentReason::Busy).report();
     };
+    // Connect, disconnect and provider swaps bump this under the same lock.
+    // A queued command must never reach the session that replaced its own.
+    if state.connection_generation.load(Ordering::SeqCst) != generation {
+        return SiteRun::not_sent(args, NotSentReason::ConnectionChanged).report();
+    }
     let Some(provider) = provider_lock.as_mut() else {
-        return Ok(SiteRun::not_sent(&args, NotSentReason::NotConnected).report());
+        return SiteRun::not_sent(args, NotSentReason::NotConnected).report();
     };
-    Ok(ftp_site::run_site_command(provider.as_mut(), &args, &opts)
+    ftp_site::run_site_command(provider.as_mut(), args, &opts)
         .await
-        .report())
+        .report()
+}
+
+/// Status and identity are captured together while the provider is locked.
+#[derive(serde::Serialize)]
+pub struct ProviderSiteSessionStatus {
+    pub supported: bool,
+    pub encrypted: Option<bool>,
+    pub generation: Option<u64>,
 }
 
 /// Whether the active session takes `SITE` commands and whether its control
@@ -6323,24 +6348,110 @@ pub async fn provider_site_command(
 #[tauri::command]
 pub async fn provider_site_session(
     state: State<'_, ProviderState>,
-) -> Result<crate::providers::ftp_site::SiteSessionStatus, String> {
-    use crate::providers::ftp_site::{site_session_status, SiteSessionStatus};
+) -> Result<ProviderSiteSessionStatus, String> {
+    Ok(provider_site_session_inner(&state, Duration::from_secs(1)).await)
+}
 
-    let Ok(mut provider_lock) =
-        tokio::time::timeout(Duration::from_secs(1), state.provider.lock()).await
-    else {
-        return Ok(SiteSessionStatus {
+async fn provider_site_session_inner(
+    state: &ProviderState,
+    wait: Duration,
+) -> ProviderSiteSessionStatus {
+    use crate::providers::ftp_site::site_session_status;
+
+    let Ok(mut provider_lock) = tokio::time::timeout(wait, state.provider.lock()).await else {
+        return ProviderSiteSessionStatus {
             supported: true,
             encrypted: None,
-        });
+            generation: None,
+        };
     };
-    Ok(match provider_lock.as_mut() {
-        Some(provider) => site_session_status(provider.as_mut()),
-        None => SiteSessionStatus {
+    match provider_lock.as_mut() {
+        Some(provider) => {
+            let status = site_session_status(provider.as_mut());
+            ProviderSiteSessionStatus {
+                supported: status.supported,
+                encrypted: status.encrypted,
+                generation: status
+                    .supported
+                    .then(|| state.connection_generation.load(Ordering::SeqCst)),
+            }
+        }
+        None => ProviderSiteSessionStatus {
             supported: false,
             encrypted: None,
+            generation: None,
         },
-    })
+    }
+}
+
+#[cfg(test)]
+mod site_connection_tests {
+    use super::*;
+    use crate::providers::{FtpConfig, FtpProvider, FtpTlsMode};
+
+    fn ftp_state() -> Arc<ProviderState> {
+        let state = Arc::new(ProviderState::new());
+        *state.provider.try_lock().unwrap() = Some(Box::new(FtpProvider::new(FtpConfig {
+            host: "synthetic.invalid".into(),
+            port: 21,
+            username: "synthetic".into(),
+            password: secrecy::SecretString::from("synthetic-password".to_string()),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        })));
+        state
+    }
+
+    #[tokio::test]
+    async fn queued_site_refuses_the_replacement_connection_without_exposing_input() {
+        let state = ftp_state();
+        let guard = state.provider.lock().await;
+        let queued = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move {
+                provider_site_command_inner(&state, "CHPASS alice synthetic-secret", None, 0).await
+            })
+        };
+        tokio::task::yield_now().await;
+        // Model a swap while holding the provider lock. No network connection
+        // exists, so dispatching instead of refusing cannot pass unnoticed.
+        state.connection_generation.fetch_add(1, Ordering::SeqCst);
+        drop(guard);
+        let report = queued.await.unwrap();
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("\"reason\":\"connection_changed\""), "{json}");
+        assert!(json.contains("\"outcome\":\"not_sent\""), "{json}");
+        assert!(!json.contains("synthetic-secret"), "{json}");
+        assert!(!json.contains("alice"), "{json}");
+    }
+
+    #[tokio::test]
+    async fn site_status_binds_identity_to_the_locked_provider_and_busy_can_be_retried() {
+        let state = ftp_state();
+        let held = state.provider.lock().await;
+        let busy = provider_site_session_inner(&state, Duration::from_millis(1)).await;
+        assert!(busy.generation.is_none());
+        assert!(busy.encrypted.is_none());
+        state.connection_generation.fetch_add(1, Ordering::SeqCst);
+        drop(held);
+        let refreshed = provider_site_session_inner(&state, Duration::from_millis(20)).await;
+        assert!(refreshed.supported);
+        assert_eq!(refreshed.generation, Some(1));
+        assert_eq!(refreshed.encrypted, Some(false));
+    }
+
+    #[tokio::test]
+    async fn site_without_a_provider_has_no_usable_identity() {
+        let state = ProviderState::new();
+        let status = provider_site_session_inner(&state, Duration::from_millis(20)).await;
+        assert!(!status.supported);
+        assert!(status.generation.is_none());
+        let report = provider_site_command_inner(&state, "WHO", None, 0).await;
+        assert!(serde_json::to_string(&report)
+            .unwrap()
+            .contains("not_connected"));
+    }
 }
 
 /// One placeholder of a SITE template, for the dialog's form.

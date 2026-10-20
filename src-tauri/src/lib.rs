@@ -8006,7 +8006,7 @@ async fn extract_archive(
     validate_path(&archive_path)?;
     validate_path(&output_dir)?;
 
-    use std::fs::{self, File};
+    use std::fs::File;
     use zip::ZipArchive;
 
     // Wrap password in SecretString for zeroization on drop
@@ -8031,9 +8031,10 @@ async fn extract_archive(
         output_dir.clone()
     };
 
-    // Create output directory if needed
-    fs::create_dir_all(&actual_output)
-        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    let extraction_root = open_archive_output(
+        std::path::Path::new(&output_dir),
+        std::path::Path::new(&actual_output),
+    )?;
 
     for i in 0..archive.len() {
         let mut file = if let Some(ref pwd) = secret_password {
@@ -8056,23 +8057,19 @@ async fn extract_archive(
         if !is_safe_archive_entry(&entry_name) {
             continue;
         }
-        let outpath = std::path::Path::new(&actual_output).join(&entry_name);
-
         if entry_name.ends_with('/') {
             // Directory
-            fs::create_dir_all(&outpath)
+            extraction_root
+                .create_dir_all(&entry_name)
                 .map_err(|e| format!("Failed to create directory: {}", e))?;
         } else {
             // File
-            if let Some(parent) = outpath.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create parent directory: {}", e))?;
-            }
-
             let declared = file.size();
-            write_entry_atomically(&outpath, |outfile| {
-                copy_entry_bounded(&mut file, outfile, declared)
-            })
+            write_entry_atomically_at(
+                &extraction_root,
+                std::path::Path::new(&entry_name),
+                |outfile| copy_entry_bounded(&mut file, outfile, declared),
+            )
             .map_err(|e| format!("Failed to extract file: {}", e))?;
         }
     }
@@ -8402,36 +8399,137 @@ where
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
+    let root = cap_std::fs::Dir::open_ambient_dir(parent, cap_std::ambient_authority())
+        .map_err(destination_error)?;
+    let name = out_path.file_name().ok_or_else(|| {
+        destination_error(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Missing entry name",
+        ))
+    })?;
+    write_entry_atomically_at(&root, std::path::Path::new(name), fill)
+}
+
+/// Resolve an archive destination beneath a directory capability and retain
+/// its parent handle through publication. No ambient path is reopened after
+/// the check, even if an existing ancestor is replaced with a symlink.
+fn archive_destination_parent(
+    root: &cap_std::fs::Dir,
+    relative: &std::path::Path,
+) -> std::io::Result<(cap_std::fs::Dir, std::ffi::OsString)> {
+    use std::path::Component;
+    if !relative
+        .components()
+        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Unsafe archive destination",
+        ));
+    }
+    let name = relative
+        .file_name()
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Missing archive entry name",
+            )
+        })?
+        .to_os_string();
+    let parent = relative
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    root.create_dir_all(parent)?;
+    Ok((root.open_dir(parent)?, name))
+}
+
+/// The trusted selection is `output`, not a subfolder derived from an archive
+/// filename. Resolve that subfolder through the selected root's capability so
+/// an existing link at its name cannot redefine the extraction authority.
+fn open_archive_output(
+    output: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<cap_std::fs::Dir, String> {
+    std::fs::create_dir_all(output)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    let root = cap_std::fs::Dir::open_ambient_dir(output, cap_std::ambient_authority())
+        .map_err(|e| format!("Failed to open output directory: {}", e))?;
+    let relative = destination
+        .strip_prefix(output)
+        .map_err(|_| "Archive destination is outside the selected output directory".to_string())?;
+    let relative = if relative.as_os_str().is_empty() {
+        std::path::Path::new(".")
+    } else {
+        relative
+    };
+    root.create_dir_all(relative)
+        .map_err(|e| format!("Failed to create extraction folder: {}", e))?;
+    root.open_dir(relative)
+        .map_err(|e| format!("Failed to open extraction folder: {}", e))
+}
+
+/// The archive-root-bound counterpart of `write_entry_atomically`. It also
+/// preserves a failed entry's old contents and an existing file's permissions.
+fn write_entry_atomically_at<F>(
+    root: &cap_std::fs::Dir,
+    relative: &std::path::Path,
+    fill: F,
+) -> std::io::Result<u64>
+where
+    F: FnOnce(&mut std::fs::File) -> std::io::Result<u64>,
+{
+    let (parent, name) = archive_destination_parent(root, relative).map_err(destination_error)?;
+    write_archive_entry_in_parent(&parent, &name, fill)
+}
+
+fn write_archive_entry_in_parent<F>(
+    parent: &cap_std::fs::Dir,
+    name: &std::ffi::OsStr,
+    fill: F,
+) -> std::io::Result<u64>
+where
+    F: FnOnce(&mut std::fs::File) -> std::io::Result<u64>,
+{
     // A fixed prefix and a random suffix only (46 bytes), never the entry's
     // name: built from it, the temporary was 23 bytes longer than the entry,
     // and an entry within 23 bytes of the file system's name limit (255 on
     // ext4, about 143 on eCryptfs) could not be extracted at all.
-    let tmp_path = parent.join(format!(".aeroftp-part-{}", uuid::Uuid::new_v4().simple()));
+    let tmp_name = format!(".aeroftp-part-{}", uuid::Uuid::new_v4().simple());
     // create_new: never reuse or follow something already at the temporary path.
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp_path)
-        .map_err(destination_error)?;
+    let mut options = cap_std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    let mut file = parent
+        .open_with(&tmp_name, &options)
+        .map_err(destination_error)?
+        .into_std();
     let outcome = fill(&mut file).and_then(|written| {
-        drop(file);
         // Replacing an existing regular file keeps its permissions, as the
         // in-place truncation this replaces did (an executable stays one).
-        if let Ok(existing) = std::fs::symlink_metadata(out_path) {
+        if let Ok(existing) = parent.symlink_metadata(name) {
             if existing.is_file() {
-                std::fs::set_permissions(&tmp_path, existing.permissions())
+                let permissions = existing
+                    .permissions()
+                    .into_std(&file)
+                    .map_err(destination_error)?;
+                file.set_permissions(permissions)
                     .map_err(destination_error)?;
             }
         }
-        std::fs::rename(&tmp_path, out_path)
+        drop(file);
+        parent
+            .rename(&tmp_name, parent, name)
             .map(|()| written)
             .map_err(destination_error)
     });
     if outcome.is_err() {
-        let _ = std::fs::remove_file(&tmp_path);
+        let _ = parent.remove_file(&tmp_name);
     }
     outcome
 }
+
+#[cfg(test)]
+mod archive_publication_tests;
 
 /// An I/O error on the extraction destination (creating, writing or renaming
 /// the output), told apart from an error reading the archive. It reads as the
@@ -8567,7 +8665,7 @@ async fn extract_7z(
     create_subfolder: bool,
 ) -> Result<String, String> {
     use sevenz_rust2::*;
-    use std::fs::{self, File};
+    use std::fs::File;
     use std::io::BufReader;
     use std::path::Path;
 
@@ -8585,9 +8683,8 @@ async fn extract_7z(
         output_dir.clone()
     };
 
-    // Create output directory
-    fs::create_dir_all(&final_output_dir)
-        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    let extraction_root =
+        open_archive_output(Path::new(&output_dir), Path::new(&final_output_dir))?;
 
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
@@ -8603,8 +8700,6 @@ async fn extract_7z(
 
     let mut archive = ArchiveReader::new(reader, pwd)
         .map_err(|e| format!("Failed to read 7z archive: {}", describe_7z_error(&e)))?;
-
-    let dest = Path::new(&final_output_dir);
 
     // C5: Extract entries with per-entry path traversal validation
     // instead of using decompress_file() which extracts blindly
@@ -8622,14 +8717,9 @@ async fn extract_7z(
                 return Ok(true); // skip this entry, continue to next
             }
 
-            let out_path = dest.join(name);
-
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| sevenz_entry_error(destination_error(e)))?;
-            }
-
             if entry.is_directory() {
-                fs::create_dir_all(&out_path)
+                extraction_root
+                    .create_dir_all(name)
                     .map_err(|e| sevenz_entry_error(destination_error(e)))?;
             } else {
                 // A wrong password usually fails inside the decoder, but when its
@@ -8640,7 +8730,7 @@ async fn extract_7z(
                 // MaybeBadPassword when a password is set. Destination errors go
                 // back with a context instead (`sevenz_entry_error`).
                 let declared = entry.size();
-                write_entry_atomically(&out_path, |outfile| {
+                write_entry_atomically_at(&extraction_root, Path::new(name), |outfile| {
                     copy_entry_bounded(reader, &mut DestinationWriter(outfile), declared)
                 })
                 .map_err(sevenz_entry_error)?;
@@ -9568,9 +9658,7 @@ async fn extract_single_impl(
     } else {
         Path::new(&output_dir).to_path_buf()
     };
-    std::fs::create_dir_all(&dest_dir)
-        .map_err(|e| format!("Failed to create output directory: {}", e))?;
-    let out_path = dest_dir.join(&member_name);
+    let extraction_root = open_archive_output(Path::new(&output_dir), &dest_dir)?;
 
     let compressed_len = std::fs::metadata(&archive_path)
         .map(|m| m.len())
@@ -9587,7 +9675,7 @@ async fn extract_single_impl(
         .ok_or_else(|| format!("Unrecognized single-stream format: {}", codec))?;
     let over_cap =
         std::io::Error::other("Decompressed stream exceeds the size limit (compression bomb?)");
-    write_entry_atomically(&out_path, |outfile| {
+    write_entry_atomically_at(&extraction_root, Path::new(&member_name), |outfile| {
         let mut limited = std::io::Read::take(&mut *reader, cap.saturating_add(1));
         let written = std::io::copy(&mut limited, outfile)?;
         if written > cap {
@@ -9800,7 +9888,7 @@ fn tar_final_output(
             stem.to_string()
         };
         let subfolder = out.join(safe_extract_folder_name(&folder_name));
-        std::fs::create_dir_all(&subfolder).map_err(|e| format!("Failed to create dir: {}", e))?;
+        open_archive_output(out, &subfolder)?;
         Ok(subfolder)
     } else {
         Ok(out.to_path_buf())
@@ -9814,9 +9902,21 @@ fn tar_final_output(
 /// Returns the destination path and the skipped-link notes as SEPARATE values:
 /// the path must stay a clean directory string (the CLI walks it to size the
 /// extraction), so skip notes are never smuggled into it.
+#[cfg(test)]
 fn tar_unpack(
     reader: Box<dyn std::io::Read>,
     final_output: &std::path::Path,
+) -> Result<(String, Vec<String>), String> {
+    let extraction_root =
+        cap_std::fs::Dir::open_ambient_dir(final_output, cap_std::ambient_authority())
+            .map_err(|e| format!("Failed to open extraction root: {}", e))?;
+    tar_unpack_into(reader, final_output, &extraction_root)
+}
+
+fn tar_unpack_into(
+    reader: Box<dyn std::io::Read>,
+    final_output: &std::path::Path,
+    extraction_root: &cap_std::fs::Dir,
 ) -> Result<(String, Vec<String>), String> {
     let mut ar = tar::Archive::new(reader);
 
@@ -9842,11 +9942,10 @@ fn tar_unpack(
             continue;
         }
 
-        let out_path = final_output.join(&entry_path);
-
         let et = entry.header().entry_type();
         if et.is_dir() {
-            std::fs::create_dir_all(&out_path)
+            extraction_root
+                .create_dir_all(&entry_path)
                 .map_err(|e| format!("Failed to create directory '{}': {}", entry_path, e))?;
         } else if et.is_symlink() || et.is_hard_link() {
             // Symlink / hardlink entries carry a target path, not file bytes. The
@@ -9887,27 +9986,46 @@ fn tar_unpack(
             }
 
             // Ensure parent directory exists (mirror the regular-file branch).
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    format!("Failed to create parent dir for '{}': {}", entry_path, e)
-                })?;
-            }
-
             #[cfg(unix)]
             {
-                // Overwrite semantics on re-extract: File::create truncates an
-                // existing regular file, but symlink()/hard_link() fail EEXIST,
-                // so extracting the same tar twice died at the first link. Remove
-                // a pre-existing file or link at the path (NotFound is fine).
-                let _ = std::fs::remove_file(&out_path);
+                let (parent, name) =
+                    archive_destination_parent(extraction_root, std::path::Path::new(&entry_path))
+                        .map_err(|e| {
+                            format!("Failed to resolve link destination '{}': {}", entry_path, e)
+                        })?;
+                // Prepare the link under a new name before replacing an old
+                // entry. A missing hardlink source must not delete that entry.
+                let temporary = format!(".aeroftp-part-{}", uuid::Uuid::new_v4().simple());
                 if et.is_symlink() {
-                    std::os::unix::fs::symlink(&*target, &out_path)
+                    parent
+                        .symlink(&*target, &temporary)
                         .map_err(|e| format!("Failed to create symlink '{}': {}", entry_path, e))?;
                 } else {
-                    // Hardlink target is an in-root path relative to the extraction root.
-                    std::fs::hard_link(final_output.join(&*target), &out_path).map_err(|e| {
-                        format!("Failed to create hardlink '{}': {}", entry_path, e)
-                    })?;
+                    // Hardlink target is relative to the retained extraction root.
+                    extraction_root
+                        .hard_link(&*target, &parent, &temporary)
+                        .map_err(|e| {
+                            format!("Failed to create hardlink '{}': {}", entry_path, e)
+                        })?;
+                }
+                if let Err(error) = parent.rename(&temporary, &parent, &name) {
+                    let _ = parent.remove_file(&temporary);
+                    return Err(format!(
+                        "Failed to publish link '{}': {}",
+                        entry_path, error
+                    ));
+                }
+                // POSIX rename is a successful no-op when both hardlink names
+                // already identify the same inode. Remove that extra name too.
+                match parent.remove_file(&temporary) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(format!(
+                            "Failed to clean link staging '{}': {}",
+                            entry_path, error
+                        ))
+                    }
                 }
             }
             #[cfg(not(unix))]
@@ -9920,13 +10038,6 @@ fn tar_unpack(
                 ));
             }
         } else {
-            // Ensure parent directory exists
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    format!("Failed to create parent dir for '{}': {}", entry_path, e)
-                })?;
-            }
-
             // `Entry::size` is the byte count the tar crate streams for this entry,
             // a PAX `size` record and a GNU sparse real size included.
             // `header().size()` ignores a PAX size, so an entry sized there (past
@@ -9934,9 +10045,11 @@ fn tar_unpack(
             // the wrong bound. There is no unknown size to default: the tar crate
             // refuses an entry whose size field does not parse.
             let declared = entry.size();
-            write_entry_atomically(&out_path, |outfile| {
-                copy_entry_bounded(&mut entry, outfile, declared)
-            })
+            write_entry_atomically_at(
+                extraction_root,
+                std::path::Path::new(&entry_path),
+                |outfile| copy_entry_bounded(&mut entry, outfile, declared),
+            )
             .map_err(|e| format!("Failed to extract '{}': {}", entry_path, e))?;
         }
     }
@@ -9957,7 +10070,8 @@ async fn extract_tar(
 ) -> Result<String, String> {
     let final_output = tar_final_output(&archive_path, &output_dir, create_subfolder)?;
     let reader = tar_reader_for(&archive_path, None)?;
-    tar_unpack(reader, &final_output).map(|(dest, _skipped)| dest)
+    let extraction_root = open_archive_output(std::path::Path::new(&output_dir), &final_output)?;
+    tar_unpack_into(reader, &final_output, &extraction_root).map(|(dest, _skipped)| dest)
 }
 
 /// As `extract_tar_core`, but the tar filter is forced by `kind`
@@ -9971,7 +10085,8 @@ pub async fn extract_tar_as_core(
 ) -> Result<String, String> {
     let final_output = tar_final_output(&archive_path, &output_dir, create_subfolder)?;
     let reader = tar_reader_for(&archive_path, Some(&kind))?;
-    tar_unpack(reader, &final_output).map(|(dest, _skipped)| dest)
+    let extraction_root = open_archive_output(std::path::Path::new(&output_dir), &final_output)?;
+    tar_unpack_into(reader, &final_output, &extraction_root).map(|(dest, _skipped)| dest)
 }
 
 /// Extract a RAR archive with optional password
@@ -9994,8 +10109,7 @@ async fn extract_rar(
         Path::new(&output_dir).to_path_buf()
     };
 
-    std::fs::create_dir_all(&final_output)
-        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    let extraction_root = open_archive_output(Path::new(&output_dir), &final_output)?;
 
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
@@ -10026,7 +10140,7 @@ async fn extract_rar(
         .tempdir_in(&final_output)
         .map_err(|e| format!("Failed to create a staging folder: {}", e))?;
     let extracted = extract_rar_entries(archive, staging.path());
-    let moved = move_staged_tree(staging.path(), &final_output);
+    let moved = move_staged_tree_into(staging.path(), &extraction_root);
     extracted?;
     moved?;
 
@@ -10163,7 +10277,19 @@ fn materialize_rar_reference(
 /// Moves everything under `staging` to the same relative path under `dest`,
 /// replacing a file already there. Folders are recreated, not moved, so they
 /// merge with folders the destination already has. Links are moved as links.
+#[cfg(test)]
 fn move_staged_tree(staging: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+    let destination_root = cap_std::fs::Dir::open_ambient_dir(dest, cap_std::ambient_authority())
+        .map_err(|e| format!("Failed to open extraction root: {}", e))?;
+    move_staged_tree_into(staging, &destination_root)
+}
+
+fn move_staged_tree_into(
+    staging: &std::path::Path,
+    destination_root: &cap_std::fs::Dir,
+) -> Result<(), String> {
+    let source_root = cap_std::fs::Dir::open_ambient_dir(staging, cap_std::ambient_authority())
+        .map_err(|e| format!("Failed to open staging root: {}", e))?;
     // Listed first, moved after: the tree changes as it is emptied.
     let staged: Vec<walkdir::DirEntry> = walkdir::WalkDir::new(staging)
         .min_depth(1)
@@ -10176,12 +10302,20 @@ fn move_staged_tree(staging: &std::path::Path, dest: &std::path::Path) -> Result
             .path()
             .strip_prefix(staging)
             .map_err(|e| format!("Failed to place an extracted entry: {}", e))?;
-        let to = dest.join(relative);
         if entry.file_type().is_dir() {
-            std::fs::create_dir_all(&to)
-                .map_err(|e| format!("Failed to create directory '{}': {}", to.display(), e))?;
+            destination_root.create_dir_all(relative).map_err(|e| {
+                format!("Failed to create directory '{}': {}", relative.display(), e)
+            })?;
         } else {
-            std::fs::rename(entry.path(), &to).map_err(|e| {
+            let (parent, name) =
+                archive_destination_parent(destination_root, relative).map_err(|e| {
+                    format!(
+                        "Failed to resolve extracted entry '{}': {}",
+                        relative.display(),
+                        e
+                    )
+                })?;
+            source_root.rename(relative, &parent, &name).map_err(|e| {
                 format!(
                     "Failed to move extracted '{}' into place: {}",
                     relative.display(),
@@ -16516,7 +16650,9 @@ async fn background_sync_worker(app: AppHandle) {
         };
         let has_work = jobs.iter().any(|(cfg, job)| match job {
             PairJob::FullScan => true,
-            PairJob::Changes => !backlog.changes_under(&cfg.local_folder, std_now).is_empty(),
+            PairJob::Changes => !backlog
+                .changes_for(&pair_key(cfg), &cfg.local_folder, std_now)
+                .is_empty(),
             PairJob::Idle => false,
         });
 
@@ -16569,7 +16705,7 @@ async fn background_sync_worker(app: AppHandle) {
                         PairJob::FullScan => PairRun::Full,
                         PairJob::Idle => PairRun::Idle,
                         PairJob::Changes => {
-                            let changes = backlog.changes_under(&cfg.local_folder, std_now);
+                            let changes = backlog.changes_for(&key, &cfg.local_folder, std_now);
                             if changes.is_empty() {
                                 PairRun::Idle
                             } else {
@@ -16767,14 +16903,16 @@ async fn background_sync_worker(app: AppHandle) {
                 // Forget what the cycle covered: a full scan read the pair's
                 // whole folder, a pass or a settle its ready changes. A path
                 // worth retrying comes back after a delay.
-                for (cfg, run) in &runs {
-                    if matches!(run, PairRun::Full) {
-                        backlog.clear_under(&cfg.local_folder);
-                    }
-                }
-                let roots: Vec<(&std::path::Path, bool)> = runs
+                let roots: Vec<(String, &std::path::Path, PairJob)> = runs
                     .iter()
-                    .map(|(cfg, run)| (cfg.local_folder.as_path(), !matches!(run, PairRun::Idle)))
+                    .map(|(cfg, run)| {
+                        let covered = match run {
+                            PairRun::Idle => PairJob::Idle,
+                            PairRun::Full => PairJob::FullScan,
+                            _ => PairJob::Changes,
+                        };
+                        (pair_key(cfg), cfg.local_folder.as_path(), covered)
+                    })
                     .collect();
                 backlog.settle(&roots, std_now);
                 backlog.retry(retry_paths, std::time::Instant::now());
@@ -17248,20 +17386,32 @@ async fn purge_profile_secrets(
 ) -> Result<Vec<String>, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let user_id = user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
     // A native Proton Drive session is ended on Proton before its key goes,
     // so a deleted profile leaves no live session behind.
     #[cfg(feature = "proton-native")]
-    if protocol.as_deref() == Some("proton") {
-        if let Err(error) = providers::proton_native::vault::end_session(Some(&profile_id)).await {
-            log::warn!("Proton: the deleted profile's session was not removed: {error}");
-        }
-    }
+    providers::proton_native::vault::end_session(
+        providers::proton_native::vault::SessionOwner::for_user(user_id),
+        Some(&profile_id),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
     Ok(purge_profile_secret_keys(
         &profile_id,
         protocol.as_deref(),
         |key| store.get(key).map(|v| !v.is_empty()).unwrap_or(false),
-        |key| user_partitions::delete_active_credential_dual(&store, key).is_ok(),
-        user_partitions::unmirror_active_credential,
+        |key| {
+            match user_id {
+                Some(user) => user_partitions::delete_credential_for_user_dual(&store, user, key),
+                None => store.delete(key).map_err(|error| error.to_string()),
+            }
+            .is_ok()
+        },
+        |key| {
+            if let Some(user) = user_id {
+                user_partitions::unmirror_credential_for_user_best_effort_any(user, key);
+            }
+        },
     ))
 }
 
@@ -17278,7 +17428,13 @@ where
     Unmirror: FnMut(&str),
 {
     let mut removed = Vec::new();
-    for key in per_profile_vault_keys(profile_id, protocol) {
+    for key in per_profile_vault_keys_for_delete(profile_id, protocol) {
+        // The caller has already removed this entry under its session lease.
+        // Never perform an unleased second delete of a concurrent new sign-in.
+        #[cfg(feature = "proton-native")]
+        if key == format!("proton_native_session_{profile_id}") {
+            continue;
+        }
         // Only report keys that existed; delete is idempotent and a missing key
         // is expected for most profile kinds.
         let existed = exists(&key);
@@ -17306,6 +17462,7 @@ async fn copy_profile_secrets(
 ) -> Result<std::collections::HashMap<String, bool>, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let user_id = user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
     let mut copied = std::collections::HashMap::new();
     let source_suffix = format!("_{}", source_id);
     for source_key in per_profile_vault_keys(&source_id, protocol.as_deref()) {
@@ -17316,9 +17473,48 @@ async fn copy_profile_secrets(
             None => continue,
         };
         let target_key = format!("{}_{}", base, target_id);
-        if let Ok(Some(value)) = user_partitions::resolve_active_credential(&store, &source_key) {
-            let ok =
-                user_partitions::store_active_credential_dual(&store, &target_key, &value).is_ok();
+        let value = match user_id {
+            Some(user) => user_partitions::resolve_credential_for_user(&store, user, &source_key),
+            None => Ok(store.get(&source_key).ok().map(zeroize::Zeroizing::new)),
+        };
+        if let Ok(Some(value)) = value {
+            #[cfg(feature = "proton-native")]
+            if base == "proton_native_session" {
+                let ok = providers::proton_native::vault::restore_session_blocking(
+                    providers::proton_native::vault::SessionOwner::for_user(user_id),
+                    &target_id,
+                    &value,
+                )
+                .is_ok();
+                copied.insert(base.to_string(), ok);
+                continue;
+            }
+            let kind = if profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
+                Some("oauth")
+            } else if base == "proton_native_session" {
+                Some("proton_native_session")
+            } else {
+                None
+            };
+            let ok = match (user_id, kind) {
+                (Some(user), Some(kind)) => user_partitions::store_credential_for_user_typed_dual(
+                    &store,
+                    user,
+                    &target_key,
+                    kind,
+                    &value,
+                ),
+                (Some(user), None) => user_partitions::store_credential_for_user_dual(
+                    &store,
+                    user,
+                    &target_key,
+                    &value,
+                ),
+                (None, _) => store
+                    .store(&target_key, &value)
+                    .map_err(|error| error.to_string()),
+            }
+            .is_ok();
             copied.insert(base.to_string(), ok);
         } else {
             copied.entry(base.to_string()).or_insert(false);
@@ -17522,8 +17718,8 @@ pub(crate) fn oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static s
 
 /// THE single source of truth for every vault key scoped to one saved profile
 /// id. Export-collect, delete/purge and duplicate all derive their key set from
-/// here so the three operations can never drift: what a profile can store, what
-/// its `.aeroftp` export carries, and what its delete removes are the same list.
+/// here so durable credentials travel together. Delete additionally removes
+/// pending authorization and connection deadlines, which never travel.
 /// When a user deletes a profile NOTHING must remain; when a user copies one
 /// EVERYTHING must come along; when a user exports one EVERYTHING must travel.
 ///
@@ -17552,11 +17748,27 @@ pub fn per_profile_vault_keys(profile_id: &str, protocol: Option<&str>) -> Vec<S
         format!("onedrive_drive_type_{}", profile_id),
         format!("proton_native_session_{}", profile_id),
     ];
+    keys.extend(
+        profile_auth::DURABLE_KEY_PREFIXES
+            .iter()
+            .map(|prefix| format!("{prefix}_{profile_id}")),
+    );
     // The per-profile OAuth token lives under `oauth_<slug>_<id>`; the slug is
     // provider-specific, so it is only added when the protocol maps to one.
     if let Some(slug) = protocol.and_then(oauth_vault_slug_for_protocol) {
         keys.push(format!("oauth_{}_{}", slug, profile_id));
     }
+    keys
+}
+
+/// All owned entries, including authorization attempts that cannot be copied.
+pub fn per_profile_vault_keys_for_delete(profile_id: &str, protocol: Option<&str>) -> Vec<String> {
+    let mut keys = per_profile_vault_keys(profile_id, protocol);
+    keys.extend(
+        profile_auth::TRANSIENT_KEY_PREFIXES
+            .iter()
+            .map(|prefix| format!("{prefix}_{profile_id}")),
+    );
     keys
 }
 
@@ -17706,6 +17918,22 @@ fn collect_provider_secrets_for_server(
         out.proton_native_session = Some(v.to_string());
     }
 
+    let read_auth = |prefix: &str| {
+        user_partitions::resolve_active_credential(store, &format!("{prefix}_{}", server.id))
+            .ok()
+            .flatten()
+            .map(|value| value.to_string())
+    };
+    let [config, token, pem] = profile_auth::DURABLE_KEY_PREFIXES;
+    let auth = profile_export::ProfileAuthSecrets {
+        config: read_auth(config),
+        github_token: read_auth(token),
+        github_pem: read_auth(pem),
+    };
+    if !auth.is_empty() {
+        out.profile_auth = Some(auth);
+    }
+
     out
 }
 
@@ -17766,6 +17994,7 @@ pub async fn export_server_profiles_core(
                         || secrets.onedrive_drive_id.is_some()
                         || secrets.onedrive_drive_type.is_some()
                         || secrets.proton_native_session.is_some()
+                        || secrets.profile_auth.is_some()
                     {
                         provider_secrets.insert(server.id.clone(), secrets);
                     }
@@ -17854,6 +18083,10 @@ pub async fn import_server_profiles_core_filtered(
         std::collections::HashSet::new();
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
+            #[cfg(feature = "proton-native")]
+            let native_owner = providers::proton_native::vault::SessionOwner::for_user(
+                user_partitions::cli_get_active_user(&store)?.map(|user| user.id),
+            );
             for server in &servers {
                 // Audit v4.1.0: when the caller deduped the profile list, only
                 // restore credentials for the ids it actually added, so a
@@ -18059,14 +18292,39 @@ pub async fn import_server_profiles_core_filtered(
                 // provider reads, mirrored into the active user's partition
                 // with the type the provider writes it with.
                 if let Some(ref v) = secrets.proton_native_session {
-                    let key = format!("proton_native_session_{}", profile_id);
-                    if let Err(e) = user_partitions::store_active_credential_typed_dual(
-                        &store,
-                        &key,
-                        "proton_native_session",
+                    #[cfg(feature = "proton-native")]
+                    let result = providers::proton_native::vault::restore_session_blocking(
+                        native_owner,
+                        profile_id,
                         v,
-                    ) {
+                    )
+                    .map_err(|error| error.to_string());
+                    #[cfg(not(feature = "proton-native"))]
+                    let result = {
+                        let key = format!("proton_native_session_{}", profile_id);
+                        user_partitions::store_active_credential_typed_dual(
+                            &store,
+                            &key,
+                            "proton_native_session",
+                            v,
+                        )
+                    };
+                    if let Err(e) = result {
                         cred_errors.push(format!("{} proton session: {}", profile_id, e));
+                    }
+                }
+                if let Some(auth) = &secrets.profile_auth {
+                    for (prefix, value) in auth.entries() {
+                        if let Some(value) = value {
+                            if let Err(error) = user_partitions::store_active_credential_typed_dual(
+                                &store,
+                                &format!("{prefix}_{profile_id}"),
+                                "oauth",
+                                value,
+                            ) {
+                                cred_errors.push(format!("{profile_id} profile auth: {error}"));
+                            }
+                        }
                     }
                 }
             }
@@ -18082,7 +18340,9 @@ pub async fn import_server_profiles_core_filtered(
             }
             let token_count = provider_secrets
                 .values()
-                .filter(|s| s.oauth.is_some() || s.jotta_refresh.is_some())
+                .filter(|s| {
+                    s.oauth.is_some() || s.jotta_refresh.is_some() || s.profile_auth.is_some()
+                })
                 .count();
             if token_count > 0 {
                 cred_errors.push(format!(
@@ -18627,6 +18887,9 @@ mod per_profile_vault_keys_tests {
             "onedrive_drive_id_srv_1_abc",
             "onedrive_drive_type_srv_1_abc",
             "proton_native_session_srv_1_abc",
+            "profile_auth_config_srv_1_abc",
+            "github_oauth_srv_1_abc",
+            "github_pem_srv_1_abc",
         ];
         assert_eq!(keys, expected, "the complete non-oauth key set must match");
         // No app-global key ever leaks into the per-profile delete/copy set.
@@ -18649,6 +18912,20 @@ mod per_profile_vault_keys_tests {
         let none = per_profile_vault_keys("srv_1_abc", None);
         assert!(!none.iter().any(|k| k.starts_with("oauth_")));
     }
+
+    #[test]
+    fn pending_auth_and_deadlines_are_delete_only() {
+        let durable = per_profile_vault_keys("profile", Some("github"));
+        let deleted = super::per_profile_vault_keys_for_delete("profile", Some("github"));
+        for prefix in crate::profile_auth::TRANSIENT_KEY_PREFIXES {
+            let key = format!("{prefix}_profile");
+            assert!(
+                !durable.contains(&key),
+                "transient auth must not be duplicated"
+            );
+            assert!(deleted.contains(&key), "transient auth must be purged");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -18662,11 +18939,21 @@ mod profile_secret_purge_tests {
         let vault = RefCell::new(HashSet::from([
             "server_profile-1".to_string(),
             "oauth_dropbox_profile-1".to_string(),
+            "profile_auth_config_profile-1".to_string(),
+            "github_oauth_profile-1".to_string(),
+            "github_pem_profile-1".to_string(),
+            "profile_auth_pending_profile-1".to_string(),
+            "profile_auth_deadline_profile-1".to_string(),
         ]));
         let partition = RefCell::new(HashSet::from([
             "server_profile-1".to_string(),
             "oauth_dropbox_profile-1".to_string(),
             "oauth_dropbox_client_id".to_string(),
+            "profile_auth_config_profile-1".to_string(),
+            "github_oauth_profile-1".to_string(),
+            "github_pem_profile-1".to_string(),
+            "profile_auth_pending_profile-1".to_string(),
+            "profile_auth_deadline_profile-1".to_string(),
         ]));
 
         let removed = purge_profile_secret_keys(
@@ -18691,6 +18978,8 @@ mod profile_secret_purge_tests {
             partition.borrow().contains("oauth_dropbox_client_id"),
             "app-global OAuth client config must stay out of per-profile purge"
         );
+        assert!(vault.borrow().is_empty());
+        assert_eq!(partition.borrow().len(), 1);
     }
 }
 

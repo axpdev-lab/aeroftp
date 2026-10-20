@@ -45,6 +45,7 @@ fn headless_flows_round_trip() {
         );
         return;
     }
+    let _session_guard = crate::user_partitions::test_lock();
     let executable = std::env::current_exe().unwrap();
     assert!(executable
         .parent()
@@ -354,6 +355,340 @@ async fn round_trip() {
     if scope.config("corrupt").is_ok() {
         gaps.push("Corrupt non-object auth configuration is accepted");
     }
+    durable_profile_auth_lifecycle(&store, &github).await;
+    #[cfg(feature = "proton-native")]
+    native_session_ownership(&store, active.id, owner.id).await;
     server.abort();
     assert!(gaps.is_empty(), "Auth lifecycle gaps: {gaps:?}");
+}
+
+async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value) {
+    let source = field(github, "id");
+    let target = "fixture-github-copy";
+    // A pending sign-in and an installation token's cache deadline are local
+    // in-flight state. They must be deleted, never copied or exported.
+    for prefix in TRANSIENT_KEY_PREFIXES {
+        users::store_active_credential_typed_dual(
+            store,
+            &format!("{prefix}_{source}"),
+            "oauth",
+            "123456789",
+        )
+        .unwrap();
+    }
+    let copied = crate::copy_profile_secrets(source.into(), target.into(), Some("github".into()))
+        .await
+        .unwrap();
+    for prefix in DURABLE_KEY_PREFIXES {
+        assert_eq!(copied.get(prefix), Some(&true), "{prefix}");
+        let source_value = users::resolve_active_credential(store, &format!("{prefix}_{source}"))
+            .unwrap()
+            .unwrap();
+        let copied_value = users::resolve_active_credential(store, &format!("{prefix}_{target}"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(*copied_value, *source_value, "{prefix}");
+    }
+    for prefix in TRANSIENT_KEY_PREFIXES {
+        assert!(!copied.contains_key(prefix));
+        assert!(store.get(&format!("{prefix}_{target}")).is_err());
+    }
+
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("headless.aeroftp");
+    let mut export_profile = github.clone();
+    export_profile["port"] = json!(443);
+    let metadata = crate::export_server_profiles_core(
+        json!([export_profile.clone()]).to_string(),
+        "fixture-export-password".into(),
+        true,
+        file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    assert!(metadata.has_credentials);
+    let (_, secrets, _) =
+        crate::profile_export::import_profiles(&file, "fixture-export-password").unwrap();
+    let auth = secrets[source].profile_auth.as_ref().unwrap();
+    assert!(auth.entries().iter().all(|(_, value)| value.is_some()));
+    let encoded = serde_json::to_string(&secrets).unwrap();
+    for prefix in TRANSIENT_KEY_PREFIXES {
+        assert!(!encoded.contains(prefix));
+    }
+    crate::purge_profile_secrets(source.into(), Some("github".into()))
+        .await
+        .unwrap();
+    for prefix in DURABLE_KEY_PREFIXES
+        .into_iter()
+        .chain(TRANSIENT_KEY_PREFIXES)
+    {
+        assert!(
+            users::resolve_active_credential(store, &format!("{prefix}_{source}"))
+                .unwrap()
+                .is_none(),
+            "{prefix}"
+        );
+    }
+    crate::import_server_profiles_core(
+        file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+    )
+    .await
+    .unwrap();
+    for (prefix, expected) in auth.entries() {
+        let actual = users::resolve_active_credential(store, &format!("{prefix}_{source}"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(actual.as_str(), expected.unwrap(), "{prefix}");
+    }
+    for prefix in TRANSIENT_KEY_PREFIXES {
+        assert!(store.get(&format!("{prefix}_{source}")).is_err());
+    }
+    let redacted = directory.path().join("headless-redacted.aeroftp");
+    let metadata = crate::export_server_profiles_core(
+        json!([export_profile]).to_string(),
+        "fixture-export-password".into(),
+        false,
+        redacted.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    assert!(!metadata.has_credentials);
+    let (_, secrets, _) =
+        crate::profile_export::import_profiles(&redacted, "fixture-export-password").unwrap();
+    assert!(secrets.is_empty());
+}
+
+#[cfg(feature = "proton-native")]
+async fn native_session_ownership(store: &CredentialStore, active_id: i64, selected_id: i64) {
+    use crate::providers::proton_native::{
+        api::SessionStore,
+        session::{ProtonSession, SessionTokens},
+        vault,
+    };
+    use secrecy::{ExposeSecret, SecretString};
+    let session = |uid: &str, access: &str| ProtonSession {
+        tokens: SessionTokens {
+            uid: uid.into(),
+            access_token: SecretString::from(access.to_string()),
+            refresh_token: Some(SecretString::from(format!("refresh-{access}"))),
+        },
+        key_password: SecretString::from("synthetic-key-password".to_string()),
+    };
+    let active = vault::SessionOwner::for_user(Some(active_id));
+    let selected = vault::SessionOwner::for_user(Some(selected_id));
+    vault::store_session(
+        vault::SessionOwner::for_user(None),
+        None,
+        &session("legacy-unbound", "legacy-access"),
+    )
+    .unwrap();
+    assert_eq!(
+        vault::load_session(active, None)
+            .unwrap()
+            .unwrap()
+            .tokens
+            .uid,
+        "legacy-unbound"
+    );
+    assert!(vault::load_session(selected, None).unwrap().is_none());
+    vault::delete_session(active, None).unwrap();
+    let scoped = session("scoped-native-uid", "access-before");
+    vault::store_session(selected, Some("native-selected"), &scoped).unwrap();
+    let db = users::open_or_init_cli().unwrap();
+    let count = |user: i64, key: &str| {
+        db.query_row(
+            "SELECT COUNT(*) FROM user_credentials WHERE user_id=?1 AND credential_id=?2",
+            rusqlite::params![user, key],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap()
+    };
+    let selected_key = vault::session_key(Some("native-selected"));
+    assert_eq!(count(selected_id, &selected_key), 1);
+    assert_eq!(count(active_id, &selected_key), 0);
+
+    // Refreshes continue to update their captured owner after a user switch,
+    // and shared sessions reach the owners of the other profile keys.
+    vault::store_session(active, Some("native-shared"), &scoped).unwrap();
+    users::cli_set_active_user(store, selected_id).unwrap();
+    let refresher = vault::VaultSession::new(selected, Some("native-selected"), &scoped);
+    users::cli_set_active_user(store, active_id).unwrap();
+    let refreshed = session("scoped-native-uid", "access-after");
+    refresher.save(&refreshed.tokens);
+    assert_eq!(
+        vault::load_session(selected, Some("native-selected"))
+            .unwrap()
+            .unwrap()
+            .tokens
+            .access_token
+            .expose_secret(),
+        "access-after"
+    );
+    assert_eq!(
+        vault::load_session(active, Some("native-shared"))
+            .unwrap()
+            .unwrap()
+            .tokens
+            .access_token
+            .expose_secret(),
+        "access-after"
+    );
+    assert_eq!(count(active_id, &selected_key), 0);
+    assert_eq!(
+        count(selected_id, &vault::session_key(Some("native-shared"))),
+        0
+    );
+    // Copy/import of an old snapshot joins the UID lease and adopts the
+    // current local pair, instead of creating a stale shared session.
+    let old = serde_json::to_string(
+        &crate::providers::proton_native::session::StoredSession::from(&scoped),
+    )
+    .unwrap();
+    vault::restore_session(selected, "native-restored", &old)
+        .await
+        .unwrap();
+    assert_eq!(
+        vault::load_session(selected, Some("native-restored"))
+            .unwrap()
+            .unwrap()
+            .tokens
+            .access_token
+            .expose_secret(),
+        "access-after"
+    );
+    assert_eq!(
+        count(selected_id, &vault::session_key(Some("native-restored"))),
+        1
+    );
+    assert_eq!(
+        count(active_id, &vault::session_key(Some("native-restored"))),
+        0
+    );
+
+    // Exercise the actual GUI duplicate, encrypted export/import, and purge
+    // routes too. Shared copies keep purge local: no Proton request is made.
+    users::cli_set_active_user(store, selected_id).unwrap();
+    let copied = crate::copy_profile_secrets(
+        "native-selected".into(),
+        "native-gui-copy".into(),
+        Some("proton".into()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(copied.get("proton_native_session"), Some(&true));
+    assert_eq!(
+        count(selected_id, &vault::session_key(Some("native-gui-copy"))),
+        1
+    );
+    assert_eq!(
+        count(active_id, &vault::session_key(Some("native-gui-copy"))),
+        0
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("native.aeroftp");
+    let metadata = crate::export_server_profiles_core(
+        json!([{"id":"native-selected","name":"Synthetic native profile","protocol":"proton",
+            "port":443,"options":{"proton_mode":"native"}}])
+        .to_string(),
+        "native-fixture-export-password".into(),
+        true,
+        file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    assert!(metadata.has_credentials);
+    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()))
+        .await
+        .unwrap();
+    assert_eq!(count(selected_id, &selected_key), 0);
+    crate::import_server_profiles_core(
+        file.to_string_lossy().into_owned(),
+        "native-fixture-export-password".into(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(count(selected_id, &selected_key), 1);
+    assert_eq!(count(active_id, &selected_key), 0);
+    assert_eq!(
+        vault::load_session(selected, Some("native-selected"))
+            .unwrap()
+            .unwrap()
+            .tokens
+            .access_token
+            .expose_secret(),
+        "access-after"
+    );
+    users::cli_set_active_user(store, active_id).unwrap();
+
+    // Reproduce the old takeover gap using the real vault and local lease:
+    // connect read U1, a new browser sign-in stored U2, then connect binds U1.
+    // U2 must survive and the destination must remain empty.
+    let first = session("pending-first", "first-access");
+    let replacement = session("pending-replacement", "replacement-access");
+    vault::store_session(selected, None, &first).unwrap();
+    let accounts = store.list_accounts().unwrap().into_iter().collect();
+    let readiness = |user| {
+        crate::profile_auth_state::derive_profile_auth_state_for_user(
+            store,
+            &accounts,
+            "native-raced",
+            "proton",
+            crate::profile_auth_state::AuthSource::ProtonSession,
+            Some(user),
+        )
+    };
+    assert_eq!(readiness(selected_id), "valid");
+    assert_eq!(readiness(active_id), "no_credentials");
+    vault::store_session(active, None, &session("other-user", "other-access")).unwrap();
+    vault::store_session(selected, None, &replacement).unwrap();
+    assert!(
+        vault::bind_unbound_session(selected, "native-raced", &first)
+            .await
+            .is_err()
+    );
+    assert!(vault::load_session(selected, Some("native-raced"))
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        vault::load_session(selected, None)
+            .unwrap()
+            .unwrap()
+            .tokens
+            .uid,
+        "pending-replacement"
+    );
+    assert_eq!(
+        vault::load_session(active, None)
+            .unwrap()
+            .unwrap()
+            .tokens
+            .uid,
+        "other-user"
+    );
+
+    // A refresh in the same gap is safe to adopt. Its rotated tokens, rather
+    // than the stale pair captured before account verification, are bound.
+    let rotated = session("pending-replacement", "rotated-access");
+    vault::store_session(selected, None, &rotated).unwrap();
+    let bound = vault::bind_unbound_session(selected, "native-bound", &replacement)
+        .await
+        .unwrap();
+    assert_eq!(bound.tokens.access_token.expose_secret(), "rotated-access");
+    assert!(vault::load_session(selected, None).unwrap().is_none());
+    assert_eq!(
+        vault::load_session(active, None)
+            .unwrap()
+            .unwrap()
+            .tokens
+            .uid,
+        "other-user"
+    );
+    users::cli_set_active_user(store, active_id).unwrap();
+    vault::delete_session(selected, Some("native-bound")).unwrap();
+    assert_eq!(
+        count(selected_id, &vault::session_key(Some("native-bound"))),
+        0
+    );
+    assert!(vault::load_session(active, None).unwrap().is_some());
 }

@@ -81,6 +81,31 @@ pub async fn sign_in(
     cancel: &CancellationToken,
     open_page: impl FnOnce(&str) -> Result<(), String>,
 ) -> Result<Option<String>, String> {
+    let owner = vault::SessionOwner::current().map_err(|error| error.to_string())?;
+    sign_in_owned(owner, profile_id, cancel, open_page).await
+}
+
+pub async fn sign_in_for_user(
+    user_id: Option<i64>,
+    profile_id: Option<&str>,
+    cancel: &CancellationToken,
+    open_page: impl FnOnce(&str) -> Result<(), String>,
+) -> Result<Option<String>, String> {
+    sign_in_owned(
+        vault::SessionOwner::for_user(user_id),
+        profile_id,
+        cancel,
+        open_page,
+    )
+    .await
+}
+
+async fn sign_in_owned(
+    owner: vault::SessionOwner,
+    profile_id: Option<&str>,
+    cancel: &CancellationToken,
+    open_page: impl FnOnce(&str) -> Result<(), String>,
+) -> Result<Option<String>, String> {
     let api = ProtonApi::new(app_version::app_version());
     let pending = auth::begin_browser_sign_in(&api, auth::DEFAULT_ACCOUNT_HOST)
         .await
@@ -105,10 +130,16 @@ pub async fn sign_in(
     }
     // A session this one replaces is ended on Proton first (unless another
     // saved profile still uses it), so a re-sign-in leaves none behind.
-    vault::replace_session(profile_id, &session)
+    vault::replace_session(owner, profile_id, &session)
         .await
         .map_err(|error| error.to_string())?;
     Ok(email)
+}
+
+/// `open` errors can print their command arguments, including the fork's
+/// encryption key. Never forward that dependency error into an IPC/log pipe.
+pub fn browser_launch_result(error: Result<(), impl std::fmt::Display>) -> Result<(), String> {
+    error.map_err(|_| "Could not open the system browser for the Proton sign-in".into())
 }
 
 /// Opens Proton's sign-in page in the system browser and waits until the
@@ -128,9 +159,7 @@ pub async fn proton_native_sign_in(
         .as_deref()
         .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
     let email = sign_in(profile(&params.profile_id), &token, |url| {
-        open::that(url).map_err(|error| {
-            format!("Could not open the system browser for the Proton sign-in: {error}")
-        })
+        browser_launch_result(open::that(url))
     })
     .await?;
     log::info!("Proton native: signed in");
@@ -141,8 +170,10 @@ pub async fn proton_native_sign_in(
 #[tauri::command]
 pub async fn proton_native_sign_out(profile_id: Option<String>) -> Result<(), String> {
     let profile_id = profile(&profile_id);
-    let (target, _) = vault::saved_session_target(profile_id).map_err(|error| error.to_string())?;
-    vault::end_session(target)
+    let owner = vault::SessionOwner::current().map_err(|error| error.to_string())?;
+    let (target, _) =
+        vault::saved_session_target(owner, profile_id).map_err(|error| error.to_string())?;
+    vault::end_session(owner, target)
         .await
         .map_err(|error| error.to_string())
 }
@@ -155,7 +186,9 @@ pub async fn proton_native_status(
     profile_id: Option<String>,
 ) -> Result<ProtonNativeStatus, String> {
     let profile_id = profile(&profile_id);
-    let signed_in = match vault::saved_session_target(profile_id) {
+    let signed_in = match vault::SessionOwner::current()
+        .and_then(|owner| vault::saved_session_target(owner, profile_id))
+    {
         Ok((_, signed_in)) => signed_in,
         Err(error) => {
             log::warn!("Proton native: session state unknown: {error}");
@@ -171,6 +204,16 @@ pub async fn proton_native_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launcher_error_never_contains_its_sensitive_arguments() {
+        let url = "https://account.proton.me/desktop/login#payload=SYNTHETIC-ONE-TIME-KEY";
+        let error =
+            browser_launch_result(Err(format!("Launcher xdg-open {url} failed"))).unwrap_err();
+        assert!(!error.contains(url));
+        assert!(!error.contains("SYNTHETIC"));
+        assert!(error.contains("browser"));
+    }
 
     #[test]
     fn a_blank_profile_id_is_no_profile() {

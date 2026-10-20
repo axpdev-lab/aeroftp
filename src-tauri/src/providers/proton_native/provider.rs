@@ -584,6 +584,7 @@ fn forget_path_in(shared: &SharedState, path: &str) {
 /// Proton Drive through the native client.
 pub struct ProtonNativeProvider {
     config: ProtonConfig,
+    credential_owner: Option<vault::SessionOwner>,
     drive: Option<Arc<dyn DriveOps>>,
     current_path: String,
     shared: Arc<SharedState>,
@@ -593,10 +594,18 @@ impl ProtonNativeProvider {
     pub fn new(config: ProtonConfig) -> Self {
         Self {
             config,
+            credential_owner: None,
             drive: None,
             current_path: "/".to_string(),
             shared: Arc::default(),
         }
+    }
+
+    /// CLI/MCP already resolved the profile's owner. Never replace it with
+    /// persistent active-user state during connection or token refresh.
+    pub fn with_credential_user(mut self, user_id: Option<i64>) -> Self {
+        self.credential_owner = Some(vault::SessionOwner::for_user(user_id));
+        self
     }
 
     /// A clone on the same connection, for a parallel transfer or scan.
@@ -604,6 +613,7 @@ impl ProtonNativeProvider {
         let drive = self.drive()?;
         Ok(Box::new(Self {
             config: self.config.clone(),
+            credential_owner: self.credential_owner,
             drive: Some(drive),
             current_path: self.current_path.clone(),
             shared: Arc::clone(&self.shared),
@@ -955,11 +965,16 @@ impl StorageProvider for ProtonNativeProvider {
     /// over the unbound one (a sign-in made before the profile was saved),
     /// once the account it unlocks is the one the profile names.
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        let owner = match self.credential_owner {
+            Some(owner) => owner,
+            None => vault::SessionOwner::current()?,
+        };
+        self.credential_owner = Some(owner);
         let profile_id = self.config.profile_id.clone();
-        let (session, unbound) = match vault::load_session(profile_id.as_deref())? {
+        let (session, unbound) = match vault::load_session(owner, profile_id.as_deref())? {
             Some(session) => (session, false),
             None if profile_id.is_some() => (
-                vault::load_session(None)?
+                vault::load_session(owner, None)?
                     .ok_or_else(|| ProviderError::AuthenticationFailed(NOT_SIGNED_IN.into()))?,
                 true,
             ),
@@ -969,7 +984,7 @@ impl StorageProvider for ProtonNativeProvider {
 
         let api = Arc::new(ProtonApi::new(app_version::app_version()));
         api.set_tokens(Some(session.tokens.clone())).await;
-        api.set_session_store(Arc::new(vault::VaultSession::new(source, &session)));
+        api.set_session_store(Arc::new(vault::VaultSession::new(owner, source, &session)));
         let account = account::load_account(&api, &session.key_password)
             .await
             .map_err(|error| map_error("/", error))?;
@@ -992,8 +1007,10 @@ impl StorageProvider for ProtonNativeProvider {
                 tokens: api.tokens().await.unwrap_or(session.tokens.clone()),
                 key_password: session.key_password.clone(),
             };
-            vault::bind_unbound_session(profile_id, &current).await?;
+            let current = vault::bind_unbound_session(owner, profile_id, &current).await?;
+            api.set_tokens(Some(current.tokens.clone())).await;
             api.set_session_store(Arc::new(vault::VaultSession::new(
+                owner,
                 Some(profile_id),
                 &current,
             )));

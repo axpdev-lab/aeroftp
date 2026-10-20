@@ -59,9 +59,48 @@ pub fn is_download_temp_path(path: &str) -> bool {
 struct PartRecord {
     format: u32,
     source: RangeSourceFingerprint,
+    #[serde(default)]
+    provenance: Option<ResumeSource>,
 }
 
-const PART_RECORD_FORMAT: u32 = 1;
+const PART_RECORD_FORMAT: u32 = 2;
+
+/// A durable source namespace, separate from its version validators. Only
+/// non-secret provider/authority/account/resource identifiers belong here;
+/// credentials, bearer tokens and signed download URLs must never be inputs.
+/// Store only the digest, preserving case and field boundaries in its input.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct ResumeSource(String);
+
+impl ResumeSource {
+    /// A profile is a settings slot, not an authenticated account. Without
+    /// the latter, do not let a leftover vouch for a later authorization.
+    /// Identified accounts keep the same namespace across token refreshes.
+    pub fn account(profile: &str, authenticated_account: Option<&str>) -> String {
+        match authenticated_account.filter(|account| !account.is_empty()) {
+            Some(account) => serde_json::json!([profile, account]).to_string(),
+            None => format!("unidentified:{}", uuid::Uuid::new_v4()),
+        }
+    }
+
+    pub fn new(provider: &str, endpoint: &str, account: &str, resource: &str) -> Self {
+        use sha2::{Digest, Sha256};
+        let endpoint = match reqwest::Url::parse(endpoint) {
+            Ok(mut url) => {
+                let _ = url.set_username("");
+                let _ = url.set_password(None);
+                url.set_query(None);
+                url.set_fragment(None);
+                url.to_string()
+            }
+            Err(_) => endpoint.to_string(),
+        };
+        let encoded = serde_json::to_vec(&(provider, endpoint, account, resource))
+            .expect("source identity strings serialize");
+        Self(hex::encode(Sha256::digest(encoded)))
+    }
+}
 
 /// A record is a few hundred bytes; anything larger is not one.
 const PART_RECORD_MAX_BYTES: u64 = 64 * 1024;
@@ -69,7 +108,7 @@ const PART_RECORD_MAX_BYTES: u64 = 64 * 1024;
 /// The version the record at `record` names, or `None` when there is no
 /// readable record there. Only a regular file is read: a symlink or a FIFO
 /// planted at the name is no record (and a FIFO would block the open).
-async fn read_part_record(record: &Path) -> Option<RangeSourceFingerprint> {
+async fn read_part_record(record: &Path) -> Option<PartRecord> {
     if !fs::symlink_metadata(record).await.ok()?.is_file() {
         return None;
     }
@@ -82,17 +121,22 @@ async fn read_part_record(record: &Path) -> Option<RangeSourceFingerprint> {
         .await
         .ok()?;
     let parsed: PartRecord = serde_json::from_slice(&bytes).ok()?;
-    (parsed.format == PART_RECORD_FORMAT).then_some(parsed.source)
+    (parsed.format == PART_RECORD_FORMAT).then_some(parsed)
 }
 
 /// Write the record at `record`. Whatever is at the name goes first and the
 /// record is then created new, so a symlink planted there is replaced, never
 /// written through.
-async fn write_part_record(record: &Path, source: &RangeSourceFingerprint) -> std::io::Result<()> {
+async fn write_part_record(
+    record: &Path,
+    source: &RangeSourceFingerprint,
+    provenance: Option<&ResumeSource>,
+) -> std::io::Result<()> {
     remove_part_record(record).await;
     let body = serde_json::to_vec(&PartRecord {
         format: PART_RECORD_FORMAT,
         source: source.clone(),
+        provenance: provenance.cloned(),
     })
     .map_err(std::io::Error::other)?;
     let mut file = fs::OpenOptions::new()
@@ -131,7 +175,9 @@ pub async fn resumable_part_len(final_path: &Path) -> u64 {
     if meta.is_file()
         && read_part_record(&part_record_path_for(final_path))
             .await
-            .is_some_and(|recorded| recorded.pins_a_version())
+            .is_some_and(|recorded| {
+                recorded.provenance.is_some() && recorded.source.pins_a_version()
+            })
     {
         return meta.len();
     }
@@ -1363,10 +1409,35 @@ pub struct ResumableFile {
     offset: u64,
     /// The version the part found on open was started from, by its record.
     recorded: Option<RangeSourceFingerprint>,
+    /// The source that owns this part, including its account and remote path.
+    provenance: Option<ResumeSource>,
     inplace: bool,
 }
 
 impl ResumableFile {
+    /// Bind a part to a source before comparing its version. A part of a
+    /// different source (or an older record with no provenance) starts over.
+    pub async fn bind_source(mut self, source: &ResumeSource) -> std::io::Result<Self> {
+        if !self.inplace && self.offset > 0 && self.provenance.as_ref() != Some(source) {
+            self = self.start_over().await?;
+        }
+        self.provenance = Some(source.clone());
+        Ok(self)
+    }
+
+    pub async fn open_for_source(
+        final_path: &str,
+        version: &RangeSourceFingerprint,
+        source: &ResumeSource,
+        explicit_resume: bool,
+    ) -> std::io::Result<Self> {
+        let file = if explicit_resume {
+            Self::open_resume(final_path).await?
+        } else {
+            Self::open(final_path).await?
+        };
+        file.bind_source(source).await?.bound_to(version).await
+    }
     /// Open the writer of a plain download. Out of place it goes on from the
     /// download's own `.aerotmp`, left by an interrupted one. In place it
     /// starts from zero and truncates the destination: a file already there
@@ -1455,7 +1526,7 @@ impl ResumableFile {
             remove_part_record(&self.record_path).await;
             return;
         }
-        match write_part_record(&self.record_path, source).await {
+        match write_part_record(&self.record_path, source, self.provenance.as_ref()).await {
             Ok(()) => self.recorded = Some(source.clone()),
             Err(e) => tracing::debug!(
                 "{} not recorded, the part will not be resumed: {e}",
@@ -1468,10 +1539,13 @@ impl ResumableFile {
     pub async fn start_over(self) -> std::io::Result<Self> {
         let final_path = self.final_path.clone();
         let inplace = self.inplace;
+        let provenance = self.provenance.clone();
         // A part that cannot be removed fails the fresh open below, which
         // reports it.
         let _ = self.discard().await;
-        Self::fresh_at(final_path, inplace).await
+        let mut fresh = Self::fresh_at(final_path, inplace).await?;
+        fresh.provenance = provenance;
+        Ok(fresh)
     }
 
     /// [`Self::open`] with the in-place mode given rather than read from the
@@ -1540,13 +1614,17 @@ impl ResumableFile {
             Err(e) => return Err(temp_claim::name_too_long(e, &temp_path)),
         };
         let record_path = part_record_path_for(&final_path);
-        let (file, offset, recorded) = if let Some((file, offset)) = resumed {
+        let (file, offset, recorded, provenance) = if let Some((file, offset)) = resumed {
             let recorded = if inplace {
                 None
             } else {
                 read_part_record(&record_path).await
             };
-            (file, offset, recorded)
+            let (recorded, provenance) = match recorded {
+                Some(record) => (Some(record.source), record.provenance),
+                None => (None, None),
+            };
+            (file, offset, recorded, provenance)
         } else {
             // Fresh: create new file
             let file = if inplace {
@@ -1564,7 +1642,7 @@ impl ResumableFile {
                 remove_part_record(&record_path).await;
                 file
             };
-            (file, 0, None)
+            (file, 0, None, None)
         };
 
         Ok(Self {
@@ -1575,6 +1653,7 @@ impl ResumableFile {
             committed: false,
             offset,
             recorded,
+            provenance,
             inplace,
         })
     }
@@ -1629,6 +1708,7 @@ impl ResumableFile {
             committed: false,
             offset: 0,
             recorded: None,
+            provenance: None,
             inplace,
         })
     }
@@ -1720,6 +1800,126 @@ impl Drop for ResumableFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resume_source_is_stable_across_auth_refresh_and_separates_namespaces() {
+        assert_eq!(
+            ResumeSource::account("profile", Some("account")),
+            ResumeSource::account("profile", Some("account"))
+        );
+        assert_ne!(
+            ResumeSource::account("profile", Some("account")),
+            ResumeSource::account("profile", Some("other"))
+        );
+        assert_ne!(
+            ResumeSource::account("profile", None),
+            ResumeSource::account("profile", None)
+        );
+        let source = ResumeSource::new(
+            "webdav",
+            "https://user:password@example.test/base?token=old",
+            "Alice",
+            "/Folder/file",
+        );
+        assert_eq!(
+            source,
+            ResumeSource::new(
+                "webdav",
+                "https://example.test/base?token=refreshed",
+                "Alice",
+                "/Folder/file"
+            )
+        );
+        for other in [
+            ResumeSource::new("sftp", "https://example.test/base", "Alice", "/Folder/file"),
+            ResumeSource::new("webdav", "https://other.test/base", "Alice", "/Folder/file"),
+            ResumeSource::new(
+                "webdav",
+                "https://example.test/base",
+                "alice",
+                "/Folder/file",
+            ),
+            ResumeSource::new(
+                "webdav",
+                "https://example.test/base",
+                "Alice",
+                "/folder/file",
+            ),
+        ] {
+            assert_ne!(source, other);
+        }
+        let stored = serde_json::to_string(&source).unwrap();
+        assert!(
+            !stored.contains("password") && !stored.contains("token") && !stored.contains("Alice")
+        );
+    }
+
+    #[tokio::test]
+    async fn equal_versions_of_different_sources_never_share_a_part() {
+        let version = version(10, None, Some("2026-10-19 10:00:00"));
+        let original = ResumeSource::new("sftp", "host:22", "Alice", "/a");
+        for other in [
+            ResumeSource::new("sftp", "host:22", "Alice", "/b"),
+            ResumeSource::new("sftp", "other:22", "Alice", "/a"),
+            ResumeSource::new("sftp", "host:23", "Alice", "/a"),
+            ResumeSource::new("sftp", "host:22", "Bob", "/a"),
+        ] {
+            for bytes in [&b"AAAA"[..], &b"AAAAAAAAAA"[..]] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("target");
+                let path = path.to_str().unwrap();
+                std::fs::write(path, b"old destination").unwrap();
+                let mut part = ResumableFile::open_for_source(path, &version, &original, false)
+                    .await
+                    .unwrap();
+                part.write_all(bytes).await.unwrap();
+                part.file_mut().flush().await.unwrap();
+                drop(part);
+                let same = ResumableFile::open_for_source(path, &version, &original, false)
+                    .await
+                    .unwrap();
+                assert_eq!(same.offset(), bytes.len() as u64);
+                drop(same);
+                let mut fresh = ResumableFile::open_for_source(path, &version, &other, false)
+                    .await
+                    .unwrap();
+                assert_eq!(fresh.offset(), 0);
+                assert_eq!(std::fs::read(path).unwrap(), b"old destination");
+                fresh.write_all(b"BBBBBBBBBB").await.unwrap();
+                fresh.commit().await.unwrap();
+                assert_eq!(std::fs::read(path).unwrap(), b"BBBBBBBBBB");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_resume_records_restart_without_losing_the_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let path = target.to_str().unwrap();
+        let version = version(10, Some("same-tag"), None);
+        let source = ResumeSource::new("sftp", "host:22", "user", "/file");
+        for format in [1, PART_RECORD_FORMAT] {
+            std::fs::write(path, b"old destination").unwrap();
+            std::fs::write(AtomicFile::temp_path_for(&target), b"AAAAAAAAAA").unwrap();
+            let record = PartRecord {
+                format,
+                source: version.clone(),
+                provenance: None,
+            };
+            std::fs::write(
+                part_record_path_for(&target),
+                serde_json::to_vec(&record).unwrap(),
+            )
+            .unwrap();
+            let fresh = ResumableFile::open_for_source(path, &version, &source, false)
+                .await
+                .unwrap();
+            assert_eq!(fresh.offset(), 0);
+            assert_eq!(std::fs::read(path).unwrap(), b"old destination");
+            fresh.discard().await.unwrap();
+        }
+    }
 
     #[test]
     fn local_classifier_recognizes_serial_and_readahead_sidecars() {
@@ -2079,7 +2279,10 @@ mod tests {
     /// Leave a part of `bytes` behind, started from `source`, as an
     /// interrupted download does.
     async fn leave_part(path: &str, source: &RangeSourceFingerprint, bytes: &[u8]) {
-        let mut part = ResumableFile::open_for(path, source).await.unwrap();
+        let provenance = ResumeSource::new("test", "fixture", "account", path);
+        let mut part = ResumableFile::open_for_source(path, source, &provenance, false)
+            .await
+            .unwrap();
         assert_eq!(part.offset(), 0);
         part.write_all(bytes).await.unwrap();
         part.file_mut().flush().await.unwrap();
@@ -2224,7 +2427,10 @@ mod tests {
 
         // The record just written reads back; the same bytes behind a
         // symlink do not.
-        assert_eq!(read_part_record(&record).await, Some(v1.clone()));
+        assert_eq!(
+            read_part_record(&record).await.map(|record| record.source),
+            Some(v1.clone())
+        );
         std::fs::copy(&record, &target).unwrap();
         std::fs::remove_file(&record).unwrap();
         std::os::unix::fs::symlink(&target, &record).unwrap();

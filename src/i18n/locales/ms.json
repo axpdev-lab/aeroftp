@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, kamera atau tablet melalui USB MTP",
             "s3AllowCleartextEndpoint": "Titik akhir ini menyediakan S3 melalui HTTP biasa merentasi rangkaian. Terima untuk profil ini: bukti kelayakan yang ditandatangani dan setiap fail melintasi rangkaian tanpa penyulitan.",
             "discoverFilebase": "Filebase: storan objek serasi S3 (5 GB percuma)",
-            "protonDesc": "Menyambung melalui CLI Proton Drive",
-            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, log masuk dalam pelayar, AeroFTP ialah GUI",
+            "protonDesc": "Storan awan dengan penyulitan hujung ke hujung",
+            "protonTooltip": "Gunakan klien terbina dalam AeroFTP atau Proton Drive CLI rasmi, dengan log masuk melalui pelayar.",
             "twakeDesc": "Twake Drive (5 GB percuma)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, awan sumber terbuka dari Perancis (Cozy Cloud kini menjadi sebahagian daripadanya) dengan 5 GB percuma",
             "discoverTwake": "Awan Eropah sumber terbuka oleh Linagora, kini rumah baharu Cozy Cloud (5 GB percuma)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Tidak dihantar: arahan SITE memerlukan sambungan FTP atau FTPS.",
                 "not_connected": "Tidak dihantar: sesi tidak disambungkan.",
                 "busy": "Tidak dihantar: sesi sedang sibuk dengan operasi lain. Cuba lagi apabila ia selesai.",
-                "reconnect_failed": "Tidak dihantar: sesi perlu bersambung semula dahulu, tetapi gagal."
+                "reconnect_failed": "Tidak dihantar: sesi perlu bersambung semula dahulu, tetapi gagal.",
+                "connection_changed": "Tidak dihantar: sambungan telah berubah. Cuba lagi dalam sesi yang dimaksudkan."
             },
             "unknown": {
                 "timeout": "Balasan tidak tiba tepat pada masanya.",

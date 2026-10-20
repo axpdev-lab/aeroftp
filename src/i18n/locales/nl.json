@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefoon, camera of tablet via USB MTP",
             "s3AllowCleartextEndpoint": "Dit eindpunt levert S3 via onversleutelde HTTP over een netwerk. Accepteer dit voor dit profiel: de ondertekende inloggegevens en elk bestand gaan onversleuteld over het netwerk.",
             "discoverFilebase": "Filebase: S3-compatibele objectopslag (5 GB gratis)",
-            "protonDesc": "Verbindt via de Proton Drive CLI",
-            "protonTooltip": "Gebruikt de Proton Drive CLI - installeer, meld u aan in de browser, AeroFTP is de GUI",
+            "protonDesc": "Cloudopslag met end-to-endversleuteling",
+            "protonTooltip": "Gebruik de ingebouwde client van AeroFTP of de officiële Proton Drive CLI en meld je aan via de browser.",
             "twakeDesc": "Twake Drive (5 GB gratis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Franse open source cloud (Cozy Cloud maakt er nu deel van uit) met 5 GB gratis",
             "discoverTwake": "Europese open source cloud van Linagora, nu de nieuwe thuisbasis van Cozy Cloud (5 GB gratis)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Niet verzonden: SITE-opdrachten vereisen een FTP- of FTPS-verbinding.",
                 "not_connected": "Niet verzonden: de sessie is niet verbonden.",
                 "busy": "Niet verzonden: de sessie is bezig met een andere bewerking. Probeer het opnieuw als deze klaar is.",
-                "reconnect_failed": "Niet verzonden: de sessie moest eerst opnieuw verbinden, maar dat lukte niet."
+                "reconnect_failed": "Niet verzonden: de sessie moest eerst opnieuw verbinden, maar dat lukte niet.",
+                "connection_changed": "Niet verzonden: de verbinding is gewijzigd. Probeer het opnieuw in de bedoelde sessie."
             },
             "unknown": {
                 "timeout": "Het antwoord kwam niet op tijd aan.",

@@ -5268,6 +5268,12 @@ impl StorageProvider for WebDavProvider {
         super::resume_http_download(
             local_path,
             remote_path,
+            &super::atomic_write::ResumeSource::new(
+                "webdav",
+                &self.config.url,
+                &self.config.username,
+                &self.resolve_root(remote_path),
+            ),
             |range| async move {
                 this.send_replaying_digest(|| {
                     let request = this.request(Method::GET, remote_path);

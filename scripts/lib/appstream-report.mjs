@@ -139,21 +139,70 @@ function readFlowDocument(doc) {
 function readBlockDocument(out) {
   const findings = [];
   let cur = null;
+  let issueIndent = null;
+  let inIssues = false;
+  const finish = () => {
+    if (!cur) return null;
+    if (typeof cur.tag !== 'string' || !cur.tag || typeof cur.severity !== 'string' || !cur.severity) {
+      return 'appstreamcli emitted a block issue without a tag or severity';
+    }
+    findings.push(cur);
+    cur = null;
+    return null;
+  };
   for (const raw of out.split('\n')) {
     const line = raw.trimEnd();
-    const m = /^-\s+tag:\s*(\S+)/.exec(line);
-    if (m) {
-      if (cur) findings.push(cur);
-      cur = { tag: m[1] };
+    if (/^Issues:[ \t]*(?:\[[ \t]*\])?[ \t]*$/.test(line)) {
+      if (inIssues || issueIndent !== null) return { error: 'appstreamcli emitted duplicate Issues lists' };
+      inIssues = true;
       continue;
     }
-    if (!cur) continue;
-    const s = /^\s+severity:\s*(\S+)/.exec(line);
-    if (s) cur.severity = s[1];
-    const l = /^\s+line:\s*(\d+)/.exec(line);
-    if (l) cur.line = Number(l[1]);
+    if (!inIssues) continue;
+    if (/^[A-Za-z][^:]*:/.test(line)) {
+      const error = finish();
+      if (error) return { error };
+      inIssues = false;
+      continue;
+    }
+    let field = null;
+    if (/^ *-$/.test(line)) {
+      return { error: 'appstreamcli emitted a block list item this parser cannot read' };
+    }
+    const item = /^( *)-\s+(.*)$/.exec(line);
+    if (item && (issueIndent === null || item[1].length <= issueIndent + 2)) {
+      const indent = item[1].length;
+      if (indent !== 0 || (issueIndent !== null && indent !== issueIndent)) {
+        return { error: 'appstreamcli emitted block issues with mixed indentation' };
+      }
+      if (item[2].startsWith('{')) {
+        return { error: 'appstreamcli emitted 1 flow-style record that this block reader does not read' };
+      }
+      const error = finish();
+      if (error) return { error };
+      issueIndent = indent;
+      cur = {};
+      field = /^([A-Za-z_]+):[ \t]*(.*)$/.exec(item[2]);
+      if (!field) return { error: 'appstreamcli emitted a block list item this parser cannot read' };
+    } else if (cur) {
+      field = new RegExp(`^ {${issueIndent + 2}}([A-Za-z_]+):[ \\t]*(.*)$`).exec(line);
+    } else if (line.trim()) {
+      return { error: 'appstreamcli emitted content before the first block issue that this parser cannot read' };
+    }
+    if (!field || !cur) continue;
+    const [, key, value] = field;
+    if (!['tag', 'severity', 'line'].includes(key)) continue;
+    if (Object.hasOwn(cur, key)) return { error: `appstreamcli emitted duplicate ${key} in a block issue` };
+    if (key === 'line') {
+      if (!/^\d+$/.test(value)) return { error: 'appstreamcli emitted a block issue with an invalid line' };
+      cur.line = Number(value);
+      if (!Number.isSafeInteger(cur.line)) return { error: 'appstreamcli emitted a block issue with an invalid line' };
+    } else {
+      if (!/^\S+$/.test(value)) return { error: `appstreamcli emitted an invalid ${key} in a block issue` };
+      cur[key] = value;
+    }
   }
-  if (cur) findings.push(cur);
+  const unfinished = finish();
+  if (unfinished) return { error: unfinished };
 
   // A report with findings the parser cannot see is the dangerous case, so it
   // is named rather than left to the generic path. appstreamcli has been

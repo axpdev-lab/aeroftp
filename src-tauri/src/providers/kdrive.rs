@@ -1145,6 +1145,12 @@ impl StorageProvider for KDriveProvider {
 
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "kdrive",
+                self.api_base(),
+                &self.config.drive_id,
+                &file_id.to_string(),
+            ),
             |range_header| {
                 let mut req = self.client.get(&url).header(AUTHORIZATION, auth.clone());
                 if let Some(range) = range_header {

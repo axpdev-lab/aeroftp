@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, Kamera oder Tablet über USB MTP",
             "s3AllowCleartextEndpoint": "Dieser Endpunkt stellt S3 über unverschlüsseltes HTTP im Netzwerk bereit. Für dieses Profil akzeptieren: Die signierten Zugangsdaten und jede Datei durchqueren das Netzwerk unverschlüsselt.",
             "discoverFilebase": "Filebase: S3-kompatibler Objektspeicher (5 GB kostenlos)",
-            "protonDesc": "Verbindet über die Proton Drive CLI",
-            "protonTooltip": "Verwendet die Proton Drive CLI - installieren, im Browser anmelden, AeroFTP ist die GUI",
+            "protonDesc": "Cloudspeicher mit Ende-zu-Ende-Verschlüsselung",
+            "protonTooltip": "Verwenden Sie den nativen AeroFTP-Client oder die offizielle Proton Drive CLI mit Anmeldung im Browser.",
             "twakeDesc": "Twake Drive (5 GB kostenlos)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, französische Open-Source-Cloud (Cozy Cloud ist jetzt Teil davon) mit 5 GB kostenlos",
             "discoverTwake": "Europäische Open-Source-Cloud von Linagora, jetzt neue Heimat von Cozy Cloud (5 GB kostenlos)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Nicht gesendet: SITE-Befehle benötigen eine FTP- oder FTPS-Verbindung.",
                 "not_connected": "Nicht gesendet: Die Sitzung ist nicht verbunden.",
                 "busy": "Nicht gesendet: Die Sitzung ist mit einem anderen Vorgang beschäftigt. Versuchen Sie es erneut, wenn dieser beendet ist.",
-                "reconnect_failed": "Nicht gesendet: Die Sitzung musste zuerst die Verbindung neu aufbauen, was nicht gelang."
+                "reconnect_failed": "Nicht gesendet: Die Sitzung musste zuerst die Verbindung neu aufbauen, was nicht gelang.",
+                "connection_changed": "Nicht gesendet: Die Verbindung hat sich geändert. Versuchen Sie es in der gewünschten Sitzung erneut."
             },
             "unknown": {
                 "timeout": "Die Antwort ist nicht rechtzeitig eingetroffen.",

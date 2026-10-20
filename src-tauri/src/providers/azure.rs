@@ -1785,6 +1785,15 @@ impl StorageProvider for AzureProvider {
         super::resume_http_download(
             local_path,
             remote_path,
+            &super::atomic_write::ResumeSource::new(
+                "azure",
+                self.config
+                    .endpoint
+                    .as_deref()
+                    .unwrap_or("https://blob.core.windows.net"),
+                &self.config.account_name,
+                &format!("{}/{}", self.config.container, blob_path),
+            ),
             |range| async move {
                 let mut headers = HeaderMap::new();
                 let now = chrono::Utc::now()

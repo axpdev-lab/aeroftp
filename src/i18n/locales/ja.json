@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "USB MTP経由の電話、カメラ、またはタブレット",
             "s3AllowCleartextEndpoint": "このエンドポイントはネットワーク越しに S3 を平文の HTTP で提供します。このプロファイルで許可します: 署名済みの認証情報とすべてのファイルが暗号化されずにネットワークを通過します。",
             "discoverFilebase": "Filebase: S3 互換オブジェクトストレージ（5 GB 無料）",
-            "protonDesc": "Proton Drive CLI 経由で接続します",
-            "protonTooltip": "Proton Drive CLI を使用します - インストールし、ブラウザーでサインイン、AeroFTP が GUI です",
+            "protonDesc": "エンドツーエンド暗号化されたクラウドストレージ",
+            "protonTooltip": "AeroFTP のネイティブクライアントまたは公式の Proton Drive CLI を使用し、ブラウザーでサインインします。",
             "twakeDesc": "Twake Drive(無料5GB)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace、フランス発のオープンソースクラウド(Cozy Cloud は現在その一部)、5 GB 無料",
             "discoverTwake": "Linagora によるオープンソースの欧州製クラウド、現在は Cozy Cloud の新たな拠点(5 GB 無料)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "送信されませんでした: SITE コマンドには FTP または FTPS 接続が必要です。",
                 "not_connected": "送信されませんでした: セッションが接続されていません。",
                 "busy": "送信されませんでした: セッションが別の処理で使用中です。完了してから再試行してください。",
-                "reconnect_failed": "送信されませんでした: セッションを先に再接続する必要がありましたが、できませんでした。"
+                "reconnect_failed": "送信されませんでした: セッションを先に再接続する必要がありましたが、できませんでした。",
+                "connection_changed": "未送信: 接続が変更されました。目的のセッションで再試行してください。"
             },
             "unknown": {
                 "timeout": "応答が時間内に届きませんでした。",

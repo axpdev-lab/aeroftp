@@ -131,11 +131,21 @@ fn yandex_operation_done(status: &str) -> Result<bool, ProviderError> {
 #[derive(Debug, Deserialize)]
 struct YdDiskInfo {
     #[serde(default)]
+    user: Option<YdAccount>,
+    #[serde(default)]
     total_space: u64,
     #[serde(default)]
     used_space: u64,
     #[serde(default)]
     trash_size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct YdAccount {
+    #[serde(default)]
+    uid: String,
+    #[serde(default)]
+    login: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -392,6 +402,7 @@ fn is_yandex_retryable_auth_error(err: &ProviderError) -> bool {
 
 pub struct YandexDiskProvider {
     client: reqwest::Client,
+    resume_account: String,
     access_token: SecretString,
     connected: bool,
     current_path: String,
@@ -410,6 +421,7 @@ impl YandexDiskProvider {
             .unwrap_or_default();
         Self {
             client,
+            resume_account: uuid::Uuid::new_v4().to_string(),
             access_token: SecretString::from(access_token),
             connected: false,
             current_path: initial_path.unwrap_or_else(|| "/".to_string()),
@@ -1077,9 +1089,19 @@ impl StorageProvider for YandexDiskProvider {
         }
 
         // Verify we can parse the disk info
-        let _info: YdDiskInfo = resp.json().await.map_http_err(|e| {
+        let info: YdDiskInfo = resp.json().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("Failed to parse disk info: {}", e))
         })?;
+        if let Some(user) = info.user {
+            let account = if user.uid.is_empty() {
+                user.login
+            } else {
+                user.uid
+            };
+            if !account.is_empty() {
+                self.resume_account = account;
+            }
+        }
 
         self.connected = true;
         yd_log("Connected successfully");
@@ -1254,6 +1276,12 @@ impl StorageProvider for YandexDiskProvider {
         // Step 2: Resumable download (Yandex CDN URLs don't need auth)
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "yandexdisk",
+                self.api_base(),
+                &self.resume_account,
+                &resolved,
+            ),
             |range_header| {
                 let mut req = self.client.get(&link.href);
                 if let Some(range) = range_header {

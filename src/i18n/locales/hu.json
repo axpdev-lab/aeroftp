@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, kamera vagy táblagép USB MTP-n keresztül",
             "s3AllowCleartextEndpoint": "Ez a végpont titkosítatlan HTTP-n keresztül, a hálózaton át szolgálja ki az S3-at. Fogadja el ehhez a profilhoz: az aláírt hitelesítő adatok és minden fájl titkosítatlanul halad át a hálózaton.",
             "discoverFilebase": "Filebase: S3-kompatibilis objektumtárhely (5 GB ingyen)",
-            "protonDesc": "A Proton Drive CLI-n keresztül csatlakozik",
-            "protonTooltip": "A Proton Drive CLI-t használja - telepítse, jelentkezzen be a böngészőben, az AeroFTP a GUI",
+            "protonDesc": "Végpontok között titkosított felhőtárhely",
+            "protonTooltip": "Használja az AeroFTP natív kliensét vagy a hivatalos Proton Drive CLI-t, böngészős bejelentkezéssel.",
             "twakeDesc": "Twake Drive (5 GB ingyen)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francia nyílt forráskódú felhő (a Cozy Cloud mostantól ennek része) 5 GB ingyen",
             "discoverTwake": "Linagora nyílt forráskódú európai felhője, mostantól a Cozy Cloud új otthona (5 GB ingyen)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Nem lett elküldve: a SITE parancsokhoz FTP- vagy FTPS-kapcsolat szükséges.",
                 "not_connected": "Nem lett elküldve: a munkamenet nincs csatlakoztatva.",
                 "busy": "Nem lett elküldve: a munkamenet egy másik művelettel van elfoglalva. Próbálja újra, ha az befejeződött.",
-                "reconnect_failed": "Nem lett elküldve: a munkamenetnek előbb újra kellett csatlakoznia, de ez nem sikerült."
+                "reconnect_failed": "Nem lett elküldve: a munkamenetnek előbb újra kellett csatlakoznia, de ez nem sikerült.",
+                "connection_changed": "Nem lett elküldve: a kapcsolat megváltozott. Próbálja újra a kívánt munkamenetben."
             },
             "unknown": {
                 "timeout": "A válasz nem érkezett meg időben.",

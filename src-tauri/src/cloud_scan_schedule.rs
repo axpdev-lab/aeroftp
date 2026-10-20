@@ -18,7 +18,7 @@
 use crate::cloud_config::CloudConfig;
 use crate::cloud_service::{IncrementalHints, LocalChanges, ProviderScanTraits};
 use crate::file_watcher::WatcherEvent;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -165,12 +165,14 @@ pub fn retry_delay(attempts: u32) -> Duration {
         .min(RETRY_DELAY_CAP)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Pending {
     /// How many cycles tried the path and failed.
     attempts: u32,
     /// Not handed out before this.
     not_before: Option<Instant>,
+    /// Pairs that already covered this exact event generation.
+    covered: HashSet<String>,
 }
 
 /// Local changes the watcher reported that no cycle has synced yet.
@@ -182,7 +184,7 @@ struct Pending {
 #[derive(Debug, Default)]
 pub struct ChangeBacklog {
     paths: BTreeMap<PathBuf, Pending>,
-    renames: Vec<(PathBuf, PathBuf)>,
+    renames: BTreeMap<(PathBuf, PathBuf), HashSet<String>>,
 }
 
 /// Whether `path` is under `root` (or is it), the root also read with its
@@ -208,11 +210,14 @@ impl ChangeBacklog {
                 Pending {
                     attempts: 0,
                     not_before: None,
+                    covered: HashSet::new(),
                 },
             );
         }
-        self.renames.extend(event.renames);
-        if self.paths.len() > BACKLOG_PATH_CAP {
+        for rename in event.renames {
+            self.renames.insert(rename, HashSet::new());
+        }
+        if self.paths.len() > BACKLOG_PATH_CAP || self.renames.len() > BACKLOG_PATH_CAP {
             self.paths.clear();
             self.renames.clear();
             return true;
@@ -225,7 +230,16 @@ impl ChangeBacklog {
     }
 
     /// The changes under `root` that are ready at `now`.
-    pub fn changes_under(&self, root: &Path, now: Instant) -> LocalChanges {
+    pub fn changes_for(&self, pair: &str, root: &Path, now: Instant) -> LocalChanges {
+        self.changes(Some(pair), root, now)
+    }
+
+    #[cfg(test)]
+    fn changes_under(&self, root: &Path, now: Instant) -> LocalChanges {
+        self.changes(None, root, now)
+    }
+
+    fn changes(&self, pair: Option<&str>, root: &Path, now: Instant) -> LocalChanges {
         let resolved = resolved(root);
         let ready = |path: &Path| {
             self.paths
@@ -235,20 +249,25 @@ impl ChangeBacklog {
         LocalChanges {
             paths: self
                 .paths
-                .keys()
-                .filter(|path| under_root(path, root, resolved.as_deref()) && ready(path))
-                .cloned()
+                .iter()
+                .filter(|(path, pending)| {
+                    under_root(path, root, resolved.as_deref())
+                        && ready(path)
+                        && pair.is_none_or(|key| !pending.covered.contains(key))
+                })
+                .map(|(path, _)| path.clone())
                 .collect(),
             renames: self
                 .renames
                 .iter()
-                .filter(|(from, to)| {
+                .filter(|((from, to), covered)| {
                     (under_root(from, root, resolved.as_deref())
                         || under_root(to, root, resolved.as_deref()))
                         && ready(from)
                         && ready(to)
+                        && pair.is_none_or(|key| !covered.contains(key))
                 })
-                .cloned()
+                .map(|((from, to), _)| (from.clone(), to.clone()))
                 .collect(),
         }
     }
@@ -264,27 +283,45 @@ impl ChangeBacklog {
     }
 
     /// Forget the changes the cycle synced. `roots` are the local folders of
-    /// the enabled pairs, with whether each ran this cycle: a path is kept
-    /// while a pair that holds it did not run, and dropped when no enabled
-    /// pair holds it. Renames are handed out once: a pass that does not
-    /// replay one still syncs both of its paths.
-    pub fn settle(&mut self, roots: &[(&Path, bool)], now: Instant) {
-        let roots: Vec<(&Path, Option<PathBuf>, bool)> = roots
+    /// the enabled pairs and what each covered this cycle. A full scan also
+    /// covers deferred retries, but only for its own pair: any overlapping
+    /// idle pair or pass that has not read a retry keeps that change alive.
+    /// A path no enabled pair holds is dropped. Renames are handed out once:
+    /// a pass that does not replay one still syncs both of its paths.
+    pub fn settle<K: AsRef<str>>(&mut self, roots: &[(K, &Path, PairJob)], now: Instant) {
+        let roots: Vec<(&str, &Path, Option<PathBuf>, PairJob)> = roots
             .iter()
-            .map(|(root, ran)| (*root, resolved(root), *ran))
+            .map(|(key, root, job)| (key.as_ref(), *root, resolved(root), *job))
             .collect();
-        let waits = |path: &Path, pending: &Pending| {
-            roots.iter().any(|(root, resolved, ran)| {
-                under_root(path, root, resolved.as_deref())
-                    && (!ran || pending.not_before.is_some_and(|at| at > now))
-            })
-        };
-        self.paths.retain(|path, pending| waits(path, pending));
-        self.renames.retain(|(from, to)| {
-            roots.iter().any(|(root, resolved, ran)| {
-                !ran && (under_root(from, root, resolved.as_deref())
-                    || under_root(to, root, resolved.as_deref()))
-            })
+        let active: HashSet<&str> = roots.iter().map(|(key, _, _, _)| *key).collect();
+        self.paths.retain(|path, pending| {
+            pending.covered.retain(|key| active.contains(key.as_str()));
+            let ready = pending.not_before.is_none_or(|at| at <= now);
+            let mut waits = false;
+            for (key, root, resolved, job) in &roots {
+                if under_root(path, root, resolved.as_deref()) {
+                    if *job == PairJob::FullScan || (*job == PairJob::Changes && ready) {
+                        pending.covered.insert((*key).to_string());
+                    }
+                    waits |= !pending.covered.contains(*key);
+                }
+            }
+            waits
+        });
+        self.renames.retain(|(from, to), covered| {
+            covered.retain(|key| active.contains(key.as_str()));
+            let mut waits = false;
+            for (key, root, resolved, job) in &roots {
+                if under_root(from, root, resolved.as_deref())
+                    || under_root(to, root, resolved.as_deref())
+                {
+                    if *job != PairJob::Idle {
+                        covered.insert((*key).to_string());
+                    }
+                    waits |= !covered.contains(*key);
+                }
+            }
+            waits
         });
     }
 
@@ -302,21 +339,10 @@ impl ChangeBacklog {
                 Pending {
                     attempts,
                     not_before: Some(now + retry_delay(attempts)),
+                    covered: HashSet::new(),
                 },
             );
         }
-    }
-
-    /// Forget every change under `root`: a full scan of the pair read the
-    /// whole folder.
-    pub fn clear_under(&mut self, root: &Path) {
-        let resolved = resolved(root);
-        self.paths
-            .retain(|path, _| !under_root(path, root, resolved.as_deref()));
-        self.renames.retain(|(from, to)| {
-            !under_root(from, root, resolved.as_deref())
-                && !under_root(to, root, resolved.as_deref())
-        });
     }
 }
 
@@ -526,7 +552,13 @@ mod tests {
         assert_eq!(backlog.changes_under(Path::new("/a"), now).paths.len(), 1);
 
         // Pair /a ran, /b did not: /b's path waits, the others go.
-        backlog.settle(&[(Path::new("/a"), true), (Path::new("/b"), false)], now);
+        backlog.settle(
+            &[
+                ("a", Path::new("/a"), PairJob::Changes),
+                ("b", Path::new("/b"), PairJob::Idle),
+            ],
+            now,
+        );
         assert_eq!(
             backlog.changes_under(Path::new("/b"), now).paths,
             vec![PathBuf::from("/b/y.txt")]
@@ -558,12 +590,12 @@ mod tests {
         let now = Instant::now();
         let mut backlog = ChangeBacklog::default();
         backlog.absorb(watcher_event(&["/a/x"], false));
-        backlog.settle(&[(Path::new("/a"), true)], now);
+        backlog.settle(&[("a", Path::new("/a"), PairJob::Changes)], now);
         backlog.retry([PathBuf::from("/a/x")], now);
         assert!(backlog.changes_under(Path::new("/a"), now).paths.is_empty());
         assert_eq!(backlog.next_retry_in(now), Some(RETRY_DELAY_BASE));
         // A cycle that runs before the delay keeps it waiting.
-        backlog.settle(&[(Path::new("/a"), true)], now);
+        backlog.settle(&[("a", Path::new("/a"), PairJob::Changes)], now);
         let ready_at = now + RETRY_DELAY_BASE;
         assert_eq!(
             backlog.changes_under(Path::new("/a"), ready_at).paths.len(),
@@ -586,11 +618,129 @@ mod tests {
         let mut backlog = ChangeBacklog::default();
         backlog.absorb(watcher_event(&["/a/x", "/b/y"], false));
         backlog.retry([PathBuf::from("/a/z")], now);
-        backlog.clear_under(Path::new("/a"));
+        backlog.settle(
+            &[
+                ("a", Path::new("/a"), PairJob::FullScan),
+                ("b", Path::new("/b"), PairJob::Idle),
+            ],
+            now,
+        );
         assert!(backlog
             .changes_under(Path::new("/a"), now + HOUR)
             .paths
             .is_empty());
         assert_eq!(backlog.changes_under(Path::new("/b"), now).paths.len(), 1);
+    }
+
+    #[test]
+    fn a_full_scan_does_not_discharge_an_overlapping_idle_pairs_changes() {
+        let now = Instant::now();
+        for other in ["/a", "/a/sub"] {
+            let mut backlog = ChangeBacklog::default();
+            backlog.absorb(watcher_event(&["/a/sub/x"], false));
+            backlog.retry([PathBuf::from("/a/sub/later")], now);
+            backlog.settle(
+                &[
+                    ("a", Path::new("/a"), PairJob::FullScan),
+                    ("b", Path::new(other), PairJob::Idle),
+                ],
+                now,
+            );
+            assert_eq!(
+                backlog.changes_under(Path::new(other), now).paths,
+                vec![PathBuf::from("/a/sub/x")]
+            );
+            assert_eq!(
+                backlog
+                    .changes_under(Path::new(other), now + HOUR)
+                    .paths
+                    .len(),
+                2
+            );
+            // Even a later full scan cannot clear another pair's retry that
+            // its ordinary pass has not read yet.
+            backlog.settle(
+                &[
+                    ("a", Path::new("/a"), PairJob::FullScan),
+                    ("b", Path::new(other), PairJob::Changes),
+                ],
+                now,
+            );
+            assert_eq!(
+                backlog.changes_under(Path::new(other), now + HOUR).paths,
+                vec![PathBuf::from("/a/sub/later")]
+            );
+            backlog.settle(
+                &[
+                    ("a", Path::new("/a"), PairJob::Changes),
+                    ("b", Path::new(other), PairJob::Changes),
+                ],
+                now + HOUR,
+            );
+            assert!(backlog.is_empty());
+        }
+    }
+
+    #[test]
+    fn staggered_full_scans_acknowledge_paths_and_renames_across_cycles() {
+        let now = Instant::now();
+        for other in ["/a", "/a/sub"] {
+            let mut backlog = ChangeBacklog::default();
+            let mut event = watcher_event(&["/a/sub/from", "/a/sub/to"], false);
+            event
+                .renames
+                .push(("/a/sub/from".into(), "/a/sub/to".into()));
+            backlog.absorb(event.clone());
+            backlog.settle(
+                &[
+                    ("a", Path::new("/a"), PairJob::FullScan),
+                    ("b", Path::new(other), PairJob::Idle),
+                ],
+                now,
+            );
+            assert!(backlog.changes_for("a", Path::new("/a"), now).is_empty());
+            let pending = backlog.changes_for("b", Path::new(other), now);
+            assert_eq!(pending.paths.len(), 2);
+            assert_eq!(pending.renames.len(), 1);
+            // A stays idle: its completed obligation must survive this turn.
+            backlog.settle(
+                &[
+                    ("a", Path::new("/a"), PairJob::Idle),
+                    ("b", Path::new(other), PairJob::FullScan),
+                ],
+                now,
+            );
+            assert!(backlog.is_empty());
+
+            backlog.absorb(event.clone());
+            backlog.settle(
+                &[
+                    ("a", Path::new("/a"), PairJob::FullScan),
+                    ("b", Path::new(other), PairJob::Idle),
+                ],
+                now,
+            );
+            // A new generation of the same event must be seen by A again.
+            backlog.absorb(event);
+            let fresh = backlog.changes_for("a", Path::new("/a"), now);
+            assert_eq!(fresh.paths.len(), 2);
+            assert_eq!(fresh.renames.len(), 1);
+            backlog.settle(
+                &[
+                    ("a", Path::new("/a"), PairJob::FullScan),
+                    ("b", Path::new(other), PairJob::Idle),
+                ],
+                now,
+            );
+            // A removed pair no longer owns an obligation or an acknowledgement.
+            backlog.settle(&[("b", Path::new(other), PairJob::Idle)], now);
+            assert!(backlog
+                .paths
+                .values()
+                .all(|pending| pending.covered.is_empty()));
+            assert!(backlog.renames.values().all(HashSet::is_empty));
+            backlog.settle(&[("b", Path::new(other), PairJob::FullScan)], now);
+            assert!(backlog.is_empty());
+        }
     }
 }

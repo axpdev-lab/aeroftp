@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Simu, kamera, au kompyuta kibao kupitia USB MTP",
             "s3AllowCleartextEndpoint": "Sehemu hii ya mwisho hutoa S3 kupitia HTTP wazi kwenye mtandao. Ikubali kwa wasifu huu: vitambulisho vilivyotiwa saini na kila faili hupita kwenye mtandao bila kusimbwa.",
             "discoverFilebase": "Filebase: hifadhi ya vitu inayooana na S3 (5 GB bure)",
-            "protonDesc": "Inaunganisha kupitia CLI ya Proton Drive",
-            "protonTooltip": "Inatumia CLI ya Proton Drive - sakinisha, ingia kwenye kivinjari, AeroFTP ndiyo GUI",
+            "protonDesc": "Hifadhi ya wingu yenye usimbaji fiche wa mwanzo hadi mwisho",
+            "protonTooltip": "Tumia programu ya AeroFTP iliyojengewa ndani au Proton Drive CLI rasmi, kwa kuingia kupitia kivinjari.",
             "twakeDesc": "Twake Drive (5 GB bila malipo)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, wingu la Ufaransa la chanzo huria (Cozy Cloud sasa ni sehemu yake) likiwa na 5 GB bure",
             "discoverTwake": "Wingu la Ulaya la chanzo huria kutoka Linagora, sasa nyumbani kwa Cozy Cloud (5 GB bure)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Haikutumwa: amri za SITE zinahitaji muunganisho wa FTP au FTPS.",
                 "not_connected": "Haikutumwa: kikao hakijaunganishwa.",
                 "busy": "Haikutumwa: kikao kina shughuli nyingine. Jaribu tena itakapoisha.",
-                "reconnect_failed": "Haikutumwa: kikao kilihitaji kuunganishwa upya kwanza, lakini hakikufaulu."
+                "reconnect_failed": "Haikutumwa: kikao kilihitaji kuunganishwa upya kwanza, lakini hakikufaulu.",
+                "connection_changed": "Haijatumwa: muunganisho umebadilika. Jaribu tena katika kipindi ulichokusudia."
             },
             "unknown": {
                 "timeout": "Jibu halikufika kwa wakati.",

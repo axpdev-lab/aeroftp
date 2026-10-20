@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "USB MTP를 통한 전화기, 카메라 또는 태블릿",
             "s3AllowCleartextEndpoint": "이 엔드포인트는 네트워크를 통해 일반 HTTP로 S3를 제공합니다. 이 프로필에서 허용합니다: 서명된 자격 증명과 모든 파일이 암호화되지 않은 채 네트워크를 통과합니다.",
             "discoverFilebase": "Filebase: S3 호환 객체 스토리지 (5 GB 무료)",
-            "protonDesc": "Proton Drive CLI를 통해 연결합니다",
-            "protonTooltip": "Proton Drive CLI를 사용합니다 - 설치하고 브라우저에서 로그인한 뒤, AeroFTP가 GUI입니다",
+            "protonDesc": "종단 간 암호화 클라우드 저장소",
+            "protonTooltip": "AeroFTP의 네이티브 클라이언트 또는 공식 Proton Drive CLI를 사용하고 브라우저에서 로그인하세요.",
             "twakeDesc": "Twake Drive(무료 5GB)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, 프랑스의 오픈소스 클라우드(Cozy Cloud가 이제 그 일부입니다), 5 GB 무료 제공",
             "discoverTwake": "Linagora의 오픈소스 유럽 클라우드, 이제 Cozy Cloud의 새로운 보금자리 (5 GB 무료)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "전송되지 않음: SITE 명령에는 FTP 또는 FTPS 연결이 필요합니다.",
                 "not_connected": "전송되지 않음: 세션이 연결되어 있지 않습니다.",
                 "busy": "전송되지 않음: 세션이 다른 작업을 처리 중입니다. 작업이 끝나면 다시 시도하세요.",
-                "reconnect_failed": "전송되지 않음: 세션을 먼저 다시 연결해야 했지만 실패했습니다."
+                "reconnect_failed": "전송되지 않음: 세션을 먼저 다시 연결해야 했지만 실패했습니다.",
+                "connection_changed": "전송되지 않음: 연결이 변경되었습니다. 원하는 세션에서 다시 시도하세요."
             },
             "unknown": {
                 "timeout": "응답이 제때 도착하지 않았습니다.",

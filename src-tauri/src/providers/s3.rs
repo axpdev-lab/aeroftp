@@ -5136,9 +5136,16 @@ impl StorageProvider for S3Provider {
         // offset the caller measured: see `HttpResume`.
         let key = remote_path.trim_start_matches('/');
         let this = &*self;
+        let identity = self.endpoint_identity();
         super::resume_http_download(
             local_path,
             remote_path,
+            &super::atomic_write::ResumeSource::new(
+                "s3",
+                &identity.host,
+                &identity.account,
+                &format!("{}/{}", self.config.bucket, key),
+            ),
             |range| async move {
                 match range {
                     Some(range) => {

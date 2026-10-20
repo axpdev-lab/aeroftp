@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telèfon, càmera o tauleta per USB MTP",
             "s3AllowCleartextEndpoint": "Aquest punt final serveix S3 per HTTP en text clar a través d'una xarxa. Accepta-ho per a aquest perfil: les credencials signades i tots els fitxers travessen la xarxa sense xifrar.",
             "discoverFilebase": "Filebase: emmagatzematge d'objectes compatible amb S3 (5 GB gratis)",
-            "protonDesc": "Es connecta a través del CLI de Proton Drive",
-            "protonTooltip": "Utilitza el CLI de Proton Drive - instal·leu-lo, inicieu sessió al navegador, AeroFTP és la GUI",
+            "protonDesc": "Emmagatzematge al núvol amb xifratge d'extrem a extrem",
+            "protonTooltip": "Feu servir el client natiu d'AeroFTP o el Proton Drive CLI oficial, amb inici de sessió al navegador.",
             "twakeDesc": "Twake Drive (5 GB gratis)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, núvol francès de codi obert (Cozy Cloud ara en forma part) amb 5 GB gratuïts",
             "discoverTwake": "Núvol europeu de codi obert de Linagora, ara la nova llar de Cozy Cloud (5 GB gratuïts)",
@@ -6370,7 +6370,8 @@
                 "not_ftp": "No enviada: les ordres SITE necessiten una connexió FTP o FTPS.",
                 "not_connected": "No enviada: la sessió no està connectada.",
                 "busy": "No enviada: la sessió està ocupada amb una altra operació. Torna-ho a provar quan acabi.",
-                "reconnect_failed": "No enviada: la sessió s'havia de tornar a connectar primer i no ha pogut."
+                "reconnect_failed": "No enviada: la sessió s'havia de tornar a connectar primer i no ha pogut.",
+                "connection_changed": "No s'ha enviat: la connexió ha canviat. Torneu-ho a provar a la sessió desitjada."
             },
             "unknown": {
                 "timeout": "La resposta no ha arribat a temps.",
