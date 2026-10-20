@@ -24,6 +24,15 @@ use crate::transfer_orchestrator::TransferExecutor;
 pub(crate) fn group_key(entry: &TransferEntry, upload: bool) -> Option<String> {
     let name = plain_bulk_name(&entry.remote_path)?;
     let local = Path::new(&entry.local_path);
+    // Relative paths grow when the CLI resolves them against cwd; literal
+    // glob quoting can also expand arguments beyond the planner's budget.
+    // Keep these on the established single-file path rather than admitting
+    // a group whose encoded command could be too large.
+    if !(local.is_absolute() || cfg!(windows) && local.has_root())
+        || entry.local_path.contains(['*', '?', '[', '{'])
+    {
+        return None;
+    }
     if local.file_name()?.to_str()? != name {
         return None;
     }
@@ -59,10 +68,13 @@ pub(crate) fn plan_groups_by_key(
         let key = key_for(first);
         let mut end = start + 1;
         let mut bytes = first.size;
-        let mut path_bytes = first
-            .local_path
-            .len()
-            .saturating_add(first.remote_path.len());
+        let mut path_bytes = 1024usize.saturating_add(
+            first
+                .local_path
+                .len()
+                .saturating_add(first.remote_path.len())
+                .saturating_add(6),
+        );
         let mut names = std::collections::HashSet::new();
         names.insert(
             first
@@ -78,7 +90,8 @@ pub(crate) fn plan_groups_by_key(
                 let next_bytes = bytes.saturating_add(entry.size);
                 let next_paths = path_bytes
                     .saturating_add(entry.local_path.len())
-                    .saturating_add(entry.remote_path.len());
+                    .saturating_add(entry.remote_path.len())
+                    .saturating_add(6);
                 if key_for(entry) != key
                     || next_bytes > MAX_BULK_BYTES
                     || next_paths > MAX_BULK_PATH_BYTES
@@ -476,6 +489,16 @@ mod tests {
         assert!(group_key(&entry, true).is_none());
         entry.remote_path = "/bulk/question?.txt".into();
         entry.local_path = "/tmp/bulk/question?.txt".into();
+        assert!(group_key(&entry, false).is_none());
+    }
+
+    #[test]
+    fn bulk_keeps_relative_and_glob_expanding_parent_paths_on_single_file_lane() {
+        let mut entry = entries(1).remove(0);
+        entry.local_path = "file-0.txt".into();
+        assert!(group_key(&entry, true).is_none());
+        entry.local_path = "/tmp/[archive]/file-0.txt".into();
+        assert!(group_key(&entry, true).is_none());
         assert!(group_key(&entry, false).is_none());
     }
 

@@ -11766,8 +11766,9 @@ impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink
 /// Run the CLI file-level download batch through the SAME shared provider
 /// executor + orchestrator the GUI uses, sink-agnostic (PD-CLI-CONV-A).
 ///
-/// Engaged ONLY for pool-backed providers (clone-pool session model:
-/// SFTP / FTP / S3 / Azure / WebDAV / Koofr). For non-pool-backed providers
+/// Engaged for pool-backed providers (clone-pool session model:
+/// SFTP / FTP / S3 / Azure / WebDAV / Koofr), and when an optional native
+/// bulk reduces CLI invocations. For other non-pool-backed providers
 /// (single-connection APIs) the connected base provider is handed
 /// back un-consumed via `Err(base)` so the caller keeps the legacy
 /// independent-connection path: honest fallback, no overclaim.

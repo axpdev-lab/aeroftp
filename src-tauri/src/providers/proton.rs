@@ -128,7 +128,11 @@ impl ProtonCliProvider {
     /// the selected names to UIDs; a /my-files/UID lookup skips those repeated
     /// walks without recursively reading unselected siblings. Other sections
     /// retain their established path resolution.
-    async fn bulk_download_sources(&mut self, remotes: &[String]) -> Vec<String> {
+    async fn bulk_download_sources(
+        &mut self,
+        remotes: &[String],
+        destination_bytes: usize,
+    ) -> Vec<String> {
         let Some(first) = remotes.first() else {
             return Vec::new();
         };
@@ -167,7 +171,9 @@ impl ProtonCliProvider {
             .collect();
         // Old Proton volume/link IDs can be over 200 bytes. Never let an
         // expanded UID list exceed the conservative command-line budget.
-        if candidate.iter().map(|p| p.len() + 3).sum::<usize>() + 1024 > MAX_BULK_PATH_BYTES {
+        if candidate.iter().map(|p| p.len() + 3).sum::<usize>() + destination_bytes + 512
+            > MAX_BULK_PATH_BYTES
+        {
             remotes.to_vec()
         } else {
             candidate
@@ -322,7 +328,16 @@ impl ProtonCliProvider {
         args.extend(if upload {
             locals
         } else {
-            self.bulk_download_sources(&remotes).await
+            self.bulk_download_sources(
+                &remotes,
+                staging
+                    .as_ref()
+                    .expect("download has staging")
+                    .path()
+                    .as_os_str()
+                    .len(),
+            )
+            .await
         });
         args.push(if let Some(dir) = staging.as_ref() {
             literal_local_path_for_cli(&dir.path().to_string_lossy())?
