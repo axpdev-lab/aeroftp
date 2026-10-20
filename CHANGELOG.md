@@ -5,6 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.4] - 2026-10-20
+
+### Native Proton Drive, Headless Profiles, and Safer Transfers
+
+Proton Drive gains a native client with browser sign-in, encrypted vault sessions, verified transfers and storage quota. Saved profiles can be created and authorized from the GUI, CLI and MCP with the same connection options. This release also strengthens interrupted transfers, recursive operations, profile backups and archive extraction, and repairs desktop packaging and integration issues.
+
+The complete record of this cycle, including fixes, validation and remaining follow-ups, is in the [4.2.4 release tracker](https://github.com/axpdev-lab/aeroftp/issues/1202).
+
+#### Added
+
+- **Native Proton Drive.** Connect through AeroFTP's own client with browser sign-in, encrypted vault sessions, file and folder operations, revisions, verified downloads, checksums and quota. New profiles choose native mode when available; existing profiles keep official CLI mode until explicitly changed. Small transfers use a single request, large transfers overlap blocks, and revision pages are prefetched (#1293, #1302).
+- **Headless profile authorization.** CLI and MCP can authorize saved profiles through supported OAuth, GitHub Device Flow and GitHub App flows, refresh expired App sessions, and consume supported structured credentials without storing unused seeds. Pending authorization stays encrypted and bound to the intended profile and user (#1305).
+- **One connection manifest for GUI, CLI and MCP.** Profile creation shares aliases, presets, defaults and public options, preserving existing FTP modes and explicit native/CLI Proton choices (#1304). `profile-add --proton-mode` and `proton sign-in`, `sign-out` and `status` make native Proton profiles usable headlessly (#1296).
+- **Saved SITE templates.** FTP and FTPS profiles can keep commands with text, number and secret slots and run them from the GUI, CLI and TUI. Secret slot values are never saved, and importing the glFTPd catalog preserves existing template names (@jnewing, #1109).
+- **AeroCloud from saved profiles.** Choose a saved connection and the folder under it from a searchable list. Saved S3, B2, Azure, kDrive and OAuth profiles connect through the same profile loading path as the rest of the app (#1231).
+- **Incremental AeroCloud changes.** Local watcher events sync the paths that changed rather than rescanning the remote tree. Providers can require a minimum interval between full scans, and unchanged KeepBoth conflicts no longer create a new conflict copy every cycle (#1283).
+- **Windows association choices.** Setup and Settings independently control AeroFTP format associations and archive/Explorer integration. NSIS `/NOASSOC` and MSI feature maintenance preserve disabled choices and other applications' registrations (@pasha-zzz, #454, #1209).
+- **Linux tray and account details.** Theme-aware tray icons, sync actions that follow AeroCloud state, saved-profile counts in the account chooser, collapsible AI model groups and a visible controller bar (#1210).
+
+#### Fixed
+
+- **Cross-profile copies reuse saved sign-in and encryption settings.** CLI, GUI and agent copies open profiles through their shared authentication path, keep overlay data encrypted on the remote, preserve empty directories and skip equal-size files whose destination is not older. A missing or unreadable source subtree fails the plan instead of reporting an incomplete copy as successful; setup errors and partially failed batches close the activity with the correct outcome (#1306, #1316).
+- **Recursive file removal uses the file operation.** `rm -r` removes a file or symlink without treating it as a directory; remote-root refusal and guarded recursive directory deletion remain effective. Existing SFTP ancestors are accepted only when confirmed to be directories, including generic mkdir failures (#1316).
+- **Resuming a download checks its source as well as its version.** A leftover from another provider, endpoint, account or remote path cannot supply the start of a new download with matching size or timestamps. Old resume records restart safely, and a short or inconsistent HTTP 206 response cannot replace the destination with an incomplete file (#1224).
+- **Long filenames transfer again.** Download and delta temporary names fit filesystem component limits, including segmented sidecars, instead of failing repeatedly with "File name too long" (#1267).
+- **Temporary files retain the right owner.** Cancelled downloads release their claim promptly, segmented cleanup runs while its claim is still held, and another transfer's temporary cannot be removed during cleanup. Startup reclaims recognized abandoned scratch files while preserving active staging and open remote vaults (#1217, #1284).
+- **Interrupted multipart batches abort their remote uploads.** File-scoped cleanup retains the original upload handle through completion and cancellation, including when a DAG task is destroyed (#1219).
+- **FTP batches wait for a real connection before taking a transfer slot**, avoiding session/slot ordering stalls; checkout deadlines and cancellation are checked without depending on runner speed (#1221).
+- **Recursive walks refuse outside paths, cycles and duplicate entries.** Destructive cleanup and dedupe retain authority over the requested or explicitly resolved root; a listing cannot authorize a different absolute root. ImageKit folders retain their own path instead of redirecting recursive operations to the account root (#1232, #1255).
+- **Archive extraction preserves destination boundaries.** RAR5 hardlinks and file-copy references use an earlier regular member from private staging. ZIP, 7z, TAR, single-stream and RAR publication are anchored to the selected output directory, preventing an existing destination directory link from redirecting writes outside it (#1222).
+- **AeroCloud keeps events for overlapping pairs.** One pair's full scan no longer clears pending changes or renames for another idle pair; acknowledgements survive staggered cycles. Complete scans also forget records of paths absent on both sides so recreating a deleted file syncs it instead of deleting it again (#1286).
+- **Profiles keep unique names and their own credentials.** Creation, import, duplicate, rename and restore choose the first available numbered name. External exports select secrets by profile identity, and colliding target names receive separate entries instead of overwriting another connection (#1269, #1276).
+- **Headless credentials survive profile lifecycle operations.** Durable OAuth configuration and GitHub token/PEM entries travel through duplication and encrypted backup/restore; deletion clears transient authorization and deadlines without copying pending attempts. Native Proton copy/import, refresh, sign-out and deletion retain the captured user and serialize session mutation across processes.
+- **SITE operations remain on the intended connection.** Template rendering and sending share one active operation, bind to the opening/profile/account and backend connection generation, and reject a changed session. A busy status can be refreshed manually. A delayed Proton browser result cannot overwrite a different form or profile.
+- **WinSCP and PuTTY session names round-trip correctly.** WinSCP preserves Unicode names and its UTF-8 BOM, while PuTTY exports use its native Windows-code-page escaping and keep colliding names separate (#1278, #1277).
+- **CLI profile selectors and machine output are consistent.** `export --profiles` accepts index, case-insensitive name, ID or a unique substring and explains unmatched or ambiguous selectors. `--machine` and `--format json` reach import, export, keystore and native profile backups (#1275, #1272).
+- **CLI fallback diagnostics explain serial transfers.** FTP, SFTP, S3, B2, HTTP Range and `pget` report safe reasons for declined parallel attempts while retaining progress, cancellation and structured JSON warnings (#1212, #1216).
+- **Speed limits apply before ranged reads and to served and mounted files.** Served HTTP files stream with Range support, FTP REST resumes and APPE appends correctly, and servers survive disconnects and SIGTERM without printing a supplied secret (#1295).
+- **Proton CLI transfers report quota and literal paths correctly.** Full-drive failures do not launch a browser for every file, transfer errors retain the item's reason, glob characters stay literal, and sanitized downloaded names are restored to the requested name (#1298, #1303).
+- **Swift listings continue through short pages**, including HTTP 204, rather than hiding entries above a server's page cap (#1213).
+- **AeroImage saves edited and cropped images in the chosen format**, with exclusive per-save staging, a centered confirmation and refreshed local panels (@EhudKirsh, #1075).
+- **Encrypted overlays keep readable breadcrumbs and the correct root.** Decrypted anchor labels retain the server path, and profiles with an empty Remote Path first open at the remote root (@EhudKirsh, #1077, #1211).
+- **Connected tools read the live session.** Capabilities, keep-alive, terminal, Debug Panel and status bar no longer use the reset connection form; Quick Look in the right local panel previews that panel's selected file (#1251, #1228).
+- **Linux software-rendered windows stay opaque and visible.** EGL probes the display GTK uses, with Wayland first. Explicit DMA-BUF overrides are preserved while the existing compatibility default remains unchanged (@coolfocks, #1249, #1240, #1242, #1254, #1258).
+- **AppImage updates replace the AppImage atomically**, including with a symlinked temporary directory, rather than installing a Debian package or leaving the launch path empty (#1250, #1256).
+- **The snap starts with desktop portals again** through `network-status`. Its volumes section explains the manual `mount-observe` connection instead of showing an unexplained empty list (#1262, #1263).
+- **Interface and translation repairs.** Vault Sync follows the selected theme; centered icons and Markdown table alignment render correctly; local timestamps keep their timezone; repair dry runs describe findings accurately. Vault labels, diacritics, Cyrillic Serbian, OAuth callback instructions and hardcoded English are corrected across the supported languages (#1230, #1233, #1235, #1238, #1239, #1268, #1273, #1280, #1287).
+
+- **Provider and mirror acceptance fixes.** FTPS reports post-data 552 failures, OneDrive deletes do not retain stale IDs, Box and kDrive refuse ambiguous trash purges, Twake retry progress stays accurate, and Proton CLI sharing accepts leading-dash passwords. Mirror retains excluded, hidden and unfinished children with their ancestors (#1226, #1225).
+
+#### Security
+
+- **Vault keyring isolation.** A first run in a different configuration folder cannot overwrite the keyring account of an existing vault. Claims are serialized across processes and the selected account is recorded with the vault (#1234).
+- **Windows temporary-file and share boundaries.** Delta staging refuses reparse points before truncation, and local-folder shares refuse NTFS alternate-stream names without changing ordinary Unix colon filenames (#1220).
+- **Credential-safe diagnostics.** Proton launcher failures discard dependency errors that can embed a one-time browser key. Dependency log ceilings remain enforced even with per-target `RUST_LOG`, and SSH host-key refusals retain their identity, exit code and actionable guidance (#1259, #1271).
+- **TLS dependency security patches.** The shared rustls dependency is updated to 0.23.46, resolving four RustSec advisories without changing the rest of its locked dependency cohort (#1218).
+
+#### Changed
+
+- **SFTP read-ahead shares a 64 MiB process budget** and uses a separate channel; a larger SSH channel window supports delayed paths. Cancellation and connection-limit fallbacks preserve cleanup and correctness (#1252, #1260, #1261).
+- **Profile readiness follows the actual authentication source.** Anonymous, key and device profiles remain usable; native Proton checks a user-scoped saved session, while externally managed CLI sessions stay unknown rather than falsely unsigned-in. MCP preserves the safe classification (#1299).
+- **MCP request handling and account writes are more robust.** Debug requests fit the worker stack, and transactions acquire the account session before SQLite's write reservation to avoid lock-order failures (#1241, #1274).
+- **AeroSync journals describe recovery rather than completed history**, separating planned dry-run copies from actual copies and retaining the executed request (#1257).
+- **Release validation refuses unreadable tool reports.** AppStream 1.0/1.1, snap GPU/GUI/glibc/package checks, AppImage permissions, zsync pairs, DCO and development guards fail closed on malformed or failed output, with regression fixtures (#1265, #1264, #1266).
+- **Dependency and test maintenance.** ZIP support uses zip 9 after the 8.x line was yanked; compatible dependency patches include DOMPurify, Vitest, PostCSS, react-window, react-virtuoso, serde_json, tokio-util and zstd. The final maintenance bundle updates jsdom, Vitest, Tokio, rustls-native-certs, arboard and zip together with their compatible lock resolution (#1314). Timing tests use deterministic clocks or structural assertions, CLI integration tests use isolated portable vaults, and live cleanup checks recognize every temporary family (#1214, #1236, #1253, #1270, #1279, #1285, #1289, #1291, #1292, #1294).
+- **Quieter startup and idempotent credential deletion.** GUI startup filters D-Bus handshake chatter while preserving warnings, and deleting an absent credential leaves the vault file untouched (#1301).
+- **Documentation and internal cleanup.** The provider catalog describes Proton's native and CLI modes, AeroAgent's roadmap reflects the delivered 1.7 capabilities, Linux troubleshooting matches current rendering behavior, and unused imports, components and props are removed (#1227, #1229, #1237, #1288, #1300, #1315).
+
+#### Contributors
+
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh) [<img src="https://github.com/jnewing.png?size=48" width="48" height="48" alt="@jnewing" />](https://github.com/jnewing) [<img src="https://github.com/pasha-zzz.png?size=48" width="48" height="48" alt="@pasha-zzz" />](https://github.com/pasha-zzz) [<img src="https://github.com/coolfocks.png?size=48" width="48" height="48" alt="@coolfocks" />](https://github.com/coolfocks)
+
 ## [4.2.3] - 2026-10-13
 
 ### Checked Writes, Resumable Ranges, and SITE Commands

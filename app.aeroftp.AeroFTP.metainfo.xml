@@ -146,6 +146,12 @@
   </languages>
 
   <releases>
+    <release version="4.2.4" date="2026-10-20">
+      <description>
+        <p>Native Proton Drive, Headless Profiles, and Safer Transfers. Connect to Proton Drive through the native client with browser sign-in and encrypted vault sessions, or keep the official CLI mode. Create and authorize saved profiles from the GUI, CLI and MCP with consistent options and profile-bound credentials.</p>
+        <p>Cross-profile copies preserve saved encryption, empty directories and repeat-copy skip behavior. Interrupted downloads, recursive operations, profile relocation and archive extraction retain their source and destination boundaries. Includes Linux desktop and package repairs, Windows association choices, and updates across all 47 languages.</p>
+      </description>
+    </release>
     <release version="4.2.3" date="2026-10-13">
       <description>
         <p>Checked Writes, Resumable Ranges, and SITE Commands. A repair release built around data that could be lost when something fails half way. Operations that check whether a file exists before writing now write only when the server confirmed it is not there, and stop when the check itself fails. A WebDAV replace keeps the old file until the new one is in place, crypt init writes nothing until the Emergency Kit has been handed over, and a large segmented download that loses a connection resumes the range it was reading instead of starting over. The transfer speed shows the current speed, and progress moves while files are being sent on most cloud providers.</p>
