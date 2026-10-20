@@ -382,8 +382,8 @@ fn encode_rel_path(keys: &OverlayKeys, rel: &str, is_dir_leaf: bool) -> Result<S
 /// Access kind for path mapping through a scoped overlay.
 /// Read allows pass-through for targets at/above/outside the anchor (used by
 /// non-mutating ops like list, stat, download so plaintext areas remain
-/// visible and listable). Write keeps the strict refusal (fail-closed) for
-/// all mutating ops.
+/// visible and listable). Mixed-mode writes also pass outside paths through
+/// as plaintext; traversal components are refused for both access kinds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AccessKind {
     Read,
@@ -392,9 +392,8 @@ enum AccessKind {
 
 /// Map a caller plaintext target to the on-wire encrypted path, keeping the
 /// cleartext anchor prefix and encrypting only the tail below it.
-/// For Write (mutating callers) an absolute target that is not at/under the
-/// anchor is refused (fail-closed).
-/// For Read (non-mutating callers) such targets return the raw path verbatim.
+/// Absolute targets outside the anchor pass through in mixed mode. Their
+/// content must follow the same plaintext/encrypted decision as their name.
 ///
 /// `scope` is the already-normalized anchor (`""` = whole remote). A relative
 /// target is encrypted in full (it resolves against the current in-scope dir).
@@ -405,6 +404,14 @@ fn encode_plain_target(
     is_dir_leaf: bool,
     kind: AccessKind,
 ) -> Result<String, String> {
+    // An apparently outside path must not traverse back into the encrypted
+    // scope after its content has been selected for plaintext passthrough.
+    if target
+        .split('/')
+        .any(|part| part == ".." || part.contains('\0'))
+    {
+        return Err("Invalid crypt path component".to_string());
+    }
     if !target.starts_with('/') {
         return encode_rel_path(keys, target, is_dir_leaf);
     }
@@ -618,19 +625,22 @@ impl CryptOverlayProvider {
     /// Returns `Some(on-wire plaintext parent)` for the #390 case, where the write
     /// must fail closed instead of materializing the phantom; `None` when it is
     /// safe to create the encrypted parent (the #385 case) or the guard does not
-    /// apply. Only reached on the missing-parent retry path, so it costs one
-    /// `exists` probe on failure and nothing on the success path.
-    async fn phantom_plaintext_parent(&mut self, plain_target: &str) -> Option<String> {
+    /// apply. Only reached on the missing-parent retry path. Every missing
+    /// encrypted ancestor must be checked before creating any of the chain.
+    async fn phantom_plaintext_parent(
+        &mut self,
+        plain_target: &str,
+    ) -> Result<Option<String>, ProviderError> {
         // A relative target resolves against the current on-wire dir, which is not
         // known here without a round trip; the frontend cwd re-read on overlay-arm
         // covers that seam. Absolute targets are what the upload UI actually sends.
         if !plain_target.starts_with('/') {
-            return None;
+            return Ok(None);
         }
         let t = norm_abs(plain_target);
         let parent = match t.rsplit_once('/') {
             Some((p, _)) if !p.is_empty() => p.to_string(),
-            _ => return None, // leaf directly at the root: no below-anchor parent
+            _ => return Ok(None), // leaf directly at the root: no below-anchor parent
         };
         // Only a parent strictly BELOW the anchor can phantom. At or above the
         // anchor the path passes through as cleartext and the anchor itself
@@ -641,12 +651,20 @@ impl CryptOverlayProvider {
             parent.starts_with(&format!("{}/", self.scope))
         };
         if !strictly_below {
-            return None;
+            return Ok(None);
         }
-        match self.inner.exists(&parent).await {
-            Ok(true) => Some(parent),
-            _ => None,
+        let mut ancestor = parent.as_str();
+        while ancestor != self.scope && ancestor != "/" && !ancestor.is_empty() {
+            // A real encrypted directory may coexist with a raw plaintext
+            // sibling. It already identifies the intended destination, so
+            // that sibling must not prevent creating children inside it.
+            let encrypted = self.map(ancestor, true, AccessKind::Write)?;
+            if !self.inner.exists(&encrypted).await? && self.inner.exists(ancestor).await? {
+                return Ok(Some(ancestor.to_string()));
+            }
+            ancestor = ancestor.rsplit_once('/').map_or("", |(parent, _)| parent);
         }
+        Ok(None)
     }
 
     /// #390 smart re-anchor support: is the wrapped provider's CURRENT on-wire
@@ -954,7 +972,16 @@ async fn stage_ciphertext_temp(
     let ciphertext = keys
         .encrypt_content(plaintext)
         .map_err(|e| CryptOverlayProvider::crypt_err("content encrypt", e))?;
-    let dir = crate::util::scratch::staging_dir(ciphertext.len() as u64)
+    stage_upload_bytes(&ciphertext).await
+}
+
+/// Snapshot selected upload bytes under the same lease for both mixed-mode
+/// plaintext and ciphertext. Plaintext staging must be private on Unix.
+async fn stage_upload_bytes(
+    bytes: &[u8],
+) -> Result<(std::path::PathBuf, crate::util::scratch::StagingLease), ProviderError> {
+    use tokio::io::AsyncWriteExt;
+    let dir = crate::util::scratch::staging_dir(bytes.len() as u64)
         .map_err(ProviderError::TransferFailed)?;
     let temp_path = dir.join(format!(
         "aeroftp_crypt_overlay_{}_{}.bin",
@@ -963,7 +990,21 @@ async fn stage_ciphertext_temp(
     ));
     let lease =
         crate::util::scratch::StagingLease::new(&temp_path).map_err(ProviderError::IoError)?;
-    if let Err(e) = tokio::fs::write(&temp_path, &ciphertext).await {
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options
+        .open(&temp_path)
+        .await
+        .map_err(ProviderError::IoError)?;
+    let written = async {
+        file.write_all(bytes).await?;
+        file.flush().await
+    }
+    .await;
+    drop(file);
+    if let Err(e) = written {
         // A write that fails part way (the disk filled between the room check
         // and here) leaves partial ciphertext: remove it before reporting.
         let _ = tokio::fs::remove_file(&temp_path).await;
@@ -1117,10 +1158,15 @@ impl StorageProvider for CryptOverlayProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         crate::filesystem::validate_path(local_path).map_err(ProviderError::InvalidPath)?;
+        let enc = self.map(remote_path, false, AccessKind::Write)?;
         let plaintext = tokio::fs::read(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let (temp_path, _lease) = stage_ciphertext_temp(&self.keys, &plaintext).await?;
+        let (temp_path, _lease) = if self.target_is_encrypted(remote_path) {
+            stage_ciphertext_temp(&self.keys, &plaintext).await?
+        } else {
+            stage_upload_bytes(&plaintext).await?
+        };
         // Propagate the SOURCE file's mtime onto the ciphertext temp. The inner
         // provider's upload stamps the remote object from the file it uploads
         // (SFTP `set_metadata`, FTP `MFMT`), which here is the temp, not the
@@ -1134,13 +1180,6 @@ impl StorageProvider for CryptOverlayProvider {
                 let _ = filetime::set_file_mtime(&temp_path, ft);
             }
         }
-        let enc = match self.map(remote_path, false, AccessKind::Write) {
-            Ok(p) => p,
-            Err(e) => {
-                let _ = tokio::fs::remove_file(&temp_path).await;
-                return Err(e);
-            }
-        };
         let mut result = self
             .inner
             .upload(&temp_path.to_string_lossy(), &enc, on_progress)
@@ -1161,7 +1200,14 @@ impl StorageProvider for CryptOverlayProvider {
             // phantom folder and silently misplace the file. Fail closed with a clear
             // message instead. A genuinely-missing encrypted parent (#385) still
             // creates and retries.
-            if let Some(plain_parent) = self.phantom_plaintext_parent(remote_path).await {
+            let phantom = match self.phantom_plaintext_parent(remote_path).await {
+                Ok(parent) => parent,
+                Err(error) => {
+                    let _ = tokio::fs::remove_file(&temp_path).await;
+                    return Err(error);
+                }
+            };
+            if let Some(plain_parent) = phantom {
                 let _ = tokio::fs::remove_file(&temp_path).await;
                 return Err(ProviderError::InvalidPath(format!(
                     "the current folder {:?} is a plaintext folder created with the crypt \
@@ -6476,6 +6522,7 @@ mod tests {
         files: Mutex<HashMap<String, Vec<u8>>>,
         dirs: Mutex<Vec<String>>,
         fail_list_permission: bool,
+        cancel_after_mkdir: Option<tokio_util::sync::CancellationToken>,
     }
 
     impl StrictMemProvider {
@@ -6484,6 +6531,7 @@ mod tests {
                 files: Mutex::new(HashMap::new()),
                 dirs: Mutex::new(seed.iter().map(|s| s.to_string()).collect()),
                 fail_list_permission: false,
+                cancel_after_mkdir: None,
             }
         }
         fn with_permission_denied_list(seed: &[&str]) -> Self {
@@ -6577,6 +6625,9 @@ mod tests {
             if !dirs.iter().any(|d| d == p) {
                 dirs.push(p.to_string());
             }
+            if let Some(cancel) = &self.cancel_after_mkdir {
+                cancel.cancel();
+            }
             Ok(())
         }
         async fn delete(&mut self, p: &str) -> Result<(), ProviderError> {
@@ -6593,6 +6644,13 @@ mod tests {
             Ok(())
         }
         async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
+            let name = p.rsplit('/').next().unwrap_or(p).to_string();
+            if let Some(data) = self.files.lock().unwrap().get(p) {
+                return Ok(RemoteEntry::file(name, p.to_string(), data.len() as u64));
+            }
+            if self.dirs.lock().unwrap().iter().any(|d| d == p) {
+                return Ok(RemoteEntry::directory(name, p.to_string()));
+            }
             Err(ProviderError::NotFound(p.to_string()))
         }
         async fn size(&mut self, p: &str) -> Result<u64, ProviderError> {
@@ -6607,6 +6665,254 @@ mod tests {
         }
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("strict-mem".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_profile_stop_during_mkdir_starts_no_later_destination_write() {
+        use crate::cross_profile_transfer::{copy_one_file_with_options, CrossProfileCopyOptions};
+
+        let mut source = MemProvider::new();
+        source.seed_raw_file("/source.txt", b"payload");
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let mut dest = StrictMemProvider::with_dirs(&[]);
+        dest.cancel_after_mkdir = Some(cancel.clone());
+        let error = copy_one_file_with_options(
+            &mut source,
+            &mut dest,
+            "/source.txt",
+            "/nested/deep/deeper/file.txt",
+            None,
+            CrossProfileCopyOptions {
+                cancel_token: cancel,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("Stop during the first mkdir must end the copy");
+
+        assert!(error.to_string().contains("cancelled"), "{error}");
+        assert_eq!(dest.dir_list(), vec!["/nested".to_string()]);
+        assert!(dest.file_paths().is_empty(), "no upload after Stop");
+    }
+
+    #[tokio::test]
+    async fn cross_profile_copy_refuses_plaintext_parents_without_encrypted_siblings() {
+        for seed in [
+            vec!["/Vault", "/Vault/Plain", "/Vault/Plain/Deep"],
+            vec!["/Vault", "/Vault/Plain"],
+        ] {
+            for keys in [
+                rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+                aerocrypt_keys(),
+            ] {
+                let mut source = MemProvider::new();
+                source.seed_raw_file("/source.txt", b"secret payload");
+                let mut dest = CryptOverlayProvider::new(
+                    Box::new(StrictMemProvider::with_dirs(&seed)),
+                    keys,
+                    "/Vault",
+                );
+                let error = crate::cross_profile_transfer::copy_one_file(
+                    &mut source,
+                    &mut dest,
+                    "/source.txt",
+                    "/Vault/Plain/Deep/file.txt",
+                    None,
+                )
+                .await
+                .expect_err("every plaintext ancestor must preserve the #390 refusal");
+                assert!(
+                    matches!(error, ProviderError::InvalidPath(ref msg) if msg.contains("#390"))
+                );
+                let inner = dest
+                    .inner
+                    .as_any_mut()
+                    .downcast_mut::<StrictMemProvider>()
+                    .unwrap();
+                assert!(inner.file_paths().is_empty(), "no upload on refusal");
+                assert_eq!(
+                    inner.dir_list(),
+                    seed.iter().map(|p| p.to_string()).collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_profile_outside_scope_keeps_plaintext_bytes_and_readback() {
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let mut source = MemProvider::new();
+            source.seed_raw_file("/source.txt", b"outside-scope plaintext");
+            let mut dest = CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, "/Vault");
+            crate::cross_profile_transfer::copy_one_file(
+                &mut source,
+                &mut dest,
+                "/source.txt",
+                "/Other/file.txt",
+                None,
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                dest.download_to_bytes("/Other/file.txt").await.unwrap(),
+                b"outside-scope plaintext"
+            );
+            let raw = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            assert_eq!(raw.raw_paths(), vec!["/Other/file.txt".to_string()]);
+            assert_eq!(
+                raw.raw_bytes("/Other/file.txt").unwrap(),
+                b"outside-scope plaintext"
+            );
+            let error = crate::cross_profile_transfer::copy_one_file(
+                &mut source,
+                &mut dest,
+                "/source.txt",
+                "/Other/../Vault/escape.txt",
+                None,
+            )
+            .await
+            .expect_err("an outside spelling cannot traverse back into the vault");
+            assert!(matches!(error, ProviderError::InvalidPath(_)));
+            let raw = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            assert_eq!(raw.raw_paths(), vec!["/Other/file.txt".to_string()]);
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_profile_plaintext_retry_creates_only_plaintext_parents() {
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let mut source = MemProvider::new();
+            source.seed_raw_file("/source.txt", b"plain retry");
+            let mut dest = CryptOverlayProvider::new(
+                Box::new(StrictMemProvider::with_dirs(&["/Vault"])),
+                keys,
+                "/Vault",
+            );
+            crate::cross_profile_transfer::copy_one_file(
+                &mut source,
+                &mut dest,
+                "/source.txt",
+                "/Other/New/file.txt",
+                None,
+            )
+            .await
+            .unwrap();
+            let raw = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            assert_eq!(raw.file_paths(), vec!["/Other/New/file.txt".to_string()]);
+            assert_eq!(
+                raw.files
+                    .lock()
+                    .unwrap()
+                    .get("/Other/New/file.txt")
+                    .unwrap()
+                    .as_slice(),
+                b"plain retry"
+            );
+            assert_eq!(raw.dir_list(), vec!["/Vault", "/Other", "/Other/New"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_real_encrypted_ancestor_can_coexist_with_a_plaintext_sibling() {
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let mut source = MemProvider::new();
+            source.seed_raw_file("/source.txt", b"encrypted child");
+            let mut dest = CryptOverlayProvider::new(
+                Box::new(StrictMemProvider::with_dirs(&["/Vault", "/Vault/Plain"])),
+                keys,
+                "/Vault",
+            );
+            let encrypted_parent = dest.map("/Vault/Plain", true, AccessKind::Write).unwrap();
+            dest.inner.mkdir(&encrypted_parent).await.unwrap();
+            crate::cross_profile_transfer::copy_one_file(
+                &mut source,
+                &mut dest,
+                "/source.txt",
+                "/Vault/Plain/New/file.txt",
+                None,
+            )
+            .await
+            .unwrap();
+            let raw = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            assert_eq!(raw.file_paths().len(), 1);
+            assert!(raw.file_paths()[0].starts_with(&format!("{encrypted_parent}/")));
+            assert!(!raw.dir_list().iter().any(|p| p == "/Vault/Plain/New"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn plaintext_upload_staging_is_private_and_complete() {
+        use std::os::unix::fs::PermissionsExt;
+        let (path, _lease) = stage_upload_bytes(b"private snapshot").await.unwrap();
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), b"private snapshot");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        tokio::fs::remove_file(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn cross_profile_copy_still_creates_a_genuine_new_encrypted_tree() {
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            let mut source = MemProvider::new();
+            source.seed_raw_file("/source.txt", b"secret payload");
+            let mut dest = CryptOverlayProvider::new(
+                Box::new(StrictMemProvider::with_dirs(&["/Vault"])),
+                keys,
+                "/Vault",
+            );
+            crate::cross_profile_transfer::copy_one_file(
+                &mut source,
+                &mut dest,
+                "/source.txt",
+                "/Vault/Fresh/Deep/file.txt",
+                None,
+            )
+            .await
+            .expect("a genuinely missing encrypted tree is still created by upload");
+
+            let inner = dest
+                .inner
+                .as_any_mut()
+                .downcast_mut::<StrictMemProvider>()
+                .unwrap();
+            let files = inner.file_paths();
+            assert_eq!(files.len(), 1);
+            assert!(files
+                .iter()
+                .all(|p| !p.contains("Fresh") && !p.contains("file.txt")));
+            assert!(inner.dir_list().iter().all(|p| !p.contains("Fresh")));
         }
     }
 

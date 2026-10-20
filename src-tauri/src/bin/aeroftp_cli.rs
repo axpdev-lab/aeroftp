@@ -28854,13 +28854,20 @@ fn suggest_transfer_apply(
     dest_profile: &str,
     source_path: &str,
     dest_path: &str,
+    recursive: bool,
 ) -> String {
+    let flags = if recursive {
+        " -r --format json"
+    } else {
+        " --format json"
+    };
     format!(
-        "aeroftp-cli transfer {} {} {} {} --format json",
+        "aeroftp-cli transfer {} {} {} {}{}",
         shell_arg(source_profile),
         shell_arg(dest_profile),
         shell_arg(source_path),
-        shell_arg(dest_path)
+        shell_arg(dest_path),
+        flags
     )
 }
 
@@ -28952,7 +28959,7 @@ fn build_agent_task_router(
             "commands": [
                 format!("aeroftp-cli stat --profile {} {} --json", shell_arg(source_profile), shell_arg(source_path)),
                 format!("aeroftp-cli transfer {} {} {} {} --dry-run --format json", shell_arg(source_profile), shell_arg(dest_profile), shell_arg(source_path), shell_arg(dest_path)),
-                suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path),
+                suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path, false),
                 suggest_transfer_verify(dest_profile, dest_path, 1),
             ],
             "rule": "Always dry-run before apply"
@@ -28964,7 +28971,7 @@ fn build_agent_task_router(
                 format!("aeroftp-cli ls --profile {} {} --json", shell_arg(source_profile), shell_arg(source_path)),
                 format!("aeroftp-cli find --profile {} {} {} --json", shell_arg(source_profile), shell_arg(source_path), shell_arg(pattern)),
                 format!("aeroftp-cli transfer {} {} {} {} --dry-run --format json", shell_arg(source_profile), shell_arg(dest_profile), shell_arg(source_path), shell_arg(dest_path)),
-                suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path),
+                suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path, true),
                 suggest_transfer_verify(dest_profile, dest_path, 2),
             ],
             "rule": "Compare total ls count against any filtered match count before copying"
@@ -65439,62 +65446,33 @@ async fn cmd_transfer_doctor(
         Err(code) => return code,
     };
 
-    let mut source = match ProviderFactory::create(&src_cfg) {
-        Ok(p) => p,
-        Err(e) => {
-            print_error(
-                format,
-                &format!("Failed to create source provider: {}", e),
-                provider_error_to_exit_code(&e),
-            );
-            return provider_error_to_exit_code(&e);
+    // Same session as ls/put: OAuth tokens from the vault, crypt overlay on
+    // read and write, and the profile base path. ProviderFactory::create
+    // refuses OAuth and returns the raw provider under a crypt binding.
+    let (mut source, src_base) = match connect_saved_profile(source_profile, cli, format).await {
+        Ok(connected) => connected,
+        Err(code) => return code,
+    };
+    let (mut dest, dst_base) = match connect_saved_profile(dest_profile, cli, format).await {
+        Ok(connected) => connected,
+        Err(code) => {
+            let _ = source.disconnect().await;
+            return code;
         }
     };
-    let mut dest = match ProviderFactory::create(&dst_cfg) {
-        Ok(p) => p,
-        Err(e) => {
-            print_error(
-                format,
-                &format!("Failed to create dest provider: {}", e),
-                provider_error_to_exit_code(&e),
-            );
-            return provider_error_to_exit_code(&e);
-        }
-    };
-
-    // KE-B1 / KE-B2 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
-    apply_s3_runtime_knobs(&mut source, cli);
-    apply_s3_runtime_knobs(&mut dest, cli);
-    apply_onedrive_runtime_knobs(&mut source, cli);
-    apply_onedrive_runtime_knobs(&mut dest, cli);
-    apply_azure_runtime_knobs(&mut source, cli);
-    apply_azure_runtime_knobs(&mut dest, cli);
-    apply_google_drive_runtime_knobs(&mut source, cli);
-    apply_google_drive_runtime_knobs(&mut dest, cli);
-
-    if let Err(e) = source.connect().await {
-        print_error(
-            format,
-            &format!("Source connection failed: {}", e),
-            provider_error_to_exit_code(&e),
-        );
-        return provider_error_to_exit_code(&e);
-    }
-    if let Err(e) = dest.connect().await {
-        print_error(
-            format,
-            &format!("Dest connection failed: {}", e),
-            provider_error_to_exit_code(&e),
-        );
-        let _ = source.disconnect().await;
-        return provider_error_to_exit_code(&e);
-    }
+    // Follow-up commands repeat the typed arguments. The resolved path is
+    // what the plan uses. Feeding it back through the resolver rejects a
+    // profile base that itself contains "..".
+    let source_path_input = source_path;
+    let dest_path_input = dest_path;
+    let source_path = resolve_cli_remote_path(&src_base, source_path_input);
+    let dest_path = resolve_cli_remote_path(&dst_base, dest_path_input);
 
     let request = CrossProfileTransferRequest {
         source_profile: source_profile.to_string(),
         dest_profile: dest_profile.to_string(),
-        source_path: source_path.to_string(),
-        dest_path: dest_path.to_string(),
+        source_path: source_path.clone(),
+        dest_path: dest_path.clone(),
         recursive,
         dry_run: true,
         skip_existing,
@@ -65582,8 +65560,9 @@ async fn cmd_transfer_doctor(
         suggested_next_command: suggest_transfer_apply(
             source_profile,
             dest_profile,
-            source_path,
-            dest_path,
+            source_path_input,
+            dest_path_input,
+            recursive,
         ),
         ec_enabled: None,
         ec_level_pct: None,
@@ -65639,84 +65618,39 @@ async fn cmd_transfer_profiles(
 
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
 
-    // Resolve source profile
-    let src_cfg = match profile_to_provider_config(source_profile, cli, format) {
-        Ok((cfg, _)) => cfg,
-        Err(code) => return code,
-    };
-    // Resolve destination profile
-    let dst_cfg = match profile_to_provider_config(dest_profile, cli, format) {
-        Ok((cfg, _)) => cfg,
-        Err(code) => return code,
-    };
-
-    // Create providers
-    let mut source = match ProviderFactory::create(&src_cfg) {
-        Ok(p) => p,
-        Err(e) => {
-            print_error(
-                format,
-                &format!("Failed to create source provider: {}", e),
-                provider_error_to_exit_code(&e),
-            );
-            return provider_error_to_exit_code(&e);
-        }
-    };
-    let mut dest = match ProviderFactory::create(&dst_cfg) {
-        Ok(p) => p,
-        Err(e) => {
-            print_error(
-                format,
-                &format!("Failed to create dest provider: {}", e),
-                provider_error_to_exit_code(&e),
-            );
-            return provider_error_to_exit_code(&e);
-        }
-    };
-
-    // KE-B1 / KE-B2 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
-    apply_s3_runtime_knobs(&mut source, cli);
-    apply_s3_runtime_knobs(&mut dest, cli);
-    apply_onedrive_runtime_knobs(&mut source, cli);
-    apply_onedrive_runtime_knobs(&mut dest, cli);
-    apply_azure_runtime_knobs(&mut source, cli);
-    apply_azure_runtime_knobs(&mut dest, cli);
-    apply_google_drive_runtime_knobs(&mut source, cli);
-    apply_google_drive_runtime_knobs(&mut dest, cli);
-
-    // Connect source
+    // Same session as ls/put: OAuth from the vault and the crypt overlay.
+    // create_and_connect_with already applies the per-backend knobs.
     if !quiet {
         eprintln!("Connecting to source profile '{}'...", source_profile);
     }
-    if let Err(e) = source.connect().await {
-        print_error(
-            format,
-            &format!("Source connection failed: {}", e),
-            provider_error_to_exit_code(&e),
-        );
-        return provider_error_to_exit_code(&e);
-    }
-
-    // Connect destination
+    let (mut source, src_base) = match connect_saved_profile(source_profile, cli, format).await {
+        Ok(connected) => connected,
+        Err(code) => return code,
+    };
     if !quiet {
         eprintln!("Connecting to dest profile '{}'...", dest_profile);
     }
-    if let Err(e) = dest.connect().await {
-        print_error(
-            format,
-            &format!("Dest connection failed: {}", e),
-            provider_error_to_exit_code(&e),
-        );
-        let _ = source.disconnect().await;
-        return provider_error_to_exit_code(&e);
-    }
+    let (mut dest, dst_base) = match connect_saved_profile(dest_profile, cli, format).await {
+        Ok(connected) => connected,
+        Err(code) => {
+            let _ = source.disconnect().await;
+            return code;
+        }
+    };
+    // Follow-up commands repeat the typed arguments. The resolved path is
+    // what the plan uses. Feeding it back through the resolver rejects a
+    // profile base that itself contains "..".
+    let source_path_input = source_path;
+    let dest_path_input = dest_path;
+    let source_path = resolve_cli_remote_path(&src_base, source_path_input);
+    let dest_path = resolve_cli_remote_path(&dst_base, dest_path_input);
 
     // Build request
     let request = CrossProfileTransferRequest {
         source_profile: source_profile.to_string(),
         dest_profile: dest_profile.to_string(),
-        source_path: source_path.to_string(),
-        dest_path: dest_path.to_string(),
+        source_path: source_path.clone(),
+        dest_path: dest_path.clone(),
         recursive,
         dry_run,
         skip_existing,
@@ -65754,7 +65688,7 @@ async fn cmd_transfer_profiles(
             eprintln!("Nothing to transfer.");
             eprintln!(
                 "Next: {}",
-                suggest_transfer_verify(dest_profile, dest_path, 0)
+                suggest_transfer_verify(dest_profile, dest_path_input, 0)
             );
         }
         if matches!(format, OutputFormat::Json) {
@@ -65768,7 +65702,7 @@ async fn cmd_transfer_profiles(
                 "total_bytes": 0,
                 "duration_ms": 0,
                 "dry_run": dry_run,
-                "suggested_next_command": suggest_transfer_verify(dest_profile, dest_path, 0),
+                "suggested_next_command": suggest_transfer_verify(dest_profile, dest_path_input, 0),
             }));
         }
         let _ = source.disconnect().await;
@@ -65794,7 +65728,13 @@ async fn cmd_transfer_profiles(
             }
             eprintln!(
                 "Next: {}",
-                suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path)
+                suggest_transfer_apply(
+                    source_profile,
+                    dest_profile,
+                    source_path_input,
+                    dest_path_input,
+                    recursive
+                )
             );
         }
         if matches!(format, OutputFormat::Json) {
@@ -65803,8 +65743,9 @@ async fn cmd_transfer_profiles(
                 "suggested_next_command": suggest_transfer_apply(
                     source_profile,
                     dest_profile,
-                    source_path,
-                    dest_path
+                    source_path_input,
+                    dest_path_input,
+                    recursive
                 ),
             }));
         }
@@ -65835,7 +65776,7 @@ async fn cmd_transfer_profiles(
         );
         eprintln!(
             "Next: {}",
-            suggest_transfer_verify(dest_profile, dest_path, summary.planned_files)
+            suggest_transfer_verify(dest_profile, dest_path_input, summary.planned_files)
         );
     }
     if matches!(format, OutputFormat::Json) {
@@ -65846,12 +65787,13 @@ async fn cmd_transfer_profiles(
             "transferred_files": summary.transferred_files,
             "skipped_files": summary.skipped_files,
             "failed_files": summary.failed_files,
+            "failed": summary.failures,
             "total_bytes": summary.total_bytes,
             "duration_ms": summary.duration_ms,
             "dry_run": summary.dry_run,
             "suggested_next_command": suggest_transfer_verify(
                 dest_profile,
-                dest_path,
+                dest_path_input,
                 summary.planned_files
             ),
         }));
@@ -65879,6 +65821,7 @@ struct TransferCliSummary {
     transferred_files: u64,
     skipped_files: u64,
     failed_files: u64,
+    failures: Vec<serde_json::Value>,
     total_bytes: u64,
     duration_ms: u64,
     dry_run: bool,
@@ -65902,6 +65845,7 @@ async fn execute_cross_profile_plan(
     let mut transferred: u64 = 0;
     let mut skipped: u64 = 0;
     let mut failed: u64 = 0;
+    let mut failures: Vec<serde_json::Value> = Vec::new();
     let mut bytes_transferred: u64 = 0;
 
     if !quiet {
@@ -65916,6 +65860,14 @@ async fn execute_cross_profile_plan(
         if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
             if !quiet {
                 eprintln!("Transfer cancelled.");
+            }
+            for pending in plan.entries.iter().skip(idx) {
+                failed += 1;
+                failures.push(serde_json::json!({
+                    "source_path": pending.source_path,
+                    "dest_path": pending.dest_path,
+                    "error": "not attempted: transfer cancelled",
+                }));
             }
             break;
         }
@@ -65960,6 +65912,7 @@ async fn execute_cross_profile_plan(
         }
 
         let mut file_ok = false;
+        let mut last_error = String::new();
         for attempt in 1..=max_attempts {
             match copy_one_file(
                 source,
@@ -65975,6 +65928,7 @@ async fn execute_cross_profile_plan(
                     break;
                 }
                 Err(e) => {
+                    last_error = e.to_string();
                     let code = provider_error_to_exit_code(&e);
                     if !is_retryable_exit(code) || attempt == max_attempts {
                         if !quiet {
@@ -66010,7 +65964,31 @@ async fn execute_cross_profile_plan(
             }
         } else {
             failed += 1;
+            failures.push(serde_json::json!({
+                "source_path": entry.source_path,
+                "dest_path": entry.dest_path,
+                "error": last_error,
+            }));
         }
+    }
+
+    let gap = ftp_client_gui_lib::cross_profile_transfer::transfer_tally_gap(
+        total as u64,
+        transferred,
+        skipped,
+        failed,
+    );
+    if gap > 0 {
+        failed += gap;
+        let error = format!("{gap} planned file(s) left the run without a result");
+        if !quiet {
+            eprintln!("{error}");
+        }
+        failures.push(serde_json::json!({
+            "source_path": "",
+            "dest_path": "",
+            "error": error,
+        }));
     }
 
     TransferCliSummary {
@@ -66020,58 +65998,36 @@ async fn execute_cross_profile_plan(
         transferred_files: transferred,
         skipped_files: skipped,
         failed_files: failed,
+        failures,
         total_bytes: bytes_transferred,
         duration_ms: start.elapsed().as_millis() as u64,
         dry_run: false,
     }
 }
 
+/// Open a saved profile the way `ls` and `put` do: OAuth tokens from the
+/// vault, crypt overlay on the connected session, profile base path for the
+/// shared resolver. `apply_overlay` stays true so a crypt profile is never
+/// read or written as raw ciphertext.
+async fn connect_saved_profile(
+    profile_name: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    create_and_connect_with("", cli, Some(profile_name), format, true, None)
+        .await
+        .map(|(provider, initial_path, _metadata)| (provider, initial_path))
+}
+
 /// Resolve a profile name, create a provider, and connect it.
 /// Used by batch CONNECT_SOURCE_PROFILE / CONNECT_DEST_PROFILE.
+/// Returns the provider and the profile base path.
 async fn batch_connect_profile(
     profile_name: &str,
     cli: &Cli,
     format: OutputFormat,
-) -> Result<Box<dyn StorageProvider>, i32> {
-    // MTP device profiles: fingerprint match (not ProviderFactory).
-    if let Ok(store) = open_vault(cli) {
-        if let Ok(profiles) = load_active_user_profiles(cli, &store) {
-            if let ProfileMatch::One(p) = match_profile_by_query(&profiles, profile_name) {
-                if p.get("protocol")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .eq_ignore_ascii_case("mtp")
-                {
-                    let (provider, _) = connect_mtp_device_profile(p, cli, format).await?;
-                    return Ok(provider);
-                }
-            }
-        }
-    }
-
-    let (cfg, _) = profile_to_provider_config(profile_name, cli, format)?;
-    let mut provider = ProviderFactory::create(&cfg).map_err(|e| {
-        print_error(
-            format,
-            &format!("Failed to create provider for '{}': {}", profile_name, e),
-            provider_error_to_exit_code(&e),
-        );
-        provider_error_to_exit_code(&e)
-    })?;
-    // KE-B1 / KE-B2 / KE-B3 / KE-B4: apply per-backend knobs before connect.
-    apply_s3_runtime_knobs(&mut provider, cli);
-    apply_onedrive_runtime_knobs(&mut provider, cli);
-    apply_azure_runtime_knobs(&mut provider, cli);
-    apply_google_drive_runtime_knobs(&mut provider, cli);
-    provider.connect().await.map_err(|e| {
-        print_error(
-            format,
-            &format!("Connection failed for '{}': {}", profile_name, e),
-            provider_error_to_exit_code(&e),
-        );
-        provider_error_to_exit_code(&e)
-    })?;
-    Ok(provider)
+) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    connect_saved_profile(profile_name, cli, format).await
 }
 
 // ── Audit subcommand (M3) ──────────────────────────────────────────
@@ -67717,8 +67673,9 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
     let mut failed_commands: u32 = 0;
 
     // Cross-profile transfer state (CONNECT_SOURCE_PROFILE / CONNECT_DEST_PROFILE / TRANSFER)
-    let mut cross_source: Option<(Box<dyn StorageProvider>, String)> = None; // (provider, profile_name)
-    let mut cross_dest: Option<(Box<dyn StorageProvider>, String)> = None;
+    // (provider, profile name, profile base path)
+    let mut cross_source: Option<(Box<dyn StorageProvider>, String, String)> = None;
+    let mut cross_dest: Option<(Box<dyn StorageProvider>, String, String)> = None;
 
     /// The active connection as the command line passes it: the URL with the
     /// batch CLI, or "_" with the CLI whose `--profile` is the connected one.
@@ -68045,13 +68002,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 let profile_name = args[0].to_string();
                 PROFILE_INFO_PRINTED.store(false, Ordering::Relaxed);
                 // Disconnect previous source if any
-                if let Some((mut old, _)) = cross_source.take() {
+                if let Some((mut old, _, _)) = cross_source.take() {
                     let _ = old.disconnect().await;
                 }
                 match batch_connect_profile(&profile_name, cli, format).await {
-                    Ok(provider) => {
+                    Ok((provider, initial_path)) => {
                         eprintln!("Source profile '{}' connected", profile_name);
-                        cross_source = Some((provider, profile_name));
+                        cross_source = Some((provider, profile_name, initial_path));
                     }
                     Err(code) => {
                         if let Some(c) = batch_check_exit(
@@ -68069,13 +68026,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
             "CONNECT_DEST_PROFILE" => {
                 let profile_name = args[0].to_string();
                 PROFILE_INFO_PRINTED.store(false, Ordering::Relaxed);
-                if let Some((mut old, _)) = cross_dest.take() {
+                if let Some((mut old, _, _)) = cross_dest.take() {
                     let _ = old.disconnect().await;
                 }
                 match batch_connect_profile(&profile_name, cli, format).await {
-                    Ok(provider) => {
+                    Ok((provider, initial_path)) => {
                         eprintln!("Dest profile '{}' connected", profile_name);
-                        cross_dest = Some((provider, profile_name));
+                        cross_dest = Some((provider, profile_name, initial_path));
                     }
                     Err(code) => {
                         if let Some(c) = batch_check_exit(
@@ -68095,8 +68052,8 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     plan_transfer, CrossProfileTransferRequest,
                 };
 
-                let (src_provider, src_name) = match &mut cross_source {
-                    Some((p, n)) => (p.as_mut(), n.clone()),
+                let (src_name, src_base) = match &cross_source {
+                    Some((_, name, base)) => (name.clone(), base.clone()),
                     None => {
                         eprintln!(
                             "Line {}: No source profile. Use CONNECT_SOURCE_PROFILE first.",
@@ -68109,8 +68066,8 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         continue;
                     }
                 };
-                let (dest_provider, dest_name) = match &mut cross_dest {
-                    Some((p, n)) => (p.as_mut(), n.clone()),
+                let (dest_name, dest_base) = match &cross_dest {
+                    Some((_, name, base)) => (name.clone(), base.clone()),
                     None => {
                         eprintln!(
                             "Line {}: No dest profile. Use CONNECT_DEST_PROFILE first.",
@@ -68124,8 +68081,8 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     }
                 };
 
-                let source_path = args[0];
-                let dest_path = args[1];
+                let source_path = resolve_cli_remote_path(&src_base, args[0]);
+                let dest_path = resolve_cli_remote_path(&dest_base, args[1]);
                 let recursive = line.has_flag("-r") || line.has_flag("--recursive");
                 let skip_existing = line.has_flag("--skip-existing");
                 let dry_run = line.has_flag("--dry-run");
@@ -68133,15 +68090,22 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 let request = CrossProfileTransferRequest {
                     source_profile: src_name.clone(),
                     dest_profile: dest_name.clone(),
-                    source_path: source_path.to_string(),
-                    dest_path: dest_path.to_string(),
+                    source_path: source_path.clone(),
+                    dest_path: dest_path.clone(),
                     recursive,
                     dry_run,
                     skip_existing,
                 };
 
                 exit_code = 0;
-                match plan_transfer(src_provider, dest_provider, &request).await {
+                // Plan inside a block so the two mut borrows end before the
+                // execute arm borrows the same providers again.
+                let plan_result = {
+                    let src_provider = cross_source.as_mut().unwrap().0.as_mut();
+                    let dest_provider = cross_dest.as_mut().unwrap().0.as_mut();
+                    plan_transfer(src_provider, dest_provider, &request).await
+                };
+                match plan_result {
                     Ok(plan) => {
                         if plan.entries.is_empty() {
                             eprintln!("  Nothing to transfer.");
@@ -68155,18 +68119,20 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                                 eprintln!("    {} -> {}", entry.source_path, entry.dest_path);
                             }
                         } else {
-                            let src_p = cross_source.as_mut().unwrap().0.as_mut();
-                            let dst_p = cross_dest.as_mut().unwrap().0.as_mut();
-                            let summary = execute_cross_profile_plan(
-                                src_p,
-                                dst_p,
-                                &plan,
-                                skip_existing,
-                                cli,
-                                cli.quiet,
-                                cancelled.clone(),
-                            )
-                            .await;
+                            let summary = {
+                                let src_p = cross_source.as_mut().unwrap().0.as_mut();
+                                let dst_p = cross_dest.as_mut().unwrap().0.as_mut();
+                                execute_cross_profile_plan(
+                                    src_p,
+                                    dst_p,
+                                    &plan,
+                                    skip_existing,
+                                    cli,
+                                    cli.quiet,
+                                    cancelled.clone(),
+                                )
+                                .await
+                            };
                             eprintln!(
                                 "  Transfer done: {} ok, {} skipped, {} failed",
                                 summary.transferred_files,
@@ -68207,10 +68173,10 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
     }
 
     // Cleanup cross-profile providers
-    if let Some((mut p, _)) = cross_source.take() {
+    if let Some((mut p, _, _)) = cross_source.take() {
         let _ = p.disconnect().await;
     }
-    if let Some((mut p, _)) = cross_dest.take() {
+    if let Some((mut p, _, _)) = cross_dest.take() {
         let _ = p.disconnect().await;
     }
 
@@ -82013,6 +81979,24 @@ mod tests {
             try_resolve_cli_remote_path("/base", "front/includes").unwrap(),
             "/base/front/includes"
         );
+    }
+
+    #[test]
+    fn a_base_containing_dotdot_resolves_once_and_the_result_is_rejected() {
+        let once = try_resolve_cli_remote_path("../vault", "notes.txt").unwrap();
+        assert_eq!(once, "../vault/notes.txt");
+        assert!(matches!(
+            try_resolve_cli_remote_path("../vault", &once),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert_eq!(
+            try_resolve_cli_remote_path("../vault", "notes.txt").unwrap(),
+            once
+        );
+        let suggested = suggest_transfer_apply("SRC", "DST", "notes.txt", "out.txt", false);
+        assert!(suggested.contains("notes.txt"));
+        assert!(suggested.contains("out.txt"));
+        assert!(!suggested.contains(".."));
     }
 
     // ── UX-01: truncate_str is UTF-8 boundary safe ─────────────────────

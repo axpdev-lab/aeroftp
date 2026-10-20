@@ -3203,6 +3203,9 @@ pub(crate) mod tests {
         pub(crate) cwd: String,
         /// Every file read through `download` or `download_to_bytes`.
         pub(crate) reads: Arc<std::sync::Mutex<Vec<String>>>,
+        /// Paths `stat` reports missing even though `list` has them. An S3
+        /// prefix is a folder to `list` and `NotFound` to `HEAD`.
+        pub(crate) stat_misses: std::collections::HashSet<String>,
     }
 
     impl WalkTreeProvider {
@@ -3220,6 +3223,7 @@ pub(crate) mod tests {
                 pool,
                 cwd: "/".to_string(),
                 reads: Arc::default(),
+                stat_misses: std::collections::HashSet::new(),
             }
         }
 
@@ -3290,6 +3294,7 @@ pub(crate) mod tests {
                 pool: true,
                 cwd: self.cwd.clone(),
                 reads: Arc::clone(&self.reads),
+                stat_misses: self.stat_misses.clone(),
             }))
         }
         async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -3366,6 +3371,9 @@ pub(crate) mod tests {
             &mut self,
             path: &str,
         ) -> Result<crate::providers::RemoteEntry, ProviderError> {
+            if self.stat_misses.contains(path) {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
             if self.dirs.contains_key(path) || self.unlistable.contains(path) {
                 let name = path.rsplit('/').next().unwrap_or(path).to_string();
                 Ok(crate::providers::RemoteEntry::directory(
