@@ -118,7 +118,18 @@ pub(crate) fn emit_event(
         filename: entry.display_name.clone(),
         direction: direction.into(),
         message: failure.map(|f| f.message.clone()),
-        progress: None,
+        progress: (kind == "file_start").then(|| crate::TransferProgress {
+            transfer_id: entry.id.clone(),
+            filename: entry.display_name.clone(),
+            transferred: 0,
+            total: entry.size,
+            percentage: 0,
+            speed_bps: 0,
+            eta_seconds: 0,
+            direction: direction.into(),
+            total_files: None,
+            path: None,
+        }),
         path: Some(entry.remote_path.clone()),
         delta_stats: None,
         fallback_reason: None,
@@ -135,44 +146,37 @@ pub(crate) async fn execute_provider_bulk(
     cancel: &AtomicBool,
     timeout_seconds: u64,
 ) -> Vec<TransferOutcome> {
+    for entry in entries {
+        emit_event(sink.as_ref(), entry, upload, "file_start", None);
+    }
     let mut lock = tokio::select! {
         biased;
-        _ = cancelled(token, cancel) => return entries.iter().map(|_| TransferOutcome::Failed(cancelled_failure())).collect(),
+        _ = cancelled(token, cancel) => return failed_bulk(entries, sink.as_ref(), upload, cancelled_failure()),
         lock = provider.lock() => lock,
     };
     let Some(provider) = lock.as_mut() else {
-        return entries
-            .iter()
-            .map(|_| {
-                TransferOutcome::Failed(TransferFailure::new(
-                    TransferFailureKind::ConnectionLost,
-                    "Provider disconnected",
-                    false,
-                ))
-            })
-            .collect();
+        return failed_bulk(
+            entries,
+            sink.as_ref(),
+            upload,
+            TransferFailure::new(
+                TransferFailureKind::ConnectionLost,
+                "Provider disconnected",
+                false,
+            ),
+        );
     };
     // Reject any invalid path before a native process can modify any item.
     let invalid = entries.iter().find_map(|entry| {
         crate::restricted_chars::validate_path(provider.provider_type(), &entry.remote_path).err()
     });
     if let Some(error) = invalid {
-        return entries
-            .iter()
-            .map(|entry| {
-                let failure = TransferFailure::new(
-                    TransferFailureKind::InvalidPath,
-                    error.to_string(),
-                    false,
-                );
-                emit_event(sink.as_ref(), entry, upload, "file_start", None);
-                emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
-                TransferOutcome::Failed(failure)
-            })
-            .collect();
-    }
-    for entry in entries {
-        emit_event(sink.as_ref(), entry, upload, "file_start", None);
+        return failed_bulk(
+            entries,
+            sink.as_ref(),
+            upload,
+            TransferFailure::new(TransferFailureKind::InvalidPath, error.to_string(), false),
+        );
     }
     let items: Vec<_> = entries
         .iter()
@@ -306,6 +310,21 @@ fn bulk_timeout(per_file_seconds: u64, files: usize, bytes: u64) -> Duration {
             .saturating_mul(files as u64)
             .saturating_add(bytes / 50_000),
     )
+}
+
+fn failed_bulk(
+    entries: &[TransferEntry],
+    sink: &dyn TransferEventSink,
+    upload: bool,
+    failure: TransferFailure,
+) -> Vec<TransferOutcome> {
+    entries
+        .iter()
+        .map(|entry| {
+            emit_event(sink, entry, upload, "file_error", Some(&failure));
+            TransferOutcome::Failed(failure.clone())
+        })
+        .collect()
 }
 
 fn cancelled_failure() -> TransferFailure {
@@ -477,6 +496,51 @@ mod tests {
         let caps: TransferCapabilities = serde_json::from_value(old).unwrap();
         assert_eq!(caps.bulk_upload, Capability::Unsupported);
         assert_eq!(caps.bulk_download, Capability::Unsupported);
+    }
+
+    #[tokio::test]
+    async fn bulk_early_failure_keeps_per_file_start_size_and_terminal_events() {
+        #[derive(Default)]
+        struct Events(std::sync::Mutex<Vec<crate::TransferEvent>>);
+        impl TransferEventSink for Events {
+            fn emit_transfer_event(&self, event: crate::TransferEvent) {
+                self.0.lock().unwrap().push(event);
+            }
+        }
+        for stop in [false, true] {
+            let events = Arc::new(Events::default());
+            let sink: Arc<dyn TransferEventSink> = events.clone();
+            let token = CancellationToken::new();
+            if stop {
+                token.cancel();
+            }
+            let files = entries(2);
+            let provider = Arc::new(Mutex::new(None));
+            let outcomes = execute_provider_bulk(
+                &provider,
+                &sink,
+                &files,
+                false,
+                &token,
+                &AtomicBool::new(false),
+                30,
+            )
+            .await;
+            assert!(outcomes
+                .iter()
+                .all(|o| matches!(o, TransferOutcome::Failed(_))));
+            let recorded = events.0.lock().unwrap();
+            for file in files {
+                let row: Vec<_> = recorded
+                    .iter()
+                    .filter(|event| event.transfer_id == file.id)
+                    .collect();
+                assert_eq!(row.len(), 2);
+                assert_eq!(row[0].event_type, "file_start");
+                assert_eq!(row[0].progress.as_ref().unwrap().total, 4);
+                assert_eq!(row[1].event_type, "file_error");
+            }
+        }
     }
     #[tokio::test]
     async fn bulk_dag_accounts_each_file_and_partial_failure_once() {

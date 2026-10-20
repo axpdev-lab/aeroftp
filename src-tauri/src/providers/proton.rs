@@ -300,6 +300,9 @@ impl ProtonCliProvider {
                     .map_err(ProviderError::IoError)?,
             )
         };
+        if let Some(dir) = staging.as_ref() {
+            reserve_bulk_download_names(dir.path(), &remotes)?;
+        }
         let mut args: Vec<String> = [
             "filesystem",
             if upload { "upload" } else { "download" },
@@ -794,6 +797,28 @@ fn valid_cli_node_uid(uid: &str) -> bool {
     };
     uid.split_once('~')
         .is_some_and(|(volume, link)| valid_part(volume) && valid_part(link))
+}
+
+/// Ask the actual destination filesystem, including its case/normalization
+/// rules, whether every staged name is distinct. No native transfer may
+/// overwrite one selected sibling with another in the private staging tree.
+fn reserve_bulk_download_names(dir: &Path, remotes: &[String]) -> Result<(), ProviderError> {
+    for remote in remotes {
+        let result = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(dir.join(basename(remote)));
+        match result {
+            Ok(file) => drop(file),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Err(ProviderError::InvalidPath(
+                    "The local filesystem cannot represent distinct bulk filenames".into(),
+                ))
+            }
+            Err(error) => return Err(ProviderError::IoError(error)),
+        }
+    }
+    Ok(())
 }
 
 /// Only a complete, unambiguous JSON summary can attest successes. Failure
@@ -2414,6 +2439,17 @@ mod cli_sequence_tests {
         )));
     }
 
+    #[test]
+    fn bulk_staging_refuses_aliasing_names_before_native_io() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = vec!["/one/a.txt".to_string(), "/two/a.txt".to_string()];
+        assert!(reserve_bulk_download_names(dir.path(), &paths).is_err());
+        assert_eq!(
+            std::fs::metadata(dir.path().join("a.txt")).unwrap().len(),
+            0
+        );
+    }
+
     #[tokio::test]
     async fn bulk_sync_uses_one_native_upload_and_accounts_all_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -2715,6 +2751,7 @@ mod cli_sequence_tests {
                 file.iter().filter(|e| e.event_type == "file_start").count(),
                 1
             );
+            assert_eq!(file.first().unwrap().progress.as_ref().unwrap().total, 4);
             assert_eq!(
                 file.iter()
                     .filter(|e| e.event_type == "file_complete")
