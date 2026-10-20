@@ -7,15 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.2.4] - 2026-10-20
 
-### Native Proton Drive, Headless Profiles, and Safer Transfers
+### Native Proton Drive, Headless Profiles, and Bulk Transfers
 
-Proton Drive gains a native client with browser sign-in, encrypted vault sessions, verified transfers and storage quota. Saved profiles can be created and authorized from the GUI, CLI and MCP with the same connection options. This release also strengthens interrupted transfers, recursive operations, profile backups and archive extraction, and repairs desktop packaging and integration issues.
+Proton Drive gains a native client with browser sign-in, encrypted vault sessions, verified transfers and storage quota. Saved profiles can be created and authorized from the GUI, CLI and MCP with the same connection options. Proton CLI compatibility mode groups suitable files into bounded bulk transfers across the CLI, GUI and compatible sync operations. This release also strengthens interrupted transfers, recursive operations, profile backups and archive extraction, and repairs desktop packaging and integration issues.
 
 The complete record of this cycle, including fixes, validation and remaining follow-ups, is in the [4.2.4 release tracker](https://github.com/axpdev-lab/aeroftp/issues/1202).
 
 #### Added
 
 - **Native Proton Drive.** Connect through AeroFTP's own client with browser sign-in, encrypted vault sessions, file and folder operations, revisions, verified downloads, checksums and quota. New profiles choose native mode when available; existing profiles keep official CLI mode until explicitly changed. Small transfers use a single request, large transfers overlap blocks, and revision pages are prefetched (#1293, #1302).
+- **Bulk transfers in Proton CLI mode.** Suitable files share bounded native invocations across the CLI, GUI and compatible sync operations, retaining per-file outcomes, cancellation and verified download publication. Existing resume, delta, checksum and error-correction requirements keep their established paths. MEGAcmd and Filen bulk remain unsupported; their measured gaps are documented separately (#1317).
 - **Headless profile authorization.** CLI and MCP can authorize saved profiles through supported OAuth, GitHub Device Flow and GitHub App flows, refresh expired App sessions, and consume supported structured credentials without storing unused seeds. Pending authorization stays encrypted and bound to the intended profile and user (#1305).
 - **One connection manifest for GUI, CLI and MCP.** Profile creation shares aliases, presets, defaults and public options, preserving existing FTP modes and explicit native/CLI Proton choices (#1304). `profile-add --proton-mode` and `proton sign-in`, `sign-out` and `status` make native Proton profiles usable headlessly (#1296).
 - **Saved SITE templates.** FTP and FTPS profiles can keep commands with text, number and secret slots and run them from the GUI, CLI and TUI. Secret slot values are never saved, and importing the glFTPd catalog preserves existing template names (@jnewing, #1109).
@@ -26,7 +27,7 @@ The complete record of this cycle, including fixes, validation and remaining fol
 
 #### Fixed
 
-- **Cross-profile copies reuse saved sign-in and encryption settings.** CLI, GUI and agent copies open profiles through their shared authentication path, keep overlay data encrypted on the remote, preserve empty directories and skip equal-size files whose destination is not older. A missing or unreadable source subtree fails the plan instead of reporting an incomplete copy as successful; setup errors and partially failed batches close the activity with the correct outcome (#1306, #1316).
+- **Cross-profile copies reuse saved sign-in and encryption settings.** CLI, GUI and agent copies open profiles through their shared authentication path, keep overlay data encrypted on the remote, preserve empty directories and skip equal-size files whose destination is not older. A missing or unreadable source subtree fails the plan instead of reporting an incomplete copy as successful; setup errors and partially failed batches close the activity with the correct outcome. Profile credentials and overlay recovery retain their original account, and recursive plans omit directory symlinks (#1306, #1316).
 - **Recursive file removal uses the file operation.** `rm -r` removes a file or symlink without treating it as a directory; remote-root refusal and guarded recursive directory deletion remain effective. Existing SFTP ancestors are accepted only when confirmed to be directories, including generic mkdir failures (#1316).
 - **Resuming a download checks its source as well as its version.** A leftover from another provider, endpoint, account or remote path cannot supply the start of a new download with matching size or timestamps. Old resume records restart safely, and a short or inconsistent HTTP 206 response cannot replace the destination with an incomplete file (#1224).
 - **Long filenames transfer again.** Download and delta temporary names fit filesystem component limits, including segmented sidecars, instead of failing repeatedly with "File name too long" (#1267).

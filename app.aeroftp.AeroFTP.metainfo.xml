@@ -148,7 +148,8 @@
   <releases>
     <release version="4.2.4" date="2026-10-20">
       <description>
-        <p>Native Proton Drive, Headless Profiles, and Safer Transfers. Connect to Proton Drive through the native client with browser sign-in and encrypted vault sessions, or keep the official CLI mode. Create and authorize saved profiles from the GUI, CLI and MCP with consistent options and profile-bound credentials.</p>
+        <p>Native Proton Drive, Headless Profiles, and Bulk Transfers. Connect to Proton Drive through the native client with browser sign-in and encrypted vault sessions, or keep the official CLI mode. Create and authorize saved profiles from the GUI, CLI and MCP with consistent options and profile-bound credentials.</p>
+        <p>Proton CLI compatibility mode groups suitable files into bounded bulk operations across the CLI, GUI and compatible sync paths, preserving per-file outcomes, cancellation and verified download publication. MEGAcmd and Filen bulk remain unsupported.</p>
         <p>Cross-profile copies preserve saved encryption, empty directories and repeat-copy skip behavior. Interrupted downloads, recursive operations, profile relocation and archive extraction retain their source and destination boundaries. Includes Linux desktop and package repairs, Windows association choices, and updates across all 47 languages.</p>
       </description>
     </release>
