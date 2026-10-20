@@ -3551,6 +3551,7 @@ pub(crate) mod tests {
     use std::sync::Mutex;
 
     // Runs only inside the existing isolated headless-auth child process.
+    #[cfg(target_os = "linux")]
     pub(crate) async fn captured_overlay_owner_survives_account_switch(
         store: &crate::credential_store::CredentialStore,
         owner: i64,
@@ -3745,6 +3746,7 @@ pub(crate) mod tests {
         users::cli_set_active_user(store, owner).unwrap();
     }
 
+    #[cfg(target_os = "linux")]
     async fn captured_aerocrypt_config_stays_scoped(
         store: &crate::credential_store::CredentialStore,
         owner: i64,
