@@ -65643,7 +65643,7 @@ async fn cmd_transfer_doctor(
             "planned_directories": plan.directories.len(),
             "total_bytes": plan.total_bytes,
             "existing_dest_paths": existing_dest_paths,
-            "sample_entries": plan.entries.iter().take(5).map(|entry| serde_json::json!({
+            "sample_entries": plan.entries.iter().chain(&plan.directories).take(5).map(|entry| serde_json::json!({
                 "source_path": entry.source_path,
                 "dest_path": entry.dest_path,
                 "size": entry.size,
