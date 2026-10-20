@@ -106,6 +106,8 @@ impl MtpProvider {
             server_side_copy: Capability::Unsupported,
             list_parallel: Capability::Unsupported,
             batch_list: Capability::Unsupported,
+            bulk_upload: Capability::Unsupported,
+            bulk_download: Capability::Unsupported,
             server_checksum: Capability::Unsupported,
             atomic_rename: Capability::Unsupported,
             rate_limited_api: Capability::Unsupported,

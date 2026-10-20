@@ -553,12 +553,192 @@ struct SyncStreamContext {
 /// work item per planned transfer on demand. The plan stays a plain vector —
 /// allowed by the streaming contract as a plan iterator, not a full executable
 /// node graph for N files.
+#[cfg(test)]
 struct SyncTransfersWorkSource {
     transfers: Arc<Vec<PlannedTransfer>>,
     next: usize,
 }
 
+struct GroupedSyncWorkSource {
+    transfers: Arc<Vec<PlannedTransfer>>,
+    groups: Arc<Vec<std::ops::Range<usize>>>,
+    next: usize,
+}
+
 #[async_trait]
+impl WorkSource for GroupedSyncWorkSource {
+    async fn next_item(&mut self) -> Option<TransferWorkItem> {
+        let group = self.groups.get(self.next)?;
+        self.next += 1;
+        let transfer = &self.transfers[group.start];
+        let size = self.transfers[group.clone()].iter().map(|t| t.total).sum();
+        let direction = if transfer.op == "upload" {
+            TransferDirection::Upload
+        } else {
+            TransferDirection::Download
+        };
+        Some(TransferWorkItem::new(
+            transfer.rel.clone(),
+            group.start,
+            size,
+            direction,
+        ))
+    }
+    fn known_total(&self) -> Option<usize> {
+        Some(self.groups.len())
+    }
+}
+
+fn sync_bulk_groups(
+    transfers: &[PlannedTransfer],
+    caps: &TransferCapabilities,
+    local_root: &str,
+    remote_root: &str,
+    policy: DeltaPolicy,
+    ec: bool,
+) -> Vec<std::ops::Range<usize>> {
+    use crate::transfer_domain::TransferEntry;
+    let entries: Vec<_> = transfers
+        .iter()
+        .enumerate()
+        .map(|(index, t)| TransferEntry {
+            id: index.to_string(),
+            display_name: t.rel.clone(),
+            local_path: crate::sync::join_clean(local_root, &t.rel),
+            remote_path: format!("{}/{}", remote_root.trim_end_matches('/'), t.rel),
+            size: t.total,
+            modified: None,
+        })
+        .collect();
+    crate::transfer_bulk::plan_groups_by_key(&entries, |entry| {
+        let transfer = &transfers[entry.id.parse::<usize>().ok()?];
+        if matches!(policy, DeltaPolicy::Delta)
+            || caps.session_pool.is_available()
+            || ec
+            || transfer.expected_sha256_hex.is_some()
+            || crate::sync::validate_relative_path(&transfer.rel).is_err()
+        {
+            return None;
+        }
+        let upload = transfer.op == "upload";
+        let cap = if upload {
+            caps.bulk_upload
+        } else {
+            caps.bulk_download
+        };
+        if cap != crate::transfer_dag::Capability::Supported
+            || (if upload {
+                caps.resume_upload
+            } else {
+                caps.resume_download
+            })
+            .is_available()
+        {
+            return None;
+        }
+        crate::transfer_bulk::group_key(entry, upload).map(|key| format!("{}:{key}", transfer.op))
+    })
+}
+
+/// Called only for an explicitly admitted group on the primary serial lane.
+/// EC/checksum/delta work retains the established per-file path. Dropping the
+/// enclosing sync drops the owned native process and its staging directory.
+async fn perform_sync_bulk(
+    provider: &mut Box<dyn StorageProvider>,
+    transfers: &[PlannedTransfer],
+    local_root: &str,
+    remote_root: &str,
+    sink: &mut dyn SyncProgressSink,
+) -> Vec<FileOutcome> {
+    use crate::providers::bulk::{BulkTransferItem, BulkTransferOutcome};
+    let upload = transfers[0].op == "upload";
+    let items: Vec<_> = transfers
+        .iter()
+        .map(|t| BulkTransferItem {
+            local_path: crate::sync::join_clean(local_root, &t.rel),
+            remote_path: format!("{}/{}", remote_root.trim_end_matches('/'), t.rel),
+            size: t.total,
+        })
+        .collect();
+    for transfer in transfers {
+        sink.on_file_start(
+            &transfer.rel,
+            transfer.total,
+            transfer.op,
+            transfer.decision_policy,
+        );
+    }
+    if upload {
+        if let Some(parent) = crate::providers::bulk::remote_parent(&items[0].remote_path) {
+            ensure_remote_dir(provider.as_mut(), parent).await;
+        }
+    }
+    // Keep only the latest trustworthy sample per file; this remains bounded
+    // by MAX_BULK_FILES even if a future adapter streams many progress updates.
+    let samples = Arc::new(std::sync::Mutex::new(vec![None; items.len()]));
+    let observed = Arc::clone(&samples);
+    let callback = Some(Box::new(move |index, sent, total| {
+        if let Some(sample) = observed
+            .lock()
+            .expect("bulk sync progress poisoned")
+            .get_mut(index)
+        {
+            *sample = Some((sent, total));
+        }
+    }) as crate::providers::bulk::BulkProgress);
+    let result = if upload {
+        provider.upload_bulk(&items, callback).await
+    } else {
+        provider.download_bulk(&items, callback).await
+    };
+    let results = match result {
+        Ok(results) if results.len() == items.len() => results,
+        Ok(_) => crate::providers::bulk::uncertain_items(
+            items.len(),
+            "Bulk sync returned incomplete outcomes; destination state unknown",
+        ),
+        Err(error) => {
+            return transfers
+                .iter()
+                .map(|_| FileOutcome::Failed {
+                    error: error.to_string(),
+                })
+                .collect()
+        }
+    };
+    transfers
+        .iter()
+        .zip(results)
+        .enumerate()
+        .map(|(index, (transfer, result))| {
+            if let Some((sent, total)) = samples.lock().expect("bulk sync progress poisoned")[index]
+            {
+                sink.on_file_progress(&transfer.rel, sent, total);
+            }
+            match result {
+                BulkTransferOutcome::Completed if upload => FileOutcome::Uploaded {
+                    bytes: transfer.total,
+                    delta_stats: None,
+                    fallback_reason: None,
+                    ec_status: None,
+                },
+                BulkTransferOutcome::Completed => FileOutcome::Downloaded {
+                    bytes: transfer.total,
+                    delta_stats: None,
+                    fallback_reason: None,
+                    ec_status: None,
+                },
+                BulkTransferOutcome::Failed(error) => FileOutcome::Failed {
+                    error: error.to_string(),
+                },
+                BulkTransferOutcome::Uncertain(error) => FileOutcome::Failed { error },
+            }
+        })
+        .collect()
+}
+
+#[async_trait]
+#[cfg(test)]
 impl WorkSource for SyncTransfersWorkSource {
     async fn next_item(&mut self) -> Option<TransferWorkItem> {
         let index = self.next;
@@ -925,8 +1105,42 @@ fn spawn_normal_worker(
 /// session together, counted around each transfer (`RunningTransfers`). That
 /// is the job's real file concurrency; the frontier's fold of per-file
 /// subgraphs cannot see it.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 async fn drive_sync_transfers(
+    job_rx: mpsc::Receiver<TransferJob>,
+    provider: &mut Box<dyn StorageProvider>,
+    delta_batch: &mut Option<Box<dyn DeltaBatch>>,
+    report: &mut SyncReport,
+    sink: &mut dyn SyncProgressSink,
+    transfers: &[PlannedTransfer],
+    local_root: &str,
+    remote_root: &str,
+    download_segments: u32,
+    requested_policy: DeltaPolicy,
+    error_correction: &crate::sync::SyncErrorCorrectionOptions,
+    normal_workers: Vec<Box<dyn StorageProvider>>,
+) -> u32 {
+    drive_sync_transfers_with_bulk(
+        job_rx,
+        provider,
+        delta_batch,
+        report,
+        sink,
+        transfers,
+        local_root,
+        remote_root,
+        download_segments,
+        requested_policy,
+        error_correction,
+        normal_workers,
+        &[],
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn drive_sync_transfers_with_bulk(
     mut job_rx: mpsc::Receiver<TransferJob>,
     provider: &mut Box<dyn StorageProvider>,
     delta_batch: &mut Option<Box<dyn DeltaBatch>>,
@@ -939,6 +1153,7 @@ async fn drive_sync_transfers(
     requested_policy: DeltaPolicy,
     error_correction: &crate::sync::SyncErrorCorrectionOptions,
     normal_workers: Vec<Box<dyn StorageProvider>>,
+    bulk_groups: &[std::ops::Range<usize>],
 ) -> u32 {
     let mut workers = VecDeque::from(normal_workers);
     let mut normal_jobs = JoinSet::new();
@@ -1014,6 +1229,22 @@ async fn drive_sync_transfers(
                         );
                     }
                     Some(job) if matches!(job.lane, SyncTransferLane::NormalPool) && normal_jobs.is_empty() => {
+                        // A native bulk consumes only the explicitly admitted
+                        // range, with one primary session and one graph ack.
+                        if let Some(group) = bulk_groups.binary_search_by_key(&job.transfer_index, |g| g.start).ok().map(|index| &bulk_groups[index]).filter(|g| g.len() > 1) {
+                            let primary_running = running.enter();
+                            let outcomes = perform_sync_bulk(provider, &transfers[group.clone()], local_root, remote_root, sink).await;
+                            drop(primary_running);
+                            let mut attestation = SyncByteAttestation::default();
+                            for (transfer, outcome) in transfers[group.clone()].iter().zip(outcomes) {
+                                let bytes = sync_outcome_bytes(&outcome);
+                                attestation.logical += bytes.logical;
+                                attestation.wire += bytes.wire;
+                                apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
+                            }
+                            let _ = job.ack.send(attestation);
+                            continue;
+                        }
                         // No honest clone pool was available. Reuse the
                         // primary session exactly as the former serial driver.
                         let transfer = &transfers[job.transfer_index];
@@ -1358,6 +1589,14 @@ pub async fn execute_sync_dag(
         let file_slots = sync_caps.max_file_slots.unwrap_or(1).max(1) as usize;
         let streaming_config = StreamingConfig::for_file_slots(file_slots, opts.max_backlog)
             .with_admission(opts.schedule);
+        let bulk_groups = Arc::new(sync_bulk_groups(
+            &transfers,
+            &sync_caps,
+            local_root,
+            remote_root,
+            opts.delta_policy,
+            opts.error_correction.enabled(),
+        ));
         let ctx = Arc::new(SyncStreamContext {
             caps: sync_caps,
             manager,
@@ -1375,8 +1614,9 @@ pub async fn execute_sync_dag(
         // concurrently on this task. Each admitted subgraph hands its transfer
         // to the driver over a `job_tx` clone; when the frontier finishes, every
         // clone is dropped, the channel closes, and the driver loop ends.
-        let source = SyncTransfersWorkSource {
+        let source = GroupedSyncWorkSource {
             transfers: Arc::clone(&transfers),
+            groups: Arc::clone(&bulk_groups),
             next: 0,
         };
         let stream_tx = job_tx.clone();
@@ -1397,7 +1637,7 @@ pub async fn execute_sync_dag(
             })
             .await
         };
-        let driver_future = drive_sync_transfers(
+        let driver_future = drive_sync_transfers_with_bulk(
             job_rx,
             provider,
             &mut delta_batch,
@@ -1410,6 +1650,7 @@ pub async fn execute_sync_dag(
             opts.delta_policy,
             &opts.error_correction,
             normal_workers,
+            &bulk_groups,
         );
         // Workers are spawned while the driver is polled. The scope keeps this
         // job visible to them, including when the sync future is a `block_on`
@@ -1990,6 +2231,50 @@ mod tests {
             decision_policy: policy,
             expected_sha256_hex: None,
         }
+    }
+
+    #[test]
+    fn bulk_sync_preserves_delta_ec_checksum_resume_and_clone_paths() {
+        use crate::transfer_dag::Capability;
+        let transfers = vec![
+            planned_upload("first.bin", DeltaPolicy::SizeOnly),
+            planned_upload("second.bin", DeltaPolicy::SizeOnly),
+        ];
+        let caps = TransferCapabilities {
+            bulk_upload: Capability::Supported,
+            ..Default::default()
+        };
+        let plan = |caps: &TransferCapabilities, policy, ec| {
+            sync_bulk_groups(&transfers, caps, "/tmp/local", "/remote", policy, ec)
+        };
+        assert_eq!(plan(&caps, DeltaPolicy::SizeOnly, false), vec![0..2]);
+        assert_eq!(plan(&caps, DeltaPolicy::Delta, false), vec![0..1, 1..2]);
+        assert_eq!(plan(&caps, DeltaPolicy::SizeOnly, true), vec![0..1, 1..2]);
+        let mut safe_caps = caps.clone();
+        safe_caps.resume_upload = Capability::Supported;
+        assert_eq!(
+            plan(&safe_caps, DeltaPolicy::SizeOnly, false),
+            vec![0..1, 1..2]
+        );
+        safe_caps = caps.clone();
+        safe_caps.session_pool = Capability::Supported;
+        assert_eq!(
+            plan(&safe_caps, DeltaPolicy::SizeOnly, false),
+            vec![0..1, 1..2]
+        );
+        let mut checksummed = transfers;
+        checksummed[1].expected_sha256_hex = Some("ab".repeat(32));
+        assert_eq!(
+            sync_bulk_groups(
+                &checksummed,
+                &caps,
+                "/tmp/local",
+                "/remote",
+                DeltaPolicy::SizeOnly,
+                false
+            ),
+            vec![0..1, 1..2]
+        );
     }
 
     #[tokio::test]

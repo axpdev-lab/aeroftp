@@ -32,6 +32,10 @@ impl Capability {
     }
 }
 
+fn unsupported_capability() -> Capability {
+    Capability::Unsupported
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferCapabilities {
     pub file_parallel: Capability,
@@ -45,6 +49,12 @@ pub struct TransferCapabilities {
     pub server_side_copy: Capability,
     pub list_parallel: Capability,
     pub batch_list: Capability,
+    /// One native invocation carries multiple files; independent of session
+    /// cloning and file_parallel. Protocol defaults never claim this.
+    #[serde(default = "unsupported_capability")]
+    pub bulk_upload: Capability,
+    #[serde(default = "unsupported_capability")]
+    pub bulk_download: Capability,
     pub server_checksum: Capability,
     /// Whether a replace puts one file in place of another in one step, with
     /// no moment in which neither is there. `unsupported` also stands for
@@ -93,6 +103,8 @@ impl Default for TransferCapabilities {
             server_side_copy: Capability::Unsupported,
             list_parallel: Capability::Unsupported,
             batch_list: Capability::Unsupported,
+            bulk_upload: Capability::Unsupported,
+            bulk_download: Capability::Unsupported,
             server_checksum: Capability::Unsupported,
             atomic_rename: Capability::Unsupported,
             rate_limited_api: Capability::Unsupported,

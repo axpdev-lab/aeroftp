@@ -1,0 +1,143 @@
+{
+  "date": "2026-10-20",
+  "source_commit": "b9e449558a83d87253896f79fba9767ed11cd334",
+  "platform": "Linux x86_64",
+  "wrapper_build": "debug",
+  "proton_cli": "cli-drive@0.9.0+75612299",
+  "proton_sdk": "js@0.22.2+75612299",
+  "fixture": {
+    "files": 200,
+    "bytes_per_file": 4096,
+    "distinct_payloads": true
+  },
+  "method": "3 alternating official/shared DAG pairs, then one four-worker existing per-file adapter baseline. Upload: 200 explicit local sources. Official download: complete fixture folder. Bulk download: selected UIDs only. Every download compared byte for byte. Filen gateway measurements on independent account ran concurrently.",
+  "cleanup": "exact generated Proton fixture permanently removed; BULK_LIVE_CLEANUP Ok(true)",
+  "results": [
+    {
+      "bytes": 819200,
+      "direction": "upload",
+      "files": 200,
+      "integrity": "readback_pending",
+      "mode": "official",
+      "round": 0,
+      "seconds": 18.971457676
+    },
+    {
+      "bytes": 819200,
+      "direction": "download",
+      "files": 200,
+      "integrity": "200_byte_identical",
+      "mode": "official",
+      "round": 0,
+      "seconds": 31.859672826
+    },
+    {
+      "bytes": 819200,
+      "direction": "upload",
+      "files": 200,
+      "integrity": "readback_pending",
+      "mode": "bulk",
+      "round": 0,
+      "seconds": 28.050849626
+    },
+    {
+      "bytes": 819200,
+      "direction": "download",
+      "files": 200,
+      "integrity": "200_byte_identical",
+      "mode": "bulk",
+      "round": 0,
+      "seconds": 20.996285449
+    },
+    {
+      "bytes": 819200,
+      "direction": "upload",
+      "files": 200,
+      "integrity": "readback_pending",
+      "mode": "bulk",
+      "round": 1,
+      "seconds": 16.033097121
+    },
+    {
+      "bytes": 819200,
+      "direction": "download",
+      "files": 200,
+      "integrity": "200_byte_identical",
+      "mode": "bulk",
+      "round": 1,
+      "seconds": 22.12984325
+    },
+    {
+      "bytes": 819200,
+      "direction": "upload",
+      "files": 200,
+      "integrity": "readback_pending",
+      "mode": "official",
+      "round": 1,
+      "seconds": 17.78468754
+    },
+    {
+      "bytes": 819200,
+      "direction": "download",
+      "files": 200,
+      "integrity": "200_byte_identical",
+      "mode": "official",
+      "round": 1,
+      "seconds": 22.888705964
+    },
+    {
+      "bytes": 819200,
+      "direction": "upload",
+      "files": 200,
+      "integrity": "readback_pending",
+      "mode": "official",
+      "round": 2,
+      "seconds": 20.141105036
+    },
+    {
+      "bytes": 819200,
+      "direction": "download",
+      "files": 200,
+      "integrity": "200_byte_identical",
+      "mode": "official",
+      "round": 2,
+      "seconds": 22.591815506
+    },
+    {
+      "bytes": 819200,
+      "direction": "upload",
+      "files": 200,
+      "integrity": "readback_pending",
+      "mode": "bulk",
+      "round": 2,
+      "seconds": 24.362414882
+    },
+    {
+      "bytes": 819200,
+      "direction": "download",
+      "files": 200,
+      "integrity": "200_byte_identical",
+      "mode": "bulk",
+      "round": 2,
+      "seconds": 23.690110866
+    },
+    {
+      "bytes": 819200,
+      "direction": "upload",
+      "files": 200,
+      "integrity": "readback_pending",
+      "mode": "per-file",
+      "round": 3,
+      "seconds": 123.605244389
+    },
+    {
+      "bytes": 819200,
+      "direction": "download",
+      "files": 200,
+      "integrity": "200_byte_identical",
+      "mode": "per-file",
+      "round": 3,
+      "seconds": 135.034396367
+    }
+  ]
+}
