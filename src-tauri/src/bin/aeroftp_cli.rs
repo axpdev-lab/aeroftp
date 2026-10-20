@@ -11841,7 +11841,23 @@ async fn run_shared_provider_download_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
-    if !is_pool_backed {
+    let native_bulk_is_useful = capabilities.bulk_download
+        == ftp_client_gui_lib::transfer_dag::Capability::Supported
+        && ftp_client_gui_lib::providers::bulk::reduces_cli_invocations(
+            &files
+                .iter()
+                .map(|(remote, local, size)| {
+                    ftp_client_gui_lib::providers::bulk::BulkTransferItem {
+                        local_path: local.clone(),
+                        remote_path: remote.clone(),
+                        size: *size,
+                    }
+                })
+                .collect::<Vec<_>>(),
+            false,
+            workers,
+        );
+    if !is_pool_backed && !native_bulk_is_useful {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
         let base = provider_arc
@@ -12114,7 +12130,23 @@ async fn run_shared_provider_upload_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
-    if !is_pool_backed {
+    let native_bulk_is_useful = capabilities.bulk_upload
+        == ftp_client_gui_lib::transfer_dag::Capability::Supported
+        && ftp_client_gui_lib::providers::bulk::reduces_cli_invocations(
+            &files
+                .iter()
+                .map(|(local, remote, size)| {
+                    ftp_client_gui_lib::providers::bulk::BulkTransferItem {
+                        local_path: local.clone(),
+                        remote_path: remote.clone(),
+                        size: *size,
+                    }
+                })
+                .collect::<Vec<_>>(),
+            true,
+            workers,
+        );
+    if !is_pool_backed && !native_bulk_is_useful {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
         let base = provider_arc

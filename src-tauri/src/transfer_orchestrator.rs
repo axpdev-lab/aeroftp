@@ -41,6 +41,31 @@ pub struct TransferBatch {
 pub trait TransferExecutor {
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome;
 
+    /// A destination-compatible native bulk, independent of clone pools. None
+    /// keeps the established single-file graph. Only an executor implementing
+    /// `execute_bulk_with_session` may return a key.
+    fn bulk_group_key(&self, _entry: &TransferEntry) -> Option<String> {
+        None
+    }
+
+    async fn execute_bulk_with_session(
+        &self,
+        entries: Vec<TransferEntry>,
+        _session: TransferSessionLease,
+        _cancel: Arc<AtomicBool>,
+    ) -> Vec<TransferOutcome> {
+        entries
+            .iter()
+            .map(|_| {
+                TransferOutcome::Failed(TransferFailure::new(
+                    crate::transfer_domain::TransferFailureKind::Unknown,
+                    "Executor has no native bulk implementation",
+                    false,
+                ))
+            })
+            .collect()
+    }
+
     fn provider_type(&self) -> Option<ProviderType> {
         None
     }

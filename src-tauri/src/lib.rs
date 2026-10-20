@@ -308,6 +308,7 @@ mod sync_scheduler;
 pub mod sync_script;
 pub mod sync_versioning;
 mod totp;
+mod transfer_bulk;
 pub mod transfer_dag;
 pub mod transfer_dag_batch;
 pub mod transfer_dag_single_file;

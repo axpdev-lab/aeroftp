@@ -320,8 +320,13 @@ where
 
     // Stream the known entry list through a bounded backlog and a bounded
     // active set. A file's transfer subgraph exists only while it is admitted.
-    let source = BatchEntriesWorkSource {
+    let groups = Arc::new(crate::transfer_bulk::plan_groups(
+        &entries,
+        executor.as_ref(),
+    ));
+    let source = BatchGroupsWorkSource {
         entries: Arc::clone(&entries),
+        groups: Arc::clone(&groups),
         direction: dag_direction,
         next: 0,
     };
@@ -334,7 +339,16 @@ where
     let mut streaming_summary =
         crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
             let ctx = Arc::clone(&ctx);
-            async move { run_one_batch_file(item, admission, ctx).await }
+            let range = groups[item.index].clone();
+            async move {
+                if range.len() > 1 {
+                    run_bulk_batch_group(range, admission, ctx).await
+                } else {
+                    let mut item = item;
+                    item.index = range.start;
+                    run_one_batch_file(item, admission, ctx).await
+                }
+            }
         })
         .await;
     let (ttfb_nanos, ttfb_samples) = ttfb_guard.totals();
@@ -351,7 +365,7 @@ where
     // for a whole file whatever ran beside it. The job-level value is the
     // most files that held a transfer session together (#591).
     streaming_summary.metrics.slot_peak = progress.lock().await.peak_active;
-    let cancelled = cancel.load(Ordering::Relaxed);
+    let cancelled = cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled();
 
     // DAG-P2-07 (block E): the frontier folded every per-file subgraph metrics
     // into one job-level total. Combine it with the wall clock and the process
@@ -413,6 +427,7 @@ struct BatchStreamContext<E> {
 /// A lazy [`WorkSource`] over a known batch entry list. It yields one work item
 /// per entry on demand, so the frontier never allocates a second O(total_files)
 /// vector alongside the caller's entries.
+#[cfg(test)]
 struct BatchEntriesWorkSource {
     entries: Arc<Vec<TransferEntry>>,
     direction: TransferDirection,
@@ -420,6 +435,7 @@ struct BatchEntriesWorkSource {
 }
 
 #[async_trait]
+#[cfg(test)]
 impl WorkSource for BatchEntriesWorkSource {
     async fn next_item(&mut self) -> Option<TransferWorkItem> {
         let index = self.next;
@@ -436,6 +452,222 @@ impl WorkSource for BatchEntriesWorkSource {
     fn known_total(&self) -> Option<usize> {
         Some(self.entries.len())
     }
+}
+
+/// Native bulks are one wire work unit in the same bounded DAG frontier.
+/// They retain file-level identities/results, with one session/governor lease
+/// held for the native invocation. No future command can touch queued groups.
+struct BatchGroupsWorkSource {
+    entries: Arc<Vec<TransferEntry>>,
+    groups: Arc<Vec<std::ops::Range<usize>>>,
+    direction: TransferDirection,
+    next: usize,
+}
+
+#[async_trait]
+impl WorkSource for BatchGroupsWorkSource {
+    async fn next_item(&mut self) -> Option<TransferWorkItem> {
+        let index = self.next;
+        let range = self.groups.get(index)?;
+        self.next += 1;
+        let size = self.entries[range.clone()].iter().map(|e| e.size).sum();
+        Some(TransferWorkItem::new(
+            self.entries[range.start].id.clone(),
+            index,
+            size,
+            self.direction,
+        ))
+    }
+    fn known_total(&self) -> Option<usize> {
+        Some(self.groups.len())
+    }
+}
+
+async fn run_bulk_batch_group<E>(
+    range: std::ops::Range<usize>,
+    mut admission: FileAdmission,
+    ctx: Arc<BatchStreamContext<E>>,
+) -> TransferDagMetrics
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    if ctx.cancel.load(Ordering::Relaxed) || ctx.executor.is_transfer_cancelled() {
+        return TransferDagMetrics::default();
+    }
+    let group = Arc::new(ctx.entries[range].to_vec());
+    let shaped = TransferDagBuilder::single_file(ctx.dag_direction);
+    admission.materialize_nodes(shaped.dag.nodes().len());
+    let settled = Arc::new(std::sync::Mutex::new(vec![false; group.len()]));
+    let active = Arc::new(AtomicBool::new(false));
+    let bytes = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let runner: Arc<dyn DagNodeRunner> = {
+        let ctx = Arc::clone(&ctx);
+        let group = Arc::clone(&group);
+        let settled = Arc::clone(&settled);
+        let active = Arc::clone(&active);
+        let bytes = Arc::clone(&bytes);
+        Arc::new(move |node: TransferNode| -> NodeFuture {
+            let ctx = Arc::clone(&ctx);
+            let group = Arc::clone(&group);
+            let settled = Arc::clone(&settled);
+            let active = Arc::clone(&active);
+            let bytes = Arc::clone(&bytes);
+            Box::pin(async move {
+                if !matches!(
+                    node.kind,
+                    TransferNodeKind::UploadFile | TransferNodeKind::DownloadFile
+                ) {
+                    return NodeOutcome::Completed;
+                }
+                if ctx.cancel.load(Ordering::Relaxed) || ctx.executor.is_transfer_cancelled() {
+                    return NodeOutcome::Completed;
+                }
+                let endpoint = ctx.executor.endpoint_identity().await;
+                let disks: Vec<_> = group
+                    .iter()
+                    .flat_map(|entry| match ctx.dag_direction {
+                        TransferDirection::Upload => {
+                            vec![DiskLeaseRequest::read(entry.local_path.clone())]
+                        }
+                        TransferDirection::Download => {
+                            crate::providers::multi_thread::download_job_disk_requests(
+                                std::path::Path::new(&entry.local_path),
+                            )
+                        }
+                    })
+                    .collect();
+                let leases = acquire_session_then_job(
+                    &ctx.session_pool,
+                    &crate::transfer_dag::governor::global(),
+                    endpoint,
+                    disks,
+                    || ctx.cancel.load(Ordering::Relaxed) || ctx.executor.is_transfer_cancelled(),
+                )
+                .await;
+                let outcomes = match leases {
+                    Ok(None) => return NodeOutcome::Completed,
+                    Ok(Some((session, _job))) => {
+                        {
+                            let mut progress = ctx.progress.lock().await;
+                            // Peak sessions remains physical (one native call),
+                            // while active is the number of submitted files.
+                            mark_file_active(&mut progress);
+                            progress.active =
+                                progress.active.saturating_add((group.len() - 1) as u32);
+                        }
+                        active.store(true, Ordering::Release);
+                        // Keep _job alive across the full wire call.
+                        ctx.executor
+                            .execute_bulk_with_session(
+                                group.as_ref().clone(),
+                                session,
+                                Arc::clone(&ctx.cancel),
+                            )
+                            .await
+                    }
+                    Err(error) => group
+                        .iter()
+                        .map(|entry| {
+                            let failure = TransferFailure::new(
+                                TransferFailureKind::Unknown,
+                                format!("Transfer session acquisition failed: {error}"),
+                                false,
+                            );
+                            emit_checkout_failure(
+                                ctx.sink.as_ref(),
+                                entry,
+                                ctx.dag_direction,
+                                &failure,
+                            );
+                            TransferOutcome::Failed(failure)
+                        })
+                        .collect(),
+                };
+                let mut node_outcome = NodeOutcome::Completed;
+                let was_active = active.load(Ordering::Acquire);
+                for (index, entry) in group.iter().enumerate() {
+                    let outcome = outcomes.get(index).cloned().unwrap_or_else(|| {
+                        TransferOutcome::Failed(TransferFailure::new(
+                            TransferFailureKind::Unknown,
+                            "Bulk executor returned incomplete outcomes; destination state unknown",
+                            false,
+                        ))
+                    });
+                    if let TransferOutcome::Failed(_) = &outcome {
+                        node_outcome = node_outcome_for_file_result(&outcome);
+                    }
+                    let success_bytes = if matches!(outcome, TransferOutcome::Success) {
+                        entry.size
+                    } else {
+                        0
+                    };
+                    bytes.fetch_add(success_bytes, Ordering::Relaxed);
+                    ctx.executor.take_transfer_attempts(&entry.id);
+                    account_outcome(
+                        &ctx.progress,
+                        &ctx.sink,
+                        ctx.progress_observer.as_ref(),
+                        outcome,
+                        success_bytes,
+                        was_active,
+                    )
+                    .await;
+                    settled.lock().expect("bulk settlement poisoned")[index] = true;
+                }
+                active.store(false, Ordering::Release);
+                node_outcome
+            })
+        })
+    };
+    let observer = Arc::new(crate::transfer_dag::observer::CollectingDagObserver::default());
+    let mut metrics = match execute_dag(
+        &shaped.dag,
+        &ctx.resource_manager,
+        runner,
+        Arc::clone(&observer) as Arc<dyn DagObserver>,
+        Some(Arc::clone(&ctx.aimd)),
+    )
+    .await
+    {
+        Ok(summary) => summary.metrics,
+        Err(error) => {
+            for (index, entry) in group.iter().enumerate() {
+                if settled.lock().expect("bulk settlement poisoned")[index] {
+                    continue;
+                }
+                let failure = TransferFailure::new(
+                    TransferFailureKind::Unknown,
+                    format!("Bulk graph stopped; destination state unknown: {error}"),
+                    false,
+                );
+                crate::transfer_bulk::emit_event(
+                    ctx.sink.as_ref(),
+                    entry,
+                    ctx.dag_direction == TransferDirection::Upload,
+                    "file_error",
+                    Some(&failure),
+                );
+                account_outcome(
+                    &ctx.progress,
+                    &ctx.sink,
+                    ctx.progress_observer.as_ref(),
+                    TransferOutcome::Failed(failure),
+                    0,
+                    active.load(Ordering::Acquire),
+                )
+                .await;
+            }
+            observer.metrics()
+        }
+    };
+    let moved = bytes.load(Ordering::Relaxed);
+    metrics.logical_bytes = moved;
+    metrics.wire_bytes = moved;
+    metrics.bytes_transferred = moved;
+    if ctx.dag_direction == TransferDirection::Download {
+        metrics.local_payload_bytes = moved;
+    }
+    metrics
 }
 
 /// DAG-P2-04: map batch config + capabilities to the streaming frontier bounds.

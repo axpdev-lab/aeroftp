@@ -14,6 +14,10 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
+use super::bulk::{
+    plain_bulk_name, uncertain_items, BulkProgress, BulkTransferItem, BulkTransferOutcome,
+    MAX_BULK_BYTES, MAX_BULK_FILES, MAX_BULK_PATH_BYTES,
+};
 use super::{
     ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageProvider,
 };
@@ -119,6 +123,265 @@ pub struct ProtonCliProvider {
 }
 
 impl ProtonCliProvider {
+    /// The CLI walks/decrypts a parent listing for every path spelled by name,
+    /// serially, before starting its download queue. A fresh listing binds only
+    /// the selected names to UIDs; a /my-files/UID lookup skips those repeated
+    /// walks without recursively reading unselected siblings. Other sections
+    /// retain their established path resolution.
+    async fn bulk_download_sources(&mut self, remotes: &[String]) -> Vec<String> {
+        let Some(first) = remotes.first() else {
+            return Vec::new();
+        };
+        let parent = parent_of(first);
+        if first_segment(first) != "my-files" || remotes.iter().any(|r| parent_of(r) != parent) {
+            return remotes.to_vec();
+        }
+        let Ok(entries) = self.list(&parent).await else {
+            return remotes.to_vec();
+        };
+        let mut by_name = std::collections::HashMap::new();
+        let mut duplicates = std::collections::HashSet::new();
+        for entry in entries {
+            if entry.is_dir {
+                continue;
+            }
+            if by_name.contains_key(&entry.name) {
+                duplicates.insert(entry.name.clone());
+            }
+            by_name.insert(entry.name, entry.metadata.get("uid").cloned());
+        }
+        let candidate: Vec<_> = remotes
+            .iter()
+            .map(|remote| {
+                let name = basename(remote);
+                if duplicates.contains(&name) {
+                    return remote.clone();
+                }
+                by_name
+                    .get(&name)
+                    .and_then(|uid| uid.as_deref())
+                    .filter(|uid| valid_cli_node_uid(uid))
+                    .map(|uid| format!("/my-files/{uid}"))
+                    .unwrap_or_else(|| remote.clone())
+            })
+            .collect();
+        // Old Proton volume/link IDs can be over 200 bytes. Never let an
+        // expanded UID list exceed the conservative command-line budget.
+        if candidate.iter().map(|p| p.len() + 3).sum::<usize>() + 1024 > MAX_BULK_PATH_BYTES {
+            remotes.to_vec()
+        } else {
+            candidate
+        }
+    }
+
+    /// Unlike `run_cli`, a mutating multi-file call is NEVER replayed. An
+    /// interrupted process may have committed an arbitrary subset of revisions.
+    async fn run_bulk_once(&self, args: &[String]) -> Result<std::process::Output, ProviderError> {
+        if self.binary.is_empty() || !binary_exists(&self.binary) {
+            return Err(ProviderError::InvalidConfig(MISSING_CLI.to_string()));
+        }
+        let mut cmd = Command::new(&self.binary);
+        cmd.args(args).kill_on_drop(true);
+        for (key, _) in std::env::vars_os() {
+            if key.to_string_lossy().starts_with("AEROFTP_") {
+                cmd.env_remove(&key);
+            }
+        }
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(TRANSFER_TIMEOUT_SECS),
+            cmd.output(),
+        )
+        .await
+        {
+            Ok(Ok(output)) => Ok(output),
+            Ok(Err(error)) => Err(ProviderError::IoError(error)),
+            Err(_) => Err(ProviderError::Timeout),
+        }
+    }
+
+    async fn transfer_bulk(
+        &mut self,
+        items: &[BulkTransferItem],
+        upload: bool,
+        progress: Option<BulkProgress>,
+    ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
+        if items.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut bytes = 0u64;
+        let mut path_bytes = 0usize;
+        let mut names = std::collections::HashSet::new();
+        let mut remotes = Vec::with_capacity(items.len());
+        let mut locals = Vec::with_capacity(items.len());
+        let mut valid_indices = Vec::with_capacity(items.len());
+        let mut outcomes = uncertain_items(items.len(), "Bulk item was not attempted");
+        let mut group_parent = None;
+        for (index, item) in items.iter().enumerate() {
+            bytes = bytes.saturating_add(item.size);
+            path_bytes = path_bytes
+                .saturating_add(item.local_path.len())
+                .saturating_add(item.remote_path.len());
+            let remote = self.resolve_path(&item.remote_path);
+            let name = plain_bulk_name(&remote).ok_or_else(|| {
+                ProviderError::InvalidPath("Bulk requires a portable file basename".into())
+            })?;
+            let local = Path::new(&item.local_path);
+            if local.file_name().and_then(|s| s.to_str()) != Some(name)
+                || !names.insert(name.to_lowercase())
+            {
+                return Err(ProviderError::InvalidPath(
+                    "Bulk file names must be distinct and retain their destination spelling".into(),
+                ));
+            }
+            let parent = if upload {
+                parent_of(&remote)
+            } else {
+                local
+                    .parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            if group_parent.as_ref().is_some_and(|p| p != &parent) {
+                return Err(ProviderError::InvalidPath(
+                    "Bulk files must share a destination folder".into(),
+                ));
+            }
+            group_parent = Some(parent);
+            if upload {
+                ensure_parent_writable(&parent_of(&remote))?;
+                let preflight = (|| {
+                    let metadata =
+                        std::fs::symlink_metadata(local).map_err(ProviderError::IoError)?;
+                    if !metadata.is_file() || metadata.len() != item.size {
+                        return Err(ProviderError::InvalidPath(
+                            "Bulk source changed or is not a regular file".into(),
+                        ));
+                    }
+                    literal_local_path_for_cli(&normalize_local_path_for_cli(&item.local_path))
+                })();
+                match preflight {
+                    Ok(path) => locals.push(path),
+                    Err(error) => {
+                        outcomes[index] = BulkTransferOutcome::Failed(error);
+                        continue;
+                    }
+                }
+            }
+            valid_indices.push(index);
+            remotes.push(remote);
+        }
+        if items.len() > MAX_BULK_FILES
+            || bytes > MAX_BULK_BYTES
+            || path_bytes > MAX_BULK_PATH_BYTES
+        {
+            return Err(ProviderError::InvalidConfig(
+                "Bulk exceeds the bounded transfer limits".into(),
+            ));
+        }
+        if valid_indices.is_empty() {
+            return Ok(outcomes);
+        }
+        let parent = group_parent.expect("non-empty bulk has parent");
+        // TempDir owns cleanup even when cancellation drops this future. A
+        // download shares its destination device so publication is a rename.
+        let staging = if upload {
+            None
+        } else {
+            tokio::fs::create_dir_all(&parent)
+                .await
+                .map_err(ProviderError::IoError)?;
+            Some(
+                tempfile::Builder::new()
+                    .prefix(".aeroftp-proton-bulk-")
+                    .tempdir_in(&parent)
+                    .map_err(ProviderError::IoError)?,
+            )
+        };
+        let mut args: Vec<String> = [
+            "filesystem",
+            if upload { "upload" } else { "download" },
+            "-j",
+            "-f",
+            if upload {
+                "create-new-revision"
+            } else {
+                "remove"
+            },
+            "-d",
+            "merge",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        args.extend(if upload {
+            locals
+        } else {
+            self.bulk_download_sources(&remotes).await
+        });
+        args.push(if let Some(dir) = staging.as_ref() {
+            literal_local_path_for_cli(&dir.path().to_string_lossy())?
+        } else {
+            parent
+        });
+        if args.iter().map(|arg| arg.len() + 3).sum::<usize>() > MAX_BULK_PATH_BYTES {
+            return Err(ProviderError::InvalidConfig(
+                "Encoded bulk command exceeds the command-line budget".into(),
+            ));
+        }
+        for &index in &valid_indices {
+            if let Some(ref cb) = progress {
+                cb(index, 0, items[index].size);
+            }
+        }
+        let output = match self.run_bulk_once(&args).await {
+            Ok(output) => output,
+            Err(error) => {
+                for &index in &valid_indices {
+                    outcomes[index] = BulkTransferOutcome::Uncertain(format!(
+                        "Bulk interrupted; remote state unknown: {error}"
+                    ));
+                }
+                return Ok(outcomes);
+            }
+        };
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut results = bulk_summary_outcomes(&stdout, &remotes, output.status.success());
+        for (position, result) in results.iter_mut().enumerate() {
+            let index = valid_indices[position];
+            if !matches!(result, BulkTransferOutcome::Completed) {
+                continue;
+            }
+            if let Some(dir) = staging.as_ref() {
+                let name = basename(&remotes[position]);
+                let staged = dir.path().join(&name);
+                let publish = async {
+                    let metadata = tokio::fs::symlink_metadata(&staged).await?;
+                    if !metadata.is_file() || metadata.len() != items[index].size {
+                        return Err(std::io::Error::other(
+                            "Bulk download size differs from the planned file",
+                        ));
+                    }
+                    tokio::fs::rename(&staged, &items[index].local_path).await
+                }
+                .await;
+                if let Err(error) = publish {
+                    *result = BulkTransferOutcome::Failed(ProviderError::IoError(error));
+                    continue;
+                }
+            }
+            if let Some(ref cb) = progress {
+                cb(index, items[index].size, items[index].size);
+            }
+        }
+        for (index, result) in valid_indices.into_iter().zip(results) {
+            outcomes[index] = result;
+        }
+        Ok(outcomes)
+    }
+
     pub fn new(config: ProtonConfig) -> Self {
         let binary = resolve_proton_drive(config.binary_path.as_deref());
         Self {
@@ -519,6 +782,69 @@ fn transfer_failures(stdout: &str) -> Option<Vec<(String, String)>> {
         })
         .collect();
     (!failures.is_empty()).then_some(failures)
+}
+
+fn valid_cli_node_uid(uid: &str) -> bool {
+    let valid_part = |part: &str| {
+        let old = (88..=108).contains(&part.len());
+        (part.len() == 22 || old)
+            && part
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-' || (old && c == b'='))
+    };
+    uid.split_once('~')
+        .is_some_and(|(volume, link)| valid_part(volume) && valid_part(link))
+}
+
+/// Only a complete, unambiguous JSON summary can attest successes. Failure
+/// names are basenames in Proton's TransferQueue, hence the planner's unique
+/// basename rule. Missing/malformed counters never turn into blanket success.
+fn bulk_summary_outcomes(
+    stdout: &str,
+    remotes: &[String],
+    exit_success: bool,
+) -> Vec<BulkTransferOutcome> {
+    let parse = || -> Option<Vec<BulkTransferOutcome>> {
+        let summary: Value = serde_json::from_str(stdout.trim()).ok()?;
+        let transferred = summary.get("transferredItems")?.as_u64()?;
+        let skipped = summary.get("skippedItems")?.as_u64()?;
+        let failed = summary.get("failedItems")?.as_u64()?;
+        let failures = summary.get("failures")?.as_array()?;
+        if transferred.checked_add(skipped)?.checked_add(failed)? != remotes.len() as u64
+            || failed != failures.len() as u64
+            || (!exit_success && failed == 0)
+        {
+            return None;
+        }
+        let mut by_name = std::collections::HashMap::new();
+        for failure in failures {
+            let name = failure.get("name")?.as_str()?;
+            let error = failure.get("error")?.as_str()?;
+            if !remotes.iter().any(|remote| basename(remote) == name)
+                || by_name.insert(name, error).is_some()
+            {
+                return None;
+            }
+        }
+        Some(
+            remotes
+                .iter()
+                .map(|remote| match by_name.get(basename(remote).as_str()) {
+                    Some(error) => BulkTransferOutcome::Failed(classify_transfer_failures(&[(
+                        basename(remote),
+                        (*error).to_string(),
+                    )])),
+                    None => BulkTransferOutcome::Completed,
+                })
+                .collect(),
+        )
+    };
+    parse().unwrap_or_else(|| {
+        uncertain_items(
+            remotes.len(),
+            "Native CLI returned no complete per-file summary; remote state unknown",
+        )
+    })
 }
 
 /// `name: error` for each failed item, joined for the message the user reads.
@@ -1258,6 +1584,29 @@ impl StorageProvider for ProtonCliProvider {
         Ok(())
     }
 
+    fn supports_bulk_upload(&self) -> bool {
+        true
+    }
+    fn supports_bulk_download(&self) -> bool {
+        true
+    }
+
+    async fn upload_bulk(
+        &mut self,
+        items: &[BulkTransferItem],
+        progress: Option<BulkProgress>,
+    ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
+        self.transfer_bulk(items, true, progress).await
+    }
+
+    async fn download_bulk(
+        &mut self,
+        items: &[BulkTransferItem],
+        progress: Option<BulkProgress>,
+    ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
+        self.transfer_bulk(items, false, progress).await
+    }
+
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let abs = self.resolve_path(path);
         let parent = parent_of(&abs);
@@ -1978,6 +2327,552 @@ mod cli_sequence_tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
+
+    fn bulk_upload_items(dir: &Path, count: usize) -> Vec<BulkTransferItem> {
+        (0..count)
+            .map(|i| {
+                let name = format!("file-{i:03}.txt");
+                let path = dir.join(&name);
+                std::fs::write(&path, b"DATA").unwrap();
+                BulkTransferItem {
+                    local_path: path.to_string_lossy().into_owned(),
+                    remote_path: format!("/my-files/bulk/{name}"),
+                    size: 4,
+                }
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn bulk_download_binds_fresh_uids_to_only_the_selected_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let uid_a = format!("{}~{}", "A".repeat(22), "B".repeat(22));
+        let uid_b = format!("{}~{}", "A".repeat(22), "C".repeat(22));
+        let uid_other = format!("{}~{}", "A".repeat(22), "D".repeat(22));
+        std::fs::write(
+            dir.path().join("my-files_bulk.json"),
+            serde_json::to_vec(&serde_json::json!([
+                {"name":{"ok":true,"value":"a.txt"},"uid":uid_a,"type":"file"},
+                {"name":{"ok":true,"value":"b.txt"},"uid":uid_b,"type":"file"},
+                {"name":{"ok":true,"value":"not-selected.txt"},"uid":uid_other,"type":"file"}
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        let map: std::collections::HashMap<_, _> =
+            [(uid_a.clone(), "a.txt"), (uid_b.clone(), "b.txt")]
+                .into_iter()
+                .collect();
+        std::fs::write(
+            dir.path().join("uid-name-map.json"),
+            serde_json::to_vec(&map).unwrap(),
+        )
+        .unwrap();
+        let items: Vec<_> = ["a.txt", "b.txt"]
+            .iter()
+            .map(|name| BulkTransferItem {
+                local_path: dir.path().join(name).to_string_lossy().into_owned(),
+                remote_path: format!("/my-files/bulk/{name}"),
+                size: 14,
+            })
+            .collect();
+        let results = provider(&shim).download_bulk(&items, None).await.unwrap();
+        assert!(results
+            .iter()
+            .all(|r| matches!(r, BulkTransferOutcome::Completed)));
+        let argv = read_argv(dir.path());
+        let commands = verbs(&argv, "download");
+        assert_eq!(commands.len(), 1);
+        assert!(commands[0].contains(&format!("/my-files/{uid_a}")));
+        assert!(commands[0].contains(&format!("/my-files/{uid_b}")));
+        assert!(!commands[0].contains(&format!("/my-files/{uid_other}")));
+        assert!(!dir.path().join("not-selected.txt").exists());
+        assert_eq!(verbs(&argv, "list").len(), 1);
+    }
+
+    #[test]
+    fn bulk_uid_shape_matches_only_the_cli_uid_grammar() {
+        assert!(valid_cli_node_uid(&format!(
+            "{}~{}",
+            "A".repeat(22),
+            "b".repeat(22)
+        )));
+        for uid in [
+            "../../elsewhere",
+            "AA~BB",
+            "-j",
+            "/my-files/folder",
+            "bad~uid~extra",
+        ] {
+            assert!(!valid_cli_node_uid(uid));
+        }
+        assert!(!valid_cli_node_uid(&format!(
+            "{}~{}",
+            "=".repeat(22),
+            "B".repeat(22)
+        )));
+    }
+
+    #[tokio::test]
+    async fn bulk_sync_uses_one_native_upload_and_accounts_all_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let input = dir.path().join("input");
+        std::fs::create_dir(&input).unwrap();
+        bulk_upload_items(&input, 200);
+        let mut p: Box<dyn StorageProvider> = Box::new(provider(&shim));
+        let options = crate::sync::SyncOptions {
+            delta_policy: crate::sync::DeltaPolicy::SizeOnly,
+            ..Default::default()
+        };
+        let report = crate::transfer_dag_sync::execute_sync_dag(
+            &mut p,
+            input.to_str().unwrap(),
+            "/my-files/bulk",
+            &options,
+            &mut crate::sync::NoopProgressSink,
+        )
+        .await;
+        assert_eq!(report.uploaded, 200);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(verbs(&read_argv(dir.path()), "upload").len(), 1);
+    }
+
+    /// Explicitly opt-in live measurement. Creates and permanently removes
+    /// ONLY its own UUID-named test tree; never uses a saved profile or prints
+    /// authentication data. All readbacks are byte-checked against generated
+    /// payloads. Run with AEROFTP_BULK_LIVE=1 and --ignored --exact.
+    #[tokio::test]
+    #[ignore = "requires an authenticated official CLI and an exclusive benchmark window"]
+    async fn bulk_live_benchmark() {
+        use crate::provider_transfer_executor::{
+            resolve_provider_transfer_runtime, ProviderDownloadExecutor, ProviderUploadExecutor,
+        };
+        use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+        use crate::transfer_event_sink::{NoopTransferSink, TransferEventSink};
+        use crate::transfer_orchestrator::{execute_batch, TransferBatch};
+        use std::sync::{atomic::AtomicBool, Arc};
+        assert_eq!(std::env::var("AEROFTP_BULK_LIVE").as_deref(), Ok("1"));
+        fn live_provider() -> ProtonCliProvider {
+            ProtonCliProvider::new(ProtonConfig {
+                display_name: "Bulk benchmark".into(),
+                binary_path: None,
+                connection_mode: ProtonConnectionMode::Cli,
+                profile_id: None,
+                username: None,
+            })
+        }
+        fn ensure(ok: bool, message: &str) -> Result<(), ProviderError> {
+            if ok {
+                Ok(())
+            } else {
+                Err(ProviderError::TransferFailed(message.into()))
+            }
+        }
+        async fn dag(items: &[BulkTransferItem], upload: bool) -> Result<(), ProviderError> {
+            let provider: Arc<tokio::sync::Mutex<Option<Box<dyn StorageProvider>>>> =
+                Arc::new(tokio::sync::Mutex::new(Some(Box::new(live_provider()))));
+            let (settings, model, caps) =
+                resolve_provider_transfer_runtime(&provider, Default::default()).await;
+            let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+            let batch = TransferBatch {
+                id: "live-bulk".into(),
+                display_name: "Live bulk".into(),
+                direction: if upload {
+                    TransferDirection::Upload
+                } else {
+                    TransferDirection::Download
+                },
+                config: TransferBatchConfig {
+                    max_concurrent: 1,
+                    ..Default::default()
+                },
+                entries: items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, item)| TransferEntry {
+                        id: i.to_string(),
+                        display_name: basename(&item.remote_path),
+                        local_path: item.local_path.clone(),
+                        remote_path: item.remote_path.clone(),
+                        size: item.size,
+                        modified: None,
+                    })
+                    .collect(),
+            };
+            let cancel = Arc::new(AtomicBool::new(false));
+            let token = tokio_util::sync::CancellationToken::new();
+            let result = if upload {
+                execute_batch(
+                    Arc::clone(&sink),
+                    batch,
+                    Arc::new(ProviderUploadExecutor::new(
+                        sink, provider, settings, None, token, model, caps,
+                    )),
+                    cancel,
+                    None,
+                )
+                .await
+            } else {
+                execute_batch(
+                    Arc::clone(&sink),
+                    batch,
+                    Arc::new(ProviderDownloadExecutor::new(
+                        sink, provider, settings, token, model, caps,
+                    )),
+                    cancel,
+                    None,
+                )
+                .await
+            };
+            ensure(
+                result.completed as usize == items.len() && result.failed == 0,
+                &format!("Live DAG results: {result:?}"),
+            )
+        }
+        async fn per_file(items: &[BulkTransferItem], upload: bool) -> Result<(), ProviderError> {
+            let mut jobs = tokio::task::JoinSet::new();
+            for worker in 0..4 {
+                let chunk: Vec<_> = items.iter().skip(worker).step_by(4).cloned().collect();
+                jobs.spawn(async move {
+                    let mut p = live_provider();
+                    for item in chunk {
+                        if upload {
+                            p.upload(&item.local_path, &item.remote_path, None).await?;
+                        } else {
+                            p.download(&item.remote_path, &item.local_path, None)
+                                .await?;
+                        }
+                    }
+                    Ok::<(), ProviderError>(())
+                });
+            }
+            while let Some(result) = jobs.join_next().await {
+                result.map_err(|e| ProviderError::TransferFailed(e.to_string()))??;
+            }
+            Ok(())
+        }
+        let root = format!(
+            "/my-files/aeroftp-bulk-20261020-{}",
+            &uuid::Uuid::new_v4().simple().to_string()[..16]
+        );
+        let local = tempfile::tempdir().unwrap();
+        let input = local.path().join("input");
+        std::fs::create_dir(&input).unwrap();
+        for i in 0..200u32 {
+            let mut payload = vec![b'x'; 4096];
+            payload[..4].copy_from_slice(&i.to_le_bytes());
+            std::fs::write(input.join(format!("file-{i:03}.bin")), payload).unwrap();
+        }
+        let mut rows = Vec::new();
+        let mut admin = live_provider();
+        let result: Result<(), ProviderError> = async {
+            admin.mkdir(&root).await?;
+            println!("BULK_LIVE_ROOT {root}");
+            // Alternate direct CLI and shared DAG order; take one four-worker
+            // per-file baseline separately. No contender runs concurrently.
+            for (round, modes) in [(0, vec!["official", "bulk"]), (1, vec!["bulk", "official"]), (2, vec!["official", "bulk"]), (3, vec!["per-file"])] {
+                for mode in modes {
+                    let remote = format!("{root}/{mode}-{round}");
+                    admin.mkdir(&remote).await?;
+                    let items: Vec<_> = (0..200).map(|i| {
+                        let name = format!("file-{i:03}.bin");
+                        BulkTransferItem { local_path: input.join(&name).to_string_lossy().into_owned(), remote_path: format!("{remote}/{name}"), size: 4096 }
+                    }).collect();
+                    let mut download_items = items.clone();
+                    let output = local.path().join(format!("{mode}-{round}"));
+                    std::fs::create_dir(&output).unwrap();
+                    let file_output = if mode == "official" { output.join(basename(&remote)) } else { output.clone() };
+                    for item in &mut download_items { item.local_path = file_output.join(basename(&item.remote_path)).to_string_lossy().into_owned(); }
+                    for (upload, transfer_items) in [(true, &items), (false, &download_items)] {
+                        let started = std::time::Instant::now();
+                        match mode {
+                            "bulk" => dag(transfer_items, upload).await?,
+                            "per-file" => per_file(transfer_items, upload).await?,
+                            _ => {
+                                let mut args: Vec<String> = ["filesystem", if upload { "upload" } else { "download" }, "-j", "-f", if upload { "create-new-revision" } else { "remove" }, "-d", "merge"].into_iter().map(str::to_string).collect();
+                                if upload { args.extend(transfer_items.iter().map(|item| item.local_path.clone())); }
+                                else { args.push(remote.clone()); }
+                                args.push(if upload { remote.clone() } else { output.to_string_lossy().into_owned() });
+                                let answer = admin.run_bulk_once(&args).await?;
+                                if upload {
+                                    let remotes: Vec<_> = transfer_items.iter().map(|i| i.remote_path.clone()).collect();
+                                    let outcomes = bulk_summary_outcomes(&String::from_utf8_lossy(&answer.stdout), &remotes, answer.status.success());
+                                    ensure(outcomes.iter().all(|o| matches!(o, BulkTransferOutcome::Completed)), "Direct CLI upload failed")?;
+                                } else {
+                                    let summary: Value = serde_json::from_slice(&answer.stdout).map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                                    ensure(answer.status.success() && summary.get("failedItems").and_then(Value::as_u64) == Some(0), "Direct CLI folder download failed")?;
+                                }
+                            }
+                        }
+                        let seconds = started.elapsed().as_secs_f64();
+                        if !upload {
+                            for item in &download_items {
+                                let expected = std::fs::read(input.join(basename(&item.remote_path))).map_err(ProviderError::IoError)?;
+                                let actual = std::fs::read(&item.local_path).map_err(ProviderError::IoError)?;
+                                ensure(expected == actual, "Live readback differs")?;
+                            }
+                        }
+                        let row = serde_json::json!({"round":round,"mode":mode,"direction":if upload {"upload"} else {"download"},"files":200,"bytes":200*4096,"seconds":seconds,"integrity":if upload {"readback_pending"} else {"200_byte_identical"}});
+                        println!("BULK_LIVE_RESULT {row}");
+                        rows.push(row);
+                        if let Ok(path) = std::env::var("AEROFTP_BULK_BENCH_OUTPUT") { std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({"root":root,"results":rows})).unwrap()).map_err(ProviderError::IoError)?; }
+                    }
+                }
+            }
+            Ok(())
+        }.await;
+        let cleanup = admin.delete_permanent(&root).await;
+        println!("BULK_LIVE_CLEANUP {cleanup:?}");
+        assert!(
+            matches!(cleanup, Ok(true)),
+            "Only the generated root must be cleaned: {root}"
+        );
+        result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bulk_provider_executor_and_shared_dag_keep_file_events() {
+        use crate::provider_transfer_executor::{
+            resolve_provider_transfer_runtime, ProviderUploadExecutor,
+        };
+        use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+        use crate::transfer_event_sink::TransferEventSink;
+        use crate::transfer_orchestrator::{execute_batch, TransferBatch};
+        use std::sync::{atomic::AtomicBool, Arc, Mutex};
+        #[derive(Default)]
+        struct Events(Mutex<Vec<crate::TransferEvent>>);
+        impl TransferEventSink for Events {
+            fn emit_transfer_event(&self, event: crate::TransferEvent) {
+                self.0.lock().unwrap().push(event);
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items = bulk_upload_items(dir.path(), 200);
+        let provider: Arc<tokio::sync::Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(tokio::sync::Mutex::new(Some(Box::new(provider(&shim)))));
+        let (settings, model, caps) =
+            resolve_provider_transfer_runtime(&provider, Default::default()).await;
+        assert_eq!(caps.bulk_upload, crate::transfer_dag::Capability::Supported);
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Unsupported
+        );
+        let events = Arc::new(Events::default());
+        let sink: Arc<dyn TransferEventSink> = events.clone();
+        let executor = Arc::new(ProviderUploadExecutor::new(
+            Arc::clone(&sink),
+            provider,
+            settings,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+            model,
+            caps,
+        ));
+        let entries = items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| TransferEntry {
+                id: format!("file-{i}"),
+                display_name: basename(&item.remote_path),
+                local_path: item.local_path.clone(),
+                remote_path: item.remote_path.clone(),
+                size: item.size,
+                modified: None,
+            })
+            .collect();
+        let result = execute_batch(
+            sink,
+            TransferBatch {
+                id: "bulk-shim".into(),
+                display_name: "Bulk".into(),
+                direction: TransferDirection::Upload,
+                config: TransferBatchConfig {
+                    max_concurrent: 1,
+                    ..Default::default()
+                },
+                entries,
+            },
+            executor,
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(
+            (result.completed, result.failed, result.total),
+            (200, 0, 200)
+        );
+        assert_eq!(verbs(&read_argv(dir.path()), "upload").len(), 1);
+        let events = events.0.lock().unwrap();
+        for i in 0..200 {
+            let file: Vec<_> = events
+                .iter()
+                .filter(|e| e.transfer_id == format!("file-{i}"))
+                .collect();
+            assert_eq!(
+                file.iter().filter(|e| e.event_type == "file_start").count(),
+                1
+            );
+            assert_eq!(
+                file.iter()
+                    .filter(|e| e.event_type == "file_complete")
+                    .count(),
+                1
+            );
+            assert_eq!(file.last().unwrap().event_type, "file_complete");
+        }
+    }
+
+    #[tokio::test]
+    async fn bulk_upload_200_files_uses_one_process_and_per_file_outcomes() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items = bulk_upload_items(dir.path(), 200);
+        let outcomes = provider(&shim).upload_bulk(&items, None).await.unwrap();
+        assert_eq!(outcomes.len(), 200);
+        assert!(outcomes
+            .iter()
+            .all(|r| matches!(r, BulkTransferOutcome::Completed)));
+        let argv = read_argv(dir.path());
+        assert_eq!(verbs(&argv, "upload").len(), 1);
+        assert_eq!(argv[0].len(), 208); // command, verb, JSON, two strategies, 200 files, parent
+        assert!(!std::fs::read_to_string(dir.path().join("env.log"))
+            .unwrap()
+            .contains("AEROFTP_"));
+    }
+
+    #[tokio::test]
+    async fn bulk_partial_failure_is_attributed_without_replaying_successes() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items = bulk_upload_items(dir.path(), 3);
+        std::fs::write(dir.path().join("bulk-summary.json"), r#"{"transferredItems":2,"skippedItems":0,"failedItems":1,"failures":[{"name":"file-001.txt","error":"Error: 429 Too many requests"}]}"#).unwrap();
+        let outcomes = provider(&shim).upload_bulk(&items, None).await.unwrap();
+        assert!(matches!(&outcomes[0], BulkTransferOutcome::Completed));
+        assert!(matches!(&outcomes[1], BulkTransferOutcome::Failed(_)));
+        assert!(matches!(&outcomes[2], BulkTransferOutcome::Completed));
+        assert_eq!(
+            verbs(&read_argv(dir.path()), "upload").len(),
+            1,
+            "no whole-bulk retry on transient failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn bulk_malformed_summary_never_reports_unproven_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items = bulk_upload_items(dir.path(), 2);
+        std::fs::write(
+            dir.path().join("bulk-summary.json"),
+            r#"{"transferredItems":1,"skippedItems":0,"failedItems":0,"failures":[]}"#,
+        )
+        .unwrap();
+        let results = provider(&shim).upload_bulk(&items, None).await.unwrap();
+        assert!(results
+            .iter()
+            .all(|r| matches!(r, BulkTransferOutcome::Uncertain(_))));
+        assert_eq!(verbs(&read_argv(dir.path()), "upload").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn bulk_download_publishes_successes_and_keeps_failed_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items: Vec<_> = (0..2)
+            .map(|i| {
+                let name = format!("file-{i}.txt");
+                let local = dir.path().join(&name);
+                std::fs::write(&local, "OLD").unwrap();
+                BulkTransferItem {
+                    local_path: local.to_string_lossy().into_owned(),
+                    remote_path: format!("/my-files/bulk/{name}"),
+                    size: 14,
+                }
+            })
+            .collect();
+        std::fs::write(dir.path().join("bulk-summary.json"), r#"{"transferredItems":1,"skippedItems":0,"failedItems":1,"failures":[{"name":"file-1.txt","error":"Error: not found"}]}"#).unwrap();
+        let results = provider(&shim).download_bulk(&items, None).await.unwrap();
+        assert!(matches!(&results[0], BulkTransferOutcome::Completed));
+        assert!(matches!(&results[1], BulkTransferOutcome::Failed(_)));
+        assert_eq!(
+            std::fs::read_to_string(&items[0].local_path).unwrap(),
+            "REMOTE-CONTENT"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&items[1].local_path).unwrap(),
+            "OLD"
+        );
+        assert_eq!(verbs(&read_argv(dir.path()), "download").len(), 1);
+        assert!(!std::fs::read_dir(dir.path()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".aeroftp-proton-bulk-")));
+    }
+
+    #[tokio::test]
+    async fn bulk_download_drop_kills_native_child_and_cleans_staging() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let path = dir.path().join("file.txt");
+        std::fs::write(&path, "OLD").unwrap();
+        std::fs::write(dir.path().join("transfer-sleep"), "10").unwrap();
+        let items = vec![BulkTransferItem {
+            local_path: path.to_string_lossy().into_owned(),
+            remote_path: "/my-files/bulk/file.txt".into(),
+            size: 14,
+        }];
+        let mut p = provider(&shim);
+        assert!(tokio::time::timeout(
+            std::time::Duration::from_millis(300),
+            p.download_bulk(&items, None)
+        )
+        .await
+        .is_err());
+        let pid: i32 = std::fs::read_to_string(dir.path().join("transfer.pid"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        // tokio reaps the killed child asynchronously.
+        for _ in 0..40 {
+            if unsafe { libc::kill(pid, 0) } != 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        assert_ne!(
+            unsafe { libc::kill(pid, 0) },
+            0,
+            "native child must not outlive cancellation"
+        );
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "OLD");
+        assert!(!std::fs::read_dir(dir.path()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".aeroftp-proton-bulk-")));
+    }
+
+    #[tokio::test]
+    async fn bulk_rejects_collisions_changed_sources_and_different_parents_before_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let mut items = bulk_upload_items(dir.path(), 2);
+        items[1].remote_path = "/my-files/other/file-001.txt".into();
+        assert!(provider(&shim).upload_bulk(&items, None).await.is_err());
+        items[1] = items[0].clone();
+        assert!(provider(&shim).upload_bulk(&items, None).await.is_err());
+        items = bulk_upload_items(dir.path(), 2);
+        assert!(read_argv(dir.path()).is_empty());
+        items[0].size = 8;
+        let outcomes = provider(&shim).upload_bulk(&items, None).await.unwrap();
+        assert!(matches!(outcomes[0], BulkTransferOutcome::Failed(_)));
+        assert!(matches!(outcomes[1], BulkTransferOutcome::Completed));
+        assert_eq!(verbs(&read_argv(dir.path()), "upload").len(), 1);
+    }
 
     /// Put a `proton-drive` stand-in in `dir` and return its path.
     ///

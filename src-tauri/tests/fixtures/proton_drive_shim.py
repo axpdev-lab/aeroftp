@@ -3,7 +3,7 @@
 # src/providers/proton.rs. It records argv and fakes just enough behaviour for
 # the provider sequences under test. It is a checked-in executable on purpose:
 # see `link_shim` in that module for why the tests must not write it themselves.
-import glob, json, os, pathlib, sys
+import glob, json, os, pathlib, sys, time
 
 # State lives next to the path this script was invoked through. The tests
 # reach it through a per-test symlink, so that path is the symlink, never the
@@ -37,6 +37,12 @@ def resolve_local(path):
         print("No paths matched: %s" % path, file=sys.stderr)
         sys.exit(1)
     return matches
+# A blocking native transfer for cancellation/drop tests.
+sleep_marker = pathlib.Path(HERE, "transfer-sleep")
+if verb == "filesystem" and sub in ("upload", "download") and sleep_marker.exists():
+    pathlib.Path(HERE, "transfer.pid").write_text(str(os.getpid()))
+    time.sleep(float(sleep_marker.read_text()))
+
 if verb == "filesystem" and sub in ("upload", "download"):
     positional, rest = [], iter(range(2, len(args)))
     for i in rest:
@@ -83,22 +89,36 @@ if verb == "filesystem" and sub in ("upload", "download") and once.exists():
 failing = pathlib.Path(HERE, "transfer-fails.json")
 if verb == "filesystem" and sub in ("upload", "download") and failing.exists():
     emit_transfer_failure(json.loads(failing.read_text()))
+bulk_summary_file = pathlib.Path(HERE, "bulk-summary.json")
+bulk_summary = json.loads(bulk_summary_file.read_text()) if bulk_summary_file.exists() else None
 if verb == "filesystem" and sub == "download":
     dest = pathlib.Path(args[-1])
-    remote = args[-2]
-    # The name proton-drive writes: control characters and < > : " | ? * \
-    # become _ (downloadPathValidation.ts), on every platform.
-    name = "".join("_" if ord(c) < 32 or ord(c) == 127 or c in '<>:"|?*\\' else c
-                   for c in pathlib.Path(remote).name)
-    dest.mkdir(parents=True, exist_ok=True)
-    target = dest / name
-    if "-f" in args:
-        i = args.index("-f")
-        strat = args[i + 1] if i + 1 < len(args) else ""
-        if strat == "remove" and target.exists():
+    failed_names = {item["name"] for item in (bulk_summary or {}).get("failures", [])}
+    for i in positional[:-1]:
+        remote = args[i]
+        uid_map_file = pathlib.Path(HERE, "uid-name-map.json")
+        if uid_map_file.exists():
+            remote = json.loads(uid_map_file.read_text()).get(pathlib.Path(remote).name, remote)
+        name = "".join("_" if ord(c) < 32 or ord(c) == 127 or c in '<>:"|?*\\' else c
+                       for c in pathlib.Path(remote).name)
+        if pathlib.Path(remote).name in failed_names:
+            continue
+        dest.mkdir(parents=True, exist_ok=True)
+        target = dest / name
+        if "-f" in args and args[args.index("-f") + 1] == "remove" and target.exists():
             target.unlink()
-    target.write_text("REMOTE-CONTENT")
+        target.write_text("REMOTE-CONTENT")
+    if bulk_summary is not None:
+        print(json.dumps(bulk_summary))
+        sys.exit(1 if bulk_summary.get("failedItems", 0) else 0)
+    print(json.dumps({"transferredItems": len(positional) - 1, "transferredBytes": 0,
+                      "skippedItems": 0, "failedItems": 0, "failures": []}))
     sys.exit(0)
+if verb == "filesystem" and sub == "upload":
+    print(json.dumps(bulk_summary if bulk_summary is not None else {
+        "transferredItems": len(positional) - 1, "transferredBytes": 0,
+        "skippedItems": 0, "failedItems": 0, "failures": []}))
+    sys.exit(1 if bulk_summary and bulk_summary.get("failedItems", 0) else 0)
 if verb == "filesystem" and sub == "info":
     path = next((a for a in args[2:] if not a.startswith("-")), "/x")
     name = pathlib.Path(path).name

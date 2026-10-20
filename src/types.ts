@@ -1202,6 +1202,9 @@ export interface TransferCapabilities {
   server_side_copy: Capability;
   list_parallel: Capability;
   batch_list: Capability;
+  /** Optional for snapshots produced by older backends. Native multi-file I/O. */
+  bulk_upload?: Capability;
+  bulk_download?: Capability;
   server_checksum: Capability;
   atomic_rename: Capability;
   rate_limited_api: Capability;

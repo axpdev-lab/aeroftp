@@ -1850,6 +1850,42 @@ impl ProviderUploadExecutor {
 
 #[async_trait]
 impl TransferExecutor for ProviderDownloadExecutor {
+    fn is_transfer_cancelled(&self) -> bool {
+        self.cancel_token.is_cancelled()
+    }
+
+    fn bulk_group_key(&self, entry: &TransferEntry) -> Option<String> {
+        if self.capabilities.bulk_download != Capability::Supported
+            || self.capabilities.resume_download.is_available()
+        {
+            return None;
+        }
+        crate::transfer_bulk::group_key(entry, false)
+    }
+
+    async fn execute_bulk_with_session(
+        &self,
+        entries: Vec<TransferEntry>,
+        session: TransferSessionLease,
+        cancel: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Vec<TransferOutcome> {
+        for entry in &entries {
+            note_transfer_attempt(&self.attempt_counts, &entry.id, 1);
+        }
+        let outcomes = crate::transfer_bulk::execute_provider_bulk(
+            &self.provider,
+            &self.sink,
+            &entries,
+            false,
+            &self.cancel_token,
+            &cancel,
+            self.runtime_settings.timeout_seconds,
+        )
+        .await;
+        drop(session);
+        outcomes
+    }
+
     fn provider_type(&self) -> Option<ProviderType> {
         self.session_model.provider_type()
     }
@@ -1918,6 +1954,38 @@ impl TransferExecutor for ProviderDownloadExecutor {
 
 #[async_trait]
 impl TransferExecutor for ProviderUploadExecutor {
+    fn bulk_group_key(&self, entry: &TransferEntry) -> Option<String> {
+        if self.capabilities.bulk_upload != Capability::Supported
+            || self.capabilities.resume_upload.is_available()
+        {
+            return None;
+        }
+        crate::transfer_bulk::group_key(entry, true)
+    }
+
+    async fn execute_bulk_with_session(
+        &self,
+        entries: Vec<TransferEntry>,
+        session: TransferSessionLease,
+        cancel: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Vec<TransferOutcome> {
+        for entry in &entries {
+            note_transfer_attempt(&self.attempt_counts, &entry.id, 1);
+        }
+        let outcomes = crate::transfer_bulk::execute_provider_bulk(
+            &self.provider,
+            &self.sink,
+            &entries,
+            true,
+            &self.cancel_token,
+            &cancel,
+            self.runtime_settings.timeout_seconds,
+        )
+        .await;
+        drop(session);
+        outcomes
+    }
+
     fn provider_type(&self) -> Option<ProviderType> {
         self.session_model.provider_type()
     }

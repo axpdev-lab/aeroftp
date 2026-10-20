@@ -26,6 +26,7 @@ pub mod atomic_write;
 pub mod azure;
 pub mod b2;
 pub mod box_provider;
+pub mod bulk;
 pub mod checksum_matrix;
 pub mod cloudinary;
 pub mod directory;
@@ -1050,6 +1051,35 @@ pub trait StorageProvider: Send + Sync {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError>;
 
+    /// Optional native multi-file operation. Defaults are unsupported: enabling
+    /// a capability is a promise to return positional per-file outcomes and to
+    /// stop owned wire work when the future is dropped. Never replay a partially
+    /// completed bulk. Adapters may expose completion-only progress if the
+    /// external program has no trustworthy per-file streaming interface.
+    fn supports_bulk_upload(&self) -> bool {
+        false
+    }
+
+    fn supports_bulk_download(&self) -> bool {
+        false
+    }
+
+    async fn upload_bulk(
+        &mut self,
+        _items: &[bulk::BulkTransferItem],
+        _progress: Option<bulk::BulkProgress>,
+    ) -> Result<Vec<bulk::BulkTransferOutcome>, ProviderError> {
+        Err(ProviderError::NotSupported("bulk upload".to_string()))
+    }
+
+    async fn download_bulk(
+        &mut self,
+        _items: &[bulk::BulkTransferItem],
+        _progress: Option<bulk::BulkProgress>,
+    ) -> Result<Vec<bulk::BulkTransferOutcome>, ProviderError> {
+        Err(ProviderError::NotSupported("bulk download".to_string()))
+    }
+
     /// Create a directory
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError>;
 
@@ -1963,6 +1993,9 @@ pub trait StorageProvider: Send + Sync {
         // actually streams (i.e. overrides `upload_part_body`).
         caps.multipart_streaming_body = self.multipart_streams_part_body();
         caps.atomic_rename = self.atomic_replace_capability();
+        caps.bulk_upload = crate::transfer_dag::Capability::from_bool(self.supports_bulk_upload());
+        caps.bulk_download =
+            crate::transfer_dag::Capability::from_bool(self.supports_bulk_download());
 
         if matches!(
             self.transfer_executor_kind(),
