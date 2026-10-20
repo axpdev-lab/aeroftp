@@ -191,7 +191,7 @@ These are verified compliance checks, not formal certifications.
 
 **Do not report security vulnerabilities through public GitHub issues.**
 
-Report via [GitHub Security Advisories](https://github.com/axpdev-lab/aeroftp/security/advisories/new). We respond within 48 hours.
+Report via [GitHub Security Advisories](https://github.com/axpdev-lab/aeroftp/security/advisories/new) or by email to the security contact **dev@aeroftp.app**. We respond within 48 hours.
 
 For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see [Vulnerability Disclosure](https://docs.aeroftp.app/security/reporting).
 
