@@ -24,6 +24,10 @@ use std::sync::{Mutex, MutexGuard};
 static SESSION_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 use tauri::AppHandle;
 
+#[cfg(all(test, feature = "proton-native"))]
+#[path = "native_relocation_tests.rs"]
+mod native_relocation_tests;
+
 pub(crate) const DB_FILENAME: &str = "user_partitions.db";
 const SCHEMA_VERSION: &str = "5";
 const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
@@ -1875,9 +1879,8 @@ pub fn update_active_server_profiles(
     update_server_profiles_for(conn, root_key, user_id, apply)
 }
 
-/// Outcome of a cross-user profile relocation (N4). Returned to the GUI/CLI so
-/// the caller can refresh state and finish credential bookkeeping outside the
-/// partition DB (`server_<id>` lives in the OS keyring, not the SQLite file).
+/// Outcome of a cross-user profile relocation (N4). Production GUI/CLI callers
+/// receive it after the shared profile/credential operation has completed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileRelocation {
@@ -1917,8 +1920,9 @@ pub struct ProfileRelocation {
 /// `target_user_id` (N4, Ehud wishlist #270). The backend stays authoritative:
 /// the caller passes only an id, the genuine source blob is read from the
 /// vault, re-keyed under `new_profile_id`, and inserted into the target
-/// partition. Credentials (`server_<id>`) live outside the partition DB and are
-/// handled by the caller using the returned ids.
+/// partition. This partition-only primitive also supports existing unit
+/// fixtures; GUI/CLI production entry points use the combined guarded operation
+/// below to relocate credentials together with these rows.
 ///
 /// Security: writing into a passphrase-protected target requires its
 /// passphrase (`TARGET_PASSPHRASE_REQUIRED` otherwise); the target DEK is
@@ -1938,19 +1942,245 @@ pub fn relocate_server_profile(
     target_passphrase: Option<&str>,
     remove_from_source: bool,
 ) -> Result<ProfileRelocation, String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let target_dek =
+        resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
+    with_user_dek(conn, &root_secret, source_user_id, |_, source_dek| {
+        let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+            .map_err(|error| format!("Start profile relocation: {error}"))?;
+        let relocation = relocate_server_profile_in_transaction(
+            &tx,
+            root_key,
+            &root_secret,
+            source_user_id,
+            source_dek,
+            target_user_id,
+            &target_dek,
+            profile_id,
+            new_profile_id,
+            remove_from_source,
+        )?;
+        tx.commit()
+            .map_err(|error| format!("Commit profile relocation: {error}"))?;
+        Ok(relocation)
+    })
+}
+
+/// Production GUI/CLI entry point. Native sessions are committed with the
+/// profiles under their key/UID guards; the remaining legacy dual writes keep
+/// their existing best-effort behavior after the partition transaction.
+#[allow(clippy::too_many_arguments)]
+fn relocate_server_profile_and_credentials(
+    conn: &mut Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    source_user_id: i64,
+    target_user_id: i64,
+    profile_id: &str,
+    new_profile_id: &str,
+    target_passphrase: Option<&str>,
+    remove_from_source: bool,
+) -> Result<ProfileRelocation, String> {
+    if source_user_id == target_user_id {
+        return Err("RELOCATE_SAME_USER".into());
+    }
+    if new_profile_id.trim().is_empty() {
+        return Err("NEW_PROFILE_ID_REQUIRED".into());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let target_dek =
+        resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
+    // Copy the source DEK and RELEASE its SessionHold before either helper
+    // thread waits for a native guard. Refresh persistence may need that same
+    // session while it owns the UID lease we are waiting for.
+    let source_dek = with_user_dek(conn, &root_secret, source_user_id, |_, dek| {
+        Ok(user_crypto::secret_key_from_bytes(dek.expose_secret()))
+    })?;
+    let source_key = format!("proton_native_session_{profile_id}");
+    let new_key = format!("proton_native_session_{new_profile_id}");
+    let read_native = |user_id, dek: &SecretKey, key: &str| match read_credential_with_dek(
+        conn, user_id, dek, key,
+    )? {
+        Some(raw) => Ok(Some(raw)),
+        None => {
+            let profile = key
+                .strip_prefix("proton_native_session_")
+                .ok_or_else(|| "INVALID_NATIVE_SESSION_KEY".to_string())?;
+            let owners = profile_credential_owner_ids(store, profile, key)?;
+            // A global value cannot be attributed safely when several users
+            // own this key and the requested user's partition has no value.
+            if owners.as_slice() == [user_id]
+                || (owners.is_empty() && legacy_credential_owner_id()? == Some(user_id))
+            {
+                get_optional_secret(store, key)
+            } else {
+                Ok(None)
+            }
+        }
+    };
+
+    #[cfg(feature = "proton-native")]
+    let native = {
+        use crate::providers::proton_native::vault;
+        let keys = vault::lock_relocation_keys_blocking(profile_id, new_profile_id)
+            .map_err(|error| error.to_string())?;
+        let source = read_native(source_user_id, &source_dek, &source_key)?;
+        let target = read_native(target_user_id, &target_dek, &new_key)?;
+        #[cfg(test)]
+        native_relocation_test_hook("captured");
+        keys.lock_sessions_blocking(
+            store,
+            source.as_ref().map(|raw| raw.as_str()),
+            target.as_ref().map(|raw| raw.as_str()),
+        )
+        .map_err(|error| error.to_string())?
+    };
+    #[cfg(not(feature = "proton-native"))]
+    if read_native(source_user_id, &source_dek, &source_key)?.is_some() {
+        return Err("Native Proton session relocation requires the proton-native feature".into());
+    }
+
+    // Reread after the UID leases: a refresh may have rotated R1 to R2 while
+    // the helper waited. The target passphrase remains scoped and never primes
+    // or replaces the active user's session.
+    #[cfg(feature = "proton-native")]
+    let source = read_native(source_user_id, &source_dek, &source_key)?;
+    #[cfg(feature = "proton-native")]
+    let target = read_native(target_user_id, &target_dek, &new_key)?;
+    #[cfg(feature = "proton-native")]
+    let remove_source_vault = native.source_vault_matches();
+    #[cfg(not(feature = "proton-native"))]
+    let remove_source_vault = false;
+    let apply = |native_raw: Option<&str>| {
+        // with_user_dek acquires the source SessionHold BEFORE SQLite's write
+        // reservation and verifies that the source is still unlocked.
+        let relocation = with_user_dek(conn, &root_secret, source_user_id, |_, current_dek| {
+            let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|error| format!("Start profile relocation: {error}"))?;
+            let source_row = read_user_key_row(&tx, source_user_id)?;
+            let target_row = read_user_key_row(&tx, target_user_id)?;
+            if !user_crypto::verify_dek(&source_dek, &source_row.dek_verifier)?
+                || !user_crypto::verify_dek(&target_dek, &target_row.dek_verifier)?
+            {
+                return Err("DEK_VERIFIER_MISMATCH".into());
+            }
+            let relocation = relocate_server_profile_in_transaction(
+                &tx,
+                root_key,
+                &root_secret,
+                source_user_id,
+                current_dek,
+                target_user_id,
+                &target_dek,
+                profile_id,
+                new_profile_id,
+                remove_from_source,
+            )?;
+            if relocation.inserted {
+                if let Some(raw) = native_raw {
+                    set_user_credential_with_dek(
+                        &tx,
+                        target_user_id,
+                        &target_dek,
+                        &new_key,
+                        "proton_native_session",
+                        raw,
+                    )?;
+                }
+            }
+            if relocation.moved {
+                delete_user_credential_for(&tx, source_user_id, &source_key)?;
+            }
+            tx.commit()
+                .map_err(|error| format!("Commit profile relocation: {error}"))?;
+            Ok(relocation)
+        })?;
+        // This loop skips native sessions entirely. It cannot overwrite the
+        // exact pair above or delete a source outside the native guards.
+        relocate_server_credential_dual(
+            conn,
+            store,
+            root_key,
+            source_user_id,
+            &relocation,
+            target_passphrase,
+        );
+        #[cfg(test)]
+        native_relocation_test_hook("committed");
+        if relocation.inserted {
+            if let Some(raw) = native_raw {
+                store.store(&new_key, raw).map_err(|error| format!(
+                    "RELOCATION_COMMITTED: profile {} is saved in target user {}; its valid Proton session is retained in that partition, but the vault copy failed: {error}",
+                    relocation.new_profile_id, target_user_id,
+                ))?;
+                if relocation.moved && remove_source_vault && source_key != new_key {
+                    store.delete(&source_key).map_err(|error| format!(
+                        "RELOCATION_COMMITTED: profile {} and its Proton session are saved in target user {}; removal of the source vault session failed: {error}",
+                        relocation.new_profile_id, target_user_id,
+                    ))?;
+                }
+            }
+        }
+        Ok(relocation)
+    };
+    #[cfg(feature = "proton-native")]
+    return native.with_current_session(
+        store,
+        source.as_ref().map(|raw| raw.as_str()),
+        target.as_ref().map(|raw| raw.as_str()),
+        apply,
+    );
+    #[cfg(not(feature = "proton-native"))]
+    apply(None)
+}
+
+#[cfg(all(test, feature = "proton-native"))]
+type NativeRelocationHook = Option<Box<dyn FnMut(&str)>>;
+
+#[cfg(all(test, feature = "proton-native"))]
+thread_local! {
+    static NATIVE_RELOCATION_HOOK: RefCell<NativeRelocationHook> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn native_relocation_test_hook(stage: &str) {
+    #[cfg(feature = "proton-native")]
+    NATIVE_RELOCATION_HOOK.with_borrow_mut(|hook| {
+        if let Some(hook) = hook {
+            hook(stage);
+        }
+    });
+    #[cfg(not(feature = "proton-native"))]
+    let _ = stage;
+}
+
+/// Both profile lists are changed in the caller's transaction, after the
+/// source session is held. Production relocation also writes the native
+/// credential in this transaction while its key and UID guards remain held.
+#[allow(clippy::too_many_arguments)]
+fn relocate_server_profile_in_transaction(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    root_secret: &SecretKey,
+    source_user_id: i64,
+    source_dek: &SecretKey,
+    target_user_id: i64,
+    target_dek: &SecretKey,
+    profile_id: &str,
+    new_profile_id: &str,
+    remove_from_source: bool,
+) -> Result<ProfileRelocation, String> {
     if source_user_id == target_user_id {
         return Err("RELOCATE_SAME_USER".to_string());
     }
     if new_profile_id.trim().is_empty() {
         return Err("NEW_PROFILE_ID_REQUIRED".to_string());
     }
-    let root_secret = user_crypto::secret_key_from_bytes(root_key);
-
     // The target must exist before we read the (potentially large) source list.
     read_user_key_row(conn, target_user_id)?;
 
     // 1. Read the source (active, already-unlocked) partition via its session.
-    let source_profiles = list_server_profiles_for(conn, root_key, source_user_id)?;
+    let source_profiles = read_profiles_with_dek(conn, source_user_id, source_dek)?;
     let source = source_profiles
         .iter()
         .find(|p| value_str(p, &["id", "uid", "profileUid"]) == Some(profile_id))
@@ -1968,10 +2198,6 @@ pub fn relocate_server_profile(
         map.remove("lastConnected");
     }
 
-    // 3. Resolve the target DEK with its own passphrase, never via the session.
-    let target_dek =
-        resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
-
     // 4. Account-identity probe against the target (EF-19 Option B).
     //    Do NOT reuse storage `dedup_key` / `profile_dedup_key` here: that key
     //    strips secrets and collapses distinct S3 / OAuth / WebDAV accounts
@@ -1982,22 +2208,22 @@ pub fn relocate_server_profile(
     let source_fp = relocate_credential_fingerprint(
         conn,
         root_key,
-        &root_secret,
+        root_secret,
         source_user_id,
-        None,
+        Some(source_dek),
         &source,
         source_seed,
     )?;
-    let target_profiles = read_profiles_with_dek(conn, target_user_id, &target_dek)?;
+    let target_profiles = read_profiles_with_dek(conn, target_user_id, target_dek)?;
     let mut already_present = false;
     for existing in &target_profiles {
         let seed = value_str(existing, &["id", "uid", "profileUid"]).unwrap_or("");
         let existing_fp = relocate_credential_fingerprint(
             conn,
             root_key,
-            &root_secret,
+            root_secret,
             target_user_id,
-            Some(&target_dek),
+            Some(target_dek),
             existing,
             seed,
         )?;
@@ -2020,7 +2246,7 @@ pub fn relocate_server_profile(
         new_list.push(relocated);
         new_list.extend(target_profiles);
         let stored =
-            write_profiles_with_dek(conn, &root_secret, target_user_id, &target_dek, &new_list)?;
+            insert_profiles_with_dek(conn, root_secret, target_user_id, target_dek, &new_list)?;
         // A profile of the target that holds the name keeps it; the copy is
         // stored as " (1)", " (2)", ..., and that is the name to confirm.
         if let Some(name) = crate::util::profile_name::name_of(&stored, new_profile_id) {
@@ -2040,7 +2266,7 @@ pub fn relocate_server_profile(
             .into_iter()
             .filter(|p| value_str(p, &["id", "uid", "profileUid"]) != Some(profile_id))
             .collect();
-        replace_server_profiles_for(conn, root_key, source_user_id, &remaining)?;
+        insert_profiles_with_dek(conn, root_secret, source_user_id, source_dek, &remaining)?;
     }
 
     Ok(ProfileRelocation {
@@ -2111,6 +2337,13 @@ fn relocate_secret_key_dual(
     new_key: &str,
     kind: &str,
 ) {
+    // Native sessions require the enclosing profile transaction and key/UID
+    // guards. Never let this generic best-effort helper mutate one directly.
+    if source_key.starts_with("proton_native_session_")
+        || new_key.starts_with("proton_native_session_")
+    {
+        return;
+    }
     // Copy onto the new id only when a fresh target row was inserted; a dedup
     // no-op (Copy into a target that already has the drive) leaves the target's
     // existing secret untouched. A Move always inserts (#366), so its secret
@@ -2191,6 +2424,9 @@ fn relocate_server_credential_dual(
     let new_keys =
         relocate_all_secret_key_candidates(&relocation.protocol, &relocation.new_profile_id);
     for (source_key, new_key) in source_keys.iter().zip(new_keys.iter()) {
+        if source_key.starts_with("proton_native_session_") {
+            continue;
+        }
         relocate_secret_key_dual(
             conn,
             Some(store),
@@ -2913,6 +3149,37 @@ pub fn resolve_credential_for_user(
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user(&conn, store, user_id, credential_id)
+}
+
+/// Owners of a profile-bound credential, including a profile whose first
+/// mirror has not been written yet. Refresh propagation must never attribute
+/// another profile's secret to whichever user happens to be active now.
+pub(crate) fn profile_credential_owner_ids(
+    store: &CredentialStore,
+    profile_id: &str,
+    credential_id: &str,
+) -> Result<Vec<i64>, String> {
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let profile_uid = user_crypto::metadata_tag(&root_secret, b"profile-uid", profile_id)?;
+    let mut statement = conn
+        .prepare(
+            "SELECT user_id FROM server_profiles WHERE profile_uid = ?1
+             UNION SELECT user_id FROM user_credentials WHERE credential_id = ?2",
+        )
+        .map_err(|e| format!("Prepare credential owners: {e}"))?;
+    let rows = statement
+        .query_map(params![profile_uid, credential_id], |row| row.get(0))
+        .map_err(|e| format!("Read credential owners: {e}"))?;
+    rows.collect::<rusqlite::Result<Vec<i64>>>()
+        .map_err(|e| format!("Read credential owner row: {e}"))
+}
+
+/// The account that owns legacy unbound/global secrets, for one-time reads
+/// of sessions saved before native Proton had explicit user ownership.
+pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
+    nonprofile_secret_owner(&open_or_init_cli()?)
 }
 
 fn read_credential_for_user(
@@ -4410,8 +4677,8 @@ pub fn cli_read_credential_with_fallback(
 /// CLI bridge for the cross-user `profile-copy` / `profile-move` commands (N4).
 /// The active (source) user must already be unlocked by the caller, e.g. via
 /// `ensure_active_user_unlocked`; the target passphrase (if the target account
-/// is protected) is supplied here. Credentials (`server_<id>`) are copied or
-/// removed by the CLI command itself using the returned [`ProfileRelocation`].
+/// is protected) is supplied here. Profile and credential relocation share the
+/// same production path as the GUI, including native session guards.
 #[allow(clippy::too_many_arguments)]
 pub fn cli_relocate_server_profile(
     store: &CredentialStore,
@@ -4425,8 +4692,9 @@ pub fn cli_relocate_server_profile(
     init_or_migrate_cli(store)?;
     let mut conn = open_or_init_cli()?;
     let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = relocate_server_profile(
+    let result = relocate_server_profile_and_credentials(
         &mut conn,
+        store,
         &root_key,
         source_user_id,
         target_user_id,
@@ -4437,33 +4705,6 @@ pub fn cli_relocate_server_profile(
     );
     root_key.zeroize();
     result
-}
-
-/// CLI bridge (MUV-3) for the credential half of a cross-user relocation: copies
-/// every per-profile secret from [`relocate_all_secret_key_candidates`] (full
-/// `per_profile_vault_keys` set including Crypt overlay secrets) onto the new id
-/// (vault + the target user's partition under its scoped DEK) and, on a Move,
-/// drops the orphaned source secrets from both stores. Call after
-/// [`cli_relocate_server_profile`] with the same `target_passphrase` still live.
-pub fn cli_relocate_server_credential_dual(
-    store: &CredentialStore,
-    source_user_id: i64,
-    relocation: &ProfileRelocation,
-    target_passphrase: Option<&str>,
-) -> Result<(), String> {
-    init_or_migrate_cli(store)?;
-    let conn = open_or_init_cli()?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    relocate_server_credential_dual(
-        &conn,
-        store,
-        &root_key,
-        source_user_id,
-        relocation,
-        target_passphrase,
-    );
-    root_key.zeroize();
-    Ok(())
 }
 
 /// Resolve a target user by name (CLI `--user` flag). Returns the user metadata
@@ -5190,46 +5431,30 @@ pub async fn user_partitions_relocate_server_profile(
     target_user_id: i64,
     profile_id: String,
     new_profile_id: String,
-    mut target_passphrase: Option<String>,
+    target_passphrase: Option<String>,
     move_profile: bool,
 ) -> Result<ProfileRelocation, String> {
+    let target_passphrase = target_passphrase.map(Zeroizing::new);
     init_or_migrate(&app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut conn = open_or_init(&app)?;
     let source_user_id = active_user_id(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = relocate_server_profile(
-        &mut conn,
-        &root_key,
-        source_user_id,
-        target_user_id,
-        &profile_id,
-        &new_profile_id,
-        target_passphrase.as_deref(),
-        move_profile,
-    );
-    // MUV-3/F4: relocate per-profile secrets (server_* + OAuth/Jottacloud) while
-    // the root_key and the target passphrase are still live. The vault stays in
-    // sync and each secret is mirrored onto the target partition under its DEK.
-    let outcome = match result {
-        Ok(relocation) => {
-            relocate_server_credential_dual(
-                &conn,
-                &store,
-                &root_key,
-                source_user_id,
-                &relocation,
-                target_passphrase.as_deref(),
-            );
-            Ok(relocation)
-        }
-        Err(e) => Err(e),
-    };
-    root_key.zeroize();
-    if let Some(passphrase) = target_passphrase.as_mut() {
-        passphrase.zeroize();
-    }
-    outcome
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    tokio::task::spawn_blocking(move || {
+        relocate_server_profile_and_credentials(
+            &mut conn,
+            &store,
+            &root_key,
+            source_user_id,
+            target_user_id,
+            &profile_id,
+            &new_profile_id,
+            target_passphrase.as_deref().map(String::as_str),
+            move_profile,
+        )
+    })
+    .await
+    .map_err(|error| format!("Profile relocation task failed: {error}"))?
 }
 
 /// Generic per-user setting access (MU-4 foundation). Settings are keyed by

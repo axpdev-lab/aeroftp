@@ -63,6 +63,7 @@ import { Checkbox } from './ui/Checkbox';
 import { FILEN_BRIDGE_MAX_LENGTH, FILEN_BRIDGE_REJECTED_CHARACTERS, filenBridgeCredentialError } from '../utils/passwordForge';
 import { isFilenDesktopBridge as isFilenDesktopBridgeProvider } from '../utils/filenDesktopBridge';
 import { isProtonNative, useProtonNativeAvailable } from '../utils/protonNative';
+import { useProtonSignIn } from '../hooks/useProtonSignIn';
 
 // Protocols that can be switched between when editing a saved connection
 const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp'];
@@ -355,24 +356,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Proton Drive native client: browser sign-in through Proton's session
     // fork. The session goes straight to the vault, never into this form.
     const protonNativeAvailable = useProtonNativeAvailable();
-    const [protonSigningIn, setProtonSigningIn] = useState(false);
-    const [protonSignInError, setProtonSignInError] = useState<string | null>(null);
-    const [protonSignedIn, setProtonSignedIn] = useState(false);
-    const protonSignInTokenRef = useRef<string | null>(null);
     // Whether the native Proton Drive form shows, and whether its profile (or,
     // before the first save, the pending sign-in) has a session.
     const protonNativeForm = protocol === 'proton' && isProtonNative(connectionParams.options);
-    useEffect(() => {
-        if (!protonNativeForm || !protonNativeAvailable) {
-            setProtonSignedIn(false);
-            return;
-        }
-        let live = true;
-        invoke<{ signedIn: boolean }>('proton_native_status', { profileId: editingProfileId })
-            .then((status) => { if (live) setProtonSignedIn(status.signedIn); })
-            .catch(() => { if (live) setProtonSignedIn(false); });
-        return () => { live = false; };
-    }, [protonNativeForm, protonNativeAvailable, editingProfileId]);
+    const {
+        signingIn: protonSigningIn, signedIn: protonSignedIn, error: protonSignInError,
+        signIn: protonSignIn, signOut: protonSignOut, cancel: cancelProtonSignIn,
+        clearError: clearProtonSignInError,
+    } = useProtonSignIn({
+        active, nativeForm: protonNativeForm, available: protonNativeAvailable,
+        profileId: editingProfileId, params: connectionParams, onParamsChange: onConnectionParamsChange,
+    });
 
     // Reveal toggle for the optional Filen CLI API Key field.
     const [showFilenApiKey, setShowFilenApiKey] = useState(false);
@@ -3792,7 +3786,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 if (newProtocol === 'proton' && protocol === 'proton') {
                                     const options = { ...(connectionParams.options || {}) };
                                     delete options.proton_mode;
-                                    setProtonSignInError(null);
+                                    clearProtonSignInError();
                                     onConnectionParamsChange({
                                         ...connectionParams,
                                         options: { ...options, ...(modeOptions || {}) },
@@ -5073,32 +5067,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     <button
                                                         type="button"
                                                         disabled={protonSigningIn}
-                                                        onClick={async () => {
-                                                            setProtonSignInError(null);
-                                                            setProtonSigningIn(true);
-                                                            const token = `proton_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-                                                            protonSignInTokenRef.current = token;
-                                                            try {
-                                                                const result = await invoke<{ email: string | null }>('proton_native_sign_in', {
-                                                                    params: { profileId: editingProfileId, connectToken: token },
-                                                                });
-                                                                setProtonSignedIn(true);
-                                                                if (result.email) {
-                                                                    onConnectionParamsChange({ ...connectionParams, username: result.email });
-                                                                }
-                                                            } catch (err) {
-                                                                const message = String(err);
-                                                                // A cancel is the user's own choice, not an error.
-                                                                if (message.includes('PROTON_SIGN_IN_EXPIRED')) {
-                                                                    setProtonSignInError(t('connection.protonSignInExpired'));
-                                                                } else if (!message.includes('CONNECT_CANCELLED')) {
-                                                                    setProtonSignInError(message);
-                                                                }
-                                                            } finally {
-                                                                protonSignInTokenRef.current = null;
-                                                                setProtonSigningIn(false);
-                                                            }
-                                                        }}
+                                                        onClick={() => void protonSignIn()}
                                                         className="px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                                                     >
                                                         {protonSigningIn && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
@@ -5107,10 +5076,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {protonSigningIn && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => {
-                                                                const token = protonSignInTokenRef.current;
-                                                                if (token) invoke('cancel_connection', { token }).catch(() => { });
-                                                            }}
+                                                            onClick={cancelProtonSignIn}
                                                             className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                                                         >
                                                             {t('common.cancel')}
@@ -5133,15 +5099,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     <button
                                                         type="button"
                                                         title={t('connection.protonSignOutHelp')}
-                                                        onClick={async () => {
-                                                            setProtonSignInError(null);
-                                                            try {
-                                                                await invoke('proton_native_sign_out', { profileId: editingProfileId });
-                                                                setProtonSignedIn(false);
-                                                            } catch (err) {
-                                                                setProtonSignInError(String(err));
-                                                            }
-                                                        }}
+                                                        onClick={() => void protonSignOut()}
                                                         className="text-xs text-gray-500 hover:text-red-600 dark:hover:text-red-400 underline"
                                                     >
                                                         {t('connection.protonSignOut')}

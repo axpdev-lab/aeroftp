@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, aparat lub tablet przez USB MTP",
             "s3AllowCleartextEndpoint": "Ten punkt końcowy udostępnia S3 przez nieszyfrowany HTTP w sieci. Zaakceptuj to dla tego profilu: podpisane poświadczenia i każdy plik przechodzą przez sieć bez szyfrowania.",
             "discoverFilebase": "Filebase: pamięć obiektowa zgodna z S3 (5 GB za darmo)",
-            "protonDesc": "Łączy się przez Proton Drive CLI",
-            "protonTooltip": "Używa Proton Drive CLI - zainstaluj, zaloguj się w przeglądarce, AeroFTP jest GUI",
+            "protonDesc": "Magazyn w chmurze z szyfrowaniem end-to-end",
+            "protonTooltip": "Użyj natywnego klienta AeroFTP lub oficjalnego Proton Drive CLI z logowaniem w przeglądarce.",
             "twakeDesc": "Twake Drive (5 GB za darmo)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francuska chmura open source (Cozy Cloud jest teraz jej częścią) z 5 GB za darmo",
             "discoverTwake": "Europejska chmura open source od Linagora, teraz nowy dom Cozy Cloud (5 GB za darmo)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Nie wysłano: polecenia SITE wymagają połączenia FTP lub FTPS.",
                 "not_connected": "Nie wysłano: sesja nie jest połączona.",
                 "busy": "Nie wysłano: sesja jest zajęta inną operacją. Spróbuj ponownie po jej zakończeniu.",
-                "reconnect_failed": "Nie wysłano: sesja musiała się najpierw połączyć ponownie, co się nie udało."
+                "reconnect_failed": "Nie wysłano: sesja musiała się najpierw połączyć ponownie, co się nie udało.",
+                "connection_changed": "Nie wysłano: połączenie się zmieniło. Spróbuj ponownie w wybranej sesji."
             },
             "unknown": {
                 "timeout": "Odpowiedź nie nadeszła na czas.",

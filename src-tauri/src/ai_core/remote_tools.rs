@@ -530,19 +530,23 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let profiles = ctx.credentials().list_servers().map_err(ToolError::Exec)?;
     // Snapshot vault keyset once so per-profile auth_state derivation is
     // O(1) instead of one decryption per call. When the vault isn't open
     // (rare in MCP, possible in CLI agent context), derivation falls back
     // to "unknown", but here we have the cache.
     let auth_lookup = crate::credential_store::CredentialStore::from_cache().map(|store| {
+        let user_id = crate::user_partitions::cli_get_active_user(&store)
+            .ok()
+            .flatten()
+            .map(|user| user.id);
         let accounts: std::collections::HashSet<String> = store
             .list_accounts()
             .unwrap_or_default()
             .into_iter()
             .collect();
-        (store, accounts)
+        (store, accounts, user_id)
     });
+    let profiles = ctx.credentials().list_servers().map_err(ToolError::Exec)?;
     let filtered: Vec<Value> = profiles
         .into_iter()
         .filter(|p| {
@@ -559,13 +563,14 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
         .map(|p| {
             let auth_state = auth_lookup
                 .as_ref()
-                .map(|(store, accounts)| {
-                    crate::profile_auth_state::derive_profile_auth_state(
+                .map(|(store, accounts, user_id)| {
+                    crate::profile_auth_state::derive_profile_auth_state_for_user(
                         store,
                         accounts,
                         &p.id,
                         &p.protocol,
                         p.auth_source,
+                        *user_id,
                     )
                 })
                 .unwrap_or("unknown");
@@ -2891,7 +2896,11 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let mut orphans: Vec<(String, u64)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(root.clone(), 0)];
     let mut scan_errors: u32 = 0;
-    let mut scope = crate::sync_core::WalkScope::new(&root);
+    let resolved_root = backend.stat(&root).await.ok().filter(|entry| entry.is_dir);
+    let mut scope = crate::sync_core::WalkScope::for_delete(
+        &root,
+        resolved_root.as_ref().map(|entry| entry.path.as_str()),
+    );
 
     while let Some((dir, depth)) = dirs.pop() {
         if depth >= MAX_BFS_DEPTH {
@@ -3351,7 +3360,11 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(root.clone(), 0)];
     let mut scan_errors: u32 = 0;
-    let mut scope = crate::sync_core::WalkScope::new(&root);
+    let resolved_root = backend.stat(&root).await.ok().filter(|entry| entry.is_dir);
+    let mut scope = crate::sync_core::WalkScope::for_delete(
+        &root,
+        resolved_root.as_ref().map(|entry| entry.path.as_str()),
+    );
     while let Some((dir, depth)) = dirs.pop() {
         if depth >= MAX_BFS_DEPTH || files.len() >= MAX_BFS_ENTRIES {
             continue;
@@ -6263,6 +6276,39 @@ mod tests {
         assert!(backend.deleted.lock().unwrap().is_empty(), "{report}");
         assert_eq!(report["duplicates_found"], 0, "{report}");
         assert_eq!(report["scan_errors"], 2, "{report}");
+    }
+
+    #[tokio::test]
+    async fn destructive_walks_refuse_listing_derived_outside_root_aliases() {
+        for tool in ["cleanup", "dedupe"] {
+            let mut backend = FakeBackend::sample();
+            backend.tree = std::collections::HashMap::from([(
+                "/root".to_string(),
+                vec![
+                    entry("/root/a", false, 4),
+                    entry("/outside/root/x.aerotmp", false, 4),
+                ],
+            )]);
+            backend.downloads = std::collections::HashMap::from([
+                ("/root/a".to_string(), b"same".to_vec()),
+                ("/outside/root/x.aerotmp".to_string(), b"same".to_vec()),
+            ]);
+            let backend = Arc::new(backend);
+            let ctx = test_ctx(Arc::clone(&backend));
+            let args =
+                json!({"server": "srv", "path": "/root", "mode": "newest", "dry_run": false});
+            let report = if tool == "cleanup" {
+                cleanup(&ctx, &args).await
+            } else {
+                dedupe(&ctx, &args).await
+            }
+            .unwrap();
+            assert_eq!(report["scan_errors"], 1, "{tool}: {report}");
+            assert!(
+                backend.deleted.lock().unwrap().is_empty(),
+                "{tool}: {report}"
+            );
+        }
     }
 
     /// What a walk of the root holds in each defective listing:

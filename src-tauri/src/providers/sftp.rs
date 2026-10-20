@@ -2878,6 +2878,12 @@ impl StorageProvider for SftpProvider {
             full_path.clone(),
             &metadata,
         ));
+        let source_provenance = super::atomic_write::ResumeSource::new(
+            "sftp",
+            &format!("{}:{}", self.config.host, self.config.port),
+            &self.config.username,
+            &full_path,
+        );
         // The OPEN above is speculation, fired next to the STAT to overlap the
         // two round trips. Its failure is not the download's failure: the fresh
         // STAT can still select the pooled, read-ahead or pipelined path, and
@@ -3137,16 +3143,19 @@ impl StorageProvider for SftpProvider {
             let buffer_size = self.buffer_size;
             let download_limit_bps = self.download_limit_bps;
             let source = &source;
+            let source_provenance = &source_provenance;
             async move {
                 // Resumable local file: writes to `.aerotmp`, KEEPS the partial on
                 // cancel/error (drop) so a later re-download resumes, renames on commit.
                 // A part is gone on from only when it was started from the
                 // version the STAT above found, by its record.
-                let opened = if resume_in_place {
-                    super::atomic_write::ResumableFile::open_resume_for(local_path, source).await
-                } else {
-                    super::atomic_write::ResumableFile::open_for(local_path, source).await
-                };
+                let opened = super::atomic_write::ResumableFile::open_for_source(
+                    local_path,
+                    source,
+                    source_provenance,
+                    resume_in_place,
+                )
+                .await;
                 let mut resumable = opened.map_err(|e| {
                     ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
                 })?;
@@ -4935,7 +4944,10 @@ impl RawReadHandle {
         )
         .await
         {
-            Ok(data) => Ok(data.data),
+            Ok(data) if data.data.len() <= len as usize => Ok(data.data),
+            Ok(_) => Err(ProviderError::TransferFailed(
+                "Oversized SFTP read response: server returned more bytes than requested".into(),
+            )),
             Err(russh_sftp::client::error::Error::Status(status))
                 if status.status_code == russh_sftp::protocol::StatusCode::Eof =>
             {
@@ -5185,6 +5197,12 @@ async fn readahead_range_on(
         r = probe.read_once(start, first_want, &sftp.ended) => r,
     };
     let first = match first {
+        Ok(first) if first.len() > first_want => {
+            close_readers(readers, &sftp.ended).await;
+            return Err(ProviderError::TransferFailed(
+                "Oversized SFTP read response: server returned more bytes than requested".into(),
+            ));
+        }
         Ok(first) if !first.is_empty() => first,
         Ok(_) => {
             close_readers(readers, &sftp.ended).await;
@@ -6223,6 +6241,7 @@ async fn sftp_read_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::AsyncWriteExt;
 
     /// Characterisation: what makes the `find` walk safe today is not the
     /// contract, it is the shape of the data.
@@ -8400,6 +8419,8 @@ mod tests {
         /// The modification time STAT reports, when it reports one.
         mtime: Option<u32>,
         first_cap: Option<usize>,
+        /// Malformed DATA replies, including the first READ or a later chunk.
+        oversize_from: Option<u64>,
         open_limit: Option<usize>,
         open_now: usize,
         max_open: Arc<std::sync::atomic::AtomicUsize>,
@@ -8416,6 +8437,7 @@ mod tests {
                 announce,
                 mtime: None,
                 first_cap: None,
+                oversize_from: None,
                 open_limit: None,
                 open_now: 0,
                 max_open: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -8566,6 +8588,12 @@ mod tests {
             let start = usize::try_from(offset).unwrap_or(usize::MAX);
             if start >= self.data.len() {
                 return Err(russh_sftp::protocol::StatusCode::Eof);
+            }
+            if self.oversize_from.is_some_and(|from| offset >= from) {
+                return Ok(russh_sftp::protocol::Data {
+                    id,
+                    data: vec![0xab; len as usize + 1],
+                });
             }
             let cap = self.first_cap.take().unwrap_or(self.cap);
             let end = self.data.len().min(start + (len as usize).min(cap));
@@ -9011,6 +9039,62 @@ mod tests {
     }
 
     const BUDGET_CHUNK: u32 = 256 * 1024;
+
+    #[tokio::test]
+    async fn oversized_raw_sftp_data_is_refused_and_releases_the_range_budget() {
+        for (size, from) in [(1, 0), (3 * BUDGET_CHUNK as usize + 17, 1)] {
+            let data = pattern(size);
+            let mut server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+            server.oversize_from = Some(from);
+            let live = server.live_handles();
+            let (provider, _) = server.serve_with_readahead_channel().await;
+            let budget = ReadaheadBudget::new(4 * BUDGET_CHUNK);
+            let result = readahead_into_file_on(
+                &provider,
+                size as u64,
+                8,
+                &CancellationToken::new(),
+                &budget,
+                Arc::new(AtomicBool::new(false)),
+                None,
+            )
+            .await;
+            assert!(
+                matches!(&result, Err(ProviderError::TransferFailed(message)) if message.contains("Oversized SFTP read response")),
+                "{result:?}"
+            );
+            assert_eq!(
+                budget.permits.available_permits(),
+                (4 * BUDGET_CHUNK) as usize
+            );
+            assert_eq!(
+                live.load(Ordering::SeqCst),
+                0,
+                "the raw handle was not closed"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_raw_sftp_data_never_replaces_the_download_destination() {
+        let data = pattern(3 * 1024 * 1024 + 17);
+        for from in [0, 1] {
+            let mut server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+            server.oversize_from = Some(from);
+            let (mut provider, _) = server.serve_with_readahead_channel().await;
+            let directory = tempfile::tempdir().unwrap();
+            let destination = directory.path().join("existing.bin");
+            std::fs::write(&destination, b"keep old destination").unwrap();
+            let result = provider
+                .download("/down.bin", destination.to_str().unwrap(), None)
+                .await;
+            assert!(result.is_err(), "an oversized DATA response was accepted");
+            assert_eq!(
+                std::fs::read(&destination).unwrap(),
+                b"keep old destination"
+            );
+        }
+    }
 
     /// Every read-ahead of the process holds one budget: a READ takes its
     /// chunk's bytes before it is sent and gives them back once the chunk is
@@ -9472,15 +9556,26 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let local = dir.path().join("down.bin");
         let local = local.to_string_lossy().into_owned();
-        let mut left = super::super::atomic_write::ResumableFile::open_for(&local, recorded)
-            .await
-            .expect("part");
-        left.write_all(part).await.expect("part bytes");
-        drop(left);
         let mut server = ReadCappingServer::new(data, 64 * 1024, false);
         server.mtime = Some(mtime);
         let reads = Arc::clone(&server.reads);
         let mut provider = server.serve().await;
+        let provenance = super::super::atomic_write::ResumeSource::new(
+            "sftp",
+            &format!("{}:{}", provider.config.host, provider.config.port),
+            &provider.config.username,
+            "/down.bin",
+        );
+        let mut left = super::super::atomic_write::ResumableFile::open_for_source(
+            &local,
+            recorded,
+            &provenance,
+            false,
+        )
+        .await
+        .expect("part");
+        left.write_all(part).await.expect("part bytes");
+        drop(left);
         provider
             .download("/down.bin", &local, None)
             .await
@@ -9499,6 +9594,63 @@ mod tests {
     /// the server held by then: a file replaced in the meantime came out as
     /// the old part joined to the new tail, and a part already as long as
     /// the new file was published without a byte read.
+    #[tokio::test]
+    async fn sftp_does_not_resume_another_sources_equal_version() {
+        let original = pattern(4000);
+        let mut current = original.clone();
+        current[..300].iter_mut().for_each(|byte| *byte ^= 0x55);
+        let mtime = 1_700_000_000;
+        let version = sftp_version(&original, mtime);
+        for changed in ["path", "account", "port"] {
+            for kept in [1000, original.len()] {
+                let dir = tempfile::tempdir().unwrap();
+                let local = dir.path().join("target");
+                let path = local.to_str().unwrap();
+                let mut server = ReadCappingServer::new(&current, 64 * 1024, false);
+                server.mtime = Some(mtime);
+                let reads = Arc::clone(&server.reads);
+                let mut provider = server.serve().await;
+                let port = if changed == "port" {
+                    0
+                } else {
+                    provider.config.port
+                };
+                let source = super::super::atomic_write::ResumeSource::new(
+                    "sftp",
+                    &format!("{}:{port}", provider.config.host),
+                    if changed == "account" {
+                        "another-account"
+                    } else {
+                        &provider.config.username
+                    },
+                    if changed == "path" {
+                        "/another.bin"
+                    } else {
+                        "/down.bin"
+                    },
+                );
+                let mut part = super::super::atomic_write::ResumableFile::open_for_source(
+                    path, &version, &source, false,
+                )
+                .await
+                .unwrap();
+                part.write_all(&original[..kept]).await.unwrap();
+                part.file_mut().flush().await.unwrap();
+                drop(part);
+                provider.download("/down.bin", path, None).await.unwrap();
+                assert_eq!(
+                    std::fs::read(path).unwrap(),
+                    current,
+                    "{changed}, kept={kept}"
+                );
+                assert!(
+                    reads.lock().unwrap().iter().any(|read| read.0 == 0),
+                    "{changed}, kept={kept}: no fresh read"
+                );
+            }
+        }
+    }
+
     #[tokio::test]
     async fn an_sftp_part_goes_on_only_against_its_own_version() {
         let v1 = pattern(4000);

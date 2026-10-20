@@ -8,6 +8,11 @@ use crate::{credential_store::CredentialStore, providers::*, user_partitions as 
 use secrecy::ExposeSecret;
 use serde_json::{json, Value};
 
+/// Durable profile auth entries travel with a profile. Pending attempts and
+/// connection deadlines are local lifecycle state and are deleted only.
+pub const DURABLE_KEY_PREFIXES: [&str; 3] = ["profile_auth_config", "github_oauth", "github_pem"];
+pub const TRANSIENT_KEY_PREFIXES: [&str; 2] = ["profile_auth_pending", "profile_auth_deadline"];
+
 pub struct AuthScope<'a> {
     pub store: &'a CredentialStore,
     pub user_id: Option<i64>,
@@ -708,6 +713,28 @@ async fn provider_at(
 ) -> Result<Option<Box<dyn StorageProvider>>, String> {
     let (id, kind) = identity(profile)?;
     let config = scope.config(id)?;
+    #[cfg(feature = "proton-native")]
+    if kind == ProviderType::Proton {
+        let (extra, host) =
+            crate::profile_loader::profile_connection_extra(profile, kind, field(profile, "host"));
+        let config = proton::ProtonConfig::from_provider_config(&ProviderConfig {
+            name: field(profile, "name").into(),
+            provider_type: kind,
+            host,
+            port: None,
+            username: Some(field(profile, "username").into()),
+            password: None,
+            initial_path: None,
+            extra,
+        })
+        .map_err(|error| error.to_string())?;
+        if config.connection_mode == proton::ProtonConnectionMode::Native {
+            return Ok(Some(Box::new(
+                proton_native::provider::ProtonNativeProvider::new(config)
+                    .with_credential_user(scope.user_id),
+            )));
+        }
+    }
     if kind == ProviderType::GitHub && matches!(github_mode(profile, &config), "authorize" | "app")
     {
         let token = if github_mode(profile, &config) == "authorize" {

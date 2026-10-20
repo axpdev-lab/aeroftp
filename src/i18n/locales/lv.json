@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Tālrunis, kamera vai planšetdators, izmantojot USB MTP",
             "s3AllowCleartextEndpoint": "Šis galapunkts nodrošina S3 caur nešifrētu HTTP tīklā. Pieņemiet to šim profilam: parakstītie akreditācijas dati un katrs fails šķērso tīklu nešifrēti.",
             "discoverFilebase": "Filebase: ar S3 saderīga objektu glabātuve (5 GB bez maksas)",
-            "protonDesc": "Savienojas, izmantojot Proton Drive CLI",
-            "protonTooltip": "Izmanto Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI",
+            "protonDesc": "Mākoņkrātuve ar pilnīgu šifrēšanu",
+            "protonTooltip": "Izmantojiet AeroFTP iebūvēto klientu vai oficiālo Proton Drive CLI, pierakstoties pārlūkā.",
             "twakeDesc": "Twake Drive (5 GB bez maksas)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, franču atvērtā koda mākonis (Cozy Cloud tagad ir tā daļa) ar 5 GB bez maksas",
             "discoverTwake": "Linagora atvērtā koda Eiropas mākonis, tagad Cozy Cloud jaunās mājas (5 GB bez maksas)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Nav nosūtīts: SITE komandām nepieciešams FTP vai FTPS savienojums.",
                 "not_connected": "Nav nosūtīts: sesija nav savienota.",
                 "busy": "Nav nosūtīts: sesija ir aizņemta ar citu darbību. Mēģiniet vēlreiz, kad tā beigsies.",
-                "reconnect_failed": "Nav nosūtīts: sesijai vispirms bija jāpievienojas atkārtoti, taču tas neizdevās."
+                "reconnect_failed": "Nav nosūtīts: sesijai vispirms bija jāpievienojas atkārtoti, taču tas neizdevās.",
+                "connection_changed": "Nav nosūtīts: savienojums ir mainījies. Mēģiniet vēlreiz paredzētajā sesijā."
             },
             "unknown": {
                 "timeout": "Atbilde neatnāca laikā.",

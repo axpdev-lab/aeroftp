@@ -1557,6 +1557,12 @@ impl StorageProvider for SwiftProvider {
 
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "swift",
+                &self.config.auth_url,
+                &self.config.username,
+                &url,
+            ),
             |range_header| {
                 let mut req = self.client.get(&url).header("X-Auth-Token", &token);
                 if let Some(range) = range_header {

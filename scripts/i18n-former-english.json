@@ -5,7 +5,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "1fec77fc778045297cfb339c40c791def2c5cab0ed7b02fdb8d244e4dec752e4",
+    "enHash": "e23ac04568aa72347b6788fd74d92cb2304e549367758add6bd5027cca387bf8",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -534,6 +534,12 @@
         ],
         "protocol.pcloudTooltip": [
             "pCloud - 10GB free storage, US/EU regions"
+        ],
+        "protocol.protonDesc": [
+            "Connects through the Proton Drive CLI"
+        ],
+        "protocol.protonTooltip": [
+            "Uses the Proton Drive CLI - install it, sign in in the browser, AeroFTP is the GUI"
         ],
         "protocol.s3Desc": [
             "AWS S3, MinIO, R2, B2"

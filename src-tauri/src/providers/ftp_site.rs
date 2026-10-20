@@ -367,6 +367,8 @@ pub enum NotSentReason {
     NotConnected,
     /// The session is busy with other work (GUI: a transfer holds it).
     Busy,
+    /// The GUI command belongs to a connection that has since changed.
+    ConnectionChanged,
     /// The session needed a redial before sending, and the redial failed.
     ReconnectFailed,
 }
@@ -425,6 +427,7 @@ impl SiteOutcome {
                 NotSentReason::NotFtp => "not_ftp",
                 NotSentReason::NotConnected => "not_connected",
                 NotSentReason::Busy => "busy",
+                NotSentReason::ConnectionChanged => "connection_changed",
                 NotSentReason::ReconnectFailed => "reconnect_failed",
             }),
             SiteOutcome::Unknown { cause, .. } => Some(match cause {

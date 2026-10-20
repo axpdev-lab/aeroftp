@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Ffôn, camera, neu lechen dros USB MTP",
             "s3AllowCleartextEndpoint": "Mae'r pwynt terfyn hwn yn gweini S3 dros HTTP plaen ar draws rhwydwaith. Derbyniwch hyn ar gyfer y proffil hwn: mae'r manylion llofnodedig a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio.",
             "discoverFilebase": "Filebase: storfa wrthrychau sy'n gydnaws â S3 (5 GB am ddim)",
-            "protonDesc": "Yn cysylltu trwy CLI Proton Drive",
-            "protonTooltip": "Yn defnyddio CLI Proton Drive - gosodwch ef, mewngofnodwch yn y porwr, AeroFTP yw'r GUI",
+            "protonDesc": "Storfa cwmwl wedi'i hamgryptio o'r dechrau i'r diwedd",
+            "protonTooltip": "Defnyddiwch gleient brodorol AeroFTP neu'r Proton Drive CLI swyddogol, gyda mewngofnodi drwy'r porwr.",
             "twakeDesc": "Twake Drive (5 GB am ddim)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cwmwl ffynhonnell agored o Ffrainc (mae Cozy Cloud bellach yn rhan ohono) gyda 5 GB am ddim",
             "discoverTwake": "Cwmwl Ewropeaidd ffynhonnell agored gan Linagora, sydd bellach yn gartref i Cozy Cloud (5 GB am ddim)",
@@ -6370,7 +6370,8 @@
                 "not_ftp": "Heb anfon: mae gorchmynion SITE angen cysylltiad FTP neu FTPS.",
                 "not_connected": "Heb anfon: nid yw'r sesiwn wedi'i chysylltu.",
                 "busy": "Heb anfon: mae'r sesiwn yn brysur gyda gweithrediad arall. Rhowch gynnig arall arni pan fydd wedi gorffen.",
-                "reconnect_failed": "Heb anfon: roedd yn rhaid i'r sesiwn ailgysylltu yn gyntaf, ac nid oedd yn gallu."
+                "reconnect_failed": "Heb anfon: roedd yn rhaid i'r sesiwn ailgysylltu yn gyntaf, ac nid oedd yn gallu.",
+                "connection_changed": "Heb ei anfon: mae'r cysylltiad wedi newid. Rhowch gynnig arall arni yn y sesiwn fwriadedig."
             },
             "unknown": {
                 "timeout": "Ni chyrhaeddodd yr ateb mewn pryd.",

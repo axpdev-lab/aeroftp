@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefonas, kamera ar planšetė per USB MTP",
             "s3AllowCleartextEndpoint": "Šis galinis taškas teikia S3 per neužšifruotą HTTP tinklu. Priimkite tai šiam profiliui: pasirašyti prisijungimo duomenys ir kiekvienas failas keliauja tinklu neužšifruoti.",
             "discoverFilebase": "Filebase: su S3 suderinama objektų saugykla (5 GB nemokamai)",
-            "protonDesc": "Jungiasi per Proton Drive CLI",
-            "protonTooltip": "Naudoja Proton Drive CLI - įdiekite, prisijunkite naršyklėje, AeroFTP yra GUI",
+            "protonDesc": "Debesijos saugykla su ištisiniu šifravimu",
+            "protonTooltip": "Naudokite integruotą AeroFTP klientą arba oficialų Proton Drive CLI ir prisijunkite naršyklėje.",
             "twakeDesc": "Twake Drive (5 GB nemokamai)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, prancūziškas atvirojo kodo debesis (Cozy Cloud dabar yra jo dalis) su 5 GB nemokamai",
             "discoverTwake": "Linagora atvirojo kodo Europos debesis, dabar naujieji Cozy Cloud namai (5 GB nemokamai)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Neišsiųsta: SITE komandoms reikalingas FTP arba FTPS ryšys.",
                 "not_connected": "Neišsiųsta: seansas neprijungtas.",
                 "busy": "Neišsiųsta: seansas užsiėmęs kita operacija. Bandykite dar kartą, kai ji baigsis.",
-                "reconnect_failed": "Neišsiųsta: seansas pirmiausia turėjo prisijungti iš naujo, bet to padaryti nepavyko."
+                "reconnect_failed": "Neišsiųsta: seansas pirmiausia turėjo prisijungti iš naujo, bet to padaryti nepavyko.",
+                "connection_changed": "Neišsiųsta: ryšys pasikeitė. Bandykite dar kartą norimame seanse."
             },
             "unknown": {
                 "timeout": "Atsakymas neatėjo laiku.",

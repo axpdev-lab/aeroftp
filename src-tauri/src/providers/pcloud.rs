@@ -1021,6 +1021,15 @@ impl StorageProvider for PCloudProvider {
         // Step 2: Resumable download (pCloud CDN URLs don't need auth)
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "pcloud",
+                self.api_base(),
+                &super::atomic_write::ResumeSource::account(
+                    &self.profile_id,
+                    self.account_email.as_deref(),
+                ),
+                &resolved,
+            ),
             |range_header| {
                 let mut req = self.client.get(&download_url);
                 if let Some(range) = range_header {

@@ -194,7 +194,33 @@ fn open_temp(temp: &Path) -> io::Result<std::fs::File> {
         options.create(true).write(true).truncate(false);
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NOFOLLOW);
-        options.open(temp)
+        #[cfg(windows)]
+        {
+            // Open the reparse point itself. A normal Windows open follows
+            // it successfully, before the caller's set_len can reject it.
+            // Keep these Win32 values local: this module is also built by
+            // the standalone core crate, without the application's windows
+            // dependency.
+            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+            std::os::windows::fs::OpenOptionsExt::custom_flags(
+                &mut options,
+                FILE_FLAG_OPEN_REPARSE_POINT,
+            );
+        }
+        let file = options.open(temp)?;
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+            // Inspect the opened handle, not the path: a substitution after
+            // the open cannot turn this into a truncation of another file.
+            if file.metadata()?.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                return Err(io::Error::other(
+                    "Refusing a reparse point at the download temporary",
+                ));
+            }
+        }
+        Ok(file)
     };
     match open() {
         // The name is looked at, not the error: a link fails the open with
@@ -1749,6 +1775,16 @@ mod tests {
         assert!(reread.names.iter().any(|n| n.id == 65534 && n.access == 4));
     }
 
+    #[cfg(any(unix, windows))]
+    fn temporary_link_fixture(target: &str, link: &Path) {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).expect("create temporary symlink fixture");
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(target, link).expect(
+            "Windows regression tests require Developer Mode or the symlink creation privilege",
+        );
+    }
+
     /// A link at the temporary's name, left by a symlink download killed
     /// between making its link there and renaming it, points wherever the
     /// peer chose inside the download folder. The writer opened through it:
@@ -1757,7 +1793,7 @@ mod tests {
     /// no lock is taken it emptied that file (see
     /// `a_claim_that_takes_no_lock_never_empties_what_a_link_points_to`). The
     /// link is removed, never followed, and the writer takes the name.
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[tokio::test]
     async fn a_link_at_the_temporary_is_removed_and_what_it_points_to_is_kept() {
         let dir = fresh_tempdir();
@@ -1765,7 +1801,7 @@ mod tests {
         let temp = temp_path_for_streaming(&target);
         let sibling = dir.path().join("sibling.bin");
         std::fs::write(&sibling, b"sibling content").unwrap();
-        std::os::unix::fs::symlink("sibling.bin", &temp).unwrap();
+        temporary_link_fixture("sibling.bin", &temp);
 
         let mut writer = StreamingAtomicWriter::new(&target)
             .await
@@ -1784,13 +1820,13 @@ mod tests {
     /// The same link pointing at a name nothing holds: the open, which
     /// creates what it reaches, made a file there before the claim could
     /// refuse it.
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[tokio::test]
     async fn a_dangling_link_at_the_temporary_creates_nothing_where_it_points() {
         let dir = fresh_tempdir();
         let target = dir.path().join("f.bin");
         let temp = temp_path_for_streaming(&target);
-        std::os::unix::fs::symlink("chosen-by-the-peer.bin", &temp).unwrap();
+        temporary_link_fixture("chosen-by-the-peer.bin", &temp);
 
         let opened = StreamingAtomicWriter::new(&target).await;
         assert_eq!(
@@ -1807,14 +1843,14 @@ mod tests {
     /// Where the claim takes no lock (outside Linux, on NFS and SMB mounts,
     /// and where the filesystem cannot lock, as here) nothing looked at what
     /// the open had reached before emptying it: the file the link points to.
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[test]
     fn a_claim_that_takes_no_lock_never_empties_what_a_link_points_to() {
         let dir = fresh_tempdir();
         let temp = dir.path().join("f.bin.aerotmp");
         let sibling = dir.path().join("sibling.bin");
         std::fs::write(&sibling, b"sibling content").unwrap();
-        std::os::unix::fs::symlink("sibling.bin", &temp).unwrap();
+        temporary_link_fixture("sibling.bin", &temp);
         let cannot_lock = |_: &std::fs::File| {
             Err(std::fs::TryLockError::Error(io::Error::from(
                 io::ErrorKind::Unsupported,

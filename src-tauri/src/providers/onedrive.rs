@@ -1373,6 +1373,18 @@ impl StorageProvider for OneDriveProvider {
         let item = self.get_item(&path).await?;
 
         // Get download URL (same logic as download())
+        let source = super::atomic_write::ResumeSource::new(
+            "onedrive",
+            &self.graph_api(),
+            &super::atomic_write::ResumeSource::account(
+                &self.profile_id,
+                item.parent_reference
+                    .as_ref()
+                    .and_then(|parent| parent.drive_id.as_deref())
+                    .or(self.account_email.as_deref()),
+            ),
+            &item.id,
+        );
         let download_url = if let Some(url) = item.download_url {
             url
         } else {
@@ -1400,6 +1412,7 @@ impl StorageProvider for OneDriveProvider {
         // OneDrive pre-authenticated download URLs don't need auth headers
         super::http_resumable_download(
             local_path,
+            &source,
             |range_header| {
                 let mut req = self.client.get(&download_url);
                 if let Some(range) = range_header {

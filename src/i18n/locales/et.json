@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, kaamera või tahvelarvuti USB MTP kaudu",
             "s3AllowCleartextEndpoint": "See lõpp-punkt pakub S3 krüptimata HTTP kaudu üle võrgu. Nõustu sellega selle profiili puhul: allkirjastatud mandaat ja iga fail liiguvad võrgus krüptimata.",
             "discoverFilebase": "Filebase: S3-ühilduv objektisalvestus (5 GB tasuta)",
-            "protonDesc": "Ühendub Proton Drive CLI kaudu",
-            "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI",
+            "protonDesc": "Läbiva krüptimisega pilvesalvestus",
+            "protonTooltip": "Kasuta AeroFTP sisseehitatud klienti või ametlikku Proton Drive CLI-d ja logi sisse brauseris.",
             "twakeDesc": "Twake Drive (5 GB tasuta)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Prantsuse avatud lähtekoodiga pilv (Cozy Cloud on nüüd selle osa) 5 GB tasuta",
             "discoverTwake": "Linagora avatud lähtekoodiga Euroopa pilv, nüüd Cozy Cloud'i uus kodu (5 GB tasuta)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Saatmata: SITE-käsud vajavad FTP- või FTPS-ühendust.",
                 "not_connected": "Saatmata: seanss ei ole ühendatud.",
                 "busy": "Saatmata: seanss on teise toiminguga hõivatud. Proovi uuesti, kui see lõpeb.",
-                "reconnect_failed": "Saatmata: seanss pidi enne uuesti ühenduma, kuid see ei õnnestunud."
+                "reconnect_failed": "Saatmata: seanss pidi enne uuesti ühenduma, kuid see ei õnnestunud.",
+                "connection_changed": "Saatmata: ühendus on muutunud. Proovi soovitud seansis uuesti."
             },
             "unknown": {
                 "timeout": "Vastus ei saabunud õigeaegselt.",

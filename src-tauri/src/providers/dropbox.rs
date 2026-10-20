@@ -1153,6 +1153,15 @@ impl StorageProvider for DropboxProvider {
 
         super::http_resumable_download(
             local_path,
+            &super::atomic_write::ResumeSource::new(
+                "dropbox",
+                CONTENT_BASE,
+                &super::atomic_write::ResumeSource::account(
+                    &self.profile_id,
+                    self.account_email.as_deref(),
+                ),
+                &path,
+            ),
             |range_header| {
                 let mut req = self
                     .client

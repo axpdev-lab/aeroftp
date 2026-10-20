@@ -2037,8 +2037,8 @@
             "discoverMtpPortable": "Telefon, fotoaparát nebo tablet přes USB MTP",
             "s3AllowCleartextEndpoint": "Tento koncový bod poskytuje S3 přes nešifrované HTTP po síti. Přijměte to pro tento profil: podepsané přihlašovací údaje i každý soubor procházejí sítí nezašifrované.",
             "discoverFilebase": "Filebase: objektové úložiště kompatibilní se S3 (5 GB zdarma)",
-            "protonDesc": "Připojuje se přes Proton Drive CLI",
-            "protonTooltip": "Používá Proton Drive CLI - nainstalujte, přihlaste se v prohlížeči, AeroFTP je GUI",
+            "protonDesc": "Cloudové úložiště s koncovým šifrováním",
+            "protonTooltip": "Použijte nativního klienta AeroFTP nebo oficiální Proton Drive CLI s přihlášením v prohlížeči.",
             "twakeDesc": "Twake Drive (5 GB zdarma)",
             "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francouzský open-source cloud (Cozy Cloud je nyní jeho součástí) s 5 GB zdarma",
             "discoverTwake": "Open-source evropský cloud od Linagora, nyní domov Cozy Cloud (5 GB zdarma)",
@@ -6351,7 +6351,8 @@
                 "not_ftp": "Neodesláno: příkazy SITE vyžadují připojení FTP nebo FTPS.",
                 "not_connected": "Neodesláno: relace není připojena.",
                 "busy": "Neodesláno: relace je zaneprázdněna jinou operací. Zkuste to znovu, až skončí.",
-                "reconnect_failed": "Neodesláno: relace se musela nejprve znovu připojit, což se nepodařilo."
+                "reconnect_failed": "Neodesláno: relace se musela nejprve znovu připojit, což se nepodařilo.",
+                "connection_changed": "Neodesláno: připojení se změnilo. Zkuste to znovu v požadované relaci."
             },
             "unknown": {
                 "timeout": "Odpověď nedorazila včas.",
