@@ -31,7 +31,7 @@ let host: HTMLDivElement;
 const mount = async (transferQueue: ReturnType<typeof queueWith>) => {
     const options = {
         t: (key: string) => key,
-        activityLog: { updateEntry: () => undefined },
+        activityLog: { updateEntry: vi.fn() },
         humanLog: { logStart: () => 'log', logRaw: () => 'log' },
         transferQueue,
         notify: { success: () => null, error: () => null, info: () => null, warning: () => null },
@@ -46,6 +46,7 @@ const mount = async (transferQueue: ReturnType<typeof queueWith>) => {
         return null;
     };
     await act(async () => root.render(createElement(Probe)));
+    return options;
 };
 
 const emit = async (payload: Record<string, unknown>) => {
@@ -87,5 +88,53 @@ describe('useTransferEvents start event', () => {
         await mount(queue);
         await emit({ event_type: 'start', transfer_id: 'ul-folder-1', filename: 'docs', direction: 'upload' });
         expect(queue.markAsFolder).toHaveBeenCalledWith('q1');
+    });
+});
+
+describe('cross-profile terminal events', () => {
+    it.each([
+        ['error', 'error'],
+        ['cancelled', 'error'],
+        ['complete', 'success'],
+    ])('closes the activity on %s and forgets the transfer mapping', async (eventType, status) => {
+        const queue = queueWith({ id: 'q1', filename: 'docs', status: 'pending' });
+        const options = await mount(queue);
+        const transfer = { transfer_id: 'cross-1', filename: '2 files', direction: 'cross-profile' };
+        await emit({ ...transfer, event_type: 'start', message: 'source -> destination' });
+        expect(options.activityLog.updateEntry).not.toHaveBeenCalled();
+
+        await emit({
+            ...transfer, event_type: eventType, message: 'terminal outcome',
+            progress: {
+                ...transfer, filename: '', transferred: 2, total: 2,
+                percentage: 100, speed_bps: 0, eta_seconds: 0, total_files: 2,
+            },
+        });
+        expect(options.activityLog.updateEntry).toHaveBeenCalledExactlyOnceWith('log', {
+            status, message: 'terminal outcome',
+        });
+        // A late duplicate must not update an activity belonging to a later run.
+        await emit({ ...transfer, event_type: 'complete' });
+        expect(options.activityLog.updateEntry).toHaveBeenCalledTimes(1);
+        expect(queue.startTransfer).not.toHaveBeenCalled();
+    });
+
+    it.each([0, 1])('marks a completed batch with %i of 2 successful/skipped files as failed', async (transferred) => {
+        const queue = queueWith({ id: 'q1', filename: 'docs', status: 'pending' });
+        const options = await mount(queue);
+        const transfer = { transfer_id: 'cross-partial', filename: '2 files', direction: 'cross-profile' };
+        await emit({ ...transfer, event_type: 'start', message: 'source -> destination' });
+        await emit({ ...transfer, event_type: 'file_error', message: 'file failed after retries' });
+        expect(options.activityLog.updateEntry).not.toHaveBeenCalled();
+        await emit({
+            ...transfer, event_type: 'complete', filename: `${transferred} transferred, 0 skipped, ${2 - transferred} failed`,
+            progress: {
+                ...transfer, filename: '', transferred, total: 2,
+                percentage: 100, speed_bps: 0, eta_seconds: 0, total_files: 2,
+            },
+        });
+        expect(options.activityLog.updateEntry).toHaveBeenCalledExactlyOnceWith('log', { status: 'error', message: '' });
+        await emit({ ...transfer, event_type: 'complete' });
+        expect(options.activityLog.updateEntry).toHaveBeenCalledTimes(1);
     });
 });

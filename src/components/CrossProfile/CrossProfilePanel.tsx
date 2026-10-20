@@ -36,6 +36,7 @@ interface CrossProfilePlan {
     source_profile: string;
     dest_profile: string;
     entries: CrossProfilePlanEntry[];
+    directories: CrossProfilePlanEntry[];
     total_files: number;
     total_bytes: number;
 }
@@ -524,16 +525,16 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {plan.entries.map((entry, i) => (
+                                            {[...plan.directories, ...plan.entries].map((entry, i) => (
                                                 <tr key={i} className="border-t border-gray-100 dark:border-gray-700">
                                                     <td
                                                         className="max-w-[420px] truncate px-3 py-1.5 text-gray-900 dark:text-white"
                                                         title={entry.dest_path}
                                                     >
-                                                        {entry.display_name || entry.source_path || entry.dest_path}
+                                                        {entry.display_name || entry.source_path || entry.dest_path}{entry.is_dir ? "/" : ""}
                                                     </td>
                                                     <td className="px-3 py-1.5 text-right text-gray-500 dark:text-gray-400">
-                                                        {formatBytes(entry.size)}
+                                                        {entry.is_dir ? "/" : formatBytes(entry.size)}
                                                     </td>
                                                 </tr>
                                             ))}

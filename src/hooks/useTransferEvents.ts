@@ -427,11 +427,14 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
             { filename: data.filename, error: data.message || '' },
             'error',
           );
-        } else if (data.event_type === 'complete' || data.event_type === 'cancelled') {
+        } else if (data.event_type === 'complete' || data.event_type === 'cancelled' || data.event_type === 'error') {
           const logId = transferIdToLogId.current.get(data.transfer_id);
           if (logId) {
+            // A finished batch can still contain failed files: the backend's
+            // terminal tally counts only transferred and skipped files.
+            const hasFailedFiles = data.progress && data.progress.transferred < data.progress.total;
             activityLog.updateEntry(logId, {
-              status: data.event_type === 'cancelled' ? 'error' : 'success',
+              status: data.event_type === 'complete' && !hasFailedFiles ? 'success' : 'error',
               message: data.message || '',
             });
             transferIdToLogId.current.delete(data.transfer_id);

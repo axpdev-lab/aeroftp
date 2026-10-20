@@ -297,7 +297,7 @@ impl RemoteBackend for McpRemoteBackend {
         let path = path.to_string();
         self.with_provider(move |p| {
             let path = path.clone();
-            Box::pin(async move { p.rmdir_recursive(&path).await })
+            Box::pin(async move { crate::providers::delete_recursive(p.as_mut(), &path).await })
         })
         .await
     }

@@ -28,6 +28,9 @@ fn headless_flows_round_trip() {
             .env("AEROFTP_AUTH_FIXTURE_CHILD", "1")
             .env("PATH", &empty_path)
             .env("AEROFTP_MASTER_PASSWORD", "synthetic auth fixture master")
+            .env_remove("AEROFTP_CRYPT_OVERLAY_PASSWORD")
+            .env_remove("AEROFTP_CRYPT_OVERLAY_SALT")
+            .env_remove("AEROFTP_CRYPT_OVERLAY_KEYFILE")
             .env("XDG_CONFIG_HOME", root.path().join("config"))
             .env("XDG_DATA_HOME", root.path().join("data"))
             .env("XDG_CACHE_HOME", root.path().join("cache"))
@@ -72,6 +75,54 @@ async fn round_trip() {
     };
     assert_eq!(CredentialStore::init().unwrap(), "OK");
     let store = CredentialStore::from_cache().unwrap();
+    // Exercise the GUI/AeroAgent factory in this isolated, synthetic vault.
+    // Missing authorization must reach profile-bound auth, without the old
+    // blanket refusal or an interactive browser flow, for all seven routes.
+    for protocol in [
+        "googledrive",
+        "dropbox",
+        "onedrive",
+        "box",
+        "pcloud",
+        "zohoworkdrive",
+        "fourshared",
+    ] {
+        let id = format!("temp-factory-{protocol}");
+        store
+            .store(
+                "config_server_profiles",
+                &json!([{
+                    "id": id, "name": "synthetic missing authorization", "protocol": protocol,
+                    "host": "", "port": 0, "username": ""
+                }])
+                .to_string(),
+            )
+            .unwrap();
+        if let Some(user) = users::cli_get_active_user(&store).unwrap() {
+            let profiles: Vec<serde_json::Value> =
+                serde_json::from_str(&store.get("config_server_profiles").unwrap()).unwrap();
+            users::cli_replace_server_profiles_for_user(&store, user.id, &profiles).unwrap();
+        }
+        let server = crate::ai_tools::load_saved_servers().unwrap().remove(0);
+        match crate::ai_tools::create_temp_provider(&server).await {
+            Ok(_) => panic!("{protocol}: a profile without authorization must not connect"),
+            Err(error) => {
+                assert!(
+                    !error.contains("requires browser authentication"),
+                    "{protocol}: {error}"
+                );
+                assert!(
+                    !error.contains("Unsupported protocol"),
+                    "{protocol}: {error}"
+                );
+                assert!(
+                    error.contains("Connection to") || error.contains("authorization missing"),
+                    "{protocol}: {error}"
+                );
+            }
+        }
+    }
+    store.delete("config_server_profiles").unwrap();
     let scope = AuthScope {
         store: &store,
         user_id: None,
@@ -358,6 +409,10 @@ async fn round_trip() {
     durable_profile_auth_lifecycle(&store, &github).await;
     #[cfg(feature = "proton-native")]
     native_session_ownership(&store, active.id, owner.id).await;
+    crate::crypt_overlay_provider::tests::captured_overlay_owner_survives_account_switch(
+        &store, active.id, owner.id,
+    )
+    .await;
     server.abort();
     assert!(gaps.is_empty(), "Auth lifecycle gaps: {gaps:?}");
 }

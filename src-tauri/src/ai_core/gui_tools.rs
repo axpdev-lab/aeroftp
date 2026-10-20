@@ -311,13 +311,14 @@ pub async fn dispatch_gui_tool(
             }
             let plan = plan_result.map_err(|e| format!("Planning failed: {}", e))?;
 
-            if dry_run || plan.entries.is_empty() {
+            if dry_run {
                 return Ok(json!({
                     "dry_run": true,
                     "source": source_server.name,
                     "destination": dest_server.name,
                     "total_files": plan.total_files,
                     "total_bytes": plan.total_bytes,
+                    "directories": plan.directories,
                     "entries": plan.entries.iter().map(|e| json!({
                         "source": e.source_path,
                         "dest": e.dest_path,
@@ -335,10 +336,19 @@ pub async fn dispatch_gui_tool(
             let mut source_provider = create_temp_provider(&source_server).await?;
             let mut dest_provider = create_temp_provider(&dest_server).await?;
 
+            let directories_result = crate::cross_profile_transfer::ensure_planned_directories(
+                dest_provider.as_mut(), &plan.directories,
+                || ctx.cancel_token().is_some_and(|token| token.is_cancelled()),
+            ).await;
+            if let Err(error) = directories_result {
+                let _ = source_provider.disconnect().await;
+                let _ = dest_provider.disconnect().await;
+                return Err(error.to_string());
+            }
             for entry in &plan.entries {
                 if skip_existing {
                     if let Ok(true) =
-                        should_skip_existing(dest_provider.as_mut(), &entry.dest_path, entry).await
+                        should_skip_existing(source_provider.mtime_precision(), dest_provider.as_mut(), &entry.dest_path, entry).await
                     {
                         skipped += 1;
                         continue;

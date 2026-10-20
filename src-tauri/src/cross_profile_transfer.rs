@@ -51,6 +51,8 @@ pub struct CrossProfileTransferPlan {
     pub source_profile: String,
     pub dest_profile: String,
     pub entries: Vec<CrossProfileTransferEntry>,
+    #[serde(default)]
+    pub directories: Vec<CrossProfileTransferEntry>,
     pub total_files: u64,
     pub total_bytes: u64,
 }
@@ -292,6 +294,18 @@ pub async fn collect_source_entries(
     root: &str,
     recursive: bool,
 ) -> Result<Vec<CrossProfileTransferEntry>, ProviderError> {
+    Ok(collect_source_tree(source, root, recursive)
+        .await?
+        .into_iter()
+        .filter(|entry| !entry.is_dir)
+        .collect())
+}
+
+async fn collect_source_tree(
+    source: &mut dyn StorageProvider,
+    root: &str,
+    recursive: bool,
+) -> Result<Vec<CrossProfileTransferEntry>, ProviderError> {
     if is_virtual_root_path(root) {
         return collect_virtual_root_entries(source, root, recursive).await;
     }
@@ -342,9 +356,10 @@ async fn collect_virtual_root_entries(
 /// depth-first walk shared by a folder and the virtual root. Each folder is
 /// listed only when [`WalkScope`] allows it (strictly under `root`, not the
 /// folder listed or above it, not listed already), the root's spelling
-/// learned from its own listing, and each file is planned once. A folder the
-/// walk does not follow fails the plan: skipping it would copy part of the
-/// folder and report success, following it would copy what is not in it.
+/// learned from its own listing, and each file is planned once. Symlinked
+/// directories are omitted without descent or destination directory creation.
+/// A real folder refused by the walk fails the plan: silently skipping it
+/// would report an incomplete copy as successful.
 async fn collect_tree(
     source: &mut dyn StorageProvider,
     root: &str,
@@ -356,29 +371,25 @@ async fn collect_tree(
 
     while let Some((dir, depth)) = queue.pop() {
         if depth >= MAX_SCAN_DEPTH {
-            continue;
+            return Err(ProviderError::TransferFailed(format!(
+                "cannot plan the complete tree: depth limit reached at {dir}"
+            )));
         }
-        if entries.len() >= MAX_SCAN_ENTRIES {
-            break;
-        }
-
-        let listing = match source.list(&dir).await {
-            Ok(l) => l,
-            Err(e) => {
-                // Skip unlistable dirs (permission errors, etc.): same as CLI pattern
-                tracing::warn!("cannot list {}: {}", dir, e);
-                continue;
-            }
-        };
+        // An unreadable folder is not an empty folder and cannot produce a
+        // successful partial plan.
+        let listing = source.list(&dir).await?;
         if depth == 0 {
             scope.learn_root_listing(&listing);
         }
 
         for e in listing {
             if entries.len() >= MAX_SCAN_ENTRIES {
-                break;
+                return Err(ProviderError::TransferFailed(
+                    "cannot plan the complete tree: entry limit reached".into(),
+                ));
             }
-            match scope.place(&dir, &e.path, e.is_dir) {
+            let follows = e.is_walkable_dir();
+            match scope.place(&dir, &e.path, follows) {
                 WalkStep::Follow => {}
                 WalkStep::AlreadyListed => continue,
                 step => {
@@ -387,9 +398,13 @@ async fn collect_tree(
                     )))
                 }
             }
-            if e.is_dir {
-                queue.push((e.path, depth + 1));
-            } else if planned.insert(walk_path_key(&e.path)) {
+            if e.is_dir && e.is_symlink {
+                continue;
+            }
+            if follows {
+                queue.push((e.path.clone(), depth + 1));
+            }
+            if planned.insert(walk_path_key(&e.path)) {
                 let display_name = fallback_display_name(&e.name, &e.path);
                 entries.push(CrossProfileTransferEntry {
                     source_path: e.path,
@@ -397,7 +412,7 @@ async fn collect_tree(
                     display_name,
                     size: e.size,
                     modified: e.modified,
-                    is_dir: false,
+                    is_dir: e.is_dir,
                 });
             }
         }
@@ -407,24 +422,37 @@ async fn collect_tree(
 }
 
 /// Check whether a file should be skipped because it already exists on the
-/// destination with matching size and mtime.
+/// destination with matching size and a time not older than the source,
+/// within the shared modification window. This is the one-way sync rule:
+/// an upload-time-only backend must not copy the same bytes on every run.
+/// Missing or incomparable times fall back to size, as in one-way sync.
 ///
 /// Returns `Ok(true)` to skip, `Ok(false)` to transfer, or propagates errors
 /// (except NotFound, which means "not present → transfer").
 pub async fn should_skip_existing(
+    source_precision: Option<std::time::Duration>,
     dest: &mut dyn StorageProvider,
     dest_path: &str,
     source_entry: &CrossProfileTransferEntry,
 ) -> Result<bool, ProviderError> {
     match dest.stat(dest_path).await {
         Ok(existing) => {
-            let same_size = existing.size == source_entry.size;
-            let same_mtime = match (&existing.modified, &source_entry.modified) {
-                (Some(a), Some(b)) => a == b,
-                // If either side lacks mtime, we can't compare: don't skip
-                _ => false,
-            };
-            Ok(same_size && same_mtime)
+            let window = crate::sync_core::mtime::ModifyWindow::resolve(
+                None,
+                source_precision,
+                dest.mtime_precision(),
+                crate::sync_core::mtime::SizeOnlyReason::for_provider(dest.provider_type()),
+            );
+            Ok(!existing.is_dir
+                && !existing.is_symlink
+                && existing.size == source_entry.size
+                && !matches!(
+                    window.order_text(
+                        source_entry.modified.as_deref(),
+                        existing.modified.as_deref()
+                    ),
+                    Some(std::cmp::Ordering::Greater)
+                ))
         }
         Err(ProviderError::NotFound(_)) => Ok(false),
         Err(err) => Err(err),
@@ -445,7 +473,9 @@ pub async fn plan_transfer(
     let root_stat = effective_root_stat(source, &source_path).await?;
 
     // 1. Collect source entries
-    let mut entries = collect_source_entries(source, &source_path, request.recursive).await?;
+    let collected = collect_source_tree(source, &source_path, request.recursive).await?;
+    let (mut directories, mut entries): (Vec<_>, Vec<_>) =
+        collected.into_iter().partition(|entry| entry.is_dir);
 
     // 2. Compute destination paths
     if !root_stat.is_dir {
@@ -459,6 +489,22 @@ pub async fn plan_transfer(
         for entry in &mut entries {
             entry.dest_path = map_dest_path(&source_roots, &entry.source_path, &request.dest_path);
         }
+        for directory in &mut directories {
+            directory.dest_path =
+                map_dest_path(&source_roots, &directory.source_path, &request.dest_path);
+        }
+        // Even an entirely empty source needs its destination root.
+        directories.insert(
+            0,
+            CrossProfileTransferEntry {
+                source_path: source_path.clone(),
+                dest_path: request.dest_path.clone(),
+                display_name: fallback_display_name(&root_stat.name, &root_stat.path),
+                size: 0,
+                modified: root_stat.modified.clone(),
+                is_dir: true,
+            },
+        );
     }
 
     if plan_includes_raw_crypt_marker(&entries) {
@@ -474,12 +520,71 @@ pub async fn plan_transfer(
         source_profile: request.source_profile.clone(),
         dest_profile: request.dest_profile.clone(),
         entries,
+        directories,
         total_files,
         total_bytes,
     })
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/// Materialize the directory part of an approved plan before copying files.
+/// Any failed mkdir aborts execution, including a tree containing only empty
+/// directories. Cancellation is checked before each remote mutation.
+pub async fn ensure_planned_directories(
+    dest: &mut dyn StorageProvider,
+    directories: &[CrossProfileTransferEntry],
+    cancelled: impl Fn() -> bool + Send + Sync,
+) -> Result<(), ProviderError> {
+    let check_cancel = || {
+        if cancelled() {
+            Err(ProviderError::TransferFailed(
+                "Transfer cancelled by user".into(),
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    // Precreating encrypted folders would bypass upload's phantom-parent
+    // guard. Check the entire directory plan before creating any of it.
+    if let Some(overlay) = dest
+        .as_any_mut()
+        .downcast_mut::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+    {
+        let mut checked = std::collections::HashSet::new();
+        for directory in directories {
+            check_cancel()?;
+            overlay
+                .check_directory_creation(&directory.dest_path, &mut checked)
+                .await?;
+        }
+    }
+    let mut created = std::collections::HashSet::new();
+    for directory in directories {
+        for ancestor in crate::community_benchmark::benchmark_mkdir_ladder(&directory.dest_path) {
+            check_cancel()?;
+            if !created.insert(ancestor.clone()) {
+                continue;
+            }
+            match dest.mkdir(&ancestor).await {
+                Ok(()) => {}
+                // Existing ancestors can return generic or permission errors
+                // on mkdir. Only a successful stat proving a directory permits
+                // execution to continue; preserve the mkdir failure otherwise.
+                Err(error) => match dest.stat(&ancestor).await {
+                    Ok(entry) if entry.is_dir => {}
+                    Ok(_) => return Err(ProviderError::AlreadyExists(ancestor)),
+                    Err(_) => {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "cannot create destination directory {ancestor}: {error}"
+                        )))
+                    }
+                },
+            }
+        }
+    }
+    check_cancel()
+}
 
 /// Create every missing ancestor of `dest_path` (mkdir -p).
 ///
@@ -755,6 +860,145 @@ fn source_root_candidates(request_path: &str, provider_root: &str) -> Vec<String
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn recursive_plan_never_walks_or_recreates_symlinked_directories() {
+        use crate::providers::RemoteEntry;
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        use std::collections::HashMap;
+        use std::sync::atomic::Ordering;
+
+        for root in ["/src", "/"] {
+            let prefix = root.trim_end_matches('/');
+            let back_path = format!("{prefix}/back");
+            let external_path = format!("{prefix}/external");
+            let empty_path = format!("{prefix}/empty");
+            let file_path = format!("{prefix}/data");
+            let mut back = RemoteEntry::directory("back".into(), back_path.clone());
+            back.is_symlink = true;
+            back.link_target = Some("..".into());
+            let mut external = RemoteEntry::directory("external".into(), external_path.clone());
+            external.is_symlink = true;
+            external.link_target = Some("/outside".into());
+            let mut source = WalkTreeProvider::new(
+                HashMap::from([
+                    (
+                        root.into(),
+                        vec![
+                            back,
+                            external,
+                            RemoteEntry::directory("empty".into(), empty_path.clone()),
+                            RemoteEntry::file("data".into(), file_path.clone(), 7),
+                        ],
+                    ),
+                    (empty_path, vec![]),
+                ]),
+                false,
+            );
+            // Either linked directory would fail if the planner listed it.
+            source.unlistable.extend([back_path, external_path]);
+            let mut dest = WalkTreeProvider::new(HashMap::new(), false);
+            let request = CrossProfileTransferRequest {
+                source_profile: "source".into(),
+                dest_profile: "dest".into(),
+                source_path: root.into(),
+                dest_path: "/out".into(),
+                recursive: true,
+                dry_run: true,
+                skip_existing: false,
+            };
+            let plan = plan_transfer(&mut source, &mut dest, &request)
+                .await
+                .unwrap();
+            assert_eq!(plan.total_files, 1);
+            assert_eq!(plan.total_bytes, 7);
+            assert_eq!(plan.entries[0].source_path, file_path);
+            assert_eq!(plan.entries[0].dest_path, "/out/data");
+            assert_eq!(
+                plan.directories
+                    .iter()
+                    .map(|e| e.dest_path.as_str())
+                    .collect::<Vec<_>>(),
+                ["/out", "/out/empty"]
+            );
+            assert_eq!(dest.writes.load(Ordering::Relaxed), 0);
+            ensure_planned_directories(&mut dest, &plan.directories, || false)
+                .await
+                .unwrap();
+            assert_eq!(
+                dest.writes.load(Ordering::Relaxed),
+                2,
+                "only the destination root and genuine empty directory are created"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn recursive_plan_preserves_empty_root_and_nested_directories_without_writes() {
+        use crate::providers::RemoteEntry;
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        use std::collections::HashMap;
+        let request = CrossProfileTransferRequest {
+            source_profile: "source".into(),
+            dest_profile: "dest".into(),
+            source_path: "/src".into(),
+            dest_path: "/out".into(),
+            recursive: true,
+            dry_run: true,
+            skip_existing: false,
+        };
+        let mut dest = WalkTreeProvider::new(HashMap::new(), false);
+        let mut source = WalkTreeProvider::new(
+            HashMap::from([
+                (
+                    "/src".into(),
+                    vec![
+                        RemoteEntry::directory("empty".into(), "/src/empty".into()),
+                        RemoteEntry::file("data".into(), "/src/data".into(), 7),
+                    ],
+                ),
+                (
+                    "/src/empty".into(),
+                    vec![RemoteEntry::directory(
+                        "nested".into(),
+                        "/src/empty/nested".into(),
+                    )],
+                ),
+                ("/src/empty/nested".into(), vec![]),
+            ]),
+            false,
+        );
+        let plan = plan_transfer(&mut source, &mut dest, &request)
+            .await
+            .unwrap();
+        assert_eq!(plan.total_files, 1);
+        assert_eq!(plan.total_bytes, 7);
+        assert_eq!(plan.entries[0].dest_path, "/out/data");
+        assert_eq!(
+            plan.directories
+                .iter()
+                .map(|entry| entry.dest_path.as_str())
+                .collect::<Vec<_>>(),
+            ["/out", "/out/empty", "/out/empty/nested"]
+        );
+        assert_eq!(dest.writes.load(std::sync::atomic::Ordering::Relaxed), 0);
+
+        let mut empty = WalkTreeProvider::new(HashMap::from([("/src".into(), vec![])]), false);
+        let plan = plan_transfer(&mut empty, &mut dest, &request)
+            .await
+            .unwrap();
+        assert!(plan.entries.is_empty());
+        assert_eq!(plan.directories.len(), 1);
+        assert_eq!(plan.directories[0].dest_path, "/out");
+
+        source.unlistable.insert("/src/empty".into());
+        assert!(
+            plan_transfer(&mut source, &mut dest, &request)
+                .await
+                .is_err(),
+            "unreadable is not empty"
+        );
+    }
+
     #[test]
     fn request_serialization_roundtrip() {
         let req = CrossProfileTransferRequest {
@@ -779,6 +1023,7 @@ mod tests {
             source_profile: "A".into(),
             dest_profile: "B".into(),
             entries: vec![],
+            directories: vec![],
             total_files: 0,
             total_bytes: 0,
         };
@@ -800,6 +1045,7 @@ mod tests {
             source_profile: "A".into(),
             dest_profile: "B".into(),
             entries: vec![entry.clone()],
+            directories: vec![],
             total_files: 1,
             total_bytes: 1024,
         };

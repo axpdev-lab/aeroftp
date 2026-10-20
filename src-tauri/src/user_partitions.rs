@@ -2572,6 +2572,36 @@ pub fn set_user_credential_for(
     })
 }
 
+/// Atomically write related owned credentials. Resolve and hold the user's DEK
+/// before taking SQLite's write reservation; never reacquire USER_SESSION from
+/// inside an open write transaction (normal writers use session then SQLite).
+pub(crate) fn set_user_credentials_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credentials: &[(&str, &str, &str)],
+) -> Result<(), String> {
+    for (id, kind, _) in credentials {
+        if id.is_empty() {
+            return Err("CREDENTIAL_ID_REQUIRED".to_string());
+        }
+        if kind.is_empty() {
+            return Err("CREDENTIAL_TYPE_REQUIRED".to_string());
+        }
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin owned credential batch: {e}"))?;
+        for (id, kind, secret) in credentials {
+            set_user_credential_with_dek(&tx, user_id, dek, id, kind, secret)?;
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit owned credential batch: {e}"))
+    })
+}
+
 /// Upsert one credential row with an already-resolved DEK. Lets callers that
 /// resolved the DEK out-of-session (e.g. a cross-user relocation that unwrapped
 /// the target via its passphrase, MUV-3) write a credential without going back
@@ -3034,8 +3064,11 @@ pub fn read_credential_with_fallback(
 /// is unambiguous enough that the generic `store_credential`/`delete_credential`
 /// Tauri commands can mirror them by prefix alone. `server_*` (MUV-3) and
 /// `ai_apikey_*` (MUV-5) qualify: an AI key is always `ai_apikey_<provider>` with
-/// no `_client_id`-style sibling, so prefix matching never misfires. Everything
-/// else is `None`: OAuth tokens (`oauth_<p>_<id>` vs `oauth_<p>_client_id`) and
+/// no `_client_id`-style sibling, so prefix matching never misfires. The four
+/// per-profile overlay secret prefixes also mirror by their unambiguous keys,
+/// so saving a password/keyfile in the GUI repairs a missing owned row instead
+/// of leaving an ambiguous global copy. Everything else is `None`: OAuth tokens
+/// (`oauth_<p>_<id>` vs `oauth_<p>_client_id`) and
 /// the GitHub tokens are mirrored by call-sites that pass the type explicitly
 /// (MUV-4/5), and the machine-global `github_pem_*` / `github_app_credentials`
 /// stay vault-only on purpose (MUV-0).
@@ -3044,6 +3077,16 @@ fn muv3_credential_type(credential_id: &str) -> Option<&'static str> {
         Some("server")
     } else if credential_id.starts_with("ai_apikey_") {
         Some("ai_apikey")
+    } else if [
+        "aerocrypt_overlay_pw_",
+        "aerocrypt_overlay_salt_",
+        "aerocrypt_overlay_config_",
+        "aerocrypt_overlay_keyfile_path_",
+    ]
+    .iter()
+    .any(|prefix| credential_id.starts_with(prefix))
+    {
+        Some("crypt")
     } else {
         None
     }

@@ -3027,7 +3027,7 @@ enum Commands {
         /// Plan without executing
         #[arg(long)]
         dry_run: bool,
-        /// Skip files already present on destination (size+mtime match)
+        /// Skip equal-size files whose destination time is not older (size only when times are unavailable)
         #[arg(long)]
         skip_existing: bool,
     },
@@ -18305,7 +18305,7 @@ async fn remove_tui_session_via_cli_handler(
     }
     let provider = session.provider_mut();
     let result = if recursive {
-        provider.rmdir_recursive(&resolved).await
+        ftp_client_gui_lib::providers::delete_recursive(provider, &resolved).await
     } else {
         ftp_client_gui_lib::providers::delete_non_recursive(provider, &resolved).await
     };
@@ -37684,7 +37684,7 @@ async fn cmd_rm(
     }
 
     let result = if recursive {
-        provider.rmdir_recursive(path).await
+        ftp_client_gui_lib::providers::delete_recursive(provider.as_mut(), path).await
     } else {
         ftp_client_gui_lib::providers::delete_non_recursive(provider.as_mut(), path).await
     };
@@ -65640,9 +65640,10 @@ async fn cmd_transfer_doctor(
             "recursive": recursive,
             "skip_existing": skip_existing,
             "planned_files": plan.total_files,
+            "planned_directories": plan.directories.len(),
             "total_bytes": plan.total_bytes,
             "existing_dest_paths": existing_dest_paths,
-            "sample_entries": plan.entries.iter().take(5).map(|entry| serde_json::json!({
+            "sample_entries": plan.entries.iter().chain(&plan.directories).take(5).map(|entry| serde_json::json!({
                 "source_path": entry.source_path,
                 "dest_path": entry.dest_path,
                 "size": entry.size,
@@ -65776,7 +65777,7 @@ async fn cmd_transfer_profiles(
         return 130;
     }
 
-    if plan.entries.is_empty() {
+    if plan.entries.is_empty() && plan.directories.is_empty() {
         if !quiet {
             eprintln!("Nothing to transfer.");
             eprintln!(
@@ -65811,7 +65812,7 @@ async fn cmd_transfer_profiles(
                 plan.total_files,
                 format_size(plan.total_bytes)
             );
-            for entry in &plan.entries {
+            for entry in plan.directories.iter().chain(&plan.entries) {
                 eprintln!(
                     "  {} -> {} ({})",
                     entry.source_path,
@@ -65857,6 +65858,22 @@ async fn cmd_transfer_profiles(
         cancelled.clone(),
     )
     .await;
+    let summary = match summary {
+        Ok(summary) => summary,
+        Err(error) => {
+            let _ = source.disconnect().await;
+            let _ = dest.disconnect().await;
+            if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+                return 130;
+            }
+            print_error(
+                format,
+                &error.to_string(),
+                provider_error_to_exit_code(&error),
+            );
+            return provider_error_to_exit_code(&error);
+        }
+    };
 
     if !quiet {
         eprintln!(
@@ -65928,8 +65945,10 @@ async fn execute_cross_profile_plan(
     cli: &Cli,
     quiet: bool,
     cancelled: Arc<AtomicBool>,
-) -> TransferCliSummary {
-    use ftp_client_gui_lib::cross_profile_transfer::{copy_one_file, should_skip_existing};
+) -> Result<TransferCliSummary, ProviderError> {
+    use ftp_client_gui_lib::cross_profile_transfer::{
+        copy_one_file, ensure_planned_directories, should_skip_existing,
+    };
 
     let total = plan.entries.len();
     let max_attempts = cli.retries.max(1);
@@ -65949,6 +65968,11 @@ async fn execute_cross_profile_plan(
         );
     }
 
+    ensure_planned_directories(dest, &plan.directories, || {
+        cancelled.load(std::sync::atomic::Ordering::Relaxed)
+    })
+    .await?;
+
     for (idx, entry) in plan.entries.iter().enumerate() {
         if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
             if !quiet {
@@ -65966,7 +65990,9 @@ async fn execute_cross_profile_plan(
         }
 
         if skip_existing {
-            match should_skip_existing(dest, &entry.dest_path, entry).await {
+            match should_skip_existing(source.mtime_precision(), dest, &entry.dest_path, entry)
+                .await
+            {
                 Ok(true) => {
                     skipped += 1;
                     if !quiet {
@@ -66084,7 +66110,7 @@ async fn execute_cross_profile_plan(
         }));
     }
 
-    TransferCliSummary {
+    Ok(TransferCliSummary {
         source_profile: plan.source_profile.clone(),
         dest_profile: plan.dest_profile.clone(),
         planned_files: total as u64,
@@ -66095,7 +66121,7 @@ async fn execute_cross_profile_plan(
         total_bytes: bytes_transferred,
         duration_ms: start.elapsed().as_millis() as u64,
         dry_run: false,
-    }
+    })
 }
 
 /// Open a saved profile the way `ls` and `put` do: OAuth tokens from the
@@ -68200,7 +68226,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 };
                 match plan_result {
                     Ok(plan) => {
-                        if plan.entries.is_empty() {
+                        if plan.entries.is_empty() && plan.directories.is_empty() {
                             eprintln!("  Nothing to transfer.");
                         } else if dry_run {
                             eprintln!(
@@ -68208,7 +68234,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                                 plan.total_files,
                                 format_size(plan.total_bytes)
                             );
-                            for entry in &plan.entries {
+                            for entry in plan.directories.iter().chain(&plan.entries) {
                                 eprintln!("    {} -> {}", entry.source_path, entry.dest_path);
                             }
                         } else {
@@ -68226,14 +68252,27 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                                 )
                                 .await
                             };
-                            eprintln!(
-                                "  Transfer done: {} ok, {} skipped, {} failed",
-                                summary.transferred_files,
-                                summary.skipped_files,
-                                summary.failed_files
-                            );
-                            if summary.failed_files > 0 {
-                                exit_code = 4;
+                            match summary {
+                                Ok(summary) => {
+                                    eprintln!(
+                                        "  Transfer done: {} ok, {} skipped, {} failed",
+                                        summary.transferred_files,
+                                        summary.skipped_files,
+                                        summary.failed_files
+                                    );
+                                    if summary.failed_files > 0 {
+                                        exit_code = 4;
+                                    }
+                                }
+                                Err(error) => {
+                                    eprintln!("  Transfer failed: {error}");
+                                    exit_code =
+                                        if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+                                            130
+                                        } else {
+                                            provider_error_to_exit_code(&error)
+                                        };
+                                }
                             }
                         }
                         if let Some(code) = batch_check_exit(
