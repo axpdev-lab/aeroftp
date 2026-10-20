@@ -98,12 +98,12 @@ async fn round_trip() {
                 .to_string(),
             )
             .unwrap();
-        let server = crate::ai_tools::load_saved_servers().unwrap().remove(0);
         if let Some(user) = users::cli_get_active_user(&store).unwrap() {
             let profiles: Vec<serde_json::Value> =
                 serde_json::from_str(&store.get("config_server_profiles").unwrap()).unwrap();
             users::cli_replace_server_profiles_for_user(&store, user.id, &profiles).unwrap();
         }
+        let server = crate::ai_tools::load_saved_servers().unwrap().remove(0);
         match crate::ai_tools::create_temp_provider(&server).await {
             Ok(_) => panic!("{protocol}: a profile without authorization must not connect"),
             Err(error) => {

@@ -1740,11 +1740,35 @@ impl StorageProvider for CryptOverlayProvider {
 /// second factor, already resolved from the profile's keyfile path (see
 /// [`resolve_profile_keyfile_digest`]); `None` for password-only vaults.
 pub async fn wrap_provider_with_overlay_if_bound(
+    inner: Box<dyn StorageProvider>,
+    binding: Option<&OverlayUnlockParams>,
+    password: &str,
+    salt: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+) -> Result<Box<dyn StorageProvider>, String> {
+    let Some(params) = binding else {
+        return Ok(inner);
+    };
+    let store = crate::credential_store::CredentialStore::from_cache();
+    let scope = capture_overlay_auth_scope(store.as_ref(), params)?;
+    wrap_provider_with_overlay_in_scope(
+        inner,
+        binding,
+        password,
+        salt,
+        keyfile_digest,
+        scope.as_ref(),
+    )
+    .await
+}
+
+async fn wrap_provider_with_overlay_in_scope(
     mut inner: Box<dyn StorageProvider>,
     binding: Option<&OverlayUnlockParams>,
     password: &str,
     salt: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    auth_scope: Option<&crate::profile_auth::AuthScope<'_>>,
 ) -> Result<Box<dyn StorageProvider>, String> {
     let Some(params) = binding else {
         return Ok(inner);
@@ -1757,14 +1781,17 @@ pub async fn wrap_provider_with_overlay_if_bound(
     // whose marker and keystore copy are both gone, from its password, once
     // its names prove the key; that recovers an existing vault, it never
     // creates one.
-    let outcome = unlock_overlay_keys_encrypting(
+    let outcome = unlock_overlay_keys_encrypting_in_scope(
         &mut *inner,
         params,
         password,
         salt,
         keyfile_digest,
-        false,
-        params.with_header,
+        OverlayUnlockContext {
+            allow_init: false,
+            with_header: params.with_header,
+            auth_scope,
+        },
     )
     .await?;
     if let Some(w) = outcome.warning.as_deref() {
@@ -1970,47 +1997,49 @@ pub fn validate_headerless_config_salt(
     Ok(())
 }
 
-/// Persist the PUBLIC AeroCrypt overlay config JSON plus its salt of record into
-/// the local keystore for `id`, transactionally: write the config, then the
-/// salt; roll the config back if the salt write fails, so a half-written keystore
-/// never masquerades as a complete vault. The stored blob is public-only (salt,
-/// KDF params, vault_id, config MAC), never a secret.
-///
-/// Shared by headerless init (where it MUST succeed, since the remote carries no
-/// marker), and by headed init / connect-time backfill (where it is a best-effort
-/// convenience copy so the on-demand Recovery Kit works in every mode without
-/// connecting; there the remote marker stays the source of truth, so callers
-/// treat a failure as non-fatal).
-fn persist_public_overlay_config(
-    store: &crate::credential_store::CredentialStore,
+/// Scoped unlocks write only the captured partition. A legacy scope writes only
+/// the legacy vault; neither case rediscovers the active user or its mirror.
+fn persist_public_overlay_config_for_unlock(
+    auth_scope: Option<&crate::profile_auth::AuthScope<'_>>,
     id: &str,
     config_json: &str,
     salt_b64: &str,
 ) -> Result<(), String> {
+    let scope = auth_scope.ok_or_else(|| {
+        "Cannot persist AeroCrypt overlay metadata: the local keystore is unavailable.".to_string()
+    })?;
     let config_key = format!("aerocrypt_overlay_config_{id}");
     let salt_key = format!("aerocrypt_overlay_salt_{id}");
-    let prior_config = crate::user_partitions::resolve_active_credential(store, &config_key)
-        .ok()
-        .flatten()
-        .map(|s| s.to_string());
-    crate::user_partitions::store_active_credential_dual(store, &config_key, config_json)
-        .map_err(|e| format!("Cannot persist AeroCrypt overlay config to the keystore: {e}"))?;
-    if let Err(e) = crate::user_partitions::store_active_credential_dual(store, &salt_key, salt_b64)
-    {
-        // Roll the config back to its prior value (or remove it) so a config
-        // without its matching salt of record never lingers.
+    if let Some(user_id) = scope.user_id {
+        use crate::user_partitions as users;
+        users::init_or_migrate_cli(scope.store)?;
+        let conn = users::open_or_init_cli()?;
+        let root_key = zeroize::Zeroizing::new(scope.store.derive_user_partition_wrapping_key());
+        return users::set_user_credentials_for(
+            &conn,
+            &root_key,
+            user_id,
+            &[
+                (&config_key, "crypt", config_json),
+                (&salt_key, "crypt", salt_b64),
+            ],
+        );
+    }
+    let prior_config = scope.store.get(&config_key).ok();
+    scope
+        .store
+        .store(&config_key, config_json)
+        .map_err(|e| e.to_string())?;
+    if let Err(error) = scope.store.store(&salt_key, salt_b64) {
         match prior_config {
-            Some(prev) => {
-                let _ =
-                    crate::user_partitions::store_active_credential_dual(store, &config_key, &prev);
+            Some(prior) => {
+                let _ = scope.store.store(&config_key, &prior);
             }
             None => {
-                let _ = crate::user_partitions::delete_active_credential_dual(store, &config_key);
+                let _ = scope.store.delete(&config_key);
             }
         }
-        return Err(format!(
-            "Cannot persist AeroCrypt overlay salt to the keystore: {e}"
-        ));
+        return Err(error.to_string());
     }
     Ok(())
 }
@@ -2027,19 +2056,22 @@ fn persist_public_overlay_config(
 /// Never clobbers a complete keystore entry that already has a vault_id (the
 /// remote marker stays authoritative for salt; we only fill kit-readiness gaps).
 /// No-op without a saved profile id or a keystore. Never fails the unlock.
-fn backfill_headed_overlay_config(params: &OverlayUnlockParams, config_json: &str) {
+fn backfill_headed_overlay_config(
+    params: &OverlayUnlockParams,
+    config_json: &str,
+    auth_scope: Option<&crate::profile_auth::AuthScope<'_>>,
+) {
     let Some(id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) else {
         return;
     };
-    let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+    let config_key = format!("aerocrypt_overlay_config_{id}");
+    let Some(scope) = auth_scope else {
         return;
     };
-    let config_key = format!("aerocrypt_overlay_config_{id}");
-    let existing = crate::user_partitions::resolve_active_credential(&store, &config_key)
-        .ok()
-        .flatten()
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty());
+    let existing = match scope.read_profile(id, &config_key) {
+        Ok(existing) => existing.filter(|value| !value.is_empty()),
+        Err(_) => return,
+    };
     if let Some(ref prev) = existing {
         let prev_has_vid = overlay::parse_config(prev)
             .ok()
@@ -2064,13 +2096,15 @@ fn backfill_headed_overlay_config(params: &OverlayUnlockParams, config_json: &st
         }
         _ => return,
     };
-    if let Err(e) = persist_public_overlay_config(&store, id, config_json, &salt_b64) {
+    if let Err(e) = persist_public_overlay_config_for_unlock(auth_scope, id, config_json, &salt_b64)
+    {
         eprintln!("[aerocrypt] headed overlay config backfill skipped for {id}: {e}");
     }
 }
 
 fn local_headerless_config_from_params(
     params: &OverlayUnlockParams,
+    auth_scope: Option<&crate::profile_auth::AuthScope<'_>>,
 ) -> Result<Option<String>, String> {
     if let Some(config_json) = params
         .local_config_json
@@ -2085,24 +2119,23 @@ fn local_headerless_config_from_params(
         return Ok(Some(config_json.to_string()));
     }
 
-    let Some(profile_id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) else {
+    // Every unlock entry captures its account before awaiting remote work.
+    // No cache at entry means no local fallback later; an explicit legacy
+    // scope reads only the root vault, never whichever account is now active.
+    let Some(scope) = auth_scope else {
         return Ok(None);
     };
-    let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+    let Some(profile_id) = params.profile_id.as_deref().filter(|id| !id.is_empty()) else {
         return Ok(None);
     };
     let key = format!("aerocrypt_overlay_config_{profile_id}");
-    let Some(config_json) = crate::user_partitions::resolve_active_credential(&store, &key)
-        .map_err(|e| format!("Cannot read local AeroCrypt overlay config: {e}"))?
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty())
+    let Some(config_json) = scope
+        .read_profile(profile_id, &key)?
+        .filter(|value| !value.is_empty())
     else {
         return Ok(None);
     };
-    let salt_key = format!("aerocrypt_overlay_salt_{profile_id}");
-    let salt = crate::user_partitions::resolve_active_credential(&store, &salt_key)
-        .map_err(|e| format!("Cannot read local AeroCrypt overlay salt: {e}"))?
-        .map(|s| s.to_string());
+    let salt = scope.read_profile(profile_id, &format!("aerocrypt_overlay_salt_{profile_id}"))?;
     validate_headerless_config_salt(profile_id, &config_json, salt.as_deref())?;
     Ok(Some(config_json))
 }
@@ -2414,12 +2447,13 @@ pub(crate) async fn wrap_connected_provider_for_profile_in_scope(
         ..params
     };
 
-    wrap_provider_with_overlay_if_bound(
+    wrap_provider_with_overlay_in_scope(
         inner,
         Some(&params),
         &password,
         &salt,
         keyfile_digest.as_ref(),
+        Some(scope),
     )
     .await
 }
@@ -2883,6 +2917,63 @@ async fn unlock_overlay_keys_encrypting(
     allow_init: bool,
     with_header: bool,
 ) -> Result<OverlayUnlockOutcome, String> {
+    let store = crate::credential_store::CredentialStore::from_cache();
+    let scope = capture_overlay_auth_scope(store.as_ref(), params)?;
+    unlock_overlay_keys_encrypting_in_scope(
+        provider,
+        params,
+        password,
+        salt,
+        keyfile_digest,
+        OverlayUnlockContext {
+            allow_init,
+            with_header,
+            auth_scope: scope.as_ref(),
+        },
+    )
+    .await
+}
+
+fn capture_overlay_auth_scope<'a>(
+    store: Option<&'a crate::credential_store::CredentialStore>,
+    params: &OverlayUnlockParams,
+) -> Result<Option<crate::profile_auth::AuthScope<'a>>, String> {
+    // Unsaved overlays have no profile metadata to read or cache.
+    if params
+        .profile_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .is_none()
+    {
+        return Ok(None);
+    }
+    store
+        .map(|store| {
+            let user_id = crate::user_partitions::cli_get_active_user(store)?.map(|user| user.id);
+            Ok(crate::profile_auth::AuthScope { store, user_id })
+        })
+        .transpose()
+}
+
+struct OverlayUnlockContext<'a> {
+    allow_init: bool,
+    with_header: bool,
+    auth_scope: Option<&'a crate::profile_auth::AuthScope<'a>>,
+}
+
+async fn unlock_overlay_keys_encrypting_in_scope(
+    provider: &mut dyn StorageProvider,
+    params: &OverlayUnlockParams,
+    password: &str,
+    salt: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    context: OverlayUnlockContext<'_>,
+) -> Result<OverlayUnlockOutcome, String> {
+    let OverlayUnlockContext {
+        allow_init,
+        with_header,
+        auth_scope,
+    } = context;
     match params.kind.as_str() {
         "rclone-crypt" => {
             if keyfile_digest.is_some() {
@@ -2988,7 +3079,7 @@ async fn unlock_overlay_keys_encrypting(
                 } else {
                     config_str.to_string()
                 };
-                backfill_headed_overlay_config(params, &kit_blob);
+                backfill_headed_overlay_config(params, &kit_blob, auth_scope);
                 if present_legacy && !present_new {
                     // Surface once so the GUI can offer Convert marker without
                     // requiring the ad-hoc unlock modal.
@@ -3001,7 +3092,9 @@ async fn unlock_overlay_keys_encrypting(
                     });
                 }
                 derived
-            } else if let Some(config_json) = local_headerless_config_from_params(params)? {
+            } else if let Some(config_json) =
+                local_headerless_config_from_params(params, auth_scope)?
+            {
                 // Local keystore has public config and remote marker is absent.
                 // Headerless by design: unlock only. Headed intent: rebuild the
                 // remote safety net from the keystore and warn once (#421 #7).
@@ -3052,7 +3145,7 @@ async fn unlock_overlay_keys_encrypting(
                             warning = Some(MARKER_RESTORED_WARNING.to_string());
                             // Refresh keystore cache with the published marker text
                             // (best-effort; salt/config already present for headerless).
-                            backfill_headed_overlay_config(params, &config_json);
+                            backfill_headed_overlay_config(params, &config_json, auth_scope);
                         }
                         Err(e) => {
                             // Still unlock from keystore (availability) but warn that
@@ -3099,11 +3192,16 @@ async fn unlock_overlay_keys_encrypting(
                     }
                 }
                 if let Some(id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) {
-                    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                    if auth_scope.is_some() {
                         use base64::Engine as _;
                         let salt_b64 = base64::engine::general_purpose::STANDARD
                             .encode(crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1);
-                        match persist_public_overlay_config(&store, id, &config_text, &salt_b64) {
+                        match persist_public_overlay_config_for_unlock(
+                            auth_scope,
+                            id,
+                            &config_text,
+                            &salt_b64,
+                        ) {
                             Ok(()) => persisted = true,
                             Err(e) => eprintln!(
                                 "[aerocrypt] rebuilt default-salt config not cached for {id}: {e}"
@@ -3254,13 +3352,12 @@ async fn unlock_overlay_keys_encrypting(
                         .await
                         .map_err(|e| format!("Cannot write AeroCrypt overlay config: {e}"))?;
                     if let Some(id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) {
-                        if let Some(store) = crate::credential_store::CredentialStore::from_cache()
-                        {
+                        if auth_scope.is_some() {
                             use base64::Engine as _;
                             let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
-                            if let Err(e) =
-                                persist_public_overlay_config(&store, id, &json, &salt_b64)
-                            {
+                            if let Err(e) = persist_public_overlay_config_for_unlock(
+                                auth_scope, id, &json, &salt_b64,
+                            ) {
                                 eprintln!(
                                     "[aerocrypt] headed overlay config cache skipped for {id}: {e}"
                                 );
@@ -3279,19 +3376,12 @@ async fn unlock_overlay_keys_encrypting(
                          its metadata. Save the profile first, or enable the on-remote header."
                             .to_string()
                     })?;
-                    let store = crate::credential_store::CredentialStore::from_cache().ok_or_else(
-                        || {
-                            "Cannot persist AeroCrypt overlay metadata: the local keystore is \
-                             unavailable."
-                                .to_string()
-                        },
-                    )?;
                     use base64::Engine as _;
                     let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
                     // Durable and fail-closed: a swallowed write here would orphan
                     // every file encrypted under this headerless vault, so the error
                     // propagates (unlike the best-effort headed cache above).
-                    persist_public_overlay_config(&store, id, &json, &salt_b64)?;
+                    persist_public_overlay_config_for_unlock(auth_scope, id, &json, &salt_b64)?;
                 }
 
                 let config = overlay::parse_config(&json)
@@ -3613,6 +3703,8 @@ pub(crate) mod tests {
                 .unwrap_err()
                 .contains("cannot read AeroCrypt keyfile")
         );
+        captured_aerocrypt_config_stays_scoped(store, owner, other).await;
+
         // A uniquely owned legacy key remains readable during migration;
         // explicit legacy scope never rediscovers the currently active user.
         let legacy = serde_json::json!({"id":"legacy-overlay","name":"Synthetic legacy overlay","protocol":"sftp"});
@@ -3651,6 +3743,252 @@ pub(crate) mod tests {
             Some("legacy-password")
         );
         users::cli_set_active_user(store, owner).unwrap();
+    }
+
+    async fn captured_aerocrypt_config_stays_scoped(
+        store: &crate::credential_store::CredentialStore,
+        owner: i64,
+        other: i64,
+    ) {
+        use crate::{profile_auth::AuthScope, user_partitions as users};
+        use base64::Engine as _;
+        let id = "captured-aerocrypt";
+        let mut profile = serde_json::json!({
+            "id": id, "name": "Owned AeroCrypt", "protocol": "sftp",
+            "aeroCryptOverlay": {"enabled": true, "kind": "aerocrypt", "remoteScope": "/Vault"}
+        });
+        for user in [owner, other] {
+            let mut profiles = users::cli_list_server_profiles_for_user(store, user).unwrap();
+            let mut saved = profile.clone();
+            saved["name"] = serde_json::json!(format!("Owned by {user}"));
+            profiles.push(saved);
+            users::cli_replace_server_profiles_for_user(store, user, &profiles).unwrap();
+        }
+        users::cli_set_active_user(store, other).unwrap();
+        // Listing must use the same partition as the factory, even when the
+        // best-effort legacy profile mirror is stale or empty.
+        let prior_profiles = store.get("config_server_profiles").ok();
+        store.store("config_server_profiles", "[]").unwrap();
+        let servers = crate::ai_tools::load_saved_servers().unwrap();
+        assert_eq!(
+            servers.iter().find(|p| p.id == id).unwrap().name,
+            format!("Owned by {other}")
+        );
+        match prior_profiles {
+            Some(prior) => store.store("config_server_profiles", &prior).unwrap(),
+            None => store.delete("config_server_profiles").unwrap(),
+        }
+        let config_key = format!("aerocrypt_overlay_config_{id}");
+        let salt_key = format!("aerocrypt_overlay_salt_{id}");
+        let password_key = format!("aerocrypt_overlay_pw_{id}");
+        let password = "synthetic config-owner password";
+        // A valid B config accepts the same password with a different salt.
+        // Adopting it would succeed rather than merely produce a password error.
+        let other_salt = [19u8; 32];
+        let other_key = overlay::derive_master_key_with_keyfile(
+            &OverlayConfig::v3_bootstrap(other_salt),
+            password,
+            None,
+        )
+        .unwrap();
+        let other_config = overlay::init_config_v3_with_vault_id(
+            &other_salt,
+            &other_key,
+            &overlay::random_vault_id(),
+            overlay::SaltMode::PerVault,
+        )
+        .unwrap();
+        for (key, value) in [
+            (config_key.as_str(), other_config.as_str()),
+            (
+                salt_key.as_str(),
+                base64::engine::general_purpose::STANDARD
+                    .encode(other_salt)
+                    .as_str(),
+            ),
+            (password_key.as_str(), password),
+        ] {
+            users::store_active_credential_dual(store, key, value).unwrap();
+        }
+        let conn = users::open_or_init_cli().unwrap();
+        let root_key = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+        users::set_user_credential_for(&conn, &root_key, owner, &password_key, "crypt", password)
+            .unwrap();
+        // A rejected second row must roll back the first row as well.
+        conn.execute_batch("CREATE TEMP TRIGGER reject_owned_pair BEFORE INSERT ON user_credentials WHEN NEW.credential_id = 'synthetic-pair-salt' BEGIN SELECT RAISE(ABORT, 'synthetic salt write failure'); END;").unwrap();
+        assert!(users::set_user_credentials_for(
+            &conn,
+            &root_key,
+            owner,
+            &[
+                ("synthetic-pair-config", "crypt", "public config"),
+                ("synthetic-pair-salt", "crypt", "public salt"),
+            ]
+        )
+        .is_err());
+        assert!(
+            users::get_user_credential_for(&conn, &root_key, owner, "synthetic-pair-config")
+                .unwrap()
+                .is_none()
+        );
+        conn.execute_batch("DROP TRIGGER reject_owned_pair")
+            .unwrap();
+        let scope = AuthScope {
+            store,
+            user_id: Some(owner),
+        };
+        let other_before: Vec<_> = [&config_key, &salt_key, &password_key]
+            .iter()
+            .map(|key| {
+                users::get_user_credential_for(&conn, &root_key, other, key)
+                    .unwrap()
+                    .map(|v| v.to_string())
+            })
+            .collect();
+        let global_before: Vec<_> = [&config_key, &salt_key, &password_key]
+            .iter()
+            .map(|key| store.get(key).ok())
+            .collect();
+        assert!(scope.read_profile(id, &config_key).unwrap().is_none());
+        assert!(
+            wrap_connected_provider_for_profile_in_scope(
+                Box::new(MemProvider::new()),
+                &profile,
+                &scope
+            )
+            .await
+            .is_err(),
+            "a missing A config must not adopt B's valid headerless config"
+        );
+
+        // A remote headed marker backfills only A's partition; B and its global
+        // mirror are untouched even though B is active throughout the unlock.
+        let owner_salt = [11u8; 32];
+        let owner_key = overlay::derive_master_key_with_keyfile(
+            &OverlayConfig::v3_bootstrap(owner_salt),
+            password,
+            None,
+        )
+        .unwrap();
+        let owner_config = overlay::init_config_v3_with_vault_id(
+            &owner_salt,
+            &owner_key,
+            &overlay::random_vault_id(),
+            overlay::SaltMode::PerVault,
+        )
+        .unwrap();
+        let mut remote = MemProvider::new();
+        remote.seed_raw_file("/Vault/.aerocrypt.tsv", owner_config.as_bytes());
+        wrap_connected_provider_for_profile_in_scope(Box::new(remote), &profile, &scope)
+            .await
+            .unwrap();
+        assert_eq!(
+            scope.read_profile(id, &config_key).unwrap().as_deref(),
+            Some(owner_config.as_str())
+        );
+        assert_eq!(
+            scope.read_profile(id, &salt_key).unwrap().as_deref(),
+            Some(
+                base64::engine::general_purpose::STANDARD
+                    .encode(owner_salt)
+                    .as_str()
+            )
+        );
+
+        // The default-salt recovery cache must take the same captured path.
+        users::delete_user_credential_for(&conn, owner, &config_key).unwrap();
+        users::delete_user_credential_for(&conn, owner, &salt_key).unwrap();
+        users::set_user_credential_for(
+            &conn,
+            &root_key,
+            owner,
+            &password_key,
+            "crypt",
+            DEFAULT_SALT_PW,
+        )
+        .unwrap();
+        let mut remote = MemProvider::new();
+        default_salt_vault_without_marker(&mut remote, "/Vault").await;
+        profile["aeroCryptOverlay"]["useDefaultSalt"] = serde_json::json!(true);
+        profile["aeroCryptOverlay"]["withHeader"] = serde_json::json!(true);
+        wrap_connected_provider_for_profile_in_scope(Box::new(remote), &profile, &scope)
+            .await
+            .unwrap();
+        let cached = scope.read_profile(id, &config_key).unwrap().unwrap();
+        let cached_salt = scope.read_profile(id, &salt_key).unwrap().unwrap();
+        validate_headerless_config_salt(id, &cached, Some(&cached_salt)).unwrap();
+
+        // The older public factory and in-place GUI entry also capture before
+        // the first remote probe, rather than retaining an active-user fallback.
+        let binding = overlay_binding_from_profile(&profile).unwrap();
+        users::cli_set_active_user(store, owner).unwrap();
+        let mut remote = MemProvider::new();
+        remote.switch_user_on_probe = Some(other);
+        wrap_provider_with_overlay_if_bound(
+            Box::new(remote),
+            Some(&binding),
+            DEFAULT_SALT_PW,
+            "",
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            users::cli_get_active_user(store).unwrap().unwrap().id,
+            other
+        );
+        users::cli_set_active_user(store, owner).unwrap();
+        let mut remote = MemProvider::new();
+        remote.switch_user_on_probe = Some(other);
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(remote));
+        apply_overlay_in_place(&mut slot, &binding, DEFAULT_SALT_PW, "", None, true, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            users::cli_get_active_user(store).unwrap().unwrap().id,
+            other
+        );
+
+        // Check before the intentional legacy writes below, so restoration
+        // cannot hide any wrong-account mirror mutation by scoped cache writes.
+        for (index, key) in [&config_key, &salt_key, &password_key].iter().enumerate() {
+            assert_eq!(store.get(key).ok(), global_before[index]);
+            assert_eq!(
+                users::get_user_credential_for(&conn, &root_key, other, key)
+                    .unwrap()
+                    .map(|v| v.to_string()),
+                other_before[index]
+            );
+        }
+
+        // Explicit legacy writes belong only to the root vault, even with an
+        // active partition. They must not be mirrored into that active account.
+        let legacy_scope = AuthScope {
+            store,
+            user_id: None,
+        };
+        persist_public_overlay_config_for_unlock(
+            Some(&legacy_scope),
+            id,
+            &owner_config,
+            &base64::engine::general_purpose::STANDARD.encode(owner_salt),
+        )
+        .unwrap();
+        for (index, key) in [&config_key, &salt_key, &password_key].iter().enumerate() {
+            assert_eq!(
+                users::get_user_credential_for(&conn, &root_key, other, key)
+                    .unwrap()
+                    .map(|v| v.to_string()),
+                other_before[index]
+            );
+            if index < 2 {
+                // Restore the root legacy values after testing explicit legacy scope.
+                store
+                    .store(key, global_before[index].as_deref().unwrap())
+                    .unwrap();
+            }
+            assert_eq!(store.get(key).ok(), global_before[index]);
+        }
     }
 
     // ── Key builders ─────────────────────────────────────────────────────────
@@ -4589,6 +4927,8 @@ pub(crate) mod tests {
         download_targets: Mutex<Vec<String>>,
         /// Inspect staging immediately before the inner provider opens it.
         before_upload_read: Option<fn(&str)>,
+        /// Isolated account-switch regression hook at the first remote await.
+        switch_user_on_probe: Option<i64>,
     }
 
     impl MemProvider {
@@ -4604,6 +4944,7 @@ pub(crate) mod tests {
                 listing_error: None,
                 download_targets: Mutex::new(Vec::new()),
                 before_upload_read: None,
+                switch_user_on_probe: None,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -4892,6 +5233,10 @@ pub(crate) mod tests {
             Ok(())
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
+            if let Some(user_id) = self.switch_user_on_probe.take() {
+                let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+                crate::user_partitions::cli_set_active_user(&store, user_id).unwrap();
+            }
             let p = self.resolve(p);
             if let Some(error) = self.dotfile_probe_error {
                 if p.rsplit('/').next().is_some_and(|n| n.starts_with('.')) {

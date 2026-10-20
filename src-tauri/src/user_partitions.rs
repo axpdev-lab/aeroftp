@@ -2572,6 +2572,36 @@ pub fn set_user_credential_for(
     })
 }
 
+/// Atomically write related owned credentials. Resolve and hold the user's DEK
+/// before taking SQLite's write reservation; never reacquire USER_SESSION from
+/// inside an open write transaction (normal writers use session then SQLite).
+pub(crate) fn set_user_credentials_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credentials: &[(&str, &str, &str)],
+) -> Result<(), String> {
+    for (id, kind, _) in credentials {
+        if id.is_empty() {
+            return Err("CREDENTIAL_ID_REQUIRED".to_string());
+        }
+        if kind.is_empty() {
+            return Err("CREDENTIAL_TYPE_REQUIRED".to_string());
+        }
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin owned credential batch: {e}"))?;
+        for (id, kind, secret) in credentials {
+            set_user_credential_with_dek(&tx, user_id, dek, id, kind, secret)?;
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit owned credential batch: {e}"))
+    })
+}
+
 /// Upsert one credential row with an already-resolved DEK. Lets callers that
 /// resolved the DEK out-of-session (e.g. a cross-user relocation that unwrapped
 /// the target via its passphrase, MUV-3) write a credential without going back

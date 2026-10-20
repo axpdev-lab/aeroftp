@@ -1764,12 +1764,17 @@ pub(crate) fn load_saved_servers() -> Result<Vec<SavedServerInfo>, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open. Unlock the vault first.".to_string())?;
 
-    let json = store
-        .get("config_server_profiles")
-        .map_err(|_| "No saved servers found in vault.".to_string())?;
-
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&json)
-        .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
+    let profiles: Vec<serde_json::Value> =
+        match crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id) {
+            Some(id) => crate::user_partitions::cli_list_server_profiles_for_user(&store, id)?,
+            None => {
+                let json = store
+                    .get("config_server_profiles")
+                    .map_err(|_| "No saved servers found in vault.".to_string())?;
+                serde_json::from_str(&json)
+                    .map_err(|e| format!("Failed to parse server profiles: {}", e))?
+            }
+        };
 
     let servers: Vec<SavedServerInfo> = profiles
         .iter()
