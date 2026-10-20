@@ -356,9 +356,10 @@ async fn collect_virtual_root_entries(
 /// depth-first walk shared by a folder and the virtual root. Each folder is
 /// listed only when [`WalkScope`] allows it (strictly under `root`, not the
 /// folder listed or above it, not listed already), the root's spelling
-/// learned from its own listing, and each file is planned once. A folder the
-/// walk does not follow fails the plan: skipping it would copy part of the
-/// folder and report success, following it would copy what is not in it.
+/// learned from its own listing, and each file is planned once. Symlinked
+/// directories are omitted without descent or destination directory creation.
+/// A real folder refused by the walk fails the plan: silently skipping it
+/// would report an incomplete copy as successful.
 async fn collect_tree(
     source: &mut dyn StorageProvider,
     root: &str,
@@ -387,7 +388,8 @@ async fn collect_tree(
                     "cannot plan the complete tree: entry limit reached".into(),
                 ));
             }
-            match scope.place(&dir, &e.path, e.is_dir) {
+            let follows = e.is_walkable_dir();
+            match scope.place(&dir, &e.path, follows) {
                 WalkStep::Follow => {}
                 WalkStep::AlreadyListed => continue,
                 step => {
@@ -396,7 +398,10 @@ async fn collect_tree(
                     )))
                 }
             }
-            if e.is_dir {
+            if e.is_dir && e.is_symlink {
+                continue;
+            }
+            if follows {
                 queue.push((e.path.clone(), depth + 1));
             }
             if planned.insert(walk_path_key(&e.path)) {
@@ -854,6 +859,78 @@ fn source_root_candidates(request_path: &str, provider_root: &str) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn recursive_plan_never_walks_or_recreates_symlinked_directories() {
+        use crate::providers::RemoteEntry;
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        use std::collections::HashMap;
+        use std::sync::atomic::Ordering;
+
+        for root in ["/src", "/"] {
+            let prefix = root.trim_end_matches('/');
+            let back_path = format!("{prefix}/back");
+            let external_path = format!("{prefix}/external");
+            let empty_path = format!("{prefix}/empty");
+            let file_path = format!("{prefix}/data");
+            let mut back = RemoteEntry::directory("back".into(), back_path.clone());
+            back.is_symlink = true;
+            back.link_target = Some("..".into());
+            let mut external = RemoteEntry::directory("external".into(), external_path.clone());
+            external.is_symlink = true;
+            external.link_target = Some("/outside".into());
+            let mut source = WalkTreeProvider::new(
+                HashMap::from([
+                    (
+                        root.into(),
+                        vec![
+                            back,
+                            external,
+                            RemoteEntry::directory("empty".into(), empty_path.clone()),
+                            RemoteEntry::file("data".into(), file_path.clone(), 7),
+                        ],
+                    ),
+                    (empty_path, vec![]),
+                ]),
+                false,
+            );
+            // Either linked directory would fail if the planner listed it.
+            source.unlistable.extend([back_path, external_path]);
+            let mut dest = WalkTreeProvider::new(HashMap::new(), false);
+            let request = CrossProfileTransferRequest {
+                source_profile: "source".into(),
+                dest_profile: "dest".into(),
+                source_path: root.into(),
+                dest_path: "/out".into(),
+                recursive: true,
+                dry_run: true,
+                skip_existing: false,
+            };
+            let plan = plan_transfer(&mut source, &mut dest, &request)
+                .await
+                .unwrap();
+            assert_eq!(plan.total_files, 1);
+            assert_eq!(plan.total_bytes, 7);
+            assert_eq!(plan.entries[0].source_path, file_path);
+            assert_eq!(plan.entries[0].dest_path, "/out/data");
+            assert_eq!(
+                plan.directories
+                    .iter()
+                    .map(|e| e.dest_path.as_str())
+                    .collect::<Vec<_>>(),
+                ["/out", "/out/empty"]
+            );
+            assert_eq!(dest.writes.load(Ordering::Relaxed), 0);
+            ensure_planned_directories(&mut dest, &plan.directories, || false)
+                .await
+                .unwrap();
+            assert_eq!(
+                dest.writes.load(Ordering::Relaxed),
+                2,
+                "only the destination root and genuine empty directory are created"
+            );
+        }
+    }
 
     #[tokio::test]
     async fn recursive_plan_preserves_empty_root_and_nested_directories_without_writes() {
