@@ -752,9 +752,7 @@ fn normalize_pathspec(workspace_root: &Path, raw: &str) -> Result<String, String
         normalize_relative_path(path)?
     };
 
-    let display = relative
-        .to_string_lossy()
-        .replace('\\', "/")
+    let display = crate::sync::normalize_relative_key(&relative.to_string_lossy())
         .trim_matches('/')
         .to_string();
     if display.is_empty() || display == "." {
@@ -1013,6 +1011,29 @@ UU conflict.txt
         assert!(!commit.success);
         assert!(!commit.committed);
         assert!(commit.message.contains("No staged changes"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_git_stage_never_stages_the_nested_twin() {
+        let dir = init_repo();
+        fs::create_dir(dir.path().join("back")).unwrap();
+        fs::write(dir.path().join(r"back\slash.txt"), b"literal").unwrap();
+        fs::write(dir.path().join("back/slash.txt"), b"nested").unwrap();
+        let result = git_stage(CodingGitStageRequest {
+            workspace_root: path_to_string(dir.path()),
+            paths: vec![r"back\slash.txt".into()],
+            dry_run: false,
+        })
+        .unwrap();
+        assert!(result.staged);
+        let out = std::process::Command::new("git")
+            .current_dir(dir.path())
+            .args(["diff", "--cached", "--name-only", "-z"])
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        assert_eq!(out.stdout, b"back\\slash.txt\0");
     }
 
     #[test]

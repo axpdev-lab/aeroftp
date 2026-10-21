@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-import { BreadcrumbBar } from './BreadcrumbBar';
+import { BreadcrumbBar, splitPath } from './BreadcrumbBar';
 import { TID } from '../utils/testIds';
 
 let host: HTMLDivElement;
@@ -116,4 +116,29 @@ it('keeps the sync boundary on canonical paths when an ancestor has a label', as
   expect(button.disabled).toBe(true);
   await click(button);
   expect(onNavigate).not.toHaveBeenCalled();
+});
+
+it('literal_unix_paths breadcrumbs emit exact navigation and listing targets', () => {
+    expect(splitPath(String.raw`/tmp/dir\name/child`)).toEqual([
+        { segment: '/', fullPath: '/' }, { segment: 'tmp', fullPath: '/tmp' },
+        { segment: String.raw`dir\name`, fullPath: String.raw`/tmp/dir\name` },
+        { segment: 'child', fullPath: String.raw`/tmp/dir\name/child` },
+    ]);
+    expect(splitPath(String.raw`/remote/back\slash`, 'remote').slice(-1)[0]?.fullPath).toBe(String.raw`/remote/back\slash`);
+    expect(splitPath(String.raw`C:\opaque`, 'remote').slice(-1)[0]?.fullPath).toBe(String.raw`/C:\opaque`);
+});
+it('keeps Windows drive and UNC breadcrumb navigation absolute', () => {
+    expect(splitPath(String.raw`D:\boot\grub`).map(s => s.fullPath)).toEqual(['D:/', 'D:/boot', 'D:/boot/grub']);
+    expect(splitPath(String.raw`\\server\share\dir`).map(s => s.fullPath)).toEqual(['//server/share', '//server/share/dir']);
+});
+it('literal_unix_paths breadcrumb clicks and child listings use the same identity', async () => {
+  const target = String.raw`/tmp/dir\name`;
+  await act(async () => root.render(createElement(BreadcrumbBar, {
+    currentPath: `${target}/child`, onNavigate, listSubdirectories, t: (key: string) => key,
+  })));
+  await click(host.querySelector(`button[title="${CSS.escape(target)}"]`)!);
+  expect(onNavigate).toHaveBeenCalledWith(target);
+  const chevrons = host.querySelectorAll('button[title="breadcrumb.browseSiblings"]');
+  await click(chevrons[2]);
+  expect(listSubdirectories).toHaveBeenCalledWith(target);
 });

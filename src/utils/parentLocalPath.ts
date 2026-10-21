@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { normalizeLocalPath } from './localPath';
+
 /**
  * Local-path parent navigation helpers (AeroFile / local panels).
  *
@@ -22,10 +24,11 @@ export function isWindowsDriveRoot(path: string): boolean {
  */
 export function parentLocalPath(currentPath: string): string {
   if (!currentPath) return '/';
-  const normalized = currentPath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const normalized = normalizeLocalPath(currentPath).replace(/\/+$/, '');
   if (!normalized || normalized === '/') return '/';
   // Already at Windows drive root after strip of trailing slashes
   if (/^[A-Za-z]:$/.test(normalized)) return `${normalized}/`;
+  if (/^\/\/[^/]+\/[^/]+$/.test(normalized)) return normalized;
   const idx = normalized.lastIndexOf('/');
   if (idx <= 0) return '/';
   let parent = normalized.slice(0, idx);

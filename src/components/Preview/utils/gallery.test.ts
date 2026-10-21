@@ -36,3 +36,7 @@ describe('preview gallery', () => {
         expect(parentDir('a.jpg')).toBe('');
     });
 });
+
+it('literal_unix_paths gallery reads the containing folder without splitting a name', () => {
+    expect(parentDir(String.raw`/tmp/back\slash.jpg`)).toBe('/tmp');
+});

@@ -31,8 +31,8 @@ describe('joinRemotePath', () => {
         expect(joinRemotePath('/home/data/', 'sub/file.bin')).toBe('/home/data/sub/file.bin');
     });
 
-    it('rewrites Windows-style backslashes', () => {
-        expect(joinRemotePath('C:\\Users\\axp', 'file.bin')).toBe('C:/Users/axp/file.bin');
+    it('preserves remote backslashes even in drive-like names', () => {
+        expect(joinRemotePath('C:\\Users\\axp', 'file.bin')).toBe('C:\\Users\\axp/file.bin');
     });
 
     it('drops a leading slash on the entry name to avoid double-slash', () => {
@@ -223,4 +223,20 @@ describe('runCrossProfileTransfer', () => {
         expect(summary.cancelled).toBe(0);
         expect(mockInvoke).not.toHaveBeenCalled();
     });
+});
+
+it('literal_unix_paths selections keep opaque names in transfer requests', () => {
+    const entries = buildCrossProfileEntries({ sourceDir: String.raw`/src\dir`, destDir: String.raw`/dst\dir`, selections: [{ name: String.raw`back\slash.txt` }], skipExisting: false });
+    expect(entries[0].sourcePath).toBe(String.raw`/src\dir/back\slash.txt`);
+    expect(entries[0].destPath).toBe(String.raw`/dst\dir/back\slash.txt`);
+});
+it('literal_unix_paths planner IPC preserves selected names', async () => {
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValueOnce(buildPlanResponse('literal-plan')).mockResolvedValueOnce(buildExecuteResponse());
+    const entries = buildCrossProfileEntries({ sourceDir: '/src', destDir: '/dst', selections: [{ name: String.raw`back\slash.txt` }], skipExisting: false });
+    const result = await runCrossProfileTransfer('s', 'd', entries);
+    expect(result.succeeded).toBe(1);
+    expect(mockInvoke).toHaveBeenNthCalledWith(1, 'cross_profile_plan', { request: {
+        source_profile_id: 's', dest_profile_id: 'd', source_path: String.raw`/src/back\slash.txt`, dest_path: String.raw`/dst/back\slash.txt`, recursive: false, skip_existing: false,
+    } });
 });

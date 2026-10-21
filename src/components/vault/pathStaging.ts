@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { normalizeLocalPath } from '../../utils/localPath';
+import { parentLocalPath } from '../../utils/parentLocalPath';
 import { invoke } from '@tauri-apps/api/core';
 
 /**
@@ -35,13 +37,10 @@ interface LocalEntry {
     is_dir: boolean;
 }
 
-const norm = (p: string): string => p.replace(/\\/g, '/');
+const norm = normalizeLocalPath;
 const stripTrailing = (p: string): string => p.replace(/\/+$/, '') || '/';
 const baseOf = (p: string): string => stripTrailing(p).split('/').pop() || p;
-const parentOf = (p: string): string => {
-    const cut = p.replace(/\/+$/, '').replace(/\/[^/]*$/, '');
-    return cut || '/';
-};
+const parentOf = parentLocalPath;
 
 export async function splitPathsByType(rawPaths: string[]): Promise<SplitPaths> {
     const files: string[] = [];
@@ -67,7 +66,7 @@ export async function splitPathsByType(rawPaths: string[]): Promise<SplitPaths> 
                 path: parent,
                 showHidden: true,
             });
-            dirNames = new Set(listing.filter((e) => e.is_dir).map((e) => baseOf(norm(e.path))));
+            dirNames = new Set(listing.filter((e) => e.is_dir).map((e) => e.name));
         } catch {
             // Parent unreadable: treat every path in this group as a file.
         }

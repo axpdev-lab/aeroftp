@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { editorPathsMatch } from '../../utils/localPath';
 import React, { useRef, useState, useEffect } from 'react';
 import { useTranslation } from '../../i18n';
 import Editor, { OnMount } from '@monaco-editor/react';
@@ -425,10 +426,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             if (!file || !path) return;
 
             // Check if this reload is for the currently open file
-            const normalizedPath = path.replace(/\\/g, '/');
-            const normalizedFile = (file.path || file.name).replace(/\\/g, '/');
-
-            if (normalizedPath === normalizedFile || normalizedFile.endsWith(normalizedPath.split('/').pop() || '') || normalizedPath.endsWith(normalizedFile.split('/').pop() || '')) {
+            if (editorPathsMatch(path, file.path || file.name, !!file.isRemote)) {
                 const editor = editorRef.current;
                 if (editor) {
                     // Save cursor position
