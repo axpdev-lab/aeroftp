@@ -57,6 +57,7 @@ toml = "1.1"
 semver = "1.0.28"
 
 [dependencies]
+unicode-normalization = "0.1"
 # WI-3d: promoted from [dev-dependencies] to a NORMAL dependency so the iroh P2P
 # drive engine ships in the binary (the app calls it via src/peer/). peer-l0
 # stays the iroh isolation boundary; the 5 accepted RUSTSEC advisories now apply

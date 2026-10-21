@@ -943,6 +943,9 @@ export interface FileInfo {
 }
 
 export interface FileComparison {
+  local_relative_path?: string | null;
+  remote_relative_path?: string | null;
+  name_match_blocked?: boolean;
   relative_path: string;
   status: SyncStatus;
   local_info: FileInfo | null;
@@ -1016,6 +1019,8 @@ export interface SyncIndex {
   local_path: string;
   remote_path: string;
   files: Record<string, SyncIndexEntry>;
+  /** Remote spelling of a local key, only when the two strings differ. */
+  remote_spellings?: Record<string, string>;
 }
 
 // ============ Sync Phase 2: Reliability Types ============
@@ -1388,6 +1393,7 @@ export type SyncEcStatus =
   | "verify_failed";
 
 export interface SyncJournalEntry {
+  source_path?: string | null;
   relative_path: string;
   action: string;
   status: JournalEntryStatus;

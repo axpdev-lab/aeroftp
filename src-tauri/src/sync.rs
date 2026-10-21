@@ -76,6 +76,12 @@ pub struct FileInfo {
 /// Result of comparing a single file/directory
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileComparison {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_relative_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_relative_path: Option<String>,
+    #[serde(default)]
+    pub name_match_blocked: bool,
     pub relative_path: String,
     pub status: SyncStatus,
     pub local_info: Option<FileInfo>,
@@ -125,6 +131,11 @@ pub struct CompareReport {
     /// (size only, with the reason), for a frontend to state the size-only
     /// case. The Compare and Plan views do not show it yet.
     pub modify_window: ModifyWindow,
+    /// Identical files whose two sides spell the name differently. They are
+    /// not difference rows. The baseline still has to remember them, or the
+    /// next watcher pass stats the local spelling and misses the remote object.
+    #[serde(skip)]
+    pub mirrored: Vec<FileComparison>,
 }
 
 fn default_error_correction_pct() -> u32 {
@@ -1178,64 +1189,7 @@ pub fn build_comparison_results(
     remote_files: HashMap<String, FileInfo>,
     options: &CompareOptions,
 ) -> Vec<FileComparison> {
-    let mut results = Vec::new();
-    // Validated by the commands that accept options from outside.
-    let backup_dir = options.parsed_backup_dir().ok().flatten();
-    let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
-    all_paths.extend(remote_files.keys().cloned());
-    let excludes = options.excludes_or_everything();
-
-    for path in all_paths {
-        // Reject paths with traversal components
-        if validate_relative_path(&path).is_err() {
-            tracing::warn!("Skipping entry with invalid relative path: {}", path);
-            continue;
-        }
-
-        let local = local_files.get(&path);
-        let remote = remote_files.get(&path);
-
-        // Skip excluded paths
-        let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
-        if options.excludes_path(&excludes, &path, is_dir) {
-            continue;
-        }
-        if backup_dir.as_ref().is_some_and(|dir| {
-            crate::sync_backup::is_backup_path(&path, dir)
-                || (is_dir && crate::sync_backup::is_backup_ancestor(&path, dir))
-        }) {
-            continue;
-        }
-
-        // Apply size/age filters
-        if should_filter(local, options) || should_filter(remote, options) {
-            continue;
-        }
-
-        let status = compare_file_pair(local, remote, options);
-
-        // Skip identical files unless they're directories we need to show
-        let is_dir =
-            local.map(|f| f.is_dir).unwrap_or(false) || remote.map(|f| f.is_dir).unwrap_or(false);
-
-        if status != SyncStatus::Identical || is_dir {
-            let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
-            results.push(FileComparison {
-                relative_path: path,
-                status,
-                local_info: local.cloned(),
-                remote_info: remote.cloned(),
-                is_dir,
-                sync_reason,
-                previously_synced: false,
-            });
-        }
-    }
-
-    // Sort by path for consistent display
-    results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-
-    results
+    classify_with_summary(local_files, remote_files, options, None).differences
 }
 
 /// Central decision function for sync actions (Task 1+2).
@@ -3147,6 +3101,10 @@ pub struct SyncIndex {
     pub remote_path: String,
     /// File states at time of last sync (key = relative_path)
     pub files: HashMap<String, SyncIndexEntry>,
+    /// Remote spelling of a key whose sides differ. Empty when every saved
+    /// path used one spelling, and on indexes written before pairing.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub remote_spellings: HashMap<String, String>,
     /// Keys the version 2 migration rewrote from the native separator, whose
     /// presence does not prove the file was synced **at that path**. Never
     /// persisted: it is rebuilt on every load that migrates, and a save writes
@@ -3165,6 +3123,7 @@ impl SyncIndex {
             local_path,
             remote_path,
             files: HashMap::new(),
+            remote_spellings: Default::default(),
             unverified_keys: Default::default(),
         }
     }
@@ -3328,6 +3287,121 @@ fn current_pair_converged(local: &FileInfo, remote: &FileInfo, options: &Compare
             .is_some_and(|(l, r)| l.timestamp() == r.timestamp())
 }
 
+fn nfc_path(path: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    path.nfc().collect()
+}
+
+/// Drop every baseline whose name is canonically `path`.
+///
+/// A delete can be authorized by the local spelling or by one legacy remote
+/// spelling. Removing only the local key leaves the other, and the next
+/// appearance of that name looks previously synced.
+pub(crate) fn forget_canonical_index_keys(files: &mut HashMap<String, SyncIndexEntry>, path: &str) {
+    let want = nfc_path(path);
+    files.retain(|key, _| nfc_path(key) != want);
+}
+
+/// Remote path a watcher key must `stat`.
+///
+/// The key is the local spelling. After a paired sync the object lives at
+/// `remote_spellings`. An older index has no map and is keyed by the remote
+/// spelling itself: then the one baseline key of the same canonical name is
+/// that path. Two such keys are ambiguous and are not guessed.
+pub(crate) fn remote_stat_key<'a>(index_key: &'a str, index: &'a SyncIndex) -> &'a str {
+    if let Some(spelled) = index.remote_spellings.get(index_key) {
+        return spelled.as_str();
+    }
+    let want = nfc_path(index_key);
+    let mut found: Option<&'a str> = None;
+    for key in index.files.keys() {
+        if nfc_path(key) != want {
+            continue;
+        }
+        if found.is_some() {
+            return index_key;
+        }
+        found = Some(key.as_str());
+    }
+    found.filter(|key| *key != index_key).unwrap_or(index_key)
+}
+
+/// Spellings to store with `files`.
+///
+/// Starts from the previous map, drops a key the new baseline no longer has,
+/// and drops every spelling of a comparison that left the baseline (a delete).
+/// A comparison that stayed records its remote spelling only when the two
+/// sides differ.
+pub(crate) fn spellings_after_baseline(
+    comparisons: &[FileComparison],
+    prior: Option<&HashMap<String, String>>,
+    files: &HashMap<String, SyncIndexEntry>,
+) -> HashMap<String, String> {
+    let mut spellings = prior.cloned().unwrap_or_default();
+    spellings.retain(|key, _| files.contains_key(key));
+    for comparison in comparisons {
+        if comparison.name_match_blocked {
+            continue;
+        }
+        if !files.contains_key(&comparison.relative_path) {
+            let want = nfc_path(&comparison.relative_path);
+            spellings.retain(|key, _| nfc_path(key) != want);
+            continue;
+        }
+        match comparison.remote_relative_path.as_deref() {
+            Some(remote) if remote != comparison.relative_path => {
+                spellings.insert(comparison.relative_path.clone(), remote.to_string());
+            }
+            _ => {
+                spellings.remove(&comparison.relative_path);
+            }
+        }
+    }
+    spellings
+}
+
+/// Index keys grouped by NFC form. Built once per classify so a legacy
+/// spelling lookup does not normalize the whole index for every file.
+fn index_keys_by_nfc(index: &SyncIndex) -> HashMap<String, Vec<&str>> {
+    let mut groups: HashMap<String, Vec<&str>> = HashMap::new();
+    for key in index.files.keys() {
+        groups.entry(nfc_path(key)).or_default().push(key.as_str());
+    }
+    groups
+}
+
+/// Baseline key that may prove this pair was synced.
+///
+/// Writes after canonical pairing use the projected local path. An older
+/// index can still be keyed by the remote spelling, because migration only
+/// rewrites separators. An exact verified local key wins. Otherwise one
+/// legacy key is trusted only when it is the single index key NFC-equal to
+/// the remote path and that key was not rewritten by the separator migration.
+/// Two NFC twins are ambiguous. An unverified exact local key is not a
+/// deletion proof and does not fall through to a twin.
+fn trusted_baseline_key<'a>(
+    index: &'a SyncIndex,
+    by_nfc: &HashMap<String, Vec<&'a str>>,
+    local_path: &str,
+    remote_path: &str,
+) -> Option<&'a str> {
+    if let Some((key, _)) = index.files.get_key_value(local_path) {
+        if index.unverified_keys.contains(key) {
+            return None;
+        }
+        return Some(key.as_str());
+    }
+    let group = by_nfc.get(&nfc_path(remote_path))?;
+    let [key] = group.as_slice() else {
+        return None;
+    };
+    if index.unverified_keys.contains(*key) {
+        None
+    } else {
+        Some(*key)
+    }
+}
+
 /// Classify a local/remote pair into difference rows plus the summary above.
 ///
 /// This holds the loop `build_comparison_results_with_index` used to own; that
@@ -3340,6 +3414,7 @@ pub fn classify_with_summary(
     index: Option<&SyncIndex>,
 ) -> CompareReport {
     let mut results = Vec::new();
+    let mut mirrored = Vec::new();
     let mut summary = CompareSummary {
         examined_count: 0,
         identical_count: 0,
@@ -3348,27 +3423,33 @@ pub fn classify_with_summary(
     };
     // Validated by the commands that accept options from outside.
     let backup_dir = options.parsed_backup_dir().ok().flatten();
-    let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
-    all_paths.extend(remote_files.keys().cloned());
+    let pairs = crate::sync_names::pair_paths(&local_files, &remote_files);
     let excludes = options.excludes_or_everything();
+    let index_by_nfc = index.map(index_keys_by_nfc);
 
-    for path in all_paths {
+    for pair in pairs {
+        // Baselines are keyed by the actual (or projected) LOCAL spelling.
+        let path = pair.local_path.clone();
         // Reject paths with traversal components
         if validate_relative_path(&path).is_err() {
             tracing::warn!("Skipping entry with invalid relative path: {}", path);
             continue;
         }
 
-        let local = local_files.get(&path);
-        let remote = remote_files.get(&path);
+        let local = pair.local.as_ref().and_then(|p| local_files.get(p));
+        let remote = pair.remote.as_ref().and_then(|p| remote_files.get(p));
 
         let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
-        if options.excludes_path(&excludes, &path, is_dir) {
+        if options.excludes_path(&excludes, &path, is_dir)
+            || options.excludes_path(&excludes, &pair.remote_path, is_dir)
+        {
             continue;
         }
         if backup_dir.as_ref().is_some_and(|dir| {
-            crate::sync_backup::is_backup_path(&path, dir)
-                || (is_dir && crate::sync_backup::is_backup_ancestor(&path, dir))
+            [&path, &pair.remote_path].iter().any(|p| {
+                crate::sync_backup::is_backup_path(p, dir)
+                    || (is_dir && crate::sync_backup::is_backup_ancestor(p, dir))
+            })
         }) {
             continue;
         }
@@ -3381,14 +3462,21 @@ pub fn classify_with_summary(
         let is_dir =
             local.map(|f| f.is_dir).unwrap_or(false) || remote.map(|f| f.is_dir).unwrap_or(false);
 
+        // The same resolved key feeds change detection and `previously_synced`.
+        // A migration key that could not be vouched for, and an ambiguous
+        // legacy spelling, are both absent.
+        let baseline_key = match (index, index_by_nfc.as_ref()) {
+            (Some(idx), Some(groups)) => {
+                trusted_baseline_key(idx, groups, &path, &pair.remote_path)
+            }
+            _ => None,
+        };
+
         // Check if we can use the index for conflict detection
-        let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
-            // A key the migration could not vouch for is compared as absent,
-            // here and in `previously_synced` below.
-            let cached = idx
-                .files
-                .get(&path)
-                .filter(|_| !idx.unverified_keys.contains(&path));
+        let status = if pair.blocked {
+            SyncStatus::Conflict
+        } else if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
+            let cached = baseline_key.and_then(|key| idx.files.get(key));
             if l.is_dir != r.is_dir {
                 SyncStatus::Conflict
             } else if l.is_dir && r.is_dir {
@@ -3455,9 +3543,7 @@ pub fn classify_with_summary(
         // Check if this file was in the sync index (previously synced).
         // For bidirectional sync: a local_only/remote_only file that was previously synced
         // means the OTHER side intentionally deleted it.
-        let previously_synced = index
-            .map(|idx| idx.files.contains_key(&path) && !idx.unverified_keys.contains(&path))
-            .unwrap_or(false);
+        let previously_synced = baseline_key.is_some();
 
         // Read before the push below moves `status` into the row.
         let is_identical = status == SyncStatus::Identical;
@@ -3465,12 +3551,31 @@ pub fn classify_with_summary(
         if !is_identical || is_dir {
             let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
             results.push(FileComparison {
+                local_relative_path: Some(pair.local_path),
+                remote_relative_path: Some(pair.remote_path),
+                name_match_blocked: pair.blocked,
                 relative_path: path,
                 status,
                 local_info: local.cloned(),
                 remote_info: remote.cloned(),
                 is_dir,
                 sync_reason,
+                previously_synced,
+            });
+        } else if !pair.blocked && pair.local_path != pair.remote_path {
+            // Same file, two spellings. Omitting it from the rows is what
+            // keeps Compare quiet. The baseline still has to learn the remote
+            // spelling, or a later edit stats a path that was never written.
+            mirrored.push(FileComparison {
+                local_relative_path: Some(pair.local_path),
+                remote_relative_path: Some(pair.remote_path),
+                name_match_blocked: false,
+                relative_path: path,
+                status,
+                local_info: local.cloned(),
+                remote_info: remote.cloned(),
+                is_dir: false,
+                sync_reason: String::new(),
                 previously_synced,
             });
         }
@@ -3491,6 +3596,7 @@ pub fn classify_with_summary(
         differences: results,
         summary,
         modify_window: options.modify_window,
+        mirrored,
     }
 }
 
@@ -4249,6 +4355,8 @@ pub enum JournalEntryStatus {
 /// A single entry in the transfer journal
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncJournalEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
     pub relative_path: String,
     pub action: String, // "upload" | "download" | "mkdir"
     pub status: JournalEntryStatus,
@@ -7231,6 +7339,7 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            source_path: None,
             relative_path: "file.txt".to_string(),
             action: "upload".to_string(),
             status: JournalEntryStatus::Pending,
@@ -7259,6 +7368,7 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            source_path: None,
             relative_path: "a.txt".to_string(),
             action: "upload".to_string(),
             status: JournalEntryStatus::Completed,
@@ -7271,6 +7381,7 @@ mod tests {
             local_modified: None,
         });
         journal.entries.push(SyncJournalEntry {
+            source_path: None,
             relative_path: "b.txt".to_string(),
             action: "upload".to_string(),
             status: JournalEntryStatus::Failed,
@@ -7347,6 +7458,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            remote_spellings: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -7381,6 +7493,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            remote_spellings: Default::default(),
             unverified_keys: Default::default(),
         };
         // Sizes differ so "which one survived" is observable.
@@ -7488,6 +7601,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            remote_spellings: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -7562,6 +7676,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            remote_spellings: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -7596,6 +7711,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            remote_spellings: Default::default(),
             unverified_keys: Default::default(),
         };
         // A key that a rewrite would change, so "untouched" is observable.
@@ -7624,6 +7740,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            remote_spellings: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8806,6 +8923,214 @@ mod tests {
         // Should produce a LocalOnly with previously_synced=true
         let f = results.iter().find(|c| c.relative_path == "f.txt").unwrap();
         assert_eq!(f.status, SyncStatus::LocalOnly);
+        assert!(f.previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &f.status,
+                &CompareDirection::Bidirectional,
+                f.previously_synced,
+                true,
+            ),
+            SyncAction::DeleteLocal
+        );
+    }
+
+    fn index_with(keys: &[&str], size: u64, when: DateTime<Utc>) -> SyncIndex {
+        let mut idx = SyncIndex::new("/local".into(), "/remote".into());
+        for key in keys {
+            idx.files.insert(
+                (*key).to_string(),
+                SyncIndexEntry {
+                    size,
+                    modified: Some(when),
+                    is_dir: false,
+                },
+            );
+        }
+        idx
+    }
+
+    /// A pre-change index stored the remote spelling. After pairing, the local
+    /// file is the other spelling and the remote copy is gone. The legacy key
+    /// is unique, so the deletion still propagates. Another remote file stays,
+    /// so this is not an empty remote.
+    #[test]
+    fn a_legacy_remote_spelling_still_proves_a_synced_delete() {
+        let now = Utc::now();
+        let local_name = "cafe\u{301}.txt";
+        let mut local = HashMap::new();
+        local.insert(
+            local_name.to_string(),
+            mk_file_info(local_name, 123, Some(now)),
+        );
+        let mut remote = HashMap::new();
+        remote.insert(
+            "other.txt".to_string(),
+            mk_file_info("other.txt", 1, Some(now)),
+        );
+        let idx = index_with(&["café.txt"], 123, now);
+        let results = build_comparison_results_with_index(
+            local,
+            remote,
+            &CompareOptions::default(),
+            Some(&idx),
+        );
+        let f = results
+            .iter()
+            .find(|c| c.relative_path == local_name)
+            .unwrap();
+        assert_eq!(f.status, SyncStatus::LocalOnly);
+        assert!(f.previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &f.status,
+                &CompareDirection::Bidirectional,
+                f.previously_synced,
+                true,
+            ),
+            SyncAction::DeleteLocal
+        );
+    }
+
+    /// The same legacy key is the baseline when both sides are still present,
+    /// so a change on each side stays a conflict instead of a blind upload.
+    #[test]
+    fn a_legacy_remote_key_still_detects_a_conflict() {
+        let now = Utc::now();
+        let local_name = "cafe\u{301}.txt";
+        let remote_name = "café.txt";
+        let mut local = HashMap::new();
+        local.insert(
+            local_name.to_string(),
+            mk_file_info(local_name, 200, Some(now)),
+        );
+        let mut remote = HashMap::new();
+        remote.insert(
+            remote_name.to_string(),
+            mk_file_info(remote_name, 150, Some(now)),
+        );
+        let idx = index_with(&[remote_name], 100, now);
+        let results = build_comparison_results_with_index(
+            local,
+            remote,
+            &CompareOptions::default(),
+            Some(&idx),
+        );
+        let c = results
+            .iter()
+            .find(|c| c.relative_path == local_name)
+            .unwrap();
+        assert_eq!(c.status, SyncStatus::Conflict);
+    }
+
+    /// Two stored spellings of one name are not a unique legacy key. The file
+    /// on disk uses a third NFC-equal spelling, so neither key is exact.
+    #[test]
+    fn two_nfc_index_twins_do_not_authorize_a_delete() {
+        let now = Utc::now();
+        // U+0341 decomposes to U+0301, so this NFC-matches both stored keys.
+        let local_name = "cafe\u{341}.txt";
+        let mut local = HashMap::new();
+        local.insert(
+            local_name.to_string(),
+            mk_file_info(local_name, 123, Some(now)),
+        );
+        let mut remote = HashMap::new();
+        remote.insert(
+            "other.txt".to_string(),
+            mk_file_info("other.txt", 1, Some(now)),
+        );
+        let idx = index_with(&["café.txt", "cafe\u{301}.txt"], 123, now);
+        let results = build_comparison_results_with_index(
+            local,
+            remote,
+            &CompareOptions::default(),
+            Some(&idx),
+        );
+        let f = results
+            .iter()
+            .find(|c| c.relative_path == local_name)
+            .unwrap();
+        assert!(!f.previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &f.status,
+                &CompareDirection::Bidirectional,
+                f.previously_synced,
+                true,
+            ),
+            SyncAction::Upload
+        );
+    }
+
+    /// The exact local key is unverified, and a verified twin sits beside it.
+    /// Falling through to that twin would delete a file the migration could
+    /// not prove was synced at this path.
+    #[test]
+    fn an_unverified_local_key_does_not_fall_through_to_a_legacy_twin() {
+        let now = Utc::now();
+        let local_name = "cafe\u{301}.txt";
+        let mut local = HashMap::new();
+        local.insert(
+            local_name.to_string(),
+            mk_file_info(local_name, 123, Some(now)),
+        );
+        let mut remote = HashMap::new();
+        remote.insert(
+            "other.txt".to_string(),
+            mk_file_info("other.txt", 1, Some(now)),
+        );
+        let mut idx = index_with(&[local_name, "café.txt"], 123, now);
+        idx.unverified_keys.insert(local_name.to_string());
+        let results = build_comparison_results_with_index(
+            local,
+            remote,
+            &CompareOptions::default(),
+            Some(&idx),
+        );
+        let f = results
+            .iter()
+            .find(|c| c.relative_path == local_name)
+            .unwrap();
+        assert!(!f.previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &f.status,
+                &CompareDirection::Bidirectional,
+                f.previously_synced,
+                true,
+            ),
+            SyncAction::Upload
+        );
+    }
+
+    /// When the local spelling itself is a verified index key, it wins even
+    /// if a legacy twin is also stored.
+    #[test]
+    fn an_exact_verified_local_key_wins_over_a_legacy_twin() {
+        let now = Utc::now();
+        let local_name = "cafe\u{301}.txt";
+        let mut local = HashMap::new();
+        local.insert(
+            local_name.to_string(),
+            mk_file_info(local_name, 123, Some(now)),
+        );
+        let mut remote = HashMap::new();
+        remote.insert(
+            "other.txt".to_string(),
+            mk_file_info("other.txt", 1, Some(now)),
+        );
+        let idx = index_with(&[local_name, "café.txt"], 123, now);
+        let results = build_comparison_results_with_index(
+            local,
+            remote,
+            &CompareOptions::default(),
+            Some(&idx),
+        );
+        let f = results
+            .iter()
+            .find(|c| c.relative_path == local_name)
+            .unwrap();
         assert!(f.previously_synced);
         assert_eq!(
             decide_sync_action(

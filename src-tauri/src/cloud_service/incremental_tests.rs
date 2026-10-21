@@ -440,6 +440,103 @@ async fn a_modified_file_is_sent_over_its_unchanged_remote_copy() {
     assert_eq!(saved.files["doc.txt"].size, 9);
 }
 
+/// The watcher key is the local spelling. The bytes live at the remote
+/// spelling. Statting the local spelling misses, and a bidirectional pass
+/// then treats the edit as a remote delete and skips it.
+async fn edited_spelling_uploads_the_remote_object(
+    root: &std::path::Path,
+    index: &SyncIndex,
+    remote: &mut MemRemote,
+    local_key: &str,
+    remote_key: &str,
+) {
+    let config = pair(root);
+    let path = root.join(local_key);
+    std::fs::write(&path, b"v2 longer").unwrap();
+    let plan = work(prep(&config, index, &[local_key]));
+    let (run, saved) = execute(&config, plan, remote, None).await;
+    let (result, failed) = done(run);
+    assert_eq!(result.uploaded, 1, "{:?}", result.errors);
+    assert_eq!(result.deleted, 0);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert!(failed.is_empty());
+    assert_eq!(
+        remote.state().files[&format!("/remote/{remote_key}")].0,
+        b"v2 longer"
+    );
+    assert!(
+        !remote
+            .state()
+            .files
+            .contains_key(&format!("/remote/{local_key}")),
+        "the pass must not create a second object at the local spelling"
+    );
+    assert_eq!(remote.calls_to(&format!("/remote/{local_key}")), 0);
+    assert_eq!(saved.files.get(local_key).map(|entry| entry.size), Some(9));
+    assert!(saved.files.get(remote_key).is_none());
+    assert_eq!(
+        saved.remote_spellings.get(local_key).map(String::as_str),
+        Some(remote_key)
+    );
+}
+
+#[tokio::test]
+async fn an_edited_local_spelling_updates_the_remote_object() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    let local_key = "cafe\u{301}.txt";
+    let remote_key = "café.txt";
+    index.files.insert(
+        local_key.to_string(),
+        SyncIndexEntry {
+            size: 2,
+            modified: chrono::DateTime::<chrono::Utc>::from_timestamp(SYNCED_AT, 0),
+            is_dir: false,
+        },
+    );
+    index
+        .remote_spellings
+        .insert(local_key.to_string(), remote_key.to_string());
+    remote.put(&format!("/remote/{remote_key}"), b"v1", SYNCED_AT);
+    edited_spelling_uploads_the_remote_object(
+        root.path(),
+        &index,
+        &mut remote,
+        local_key,
+        remote_key,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_legacy_remote_key_still_points_the_watcher_at_the_remote_object() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    let local_key = "cafe\u{301}.txt";
+    let remote_key = "café.txt";
+    index.files.insert(
+        remote_key.to_string(),
+        SyncIndexEntry {
+            size: 2,
+            modified: chrono::DateTime::<chrono::Utc>::from_timestamp(SYNCED_AT, 0),
+            is_dir: false,
+        },
+    );
+    remote.put(&format!("/remote/{remote_key}"), b"v1", SYNCED_AT);
+    edited_spelling_uploads_the_remote_object(
+        root.path(),
+        &index,
+        &mut remote,
+        local_key,
+        remote_key,
+    )
+    .await;
+}
+
 /// The `stat` is the conflict check: a remote copy that changed since the
 /// baseline too is a conflict, asked about, never overwritten.
 #[tokio::test]

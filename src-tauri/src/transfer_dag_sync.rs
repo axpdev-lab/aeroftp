@@ -2727,6 +2727,7 @@ mod tests {
         );
         for (rel, action) in paths {
             journal.entries.push(SyncJournalEntry {
+                source_path: None,
                 relative_path: rel.to_string(),
                 action: action.to_string(),
                 status: JournalEntryStatus::Pending,

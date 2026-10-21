@@ -38,6 +38,7 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
             "tlsh2",
             "tokio",
             "tokio-util",
+            "unicode-normalization",
             "toml",
             "tracing",
             "tracing-subscriber",

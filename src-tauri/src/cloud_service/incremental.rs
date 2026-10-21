@@ -683,10 +683,16 @@ impl CloudService {
         let mut remotes = HashMap::new();
         let mut gone_on_both = Vec::new();
         for (key, local) in &work {
-            let remote_path = format!("{remote_root}/{key}");
+            // The watcher key is the local spelling. The object may live at
+            // another spelling of the same name.
+            let remote_key = crate::sync::remote_stat_key(key, &index);
+            let remote_path = format!("{remote_root}/{remote_key}");
             match remote_state(provider, &remote_path).await {
                 Ok(Some(entry)) => {
-                    remotes.insert(key.clone(), remote_info(key, &remote_path, &entry));
+                    remotes.insert(
+                        remote_key.to_string(),
+                        remote_info(remote_key, &remote_path, &entry),
+                    );
                 }
                 Ok(None) if local.is_none() => gone_on_both.push(key.clone()),
                 Ok(None) => {}
@@ -810,17 +816,20 @@ impl CloudService {
         }
 
         let mut files = self.post_sync_baseline(&done, &config, Some(&index));
-        // Gone on both sides: nothing left to track. Kept, the entry would
-        // read a file created later at the same path as synced, and deleted.
+        // Gone on both sides: nothing left to track. The watcher key may be
+        // the local spelling while the baseline still holds the remote one.
         for key in gone_on_both {
-            files.remove(&key);
+            crate::sync::forget_canonical_index_keys(&mut files, &key);
         }
+        let remote_spellings =
+            crate::sync::spellings_after_baseline(&done, Some(&index.remote_spellings), &files);
         let saved = SyncIndex {
             version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path: local_str,
             remote_path: config.remote_folder.clone(),
             files,
+            remote_spellings,
             unverified_keys: Default::default(),
         };
 

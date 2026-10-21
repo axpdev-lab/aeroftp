@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
+import { canonicalNameMatcher } from './canonicalNames';
 // Z.3.7 — Pure compare classifier for the dual-panel Compare view.
 //
 // Takes two flat directory listings (left + right) and bucketizes each
@@ -44,6 +45,9 @@ export interface CompareInputEntry {
 }
 
 export interface CompareResultEntry {
+    leftRelativePath?: string;
+    rightRelativePath?: string;
+    nameMatchBlocked?: boolean;
     name: string;
     /**
      * Path of the entry relative to the compare root. For the flat
@@ -141,7 +145,24 @@ export const compareEntries = (
 
     const leftMap = indexByName(left);
     const rightMap = indexByName(right);
-    const allNames = new Set<string>([...leftMap.keys(), ...rightMap.keys()]);
+    const pairs: { name: string; leftName?: string; rightName?: string; blocked?: boolean }[] = [];
+    const used = new Set<string>();
+    const matchName = canonicalNameMatcher([...leftMap.values()], [...rightMap.values()]);
+    const leftKeys = new Set([...leftMap.keys()].map(name => name.normalize('NFC')));
+    for (const name of leftMap.keys()) {
+        try {
+            const match = matchName(name);
+            if (match) used.add(match.name);
+            pairs.push({ name, leftName: name, rightName: match?.name });
+        } catch {
+            pairs.push({ name, leftName: name, blocked: true });
+        }
+    }
+    for (const name of rightMap.keys()) {
+        if (used.has(name)) continue;
+        const blocked = leftKeys.has(name.normalize('NFC'));
+        pairs.push({ name, rightName: name, blocked });
+    }
 
     const buckets: Record<CompareBucket, CompareResultEntry[]> = {
         'only-left': [],
@@ -166,9 +187,27 @@ export const compareEntries = (
         stats[bucket].bytes += bytes;
     };
 
-    for (const name of allNames) {
-        const left = leftMap.get(name);
-        const right = rightMap.get(name);
+    for (const pair of pairs) {
+        const { name } = pair;
+        const left = pair.leftName ? leftMap.get(pair.leftName) : undefined;
+        const right = pair.rightName ? rightMap.get(pair.rightName) : undefined;
+        if (pair.blocked) {
+            push('conflict', {
+                name,
+                relativePath: name,
+                bucket: 'conflict',
+                nameMatchBlocked: true,
+                leftIsDir: left?.isDir,
+                rightIsDir: right?.isDir,
+                leftRelativePath: left?.name,
+                rightRelativePath: right?.name,
+                leftSize: left?.size ?? null,
+                rightSize: right?.size ?? null,
+                leftMtimeMs: left?.mtimeMs ?? null,
+                rightMtimeMs: right?.mtimeMs ?? null,
+            }, Math.max(sizeFor(left), sizeFor(right)));
+            continue;
+        }
 
         if (left && !right) {
             push(
@@ -206,6 +245,8 @@ export const compareEntries = (
             name,
             relativePath: name,
             bucket: 'same',
+            leftRelativePath: left.name,
+            rightRelativePath: right.name,
             leftIsDir: left.isDir,
             rightIsDir: right.isDir,
             leftSize: left.size ?? null,
@@ -217,6 +258,7 @@ export const compareEntries = (
 
         if (left.isDir !== right.isDir) {
             row.bucket = 'conflict';
+            row.nameMatchBlocked = true;
             push('conflict', row, meanBytes);
             continue;
         }
