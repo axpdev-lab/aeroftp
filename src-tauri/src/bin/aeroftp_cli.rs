@@ -87720,10 +87720,11 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "{}",
             blocked.message
         );
-        let st = state.lock().unwrap();
-        assert!(st.served.is_empty(), "upload started: {:?}", st.served);
-        assert!(!st.files.contains_key(&remote));
-        drop(st);
+        {
+            let st = state.lock().unwrap();
+            assert!(st.served.is_empty(), "upload started: {:?}", st.served);
+            assert!(!st.files.contains_key(&remote));
+        }
 
         let state = WorkerFake::state();
         state
