@@ -45,12 +45,13 @@ const parentOf = parentLocalPath;
 export async function splitPathsByType(rawPaths: string[]): Promise<SplitPaths> {
     const files: string[] = [];
     const dirs: string[] = [];
-    const paths = rawPaths.map(norm).filter(Boolean);
 
     // Group by parent so we list each containing directory at most once.
     const byParent = new Map<string, string[]>();
-    for (const p of paths) {
-        const parent = parentOf(p);
+    for (const raw of rawPaths.filter(Boolean)) {
+        const p = norm(raw);
+        // Determine the parent before separator adaptation loses native UNC provenance.
+        const parent = parentOf(raw);
         const group = byParent.get(parent);
         if (group) group.push(p);
         else byParent.set(parent, [p]);

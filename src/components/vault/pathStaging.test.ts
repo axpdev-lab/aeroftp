@@ -20,3 +20,10 @@ it('keeps Windows picker separators and drive roots absolute', async () => {
     expect(await splitPathsByType([String.raw`D:\folder`])).toEqual({ files: [], dirs: ['D:/folder'] });
     expect(invoke).toHaveBeenCalledExactlyOnceWith('get_local_files', { path: 'D:/', showHidden: true });
 });
+
+it('retains native UNC provenance while staging a selected share root', async () => {
+    invoke.mockClear();
+    invoke.mockResolvedValue([]);
+    await splitPathsByType([String.raw`\\server\share`]);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('get_local_files', { path: '//server/share', showHidden: true });
+});

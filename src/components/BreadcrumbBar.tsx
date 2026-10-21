@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { normalizeLocalPath } from '../utils/localPath';
+import { isWindowsLocalPath, normalizeLocalPath } from '../utils/localPath';
 import { TID, type GuiPanelId } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -78,7 +78,7 @@ export function splitPath(path: string, kind: 'local' | 'remote' = 'local'): Pat
     return segments;
   }
 
-  if (kind === 'local' && normalized.startsWith('//')) {
+  if (kind === 'local' && isWindowsLocalPath(path) && normalized.startsWith('//')) {
     const parts = normalized.slice(2).split('/').filter(Boolean);
     const share = `//${parts.splice(0, 2).join('/')}`;
     const segments: PathSegment[] = [{ segment: share, fullPath: share }];

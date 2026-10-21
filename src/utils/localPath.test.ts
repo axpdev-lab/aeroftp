@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
-import { expect, it } from 'vitest';
-import { normalizeLocalPath, editorPathsMatch, localPathBasename, localDropTarget } from './localPath';
+import { expect, it, vi } from 'vitest';
+import { isWindowsLocalPath, normalizeLocalPath, editorPathsMatch, localPathBasename, localDropTarget } from './localPath';
 
 it('literal_unix_paths editor events never reload a colliding twin', () => {
     const literal = String.raw`/tmp/back\slash.txt`;
@@ -19,4 +19,13 @@ it('literal_unix_paths native drops emit a sibling literal target instead of a t
     expect(localDropTarget(String.raw`/source/dir\name/`, '/dest/')).toBe(String.raw`/dest/dir\name`);
     expect(localPathBasename(String.raw`/tmp/dir\name`)).toBe(String.raw`dir\name`);
     expect(localDropTarget(String.raw`C:\source\file.txt`, String.raw`D:\dest`)).toBe('D:/dest/file.txt');
+});
+
+it('interprets slash-only UNC roots using the native host', () => {
+    try {
+        vi.stubGlobal('navigator', { platform: 'Linux x86_64' });
+        expect(isWindowsLocalPath('//tmp/folder')).toBe(false);
+        vi.stubGlobal('navigator', { platform: 'Win32' });
+        expect(isWindowsLocalPath('//server/share')).toBe(true);
+    } finally { vi.unstubAllGlobals(); }
 });

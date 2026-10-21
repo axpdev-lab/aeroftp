@@ -3572,6 +3572,35 @@ mod baseline_tests {
 
     // ---- CLAUDE-AV-B3-16: local scan completeness ----
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn literal_unix_paths_scan_reaches_an_escaped_reincluded_child() {
+        let root = tempfile::tempdir().unwrap();
+        for folder in [r"dir\name", "dir/name"] {
+            std::fs::create_dir_all(root.path().join(folder)).unwrap();
+            for file in ["keep.txt", "drop.txt"] {
+                std::fs::write(root.path().join(folder).join(file), file).unwrap();
+            }
+        }
+        std::fs::write(
+            root.path().join(".aeroignore"),
+            "/dir\\\\name/\n!/dir\\\\name/keep.txt\n",
+        )
+        .unwrap();
+        let config = CloudConfig {
+            local_folder: root.path().to_path_buf(),
+            exclude_patterns: vec!["**".into()],
+            ..Default::default()
+        };
+        let (files, complete) = CloudService::new()
+            .scan_local_folder(&config)
+            .await
+            .unwrap();
+        assert!(complete);
+        assert_eq!(files.len(), 1, "{:?}", files.keys());
+        assert!(files.contains_key(r"dir\name/keep.txt"));
+    }
+
     #[tokio::test]
     async fn local_scan_complete_on_clean_readable_tree() {
         // A fully readable tree must stay complete: the new completeness flag

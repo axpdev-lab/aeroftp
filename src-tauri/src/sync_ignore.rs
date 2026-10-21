@@ -164,14 +164,14 @@ impl AeroIgnore {
     /// `dir_rel`, so a scan must walk into that directory although it is
     /// excluded: pruning it would hide the re-included file from every side.
     /// Read conservatively: a negation that is unanchored (it matches in any
-    /// directory) or holds a glob character may match below anything; an
-    /// anchored literal only below its own prefix.
+    /// directory), holds a glob character or uses escaping may match below
+    /// anything; an unescaped anchored literal only below its own prefix.
     pub fn may_reinclude_below(&self, dir_rel: &str) -> bool {
         let prefix = format!("{}/", dir_rel.trim_end_matches('/'));
         self.rules.iter().any(|rule| {
             rule.negated
                 && (rule.glob.starts_with("**/")
-                    || rule.glob.contains(['*', '?', '[', '{'])
+                    || rule.glob.contains(['*', '?', '[', '{', '\\'])
                     || rule.glob.starts_with(&prefix))
         })
     }
@@ -331,6 +331,27 @@ mod tests {
             ),
             ScanDecision::Keep
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_escaped_negation_keeps_children_reachable() {
+        let rules = AeroIgnore::parse("/dir\\\\name/\n!/dir\\\\name/keep.txt").unwrap();
+        let excludes = crate::sync_exclude::ExcludeMatcher::new(&["**"]).unwrap();
+        assert_eq!(
+            scan_decision(Some(&rules), r"dir\name", true, &excludes),
+            ScanDecision::WalkOnly
+        );
+        assert_eq!(
+            scan_decision(Some(&rules), r"dir\name/keep.txt", false, &excludes),
+            ScanDecision::Keep
+        );
+        for path in [r"dir\name/drop.txt", "dir/name/keep.txt"] {
+            assert_eq!(
+                scan_decision(Some(&rules), path, false, &excludes),
+                ScanDecision::Skip
+            );
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@
 // Pure helpers for TQ-7b: map UI transfer-queue state to the TQ-7a journal
 // DTO (snake_case, matching transfer_queue_journal.rs) and back. No I/O.
 
-import { normalizeLocalPath } from './localPath';
+import { isWindowsLocalPath, normalizeLocalPath } from './localPath';
 
 import type { TransferItem, TransferStatus, TransferType } from '../components/TransferQueue';
 
@@ -195,7 +195,7 @@ export function parentDir(path: string, kind: 'local' | 'remote' = 'local'): str
         normalized.length > 1 && normalized.endsWith('/')
             ? normalized.slice(0, -1)
             : normalized;
-    if (kind === 'local' && /^\/\/[^/]+\/[^/]+$/.test(trimmed)) return trimmed;
+    if (kind === 'local' && isWindowsLocalPath(path) && /^\/\/[^/]+\/[^/]+$/.test(trimmed)) return trimmed;
     const idx = trimmed.lastIndexOf('/');
     if (idx < 0) return '';
     if (idx === 0) return '/';

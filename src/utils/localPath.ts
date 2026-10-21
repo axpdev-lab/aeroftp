@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-/** Local paths with an explicit Windows drive or UNC prefix. Remote names are opaque. */
+/** Local Windows syntax; a slash-only UNC prefix requires a Windows host. */
 export function isWindowsLocalPath(path: string): boolean {
-    return /^[A-Za-z]:(?:[\\/]|$)/.test(path) || path.startsWith('\\\\');
+    return /^[A-Za-z]:(?:[\\/]|$)/.test(path) || path.startsWith('\\\\')
+        || (path.startsWith('//') && typeof navigator !== 'undefined' && /^Win/i.test(navigator.platform));
 }
 
 /** Adapt native local separators without changing legal Unix filename characters. */

@@ -131,6 +131,11 @@ it('keeps Windows drive and UNC breadcrumb navigation absolute', () => {
     expect(splitPath(String.raw`D:\boot\grub`).map(s => s.fullPath)).toEqual(['D:/', 'D:/boot', 'D:/boot/grub']);
     expect(splitPath(String.raw`\\server\share\dir`).map(s => s.fullPath)).toEqual(['//server/share', '//server/share/dir']);
 });
+it('keeps adapted UNC breadcrumbs on Windows without changing remote paths', () => {
+    vi.stubGlobal('navigator', { platform: 'Win32' });
+    expect(splitPath('//server/share/dir').map(s => s.fullPath)).toEqual(['//server/share', '//server/share/dir']);
+    expect(splitPath('//server/share/dir', 'remote').map(s => s.fullPath)).toEqual(['/', '/server', '/server/share', '/server/share/dir']);
+});
 it('literal_unix_paths breadcrumb clicks and child listings use the same identity', async () => {
   const target = String.raw`/tmp/dir\name`;
   await act(async () => root.render(createElement(BreadcrumbBar, {
