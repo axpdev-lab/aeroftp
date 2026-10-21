@@ -9651,14 +9651,7 @@ fn scan_local_tree_with_progress(
         .into_iter()
         // An excluded directory is not descended into: its subtree is excluded.
         .filter_entry(|e| {
-            e.depth() == 0
-                || !excludes.is_excluded(
-                    &e.path()
-                        .strip_prefix(root)
-                        .unwrap_or(e.path())
-                        .to_string_lossy()
-                        .replace('\\', "/"),
-                )
+            e.depth() == 0 || !excludes.is_excluded(&sync_relative_path(e.path(), root))
         })
     {
         let walk_entry = match result {
@@ -9680,11 +9673,7 @@ fn scan_local_tree_with_progress(
                         boundaries.unbounded.get_or_insert("unreadable");
                     }
                     Some(path) => {
-                        let rel = path
-                            .strip_prefix(root)
-                            .unwrap_or(path)
-                            .to_string_lossy()
-                            .replace('\\', "/");
+                        let rel = sync_relative_path(path, root);
                         if rel.is_empty() {
                             boundaries.unbounded.get_or_insert("unreadable");
                         } else {
@@ -9714,12 +9703,7 @@ fn scan_local_tree_with_progress(
         if !walk_entry.file_type().is_file() {
             continue;
         }
-        let relative = walk_entry
-            .path()
-            .strip_prefix(root)
-            .unwrap_or(walk_entry.path())
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = sync_relative_path(walk_entry.path(), root);
         if relative.is_empty() {
             continue;
         }
@@ -11183,8 +11167,10 @@ async fn upload_transfer_on(
     }
 
     if create_parent {
-        if let Some(parent) = Path::new(&remote_path).parent() {
-            let _ = provider.mkdir(&parent.to_string_lossy()).await;
+        if let Some(parent) = remote_parent_dir(&remote_path) {
+            for dir in benchmark_mkdir_ladder(&parent) {
+                let _ = provider.mkdir(&dir).await;
+            }
         }
     }
 
@@ -51240,10 +51226,9 @@ impl SyncLocalFilter<'_> {
 
 /// A local path as `sync` names it: relative to the scan root, forward slashes.
 fn sync_relative_path(path: &Path, root: &str) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
+    ftp_client_gui_lib::sync::normalize_relative_key(
+        &path.strip_prefix(root).unwrap_or(path).to_string_lossy(),
+    )
 }
 
 /// A local file's size and mtime as the scans record them, read now.
@@ -52784,12 +52769,10 @@ async fn cmd_sync(
 
     let mut upload_dirs: Vec<String> = upload_jobs
         .iter()
-        .filter_map(|(_, _, remote_path, _)| {
-            Path::new(remote_path)
-                .parent()
-                .map(|parent| parent.to_string_lossy().to_string())
-        })
-        .filter(|dir| !dir.is_empty() && dir != "/")
+        // Remote hierarchy is slash-separated on every host. Include every
+        // ancestor: Directory/SFTP mkdir need their parent to exist first.
+        .filter_map(|(_, _, remote_path, _)| remote_parent_dir(remote_path))
+        .flat_map(|parent| benchmark_mkdir_ladder(&parent))
         .collect();
     upload_dirs.sort_by(|left, right| {
         let left_depth = left.matches('/').count();
@@ -62089,7 +62072,7 @@ fn incremental_local_scan(
     for changed in changed_paths {
         // Compute relative path
         let relative = match changed.strip_prefix(base) {
-            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Ok(r) => ftp_client_gui_lib::sync::normalize_relative_key(&r.to_string_lossy()),
             Err(_) => continue,
         };
         if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
@@ -93668,6 +93651,195 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "an unreadable file must not be deleted from the remote"
         );
         assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_sync_watch_and_reconcile_keep_distinct_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let entries = [
+            (r"back\slash.txt", "literal root filename"),
+            ("back/slash.txt", "real subdirectory"),
+            (r"dir\name/leaf\name.txt", "literal nested filename"),
+            ("dir/name/leaf/name.txt", "real nested directories"),
+        ];
+        for (rel, bytes) in entries {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+
+        let exclude = SyncExcludes::new(&[] as &[&str]).unwrap();
+        let filter = SyncLocalFilter {
+            max_depth: 32,
+            exclude: &exclude,
+        };
+        let snapshot = build_watch_local_snapshot(root.to_str().unwrap(), &filter);
+        assert_eq!(snapshot.files.len(), 4, "full scan must not collapse keys");
+        for (rel, bytes) in entries {
+            assert_eq!(snapshot.files[rel].0, bytes.len() as u64);
+        }
+        std::fs::write(root.join(entries[0].0), b"changed").unwrap();
+        std::fs::remove_file(root.join(entries[2].0)).unwrap();
+        let scan = incremental_local_scan(
+            root,
+            &[root.join(entries[0].0), root.join(entries[2].0)],
+            &snapshot,
+            &filter,
+        );
+        let map: HashMap<_, _> = scan.entries.into_iter().map(|(p, n, _)| (p, n)).collect();
+        assert_eq!(map.len(), 3);
+        assert_eq!(map[entries[0].0], 7);
+        assert!(!map.contains_key(entries[2].0));
+        for index in [1, 3] {
+            assert_eq!(map[entries[index].0], entries[index].1.len() as u64);
+        }
+        let opts = ftp_client_gui_lib::sync_core::ScanOptions::default();
+        let (files, complete, _) =
+            scan_local_tree_with_progress(root.to_str().unwrap(), &opts, &None);
+        assert!(complete.is_complete());
+        let map: HashMap<_, _> = files.into_iter().map(|e| (e.rel_path, e.size)).collect();
+        assert_eq!(map.len(), 3);
+        assert_eq!(map[entries[0].0], 7);
+        assert_eq!(map[entries[1].0], entries[1].1.len() as u64);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_sync_command_and_files_from_preserve_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("source");
+        let entries: [(&str, &[u8]); 4] = [
+            (r"back\slash.txt", b"literal root filename"),
+            ("back/slash.txt", b"real subdirectory"),
+            (r"dir\name/leaf\name.txt", b"literal nested filename"),
+            ("dir/name/leaf/name.txt", b"real nested directories"),
+        ];
+        for (rel, bytes) in entries {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+        for selected in [false, true] {
+            let mut cli = Cli {
+                quiet: true,
+                parallel: 1,
+                ..test_cli()
+            };
+            if selected {
+                let list = dir.path().join("selected.txt");
+                std::fs::write(&list, format!("{}\n{}\n", entries[0].0, entries[2].0)).unwrap();
+                cli.files_from = Some(list.to_string_lossy().into_owned());
+            }
+            let remote = SharedTreeProvider::default();
+            let expected: std::collections::BTreeMap<_, _> = entries
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !selected || i % 2 == 0)
+                .map(|(_, (rel, bytes))| (format!("/root/{rel}"), bytes.to_vec()))
+                .collect();
+            for dry_run in [true, false] {
+                let stats = run_sync_shared_with(
+                    &remote,
+                    root.to_str().unwrap(),
+                    SharedSyncRun {
+                        direction: "upload",
+                        dry_run,
+                        ..Default::default()
+                    },
+                    &cli,
+                );
+                assert_eq!(stats.exit_code, 0);
+                assert_eq!(stats.uploaded, expected.len() as u32);
+                let files = remote.files.lock().unwrap();
+                if dry_run {
+                    assert!(files.is_empty());
+                } else {
+                    assert_eq!(*files, expected);
+                }
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_sync_directory_round_trip_creates_all_ancestors() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let remote = dir.path().join("remote");
+        std::fs::create_dir_all(remote.join("target")).unwrap();
+        let entries: [(&str, &[u8]); 4] = [
+            (r"back\slash.txt", b"literal root filename"),
+            ("back/slash.txt", b"real subdirectory"),
+            (r"dir\name/leaf\name.txt", b"literal nested filename"),
+            ("dir/name/leaf/name.txt", b"real nested directories"),
+        ];
+        for (rel, bytes) in entries {
+            let path = source.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+        let remote_root = remote.clone();
+        let local = source.to_string_lossy().into_owned();
+        let stats = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(async {
+                        let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
+                        SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
+                        let cli = Cli {
+                            quiet: true,
+                            parallel: 1,
+                            ..test_cli()
+                        };
+                        cmd_sync(
+                            remote_root.to_str().unwrap(),
+                            &local,
+                            "/target",
+                            "upload",
+                            false,
+                            false,
+                            &[],
+                            None,
+                            0,
+                            false,
+                            None,
+                            None,
+                            "",
+                            false,
+                            None,
+                            None,
+                            None,
+                            SOURCE_WINS,
+                            false,
+                            &cli,
+                            OutputFormat::Json,
+                            Arc::new(AtomicBool::new(false)),
+                            None,
+                            false,
+                        )
+                        .await
+                    })
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(stats.uploaded, 4);
+        assert_eq!(local_files(&remote.join("target")), 4);
+        for (rel, bytes) in entries {
+            assert_eq!(
+                std::fs::read(remote.join("target").join(rel)).unwrap(),
+                bytes,
+                "{rel}"
+            );
+        }
     }
 
     /// A watch cycle's local side holds the files a full `sync` scan would:

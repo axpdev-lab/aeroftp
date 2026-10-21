@@ -429,6 +429,7 @@ const Github = ({ size = 24, className = '' }: { size?: number; className?: stri
   </svg>
 );
 import PanelSwitcher from './components/PanelSwitcher';
+import { normalizeLocalPath, localPathBasename, localDropTarget } from './utils/localPath';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
 import { LocalFilePanel } from './components/LocalFilePanel';
@@ -1820,7 +1821,7 @@ const App: React.FC = () => {
 
     // Check if local path contains ANY known server pattern that doesn't match
     // Look for patterns like "www.something.it" or "something.it" in path
-    const pathParts = currentLocalPath.split(/[\\/]/);
+    const pathParts = normalizeLocalPath(currentLocalPath).split('/');
     for (const part of pathParts) {
       // Check for domain-like patterns (e.g., www.example.it, example.com)
       if (/^(www\.)?[a-z0-9-]+\.(it|com|org|net|io|dev|local)$/i.test(part)) {
@@ -4488,7 +4489,7 @@ const App: React.FC = () => {
     if (localTabs.length >= 12) return;
     const home = await homeDir().catch(() => '/');
     const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const label = home.split(/[\\/]/).filter(Boolean).pop() || '/';
+    const label = localPathBasename(home) || '/';
     const newTab: LocalTab = { id, path: home, label, scrollTop: 0 };
     setLocalTabs(prev => [...prev, newTab]);
     setActiveLocalTabId(id);
@@ -4499,7 +4500,7 @@ const App: React.FC = () => {
     // Save current tab state
     if (activeLocalTabId) {
       setLocalTabs(prev => prev.map(tab =>
-        tab.id === activeLocalTabId ? { ...tab, path: currentLocalPath, label: currentLocalPath.split(/[\\/]/).filter(Boolean).pop() || '/' } : tab
+        tab.id === activeLocalTabId ? { ...tab, path: currentLocalPath, label: localPathBasename(currentLocalPath) || '/' } : tab
       ));
     }
     // Switch to target tab
@@ -4578,7 +4579,7 @@ const App: React.FC = () => {
     if (isAeroFileVisible && activeLocalTabId && currentLocalPath) {
       setLocalTabs(prev => prev.map(tab =>
         tab.id === activeLocalTabId
-          ? { ...tab, path: currentLocalPath, label: currentLocalPath.split(/[\\/]/).filter(Boolean).pop() || '/' }
+          ? { ...tab, path: currentLocalPath, label: localPathBasename(currentLocalPath) || '/' }
           : tab
       ));
     }
@@ -4598,7 +4599,7 @@ const App: React.FC = () => {
       if (tabAutoCreatedForPath.current === currentLocalPath) return;
       tabAutoCreatedForPath.current = currentLocalPath;
       const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const label = currentLocalPath.split(/[\\/]/).filter(Boolean).pop() || '/';
+      const label = localPathBasename(currentLocalPath) || '/';
       setLocalTabs([{ id, path: currentLocalPath, label, scrollTop: 0 }]);
       setActiveLocalTabId(id);
       return;
@@ -5472,7 +5473,7 @@ const App: React.FC = () => {
 
   const refreshLocalPanelForPath = useCallback(async (dir: string | null | undefined) => {
     if (!dir) return;
-    const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '') || '/';
+    const norm = (p: string) => normalizeLocalPath(p).replace(/\/+$/, '') || '/';
     const n = norm(dir);
     const tasks: Promise<unknown>[] = [];
     if (currentLocalPath && norm(currentLocalPath) === n) {
@@ -5492,7 +5493,7 @@ const App: React.FC = () => {
     if (localTabs2.length >= 12) return;
     const home = await homeDir().catch(() => '/');
     const id = `tab2-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const label = home.split(/[\\/]/).filter(Boolean).pop() || '/';
+    const label = localPathBasename(home) || '/';
     const newTab: LocalTab = { id, path: home, label, scrollTop: 0 };
     setLocalTabs2(prev => [...prev, newTab]);
     setActiveLocalTabId2(id);
@@ -5502,7 +5503,7 @@ const App: React.FC = () => {
   const switchLocalTab2 = useCallback((tabId: string) => {
     if (activeLocalTabId2) {
       setLocalTabs2(prev => prev.map(tab =>
-        tab.id === activeLocalTabId2 ? { ...tab, path: currentLocalPath2, label: currentLocalPath2.split(/[\\/]/).filter(Boolean).pop() || '/' } : tab
+        tab.id === activeLocalTabId2 ? { ...tab, path: currentLocalPath2, label: localPathBasename(currentLocalPath2) || '/' } : tab
       ));
     }
     const target = localTabs2.find(t => t.id === tabId);
@@ -5543,7 +5544,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!showDualLocalPanel || !currentLocalPath2 || localTabs2.length > 0) return;
     const id = `tab2-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const label = currentLocalPath2.split(/[\\/]/).filter(Boolean).pop() || '/';
+    const label = localPathBasename(currentLocalPath2) || '/';
     setLocalTabs2([{ id, path: currentLocalPath2, label, scrollTop: 0 }]);
     setActiveLocalTabId2(id);
   }, [showDualLocalPanel, currentLocalPath2, localTabs2.length, setLocalTabs2, setActiveLocalTabId2]);
@@ -5552,7 +5553,7 @@ const App: React.FC = () => {
     if (!showDualLocalPanel || !activeLocalTabId2 || !currentLocalPath2) return;
     setLocalTabs2(prev => prev.map(tab =>
       tab.id === activeLocalTabId2
-        ? { ...tab, path: currentLocalPath2, label: currentLocalPath2.split(/[\\/]/).filter(Boolean).pop() || '/' }
+        ? { ...tab, path: currentLocalPath2, label: localPathBasename(currentLocalPath2) || '/' }
         : tab
     ));
   }, [showDualLocalPanel, activeLocalTabId2, currentLocalPath2, setLocalTabs2]);
@@ -5612,9 +5613,9 @@ const App: React.FC = () => {
       let copied = 0;
       const failures: string[] = [];
       for (const src of event.payload.paths) {
-        const base = src.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
-        if (!base) continue;
-        const to = `${dest.replace(/\/+$/, '')}/${base}`;
+        const base = localPathBasename(src);
+        const to = localDropTarget(src, dest);
+        if (!to) continue;
         try {
           // Safe-fail rather than silently overwriting a same-named file already
           // in the drop target (irreversible, no trash). (audit C-F01)
@@ -10233,7 +10234,7 @@ const App: React.FC = () => {
             size: Number(entry.size) || 0,
             is_folder: !!entry.is_folder,
           });
-          const remoteDir = parentDir(entry.remote_path);
+          const remoteDir = parentDir(entry.remote_path, 'remote');
           const localDir = parentDir(entry.local_path);
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
@@ -13483,7 +13484,7 @@ const App: React.FC = () => {
   // Moving local items to the trash can need the user's say (a drive with no
   // usable trash, or a trash that refused): see utils/localTrash.ts.
   const askHomeCopy = (paths: string[]) => new Promise<HomeCopyChoice>(resolve => {
-    const name = paths[0].split(/[\\/]/).pop() || paths[0];
+    const name = localPathBasename(paths[0]) || paths[0];
     setConfirmDialog({
       message: t('trash.homeCopyPrompt', { count: paths.length, name }),
       confirmLabel: t('trash.deletePermanently'),
@@ -13496,7 +13497,7 @@ const App: React.FC = () => {
   });
 
   const askPermanentAfterTrashFailure = (paths: string[]) => new Promise<boolean>(resolve => {
-    const name = paths[0].split(/[\\/]/).pop() || paths[0];
+    const name = localPathBasename(paths[0]) || paths[0];
     setConfirmDialog({
       message: t('trash.permanentAfterFailure', { count: paths.length, name }),
       confirmLabel: t('trash.deletePermanently'),
@@ -13545,7 +13546,7 @@ const App: React.FC = () => {
         else deletedFiles.push(file.path);
       }
       for (const { path, error } of outcome.failed) {
-        const name = path.split(/[\\/]/).pop() || path;
+        const name = localPathBasename(path) || path;
         failedFiles.push(name);
         notify.error(t('toast.deleteFail'), `${name}: ${error}`);
       }
@@ -13596,7 +13597,7 @@ const App: React.FC = () => {
 
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
   const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string) => {
-    const fileName = path.split(/[\\/]/).pop() || path;
+    const fileName = path.split('/').pop() || path;
     const protocol = liveConnectionParams.protocol;
     const isGitHubRepoMode = (protocol === 'github' && !path.startsWith('/.github-releases')) || protocol === 'gitlab';
 
@@ -17047,7 +17048,7 @@ const App: React.FC = () => {
             // Opens the row's thumbnail full size in the app's own viewer, which
             // is also the way into AeroImage and the <> editor (#347).
             onPreviewFile={(filePath) => {
-              const name = filePath.split(/[\\/]/).pop() || filePath;
+              const name = localPathBasename(filePath) || filePath;
               openUniversalPreview(
                 { name, path: filePath, size: null, is_dir: false, modified: null },
                 false,
@@ -17062,7 +17063,7 @@ const App: React.FC = () => {
                 askPermanentAfterFailure: askPermanentAfterTrashFailure,
               });
               for (const { path, error } of outcome.failed) {
-                const fileName = path.split(/[\\/]/).pop() || path;
+                const fileName = localPathBasename(path) || path;
                 notify.error(t('toast.deleteFail'), `${fileName}: ${error}`);
               }
               if (outcome.kept.length > 0) {
@@ -18623,6 +18624,7 @@ const App: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <BreadcrumbBar
                         panel="remote"
+                        pathKind="remote"
                         currentPath={(rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath}
                         segmentLabels={overlayVaultLit && overlayInScope && !overlayBadgeDecrypting
                           && remoteBreadcrumb?.files === remoteFiles && remoteBreadcrumb.current_path === currentRemoteDisplayPath

@@ -5894,7 +5894,10 @@ async fn get_local_files(
 
         files.push(LocalFileInfo {
             name: file_name,
-            path: entry.path().to_string_lossy().replace('\\', "/"),
+            path: entry
+                .path()
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/"),
             size,
             is_dir,
             modified,
@@ -5985,7 +5988,7 @@ async fn flatten_local_descendants(
                     // separator. Normalize to forward slashes for the UI.
                     let relative = entry_path
                         .strip_prefix(&base)
-                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                        .map(|p| crate::sync::normalize_relative_key(&p.to_string_lossy()))
                         .unwrap_or_else(|_| file_name.clone());
 
                     let modified = metadata.modified().ok().map(|t| {
@@ -5995,7 +5998,9 @@ async fn flatten_local_descendants(
 
                     entries.push(LocalFileInfo {
                         name: relative,
-                        path: entry_path.to_string_lossy().replace('\\', "/"),
+                        path: entry_path
+                            .to_string_lossy()
+                            .replace(std::path::MAIN_SEPARATOR, "/"),
                         size: if is_dir { None } else { Some(metadata.len()) },
                         is_dir,
                         modified,
@@ -12892,7 +12897,7 @@ pub async fn get_local_files_recursive_checked(
             // Calculate relative path
             let relative_path = path
                 .strip_prefix(&base)
-                .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
+                .map(|p| crate::sync::normalize_relative_key(&p.to_string_lossy()))
                 .unwrap_or_else(|_| name.clone());
 
             // Skip excluded paths
@@ -14224,8 +14229,12 @@ struct RestoreSnapshotResult {
     failed: Vec<String>,
 }
 
-fn normalize_sync_path(path: &str) -> String {
-    let normalized = path.replace('\\', "/");
+fn normalize_sync_path(path: &str, local: bool) -> String {
+    let normalized = if local {
+        crate::sync::normalize_relative_key(path)
+    } else {
+        path.to_string()
+    };
     if normalized == "/" {
         normalized
     } else {
@@ -14239,10 +14248,10 @@ fn snapshot_matches_pair(
     remote_path: Option<&str>,
 ) -> bool {
     let local_ok = local_path
-        .map(|p| normalize_sync_path(&snapshot.local_path) == normalize_sync_path(p))
+        .map(|p| normalize_sync_path(&snapshot.local_path, true) == normalize_sync_path(p, true))
         .unwrap_or(true);
     let remote_ok = remote_path
-        .map(|p| normalize_sync_path(&snapshot.remote_path) == normalize_sync_path(p))
+        .map(|p| normalize_sync_path(&snapshot.remote_path, false) == normalize_sync_path(p, false))
         .unwrap_or(true);
     local_ok && remote_ok
 }
@@ -14312,7 +14321,7 @@ async fn restore_sync_snapshot_cmd(
     }
 
     let local_root = std::path::PathBuf::from(&local_path);
-    let remote_root = normalize_sync_path(&remote_path);
+    let remote_root = normalize_sync_path(&remote_path, false);
     let versioning = sync_versioning::SyncVersioning::new(
         &local_root,
         parse_versioning_strategy(versioning_strategy.as_deref()),
@@ -24620,6 +24629,101 @@ mod scan_completeness_gate_tests {
         get_local_files_recursive_checked(root, root, &[], false, None, None, None)
             .await
             .expect("walk should not hard-error")
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn literal_unix_paths_gui_listing_flatten_and_compare_keep_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let entries = [
+            (r"back\slash.txt", "literal root filename"),
+            ("back/slash.txt", "real subdirectory"),
+            (r"dir\name/leaf\name.txt", "literal nested filename"),
+            ("dir/name/leaf/name.txt", "real nested directories"),
+        ];
+        for (rel, bytes) in entries {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+
+        let root_str = root.to_str().unwrap();
+        let listing = get_local_files(root_str.into(), Some(true)).await.unwrap();
+        let literal = listing.iter().find(|e| e.name == entries[0].0).unwrap();
+        assert_eq!(
+            std::fs::read(&literal.path).unwrap(),
+            entries[0].1.as_bytes()
+        );
+        let flat = flatten_local_descendants(root_str.into(), None, Some(true))
+            .await
+            .unwrap();
+        let flat: HashMap<_, _> = flat
+            .entries
+            .into_iter()
+            .filter(|e| !e.is_dir)
+            .map(|e| (e.name, e.path))
+            .collect();
+        assert_eq!(flat.len(), 4);
+        for (rel, bytes) in entries {
+            assert_eq!(std::fs::read(&flat[rel]).unwrap(), bytes.as_bytes());
+        }
+        let (files, complete) = scan(root_str).await;
+        assert!(complete.is_complete());
+        assert_eq!(files.values().filter(|e| !e.is_dir).count(), 4);
+        for (rel, bytes) in entries {
+            assert_eq!(std::fs::read(&files[rel].path).unwrap(), bytes.as_bytes());
+        }
+        for local_right in [None, Some(root_str)] {
+            let (right, _) = scan(root_str).await;
+            let report = classify_walked_pair(
+                root_str,
+                local_right,
+                files.clone(),
+                right,
+                &CompareOptions::default(),
+                None,
+            );
+            assert!(
+                report
+                    .differences
+                    .iter()
+                    .all(|row| row.status == sync::SyncStatus::Identical),
+                "identical trees: {local_right:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_snapshot_pairs_never_alias_another_root() {
+        let snapshot = sync::SyncSnapshot {
+            id: "paths".into(),
+            created_at: chrono::Utc::now(),
+            local_path: r"/tmp/dir\name".into(),
+            remote_path: r"/remote/dir\name".into(),
+            files: HashMap::new(),
+        };
+        assert!(snapshot_matches_pair(
+            &snapshot,
+            Some(r"/tmp/dir\name/"),
+            Some(r"/remote/dir\name/")
+        ));
+        assert!(!snapshot_matches_pair(
+            &snapshot,
+            Some("/tmp/dir/name"),
+            None
+        ));
+        assert!(!snapshot_matches_pair(
+            &snapshot,
+            None,
+            Some("/remote/dir/name")
+        ));
+        assert_eq!(
+            normalize_sync_path(r"/remote/dir\name/", false),
+            r"/remote/dir\name"
+        );
     }
 
     #[tokio::test]

@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+import { expect, it, vi } from 'vitest';
+const invoke = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+import { splitPathsByType } from './pathStaging';
+
+it('literal_unix_paths picker preserves emitted file and directory paths', async () => {
+    invoke.mockResolvedValue([
+        { name: String.raw`dir\name`, path: String.raw`/tmp/dir\name`, is_dir: true },
+        { name: String.raw`back\slash.txt`, path: String.raw`/tmp/back\slash.txt`, is_dir: false },
+    ]);
+    const result = await splitPathsByType([String.raw`/tmp/dir\name/`, String.raw`/tmp/back\slash.txt`]);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('get_local_files', { path: '/tmp', showHidden: true });
+    expect(result).toEqual({ files: [String.raw`/tmp/back\slash.txt`], dirs: [String.raw`/tmp/dir\name/`] });
+});
+it('keeps Windows picker separators and drive roots absolute', async () => {
+    invoke.mockClear();
+    invoke.mockResolvedValue([{ name: 'folder', path: 'D:/folder', is_dir: true }]);
+    expect(await splitPathsByType([String.raw`D:\folder`])).toEqual({ files: [], dirs: ['D:/folder'] });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('get_local_files', { path: 'D:/', showHidden: true });
+});

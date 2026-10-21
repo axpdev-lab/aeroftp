@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { normalizeLocalPath, editorPathsMatch } from '../../utils/localPath';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Code, Terminal, MessageSquare, X, Maximize2, Minimize2, Columns2, Columns3, LayoutList } from 'lucide-react';
 import { PreviewFile, PanelVisibility, panelsWithIncomingFile } from './types';
@@ -159,7 +160,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
         try {
             const content = await readTextFile(path);
-            const normalized = path.replace(/\\/g, '/');
+            const normalized = normalizeLocalPath(path);
             const name = normalized.split('/').pop() || path;
             setEditorFile({
                 name,
@@ -541,10 +542,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
             if (!editorFile || !path) return;
 
             // Check if the changed file matches the currently open file
-            const normalizedChanged = path.replace(/\\/g, '/');
-            const normalizedOpen = (editorFile.path || '').replace(/\\/g, '/');
-
-            if (normalizedChanged === normalizedOpen) {
+            if (editorPathsMatch(path, editorFile.path || '', !!editorFile.isRemote)) {
                 // Re-read the file content
                 try {
                     const content = await readTextFile(path);

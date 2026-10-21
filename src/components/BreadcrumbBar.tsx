@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { normalizeLocalPath } from '../utils/localPath';
 import { TID, type GuiPanelId } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -15,6 +16,7 @@ interface SubDirectory {
 interface BreadcrumbBarProps {
   panel?: GuiPanelId;
   currentPath: string;
+  pathKind?: 'local' | 'remote';
   /** Presentation only: canonical paths still drive clicks, menus and editing. */
   segmentLabels?: Readonly<Record<string, string>>;
   onNavigate: (path: string) => void;
@@ -56,13 +58,13 @@ interface ChevronDropdownState {
   anchor: { top: number; left: number };
 }
 
-function splitPath(path: string): PathSegment[] {
+export function splitPath(path: string, kind: 'local' | 'remote' = 'local'): PathSegment[] {
   if (!path) return [{ segment: '/', fullPath: '/' }];
 
-  const normalized = path.replace(/\\/g, '/');
+  const normalized = kind === 'local' ? normalizeLocalPath(path) : path;
 
   // Windows drive letter: "C:/Users/name" -> [{segment: "C:", fullPath: "C:/"}, ...]
-  const driveMatch = normalized.match(/^([A-Za-z]:)(\/.*)?$/);
+  const driveMatch = kind === 'local' && normalized.match(/^([A-Za-z]:)(\/.*)?$/);
   if (driveMatch) {
     const drive = driveMatch[1];
     const rest = driveMatch[2] || '/';
@@ -71,6 +73,18 @@ function splitPath(path: string): PathSegment[] {
     let cumulative = `${drive}/`;
     for (const part of parts) {
       cumulative = `${cumulative}${cumulative.endsWith('/') ? '' : '/'}${part}`;
+      segments.push({ segment: part, fullPath: cumulative });
+    }
+    return segments;
+  }
+
+  if (kind === 'local' && normalized.startsWith('//')) {
+    const parts = normalized.slice(2).split('/').filter(Boolean);
+    const share = `//${parts.splice(0, 2).join('/')}`;
+    const segments: PathSegment[] = [{ segment: share, fullPath: share }];
+    let cumulative = share;
+    for (const part of parts) {
+      cumulative += `/${part}`;
       segments.push({ segment: part, fullPath: cumulative });
     }
     return segments;
@@ -90,6 +104,7 @@ function splitPath(path: string): PathSegment[] {
 export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   panel,
   currentPath,
+  pathKind = 'local',
   segmentLabels,
   onNavigate,
   isCoherent = true,
@@ -114,7 +129,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   const chevronDropdownRef = useRef<HTMLDivElement>(null);
   const overflowDropdownRef = useRef<HTMLDivElement>(null);
 
-  const segments = useMemo(() => splitPath(currentPath), [currentPath]);
+  const segments = useMemo(() => splitPath(currentPath, pathKind), [currentPath, pathKind]);
 
   // Number of trailing segments to always keep visible
   const VISIBLE_TAIL = 3;

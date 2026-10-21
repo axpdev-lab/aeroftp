@@ -7,6 +7,7 @@
  * gallery wraps around: after the last picture comes the first.
  */
 
+import { isWindowsLocalPath } from '../../../utils/localPath';
 import { getPreviewCategory } from './fileTypes';
 
 export interface GalleryEntry {
@@ -17,7 +18,7 @@ export interface GalleryEntry {
 
 /** The parent folder of a path, for either separator. */
 export function parentDir(path: string): string {
-    const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    const i = Math.max(path.lastIndexOf('/'), isWindowsLocalPath(path) ? path.lastIndexOf('\\') : -1);
     if (i < 0) return '';
     if (i === 0) return path.slice(0, 1);
     // "C:\" keeps its separator.

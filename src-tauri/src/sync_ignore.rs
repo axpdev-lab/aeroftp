@@ -167,7 +167,7 @@ impl AeroIgnore {
     /// directory) or holds a glob character may match below anything; an
     /// anchored literal only below its own prefix.
     pub fn may_reinclude_below(&self, dir_rel: &str) -> bool {
-        let prefix = format!("{}/", dir_rel.trim_end_matches('/').replace('\\', "/"));
+        let prefix = format!("{}/", dir_rel.trim_end_matches('/'));
         self.rules.iter().any(|rule| {
             rule.negated
                 && (rule.glob.starts_with("**/")
@@ -182,7 +182,8 @@ impl AeroIgnore {
     /// if a path matches both an exclude and a `!` re-include pattern,
     /// the last matching rule in the file determines the outcome.
     pub fn is_ignored(&self, relative_path: &str, is_dir: bool) -> bool {
-        let normalized = relative_path.replace('\\', "/");
+        // Scanners supply slash-joined keys on every host; backslashes are names.
+        let normalized = relative_path;
         let mut ignored = false;
 
         for (i, rule) in self.rules.iter().enumerate() {
@@ -191,7 +192,7 @@ impl AeroIgnore {
                 continue;
             }
 
-            if self.individual_globs[i].is_match(&normalized) {
+            if self.individual_globs[i].is_match(normalized) {
                 ignored = !rule.negated;
             }
         }
@@ -213,14 +214,15 @@ impl AeroIgnore {
 
         // If .aeroignore explicitly re-includes with `!`, that wins
         // Check if the last matching rule was a negation
-        let normalized = relative_path.replace('\\', "/");
+        // Scanners supply slash-joined keys on every host; backslashes are names.
+        let normalized = relative_path;
         let mut last_match_negated = false;
         let mut had_match = false;
         for (i, rule) in self.rules.iter().enumerate() {
             if rule.dir_only && !is_dir {
                 continue;
             }
-            if self.individual_globs[i].is_match(&normalized) {
+            if self.individual_globs[i].is_match(normalized) {
                 last_match_negated = rule.negated;
                 had_match = true;
             }
@@ -310,6 +312,25 @@ mod tests {
         // An unanchored negation may match below any directory.
         let anywhere = AeroIgnore::parse("!keep.txt").unwrap();
         assert!(anywhere.may_reinclude_below("build"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_ignore_rules_do_not_alias_namespace_components() {
+        let rules = AeroIgnore::parse("/back/slash.txt\n/dir/name\n!/dir/name/keep.txt").unwrap();
+        assert!(rules.is_ignored("back/slash.txt", false));
+        assert!(!rules.is_ignored(r"back\slash.txt", false));
+        assert!(!rules.is_ignored(r"dir\name", true));
+        assert!(!rules.may_reinclude_below(r"dir\name"));
+        assert_eq!(
+            scan_decision(
+                Some(&rules),
+                r"dir\name/leaf\name.txt",
+                false,
+                &crate::sync_exclude::ExcludeMatcher::default()
+            ),
+            ScanDecision::Keep
+        );
     }
 
     #[test]

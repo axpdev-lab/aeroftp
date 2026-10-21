@@ -218,7 +218,7 @@ fn parse_tsc_diagnostics(output: &str) -> Vec<CodingDiagnostic> {
 fn relativize_path(path: &str, workspace: &Path) -> String {
     Path::new(path)
         .strip_prefix(workspace)
-        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        .map(|rel| crate::sync::normalize_relative_key(&rel.to_string_lossy()))
         .unwrap_or_else(|_| path.to_string())
 }
 

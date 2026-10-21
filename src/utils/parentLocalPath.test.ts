@@ -16,6 +16,7 @@ describe('isWindowsDriveRoot', () => {
   });
 });
 
+
 describe('parentLocalPath', () => {
   it('returns absolute drive root from first-level folder (Windows bug fix)', () => {
     expect(parentLocalPath('D:/boot')).toBe('D:/');
@@ -45,4 +46,14 @@ describe('parentLocalPath', () => {
   it('handles empty', () => {
     expect(parentLocalPath('')).toBe('/');
   });
+});
+
+it('literal_unix_paths parent keeps literal components', () => {
+  expect(parentLocalPath(String.raw`/tmp/dir\name/child`)).toBe(String.raw`/tmp/dir\name`);
+  expect(parentLocalPath(String.raw`/tmp/dir\name`)).toBe('/tmp');
+});
+
+it('keeps UNC share root navigation absolute', () => {
+  expect(parentLocalPath(String.raw`\\server\share\folder`)).toBe('//server/share');
+  expect(parentLocalPath(String.raw`\\server\share`)).toBe('//server/share');
 });
