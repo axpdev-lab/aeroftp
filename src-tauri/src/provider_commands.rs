@@ -7717,6 +7717,65 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
             }),
         );
     }
+
+    fn on_scan_totals(&self, files: usize, dirs: usize, bytes: u64) {
+        let _ = self.app.emit(
+            "sync_scan_progress",
+            serde_json::json!({
+                "phase": "remote", "files_found": self.base_count + files,
+                "dirs_found": dirs, "bytes_found": bytes,
+                "progress_id": self.progress_id.as_deref(),
+            }),
+        );
+    }
+}
+
+/// A provider can expose a file and a folder at the same key (S3). The GUI's
+/// single-path map cannot represent both: refuse rather than silently replace
+/// one kind and authorize a plan against an ambiguous namespace.
+fn compare_inventory_rows(
+    root: &str,
+    files: Vec<crate::sync_core::scan::RemoteEntry>,
+    directories: Vec<crate::sync_core::scan::RemoteDirectoryEntry>,
+) -> Result<HashMap<String, crate::sync::FileInfo>, String> {
+    let mut rows = HashMap::new();
+    for entry in files {
+        let rel = entry.rel_path;
+        rows.insert(
+            rel.clone(),
+            crate::sync::FileInfo {
+                name: basename_from_rel_path(&rel),
+                path: format!("{}/{}", root.trim_end_matches('/'), rel),
+                size: entry.size,
+                modified: entry
+                    .mtime
+                    .as_deref()
+                    .and_then(crate::parse_remote_datetime),
+                is_dir: false,
+                checksum_alg: entry.checksum_alg,
+                checksum: entry.checksum_hex,
+            },
+        );
+    }
+    for directory in directories {
+        let rel = directory.rel_path;
+        if rows.get(&rel).is_some_and(|row| !row.is_dir) {
+            return Err(format!("{}: remote path {:?} is both a file and a directory; refusing an ambiguous Compare plan.", crate::SCAN_INCOMPLETE_MARKER, rel));
+        }
+        rows.insert(
+            rel.clone(),
+            crate::sync::FileInfo {
+                name: basename_from_rel_path(&rel),
+                path: format!("{}/{}", root.trim_end_matches('/'), rel),
+                size: 0,
+                modified: None,
+                is_dir: true,
+                checksum_alg: None,
+                checksum: None,
+            },
+        );
+    }
+    Ok(rows)
 }
 
 /// Resolve the keys a crypt-aware compare must normalize the RAW remote listing
@@ -7788,8 +7847,8 @@ fn normalize_remote_files_for_compare(
     entries: HashMap<String, crate::sync::FileInfo>,
 ) -> HashMap<String, crate::sync::FileInfo> {
     match keys {
-        crate::crypt_overlay_provider::OverlayKeys::Rclone(k) => {
-            normalize_rclone_remote_files_for_compare(k, entries)
+        crate::crypt_overlay_provider::OverlayKeys::Rclone(_) => {
+            normalize_rclone_remote_files_for_compare(keys, entries)
         }
         crate::crypt_overlay_provider::OverlayKeys::AeroCrypt { master_key, .. } => {
             normalize_aerocrypt_remote_files_for_compare(master_key, entries)
@@ -7798,12 +7857,12 @@ fn normalize_remote_files_for_compare(
 }
 
 fn normalize_rclone_remote_files_for_compare(
-    keys: &crate::rclone_crypt::RcloneCryptKeys,
+    keys: &crate::crypt_overlay_provider::OverlayKeys,
     entries: HashMap<String, crate::sync::FileInfo>,
 ) -> HashMap<String, crate::sync::FileInfo> {
     let mut out = HashMap::with_capacity(entries.len());
     for (rel_path, mut info) in entries {
-        let Some(plain_rel_path) = decrypt_rel_rclone(keys, &rel_path) else {
+        let Some(plain_rel_path) = keys.decode_rel_path(&rel_path, info.is_dir) else {
             continue;
         };
         info.name = basename_from_rel_path(&plain_rel_path);
@@ -7890,11 +7949,10 @@ fn normalize_remote_boundaries_for_compare(
     Ok(())
 }
 
-// Single source of truth for the crypt-compare crypto lives in
-// `crate::crypt_compare`; the GUI's FileInfo-map normalizers above reuse the
-// pure rel-path decrypt and size mapping so the CLI / MCP `RemoteEntry` path and
-// this GUI path can never drift.
-use crate::crypt_compare::{decrypt_rel_aerocrypt, decrypt_rel_rclone, rclone_decrypted_size};
+// File size and AeroCrypt name mapping are shared with the files-only CLI/MCP
+// compare. The typed GUI inventory uses the overlay's type-aware rclone path
+// decoder so directory leaves keep their own naming rules.
+use crate::crypt_compare::{decrypt_rel_aerocrypt, rclone_decrypted_size};
 
 fn basename_from_rel_path(rel_path: &str) -> String {
     rel_path
@@ -7987,7 +8045,7 @@ pub async fn provider_compare_directories(
 
     // Get remote files via provider. Clone-backed providers use explicit
     // checker/list leases; legacy providers keep the per-directory lock path.
-    let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
+    let mut remote_files: HashMap<String, FileInfo>;
 
     // Pin both listing authority and connection identity. A reconnect during
     // the scan must not let rows from two provider sessions become one
@@ -8021,7 +8079,9 @@ pub async fn provider_compare_directories(
     let mut remote_boundaries = crate::sync_core::ScanBoundaries::default();
     let list_model = resolve_provider_list_session_model(&state.provider, 8).await;
     if list_model.is_clone_pool() {
-        use crate::sync_core::scan::{scan_remote_tree_with_provider_lock_checked, ScanOptions};
+        use crate::sync_core::scan::{
+            scan_remote_inventory_with_provider_lock_checked, ScanOptions,
+        };
 
         if cancel.is_cancelled() {
             return Err(crate::COMPARE_CANCELLED.to_string());
@@ -8038,23 +8098,22 @@ pub async fn provider_compare_directories(
             progress_id: progress_id.clone(),
             base_count: local_files.len(),
         };
-        let (remote_entries, remote_scan, boundaries) =
-            scan_remote_tree_with_provider_lock_checked(
-                state.provider.clone(),
-                &remote_path,
-                &scan_options,
-                &list_model,
-                Some(cancel.shared()),
-                Some(&scan_observer),
-            )
-            .await;
-        remote_boundaries = boundaries;
+        let inventory = scan_remote_inventory_with_provider_lock_checked(
+            state.provider.clone(),
+            &remote_path,
+            &scan_options,
+            &list_model,
+            Some(cancel.shared()),
+            Some(&scan_observer),
+        )
+        .await;
+        remote_boundaries = inventory.boundaries;
 
         // CLAUDE-AV-B3-13: a directory the provider refused to list contributes
         // no rows, which is indistinguishable from the user having deleted its
         // contents. Running the preset remote-to-local then deletes the local
         // copies of files that are still sitting on the provider.
-        crate::ensure_scan_complete("remote", &remote_path, &remote_scan)?;
+        crate::ensure_scan_complete("remote", &remote_path, &inventory.completeness)?;
 
         // The parallel scan stops early when the cancel flag is raised but
         // returns the partial results it gathered. Surface the same
@@ -8064,45 +8123,16 @@ pub async fn provider_compare_directories(
             return Err(crate::COMPARE_CANCELLED.to_string());
         }
 
-        for entry in remote_entries {
-            let relative_path = entry.rel_path;
-            let name = std::path::Path::new(&relative_path)
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_else(|| relative_path.clone());
-            let remote_abs_path = if remote_path.ends_with('/') {
-                format!("{}{}", remote_path, relative_path.trim_start_matches('/'))
-            } else {
-                format!("{}/{}", remote_path, relative_path.trim_start_matches('/'))
-            };
-            let modified = entry
-                .mtime
-                .as_deref()
-                .and_then(crate::parse_remote_datetime);
-
-            let file_info = FileInfo {
-                name,
-                path: remote_abs_path,
-                size: entry.size,
-                modified,
-                is_dir: false,
-                checksum_alg: entry.checksum_alg,
-                checksum: entry.checksum_hex,
-            };
-
-            remote_files.insert(relative_path, file_info);
-        }
-
-        // No `dirs_found` here on purpose: the clone-pool scan returns a flat
-        // list of files (every entry above is `is_dir: false`), so counting them
-        // would report a confident zero rather than "not known on this path".
-        // The frontend reducer keeps the last value it saw for an absent field.
+        let dirs_found = inventory.directories.len();
+        remote_files =
+            compare_inventory_rows(&remote_path, inventory.files, inventory.directories)?;
         let _ = app.emit(
             "sync_scan_progress",
             serde_json::json!({
                 "phase": "remote",
                 "files_found": local_files.len() + remote_files.len(),
-                "bytes_found": remote_files.values().map(|f| f.size).sum::<u64>(),
+                "dirs_found": dirs_found,
+                "bytes_found": remote_files.values().fold(0u64, |sum, row| sum.saturating_add(row.size)),
                 "progress_id": progress_id,
             }),
         );
@@ -13623,6 +13653,205 @@ pub(crate) fn bound_compare_rows(
 mod tests {
     use super::*;
 
+    #[test]
+    fn compare_inventory_retains_shared_and_remote_only_empty_folders() {
+        use crate::sync_core::scan::{RemoteDirectoryEntry, RemoteEntry};
+        let rows = compare_inventory_rows(
+            "/root",
+            vec![RemoteEntry {
+                rel_path: "album/a".into(),
+                size: 18,
+                mtime: None,
+                checksum_alg: Some("sha256".into()),
+                checksum_hex: Some("a".repeat(64)),
+            }],
+            vec![
+                RemoteDirectoryEntry {
+                    rel_path: "album".into(),
+                },
+                RemoteDirectoryEntry {
+                    rel_path: "shared-empty".into(),
+                },
+                RemoteDirectoryEntry {
+                    rel_path: "remote-empty".into(),
+                },
+            ],
+        )
+        .unwrap();
+        assert!(rows["shared-empty"].is_dir);
+        assert_eq!(rows["remote-empty"].path, "/root/remote-empty");
+        assert_eq!(rows["album/a"].checksum_alg.as_deref(), Some("sha256"));
+        let mut local = rows.clone();
+        local.remove("remote-empty");
+        let report = crate::sync::classify_with_summary(
+            local,
+            rows,
+            &crate::sync::CompareOptions::default(),
+            None,
+        );
+        let actionable: Vec<_> = report
+            .differences
+            .iter()
+            .filter(|r| r.status != crate::sync::SyncStatus::Identical)
+            .collect();
+        assert_eq!(actionable.len(), 1);
+        assert_eq!(actionable[0].relative_path, "remote-empty");
+        assert_eq!(actionable[0].status, crate::sync::SyncStatus::RemoteOnly);
+    }
+
+    #[test]
+    fn compare_inventory_refuses_a_file_and_prefix_at_the_same_remote_path() {
+        use crate::sync_core::scan::{RemoteDirectoryEntry, RemoteEntry};
+        let error = compare_inventory_rows(
+            "/",
+            vec![RemoteEntry {
+                rel_path: "album".into(),
+                size: 0,
+                mtime: None,
+                checksum_alg: None,
+                checksum_hex: None,
+            }],
+            vec![RemoteDirectoryEntry {
+                rel_path: "album".into(),
+            }],
+        )
+        .unwrap_err();
+        assert!(error.contains(crate::SCAN_INCOMPLETE_MARKER));
+        assert!(error.contains("both a file and a directory"));
+    }
+
+    #[test]
+    fn compare_rclone_inventory_keeps_directories_in_all_naming_modes() {
+        use crate::crypt_overlay_provider::OverlayKeys;
+        use crate::rclone_crypt::{obfuscate_name, FilenameEncryption};
+        use crate::sync::{CompareOptions, SyncStatus};
+        use crate::sync_core::scan::{RemoteDirectoryEntry, RemoteEntry};
+
+        fn wire_path(keys: &RcloneCryptKeys, rel: &str, is_dir: bool) -> String {
+            let segments: Vec<_> = rel.split('/').collect();
+            segments
+                .iter()
+                .enumerate()
+                .map(|(i, name)| {
+                    let directory = i + 1 < segments.len() || is_dir;
+                    if directory && !keys.directory_name_encryption {
+                        return name.to_string();
+                    }
+                    match keys.filename_encryption {
+                        FilenameEncryption::Standard => {
+                            encrypt_name(&keys.name_key, &keys.name_tweak, name).unwrap()
+                        }
+                        FilenameEncryption::Obfuscate => {
+                            obfuscate_name(&keys.name_tweak, name).unwrap()
+                        }
+                        FilenameEncryption::Off if directory => name.to_string(),
+                        FilenameEncryption::Off => format!("{name}{}", keys.off_suffix),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("/")
+        }
+
+        let base_keys = rclone_compare_keys(true);
+        let encrypted_size = encrypt_file_content(b"report body", &base_keys.data_key)
+            .unwrap()
+            .len() as u64;
+        let directories = ["album", "album/deep", "shared-empty", "ends.bin"];
+        let files = ["root.txt", "album/deep/report.txt", "ends.bin/report.txt"];
+        for mode in [
+            FilenameEncryption::Standard,
+            FilenameEncryption::Obfuscate,
+            FilenameEncryption::Off,
+        ] {
+            for directory_name_encryption in [false, true] {
+                for suffix in [".bin", ".custom", ""] {
+                    let mut keys = base_keys.clone();
+                    keys.filename_encryption = mode;
+                    keys.directory_name_encryption = directory_name_encryption;
+                    keys.off_suffix = suffix.to_string();
+                    let remote = compare_inventory_rows(
+                        "/wire",
+                        files
+                            .iter()
+                            .map(|rel| RemoteEntry {
+                                rel_path: wire_path(&keys, rel, false),
+                                size: encrypted_size,
+                                mtime: None,
+                                checksum_alg: Some("sha256".into()),
+                                checksum_hex: Some("a".repeat(64)),
+                            })
+                            .collect(),
+                        directories
+                            .iter()
+                            .chain(["only-remote"].iter())
+                            .map(|rel| RemoteDirectoryEntry {
+                                rel_path: wire_path(&keys, rel, true),
+                            })
+                            .collect(),
+                    )
+                    .unwrap();
+                    let mut local: HashMap<_, _> = directories
+                        .iter()
+                        .chain(["only-local"].iter())
+                        .map(|rel| {
+                            let mut row = compare_file_info(0);
+                            row.is_dir = true;
+                            (rel.to_string(), row)
+                        })
+                        .chain(
+                            files
+                                .iter()
+                                .map(|rel| (rel.to_string(), compare_file_info(11))),
+                        )
+                        .collect();
+                    let mut remote = remote;
+                    normalize_then_bound_compare_rows(
+                        "/local",
+                        &mut local,
+                        &mut remote,
+                        crate::sync_core::ScanBoundaries::default(),
+                        Some(&OverlayKeys::Rclone(keys)),
+                        Some("rclone-crypt"),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        remote.len(),
+                        directories.len() + files.len() + 1,
+                        "lost inventory rows: {mode:?}, directory names encrypted={directory_name_encryption}, suffix={suffix:?}"
+                    );
+                    for rel in directories.iter().chain(["only-remote"].iter()) {
+                        assert!(remote[*rel].is_dir);
+                        assert_eq!(remote[*rel].size, 0);
+                    }
+                    for rel in files {
+                        assert!(!remote[rel].is_dir);
+                        assert_eq!(remote[rel].size, 11);
+                        assert_eq!(remote[rel].checksum, None);
+                        assert_eq!(remote[rel].checksum_alg, None);
+                    }
+                    let report = crate::sync::classify_with_summary(
+                        local,
+                        remote,
+                        &CompareOptions {
+                            compare_timestamp: false,
+                            ..Default::default()
+                        },
+                        None,
+                    );
+                    let actionable: HashMap<_, _> = report
+                        .differences
+                        .iter()
+                        .filter(|row| row.status != SyncStatus::Identical)
+                        .map(|row| (row.relative_path.as_str(), row.status.clone()))
+                        .collect();
+                    assert_eq!(actionable.len(), 2);
+                    assert_eq!(actionable["only-local"], SyncStatus::LocalOnly);
+                    assert_eq!(actionable["only-remote"], SyncStatus::RemoteOnly);
+                }
+            }
+        }
+    }
+
     /// Folder upload with a skip action: a folder whose listing timed out is
     /// not an empty folder. Read as one, every file in it was uploaded over
     /// the remote files the action was chosen to keep.
@@ -14398,15 +14627,15 @@ mod tests {
     }
 
     use super::{
-        decrypt_rel_aerocrypt, decrypt_rel_rclone, discovery_bucket_placeholder,
-        drain_in_flight_transfers, normalize_aerocrypt_remote_files_for_compare,
-        normalize_rclone_remote_files_for_compare, normalize_remote_files_for_compare,
-        oauth_callback_endpoint, rclone_decrypted_size, remote_matches_repo,
-        resolve_compare_overlay_keys, run_cancellable_connect, run_cancellable_listing,
-        sanitize_remote_filename, verify_path_containment, ConnectTokenGuard,
-        ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams, ProviderState,
-        TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
+        decrypt_rel_aerocrypt, discovery_bucket_placeholder, drain_in_flight_transfers,
+        normalize_aerocrypt_remote_files_for_compare, normalize_rclone_remote_files_for_compare,
+        normalize_remote_files_for_compare, oauth_callback_endpoint, rclone_decrypted_size,
+        remote_matches_repo, resolve_compare_overlay_keys, run_cancellable_connect,
+        run_cancellable_listing, sanitize_remote_filename, verify_path_containment,
+        ConnectTokenGuard, ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams,
+        ProviderState, TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
     };
+    use crate::crypt_compare::decrypt_rel_rclone;
     use crate::rclone_crypt::{
         derive_keys, derive_keys_with_tweak, encrypt_file_content, encrypt_name,
         FilenameEncryption, RcloneCryptKeys,
@@ -15210,7 +15439,10 @@ mod tests {
         );
         entries.insert("not-base32-!!!".to_string(), compare_file_info(999));
 
-        let normalized = normalize_rclone_remote_files_for_compare(&keys, entries);
+        let normalized = normalize_rclone_remote_files_for_compare(
+            &crate::crypt_overlay_provider::OverlayKeys::Rclone(keys),
+            entries,
+        );
 
         assert_eq!(normalized.len(), 1);
         let info = normalized.get("report.txt").unwrap();

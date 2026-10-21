@@ -956,6 +956,9 @@ pub fn compare_file_pair(
         (None, Some(_)) => SyncStatus::RemoteOnly,
         (Some(l), Some(r)) => {
             // Both exist - compare attributes
+            if l.is_dir != r.is_dir {
+                return SyncStatus::Conflict;
+            }
 
             // Directories that exist on both sides are always identical
             if l.is_dir && r.is_dir {
@@ -3000,6 +3003,10 @@ pub struct SyncIndexEntry {
     pub is_dir: bool,
 }
 
+/// Marks an upload that never settled. Matching current metadata must not
+/// bypass this baseline: the remote may contain an older or torn send.
+pub(crate) const UNSETTLED_BASELINE: DateTime<Utc> = DateTime::<Utc>::UNIX_EPOCH;
+
 /// Current `SyncIndex` schema version.
 ///
 /// **2 (G111)**: the `files` keys are relative paths written with `/` on every
@@ -3278,6 +3285,49 @@ fn compare_path_bytes(local: Option<&FileInfo>, remote: Option<&FileInfo>) -> u6
     side(local).max(side(remote))
 }
 
+/// Positive evidence that a current pair converged despite an older baseline.
+/// Size-only equality is insufficient: it would hide a same-size local edit
+/// whose timestamp is correctly tracked against the local baseline.
+fn current_pair_converged(local: &FileInfo, remote: &FileInfo, options: &CompareOptions) -> bool {
+    if local.is_dir || remote.is_dir {
+        return local.is_dir && remote.is_dir;
+    }
+    if options.compare_checksum {
+        match (&local.checksum, &remote.checksum) {
+            (Some(left), Some(right)) => {
+                let algorithm = local
+                    .checksum_alg
+                    .as_deref()
+                    .zip(remote.checksum_alg.as_deref());
+                return algorithm.is_some_and(|(a, b)| {
+                    let len = match a.to_ascii_lowercase().as_str() {
+                        "sha256" | "sha-256" => 64,
+                        "sha1" | "sha-1" => 40,
+                        "md5" => 32,
+                        _ => return false,
+                    };
+                    a.eq_ignore_ascii_case(b)
+                        && left.len() == len
+                        && right.len() == len
+                        && left.bytes().all(|c| c.is_ascii_hexdigit())
+                        && right.bytes().all(|c| c.is_ascii_hexdigit())
+                        && left.eq_ignore_ascii_case(right)
+                });
+            }
+            _ if options.strict_checksum => return false,
+            _ => {}
+        }
+    }
+    options.compare_size
+        && options.compare_timestamp
+        && options.modify_window.compares_times()
+        && local.size == remote.size
+        && local
+            .modified
+            .zip(remote.modified)
+            .is_some_and(|(l, r)| l.timestamp() == r.timestamp())
+}
+
 /// Classify a local/remote pair into difference rows plus the summary above.
 ///
 /// This holds the loop `build_comparison_results_with_index` used to own; that
@@ -3333,7 +3383,15 @@ pub fn classify_with_summary(
 
         // Check if we can use the index for conflict detection
         let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
-            if l.is_dir && r.is_dir {
+            // A key the migration could not vouch for is compared as absent,
+            // here and in `previously_synced` below.
+            let cached = idx
+                .files
+                .get(&path)
+                .filter(|_| !idx.unverified_keys.contains(&path));
+            if l.is_dir != r.is_dir {
+                SyncStatus::Conflict
+            } else if l.is_dir && r.is_dir {
                 // The rule compare_file_pair applies, which this branch used
                 // to bypass: a directory present on both sides is identical.
                 // Its size and mtime are not content and never agree across
@@ -3341,17 +3399,24 @@ pub fn classify_with_summary(
                 // the baseline one side always looked changed, and a synced
                 // folder flipped between upload and download every cycle.
                 //
-                // This test comes FIRST, before the index is consulted at all:
-                // a directory needs no baseline to be judged, so asking the
-                // index about one can only produce a wrong answer.
+                // Directory classification takes precedence over the baseline:
+                // a directory needs no file change detection to be judged.
                 SyncStatus::Identical
-            // A key the migration could not vouch for is compared as if absent,
-            // here and in `previously_synced` below.
-            } else if let Some(cached) = idx
-                .files
-                .get(&path)
-                .filter(|_| !idx.unverified_keys.contains(&path))
+            } else if options.compare_checksum
+                && compare_file_pair(Some(l), Some(r), options) == SyncStatus::Conflict
             {
+                // A baseline without content hashes cannot override a known
+                // checksum conflict or a requested strict-checksum refusal.
+                SyncStatus::Conflict
+            } else if cached.is_none_or(|entry| entry.modified != Some(UNSETTLED_BASELINE))
+                && current_pair_converged(l, r, options)
+            {
+                // The baseline describes history. It cannot make a positively
+                // equal current pair divergent simply because both changed.
+                // An unsettled upload is different: its baseline deliberately
+                // forces change detection even if size and time now match.
+                SyncStatus::Identical
+            } else if let Some(cached) = cached {
                 // Honor compare_size: a deferred-size crypt overlay reports
                 // compare_size=false (plaintext local size never equals on-wire
                 // ciphertext size), so size is not a reliable change signal for
@@ -9052,5 +9117,230 @@ mod tests {
             .parsed_backup_dir()
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn compare_converged_files_ignore_an_old_baseline_but_not_real_changes() {
+        let now = Utc::now();
+        let old = now - chrono::Duration::hours(1);
+        let file = mk_file_info("a", 18, Some(now));
+        let mut index = SyncIndex::new("/l".into(), "/r".into());
+        index.files.insert(
+            "a".into(),
+            SyncIndexEntry {
+                size: 3,
+                modified: Some(old),
+                is_dir: false,
+            },
+        );
+        let classify = |remote: FileInfo, options: &CompareOptions| {
+            classify_with_summary(
+                HashMap::from([("a".into(), file.clone())]),
+                HashMap::from([("a".into(), remote)]),
+                options,
+                Some(&index),
+            )
+        };
+        let report = classify(file.clone(), &CompareOptions::default());
+        assert!(report.differences.is_empty());
+        assert_eq!(report.summary.identical_count, 1);
+        let different = FileInfo {
+            size: 19,
+            ..file.clone()
+        };
+        assert_eq!(
+            classify(different, &CompareOptions::default()).differences[0].status,
+            SyncStatus::Conflict
+        );
+        let size_only = CompareOptions {
+            modify_window: ModifyWindow::LEGACY_FTP,
+            ..Default::default()
+        };
+        assert_eq!(
+            classify(file.clone(), &size_only).differences[0].status,
+            SyncStatus::Conflict
+        );
+        for opts in [
+            CompareOptions {
+                compare_timestamp: false,
+                ..Default::default()
+            },
+            CompareOptions {
+                compare_size: false,
+                ..Default::default()
+            },
+        ] {
+            assert!(!current_pair_converged(&file, &file, &opts));
+        }
+        assert!(!current_pair_converged(
+            &file,
+            &FileInfo {
+                modified: None,
+                ..file.clone()
+            },
+            &CompareOptions::default()
+        ));
+    }
+
+    #[test]
+    fn compare_convergence_preserves_a_trusted_unsettled_upload_baseline() {
+        let file = FileInfo {
+            checksum: Some("a".repeat(64)),
+            checksum_alg: Some("sha256".into()),
+            ..mk_file_info(
+                "a",
+                7,
+                Some(DateTime::<Utc>::from_timestamp(1_750_000_003, 0).unwrap()),
+            )
+        };
+        let mut index = SyncIndex::new("/l".into(), "/r".into());
+        index.files.insert(
+            "a".into(),
+            SyncIndexEntry {
+                size: file.size,
+                modified: Some(UNSETTLED_BASELINE),
+                is_dir: false,
+            },
+        );
+        let classify = |index: &SyncIndex, options: &CompareOptions| {
+            classify_with_summary(
+                HashMap::from([("a".into(), file.clone())]),
+                HashMap::from([("a".into(), file.clone())]),
+                options,
+                Some(index),
+            )
+        };
+        for (options, expected) in [
+            (CompareOptions::default(), SyncStatus::Conflict),
+            (
+                CompareOptions {
+                    compare_size: false,
+                    ..Default::default()
+                },
+                SyncStatus::Conflict,
+            ),
+            (
+                CompareOptions {
+                    modify_window: ModifyWindow::LEGACY_FTP,
+                    ..Default::default()
+                },
+                // Size-only remote comparison cannot detect a same-size
+                // remote change, but must still see the local edit.
+                SyncStatus::LocalNewer,
+            ),
+            (
+                CompareOptions {
+                    compare_checksum: true,
+                    strict_checksum: true,
+                    ..Default::default()
+                },
+                SyncStatus::Conflict,
+            ),
+        ] {
+            let report = classify(&index, &options);
+            assert_eq!(report.differences.len(), 1);
+            assert_eq!(report.differences[0].status, expected, "{options:?}");
+            assert!(report.differences[0].previously_synced);
+            assert_eq!(report.summary.identical_count, 0);
+        }
+
+        // Migration cannot turn an unverified baseline into an upload marker.
+        index.unverified_keys.insert("a".into());
+        let report = classify(&index, &CompareOptions::default());
+        assert!(report.differences.is_empty());
+        assert_eq!(report.summary.identical_count, 1);
+
+        // A successful resend replaces the marker and can converge normally.
+        index.unverified_keys.clear();
+        index.files.get_mut("a").unwrap().modified = file.modified;
+        let report = classify(&index, &CompareOptions::default());
+        assert!(report.differences.is_empty());
+        assert_eq!(report.summary.identical_count, 1);
+    }
+
+    #[test]
+    fn compare_convergence_requires_compatible_hashes_and_honors_strict_mode() {
+        let opts = CompareOptions {
+            compare_checksum: true,
+            strict_checksum: true,
+            ..Default::default()
+        };
+        let file = FileInfo {
+            checksum: Some("a".repeat(64)),
+            checksum_alg: Some("sha256".into()),
+            ..mk_file_info("a", 18, Some(Utc::now()))
+        };
+        assert!(current_pair_converged(&file, &file, &opts));
+        for other in [
+            FileInfo {
+                checksum: None,
+                ..file.clone()
+            },
+            FileInfo {
+                checksum_alg: None,
+                ..file.clone()
+            },
+            FileInfo {
+                checksum_alg: Some("md5".into()),
+                ..file.clone()
+            },
+            FileInfo {
+                checksum: Some("b".repeat(64)),
+                ..file.clone()
+            },
+        ] {
+            assert!(!current_pair_converged(&file, &other, &opts));
+        }
+        let mut index = SyncIndex::new("/l".into(), "/r".into());
+        index.files.insert(
+            "a".into(),
+            SyncIndexEntry {
+                size: file.size,
+                modified: file.modified,
+                is_dir: false,
+            },
+        );
+        for other in [
+            FileInfo {
+                checksum: None,
+                ..file.clone()
+            },
+            FileInfo {
+                checksum: Some("b".repeat(64)),
+                ..file.clone()
+            },
+        ] {
+            let report = classify_with_summary(
+                HashMap::from([("a".into(), file.clone())]),
+                HashMap::from([("a".into(), other)]),
+                &opts,
+                Some(&index),
+            );
+            assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+        }
+    }
+
+    #[test]
+    fn compare_zero_byte_files_are_never_identical_to_directories() {
+        let file = mk_file_info("collision", 0, None);
+        let dir = mk_dir_info("collision");
+        let opts = CompareOptions::default();
+        let index = SyncIndex::new("/l".into(), "/r".into());
+        for (left, right) in [(&file, &dir), (&dir, &file)] {
+            assert_eq!(
+                compare_file_pair(Some(left), Some(right), &opts),
+                SyncStatus::Conflict
+            );
+            for baseline in [None, Some(&index)] {
+                let report = classify_with_summary(
+                    HashMap::from([("collision".into(), left.clone())]),
+                    HashMap::from([("collision".into(), right.clone())]),
+                    &opts,
+                    baseline,
+                );
+                assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+                assert_eq!(report.summary.identical_count, 0);
+            }
+        }
     }
 }
