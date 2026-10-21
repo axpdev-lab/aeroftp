@@ -1659,6 +1659,42 @@ describe('remoteSyncRunner — GAP-10 local-local mode', () => {
 });
 
 describe('canonical Unicode paths (#1326)', () => {
+    it('keeps a landed download when a delete retires its old mapped baseline', async () => {
+        const nfc = 'café.txt';
+        const nfd = 'cafe\u0301.txt';
+        let saved: { files: Record<string, { size: number }> } | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2, files: { [nfd]: { size: 8, modified: null, is_dir: false } },
+                remote_spellings: { [nfd]: nfc },
+            }),
+            save_sync_index_cmd: args => { saved = args?.index as typeof saved; },
+        });
+        await runRemoteSync([
+            file(nfd, 'download', { size: 19 }),
+            file(nfc, 'delete-remote', { baselineKey: nfd }),
+        ], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+        expect(saved?.files[nfd]).toMatchObject({ size: 19 });
+    });
+
+    it.each(['upload', 'download', 'delete-local', 'delete-remote'] as const)('preserves an independent exact Unicode twin baseline after %s', async action => {
+        const nfc = 'café.txt';
+        const nfd = 'cafe\u0301.txt';
+        let saved: { files: Record<string, { size: number }> } | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2, last_sync: '2026-05-22T09:00:00Z', local_path: '/home/u/work', remote_path: '/srv/data',
+                files: {
+                    [nfc]: { size: 8, modified: null, is_dir: false },
+                    [nfd]: { size: 19, modified: null, is_dir: false },
+                },
+            }),
+            save_sync_index_cmd: args => { saved = args?.index as typeof saved; },
+        });
+        await runRemoteSync([file(nfc, action, { baselineKey: nfc })], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+        expect(saved?.files[nfd]).toMatchObject({ size: 19 });
+    });
+
     it.each(['upload', 'download'] as const)('keeps actual paths for %s, backup, verification, journal and index', async action => {
         const localRel = 'cafe\u0301/a.txt';
         const remoteRel = 'café/a.txt';
@@ -1670,7 +1706,7 @@ describe('canonical Unicode paths (#1326)', () => {
             sync_backup_archive_remote: () => 'saved',
             verify_local_transfer: () => ({ passed: true }),
         });
-        await runRemoteSync([file(destination, action, { sourcePath: source, overwritesExisting: true })],
+        await runRemoteSync([file(destination, action, { sourcePath: source, baselineKey: 'legacy-key', overwritesExisting: true })],
             noDirs, baseConfig({ verifyPolicy: 'size_only', versionedBackup: { dir: '.backup' } }), {}, noWaitDeps(invoke, { writeIndex: true }));
         const transfer = calls.find(c => c.cmd === (action === 'upload' ? 'upload_file' : 'download_file'));
         expect(transfer?.args?.params).toMatchObject({
@@ -1679,7 +1715,8 @@ describe('canonical Unicode paths (#1326)', () => {
         const backup = calls.find(c => c.cmd === (action === 'upload' ? 'sync_backup_archive_remote' : 'sync_backup_archive_local'));
         expect(backup?.args?.rel).toBe(destination);
         const journal = lastSavedJournal(calls);
-        expect(journal?.entries[0]).toMatchObject({ relative_path: destination, source_path: source });
+        expect(journal?.entries[0]).toMatchObject({ relative_path: destination, source_path: source, baseline_key: 'legacy-key' });
+        expect(filesFromJournal(journal!)[0].baselineKey).toBe('legacy-key');
         if (action === 'download') {
             expect(calls.find(c => c.cmd === 'verify_local_transfer')?.args?.localPath).toBe(`/home/u/work/${localRel}`);
         }
@@ -1723,7 +1760,7 @@ describe('canonical Unicode paths (#1326)', () => {
         expect(spellings?.['report.txt']).toBeUndefined();
     });
 
-    it('drops every NFC spelling of a deleted file and leaves other keys', async () => {
+    it('drops the proven legacy baseline of a deleted file and leaves other keys', async () => {
         let savedIndex: { files?: Record<string, { size: number }> } | undefined;
         const { invoke } = makeInvoke({
             load_sync_index_cmd: () => ({
@@ -1741,7 +1778,7 @@ describe('canonical Unicode paths (#1326)', () => {
             },
         });
         await runRemoteSync(
-            [file('cafe\u0301.txt', 'delete-local')],
+            [file('cafe\u0301.txt', 'delete-local', { baselineKey: 'café.txt' })],
             noDirs,
             baseConfig(),
             {},
@@ -1776,7 +1813,7 @@ describe('canonical Unicode paths (#1326)', () => {
             },
         });
         await runRemoteSync(
-            [file(remoteRel, 'delete-remote')],
+            [file(remoteRel, 'delete-remote', { baselineKey: localRel })],
             noDirs,
             baseConfig(),
             {},
@@ -1810,7 +1847,7 @@ describe('canonical Unicode paths (#1326)', () => {
             },
         });
         await runRemoteSync(
-            [file(remoteRel, 'upload', { sourcePath: localRel, size: 9 })],
+            [file(remoteRel, 'upload', { sourcePath: localRel, baselineKey: remoteRel, size: 9 })],
             noDirs,
             baseConfig(),
             {},

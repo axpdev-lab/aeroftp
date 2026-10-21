@@ -78,6 +78,8 @@ export function readEmptyDirAnswer(answer: unknown): { outcome: 'removed' } | { 
  * way.
  */
 export interface SyncRunFile {
+    /** Exact index entry this operation supersedes; retained across resume. */
+    baselineKey?: string;
     relativePath: string;
     action: SyncRunAction;
     /** Source-side size in bytes (best-effort; 0 when unknown). */
@@ -302,6 +304,7 @@ export const filesFromJournal = (journal: SyncJournal): SyncRunFile[] =>
         .map((e) => ({
             relativePath: e.relative_path,
             ...(e.source_path ? { sourcePath: e.source_path } : {}),
+            ...(e.baseline_key ? { baselineKey: e.baseline_key } : {}),
             action: (e.action === 'upload' ? 'upload' : 'download') as SyncRunAction,
             size: e.bytes_transferred || 0,
             mtime: null,
@@ -367,49 +370,6 @@ const journalAction = (action: SyncRunAction): string => {
 const getRetryDelay = (attempt: number, policy: RetryPolicy): number => {
     const d = policy.base_delay_ms * Math.pow(policy.backoff_multiplier, attempt - 1);
     return Math.min(d, policy.max_delay_ms);
-};
-
-/** Index keys grouped by canonical name. Built once per index merge. */
-const canonicalKeyGroups = (files: Record<string, SyncIndexEntry>): Map<string, string[]> => {
-    const groups = new Map<string, string[]>();
-    for (const key of Object.keys(files)) rememberCanonicalKey(groups, key);
-    return groups;
-};
-
-const rememberCanonicalKey = (groups: Map<string, string[]>, key: string): void => {
-    const nfc = key.normalize('NFC');
-    const group = groups.get(nfc);
-    if (!group) {
-        groups.set(nfc, [key]);
-        return;
-    }
-    if (!group.includes(key)) group.push(key);
-};
-
-/**
- * Drop every key of this canonical name, and its remote spelling, except
- * `keep`. The group stays current for the next file in the same merge.
- */
-const forgetCanonicalKeys = (
-    groups: Map<string, string[]>,
-    files: Record<string, SyncIndexEntry>,
-    spellings: Record<string, string>,
-    nfc: string,
-    keep?: string,
-): void => {
-    const group = groups.get(nfc);
-    if (!group) return;
-    const left: string[] = [];
-    for (const key of group) {
-        if (keep !== undefined && key === keep) {
-            left.push(key);
-            continue;
-        }
-        delete files[key];
-        delete spellings[key];
-    }
-    if (left.length > 0) groups.set(nfc, left);
-    else groups.delete(nfc);
 };
 
 interface TransferOutcome {
@@ -679,6 +639,7 @@ export const runRemoteSync = async (
         entries: files.map<SyncJournalEntry>((f) => ({
             relative_path: f.relativePath,
             source_path: f.sourcePath ?? null,
+            ...(f.baselineKey != null ? { baseline_key: f.baselineKey } : {}),
             action: journalAction(f.action),
             status: 'pending',
             attempts: 0,
@@ -1226,7 +1187,22 @@ export const runRemoteSync = async (
             const spellings: Record<string, string> = {
                 ...(existing?.remote_spellings ?? {}),
             };
-            const canonical = canonicalKeyGroups(mergedFiles);
+            // Retire prior identities before inserting landed files: a
+            // download may reuse the local name of a deleted mapped object.
+            for (const f of files) {
+                const idx = journalEntryMap.get(f.relativePath);
+                const entry = idx !== undefined ? journal.entries[idx] : undefined;
+                if (entry?.status !== 'completed') continue;
+                const baselineKey = f.baselineKey ?? entry.baseline_key;
+                if (f.action === 'delete-local' || f.action === 'delete-remote') {
+                    const key = baselineKey ?? f.relativePath;
+                    delete mergedFiles[key];
+                    delete spellings[key];
+                } else if (baselineKey != null) {
+                    delete mergedFiles[baselineKey];
+                    delete spellings[baselineKey];
+                }
+            }
             for (const f of files) {
                 const idx = journalEntryMap.get(f.relativePath);
                 const entry = idx !== undefined ? journal.entries[idx] : undefined;
@@ -1268,13 +1244,11 @@ export const runRemoteSync = async (
                         ? f.sourcePath
                         : f.relativePath;
                     const sameName = localRel.normalize('NFC');
-                    forgetCanonicalKeys(canonical, mergedFiles, spellings, sameName, localRel);
                     mergedFiles[localRel] = {
                         size,
                         modified,
                         is_dir: false,
                     };
-                    rememberCanonicalKey(canonical, localRel);
                     // Upload: relativePath is the remote spelling. Download:
                     // sourcePath is. Keep-both fails the NFC test above, so
                     // localRel is the suffixed name and must not record the
@@ -1287,17 +1261,6 @@ export const runRemoteSync = async (
                     } else {
                         delete spellings[localRel];
                     }
-                } else {
-                    // The baseline that authorized this delete may be stored
-                    // under the other Unicode spelling. Removing only this
-                    // path would leave that key, and the next file of the
-                    // same canonical name would look previously synced.
-                    forgetCanonicalKeys(
-                        canonical,
-                        mergedFiles,
-                        spellings,
-                        f.relativePath.normalize('NFC'),
-                    );
                 }
             }
             for (const dir of [...dirs.remote, ...dirs.local]) {

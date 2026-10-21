@@ -31,7 +31,7 @@ use crate::sync::{
 };
 use crate::sync_ignore::AeroIgnore;
 use chrono::{DateTime, Utc};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 
@@ -171,6 +171,38 @@ impl Local {
 /// Whether `path` is strictly below the folder `dir` (both relative keys).
 fn is_under(path: &str, dir: &str) -> bool {
     path.len() > dir.len() && path.starts_with(dir) && path.as_bytes()[dir.len()] == b'/'
+}
+
+/// A legacy alias must not be the literal name of another local sibling.
+/// Read actual directory names: `exists(alias)` also succeeds for the same
+/// object on normalization-insensitive filesystems such as macOS APFS.
+fn legacy_alias_is_unoccupied(
+    root: &Path,
+    requested: &str,
+    alias: &str,
+    listings: &mut HashMap<PathBuf, Option<HashSet<std::ffi::OsString>>>,
+) -> bool {
+    let mut parent = root.to_path_buf();
+    for (want, candidate) in requested.split('/').zip(alias.split('/')) {
+        if want != candidate {
+            let names = listings.entry(parent.clone()).or_insert_with(|| {
+                match std::fs::read_dir(&parent) {
+                    Ok(entries) => entries
+                        .map(|entry| entry.map(|e| e.file_name()))
+                        .collect::<Result<HashSet<_>, _>>()
+                        .ok(),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(HashSet::new()),
+                    Err(_) => None,
+                }
+            });
+            let Some(names) = names else { return false };
+            if names.contains(std::ffi::OsStr::new(candidate)) {
+                return false;
+            }
+        }
+        parent.push(candidate);
+    }
+    true
 }
 
 /// Whether one path is the other or under it.
@@ -498,6 +530,16 @@ fn plan_renames(
     if !deletes_remote || !uploads {
         return planned;
     }
+    let literal_endpoints: Vec<bool> = {
+        let remote_keys = crate::sync::RemoteKeyIndex::build(index);
+        candidates
+            .iter()
+            .map(|(from, to)| {
+                remote_keys.project(from).as_deref() == Some(from.as_str())
+                    && remote_keys.project(to).as_deref() == Some(to.as_str())
+            })
+            .collect()
+    };
     for (i, (from, to)) in candidates.iter().enumerate() {
         let overlaps = candidates
             .iter()
@@ -528,6 +570,17 @@ fn plan_renames(
             || !scope.lists(from, is_dir)
             || !scope.lists(to, is_dir)
             || index.files.keys().any(|key| key == to || is_under(key, to))
+        {
+            continue;
+        }
+        // Fast rename uses literal paths. If either endpoint (or a child)
+        // has another remote identity, let the ordinary mapped paths handle
+        // it instead of moving a possibly unrelated literal remote sibling.
+        if !literal_endpoints[i]
+            || index
+                .remote_spellings
+                .keys()
+                .any(|key| key == from || is_under(key, from))
         {
             continue;
         }
@@ -688,15 +741,23 @@ impl CloudService {
         let mut projected: HashMap<String, String> = HashMap::new();
         // One pass over the baseline. Each watcher path below only looks up.
         let remote_keys = crate::sync::RemoteKeyIndex::build(&index);
+        let mut alias_listings = HashMap::new();
         for (key, local) in &work {
             // The watcher key is the local spelling. A file the baseline
             // already names is read at that object's spelling. A new child
             // borrows its parent's. An ambiguous parent is not guessed.
-            let Some(remote_key) = remote_keys.project(key) else {
+            let Some(remote_key) = remote_keys.project_checked(key, |requested, alias| {
+                legacy_alias_is_unoccupied(
+                    &config.local_folder,
+                    requested,
+                    alias,
+                    &mut alias_listings,
+                )
+            }) else {
                 result.skipped += 1;
                 result.skipped_details.push(SkippedEntry {
                     path: key.clone(),
-                    reason: "this path has no single remote parent spelling; it waits for the next full scan".to_string(),
+                    reason: "this path has an ambiguous or occupied remote spelling; it waits for the next full scan".to_string(),
                     is_dir: local.as_ref().is_some_and(|info| info.is_dir),
                 });
                 continue;
@@ -712,7 +773,16 @@ impl CloudService {
                         remote_info(&remote_key, &remote_path, &entry),
                     );
                 }
-                Ok(None) if local.is_none() => gone_on_both.push(key.clone()),
+                Ok(None) if local.is_none() => {
+                    // The checked projection has no other local owner.
+                    // Retire only that one exact/legacy baseline, not twins.
+                    let baseline = if index.files.contains_key(key) {
+                        key
+                    } else {
+                        &remote_key
+                    };
+                    gone_on_both.push(baseline.to_string());
+                }
                 Ok(None) => {}
                 Err(e) => {
                     self.notify_reauth_if_token_revoked(&config.protocol_type, &e);
@@ -853,14 +923,8 @@ impl CloudService {
         }
 
         let mut files = self.post_sync_baseline(&done, &config, Some(&index));
-        // Gone on both sides: nothing left to track. The watcher key may be
-        // the local spelling while the baseline still holds the remote one.
-        if !gone_on_both.is_empty() {
-            let mut canonical =
-                crate::sync::NfcKeyGroups::from_keys(files.keys().map(String::as_str));
-            for key in gone_on_both {
-                canonical.forget(&mut files, &key);
-            }
+        for key in gone_on_both {
+            files.remove(&key);
         }
         let remote_spellings =
             crate::sync::spellings_after_baseline(&done, Some(&index.remote_spellings), &files);

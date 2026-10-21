@@ -45,6 +45,7 @@ export interface CompareInputEntry {
 }
 
 export interface CompareResultEntry {
+    baselineKey?: string;
     leftRelativePath?: string;
     rightRelativePath?: string;
     nameMatchBlocked?: boolean;

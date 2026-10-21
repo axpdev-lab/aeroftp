@@ -943,6 +943,8 @@ export interface FileInfo {
 }
 
 export interface FileComparison {
+  /** Exact baseline key selected by the classifier, never all NFC twins. */
+  baseline_key?: string | null;
   local_relative_path?: string | null;
   remote_relative_path?: string | null;
   name_match_blocked?: boolean;
@@ -1393,6 +1395,7 @@ export type SyncEcStatus =
   | "verify_failed";
 
 export interface SyncJournalEntry {
+  baseline_key?: string | null;
   source_path?: string | null;
   relative_path: string;
   action: string;

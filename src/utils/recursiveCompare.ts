@@ -155,6 +155,7 @@ export const adaptFileComparisons = (
         const rightInfo = leftIsLocal ? fc.remote_info : fc.local_info;
 
         const row: CompareResultEntry = {
+            baselineKey: fc.baseline_key ?? undefined,
             name: basename(fc.relative_path),
             relativePath: fc.relative_path,
             leftRelativePath: (leftIsLocal ? fc.local_relative_path : fc.remote_relative_path) ?? undefined,

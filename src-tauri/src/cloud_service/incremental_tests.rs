@@ -510,6 +510,33 @@ async fn an_edited_local_spelling_updates_the_remote_object() {
     .await;
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn shark_review_new_unicode_twin_never_overwrites_its_existing_sibling() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    let nfc = "café.txt";
+    let nfd = "cafe\u{301}.txt";
+    synced(&mut index, &remote, root.path(), nfc, b"original");
+    std::fs::write(root.path().join(nfd), b"new independent twin bytes").unwrap();
+    let (run, _) = execute(
+        &config,
+        work(prep(&config, &index, &[nfd])),
+        &mut remote,
+        None,
+    )
+    .await;
+    let (result, _) = done(run);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert_eq!(
+        remote.state().files[&format!("/remote/{nfc}")].0,
+        b"original",
+        "a newly created sibling is not a legacy alias"
+    );
+}
+
 #[tokio::test]
 async fn a_legacy_remote_key_still_points_the_watcher_at_the_remote_object() {
     let root = tempfile::tempdir().unwrap();
@@ -593,10 +620,9 @@ async fn a_new_local_child_is_uploaded_under_the_remote_parent_spelling() {
     assert!(saved.files.contains_key(&local_key));
 }
 
-/// Two NFC spellings of the parent are not a guess. The new child waits for
-/// the full scan, which sees both directories, instead of picking one.
+/// An exact tracked parent is evidence even when a canonical sibling exists.
 #[tokio::test]
-async fn an_ambiguous_parent_spelling_waits_for_the_full_scan() {
+async fn an_exact_parent_spelling_wins_among_tracked_twins() {
     let root = tempfile::tempdir().unwrap();
     let config = pair(root.path());
     let mut remote = MemRemote::new();
@@ -624,11 +650,14 @@ async fn an_ambiguous_parent_spelling_waits_for_the_full_scan() {
     )
     .await;
     let (result, _) = done(run);
-    assert_eq!(result.uploaded, 0);
-    assert_eq!(result.skipped, 1);
-    assert!(remote.state().files.is_empty());
-    assert!(remote.state().uploads.is_empty());
-    assert!(!saved.files.contains_key(local_key));
+    assert_eq!(result.uploaded, 1, "{:?}", result.errors);
+    assert_eq!(result.skipped, 0);
+    assert_eq!(
+        remote.state().files[&format!("/remote/{local_key}")].0,
+        b"hello"
+    );
+    assert!(!remote.state().files.contains_key("/remote/café/new.txt"));
+    assert!(saved.files.contains_key(local_key));
 }
 
 /// The `stat` is the conflict check: a remote copy that changed since the
@@ -852,6 +881,59 @@ async fn a_folder_moved_in_is_walked_and_sent_without_a_listing() {
 
 /// A rename moves the remote copy: no upload, no delete, and the baseline
 /// follows it, for a file and for a folder.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn shark_review_rename_uses_the_recorded_remote_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    let local_key = "cafe\u{301}.txt";
+    let remote_key = "café.txt";
+    synced(&mut index, &remote, root.path(), local_key, b"tracked");
+    remote.state().files.remove(&format!("/remote/{local_key}"));
+    remote.put(&format!("/remote/{remote_key}"), b"tracked", SYNCED_AT);
+    index
+        .remote_spellings
+        .insert(local_key.into(), remote_key.into());
+    remote.put(
+        &format!("/remote/{local_key}"),
+        b"independent remote twin",
+        SYNCED_AT,
+    );
+    std::fs::rename(root.path().join(local_key), root.path().join("renamed.txt")).unwrap();
+    let prepared = plan(
+        &config,
+        Some(index),
+        &changes(
+            root.path(),
+            &[local_key, "renamed.txt"],
+            &[(local_key, "renamed.txt")],
+        ),
+        EXACT,
+    )
+    .unwrap();
+    let (run, _) = execute(&config, work(prepared), &mut remote, None).await;
+    let (result, _) = done(run);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert_eq!(
+        remote
+            .state()
+            .files
+            .get(&format!("/remote/{local_key}"))
+            .map(|f| f.0.as_slice()),
+        Some(b"independent remote twin".as_slice())
+    );
+    assert_eq!(
+        remote
+            .state()
+            .files
+            .get("/remote/renamed.txt")
+            .map(|f| f.0.as_slice()),
+        Some(b"tracked".as_slice())
+    );
+}
+
 #[tokio::test]
 async fn a_rename_moves_the_remote_copy_instead_of_sending_it_again() {
     let root = tempfile::tempdir().unwrap();
@@ -1637,4 +1719,71 @@ async fn live_round(
         "{planned}; uploaded {}, deleted {}, 0 listings during the pass",
         result.uploaded, result.deleted
     ))
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_new_unicode_parent_twin_does_not_borrow_the_existing_directory() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(
+        &mut index,
+        &remote,
+        root.path(),
+        "café/old.txt",
+        b"original",
+    );
+    remote.put("/remote/café/new.txt", b"remote independent", SYNCED_AT);
+    let new = "cafe\u{301}/new.txt";
+    std::fs::create_dir_all(root.path().join("cafe\u{301}")).unwrap();
+    std::fs::write(root.path().join(new), b"new sibling bytes").unwrap();
+    let (run, _) = execute(
+        &config,
+        work(prep(&config, &index, &[new])),
+        &mut remote,
+        None,
+    )
+    .await;
+    let (result, _) = done(run);
+    assert_eq!(result.skipped, 1);
+    assert_eq!(result.uploaded, 0);
+    assert_eq!(
+        remote.state().files["/remote/café/new.txt"].0,
+        b"remote independent"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_new_twin_of_a_mapped_implicit_parent_waits_for_the_full_scan() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    let tracked = "cafe\u{301}/old.txt";
+    synced(&mut index, &remote, root.path(), tracked, b"original");
+    remote.state().files.remove(&format!("/remote/{tracked}"));
+    remote.put("/remote/café/old.txt", b"original", SYNCED_AT);
+    index
+        .remote_spellings
+        .insert(tracked.into(), "café/old.txt".into());
+    remote.put("/remote/café/new.txt", b"remote independent", SYNCED_AT);
+    std::fs::create_dir_all(root.path().join("café")).unwrap();
+    std::fs::write(root.path().join("café/new.txt"), b"new sibling bytes").unwrap();
+    let (run, _) = execute(
+        &config,
+        work(prep(&config, &index, &["café/new.txt"])),
+        &mut remote,
+        None,
+    )
+    .await;
+    let (result, _) = done(run);
+    assert_eq!(result.skipped, 1);
+    assert_eq!(result.uploaded, 0);
+    assert_eq!(
+        remote.state().files["/remote/café/new.txt"].0,
+        b"remote independent"
+    );
 }

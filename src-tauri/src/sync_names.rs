@@ -242,4 +242,112 @@ mod tests {
         assert_eq!(row.local_relative_path.as_deref(), Some("cafe\u{301}/new"));
         assert_eq!(row.remote_relative_path.as_deref(), Some("café/new"));
     }
+    #[test]
+    fn unsynced_unicode_twins_do_not_borrow_another_objects_baseline() {
+        use crate::sync::{
+            decide_sync_action, CompareDirection, SyncAction, SyncIndex, SyncIndexEntry,
+        };
+        let nfc = "café.txt";
+        let nfd = "cafe\u{301}.txt";
+        let mut index = SyncIndex::new("/l".into(), "/r".into());
+        index.files.insert(
+            nfc.into(),
+            SyncIndexEntry {
+                size: 8,
+                modified: None,
+                is_dir: false,
+            },
+        );
+        for on_local in [true, false] {
+            let twins = inventory(&[(nfc, false, 8), (nfd, false, 19)]);
+            let (local, remote) = if on_local {
+                (twins, HashMap::new())
+            } else {
+                (HashMap::new(), twins)
+            };
+            let report =
+                classify_with_summary(local, remote, &CompareOptions::default(), Some(&index));
+            let row = report
+                .differences
+                .iter()
+                .find(|c| c.relative_path == nfd)
+                .unwrap();
+            assert!(!row.previously_synced);
+            assert!(row.baseline_key.is_none());
+            assert_eq!(
+                decide_sync_action(
+                    &row.status,
+                    &CompareDirection::Bidirectional,
+                    row.previously_synced,
+                    false
+                ),
+                if on_local {
+                    SyncAction::Upload
+                } else {
+                    SyncAction::Download
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn remote_only_twins_follow_recorded_identity_instead_of_local_key_spelling() {
+        use crate::sync::{SyncIndex, SyncIndexEntry};
+        let nfc = "café.txt";
+        let nfd = "cafe\u{301}.txt";
+        let mut index = SyncIndex::new("/l".into(), "/r".into());
+        index.files.insert(
+            nfd.into(),
+            SyncIndexEntry {
+                size: 8,
+                modified: None,
+                is_dir: false,
+            },
+        );
+        index.remote_spellings.insert(nfd.into(), nfc.into());
+        let report = classify_with_summary(
+            HashMap::new(),
+            inventory(&[(nfc, false, 8), (nfd, false, 19)]),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        let owned = report
+            .differences
+            .iter()
+            .find(|c| c.relative_path == nfc)
+            .unwrap();
+        let twin = report
+            .differences
+            .iter()
+            .find(|c| c.relative_path == nfd)
+            .unwrap();
+        assert_eq!(owned.baseline_key.as_deref(), Some(nfd));
+        assert!(owned.previously_synced);
+        assert!(!twin.previously_synced);
+    }
+    #[test]
+    fn a_current_exact_parent_owns_the_legacy_child_key() {
+        use crate::sync::{SyncIndex, SyncIndexEntry};
+        let mut index = SyncIndex::new("/l".into(), "/r".into());
+        index.files.insert(
+            "café/a.txt".into(),
+            SyncIndexEntry {
+                size: 8,
+                modified: None,
+                is_dir: false,
+            },
+        );
+        let report = classify_with_summary(
+            inventory(&[("café/b.txt", false, 2), ("cafe\u{301}/a.txt", false, 19)]),
+            HashMap::new(),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        let row = report
+            .differences
+            .iter()
+            .find(|c| c.relative_path == "cafe\u{301}/a.txt")
+            .unwrap();
+        assert!(!row.previously_synced);
+    }
 }

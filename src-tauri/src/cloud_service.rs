@@ -787,15 +787,38 @@ impl CloudService {
     ) -> HashMap<String, SyncIndexEntry> {
         let mut index_files: HashMap<String, SyncIndexEntry> =
             prior_index.map(|i| i.files.clone()).unwrap_or_default();
-        let mut canonical =
-            crate::sync::NfcKeyGroups::from_keys(index_files.keys().map(String::as_str));
+        // Retire prior identities before any new baseline is written. A
+        // download can reuse a deleted local name while another row deletes
+        // its old mapped remote counterpart; row order must not erase it.
+        for c in comparisons.iter().filter(|c| !c.name_match_blocked) {
+            let action = self.resolve_action(config, c);
+            if matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote) {
+                index_files.remove(c.baseline_key.as_deref().unwrap_or(&c.relative_path));
+            } else if Self::baseline_entry_for(
+                &action,
+                config.sync_direction,
+                c.local_info.as_ref(),
+                c.remote_info.as_ref(),
+                c.is_dir,
+            )
+            .is_some()
+            {
+                if let Some(key) = c
+                    .baseline_key
+                    .as_ref()
+                    .filter(|key| *key != &c.relative_path)
+                {
+                    index_files.remove(key);
+                }
+            }
+        }
         for c in comparisons {
             if c.name_match_blocked {
                 continue;
             }
             let action = self.resolve_action(config, c);
             if matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote) {
-                canonical.forget(&mut index_files, &c.relative_path);
+                continue;
             } else if let Some(mut entry) = Self::baseline_entry_for(
                 &action,
                 config.sync_direction,
@@ -830,12 +853,7 @@ impl CloudService {
                         }
                     }
                 }
-                // The new key is the local spelling. A legacy remote spelling
-                // of the same name must not stay beside it: the next cycle
-                // would still treat that name as synced under both keys.
-                canonical.forget(&mut index_files, &c.relative_path);
                 index_files.insert(c.relative_path.clone(), entry);
-                canonical.note_inserted(&c.relative_path);
             }
         }
         index_files
@@ -2343,6 +2361,7 @@ mod baseline_tests {
             is_dir,
             sync_reason: String::new(),
             previously_synced,
+            baseline_key: None,
         }
     }
 
@@ -2633,6 +2652,99 @@ mod baseline_tests {
         );
     }
 
+    #[test]
+    fn a_new_download_reusing_a_deleted_local_name_keeps_its_baseline() {
+        let svc = CloudService::new();
+        let config = cfg(
+            CompareDirection::Bidirectional,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        let local = "cafe\u{301}.txt";
+        let remote = "café.txt";
+        let mut prior = SyncIndex::new("/l".into(), "/r".into());
+        prior.files.insert(
+            local.into(),
+            SyncIndexEntry {
+                size: 8,
+                modified: None,
+                is_dir: false,
+            },
+        );
+        prior.remote_spellings.insert(local.into(), remote.into());
+        let mut delete = cmp(
+            SyncStatus::RemoteOnly,
+            None,
+            Some(fi(8, 1_700_000_000)),
+            true,
+            false,
+        );
+        delete.relative_path = remote.into();
+        delete.baseline_key = Some(local.into());
+        let mut download = cmp(
+            SyncStatus::RemoteOnly,
+            None,
+            Some(fi(19, 1_700_000_000)),
+            false,
+            false,
+        );
+        download.relative_path = local.into();
+        for rows in [
+            vec![delete.clone(), download.clone()],
+            vec![download.clone(), delete.clone()],
+        ] {
+            let files = svc.post_sync_baseline(&rows, &config, Some(&prior));
+            assert_eq!(files[local].size, 19);
+            assert_eq!(files.len(), 1);
+        }
+    }
+
+    #[test]
+    fn shark_review_exact_unicode_twins_keep_both_baselines() {
+        let svc = CloudService::new();
+        let config = cfg(
+            CompareDirection::Bidirectional,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        let remote = HashMap::from([
+            ("café.txt".to_string(), fi(8, 1_700_000_000)),
+            ("cafe\u{301}.txt".to_string(), fi(19, 1_700_000_000)),
+        ]);
+        let mut prior = SyncIndex::new("/l".into(), "/r".into());
+        prior.files = remote
+            .iter()
+            .map(|(key, info)| {
+                (
+                    key.clone(),
+                    SyncIndexEntry {
+                        size: info.size,
+                        modified: info.modified,
+                        is_dir: false,
+                    },
+                )
+            })
+            .collect();
+        let mut local = remote.clone();
+        local.insert("café.txt".into(), fi(9, 1_700_000_100));
+        let report = crate::sync::classify_with_summary(
+            local,
+            remote,
+            &CompareOptions::default(),
+            Some(&prior),
+        );
+        assert_eq!(report.summary.identical_count, 1);
+        let mut rows = report.differences;
+        rows.extend(report.mirrored);
+        let baseline = svc.post_sync_baseline(&rows, &config, Some(&prior));
+        assert_eq!(
+            baseline.len(),
+            2,
+            "independent exact pairs must not collapse: {:?}",
+            baseline.keys()
+        );
+    }
+
     /// The legacy remote spelling is what proved the file was synced. The
     /// delete row is keyed by the local spelling. Forgetting only that key
     /// leaves the remote one, so a file created again under the same
@@ -2809,6 +2921,7 @@ mod baseline_tests {
         );
         row.relative_path = remote_name.to_string();
         row.remote_relative_path = Some(remote_name.to_string());
+        row.baseline_key = Some(local_name.to_string());
         assert_eq!(svc.resolve_action(&config, &row), SyncAction::Skip);
 
         let files = svc.post_sync_baseline(std::slice::from_ref(&row), &config, Some(&prior));

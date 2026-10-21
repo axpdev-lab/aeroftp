@@ -101,6 +101,7 @@ export const buildRemoteSyncInput = (
             return;
         }
         files.push({
+            ...(entry.baselineKey != null ? { baselineKey: entry.baselineKey } : {}),
             relativePath: sidePath(entry, sourceSide === 'left' ? 'right' : 'left'),
             ...(sidePath(entry, sourceSide) !== sidePath(entry, sourceSide === 'left' ? 'right' : 'left')
                 ? { sourcePath: sidePath(entry, sourceSide) } : {}),
@@ -121,6 +122,7 @@ export const buildRemoteSyncInput = (
         if (entry.nameMatchBlocked) return;
         const meta = targetSide === 'left' ? leftMeta(entry) : rightMeta(entry);
         files.push({
+            ...(entry.baselineKey != null ? { baselineKey: entry.baselineKey } : {}),
             relativePath: sidePath(entry, targetSide),
             action: targetIsRemote ? 'delete-remote' : 'delete-local',
             size: meta.size,
@@ -247,6 +249,7 @@ export const buildMirrorSyncInput = (
         }
         files.push({
             relativePath: path,
+            ...(entry.baselineKey != null ? { baselineKey: entry.baselineKey } : {}),
             ...(sidePath(entry, sourceSide) !== path ? { sourcePath: sidePath(entry, sourceSide) } : {}),
             action: destIsRemote ? 'upload' : 'download',
             size: meta.size,
