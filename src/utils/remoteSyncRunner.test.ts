@@ -1657,3 +1657,33 @@ describe('remoteSyncRunner — GAP-10 local-local mode', () => {
             && c.args?.localPath === '/home/u/work/v.txt')).toBe(true);
     });
 });
+
+describe('canonical Unicode paths (#1326)', () => {
+    it.each(['upload', 'download'] as const)('keeps actual paths for %s, backup, verification, journal and index', async action => {
+        const localRel = 'cafe\u0301/a.txt';
+        const remoteRel = 'café/a.txt';
+        const destination = action === 'upload' ? remoteRel : localRel;
+        const source = action === 'upload' ? localRel : remoteRel;
+        const { invoke, calls } = makeInvoke({
+            sync_backup_run_stamp: () => 'stamp',
+            sync_backup_archive_local: () => 'saved',
+            sync_backup_archive_remote: () => 'saved',
+            verify_local_transfer: () => ({ passed: true }),
+        });
+        await runRemoteSync([file(destination, action, { sourcePath: source, overwritesExisting: true })],
+            noDirs, baseConfig({ verifyPolicy: 'size_only', versionedBackup: { dir: '.backup' } }), {}, noWaitDeps(invoke, { writeIndex: true }));
+        const transfer = calls.find(c => c.cmd === (action === 'upload' ? 'upload_file' : 'download_file'));
+        expect(transfer?.args?.params).toMatchObject({
+            local_path: `/home/u/work/${localRel}`, remote_path: `/srv/data/${remoteRel}`,
+        });
+        const backup = calls.find(c => c.cmd === (action === 'upload' ? 'sync_backup_archive_remote' : 'sync_backup_archive_local'));
+        expect(backup?.args?.rel).toBe(destination);
+        const journal = lastSavedJournal(calls);
+        expect(journal?.entries[0]).toMatchObject({ relative_path: destination, source_path: source });
+        if (action === 'download') {
+            expect(calls.find(c => c.cmd === 'verify_local_transfer')?.args?.localPath).toBe(`/home/u/work/${localRel}`);
+        }
+        const index = calls.find(c => c.cmd === 'save_sync_index_cmd');
+        expect((index?.args?.index as { files: Record<string, unknown> })?.files[localRel]).toBeDefined();
+    });
+});

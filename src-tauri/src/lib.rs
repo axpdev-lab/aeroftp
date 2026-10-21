@@ -304,6 +304,7 @@ pub mod sync_core;
 pub mod sync_empty_dir;
 pub mod sync_exclude;
 mod sync_ignore;
+mod sync_names;
 mod sync_scheduler;
 pub mod sync_script;
 pub mod sync_versioning;

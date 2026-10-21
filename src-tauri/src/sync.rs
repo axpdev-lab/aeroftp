@@ -76,6 +76,12 @@ pub struct FileInfo {
 /// Result of comparing a single file/directory
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileComparison {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_relative_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_relative_path: Option<String>,
+    #[serde(default)]
+    pub name_match_blocked: bool,
     pub relative_path: String,
     pub status: SyncStatus,
     pub local_info: Option<FileInfo>,
@@ -1178,64 +1184,7 @@ pub fn build_comparison_results(
     remote_files: HashMap<String, FileInfo>,
     options: &CompareOptions,
 ) -> Vec<FileComparison> {
-    let mut results = Vec::new();
-    // Validated by the commands that accept options from outside.
-    let backup_dir = options.parsed_backup_dir().ok().flatten();
-    let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
-    all_paths.extend(remote_files.keys().cloned());
-    let excludes = options.excludes_or_everything();
-
-    for path in all_paths {
-        // Reject paths with traversal components
-        if validate_relative_path(&path).is_err() {
-            tracing::warn!("Skipping entry with invalid relative path: {}", path);
-            continue;
-        }
-
-        let local = local_files.get(&path);
-        let remote = remote_files.get(&path);
-
-        // Skip excluded paths
-        let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
-        if options.excludes_path(&excludes, &path, is_dir) {
-            continue;
-        }
-        if backup_dir.as_ref().is_some_and(|dir| {
-            crate::sync_backup::is_backup_path(&path, dir)
-                || (is_dir && crate::sync_backup::is_backup_ancestor(&path, dir))
-        }) {
-            continue;
-        }
-
-        // Apply size/age filters
-        if should_filter(local, options) || should_filter(remote, options) {
-            continue;
-        }
-
-        let status = compare_file_pair(local, remote, options);
-
-        // Skip identical files unless they're directories we need to show
-        let is_dir =
-            local.map(|f| f.is_dir).unwrap_or(false) || remote.map(|f| f.is_dir).unwrap_or(false);
-
-        if status != SyncStatus::Identical || is_dir {
-            let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
-            results.push(FileComparison {
-                relative_path: path,
-                status,
-                local_info: local.cloned(),
-                remote_info: remote.cloned(),
-                is_dir,
-                sync_reason,
-                previously_synced: false,
-            });
-        }
-    }
-
-    // Sort by path for consistent display
-    results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-
-    results
+    classify_with_summary(local_files, remote_files, options, None).differences
 }
 
 /// Central decision function for sync actions (Task 1+2).
@@ -3348,27 +3297,32 @@ pub fn classify_with_summary(
     };
     // Validated by the commands that accept options from outside.
     let backup_dir = options.parsed_backup_dir().ok().flatten();
-    let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
-    all_paths.extend(remote_files.keys().cloned());
+    let pairs = crate::sync_names::pair_paths(&local_files, &remote_files);
     let excludes = options.excludes_or_everything();
 
-    for path in all_paths {
+    for pair in pairs {
+        // Baselines are keyed by the actual (or projected) LOCAL spelling.
+        let path = pair.local_path.clone();
         // Reject paths with traversal components
         if validate_relative_path(&path).is_err() {
             tracing::warn!("Skipping entry with invalid relative path: {}", path);
             continue;
         }
 
-        let local = local_files.get(&path);
-        let remote = remote_files.get(&path);
+        let local = pair.local.as_ref().and_then(|p| local_files.get(p));
+        let remote = pair.remote.as_ref().and_then(|p| remote_files.get(p));
 
         let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
-        if options.excludes_path(&excludes, &path, is_dir) {
+        if options.excludes_path(&excludes, &path, is_dir)
+            || options.excludes_path(&excludes, &pair.remote_path, is_dir)
+        {
             continue;
         }
         if backup_dir.as_ref().is_some_and(|dir| {
-            crate::sync_backup::is_backup_path(&path, dir)
-                || (is_dir && crate::sync_backup::is_backup_ancestor(&path, dir))
+            [&path, &pair.remote_path].iter().any(|p| {
+                crate::sync_backup::is_backup_path(p, dir)
+                    || (is_dir && crate::sync_backup::is_backup_ancestor(p, dir))
+            })
         }) {
             continue;
         }
@@ -3382,7 +3336,9 @@ pub fn classify_with_summary(
             local.map(|f| f.is_dir).unwrap_or(false) || remote.map(|f| f.is_dir).unwrap_or(false);
 
         // Check if we can use the index for conflict detection
-        let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
+        let status = if pair.blocked {
+            SyncStatus::Conflict
+        } else if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
             // A key the migration could not vouch for is compared as absent,
             // here and in `previously_synced` below.
             let cached = idx
@@ -3465,6 +3421,9 @@ pub fn classify_with_summary(
         if !is_identical || is_dir {
             let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
             results.push(FileComparison {
+                local_relative_path: Some(pair.local_path),
+                remote_relative_path: Some(pair.remote_path),
+                name_match_blocked: pair.blocked,
                 relative_path: path,
                 status,
                 local_info: local.cloned(),
@@ -4249,6 +4208,8 @@ pub enum JournalEntryStatus {
 /// A single entry in the transfer journal
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncJournalEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
     pub relative_path: String,
     pub action: String, // "upload" | "download" | "mkdir"
     pub status: JournalEntryStatus,
@@ -7231,6 +7192,7 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            source_path: None,
             relative_path: "file.txt".to_string(),
             action: "upload".to_string(),
             status: JournalEntryStatus::Pending,
@@ -7259,6 +7221,7 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            source_path: None,
             relative_path: "a.txt".to_string(),
             action: "upload".to_string(),
             status: JournalEntryStatus::Completed,
@@ -7271,6 +7234,7 @@ mod tests {
             local_modified: None,
         });
         journal.entries.push(SyncJournalEntry {
+            source_path: None,
             relative_path: "b.txt".to_string(),
             action: "upload".to_string(),
             status: JournalEntryStatus::Failed,

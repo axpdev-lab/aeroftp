@@ -523,6 +523,9 @@ impl CloudService {
     /// directories, so counting or executing a dir delete would inflate the
     /// report and orphan the tree.
     fn resolve_action(&self, config: &CloudConfig, comparison: &FileComparison) -> SyncAction {
+        if comparison.name_match_blocked {
+            return SyncAction::Skip;
+        }
         // On Windows a key containing `\` cannot name a file of its own: the
         // local scan keys with `/`, so such a key only comes from a remote
         // object whose name holds a literal backslash, and `join` would turn it
@@ -1739,6 +1742,17 @@ impl CloudService {
         // Validate relative_path against traversal attacks (CF-004)
         validate_relative_path(&comparison.relative_path)?;
 
+        let local_rel = comparison
+            .local_relative_path
+            .as_deref()
+            .unwrap_or(&comparison.relative_path);
+        let remote_rel = comparison
+            .remote_relative_path
+            .as_deref()
+            .unwrap_or(&comparison.relative_path);
+        validate_relative_path(local_rel)?;
+        validate_relative_path(remote_rel)?;
+
         // Resolve via the shared decision so the executed action and the
         // recorded post-sync baseline are always derived the same way.
         let action = self.resolve_action(config, comparison);
@@ -1752,7 +1766,7 @@ impl CloudService {
                 let remote_path = format!(
                     "{}/{}",
                     config.remote_folder.trim_end_matches('/'),
-                    comparison.relative_path
+                    remote_rel
                 );
 
                 if comparison.is_dir {
@@ -1763,7 +1777,7 @@ impl CloudService {
                     }
                 } else if let Some(local_info) = &comparison.local_info {
                     // Ensure parent directory exists on remote (check first to avoid duplicates)
-                    if let Some(parent) = std::path::Path::new(&comparison.relative_path).parent() {
+                    if let Some(parent) = std::path::Path::new(remote_rel).parent() {
                         if !parent.as_os_str().is_empty() {
                             let parent_path = format!(
                                 "{}/{}",
@@ -1912,7 +1926,7 @@ impl CloudService {
                 }
             }
             SyncAction::Download => {
-                let local_path = config.local_folder.join(&comparison.relative_path);
+                let local_path = config.local_folder.join(local_rel);
 
                 if comparison.is_dir {
                     // Create local directory
@@ -1960,7 +1974,7 @@ impl CloudService {
                 }
             }
             SyncAction::KeepBoth if !comparison.is_dir => {
-                let local_path = config.local_folder.join(&comparison.relative_path);
+                let local_path = config.local_folder.join(local_rel);
                 // Rename local file with Dropbox-style conflict suffix to preserve both versions
                 if local_path.exists() {
                     let conflict_path = local_path.with_file_name(conflict_rename(&local_path));
@@ -1995,7 +2009,7 @@ impl CloudService {
                 let remote_path = format!(
                     "{}/{}",
                     config.remote_folder.trim_end_matches('/'),
-                    comparison.relative_path
+                    remote_rel
                 );
                 provider
                     .delete(&remote_path)
@@ -2004,7 +2018,7 @@ impl CloudService {
                 tracing::info!("AeroCloud: delete propagated to remote '{}'", remote_path);
             }
             SyncAction::DeleteLocal if !comparison.is_dir => {
-                let local_path = config.local_folder.join(&comparison.relative_path);
+                let local_path = config.local_folder.join(local_rel);
                 if local_path.exists() {
                     archive_before_propagated_delete(config, &local_path);
                     std::fs::remove_file(&local_path)
@@ -2295,6 +2309,9 @@ mod baseline_tests {
         is_dir: bool,
     ) -> FileComparison {
         FileComparison {
+            local_relative_path: None,
+            remote_relative_path: None,
+            name_match_blocked: false,
             relative_path: "f.txt".to_string(),
             status,
             local_info: local,

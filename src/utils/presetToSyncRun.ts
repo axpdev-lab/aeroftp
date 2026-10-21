@@ -52,6 +52,8 @@ const rightMeta = (e: CompareResultEntry): SideMeta => ({
  * classifier sets it equal to `name`, so the fallback keeps both cases sound.
  */
 const relPath = (e: CompareResultEntry): string => e.relativePath ?? e.name;
+const sidePath = (e: CompareResultEntry, side: 'left' | 'right'): string =>
+    (side === 'left' ? e.leftRelativePath : e.rightRelativePath) ?? relPath(e);
 
 const sourceSha256 = (
     entry: CompareResultEntry,
@@ -89,16 +91,19 @@ export const buildRemoteSyncInput = (
         destIsRemote: boolean,
         overwrites: boolean,
     ): void => {
+        if (entry.nameMatchBlocked) return;
         const meta = sourceSide === 'left' ? leftMeta(entry) : rightMeta(entry);
         if (meta.isDir) {
             // A directory entry is created (recursively, via the runner's
             // parent-dir pre-pass) on the destination; nested files surface
             // as their own rows in a recursive compare.
-            (destIsRemote ? dirs.remote : dirs.local).push(relPath(entry));
+            (destIsRemote ? dirs.remote : dirs.local).push(sidePath(entry, sourceSide === 'left' ? 'right' : 'left'));
             return;
         }
         files.push({
-            relativePath: relPath(entry),
+            relativePath: sidePath(entry, sourceSide === 'left' ? 'right' : 'left'),
+            ...(sidePath(entry, sourceSide) !== sidePath(entry, sourceSide === 'left' ? 'right' : 'left')
+                ? { sourcePath: sidePath(entry, sourceSide) } : {}),
             action: destIsRemote ? 'upload' : 'download',
             size: meta.size,
             mtime: meta.mtime,
@@ -113,9 +118,10 @@ export const buildRemoteSyncInput = (
         targetSide: 'left' | 'right',
         targetIsRemote: boolean,
     ): void => {
+        if (entry.nameMatchBlocked) return;
         const meta = targetSide === 'left' ? leftMeta(entry) : rightMeta(entry);
         files.push({
-            relativePath: relPath(entry),
+            relativePath: sidePath(entry, targetSide),
             action: targetIsRemote ? 'delete-remote' : 'delete-local',
             size: meta.size,
             mtime: null,
@@ -132,11 +138,13 @@ export const buildRemoteSyncInput = (
         sourceSide: 'left' | 'right',
         destIsRemote: boolean,
     ): void => {
+        if (entry.nameMatchBlocked) return;
         const meta = sourceSide === 'left' ? leftMeta(entry) : rightMeta(entry);
         if (meta.isDir) return; // keep-both applies to files only
-        const src = relPath(entry);
+        const src = sidePath(entry, sourceSide);
+        const dest = sidePath(entry, sourceSide === 'left' ? 'right' : 'left');
         files.push({
-            relativePath: `${src}.${renameSuffix}.bak`,
+            relativePath: `${dest}.${renameSuffix}.bak`,
             sourcePath: src,
             action: destIsRemote ? 'upload' : 'download',
             size: meta.size,
@@ -230,14 +238,16 @@ export const buildMirrorSyncInput = (
     const destIsRemote = sourceSide === 'left' ? leftIsLocal : !leftIsLocal;
 
     for (const entry of entries) {
+        if (entry.nameMatchBlocked) continue;
         const meta = sourceSide === 'left' ? leftMeta(entry) : rightMeta(entry);
-        const path = relPath(entry);
+        const path = sidePath(entry, sourceSide === 'left' ? 'right' : 'left');
         if (meta.isDir) {
             (destIsRemote ? dirs.remote : dirs.local).push(path);
             continue;
         }
         files.push({
             relativePath: path,
+            ...(sidePath(entry, sourceSide) !== path ? { sourcePath: sidePath(entry, sourceSide) } : {}),
             action: destIsRemote ? 'upload' : 'download',
             size: meta.size,
             mtime: meta.mtime,

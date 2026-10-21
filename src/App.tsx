@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { resolveCanonicalNavigation } from './utils/canonicalNames';
 import { ConnectScope, type ProfileConnector, type RegisterProfileConnector } from './gui/connectScope';
 import { runOwnedConnectionCleanup } from './gui/connectionCleanup';
 import { buildGeneralProjection, type AiSettingsProjection } from './gui/settingsSchema';
@@ -1856,7 +1857,7 @@ const App: React.FC = () => {
       : null;
     const mismatch = localRel === null || remoteRel === null
       ? (localRel !== null || remoteRel !== null) // one navigated outside base, other didn't
-      : localRel !== remoteRel;
+      : localRel.normalize('NFC') !== remoteRel.normalize('NFC');
 
     // Clear immediately, but delay showing the warning to avoid flash during sync nav
     if (!mismatch) { setIsSyncPathMismatch(false); return; }
@@ -9383,22 +9384,36 @@ const App: React.FC = () => {
         const relativePath = response.current_path.startsWith(syncBasePaths.remote)
           ? response.current_path.slice(syncBasePaths.remote.length)
           : '';
-        // Join paths avoiding double slashes
-        const basePath = syncBasePaths.local.endsWith('/') ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local;
-        const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
-        const newLocalPath = (relativePath ? basePath + relPath : basePath) || '/';
-        // Check if local path exists
         try {
+          const listLocal = async (dir: string) =>
+            (await invoke<LocalFile[]>('get_local_files', { path: dir, showHidden: true }))
+              .map(f => ({ name: f.name, isDir: f.is_dir }));
+          const listRemote = async (dir: string) => {
+            const listing = await invoke<FileListResponse>(isProvider ? 'provider_list_files' : 'change_directory', { path: dir });
+            return listing.files.map(f => ({ name: f.name, isDir: f.is_dir }));
+          };
+          let target;
+          try {
+            target = await resolveCanonicalNavigation(relativePath, syncBasePaths.remote, syncBasePaths.local, listRemote, listLocal, () => navId === remoteNavCounter.current);
+          } finally {
+            // FTP directory listings change the shared working directory.
+            if (!isProvider && navId === remoteNavCounter.current) {
+              await invoke('change_directory', { path: response.current_path });
+            }
+          }
           if (navId !== remoteNavCounter.current) return null;
-          const files: LocalFile[] = await invoke('get_local_files', { path: newLocalPath, showHidden: showHiddenFiles });
+          if (target.missing) {
+            setSyncNavDialog({ missingPath: target.path, isRemote: false, targetPath: target.path });
+          } else {
+            const files = await invoke<LocalFile[]>('get_local_files', { path: target.path, showHidden: showHiddenFiles });
+            if (navId !== remoteNavCounter.current) return null;
+            setLocalFiles(files);
+            setCurrentLocalPath(target.path);
+            setSelectedLocalFiles(new Set());
+          }
+        } catch (error) {
           if (navId !== remoteNavCounter.current) return null;
-          setLocalFiles(files);
-          setCurrentLocalPath(newLocalPath);
-          setSelectedLocalFiles(new Set());
-        } catch {
-          // Local directory doesn't exist - show dialog
-          if (navId !== remoteNavCounter.current) return null;
-          setSyncNavDialog({ missingPath: newLocalPath, isRemote: false, targetPath: newLocalPath });
+          notify.error(String(error));
         }
       }
       return (response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path;
@@ -9601,18 +9616,32 @@ const App: React.FC = () => {
       setRemoteListLoading(true);
       setRemoteListReason(listingReason(newRemotePath));
       try {
+        const target = await resolveCanonicalNavigation(relativePath, syncBasePaths.local, syncBasePaths.remote,
+          async dir => (await invoke<LocalFile[]>('get_local_files', { path: dir, showHidden: true }))
+            .map(f => ({ name: f.name, isDir: f.is_dir })),
+          async dir => (await invoke<FileListResponse>(isProvider ? 'provider_list_files' : 'change_directory', { path: dir }))
+            .files.map(f => ({ name: f.name, isDir: f.is_dir })),
+          () => navId === remoteNavCounter.current,
+        );
+        if (navId !== remoteNavCounter.current) return null;
+        if (target.missing) {
+          if (!isProvider) await invoke('change_directory', { path: currentRemotePath });
+          if (navId !== remoteNavCounter.current) return null;
+          setSyncNavDialog({ missingPath: target.path, isRemote: true, targetPath: target.path });
+          return path;
+        }
         const response: FileListResponse = isProvider
-          ? await invoke('provider_change_dir', { path: newRemotePath })
-          : await invoke('change_directory', { path: newRemotePath });
+          ? await invoke('provider_change_dir', { path: target.path })
+          : await invoke('change_directory', { path: target.path });
         if (navId !== remoteNavCounter.current) return null;
         setRemoteFiles(response.files);
         setCurrentRemotePath(response.current_path);
         setSelectedRemoteFiles(new Set());
         setRemoteSearchResults(null);
-      } catch {
-        // Remote directory doesn't exist - show dialog
+      } catch (error) {
         if (navId !== remoteNavCounter.current) return null;
-        setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
+        if (!isProvider) await invoke('change_directory', { path: currentRemotePath }).catch(() => undefined);
+        notify.error(String(error));
       } finally {
         if (navId === remoteNavCounter.current) setRemoteListLoading(false);
       }

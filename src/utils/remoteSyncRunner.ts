@@ -99,12 +99,9 @@ export interface SyncRunFile {
      */
     isDir?: boolean;
     /**
-     * GAP-7: keep-both rename. When set, the runner reads the source from
-     * `sourcePath` and writes to `relativePath` (the suffixed destination),
-     * so a conflict can be resolved by copying the source side under a
-     * timestamped name without overwriting the existing destination copy.
-     * Undefined for every normal entry, where source and destination share
-     * `relativePath`.
+     * Actual source spelling when it differs from the destination, including
+     * canonical Unicode counterparts and keep-both renames. Persisted in the
+     * journal so resumed transfers address the same source.
      */
     sourcePath?: string;
     /** Remote/source SHA-256 when available; needed for EC verify/repair. */
@@ -304,6 +301,7 @@ export const filesFromJournal = (journal: SyncJournal): SyncRunFile[] =>
         .filter((e) => e.action === 'upload' || e.action === 'download')
         .map((e) => ({
             relativePath: e.relative_path,
+            ...(e.source_path ? { sourcePath: e.source_path } : {}),
             action: (e.action === 'upload' ? 'upload' : 'download') as SyncRunAction,
             size: e.bytes_transferred || 0,
             mtime: null,
@@ -637,6 +635,7 @@ export const runRemoteSync = async (
         verify_policy: config.verifyPolicy,
         entries: files.map<SyncJournalEntry>((f) => ({
             relative_path: f.relativePath,
+            source_path: f.sourcePath ?? null,
             action: journalAction(f.action),
             status: 'pending',
             attempts: 0,
@@ -934,7 +933,7 @@ export const runRemoteSync = async (
                         const ecResult = await invoke<SyncEcCommandResult>('sync_ec_verify_repair', {
                             localPath: localFilePath,
                             remotePath: remoteFilePath,
-                            relativePath: item.relativePath,
+                            relativePath: srcRel,
                             expectedSha256: item.expectedSha256 ?? null,
                             expectedMtime: item.mtime || undefined,
                             isProvider: config.isProvider,
@@ -1210,7 +1209,8 @@ export const runRemoteSync = async (
                             size = entry.local_size ?? f.size;
                         }
                     }
-                    mergedFiles[f.relativePath] = {
+                    const localRel = f.action === 'upload' ? (f.sourcePath ?? f.relativePath) : f.relativePath;
+                    mergedFiles[localRel] = {
                         size,
                         modified,
                         is_dir: false,

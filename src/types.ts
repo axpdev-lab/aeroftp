@@ -943,6 +943,9 @@ export interface FileInfo {
 }
 
 export interface FileComparison {
+  local_relative_path?: string | null;
+  remote_relative_path?: string | null;
+  name_match_blocked?: boolean;
   relative_path: string;
   status: SyncStatus;
   local_info: FileInfo | null;
@@ -1388,6 +1391,7 @@ export type SyncEcStatus =
   | "verify_failed";
 
 export interface SyncJournalEntry {
+  source_path?: string | null;
   relative_path: string;
   action: string;
   status: JournalEntryStatus;
