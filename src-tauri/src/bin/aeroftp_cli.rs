@@ -36427,7 +36427,11 @@ async fn cmd_put_recursive(
         };
 
         let relative = entry.path().strip_prefix(local_dir).unwrap_or(entry.path());
-        let relative_str = relative.to_string_lossy().replace('\\', "/");
+        // Only native separators form the hierarchy: a backslash can belong
+        // to a filename or directory name on Unix.
+        let relative_str = relative
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
         if relative_str.is_empty() {
             continue;
         }
@@ -87900,6 +87904,74 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .filter_map(Result::ok)
             .filter(|e| e.file_type().is_file())
             .count()
+    }
+
+    /// A Unix backslash belongs to a filename, not to the remote hierarchy.
+    /// Exercise the real recursive command, including pool and guarded paths,
+    /// with names that would otherwise alias actual nested files.
+    #[cfg(unix)]
+    #[test]
+    fn put_recursive_preserves_literal_backslashes_in_unix_names() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let entries: [(&str, &[u8]); 4] = [
+            (r"back\slash.txt", b"literal root filename"),
+            ("back/slash.txt", b"real subdirectory"),
+            (r"dir\name/leaf\name.txt", b"literal nested filename"),
+            ("dir/name/leaf/name.txt", b"real nested directories"),
+        ];
+        for pooled in [false, true] {
+            for mode in ["plain", "immutable", "no-clobber", "files-from"] {
+                let dir = tempfile::tempdir().expect("temp dir");
+                let local = dir.path().join("up");
+                for (relative, bytes) in entries {
+                    let path = local.join(relative);
+                    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                    std::fs::write(path, bytes).unwrap();
+                }
+                let mut cli = Cli {
+                    quiet: true,
+                    parallel: 1,
+                    immutable: mode == "immutable",
+                    ..test_cli()
+                };
+                if mode == "files-from" {
+                    let list = dir.path().join("selected.txt");
+                    std::fs::write(&list, format!("{}\n{}\n", entries[0].0, entries[2].0)).unwrap();
+                    cli.files_from = Some(list.to_string_lossy().into_owned());
+                }
+                let state = WorkerFake::state();
+                state.lock().unwrap().pooled = pooled;
+                let local = local.to_string_lossy().into_owned();
+                let code = run_on_fake(&state, || async {
+                    cmd_put_recursive(
+                        "memory://",
+                        &local,
+                        Some("/root"),
+                        mode == "no-clobber",
+                        &cli,
+                        OutputFormat::Text,
+                        Arc::new(AtomicBool::new(false)),
+                    )
+                    .await
+                });
+                let expected: HashMap<String, Vec<u8>> = entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| mode != "files-from" || index % 2 == 0)
+                    .map(|(_, (relative, bytes))| (format!("/root/{relative}"), bytes.to_vec()))
+                    .collect();
+                let st = state.lock().unwrap();
+                assert_eq!(code, 0, "pooled {pooled}, {mode}: {:?}", st.served);
+                assert_eq!(st.files, expected, "pooled {pooled}, {mode}");
+                assert!(
+                    st.mkdirs
+                        .iter()
+                        .any(|(_, path, _)| path == r"/root/dir\name"),
+                    "the literal directory must keep its name: {:?}",
+                    st.mkdirs
+                );
+            }
+        }
     }
 
     /// `put -r` to a provider without a transfer pool (Internxt, MEGA, Filen
