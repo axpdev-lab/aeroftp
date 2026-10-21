@@ -473,7 +473,7 @@ async fn edited_spelling_uploads_the_remote_object(
     );
     assert_eq!(remote.calls_to(&format!("/remote/{local_key}")), 0);
     assert_eq!(saved.files.get(local_key).map(|entry| entry.size), Some(9));
-    assert!(saved.files.get(remote_key).is_none());
+    assert!(!saved.files.contains_key(remote_key));
     assert_eq!(
         saved.remote_spellings.get(local_key).map(String::as_str),
         Some(remote_key)
