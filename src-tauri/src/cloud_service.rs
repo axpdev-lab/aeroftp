@@ -3601,6 +3601,82 @@ mod baseline_tests {
         assert!(files.contains_key(r"dir\name/keep.txt"));
     }
 
+    #[cfg(unix)]
+    struct ModeReset<'a>(&'a std::path::Path);
+
+    #[cfg(unix)]
+    impl Drop for ModeReset<'_> {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    /// An escaped anchored negation used to make `may_reinclude_below` true
+    /// for every excluded directory, so a scan entered trees that cannot
+    /// match. An unreadable unrelated directory is the proof: entering it
+    /// fails the scan, skipping it leaves the scan successful.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn literal_unix_paths_escaped_negation_does_not_enter_unrelated_trees() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let literal = root.path().join(r"dir\name");
+        std::fs::create_dir_all(&literal).unwrap();
+        std::fs::write(literal.join("keep.txt"), "keep").unwrap();
+        let other = root.path().join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("secret.txt"), "secret").unwrap();
+        std::fs::write(
+            root.path().join(".aeroignore"),
+            "/dir\\\\name/\n!/dir\\\\name/keep.txt\n",
+        )
+        .unwrap();
+        let _restore = ModeReset(&other);
+        std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(
+            std::fs::read_dir(&other).is_err(),
+            "mode 000 must be unreadable or this test cannot see an unwanted walk"
+        );
+        let config = CloudConfig {
+            local_folder: root.path().to_path_buf(),
+            exclude_patterns: vec!["**".into()],
+            ..Default::default()
+        };
+        let (files, complete) = CloudService::new()
+            .scan_local_folder(&config)
+            .await
+            .expect("an unrelated unreadable tree must not be entered");
+        assert!(complete);
+        assert_eq!(files.len(), 1, "{:?}", files.keys());
+        assert!(files.contains_key(r"dir\name/keep.txt"));
+    }
+
+    /// A wildcard negation is still allowed to match below any excluded
+    /// directory. The same unreadable tree must therefore be entered.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn literal_unix_paths_wildcard_negation_still_enters_excluded_trees() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let other = root.path().join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("secret.txt"), "secret").unwrap();
+        std::fs::write(root.path().join(".aeroignore"), "!/dir\\\\name/*.txt\n").unwrap();
+        let _restore = ModeReset(&other);
+        std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let config = CloudConfig {
+            local_folder: root.path().to_path_buf(),
+            exclude_patterns: vec!["**".into()],
+            ..Default::default()
+        };
+        let scanned = CloudService::new().scan_local_folder(&config).await;
+        assert!(
+            scanned.is_err(),
+            "a wildcard negation must still enter the excluded tree, got {scanned:?}"
+        );
+    }
+
     #[tokio::test]
     async fn local_scan_complete_on_clean_readable_tree() {
         // A fully readable tree must stay complete: the new completeness flag
