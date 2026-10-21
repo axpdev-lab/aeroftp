@@ -52,6 +52,13 @@ export async function splitPathsByType(rawPaths: string[]): Promise<SplitPaths> 
         const p = norm(raw);
         // Determine the parent before separator adaptation loses native UNC provenance.
         const parent = parentOf(raw);
+        // A Windows share root, a drive root, and `/` are their own parent.
+        // Listing that path returns its children, so a basename match would
+        // call the selected root a file unless a child reused its name.
+        if (stripTrailing(p) === stripTrailing(parent)) {
+            dirs.push(p);
+            continue;
+        }
         const group = byParent.get(parent);
         if (group) group.push(p);
         else byParent.set(parent, [p]);

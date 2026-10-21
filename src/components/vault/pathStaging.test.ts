@@ -21,9 +21,30 @@ it('keeps Windows picker separators and drive roots absolute', async () => {
     expect(invoke).toHaveBeenCalledExactlyOnceWith('get_local_files', { path: 'D:/', showHidden: true });
 });
 
-it('retains native UNC provenance while staging a selected share root', async () => {
+it('stages a selected UNC share root as a directory without reading its children', async () => {
     invoke.mockClear();
-    invoke.mockResolvedValue([]);
-    await splitPathsByType([String.raw`\\server\share`]);
-    expect(invoke).toHaveBeenCalledExactlyOnceWith('get_local_files', { path: '//server/share', showHidden: true });
+    expect(await splitPathsByType([String.raw`\\server\share`])).toEqual({
+        files: [],
+        dirs: ['//server/share'],
+    });
+    expect(invoke).not.toHaveBeenCalled();
+});
+
+it('lists a UNC child from the share itself', async () => {
+    invoke.mockClear();
+    invoke.mockResolvedValue([{ name: 'folder', path: '//server/share/folder', is_dir: true }]);
+    expect(await splitPathsByType([String.raw`\\server\share\folder`])).toEqual({
+        files: [],
+        dirs: ['//server/share/folder'],
+    });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('get_local_files', {
+        path: '//server/share',
+        showHidden: true,
+    });
+});
+
+it('stages a selected Windows drive root as a directory', async () => {
+    invoke.mockClear();
+    expect(await splitPathsByType(['D:\\'])).toEqual({ files: [], dirs: ['D:/'] });
+    expect(invoke).not.toHaveBeenCalled();
 });
