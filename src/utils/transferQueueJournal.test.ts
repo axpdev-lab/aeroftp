@@ -236,3 +236,14 @@ describe('isRestorableJournalEntry', () => {
         expect(isPermanentTransferError(undefined)).toBe(false);
     });
 });
+
+it('literal_unix_paths journal restores distinct local and remote parents', () => {
+    expect(parentDir(String.raw`/local/dir\name/back\slash.txt`)).toBe(String.raw`/local/dir\name`);
+    expect(parentDir(String.raw`C:\opaque\file.txt`, 'remote')).toBe('');
+    expect(parentDir(String.raw`/remote/dir\name/back\slash.txt`, 'remote')).toBe(String.raw`/remote/dir\name`);
+});
+it('restored first-level Windows files keep absolute drive and UNC share parents', () => {
+    expect(parentDir(String.raw`C:\file.txt`)).toBe('C:/');
+    expect(parentDir(String.raw`\\server\share\file.txt`)).toBe('//server/share');
+    expect(parentDir(String.raw`\\server\share`)).toBe('//server/share');
+});

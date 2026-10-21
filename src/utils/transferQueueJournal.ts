@@ -4,6 +4,8 @@
 // Pure helpers for TQ-7b: map UI transfer-queue state to the TQ-7a journal
 // DTO (snake_case, matching transfer_queue_journal.rs) and back. No I/O.
 
+import { isWindowsLocalPath, normalizeLocalPath } from './localPath';
+
 import type { TransferItem, TransferStatus, TransferType } from '../components/TransferQueue';
 
 /** Journal direction values (serde rename_all = "snake_case"). */
@@ -182,21 +184,23 @@ export function buildJournalEntries(
 }
 
 /**
- * Parent directory of a path. Accepts `/` and `\` separators (local Windows paths).
+ * Parent directory of a path. Only explicit local Windows paths fold separators.
  * Returns `/` for absolute single-segment paths, `''` for bare filenames.
  */
-export function parentDir(path: string): string {
+export function parentDir(path: string, kind: 'local' | 'remote' = 'local'): string {
     if (!path) return '';
-    const normalized = path.replace(/\\/g, '/');
+    const normalized = kind === 'local' ? normalizeLocalPath(path) : path;
     // Strip trailing slash (except root)
     const trimmed =
         normalized.length > 1 && normalized.endsWith('/')
             ? normalized.slice(0, -1)
             : normalized;
+    if (kind === 'local' && isWindowsLocalPath(path) && /^\/\/[^/]+\/[^/]+$/.test(trimmed)) return trimmed;
     const idx = trimmed.lastIndexOf('/');
     if (idx < 0) return '';
     if (idx === 0) return '/';
-    return trimmed.slice(0, idx);
+    const parent = trimmed.slice(0, idx);
+    return kind === 'local' && /^[A-Za-z]:$/.test(parent) ? `${parent}/` : parent;
 }
 
 /** Join remote dir + filename with a single slash. */

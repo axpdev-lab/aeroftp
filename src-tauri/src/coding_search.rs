@@ -172,9 +172,7 @@ fn normalize_search_path(
         normalize_relative_path(path)?
     };
 
-    let display = relative
-        .to_string_lossy()
-        .replace('\\', "/")
+    let display = crate::sync::normalize_relative_key(&relative.to_string_lossy())
         .trim_matches('/')
         .to_string();
     if display.is_empty() || display == "." {
@@ -421,6 +419,27 @@ mod tests {
         assert!(validate_globs(Some(vec!["bad\0".to_string()])).is_err());
         let too_many: Vec<String> = (0..MAX_GLOBS + 1).map(|i| format!("*.{i}")).collect();
         assert!(validate_globs(Some(too_many)).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_search_uses_the_selected_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir(root.join(r"dir\name")).unwrap();
+        assert_eq!(
+            normalize_search_path(&root, Some(r"dir\name".into())).unwrap(),
+            Some(r"dir\name".into())
+        );
+        assert_eq!(
+            normalize_search_path(
+                &root,
+                Some(root.join(r"dir\name").to_string_lossy().into_owned())
+            )
+            .unwrap(),
+            Some(r"dir\name".into())
+        );
+        assert!(normalize_search_path(&root, Some("../escape".into())).is_err());
     }
 
     #[test]

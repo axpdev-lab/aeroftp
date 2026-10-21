@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { normalizeLocalPath } from '../../utils/localPath';
+import { parentLocalPath } from '../../utils/parentLocalPath';
 import { invoke } from '@tauri-apps/api/core';
 
 /**
@@ -35,23 +37,28 @@ interface LocalEntry {
     is_dir: boolean;
 }
 
-const norm = (p: string): string => p.replace(/\\/g, '/');
+const norm = normalizeLocalPath;
 const stripTrailing = (p: string): string => p.replace(/\/+$/, '') || '/';
 const baseOf = (p: string): string => stripTrailing(p).split('/').pop() || p;
-const parentOf = (p: string): string => {
-    const cut = p.replace(/\/+$/, '').replace(/\/[^/]*$/, '');
-    return cut || '/';
-};
+const parentOf = parentLocalPath;
 
 export async function splitPathsByType(rawPaths: string[]): Promise<SplitPaths> {
     const files: string[] = [];
     const dirs: string[] = [];
-    const paths = rawPaths.map(norm).filter(Boolean);
 
     // Group by parent so we list each containing directory at most once.
     const byParent = new Map<string, string[]>();
-    for (const p of paths) {
-        const parent = parentOf(p);
+    for (const raw of rawPaths.filter(Boolean)) {
+        const p = norm(raw);
+        // Determine the parent before separator adaptation loses native UNC provenance.
+        const parent = parentOf(raw);
+        // A Windows share root, a drive root, and `/` are their own parent.
+        // Listing that path returns its children, so a basename match would
+        // call the selected root a file unless a child reused its name.
+        if (stripTrailing(p) === stripTrailing(parent)) {
+            dirs.push(p);
+            continue;
+        }
         const group = byParent.get(parent);
         if (group) group.push(p);
         else byParent.set(parent, [p]);
@@ -67,7 +74,7 @@ export async function splitPathsByType(rawPaths: string[]): Promise<SplitPaths> 
                 path: parent,
                 showHidden: true,
             });
-            dirNames = new Set(listing.filter((e) => e.is_dir).map((e) => baseOf(norm(e.path))));
+            dirNames = new Set(listing.filter((e) => e.is_dir).map((e) => e.name));
         } catch {
             // Parent unreadable: treat every path in this group as a file.
         }

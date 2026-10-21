@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { isWindowsDriveRoot, parentLocalPath } from './parentLocalPath';
 
 describe('isWindowsDriveRoot', () => {
@@ -15,6 +15,7 @@ describe('isWindowsDriveRoot', () => {
     expect(isWindowsDriveRoot('/home')).toBe(false);
   });
 });
+
 
 describe('parentLocalPath', () => {
   it('returns absolute drive root from first-level folder (Windows bug fix)', () => {
@@ -45,4 +46,22 @@ describe('parentLocalPath', () => {
   it('handles empty', () => {
     expect(parentLocalPath('')).toBe('/');
   });
+});
+
+it('literal_unix_paths parent keeps literal components', () => {
+  expect(parentLocalPath(String.raw`/tmp/dir\name/child`)).toBe(String.raw`/tmp/dir\name`);
+  expect(parentLocalPath(String.raw`/tmp/dir\name`)).toBe('/tmp');
+});
+
+it('keeps UNC share root navigation absolute', () => {
+  expect(parentLocalPath(String.raw`\\server\share\folder`)).toBe('//server/share');
+  expect(parentLocalPath(String.raw`\\server\share`)).toBe('//server/share');
+});
+
+it('keeps separator-adapted UNC share roots on a Windows host', () => {
+  try {
+    vi.stubGlobal('navigator', { platform: 'Win32' });
+    expect(parentLocalPath('//server/share')).toBe('//server/share');
+    expect(parentLocalPath('//server/share/child')).toBe('//server/share');
+  } finally { vi.unstubAllGlobals(); }
 });

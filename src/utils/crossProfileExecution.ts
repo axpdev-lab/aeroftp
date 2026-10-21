@@ -206,11 +206,11 @@ export const runCrossProfileTransfer = async (
  * Join a remote directory path with an entry name without doubling slashes.
  * Mirrors what `cross_profile_plan` would do server-side when recursing into
  * a directory. Keeps a leading slash if the directory already had one and
- * tolerates Windows-flavoured separators surfaced by some providers.
+ * preserves opaque remote names, including literal backslashes.
  */
 export const joinRemotePath = (dir: string, name: string): string => {
-    const sanitizedDir = (dir ?? '').replace(/\\/g, '/').replace(/\/+$/, '');
-    const sanitizedName = (name ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
+    const sanitizedDir = (dir ?? '').replace(/\/+$/, '');
+    const sanitizedName = (name ?? '').replace(/^\/+/, '');
     if (sanitizedDir === '') return `/${sanitizedName}`;
     if (sanitizedDir === '/') return `/${sanitizedName}`;
     return `${sanitizedDir}/${sanitizedName}`;

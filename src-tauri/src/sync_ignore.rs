@@ -163,16 +163,23 @@ impl AeroIgnore {
     /// Whether a `!` rule could re-include a path below the directory
     /// `dir_rel`, so a scan must walk into that directory although it is
     /// excluded: pruning it would hide the re-included file from every side.
-    /// Read conservatively: a negation that is unanchored (it matches in any
-    /// directory) or holds a glob character may match below anything; an
-    /// anchored literal only below its own prefix.
+    /// An unanchored negation, or one that still contains a wildcard after
+    /// escapes are decoded, may match below anything. An anchored literal,
+    /// including a decoded `\\` backslash, only below its own prefix.
     pub fn may_reinclude_below(&self, dir_rel: &str) -> bool {
-        let prefix = format!("{}/", dir_rel.trim_end_matches('/').replace('\\', "/"));
+        let prefix = format!("{}/", dir_rel.trim_end_matches('/'));
         self.rules.iter().any(|rule| {
-            rule.negated
-                && (rule.glob.starts_with("**/")
-                    || rule.glob.contains(['*', '?', '[', '{'])
-                    || rule.glob.starts_with(&prefix))
+            if !rule.negated {
+                return false;
+            }
+            if rule.glob.starts_with("**/") {
+                return true;
+            }
+            match anchored_literal_path(&rule.glob) {
+                Some(literal) => literal.starts_with(&prefix),
+                // A wildcard remains, or a trailing escape cannot be decoded.
+                None => true,
+            }
         })
     }
 
@@ -182,7 +189,8 @@ impl AeroIgnore {
     /// if a path matches both an exclude and a `!` re-include pattern,
     /// the last matching rule in the file determines the outcome.
     pub fn is_ignored(&self, relative_path: &str, is_dir: bool) -> bool {
-        let normalized = relative_path.replace('\\', "/");
+        // Scanners supply slash-joined keys on every host; backslashes are names.
+        let normalized = relative_path;
         let mut ignored = false;
 
         for (i, rule) in self.rules.iter().enumerate() {
@@ -191,7 +199,7 @@ impl AeroIgnore {
                 continue;
             }
 
-            if self.individual_globs[i].is_match(&normalized) {
+            if self.individual_globs[i].is_match(normalized) {
                 ignored = !rule.negated;
             }
         }
@@ -213,14 +221,15 @@ impl AeroIgnore {
 
         // If .aeroignore explicitly re-includes with `!`, that wins
         // Check if the last matching rule was a negation
-        let normalized = relative_path.replace('\\', "/");
+        // Scanners supply slash-joined keys on every host; backslashes are names.
+        let normalized = relative_path;
         let mut last_match_negated = false;
         let mut had_match = false;
         for (i, rule) in self.rules.iter().enumerate() {
             if rule.dir_only && !is_dir {
                 continue;
             }
-            if self.individual_globs[i].is_match(&normalized) {
+            if self.individual_globs[i].is_match(normalized) {
                 last_match_negated = rule.negated;
                 had_match = true;
             }
@@ -239,6 +248,26 @@ impl AeroIgnore {
         // Fall back to the configured exclude list (the shared matcher)
         config_excludes.is_excluded(relative_path)
     }
+}
+
+/// The path an anchored glob names once `\` escapes are applied.
+/// `None` when a wildcard is still present: `*`, `?`, `[` or `{` not
+/// escaped, or a trailing `\`. A literal `*` written as `\*` stays in the
+/// path and does not make the rule match every directory.
+fn anchored_literal_path(glob: &str) -> Option<String> {
+    let mut literal = String::with_capacity(glob.len());
+    let mut chars = glob.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            literal.push(chars.next()?);
+            continue;
+        }
+        if matches!(ch, '*' | '?' | '[' | '{') {
+            return None;
+        }
+        literal.push(ch);
+    }
+    Some(literal)
 }
 
 /// What a scan does with an entry, under the configured list and the sync
@@ -310,6 +339,58 @@ mod tests {
         // An unanchored negation may match below any directory.
         let anywhere = AeroIgnore::parse("!keep.txt").unwrap();
         assert!(anywhere.may_reinclude_below("build"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_ignore_rules_do_not_alias_namespace_components() {
+        let rules = AeroIgnore::parse("/back/slash.txt\n/dir/name\n!/dir/name/keep.txt").unwrap();
+        assert!(rules.is_ignored("back/slash.txt", false));
+        assert!(!rules.is_ignored(r"back\slash.txt", false));
+        assert!(!rules.is_ignored(r"dir\name", true));
+        assert!(!rules.may_reinclude_below(r"dir\name"));
+        assert_eq!(
+            scan_decision(
+                Some(&rules),
+                r"dir\name/leaf\name.txt",
+                false,
+                &crate::sync_exclude::ExcludeMatcher::default()
+            ),
+            ScanDecision::Keep
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_escaped_negation_keeps_children_reachable() {
+        let rules = AeroIgnore::parse("/dir\\\\name/\n!/dir\\\\name/keep.txt").unwrap();
+        let excludes = crate::sync_exclude::ExcludeMatcher::new(&["**"]).unwrap();
+        assert_eq!(
+            scan_decision(Some(&rules), r"dir\name", true, &excludes),
+            ScanDecision::WalkOnly
+        );
+        assert_eq!(
+            scan_decision(Some(&rules), r"dir\name/keep.txt", false, &excludes),
+            ScanDecision::Keep
+        );
+        for path in [r"dir\name/drop.txt", "dir/name/keep.txt"] {
+            assert_eq!(
+                scan_decision(Some(&rules), path, false, &excludes),
+                ScanDecision::Skip
+            );
+        }
+        // The backslash is part of one anchored name. It must not force a
+        // walk of every other excluded directory.
+        assert!(rules.may_reinclude_below(r"dir\name"));
+        assert!(!rules.may_reinclude_below("other"));
+        assert!(!rules.may_reinclude_below("dir"));
+        assert_eq!(
+            scan_decision(Some(&rules), "other", true, &excludes),
+            ScanDecision::Skip
+        );
+        // A real wildcard stays conservative even when the same name is escaped.
+        let wildcard = AeroIgnore::parse("!/dir\\\\name/*.txt").unwrap();
+        assert!(wildcard.may_reinclude_below("other"));
     }
 
     #[test]

@@ -2771,10 +2771,12 @@ fn scan_local_files(
     exclude: &crate::sync_exclude::ExcludeMatcher,
 ) -> (LocalFiles, crate::sync_core::ScanCompleteness) {
     let relative_of = |path: &std::path::Path| {
-        path.strip_prefix(local_path)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/")
+        crate::sync::normalize_relative_key(
+            &path
+                .strip_prefix(local_path)
+                .unwrap_or(path)
+                .to_string_lossy(),
+        )
     };
     let mut files = LocalFiles::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
@@ -3946,6 +3948,30 @@ mod tests {
             protocol: "sftp".to_string(),
             initial_path: None,
             provider_id: None,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_agent_scan_keeps_distinct_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let entries = [
+            (r"back\slash.txt", "literal"),
+            ("back/slash.txt", "nested twin"),
+            (r"dir\name/leaf\name.txt", "literal nested"),
+            ("dir/name/leaf/name.txt", "actual nested twin"),
+        ];
+        for (rel, bytes) in entries {
+            let path = dir.path().join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+        let (files, complete) =
+            scan_local_files(dir.path(), &crate::sync_exclude::ExcludeMatcher::default());
+        assert!(complete.is_complete());
+        assert_eq!(files.len(), 4);
+        for (rel, bytes) in entries {
+            assert_eq!(files[rel].0, bytes.len() as u64);
         }
     }
 

@@ -834,10 +834,9 @@ pub fn scan_local_tree_checked(
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let relative_of = |path: &Path| {
-        path.strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/")
+        crate::sync::normalize_relative_key(
+            &path.strip_prefix(root).unwrap_or(path).to_string_lossy(),
+        )
     };
 
     let mut entries = Vec::new();
@@ -2350,6 +2349,75 @@ pub(crate) mod tests {
 
         assert!(!scan.is_complete(), "a cancelled walk stopped early");
         assert!(scan.truncated);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_shared_scan_keeps_distinct_bytes_and_filters() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        let entries = [
+            (r"back\slash.txt", "literal root filename"),
+            ("back/slash.txt", "real subdirectory"),
+            (r"dir\name/leaf\name.txt", "literal nested filename"),
+            ("dir/name/leaf/name.txt", "real nested directories"),
+        ];
+        for (rel, bytes) in entries {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+
+        let (files, complete, _) =
+            scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
+        assert!(complete.is_complete());
+        let map: std::collections::HashMap<_, _> = files
+            .iter()
+            .map(|e| (e.rel_path.as_str(), e.size))
+            .collect();
+        assert_eq!(map.len(), 4);
+        for (rel, bytes) in entries {
+            assert_eq!(map.get(rel), Some(&(bytes.len() as u64)), "{rel}");
+        }
+        let opts = ScanOptions {
+            max_depth: Some(2),
+            files_from: Some(
+                [entries[0].0.to_string(), entries[2].0.to_string()]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..Default::default()
+        };
+        let (files, _, bounds) = scan_local_tree_checked(root.to_str().unwrap(), &opts);
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().all(|e| e.rel_path.contains('\\')));
+        assert!(!bounds.unseen.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_unix_paths_shared_boundaries_and_dotdot_names_are_native() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret"), b"outside").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join(r"link\name")).unwrap();
+        std::fs::create_dir(dir.path().join(r"dir\name")).unwrap();
+        std::fs::write(dir.path().join(r"dir\name/deep.txt"), b"deep").unwrap();
+        std::fs::write(dir.path().join(r"..\kept"), b"literal").unwrap();
+        let opts = ScanOptions {
+            max_depth: Some(1),
+            ..Default::default()
+        };
+        let (files, complete, bounds) =
+            scan_local_tree_checked(dir.path().to_str().unwrap(), &opts);
+        assert!(complete.truncated);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].rel_path, r"..\kept");
+        assert!(crate::sync::validate_relative_path(&files[0].rel_path).is_ok());
+        assert!(crate::sync::validate_relative_path("../escape").is_err());
+        assert!(bounds.links.iter().any(|e| e.rel_path == r"link\name"));
+        assert!(bounds.unseen.iter().any(|e| e.rel_path == r"dir\name"));
     }
 
     #[test]
