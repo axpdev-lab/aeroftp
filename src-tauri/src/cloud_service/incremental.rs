@@ -682,16 +682,34 @@ impl CloudService {
         let mut locals = HashMap::new();
         let mut remotes = HashMap::new();
         let mut gone_on_both = Vec::new();
+        // Watcher key -> remote spelling, when the baseline names a different
+        // parent than the key the watcher reported. A comparison that still
+        // carries the local spelling is pointed here before the upload.
+        let mut projected: HashMap<String, String> = HashMap::new();
+        // One pass over the baseline. Each watcher path below only looks up.
+        let remote_keys = crate::sync::RemoteKeyIndex::build(&index);
         for (key, local) in &work {
-            // The watcher key is the local spelling. The object may live at
-            // another spelling of the same name.
-            let remote_key = crate::sync::remote_stat_key(key, &index);
+            // The watcher key is the local spelling. A file the baseline
+            // already names is read at that object's spelling. A new child
+            // borrows its parent's. An ambiguous parent is not guessed.
+            let Some(remote_key) = remote_keys.project(key) else {
+                result.skipped += 1;
+                result.skipped_details.push(SkippedEntry {
+                    path: key.clone(),
+                    reason: "this path has no single remote parent spelling; it waits for the next full scan".to_string(),
+                    is_dir: local.as_ref().is_some_and(|info| info.is_dir),
+                });
+                continue;
+            };
+            if remote_key != *key {
+                projected.insert(key.clone(), remote_key.clone());
+            }
             let remote_path = format!("{remote_root}/{remote_key}");
             match remote_state(provider, &remote_path).await {
                 Ok(Some(entry)) => {
                     remotes.insert(
                         remote_key.to_string(),
-                        remote_info(remote_key, &remote_path, &entry),
+                        remote_info(&remote_key, &remote_path, &entry),
                     );
                 }
                 Ok(None) if local.is_none() => gone_on_both.push(key.clone()),
@@ -733,6 +751,25 @@ impl CloudService {
         self.remember_unsettled(Some(&index));
         let mut comparisons =
             build_comparison_results_with_index(locals, remotes, &options, Some(&index));
+        // A new child is absent from the remote inventory, so pairing keeps
+        // the local spelling. The parent projection above is where the bytes
+        // belong. A row that already names another remote path is left as the
+        // classifier paired it.
+        for comparison in &mut comparisons {
+            if comparison.name_match_blocked {
+                continue;
+            }
+            let Some(remote) = projected.get(&comparison.relative_path) else {
+                continue;
+            };
+            let current = comparison
+                .remote_relative_path
+                .as_deref()
+                .unwrap_or(comparison.relative_path.as_str());
+            if current == comparison.relative_path {
+                comparison.remote_relative_path = Some(remote.clone());
+            }
+        }
         if !provider.listing_is_authoritative() {
             for c in &mut comparisons {
                 if c.status == SyncStatus::LocalOnly {
@@ -818,8 +855,12 @@ impl CloudService {
         let mut files = self.post_sync_baseline(&done, &config, Some(&index));
         // Gone on both sides: nothing left to track. The watcher key may be
         // the local spelling while the baseline still holds the remote one.
-        for key in gone_on_both {
-            crate::sync::forget_canonical_index_keys(&mut files, &key);
+        if !gone_on_both.is_empty() {
+            let mut canonical =
+                crate::sync::NfcKeyGroups::from_keys(files.keys().map(String::as_str));
+            for key in gone_on_both {
+                canonical.forget(&mut files, &key);
+            }
         }
         let remote_spellings =
             crate::sync::spellings_after_baseline(&done, Some(&index.remote_spellings), &files);

@@ -369,6 +369,49 @@ const getRetryDelay = (attempt: number, policy: RetryPolicy): number => {
     return Math.min(d, policy.max_delay_ms);
 };
 
+/** Index keys grouped by canonical name. Built once per index merge. */
+const canonicalKeyGroups = (files: Record<string, SyncIndexEntry>): Map<string, string[]> => {
+    const groups = new Map<string, string[]>();
+    for (const key of Object.keys(files)) rememberCanonicalKey(groups, key);
+    return groups;
+};
+
+const rememberCanonicalKey = (groups: Map<string, string[]>, key: string): void => {
+    const nfc = key.normalize('NFC');
+    const group = groups.get(nfc);
+    if (!group) {
+        groups.set(nfc, [key]);
+        return;
+    }
+    if (!group.includes(key)) group.push(key);
+};
+
+/**
+ * Drop every key of this canonical name, and its remote spelling, except
+ * `keep`. The group stays current for the next file in the same merge.
+ */
+const forgetCanonicalKeys = (
+    groups: Map<string, string[]>,
+    files: Record<string, SyncIndexEntry>,
+    spellings: Record<string, string>,
+    nfc: string,
+    keep?: string,
+): void => {
+    const group = groups.get(nfc);
+    if (!group) return;
+    const left: string[] = [];
+    for (const key of group) {
+        if (keep !== undefined && key === keep) {
+            left.push(key);
+            continue;
+        }
+        delete files[key];
+        delete spellings[key];
+    }
+    if (left.length > 0) groups.set(nfc, left);
+    else groups.delete(nfc);
+};
+
 interface TransferOutcome {
     success: boolean;
     attempts: number;
@@ -1183,6 +1226,7 @@ export const runRemoteSync = async (
             const spellings: Record<string, string> = {
                 ...(existing?.remote_spellings ?? {}),
             };
+            const canonical = canonicalKeyGroups(mergedFiles);
             for (const f of files) {
                 const idx = journalEntryMap.get(f.relativePath);
                 const entry = idx !== undefined ? journal.entries[idx] : undefined;
@@ -1224,17 +1268,13 @@ export const runRemoteSync = async (
                         ? f.sourcePath
                         : f.relativePath;
                     const sameName = localRel.normalize('NFC');
-                    for (const key of Object.keys(mergedFiles)) {
-                        if (key !== localRel && key.normalize('NFC') === sameName) {
-                            delete mergedFiles[key];
-                            delete spellings[key];
-                        }
-                    }
+                    forgetCanonicalKeys(canonical, mergedFiles, spellings, sameName, localRel);
                     mergedFiles[localRel] = {
                         size,
                         modified,
                         is_dir: false,
                     };
+                    rememberCanonicalKey(canonical, localRel);
                     // Upload: relativePath is the remote spelling. Download:
                     // sourcePath is. Keep-both fails the NFC test above, so
                     // localRel is the suffixed name and must not record the
@@ -1242,8 +1282,7 @@ export const runRemoteSync = async (
                     const mirrorRemote = f.action === 'upload'
                         ? f.relativePath
                         : (f.sourcePath ?? f.relativePath);
-                    if (localRel.normalize('NFC') === mirrorRemote.normalize('NFC')
-                        && localRel !== mirrorRemote) {
+                    if (sameName === mirrorRemote.normalize('NFC') && localRel !== mirrorRemote) {
                         spellings[localRel] = mirrorRemote;
                     } else {
                         delete spellings[localRel];
@@ -1253,13 +1292,12 @@ export const runRemoteSync = async (
                     // under the other Unicode spelling. Removing only this
                     // path would leave that key, and the next file of the
                     // same canonical name would look previously synced.
-                    const gone = f.relativePath.normalize('NFC');
-                    for (const key of Object.keys(mergedFiles)) {
-                        if (key.normalize('NFC') === gone) {
-                            delete mergedFiles[key];
-                            delete spellings[key];
-                        }
-                    }
+                    forgetCanonicalKeys(
+                        canonical,
+                        mergedFiles,
+                        spellings,
+                        f.relativePath.normalize('NFC'),
+                    );
                 }
             }
             for (const dir of [...dirs.remote, ...dirs.local]) {

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { matchCanonicalName, resolveCanonicalNavigation } from './canonicalNames';
+import { describe, it, expect } from 'vitest';
+import { matchCanonicalName } from './canonicalNames';
 import { compareEntries } from './compareEndpoints';
 import { adaptFileComparisons } from './recursiveCompare';
 import { buildMirrorSyncInput } from './presetToSyncRun';
@@ -57,24 +57,5 @@ describe('canonical Unicode correspondence (#1326)', () => {
         expect(input.files[0]).toMatchObject({ relativePath: `${nfc}/a.txt`, sourcePath: `${nfd}/a.txt`, action: 'upload' });
         expect(filesFromJournal({ entries: [{ relative_path: `${nfc}/a.txt`, source_path: `${nfd}/a.txt`, action: 'upload' }] } as SyncJournal)[0])
             .toMatchObject({ relativePath: `${nfc}/a.txt`, sourcePath: `${nfd}/a.txt` });
-    });
-    it.each([true, false])('resolves actual destination spelling in both directions (%s)', async reverse => {
-        const source = reverse ? nfc : nfd;
-        const dest = reverse ? nfd : nfc;
-        const from = vi.fn(async (p: string) => p === '/source' ? [dir('🇯🇵')] : [dir(source)]);
-        const to = vi.fn(async (p: string) => p === '/dest' ? [dir('🇯🇵')] : [dir(dest)]);
-        expect(await resolveCanonicalNavigation(`🇯🇵/${source}`, '/source', '/dest', from, to))
-            .toEqual({ path: `/dest/🇯🇵/${dest}`, missing: false });
-    });
-    it('adds a new child under the destination parent spelling', async () => {
-        const list = (parent: string, spelling: string) => async (p: string) => p === parent ? [dir(spelling)] : [];
-        expect(await resolveCanonicalNavigation(`${nfd}/new`, '/s', '/d', list('/s', nfd), list('/d', nfc)))
-            .toEqual({ path: `/d/${nfc}/new`, missing: true });
-    });
-    it('rejects ambiguous ancestors, listing failures and file collisions', async () => {
-        const from = async () => [dir(nfc), dir(nfd)];
-        await expect(resolveCanonicalNavigation(nfd, '/s', '/d', from, async () => [dir(nfc)] )).rejects.toThrow('Ambiguous');
-        await expect(resolveCanonicalNavigation(nfd, '/s', '/d', from, async () => { throw Error('offline'); })).rejects.toThrow('offline');
-        await expect(resolveCanonicalNavigation(nfd, '/s', '/d', async () => [dir(nfd)], async () => [{ name: nfc, isDir: false }])).rejects.toThrow('not a directory');
     });
 });

@@ -537,6 +537,100 @@ async fn a_legacy_remote_key_still_points_the_watcher_at_the_remote_object() {
     .await;
 }
 
+/// A new file under a parent whose remote spelling differs must be created
+/// in that remote directory. Statting and uploading the local spelling
+/// would leave a second directory beside the one the baseline already maps.
+#[tokio::test]
+async fn a_new_local_child_is_uploaded_under_the_remote_parent_spelling() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    let parent = "cafe\u{301}";
+    let remote_parent = "café";
+    index.files.insert(
+        parent.to_string(),
+        SyncIndexEntry {
+            size: 0,
+            modified: None,
+            is_dir: true,
+        },
+    );
+    index
+        .remote_spellings
+        .insert(parent.to_string(), remote_parent.to_string());
+    remote
+        .state()
+        .dirs
+        .insert(format!("/remote/{remote_parent}"));
+    let local_key = format!("{parent}/new.txt");
+    std::fs::create_dir_all(root.path().join(parent)).unwrap();
+    std::fs::write(root.path().join(&local_key), b"hello").unwrap();
+
+    let (run, saved) = execute(
+        &config,
+        work(prep(&config, &index, &[&local_key])),
+        &mut remote,
+        None,
+    )
+    .await;
+    let (result, failed) = done(run);
+    assert_eq!(result.uploaded, 1, "{:?}", result.errors);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert!(failed.is_empty());
+    assert_eq!(
+        remote.state().files[&format!("/remote/{remote_parent}/new.txt")].0,
+        b"hello"
+    );
+    assert!(
+        !remote.state().dirs.contains(&format!("/remote/{parent}")),
+        "the pass must not create the local spelling of the parent"
+    );
+    assert_eq!(
+        saved.remote_spellings.get(&local_key).map(String::as_str),
+        Some("café/new.txt")
+    );
+    assert!(saved.files.contains_key(&local_key));
+}
+
+/// Two NFC spellings of the parent are not a guess. The new child waits for
+/// the full scan, which sees both directories, instead of picking one.
+#[tokio::test]
+async fn an_ambiguous_parent_spelling_waits_for_the_full_scan() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    for key in ["café", "cafe\u{301}"] {
+        index.files.insert(
+            key.to_string(),
+            SyncIndexEntry {
+                size: 0,
+                modified: None,
+                is_dir: true,
+            },
+        );
+        remote.state().dirs.insert(format!("/remote/{key}"));
+    }
+    let local_key = "cafe\u{301}/new.txt";
+    std::fs::create_dir_all(root.path().join("cafe\u{301}")).unwrap();
+    std::fs::write(root.path().join(local_key), b"hello").unwrap();
+
+    let (run, saved) = execute(
+        &config,
+        work(prep(&config, &index, &[local_key])),
+        &mut remote,
+        None,
+    )
+    .await;
+    let (result, _) = done(run);
+    assert_eq!(result.uploaded, 0);
+    assert_eq!(result.skipped, 1);
+    assert!(remote.state().files.is_empty());
+    assert!(remote.state().uploads.is_empty());
+    assert!(!saved.files.contains_key(local_key));
+}
+
 /// The `stat` is the conflict check: a remote copy that changed since the
 /// baseline too is a conflict, asked about, never overwritten.
 #[tokio::test]

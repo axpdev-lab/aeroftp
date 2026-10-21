@@ -787,13 +787,15 @@ impl CloudService {
     ) -> HashMap<String, SyncIndexEntry> {
         let mut index_files: HashMap<String, SyncIndexEntry> =
             prior_index.map(|i| i.files.clone()).unwrap_or_default();
+        let mut canonical =
+            crate::sync::NfcKeyGroups::from_keys(index_files.keys().map(String::as_str));
         for c in comparisons {
             if c.name_match_blocked {
                 continue;
             }
             let action = self.resolve_action(config, c);
             if matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote) {
-                crate::sync::forget_canonical_index_keys(&mut index_files, &c.relative_path);
+                canonical.forget(&mut index_files, &c.relative_path);
             } else if let Some(mut entry) = Self::baseline_entry_for(
                 &action,
                 config.sync_direction,
@@ -831,8 +833,9 @@ impl CloudService {
                 // The new key is the local spelling. A legacy remote spelling
                 // of the same name must not stay beside it: the next cycle
                 // would still treat that name as synced under both keys.
-                crate::sync::forget_canonical_index_keys(&mut index_files, &c.relative_path);
+                canonical.forget(&mut index_files, &c.relative_path);
                 index_files.insert(c.relative_path.clone(), entry);
+                canonical.note_inserted(&c.relative_path);
             }
         }
         index_files
@@ -2768,6 +2771,75 @@ mod baseline_tests {
             spellings.get(local_name).map(String::as_str),
             Some(remote_name)
         );
+    }
+
+    /// Send-only, preserving remote files: the local copy is gone and the
+    /// remote-only row is a skip, keyed by the remote spelling. The local key
+    /// stays in the baseline. Its remote spelling has to stay with it, or the
+    /// next recreate stats the local name and uploads a second object.
+    #[test]
+    fn a_skipped_remote_row_keeps_the_local_keys_remote_spelling() {
+        let local_name = "cafe\u{301}.txt";
+        let remote_name = "café.txt";
+        let svc = CloudService::new();
+        let config = cfg(
+            CompareDirection::LocalToRemote,
+            true,
+            ConflictStrategy::AskUser,
+        );
+        let mut prior = SyncIndex::new("/l".to_string(), "/r".to_string());
+        prior.files.insert(
+            local_name.to_string(),
+            SyncIndexEntry {
+                size: 8,
+                modified: Some(DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap()),
+                is_dir: false,
+            },
+        );
+        prior
+            .remote_spellings
+            .insert(local_name.to_string(), remote_name.to_string());
+
+        let mut row = cmp(
+            SyncStatus::RemoteOnly,
+            None,
+            Some(fi(8, 1_700_000_000)),
+            true,
+            false,
+        );
+        row.relative_path = remote_name.to_string();
+        row.remote_relative_path = Some(remote_name.to_string());
+        assert_eq!(svc.resolve_action(&config, &row), SyncAction::Skip);
+
+        let files = svc.post_sync_baseline(std::slice::from_ref(&row), &config, Some(&prior));
+        assert!(files.contains_key(local_name));
+        assert!(!files.contains_key(remote_name));
+        let spellings = crate::sync::spellings_after_baseline(
+            std::slice::from_ref(&row),
+            Some(&prior.remote_spellings),
+            &files,
+        );
+        assert_eq!(
+            spellings.get(local_name).map(String::as_str),
+            Some(remote_name)
+        );
+
+        // A mirror delete of that same row still drops the mapping, because
+        // the local key itself leaves the baseline.
+        let mirror = cfg(
+            CompareDirection::LocalToRemote,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        assert_eq!(svc.resolve_action(&mirror, &row), SyncAction::DeleteRemote);
+        let gone = svc.post_sync_baseline(std::slice::from_ref(&row), &mirror, Some(&prior));
+        assert!(!gone.contains_key(local_name));
+        let dropped = crate::sync::spellings_after_baseline(
+            std::slice::from_ref(&row),
+            Some(&prior.remote_spellings),
+            &gone,
+        );
+        assert!(dropped.is_empty(), "{dropped:?}");
     }
 
     /// Major 1 (re-review of #949): a download recorded the REMOTE side's time
