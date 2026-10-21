@@ -3003,6 +3003,10 @@ pub struct SyncIndexEntry {
     pub is_dir: bool,
 }
 
+/// Marks an upload that never settled. Matching current metadata must not
+/// bypass this baseline: the remote may contain an older or torn send.
+pub(crate) const UNSETTLED_BASELINE: DateTime<Utc> = DateTime::<Utc>::UNIX_EPOCH;
+
 /// Current `SyncIndex` schema version.
 ///
 /// **2 (G111)**: the `files` keys are relative paths written with `/` on every
@@ -3379,6 +3383,12 @@ pub fn classify_with_summary(
 
         // Check if we can use the index for conflict detection
         let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
+            // A key the migration could not vouch for is compared as absent,
+            // here and in `previously_synced` below.
+            let cached = idx
+                .files
+                .get(&path)
+                .filter(|_| !idx.unverified_keys.contains(&path));
             if l.is_dir != r.is_dir {
                 SyncStatus::Conflict
             } else if l.is_dir && r.is_dir {
@@ -3389,27 +3399,24 @@ pub fn classify_with_summary(
                 // the baseline one side always looked changed, and a synced
                 // folder flipped between upload and download every cycle.
                 //
-                // This test comes FIRST, before the index is consulted at all:
-                // a directory needs no baseline to be judged, so asking the
-                // index about one can only produce a wrong answer.
+                // Directory classification takes precedence over the baseline:
+                // a directory needs no file change detection to be judged.
                 SyncStatus::Identical
-            // A key the migration could not vouch for is compared as if absent,
-            // here and in `previously_synced` below.
             } else if options.compare_checksum
                 && compare_file_pair(Some(l), Some(r), options) == SyncStatus::Conflict
             {
                 // A baseline without content hashes cannot override a known
                 // checksum conflict or a requested strict-checksum refusal.
                 SyncStatus::Conflict
-            } else if current_pair_converged(l, r, options) {
+            } else if cached.is_none_or(|entry| entry.modified != Some(UNSETTLED_BASELINE))
+                && current_pair_converged(l, r, options)
+            {
                 // The baseline describes history. It cannot make a positively
                 // equal current pair divergent simply because both changed.
+                // An unsettled upload is different: its baseline deliberately
+                // forces change detection even if size and time now match.
                 SyncStatus::Identical
-            } else if let Some(cached) = idx
-                .files
-                .get(&path)
-                .filter(|_| !idx.unverified_keys.contains(&path))
-            {
+            } else if let Some(cached) = cached {
                 // Honor compare_size: a deferred-size crypt overlay reports
                 // compare_size=false (plaintext local size never equals on-wire
                 // ciphertext size), so size is not a reliable change signal for
@@ -9173,6 +9180,82 @@ mod tests {
             },
             &CompareOptions::default()
         ));
+    }
+
+    #[test]
+    fn compare_convergence_preserves_a_trusted_unsettled_upload_baseline() {
+        let file = FileInfo {
+            checksum: Some("a".repeat(64)),
+            checksum_alg: Some("sha256".into()),
+            ..mk_file_info(
+                "a",
+                7,
+                Some(DateTime::<Utc>::from_timestamp(1_750_000_003, 0).unwrap()),
+            )
+        };
+        let mut index = SyncIndex::new("/l".into(), "/r".into());
+        index.files.insert(
+            "a".into(),
+            SyncIndexEntry {
+                size: file.size,
+                modified: Some(UNSETTLED_BASELINE),
+                is_dir: false,
+            },
+        );
+        let classify = |index: &SyncIndex, options: &CompareOptions| {
+            classify_with_summary(
+                HashMap::from([("a".into(), file.clone())]),
+                HashMap::from([("a".into(), file.clone())]),
+                options,
+                Some(index),
+            )
+        };
+        for (options, expected) in [
+            (CompareOptions::default(), SyncStatus::Conflict),
+            (
+                CompareOptions {
+                    compare_size: false,
+                    ..Default::default()
+                },
+                SyncStatus::Conflict,
+            ),
+            (
+                CompareOptions {
+                    modify_window: ModifyWindow::LEGACY_FTP,
+                    ..Default::default()
+                },
+                // Size-only remote comparison cannot detect a same-size
+                // remote change, but must still see the local edit.
+                SyncStatus::LocalNewer,
+            ),
+            (
+                CompareOptions {
+                    compare_checksum: true,
+                    strict_checksum: true,
+                    ..Default::default()
+                },
+                SyncStatus::Conflict,
+            ),
+        ] {
+            let report = classify(&index, &options);
+            assert_eq!(report.differences.len(), 1);
+            assert_eq!(report.differences[0].status, expected, "{options:?}");
+            assert!(report.differences[0].previously_synced);
+            assert_eq!(report.summary.identical_count, 0);
+        }
+
+        // Migration cannot turn an unverified baseline into an upload marker.
+        index.unverified_keys.insert("a".into());
+        let report = classify(&index, &CompareOptions::default());
+        assert!(report.differences.is_empty());
+        assert_eq!(report.summary.identical_count, 1);
+
+        // A successful resend replaces the marker and can converge normally.
+        index.unverified_keys.clear();
+        index.files.get_mut("a").unwrap().modified = file.modified;
+        let report = classify(&index, &CompareOptions::default());
+        assert!(report.differences.is_empty());
+        assert_eq!(report.summary.identical_count, 1);
     }
 
     #[test]

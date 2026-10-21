@@ -20,7 +20,7 @@ use crate::sync::{
     build_comparison_results_with_index, decide_sync_action, load_sync_index,
     normalize_relative_key, save_sync_index, validate_relative_path, CompareDirection,
     CompareOptions, FileComparison, FileInfo, SyncAction, SyncIndex, SyncIndexEntry, SyncStatus,
-    SYNC_INDEX_VERSION,
+    SYNC_INDEX_VERSION, UNSETTLED_BASELINE,
 };
 // file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};
@@ -296,10 +296,6 @@ const SEND_QUIET_BOUND: std::time::Duration = std::time::Duration::from_secs(10)
 /// now: FAT rounds the last write up to its 2 s field, and a share's clock
 /// can run ahead (on Unix its change time comes from the server too).
 const AHEAD_READ_AS_NOW: std::time::Duration = std::time::Duration::from_secs(2);
-
-/// The baseline time of a file that kept changing while it uploaded: a time
-/// neither side has, so the next cycle reads both as changed, a conflict.
-const UNSETTLED_BASELINE: DateTime<Utc> = DateTime::<Utc>::UNIX_EPOCH;
 
 impl CloudService {
     /// Create a new cloud service
@@ -2941,6 +2937,11 @@ mod baseline_tests {
                 provider.sent.len(),
                 3,
                 "three sends, then it is left ({stat_time:?})"
+            );
+            assert_ne!(
+                provider.sent.last().unwrap(),
+                &std::fs::read(&file).unwrap(),
+                "the remote still holds an older send ({stat_time:?})"
             );
             assert_eq!(
                 baseline.get("f.txt").and_then(|entry| entry.modified),
