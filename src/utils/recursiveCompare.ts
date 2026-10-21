@@ -147,7 +147,7 @@ export const adaptFileComparisons = (
         // mtime are filesystem block metadata, not content, so any compare
         // verdict on them is noise. A file/directory mismatch is a real
         // difference and must not be counted as identical by the summary.
-        if (fc.local_info?.is_dir && fc.remote_info?.is_dir) {
+        if (!fc.name_match_blocked && fc.local_info?.is_dir && fc.remote_info?.is_dir) {
             continue;
         }
 
@@ -155,8 +155,12 @@ export const adaptFileComparisons = (
         const rightInfo = leftIsLocal ? fc.remote_info : fc.local_info;
 
         const row: CompareResultEntry = {
+            baselineKey: fc.baseline_key ?? undefined,
             name: basename(fc.relative_path),
             relativePath: fc.relative_path,
+            leftRelativePath: (leftIsLocal ? fc.local_relative_path : fc.remote_relative_path) ?? undefined,
+            rightRelativePath: (leftIsLocal ? fc.remote_relative_path : fc.local_relative_path) ?? undefined,
+            nameMatchBlocked: fc.name_match_blocked,
             bucket,
             leftIsDir: leftInfo?.is_dir ?? fc.is_dir,
             rightIsDir: rightInfo?.is_dir ?? fc.is_dir,

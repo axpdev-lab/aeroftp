@@ -1657,3 +1657,204 @@ describe('remoteSyncRunner — GAP-10 local-local mode', () => {
             && c.args?.localPath === '/home/u/work/v.txt')).toBe(true);
     });
 });
+
+describe('canonical Unicode paths (#1326)', () => {
+    it('keeps a landed download when a delete retires its old mapped baseline', async () => {
+        const nfc = 'café.txt';
+        const nfd = 'cafe\u0301.txt';
+        let saved: { files: Record<string, { size: number }> } | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2, files: { [nfd]: { size: 8, modified: null, is_dir: false } },
+                remote_spellings: { [nfd]: nfc },
+            }),
+            save_sync_index_cmd: args => { saved = args?.index as typeof saved; },
+        });
+        await runRemoteSync([
+            file(nfd, 'download', { size: 19 }),
+            file(nfc, 'delete-remote', { baselineKey: nfd }),
+        ], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+        expect(saved?.files[nfd]).toMatchObject({ size: 19 });
+    });
+
+    it.each(['upload', 'download', 'delete-local', 'delete-remote'] as const)('preserves an independent exact Unicode twin baseline after %s', async action => {
+        const nfc = 'café.txt';
+        const nfd = 'cafe\u0301.txt';
+        let saved: { files: Record<string, { size: number }> } | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2, last_sync: '2026-05-22T09:00:00Z', local_path: '/home/u/work', remote_path: '/srv/data',
+                files: {
+                    [nfc]: { size: 8, modified: null, is_dir: false },
+                    [nfd]: { size: 19, modified: null, is_dir: false },
+                },
+            }),
+            save_sync_index_cmd: args => { saved = args?.index as typeof saved; },
+        });
+        await runRemoteSync([file(nfc, action, { baselineKey: nfc })], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+        expect(saved?.files[nfd]).toMatchObject({ size: 19 });
+    });
+
+    it.each(['upload', 'download'] as const)('keeps actual paths for %s, backup, verification, journal and index', async action => {
+        const localRel = 'cafe\u0301/a.txt';
+        const remoteRel = 'café/a.txt';
+        const destination = action === 'upload' ? remoteRel : localRel;
+        const source = action === 'upload' ? localRel : remoteRel;
+        const { invoke, calls } = makeInvoke({
+            sync_backup_run_stamp: () => 'stamp',
+            sync_backup_archive_local: () => 'saved',
+            sync_backup_archive_remote: () => 'saved',
+            verify_local_transfer: () => ({ passed: true }),
+        });
+        await runRemoteSync([file(destination, action, { sourcePath: source, baselineKey: 'legacy-key', overwritesExisting: true })],
+            noDirs, baseConfig({ verifyPolicy: 'size_only', versionedBackup: { dir: '.backup' } }), {}, noWaitDeps(invoke, { writeIndex: true }));
+        const transfer = calls.find(c => c.cmd === (action === 'upload' ? 'upload_file' : 'download_file'));
+        expect(transfer?.args?.params).toMatchObject({
+            local_path: `/home/u/work/${localRel}`, remote_path: `/srv/data/${remoteRel}`,
+        });
+        const backup = calls.find(c => c.cmd === (action === 'upload' ? 'sync_backup_archive_remote' : 'sync_backup_archive_local'));
+        expect(backup?.args?.rel).toBe(destination);
+        const journal = lastSavedJournal(calls);
+        expect(journal?.entries[0]).toMatchObject({ relative_path: destination, source_path: source, baseline_key: 'legacy-key' });
+        expect(filesFromJournal(journal!)[0].baselineKey).toBe('legacy-key');
+        if (action === 'download') {
+            expect(calls.find(c => c.cmd === 'verify_local_transfer')?.args?.localPath).toBe(`/home/u/work/${localRel}`);
+        }
+        const index = calls.find(c => c.cmd === 'save_sync_index_cmd');
+        const saved = index?.args?.index as {
+            files: Record<string, unknown>;
+            remote_spellings?: Record<string, string>;
+        };
+        expect(saved?.files[localRel]).toBeDefined();
+        expect(saved?.remote_spellings?.[localRel]).toBe(remoteRel);
+    });
+
+    it('indexes a keep-both upload under the suffixed name and leaves the original key', async () => {
+        let savedIndex: { files?: Record<string, { size: number }> } | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2,
+                last_sync: '2026-05-22T09:00:00Z',
+                local_path: '/home/u/work',
+                remote_path: '/srv/data',
+                files: {
+                    'report.txt': { size: 10, modified: '2026-05-22T09:00:00Z', is_dir: false },
+                },
+            }),
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as { files?: Record<string, { size: number }> };
+            },
+        });
+        await runRemoteSync(
+            [file('report.txt.20260522T143012.bak', 'upload', { sourcePath: 'report.txt', size: 12 })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        expect(savedIndex?.files?.['report.txt']).toMatchObject({ size: 10 });
+        expect(savedIndex?.files?.['report.txt.20260522T143012.bak']).toMatchObject({ size: 12 });
+        const spellings = (savedIndex as { remote_spellings?: Record<string, string> } | undefined)
+            ?.remote_spellings;
+        expect(spellings?.['report.txt.20260522T143012.bak']).toBeUndefined();
+        expect(spellings?.['report.txt']).toBeUndefined();
+    });
+
+    it('drops the proven legacy baseline of a deleted file and leaves other keys', async () => {
+        let savedIndex: { files?: Record<string, { size: number }> } | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2,
+                last_sync: '2026-05-22T09:00:00Z',
+                local_path: '/home/u/work',
+                remote_path: '/srv/data',
+                files: {
+                    'café.txt': { size: 8, modified: '2026-05-22T09:00:00Z', is_dir: false },
+                    'report.txt': { size: 10, modified: '2026-05-22T09:00:00Z', is_dir: false },
+                },
+            }),
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as { files?: Record<string, { size: number }> };
+            },
+        });
+        await runRemoteSync(
+            [file('cafe\u0301.txt', 'delete-local', { baselineKey: 'café.txt' })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        expect(savedIndex?.files?.['café.txt']).toBeUndefined();
+        expect(savedIndex?.files?.['cafe\u0301.txt']).toBeUndefined();
+        expect(savedIndex?.files?.['report.txt']).toMatchObject({ size: 10 });
+    });
+
+    it('drops the stored local key when the delete names the remote spelling', async () => {
+        const localRel = 'cafe\u0301.txt';
+        const remoteRel = 'café.txt';
+        let savedIndex: {
+            files?: Record<string, { size: number }>;
+            remote_spellings?: Record<string, string>;
+        } | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2,
+                last_sync: '2026-05-22T09:00:00Z',
+                local_path: '/home/u/work',
+                remote_path: '/srv/data',
+                files: {
+                    [localRel]: { size: 8, modified: '2026-05-22T09:00:00Z', is_dir: false },
+                    'report.txt': { size: 10, modified: '2026-05-22T09:00:00Z', is_dir: false },
+                },
+                remote_spellings: { [localRel]: remoteRel },
+            }),
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as typeof savedIndex;
+            },
+        });
+        await runRemoteSync(
+            [file(remoteRel, 'delete-remote', { baselineKey: localRel })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        expect(savedIndex?.files?.[localRel]).toBeUndefined();
+        expect(savedIndex?.files?.[remoteRel]).toBeUndefined();
+        expect(savedIndex?.files?.['report.txt']).toMatchObject({ size: 10 });
+        expect(savedIndex?.remote_spellings?.[localRel]).toBeUndefined();
+    });
+
+    it('replaces a legacy remote key when the upload uses the local spelling', async () => {
+        const localRel = 'cafe\u0301.txt';
+        const remoteRel = 'café.txt';
+        let savedIndex: {
+            files?: Record<string, { size: number }>;
+            remote_spellings?: Record<string, string>;
+        } | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2,
+                last_sync: '2026-05-22T09:00:00Z',
+                local_path: '/home/u/work',
+                remote_path: '/srv/data',
+                files: {
+                    [remoteRel]: { size: 8, modified: '2026-05-22T09:00:00Z', is_dir: false },
+                },
+            }),
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as typeof savedIndex;
+            },
+        });
+        await runRemoteSync(
+            [file(remoteRel, 'upload', { sourcePath: localRel, baselineKey: remoteRel, size: 9 })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        expect(savedIndex?.files?.[remoteRel]).toBeUndefined();
+        expect(savedIndex?.files?.[localRel]).toMatchObject({ size: 9 });
+        expect(savedIndex?.remote_spellings?.[localRel]).toBe(remoteRel);
+    });
+});

@@ -45,6 +45,8 @@ import type { ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './util
 import { bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
+import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
+import { cryptSyncBoundaryActive, planProviderSyncMirror, syncMirrorConflictText } from './utils/syncNavigationMirror';
 
 interface DownloadFolderParams {
   remote_path: string;
@@ -1841,23 +1843,16 @@ const App: React.FC = () => {
   const [isSyncPathMismatch, setIsSyncPathMismatch] = useState(false);
   useEffect(() => {
     if (!isSyncNavigation || !syncBasePaths) { setIsSyncPathMismatch(false); return; }
-    const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
 
-    // Compare only relative paths under sync base: base folder names may differ
-    // legitimately (e.g., FTP home "/home/user" vs local "/var/www/html/site.com")
-    // Strip leading "/" from relative portions to handle root-base providers (Zoho "/")
-    // where slicing by "/" (len 1) drops the leading slash but slicing by a longer
-    // base like "/home/user/Cloud" (no trailing /) preserves it.
-    const stripLead = (s: string) => s.startsWith('/') ? s.slice(1) : s;
-    const localRel = norm(currentLocalPath).startsWith(norm(syncBasePaths.local))
-      ? stripLead(norm(currentLocalPath).slice(norm(syncBasePaths.local).length))
-      : null;
-    const remoteRel = norm(currentRemotePath).startsWith(norm(syncBasePaths.remote))
-      ? stripLead(norm(currentRemotePath).slice(norm(syncBasePaths.remote).length))
-      : null;
-    const mismatch = localRel === null || remoteRel === null
-      ? (localRel !== null || remoteRel !== null) // one navigated outside base, other didn't
-      : localRel !== remoteRel;
+    // Compare only the suffix under each sync base. The base folder names may
+    // differ (FTP home versus a local site root). Canonical equality is display
+    // only and never chooses a transfer or a navigation target. A sibling such
+    // as /base-other stays outside the base.
+    const localSegs = relativeSyncSegments(currentLocalPath, syncBasePaths.local);
+    const remoteSegs = relativeSyncSegments(currentRemotePath, syncBasePaths.remote);
+    const mismatch = (localSegs === null) !== (remoteSegs === null)
+      || (localSegs !== null && remoteSegs !== null
+        && !canonicalSyncSuffixEqual(localSegs.join('/'), remoteSegs.join('/')));
 
     // Clear immediately, but delay showing the warning to avoid flash during sync nav
     if (!mismatch) { setIsSyncPathMismatch(false); return; }
@@ -9379,27 +9374,62 @@ const App: React.FC = () => {
       setRemoteSearchResults(null);
       humanLog.logNavigate(response.current_path, true);
 
-      // Navigation Sync: mirror to local panel if enabled
+      // Navigation Sync: mirror to local panel if enabled.
+      // Plain SFTP resolves each side's real spelling. FTP and any crypt
+      // namespace keep the previous string join until their listing contract
+      // is validated. This mirror keeps the remote navigation's navId.
       if (isSyncNavigation && syncBasePaths) {
-        const relativePath = response.current_path.startsWith(syncBasePaths.remote)
-          ? response.current_path.slice(syncBasePaths.remote.length)
-          : '';
-        // Join paths avoiding double slashes
-        const basePath = syncBasePaths.local.endsWith('/') ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local;
-        const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
-        const newLocalPath = (relativePath ? basePath + relPath : basePath) || '/';
-        // Check if local path exists
+        const cryptActive = cryptSyncBoundaryActive({
+          aeroVaultSessionId: aeroVaultOverlaySession?.sessionId,
+          rcloneCryptVaultId,
+          aeroCryptVaultId,
+          providerOverlayBound: !!rawActiveCryptOverlay(),
+        });
         try {
+          const action = await planProviderSyncMirror({
+            protocol,
+            cryptActive,
+            direction: 'remote-to-local',
+            sourcePath: response.current_path,
+            sourceBase: syncBasePaths.remote,
+            destBase: syncBasePaths.local,
+            invoke: (command, args) => invoke(command, args),
+            isCurrent: () => navId === remoteNavCounter.current,
+          });
           if (navId !== remoteNavCounter.current) return null;
-          const files: LocalFile[] = await invoke('get_local_files', { path: newLocalPath, showHidden: showHiddenFiles });
+          if (action.kind === 'legacy') {
+            const relativePath = response.current_path.startsWith(syncBasePaths.remote)
+              ? response.current_path.slice(syncBasePaths.remote.length)
+              : '';
+            const basePath = syncBasePaths.local.endsWith('/') ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local;
+            const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
+            const newLocalPath = (relativePath ? basePath + relPath : basePath) || '/';
+            try {
+              const files: LocalFile[] = await invoke('get_local_files', { path: newLocalPath, showHidden: showHiddenFiles });
+              if (navId !== remoteNavCounter.current) return null;
+              setLocalFiles(files);
+              setCurrentLocalPath(newLocalPath);
+              setSelectedLocalFiles(new Set());
+            } catch {
+              if (navId !== remoteNavCounter.current) return null;
+              setSyncNavDialog({ missingPath: newLocalPath, isRemote: false, targetPath: newLocalPath });
+            }
+          } else if (action.kind === 'navigate') {
+            const files: LocalFile[] = await invoke('get_local_files', { path: action.path, showHidden: showHiddenFiles });
+            if (navId !== remoteNavCounter.current) return null;
+            setLocalFiles(files);
+            setCurrentLocalPath(action.path);
+            setSelectedLocalFiles(new Set());
+          } else if (action.kind === 'missing') {
+            setSyncNavDialog({ missingPath: action.path, isRemote: false, targetPath: action.path });
+          } else if (action.kind === 'conflict') {
+            notify.error(t('cloud.conflict'), syncMirrorConflictText(action.path, action.candidates));
+          }
+        } catch (mirrorError) {
           if (navId !== remoteNavCounter.current) return null;
-          setLocalFiles(files);
-          setCurrentLocalPath(newLocalPath);
-          setSelectedLocalFiles(new Set());
-        } catch {
-          // Local directory doesn't exist - show dialog
-          if (navId !== remoteNavCounter.current) return null;
-          setSyncNavDialog({ missingPath: newLocalPath, isRemote: false, targetPath: newLocalPath });
+          if (!isListingCancelled(mirrorError)) {
+            notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(mirrorError) }));
+          }
         }
       }
       return (response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path;
@@ -9581,41 +9611,77 @@ const App: React.FC = () => {
         });
     }
 
-    // Navigation Sync: mirror to remote panel if enabled
+    // Navigation Sync: mirror to remote panel if enabled.
+    // Plain SFTP asks both inventories and then changes to the destination's
+    // own spelling. A listing failure is not a missing folder. FTP and crypt
+    // keep the previous join. The mirror shares remoteNavCounter and owns the
+    // spinner, or a superseded navigation would leave it running.
     if (isSyncNavigation && syncBasePaths && isConnected) {
       const protocol = (liveConnectionParams.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
-
-      const relativePath = path.startsWith(syncBasePaths.local)
-        ? path.slice(syncBasePaths.local.length)
-        : '';
-      // Join paths avoiding double slashes
-      const basePath = syncBasePaths.remote.endsWith('/') ? syncBasePaths.remote.slice(0, -1) : syncBasePaths.remote;
-      const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
-      const newRemotePath = (relativePath ? basePath + relPath : basePath) || '/';
-
-      // Check if remote path exists. This sync-mirror shares remoteNavCounter, so
-      // it must also drive the spinner: otherwise, when it supersedes an in-flight
-      // navigation, that nav would no longer be the latest and would never clear
-      // the spinner, leaving it stuck. Set on entry, clear in finally when latest.
+      const cryptActive = cryptSyncBoundaryActive({
+        aeroVaultSessionId: aeroVaultOverlaySession?.sessionId,
+        rcloneCryptVaultId,
+        aeroCryptVaultId,
+        providerOverlayBound: !!rawActiveCryptOverlay(),
+      });
       const navId = ++remoteNavCounter.current;
       setRemoteListLoading(true);
-      setRemoteListReason(listingReason(newRemotePath));
+      setRemoteListReason(listingReason(path));
       try {
-        const response: FileListResponse = isProvider
-          ? await invoke('provider_change_dir', { path: newRemotePath })
-          : await invoke('change_directory', { path: newRemotePath });
+        const action = await planProviderSyncMirror({
+          protocol,
+          cryptActive,
+          direction: 'local-to-remote',
+          sourcePath: path,
+          sourceBase: syncBasePaths.local,
+          destBase: syncBasePaths.remote,
+          invoke: (command, args) => invoke(command, args),
+          isCurrent: () => navId === remoteNavCounter.current,
+        });
         if (navId !== remoteNavCounter.current) return null;
-        setRemoteFiles(response.files);
-        setCurrentRemotePath(response.current_path);
-        setSelectedRemoteFiles(new Set());
-        setRemoteSearchResults(null);
-      } catch {
-        // Remote directory doesn't exist - show dialog
+        if (action.kind === 'legacy') {
+          const relativePath = path.startsWith(syncBasePaths.local)
+            ? path.slice(syncBasePaths.local.length)
+            : '';
+          const basePath = syncBasePaths.remote.endsWith('/') ? syncBasePaths.remote.slice(0, -1) : syncBasePaths.remote;
+          const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
+          const newRemotePath = (relativePath ? basePath + relPath : basePath) || '/';
+          try {
+            const response: FileListResponse = isProvider
+              ? await invoke('provider_change_dir', { path: newRemotePath })
+              : await invoke('change_directory', { path: newRemotePath });
+            if (navId !== remoteNavCounter.current) return null;
+            setRemoteFiles(response.files);
+            setCurrentRemotePath(response.current_path);
+            setSelectedRemoteFiles(new Set());
+            setRemoteSearchResults(null);
+          } catch {
+            if (navId !== remoteNavCounter.current) return null;
+            setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
+          }
+        } else if (action.kind === 'navigate') {
+          const response: FileListResponse = await invoke('provider_change_dir', { path: action.path });
+          if (navId !== remoteNavCounter.current) return null;
+          setRemoteFiles(response.files);
+          setCurrentRemotePath(response.current_path);
+          setSelectedRemoteFiles(new Set());
+          setRemoteSearchResults(null);
+        } else if (action.kind === 'missing') {
+          setSyncNavDialog({ missingPath: action.path, isRemote: true, targetPath: action.path });
+        } else if (action.kind === 'conflict') {
+          notify.error(t('cloud.conflict'), syncMirrorConflictText(action.path, action.candidates));
+        }
+      } catch (mirrorError) {
         if (navId !== remoteNavCounter.current) return null;
-        setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
+        if (!isListingCancelled(mirrorError)) {
+          notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(mirrorError) }));
+        }
       } finally {
-        if (navId === remoteNavCounter.current) setRemoteListLoading(false);
+        if (navId === remoteNavCounter.current) {
+          setRemoteListLoading(false);
+          setRemoteListReason(null);
+        }
       }
     }
     return path;

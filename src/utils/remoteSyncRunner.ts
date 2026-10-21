@@ -78,6 +78,8 @@ export function readEmptyDirAnswer(answer: unknown): { outcome: 'removed' } | { 
  * way.
  */
 export interface SyncRunFile {
+    /** Exact index entry this operation supersedes; retained across resume. */
+    baselineKey?: string;
     relativePath: string;
     action: SyncRunAction;
     /** Source-side size in bytes (best-effort; 0 when unknown). */
@@ -99,12 +101,9 @@ export interface SyncRunFile {
      */
     isDir?: boolean;
     /**
-     * GAP-7: keep-both rename. When set, the runner reads the source from
-     * `sourcePath` and writes to `relativePath` (the suffixed destination),
-     * so a conflict can be resolved by copying the source side under a
-     * timestamped name without overwriting the existing destination copy.
-     * Undefined for every normal entry, where source and destination share
-     * `relativePath`.
+     * Actual source spelling when it differs from the destination, including
+     * canonical Unicode counterparts and keep-both renames. Persisted in the
+     * journal so resumed transfers address the same source.
      */
     sourcePath?: string;
     /** Remote/source SHA-256 when available; needed for EC verify/repair. */
@@ -304,6 +303,8 @@ export const filesFromJournal = (journal: SyncJournal): SyncRunFile[] =>
         .filter((e) => e.action === 'upload' || e.action === 'download')
         .map((e) => ({
             relativePath: e.relative_path,
+            ...(e.source_path ? { sourcePath: e.source_path } : {}),
+            ...(e.baseline_key ? { baselineKey: e.baseline_key } : {}),
             action: (e.action === 'upload' ? 'upload' : 'download') as SyncRunAction,
             size: e.bytes_transferred || 0,
             mtime: null,
@@ -637,6 +638,8 @@ export const runRemoteSync = async (
         verify_policy: config.verifyPolicy,
         entries: files.map<SyncJournalEntry>((f) => ({
             relative_path: f.relativePath,
+            source_path: f.sourcePath ?? null,
+            ...(f.baselineKey != null ? { baseline_key: f.baselineKey } : {}),
             action: journalAction(f.action),
             status: 'pending',
             attempts: 0,
@@ -934,7 +937,7 @@ export const runRemoteSync = async (
                         const ecResult = await invoke<SyncEcCommandResult>('sync_ec_verify_repair', {
                             localPath: localFilePath,
                             remotePath: remoteFilePath,
-                            relativePath: item.relativePath,
+                            relativePath: srcRel,
                             expectedSha256: item.expectedSha256 ?? null,
                             expectedMtime: item.mtime || undefined,
                             isProvider: config.isProvider,
@@ -1181,6 +1184,25 @@ export const runRemoteSync = async (
             const mergedFiles: Record<string, SyncIndexEntry> = {
                 ...(existing?.files ?? {}),
             };
+            const spellings: Record<string, string> = {
+                ...(existing?.remote_spellings ?? {}),
+            };
+            // Retire prior identities before inserting landed files: a
+            // download may reuse the local name of a deleted mapped object.
+            for (const f of files) {
+                const idx = journalEntryMap.get(f.relativePath);
+                const entry = idx !== undefined ? journal.entries[idx] : undefined;
+                if (entry?.status !== 'completed') continue;
+                const baselineKey = f.baselineKey ?? entry.baseline_key;
+                if (f.action === 'delete-local' || f.action === 'delete-remote') {
+                    const key = baselineKey ?? f.relativePath;
+                    delete mergedFiles[key];
+                    delete spellings[key];
+                } else if (baselineKey != null) {
+                    delete mergedFiles[baselineKey];
+                    delete spellings[baselineKey];
+                }
+            }
             for (const f of files) {
                 const idx = journalEntryMap.get(f.relativePath);
                 const entry = idx !== undefined ? journal.entries[idx] : undefined;
@@ -1210,18 +1232,42 @@ export const runRemoteSync = async (
                             size = entry.local_size ?? f.size;
                         }
                     }
-                    mergedFiles[f.relativePath] = {
+                    // A canonical upload carries the local spelling in sourcePath
+                    // and the remote spelling in relativePath. Those two are
+                    // the same name, so the index keeps the local spelling. A
+                    // keep-both upload also sets sourcePath, but relativePath
+                    // is a new suffixed file: indexing the source would mark
+                    // the still-divergent original as synced.
+                    const localRel = f.action === 'upload'
+                        && f.sourcePath != null
+                        && f.sourcePath.normalize('NFC') === f.relativePath.normalize('NFC')
+                        ? f.sourcePath
+                        : f.relativePath;
+                    const sameName = localRel.normalize('NFC');
+                    mergedFiles[localRel] = {
                         size,
                         modified,
                         is_dir: false,
                     };
-                } else {
-                    // A successful delete removes the entry from the index.
-                    delete mergedFiles[f.relativePath];
+                    // Upload: relativePath is the remote spelling. Download:
+                    // sourcePath is. Keep-both fails the NFC test above, so
+                    // localRel is the suffixed name and must not record the
+                    // original as its remote path.
+                    const mirrorRemote = f.action === 'upload'
+                        ? f.relativePath
+                        : (f.sourcePath ?? f.relativePath);
+                    if (sameName === mirrorRemote.normalize('NFC') && localRel !== mirrorRemote) {
+                        spellings[localRel] = mirrorRemote;
+                    } else {
+                        delete spellings[localRel];
+                    }
                 }
             }
             for (const dir of [...dirs.remote, ...dirs.local]) {
                 mergedFiles[dir] = { size: 0, modified: null, is_dir: true };
+            }
+            for (const key of Object.keys(spellings)) {
+                if (!(key in mergedFiles)) delete spellings[key];
             }
             const index: SyncIndex = {
                 // G111: keep in step with SYNC_INDEX_VERSION in src-tauri/src/sync.rs.
@@ -1232,6 +1278,7 @@ export const runRemoteSync = async (
                 local_path: localBase,
                 remote_path: remoteBase,
                 files: mergedFiles,
+                ...(Object.keys(spellings).length > 0 ? { remote_spellings: spellings } : {}),
             };
             await invoke('save_sync_index_cmd', { index });
         } catch {

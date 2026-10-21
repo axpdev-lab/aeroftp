@@ -379,6 +379,8 @@ mod tests {
             VerifyPolicy::SizeOnly,
         );
         journal.entries.push(SyncJournalEntry {
+            baseline_key: None,
+            source_path: None,
             relative_path: "a.txt".to_string(),
             action: "upload".to_string(),
             status: JournalEntryStatus::Pending,
@@ -391,6 +393,8 @@ mod tests {
             local_modified: None,
         });
         journal.entries.push(SyncJournalEntry {
+            baseline_key: None,
+            source_path: None,
             relative_path: "b.txt".to_string(),
             action: "download".to_string(),
             status: JournalEntryStatus::Pending,
