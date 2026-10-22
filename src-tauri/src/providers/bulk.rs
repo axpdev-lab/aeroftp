@@ -98,6 +98,35 @@ pub fn remote_parent(path: &str) -> Option<&str> {
     Some(if parent.is_empty() { "/" } else { parent })
 }
 
+/// Whether the caller runs its single-file path once for this outcome: an
+/// item that never reached the wire, or one the transport failed in a way a
+/// second try can answer differently. Every other failure is final, also a
+/// download whose size is not the claimed one: the single-file path must not
+/// become a way around a bulk check.
+pub fn goes_back_to_single_file(outcome: &BulkTransferOutcome) -> bool {
+    match outcome {
+        BulkTransferOutcome::NotAttempted(_) => true,
+        BulkTransferOutcome::Failed(error) => {
+            let failure = crate::transfer_multipart::transfer_failure_from_provider(error, None);
+            failure.retryable && transport_is_transient(failure.kind)
+        }
+        BulkTransferOutcome::Completed | BulkTransferOutcome::Uncertain(_) => false,
+    }
+}
+
+fn transport_is_transient(kind: crate::transfer_domain::TransferFailureKind) -> bool {
+    use crate::transfer_domain::TransferFailureKind as Kind;
+    matches!(
+        kind,
+        Kind::RateLimited
+            | Kind::ServiceUnavailable
+            | Kind::Timeout
+            | Kind::ConnectionLost
+            | Kind::ConnectionReset
+            | Kind::MaxConnections
+    )
+}
+
 pub fn uncertain_items(count: usize, message: &str) -> Vec<BulkTransferOutcome> {
     (0..count)
         .map(|_| BulkTransferOutcome::Uncertain(message.to_string()))

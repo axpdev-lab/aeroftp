@@ -188,15 +188,14 @@ pub(crate) fn settle_bulk_outcome(
     outcome: BulkTransferOutcome,
     local_path: &str,
 ) -> BulkSettlement {
+    if goes_back_to_single_file(&outcome) {
+        return BulkSettlement::SingleFile;
+    }
     match outcome {
         BulkTransferOutcome::Completed => BulkSettlement::Done,
-        BulkTransferOutcome::NotAttempted(_) => BulkSettlement::SingleFile,
         BulkTransferOutcome::Failed(error) => {
             let mut failure =
                 crate::transfer_multipart::transfer_failure_from_provider(&error, Some(local_path));
-            if failure.retryable {
-                return BulkSettlement::SingleFile;
-            }
             failure.retryable = false;
             BulkSettlement::Failed(failure)
         }
@@ -206,6 +205,7 @@ pub(crate) fn settle_bulk_outcome(
             message,
             false,
         )),
+        BulkTransferOutcome::NotAttempted(_) => BulkSettlement::SingleFile,
     }
 }
 

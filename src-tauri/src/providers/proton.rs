@@ -120,6 +120,26 @@ pub struct ProtonCliProvider {
     current_path: String,
     account_email: Option<String>,
     binary: String,
+    /// Claimed sizes, from the fresh listing of the latest bulk download, of
+    /// the files that bulk handed back to the single-file path, by absolute
+    /// remote path. The single-file `download` holds such a file to the same
+    /// size; an entry stays for every retry, goes once the file is
+    /// published, and expires after [`BULK_CLAIMED_SIZE_TTL`].
+    bulk_claimed_sizes: std::collections::HashMap<String, (u64, std::time::Instant)>,
+}
+
+/// How long a claimed size from a bulk's listing still describes the file a
+/// single-file retry downloads.
+const BULK_CLAIMED_SIZE_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// A staged download whose size is not the one its uploader claimed.
+fn claimed_size_mismatch(name: &str, claimed: u64, actual: u64) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!(
+            "{name}: downloaded {actual} bytes, but its uploader claimed {claimed}; not published"
+        ),
+    )
 }
 
 impl ProtonCliProvider {
@@ -223,6 +243,38 @@ impl ProtonCliProvider {
         items: &[BulkTransferItem],
         upload: bool,
         progress: Option<BulkProgress>,
+    ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
+        let mut claimed = std::collections::HashMap::new();
+        let outcomes = self
+            .transfer_bulk_once(items, upload, progress, &mut claimed)
+            .await?;
+        if !upload {
+            // Only what goes back to the single-file path is held to the
+            // listing's claimed size there: a file this bulk published, or
+            // failed for good, keeps the ordinary single-file download.
+            let now = std::time::Instant::now();
+            self.bulk_claimed_sizes = items
+                .iter()
+                .zip(&outcomes)
+                .filter(|(_, outcome)| super::bulk::goes_back_to_single_file(outcome))
+                .filter_map(|(item, _)| {
+                    let remote = self.resolve_path(&item.remote_path);
+                    let size = *claimed.get(&remote)?;
+                    Some((remote, (size, now)))
+                })
+                .collect();
+        }
+        Ok(outcomes)
+    }
+
+    /// One bulk; `claimed` receives the listed claimed sizes of its items by
+    /// absolute remote path.
+    async fn transfer_bulk_once(
+        &mut self,
+        items: &[BulkTransferItem],
+        upload: bool,
+        progress: Option<BulkProgress>,
+        claimed: &mut std::collections::HashMap<String, u64>,
     ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
         if items.is_empty() {
             return Ok(Vec::new());
@@ -355,7 +407,7 @@ impl ProtonCliProvider {
         args.extend(if upload {
             locals
         } else {
-            let (sources, claimed) = self
+            let (sources, claimed_by_name) = self
                 .bulk_download_sources(
                     &remotes,
                     staging
@@ -366,7 +418,16 @@ impl ProtonCliProvider {
                         .len(),
                 )
                 .await;
-            claimed_sizes = claimed;
+            let listed_parent = parent_of(&remotes[0]);
+            for item in items {
+                let remote = self.resolve_path(&item.remote_path);
+                if parent_of(&remote) == listed_parent {
+                    if let Some(&size) = claimed_by_name.get(&basename(&remote)) {
+                        claimed.insert(remote, size);
+                    }
+                }
+            }
+            claimed_sizes = claimed_by_name;
             sources
         });
         args.push(if let Some(dir) = staging.as_ref() {
@@ -420,8 +481,10 @@ impl ProtonCliProvider {
                                 .get(&name)
                                 .is_some_and(|&claimed| claimed != metadata.len()) =>
                     {
-                        Err(std::io::Error::other(
-                            "The downloaded size differs from the size its uploader claimed",
+                        Err(claimed_size_mismatch(
+                            &name,
+                            claimed_sizes[&name],
+                            metadata.len(),
                         ))
                     }
                     Ok(metadata) if metadata.is_file() => {
@@ -461,6 +524,7 @@ impl ProtonCliProvider {
             current_path: "/".to_string(),
             account_email: None,
             binary,
+            bulk_claimed_sizes: std::collections::HashMap::new(),
         }
     }
 
@@ -1574,6 +1638,13 @@ impl StorageProvider for ProtonCliProvider {
         tokio::fs::create_dir_all(&anchor)
             .await
             .map_err(ProviderError::IoError)?;
+        // A file a bulk handed back is held to the size its fresh listing
+        // claimed, as the bulk would have held it.
+        let claimed = self
+            .bulk_claimed_sizes
+            .get(&remote)
+            .filter(|(_, listed)| listed.elapsed() < BULK_CLAIMED_SIZE_TTL)
+            .map(|(size, _)| *size);
         let temp_dir = anchor.join(format!(".aeroftp-proton-dl-{}", uuid::Uuid::new_v4()));
         tokio::fs::create_dir_all(&temp_dir)
             .await
@@ -1614,6 +1685,19 @@ impl StorageProvider for ProtonCliProvider {
                         .map_err(ProviderError::IoError)?;
                 }
             }
+            if let Some(claimed) = claimed {
+                let actual = tokio::fs::metadata(&downloaded)
+                    .await
+                    .map_err(ProviderError::IoError)?
+                    .len();
+                if actual != claimed {
+                    return Err(ProviderError::IoError(claimed_size_mismatch(
+                        &remote_name,
+                        claimed,
+                        actual,
+                    )));
+                }
+            }
             if final_path.exists() {
                 let _ = tokio::fs::remove_file(&final_path).await;
             }
@@ -1625,6 +1709,8 @@ impl StorageProvider for ProtonCliProvider {
         .await;
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;
         result?;
+        // Published: the bulk's expectation for this file is spent.
+        self.bulk_claimed_sizes.remove(&remote);
 
         if let Some(ref cb) = on_progress {
             match std::fs::metadata(&final_path) {
@@ -2104,6 +2190,8 @@ impl StorageProvider for ProtonCliProvider {
             current_path: self.current_path.clone(),
             account_email: self.account_email.clone(),
             binary: self.binary.clone(),
+            // A listing clone downloads nothing.
+            bulk_claimed_sizes: std::collections::HashMap::new(),
         }))
     }
 }
@@ -2658,6 +2746,173 @@ mod cli_sequence_tests {
         assert!(Path::new(&items[0].local_path).exists());
         assert!(!Path::new(&items[1].local_path).exists());
         assert!(Path::new(&items[2].local_path).exists());
+    }
+
+    /// Writes the listing of `/my-files/bulk` and the UID map the shim needs:
+    /// `same.txt` claims the 14 bytes the shim writes, `other.txt` claims 999.
+    fn claimed_listing(dir: &Path) {
+        let uid = |c: char| format!("{}~{}", "A".repeat(22), c.to_string().repeat(22));
+        std::fs::write(
+            dir.join("my-files_bulk.json"),
+            serde_json::to_vec(&serde_json::json!([
+                {"name":{"ok":true,"value":"same.txt"},"uid":uid('B'),"type":"file","activeRevision":{"claimedSize":14}},
+                {"name":{"ok":true,"value":"other.txt"},"uid":uid('C'),"type":"file","activeRevision":{"claimedSize":999}}
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        let map: std::collections::HashMap<_, _> =
+            [(uid('B'), "same.txt"), (uid('C'), "other.txt")]
+                .into_iter()
+                .collect();
+        std::fs::write(
+            dir.join("uid-name-map.json"),
+            serde_json::to_vec(&map).unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// CodeRabbit on #1334: a claimed-size mismatch was a retryable local IO
+    /// error, so the generic layer sent the file to the single-file path,
+    /// which published it unchecked. It is final in the bulk now.
+    #[tokio::test]
+    async fn bulk_claimed_size_mismatch_is_final_and_never_reaches_the_single_file_path() {
+        use crate::provider_transfer_executor::{
+            resolve_provider_transfer_runtime, ProviderDownloadExecutor,
+        };
+        use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+        use crate::transfer_event_sink::{NoopTransferSink, TransferEventSink};
+        use crate::transfer_orchestrator::{execute_batch, TransferBatch};
+        use std::sync::{atomic::AtomicBool, Arc};
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        claimed_listing(dir.path());
+        let out = dir.path().join("out");
+        let provider: Arc<tokio::sync::Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(tokio::sync::Mutex::new(Some(Box::new(provider(&shim)))));
+        let (settings, model, caps) =
+            resolve_provider_transfer_runtime(&provider, Default::default()).await;
+        let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+        let result = execute_batch(
+            Arc::clone(&sink),
+            TransferBatch {
+                id: "bulk-claimed".into(),
+                display_name: "Bulk".into(),
+                direction: TransferDirection::Download,
+                config: TransferBatchConfig {
+                    max_concurrent: 1,
+                    ..Default::default()
+                },
+                entries: ["same.txt", "other.txt"]
+                    .iter()
+                    .map(|name| TransferEntry {
+                        id: name.to_string(),
+                        display_name: name.to_string(),
+                        local_path: out.join(name).to_string_lossy().into_owned(),
+                        remote_path: format!("/my-files/bulk/{name}"),
+                        size: 1234,
+                        modified: None,
+                    })
+                    .collect(),
+            },
+            Arc::new(ProviderDownloadExecutor::new(
+                sink,
+                provider,
+                settings,
+                tokio_util::sync::CancellationToken::new(),
+                model,
+                caps,
+            )),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!((result.completed, result.failed), (1, 1));
+        assert_eq!(verbs(&read_argv(dir.path()), "download").len(), 1);
+        assert!(out.join("same.txt").exists());
+        assert!(!out.join("other.txt").exists());
+    }
+
+    /// A file a bulk handed back (here: a run that proved nothing, zero
+    /// counters and exit 1) is downloaded alone and held to the claimed size
+    /// of the bulk's listing, on every attempt, until it is published.
+    #[tokio::test]
+    async fn single_file_download_holds_a_handed_back_file_to_its_claimed_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        claimed_listing(dir.path());
+        std::fs::write(
+            dir.path().join("bulk-summary-once.json"),
+            r#"{"transferredItems":0,"skippedItems":0,"failedItems":0,"failures":[]}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("transfer-exit-1"), "").unwrap();
+        let out = dir.path().join("out");
+        let item = |name: &str| BulkTransferItem {
+            local_path: out.join(name).to_string_lossy().into_owned(),
+            remote_path: format!("/my-files/bulk/{name}"),
+            size: 1234,
+        };
+        let mut p = provider(&shim);
+        let results = p
+            .download_bulk(&[item("same.txt"), item("other.txt")], None)
+            .await
+            .unwrap();
+        assert!(results
+            .iter()
+            .all(|r| matches!(r, BulkTransferOutcome::NotAttempted(_))));
+        let other = out.join("other.txt");
+        for _attempt in 0..2 {
+            assert!(p
+                .download("/my-files/bulk/other.txt", other.to_str().unwrap(), None)
+                .await
+                .is_err());
+            assert!(!other.exists());
+        }
+        let same = out.join("same.txt");
+        p.download("/my-files/bulk/same.txt", same.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert!(same.exists());
+        assert!(!p.bulk_claimed_sizes.contains_key("/my-files/bulk/same.txt"));
+        assert!(p
+            .bulk_claimed_sizes
+            .contains_key("/my-files/bulk/other.txt"));
+    }
+
+    /// Only what a bulk hands back is held to its listing. A file it
+    /// published, or failed for good, keeps the ordinary single-file
+    /// download, which compares nothing: the listing may be stale by then.
+    #[tokio::test]
+    async fn single_file_download_of_a_file_the_bulk_settled_is_not_compared() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        claimed_listing(dir.path());
+        let out = dir.path().join("out");
+        let item = |name: &str| BulkTransferItem {
+            local_path: out.join(name).to_string_lossy().into_owned(),
+            remote_path: format!("/my-files/bulk/{name}"),
+            size: 1234,
+        };
+        let mut p = provider(&shim);
+        let results = p
+            .download_bulk(&[item("same.txt"), item("other.txt")], None)
+            .await
+            .unwrap();
+        assert!(matches!(results[0], BulkTransferOutcome::Completed));
+        assert!(matches!(results[1], BulkTransferOutcome::Failed(_)));
+        assert!(p.bulk_claimed_sizes.is_empty());
+        for name in ["same.txt", "other.txt"] {
+            let target = dir.path().join("again").join(name);
+            p.download(
+                &format!("/my-files/bulk/{name}"),
+                target.to_str().unwrap(),
+                None,
+            )
+            .await
+            .unwrap();
+            assert!(target.exists());
+        }
     }
 
     /// The CLI resolves every source before it transfers anything; one that
