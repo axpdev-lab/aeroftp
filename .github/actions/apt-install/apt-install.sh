@@ -159,6 +159,7 @@ install)
     # Nothing is in flight after a success; a leftover partial would only ride
     # along in every later save.
     sudo find "$archives/partial" -type f -delete || true
+    echo "result=complete" >> "$state"
     echo "apt-install: done, ${summary}"
     if [ "$elapsed" -gt $((budget / 2)) ]; then
       echo "::warning title=Slow apt mirror::apt install used ${elapsed}s of a ${budget}s budget: ${summary}"
@@ -199,6 +200,17 @@ finish)
   # Content-addressed: two jobs that end with the same set produce the same
   # key and the second save is a harmless "already exists".
   output fingerprint "$after"
+  # The restore takes the newest entry under a prefix, so a partial saved
+  # after a complete one would shadow it: on PR #1332 two failed lanes saved
+  # 23 and 34 MB at 17:22 over three complete 69-70 MB entries from 17:12-17:16.
+  # The kind goes into the key and action.yml asks for `complete-` first. Only
+  # a successful install writes result=complete; a step killed by its cap
+  # never reaches that line and counts as partial.
+  if grep -qx 'result=complete' "$state" 2>/dev/null; then
+    output kind complete
+  else
+    output kind partial
+  fi
   ;;
 
 *)

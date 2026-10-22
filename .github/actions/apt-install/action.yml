@@ -28,9 +28,12 @@ runs:
       shell: bash
       run: '"$GITHUB_ACTION_PATH/apt-install.sh" start "${{ inputs.cache-prefix }}"'
 
-    # Restore the newest entry under the prefix. Keys are content-addressed
-    # (see finish), so there is never an exact hit and `key` is a placeholder.
-    # A slow cache service must not eat the apt budget: 2 minutes per segment.
+    # Keys are `<prefix>complete-<fp>` or `<prefix>partial-<fp>` (see finish),
+    # so there is never an exact hit and `key` is a placeholder. Each
+    # restore-keys line takes the newest entry it matches, in order: the
+    # newest complete set first, and a partial only when no complete one is
+    # visible to this ref. A slow cache service must not eat the apt budget:
+    # 2 minutes per segment.
     - name: Restore apt archives
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       env:
@@ -40,7 +43,9 @@ runs:
           ~/apt-archives/*.deb
           ~/apt-archives/partial/*.deb
         key: ${{ steps.start.outputs.prefix }}restore
-        restore-keys: ${{ steps.start.outputs.prefix }}
+        restore-keys: |
+          ${{ steps.start.outputs.prefix }}complete-
+          ${{ steps.start.outputs.prefix }}
 
     - name: Install apt packages
       shell: bash
@@ -72,4 +77,4 @@ runs:
         path: |
           ~/apt-archives/*.deb
           ~/apt-archives/partial/*.deb
-        key: ${{ steps.start.outputs.prefix }}${{ steps.finish.outputs.fingerprint }}
+        key: ${{ steps.start.outputs.prefix }}${{ steps.finish.outputs.kind }}-${{ steps.finish.outputs.fingerprint }}
