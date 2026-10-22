@@ -224,7 +224,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Batch Rename">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label={t('batchRename.title')}>
       <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-h-[80vh] flex flex-col animate-scale-in">
         {/* Header */}
         <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
@@ -235,7 +235,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
             </span>
             {isRemote && (
               <span className="px-1.5 py-0.5 text-[10px] bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded">
-                Remote
+                {t('browser.remote')}
               </span>
             )}
           </div>
@@ -356,7 +356,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
                   type="text"
                   value={baseName}
                   onChange={e => setBaseName(e.target.value)}
-                  placeholder="file"
+                  placeholder={t('batchRename.baseNamePlaceholder')}
                   className="w-full px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
                   autoFocus
                 />
@@ -450,7 +450,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
                           <span className="flex items-center gap-1">
                             {(isConflict || isInvalid || isExternalCollision) && <AlertTriangle size={12} />}
                             {isInvalid ? (
-                              <span className="italic">{invalidName} (invalid)</span>
+                              <span className="italic">{t('batchRename.invalidName', { name: invalidName ?? '' })}</span>
                             ) : newName ? (
                               <>
                                 {newName}

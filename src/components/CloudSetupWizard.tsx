@@ -270,7 +270,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                                     {rootLabel}
                                 </span>
                                 <input type="text" value={subfolder} onChange={(e) => setSubfolder(e.target.value)} disabled={!profile}
-                                    placeholder="cloud" aria-label={t('cloud.remoteFolder')}
+                                    placeholder={t('cloud.remoteSubfolderPlaceholder')} aria-label={t('cloud.remoteFolder')}
                                     className={`${INPUT_CLASS} rounded-l-none font-mono min-w-0`} />
                             </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('cloud.remoteFolderDesc')}</p>

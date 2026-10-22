@@ -82,7 +82,9 @@ interface SliderRowProps {
 }
 
 const SliderRow: React.FC<SliderRowProps> = React.memo(
-    ({ label, icon, value, min, max, step, unit, onChange, onReset }) => (
+    ({ label, icon, value, min, max, step, unit, onChange, onReset }) => {
+        const { t } = useI18n();
+        return (
         <div className="px-3 py-1.5">
             <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-primary)]">
@@ -98,7 +100,7 @@ const SliderRow: React.FC<SliderRowProps> = React.memo(
                         <button
                             onClick={onReset}
                             className="p-0.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] rounded"
-                            title="Reset"
+                            title={t('common.reset')}
                         >
                             <X size={12} />
                         </button>
@@ -115,7 +117,8 @@ const SliderRow: React.FC<SliderRowProps> = React.memo(
                 className="w-full h-1.5 bg-[var(--color-bg-tertiary)] rounded-lg appearance-none cursor-pointer accent-[var(--color-accent)]"
             />
         </div>
-    )
+        );
+    }
 );
 SliderRow.displayName = 'SliderRow';
 
@@ -388,7 +391,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         <button
                             onClick={handleRotateCCW}
                             className="flex items-center gap-1 px-2 py-1.5 text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
-                            title="90° CCW"
+                            title={t('preview.image.edit.rotateCcw90Short')}
                         >
                             <RotateCcw size={14} /> 90°
                         </button>
@@ -402,7 +405,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         <button
                             onClick={handleRotateCW}
                             className="flex items-center gap-1 px-2 py-1.5 text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
-                            title="90° CW"
+                            title={t('preview.image.edit.rotateCw90Short')}
                         >
                             <RotateCw size={14} /> 90°
                         </button>
@@ -420,14 +423,14 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         <ToggleBtn
                             active={editState.flipH}
                             onClick={() => patch({ flipH: !editState.flipH })}
-                            title="Flip Horizontal"
+                            title={t('preview.image.edit.flipHorizontal')}
                         >
                             <FlipHorizontal2 size={14} />
                         </ToggleBtn>
                         <ToggleBtn
                             active={editState.flipV}
                             onClick={() => patch({ flipV: !editState.flipV })}
-                            title="Flip Vertical"
+                            title={t('preview.image.edit.flipVertical')}
                         >
                             <FlipVertical2 size={14} />
                         </ToggleBtn>

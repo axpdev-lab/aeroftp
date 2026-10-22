@@ -4,6 +4,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Cpu, RefreshCw } from 'lucide-react';
+import { useTranslation } from '../../i18n';
+import type { TranslationFunction } from '../../i18n';
 
 interface OllamaRunningModelJS {
     name: string;
@@ -25,16 +27,17 @@ function formatBytes(bytes: number): string {
     return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
-function getExpiryLabel(expiresAt: string): string {
+function getExpiryLabel(expiresAt: string, t: TranslationFunction): string {
     const now = Date.now();
     const expires = new Date(expiresAt).getTime();
     const diff = expires - now;
-    if (diff <= 0) return 'expired';
+    if (diff <= 0) return t('ai.gpuMonitor.expired');
     if (diff < 60000) return `${Math.round(diff / 1000)}s`;
     return `${Math.round(diff / 60000)}m`;
 }
 
 export const OllamaGpuMonitor: React.FC<OllamaGpuMonitorProps> = ({ baseUrl, visible = true, compact = false }) => {
+    const t = useTranslation();
     const [models, setModels] = useState<OllamaRunningModelJS[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -95,10 +98,10 @@ export const OllamaGpuMonitor: React.FC<OllamaGpuMonitorProps> = ({ baseUrl, vis
         return (
             <div className="flex items-center gap-2 text-xs text-gray-400">
                 <Cpu size={12} />
-                <span>{models.length} model{models.length !== 1 ? 's' : ''} running</span>
+                <span>{t(models.length === 1 ? 'ai.gpuMonitor.modelsRunningOne' : 'ai.gpuMonitor.modelsRunningMany', { count: models.length })}</span>
                 {models.length > 0 && (
                     <span className="text-cyan-400">
-                        {formatBytes(models.reduce((sum, m) => sum + m.vramSize, 0))} VRAM
+                        {t('ai.gpuMonitor.vramAmount', { size: formatBytes(models.reduce((sum, m) => sum + m.vramSize, 0)) })}
                     </span>
                 )}
             </div>
@@ -110,11 +113,12 @@ export const OllamaGpuMonitor: React.FC<OllamaGpuMonitorProps> = ({ baseUrl, vis
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 text-xs font-medium text-gray-300">
                     <Cpu size={14} className="text-cyan-400" />
-                    <span>GPU Monitor</span>
+                    <span>{t('ai.gpuMonitor.title')}</span>
                 </div>
                 <button
                     onClick={handleRefresh}
                     disabled={loading}
+                    title={t('ai.gpuMonitor.refresh')}
                     className="text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-50"
                 >
                     <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
@@ -129,7 +133,7 @@ export const OllamaGpuMonitor: React.FC<OllamaGpuMonitorProps> = ({ baseUrl, vis
 
             {models.length === 0 && !error && (
                 <div className="text-xs text-gray-500">
-                    No models currently loaded
+                    {t('ai.gpuMonitor.noModels')}
                 </div>
             )}
 
@@ -142,8 +146,8 @@ export const OllamaGpuMonitor: React.FC<OllamaGpuMonitorProps> = ({ baseUrl, vis
                         <div className="flex items-center justify-between text-xs mb-1">
                             <span className="text-gray-300 truncate max-w-[60%]">{model.name}</span>
                             <span className="text-gray-500 flex items-center gap-2">
-                                <span>{formatBytes(model.vramSize)} VRAM</span>
-                                <span className="text-gray-600">{getExpiryLabel(model.expiresAt)}</span>
+                                <span>{t('ai.gpuMonitor.vramAmount', { size: formatBytes(model.vramSize) })}</span>
+                                <span className="text-gray-600">{getExpiryLabel(model.expiresAt, t)}</span>
                             </span>
                         </div>
                         <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">

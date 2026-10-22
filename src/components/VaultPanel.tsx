@@ -89,7 +89,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         );
     }, [state.lastReport, log, t]);
 
-    const vaultName = state.vaultPath.split(/[\\/]/).pop() || 'Vault';
+    const vaultName = state.vaultPath.split(/[\\/]/).pop() || t('vault.fallbackName');
     const currentLevelConfig = state.vaultSecurity ? securityLevels[state.vaultSecurity.level] : null;
     const LevelIcon = currentLevelConfig?.icon || VaultIcon;
     const overlaySessionRef = React.useRef<{ key: string; sessionId: string } | null>(null);

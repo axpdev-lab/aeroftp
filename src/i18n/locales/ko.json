@@ -337,7 +337,38 @@
             "protonSignOut": "로그아웃",
             "protonSignOutHelp": "Proton의 세션을 종료하고 이 프로필에서 제거합니다.",
             "protonSignInExpired": "로그인 페이지가 만료되었습니다. 다시 로그인하세요.",
-            "protonNativeUnavailable": "이 빌드에는 네이티브 Proton Drive 클라이언트가 포함되어 있지 않습니다."
+            "protonNativeUnavailable": "이 빌드에는 네이티브 Proton Drive 클라이언트가 포함되어 있지 않습니다.",
+            "forms": {
+                "publicApiKey": "공개 API 키",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - 공개 키.",
+                "secretApiKey": "비밀 API 키",
+                "uploadcareSecretHint": "{scheme} 인증을 통한 REST 파일 관리에만 사용됩니다.",
+                "flatMediaLibrary": "평면 미디어 라이브러리",
+                "uploadcareNoFolders": "Uploadcare는 기본 폴더를 제공하지 않습니다. 프로젝트 파일은 루트에 UUID별로 나열됩니다.",
+                "urlEndpointId": "URL 엔드포인트 ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL 엔드포인트.",
+                "privateApiKey": "비공개 API 키",
+                "storedVaultBasicAuth": "로컬 보관소에 저장되며 Basic Auth를 통해 {provider}에만 전송됩니다.",
+                "cloudName": "클라우드 이름",
+                "cloudinaryCloudNameHint": "Cloudinary Dashboard - Account Details에서 찾을 수 있습니다.",
+                "apiKeyPlaceholder": "API 키",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API 키.",
+                "apiSecret": "API 시크릿",
+                "apiSecretPlaceholder": "API 시크릿",
+                "openProviderLink": "{provider} 링크 열기",
+                "githubPatHint": "Contents(읽기 및 쓰기) 권한이 있는 세분화된 PAT.",
+                "generateToken": "토큰 생성",
+                "applicationKeyId": "애플리케이션 키 ID",
+                "backblazeKeyIdHint": "B2 애플리케이션 키 ID이며 003으로 시작합니다. Backblaze App Keys 페이지에서 생성하세요.",
+                "applicationKey": "애플리케이션 키",
+                "backblazeKeyHint": "생성 시 한 번만 표시됩니다. 비밀번호처럼 취급하세요.",
+                "bucketNameExactHint": "정확한 버킷 이름, 대소문자 구분.",
+                "megacmdSetupFirst": "먼저 MEGAcmd를 설정하세요",
+                "megacmdFetchUrlTitle": "{cmd} 실행 후 URL 자동 입력",
+                "fetchUrl": "URL 가져오기",
+                "megacmdWebdavHint": "사용자 이름과 비밀번호는 의도적으로 생략되었습니다. AeroFTP는 연결 시 직접 \"{cmd}\"를 실행해 브리지를 시작하고 이 주소를 읽습니다. 비워 두어도 됩니다. \"URL 가져오기\"는 선택적 수동 새로 고침입니다. MEGAcmd가 사용자 지정 포트를 사용하면 여기서 포트를 변경하세요."
+            },
+            "manualStorageUnitLabel": "{label} 단위"
         },
         "browser": {
             "remote": "원격",
@@ -390,7 +421,19 @@
             "listingPath": "{path} 목록을 불러오는 중...",
             "pleaseWait": "잠시만 기다려 주세요...",
             "sameNameLeakChip": "같은 이름",
-            "sameNameLeakTooltip": "이 이름은 이 암호화된 볼트의 다른 경로에도 나타납니다. 이름은 결정론적으로 암호화되므로, 암호화된 저장소의 관찰자는 두 항목이 같은 이름을 공유한다는 것을 알 수 있습니다."
+            "sameNameLeakTooltip": "이 이름은 이 암호화된 볼트의 다른 경로에도 나타납니다. 이름은 결정론적으로 암호화되므로, 암호화된 저장소의 관찰자는 두 항목이 같은 이름을 공유한다는 것을 알 수 있습니다.",
+            "endpointSelector": {
+                "localFolder": "로컬 폴더",
+                "localFolderHint": "이 패널의 로컬 경로 선택",
+                "noSavedProfiles": "저장된 프로필 없음",
+                "savedProfiles": "저장된 원격 프로필",
+                "title": "엔드포인트"
+            },
+            "leftPanelMarker": "왼쪽 패널",
+            "localFilesLabel": "로컬 파일",
+            "localFilesRightLabel": "로컬 파일 (오른쪽 패널)",
+            "remoteFilesLabel": "원격 파일",
+            "rightPanelMarker": "오른쪽 패널"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent에게 질문...",
@@ -650,7 +693,45 @@
             "speedGraph": "속도 그래프",
             "hideSpeedGraph": "속도 그래프 숨기기",
             "speedAvg": "평균 {speed}",
-            "speedPeak": "최고 {speed}"
+            "speedPeak": "최고 {speed}",
+            "badgeBatch": "일괄",
+            "badgeDownload": "다운로드",
+            "badgeLive": "실시간",
+            "badgeStream": "스트림",
+            "badgeUpload": "업로드",
+            "earlierItemsHidden": "이전 항목 {count}개 숨김",
+            "folderFilesProgress": "{done}/{total} 파일",
+            "laneDone": "완료",
+            "laneError": "오류",
+            "unifiedPlan": {
+                "destination": "대상",
+                "dialogLabel": "전송 계획",
+                "engineAerovaultOverlay": "AeroVault 오버레이",
+                "engineCompareOnly": "비교만",
+                "engineCrossProfileSync": "프로필 간 동기화",
+                "engineCrossProfileTransfer": "프로필 간 전송",
+                "engineLocalDelta": "로컬 델타 전송",
+                "engineLocalFs": "로컬 파일 시스템",
+                "engineProviderDownload": "공급자 다운로드",
+                "engineProviderUpload": "공급자 업로드",
+                "engineUnsupported": "지원되지 않음",
+                "execute": "실행",
+                "items": "항목",
+                "modeBackup": "백업",
+                "modeBisync": "양방향 동기화",
+                "modeCompare": "비교",
+                "modeCopy": "복사",
+                "modeMirror": "미러",
+                "modeMove": "이동",
+                "modeSync": "동기화",
+                "notExecutable": "이 엔드포인트 쌍은 아직 실행할 수 없습니다.",
+                "parallel": "병렬",
+                "reviewBeforeExecution": "실행 전 검토",
+                "route": "{pair} ({engine} 경유)",
+                "size": "크기",
+                "source": "원본",
+                "title": "{mode} 계획"
+            }
         },
         "settings": {
             "title": "설정",
@@ -1040,7 +1121,13 @@
                 "title": "네이티브 rsync (베타)",
                 "description": "SFTP Delta Sync가 rsync 전송을 어떻게 보낼지 선택합니다.",
                 "enableToggle": "SFTP 델타 동기화에 네이티브 rsync 사용",
-                "experimental": "Auto는 AeroRsync를 우선하며 클래식으로 폴백합니다; Classic은 사용 가능한 경우 시스템 rsync 바이너리를 사용합니다; Native는 클래식 바이너리 폴백을 건너뜁니다."
+                "experimental": "Auto는 AeroRsync를 우선하며 클래식으로 폴백합니다; Classic은 사용 가능한 경우 시스템 rsync 바이너리를 사용합니다; Native는 클래식 바이너리 폴백을 건너뜁니다.",
+                "modeAuto": "자동",
+                "modeClassic": "클래식",
+                "modeNative": "네이티브",
+                "classicNotFoundTooltip": "PATH에서 클래식 rsync 바이너리를 찾을 수 없습니다. 이 모드를 사용하려면 rsync를 설치하세요 (Linux/macOS 패키지, Windows는 WSL/cygwin/scoop 사용).",
+                "classicAt": "클래식 rsync 위치: {path}",
+                "classicNotDetected": "PATH에서 클래식 rsync 바이너리가 감지되지 않았습니다. 이 컴퓨터에서 사용할 수 있는 엔진은 네이티브뿐입니다."
             },
             "startMinimizedOnAutostart": "트레이로 최소화하여 시작",
             "startMinimizedOnAutostartDesc": "자동 시작 시 메인 창을 숨깁니다. AeroFTP는 시스템 트레이에서 계속 실행되므로 필요할 때 트레이 아이콘에서 열 수 있습니다.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "암호화되지 않은 저장소에서 OAuth 자격 증명 {count}개를 찾았습니다",
             "fontSystemInstall": "시스템 설치",
             "fontSizeMin": "최소",
-            "fontSizeMax": "최대"
+            "fontSizeMax": "최대",
+            "migrationCleanupHint": "최대 보안을 위해 권장",
+            "fontCustomOption": "사용자 지정...",
+            "fontSystemInstallHint": "시스템 설치가 필요합니다. 사용할 수 없으면 AeroFTP가 자동으로 대체합니다.",
+            "fontSizeIndicatorLabel": "글꼴"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "중지",
                 "stopShell": "셸 중지",
                 "closed": "터미널이 닫혔습니다.",
-                "commandInsertedReview": "Terminal에 명령이 삽입되었습니다. 실행하려면 Enter를 누르세요."
+                "commandInsertedReview": "Terminal에 명령이 삽입되었습니다. 실행하려면 Enter를 누르세요.",
+                "decreaseFont": "글꼴 크기 줄이기 (Ctrl+-)",
+                "emptyClickPlus": "{plus}을(를) 클릭하여 터미널 열기",
+                "emptySshHint": "또는 {ssh}(으)로 {host}에 원격 셸 연결",
+                "increaseFont": "글꼴 크기 키우기 (Ctrl+=)",
+                "newTab": "새 터미널 탭",
+                "sshShellTo": "{host}에 대한 SSH 셸",
+                "theme": "터미널 테마"
             },
             "editorPanel": {
                 "emptyState": "파일을 우클릭하고 \"소스 보기\"를 선택하세요",
@@ -1278,13 +1376,17 @@
                 "saving": "저장 중...",
                 "noFileSelected": "열람할 파일이 선택되지 않았습니다",
                 "loading": "편집기 로드 중...",
-                "dragToTerminalRun": "실행 명령을 삽입하려면 Terminal로 끌어다 놓으세요"
+                "dragToTerminalRun": "실행 명령을 삽입하려면 Terminal로 끌어다 놓으세요",
+                "closeEditor": "편집기 닫기",
+                "resetChanges": "변경 사항 초기화"
             },
             "previewPanel": {
                 "emptyState": "파일을 우클릭하고 \"미리보기\"를 선택하세요"
             },
             "codeEditor": "코드 에디터",
-            "sshTerminal": "SSH 터미널"
+            "sshTerminal": "SSH 터미널",
+            "comingSoon": "출시 예정",
+            "soonBadge": "예정"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "토큰이 취소되면 수동으로 다시 인증하세요"
             },
             "profilesLoadFailed": "저장된 서버를 읽을 수 없습니다: {error}",
-            "cleanupSummary": "파일 {count}개, {size} 확보"
+            "cleanupSummary": "파일 {count}개, {size} 확보",
+            "maturity": {
+                "alpha": "알파"
+            },
+            "dialogDashboardLabel": "클라우드 동기화 대시보드",
+            "dialogLoadingLabel": "클라우드 동기화 로드 중",
+            "dialogSettingsLabel": "클라우드 동기화 설정",
+            "dialogSetupLabel": "클라우드 동기화 구성",
+            "onePerLineHint": "(한 줄에 하나씩)",
+            "pairsEditorLabel": "AeroCloud 페어 편집기",
+            "remoteSubfolderPlaceholder": "클라우드"
         },
         "statusBar": {
             "connected": "연결됨",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "부분, 읽을 수 없는 폴더: {count}",
             "usedScanFailed": "사용 용량 스캔 실패",
             "usedScanEmpty": "{path} 스캔에서 파일을 찾지 못했습니다. 캐시된 값이 유지되었습니다. 경로 또는 서버의 재귀 목록 지원을 확인하세요.",
-            "filenBridgeAccountTotal": "Filen Desktop은 여기서 계정 전체 사용량을 알려 주지 않습니다. 표시된 사용량은 이 경로 아래 파일들의 합계입니다. 기본 Filen 연결에서는 계정 전체 사용량을 바로 확인할 수 있습니다."
+            "filenBridgeAccountTotal": "Filen Desktop은 여기서 계정 전체 사용량을 알려 주지 않습니다. 표시된 사용량은 이 경로 아래 파일들의 합계입니다. 기본 Filen 연결에서는 계정 전체 사용량을 바로 확인할 수 있습니다.",
+            "ariaLabel": "상태 표시줄",
+            "debugBadge": "디버그",
+            "debugModeActive": "디버그 모드 활성"
         },
         "dialogs": {
             "confirmTitle": "확인",
@@ -1620,7 +1735,8 @@
                 "apRole": "설립자, 개발자, 메인테이너, 공동 디자이너",
                 "ekRole": "연구원, 품질 보증 엔지니어, 공동 디자이너"
             },
-            "madeBy": "{author} 제작"
+            "madeBy": "{author} 제작",
+            "statsLine": "{protocols}개 프로토콜 · {languages}개 언어 · AES-256 아카이브"
         },
         "support": {
             "title": "AeroFTP 지원",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "프로젝트 (Unixname)",
             "opendriveNotApiKey": "(OpenDrive API 키가 아님)",
             "endpoint": "엔드포인트",
-            "accountId": "계정 ID"
+            "accountId": "계정 ID",
+            "servicesHeading": "서비스",
+            "sourceforgeSshKeyHelp": "SourceForge는 SSH 키 인증이 필요합니다. {cmd}(으)로 키를 생성하여 {link}에 업로드하세요.",
+            "sourceforgeSshSettings": "SSH 설정",
+            "fullGuide": "전체 가이드",
+            "endpointTemplateExample": "예: {template}",
+            "jurisdiction": "관할권",
+            "insecureCertDialogLabel": "안전하지 않은 인증서 경고",
+            "betaBadge": "베타",
+            "hostKeyDialogLabel": "호스트 키 확인"
         },
         "shortcuts": {
             "title": "단축키",
@@ -2111,7 +2236,10 @@
             "rename": "이름 바꾸기",
             "resume": "이어받기",
             "resumeHint": "전송을 처음부터 다시 시작하지 않고 중단된 지점부터 이어받습니다",
-            "cancel": "취소"
+            "cancel": "취소",
+            "dialogLabel": "덮어쓰기 확인",
+            "moreInQueue": "대기열에 +{count}",
+            "unknownDate": "알 수 없음"
         },
         "statusbar": {
             "queue": "대기열",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "이 템플릿에서 사용 가능한 로컬/원격 경로 쌍: {count}. AeroSync 창은 정확히 한 쌍으로만 작동하므로 아무것도 가져오지 않았습니다. 템플릿을 편집해 한 쌍만 남긴 뒤 다시 가져오세요.",
             "templateNamePlaceholder": "예: S3로 야간 백업",
             "templateDescPlaceholder": "이 템플릿의 용도 (선택 사항)",
-            "templateExportCliDesc": "aeroftp-cli sync 래퍼 ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync 래퍼 ({shell})",
+            "multiPathDisablePair": "비활성화",
+            "multiPathEditorLabel": "다중 경로 편집기",
+            "multiPathEnablePair": "활성화",
+            "multiPathLocalPlaceholder": "로컬 경로",
+            "multiPathRemotePlaceholder": "원격 경로",
+            "rollbackDialogLabel": "롤백 스냅샷",
+            "rollbackMoreFiles": "+{count}개 더...",
+            "rollbackSnapshotSummaryMany": "파일 {count}개, {size}",
+            "rollbackSnapshotSummaryOne": "파일 {count}개, {size}",
+            "templateDialogLabel": "동기화 템플릿",
+            "templateExcludes": "제외 항목",
+            "templateLocal": "로컬",
+            "templateRemote": "원격",
+            "templateRetries": "재시도"
         },
         "ui": {
             "syncing": "동기화 중...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "도구 실행 거부",
                 "toggleDetails": "상세 정보 전환",
                 "allowSession": "이 세션 동안 허용",
-                "nonAtomicReplace": "비원자적 교체: 파일이 잠시 사라집니다"
+                "nonAtomicReplace": "비원자적 교체: 파일이 잠시 사라집니다",
+                "moreOptions": "추가 옵션",
+                "panelAria": "도구 승인 패널"
             },
             "settings": {
                 "title": "AI 설정",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "대체",
                 "routingNoFallback": "없음",
                 "bedrockNeedsModel": "테스트하기 전에 모델 탭에서 Bedrock 모델을 추가하고 활성화하세요.",
-                "bedrockSetup": "AWS 리전의 Runtime URL을 설정하세요. 모델에서 Bedrock Runtime의 Chat Completions를 지원하는 ID를 추가하세요. Runtime은 모델 목록을 제공하지 않습니다. 테스트는 작은 추론 요청을 보내며 AWS 요금이 발생할 수 있습니다."
+                "bedrockSetup": "AWS 리전의 Runtime URL을 설정하세요. 모델에서 Bedrock Runtime의 Chat Completions를 지원하는 ID를 추가하세요. Runtime은 모델 목록을 제공하지 않습니다. 테스트는 작은 추론 요청을 보내며 AWS 요금이 발생할 수 있습니다.",
+                "detectOllamaModelsTooltip": "사용 가능한 Ollama 모델 자동 감지",
+                "kTokens": "{count}K 토큰",
+                "modelEditorAria": "AI 모델 편집기",
+                "supportsTools": "도구 지원",
+                "supportsVision": "비전 지원",
+                "thinkingReasoning": "사고/추론",
+                "toolQuality": "도구 품질: {quality}/5"
             },
             "copy": "복사",
             "attachImage": "이미지 첨부",
@@ -2699,7 +2850,9 @@
                 "run": "터미널에서 실행",
                 "insert": "편집기에 삽입",
                 "diff": "원본과 비교",
-                "diffNoFile": "비교할 파일이 열려 있지 않습니다"
+                "diffNoFile": "비교할 파일이 열려 있지 않습니다",
+                "commandBlocked": "명령 차단됨: 파괴적일 수 있음",
+                "confirmRun": "실행 확인: {command}"
             },
             "thinkingBlock": {
                 "thinking": "생각 중...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "분기 전환",
                 "delete": "분기 삭제",
                 "newBranch": "새 분기",
-                "branchFrom": "이 지점에서 분기"
+                "branchFrom": "이 지점에서 분기",
+                "messageCountShort": "메시지 {count}개",
+                "unnamed": "브랜치"
             },
             "context": {
                 "projectDetected": "프로젝트 감지됨",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "실행 중",
                 "expired": "만료됨",
-                "refresh": "새로고침"
+                "refresh": "새로고침",
+                "modelsRunningMany": "{count}개 모델 실행 중",
+                "modelsRunningOne": "{count}개 모델 실행 중",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "컨텍스트 캐싱",
@@ -2956,7 +3114,8 @@
                 "warning": "모든 파일 작업이 승인 없이 즉시 실행됩니다. 본인 책임하에 사용하십시오.",
                 "disable": "비활성화",
                 "securityWarning": "보안 경고",
-                "understood": "이해했습니다"
+                "understood": "이해했습니다",
+                "warningAria": "익스트림 모드 경고"
             },
             "errorServerError": "AI 제공업체 서버에 문제가 발생했습니다. 잠시 후 다시 시도하세요.",
             "errorServiceUnavailable": "AI 제공업체가 일시적으로 이용 불가합니다 (과부하). 무료 서비스에는 제한이 있을 수 있습니다. 나중에 다시 시도하세요.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "무제한",
                 "roleAI": "AI",
-                "roleUser": "사용자"
+                "roleUser": "사용자",
+                "noConversations": "아직 대화가 없습니다",
+                "titleCount": "기록 ({count})"
             },
             "dropFileToAnalyze": "AeroAgent로 분석할 파일을 드롭하세요",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "입력 토큰 {input}개, 출력 토큰 {output}개, 제공업체 집계 기준",
-                "breakdownCache": "입력 토큰 {input}개, 출력 토큰 {output}개, 프롬프트 캐시에서 읽음 {cacheRead}개, 프롬프트 캐시에 기록 {cacheWritten}개, 제공업체 집계 기준"
+                "breakdownCache": "입력 토큰 {input}개, 출력 토큰 {output}개, 프롬프트 캐시에서 읽음 {cacheRead}개, 프롬프트 캐시에 기록 {cacheWritten}개, 제공업체 집계 기준",
+                "countShort": "{count} 토큰"
             },
             "executeOperations": "{count}개 작업 실행",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "건너뛸 예정",
                     "skipped": "건너뜀",
                     "existedAtCheckpoint": "체크포인트 시점에 존재함",
-                    "absentAtCheckpoint": "체크포인트 시점에 없음"
+                    "absentAtCheckpoint": "체크포인트 시점에 없음",
+                    "noFiles": "이 복원 결과에 포함된 파일이 없습니다.",
+                    "otherActions": "기타 작업",
+                    "requestedPaths": "요청된 경로 하위 집합",
+                    "scopeAll": "범위: 체크포인트에 캡처된 모든 파일.",
+                    "titleApplied": "체크포인트 복원 적용됨",
+                    "titleApplyReview": "체크포인트 복원 적용 검토",
+                    "titleDryRunComplete": "체크포인트 복원 시험 실행 완료",
+                    "titleDryRunReview": "체크포인트 복원 시험 실행 검토"
                 },
                 "checks": {
                     "exitSummary": "종료 코드 {code} · {seconds}s",
                     "continueOnFailure": "하나가 실패해도 모든 검사를 실행합니다.",
-                    "stopOnFailure": "처음 실패한 검사에서 중지합니다."
+                    "stopOnFailure": "처음 실패한 검사에서 중지합니다.",
+                    "checkLabel": "검사:",
+                    "checksLabel": "검사 항목:",
+                    "exitChip": "종료 코드 {code}",
+                    "filterChip": "필터: {filter}",
+                    "filterLabel": "필터:",
+                    "notAvailable": "해당 없음",
+                    "passedCount": "{passed}/{total} 통과",
+                    "runCheckNote": "작업 공간에서 선별된 build/test/lint 명령을 실행합니다. 빌드 스크립트와 테스트는 실제 코드를 실행합니다.",
+                    "runProjectCheck": "프로젝트 검사 실행",
+                    "runVerification": "검증 단계 실행",
+                    "runVerificationNote": "작업 공간에서 선별된 build/test/lint 명령들을 실행합니다. 빌드 스크립트와 테스트는 실제 코드를 실행합니다.",
+                    "stoppedEarly": "처음 실패한 검사에서 중지했습니다.",
+                    "timeoutLabel": "시간 제한: {seconds}초",
+                    "verification": "검증"
                 },
                 "diagnostics": {
-                    "none": "보고된 진단이 없습니다."
+                    "none": "보고된 진단이 없습니다.",
+                    "errorCountMany": "오류 {count}개",
+                    "errorCountOne": "오류 {count}개",
+                    "title": "진단",
+                    "truncated": "진단 목록이 잘렸습니다.",
+                    "warningCountMany": "경고 {count}개",
+                    "warningCountOne": "경고 {count}개"
                 },
                 "search": {
-                    "none": "일치하는 항목이 없습니다."
+                    "none": "일치하는 항목이 없습니다.",
+                    "ignoreCase": "대소문자 무시",
+                    "inPath": "{path} 내",
+                    "literal": "리터럴",
+                    "matchCountMany": "{count}개 일치",
+                    "matchCountOne": "{count}개 일치",
+                    "title": "작업 공간 검색",
+                    "truncated": "결과가 잘렸습니다."
                 },
                 "git": {
                     "noStagedDiff": "스테이징된 diff 출력이 없습니다.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Git 스테이징 승인",
                     "commitNote": "현재 스테이징된 인덱스로 git 커밋을 만듭니다. 먼저 staged=true로 coding_git_status 및 coding_git_diff를 검토하세요.",
                     "stagePreviewNote": "요청된 경로 중 어떤 경로가 스테이징될지 미리 봅니다. 인덱스는 변경되지 않습니다.",
-                    "stageNote": "요청된 경로에 대해 git 인덱스를 변경합니다."
+                    "stageNote": "요청된 경로에 대해 git 인덱스를 변경합니다.",
+                    "afterCounts": "이후: {counts}",
+                    "beforeCounts": "이전: {counts}",
+                    "clean": "작업 트리가 깨끗합니다.",
+                    "commitCountMany": "커밋 {count}개",
+                    "commitCountOne": "커밋 {count}개",
+                    "conflicted": "충돌",
+                    "diffTruncated": "차이 출력이 잘렸습니다.",
+                    "logTitle": "Git 로그",
+                    "pathsChip": "경로: {paths}",
+                    "showingNewest": "최신 {count}개 표시 중, 더 있습니다.",
+                    "statusCounts": "스테이징됨 {staged}, 스테이징 안 됨 {unstaged}, 추적 안 됨 {untracked}, 충돌 {conflicted}",
+                    "titleCommitCreated": "Git 커밋 생성됨",
+                    "titleCommitDryRun": "Git 커밋 시험 실행",
+                    "titleCommitReview": "Git 커밋 검토",
+                    "titleReview": "Git 검토",
+                    "titleStageApplied": "Git 스테이징 적용됨",
+                    "titleStagedDiff": "Git 스테이징된 차이",
+                    "titleStageDryRun": "Git 스테이징 시험 실행",
+                    "titleStatus": "Git 상태",
+                    "titleUnstagedDiff": "Git 스테이징 안 된 차이",
+                    "untracked": "추적 안 됨"
                 },
                 "patch": {
                     "validateNote": "파일을 변경하지 않고 패치를 검증합니다.",
                     "applyNote": "이 고위험 적용 요청은 백엔드가 적용 전 체크포인트를 만든 후 파일을 씁니다.",
                     "hideDiff": "통합 diff 숨기기",
-                    "showDiff": "통합 diff 표시"
-                }
+                    "showDiff": "통합 diff 표시",
+                    "actualLabel": "실제:",
+                    "checkpointCreated": "적용 전 체크포인트 생성됨",
+                    "diffTruncated": "표시를 위해 차이 미리보기가 잘렸습니다.",
+                    "expectedLabel": "예상:",
+                    "firstLines": "{total}줄 중 처음 {shown}줄",
+                    "hunkCountMany": "헝크 {count}개",
+                    "hunkCountOne": "헝크 {count}개",
+                    "hunkIndex": "헝크 {index}",
+                    "restoreManual": "복원은 수동입니다: 검토 후 이 체크포인트 ID로 {tool}을(를) 사용하세요.",
+                    "titleApplied": "패치 적용됨",
+                    "titleApplyBlocked": "패치 적용 차단됨",
+                    "titleApplyReview": "패치 적용 검토",
+                    "titleDryRunConflicts": "패치 시험 실행에서 충돌 발견",
+                    "titleDryRunPassed": "패치 시험 실행 통과",
+                    "titleDryRunReview": "패치 시험 실행 검토",
+                    "warnings": "경고"
+                },
+                "binary": "바이너리",
+                "fileCountMany": "파일 {count}개",
+                "fileCountOne": "파일 {count}개",
+                "moreCount": "+{count}개 더",
+                "plan": {
+                    "likelyFiles": "관련 가능성이 높은 파일",
+                    "openQuestions": "미해결 질문",
+                    "reviewOnlyNote": "검토 전용 산출물입니다. 편집 및 변경 도구는 여전히 현재 승인 모드를 사용합니다.",
+                    "riskHigh": "높은 위험",
+                    "riskLow": "낮은 위험",
+                    "riskMedium": "중간 위험",
+                    "risks": "위험 요소",
+                    "title": "코딩 계획"
+                },
+                "state": {
+                    "clean": "깨끗함",
+                    "failed": "실패",
+                    "passed": "통과",
+                    "timedOut": "시간 초과"
+                },
+                "timeoutChip": "시간 제한 {seconds}s",
+                "truncated": "잘림",
+                "workspaceLabel": "작업 공간:"
+            },
+            "attachedImageAlt": "첨부된 이미지",
+            "stepNumber": "단계 {step}",
+            "transcribingLocally": "로컬에서 전사 중...",
+            "transferPlan": {
+                "dependsOnMany": "준비 단계 {count}개에 의존",
+                "dependsOnOne": "준비 단계 {count}개에 의존",
+                "destination": "대상: {destination}",
+                "title": "전송 계획 검토",
+                "warnings": "경고"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "패리티에서 볼트 헤더 또는 매니페스트를 다시 만들었습니다.",
             "repairMetadataSuccess": "복구 완료: 패리티에서 볼트 헤더 또는 매니페스트를 다시 만들었습니다",
             "errorCorrectionBadge": "오류 정정",
-            "itemsInFolder": "/{folder} 폴더의 항목 {count}개"
+            "itemsInFolder": "/{folder} 폴더의 항목 {count}개",
+            "compressionProfileArchive": "아카이브 (zstd -15)",
+            "compressionProfileBalanced": "균형 (zstd -9)",
+            "compressionProfileFast": "빠름 (zstd -3)",
+            "damagedChunkLocation": "{id} - 오프셋 {offset} (길이 {len})",
+            "fallbackName": "볼트",
+            "folderScanSummary": "{dirs}개 디렉터리에 {files}개 파일 ({size})",
+            "namePlaceholderVault": "내 보안 볼트",
+            "namePlaceholderZip": "내 아카이브",
+            "recentDaysAgo": "{count}일 전",
+            "recentFileCountMany": "파일 {count}개",
+            "recentFileCountOne": "파일 {count}개",
+            "recentMonthsAgo": "{count}개월 전"
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "선택한 항목을 암호화하는 중...",
             "ingestSkipped": "보관소가 생성되었지만 일부 항목을 추가할 수 없습니다:",
             "selectionInfo": "{count}개 항목이 보관소에 암호화됩니다",
-            "decrypting": "복호화 중…"
+            "decrypting": "복호화 중…",
+            "compatibleWithApp": "Cryptomator 앱과 호환",
+            "createFormatBadge": "Cryptomator 형식 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM 콘텐츠",
+            "featureNameCipher": "AES-SIV 이름",
+            "formatVersion": "형식 {version}"
         },
         "compress": {
             "title": "파일 압축",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "일부 파일의 이름이 동일해질 수 있습니다. 패턴을 조정하세요.",
             "apply": "적용",
             "existingCollision": "일부 새 이름이 이 폴더에 이미 있는 파일과 일치합니다. 해당 파일은 덮어쓰지 않으며 이름 변경을 건너뜁니다.",
-            "existingCollisionHint": "(이미 존재함)"
+            "existingCollisionHint": "(이미 존재함)",
+            "baseNamePlaceholder": "파일",
+            "invalidName": "{name} (잘못됨)"
         },
         "lockScreen": {
             "locked": "앱 잠김",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "데스크톱에 마운트되지 않았습니다. 케이블을 뽑았다가 다시 꽂은 다음 다시 여세요.",
             "volumes_need_mount_observe": "snap에서는 mount-observe 권한을 연결하면 볼륨이 표시됩니다. 터미널에서 다음을 실행한 다음 AeroFTP로 돌아오세요:",
             "volumes_unavailable": "마운트된 볼륨을 읽을 수 없습니다.",
-            "portable_device": "휴대용 장치"
+            "portable_device": "휴대용 장치",
+            "drivesLeftPanel": "왼쪽 패널 드라이브",
+            "drivesRightPanel": "오른쪽 패널 드라이브",
+            "modeGroupLabel": "사이드바 모드",
+            "placesSidebarLabel": "위치 사이드바"
         },
         "viewMode": {
             "list": "목록",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "형제 디렉토리 탐색",
             "loading": "로딩 중...",
             "noSubdirectories": "하위 디렉토리 없음",
-            "browseChildren": "하위 디렉터리 탐색"
+            "browseChildren": "하위 디렉터리 탐색",
+            "ariaLabel": "탐색 경로",
+            "syncBoundaryTitle": "{path} (동기화 경계)"
         },
         "bridge": {
             "checking": "{app} 확인 중…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "미리보기를 사용할 수 없습니다",
-            "title": "훑어보기"
+            "title": "훑어보기",
+            "closePreview": "미리 보기 닫기",
+            "dialogLabel": "훑어보기: {name}",
+            "nextFile": "다음 파일",
+            "position": "{total}개 중 {index}",
+            "previousFile": "이전 파일"
         },
         "properties": {
             "general": "일반",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Immich가 업로드 시점에 기록하는 자산 체크섬입니다.",
                 "crypt-overlay-ciphertext": "다이제스트는 서버에 저장된 암호화된 바이트를 대상으로 합니다."
             },
-            "readOnlyIsLinkTarget": "이 항목은 심볼릭 링크입니다: 권한은 링크가 가리키는 파일에 속합니다. 권한을 변경하려면 해당 파일의 속성을 여세요."
+            "readOnlyIsLinkTarget": "이 항목은 심볼릭 링크입니다: 권한은 링크가 가리키는 파일에 속합니다. 권한을 변경하려면 해당 파일의 속성을 여세요.",
+            "exactBytes": "({bytes}바이트)"
         },
         "duplicates": {
             "sortWasted": "낭비된 공간",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "바이트 단위로 동일",
             "modeNonIdenticalHint": "지각적 또는 텍스트 유사도, 자동 삭제 없음",
             "potentialWasteSelected": "잠재적 낭비 (선택됨)",
-            "similarityDistance": "{similarity}, 거리 {distance}"
+            "similarityDistance": "{similarity}, 거리 {distance}",
+            "modeExact": "정확히 일치",
+            "modeLabel": "모드:",
+            "modeNonIdentical": "동일하지 않음"
         },
         "diskUsage": {
             "title": "디스크 사용량",
@@ -3906,7 +4207,11 @@
                 "noActivity": "아직 네트워크 활동이 없습니다. 파일을 전송하면 이벤트가 표시됩니다.",
                 "time": "시간",
                 "event": "이벤트",
-                "detail": "세부 정보"
+                "detail": "세부 정보",
+                "command": "명령",
+                "ipcTransfersCount": "IPC + 전송 ({count})",
+                "status": "상태",
+                "type": "유형"
             },
             "system": {
                 "appVersion": "AeroFTP 버전",
@@ -3953,7 +4258,8 @@
                 "dark": "다크",
                 "light": "라이트",
                 "userAgent": "사용자 에이전트",
-                "localStorageKeysTitle": "LocalStorage 키"
+                "localStorageKeysTitle": "LocalStorage 키",
+                "localStorageEntrySummary": "{size}바이트 · {preview}"
             },
             "copyFileListToClipboard": "파일 목록을 클립보드에 복사",
             "filesCopied": "{count}개의 파일 항목이 클립보드에 복사됨",
@@ -4199,7 +4505,9 @@
                     "cropHint": "선택 영역을 더블 클릭하거나 Enter를 눌러 적용, Esc를 눌러 취소",
                     "cropRatio": "비율",
                     "cropRatioFree": "자유",
-                    "cropRatioOriginal": "원본"
+                    "cropRatioOriginal": "원본",
+                    "rotateCcw90Short": "반시계 방향 90°",
+                    "rotateCw90Short": "시계 방향 90°"
                 },
                 "toggleTransparencyBg": "투명도 배경 (전환)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "PDF 로딩 중...",
                 "open": "PDF 열기",
                 "page": "페이지",
-                "zoom": "확대/축소"
+                "zoom": "확대/축소",
+                "documentTitle": "PDF 문서"
             },
             "text": {
                 "auto": "자동",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "태블릿 (768px)",
                 "wordWrap": "줄 바꿈",
                 "zoomIn": "확대",
-                "zoomOut": "축소"
+                "zoomOut": "축소",
+                "htmlPreviewFrameTitle": "HTML 미리 보기"
             },
             "video": {
                 "exitFullscreen": "전체 화면 종료 (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt 오버레이 감지됨",
             "aerocryptImportDesc": "{name}의 프로필이 rclone.conf에서 가져왔습니다: 지금 오버레이를 열까요?",
             "aerocryptImportOpen": "오버레이 열기",
-            "aerovaultOverlayExpired": "비활성으로 인해 AeroVault Overlay가 잠겼습니다. 계속하려면 보관소를 다시 여세요."
+            "aerovaultOverlayExpired": "비활성으로 인해 AeroVault Overlay가 잠겼습니다. 계속하려면 보관소를 다시 여세요.",
+            "aerovaultOverlaySource": "AeroVault 오버레이 활성 ({source})",
+            "fileOperationsLabel": "파일 작업",
+            "overlayBadge": "오버레이"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "이중 인증",
                 "verify": "확인 및 활성화",
                 "active": "2FA 활성",
-                "inactive": "2FA 비활성"
+                "inactive": "2FA 비활성",
+                "codeGroupLabel": "{count}자리 코드",
+                "digitLabel": "{index}번째 자리"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "탐색",
                     "installed": "설치됨"
-                }
+                },
+                "remoteInstallDisabled": "레지스트리가 클라이언트 측에서 인증될 때까지 원격 플러그인 설치는 현재 비활성화되어 있습니다. 로컬에 설치된 플러그인은 계속 정상적으로 작동합니다."
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "복원된 파일은 원래 폴더에 다시 나타납니다",
             "connectionNamePlaceholder": "연결 이름 (예: 내 FileLu Cloud)",
             "trashAutoExpiry": "휴지통의 파일은 7일 후 FileLu에서 자동으로 삭제됩니다",
-            "rsyncTransferOnly": "전송 전용 엔드포인트: Rsync에서는 탐색이 지원되지 않습니다. 탐색하려면 Native API, WebDAV, S3 또는 FTP를 사용하고, 고대역폭 delta 전송에는 Rsync로 전환하세요."
+            "rsyncTransferOnly": "전송 전용 엔드포인트: Rsync에서는 탐색이 지원되지 않습니다. 탐색하려면 Native API, WebDAV, S3 또는 FTP를 사용하고, 고대역폭 delta 전송에는 Rsync로 전환하세요.",
+            "badgePasswordProtected": "비밀번호 보호됨",
+            "badgeWatermarked": "워터마크 적용됨"
         },
         "box": {
             "addComment": "댓글 추가",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "무료 플랜",
             "freeCardTier": "무료 + 카드",
-            "paidTier": "유료"
+            "paidTier": "유료",
+            "extraFeatures": "추가",
+            "coreOpsList": "업로드, 다운로드, 삭제, 이름 변경, 이동, 폴더 만들기, 검색",
+            "coreOpsLegend": "기본 = 업로드, 다운로드, 삭제, 이름 변경, 이동, 폴더 만들기, 검색"
         },
         "healthCheck": {
             "title": "서버 상태 점검",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "에셋 {count}개",
             "releaseAssetMany": "에셋 {count}개",
             "repoPrivate": "비공개",
-            "repoPublic": "공개"
+            "repoPublic": "공개",
+            "actionsLiveBadge": "실시간",
+            "actionsRunningTitle": "GitHub Actions (실행 중)",
+            "coAuthors": "공동 작성자",
+            "pagesPathPlaceholder": "/ 또는 /docs",
+            "pagesStatusBuilding": "빌드 중",
+            "pagesStatusBuilt": "빌드됨",
+            "pagesStatusErrored": "오류",
+            "refreshBranches": "브랜치 새로 고침",
+            "repoPrivateTitle": "비공개 저장소",
+            "repoPublicTitle": "공개 저장소",
+            "unpushedCommitsOnBranchMany": "{branch}에 푸시되지 않은 커밋 {count}개",
+            "unpushedCommitsOnBranchOne": "{branch}에 푸시되지 않은 커밋 {count}개"
         },
         "filenNotes": {
             "title": "암호화된 노트",
@@ -4967,7 +5300,8 @@
             "tagName": "태그 이름",
             "removeTag": "태그 제거",
             "manageTags": "태그 관리",
-            "deleteTagConfirm": "태그 “{name}”을(를) 삭제할까요? 노트의 텍스트는 유지됩니다."
+            "deleteTagConfirm": "태그 “{name}”을(를) 삭제할까요? 노트의 텍스트는 유지됩니다.",
+            "betaBadge": "베타"
         },
         "shareLinkModal": {
             "title": "공유 링크",
@@ -5077,7 +5411,8 @@
                 "down": "연결 불가",
                 "pending": "확인 중...",
                 "unknown": "미확인",
-                "clickToRetry": "클릭하여 다시 확인"
+                "clickToRetry": "클릭하여 다시 확인",
+                "withActiveSession": "{title} (활성 세션)"
             },
             "densityCompact": "좁은 행",
             "densityComfortable": "편안한 행",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt 암호화 오버레이(네이티브): 이 서버에서 이름과 내용이 암호화됩니다.",
-                "rcloneTitle": "rclone crypt 오버레이(상호 운용): 이 서버에서 이름과 내용이 암호화됩니다."
+                "rcloneTitle": "rclone crypt 오버레이(상호 운용): 이 서버에서 이름과 내용이 암호화됩니다.",
+                "keyBits": "{bits}비트"
             },
             "sidebar": {
                 "filters": "필터",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "이 버킷의 암호화 설정을 읽을 수 없었습니다. 애플리케이션 키에 readBucketEncryption 권한이 없기 때문입니다. 볼 수 없는 값이라고 해서 암호화가 꺼져 있다는 뜻은 아닙니다.",
                 "unknownShapeTitle": "이 버킷의 암호화 설정을 읽을 수 없었습니다. 응답이 문서화된 형식이 아니었기 때문입니다. 키에는 읽을 권한이 있었으므로 이는 응답의 문제이지 권한의 문제가 아닙니다."
             },
-            "exportProfile": "내보내기..."
+            "exportProfile": "내보내기...",
+            "quotaLabel": "할당량",
+            "storageNoCapReported": "{used} (보고된 할당량 한도 없음)",
+            "e2eBitsBadge": "E2E {bits}비트",
+            "filenAuthVersionTitle": "연결 성공 시 Filen auth/info에서 감지됨",
+            "demoBadge": "데모",
+            "timeAgo": {
+                "now": "지금",
+                "minutes": "{count}분",
+                "hours": "{count}시간",
+                "days": "{count}일",
+                "months": "{count}개월"
+            }
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",
@@ -5221,7 +5569,8 @@
             "linkType": "유형",
             "createMergeRequest": "Merge Request 생성",
             "mrTitle": "MR 제목",
-            "mrBody": "설명 (선택 사항)"
+            "mrBody": "설명 (선택 사항)",
+            "sourceCode": "소스 코드"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "사용자 복제 (서버만, 비밀번호 제외)",
             "copyLockedHint": "서버를 복제하려면 먼저 이 계정으로 전환하세요",
             "crossUserDedupTitle": "다른 계정에서 이미 저장함",
-            "crossUserDedupMessage": "\"{name}\"이(가) 사용하는 서버 계정은 이 기기에서 다음 계정도 저장했습니다: {accounts}"
+            "crossUserDedupMessage": "\"{name}\"이(가) 사용하는 서버 계정은 이 기기에서 다음 계정도 저장했습니다: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "비밀번호 재설정 대화 상자 닫기",
+                "confirmPassword": "새 비밀번호 확인",
+                "errMismatch": "새 계정 비밀번호가 일치하지 않습니다.",
+                "errNewRequired": "새 계정 비밀번호를 입력하세요.",
+                "errNotAuthorized": "다른 계정의 비밀번호를 재설정하려면 관리자여야 합니다.",
+                "errNotForSelf": "본인 계정에서는 비밀번호 변경을 사용하세요.",
+                "errStoreNotReady": "먼저 보관함 잠금을 해제한 후 다시 시도하세요.",
+                "errTypeReset": "이 파괴적인 작업을 확인하려면 RESET을 입력하세요.",
+                "errUserNotFound": "이 사용자는 더 이상 존재하지 않습니다.",
+                "newPassword": "새 계정 비밀번호",
+                "statEncryptedBytes": "암호화된 바이트",
+                "statProfiles": "프로필",
+                "statSettings": "설정",
+                "title": "비밀번호 재설정 = 데이터 파기",
+                "typeReset": "RESET 입력",
+                "wipeDetail": "현재 비밀번호는 복구할 수 없습니다. AeroFTP는 대상 계정의 저장된 서버, 사용자 설정 및 잠금 상태를 삭제한 다음 새 비밀번호로 보호되는 새 암호화 키를 발급합니다.",
+                "wipeWarning": "대상 계정의 암호화된 파티션이 영구적으로 지워집니다."
+            },
+            "dropdown": {
+                "accountPassword": "계정 비밀번호",
+                "lock": "잠금",
+                "newUser": "새 사용자",
+                "noUsers": "아직 사용자가 없습니다. 아래의 \"새 사용자\"를 사용해 첫 사용자를 추가하세요.",
+                "protectionNote": "계정이 Argon2id + AES-KW + AES-256-GCM 암호화로 보호됩니다",
+                "users": "사용자"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt 오버레이",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "모드는 연결을 만들 때 선택되며 저장된 프로필을 편집하는 동안 고정됩니다. 다른 모드를 사용하려면 새 연결을 만드세요."
+                "lockedInEdit": "모드는 연결을 만들 때 선택되며 저장된 프로필을 편집하는 동안 고정됩니다. 다른 모드를 사용하려면 새 연결을 만드세요.",
+                "notInBuild": "이 AeroFTP 빌드에는 포함되지 않았습니다."
             }
         },
         "flatpak": {

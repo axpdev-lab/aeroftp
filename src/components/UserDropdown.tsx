@@ -28,6 +28,7 @@ import {
     type UserUnlockStatus,
 } from '../utils/userPartitions';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
+import { useTranslation } from '../i18n';
 
 interface UserDropdownProps {
     onUsersChanged?: () => void;
@@ -55,6 +56,7 @@ const isUnavailableError = (error: unknown): boolean => {
 };
 
 export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLockAccount, lockBusy }) => {
+    const t = useTranslation();
     const [users, setUsers] = React.useState<UserMetadata[]>([]);
     const [status, setStatus] = React.useState<UserUnlockStatus | null>(null);
     const [isOpen, setIsOpen] = React.useState(false);
@@ -193,8 +195,8 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                             ? 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]'
                             : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]'
                     }`}
-                    title="Users"
-                    aria-label="Users"
+                    title={t('manageUsers.dropdown.users')}
+                    aria-label={t('manageUsers.dropdown.users')}
                 >
                     <UserAvatar
                         name={activeUser.name}
@@ -211,7 +213,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                         <div className="border-b border-[var(--color-border)] px-3 py-2">
                             <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-text-primary)]">
                                 <Users size={14} className="text-[var(--color-text-secondary)]" />
-                                Users
+                                {t('manageUsers.dropdown.users')}
                             </div>
                             {error && (
                                 <div className="mt-1 rounded-md bg-red-500/10 px-2 py-1 text-[11px] text-red-500">
@@ -252,7 +254,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                                 );
                             }) : (
                                 <div className="px-3 py-3 text-center text-xs text-[var(--color-text-tertiary)]">
-                                    No users yet. Use "New User" below to add the first one.
+                                    {t('manageUsers.dropdown.noUsers')}
                                 </div>
                             )}
                         </div>
@@ -266,7 +268,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
                                 >
                                     <Lock size={14} className="text-[var(--color-text-secondary)]" />
-                                    Lock
+                                    {t('manageUsers.dropdown.lock')}
                                 </button>
                             )}
                             <button
@@ -278,7 +280,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-tertiary)]"
                             >
                                 <Plus size={14} className="text-[var(--color-text-secondary)]" />
-                                New User
+                                {t('manageUsers.dropdown.newUser')}
                             </button>
                             <button
                                 type="button"
@@ -289,7 +291,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-tertiary)]"
                             >
                                 <UserCog size={14} className="text-[var(--color-text-secondary)]" />
-                                Manage Users
+                                {t('manageUsers.title')}
                             </button>
                         </div>
                     </div>
@@ -316,7 +318,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                                     </div>
                                     <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                                         <KeyRound size={12} />
-                                        Account Password
+                                        {t('manageUsers.dropdown.accountPassword')}
                                     </div>
                                 </div>
                             </div>
@@ -328,7 +330,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                                     setError('');
                                 }}
                                 className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-                                aria-label="Close"
+                                aria-label={t('manageUsers.close')}
                             >
                                 <X size={16} />
                             </button>
@@ -344,7 +346,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                                 value={unlockPassphrase}
                                 onChange={(event) => setUnlockPassphrase(event.target.value)}
                                 autoFocus
-                                placeholder="Password"
+                                placeholder={t('common.password')}
                                 autoComplete="current-password"
                                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-10 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                             />
@@ -352,7 +354,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                                 type="button"
                                 onClick={() => setShowUnlockPassphrase((value) => !value)}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                                aria-label={showUnlockPassphrase ? 'Hide password' : 'Show password'}
+                                aria-label={showUnlockPassphrase ? t('accountLock.hidePassword') : t('accountLock.showPassword')}
                             >
                                 {showUnlockPassphrase ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
@@ -365,17 +367,17 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
                             {isLoading ? (
                                 <>
                                     <Loader2 size={15} className="animate-spin" />
-                                    <span className="opacity-90">Unlocking...</span>
+                                    <span className="opacity-90">{t('accountLock.unlocking')}</span>
                                 </>
                             ) : (
                                 <>
                                     <Shield size={15} />
-                                    Unlock
+                                    {t('accountLock.unlock')}
                                 </>
                             )}
                         </button>
                         <p className="mt-3 text-center text-[11px] text-gray-500 dark:text-gray-400">
-                            Your account is protected with Argon2id + AES-KW + AES-256-GCM encryption
+                            {t('manageUsers.dropdown.protectionNote')}
                         </p>
                     </form>
                 </div>

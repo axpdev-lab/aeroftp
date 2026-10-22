@@ -565,7 +565,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                 <div className="mt-3 grid grid-cols-2 gap-2">
                     {/* Server Protocols */}
                     <div className="col-span-2">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Protocols</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{t('introHub.category.protocols')}</p>
                     </div>
                     {PROTOCOLS.filter(p => !p.isCloudStorage && (!allowedProtocols || (allowedProtocols.includes(p.type) && !p.providerId))).map((protocol) => (
                         <button
@@ -613,7 +613,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                     {/* Service Providers: hidden when allowedProtocols filters them all out */}
                     {(!allowedProtocols || PROTOCOLS.some(p => p.isCloudStorage && allowedProtocols.includes(p.type))) && (
                     <div className="col-span-2 mt-2">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Services</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{t('protocol.servicesHeading')}</p>
                     </div>
                     )}
                     {PROTOCOLS.filter(p => p.isCloudStorage && (!allowedProtocols || allowedProtocols.includes(p.type))).map((protocol) => (
@@ -764,6 +764,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
 
     if (protocol === 'sftp') {
         const isSourceForge = selectedProviderId === 'sourceforge';
+        const [sfKeyBefore, sfKeyRest = ''] = t('protocol.sourceforgeSshKeyHelp', { cmd: '{cmd}', link: '{link}' }).split('{cmd}');
+        const [sfKeyMiddle, sfKeyAfter = ''] = sfKeyRest.split('{link}');
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 {/* Collapsible SSH Auth header */}
@@ -793,11 +795,11 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             <div className="flex items-start gap-2 p-2.5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30 rounded-lg text-xs text-amber-800 dark:text-amber-200">
                                 <Info size={13} className="shrink-0 mt-0.5" />
                                 <span>
-                                    SourceForge requires SSH key authentication. Generate a key with{' '}
-                                    <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded text-[11px]">ssh-keygen -t ed25519</code>{' '}
-                                    and upload it to{' '}
-                                    <a href="https://sourceforge.net/auth/shell_services" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">SSH Settings</a><CopyLinkButton url="https://sourceforge.net/auth/shell_services" />.{' '}
-                                    <a href={providerConfig?.helpUrl || 'https://docs.aeroftp.app/providers/sourceforge'} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">Full guide</a><CopyLinkButton url={providerConfig?.helpUrl || 'https://docs.aeroftp.app/providers/sourceforge'} />
+                                    {sfKeyBefore}
+                                    <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded text-[11px]">ssh-keygen -t ed25519</code>
+                                    {sfKeyMiddle}
+                                    <a href="https://sourceforge.net/auth/shell_services" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">{t('protocol.sourceforgeSshSettings')}</a><CopyLinkButton url="https://sourceforge.net/auth/shell_services" />{sfKeyAfter}{' '}
+                                    <a href={providerConfig?.helpUrl || 'https://docs.aeroftp.app/providers/sourceforge'} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">{t('protocol.fullGuide')}</a><CopyLinkButton url={providerConfig?.helpUrl || 'https://docs.aeroftp.app/providers/sourceforge'} />
                                 </span>
                             </div>
                         )}
@@ -937,7 +939,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
 
         // Endpoint placeholder: use template pattern when available
         const endpointPlaceholder = endpointField?.placeholder
-            || (providerConfig?.defaults?.endpointTemplate ? `es. ${providerConfig.defaults.endpointTemplate.replace(/\{(\w+)\}/g, '<$1>')}` : null)
+            || (providerConfig?.defaults?.endpointTemplate ? t('protocol.endpointTemplateExample', { template: providerConfig.defaults.endpointTemplate.replace(/\{(\w+)\}/g, '<$1>') }) : null)
             || t('protocol.endpointPlaceholder');
 
         return (
@@ -1165,7 +1167,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     onChange={(e) => handleAccountIdChange(e.target.value)}
                                     disabled={disabled}
                                     className={`px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 ${endpointFixedPart ? 'rounded-l-lg border-r-0 flex-1 min-w-0' : 'rounded-lg w-full'}`}
-                                    placeholder={accountIdField.placeholder || 'Account ID'}
+                                    placeholder={accountIdField.placeholder || t('protocol.accountId')}
                                     required={accountIdField.required}
                                 />
                                 {endpointFixedPart && (
@@ -1177,7 +1179,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                             value={options.jurisdiction || ''}
                                             onChange={(e) => handleJurisdictionChange(e.target.value)}
                                             disabled={disabled}
-                                            aria-label={jurisdictionField.label || 'Jurisdiction'}
+                                            aria-label={jurisdictionField.label || t('protocol.jurisdiction')}
                                             className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-r-lg text-sm text-gray-600 dark:text-gray-200 whitespace-nowrap"
                                         >
                                             {jurisdictionField.options.map(opt => (
@@ -1604,7 +1606,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
 
                 {/* Insecure certificate confirmation modal */}
                 {showInsecureCertModal && (
-                    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowInsecureCertModal(false)} role="dialog" aria-modal="true" aria-label="Insecure Certificate Warning">
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowInsecureCertModal(false)} role="dialog" aria-modal="true" aria-label={t('protocol.insecureCertDialogLabel')}>
                         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
                             <div className="p-6">
                                 <div className="flex items-center gap-3 mb-4">

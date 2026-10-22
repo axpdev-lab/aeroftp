@@ -61,7 +61,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
   const visibilityBadge = (
     <span
       className={`inline-flex items-center gap-0.5 text-xs ${isPrivate ? 'text-yellow-500' : 'text-gray-400'}`}
-      title={isPrivate ? 'Private repository' : 'Public repository'}
+      title={isPrivate ? t('github.repoPrivateTitle') : t('github.repoPublicTitle')}
     >
       {isPrivate ? <LockKeyhole size={11} /> : <Globe size={11} />}
       <span>{isPrivate ? t('github.repoPrivate') : t('github.repoPublic')}</span>

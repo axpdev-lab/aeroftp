@@ -337,7 +337,38 @@
             "protonSignOut": "Logg ut",
             "protonSignOutHelp": "Avslutter økten hos Proton og fjerner den fra denne profilen.",
             "protonSignInExpired": "Innloggingssiden er utløpt. Logg inn igjen.",
-            "protonNativeUnavailable": "Denne versjonen inkluderer ikke den innebygde Proton Drive-klienten."
+            "protonNativeUnavailable": "Denne versjonen inkluderer ikke den innebygde Proton Drive-klienten.",
+            "forms": {
+                "publicApiKey": "Offentlig API-nøkkel",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Offentlig nøkkel.",
+                "secretApiKey": "Hemmelig API-nøkkel",
+                "uploadcareSecretHint": "Brukes kun til REST-filbehandling via {scheme}-autentisering.",
+                "flatMediaLibrary": "Flatt mediebibliotek",
+                "uploadcareNoFolders": "Uploadcare har ikke egne mapper; prosjektfiler listes i roten etter UUID.",
+                "urlEndpointId": "URL-endepunkt-ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-endepunkt.",
+                "privateApiKey": "Privat API-nøkkel",
+                "storedVaultBasicAuth": "Lagret i det lokale hvelvet og sendt kun til {provider} via Basic Auth.",
+                "cloudName": "Skynavn",
+                "cloudinaryCloudNameHint": "Finnes i Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-nøkkel",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-nøkkel.",
+                "apiSecret": "API-hemmelighet",
+                "apiSecretPlaceholder": "API-hemmelighet",
+                "openProviderLink": "Åpne {provider}-lenke",
+                "githubPatHint": "Finkornet PAT med Contents (lese og skrive).",
+                "generateToken": "Generer token",
+                "applicationKeyId": "Programnøkkel-ID",
+                "backblazeKeyIdHint": "B2-applikasjonsnøkkel-ID, starter med 003. Opprett en på App Keys-siden hos Backblaze.",
+                "applicationKey": "Applikasjonsnøkkel",
+                "backblazeKeyHint": "Vises bare én gang ved opprettelse. Behandle den som et passord.",
+                "bucketNameExactHint": "Nøyaktig bøttenavn, skiller mellom store og små bokstaver.",
+                "megacmdSetupFirst": "Sett opp MEGAcmd først",
+                "megacmdFetchUrlTitle": "Kjør {cmd} og fyll ut URL-en automatisk",
+                "fetchUrl": "Hent URL",
+                "megacmdWebdavHint": "Brukernavn og passord er utelatt med vilje. AeroFTP kjører selv \"{cmd}\" ved tilkobling for å starte broen og lese denne adressen: feltet kan stå tomt. Hent URL er en valgfri manuell oppdatering; endre porten her hvis MEGAcmd bruker en egendefinert port."
+            },
+            "manualStorageUnitLabel": "{label}-enhet"
         },
         "browser": {
             "remote": "Ekstern",
@@ -390,7 +421,19 @@
             "listingPath": "Viser {path}...",
             "pleaseWait": "Vennligst vent...",
             "sameNameLeakChip": "samme navn",
-            "sameNameLeakTooltip": "Dette navnet vises også på en annen sti i dette krypterte hvelvet. Fordi navn krypteres deterministisk, kan en observatør av det krypterte lageret se at de to deler et navn."
+            "sameNameLeakTooltip": "Dette navnet vises også på en annen sti i dette krypterte hvelvet. Fordi navn krypteres deterministisk, kan en observatør av det krypterte lageret se at de to deler et navn.",
+            "endpointSelector": {
+                "localFolder": "Lokal mappe",
+                "localFolderHint": "Velg en lokal sti for dette panelet",
+                "noSavedProfiles": "Ingen lagrede profiler",
+                "savedProfiles": "Lagrede eksterne profiler",
+                "title": "Endepunkt"
+            },
+            "leftPanelMarker": "Venstre panel",
+            "localFilesLabel": "Lokale filer",
+            "localFilesRightLabel": "Lokale filer (høyre panel)",
+            "remoteFilesLabel": "Eksterne filer",
+            "rightPanelMarker": "Høyre panel"
         },
         "contextMenu": {
             "askAeroAgent": "Spør AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Hastighetsgraf",
             "hideSpeedGraph": "Skjul hastighetsgraf",
             "speedAvg": "snitt {speed}",
-            "speedPeak": "topp {speed}"
+            "speedPeak": "topp {speed}",
+            "badgeBatch": "PARTI",
+            "badgeDownload": "NEDLASTING",
+            "badgeLive": "DIREKTE",
+            "badgeStream": "STRØM",
+            "badgeUpload": "OPPLASTING",
+            "earlierItemsHidden": "{count} tidligere elementer skjult",
+            "folderFilesProgress": "{done}/{total} filer",
+            "laneDone": "ferdig",
+            "laneError": "feil",
+            "unifiedPlan": {
+                "destination": "Mål",
+                "dialogLabel": "Overføringsplan",
+                "engineAerovaultOverlay": "AeroVault-overlegg",
+                "engineCompareOnly": "Bare sammenligning",
+                "engineCrossProfileSync": "Synkronisering mellom profiler",
+                "engineCrossProfileTransfer": "Overføring mellom profiler",
+                "engineLocalDelta": "Lokal delta-transport",
+                "engineLocalFs": "Lokalt filsystem",
+                "engineProviderDownload": "Nedlasting fra leverandør",
+                "engineProviderUpload": "Opplasting til leverandør",
+                "engineUnsupported": "Ikke støttet",
+                "execute": "Utfør",
+                "items": "Elementer",
+                "modeBackup": "Sikkerhetskopi",
+                "modeBisync": "Toveis synk",
+                "modeCompare": "Sammenlign",
+                "modeCopy": "Kopier",
+                "modeMirror": "Speil",
+                "modeMove": "Flytt",
+                "modeSync": "Synkroniser",
+                "notExecutable": "Dette endepunktparet kan ikke kjøres ennå.",
+                "parallel": "Parallell",
+                "reviewBeforeExecution": "Gjennomgå før kjøring",
+                "route": "{pair} via {engine}",
+                "size": "Størrelse",
+                "source": "Kilde",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Innstillinger",
@@ -1040,7 +1121,13 @@
                 "title": "Innebygd rsync (beta)",
                 "description": "Velg hvordan SFTP Delta Sync sender rsync-overføringer.",
                 "enableToggle": "Aktiver innebygd rsync for delta-synkronisering over SFTP",
-                "experimental": "Auto foretrekker AeroRsync med klassisk reserve; Classic bruker systemets rsync-binærfil der den er tilgjengelig; Native hopper over den klassiske binære reserven."
+                "experimental": "Auto foretrekker AeroRsync med klassisk reserve; Classic bruker systemets rsync-binærfil der den er tilgjengelig; Native hopper over den klassiske binære reserven.",
+                "modeAuto": "Automatisk",
+                "modeClassic": "Klassisk",
+                "modeNative": "Innebygd",
+                "classicNotFoundTooltip": "Klassisk rsync-binærfil ble ikke funnet i PATH. Installer rsync (Linux/macOS-pakke, Windows via WSL/cygwin/scoop) for å aktivere denne modusen.",
+                "classicAt": "Klassisk rsync i {path}",
+                "classicNotDetected": "Klassisk rsync-binærfil ble ikke oppdaget i PATH. Innebygd er den eneste tilgjengelige motoren på denne maskinen."
             },
             "startMinimizedOnAutostart": "Start minimert til systemstatusfeltet",
             "startMinimizedOnAutostartDesc": "Skjul hovedvinduet ved automatisk oppstart. AeroFTP fortsetter å kjøre i systemstatusfeltet, åpne det fra ikonet når du trenger det.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "{count} OAuth-legitimasjoner funnet i ukryptert lagring",
             "fontSystemInstall": "systeminstallasjon",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "Anbefales for maksimal sikkerhet",
+            "fontCustomOption": "Egendefinert...",
+            "fontSystemInstallHint": "Krever systeminstallasjon. AeroFTP faller automatisk tilbake hvis den ikke er tilgjengelig.",
+            "fontSizeIndicatorLabel": "Skrift"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Stopp",
                 "stopShell": "Stopp skall",
                 "closed": "Terminalen lukket.",
-                "commandInsertedReview": "Kommando satt inn i Terminal. Trykk Enter for å kjøre."
+                "commandInsertedReview": "Kommando satt inn i Terminal. Trykk Enter for å kjøre.",
+                "decreaseFont": "Reduser skriftstørrelse (Ctrl+-)",
+                "emptyClickPlus": "Klikk på {plus} for å åpne en terminal",
+                "emptySshHint": "eller {ssh} for eksternt skall til {host}",
+                "increaseFont": "Øk skriftstørrelse (Ctrl+=)",
+                "newTab": "Ny terminalfane",
+                "sshShellTo": "SSH-skall til {host}",
+                "theme": "Terminaltema"
             },
             "editorPanel": {
                 "emptyState": "Høyreklikk på en fil og velg \"Vis kilde\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Lagrer...",
                 "noFileSelected": "Ingen fil valgt for visning",
                 "loading": "Laster redigeringsprogram...",
-                "dragToTerminalRun": "Dra til Terminal for å sette inn kjørekommando"
+                "dragToTerminalRun": "Dra til Terminal for å sette inn kjørekommando",
+                "closeEditor": "Lukk redigeringsprogrammet",
+                "resetChanges": "Tilbakestill endringer"
             },
             "previewPanel": {
                 "emptyState": "Høyreklikk på en fil og velg \"Forhåndsvisning\""
             },
             "codeEditor": "Koderedigerer",
-            "sshTerminal": "SSH-terminal"
+            "sshTerminal": "SSH-terminal",
+            "comingSoon": "Kommer snart",
+            "soonBadge": "Snart"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Autoriser manuelt på nytt hvis tokenet tilbakekalles"
             },
             "profilesLoadFailed": "Kunne ikke lese de lagrede serverne dine: {error}",
-            "cleanupSummary": "{count} filer, {size} frigjort"
+            "cleanupSummary": "{count} filer, {size} frigjort",
+            "maturity": {
+                "alpha": "Alfa"
+            },
+            "dialogDashboardLabel": "Oversikt over skysynkronisering",
+            "dialogLoadingLabel": "Skysynkronisering lastes inn",
+            "dialogSettingsLabel": "Innstillinger for skysynkronisering",
+            "dialogSetupLabel": "Oppsett av skysynkronisering",
+            "onePerLineHint": "(én per linje)",
+            "pairsEditorLabel": "Redigering av AeroCloud-par",
+            "remoteSubfolderPlaceholder": "sky"
         },
         "statusBar": {
             "connected": "Tilkoblet",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "delvis, uleselige mapper: {count}",
             "usedScanFailed": "Skanning av brukt lagring mislyktes",
             "usedScanEmpty": "Skanning av {path} fant ingen filer; den bufrede verdien ble beholdt. Sjekk banen eller serverens støtte for rekursiv listing.",
-            "filenBridgeAccountTotal": "Filen Desktop rapporterer ikke kontoens totale bruk her: det viste forbruket er summen av filene under denne banen. Den opprinnelige Filen-tilkoblingen viser kontoens totale bruk med en gang."
+            "filenBridgeAccountTotal": "Filen Desktop rapporterer ikke kontoens totale bruk her: det viste forbruket er summen av filene under denne banen. Den opprinnelige Filen-tilkoblingen viser kontoens totale bruk med en gang.",
+            "ariaLabel": "Statuslinje",
+            "debugBadge": "FEILSØKING",
+            "debugModeActive": "Feilsøkingsmodus aktiv"
         },
         "dialogs": {
             "confirmTitle": "Bekreft",
@@ -1620,7 +1735,8 @@
                 "apRole": "Grunnlegger, utvikler, vedlikeholder, meddesigner",
                 "ekRole": "Forsker, kvalitetssikringsingeniør, meddesigner"
             },
-            "madeBy": "av {author}"
+            "madeBy": "av {author}",
+            "statsLine": "{protocols} protokoller · {languages} språk · AES-256-arkiver"
         },
         "support": {
             "title": "Støtt AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Prosjekt (Unixname)",
             "opendriveNotApiKey": "(ikke OpenDrive API-nøkkelen din)",
             "endpoint": "Endepunkt",
-            "accountId": "Konto-ID"
+            "accountId": "Konto-ID",
+            "servicesHeading": "Tjenester",
+            "sourceforgeSshKeyHelp": "SourceForge krever autentisering med SSH-nøkkel. Generer en nøkkel med {cmd} og last den opp til {link}.",
+            "sourceforgeSshSettings": "SSH-innstillinger",
+            "fullGuide": "Full veiledning",
+            "endpointTemplateExample": "f.eks. {template}",
+            "jurisdiction": "Jurisdiksjon",
+            "insecureCertDialogLabel": "Advarsel om usikkert sertifikat",
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Verifisering av vertsnøkkel"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",
@@ -2111,7 +2236,10 @@
             "rename": "Gi nytt navn",
             "resume": "Gjenoppta",
             "resumeHint": "Gjenoppta den avbrutte overføringen i stedet for å starte på nytt",
-            "cancel": "Avbryt"
+            "cancel": "Avbryt",
+            "dialogLabel": "Bekreft overskriving",
+            "moreInQueue": "+{count} i kø",
+            "unknownDate": "Ukjent"
         },
         "statusbar": {
             "queue": "Kø",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Brukbare sti-par (lokal/ekstern) i denne malen: {count}. Et AeroSync-vindu arbeider med nøyaktig ett par, så ingenting ble importert. Rediger malen slik at det bare står igjen ett par, og importer den deretter på nytt.",
             "templateNamePlaceholder": "f.eks. Nattlig sikkerhetskopi til S3",
             "templateDescPlaceholder": "Hva denne malen brukes til (valgfritt)",
-            "templateExportCliDesc": "Innpakningsskript for aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Innpakningsskript for aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Deaktiver",
+            "multiPathEditorLabel": "Redigering av flere stier",
+            "multiPathEnablePair": "Aktiver",
+            "multiPathLocalPlaceholder": "Lokal sti",
+            "multiPathRemotePlaceholder": "Ekstern sti",
+            "rollbackDialogLabel": "Gjenopprettingsøyeblikksbilde",
+            "rollbackMoreFiles": "+{count} til...",
+            "rollbackSnapshotSummaryMany": "{count} filer, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fil, {size}",
+            "templateDialogLabel": "Synkroniseringsmal",
+            "templateExcludes": "Utelatelser",
+            "templateLocal": "Lokal",
+            "templateRemote": "Ekstern",
+            "templateRetries": "Nye forsøk"
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Avvis verktøykjøring",
                 "toggleDetails": "Vis/skjul detaljer",
                 "allowSession": "Tillat for denne økten",
-                "nonAtomicReplace": "Ikke-atomisk utskifting: filen er borte et kort øyeblikk"
+                "nonAtomicReplace": "Ikke-atomisk utskifting: filen er borte et kort øyeblikk",
+                "moreOptions": "Flere alternativer",
+                "panelAria": "Panel for verktøygodkjenning"
             },
             "settings": {
                 "title": "AI-innstillinger",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Reserve",
                 "routingNoFallback": "Ingen",
                 "bedrockNeedsModel": "Legg til og aktiver en Bedrock-modell i fanen Modeller før du tester.",
-                "bedrockSetup": "Angi Runtime URL for AWS-regionen din. Under Modeller legger du til en ID som støtter Chat Completions på Bedrock Runtime. Runtime viser ikke en liste over modeller. Testen sender en liten inferensforespørsel som kan medføre AWS-kostnader."
+                "bedrockSetup": "Angi Runtime URL for AWS-regionen din. Under Modeller legger du til en ID som støtter Chat Completions på Bedrock Runtime. Runtime viser ikke en liste over modeller. Testen sender en liten inferensforespørsel som kan medføre AWS-kostnader.",
+                "detectOllamaModelsTooltip": "Oppdag tilgjengelige Ollama-modeller automatisk",
+                "kTokens": "{count}K tokens",
+                "modelEditorAria": "KI-modellredigering",
+                "supportsTools": "Støtter verktøy",
+                "supportsVision": "Støtter bildeforståelse",
+                "thinkingReasoning": "Tenkning/Resonnering",
+                "toolQuality": "Verktøykvalitet: {quality}/5"
             },
             "copy": "Kopier",
             "attachImage": "Legg ved bilde",
@@ -2699,7 +2850,9 @@
                 "run": "Kjør i terminal",
                 "insert": "Sett inn i redigerer",
                 "diff": "Diff med original",
-                "diffNoFile": "Ingen fil åpen for diff"
+                "diffNoFile": "Ingen fil åpen for diff",
+                "commandBlocked": "Kommando blokkert: potensielt destruktiv",
+                "confirmRun": "Bekreft kjøring: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Tenker...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Bytt gren",
                 "delete": "Slett gren",
                 "newBranch": "Ny gren",
-                "branchFrom": "Forgrein fra dette punktet"
+                "branchFrom": "Forgrein fra dette punktet",
+                "messageCountShort": "{count} mld.",
+                "unnamed": "Gren"
             },
             "context": {
                 "projectDetected": "Prosjekt oppdaget",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "kjører",
                 "expired": "utløpt",
-                "refresh": "Oppdater"
+                "refresh": "Oppdater",
+                "modelsRunningMany": "{count} modeller kjører",
+                "modelsRunningOne": "{count} modell kjører",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Kontekstbufring",
@@ -2956,7 +3114,8 @@
                 "warning": "Alle filoperasjoner vil utføres umiddelbart uten godkjenning. Bruk på eget ansvar.",
                 "disable": "Deaktiver",
                 "securityWarning": "Sikkerhetsadvarsel",
-                "understood": "Forstått"
+                "understood": "Forstått",
+                "warningAria": "Advarsel om ekstremmodus"
             },
             "errorServerError": "AI-leverandørens server opplever problemer. Prøv igjen om et øyeblikk.",
             "errorServiceUnavailable": "AI-leverandøren er midlertidig utilgjengelig (overbelastet). Gratistjenester kan ha begrensninger. Prøv igjen senere.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Ubegrenset",
                 "roleAI": "AI",
-                "roleUser": "Bruker"
+                "roleUser": "Bruker",
+                "noConversations": "Ingen samtaler ennå",
+                "titleCount": "Historikk ({count})"
             },
             "dropFileToAnalyze": "Slipp filen for å analysere med AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} inndatatokener, {output} utdatatokener, slik leverandøren har talt",
-                "breakdownCache": "{input} inndatatokener, {output} utdatatokener, {cacheRead} lest fra prompt-hurtigbufferen, {cacheWritten} skrevet til den, slik leverandøren har talt"
+                "breakdownCache": "{input} inndatatokener, {output} utdatatokener, {cacheRead} lest fra prompt-hurtigbufferen, {cacheWritten} skrevet til den, slik leverandøren har talt",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Utfør {count} operasjon(er)",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Ville hoppet over",
                     "skipped": "Hoppet over",
                     "existedAtCheckpoint": "fantes ved kontrollpunktet",
-                    "absentAtCheckpoint": "manglet ved kontrollpunktet"
+                    "absentAtCheckpoint": "manglet ved kontrollpunktet",
+                    "noFiles": "Ingen filer var inkludert i dette gjenopprettingsresultatet.",
+                    "otherActions": "Andre handlinger",
+                    "requestedPaths": "Forespurt delmengde av stier",
+                    "scopeAll": "Omfang: alle filer registrert i kontrollpunktet.",
+                    "titleApplied": "Gjenoppretting av kontrollpunkt brukt",
+                    "titleApplyReview": "Gjennomgang av bruk av kontrollpunktgjenoppretting",
+                    "titleDryRunComplete": "Tørrkjøring av kontrollpunktgjenoppretting fullført",
+                    "titleDryRunReview": "Gjennomgang av prøvegjenoppretting av kontrollpunkt"
                 },
                 "checks": {
                     "exitSummary": "avslutningskode {code} · {seconds}s",
                     "continueOnFailure": "Kjører alle kontroller selv om én feiler.",
-                    "stopOnFailure": "Stopper ved den første kontrollen som feiler."
+                    "stopOnFailure": "Stopper ved den første kontrollen som feiler.",
+                    "checkLabel": "Kontroll:",
+                    "checksLabel": "Kontroller:",
+                    "exitChip": "exit {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "i/t",
+                    "passedCount": "{passed}/{total} bestått",
+                    "runCheckNote": "Kjører en utvalgt build/test/lint-kommando i arbeidsområdet. Byggeskript og tester kjører ekte kode.",
+                    "runProjectCheck": "Kjør prosjektkontroll",
+                    "runVerification": "Kjør verifiseringsrunde",
+                    "runVerificationNote": "Kjører utvalgte build/test/lint-kommandoer i arbeidsområdet. Byggeskript og tester kjører ekte kode.",
+                    "stoppedEarly": "Stoppet ved første mislykkede kontroll.",
+                    "timeoutLabel": "Tidsavbrudd: {seconds}s",
+                    "verification": "Verifisering"
                 },
                 "diagnostics": {
-                    "none": "Ingen diagnostikk rapportert."
+                    "none": "Ingen diagnostikk rapportert.",
+                    "errorCountMany": "{count} feil",
+                    "errorCountOne": "{count} feil",
+                    "title": "Diagnostikk",
+                    "truncated": "Diagnostikklisten ble avkortet.",
+                    "warningCountMany": "{count} advarsler",
+                    "warningCountOne": "{count} advarsel"
                 },
                 "search": {
-                    "none": "Ingen treff funnet."
+                    "none": "Ingen treff funnet.",
+                    "ignoreCase": "ignorer store/små bokstaver",
+                    "inPath": "i {path}",
+                    "literal": "bokstavelig",
+                    "matchCountMany": "{count} treff",
+                    "matchCountOne": "{count} treff",
+                    "title": "Søk i arbeidsområde",
+                    "truncated": "Resultatene ble avkortet."
                 },
                 "git": {
                     "noStagedDiff": "Ingen diff-utdata for klargjorte endringer.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Godkjenning av Git-klargjøring",
                     "commitNote": "Dette oppretter en git-commit fra den gjeldende klargjorte indeksen. Gå først gjennom coding_git_status og coding_git_diff med staged=true.",
                     "stagePreviewNote": "Dette forhåndsviser hvilke forespurte stier som ville blitt klargjort; indeksen endres ikke.",
-                    "stageNote": "Dette endrer git-indeksen for de forespurte stiene."
+                    "stageNote": "Dette endrer git-indeksen for de forespurte stiene.",
+                    "afterCounts": "Etter: {counts}",
+                    "beforeCounts": "Før: {counts}",
+                    "clean": "Arbeidstreet er rent.",
+                    "commitCountMany": "{count} commits",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "i konflikt",
+                    "diffTruncated": "Diff-utdataene ble avkortet.",
+                    "logTitle": "Git-logg",
+                    "pathsChip": "stier: {paths}",
+                    "showingNewest": "Viser de nyeste {count}; det finnes flere.",
+                    "statusCounts": "{staged} klargjort, {unstaged} ikke klargjort, {untracked} ikke sporet, {conflicted} i konflikt",
+                    "titleCommitCreated": "Git-commit opprettet",
+                    "titleCommitDryRun": "Prøvekjøring av Git-commit",
+                    "titleCommitReview": "Gjennomgang av Git-commit",
+                    "titleReview": "Git-gjennomgang",
+                    "titleStageApplied": "Git-klargjøring brukt",
+                    "titleStagedDiff": "Klargjort Git-diff",
+                    "titleStageDryRun": "Prøvekjøring av Git-klargjøring",
+                    "titleStatus": "Git-status",
+                    "titleUnstagedDiff": "Ikke-klargjort Git-diff",
+                    "untracked": "ikke sporet"
                 },
                 "patch": {
                     "validateNote": "Dette validerer patchen uten å endre filer.",
                     "applyNote": "Denne høyrisikoforespørselen om bruk skriver filer etter at backend har opprettet et kontrollpunkt før bruk.",
                     "hideDiff": "Skjul samlet diff",
-                    "showDiff": "Vis samlet diff"
-                }
+                    "showDiff": "Vis samlet diff",
+                    "actualLabel": "faktisk:",
+                    "checkpointCreated": "Kontrollpunkt før bruk opprettet",
+                    "diffTruncated": "Diff-forhåndsvisning avkortet for visning.",
+                    "expectedLabel": "forventet:",
+                    "firstLines": "første {shown} av {total} linjer",
+                    "hunkCountMany": "{count} blokker",
+                    "hunkCountOne": "{count} blokk",
+                    "hunkIndex": "blokk {index}",
+                    "restoreManual": "Gjenoppretting er manuell: bruk {tool} med denne kontrollpunkt-ID-en etter gjennomgang.",
+                    "titleApplied": "Patch brukt",
+                    "titleApplyBlocked": "Bruk av patch blokkert",
+                    "titleApplyReview": "Gjennomgang av patchbruk",
+                    "titleDryRunConflicts": "Tørrkjøring av patch fant konflikter",
+                    "titleDryRunPassed": "Tørrkjøring av patch bestått",
+                    "titleDryRunReview": "Gjennomgang av patchtørrkjøring",
+                    "warnings": "Advarsler"
+                },
+                "binary": "binær",
+                "fileCountMany": "{count} filer",
+                "fileCountOne": "{count} fil",
+                "moreCount": "+{count} til",
+                "plan": {
+                    "likelyFiles": "Sannsynlige filer",
+                    "openQuestions": "Åpne spørsmål",
+                    "reviewOnlyNote": "Kun for gjennomgang. Redigeringer og endrende verktøy bruker fortsatt gjeldende godkjenningsmodus.",
+                    "riskHigh": "høy risiko",
+                    "riskLow": "lav risiko",
+                    "riskMedium": "middels risiko",
+                    "risks": "Risikoer",
+                    "title": "Kodeplan"
+                },
+                "state": {
+                    "clean": "ren",
+                    "failed": "mislyktes",
+                    "passed": "bestått",
+                    "timedOut": "tidsavbrudd"
+                },
+                "timeoutChip": "tidsavbrudd {seconds}s",
+                "truncated": "avkortet",
+                "workspaceLabel": "Arbeidsområde:"
+            },
+            "attachedImageAlt": "Vedlagt bilde",
+            "stepNumber": "Trinn {step}",
+            "transcribingLocally": "Transkriberer lokalt...",
+            "transferPlan": {
+                "dependsOnMany": "Avhenger av {count} forberedende trinn",
+                "dependsOnOne": "Avhenger av {count} forberedende trinn",
+                "destination": "Mål: {destination}",
+                "title": "Gjennomgang av overføringsplan",
+                "warnings": "Advarsler"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Vault-headeren eller manifestet ble bygd opp igjen fra paritet.",
             "repairMetadataSuccess": "Reparasjon fullført: vault-headeren eller manifestet ble bygd opp igjen fra paritet",
             "errorCorrectionBadge": "Feilkorrigering",
-            "itemsInFolder": "{count} elementer i /{folder}"
+            "itemsInFolder": "{count} elementer i /{folder}",
+            "compressionProfileArchive": "Arkiv (zstd -15)",
+            "compressionProfileBalanced": "Balansert (zstd -9)",
+            "compressionProfileFast": "Rask (zstd -3)",
+            "damagedChunkLocation": "{id} - forskyvning {offset} (lengde {len})",
+            "fallbackName": "Hvelv",
+            "folderScanSummary": "{files} filer i {dirs} mapper ({size})",
+            "namePlaceholderVault": "Mitt sikre hvelv",
+            "namePlaceholderZip": "Mitt arkiv",
+            "recentDaysAgo": "for {count} d siden",
+            "recentFileCountMany": "{count} filer",
+            "recentFileCountOne": "{count} fil",
+            "recentMonthsAgo": "for {count} md. siden"
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Krypterer valgte elementer...",
             "ingestSkipped": "Hvelvet ble opprettet, men noen elementer kunne ikke legges til:",
             "selectionInfo": "{count} element(er) vil bli kryptert i hvelvet",
-            "decrypting": "Dekrypterer…"
+            "decrypting": "Dekrypterer…",
+            "compatibleWithApp": "Kompatibel med Cryptomator-appen",
+            "createFormatBadge": "Cryptomator-format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM-innhold",
+            "featureNameCipher": "AES-SIV-navn",
+            "formatVersion": "Formatversjon {version}"
         },
         "compress": {
             "title": "Komprimer filer",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Noen filer ville fått samme navn. Vennligst juster mønsteret.",
             "apply": "Bruk",
             "existingCollision": "Noen nye navn samsvarer med filer som allerede finnes i denne mappen; disse filene blir ikke overskrevet, og endring av navn hoppes over.",
-            "existingCollisionHint": "(finnes allerede)"
+            "existingCollisionHint": "(finnes allerede)",
+            "baseNamePlaceholder": "fil",
+            "invalidName": "{name} (ugyldig)"
         },
         "lockScreen": {
             "locked": "App låst",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Ikke montert av skrivebordet. Trekk ut og sett i kabelen på nytt, og åpne deretter på nytt.",
             "volumes_need_mount_observe": "I snap vises volumer når tillatelsen mount-observe er koblet til. Kjør dette i en terminal, og gå deretter tilbake til AeroFTP:",
             "volumes_unavailable": "Kunne ikke lese de monterte volumene.",
-            "portable_device": "Bærbar enhet"
+            "portable_device": "Bærbar enhet",
+            "drivesLeftPanel": "Stasjoner i venstre panel",
+            "drivesRightPanel": "Stasjoner i høyre panel",
+            "modeGroupLabel": "Sidepanelmodus",
+            "placesSidebarLabel": "Sidepanel for steder"
         },
         "viewMode": {
             "list": "Liste",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Bla gjennom søsterkataloger",
             "loading": "Laster...",
             "noSubdirectories": "Ingen underkataloger",
-            "browseChildren": "Bla gjennom undermapper"
+            "browseChildren": "Bla gjennom undermapper",
+            "ariaLabel": "Stinavigasjon",
+            "syncBoundaryTitle": "{path} (synkroniseringsgrense)"
         },
         "bridge": {
             "checking": "Sjekker {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Ingen forhåndsvisning tilgjengelig",
-            "title": "Hurtigvisning"
+            "title": "Hurtigvisning",
+            "closePreview": "Lukk forhåndsvisning",
+            "dialogLabel": "Hurtigvisning: {name}",
+            "nextFile": "Neste fil",
+            "position": "{index} av {total}",
+            "previousFile": "Forrige fil"
         },
         "properties": {
             "general": "Generelt",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Kontrollsummen for elementet som Immich registrerer ved opplasting.",
                 "crypt-overlay-ciphertext": "Kontrollsummen dekker de krypterte bytene som ligger på serveren."
             },
-            "readOnlyIsLinkTarget": "Dette er en symbolsk lenke: rettighetene tilhører filen den peker til. Åpne egenskapene til den filen for å endre dem."
+            "readOnlyIsLinkTarget": "Dette er en symbolsk lenke: rettighetene tilhører filen den peker til. Åpne egenskapene til den filen for å endre dem.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Bortkastet plass",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Byte for byte identisk",
             "modeNonIdenticalHint": "Perseptuell eller tekstlig likhet, ingen automatisk sletting",
             "potentialWasteSelected": "potensielt bortkastet (valgte)",
-            "similarityDistance": "{similarity}, avst. {distance}"
+            "similarityDistance": "{similarity}, avst. {distance}",
+            "modeExact": "Nøyaktig",
+            "modeLabel": "Modus:",
+            "modeNonIdentical": "Ikke identisk"
         },
         "diskUsage": {
             "title": "Diskbruk",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Ingen nettverksaktivitet ennå. Overfør filer for å se hendelser.",
                 "time": "Tid",
                 "event": "Hendelse",
-                "detail": "Detalj"
+                "detail": "Detalj",
+                "command": "Kommando",
+                "ipcTransfersCount": "IPC + Overføringer ({count})",
+                "status": "Status",
+                "type": "Type"
             },
             "system": {
                 "appVersion": "AeroFTP-versjon",
@@ -3953,7 +4258,8 @@
                 "dark": "Mørk",
                 "light": "Lys",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "LocalStorage-nøkler"
+                "localStorageKeysTitle": "LocalStorage-nøkler",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Kopier filliste til utklippstavle",
             "filesCopied": "{count} filoppføringer kopiert til utklippstavlen",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Dobbeltklikk på markeringen eller trykk Enter for å bruke, Esc for å avbryte",
                     "cropRatio": "Proporsjoner",
                     "cropRatioFree": "Fri",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° mot klokken",
+                    "rotateCw90Short": "90° med klokken"
                 },
                 "toggleTransparencyBg": "Gjennomsiktighetsbakgrunn (veksle)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "Laster PDF...",
                 "open": "Åpne PDF",
                 "page": "Side",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "PDF-dokument"
             },
             "text": {
                 "auto": "Auto",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Nettbrett (768px)",
                 "wordWrap": "Tekstbryting",
                 "zoomIn": "Zoom inn",
-                "zoomOut": "Zoom ut"
+                "zoomOut": "Zoom ut",
+                "htmlPreviewFrameTitle": "HTML-forhåndsvisning"
             },
             "video": {
                 "exitFullscreen": "Avslutt fullskjerm (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt-overlegg oppdaget",
             "aerocryptImportDesc": "Profil importert fra rclone.conf for {name}: åpne overlegget nå?",
             "aerocryptImportOpen": "Åpne overlegg",
-            "aerovaultOverlayExpired": "AeroVault Overlay er låst på grunn av inaktivitet. Åpne hvelvet på nytt for å fortsette."
+            "aerovaultOverlayExpired": "AeroVault Overlay er låst på grunn av inaktivitet. Åpne hvelvet på nytt for å fortsette.",
+            "aerovaultOverlaySource": "AeroVault-overlegg aktivt ({source})",
+            "fileOperationsLabel": "Filoperasjoner",
+            "overlayBadge": "OVERLEGG"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Tofaktorautentisering",
                 "verify": "Bekreft & Aktiver",
                 "active": "2FA aktiv",
-                "inactive": "2FA inaktiv"
+                "inactive": "2FA inaktiv",
+                "codeGroupLabel": "{count}-sifret kode",
+                "digitLabel": "Siffer {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Bla gjennom",
                     "installed": "Installert"
-                }
+                },
+                "remoteInstallDisabled": "Ekstern installasjon av programtillegg er for øyeblikket deaktivert til registeret er autentisert på klientsiden. Lokalt installerte programtillegg fortsetter å fungere normalt."
             }
         },
         "commandPalette.category.ai": {},
@@ -4616,7 +4932,9 @@
             "trashFooter": "Gjenopprettede filer vil vises igjen i sin opprinnelige mappe",
             "connectionNamePlaceholder": "Tilkoblingsnavn (f.eks. Min FileLu Cloud)",
             "trashAutoExpiry": "Filer i papirkurven slettes automatisk av FileLu etter 7 dager",
-            "rsyncTransferOnly": "Endepunkt kun for overføring: bla er ikke tilgjengelig på Rsync. Bruk Native API, WebDAV, S3 eller FTP for å navigere; bytt til Rsync for delta-overføringer med høy båndbredde."
+            "rsyncTransferOnly": "Endepunkt kun for overføring: bla er ikke tilgjengelig på Rsync. Bruk Native API, WebDAV, S3 eller FTP for å navigere; bytt til Rsync for delta-overføringer med høy båndbredde.",
+            "badgePasswordProtected": "Passordbeskyttet",
+            "badgeWatermarked": "Med vannmerke"
         },
         "box": {
             "addComment": "Legg til kommentar",
@@ -4698,7 +5016,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Gratis abonnement",
             "freeCardTier": "Gratis + kort",
-            "paidTier": "Betalt"
+            "paidTier": "Betalt",
+            "extraFeatures": "Ekstra",
+            "coreOpsList": "Last opp, Last ned, Slett, Gi nytt navn, Flytt, Opprett mappe, Søk",
+            "coreOpsLegend": "Basis = Last opp, Last ned, Slett, Gi nytt navn, Flytt, Opprett mappe, Søk"
         },
         "healthCheck": {
             "title": "Servertilstandskontroll",
@@ -4948,7 +5269,19 @@
             "releaseAssetOne": "{count} fil",
             "releaseAssetMany": "{count} filer",
             "repoPrivate": "Privat",
-            "repoPublic": "Offentlig"
+            "repoPublic": "Offentlig",
+            "actionsLiveBadge": "Aktiv",
+            "actionsRunningTitle": "GitHub Actions (kjører)",
+            "coAuthors": "Medforfattere",
+            "pagesPathPlaceholder": "/ eller /docs",
+            "pagesStatusBuilding": "bygger",
+            "pagesStatusBuilt": "bygget",
+            "pagesStatusErrored": "feilet",
+            "refreshBranches": "Oppdater grener",
+            "repoPrivateTitle": "Privat repository",
+            "repoPublicTitle": "Offentlig repository",
+            "unpushedCommitsOnBranchMany": "{count} commits som ikke er pushet på {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit som ikke er pushet på {branch}"
         },
         "filenNotes": {
             "title": "Krypterte notater",
@@ -4986,7 +5319,8 @@
             "tagName": "Navn på merkelapp",
             "removeTag": "Fjern merkelapp",
             "manageTags": "Administrer merkelapper",
-            "deleteTagConfirm": "Slette merkelappen «{name}»? Notater beholder teksten sin."
+            "deleteTagConfirm": "Slette merkelappen «{name}»? Notater beholder teksten sin.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Delingslenke",
@@ -5096,7 +5430,8 @@
                 "down": "Utilgjengelig",
                 "pending": "Sjekker...",
                 "unknown": "Ikke sjekket",
-                "clickToRetry": "klikk for å sjekke på nytt"
+                "clickToRetry": "klikk for å sjekke på nytt",
+                "withActiveSession": "{title} (aktiv økt)"
             },
             "densityCompact": "Kompakte rader",
             "densityComfortable": "Komfortable rader",
@@ -5186,7 +5521,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt kryptert overlegg (innebygd): navn og innhold er kryptert på denne serveren.",
-                "rcloneTitle": "rclone crypt-overlegg (interop): navn og innhold er kryptert på denne serveren."
+                "rcloneTitle": "rclone crypt-overlegg (interop): navn og innhold er kryptert på denne serveren.",
+                "keyBits": "{bits}-bit"
             },
             "sidebar": {
                 "filters": "Filtre",
@@ -5206,7 +5542,19 @@
                 "unknownKeyTitle": "Vi kunne ikke lese krypteringsinnstillingen til denne bøtta, fordi applikasjonsnøkkelen ikke har rettigheten readBucketEncryption. En verdi vi ikke har lov til å se, betyr ikke at krypteringen er av.",
                 "unknownShapeTitle": "Vi kunne ikke lese krypteringsinnstillingen til denne bøtta, fordi svaret ikke hadde en dokumentert form. Nøkkelen hadde lov til å lese den, så dette handler om svaret og ikke om rettigheter."
             },
-            "exportProfile": "Eksporter..."
+            "exportProfile": "Eksporter...",
+            "quotaLabel": "Kvote",
+            "storageNoCapReported": "{used} (ingen kvotegrense oppgitt)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Oppdaget fra Filen auth/info ved vellykket tilkobling",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nå",
+                "minutes": "{count} min",
+                "hours": "{count} t",
+                "days": "{count} d",
+                "months": "{count} md."
+            }
         },
         "gitlab": {
             "projectPath": "Prosjektsti",
@@ -5240,7 +5588,8 @@
             "linkType": "Type",
             "createMergeRequest": "Opprett Merge Request",
             "mrTitle": "MR-tittel",
-            "mrBody": "Beskrivelse (valgfri)"
+            "mrBody": "Beskrivelse (valgfri)",
+            "sourceCode": "Kildekode"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5822,7 +6171,34 @@
             "copy": "Dupliser bruker (kun servere, ingen passord)",
             "copyLockedHint": "Bytt til denne kontoen først for å duplisere serverne dens",
             "crossUserDedupTitle": "Allerede lagret av en annen konto",
-            "crossUserDedupMessage": "\"{name}\" bruker en serverkonto som også er lagret på denne enheten av: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" bruker en serverkonto som også er lagret på denne enheten av: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Lukk dialogen for tilbakestilling av passord",
+                "confirmPassword": "Bekreft nytt passord",
+                "errMismatch": "De nye kontopassordene samsvarer ikke.",
+                "errNewRequired": "Skriv inn et nytt kontopassord.",
+                "errNotAuthorized": "Du må være administrator for å tilbakestille passordet til en annen konto.",
+                "errNotForSelf": "Bruk Endre passord på din egen konto.",
+                "errStoreNotReady": "Lås opp hvelvet først, og prøv igjen.",
+                "errTypeReset": "Skriv RESET for å bekrefte denne destruktive handlingen.",
+                "errUserNotFound": "Denne brukeren finnes ikke lenger.",
+                "newPassword": "Nytt kontopassord",
+                "statEncryptedBytes": "krypterte byte",
+                "statProfiles": "profiler",
+                "statSettings": "innstillinger",
+                "title": "Tilbakestill passord = sletting av data",
+                "typeReset": "Skriv RESET",
+                "wipeDetail": "Det nåværende passordet kan ikke gjenopprettes. AeroFTP sletter målkontoens lagrede servere, brukerinnstillinger og låsestatus, og utsteder deretter en ny krypteringsnøkkel beskyttet av det nye passordet.",
+                "wipeWarning": "Dette sletter målkontoens krypterte partisjon permanent."
+            },
+            "dropdown": {
+                "accountPassword": "Kontopassord",
+                "lock": "Lås",
+                "newUser": "Ny bruker",
+                "noUsers": "Ingen brukere ennå. Bruk «Ny bruker» nedenfor for å legge til den første.",
+                "protectionNote": "Kontoen din er beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering",
+                "users": "Brukere"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt-overlegg",
@@ -6248,7 +6624,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Modusen velges når tilkoblingen opprettes og forblir fast mens du redigerer en lagret profil. Opprett en ny tilkobling for å bruke en annen modus."
+                "lockedInEdit": "Modusen velges når tilkoblingen opprettes og forblir fast mens du redigerer en lagret profil. Opprett en ny tilkobling for å bruke en annen modus.",
+                "notInBuild": "Ikke inkludert i denne versjonen av AeroFTP."
             }
         },
         "flatpak": {

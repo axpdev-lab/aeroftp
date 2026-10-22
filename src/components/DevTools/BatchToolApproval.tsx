@@ -339,7 +339,7 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
     const hasInvalidPending = toolCalls.some(tc => tc.status === 'pending' && tc.validation && !tc.validation.valid);
 
     return (
-        <div className="my-2 border border-gray-700/50 rounded-lg overflow-hidden bg-gray-800/30" role="region" aria-label="Tool approval panel">
+        <div className="my-2 border border-gray-700/50 rounded-lg overflow-hidden bg-gray-800/30" role="region" aria-label={t('ai.toolApproval.panelAria')}>
             {/* Header */}
             <div className="px-3 py-1.5 bg-gray-800/60 flex items-center gap-2 text-xs text-gray-300 border-b border-gray-700/50">
                 <Shield size={12} className="text-yellow-400" />

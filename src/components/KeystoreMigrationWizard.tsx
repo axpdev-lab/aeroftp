@@ -319,7 +319,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                                             {t('settings.migrationCleanup')}
                                         </div>
                                         <div className={`text-xs ${textSecondary}`}>
-                                            Recommended for maximum security
+                                            {t('settings.migrationCleanupHint')}
                                         </div>
                                     </div>}
                                 />

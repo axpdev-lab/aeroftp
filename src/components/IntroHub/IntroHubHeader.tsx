@@ -240,7 +240,7 @@ export function IntroHubHeader({
                         title={
                             isAeroCloudConnected && isAeroCloudPaused
                                 ? t('cloud.paused')
-                                : isAeroCloudConfigured ? 'AeroCloud' : 'Configure AeroCloud'
+                                : isAeroCloudConfigured ? 'AeroCloud' : t('connection.configureAerocloud')
                         }
                     >
                         <Cloud size={16} />

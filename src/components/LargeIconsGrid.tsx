@@ -16,6 +16,7 @@ import { ImageThumbnail } from './ImageThumbnail';
 import { signatureOf } from '../utils/thumbnailCache';
 import { DecryptingText } from './DecryptingText';
 import type { LocalFile } from '../types';
+import { useTranslation } from '../i18n';
 
 /** Encryption lock state for an archive card icon, shared with the list-view padlock. */
 export type ArchiveLock = { encrypted: boolean; weak: boolean } | null;
@@ -348,6 +349,7 @@ export function LargeIconsGrid({
   sameNameLeakLabel,
   sameNameLeakTooltip,
 }: LargeIconsGridProps) {
+  const t = useTranslation();
   const handleNavigateUp = useCallback(() => {
     if (!isAtRoot) onNavigateUp();
   }, [isAtRoot, onNavigateUp]);
@@ -360,7 +362,7 @@ export function LargeIconsGrid({
         isAtRoot ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700/30'
       }`}
       onClick={handleNavigateUp}
-      title="Go up"
+      title={t('browser.goUp')}
     >
       <div className="flex items-center justify-center w-16 h-16">
         {getFolderUpIcon ? getFolderUpIcon().icon : getFileIcon('..', true).icon}

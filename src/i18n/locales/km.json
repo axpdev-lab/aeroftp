@@ -337,7 +337,38 @@
             "protonSignOut": "ចាកចេញ",
             "protonSignOutHelp": "បញ្ចប់សម័យនៅលើ Proton ហើយដកវាចេញពីប្រវត្តិរូបនេះ។",
             "protonSignInExpired": "ទំព័រចូលគណនីបានផុតកំណត់។ សូមចូលគណនីម្តងទៀត។",
-            "protonNativeUnavailable": "កំណែនេះមិនរួមបញ្ចូលកម្មវិធីភ្ញៀវ Proton Drive ដើមទេ។"
+            "protonNativeUnavailable": "កំណែនេះមិនរួមបញ្ចូលកម្មវិធីភ្ញៀវ Proton Drive ដើមទេ។",
+            "forms": {
+                "publicApiKey": "កូនសោ API សាធារណៈ",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - កូនសោសាធារណៈ។",
+                "secretApiKey": "កូនសោ API សម្ងាត់",
+                "uploadcareSecretHint": "ប្រើសម្រាប់តែការគ្រប់គ្រងឯកសារ REST តាមរយៈការផ្ទៀងផ្ទាត់ {scheme} ប៉ុណ្ណោះ។",
+                "flatMediaLibrary": "បណ្ណាល័យមេឌៀរាបស្មើ",
+                "uploadcareNoFolders": "Uploadcare មិនផ្តល់ថតដើមទេ។ ឯកសារគម្រោងត្រូវបានរាយនៅឫសតាម UUID។",
+                "urlEndpointId": "ID ចំណុចបញ្ចប់ URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - ចំណុចបញ្ចប់ URL។",
+                "privateApiKey": "កូនសោ API ឯកជន",
+                "storedVaultBasicAuth": "រក្សាទុកក្នុងឃ្លាំងសុវត្ថិភាពមូលដ្ឋាន ហើយផ្ញើទៅ {provider} តែប៉ុណ្ណោះតាមរយៈ Basic Auth។",
+                "cloudName": "ឈ្មោះពពក",
+                "cloudinaryCloudNameHint": "រកឃើញនៅក្នុង Cloudinary Dashboard - Account Details របស់អ្នក។",
+                "apiKeyPlaceholder": "កូនសោ API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - កូនសោ API។",
+                "apiSecret": "សម្ងាត់ API",
+                "apiSecretPlaceholder": "សម្ងាត់ API",
+                "openProviderLink": "បើកតំណ {provider}",
+                "githubPatHint": "PAT សិទ្ធិលម្អិត ជាមួយ Contents (អាន និងសរសេរ)។",
+                "generateToken": "បង្កើតថូខឹន",
+                "applicationKeyId": "ID កូនសោកម្មវិធី",
+                "backblazeKeyIdHint": "លេខសម្គាល់កូនសោកម្មវិធី B2 ចាប់ផ្តើមដោយ 003។ បង្កើតមួយពីទំព័រ App Keys របស់ Backblaze។",
+                "applicationKey": "កូនសោកម្មវិធី",
+                "backblazeKeyHint": "បង្ហាញតែម្តងគត់ពេលបង្កើត។ សូមចាត់ទុកវាដូចពាក្យសម្ងាត់។",
+                "bucketNameExactHint": "ឈ្មោះធុងពិតប្រាកដ ប្រកាន់អក្សរធំតូច។",
+                "megacmdSetupFirst": "រៀបចំ MEGAcmd ជាមុនសិន",
+                "megacmdFetchUrlTitle": "ដំណើរការ {cmd} ហើយបំពេញ URL ដោយស្វ័យប្រវត្តិ",
+                "fetchUrl": "ទាញយក URL",
+                "megacmdWebdavHint": "ឈ្មោះអ្នកប្រើ និងពាក្យសម្ងាត់ត្រូវបានលុបចោលដោយចេតនា។ AeroFTP ដំណើរការ \"{cmd}\" ដោយខ្លួនឯងពេលភ្ជាប់ ដើម្បីចាប់ផ្តើមស្ពាន និងអានអាសយដ្ឋាននេះ៖ ទុកវាទទេក៏បាន។ \"ទាញយក URL\" គឺជាការផ្ទុកឡើងវិញដោយដៃជាជម្រើស; ប្តូរច្រកនៅទីនេះ ប្រសិនបើ MEGAcmd ប្រើច្រកផ្ទាល់ខ្លួន។"
+            },
+            "manualStorageUnitLabel": "ឯកតា {label}"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -390,7 +421,19 @@
             "listingPath": "កំពុងរាយបញ្ជី {path}...",
             "pleaseWait": "សូមរង់ចាំ...",
             "sameNameLeakChip": "ឈ្មោះដូចគ្នា",
-            "sameNameLeakTooltip": "ឈ្មោះនេះក៏បង្ហាញនៅផ្លូវផ្សេងទៀតក្នុងឃ្លាំងសម្ងាត់ដែលបានអ៊ិនគ្រីបនេះផងដែរ។ ដោយសារឈ្មោះត្រូវបានអ៊ិនគ្រីបតាមរបៀបកំណត់ជាក់លាក់ អ្នកសង្កេតការណ៍នៃឃ្លាំងផ្ទុកដែលបានអ៊ិនគ្រីបអាចដឹងថាទាំងពីរចែករំលែកឈ្មោះមួយ។"
+            "sameNameLeakTooltip": "ឈ្មោះនេះក៏បង្ហាញនៅផ្លូវផ្សេងទៀតក្នុងឃ្លាំងសម្ងាត់ដែលបានអ៊ិនគ្រីបនេះផងដែរ។ ដោយសារឈ្មោះត្រូវបានអ៊ិនគ្រីបតាមរបៀបកំណត់ជាក់លាក់ អ្នកសង្កេតការណ៍នៃឃ្លាំងផ្ទុកដែលបានអ៊ិនគ្រីបអាចដឹងថាទាំងពីរចែករំលែកឈ្មោះមួយ។",
+            "endpointSelector": {
+                "localFolder": "ថតមូលដ្ឋាន",
+                "localFolderHint": "ជ្រើសរើសផ្លូវមូលដ្ឋានសម្រាប់ផ្ទាំងនេះ",
+                "noSavedProfiles": "គ្មានប្រវត្តិរូបដែលបានរក្សាទុក",
+                "savedProfiles": "ប្រវត្តិរូបពីចម្ងាយដែលបានរក្សាទុក",
+                "title": "ចំណុចបញ្ចប់"
+            },
+            "leftPanelMarker": "ផ្ទាំងខាងឆ្វេង",
+            "localFilesLabel": "ឯកសារមូលដ្ឋាន",
+            "localFilesRightLabel": "ឯកសារមូលដ្ឋាន (ផ្ទាំងខាងស្តាំ)",
+            "remoteFilesLabel": "ឯកសារពីចម្ងាយ",
+            "rightPanelMarker": "ផ្ទាំងខាងស្តាំ"
         },
         "contextMenu": {
             "askAeroAgent": "សួរ AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "ក្រាហ្វិកល្បឿន",
             "hideSpeedGraph": "លាក់ក្រាហ្វិកល្បឿន",
             "speedAvg": "មធ្យម {speed}",
-            "speedPeak": "អតិបរមា {speed}"
+            "speedPeak": "អតិបរមា {speed}",
+            "badgeBatch": "បាច់",
+            "badgeDownload": "ទាញយក",
+            "badgeLive": "ផ្ទាល់",
+            "badgeStream": "ស្ទ្រីម",
+            "badgeUpload": "ផ្ទុកឡើង",
+            "earlierItemsHidden": "បានលាក់ធាតុមុន {count}",
+            "folderFilesProgress": "ឯកសារ {done}/{total}",
+            "laneDone": "រួចរាល់",
+            "laneError": "កំហុស",
+            "unifiedPlan": {
+                "destination": "គោលដៅ",
+                "dialogLabel": "ផែនការផ្ទេរ",
+                "engineAerovaultOverlay": "ស្រទាប់ AeroVault",
+                "engineCompareOnly": "ប្រៀបធៀបតែប៉ុណ្ណោះ",
+                "engineCrossProfileSync": "សមកាលកម្មឆ្លងប្រវត្តិរូប",
+                "engineCrossProfileTransfer": "ការផ្ទេរឆ្លងប្រវត្តិរូប",
+                "engineLocalDelta": "ការដឹកជញ្ជូនដែលតាមូលដ្ឋាន",
+                "engineLocalFs": "ប្រព័ន្ធឯកសារមូលដ្ឋាន",
+                "engineProviderDownload": "ការទាញយកពីអ្នកផ្ដល់សេវា",
+                "engineProviderUpload": "ការផ្ទុកឡើងទៅអ្នកផ្ដល់សេវា",
+                "engineUnsupported": "មិនគាំទ្រ",
+                "execute": "ប្រតិបត្តិ",
+                "items": "ធាតុ",
+                "modeBackup": "ការបម្រុងទុក",
+                "modeBisync": "សមកាលកម្មទ្វេទិស",
+                "modeCompare": "ប្រៀបធៀប",
+                "modeCopy": "ចម្លង",
+                "modeMirror": "កញ្ចក់",
+                "modeMove": "ផ្លាស់ទី",
+                "modeSync": "ធ្វើសមកាលកម្ម",
+                "notExecutable": "គូចំណុចបញ្ចប់នេះមិនទាន់អាចប្រតិបត្តិបានទេ។",
+                "parallel": "ស្របគ្នា",
+                "reviewBeforeExecution": "ពិនិត្យមុនពេលប្រតិបត្តិ",
+                "route": "{pair} តាមរយៈ {engine}",
+                "size": "ទំហំ",
+                "source": "ប្រភព",
+                "title": "ផែនការ {mode}"
+            }
         },
         "settings": {
             "title": "ការកំណត់",
@@ -1040,7 +1121,13 @@
                 "title": "rsync ដើម (បេតា)",
                 "description": "ជ្រើសរើសរបៀបដែល SFTP Delta Sync បញ្ជូនការផ្ទេរ rsync។",
                 "enableToggle": "បើក rsync ដើមសម្រាប់ការធ្វើសមកាលកម្មដេលតាតាមរយៈ SFTP",
-                "experimental": "Auto ប្រើ AeroRsync ជាអាទិភាព ហើយត្រឡប់ទៅ rsync បុរាណពេលចាំបាច់។ Classic ប្រើ rsync binary របស់ប្រព័ន្ធ នៅពេលដែលមាន។ Native រំលងការត្រឡប់ទៅ binary បុរាណ។"
+                "experimental": "Auto ប្រើ AeroRsync ជាអាទិភាព ហើយត្រឡប់ទៅ rsync បុរាណពេលចាំបាច់។ Classic ប្រើ rsync binary របស់ប្រព័ន្ធ នៅពេលដែលមាន។ Native រំលងការត្រឡប់ទៅ binary បុរាណ។",
+                "modeAuto": "ស្វ័យប្រវត្តិ",
+                "modeClassic": "បុរាណ",
+                "modeNative": "ដើម",
+                "classicNotFoundTooltip": "រកមិនឃើញឯកសារ rsync បុរាណនៅក្នុង PATH ទេ។ ដំឡើង rsync (កញ្ចប់ Linux/macOS, Windows តាមរយៈ WSL/cygwin/scoop) ដើម្បីបើកមុខងារនេះ។",
+                "classicAt": "rsync បុរាណនៅ {path}",
+                "classicNotDetected": "រកមិនឃើញឯកសារ rsync បុរាណនៅក្នុង PATH ទេ។ ដើម គឺជាម៉ាស៊ីនតែមួយគត់ដែលមាននៅលើកុំព្យូទ័រនេះ។"
             },
             "startMinimizedOnAutostart": "ចាប់ផ្តើមដោយបង្រួមទៅថាស",
             "startMinimizedOnAutostartDesc": "លាក់បង្អួចមេនៅពេលចាប់ផ្តើមដោយស្វ័យប្រវត្តិ។ AeroFTP បន្តដំណើរការនៅក្នុងថាសប្រព័ន្ធ បើកវាពីរូបតំណាងថាសនៅពេលអ្នកត្រូវការ។",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "បានរកឃើញព័ត៌មានសម្ងាត់ OAuth {count} នៅក្នុងឃ្លាំងផ្ទុកដែលមិនបានអ៊ិនគ្រីប",
             "fontSystemInstall": "ដំឡើងក្នុងប្រព័ន្ធ",
             "fontSizeMin": "អប្បបរមា",
-            "fontSizeMax": "អតិបរមា"
+            "fontSizeMax": "អតិបរមា",
+            "migrationCleanupHint": "ណែនាំសម្រាប់សុវត្ថិភាពអតិបរមា",
+            "fontCustomOption": "ផ្ទាល់ខ្លួន...",
+            "fontSystemInstallHint": "ត្រូវការការដំឡើងក្នុងប្រព័ន្ធ។ AeroFTP នឹងប្ដូរទៅជម្រើសបម្រុងដោយស្វ័យប្រវត្តិ ប្រសិនបើមិនមាន។",
+            "fontSizeIndicatorLabel": "ពុម្ពអក្សរ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "បញ្ឈប់",
                 "stopShell": "បញ្ឈប់សែល",
                 "closed": "Terminal បានបិទ។",
-                "commandInsertedReview": "បានបញ្ចូលពាក្យបញ្ជាទៅក្នុង Terminal។ ចុច Enter ដើម្បីដំណើរការ។"
+                "commandInsertedReview": "បានបញ្ចូលពាក្យបញ្ជាទៅក្នុង Terminal។ ចុច Enter ដើម្បីដំណើរការ។",
+                "decreaseFont": "បន្ថយទំហំពុម្ពអក្សរ (Ctrl+-)",
+                "emptyClickPlus": "ចុច {plus} ដើម្បីបើកស្ថានីយ",
+                "emptySshHint": "ឬ {ssh} សម្រាប់សែលពីចម្ងាយទៅ {host}",
+                "increaseFont": "បង្កើនទំហំពុម្ពអក្សរ (Ctrl+=)",
+                "newTab": "ផ្ទាំងស្ថានីយថ្មី",
+                "sshShellTo": "សែល SSH ទៅ {host}",
+                "theme": "រចនាប័ទ្មស្ថានីយ"
             },
             "editorPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារ ហើយជ្រើសរើស \"មើលកូដប្រភព\"",
@@ -1278,13 +1376,17 @@
                 "saving": "កំពុងរក្សាទុក...",
                 "noFileSelected": "មិនមានឯកសារដែលបានជ្រើសរើសដើម្បីមើលទេ",
                 "loading": "កំពុងផ្ទុកកម្មវិធីនិពន្ធ...",
-                "dragToTerminalRun": "អូសទៅ Terminal ដើម្បីបញ្ចូលពាក្យបញ្ជាដំណើរការ"
+                "dragToTerminalRun": "អូសទៅ Terminal ដើម្បីបញ្ចូលពាក្យបញ្ជាដំណើរការ",
+                "closeEditor": "បិទកម្មវិធីកែសម្រួល",
+                "resetChanges": "កំណត់ការផ្លាស់ប្ដូរឡើងវិញ"
             },
             "previewPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារហើយជ្រើសរើស \"មើលជាមុន\""
             },
             "codeEditor": "កម្មវិធីកែកូដ",
-            "sshTerminal": "SSH តឺរ្មីណាល"
+            "sshTerminal": "SSH តឺរ្មីណាល",
+            "comingSoon": "មកដល់ឆាប់ៗ",
+            "soonBadge": "ឆាប់ៗ"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "អនុញ្ញាតឡើងវិញដោយដៃ ប្រសិនបើ token ត្រូវបានដកហូត"
             },
             "profilesLoadFailed": "មិនអាចអានម៉ាស៊ីនមេដែលបានរក្សាទុករបស់អ្នកបានទេ: {error}",
-            "cleanupSummary": "ឯកសារ {count}, ទំហំបានដោះលែង {size}"
+            "cleanupSummary": "ឯកសារ {count}, ទំហំបានដោះលែង {size}",
+            "maturity": {
+                "alpha": "អាល់ហ្វា"
+            },
+            "dialogDashboardLabel": "ផ្ទាំងគ្រប់គ្រងសមកាលកម្មពពក",
+            "dialogLoadingLabel": "កំពុងផ្ទុកសមកាលកម្មពពក",
+            "dialogSettingsLabel": "ការកំណត់សមកាលកម្មពពក",
+            "dialogSetupLabel": "ការរៀបចំសមកាលកម្មពពក",
+            "onePerLineHint": "(មួយក្នុងមួយបន្ទាត់)",
+            "pairsEditorLabel": "កម្មវិធីកែគូ AeroCloud",
+            "remoteSubfolderPlaceholder": "ពពក"
         },
         "statusBar": {
             "connected": "បានតភ្ជាប់",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "មិនពេញលេញ, ថតដែលមិនអាចអាន៖ {count}",
             "usedScanFailed": "ការស្កេនទំហំផ្ទុកដែលប្រើបានបរាជ័យ",
             "usedScanEmpty": "ការស្កេន {path} រកមិនឃើញឯកសារ; តម្លៃក្នុង cache ត្រូវបានរក្សាទុក។ សូមពិនិត្យផ្លូវ ឬការគាំទ្ររាយឈ្មោះ recursive របស់ម៉ាស៊ីនមេ។",
-            "filenBridgeAccountTotal": "Filen Desktop មិនរាយការណ៍ចំនួនសរុបនៃគណនីរបស់អ្នកនៅទីនេះទេ៖ តួលេខដែលបានប្រើគឺជាផលបូកនៃឯកសារក្រោមផ្លូវនេះ។ ការតភ្ជាប់ Filen ដើមបង្ហាញចំនួនសរុបនៃគណនីភ្លាមៗ។"
+            "filenBridgeAccountTotal": "Filen Desktop មិនរាយការណ៍ចំនួនសរុបនៃគណនីរបស់អ្នកនៅទីនេះទេ៖ តួលេខដែលបានប្រើគឺជាផលបូកនៃឯកសារក្រោមផ្លូវនេះ។ ការតភ្ជាប់ Filen ដើមបង្ហាញចំនួនសរុបនៃគណនីភ្លាមៗ។",
+            "ariaLabel": "របារស្ថានភាព",
+            "debugBadge": "បំបាត់កំហុស",
+            "debugModeActive": "របៀបបំបាត់កំហុសកំពុងសកម្ម"
         },
         "dialogs": {
             "confirmTitle": "បញ្ជាក់",
@@ -1620,7 +1735,8 @@
                 "apRole": "ស្ថាបនិក អ្នកអភិវឌ្ឍន៍ អ្នកថែទាំ សហអ្នករចនា",
                 "ekRole": "អ្នកស្រាវជ្រាវ វិស្វករធានាគុណភាព សហអ្នករចនា"
             },
-            "madeBy": "ដោយ {author}"
+            "madeBy": "ដោយ {author}",
+            "statsLine": "{protocols} ពិធីការ · {languages} ភាសា · បណ្ណសារ AES-256"
         },
         "support": {
             "title": "គាំទ្រ AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "គម្រោង (Unixname)",
             "opendriveNotApiKey": "(មិនមែនជាសោ API OpenDrive របស់អ្នកទេ)",
             "endpoint": "ចំណុចបញ្ចប់",
-            "accountId": "ID គណនី"
+            "accountId": "ID គណនី",
+            "servicesHeading": "សេវាកម្ម",
+            "sourceforgeSshKeyHelp": "SourceForge ត្រូវការការផ្ទៀងផ្ទាត់ដោយកូនសោ SSH។ បង្កើតកូនសោដោយប្រើ {cmd} ហើយផ្ទុកវាឡើងទៅ {link}។",
+            "sourceforgeSshSettings": "ការកំណត់ SSH",
+            "fullGuide": "មគ្គុទ្ទេសក៍ពេញលេញ",
+            "endpointTemplateExample": "ឧ. {template}",
+            "jurisdiction": "យុត្តាធិការ",
+            "insecureCertDialogLabel": "ការព្រមានវិញ្ញាបនបត្រមិនមានសុវត្ថិភាព",
+            "betaBadge": "បេតា",
+            "hostKeyDialogLabel": "ការផ្ទៀងផ្ទាត់សោម៉ាស៊ីន"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -2111,7 +2236,10 @@
             "rename": "ប្តូរឈ្មោះ",
             "resume": "បន្ត",
             "resumeHint": "បន្តការផ្ទេរដែលបានផ្អាក ជំនួសឱ្យការចាប់ផ្តើមឡើងវិញ",
-            "cancel": "បោះបង់"
+            "cancel": "បោះបង់",
+            "dialogLabel": "ការបញ្ជាក់ការសរសេរជាន់ពីលើ",
+            "moreInQueue": "+{count} ក្នុងជួរ",
+            "unknownDate": "មិនស្គាល់"
         },
         "statusbar": {
             "queue": "ជួរ",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "គូផ្លូវ មូលដ្ឋាន/ពីចម្ងាយ ដែលអាចប្រើបានក្នុងគំរូនេះ៖ {count}។ បង្អួច AeroSync ដំណើរការជាមួយគូតែមួយគត់ ដូច្នេះគ្មានអ្វីត្រូវបាននាំចូលទេ។ សូមកែសម្រួលគំរូឱ្យនៅសល់តែគូមួយ រួចនាំចូលម្ដងទៀត។",
             "templateNamePlaceholder": "ឧ. ការបម្រុងទុកពេលយប់ទៅ S3",
             "templateDescPlaceholder": "គំរូនេះសម្រាប់អ្វី (ស្រេចចិត្ត)",
-            "templateExportCliDesc": "ស្គ្រីបរុំសម្រាប់ aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "ស្គ្រីបរុំសម្រាប់ aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "បិទ",
+            "multiPathEditorLabel": "កម្មវិធីកែផ្លូវច្រើន",
+            "multiPathEnablePair": "បើក",
+            "multiPathLocalPlaceholder": "ផ្លូវមូលដ្ឋាន",
+            "multiPathRemotePlaceholder": "ផ្លូវពីចម្ងាយ",
+            "rollbackDialogLabel": "រូបថតស្ថានភាពសម្រាប់ស្ដារ",
+            "rollbackMoreFiles": "+{count} ទៀត...",
+            "rollbackSnapshotSummaryMany": "{count} ឯកសារ, {size}",
+            "rollbackSnapshotSummaryOne": "{count} ឯកសារ, {size}",
+            "templateDialogLabel": "គំរូធ្វើសមកាលកម្ម",
+            "templateExcludes": "ការដកចេញ",
+            "templateLocal": "មូលដ្ឋាន",
+            "templateRemote": "ពីចម្ងាយ",
+            "templateRetries": "ការព្យាយាមឡើងវិញ"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "បដិសេធការប្រតិបត្តិឧបករណ៍",
                 "toggleDetails": "បិទបើកព័ត៌មានលម្អិត",
                 "allowSession": "អនុញ្ញាតសម្រាប់សម័យនេះ",
-                "nonAtomicReplace": "ការជំនួសមិនអាតូមិក: ឯកសារបាត់មួយភ្លែត"
+                "nonAtomicReplace": "ការជំនួសមិនអាតូមិក: ឯកសារបាត់មួយភ្លែត",
+                "moreOptions": "ជម្រើសច្រើនទៀត",
+                "panelAria": "ផ្ទាំងអនុម័តឧបករណ៍"
             },
             "settings": {
                 "title": "ការកំណត់ AI",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "បម្រុង",
                 "routingNoFallback": "គ្មាន",
                 "bedrockNeedsModel": "បន្ថែម និងបើកម៉ូដែល Bedrock នៅផ្ទាំង ម៉ូដែល មុនពេលសាកល្បង។",
-                "bedrockSetup": "កំណត់ Runtime URL សម្រាប់តំបន់ AWS របស់អ្នក។ នៅក្នុង ម៉ូដែល បន្ថែម ID ដែលគាំទ្រ Chat Completions លើ Bedrock Runtime។ Runtime មិនបង្ហាញបញ្ជីម៉ូដែលទេ។ ការសាកល្បងផ្ញើសំណើអនុមានតូចមួយ ដែលអាចបណ្តាលឱ្យមានការគិតថ្លៃពី AWS។"
+                "bedrockSetup": "កំណត់ Runtime URL សម្រាប់តំបន់ AWS របស់អ្នក។ នៅក្នុង ម៉ូដែល បន្ថែម ID ដែលគាំទ្រ Chat Completions លើ Bedrock Runtime។ Runtime មិនបង្ហាញបញ្ជីម៉ូដែលទេ។ ការសាកល្បងផ្ញើសំណើអនុមានតូចមួយ ដែលអាចបណ្តាលឱ្យមានការគិតថ្លៃពី AWS។",
+                "detectOllamaModelsTooltip": "រកឃើញម៉ូដែល Ollama ដែលមានដោយស្វ័យប្រវត្តិ",
+                "kTokens": "{count}K ថូខឹន",
+                "modelEditorAria": "កម្មវិធីកែម៉ូដែល AI",
+                "supportsTools": "គាំទ្រឧបករណ៍",
+                "supportsVision": "គាំទ្រការមើលឃើញ",
+                "thinkingReasoning": "ការគិត/ការវែកញែក",
+                "toolQuality": "គុណភាពឧបករណ៍៖ {quality}/5"
             },
             "copy": "ចម្លង",
             "attachImage": "ភ្ជាប់រូបភាព",
@@ -2699,7 +2850,9 @@
                 "run": "ដំណើរការក្នុងស្ថានីយ",
                 "insert": "បញ្ចូលក្នុងកម្មវិធីនិពន្ធ",
                 "diff": "ប្រៀបធៀបជាមួយដើម",
-                "diffNoFile": "គ្មានឯកសារបើកដើម្បីប្រៀបធៀប"
+                "diffNoFile": "គ្មានឯកសារបើកដើម្បីប្រៀបធៀប",
+                "commandBlocked": "ពាក្យបញ្ជាត្រូវបានរារាំង: អាចបំផ្លិចបំផ្លាញ",
+                "confirmRun": "បញ្ជាក់ការដំណើរការ: {command}"
             },
             "thinkingBlock": {
                 "thinking": "កំពុងគិត...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "ប្តូរសាខា",
                 "delete": "លុបសាខា",
                 "newBranch": "សាខាថ្មី",
-                "branchFrom": "បំបែកពីចំណុចនេះ"
+                "branchFrom": "បំបែកពីចំណុចនេះ",
+                "messageCountShort": "{count} សារ",
+                "unnamed": "សាខា"
             },
             "context": {
                 "projectDetected": "បានរកឃើញគម្រោង",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "កំពុងដំណើរការ",
                 "expired": "ផុតកំណត់",
-                "refresh": "ផ្ទុកឡើងវិញ"
+                "refresh": "ផ្ទុកឡើងវិញ",
+                "modelsRunningMany": "ម៉ូដែល {count} កំពុងដំណើរការ",
+                "modelsRunningOne": "ម៉ូដែល {count} កំពុងដំណើរការ",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "ការរក្សាទុកបរិបទ",
@@ -2956,7 +3114,8 @@
                 "warning": "ប្រតិបត្តិការឯកសារទាំងអស់នឹងត្រូវប្រតិបត្តិភ្លាមៗដោយមិនមានការអនុម័ត។ ប្រើប្រាស់ដោយទទួលខុសត្រូវខ្លួនឯង។",
                 "disable": "បិទ",
                 "securityWarning": "ការព្រមានសុវត្ថិភាព",
-                "understood": "យល់ហើយ"
+                "understood": "យល់ហើយ",
+                "warningAria": "ការព្រមានរបៀបខ្លាំងបំផុត"
             },
             "errorServerError": "ម៉ាស៊ីនមេរបស់អ្នកផ្តល់ AI កំពុងមានបញ្ហា។ សាកល្បងម្តងទៀតក្នុងពេលបន្តិច។",
             "errorServiceUnavailable": "អ្នកផ្តល់ AI មិនអាចប្រើបានបណ្ដោះអាសន្ន (ផ្ទុកលើស)។ សេវាកម្មឥតគិតថ្លៃអាចមានដែនកំណត់។ សូមសាកល្បងម្តងទៀតនៅពេលក្រោយ។",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "គ្មានដែនកំណត់",
                 "roleAI": "AI",
-                "roleUser": "អ្នកប្រើ"
+                "roleUser": "អ្នកប្រើ",
+                "noConversations": "មិនទាន់មានការសន្ទនា",
+                "titleCount": "ប្រវត្តិ ({count})"
             },
             "dropFileToAnalyze": "ទម្លាក់ឯកសារដើម្បីវិភាគជាមួយ AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} ថូខឹនបញ្ចូល, {output} ថូខឹនលទ្ធផល, តាមការរាប់របស់អ្នកផ្តល់សេវា",
-                "breakdownCache": "{input} ថូខឹនបញ្ចូល, {output} ថូខឹនលទ្ធផល, {cacheRead} បានអានពីឃ្លាំងសម្ងាត់ប្រូមភ្ត៍, {cacheWritten} បានសរសេរចូលទៅក្នុងវា, តាមការរាប់របស់អ្នកផ្តល់សេវា"
+                "breakdownCache": "{input} ថូខឹនបញ្ចូល, {output} ថូខឹនលទ្ធផល, {cacheRead} បានអានពីឃ្លាំងសម្ងាត់ប្រូមភ្ត៍, {cacheWritten} បានសរសេរចូលទៅក្នុងវា, តាមការរាប់របស់អ្នកផ្តល់សេវា",
+                "countShort": "{count} តូខឹន"
             },
             "executeOperations": "អនុវត្តប្រតិបត្តិការ {count}",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "នឹងរំលង",
                     "skipped": "បានរំលង",
                     "existedAtCheckpoint": "មាននៅចំណុចត្រួតពិនិត្យ",
-                    "absentAtCheckpoint": "មិនមាននៅចំណុចត្រួតពិនិត្យ"
+                    "absentAtCheckpoint": "មិនមាននៅចំណុចត្រួតពិនិត្យ",
+                    "noFiles": "គ្មានឯកសារណាមួយត្រូវបានរួមបញ្ចូលក្នុងលទ្ធផលស្ដារនេះទេ។",
+                    "otherActions": "សកម្មភាពផ្សេងទៀត",
+                    "requestedPaths": "សំណុំរងនៃផ្លូវដែលបានស្នើ",
+                    "scopeAll": "វិសាលភាព៖ ឯកសារទាំងអស់ដែលបានរក្សាទុកក្នុងចំណុចត្រួតពិនិត្យ។",
+                    "titleApplied": "បានអនុវត្តការស្ដារចំណុចត្រួតពិនិត្យ",
+                    "titleApplyReview": "ពិនិត្យការអនុវត្តការស្ដារចំណុចត្រួតពិនិត្យ",
+                    "titleDryRunComplete": "ការសាកល្បងស្ដារចំណុចត្រួតពិនិត្យបានបញ្ចប់",
+                    "titleDryRunReview": "ពិនិត្យការសាកល្បងស្ដារចំណុចត្រួតពិនិត្យ"
                 },
                 "checks": {
                     "exitSummary": "កូដចេញ {code} · {seconds}s",
                     "continueOnFailure": "ដំណើរការការត្រួតពិនិត្យទាំងអស់ ទោះបីមួយបរាជ័យក៏ដោយ។",
-                    "stopOnFailure": "ឈប់នៅការត្រួតពិនិត្យដំបូងដែលបរាជ័យ។"
+                    "stopOnFailure": "ឈប់នៅការត្រួតពិនិត្យដំបូងដែលបរាជ័យ។",
+                    "checkLabel": "ការត្រួតពិនិត្យ:",
+                    "checksLabel": "ការត្រួតពិនិត្យ:",
+                    "exitChip": "កូដចាកចេញ {code}",
+                    "filterChip": "តម្រង: {filter}",
+                    "filterLabel": "តម្រង:",
+                    "notAvailable": "គ្មាន",
+                    "passedCount": "ឆ្លងកាត់ {passed}/{total}",
+                    "runCheckNote": "ដំណើរការពាក្យបញ្ជា build/test/lint ដែលបានជ្រើសរើសក្នុងកន្លែងធ្វើការ។ ស្គ្រីបបង្កើត និងការធ្វើតេស្តប្រតិបត្តិកូដពិត។",
+                    "runProjectCheck": "ដំណើរការការត្រួតពិនិត្យគម្រោង",
+                    "runVerification": "ដំណើរការជុំផ្ទៀងផ្ទាត់",
+                    "runVerificationNote": "ដំណើរការពាក្យបញ្ជា build/test/lint ដែលបានជ្រើសរើសក្នុងកន្លែងធ្វើការ។ ស្គ្រីបបង្កើត និងការធ្វើតេស្តប្រតិបត្តិកូដពិត។",
+                    "stoppedEarly": "បានឈប់នៅការត្រួតពិនិត្យដំបូងដែលបរាជ័យ។",
+                    "timeoutLabel": "អស់ពេល: {seconds} វិនាទី",
+                    "verification": "ការផ្ទៀងផ្ទាត់"
                 },
                 "diagnostics": {
-                    "none": "គ្មានការវិនិច្ឆ័យត្រូវបានរាយការណ៍ទេ។"
+                    "none": "គ្មានការវិនិច្ឆ័យត្រូវបានរាយការណ៍ទេ។",
+                    "errorCountMany": "កំហុស {count}",
+                    "errorCountOne": "កំហុស {count}",
+                    "title": "ការវិនិច្ឆ័យ",
+                    "truncated": "បញ្ជីការវិនិច្ឆ័យត្រូវបានកាត់ខ្លី។",
+                    "warningCountMany": "ការព្រមាន {count}",
+                    "warningCountOne": "ការព្រមាន {count}"
                 },
                 "search": {
-                    "none": "រកមិនឃើញការផ្គូផ្គងទេ។"
+                    "none": "រកមិនឃើញការផ្គូផ្គងទេ។",
+                    "ignoreCase": "មិនខ្វល់អក្សរធំតូច",
+                    "inPath": "ក្នុង {path}",
+                    "literal": "តាមព្យញ្ជនៈ",
+                    "matchCountMany": "ត្រូវគ្នា {count}",
+                    "matchCountOne": "ត្រូវគ្នា {count}",
+                    "title": "ស្វែងរកក្នុងកន្លែងធ្វើការ",
+                    "truncated": "លទ្ធផលត្រូវបានកាត់ខ្លី។"
                 },
                 "git": {
                     "noStagedDiff": "គ្មានលទ្ធផល diff សម្រាប់ការផ្លាស់ប្តូរដែលបានរៀបចំទេ។",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "ការអនុម័តការរៀបចំ Git",
                     "commitNote": "វាបង្កើត git commit ពីលិបិក្រមដែលបានរៀបចំបច្ចុប្បន្ន។ សូមពិនិត្យ coding_git_status និង coding_git_diff ជាមួយ staged=true ជាមុនសិន។",
                     "stagePreviewNote": "វាបង្ហាញការមើលជាមុនថាផ្លូវណាខ្លះដែលបានស្នើនឹងត្រូវរៀបចំ ហើយលិបិក្រមនឹងមិនផ្លាស់ប្តូរទេ។",
-                    "stageNote": "វាផ្លាស់ប្តូរលិបិក្រម git សម្រាប់ផ្លូវដែលបានស្នើ។"
+                    "stageNote": "វាផ្លាស់ប្តូរលិបិក្រម git សម្រាប់ផ្លូវដែលបានស្នើ។",
+                    "afterCounts": "បន្ទាប់: {counts}",
+                    "beforeCounts": "មុន: {counts}",
+                    "clean": "មែកធាងការងារស្អាត។",
+                    "commitCountMany": "ខមមិត {count}",
+                    "commitCountOne": "ខមមិត {count}",
+                    "conflicted": "មានជម្លោះ",
+                    "diffTruncated": "លទ្ធផលភាពខុសគ្នាត្រូវបានកាត់ខ្លី។",
+                    "logTitle": "កំណត់ហេតុ Git",
+                    "pathsChip": "ផ្លូវ: {paths}",
+                    "showingNewest": "កំពុងបង្ហាញ {count} ថ្មីបំផុត; នៅមានទៀត។",
+                    "statusCounts": "បានរៀបចំ {staged}, មិនទាន់រៀបចំ {unstaged}, មិនបានតាមដាន {untracked}, មានជម្លោះ {conflicted}",
+                    "titleCommitCreated": "បានបង្កើតខមមិត Git",
+                    "titleCommitDryRun": "ការសាកល្បងខមមិត Git",
+                    "titleCommitReview": "ការពិនិត្យខមមិត Git",
+                    "titleReview": "ការពិនិត្យ Git",
+                    "titleStageApplied": "បានអនុវត្តការរៀបចំ Git",
+                    "titleStagedDiff": "ភាពខុសគ្នា Git ដែលបានរៀបចំ",
+                    "titleStageDryRun": "ការសាកល្បងការរៀបចំ Git",
+                    "titleStatus": "ស្ថានភាព Git",
+                    "titleUnstagedDiff": "ភាពខុសគ្នា Git ដែលមិនទាន់រៀបចំ",
+                    "untracked": "មិនបានតាមដាន"
                 },
                 "patch": {
                     "validateNote": "វាផ្ទៀងផ្ទាត់បំណះដោយមិនផ្លាស់ប្តូរឯកសារ។",
                     "applyNote": "សំណើអនុវត្តដែលមានគ្រោះថ្នាក់ខ្ពស់នេះសរសេរឯកសារបន្ទាប់ពី backend បង្កើតចំណុចត្រួតពិនិត្យមុនការអនុវត្ត។",
                     "hideDiff": "លាក់ diff រួម",
-                    "showDiff": "បង្ហាញ diff រួម"
-                }
+                    "showDiff": "បង្ហាញ diff រួម",
+                    "actualLabel": "ជាក់ស្តែង:",
+                    "checkpointCreated": "បានបង្កើតចំណុចត្រួតពិនិត្យមុនការអនុវត្ត",
+                    "diffTruncated": "ការមើលជាមុនភាពខុសគ្នាត្រូវបានកាត់ខ្លីសម្រាប់ការបង្ហាញ។",
+                    "expectedLabel": "រំពឹងទុក:",
+                    "firstLines": "{shown} បន្ទាត់ដំបូងក្នុងចំណោម {total}",
+                    "hunkCountMany": "{count} ផ្នែក",
+                    "hunkCountOne": "{count} ផ្នែក",
+                    "hunkIndex": "ផ្នែក {index}",
+                    "restoreManual": "ការស្ដារគឺធ្វើដោយដៃ៖ បន្ទាប់ពីពិនិត្យ សូមប្រើ {tool} ជាមួយលេខសម្គាល់ចំណុចត្រួតពិនិត្យនេះ។",
+                    "titleApplied": "បានអនុវត្តបំណះ",
+                    "titleApplyBlocked": "ការអនុវត្តបំណះត្រូវបានរារាំង",
+                    "titleApplyReview": "ពិនិត្យការអនុវត្តបំណះ",
+                    "titleDryRunConflicts": "ការសាកល្បងបំណះបានរកឃើញជម្លោះ",
+                    "titleDryRunPassed": "ការសាកល្បងបំណះបានជោគជ័យ",
+                    "titleDryRunReview": "ពិនិត្យការសាកល្បងបំណះ",
+                    "warnings": "ការព្រមាន"
+                },
+                "binary": "ប្រព័ន្ធគោលពីរ",
+                "fileCountMany": "ឯកសារ {count}",
+                "fileCountOne": "ឯកសារ {count}",
+                "moreCount": "+{count} ទៀត",
+                "plan": {
+                    "likelyFiles": "ឯកសារដែលទំនងពាក់ព័ន្ធ",
+                    "openQuestions": "សំណួរដែលនៅចំហ",
+                    "reviewOnlyNote": "វត្ថុសម្រាប់តែពិនិត្យប៉ុណ្ណោះ។ ការកែសម្រួល និងឧបករណ៍ដែលផ្លាស់ប្ដូរ នៅតែប្រើរបៀបអនុម័តបច្ចុប្បន្ន។",
+                    "riskHigh": "ហានិភ័យខ្ពស់",
+                    "riskLow": "ហានិភ័យទាប",
+                    "riskMedium": "ហានិភ័យមធ្យម",
+                    "risks": "ហានិភ័យនានា",
+                    "title": "ផែនការសរសេរកូដ"
+                },
+                "state": {
+                    "clean": "ស្អាត",
+                    "failed": "បរាជ័យ",
+                    "passed": "ជាប់",
+                    "timedOut": "អស់ពេល"
+                },
+                "timeoutChip": "ពេលកំណត់ {seconds}s",
+                "truncated": "បានកាត់ខ្លី",
+                "workspaceLabel": "កន្លែងធ្វើការ៖"
+            },
+            "attachedImageAlt": "រូបភាពដែលបានភ្ជាប់",
+            "stepNumber": "ជំហាន {step}",
+            "transcribingLocally": "កំពុងចម្លងសំឡេងជាអក្សរនៅលើឧបករណ៍...",
+            "transferPlan": {
+                "dependsOnMany": "អាស្រ័យលើជំហានរៀបចំ {count}",
+                "dependsOnOne": "អាស្រ័យលើជំហានរៀបចំ {count}",
+                "destination": "គោលដៅ៖ {destination}",
+                "title": "ការពិនិត្យផែនការផ្ទេរ",
+                "warnings": "ការព្រមាន"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "បានស្ថាបនាក្បាល ឬ manifest នៃ vault ឡើងវិញពីប៉ារីតេ។",
             "repairMetadataSuccess": "ការជួសជុលបានបញ្ចប់៖ បានស្ថាបនាក្បាល ឬ manifest នៃ vault ឡើងវិញពីប៉ារីតេ",
             "errorCorrectionBadge": "ការកែកំហុស",
-            "itemsInFolder": "ធាតុ {count} នៅក្នុង /{folder}"
+            "itemsInFolder": "ធាតុ {count} នៅក្នុង /{folder}",
+            "compressionProfileArchive": "បណ្ណសារ (zstd -15)",
+            "compressionProfileBalanced": "តុល្យភាព (zstd -9)",
+            "compressionProfileFast": "លឿន (zstd -3)",
+            "damagedChunkLocation": "{id} - ទីតាំង {offset} (ប្រវែង {len})",
+            "fallbackName": "ឃ្លាំង",
+            "folderScanSummary": "ឯកសារ {files} ក្នុងថត {dirs} ({size})",
+            "namePlaceholderVault": "ឃ្លាំងសុវត្ថិភាពរបស់ខ្ញុំ",
+            "namePlaceholderZip": "បណ្ណសាររបស់ខ្ញុំ",
+            "recentDaysAgo": "{count} ថ្ងៃមុន",
+            "recentFileCountMany": "ឯកសារ {count}",
+            "recentFileCountOne": "ឯកសារ {count}",
+            "recentMonthsAgo": "{count} ខែមុន"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "កំពុងអ៊ិនគ្រីបធាតុដែលបានជ្រើសរើស...",
             "ingestSkipped": "បានបង្កើតឃ្លាំង ប៉ុន្តែធាតុមួយចំនួនមិនអាចបន្ថែមបានទេ៖",
             "selectionInfo": "ធាតុ {count} នឹងត្រូវបានអ៊ិនគ្រីបទៅក្នុងឃ្លាំង",
-            "decrypting": "កំពុងឌិគ្រីប…"
+            "decrypting": "កំពុងឌិគ្រីប…",
+            "compatibleWithApp": "ត្រូវគ្នាជាមួយកម្មវិធី Cryptomator",
+            "createFormatBadge": "Cryptomator ទម្រង់ 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "ខ្លឹមសារ AES-GCM",
+            "featureNameCipher": "ឈ្មោះ AES-SIV",
+            "formatVersion": "ទម្រង់ {version}"
         },
         "compress": {
             "title": "បង្ហាប់ឯកសារ",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "ឯកសារខ្លះនឹងមានឈ្មោះដូចគ្នា។ សូមកែតម្រូវលំនាំ។",
             "apply": "អនុវត្ត",
             "existingCollision": "ឈ្មោះថ្មីមួយចំនួនត្រូវនឹងឯកសារដែលមានស្រាប់នៅក្នុងថតនេះ; ឯកសារទាំងនោះនឹងមិនត្រូវបានសរសេរជាន់ពីលើទេ ហើយការប្តូរឈ្មោះរបស់វានឹងត្រូវបានរំលង។",
-            "existingCollisionHint": "(មានរួចហើយ)"
+            "existingCollisionHint": "(មានរួចហើយ)",
+            "baseNamePlaceholder": "ឯកសារ",
+            "invalidName": "{name} (មិនត្រឹមត្រូវ)"
         },
         "lockScreen": {
             "locked": "កម្មវិធីត្រូវបានចាក់សោ",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "មិនត្រូវបានភ្ជាប់ដោយផ្ទៃតុទេ។ ដកខ្សែចេញ រួចដោតម្តងទៀត បន្ទាប់មកបើកវាឡើងវិញ។",
             "volumes_need_mount_observe": "នៅក្នុង snap ដ្រាយនឹងបង្ហាញ នៅពេលដែលការអនុញ្ញាត mount-observe ត្រូវបានភ្ជាប់។ សូមដំណើរការពាក្យបញ្ជានេះក្នុងទែមីណាល់ រួចត្រឡប់ទៅ AeroFTP វិញ:",
             "volumes_unavailable": "មិនអាចអានដ្រាយដែលបានភ្ជាប់បានទេ។",
-            "portable_device": "ឧបករណ៍ចល័ត"
+            "portable_device": "ឧបករណ៍ចល័ត",
+            "drivesLeftPanel": "ដ្រាយផ្ទាំងឆ្វេង",
+            "drivesRightPanel": "ដ្រាយផ្ទាំងស្តាំ",
+            "modeGroupLabel": "របៀបរបារចំហៀង",
+            "placesSidebarLabel": "របារចំហៀងទីតាំង"
         },
         "viewMode": {
             "list": "បញ្ជី",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "រុករកថតបងប្អូន",
             "loading": "កំពុងផ្ទុក...",
             "noSubdirectories": "គ្មានថតរង",
-            "browseChildren": "រកមើលថតរង"
+            "browseChildren": "រកមើលថតរង",
+            "ariaLabel": "ផ្លូវរុករក",
+            "syncBoundaryTitle": "{path} (ព្រំដែនធ្វើសមកាលកម្ម)"
         },
         "bridge": {
             "checking": "កំពុងពិនិត្យ {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "មិនមានការមើលជាមុន",
-            "title": "មើលរហ័ស"
+            "title": "មើលរហ័ស",
+            "closePreview": "បិទការមើលជាមុន",
+            "dialogLabel": "មើលរហ័ស: {name}",
+            "nextFile": "ឯកសារបន្ទាប់",
+            "position": "{index} នៃ {total}",
+            "previousFile": "ឯកសារមុន"
         },
         "properties": {
             "general": "ទូទៅ",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "ឆេកសាំរបស់ធនធានដែល Immich កត់ត្រានៅពេលផ្ទុកឡើង។",
                 "crypt-overlay-ciphertext": "ហាសគ្របដណ្ដប់លើបៃដែលបានអ៊ិនគ្រីប ដែលរក្សាទុកលើម៉ាស៊ីនមេ។"
             },
-            "readOnlyIsLinkTarget": "នេះជាតំណនិមិត្តសញ្ញា៖ សិទ្ធិជាកម្មសិទ្ធិរបស់ឯកសារដែលវាចង្អុលទៅ។ ដើម្បីផ្លាស់ប្ដូរពួកវា សូមបើកលក្ខណសម្បត្តិរបស់ឯកសារនោះ។"
+            "readOnlyIsLinkTarget": "នេះជាតំណនិមិត្តសញ្ញា៖ សិទ្ធិជាកម្មសិទ្ធិរបស់ឯកសារដែលវាចង្អុលទៅ។ ដើម្បីផ្លាស់ប្ដូរពួកវា សូមបើកលក្ខណសម្បត្តិរបស់ឯកសារនោះ។",
+            "exactBytes": "({bytes} បៃ)"
         },
         "duplicates": {
             "sortWasted": "ទំហំ​ដែល​ខ្ជះខ្ជាយ",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "ដូចគ្នាគ្រប់បៃ",
             "modeNonIdenticalHint": "ភាពស្រដៀងគ្នាតាមការយល់ឃើញ ឬអត្ថបទ គ្មានការលុបស្វ័យប្រវត្តិ",
             "potentialWasteSelected": "ការខ្ជះខ្ជាយដែលអាចមាន (បានជ្រើស)",
-            "similarityDistance": "{similarity}, ចម្ងាយ {distance}"
+            "similarityDistance": "{similarity}, ចម្ងាយ {distance}",
+            "modeExact": "ដូចបេះបិទ",
+            "modeLabel": "របៀប:",
+            "modeNonIdentical": "មិនដូចគ្នាបេះបិទ"
         },
         "diskUsage": {
             "title": "ការប្រើប្រាស់ថាស",
@@ -3906,7 +4207,11 @@
                 "noActivity": "គ្មានសកម្មភាព",
                 "time": "ពេលវេលា",
                 "event": "ព្រឹត្តិការណ៍",
-                "detail": "ព័ត៌មានលម្អិត"
+                "detail": "ព័ត៌មានលម្អិត",
+                "command": "ពាក្យបញ្ជា",
+                "ipcTransfersCount": "IPC + ការផ្ទេរ ({count})",
+                "status": "ស្ថានភាព",
+                "type": "ប្រភេទ"
             },
             "system": {
                 "appVersion": "កំណែកម្មវិធី",
@@ -3953,7 +4258,8 @@
                 "dark": "ងងឹត",
                 "light": "ពន្លឺ",
                 "userAgent": "ភ្នាក់ងារអ្នកប្រើ",
-                "localStorageKeysTitle": "គ្រាប់ចុច LocalStorage"
+                "localStorageKeysTitle": "គ្រាប់ចុច LocalStorage",
+                "localStorageEntrySummary": "{size} បៃ · {preview}"
             },
             "copyFileListToClipboard": "ចំលងបញ្ជីឯកសារទៅក្ដារតម្បៀតខ្ទាស់",
             "filesCopied": "បានចម្លង {count} ធាតុឯកសារទៅក្តារតម្បៀតខ្ទាស់",
@@ -4199,7 +4505,9 @@
                     "cropHint": "ចុចទ្វេដងលើការជ្រើសរើស ឬចុច Enter ដើម្បីអនុវត្ត ចុច Esc ដើម្បីបោះបង់",
                     "cropRatio": "សមាមាត្រ",
                     "cropRatioFree": "សេរី",
-                    "cropRatioOriginal": "ដើម"
+                    "cropRatioOriginal": "ដើម",
+                    "rotateCcw90Short": "90° ច្រាសទ្រនិចនាឡិកា",
+                    "rotateCw90Short": "90° តាមទ្រនិចនាឡិកា"
                 },
                 "toggleTransparencyBg": "ផ្ទៃខាងក្រោយតម្លាភាព (ប្ដូរវេន)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "កំពុងផ្ទុក PDF...",
                 "open": "បើក PDF",
                 "page": "ទំព័រ",
-                "zoom": "ពង្រីក"
+                "zoom": "ពង្រីក",
+                "documentTitle": "ឯកសារ PDF"
             },
             "text": {
                 "auto": "ស្វ័យប្រវត្តិ",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "ថេប្លេត (768px)",
                 "wordWrap": "រុំពាក្យ",
                 "zoomIn": "ពង្រីក",
-                "zoomOut": "បង្រួម"
+                "zoomOut": "បង្រួម",
+                "htmlPreviewFrameTitle": "ការមើលជាមុន HTML"
             },
             "video": {
                 "exitFullscreen": "ចេញពីអេក្រង់ពេញ (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "បានរកឃើញស្រទាប់ Rclone Crypt",
             "aerocryptImportDesc": "ប្រវត្តិរូបបាននាំចូលពី rclone.conf សម្រាប់ {name}៖ បើកស្រទាប់ឥឡូវនេះ?",
             "aerocryptImportOpen": "បើកស្រទាប់",
-            "aerovaultOverlayExpired": "AeroVault Overlay ត្រូវបានចាក់សោដោយសារតែអសកម្ម។ បើកធុងសុវត្ថិភាពម្តងទៀតដើម្បីបន្ត។"
+            "aerovaultOverlayExpired": "AeroVault Overlay ត្រូវបានចាក់សោដោយសារតែអសកម្ម។ បើកធុងសុវត្ថិភាពម្តងទៀតដើម្បីបន្ត។",
+            "aerovaultOverlaySource": "ស្រទាប់ AeroVault កំពុងដំណើរការ ({source})",
+            "fileOperationsLabel": "ប្រតិបត្តិការឯកសារ",
+            "overlayBadge": "ស្រទាប់"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "ការផ្ទៀងផ្ទាត់ពីរក្រិត",
                 "verify": "ផ្ទៀងផ្ទាត់ និងបើក",
                 "active": "2FA សកម្ម",
-                "inactive": "2FA អសកម្ម"
+                "inactive": "2FA អសកម្ម",
+                "codeGroupLabel": "កូដ {count} ខ្ទង់",
+                "digitLabel": "ខ្ទង់ទី {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "រុករក",
                     "installed": "បានដំឡើង"
-                }
+                },
+                "remoteInstallDisabled": "ការដំឡើងកម្មវិធីជំនួយពីចម្ងាយត្រូវបានបិទជាបណ្ដោះអាសន្ន រហូតដល់បញ្ជីឈ្មោះត្រូវបានផ្ទៀងផ្ទាត់នៅផ្នែកម៉ាស៊ីនភ្ញៀវ។ កម្មវិធីជំនួយដែលបានដំឡើងក្នុងតំបន់នៅតែដំណើរការធម្មតា។"
             }
         },
         "commandPalette.category.ai": {},
@@ -4616,7 +4932,9 @@
             "trashFooter": "ឯកសារដែលបានស្ដារនឹងបង្ហាញឡើងវិញនៅក្នុងថតដើមរបស់ពួកវា",
             "connectionNamePlaceholder": "ឈ្មោះការតភ្ជាប់ (ឧ. FileLu Cloud របស់ខ្ញុំ)",
             "trashAutoExpiry": "ឯកសារនៅក្នុងធុងសំរាមត្រូវបានលុបដោយស្វ័យប្រវត្តិដោយ FileLu បន្ទាប់ពី ៧ ថ្ងៃ",
-            "rsyncTransferOnly": "ចំណុចបញ្ចប់សម្រាប់តែការផ្ទេរ៖ ការរុករកមិនមាននៅលើ Rsync ទេ។ ប្រើ Native API, WebDAV, S3 ឬ FTP ដើម្បីរុករក; ប្តូរទៅ Rsync សម្រាប់ការផ្ទេរ delta កម្រិតបញ្ជូនទិន្នន័យខ្ពស់។"
+            "rsyncTransferOnly": "ចំណុចបញ្ចប់សម្រាប់តែការផ្ទេរ៖ ការរុករកមិនមាននៅលើ Rsync ទេ។ ប្រើ Native API, WebDAV, S3 ឬ FTP ដើម្បីរុករក; ប្តូរទៅ Rsync សម្រាប់ការផ្ទេរ delta កម្រិតបញ្ជូនទិន្នន័យខ្ពស់។",
+            "badgePasswordProtected": "ការពារដោយពាក្យសម្ងាត់",
+            "badgeWatermarked": "មានស្លាកទឹក"
         },
         "box": {
             "addComment": "បន្ថែមយោបល់",
@@ -4698,7 +5016,10 @@
             "devTools": "Dev Tools",
             "freeTier": "គម្រោងឥតគិតថ្លៃ",
             "freeCardTier": "ឥតគិតថ្លៃ + កាត",
-            "paidTier": "បង់ប្រាក់"
+            "paidTier": "បង់ប្រាក់",
+            "extraFeatures": "បន្ថែម",
+            "coreOpsList": "ផ្ទុកឡើង, ទាញយក, លុប, ប្ដូរឈ្មោះ, ផ្លាស់ទី, បង្កើតថត, ស្វែងរក",
+            "coreOpsLegend": "មូលដ្ឋាន = ផ្ទុកឡើង, ទាញយក, លុប, ប្ដូរឈ្មោះ, ផ្លាស់ទី, បង្កើតថត, ស្វែងរក"
         },
         "healthCheck": {
             "title": "ការពិនិត្យសុខភាពម៉ាស៊ីន​មែ",
@@ -4948,7 +5269,19 @@
             "releaseAssetOne": "ឯកសារ {count}",
             "releaseAssetMany": "ឯកសារ {count}",
             "repoPrivate": "ឯកជន",
-            "repoPublic": "សាធារណៈ"
+            "repoPublic": "សាធារណៈ",
+            "actionsLiveBadge": "ផ្ទាល់",
+            "actionsRunningTitle": "GitHub Actions (កំពុងដំណើរការ)",
+            "coAuthors": "សហអ្នកនិពន្ធ",
+            "pagesPathPlaceholder": "/ ឬ /docs",
+            "pagesStatusBuilding": "កំពុងស្ថាបនា",
+            "pagesStatusBuilt": "បានស្ថាបនា",
+            "pagesStatusErrored": "មានកំហុស",
+            "refreshBranches": "ផ្ទុកសាខាឡើងវិញ",
+            "repoPrivateTitle": "ឃ្លាំងឯកជន",
+            "repoPublicTitle": "ឃ្លាំងសាធារណៈ",
+            "unpushedCommitsOnBranchMany": "commit {count} មិនទាន់បានរុញនៅលើ {branch}",
+            "unpushedCommitsOnBranchOne": "commit {count} មិនទាន់បានរុញនៅលើ {branch}"
         },
         "filenNotes": {
             "title": "កំណត់ត្រាដែលបានអ៊ិនគ្រីប",
@@ -4986,7 +5319,8 @@
             "tagName": "ឈ្មោះស្លាក",
             "removeTag": "ដកស្លាកចេញ",
             "manageTags": "គ្រប់គ្រងស្លាក",
-            "deleteTagConfirm": "លុបស្លាក “{name}” ឬ? កំណត់ចំណាំនៅរក្សាអត្ថបទរបស់វា។"
+            "deleteTagConfirm": "លុបស្លាក “{name}” ឬ? កំណត់ចំណាំនៅរក្សាអត្ថបទរបស់វា។",
+            "betaBadge": "បេតា"
         },
         "shareLinkModal": {
             "title": "តំណចែករំលែក",
@@ -5096,7 +5430,8 @@
                 "down": "មិនអាចភ្ជាប់បាន",
                 "pending": "កំពុងពិនិត្យ...",
                 "unknown": "មិនបានពិនិត្យ",
-                "clickToRetry": "ចុចដើម្បីពិនិត្យឡើងវិញ"
+                "clickToRetry": "ចុចដើម្បីពិនិត្យឡើងវិញ",
+                "withActiveSession": "{title} (វគ្គសកម្ម)"
             },
             "densityCompact": "ជួរបង្រួម",
             "densityComfortable": "ជួរស្រួល",
@@ -5186,7 +5521,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "ស្រទាប់អ៊ិនគ្រីប AeroCrypt (ដើម)៖ ឈ្មោះ និងមាតិកាត្រូវបានអ៊ិនគ្រីបនៅលើម៉ាស៊ីនមេនេះ។",
-                "rcloneTitle": "ស្រទាប់ rclone crypt (អន្តរប្រតិបត្តិ)៖ ឈ្មោះ និងមាតិកាត្រូវបានអ៊ិនគ្រីបនៅលើម៉ាស៊ីនមេនេះ។"
+                "rcloneTitle": "ស្រទាប់ rclone crypt (អន្តរប្រតិបត្តិ)៖ ឈ្មោះ និងមាតិកាត្រូវបានអ៊ិនគ្រីបនៅលើម៉ាស៊ីនមេនេះ។",
+                "keyBits": "{bits} ប៊ីត"
             },
             "sidebar": {
                 "filters": "តម្រង",
@@ -5206,7 +5542,19 @@
                 "unknownKeyTitle": "យើងមិនអាចអានការកំណត់អ៊ិនគ្រីបរបស់ធុងនេះបានទេ ព្រោះកូនសោកម្មវិធីគ្មានសមត្ថភាព readBucketEncryption។ តម្លៃដែលយើងមិនត្រូវបានអនុញ្ញាតឱ្យឃើញ មិនមានន័យថាការអ៊ិនគ្រីបត្រូវបានបិទនោះទេ។",
                 "unknownShapeTitle": "យើងមិនអាចអានការកំណត់អ៊ិនគ្រីបរបស់ធុងនេះបានទេ ព្រោះចម្លើយមិនមានទម្រង់ដែលបានចងក្រងជាឯកសារ។ កូនសោមានសិទ្ធិអានវា ដូច្នេះបញ្ហានេះទាក់ទងនឹងចម្លើយ មិនមែនសិទ្ធិទេ។"
             },
-            "exportProfile": "នាំចេញ..."
+            "exportProfile": "នាំចេញ...",
+            "quotaLabel": "កូតា",
+            "storageNoCapReported": "{used} (មិនមានការរាយការណ៍ដែនកំណត់កូតា)",
+            "e2eBitsBadge": "E2E {bits} ប៊ីត",
+            "filenAuthVersionTitle": "បានរកឃើញពី Filen auth/info ពេលភ្ជាប់ជោគជ័យ",
+            "demoBadge": "សាកល្បង",
+            "timeAgo": {
+                "now": "ឥឡូវ",
+                "minutes": "{count} នាទី",
+                "hours": "{count} ម៉ោង",
+                "days": "{count} ថ្ងៃ",
+                "months": "{count} ខែ"
+            }
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",
@@ -5240,7 +5588,8 @@
             "linkType": "ប្រភេទ",
             "createMergeRequest": "បង្កើត Merge Request",
             "mrTitle": "ចំណងជើង MR",
-            "mrBody": "ការពិពណ៌នា (optional)"
+            "mrBody": "ការពិពណ៌នា (optional)",
+            "sourceCode": "កូដប្រភព"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5822,7 +6171,34 @@
             "copy": "ចម្លងអ្នកប្រើប្រាស់ (ម៉ាស៊ីនមេតែប៉ុណ្ណោះ គ្មានពាក្យសម្ងាត់)",
             "copyLockedHint": "សូមប្ដូរទៅគណនីនេះជាមុនសិន ដើម្បីចម្លងម៉ាស៊ីនមេរបស់វា",
             "crossUserDedupTitle": "ត្រូវបានរក្សាទុកដោយគណនីផ្សេងរួចហើយ",
-            "crossUserDedupMessage": "\"{name}\" ប្រើគណនីម៉ាស៊ីនមេដែលក៏ត្រូវបានរក្សាទុកនៅលើឧបករណ៍នេះដោយ៖ {accounts}"
+            "crossUserDedupMessage": "\"{name}\" ប្រើគណនីម៉ាស៊ីនមេដែលក៏ត្រូវបានរក្សាទុកនៅលើឧបករណ៍នេះដោយ៖ {accounts}",
+            "destructiveReset": {
+                "closeDialog": "បិទប្រអប់កំណត់ពាក្យសម្ងាត់ឡើងវិញ",
+                "confirmPassword": "បញ្ជាក់ពាក្យសម្ងាត់ថ្មី",
+                "errMismatch": "ពាក្យសម្ងាត់គណនីថ្មីមិនត្រូវគ្នាទេ។",
+                "errNewRequired": "បញ្ចូលពាក្យសម្ងាត់គណនីថ្មី។",
+                "errNotAuthorized": "អ្នកត្រូវតែជាអ្នកគ្រប់គ្រង ដើម្បីកំណត់ពាក្យសម្ងាត់របស់គណនីផ្សេងឡើងវិញ។",
+                "errNotForSelf": "សូមប្រើ ប្ដូរពាក្យសម្ងាត់ នៅលើគណនីផ្ទាល់ខ្លួនរបស់អ្នក។",
+                "errStoreNotReady": "សូមដោះសោឃ្លាំងសុវត្ថិភាពជាមុនសិន រួចសាកល្បងម្តងទៀត។",
+                "errTypeReset": "វាយ RESET ដើម្បីបញ្ជាក់ប្រតិបត្តិការបំផ្លិចបំផ្លាញនេះ។",
+                "errUserNotFound": "អ្នកប្រើនេះលែងមានទៀតហើយ។",
+                "newPassword": "ពាក្យសម្ងាត់គណនីថ្មី",
+                "statEncryptedBytes": "បៃដែលបានអ៊ិនគ្រីប",
+                "statProfiles": "ប្រវត្តិរូប",
+                "statSettings": "ការកំណត់",
+                "title": "កំណត់ពាក្យសម្ងាត់ឡើងវិញ = ការបំផ្លាញទិន្នន័យ",
+                "typeReset": "វាយ RESET",
+                "wipeDetail": "មិនអាចស្ដារពាក្យសម្ងាត់បច្ចុប្បន្នបានទេ។ AeroFTP នឹងលុបម៉ាស៊ីនមេដែលបានរក្សាទុក ការកំណត់អ្នកប្រើ និងស្ថានភាពចាក់សោរបស់គណនីគោលដៅ បន្ទាប់មកចេញសោអ៊ិនគ្រីបថ្មីមួយដែលការពារដោយពាក្យសម្ងាត់ថ្មី។",
+                "wipeWarning": "សកម្មភាពនេះនឹងលុបភាគថាសដែលបានអ៊ិនគ្រីបរបស់គណនីគោលដៅជាអចិន្ត្រៃយ៍។"
+            },
+            "dropdown": {
+                "accountPassword": "ពាក្យសម្ងាត់គណនី",
+                "lock": "ចាក់សោ",
+                "newUser": "អ្នកប្រើថ្មី",
+                "noUsers": "មិនទាន់មានអ្នកប្រើនៅឡើយទេ។ ប្រើ \"អ្នកប្រើថ្មី\" ខាងក្រោម ដើម្បីបន្ថែមអ្នកប្រើដំបូង។",
+                "protectionNote": "គណនីរបស់អ្នកត្រូវបានការពារដោយការអ៊ិនគ្រីប Argon2id + AES-KW + AES-256-GCM",
+                "users": "អ្នកប្រើ"
+            }
         },
         "aerocryptNative": {
             "title": "ស្រទាប់ត្រួត AeroCrypt",
@@ -6248,7 +6624,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "របៀបត្រូវបានជ្រើសរើសនៅពេលបង្កើតការតភ្ជាប់ ហើយនៅតែថេរនៅពេលកែសម្រួលប្រវត្តិរូបដែលបានរក្សាទុក។ ដើម្បីប្រើរបៀបផ្សេង សូមបង្កើតការតភ្ជាប់ថ្មី។"
+                "lockedInEdit": "របៀបត្រូវបានជ្រើសរើសនៅពេលបង្កើតការតភ្ជាប់ ហើយនៅតែថេរនៅពេលកែសម្រួលប្រវត្តិរូបដែលបានរក្សាទុក។ ដើម្បីប្រើរបៀបផ្សេង សូមបង្កើតការតភ្ជាប់ថ្មី។",
+                "notInBuild": "មិនមាននៅក្នុងកំណែបង្កើតនេះរបស់ AeroFTP ទេ។"
             }
         },
         "flatpak": {

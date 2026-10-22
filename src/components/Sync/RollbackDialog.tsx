@@ -131,7 +131,7 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Rollback Snapshot">
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('syncPanel.rollbackDialogLabel')}>
             <div
                 {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"
@@ -183,7 +183,7 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 <span className="text-[10px] text-gray-400">
-                                                    {fileCount} files, {formatSize(totalSize)}
+                                                    {t(fileCount === 1 ? 'syncPanel.rollbackSnapshotSummaryOne' : 'syncPanel.rollbackSnapshotSummaryMany', { count: fileCount, size: formatSize(totalSize) })}
                                                 </span>
                                                 <button
                                                     onClick={e => { e.stopPropagation(); handleDelete(snap.id); }}
@@ -217,7 +217,7 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
                                                 ))}
                                                 {Object.keys(snap.files).length > 50 && (
                                                     <div className="text-[10px] text-gray-500 mt-1">
-                                                        +{Object.keys(snap.files).length - 50} more...
+                                                        {t('syncPanel.rollbackMoreFiles', { count: Object.keys(snap.files).length - 50 })}
                                                     </div>
                                                 )}
                                             </div>

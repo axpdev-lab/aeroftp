@@ -67,7 +67,8 @@
                 "apRole": "Founder, developer, maintainer, co-designer",
                 "ekRole": "Researcher, quality assurance engineer, co-designer"
             },
-            "madeBy": "by {author}"
+            "madeBy": "by {author}",
+            "statsLine": "{protocols} protocols · {languages} languages · AES-256 archives"
         },
         "activity": {
             "connect_error": "Connection to {server} failed. Check credentials.",
@@ -274,7 +275,9 @@
                 "fork": "Fork conversation here",
                 "main": "Main",
                 "newBranch": "New branch",
-                "switchBranch": "Switch branch"
+                "switchBranch": "Switch branch",
+                "messageCountShort": "{count} msg",
+                "unnamed": "Branch"
             },
             "budget": {
                 "available": "Available",
@@ -299,7 +302,9 @@
                 "diff": "Diff with original",
                 "diffNoFile": "No file open for diff",
                 "insert": "Insert in Editor",
-                "run": "Run in Terminal"
+                "run": "Run in Terminal",
+                "commandBlocked": "Command blocked: potentially destructive",
+                "confirmRun": "Confirm run: {command}"
             },
             "codeContext": "Regarding this code from `{file}`:",
             "codeExec": {
@@ -380,7 +385,10 @@
                 "refresh": "Refresh",
                 "running": "running",
                 "title": "GPU Monitor",
-                "vram": "VRAM"
+                "vram": "VRAM",
+                "modelsRunningMany": "{count} models running",
+                "modelsRunningOne": "{count} model running",
+                "vramAmount": "{size} VRAM"
             },
             "hideHistory": "Hide history",
             "history": {
@@ -406,7 +414,9 @@
                 "searching": "Searching...",
                 "sessions": "Sessions",
                 "totalTokens": "Tokens",
-                "unlimited": "Unlimited"
+                "unlimited": "Unlimited",
+                "noConversations": "No conversations yet",
+                "titleCount": "History ({count})"
             },
             "imageLimitReached": "Maximum 5 images per message",
             "insertPath": "Insert path",
@@ -650,7 +660,14 @@
                 "vision": "Vision",
                 "routingPreferred": "Preferred",
                 "routingFallback": "Fallback",
-                "routingNoFallback": "None"
+                "routingNoFallback": "None",
+                "detectOllamaModelsTooltip": "Auto-detect available Ollama models",
+                "kTokens": "{count}K tokens",
+                "modelEditorAria": "AI Model Editor",
+                "supportsTools": "Supports tools",
+                "supportsVision": "Supports vision",
+                "thinkingReasoning": "Thinking/Reasoning",
+                "toolQuality": "Tool quality: {quality}/5"
             },
             "shortcuts": {
                 "clearChat": "Clear chat (Ctrl+L)",
@@ -674,7 +691,8 @@
             },
             "tokens": {
                 "breakdown": "{input} input, {output} output, as counted by the provider",
-                "breakdownCache": "{input} input, {output} output, {cacheRead} read from the prompt cache, {cacheWritten} written to it, as counted by the provider"
+                "breakdownCache": "{input} input, {output} output, {cacheRead} read from the prompt cache, {cacheWritten} written to it, as counted by the provider",
+                "countShort": "{count} tok"
             },
             "agentMode": {
                 "title": "Agent Mode",
@@ -695,7 +713,8 @@
                 "enable": "Enable Extreme Mode",
                 "securityWarning": "Security Warning",
                 "understood": "Understood",
-                "warning": "All file operations will execute immediately without approval. Use at your own risk."
+                "warning": "All file operations will execute immediately without approval. Use at your own risk.",
+                "warningAria": "Extreme Mode Warning"
             },
             "templates": {
                 "analyzeUi": "Analyze UI screenshot for layout, accessibility, and UX issues",
@@ -771,7 +790,9 @@
                 "toggleDetails": "Toggle details",
                 "toolExecution": "Tool Execution",
                 "allowSession": "Allow for this session",
-                "nonAtomicReplace": "Non-atomic replace: the file is briefly missing"
+                "nonAtomicReplace": "Non-atomic replace: the file is briefly missing",
+                "moreOptions": "More options",
+                "panelAria": "Tool approval panel"
             },
             "toolFailed": "Tool failed: {error}",
             "toolLabels": {
@@ -1037,18 +1058,53 @@
                     "wouldSkip": "Would skip",
                     "skipped": "Skipped",
                     "existedAtCheckpoint": "existed at checkpoint",
-                    "absentAtCheckpoint": "absent at checkpoint"
+                    "absentAtCheckpoint": "absent at checkpoint",
+                    "noFiles": "No files were included in this restore result.",
+                    "otherActions": "Other actions",
+                    "requestedPaths": "Requested path subset",
+                    "scopeAll": "Scope: all files captured in the checkpoint.",
+                    "titleApplied": "Checkpoint Restore Applied",
+                    "titleApplyReview": "Checkpoint Restore Apply Review",
+                    "titleDryRunComplete": "Checkpoint Restore Dry Run Complete",
+                    "titleDryRunReview": "Checkpoint Restore Dry Run Review"
                 },
                 "checks": {
                     "exitSummary": "exit {code} · {seconds}s",
                     "continueOnFailure": "Runs all checks even if one fails.",
-                    "stopOnFailure": "Stops at the first failing check."
+                    "stopOnFailure": "Stops at the first failing check.",
+                    "checkLabel": "Check:",
+                    "checksLabel": "Checks:",
+                    "exitChip": "exit {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "n/a",
+                    "passedCount": "{passed}/{total} passed",
+                    "runCheckNote": "Runs a curated build/test/lint command in the workspace. Build scripts and tests execute real code.",
+                    "runProjectCheck": "Run project check",
+                    "runVerification": "Run verification pass",
+                    "runVerificationNote": "Runs curated build/test/lint commands in the workspace. Build scripts and tests execute real code.",
+                    "stoppedEarly": "Stopped at the first failing check.",
+                    "timeoutLabel": "Timeout: {seconds}s",
+                    "verification": "Verification"
                 },
                 "diagnostics": {
-                    "none": "No diagnostics reported."
+                    "none": "No diagnostics reported.",
+                    "errorCountMany": "{count} errors",
+                    "errorCountOne": "{count} error",
+                    "title": "Diagnostics",
+                    "truncated": "Diagnostics list was truncated.",
+                    "warningCountMany": "{count} warnings",
+                    "warningCountOne": "{count} warning"
                 },
                 "search": {
-                    "none": "No matches found."
+                    "none": "No matches found.",
+                    "ignoreCase": "ignore-case",
+                    "inPath": "in {path}",
+                    "literal": "literal",
+                    "matchCountMany": "{count} matches",
+                    "matchCountOne": "{count} match",
+                    "title": "Workspace Search",
+                    "truncated": "Results were truncated."
                 },
                 "git": {
                     "noStagedDiff": "No staged diff output.",
@@ -1059,14 +1115,84 @@
                     "stageApproval": "Git Stage Approval",
                     "commitNote": "This creates a git commit from the current staged index. Review coding_git_status and coding_git_diff with staged=true first.",
                     "stagePreviewNote": "This previews which requested paths would be staged; the index will not change.",
-                    "stageNote": "This changes the git index for the requested paths."
+                    "stageNote": "This changes the git index for the requested paths.",
+                    "afterCounts": "After: {counts}",
+                    "beforeCounts": "Before: {counts}",
+                    "clean": "Working tree is clean.",
+                    "commitCountMany": "{count} commits",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "conflicted",
+                    "diffTruncated": "Diff output was truncated.",
+                    "logTitle": "Git Log",
+                    "pathsChip": "paths: {paths}",
+                    "showingNewest": "Showing newest {count}; more exist.",
+                    "statusCounts": "{staged} staged, {unstaged} unstaged, {untracked} untracked, {conflicted} conflicted",
+                    "titleCommitCreated": "Git Commit Created",
+                    "titleCommitDryRun": "Git Commit Dry Run",
+                    "titleCommitReview": "Git Commit Review",
+                    "titleReview": "Git Review",
+                    "titleStageApplied": "Git Stage Applied",
+                    "titleStagedDiff": "Git Staged Diff",
+                    "titleStageDryRun": "Git Stage Dry Run",
+                    "titleStatus": "Git Status",
+                    "titleUnstagedDiff": "Git Unstaged Diff",
+                    "untracked": "untracked"
                 },
                 "patch": {
                     "validateNote": "This validates the patch without changing files.",
                     "applyNote": "This high-danger apply request writes files after the backend creates a pre-apply checkpoint.",
                     "hideDiff": "Hide unified diff",
-                    "showDiff": "Show unified diff"
-                }
+                    "showDiff": "Show unified diff",
+                    "actualLabel": "actual:",
+                    "checkpointCreated": "Pre-apply checkpoint created",
+                    "diffTruncated": "Diff preview truncated for display.",
+                    "expectedLabel": "expected:",
+                    "firstLines": "first {shown} of {total} lines",
+                    "hunkCountMany": "{count} hunks",
+                    "hunkCountOne": "{count} hunk",
+                    "hunkIndex": "hunk {index}",
+                    "restoreManual": "Restore is manual: use {tool} with this checkpoint id after review.",
+                    "titleApplied": "Patch Applied",
+                    "titleApplyBlocked": "Patch Apply Blocked",
+                    "titleApplyReview": "Patch Apply Review",
+                    "titleDryRunConflicts": "Patch Dry Run Found Conflicts",
+                    "titleDryRunPassed": "Patch Dry Run Passed",
+                    "titleDryRunReview": "Patch Dry Run Review",
+                    "warnings": "Warnings"
+                },
+                "binary": "binary",
+                "fileCountMany": "{count} files",
+                "fileCountOne": "{count} file",
+                "moreCount": "+{count} more",
+                "plan": {
+                    "likelyFiles": "Likely Files",
+                    "openQuestions": "Open Questions",
+                    "reviewOnlyNote": "Review-only artifact. Edits and mutating tools still use the current approval mode.",
+                    "riskHigh": "high risk",
+                    "riskLow": "low risk",
+                    "riskMedium": "medium risk",
+                    "risks": "Risks",
+                    "title": "Coding Plan"
+                },
+                "state": {
+                    "clean": "clean",
+                    "failed": "failed",
+                    "passed": "passed",
+                    "timedOut": "timed-out"
+                },
+                "timeoutChip": "timeout {seconds}s",
+                "truncated": "truncated",
+                "workspaceLabel": "Workspace:"
+            },
+            "attachedImageAlt": "Attached image",
+            "stepNumber": "Step {step}",
+            "transcribingLocally": "Transcribing locally...",
+            "transferPlan": {
+                "dependsOnMany": "Depends on {count} preparatory steps",
+                "dependsOnOne": "Depends on {count} preparatory step",
+                "destination": "Destination: {destination}",
+                "title": "Transfer Plan Review",
+                "warnings": "Warnings"
             }
         },
         "appearance": {
@@ -1125,7 +1251,9 @@
             "startNumber": "Start at",
             "suffix": "Suffix (before extension)",
             "suffixPlaceholder": "e.g., _v2",
-            "title": "Batch Rename"
+            "title": "Batch Rename",
+            "baseNamePlaceholder": "file",
+            "invalidName": "{name} (invalid)"
         },
         "breadcrumb": {
             "browseChildren": "Browse subdirectories",
@@ -1135,7 +1263,9 @@
             "loading": "Loading...",
             "noSubdirectories": "No subdirectories",
             "pathMismatch": "Path mismatch",
-            "showAll": "Show collapsed segments"
+            "showAll": "Show collapsed segments",
+            "ariaLabel": "Breadcrumb",
+            "syncBoundaryTitle": "{path} (sync boundary)"
         },
         "bridge": {
             "checking": "Checking {app}…",
@@ -1198,7 +1328,19 @@
             "sameNameLeakChip": "same name",
             "sameNameLeakTooltip": "This name also appears at another path in this encrypted vault. Because names are encrypted deterministically, an observer of the encrypted store can tell the two share a name.",
             "uploadFiles": "Upload Files",
-            "uploadFolder": "Upload Folder"
+            "uploadFolder": "Upload Folder",
+            "endpointSelector": {
+                "localFolder": "Local folder",
+                "localFolderHint": "Choose a local path for this panel",
+                "noSavedProfiles": "No saved profiles",
+                "savedProfiles": "Saved remote profiles",
+                "title": "Endpoint"
+            },
+            "leftPanelMarker": "Left panel",
+            "localFilesLabel": "Local files",
+            "localFilesRightLabel": "Local files (right panel)",
+            "remoteFilesLabel": "Remote files",
+            "rightPanelMarker": "Right panel"
         },
         "cloud": {
             "cloudName": "Cloud Name",
@@ -1332,7 +1474,17 @@
                 "fourshared": "Re-authorize manually if the token is revoked"
             },
             "profilesLoadFailed": "Your saved servers could not be read: {error}",
-            "cleanupSummary": "{count} files, {size} freed"
+            "cleanupSummary": "{count} files, {size} freed",
+            "maturity": {
+                "alpha": "Alpha"
+            },
+            "dialogDashboardLabel": "Cloud Sync Dashboard",
+            "dialogLoadingLabel": "Cloud Sync Loading",
+            "dialogSettingsLabel": "Cloud Sync Settings",
+            "dialogSetupLabel": "Cloud Sync Setup",
+            "onePerLineHint": "(one per line)",
+            "pairsEditorLabel": "AeroCloud Pairs Editor",
+            "remoteSubfolderPlaceholder": "cloud"
         },
         "common": {
             "about": "About",
@@ -1710,7 +1862,38 @@
             "twakeSignInAgain": "Sign in again",
             "twakeSignedIn": "Signed in",
             "twakeWaitingBrowser": "Finish signing in in your browser...",
-            "twakeSignInHelp": "AeroFTP opens Twake in your browser and asks for access to your files only. If Twake shows an error the first time, log in to Twake in the browser and sign in again. You can revoke access anytime in Twake Settings, Connected devices."
+            "twakeSignInHelp": "AeroFTP opens Twake in your browser and asks for access to your files only. If Twake shows an error the first time, log in to Twake in the browser and sign in again. You can revoke access anytime in Twake Settings, Connected devices.",
+            "forms": {
+                "publicApiKey": "Public API Key",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Public key.",
+                "secretApiKey": "Secret API Key",
+                "uploadcareSecretHint": "Used only for REST file management via {scheme} auth.",
+                "flatMediaLibrary": "Flat media library",
+                "uploadcareNoFolders": "Uploadcare does not expose native folders; project files are listed at root by UUID.",
+                "urlEndpointId": "URL Endpoint ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL endpoint.",
+                "privateApiKey": "Private API Key",
+                "storedVaultBasicAuth": "Stored in the local vault and sent only to {provider} via Basic Auth.",
+                "cloudName": "Cloud Name",
+                "cloudinaryCloudNameHint": "Found in your Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API key",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API Key.",
+                "apiSecret": "API Secret",
+                "apiSecretPlaceholder": "API secret",
+                "openProviderLink": "Open {provider} link",
+                "githubPatHint": "Fine-grained PAT with Contents (Read & Write).",
+                "generateToken": "Generate token",
+                "applicationKeyId": "Application Key ID",
+                "backblazeKeyIdHint": "B2 Application Key ID, starts with 003. Generate one from the Backblaze App Keys page.",
+                "applicationKey": "Application Key",
+                "backblazeKeyHint": "Shown only once at creation. Treat it as a password.",
+                "bucketNameExactHint": "Exact bucket name, case sensitive.",
+                "megacmdSetupFirst": "Setup MEGAcmd first",
+                "megacmdFetchUrlTitle": "Run {cmd} and fill the URL automatically",
+                "fetchUrl": "Fetch URL",
+                "megacmdWebdavHint": "Username and Password are intentionally omitted. AeroFTP runs \"{cmd}\" itself on connect to start the bridge and read this address: leaving it blank is fine. Fetch URL is an optional manual refresh; change the port here if MEGAcmd uses a custom one."
+            },
+            "manualStorageUnitLabel": "{label} unit"
         },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",
@@ -2071,7 +2254,12 @@
             "encryptingSelection": "Encrypting selected items...",
             "ingestSkipped": "Vault created, but some items could not be added:",
             "selectionInfo": "{count} item(s) will be encrypted into the vault",
-            "decrypting": "Decrypting…"
+            "decrypting": "Decrypting…",
+            "compatibleWithApp": "Compatible with Cryptomator app",
+            "createFormatBadge": "Cryptomator Format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM content",
+            "featureNameCipher": "AES-SIV names",
+            "formatVersion": "Format {version}"
         },
         "debug": {
             "copyFileListToClipboard": "Copy file list to clipboard",
@@ -2104,7 +2292,8 @@
                 "localStorageSize": "LocalStorage Size",
                 "reactMode": "React Mode",
                 "userAgent": "User Agent",
-                "windowSize": "Window Size"
+                "windowSize": "Window Size",
+                "localStorageEntrySummary": "{size} bytes · {preview}"
             },
             "bundle": {
                 "title": "Export diagnostic bundle (ZIP)"
@@ -2156,7 +2345,11 @@
                 "event": "Event",
                 "noActivity": "No network activity yet. Transfer files to see events.",
                 "time": "Time",
-                "transferEvents": "Transfer events"
+                "transferEvents": "Transfer events",
+                "command": "Command",
+                "ipcTransfersCount": "IPC + Transfers ({count})",
+                "status": "Status",
+                "type": "Type"
             },
             "system": {
                 "appVersion": "AeroFTP Version",
@@ -2246,7 +2439,14 @@
                 "starting": "Starting...",
                 "stop": "Stop",
                 "stopShell": "Stop shell",
-                "closed": "Terminal closed."
+                "closed": "Terminal closed.",
+                "decreaseFont": "Decrease font size (Ctrl+-)",
+                "emptyClickPlus": "Click {plus} to open a terminal",
+                "emptySshHint": "or {ssh} for remote shell to {host}",
+                "increaseFont": "Increase font size (Ctrl+=)",
+                "newTab": "New terminal tab",
+                "sshShellTo": "SSH shell to {host}",
+                "theme": "Terminal theme"
             },
             "editorPanel": {
                 "dragToTerminalRun": "Drag to Terminal to insert run command",
@@ -2255,11 +2455,15 @@
                 "noFileSelected": "No file selected for viewing",
                 "reset": "Reset",
                 "save": "Save",
-                "saving": "Saving..."
+                "saving": "Saving...",
+                "closeEditor": "Close editor",
+                "resetChanges": "Reset changes"
             },
             "previewPanel": {
                 "emptyState": "Right-click on a file and choose \"Preview\""
-            }
+            },
+            "comingSoon": "Coming soon",
+            "soonBadge": "Soon"
         },
         "dialogs": {
             "confirmTitle": "Confirm",
@@ -2323,7 +2527,10 @@
             "modeExactHint": "Byte-identical",
             "modeNonIdenticalHint": "Perceptual or text similarity, no auto-delete",
             "potentialWasteSelected": "potential waste (selected)",
-            "similarityDistance": "{similarity}, dist {distance}"
+            "similarityDistance": "{similarity}, dist {distance}",
+            "modeExact": "Exact",
+            "modeLabel": "Mode:",
+            "modeNonIdentical": "Non-identical"
         },
         "error": {
             "description": "AeroFTP encountered an unexpected error. You can try to recover or reload the application.",
@@ -2540,7 +2747,34 @@
             "confirmRemovePassword": "Remove the account password for \"{name}\"?",
             "confirmDelete": "Delete account \"{name}\"?\n\nEncrypted payloads to remove: {profiles} profiles, {settings} settings scopes.",
             "crossUserDedupTitle": "Already saved by another account",
-            "crossUserDedupMessage": "\"{name}\" uses a server account that is also saved on this device by: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" uses a server account that is also saved on this device by: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Close reset password dialog",
+                "confirmPassword": "Confirm new password",
+                "errMismatch": "New account passwords do not match.",
+                "errNewRequired": "Enter a new account password.",
+                "errNotAuthorized": "You must be an admin to reset another account password.",
+                "errNotForSelf": "Use Change Password on your own account.",
+                "errStoreNotReady": "Unlock the vault first, then try again.",
+                "errTypeReset": "Type RESET to confirm this destructive operation.",
+                "errUserNotFound": "This user no longer exists.",
+                "newPassword": "New account password",
+                "statEncryptedBytes": "encrypted bytes",
+                "statProfiles": "profiles",
+                "statSettings": "settings",
+                "title": "Reset password = data destruction",
+                "typeReset": "Type RESET",
+                "wipeDetail": "The current password cannot be recovered. AeroFTP will delete the target account's saved servers, user settings, and lockout state, then issue a new encryption key protected by the new password.",
+                "wipeWarning": "This will permanently wipe the target account's encrypted partition."
+            },
+            "dropdown": {
+                "accountPassword": "Account Password",
+                "lock": "Lock",
+                "newUser": "New User",
+                "noUsers": "No users yet. Use \"New User\" below to add the first one.",
+                "protectionNote": "Your account is protected with Argon2id + AES-KW + AES-256-GCM encryption",
+                "users": "Users"
+            }
         },
         "lockScreen": {
             "enterPassword": "Enter your master password",
@@ -2704,7 +2938,10 @@
             "skip": "Skip",
             "sourceNewer": "Source is newer",
             "sourceOlder": "Source is older",
-            "title": "File Already Exists"
+            "title": "File Already Exists",
+            "dialogLabel": "Overwrite Confirmation",
+            "moreInQueue": "+{count} in queue",
+            "unknownDate": "Unknown"
         },
         "permissions": {
             "apply": "Apply",
@@ -2846,7 +3083,9 @@
                     "cropHint": "Double-click the selection or press Enter to apply, Esc to cancel",
                     "cropRatio": "Proportions",
                     "cropRatioFree": "Free",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° CCW",
+                    "rotateCw90Short": "90° CW"
                 }
             },
             "mixer": {
@@ -2865,7 +3104,8 @@
                 "loading": "Loading PDF...",
                 "open": "Open PDF",
                 "page": "Page",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "PDF Document"
             },
             "text": {
                 "auto": "Auto",
@@ -2896,7 +3136,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Word Wrap",
                 "zoomIn": "Zoom In",
-                "zoomOut": "Zoom Out"
+                "zoomOut": "Zoom Out",
+                "htmlPreviewFrameTitle": "HTML Preview"
             },
             "video": {
                 "exitFullscreen": "Exit Fullscreen (F)",
@@ -2949,7 +3190,8 @@
                     "browse": "Browse",
                     "installed": "Installed"
                 },
-                "title": "Plugin Browser"
+                "title": "Plugin Browser",
+                "remoteInstallDisabled": "Remote plugin installation is currently disabled until the registry is authenticated client-side. Locally installed plugins continue to work normally."
             }
         },
         "properties": {
@@ -3027,7 +3269,8 @@
             "type": "Type",
             "visibility": "Visibility",
             "applyPrivacy": "Apply",
-            "applyPrivacyAll": "Apply to {count} items"
+            "applyPrivacyAll": "Apply to {count} items",
+            "exactBytes": "({bytes} bytes)"
         },
         "protocol": {
             "acceptInvalidCerts": "Accept invalid or self-signed certificates",
@@ -3297,11 +3540,25 @@
             "sourceforgeProject": "Project (Unixname)",
             "opendriveNotApiKey": "(not your OpenDrive API key)",
             "endpoint": "Endpoint",
-            "accountId": "Account ID"
+            "accountId": "Account ID",
+            "servicesHeading": "Services",
+            "sourceforgeSshKeyHelp": "SourceForge requires SSH key authentication. Generate a key with {cmd} and upload it to {link}.",
+            "sourceforgeSshSettings": "SSH Settings",
+            "fullGuide": "Full guide",
+            "endpointTemplateExample": "e.g. {template}",
+            "jurisdiction": "Jurisdiction",
+            "insecureCertDialogLabel": "Insecure Certificate Warning",
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Host Key Verification"
         },
         "quickLook": {
             "noPreview": "No preview available",
-            "title": "Quick Look"
+            "title": "Quick Look",
+            "closePreview": "Close preview",
+            "dialogLabel": "Quick Look: {name}",
+            "nextFile": "Next file",
+            "position": "{index} of {total}",
+            "previousFile": "Previous file"
         },
         "reconnect": {
             "toastTitle": "Connection",
@@ -3367,7 +3624,9 @@
                 "setup": "Two-Factor Authentication",
                 "verify": "Verify & Enable",
                 "active": "2FA Active",
-                "inactive": "2FA Inactive"
+                "inactive": "2FA Inactive",
+                "codeGroupLabel": "{count}-digit code",
+                "digitLabel": "Digit {index}"
             }
         },
         "settings": {
@@ -3886,7 +4145,13 @@
                 "title": "Native rsync (beta)",
                 "description": "Choose how SFTP Delta Sync dispatches rsync transfers.",
                 "enableToggle": "Enable native rsync for SFTP delta sync",
-                "experimental": "Auto prefers AeroRsync with classic fallback; Classic uses the system rsync binary where available; Native skips the classic binary fallback."
+                "experimental": "Auto prefers AeroRsync with classic fallback; Classic uses the system rsync binary where available; Native skips the classic binary fallback.",
+                "modeAuto": "Auto",
+                "modeClassic": "Classic",
+                "modeNative": "Native",
+                "classicNotFoundTooltip": "Classic rsync binary not found on PATH. Install rsync (Linux/macOS package, Windows via WSL/cygwin/scoop) to enable this mode.",
+                "classicAt": "Classic rsync at {path}",
+                "classicNotDetected": "Classic rsync binary not detected on PATH. Native is the only engine available on this machine."
             },
             "uninstallBadges": "Uninstall",
             "updateAvailable": "Update Available!",
@@ -3949,7 +4214,11 @@
             "migrationOauthFound": "{count} OAuth credentials found in unencrypted storage",
             "fontSystemInstall": "system install",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Recommended for maximum security",
+            "fontCustomOption": "Custom...",
+            "fontSystemInstallHint": "Requires system install. AeroFTP falls back automatically if unavailable.",
+            "fontSizeIndicatorLabel": "Font"
         },
         "sharing": {
             "add": "Add",
@@ -4050,7 +4319,11 @@
             "trash": "Trash",
             "videos": "Videos",
             "volumes_need_mount_observe": "In the snap, volumes appear once its mount-observe permission is connected. Run this in a terminal, then return to AeroFTP:",
-            "volumes_unavailable": "Could not read the mounted volumes."
+            "volumes_unavailable": "Could not read the mounted volumes.",
+            "drivesLeftPanel": "Drives left panel",
+            "drivesRightPanel": "Drives right panel",
+            "modeGroupLabel": "Sidebar mode",
+            "placesSidebarLabel": "Places sidebar"
         },
         "statusbar": {
             "activityLog": "Activity Log",
@@ -4110,7 +4383,10 @@
             "usedScanTruncated": "partial: scan limit reached",
             "usedScanUnreadable": "partial, unreadable folders: {count}",
             "usedScanFailed": "Used-storage scan failed",
-            "usedScanEmpty": "Scan of {path} found no files; the cached figure was kept. Check the path or the server's recursive-listing support."
+            "usedScanEmpty": "Scan of {path} found no files; the cached figure was kept. Check the path or the server's recursive-listing support.",
+            "ariaLabel": "Status bar",
+            "debugBadge": "DEBUG",
+            "debugModeActive": "Debug Mode Active"
         },
         "support": {
             "buyMeACoffee": "Buy Me a Coffee",
@@ -4302,7 +4578,21 @@
             "canaryNoResults": "No sampled files",
             "canaryProjection": "Based on {percent}% sample, full sync would transfer ~{files} files ({size})",
             "canaryApproveFullSync": "Approve Full Sync",
-            "templateExportCliDesc": "aeroftp-cli sync wrapper ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync wrapper ({shell})",
+            "multiPathDisablePair": "Disable",
+            "multiPathEditorLabel": "Multi-Path Editor",
+            "multiPathEnablePair": "Enable",
+            "multiPathLocalPlaceholder": "Local path",
+            "multiPathRemotePlaceholder": "Remote path",
+            "rollbackDialogLabel": "Rollback Snapshot",
+            "rollbackMoreFiles": "+{count} more...",
+            "rollbackSnapshotSummaryMany": "{count} files, {size}",
+            "rollbackSnapshotSummaryOne": "{count} file, {size}",
+            "templateDialogLabel": "Sync Template",
+            "templateExcludes": "Excludes",
+            "templateLocal": "Local",
+            "templateRemote": "Remote",
+            "templateRetries": "Retries"
         },
         "toast": {
             "batchRenamePartial": "Batch rename completed with errors",
@@ -4424,7 +4714,10 @@
             "hideSystemMenu": "Hide system menu bar",
             "localOnly": "Local only",
             "showRemote": "Show remote",
-            "showSystemMenu": "Show system menu bar"
+            "showSystemMenu": "Show system menu bar",
+            "aerovaultOverlaySource": "AeroVault overlay active ({source})",
+            "fileOperationsLabel": "File operations",
+            "overlayBadge": "OVERLAY"
         },
         "transfer": {
             "activityLog": "Activity Log",
@@ -4550,7 +4843,45 @@
             "resumeProfileMissing": "The saved server for this transfer was not found (it may have been deleted).",
             "connectingToResume": "Connecting to {name} to resume transfers…",
             "resumeConnectFailed": "Could not connect to {name}. Transfers were not started.",
-            "moreActions": "More actions"
+            "moreActions": "More actions",
+            "badgeBatch": "BATCH",
+            "badgeDownload": "DOWNLOAD",
+            "badgeLive": "LIVE",
+            "badgeStream": "STREAM",
+            "badgeUpload": "UPLOAD",
+            "earlierItemsHidden": "{count} earlier items hidden",
+            "folderFilesProgress": "{done}/{total} files",
+            "laneDone": "done",
+            "laneError": "error",
+            "unifiedPlan": {
+                "destination": "Destination",
+                "dialogLabel": "Transfer plan",
+                "engineAerovaultOverlay": "AeroVault overlay",
+                "engineCompareOnly": "Compare only",
+                "engineCrossProfileSync": "Cross-Profile Sync",
+                "engineCrossProfileTransfer": "Cross-Profile Transfer",
+                "engineLocalDelta": "Local delta transport",
+                "engineLocalFs": "Local filesystem",
+                "engineProviderDownload": "Provider download",
+                "engineProviderUpload": "Provider upload",
+                "engineUnsupported": "Unsupported",
+                "execute": "Execute",
+                "items": "Items",
+                "modeBackup": "Backup",
+                "modeBisync": "Bisync",
+                "modeCompare": "Compare",
+                "modeCopy": "Copy",
+                "modeMirror": "Mirror",
+                "modeMove": "Move",
+                "modeSync": "Sync",
+                "notExecutable": "This endpoint pair is not executable yet.",
+                "parallel": "Parallel",
+                "reviewBeforeExecution": "Review before execution",
+                "route": "{pair} via {engine}",
+                "size": "Size",
+                "source": "Source",
+                "title": "{mode} plan"
+            }
         },
         "scanning": {
             "deleting": "Deleting",
@@ -4981,7 +5312,19 @@
             "encryptedTooltip": "Encrypted with AES-256. Contents and filenames are confidential; the password is required to open.",
             "resetDefaults": "Reset to default",
             "errorCorrectionBadge": "Error Correction",
-            "itemsInFolder": "{count} items in /{folder}"
+            "itemsInFolder": "{count} items in /{folder}",
+            "compressionProfileArchive": "Archive (zstd -15)",
+            "compressionProfileBalanced": "Balanced (zstd -9)",
+            "compressionProfileFast": "Fast (zstd -3)",
+            "damagedChunkLocation": "{id} - offset {offset} (len {len})",
+            "fallbackName": "Vault",
+            "folderScanSummary": "{files} files in {dirs} directories ({size})",
+            "namePlaceholderVault": "My secure vault",
+            "namePlaceholderZip": "My archive",
+            "recentDaysAgo": "{count}d ago",
+            "recentFileCountMany": "{count} files",
+            "recentFileCountOne": "{count} file",
+            "recentMonthsAgo": "{count}mo ago"
         },
         "vaultSync": {
             "title": "Vault Sync",
@@ -5169,7 +5512,19 @@
             "releaseAssetOne": "{count} asset",
             "releaseAssetMany": "{count} assets",
             "repoPrivate": "Private",
-            "repoPublic": "Public"
+            "repoPublic": "Public",
+            "actionsLiveBadge": "Live",
+            "actionsRunningTitle": "GitHub Actions (running)",
+            "coAuthors": "Co-Authors",
+            "pagesPathPlaceholder": "/ or /docs",
+            "pagesStatusBuilding": "building",
+            "pagesStatusBuilt": "built",
+            "pagesStatusErrored": "errored",
+            "refreshBranches": "Refresh branches",
+            "repoPrivateTitle": "Private repository",
+            "repoPublicTitle": "Public repository",
+            "unpushedCommitsOnBranchMany": "{count} unpushed commits on {branch}",
+            "unpushedCommitsOnBranchOne": "{count} unpushed commit on {branch}"
         },
         "gitlab": {
             "projectPath": "Project Path",
@@ -5203,7 +5558,8 @@
             "linkType": "Type",
             "createMergeRequest": "Create Merge Request",
             "mrTitle": "MR title",
-            "mrBody": "Description (optional)"
+            "mrBody": "Description (optional)",
+            "sourceCode": "Source code"
         },
         "shareLinkModal": {
             "title": "Share Link",
@@ -5298,7 +5654,9 @@
             "restore": "Restore",
             "trashFooter": "Restored files will reappear in their original folder",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "connectionNamePlaceholder": "Connection Name (e.g. My FileLu Cloud)"
+            "connectionNamePlaceholder": "Connection Name (e.g. My FileLu Cloud)",
+            "badgePasswordProtected": "Password protected",
+            "badgeWatermarked": "Watermarked"
         },
         "box": {
             "addComment": "Add Comment",
@@ -5369,7 +5727,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt encrypted overlay (native): names and contents are encrypted on this server.",
-                "rcloneTitle": "rclone crypt overlay (interop): names and contents are encrypted on this server."
+                "rcloneTitle": "rclone crypt overlay (interop): names and contents are encrypted on this server.",
+                "keyBits": "{bits}-bit"
             },
             "bucketEncryption": {
                 "onTitle": "New objects in this bucket are encrypted by default ({mode}). This says nothing about objects already stored, and nothing about SSE-C or client-side encryption.",
@@ -5410,7 +5769,8 @@
                 "down": "Unreachable",
                 "pending": "Checking...",
                 "unknown": "Not probed",
-                "clickToRetry": "click to recheck"
+                "clickToRetry": "click to recheck",
+                "withActiveSession": "{title} (active session)"
             },
             "connectError": {
                 "failed": "Last connection attempt failed",
@@ -5513,7 +5873,19 @@
                 "moveRight": "Move sidebar right"
             },
             "deviceAttached": "Device attached",
-            "deviceNotAttached": "Device not attached"
+            "deviceNotAttached": "Device not attached",
+            "quotaLabel": "Quota",
+            "storageNoCapReported": "{used} (no quota cap reported)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Detected from Filen auth/info on successful connect",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "now",
+                "minutes": "{count}m",
+                "hours": "{count}h",
+                "days": "{count}d",
+                "months": "{count}mo"
+            }
         },
         "iconPicker": {
             "title": "Choose icon",
@@ -5607,7 +5979,10 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "extraFeatures": "Extra",
+            "coreOpsList": "Upload, Download, Delete, Rename, Move, Create Folder, Search",
+            "coreOpsLegend": "Base = Upload, Download, Delete, Rename, Move, Create Folder, Search"
         },
         "filenNotes": {
             "title": "Encrypted Notes",
@@ -5645,7 +6020,8 @@
                 "pinned": "Pinned",
                 "archived": "Archived",
                 "trash": "Trash"
-            }
+            },
+            "betaBadge": "BETA"
         },
         "table": {
             "manageColumns": "Manage columns",
@@ -6250,7 +6626,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection."
+                "lockedInEdit": "Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection.",
+                "notInBuild": "Not included in this build of AeroFTP."
             }
         },
         "flatpak": {

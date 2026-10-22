@@ -108,7 +108,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ file, className = '' }
                 {file.isRemote && (
                     <>
                         <span className="text-gray-500">•</span>
-                        <span className="text-blue-400">Remote</span>
+                        <span className="text-blue-400">{t('preview.common.remote')}</span>
                     </>
                 )}
             </div>

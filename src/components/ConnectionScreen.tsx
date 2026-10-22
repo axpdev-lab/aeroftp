@@ -2646,7 +2646,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (protocol === 's3') return t('connection.accessKeyId');
         if (protocol === 'azure') return t('connection.azureAccountName');
         if (protocol === 'github') return t('github.ownerRepo');
-        if (protocol === 'gitlab') return 'Project Path';
+        if (protocol === 'gitlab') return t('gitlab.projectPath');
         // A selected preset can relabel the shared username field (Koofr,
         // OpenDrive, pCloud, Yandex WebDAV all declare "Email"), so a provider's
         // WebDAV mode reads the same label as its dedicated native form instead
@@ -2717,7 +2717,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (protocol === 's3') return t('connection.secretAccessKey');
         if (protocol === 'azure') return t('connection.azureAccessKey');
         if (protocol === 'github') return t('github.personalAccessToken');
-        if (protocol === 'gitlab') return 'Access Token';
+        if (protocol === 'gitlab') return t('gitlab.accessToken');
         // Same as getUsernameLabel: honour a preset's own password label so the
         // WebDAV mode matches the native form ("App Password" for Koofr/Yandex,
         // "Password" for OpenDrive/pCloud) instead of the generic "Password".
@@ -3720,7 +3720,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
                                                 >
                                                     <ExternalLink size={10} />
-                                                    Docs
+                                                    {t('connection.docs')}
                                                 </a>
                                                 <CopyLinkButton url={docsUrl} />
                                             </span>
@@ -4205,7 +4205,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
-                                                <label className="block text-sm font-medium mb-1.5">Public API Key</label>
+                                                <label className="block text-sm font-medium mb-1.5">{t('connection.forms.publicApiKey')}</label>
                                                 <input
                                                     type="text"
                                                     value={connectionParams.username}
@@ -4221,11 +4221,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     autoFocus
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Dashboard - API Keys - Public key.
+                                                    {t('connection.forms.uploadcarePublicKeyHint')}
                                                 </p>
                                             </div>
                                             <div>
-                                                {renderPasswordLabel('Secret API Key')}
+                                                {renderPasswordLabel(t('connection.forms.secretApiKey'))}
                                                 <div className="relative">
                                                     <input
                                                         type={showPassword ? 'text' : 'password'}
@@ -4245,13 +4245,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </button>
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Used only for REST file management via Uploadcare.Simple auth.
+                                                    {t('connection.forms.uploadcareSecretHint', { scheme: 'Uploadcare.Simple' })}
                                                 </p>
                                             </div>
                                             <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">
-                                                <p className="font-medium mb-1">Flat media library</p>
+                                                <p className="font-medium mb-1">{t('connection.forms.flatMediaLibrary')}</p>
                                                 <p className="opacity-80">
-                                                    Uploadcare does not expose native folders; project files are listed at root by UUID.
+                                                    {t('connection.forms.uploadcareNoFolders')}
                                                 </p>
                                             </div>
                                         </div>
@@ -4267,7 +4267,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
-                                                <label className="block text-sm font-medium mb-1.5">URL Endpoint ID</label>
+                                                <label className="block text-sm font-medium mb-1.5">{t('connection.forms.urlEndpointId')}</label>
                                                 <input
                                                     type="text"
                                                     value={connectionParams.username}
@@ -4283,11 +4283,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     autoFocus
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Dashboard - Developer Options - URL endpoint.
+                                                    {t('connection.forms.imagekitEndpointHint')}
                                                 </p>
                                             </div>
                                             <div>
-                                                {renderPasswordLabel('Private API Key')}
+                                                {renderPasswordLabel(t('connection.forms.privateApiKey'))}
                                                 <div className="relative">
                                                     <input
                                                         type={showPassword ? 'text' : 'password'}
@@ -4307,7 +4307,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </button>
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Stored in the local vault and sent only to ImageKit via Basic Auth.
+                                                    {t('connection.forms.storedVaultBasicAuth', { provider: 'ImageKit' })}
                                                 </p>
                                             </div>
                                         </div>
@@ -4323,7 +4323,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
-                                                <label className="block text-sm font-medium mb-1.5">Cloud Name</label>
+                                                <label className="block text-sm font-medium mb-1.5">{t('connection.forms.cloudName')}</label>
                                                 <input
                                                     type="text"
                                                     value={connectionParams.options?.bucket || ''}
@@ -4342,11 +4342,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     autoFocus
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Found in your Cloudinary Dashboard - Account Details.
+                                                    {t('connection.forms.cloudinaryCloudNameHint')}
                                                 </p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium mb-1.5">API Key</label>
+                                                <label className="block text-sm font-medium mb-1.5">{t('ai.settings.apiKey')}</label>
                                                 <input
                                                     type="text"
                                                     value={connectionParams.username}
@@ -4358,14 +4358,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         providerId: connectionParams.providerId || selectedProviderId || 'cloudinary',
                                                     })}
                                                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                                    placeholder="API key"
+                                                    placeholder={t('connection.forms.apiKeyPlaceholder')}
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Dashboard - API Keys - API Key.
+                                                    {t('connection.forms.cloudinaryApiKeyHint')}
                                                 </p>
                                             </div>
                                             <div>
-                                                {renderPasswordLabel('API Secret')}
+                                                {renderPasswordLabel(t('connection.forms.apiSecret'))}
                                                 <div className="relative">
                                                     <input
                                                         type={showPassword ? 'text' : 'password'}
@@ -4378,14 +4378,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                             providerId: connectionParams.providerId || selectedProviderId || 'cloudinary',
                                                         })}
                                                         className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                                        placeholder="API secret"
+                                                        placeholder={t('connection.forms.apiSecretPlaceholder')}
                                                     />
                                                     <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Stored in the local vault and sent only to Cloudinary via Basic Auth.
+                                                    {t('connection.forms.storedVaultBasicAuth', { provider: 'Cloudinary' })}
                                                 </p>
                                             </div>
                                         </div>
@@ -4430,7 +4430,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     rel="noopener noreferrer"
                                                     className="text-sky-500 hover:text-sky-400 transition-colors"
                                                     title="FileLu"
-                                                    aria-label="Open FileLu link"
+                                                    aria-label={t('connection.forms.openProviderLink', { provider: 'FileLu' })}
                                                 >
                                                     <ExternalLink size={12} />
                                                 </a>
@@ -4648,7 +4648,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                         {/* GitHub Auth Mode Selector */}
                                         <div className="space-y-2 mt-1">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">Authentication</label>
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">{t('github.authMethod')}</label>
 
                                             {/* Mode buttons. Issue #215: switching auth method on a
                                                 saved GitHub profile is allowed in edit. The handler
@@ -4745,9 +4745,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         </button>
                                                     </div>
                                                     <p className="text-xs text-gray-400 mt-1.5">
-                                                        Fine-grained PAT with Contents (Read & Write).{' '}
+                                                        {t('connection.forms.githubPatHint')}{' '}
                                                         <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" className="text-[var(--color-accent)] hover:underline">
-                                                            Generate token
+                                                            {t('connection.forms.generateToken')}
                                                         </a>
                                                         <CopyLinkButton url="https://github.com/settings/personal-access-tokens/new" />
                                                     </p>
@@ -4773,7 +4773,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         />
                                                         {gitHubAppFieldsLocked && (
                                                             <button type="button" onClick={() => setGitHubAppFieldsLocked(false)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[var(--color-accent)] hover:underline">
-                                                                Edit
+                                                                {t('common.edit')}
                                                             </button>
                                                         )}
                                                     </div>
@@ -5289,7 +5289,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
-                                                {renderUsernameLabel('Application Key ID')}
+                                                {renderUsernameLabel(t('connection.forms.applicationKeyId'))}
                                                 <input
                                                     type="text"
                                                     value={connectionParams.username}
@@ -5305,11 +5305,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     autoFocus
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    B2 Application Key ID, starts with 003. Generate one from the Backblaze App Keys page.
+                                                    {t('connection.forms.backblazeKeyIdHint')}
                                                 </p>
                                             </div>
                                             <div>
-                                                {renderPasswordLabel('Application Key')}
+                                                {renderPasswordLabel(t('connection.forms.applicationKey'))}
                                                 <div className="relative">
                                                     <input
                                                         type={showPassword ? 'text' : 'password'}
@@ -5321,10 +5321,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
-                                                <p className="text-xs text-gray-500 mt-1">Shown only once at creation. Treat it as a password.</p>
+                                                <p className="text-xs text-gray-500 mt-1">{t('connection.forms.backblazeKeyHint')}</p>
                                             </div>
                                             <DiscoverableTargetField
-                                                label="Bucket Name"
+                                                label={t('protocol.bucketName')}
                                                 value={connectionParams.options?.bucket || ''}
                                                 onChange={(bucket) => onConnectionParamsChange({
                                                     ...connectionParams,
@@ -5336,7 +5336,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 canDiscover={!!connectionParams.username && !!connectionParams.password}
                                                 resetKey={discoveryRequestResetKey('backblaze', connectionParams)}
                                                 placeholder="my-b2-bucket"
-                                                helpText="Exact bucket name, case sensitive."
+                                                helpText={t('connection.forms.bucketNameExactHint')}
                                                 required
                                             />
 
@@ -5946,7 +5946,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="space-y-4">
                                             <CollapsibleSetupBox
                                                 key="megacmd-webdav-setup"
-                                                title="Setup MEGAcmd first"
+                                                title={t('connection.forms.megacmdSetupFirst')}
                                                 tone="red"
                                                 bridgeState={bridgeUiState}
                                                 isBridge
@@ -5965,10 +5965,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         onClick={handleFetchMegaWebdavUrl}
                                                         disabled={megaWebdavFetching}
                                                         className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        title="Run mega-webdav / and fill the URL automatically"
+                                                        title={t('connection.forms.megacmdFetchUrlTitle', { cmd: 'mega-webdav /' })}
                                                     >
                                                         {megaWebdavFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                                                        Fetch URL
+                                                        {t('connection.forms.fetchUrl')}
                                                     </button>
                                                 </div>
                                                 <input
@@ -5993,7 +5993,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     <p className="text-xs text-red-600 dark:text-red-400 mt-1">{megaWebdavError}</p>
                                                 )}
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Username and Password are intentionally omitted. AeroFTP runs "mega-webdav /" itself on connect to start the bridge and read this address: leaving it blank is fine. Fetch URL is an optional manual refresh; change the port here if MEGAcmd uses a custom one.
+                                                    {t('connection.forms.megacmdWebdavHint', { cmd: 'mega-webdav /' })}
                                                 </p>
                                             </div>
                                         </div>
@@ -6218,7 +6218,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {selectedProviderId === 'infinicloud' && (
                                             connectionParams.options?.infinicloud_mode === 'api' ? (
                                                 <div>
-                                                    <label className="block text-sm font-medium mb-1.5">API Key</label>
+                                                    <label className="block text-sm font-medium mb-1.5">{t('ai.settings.apiKey')}</label>
                                                     <input
                                                         type="text"
                                                         value={connectionParams.options?.apiKey || ''}

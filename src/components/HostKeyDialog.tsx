@@ -43,7 +43,7 @@ export const HostKeyDialog: React.FC<HostKeyDialogProps> = ({
             onClick={onReject}
             role="dialog"
             aria-modal="true"
-            aria-label="Host Key Verification"
+            aria-label={t('protocol.hostKeyDialogLabel')}
         >
             <div
                 {...modalDrag.panelProps}

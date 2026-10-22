@@ -78,6 +78,7 @@ const TreeRow: React.FC<{
     onExtract: (path: string) => void;
     onPreview: (path: string) => void;
 }> = ({ node, depth, onExtract, onPreview }) => {
+    const t = useTranslation();
     const [expanded, setExpanded] = useState(depth < 1);
     const children = Array.from(node.children.values()).sort((a, b) => {
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
@@ -104,10 +105,10 @@ const TreeRow: React.FC<{
                 <td className="py-1 px-2 text-right">
                     {!node.isDir && (
                         <div className="flex gap-1 justify-end">
-                            <button onClick={() => onPreview(node.fullPath)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" title="Preview">
+                            <button onClick={() => onPreview(node.fullPath)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" title={t('archive.preview')}>
                                 <Eye size={14} />
                             </button>
-                            <button onClick={() => onExtract(node.fullPath)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" title="Extract">
+                            <button onClick={() => onExtract(node.fullPath)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" title={t('archive.extract')}>
                                 <Download size={14} />
                             </button>
                         </div>

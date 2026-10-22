@@ -22,21 +22,35 @@ import { parseAst } from 'vite';
  * rclone crypt and a version prefix are not prose and pass. The text belongs in
  * the translation, with the variable part as a `{placeholder}`.
  *
- * JSX has two more shapes of the same defect, and they are found here too.
- * A JSX child expression that renders a string literal: `{dryRun ? 'Would
- * delete' : 'Deleted'}`, `{busy && 'Loading...'}`, `{label || 'Copy'}`,
- * `{`${n} server profiles found`}`. And JSX text written next to a translated
- * sibling: `{t('cloud.cleanupDone')}: {n} files, {size} freed`. Every locale
- * rendered those words in English.
+ * JSX renders English written in the code in more shapes, and they are found
+ * here too. A JSX child expression that renders a string literal: `{dryRun ?
+ * 'Would delete' : 'Deleted'}`, `{busy && 'Loading...'}`, `{label ||
+ * 'Copy'}`, `{`${n} server profiles found`}`. JSX text, beside a translated
+ * sibling (`{t('cloud.cleanupDone')}: {n} files, {size} freed`) or alone
+ * (`<span>Mode:</span>`, the plural tail of `{n} file{n === 1 ? '' : 's'}`).
+ * A name rendered as a child that stands for English: a variable declared in
+ * scope (`const title = dry ? 'Patch Dry Run Review' : 'Patch Apply Review'`,
+ * then `{title}`) or a function of the module called there, whose return
+ * values are literals (`{actionLabel(file.action)}`). And the attributes a
+ * reader sees or a screen reader speaks, `title`, `placeholder`, `aria-label`,
+ * `alt` and `label`, in the same shapes: `title={isPrivate ? 'Private
+ * repository' : 'Public repository'}`. Every locale rendered those words in
+ * English.
  *
  * In JSX a `t('x') || 'Fallback'` passes: the fallback is dead code
- * (noPhantomKeys.test.ts), never shown. So do CSS in a `<style>` element, size
- * and time units, file extensions and HTML entities. Short names that read as
- * words but are not prose (S3 storage classes, pricing tiers, a provider name
- * after a dash) are allowed by file and exact text in JSX_NEUTRAL, and an
- * entry that no longer matches a hit fails, so the list cannot outlive its
- * reason. JSX text with no translated sibling, a variable rendered as a JSX
- * child and JSX attributes (`title`, `placeholder`) are not covered.
+ * (noPhantomKeys.test.ts), never shown. So do CSS in a `<style>` element, the
+ * content of `<code>`, `<kbd>`, `<pre>` and `<samp>`, and the tokens in
+ * JSX_TOKENS: units, file extensions, HTML entities, URLs, paths, host and file
+ * names, identifiers and command-line flags. Short names that read as words
+ * but are not prose (product and provider names, S3 storage classes, pricing
+ * tiers, sample credentials in a placeholder) are allowed by file and exact
+ * text in JSX_NEUTRAL, and an entry that no longer matches a hit fails, so the
+ * list cannot outlive its reason.
+ *
+ * Not covered: a property of an object (`state.label` where `checkState()`
+ * returns `{ label: 'passed' }`), a value kept in React state or props, a
+ * string from another module, and names inside a function's return value,
+ * which belong to the function's scope and not the caller's.
  */
 
 const SOURCES = import.meta.glob<string>(
@@ -124,15 +138,31 @@ function bindingNames(pattern: Node): string[] {
     return [];
 }
 
-/** Units, file extensions and HTML entities: neutral where JSX renders them. */
-const JSX_TOKENS = /&[a-z]+;|(?<![\w.])\.[a-z][a-z0-9]*\b|(?<![A-Za-z])(?:B|KB|MB|GB|TB|ms|min|px)(?![A-Za-z])/g;
+/**
+ * Neutral where JSX renders them: HTML entities, URLs, e-mail addresses, host
+ * and file names with an optional path (`gitlab.com/owner/repo`), paths,
+ * identifiers with an underscore, command-line flags, file extensions and units.
+ */
+const JSX_TOKENS = new RegExp([
+    /&#?\w+;/,
+    /\b[a-z][a-z0-9+.-]*:\/\/\S*/,
+    /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/,
+    /\b[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b(?:\/[\w./*{}-]*)?/,
+    /(?<![\w/])~?\/[\w./*{}-]*/,
+    /\b\w*_\w*\b/,
+    /(?<![\w-])--[a-z][\w-]*/,
+    /(?<![\w.])(?:\.[a-z][a-z0-9-]*)+\b/,
+    /(?<![A-Za-z])(?:B|KB|MB|GB|TB|KiB|MiB|GiB|TiB|Mbps|ms|min|px)(?![A-Za-z])/,
+].map((pattern) => pattern.source).join('|'), 'g');
 
 const isJsxProse = (text: string) => isProse(text.replace(JSX_TOKENS, ''));
 
 /** Text JSX renders as it is, by file. Each entry must still match a hit. */
 const JSX_NEUTRAL: Record<string, string[]> = {
-    // S3 storage-class badges and the update's package format.
-    'src/App.tsx': ['IA', '1Z-IA', 'Glacier', 'Glacier IR', 'Deep', 'IT', 'RR', 'deb'],
+    // S3 storage-class badges, the update's package format, the PRO tier badge and GitHub product names.
+    'src/App.tsx': [
+        'IA', '1Z-IA', 'Glacier', 'Glacier IR', 'Deep', 'IT', 'RR', 'deb', 'PRO', 'GitHub Pages', 'GitHub Actions',
+    ],
     // The protocol id shown when a profile has none.
     'src/components/BridgeSourcePanel.tsx': ['ftp'],
     'src/components/ExportImportDialog.tsx': ['ftp'],
@@ -144,7 +174,8 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     'src/components/DebugPanel.tsx': ['RUST', 'JS', 'rust', 'js'],
     // GitLab merge request, GitHub pull request.
     'src/components/GitHubWriteModeIndicator.tsx': ['MR', 'PR'],
-    'src/components/SiteCommand/SiteCommandDialog.tsx': ['· TLS'],
+    // The FTP SITE command and its TLS marker.
+    'src/components/SiteCommand/SiteCommandDialog.tsx': ['· TLS', 'SITE'],
     // The player badge: its cyber theme and the OpenGL visualizer mode.
     'src/components/Preview/viewers/AudioPlayer.tsx': ['// CYBER', 'GL'],
     'src/components/DevTools/GeminiCodeBlock.tsx': ['OK'],
@@ -161,8 +192,77 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     'src/components/MegaTrashManager.tsx': ['- MEGA'],
     'src/components/OneDriveTrashManager.tsx': ['- OneDrive'],
     'src/components/ZohoTrashManager.tsx': ['- Zoho WorkDrive'],
-    // The font preview sample.
-    'src/components/SettingsPanel.tsx': ['- AaBbCcDd 123'],
+    // The font preview sample, the providers of the OAuth app list and a client id sample.
+    'src/components/SettingsPanel.tsx': [
+        '- AaBbCcDd 123', 'Google API', 'Google Drive, Google Photos', 'Dropbox', 'OneDrive', 'Box', 'pCloud Drive',
+        '4shared', 'Zoho WorkDrive', 'Yandex Disk', 'GitHub', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    ],
+    // The fixed API key placeholder of Ollama, which needs none.
+    'src/components/AISettings/AISettingsPanel.tsx': ['ollama'],
+    // Protocol and provider lists, the license, a team member, the toolchain and a support site.
+    'src/components/AboutDialog.tsx': [
+        'FTP / FTPS / SFTP / WebDAV / S3 / GitHub', 'Google Drive / Dropbox / OneDrive / MEGA / Box / Filen',
+        'GNU General Public License v3.0', 'E.K., PhD', 'Tauri', 'Rust', 'SourceForge',
+    ],
+    // The word the code compares the input with, named by the translated label.
+    'src/components/AeroCryptKeyslotsModal.tsx': ['YES'],
+    // Sample exclude patterns.
+    'src/components/AeroSync/PlanTabContent.tsx': ['cache, *.tmp, build/output'],
+    // Sample credentials and identifiers, a provider name and the AeroShare id label.
+    'src/components/ConnectionScreen.tsx': [
+        'aeroftp', 'demopublickey...', 'dxz9abc12', '003d90ca9d33900000000001', 'my-b2-bucket', 'glpat-xxxxxxxxxxxx',
+        'FEF5078EA41D182EEF89A21E034BD680', 'AKIAIOSFODNN7EXAMPLE', 'aeroftp2026', 'FileLu', 'AeroFTP-ID',
+    ],
+    // Cipher names.
+    'src/components/CryptoLabTab.tsx': ['AES-256-GCM', 'ChaCha20-Poly1305'],
+    // Key derivation and key wrap algorithm names.
+    'src/components/CryptomatorBrowser.tsx': ['scrypt KDF', 'AES Key Wrap'],
+    // A sample vault name.
+    'src/components/CryptomatorCreateDialog.tsx': ['MyVault'],
+    // The hash algorithm before a digest.
+    'src/components/DevTools/CodingCheckpointRestoreReview.tsx': ['sha256'],
+    // Output stream names.
+    'src/components/DevTools/CodingChecksReview.tsx': ['stdout', 'stderr'],
+    // The protocol name.
+    'src/components/DevTools/SSHTerminal.tsx': ['SSH'],
+    // Hash algorithm names.
+    'src/components/Dialogs/index.tsx': ['MD5', 'SHA-1', 'SHA-256', 'SHA-512', 'BLAKE3'],
+    // Product names.
+    'src/components/GitHubActionsBrowser.tsx': ['GitHub Actions'],
+    // Product names, a protocol and a DNS record type.
+    'src/components/GitHubPagesBrowser.tsx': ['GitHub Pages', 'HTTPS', 'CNAME'],
+    // A sample hex key.
+    'src/components/HashForgeTab.tsx': ['0123...cdef'],
+    // Image format names.
+    'src/components/IconPickerDialog.tsx': ['SVG, PNG, JPG, WEBP, GIF, ICO'],
+    // Protocol ids, cipher names and the Nextcloud OCS API badge.
+    'src/components/IntroHub/ServerCard.tsx': ['MTP', 'ftps', 'ftp', 'XSalsa20-Poly1305', 'AES-256-GCM-SIV', 'API OCS'],
+    // A protocol and a store name.
+    'src/components/McpDialog.tsx': ['Model Context Protocol', 'VS Code Marketplace'],
+    // The provider name.
+    'src/components/NextcloudTrashManager.tsx': ['Nextcloud'],
+    // The equalizer badge, in the style of the player badge.
+    'src/components/Preview/controls/AudioMixer.tsx': ['// EQ'],
+    // The OpenGL visualizer mode.
+    'src/components/Preview/controls/WebGLVisualizer.tsx': ['GL'],
+    // Provider names as logo alt text.
+    'src/components/ProviderLogos.tsx': [
+        'Koofr', 'OpenDrive', 'Filebase', 'Yandex Disk', 'Proton Drive', 'Jianguoyun', 'PixelUnion', 'Twake Drive',
+        'DriveHQ', 'FileLu', 'Felicloud', 'S3Drive', 'Blomp', 'AWS', 'MinIO', 'Quotaless', 'Hetzner', 'ASPnix',
+        'ImageKit', 'Uploadcare', 'Cloudinary', 'IBM Cloud', 'Mail.ru Cloud',
+    ],
+    // The PRO tier badge and the S3/Azure badge.
+    'src/components/ProvidersDialog.tsx': ['PRO', 'S3/AZ'],
+    // The protocol id shown when a session has no provider.
+    'src/components/SessionTabs.tsx': ['FTP'],
+    // The otpauth URI scheme.
+    'src/components/TotpSetup.tsx': ['otpauth URI:'],
+    // The verifier library.
+    'src/components/UpdateVerificationPanel.tsx': ['sigstore-rs'],
+    // The Sigstore logo.
+    'src/components/icons/SigstoreMark.tsx': ['Sigstore'],
+    // The file extension and the cipher.
+    'src/components/vault/VaultCreate.tsx': ['.aerovault · AES-256'],
 };
 
 const squash = (text: string) => text.replace(/\s+/g, ' ').trim();
@@ -174,32 +274,66 @@ const squash = (text: string) => text.replace(/\s+/g, ' ').trim();
  * operands of a `+` with no `t()` in it (one with `t()` is the concatenation
  * check above) and TypeScript wrappers.
  */
-function rendered(node: Node, out: Node[]): void {
+function rendered(node: Node, out: Node[], resolve: (node: Node) => Node[] = () => []): void {
+    const again = (next: Node) => rendered(next, out, resolve);
     if (literalText(node) !== null) out.push(node);
     else if (node.type === 'TemplateLiteral' && !(node.expressions as Node[]).some(containsT)) {
         out.push(node);
-        (node.expressions as Node[]).forEach((expression) => rendered(expression, out));
+        (node.expressions as Node[]).forEach(again);
     }
     else if (node.type === 'ConditionalExpression') {
-        rendered(node.consequent as Node, out);
-        rendered(node.alternate as Node, out);
+        again(node.consequent as Node);
+        again(node.alternate as Node);
     } else if (node.type === 'LogicalExpression') {
         if (node.operator !== '&&' && neverFalsy(node.left as Node)) return;
-        if (node.operator !== '&&') rendered(node.left as Node, out);
-        rendered(node.right as Node, out);
+        if (node.operator !== '&&') again(node.left as Node);
+        again(node.right as Node);
     } else if (node.type === 'BinaryExpression' && node.operator === '+' && !containsT(node)) {
-        rendered(node.left as Node, out);
-        rendered(node.right as Node, out);
+        again(node.left as Node);
+        again(node.right as Node);
     } else if (['ParenthesizedExpression', 'TSAsExpression', 'TSNonNullExpression'].includes(node.type)) {
-        rendered(node.expression as Node, out);
+        again(node.expression as Node);
+    } else if (node.type === 'Identifier') {
+        resolve(node).forEach(again);
+    } else if (node.type === 'CallExpression') {
+        // A return value is read in the function's own scope, which is not the
+        // caller's: its names are not followed.
+        resolve(node).forEach((value) => rendered(value, out));
     }
 }
 
 const renderedText = (node: Node) =>
     literalText(node) ?? (node.quasis as Array<{ value: { cooked: string } }>).map((quasi) => quasi.value.cooked).join(' ');
 
-const isStyleElement = (node: Node) =>
-    node.type === 'JSXElement' && ((node.openingElement as Node).name as { name?: string }).name === 'style';
+const elementName = (node: Node) =>
+    node.type === 'JSXElement' ? ((node.openingElement as Node).name as { name?: string }).name : undefined;
+
+const isStyleElement = (node: Node) => elementName(node) === 'style';
+
+/** Elements whose text is code: a command, a key, a sample. */
+const CODE_ELEMENTS = new Set(['code', 'kbd', 'pre', 'samp']);
+
+/** Attributes a reader sees or a screen reader speaks. */
+const PROSE_ATTRIBUTES = new Set(['title', 'placeholder', 'aria-label', 'alt', 'label']);
+
+const attributeName = (node: Node) => (node.name as { name?: unknown }).name;
+
+// The expressions a function can return: an arrow's expression body, or the
+// argument of each return statement outside nested functions.
+function returned(fn: Node): Node[] {
+    const body = fn.body as Node;
+    if (body.type !== 'BlockStatement') return [body];
+    const out: Node[] = [];
+    const walk = (node: Node) => {
+        if (node.type === 'ReturnStatement' && isNode(node.argument)) out.push(node.argument);
+        if (!SCOPES.has(node.type) || node === body) children(node).forEach(walk);
+    };
+    walk(body);
+    return out;
+}
+
+const isFunction = (node: Node | null | undefined): node is Node =>
+    !!node && ['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(node.type);
 
 function scan(sources: Record<string, string>, allowed: Record<string, string[]> = {}): { found: string[]; unused: string[] } {
     const found: string[] = [];
@@ -220,6 +354,39 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
         // One map per lexical scope, innermost last. A name resolves to the closest
         // scope that declares it; a parameter shadows with no value (null).
         const scopes: Array<Map<string, Node | null>> = [new Map()];
+        // A declaration is visible to the whole scope that holds it: a component
+        // calls a helper the module declares further down.
+        const hoist = (scope: Map<string, Node | null>, statements: Node[]) => {
+            for (const statement of statements) {
+                const declaration = statement.type.startsWith('Export') ? statement.declaration : statement;
+                if (!isNode(declaration)) continue;
+                if (declaration.type === 'FunctionDeclaration' && isNode(declaration.id)) {
+                    scope.set((declaration.id as unknown as { name: string }).name, declaration);
+                }
+                if (declaration.type !== 'VariableDeclaration') continue;
+                for (const declarator of declaration.declarations as Node[]) {
+                    if ((declarator.id as Node).type !== 'Identifier') continue;
+                    scope.set((declarator.id as unknown as { name: string }).name, isNode(declarator.init) ? declarator.init : null);
+                }
+            }
+        };
+        hoist(scopes[0], program.body as Node[]);
+        // What a rendered name stands for: the value a variable was declared with,
+        // or what a function returns when it is called. Each check starts afresh,
+        // so a name that refers to itself is followed once.
+        const resolver = () => {
+            const seen = new Set<Node>();
+            return (node: Node): Node[] => {
+                const call = node.type === 'CallExpression';
+                const target = call ? node.callee as Node : node;
+                if (target.type !== 'Identifier') return [];
+                const id = (target as unknown as { name: string }).name;
+                const value = [...scopes].reverse().find((candidate) => candidate.has(id))?.get(id);
+                if (!value || seen.has(value) || call !== isFunction(value)) return [];
+                seen.add(value);
+                return call ? returned(value) : [value];
+            };
+        };
         const proseVariable = (node: Node) => {
             if (node.type !== 'Identifier') return false;
             const name = (node as unknown as { name: string }).name;
@@ -236,6 +403,7 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
                 if (node.type === 'CatchClause' && isNode(node.param)) bindingNames(node.param).forEach((name) => scope.set(name, null));
                 scopes.push(scope);
             }
+            if (node.type === 'BlockStatement' || node.type === 'StaticBlock') hoist(scopes[scopes.length - 1], node.body as Node[]);
             if (node.type === 'VariableDeclarator') {
                 const scope = scopes[scopes.length - 1];
                 if ((node.id as Node).type === 'Identifier') {
@@ -258,19 +426,23 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
                     report(node);
                 }
             }
-            if (node.type === 'JSXElement' || node.type === 'JSXFragment') {
-                const kids = node.children as Node[];
-                const translated = kids.some((kid) => kid.type !== 'JSXText' && containsT(kid));
-                for (const kid of kids) {
-                    if (kid.type === 'JSXExpressionContainer') {
-                        const strings: Node[] = [];
-                        rendered(kid.expression as Node, strings);
-                        if (strings.map((string) => neutral(renderedText(string))).includes(false)) report(kid);
-                    }
-                    if (kid.type === 'JSXText' && translated && !neutral(kid.value as string)) {
+            // Every neutral() call runs, so each allowance that matches is marked used.
+            const english = (expression: Node) => {
+                const strings: Node[] = [];
+                rendered(expression, strings, resolver());
+                return strings.map((string) => neutral(renderedText(string))).includes(false);
+            };
+            if ((node.type === 'JSXElement' || node.type === 'JSXFragment') && !CODE_ELEMENTS.has(elementName(node) ?? '')) {
+                for (const kid of node.children as Node[]) {
+                    if (kid.type === 'JSXExpressionContainer' && english(kid.expression as Node)) report(kid);
+                    if (kid.type === 'JSXText' && !neutral(kid.value as string)) {
                         report(kid, kid.start + (kid.value as string).search(/\S/));
                     }
                 }
+            }
+            if (node.type === 'JSXAttribute' && PROSE_ATTRIBUTES.has(attributeName(node) as string) && isNode(node.value)) {
+                const value = node.value as Node;
+                if (english(value.type === 'JSXExpressionContainer' ? value.expression as Node : value)) report(node);
             }
             children(node).forEach(visit);
             if (opensScope) scopes.pop();
@@ -364,6 +536,46 @@ describe('a translated string is not glued to English in the code', () => {
                 "sample.tsx:17 {`${ok ? 'Done' : ''} ${n} MB`}",
             ],
             unused: ['sample.tsx never seen'],
+        });
+    });
+
+    it('finds JSX text, rendered names and prose attributes, and passes the neutral ones', () => {
+        const sample = [
+            "const actionLabel = (dry: boolean) => { if (dry) return 'would delete'; return 'deleted'; };",
+            "function Card({ dry, n, label }: { dry: boolean; n: number; label: string }) {",
+            "    const title = dry ? 'Patch Dry Run Review' : 'Patch Apply Review';",
+            "    const code = 'stdout';",
+            "    return (",
+            "        <div title={dry ? 'Private repository' : 'Public repository'}>",
+            "            <span>Mode:</span>",
+            "            <span>{n} file{n === 1 ? '' : 's'}</span>",
+            "            <span>{title}</span>",
+            "            <span>{actionLabel(dry)}</span>",
+            "            <span>{code} {label}</span>",
+            `            <input placeholder="Pair name" aria-label={t('a.close') || 'Close'} />`,
+            '            <img alt="Koofr" />',
+            "            <code>ssh-keygen -t ed25519</code>",
+            "            <span>https://docs.aeroftp.app/ /path/to/source --dry-run .aerovault 12 KiB</span>",
+            '            <input placeholder="email@example.com" title={`${label}`} />',
+            "        </div>",
+            "    );",
+            "}",
+            "function Later() { return <span>{helper()}</span>; }",
+            "function helper() { return 'Declared further down'; }",
+            "function Shadow({ title }: { title: string }) { return <span>{title}</span>; }",
+        ].join('\n');
+        const allowed = { 'sample.tsx': ['Koofr', 'stdout'] };
+        expect(scan({ 'sample.tsx': sample }, allowed)).toEqual({
+            found: [
+                "sample.tsx:6 title={dry ? 'Private repository' : 'Public repository'}",
+                'sample.tsx:7 Mode:',
+                'sample.tsx:8 file',
+                'sample.tsx:9 {title}',
+                'sample.tsx:10 {actionLabel(dry)}',
+                'sample.tsx:12 placeholder="Pair name"',
+                'sample.tsx:20 {helper()}',
+            ],
+            unused: [],
         });
     });
 

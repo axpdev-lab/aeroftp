@@ -107,10 +107,10 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
     const isSuccess = result?.success;
     const isFailure = result && !result.success;
     const title = !result
-        ? effectiveDryRun ? 'Patch Dry Run Review' : 'Patch Apply Review'
+        ? effectiveDryRun ? t('ai.coding.patch.titleDryRunReview') : t('ai.coding.patch.titleApplyReview')
         : isSuccess
-            ? effectiveDryRun ? 'Patch Dry Run Passed' : 'Patch Applied'
-            : effectiveDryRun ? 'Patch Dry Run Found Conflicts' : 'Patch Apply Blocked';
+            ? effectiveDryRun ? t('ai.coding.patch.titleDryRunPassed') : t('ai.coding.patch.titleApplied')
+            : effectiveDryRun ? t('ai.coding.patch.titleDryRunConflicts') : t('ai.coding.patch.titleApplyBlocked');
     const Icon = isFailure ? XCircle : isSuccess ? CheckCircle2 : effectiveDryRun ? FileDiff : ShieldAlert;
     const shellClass = isFailure
         ? 'border-red-400/30 bg-red-400/5'
@@ -150,10 +150,10 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                         {effectiveDryRun ? t('ai.coding.dryRun') : t('ai.coding.apply')}
                     </span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/65">
-                        {fileCount} file{fileCount === 1 ? '' : 's'}
+                        {t(fileCount === 1 ? 'ai.coding.fileCountOne' : 'ai.coding.fileCountMany', { count: fileCount })}
                     </span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/65">
-                        {hunks} hunk{hunks === 1 ? '' : 's'}
+                        {t(hunks === 1 ? 'ai.coding.patch.hunkCountOne' : 'ai.coding.patch.hunkCountMany', { count: hunks })}
                     </span>
                     <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-200">
                         +{additions}
@@ -182,12 +182,12 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                     <div className="flex items-start gap-2">
                         <RotateCcw size={13} className="mt-0.5 shrink-0 text-emerald-300" />
                         <div className="min-w-0">
-                            <div className="font-medium text-emerald-200">Pre-apply checkpoint created</div>
+                            <div className="font-medium text-emerald-200">{t('ai.coding.patch.checkpointCreated')}</div>
                             <div className="mt-1 break-all font-mono text-[11px] text-emerald-50/75">
                                 {result.checkpoint_id}
                             </div>
                             <div className="mt-1 text-[11px] text-emerald-50/60">
-                                Restore is manual: use coding_checkpoint_restore with this checkpoint id after review.
+                                {t('ai.coding.patch.restoreManual', { tool: 'coding_checkpoint_restore' })}
                             </div>
                         </div>
                     </div>
@@ -208,7 +208,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                                 </span>
                             </div>
                             <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-white/50">
-                                <span>{file.hunks} hunk{file.hunks === 1 ? '' : 's'}</span>
+                                <span>{t(file.hunks === 1 ? 'ai.coding.patch.hunkCountOne' : 'ai.coding.patch.hunkCountMany', { count: file.hunks })}</span>
                                 <span className="text-emerald-300">+{file.additions}</span>
                                 <span className="text-red-300">-{file.deletions}</span>
                                 <span>{formatBytes(file.old_size_bytes)} -&gt; {formatBytes(file.new_size_bytes)}</span>
@@ -227,7 +227,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                     ))}
                     {patchSummary.files.length > 12 && (
                         <span className="rounded border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/50">
-                            +{patchSummary.files.length - 12} more
+                            {t('ai.coding.moreCount', { count: patchSummary.files.length - 12 })}
                         </span>
                     )}
                 </div>
@@ -237,7 +237,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                 <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 p-2">
                     <div className="mb-2 flex items-center gap-1 font-medium text-red-200">
                         <AlertTriangle size={12} />
-                        <span>Diagnostics</span>
+                        <span>{t('ai.coding.diagnostics.title')}</span>
                     </div>
                     <div className="space-y-2">
                         {result.diagnostics.map((diagnostic, index) => (
@@ -248,18 +248,18 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                                         <span className="ml-1 font-mono text-red-50/60">{diagnostic.path}</span>
                                     )}
                                     {diagnostic.hunk_index != null && (
-                                        <span className="ml-1 text-red-50/50">hunk {diagnostic.hunk_index + 1}</span>
+                                        <span className="ml-1 text-red-50/50">{t('ai.coding.patch.hunkIndex', { index: diagnostic.hunk_index + 1 })}</span>
                                     )}
                                 </div>
                                 {(diagnostic.expected != null || diagnostic.actual != null) && (
                                     <div className="mt-2 grid gap-1 font-mono text-[10px]">
                                         {diagnostic.expected != null && (
                                             <div className="rounded bg-red-950/30 px-2 py-1 text-red-100/75">
-                                                expected: {diagnostic.expected}
+                                                {t('ai.coding.patch.expectedLabel')} {diagnostic.expected}
                                             </div>
                                         )}
                                         <div className="rounded bg-white/5 px-2 py-1 text-white/60">
-                                            actual: {diagnostic.actual ?? 'EOF'}
+                                            {t('ai.coding.patch.actualLabel')} {diagnostic.actual ?? 'EOF'}
                                         </div>
                                     </div>
                                 )}
@@ -273,7 +273,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                 <div className="mt-3 rounded-lg border border-amber-400/25 bg-amber-400/10 p-2 text-amber-50/80">
                     <div className="mb-1 flex items-center gap-1 font-medium text-amber-200">
                         <AlertTriangle size={12} />
-                        <span>Warnings</span>
+                        <span>{t('ai.coding.patch.warnings')}</span>
                     </div>
                     <ul className="space-y-1">
                         {result.warnings.map((warning, index) => (
@@ -295,7 +295,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                         <span>{showDiff ? t('ai.coding.patch.hideDiff') : t('ai.coding.patch.showDiff')}</span>
                         {diffLines.length > MAX_DIFF_LINES && (
                             <span className="ml-auto text-[10px] text-white/40">
-                                first {MAX_DIFF_LINES} of {diffLines.length} lines
+                                {t('ai.coding.patch.firstLines', { shown: MAX_DIFF_LINES, total: diffLines.length })}
                             </span>
                         )}
                     </button>
@@ -309,7 +309,7 @@ export const CodingPatchReview: React.FC<CodingPatchReviewProps> = ({
                             ))}
                             {diffLines.length > MAX_DIFF_LINES && (
                                 <div className="px-3 py-2 text-[10px] text-white/45">
-                                    Diff preview truncated for display.
+                                    {t('ai.coding.patch.diffTruncated')}
                                 </div>
                             )}
                         </div>

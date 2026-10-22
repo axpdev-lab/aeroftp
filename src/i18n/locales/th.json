@@ -337,7 +337,38 @@
             "protonSignOut": "ออกจากระบบ",
             "protonSignOutHelp": "สิ้นสุดเซสชันบน Proton และนำออกจากโปรไฟล์นี้",
             "protonSignInExpired": "หน้าลงชื่อเข้าใช้หมดอายุแล้ว ลงชื่อเข้าใช้อีกครั้ง",
-            "protonNativeUnavailable": "บิลด์นี้ไม่มีไคลเอนต์ Proton Drive แบบเนทีฟ"
+            "protonNativeUnavailable": "บิลด์นี้ไม่มีไคลเอนต์ Proton Drive แบบเนทีฟ",
+            "forms": {
+                "publicApiKey": "คีย์ API สาธารณะ",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - คีย์สาธารณะ",
+                "secretApiKey": "คีย์ API ลับ",
+                "uploadcareSecretHint": "ใช้สำหรับการจัดการไฟล์ผ่าน REST ด้วยการยืนยันตัวตน {scheme} เท่านั้น",
+                "flatMediaLibrary": "ไลบรารีสื่อแบบแบน",
+                "uploadcareNoFolders": "Uploadcare ไม่มีโฟลเดอร์ในตัว ไฟล์ของโปรเจกต์จะแสดงที่รูทตาม UUID",
+                "urlEndpointId": "ID ปลายทาง URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - ปลายทาง URL",
+                "privateApiKey": "คีย์ API ส่วนตัว",
+                "storedVaultBasicAuth": "จัดเก็บในห้องนิรภัยภายในเครื่องและส่งไปยัง {provider} ผ่าน Basic Auth เท่านั้น",
+                "cloudName": "ชื่อคลาวด์",
+                "cloudinaryCloudNameHint": "ดูได้ใน Cloudinary Dashboard - Account Details ของคุณ",
+                "apiKeyPlaceholder": "คีย์ API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - คีย์ API",
+                "apiSecret": "ข้อมูลลับ API",
+                "apiSecretPlaceholder": "ข้อมูลลับ API",
+                "openProviderLink": "เปิดลิงก์ {provider}",
+                "githubPatHint": "PAT แบบละเอียดพร้อมสิทธิ์ Contents (อ่านและเขียน)",
+                "generateToken": "สร้างโทเค็น",
+                "applicationKeyId": "ID คีย์แอปพลิเคชัน",
+                "backblazeKeyIdHint": "ID คีย์แอปพลิเคชัน B2 ขึ้นต้นด้วย 003 สร้างได้จากหน้า App Keys ของ Backblaze",
+                "applicationKey": "คีย์แอปพลิเคชัน",
+                "backblazeKeyHint": "แสดงเพียงครั้งเดียวตอนสร้าง โปรดเก็บรักษาเหมือนรหัสผ่าน",
+                "bucketNameExactHint": "ชื่อ bucket ที่ถูกต้อง ตัวพิมพ์ใหญ่และเล็กมีผล",
+                "megacmdSetupFirst": "ตั้งค่า MEGAcmd ก่อน",
+                "megacmdFetchUrlTitle": "เรียกใช้ {cmd} และกรอก URL อัตโนมัติ",
+                "fetchUrl": "ดึง URL",
+                "megacmdWebdavHint": "ชื่อผู้ใช้และรหัสผ่านถูกละไว้โดยตั้งใจ AeroFTP จะเรียกใช้ \"{cmd}\" เองเมื่อเชื่อมต่อเพื่อเริ่มบริดจ์และอ่านที่อยู่นี้: เว้นว่างไว้ได้ \"ดึง URL\" เป็นการรีเฟรชด้วยตนเองที่ไม่บังคับ; เปลี่ยนพอร์ตที่นี่หาก MEGAcmd ใช้พอร์ตที่กำหนดเอง"
+            },
+            "manualStorageUnitLabel": "หน่วย {label}"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -390,7 +421,19 @@
             "listingPath": "กำลังแสดงรายการ {path}...",
             "pleaseWait": "โปรดรอสักครู่...",
             "sameNameLeakChip": "ชื่อซ้ำ",
-            "sameNameLeakTooltip": "ชื่อนี้ยังปรากฏในอีกเส้นทางหนึ่งภายในห้องนิรภัยที่เข้ารหัสนี้ด้วย เนื่องจากชื่อถูกเข้ารหัสแบบกำหนดค่าตายตัว ผู้สังเกตการณ์ที่เข้าถึงที่จัดเก็บที่เข้ารหัสจึงสามารถบอกได้ว่าทั้งสองมีชื่อเดียวกัน"
+            "sameNameLeakTooltip": "ชื่อนี้ยังปรากฏในอีกเส้นทางหนึ่งภายในห้องนิรภัยที่เข้ารหัสนี้ด้วย เนื่องจากชื่อถูกเข้ารหัสแบบกำหนดค่าตายตัว ผู้สังเกตการณ์ที่เข้าถึงที่จัดเก็บที่เข้ารหัสจึงสามารถบอกได้ว่าทั้งสองมีชื่อเดียวกัน",
+            "endpointSelector": {
+                "localFolder": "โฟลเดอร์ในเครื่อง",
+                "localFolderHint": "เลือกพาธในเครื่องสำหรับแผงนี้",
+                "noSavedProfiles": "ไม่มีโปรไฟล์ที่บันทึกไว้",
+                "savedProfiles": "โปรไฟล์ระยะไกลที่บันทึกไว้",
+                "title": "ปลายทางการเชื่อมต่อ"
+            },
+            "leftPanelMarker": "แผงด้านซ้าย",
+            "localFilesLabel": "ไฟล์ในเครื่อง",
+            "localFilesRightLabel": "ไฟล์ในเครื่อง (แผงด้านขวา)",
+            "remoteFilesLabel": "ไฟล์ระยะไกล",
+            "rightPanelMarker": "แผงด้านขวา"
         },
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "กราฟความเร็ว",
             "hideSpeedGraph": "ซ่อนกราฟความเร็ว",
             "speedAvg": "เฉลี่ย {speed}",
-            "speedPeak": "สูงสุด {speed}"
+            "speedPeak": "สูงสุด {speed}",
+            "badgeBatch": "ชุดงาน",
+            "badgeDownload": "ดาวน์โหลด",
+            "badgeLive": "สด",
+            "badgeStream": "สตรีม",
+            "badgeUpload": "อัปโหลด",
+            "earlierItemsHidden": "ซ่อนรายการก่อนหน้า {count} รายการ",
+            "folderFilesProgress": "{done}/{total} ไฟล์",
+            "laneDone": "เสร็จ",
+            "laneError": "ข้อผิดพลาด",
+            "unifiedPlan": {
+                "destination": "ปลายทาง",
+                "dialogLabel": "แผนการถ่ายโอน",
+                "engineAerovaultOverlay": "โอเวอร์เลย์ AeroVault",
+                "engineCompareOnly": "เปรียบเทียบเท่านั้น",
+                "engineCrossProfileSync": "ซิงค์ข้ามโปรไฟล์",
+                "engineCrossProfileTransfer": "ถ่ายโอนข้ามโปรไฟล์",
+                "engineLocalDelta": "การส่งเดลต้าภายในเครื่อง",
+                "engineLocalFs": "ระบบไฟล์ภายในเครื่อง",
+                "engineProviderDownload": "ดาวน์โหลดจากผู้ให้บริการ",
+                "engineProviderUpload": "อัปโหลดไปยังผู้ให้บริการ",
+                "engineUnsupported": "ไม่รองรับ",
+                "execute": "ดำเนินการ",
+                "items": "รายการ",
+                "modeBackup": "สำรองข้อมูล",
+                "modeBisync": "ซิงค์สองทาง",
+                "modeCompare": "เปรียบเทียบ",
+                "modeCopy": "คัดลอก",
+                "modeMirror": "มิเรอร์",
+                "modeMove": "ย้าย",
+                "modeSync": "ซิงค์",
+                "notExecutable": "คู่ปลายทางนี้ยังไม่สามารถดำเนินการได้",
+                "parallel": "ขนาน",
+                "reviewBeforeExecution": "ตรวจสอบก่อนดำเนินการ",
+                "route": "{pair} ผ่าน {engine}",
+                "size": "ขนาด",
+                "source": "ต้นทาง",
+                "title": "แผน: {mode}"
+            }
         },
         "settings": {
             "title": "การตั้งค่า",
@@ -1040,7 +1121,13 @@
                 "title": "rsync เนทีฟ (เบตา)",
                 "description": "เลือกวิธีที่ SFTP Delta Sync ส่งการถ่ายโอน rsync",
                 "enableToggle": "เปิดใช้งาน rsync เนทีฟสำหรับการซิงก์แบบเดลตาผ่าน SFTP",
-                "experimental": "Auto เลือก AeroRsync เป็นหลักและถอยกลับไปแบบคลาสสิกได้; Classic ใช้ไบนารี rsync ของระบบเมื่อมีให้ใช้; Native ข้ามการถอยกลับไปใช้ไบนารีแบบคลาสสิก"
+                "experimental": "Auto เลือก AeroRsync เป็นหลักและถอยกลับไปแบบคลาสสิกได้; Classic ใช้ไบนารี rsync ของระบบเมื่อมีให้ใช้; Native ข้ามการถอยกลับไปใช้ไบนารีแบบคลาสสิก",
+                "modeAuto": "อัตโนมัติ",
+                "modeClassic": "คลาสสิก",
+                "modeNative": "เนทีฟ",
+                "classicNotFoundTooltip": "ไม่พบไบนารี rsync แบบคลาสสิกใน PATH ติดตั้ง rsync (แพ็กเกจ Linux/macOS, Windows ผ่าน WSL/cygwin/scoop) เพื่อเปิดใช้โหมดนี้",
+                "classicAt": "rsync แบบคลาสสิกที่ {path}",
+                "classicNotDetected": "ไม่พบไบนารี rsync แบบคลาสสิกใน PATH เนทีฟเป็นเอนจินเดียวที่ใช้ได้บนเครื่องนี้"
             },
             "startMinimizedOnAutostart": "เริ่มต้นโดยย่อไปที่ถาดระบบ",
             "startMinimizedOnAutostartDesc": "ซ่อนหน้าต่างหลักเมื่อเริ่มต้นอัตโนมัติ AeroFTP ยังคงทำงานในถาดระบบ เปิดจากไอคอนในถาดเมื่อคุณต้องการ",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "พบข้อมูลรับรอง OAuth {count} รายการในที่เก็บข้อมูลที่ไม่ได้เข้ารหัส",
             "fontSystemInstall": "ติดตั้งในระบบ",
             "fontSizeMin": "ต่ำสุด",
-            "fontSizeMax": "สูงสุด"
+            "fontSizeMax": "สูงสุด",
+            "migrationCleanupHint": "แนะนำเพื่อความปลอดภัยสูงสุด",
+            "fontCustomOption": "กำหนดเอง...",
+            "fontSystemInstallHint": "ต้องติดตั้งในระบบ AeroFTP จะใช้ตัวเลือกสำรองโดยอัตโนมัติหากไม่พร้อมใช้งาน",
+            "fontSizeIndicatorLabel": "แบบอักษร"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "หยุด",
                 "stopShell": "หยุดเชลล์",
                 "closed": "ปิดเทอร์มินัลแล้ว",
-                "commandInsertedReview": "แทรกคำสั่งใน Terminal แล้ว กด Enter เพื่อรัน"
+                "commandInsertedReview": "แทรกคำสั่งใน Terminal แล้ว กด Enter เพื่อรัน",
+                "decreaseFont": "ลดขนาดตัวอักษร (Ctrl+-)",
+                "emptyClickPlus": "คลิก {plus} เพื่อเปิดเทอร์มินัล",
+                "emptySshHint": "หรือ {ssh} สำหรับเชลล์ระยะไกลไปยัง {host}",
+                "increaseFont": "เพิ่มขนาดตัวอักษร (Ctrl+=)",
+                "newTab": "แท็บเทอร์มินัลใหม่",
+                "sshShellTo": "เชลล์ SSH ไปยัง {host}",
+                "theme": "ธีมเทอร์มินัล"
             },
             "editorPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"ดูต้นฉบับ\"",
@@ -1278,13 +1376,17 @@
                 "saving": "กำลังบันทึก...",
                 "noFileSelected": "ไม่ได้เลือกไฟล์สำหรับดู",
                 "loading": "กำลังโหลดตัวแก้ไข...",
-                "dragToTerminalRun": "ลากไปยัง Terminal เพื่อแทรกคำสั่งสำหรับรัน"
+                "dragToTerminalRun": "ลากไปยัง Terminal เพื่อแทรกคำสั่งสำหรับรัน",
+                "closeEditor": "ปิดตัวแก้ไข",
+                "resetChanges": "รีเซ็ตการเปลี่ยนแปลง"
             },
             "previewPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"ดูตัวอย่าง\""
             },
             "codeEditor": "โปรแกรมแก้ไขโค้ด",
-            "sshTerminal": "เทอร์มินอล SSH"
+            "sshTerminal": "เทอร์มินอล SSH",
+            "comingSoon": "เร็วๆ นี้",
+            "soonBadge": "เร็วๆ นี้"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "อนุญาตใหม่ด้วยตนเองหากโทเค็นถูกเพิกถอน"
             },
             "profilesLoadFailed": "ไม่สามารถอ่านเซิร์ฟเวอร์ที่บันทึกไว้ของคุณได้: {error}",
-            "cleanupSummary": "{count} ไฟล์, คืนพื้นที่ {size}"
+            "cleanupSummary": "{count} ไฟล์, คืนพื้นที่ {size}",
+            "maturity": {
+                "alpha": "อัลฟา"
+            },
+            "dialogDashboardLabel": "แดชบอร์ดการซิงค์คลาวด์",
+            "dialogLoadingLabel": "กำลังโหลดการซิงค์คลาวด์",
+            "dialogSettingsLabel": "การตั้งค่าการซิงค์คลาวด์",
+            "dialogSetupLabel": "การตั้งค่าเริ่มต้นการซิงค์คลาวด์",
+            "onePerLineHint": "(หนึ่งรายการต่อบรรทัด)",
+            "pairsEditorLabel": "ตัวแก้ไขคู่ AeroCloud",
+            "remoteSubfolderPlaceholder": "คลาวด์"
         },
         "statusBar": {
             "connected": "เชื่อมต่อแล้ว",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "บางส่วน, โฟลเดอร์ที่อ่านไม่ได้: {count}",
             "usedScanFailed": "การสแกนพื้นที่ที่ใช้ล้มเหลว",
             "usedScanEmpty": "การสแกนพาธ {path} ไม่พบไฟล์ จึงคงค่าที่แคชไว้ ตรวจสอบพาธหรือการรองรับการแสดงรายการแบบเรียกซ้ำของเซิร์ฟเวอร์",
-            "filenBridgeAccountTotal": "Filen Desktop ไม่รายงานยอดรวมของบัญชีของคุณที่นี่: ค่าที่ใช้ไปคือผลรวมของไฟล์ภายใต้พาธนี้ การเชื่อมต่อ Filen แบบเนทีฟจะแสดงยอดรวมของบัญชีได้ทันที"
+            "filenBridgeAccountTotal": "Filen Desktop ไม่รายงานยอดรวมของบัญชีของคุณที่นี่: ค่าที่ใช้ไปคือผลรวมของไฟล์ภายใต้พาธนี้ การเชื่อมต่อ Filen แบบเนทีฟจะแสดงยอดรวมของบัญชีได้ทันที",
+            "ariaLabel": "แถบสถานะ",
+            "debugBadge": "ดีบัก",
+            "debugModeActive": "โหมดดีบักทำงานอยู่"
         },
         "dialogs": {
             "confirmTitle": "ยืนยัน",
@@ -1620,7 +1735,8 @@
                 "apRole": "ผู้ก่อตั้ง นักพัฒนา ผู้ดูแลโครงการ ผู้ร่วมออกแบบ",
                 "ekRole": "นักวิจัย วิศวกรประกันคุณภาพ ผู้ร่วมออกแบบ"
             },
-            "madeBy": "โดย {author}"
+            "madeBy": "โดย {author}",
+            "statsLine": "{protocols} โปรโตคอล · {languages} ภาษา · ไฟล์เก็บถาวร AES-256"
         },
         "support": {
             "title": "สนับสนุน AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "โปรเจกต์ (Unixname)",
             "opendriveNotApiKey": "(ไม่ใช่คีย์ API ของ OpenDrive)",
             "endpoint": "ปลายทาง",
-            "accountId": "ID บัญชี"
+            "accountId": "ID บัญชี",
+            "servicesHeading": "บริการ",
+            "sourceforgeSshKeyHelp": "SourceForge ต้องใช้การยืนยันตัวตนด้วยคีย์ SSH สร้างคีย์ด้วย {cmd} แล้วอัปโหลดไปที่ {link}",
+            "sourceforgeSshSettings": "การตั้งค่า SSH",
+            "fullGuide": "คู่มือฉบับเต็ม",
+            "endpointTemplateExample": "เช่น {template}",
+            "jurisdiction": "เขตอำนาจศาล",
+            "insecureCertDialogLabel": "คำเตือนใบรับรองที่ไม่ปลอดภัย",
+            "betaBadge": "เบต้า",
+            "hostKeyDialogLabel": "การตรวจสอบคีย์โฮสต์"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -2111,7 +2236,10 @@
             "rename": "เปลี่ยนชื่อ",
             "resume": "ทำต่อ",
             "resumeHint": "ทำการถ่ายโอนที่หยุดชะงักต่อ แทนที่จะเริ่มใหม่",
-            "cancel": "ยกเลิก"
+            "cancel": "ยกเลิก",
+            "dialogLabel": "ยืนยันการเขียนทับ",
+            "moreInQueue": "+{count} ในคิว",
+            "unknownDate": "ไม่ทราบ"
         },
         "statusbar": {
             "queue": "คิว",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "คู่เส้นทางภายในเครื่อง/ระยะไกลที่ใช้ได้ในเทมเพลตนี้: {count} หน้าต่าง AeroSync ทำงานกับคู่เส้นทางเพียงคู่เดียวพอดี จึงไม่มีการนำเข้าใด ๆ แก้ไขเทมเพลตให้เหลือเพียงคู่เดียว แล้วนำเข้าอีกครั้ง",
             "templateNamePlaceholder": "เช่น สำรองข้อมูลกลางคืนไปยัง S3",
             "templateDescPlaceholder": "เทมเพลตนี้ใช้ทำอะไร (ไม่บังคับ)",
-            "templateExportCliDesc": "สคริปต์ครอบ aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "สคริปต์ครอบ aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "ปิดใช้งาน",
+            "multiPathEditorLabel": "ตัวแก้ไขหลายเส้นทาง",
+            "multiPathEnablePair": "เปิดใช้งาน",
+            "multiPathLocalPlaceholder": "เส้นทางในเครื่อง",
+            "multiPathRemotePlaceholder": "เส้นทางระยะไกล",
+            "rollbackDialogLabel": "สแนปช็อตสำหรับย้อนกลับ",
+            "rollbackMoreFiles": "+อีก {count}...",
+            "rollbackSnapshotSummaryMany": "{count} ไฟล์, {size}",
+            "rollbackSnapshotSummaryOne": "{count} ไฟล์, {size}",
+            "templateDialogLabel": "เทมเพลตการซิงค์",
+            "templateExcludes": "รายการยกเว้น",
+            "templateLocal": "ในเครื่อง",
+            "templateRemote": "ระยะไกล",
+            "templateRetries": "การลองใหม่"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "ปฏิเสธการดำเนินการเครื่องมือ",
                 "toggleDetails": "แสดง/ซ่อนรายละเอียด",
                 "allowSession": "อนุญาตสำหรับเซสชันนี้",
-                "nonAtomicReplace": "การแทนที่แบบไม่อะตอมมิก: ไฟล์จะหายไปชั่วขณะ"
+                "nonAtomicReplace": "การแทนที่แบบไม่อะตอมมิก: ไฟล์จะหายไปชั่วขณะ",
+                "moreOptions": "ตัวเลือกเพิ่มเติม",
+                "panelAria": "แผงอนุมัติเครื่องมือ"
             },
             "settings": {
                 "title": "การตั้งค่า AI",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "สำรอง",
                 "routingNoFallback": "ไม่มี",
                 "bedrockNeedsModel": "เพิ่มและเปิดใช้งานโมเดล Bedrock ในแท็บ โมเดล ก่อนทดสอบ",
-                "bedrockSetup": "ตั้งค่า Runtime URL สำหรับภูมิภาค AWS ของคุณ ใน โมเดล ให้เพิ่ม ID ที่รองรับ Chat Completions บน Bedrock Runtime Runtime ไม่แสดงรายการโมเดล การทดสอบจะส่งคำขออนุมานขนาดเล็กซึ่งอาจมีค่าใช้จ่ายจาก AWS"
+                "bedrockSetup": "ตั้งค่า Runtime URL สำหรับภูมิภาค AWS ของคุณ ใน โมเดล ให้เพิ่ม ID ที่รองรับ Chat Completions บน Bedrock Runtime Runtime ไม่แสดงรายการโมเดล การทดสอบจะส่งคำขออนุมานขนาดเล็กซึ่งอาจมีค่าใช้จ่ายจาก AWS",
+                "detectOllamaModelsTooltip": "ตรวจหาโมเดล Ollama ที่ใช้ได้โดยอัตโนมัติ",
+                "kTokens": "{count}K โทเค็น",
+                "modelEditorAria": "ตัวแก้ไขโมเดล AI",
+                "supportsTools": "รองรับเครื่องมือ",
+                "supportsVision": "รองรับการมองเห็น",
+                "thinkingReasoning": "การคิด/การให้เหตุผล",
+                "toolQuality": "คุณภาพเครื่องมือ: {quality}/5"
             },
             "copy": "คัดลอก",
             "attachImage": "แนบรูปภาพ",
@@ -2699,7 +2850,9 @@
                 "run": "เรียกใช้ในเทอร์มินัล",
                 "insert": "แทรกในตัวแก้ไข",
                 "diff": "เปรียบเทียบกับต้นฉบับ",
-                "diffNoFile": "ไม่มีไฟล์เปิดสำหรับเปรียบเทียบ"
+                "diffNoFile": "ไม่มีไฟล์เปิดสำหรับเปรียบเทียบ",
+                "commandBlocked": "คำสั่งถูกบล็อก: อาจก่อความเสียหาย",
+                "confirmRun": "ยืนยันการเรียกใช้: {command}"
             },
             "thinkingBlock": {
                 "thinking": "กำลังคิด...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "สลับสาขา",
                 "delete": "ลบสาขา",
                 "newBranch": "สาขาใหม่",
-                "branchFrom": "แยกสาขาจากจุดนี้"
+                "branchFrom": "แยกสาขาจากจุดนี้",
+                "messageCountShort": "{count} ข้อความ",
+                "unnamed": "สาขา"
             },
             "context": {
                 "projectDetected": "ตรวจพบโปรเจกต์",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "กำลังทำงาน",
                 "expired": "หมดอายุ",
-                "refresh": "รีเฟรช"
+                "refresh": "รีเฟรช",
+                "modelsRunningMany": "กำลังรัน {count} โมเดล",
+                "modelsRunningOne": "กำลังรัน {count} โมเดล",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "แคชบริบท",
@@ -2956,7 +3114,8 @@
                 "warning": "การดำเนินการไฟล์ทั้งหมดจะถูกดำเนินการทันทีโดยไม่ต้องอนุมัติ ใช้งานด้วยความเสี่ยงของคุณเอง",
                 "disable": "ปิดใช้งาน",
                 "securityWarning": "คำเตือนด้านความปลอดภัย",
-                "understood": "เข้าใจแล้ว"
+                "understood": "เข้าใจแล้ว",
+                "warningAria": "คำเตือนโหมดสุดขีด"
             },
             "errorServerError": "เซิร์ฟเวอร์ของผู้ให้บริการ AI มีปัญหา ลองอีกครั้งในอีกสักครู่",
             "errorServiceUnavailable": "ผู้ให้บริการ AI ไม่สามารถใช้งานได้ชั่วคราว (โอเวอร์โหลด) บริการฟรีอาจมีข้อจำกัด ลองใหม่ภายหลัง",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "ไม่จำกัด",
                 "roleAI": "AI",
-                "roleUser": "ผู้ใช้"
+                "roleUser": "ผู้ใช้",
+                "noConversations": "ยังไม่มีการสนทนา",
+                "titleCount": "ประวัติ ({count})"
             },
             "dropFileToAnalyze": "วางไฟล์เพื่อวิเคราะห์ด้วย AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "โทเคนอินพุต {input}, โทเคนเอาต์พุต {output}, ตามที่ผู้ให้บริการนับ",
-                "breakdownCache": "โทเคนอินพุต {input}, โทเคนเอาต์พุต {output}, อ่านจากแคชพรอมต์ {cacheRead}, เขียนลงแคชพรอมต์ {cacheWritten}, ตามที่ผู้ให้บริการนับ"
+                "breakdownCache": "โทเคนอินพุต {input}, โทเคนเอาต์พุต {output}, อ่านจากแคชพรอมต์ {cacheRead}, เขียนลงแคชพรอมต์ {cacheWritten}, ตามที่ผู้ให้บริการนับ",
+                "countShort": "{count} โทเค็น"
             },
             "executeOperations": "ดำเนินการ {count} รายการ",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "จะข้าม",
                     "skipped": "ข้ามแล้ว",
                     "existedAtCheckpoint": "มีอยู่ ณ จุดตรวจสอบ",
-                    "absentAtCheckpoint": "ไม่มีอยู่ ณ จุดตรวจสอบ"
+                    "absentAtCheckpoint": "ไม่มีอยู่ ณ จุดตรวจสอบ",
+                    "noFiles": "ไม่มีไฟล์รวมอยู่ในผลการกู้คืนนี้",
+                    "otherActions": "การดำเนินการอื่น",
+                    "requestedPaths": "ชุดย่อยของพาธที่ขอ",
+                    "scopeAll": "ขอบเขต: ไฟล์ทั้งหมดที่บันทึกไว้ในจุดตรวจสอบ",
+                    "titleApplied": "ใช้การกู้คืนจุดตรวจสอบแล้ว",
+                    "titleApplyReview": "ตรวจทานการใช้การกู้คืนจุดตรวจสอบ",
+                    "titleDryRunComplete": "การรันทดสอบการกู้คืนจุดตรวจสอบเสร็จสิ้น",
+                    "titleDryRunReview": "ตรวจทานการทดลองกู้คืนจุดตรวจสอบ"
                 },
                 "checks": {
                     "exitSummary": "รหัสออก {code} · {seconds}s",
                     "continueOnFailure": "รันการตรวจสอบทั้งหมดแม้ว่าจะมีรายการหนึ่งล้มเหลว",
-                    "stopOnFailure": "หยุดที่การตรวจสอบแรกที่ล้มเหลว"
+                    "stopOnFailure": "หยุดที่การตรวจสอบแรกที่ล้มเหลว",
+                    "checkLabel": "การตรวจสอบ:",
+                    "checksLabel": "การตรวจสอบ:",
+                    "exitChip": "รหัสออก {code}",
+                    "filterChip": "ตัวกรอง: {filter}",
+                    "filterLabel": "ตัวกรอง:",
+                    "notAvailable": "ไม่มี",
+                    "passedCount": "ผ่าน {passed}/{total}",
+                    "runCheckNote": "เรียกใช้คำสั่ง build/test/lint ที่คัดสรรไว้ในพื้นที่ทำงาน สคริปต์บิลด์และการทดสอบจะรันโค้ดจริง",
+                    "runProjectCheck": "เรียกใช้การตรวจสอบโปรเจกต์",
+                    "runVerification": "เรียกใช้รอบการยืนยัน",
+                    "runVerificationNote": "เรียกใช้คำสั่ง build/test/lint ที่คัดสรรไว้ในพื้นที่ทำงาน สคริปต์บิลด์และการทดสอบจะรันโค้ดจริง",
+                    "stoppedEarly": "หยุดที่การตรวจสอบแรกที่ล้มเหลว",
+                    "timeoutLabel": "หมดเวลา: {seconds} วินาที",
+                    "verification": "การยืนยัน"
                 },
                 "diagnostics": {
-                    "none": "ไม่มีการรายงานการวินิจฉัย"
+                    "none": "ไม่มีการรายงานการวินิจฉัย",
+                    "errorCountMany": "ข้อผิดพลาด {count} รายการ",
+                    "errorCountOne": "ข้อผิดพลาด {count} รายการ",
+                    "title": "การวินิจฉัย",
+                    "truncated": "รายการวินิจฉัยถูกตัดทอน",
+                    "warningCountMany": "คำเตือน {count} รายการ",
+                    "warningCountOne": "คำเตือน {count} รายการ"
                 },
                 "search": {
-                    "none": "ไม่พบรายการที่ตรงกัน"
+                    "none": "ไม่พบรายการที่ตรงกัน",
+                    "ignoreCase": "ไม่สนตัวพิมพ์",
+                    "inPath": "ใน {path}",
+                    "literal": "ตามตัวอักษร",
+                    "matchCountMany": "ตรงกัน {count} รายการ",
+                    "matchCountOne": "ตรงกัน {count} รายการ",
+                    "title": "ค้นหาในพื้นที่ทำงาน",
+                    "truncated": "ผลลัพธ์ถูกตัดทอน"
                 },
                 "git": {
                     "noStagedDiff": "ไม่มีผลลัพธ์ diff ของการเปลี่ยนแปลงที่สเตจแล้ว",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "การอนุมัติการสเตจ Git",
                     "commitNote": "การดำเนินการนี้จะสร้างคอมมิต git จากดัชนีที่สเตจไว้ในปัจจุบัน โปรดตรวจสอบ coding_git_status และ coding_git_diff ด้วย staged=true ก่อน",
                     "stagePreviewNote": "การดำเนินการนี้จะแสดงตัวอย่างว่าพาธที่ขอใดบ้างจะถูกสเตจ โดยดัชนีจะไม่เปลี่ยนแปลง",
-                    "stageNote": "การดำเนินการนี้จะเปลี่ยนดัชนี git สำหรับพาธที่ขอ"
+                    "stageNote": "การดำเนินการนี้จะเปลี่ยนดัชนี git สำหรับพาธที่ขอ",
+                    "afterCounts": "หลัง: {counts}",
+                    "beforeCounts": "ก่อน: {counts}",
+                    "clean": "ไดเรกทอรีทำงานสะอาด",
+                    "commitCountMany": "{count} คอมมิต",
+                    "commitCountOne": "{count} คอมมิต",
+                    "conflicted": "ขัดแย้ง",
+                    "diffTruncated": "ผลลัพธ์ส่วนต่างถูกตัดทอน",
+                    "logTitle": "บันทึก Git",
+                    "pathsChip": "พาธ: {paths}",
+                    "showingNewest": "แสดง {count} รายการล่าสุด ยังมีอีก",
+                    "statusCounts": "สเตจแล้ว {staged}, ยังไม่สเตจ {unstaged}, ไม่ได้ติดตาม {untracked}, ขัดแย้ง {conflicted}",
+                    "titleCommitCreated": "สร้างคอมมิต Git แล้ว",
+                    "titleCommitDryRun": "ทดลองคอมมิต Git",
+                    "titleCommitReview": "ตรวจทานคอมมิต Git",
+                    "titleReview": "ตรวจทาน Git",
+                    "titleStageApplied": "ใช้การสเตจ Git แล้ว",
+                    "titleStagedDiff": "ส่วนต่าง Git ที่สเตจแล้ว",
+                    "titleStageDryRun": "ทดลองสเตจ Git",
+                    "titleStatus": "สถานะ Git",
+                    "titleUnstagedDiff": "ส่วนต่าง Git ที่ยังไม่สเตจ",
+                    "untracked": "ไม่ได้ติดตาม"
                 },
                 "patch": {
                     "validateNote": "การดำเนินการนี้จะตรวจสอบแพตช์โดยไม่เปลี่ยนแปลงไฟล์",
                     "applyNote": "คำขอนำไปใช้ที่มีความเสี่ยงสูงนี้จะเขียนไฟล์หลังจากแบ็กเอนด์สร้างจุดตรวจสอบก่อนนำไปใช้",
                     "hideDiff": "ซ่อน diff แบบรวม",
-                    "showDiff": "แสดง diff แบบรวม"
-                }
+                    "showDiff": "แสดง diff แบบรวม",
+                    "actualLabel": "จริง:",
+                    "checkpointCreated": "สร้างจุดตรวจสอบก่อนนำไปใช้แล้ว",
+                    "diffTruncated": "ตัวอย่างส่วนต่างถูกตัดทอนเพื่อแสดงผล",
+                    "expectedLabel": "คาดหวัง:",
+                    "firstLines": "{shown} บรรทัดแรกจาก {total} บรรทัด",
+                    "hunkCountMany": "{count} ส่วน",
+                    "hunkCountOne": "{count} ส่วน",
+                    "hunkIndex": "ส่วน {index}",
+                    "restoreManual": "การกู้คืนต้องทำด้วยตนเอง: หลังตรวจทาน ให้ใช้ {tool} กับรหัสจุดตรวจสอบนี้",
+                    "titleApplied": "ใช้แพตช์แล้ว",
+                    "titleApplyBlocked": "การใช้แพตช์ถูกบล็อก",
+                    "titleApplyReview": "ตรวจทานการใช้แพตช์",
+                    "titleDryRunConflicts": "การรันทดสอบแพตช์พบข้อขัดแย้ง",
+                    "titleDryRunPassed": "การรันทดสอบแพตช์ผ่าน",
+                    "titleDryRunReview": "ตรวจทานการรันทดสอบแพตช์",
+                    "warnings": "คำเตือน"
+                },
+                "binary": "ไบนารี",
+                "fileCountMany": "{count} ไฟล์",
+                "fileCountOne": "{count} ไฟล์",
+                "moreCount": "+อีก {count}",
+                "plan": {
+                    "likelyFiles": "ไฟล์ที่น่าจะเกี่ยวข้อง",
+                    "openQuestions": "คำถามที่ยังเปิดอยู่",
+                    "reviewOnlyNote": "อาร์ทิแฟกต์สำหรับตรวจทานเท่านั้น การแก้ไขและเครื่องมือที่เปลี่ยนแปลงข้อมูลยังคงใช้โหมดการอนุมัติปัจจุบัน",
+                    "riskHigh": "ความเสี่ยงสูง",
+                    "riskLow": "ความเสี่ยงต่ำ",
+                    "riskMedium": "ความเสี่ยงปานกลาง",
+                    "risks": "ความเสี่ยง",
+                    "title": "แผนการเขียนโค้ด"
+                },
+                "state": {
+                    "clean": "สะอาด",
+                    "failed": "ล้มเหลว",
+                    "passed": "ผ่าน",
+                    "timedOut": "หมดเวลา"
+                },
+                "timeoutChip": "หมดเวลา {seconds}s",
+                "truncated": "ถูกตัดทอน",
+                "workspaceLabel": "พื้นที่ทำงาน:"
+            },
+            "attachedImageAlt": "รูปภาพที่แนบ",
+            "stepNumber": "ขั้นตอนที่ {step}",
+            "transcribingLocally": "กำลังถอดเสียงในเครื่อง...",
+            "transferPlan": {
+                "dependsOnMany": "ขึ้นอยู่กับขั้นตอนเตรียมการ {count} ขั้นตอน",
+                "dependsOnOne": "ขึ้นอยู่กับขั้นตอนเตรียมการ {count} ขั้นตอน",
+                "destination": "ปลายทาง: {destination}",
+                "title": "ตรวจสอบแผนการถ่ายโอน",
+                "warnings": "คำเตือน"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว",
             "repairMetadataSuccess": "ซ่อมเสร็จสมบูรณ์: สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว",
             "errorCorrectionBadge": "การแก้ไขข้อผิดพลาด",
-            "itemsInFolder": "{count} รายการใน /{folder}"
+            "itemsInFolder": "{count} รายการใน /{folder}",
+            "compressionProfileArchive": "เก็บถาวร (zstd -15)",
+            "compressionProfileBalanced": "สมดุล (zstd -9)",
+            "compressionProfileFast": "เร็ว (zstd -3)",
+            "damagedChunkLocation": "{id} - ออฟเซ็ต {offset} (ความยาว {len})",
+            "fallbackName": "ห้องนิรภัย",
+            "folderScanSummary": "{files} ไฟล์ใน {dirs} ไดเรกทอรี ({size})",
+            "namePlaceholderVault": "ห้องนิรภัยที่ปลอดภัยของฉัน",
+            "namePlaceholderZip": "ไฟล์เก็บถาวรของฉัน",
+            "recentDaysAgo": "{count} วันที่แล้ว",
+            "recentFileCountMany": "{count} ไฟล์",
+            "recentFileCountOne": "{count} ไฟล์",
+            "recentMonthsAgo": "{count} เดือนที่แล้ว"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "กำลังเข้ารหัสรายการที่เลือก...",
             "ingestSkipped": "สร้างวอลต์แล้ว แต่ไม่สามารถเพิ่มบางรายการได้:",
             "selectionInfo": "{count} รายการจะถูกเข้ารหัสลงในวอลต์",
-            "decrypting": "กำลังถอดรหัส…"
+            "decrypting": "กำลังถอดรหัส…",
+            "compatibleWithApp": "เข้ากันได้กับแอป Cryptomator",
+            "createFormatBadge": "Cryptomator รูปแบบ 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "เนื้อหา AES-GCM",
+            "featureNameCipher": "ชื่อ AES-SIV",
+            "formatVersion": "รูปแบบ {version}"
         },
         "compress": {
             "title": "บีบอัดไฟล์",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "บางไฟล์จะมีชื่อซ้ำกัน กรุณาปรับรูปแบบ",
             "apply": "นำไปใช้",
             "existingCollision": "ชื่อใหม่บางชื่อตรงกับไฟล์ที่มีอยู่แล้วในโฟลเดอร์นี้ ไฟล์เหล่านั้นจะไม่ถูกเขียนทับและจะข้ามการเปลี่ยนชื่อ",
-            "existingCollisionHint": "(มีอยู่แล้ว)"
+            "existingCollisionHint": "(มีอยู่แล้ว)",
+            "baseNamePlaceholder": "ไฟล์",
+            "invalidName": "{name} (ไม่ถูกต้อง)"
         },
         "lockScreen": {
             "locked": "แอปถูกล็อก",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "เดสก์ท็อปยังไม่ได้เมานต์ ถอดสายแล้วเสียบใหม่ จากนั้นเปิดอีกครั้ง",
             "volumes_need_mount_observe": "ใน snap ไดรฟ์จะปรากฏหลังจากเชื่อมต่อสิทธิ์ mount-observe แล้ว เรียกใช้คำสั่งนี้ในเทอร์มินัล จากนั้นกลับมาที่ AeroFTP:",
             "volumes_unavailable": "ไม่สามารถอ่านไดรฟ์ที่เมานต์ไว้ได้",
-            "portable_device": "อุปกรณ์พกพา"
+            "portable_device": "อุปกรณ์พกพา",
+            "drivesLeftPanel": "ไดรฟ์แผงซ้าย",
+            "drivesRightPanel": "ไดรฟ์แผงขวา",
+            "modeGroupLabel": "โหมดแถบด้านข้าง",
+            "placesSidebarLabel": "แถบด้านข้างตำแหน่ง"
         },
         "viewMode": {
             "list": "รายการ",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "เรียกดูไดเรกทอรีข้างเคียง",
             "loading": "กำลังโหลด...",
             "noSubdirectories": "ไม่มีไดเรกทอรีย่อย",
-            "browseChildren": "เรียกดูไดเรกทอรีย่อย"
+            "browseChildren": "เรียกดูไดเรกทอรีย่อย",
+            "ariaLabel": "เส้นทางการนำทาง",
+            "syncBoundaryTitle": "{path} (ขอบเขตการซิงค์)"
         },
         "bridge": {
             "checking": "กำลังตรวจสอบ {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "ไม่มีตัวอย่าง",
-            "title": "ดูเร็ว"
+            "title": "ดูเร็ว",
+            "closePreview": "ปิดตัวอย่าง",
+            "dialogLabel": "ดูเร็ว: {name}",
+            "nextFile": "ไฟล์ถัดไป",
+            "position": "{index} จาก {total}",
+            "previousFile": "ไฟล์ก่อนหน้า"
         },
         "properties": {
             "general": "ทั่วไป",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "ค่าตรวจสอบของสินทรัพย์ที่ Immich บันทึกไว้ตอนอัปโหลด",
                 "crypt-overlay-ciphertext": "แฮชครอบคลุมไบต์ที่เข้ารหัสซึ่งเก็บอยู่บนเซิร์ฟเวอร์"
             },
-            "readOnlyIsLinkTarget": "นี่คือลิงก์สัญลักษณ์: สิทธิ์เป็นของไฟล์ที่ลิงก์นี้ชี้ไป เปิดคุณสมบัติของไฟล์นั้นเพื่อเปลี่ยนสิทธิ์"
+            "readOnlyIsLinkTarget": "นี่คือลิงก์สัญลักษณ์: สิทธิ์เป็นของไฟล์ที่ลิงก์นี้ชี้ไป เปิดคุณสมบัติของไฟล์นั้นเพื่อเปลี่ยนสิทธิ์",
+            "exactBytes": "({bytes} ไบต์)"
         },
         "duplicates": {
             "sortWasted": "พื้นที่ที่สูญเปล่า",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "เหมือนกันทุกไบต์",
             "modeNonIdenticalHint": "ความคล้ายคลึงทางการรับรู้หรือข้อความ ไม่ลบอัตโนมัติ",
             "potentialWasteSelected": "อาจสูญเปล่า (ที่เลือก)",
-            "similarityDistance": "{similarity}, ระยะ {distance}"
+            "similarityDistance": "{similarity}, ระยะ {distance}",
+            "modeExact": "ตรงกันทุกประการ",
+            "modeLabel": "โหมด:",
+            "modeNonIdentical": "ไม่เหมือนกันทุกประการ"
         },
         "diskUsage": {
             "title": "การใช้พื้นที่ดิสก์",
@@ -3906,7 +4207,11 @@
                 "noActivity": "ยังไม่มีกิจกรรมเครือข่าย ถ่ายโอนไฟล์เพื่อดูเหตุการณ์",
                 "time": "เวลา",
                 "event": "เหตุการณ์",
-                "detail": "รายละเอียด"
+                "detail": "รายละเอียด",
+                "command": "คำสั่ง",
+                "ipcTransfersCount": "IPC + การถ่ายโอน ({count})",
+                "status": "สถานะ",
+                "type": "ประเภท"
             },
             "system": {
                 "appVersion": "เวอร์ชัน AeroFTP",
@@ -3953,7 +4258,8 @@
                 "dark": "มืด",
                 "light": "สว่าง",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "คีย์ LocalStorage"
+                "localStorageKeysTitle": "คีย์ LocalStorage",
+                "localStorageEntrySummary": "{size} ไบต์ · {preview}"
             },
             "copyFileListToClipboard": "คัดลอกรายการไฟล์ไปยังคลิปบอร์ด",
             "filesCopied": "คัดลอก {count} รายการไฟล์ไปยังคลิปบอร์ดแล้ว",
@@ -4199,7 +4505,9 @@
                     "cropHint": "ดับเบิลคลิกที่ส่วนที่เลือกหรือกด Enter เพื่อใช้ กด Esc เพื่อยกเลิก",
                     "cropRatio": "สัดส่วน",
                     "cropRatioFree": "อิสระ",
-                    "cropRatioOriginal": "ต้นฉบับ"
+                    "cropRatioOriginal": "ต้นฉบับ",
+                    "rotateCcw90Short": "90° ทวนเข็ม",
+                    "rotateCw90Short": "90° ตามเข็ม"
                 },
                 "toggleTransparencyBg": "พื้นหลังความโปร่งใส (วนสลับ)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "กำลังโหลด PDF...",
                 "open": "เปิด PDF",
                 "page": "หน้า",
-                "zoom": "ซูม"
+                "zoom": "ซูม",
+                "documentTitle": "เอกสาร PDF"
             },
             "text": {
                 "auto": "อัตโนมัติ",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "แท็บเล็ต (768px)",
                 "wordWrap": "การตัดคำ",
                 "zoomIn": "ซูมเข้า",
-                "zoomOut": "ซูมออก"
+                "zoomOut": "ซูมออก",
+                "htmlPreviewFrameTitle": "ตัวอย่าง HTML"
             },
             "video": {
                 "exitFullscreen": "ออกจากเต็มหน้าจอ (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "ตรวจพบเลเยอร์ Rclone Crypt",
             "aerocryptImportDesc": "นำเข้าโปรไฟล์จาก rclone.conf สำหรับ {name}: เปิดเลเยอร์ตอนนี้หรือไม่?",
             "aerocryptImportOpen": "เปิดเลเยอร์",
-            "aerovaultOverlayExpired": "AeroVault Overlay ถูกล็อกเนื่องจากไม่มีการใช้งาน เปิดห้องนิรภัยอีกครั้งเพื่อดำเนินการต่อ"
+            "aerovaultOverlayExpired": "AeroVault Overlay ถูกล็อกเนื่องจากไม่มีการใช้งาน เปิดห้องนิรภัยอีกครั้งเพื่อดำเนินการต่อ",
+            "aerovaultOverlaySource": "โอเวอร์เลย์ AeroVault ทำงานอยู่ ({source})",
+            "fileOperationsLabel": "การดำเนินการไฟล์",
+            "overlayBadge": "โอเวอร์เลย์"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "การยืนยันตัวตนสองขั้นตอน",
                 "verify": "ยืนยัน & เปิดใช้งาน",
                 "active": "2FA ใช้งานอยู่",
-                "inactive": "2FA ไม่ได้ใช้งาน"
+                "inactive": "2FA ไม่ได้ใช้งาน",
+                "codeGroupLabel": "รหัส {count} หลัก",
+                "digitLabel": "หลักที่ {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "เรียกดู",
                     "installed": "ติดตั้งแล้ว"
-                }
+                },
+                "remoteInstallDisabled": "การติดตั้งปลั๊กอินระยะไกลถูกปิดใช้งานอยู่ในขณะนี้จนกว่ารีจิสทรีจะได้รับการยืนยันตัวตนฝั่งไคลเอนต์ ปลั๊กอินที่ติดตั้งในเครื่องยังคงทำงานได้ตามปกติ"
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "ไฟล์ที่กู้คืนจะปรากฏขึ้นอีกครั้งในโฟลเดอร์เดิม",
             "connectionNamePlaceholder": "ชื่อการเชื่อมต่อ (เช่น FileLu Cloud ของฉัน)",
             "trashAutoExpiry": "ไฟล์ในถังขยะจะถูกลบโดยอัตโนมัติโดย FileLu หลังจาก 7 วัน",
-            "rsyncTransferOnly": "จุดสิ้นสุดสำหรับการถ่ายโอนเท่านั้น: ไม่สามารถเรียกดูบน Rsync ได้ ใช้ Native API, WebDAV, S3 หรือ FTP เพื่อนำทาง; สลับเป็น Rsync สำหรับการถ่ายโอน delta แบนด์วิดท์สูง"
+            "rsyncTransferOnly": "จุดสิ้นสุดสำหรับการถ่ายโอนเท่านั้น: ไม่สามารถเรียกดูบน Rsync ได้ ใช้ Native API, WebDAV, S3 หรือ FTP เพื่อนำทาง; สลับเป็น Rsync สำหรับการถ่ายโอน delta แบนด์วิดท์สูง",
+            "badgePasswordProtected": "ป้องกันด้วยรหัสผ่าน",
+            "badgeWatermarked": "มีลายน้ำ"
         },
         "box": {
             "addComment": "เพิ่มความคิดเห็น",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "แผนฟรี",
             "freeCardTier": "ฟรี + บัตร",
-            "paidTier": "แบบชำระเงิน"
+            "paidTier": "แบบชำระเงิน",
+            "extraFeatures": "เพิ่มเติม",
+            "coreOpsList": "อัปโหลด, ดาวน์โหลด, ลบ, เปลี่ยนชื่อ, ย้าย, สร้างโฟลเดอร์, ค้นหา",
+            "coreOpsLegend": "พื้นฐาน = อัปโหลด, ดาวน์โหลด, ลบ, เปลี่ยนชื่อ, ย้าย, สร้างโฟลเดอร์, ค้นหา"
         },
         "healthCheck": {
             "title": "ตรวจสอบสถานะเซิร์ฟเวอร์",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} ไฟล์",
             "releaseAssetMany": "{count} ไฟล์",
             "repoPrivate": "ส่วนตัว",
-            "repoPublic": "สาธารณะ"
+            "repoPublic": "สาธารณะ",
+            "actionsLiveBadge": "สด",
+            "actionsRunningTitle": "GitHub Actions (กำลังทำงาน)",
+            "coAuthors": "ผู้ร่วมเขียน",
+            "pagesPathPlaceholder": "/ หรือ /docs",
+            "pagesStatusBuilding": "กำลังสร้าง",
+            "pagesStatusBuilt": "สร้างแล้ว",
+            "pagesStatusErrored": "ผิดพลาด",
+            "refreshBranches": "รีเฟรชสาขา",
+            "repoPrivateTitle": "คลังส่วนตัว",
+            "repoPublicTitle": "คลังสาธารณะ",
+            "unpushedCommitsOnBranchMany": "{count} คอมมิตที่ยังไม่ได้พุชบน {branch}",
+            "unpushedCommitsOnBranchOne": "{count} คอมมิตที่ยังไม่ได้พุชบน {branch}"
         },
         "filenNotes": {
             "title": "บันทึกเข้ารหัส",
@@ -4967,7 +5300,8 @@
             "tagName": "ชื่อแท็ก",
             "removeTag": "นำแท็กออก",
             "manageTags": "จัดการแท็ก",
-            "deleteTagConfirm": "ลบแท็ก “{name}” หรือไม่ โน้ตจะยังคงข้อความไว้"
+            "deleteTagConfirm": "ลบแท็ก “{name}” หรือไม่ โน้ตจะยังคงข้อความไว้",
+            "betaBadge": "เบต้า"
         },
         "shareLinkModal": {
             "title": "ลิงก์แชร์",
@@ -5077,7 +5411,8 @@
                 "down": "เข้าถึงไม่ได้",
                 "pending": "กำลังตรวจสอบ...",
                 "unknown": "ยังไม่ตรวจสอบ",
-                "clickToRetry": "คลิกเพื่อตรวจสอบอีกครั้ง"
+                "clickToRetry": "คลิกเพื่อตรวจสอบอีกครั้ง",
+                "withActiveSession": "{title} (เซสชันที่ใช้งานอยู่)"
             },
             "densityCompact": "แถวกะทัดรัด",
             "densityComfortable": "แถวสะดวกสบาย",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "เลเยอร์เข้ารหัส AeroCrypt (เนทีฟ): ชื่อและเนื้อหาถูกเข้ารหัสบนเซิร์ฟเวอร์นี้",
-                "rcloneTitle": "เลเยอร์ rclone crypt (ทำงานร่วมกัน): ชื่อและเนื้อหาถูกเข้ารหัสบนเซิร์ฟเวอร์นี้"
+                "rcloneTitle": "เลเยอร์ rclone crypt (ทำงานร่วมกัน): ชื่อและเนื้อหาถูกเข้ารหัสบนเซิร์ฟเวอร์นี้",
+                "keyBits": "{bits} บิต"
             },
             "sidebar": {
                 "filters": "ตัวกรอง",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "เราไม่สามารถอ่านการตั้งค่าการเข้ารหัสของบัคเก็ตนี้ได้ เนื่องจากคีย์แอปพลิเคชันไม่มีความสามารถ readBucketEncryption ค่าที่เราไม่ได้รับอนุญาตให้เห็นไม่ได้หมายความว่าการเข้ารหัสถูกปิดอยู่",
                 "unknownShapeTitle": "เราไม่สามารถอ่านการตั้งค่าการเข้ารหัสของบัคเก็ตนี้ได้ เนื่องจากคำตอบไม่มีรูปแบบตามที่ระบุไว้ในเอกสาร คีย์ได้รับอนุญาตให้อ่านแล้ว ดังนั้นเรื่องนี้เกี่ยวกับคำตอบ ไม่ใช่เรื่องสิทธิ์"
             },
-            "exportProfile": "ส่งออก..."
+            "exportProfile": "ส่งออก...",
+            "quotaLabel": "โควตา",
+            "storageNoCapReported": "{used} (ไม่มีการรายงานขีดจำกัดโควตา)",
+            "e2eBitsBadge": "E2E {bits} บิต",
+            "filenAuthVersionTitle": "ตรวจพบจาก Filen auth/info เมื่อเชื่อมต่อสำเร็จ",
+            "demoBadge": "ทดลอง",
+            "timeAgo": {
+                "now": "ตอนนี้",
+                "minutes": "{count} นาที",
+                "hours": "{count} ชม.",
+                "days": "{count} วัน",
+                "months": "{count} เดือน"
+            }
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",
@@ -5221,7 +5569,8 @@
             "linkType": "ประเภท",
             "createMergeRequest": "สร้าง Merge Request",
             "mrTitle": "หัวข้อ MR",
-            "mrBody": "คำอธิบาย (ไม่บังคับ)"
+            "mrBody": "คำอธิบาย (ไม่บังคับ)",
+            "sourceCode": "ซอร์สโค้ด"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "ทำซ้ำผู้ใช้ (เฉพาะเซิร์ฟเวอร์ ไม่รวมรหัสผ่าน)",
             "copyLockedHint": "สลับไปยังบัญชีนี้ก่อนเพื่อทำซ้ำเซิร์ฟเวอร์ของบัญชี",
             "crossUserDedupTitle": "มีบัญชีอื่นบันทึกไว้แล้ว",
-            "crossUserDedupMessage": "\"{name}\" ใช้บัญชีเซิร์ฟเวอร์ที่บันทึกไว้ในอุปกรณ์นี้โดยบัญชีต่อไปนี้ด้วย: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" ใช้บัญชีเซิร์ฟเวอร์ที่บันทึกไว้ในอุปกรณ์นี้โดยบัญชีต่อไปนี้ด้วย: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "ปิดกล่องโต้ตอบรีเซ็ตรหัสผ่าน",
+                "confirmPassword": "ยืนยันรหัสผ่านใหม่",
+                "errMismatch": "รหัสผ่านบัญชีใหม่ไม่ตรงกัน",
+                "errNewRequired": "ป้อนรหัสผ่านบัญชีใหม่",
+                "errNotAuthorized": "คุณต้องเป็นผู้ดูแลระบบจึงจะรีเซ็ตรหัสผ่านของบัญชีอื่นได้",
+                "errNotForSelf": "ใช้ เปลี่ยนรหัสผ่าน กับบัญชีของคุณเอง",
+                "errStoreNotReady": "โปรดปลดล็อกห้องนิรภัยก่อน แล้วลองอีกครั้ง",
+                "errTypeReset": "พิมพ์ RESET เพื่อยืนยันการดำเนินการที่ทำลายข้อมูลนี้",
+                "errUserNotFound": "ผู้ใช้นี้ไม่มีอยู่แล้ว",
+                "newPassword": "รหัสผ่านบัญชีใหม่",
+                "statEncryptedBytes": "ไบต์ที่เข้ารหัส",
+                "statProfiles": "โปรไฟล์",
+                "statSettings": "การตั้งค่า",
+                "title": "รีเซ็ตรหัสผ่าน = ทำลายข้อมูล",
+                "typeReset": "พิมพ์ RESET",
+                "wipeDetail": "ไม่สามารถกู้คืนรหัสผ่านปัจจุบันได้ AeroFTP จะลบเซิร์ฟเวอร์ที่บันทึกไว้ การตั้งค่าผู้ใช้ และสถานะการล็อกของบัญชีเป้าหมาย จากนั้นจะออกคีย์เข้ารหัสใหม่ที่ได้รับการปกป้องด้วยรหัสผ่านใหม่",
+                "wipeWarning": "การดำเนินการนี้จะล้างพาร์ติชันที่เข้ารหัสของบัญชีเป้าหมายอย่างถาวร"
+            },
+            "dropdown": {
+                "accountPassword": "รหัสผ่านบัญชี",
+                "lock": "ล็อก",
+                "newUser": "ผู้ใช้ใหม่",
+                "noUsers": "ยังไม่มีผู้ใช้ ใช้ \"ผู้ใช้ใหม่\" ด้านล่างเพื่อเพิ่มผู้ใช้คนแรก",
+                "protectionNote": "บัญชีของคุณได้รับการปกป้องด้วยการเข้ารหัส Argon2id + AES-KW + AES-256-GCM",
+                "users": "ผู้ใช้"
+            }
         },
         "aerocryptNative": {
             "title": "เลเยอร์ซ้อน AeroCrypt",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "โหมดจะถูกเลือกเมื่อสร้างการเชื่อมต่อและจะคงที่ขณะแก้ไขโปรไฟล์ที่บันทึกไว้ หากต้องการใช้โหมดอื่น ให้สร้างการเชื่อมต่อใหม่"
+                "lockedInEdit": "โหมดจะถูกเลือกเมื่อสร้างการเชื่อมต่อและจะคงที่ขณะแก้ไขโปรไฟล์ที่บันทึกไว้ หากต้องการใช้โหมดอื่น ให้สร้างการเชื่อมต่อใหม่",
+                "notInBuild": "ไม่ได้รวมอยู่ในบิลด์นี้ของ AeroFTP"
             }
         },
         "flatpak": {

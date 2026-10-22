@@ -18391,7 +18391,7 @@ const App: React.FC = () => {
                 onLocalReorder2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? setLocalTabs2 : undefined}
               />
               {/* Toolbar */}
-              <div role="toolbar" aria-label="File operations" className="flex-shrink-0 flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <div role="toolbar" aria-label={t('toolbar.fileOperationsLabel')} className="flex-shrink-0 flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <div className="flex gap-2">
                   {/* Up button is rendered per-panel inside each path bar (see remote
                       path bar above and LocalFilePanel) so the affordance is bound to
@@ -18606,7 +18606,7 @@ const App: React.FC = () => {
                     <button
                       onClick={() => { setShowRemotePanel(p => { if (p) setActivePanel('local'); else setShowLocalPreview(false); return !p; }); }}
                       className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showRemotePanel ? 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500' : 'bg-blue-500 text-white'}`}
-                      title={showRemotePanel ? 'Local only' : 'Show remote'}
+                      title={showRemotePanel ? t('toolbar.localOnly') : t('toolbar.showRemote')}
                     >
                       <HardDrive size={16} />
                     </button>
@@ -18629,7 +18629,7 @@ const App: React.FC = () => {
                 {/* Remote: hidden when not connected or local-only mode */}
                 {isConnected && showRemotePanel && <div
                   role="region"
-                  aria-label="Remote files"
+                  aria-label={t('browser.remoteFilesLabel')}
                   className={`relative min-w-0 min-h-0 ${swapPanels ? 'border-l order-3' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col ${connectedSplit.dragging ? '' : 'transition-all duration-150 '}${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                   style={{ flexGrow: swapPanels ? connectedSplit.rightPercent : connectedSplit.leftPercent, flexShrink: 1, flexBasis: 0 }}
                   onDragOver={(e) => handlePanelDragOver(e, 'remote')}
@@ -18758,10 +18758,10 @@ const App: React.FC = () => {
                     {aeroVaultOverlaySession && (
                       <span
                         className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
-                        title={`AeroVault Overlay attivo (${aeroVaultOverlaySession.source})`}
+                        title={t('toolbar.aerovaultOverlaySource', { source: aeroVaultOverlaySession.source })}
                       >
                         <VaultIcon size={11} className="text-emerald-400" />
-                        OVERLAY
+                        {t('toolbar.overlayBadge')}
                       </span>
                     )}
                     {/* EF-02: the crypt toggle only makes sense inside the
@@ -18850,7 +18850,7 @@ const App: React.FC = () => {
                             else setShowGitHubReleaseBrowser(true);
                           }}
                           className={`flex-shrink-0 p-1.5 rounded transition-colors ${getActiveProviderProtocol() === 'gitlab' ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-500/10' : 'text-green-400 hover:text-green-300 hover:bg-green-500/10'}`}
-                          title="Releases"
+                          title={t('providers.releases')}
                         >
                           {getActiveProviderProtocol() === 'gitlab'
                             ? <Tag size={13} className="text-orange-400" />
@@ -18874,7 +18874,7 @@ const App: React.FC = () => {
                               ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
                               : 'text-green-400 hover:text-green-300 hover:bg-green-500/10'
                           }`}
-                          title={hasActiveGitHubActions ? 'GitHub Actions (running)' : 'GitHub Actions'}
+                          title={hasActiveGitHubActions ? t('github.actionsRunningTitle') : 'GitHub Actions'}
                         >
                           <GitHubActionsIcon size={13} />
                           {hasActiveGitHubActions && (
@@ -18956,7 +18956,7 @@ const App: React.FC = () => {
                           }
                         }}
                         className={`flex-shrink-0 p-1.5 rounded transition-colors ${remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                        title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
+                        title={remoteSearchResults !== null ? t('ui.clearSearch') : t('ui.searchFiles')}
                       >
                         {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
                       </button>
@@ -19025,7 +19025,7 @@ const App: React.FC = () => {
                       />
                       {remoteSearching && <RefreshCw size={14} className="animate-spin text-blue-500 flex-shrink-0" />}
                       {remoteSearchQuery.trim() && (
-                        <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{sortedRemoteFiles.length} results</span>
+                        <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{t('search.resultsCount', { count: sortedRemoteFiles.length })}</span>
                       )}
                       <button
                         onClick={() => { setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
@@ -19088,7 +19088,7 @@ const App: React.FC = () => {
                           return <td key={id} className={cls}>-</td>;
                         };
                         return (
-                      <table className="w-full text-sm" role="grid" aria-label="Remote files" style={{ tableLayout: 'fixed' }}>
+                      <table className="w-full text-sm" role="grid" aria-label={t('browser.remoteFilesLabel')} style={{ tableLayout: 'fixed' }}>
                         <colgroup>
                           {orderedVisible.map((col) => (
                             <col

@@ -153,7 +153,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     }, []);
 
     return (
-        <div role="status" aria-label="Status bar" className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0 overflow-hidden">
+        <div role="status" aria-label={t('statusBar.ariaLabel')} className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0 overflow-hidden">
             {/* Left: Connection Status */}
             <div className="flex items-center gap-4 min-w-0 flex-1">
                 {/* A live session stays visible from anywhere, including the
@@ -530,10 +530,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     <button
                         onClick={onToggleDebug}
                         className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-200 dark:hover:bg-amber-900/60"
-                        title="Debug Mode Active"
+                        title={t('statusBar.debugModeActive')}
                     >
                         <Bug size={12} />
-                        <span className="font-mono font-bold text-[10px]">DEBUG</span>
+                        <span className="font-mono font-bold text-[10px]">{t('statusBar.debugBadge')}</span>
                     </button>
                 )}
 

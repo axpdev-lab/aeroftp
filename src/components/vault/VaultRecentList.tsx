@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Archive, Clock, X as XIcon } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';
 import { useTranslation } from '../../i18n';
+import type { TranslationFunction } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel } from './useVaultState';
 
 interface VaultRecentListProps {
@@ -16,18 +17,18 @@ interface VaultRecentListProps {
 }
 
 /** Format a timestamp as relative time (e.g. "2 hours ago") */
-function relativeTime(timestamp: number): string {
+function relativeTime(timestamp: number, t: TranslationFunction): string {
     const now = Date.now();
     const diffMs = now - timestamp * 1000; // timestamp is seconds
     const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'just now';
-    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 1) return t('notifications.justNow');
+    if (diffMin < 60) return t('cloud.minutesAgo', { count: diffMin });
     const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `${diffH}h ago`;
+    if (diffH < 24) return t('cloud.hoursAgo', { count: diffH });
     const diffD = Math.floor(diffH / 24);
-    if (diffD < 30) return `${diffD}d ago`;
+    if (diffD < 30) return t('vault.recentDaysAgo', { count: diffD });
     const diffM = Math.floor(diffD / 30);
-    return `${diffM}mo ago`;
+    return t('vault.recentMonthsAgo', { count: diffM });
 }
 
 /** Map security_level string to SecurityLevel type */
@@ -112,10 +113,10 @@ export const VaultRecentList: React.FC<VaultRecentListProps> = ({
                                 </div>
                                 <div className="flex items-center gap-2 text-[10px] text-gray-400">
                                     <span className="truncate">{vault.vault_path}</span>
-                                    <span className="shrink-0">{relativeTime(vault.last_opened_at)}</span>
+                                    <span className="shrink-0">{relativeTime(vault.last_opened_at, t)}</span>
                                     {vault.file_count > 0 && (
                                         <span className="shrink-0 px-1 py-0 bg-gray-200 dark:bg-gray-700 rounded">
-                                            {vault.file_count} files
+                                            {t(vault.file_count === 1 ? 'vault.recentFileCountOne' : 'vault.recentFileCountMany', { count: vault.file_count })}
                                         </span>
                                     )}
                                 </div>

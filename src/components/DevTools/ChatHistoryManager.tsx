@@ -126,7 +126,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                 </div>
                 <button
                     onClick={onClose}
-                    aria-label="Close"
+                    aria-label={t('common.close')}
                     className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
                     <X size={14} />

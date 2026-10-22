@@ -326,7 +326,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500"
-                          title="Open"
+                          title={t('common.open')}
                         >
                           <ExternalLink size={12} />
                         </a>
@@ -385,7 +385,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                   className="flex items-center gap-1 px-3 py-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                 >
                   <RefreshCw size={11} className={manageLoading ? 'animate-spin' : ''} />
-                  Refresh
+                  {t('common.refresh')}
                 </button>
               </div>
             </div>

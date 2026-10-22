@@ -515,8 +515,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 <div className={`flex items-center gap-2 text-sm ${headerText}`}>
                     <FileCode size={14} />
                     <span className="font-medium">{file.name}</span>
-                    {hasChanges && <span className="text-yellow-500">• Modified</span>}
-                    {file.isRemote && <span className="text-blue-500 ml-2">Remote</span>}
+                    {hasChanges && <span className="text-yellow-500">• {t('common.modified')}</span>}
+                    {file.isRemote && <span className="text-blue-500 ml-2">{t('preview.common.remote')}</span>}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -524,7 +524,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                         onClick={handleReset}
                         disabled={!hasChanges}
                         className={`flex items-center gap-1 px-2 py-1 text-xs ${buttonBg} disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors`}
-                        title="Reset changes"
+                        title={t('devtools.editorPanel.resetChanges')}
                     >
                         <RotateCcw size={12} />
                         {t('devtools.editorPanel.reset')}
@@ -541,7 +541,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                     <button
                         onClick={onClose}
                         className={`p-1 ${hoverBg} rounded transition-colors`}
-                        title="Close editor"
+                        title={t('devtools.editorPanel.closeEditor')}
                     >
                         <X size={14} />
                     </button>

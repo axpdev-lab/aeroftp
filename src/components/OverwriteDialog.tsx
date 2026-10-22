@@ -12,6 +12,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3, PlayCircle } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import type { TranslationFunction } from '../i18n';
 import { formatBytes, getUiLocale } from '../utils/formatters';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -39,10 +40,10 @@ export interface OverwriteDialogProps {
 }
 
 // Format date
-const formatDate = (date: Date | string | number | undefined): string => {
-    if (!date) return 'Unknown';
+const formatDate = (date: Date | string | number | undefined, t: TranslationFunction): string => {
+    if (!date) return t('overwrite.unknownDate');
     const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return 'Unknown';
+    if (isNaN(d.getTime())) return t('overwrite.unknownDate');
     return d.toLocaleString(getUiLocale());
 };
 
@@ -123,7 +124,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid={TID.overwriteDialog} role="dialog" aria-modal="true" aria-label="Overwrite Confirmation">
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid={TID.overwriteDialog} role="dialog" aria-modal="true" aria-label={t('overwrite.dialogLabel')}>
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCancel} />
 
@@ -138,7 +139,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
                         </span>
                         {queueCount > 0 && (
                             <span className="text-xs text-gray-500 ml-2">
-                                +{queueCount} in queue
+                                {t('overwrite.moreInQueue', { count: queueCount })}
                             </span>
                         )}
                     </div>
@@ -176,7 +177,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
                                 </div>
                                 <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
                                     <Clock size={12} />
-                                    <span className="text-xs">{formatDate(source.modified)}</span>
+                                    <span className="text-xs">{formatDate(source.modified, t)}</span>
                                 </div>
                             </div>
                         </div>
@@ -198,7 +199,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
                                 </div>
                                 <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
                                     <Clock size={12} />
-                                    <span className="text-xs">{formatDate(destination.modified)}</span>
+                                    <span className="text-xs">{formatDate(destination.modified, t)}</span>
                                 </div>
                             </div>
                         </div>

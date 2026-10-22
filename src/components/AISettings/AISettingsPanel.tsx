@@ -154,7 +154,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, prov
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="AI Model Editor">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label={t('ai.settings.modelEditorAria')}>
             <div className="absolute inset-0 bg-black/60" onClick={onClose} />
             <div {...modalDrag.panelProps} className="ai-settings-panel relative bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6 animate-scale-in">
                 <h3 {...modalDrag.dragHandleProps} className="text-lg font-semibold mb-4 flex items-center gap-2 cursor-grab active:cursor-grabbing select-none">
@@ -1044,7 +1044,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 {t('ai.settings.fetchModels')}
                                                             </button>}
                                                             {provider.type === 'ollama' && (
-                                                                <button onClick={() => detectOllamaModels(provider)} disabled={detectingModels === provider.id} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap" title="Auto-detect available Ollama models">
+                                                                <button onClick={() => detectOllamaModels(provider)} disabled={detectingModels === provider.id} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap" title={t('ai.settings.detectOllamaModelsTooltip')}>
                                                                     {detectingModels === provider.id ? <span className="animate-spin">⏳</span> : <span>🔍</span>}
                                                                     {t('ai.settings.detectModels')}
                                                                 </button>
@@ -1175,9 +1175,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             {getProviderModels(provider.id).map((model) => (
                                                                 <div key={model.id} className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-2 ${model.isEnabled ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-500'}`}>
                                                                     {model.displayName}
-                                                                    {model.supportsTools && <span title="Supports tools">🔧</span>}
-                                                                    {model.supportsVision && <span title="Supports vision">👁</span>}
-                                                                    {model.supportsThinking && <span title="Thinking">💭</span>}
+                                                                    {model.supportsTools && <span title={t('ai.settings.supportsTools')}>🔧</span>}
+                                                                    {model.supportsVision && <span title={t('ai.settings.supportsVision')}>👁</span>}
+                                                                    {model.supportsThinking && <span title={t('ai.settings.thinking')}>💭</span>}
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -1263,27 +1263,27 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             {/* Capabilities */}
                                                             <div className="flex gap-1.5 text-xs flex-wrap">
                                                                 {model.supportsTools && (
-                                                                    <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded" title="Function Calling">
+                                                                    <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded" title={t('ai.settings.functionCalling')}>
                                                                         🔧
                                                                     </span>
                                                                 )}
                                                                 {model.supportsVision && (
-                                                                    <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded" title="Vision">
+                                                                    <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded" title={t('ai.settings.vision')}>
                                                                         👁
                                                                     </span>
                                                                 )}
                                                                 {model.supportsStreaming && (
-                                                                    <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded" title="Streaming">
+                                                                    <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded" title={t('ai.settings.streaming')}>
                                                                         ⚡
                                                                     </span>
                                                                 )}
                                                                 {model.supportsThinking && (
-                                                                    <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded" title="Thinking/Reasoning">
+                                                                    <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded" title={t('ai.settings.thinkingReasoning')}>
                                                                         💭
                                                                     </span>
                                                                 )}
                                                                 {model.toolCallQuality && (
-                                                                    <span className="px-1.5 py-0.5 bg-yellow-500/10 text-yellow-400 rounded font-mono" title={`Tool quality: ${model.toolCallQuality}/5`}>
+                                                                    <span className="px-1.5 py-0.5 bg-yellow-500/10 text-yellow-400 rounded font-mono" title={t('ai.settings.toolQuality', { quality: model.toolCallQuality })}>
                                                                         {'★'.repeat(model.toolCallQuality)}
                                                                         {'☆'.repeat(5 - model.toolCallQuality)}
                                                                     </span>
@@ -1756,7 +1756,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 />
                                 <div className="flex items-center justify-between text-[10px] text-gray-500 mt-1">
                                     <span>0 ({t('ai.settings.thinkingOff')})</span>
-                                    <span className="text-purple-400 font-mono">{((settings.advancedSettings?.thinkingBudget || 0) / 1000).toFixed(0)}K tokens</span>
+                                    <span className="text-purple-400 font-mono">{t('ai.settings.kTokens', { count: ((settings.advancedSettings?.thinkingBudget || 0) / 1000).toFixed(0) })}</span>
                                     <span>100K</span>
                                 </div>
                             </div>
@@ -2005,7 +2005,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 <div className="flex items-center justify-between mb-3">
                                     <h4 className="text-sm font-medium text-white">{t('ai.settings.promptContent')}</h4>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-xs text-gray-500">~{Math.round((settings.advancedSettings?.customSystemPrompt || '').length / 4)} tokens</span>
+                                        <span className="text-xs text-gray-500">{t('ai.settings.estimatedTokens', { count: Math.round((settings.advancedSettings?.customSystemPrompt || '').length / 4) })}</span>
                                         <button
                                             onClick={() => {
                                                 const newSettings = {
@@ -2131,7 +2131,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             }}
                             role="dialog"
                             aria-modal="true"
-                            aria-label="Available Models"
+                            aria-label={t('ai.settings.fetchModelsTitle')}
                         >
                             <div className="ai-settings-panel bg-gray-800 rounded-lg border border-gray-600 w-full max-w-lg max-h-[70vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">

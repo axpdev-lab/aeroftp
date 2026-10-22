@@ -36,7 +36,7 @@ export const GeminiCodeBlock: React.FC<GeminiCodeBlockProps> = ({ code, language
             <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700">
                 <div className="flex items-center gap-2 text-xs text-gray-400">
                     <Play size={12} className="text-green-400" />
-                    <span>Gemini Code Execution</span>
+                    <span>{t('ai.codeExec.title')}</span>
                     <span className="text-gray-600">({language.toLowerCase()})</span>
                 </div>
                 <button onClick={handleCopy} className="text-gray-500 hover:text-gray-300 transition-colors" title={t('common.copy')}>
@@ -57,7 +57,7 @@ export const GeminiCodeBlock: React.FC<GeminiCodeBlockProps> = ({ code, language
                         className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs text-gray-400 hover:text-gray-300 bg-gray-800/30"
                     >
                         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                        <span>Output</span>
+                        <span>{t('ai.codeExec.output')}</span>
                         <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${isSuccess ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
                             {isSuccess ? 'OK' : outcome.replace('OUTCOME_', '')}
                         </span>

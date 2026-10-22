@@ -337,7 +337,38 @@
             "protonSignOut": "Вийти",
             "protonSignOutHelp": "Завершує сесію в Proton і видаляє її з цього профілю.",
             "protonSignInExpired": "Термін дії сторінки входу минув. Увійдіть знову.",
-            "protonNativeUnavailable": "Ця збірка не містить вбудованого клієнта Proton Drive."
+            "protonNativeUnavailable": "Ця збірка не містить вбудованого клієнта Proton Drive.",
+            "forms": {
+                "publicApiKey": "Публічний API-ключ",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Публічний ключ.",
+                "secretApiKey": "Секретний API-ключ",
+                "uploadcareSecretHint": "Використовується лише для керування файлами через REST з автентифікацією {scheme}.",
+                "flatMediaLibrary": "Пласка медіатека",
+                "uploadcareNoFolders": "Uploadcare не має власних папок; файли проєкту показано в корені за UUID.",
+                "urlEndpointId": "ID кінцевої точки URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Кінцева точка URL.",
+                "privateApiKey": "Приватний API-ключ",
+                "storedVaultBasicAuth": "Зберігається в локальному сховищі й надсилається лише до {provider} через Basic Auth.",
+                "cloudName": "Назва хмари",
+                "cloudinaryCloudNameHint": "Знаходиться в Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-ключ",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-ключ.",
+                "apiSecret": "Секрет API",
+                "apiSecretPlaceholder": "Секрет API",
+                "openProviderLink": "Відкрити посилання {provider}",
+                "githubPatHint": "Детальний PAT з правом Contents (читання й запис).",
+                "generateToken": "Створити токен",
+                "applicationKeyId": "ID ключа застосунку",
+                "backblazeKeyIdHint": "ID ключа застосунку B2, починається з 003. Створіть його на сторінці App Keys у Backblaze.",
+                "applicationKey": "Ключ застосунку",
+                "backblazeKeyHint": "Показується лише один раз під час створення. Поводьтеся з ним як із паролем.",
+                "bucketNameExactHint": "Точне ім'я бакета з урахуванням регістру.",
+                "megacmdSetupFirst": "Спершу налаштуйте MEGAcmd",
+                "megacmdFetchUrlTitle": "Виконати {cmd} і заповнити URL автоматично",
+                "fetchUrl": "Отримати URL",
+                "megacmdWebdavHint": "Ім'я користувача та пароль навмисно пропущено. Під час підключення AeroFTP сам виконує «{cmd}», щоб запустити міст і прочитати цю адресу: поле можна залишити порожнім. «Отримати URL» означає необов'язкове ручне оновлення; змініть тут порт, якщо MEGAcmd використовує нестандартний."
+            },
+            "manualStorageUnitLabel": "Одиниця {label}"
         },
         "browser": {
             "remote": "Віддалений",
@@ -390,7 +421,19 @@
             "listingPath": "Отримання списку {path}...",
             "pleaseWait": "Будь ласка, зачекайте...",
             "sameNameLeakChip": "та сама назва",
-            "sameNameLeakTooltip": "Ця назва також трапляється за іншим шляхом у цьому зашифрованому сховищі. Оскільки назви шифруються детерміновано, спостерігач зашифрованого сховища може визначити, що обидва мають однакову назву."
+            "sameNameLeakTooltip": "Ця назва також трапляється за іншим шляхом у цьому зашифрованому сховищі. Оскільки назви шифруються детерміновано, спостерігач зашифрованого сховища може визначити, що обидва мають однакову назву.",
+            "endpointSelector": {
+                "localFolder": "Локальна тека",
+                "localFolderHint": "Виберіть локальний шлях для цієї панелі",
+                "noSavedProfiles": "Немає збережених профілів",
+                "savedProfiles": "Збережені віддалені профілі",
+                "title": "Кінцева точка"
+            },
+            "leftPanelMarker": "Ліва панель",
+            "localFilesLabel": "Локальні файли",
+            "localFilesRightLabel": "Локальні файли (права панель)",
+            "remoteFilesLabel": "Віддалені файли",
+            "rightPanelMarker": "Права панель"
         },
         "contextMenu": {
             "askAeroAgent": "Запитати AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Графік швидкості",
             "hideSpeedGraph": "Сховати графік швидкості",
             "speedAvg": "сер. {speed}",
-            "speedPeak": "макс. {speed}"
+            "speedPeak": "макс. {speed}",
+            "badgeBatch": "ПАКЕТ",
+            "badgeDownload": "ЗАВАНТАЖЕННЯ",
+            "badgeLive": "НАЖИВО",
+            "badgeStream": "ПОТІК",
+            "badgeUpload": "ВИВАНТАЖЕННЯ",
+            "earlierItemsHidden": "Приховано попередніх елементів: {count}",
+            "folderFilesProgress": "{done}/{total} файлів",
+            "laneDone": "готово",
+            "laneError": "помилка",
+            "unifiedPlan": {
+                "destination": "Призначення",
+                "dialogLabel": "План передавання",
+                "engineAerovaultOverlay": "Оверлей AeroVault",
+                "engineCompareOnly": "Лише порівняння",
+                "engineCrossProfileSync": "Синхронізація між профілями",
+                "engineCrossProfileTransfer": "Передавання між профілями",
+                "engineLocalDelta": "Локальний дельта-транспорт",
+                "engineLocalFs": "Локальна файлова система",
+                "engineProviderDownload": "Завантаження від провайдера",
+                "engineProviderUpload": "Вивантаження до провайдера",
+                "engineUnsupported": "Не підтримується",
+                "execute": "Виконати",
+                "items": "Елементи",
+                "modeBackup": "Резервна копія",
+                "modeBisync": "Двостороння синхронізація",
+                "modeCompare": "Порівняння",
+                "modeCopy": "Копіювання",
+                "modeMirror": "Дзеркало",
+                "modeMove": "Переміщення",
+                "modeSync": "Синхронізація",
+                "notExecutable": "Цю пару кінцевих точок поки що не можна виконати.",
+                "parallel": "Паралельно",
+                "reviewBeforeExecution": "Перевірити перед виконанням",
+                "route": "{pair} через {engine}",
+                "size": "Розмір",
+                "source": "Джерело",
+                "title": "План: {mode}"
+            }
         },
         "settings": {
             "title": "Налаштування",
@@ -1040,7 +1121,13 @@
                 "title": "Нативний rsync (бета)",
                 "description": "Виберіть, як SFTP Delta Sync розподіляє передавання rsync.",
                 "enableToggle": "Увімкнути вбудований rsync для дельта-синхронізації через SFTP",
-                "experimental": "Auto віддає перевагу AeroRsync з відкатом на класичний варіант; Classic використовує системний бінарний файл rsync, де він доступний; Native пропускає відкат на класичний бінарний файл."
+                "experimental": "Auto віддає перевагу AeroRsync з відкатом на класичний варіант; Classic використовує системний бінарний файл rsync, де він доступний; Native пропускає відкат на класичний бінарний файл.",
+                "modeAuto": "Авто",
+                "modeClassic": "Класичний",
+                "modeNative": "Вбудований",
+                "classicNotFoundTooltip": "Класичний виконуваний файл rsync не знайдено в PATH. Установіть rsync (пакет для Linux/macOS, Windows через WSL/cygwin/scoop), щоб увімкнути цей режим.",
+                "classicAt": "Класичний rsync у {path}",
+                "classicNotDetected": "Класичний виконуваний файл rsync не виявлено в PATH. На цьому комп'ютері доступний лише вбудований рушій."
             },
             "startMinimizedOnAutostart": "Запускати згорнутим у трей",
             "startMinimizedOnAutostartDesc": "Приховувати головне вікно під час автозапуску. AeroFTP продовжує працювати в системному треї, відкрийте його через значок, коли знадобиться.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "Знайдено облікових даних OAuth у незашифрованому сховищі: {count}",
             "fontSystemInstall": "системне встановлення",
             "fontSizeMin": "мін",
-            "fontSizeMax": "макс"
+            "fontSizeMax": "макс",
+            "migrationCleanupHint": "Рекомендовано для максимальної безпеки",
+            "fontCustomOption": "Власний...",
+            "fontSystemInstallHint": "Потрібне встановлення в систему. Якщо шрифт недоступний, AeroFTP автоматично використає заміну.",
+            "fontSizeIndicatorLabel": "Шрифт"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Зупинити",
                 "stopShell": "Зупинити оболонку",
                 "closed": "Термінал закрито.",
-                "commandInsertedReview": "Команду вставлено в Terminal. Натисніть Enter, щоб запустити."
+                "commandInsertedReview": "Команду вставлено в Terminal. Натисніть Enter, щоб запустити.",
+                "decreaseFont": "Зменшити шрифт (Ctrl+-)",
+                "emptyClickPlus": "Натисніть {plus}, щоб відкрити термінал",
+                "emptySshHint": "або {ssh} для віддаленої оболонки на {host}",
+                "increaseFont": "Збільшити шрифт (Ctrl+=)",
+                "newTab": "Нова вкладка термінала",
+                "sshShellTo": "Оболонка SSH на {host}",
+                "theme": "Тема термінала"
             },
             "editorPanel": {
                 "emptyState": "Клацніть правою кнопкою миші на файлі та виберіть \"Переглянути вихідний код\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Збереження...",
                 "noFileSelected": "Файл для перегляду не вибрано",
                 "loading": "Завантаження редактора...",
-                "dragToTerminalRun": "Перетягніть у Terminal, щоб вставити команду запуску"
+                "dragToTerminalRun": "Перетягніть у Terminal, щоб вставити команду запуску",
+                "closeEditor": "Закрити редактор",
+                "resetChanges": "Скинути зміни"
             },
             "previewPanel": {
                 "emptyState": "Клацніть правою кнопкою на файлі та виберіть \"Попередній перегляд\""
             },
             "codeEditor": "Редактор коду",
-            "sshTerminal": "SSH-термінал"
+            "sshTerminal": "SSH-термінал",
+            "comingSoon": "Незабаром",
+            "soonBadge": "Скоро"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Якщо токен відкликано, повторно авторизуйтеся вручну"
             },
             "profilesLoadFailed": "Не вдалося прочитати збережені сервери: {error}",
-            "cleanupSummary": "{count} файлів, звільнено {size}"
+            "cleanupSummary": "{count} файлів, звільнено {size}",
+            "maturity": {
+                "alpha": "Альфа"
+            },
+            "dialogDashboardLabel": "Панель хмарної синхронізації",
+            "dialogLoadingLabel": "Завантаження хмарної синхронізації",
+            "dialogSettingsLabel": "Параметри хмарної синхронізації",
+            "dialogSetupLabel": "Налаштування хмарної синхронізації",
+            "onePerLineHint": "(по одному в рядку)",
+            "pairsEditorLabel": "Редактор пар AeroCloud",
+            "remoteSubfolderPlaceholder": "хмара"
         },
         "statusBar": {
             "connected": "Підключено",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "частково, непрочитані папки: {count}",
             "usedScanFailed": "Не вдалося просканувати зайняте місце",
             "usedScanEmpty": "Сканування шляху {path} не знайшло файлів; збережено кешоване значення. Перевірте шлях або підтримку рекурсивного переліку на сервері.",
-            "filenBridgeAccountTotal": "Filen Desktop не повідомляє тут загальний обсяг вашого облікового запису: показане значення є сумою файлів за цим шляхом. Нативне підключення Filen одразу показує загальний обсяг облікового запису."
+            "filenBridgeAccountTotal": "Filen Desktop не повідомляє тут загальний обсяг вашого облікового запису: показане значення є сумою файлів за цим шляхом. Нативне підключення Filen одразу показує загальний обсяг облікового запису.",
+            "ariaLabel": "Рядок стану",
+            "debugBadge": "НАЛАГОДЖЕННЯ",
+            "debugModeActive": "Режим налагодження активний"
         },
         "dialogs": {
             "confirmTitle": "Підтвердження",
@@ -1620,7 +1735,8 @@
                 "apRole": "Засновник, розробник, мейнтейнер, співавтор дизайну",
                 "ekRole": "Дослідник, інженер із забезпечення якості, співавтор дизайну"
             },
-            "madeBy": "командою {author}"
+            "madeBy": "командою {author}",
+            "statsLine": "{protocols} протоколів · {languages} мов · архіви AES-256"
         },
         "support": {
             "title": "Підтримати AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Проєкт (Unixname)",
             "opendriveNotApiKey": "(не ваш ключ API OpenDrive)",
             "endpoint": "Кінцева точка",
-            "accountId": "ID облікового запису"
+            "accountId": "ID облікового запису",
+            "servicesHeading": "Сервіси",
+            "sourceforgeSshKeyHelp": "SourceForge вимагає автентифікації за SSH-ключем. Згенеруйте ключ за допомогою {cmd} і завантажте його на {link}.",
+            "sourceforgeSshSettings": "Налаштування SSH",
+            "fullGuide": "Повний посібник",
+            "endpointTemplateExample": "напр. {template}",
+            "jurisdiction": "Юрисдикція",
+            "insecureCertDialogLabel": "Попередження про небезпечний сертифікат",
+            "betaBadge": "БЕТА",
+            "hostKeyDialogLabel": "Перевірка ключа хоста"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -2111,7 +2236,10 @@
             "rename": "Перейменувати",
             "resume": "Відновити",
             "resumeHint": "Відновити перерване передавання замість повторного запуску",
-            "cancel": "Скасувати"
+            "cancel": "Скасувати",
+            "dialogLabel": "Підтвердження перезапису",
+            "moreInQueue": "+{count} у черзі",
+            "unknownDate": "Невідомо"
         },
         "statusbar": {
             "queue": "Черга",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Придатні пари шляхів (локальний/віддалений) у цьому шаблоні: {count}. Вікно AeroSync працює рівно з однією парою, тому нічого не імпортовано. Відредагуйте шаблон, залишивши в ньому лише одну пару, а потім імпортуйте його знову.",
             "templateNamePlaceholder": "напр. Нічне резервне копіювання до S3",
             "templateDescPlaceholder": "Для чого цей шаблон (необов'язково)",
-            "templateExportCliDesc": "Обгортка для aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Обгортка для aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Вимкнути",
+            "multiPathEditorLabel": "Редактор кількох шляхів",
+            "multiPathEnablePair": "Увімкнути",
+            "multiPathLocalPlaceholder": "Локальний шлях",
+            "multiPathRemotePlaceholder": "Віддалений шлях",
+            "rollbackDialogLabel": "Знімок для відкату",
+            "rollbackMoreFiles": "+ще {count}...",
+            "rollbackSnapshotSummaryMany": "Файлів: {count}, {size}",
+            "rollbackSnapshotSummaryOne": "{count} файл, {size}",
+            "templateDialogLabel": "Шаблон синхронізації",
+            "templateExcludes": "Винятки",
+            "templateLocal": "Локально",
+            "templateRemote": "Віддалено",
+            "templateRetries": "Повтори"
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Відхилити виконання інструменту",
                 "toggleDetails": "Перемкнути деталі",
                 "allowSession": "Дозволити для цієї сесії",
-                "nonAtomicReplace": "Неатомарна заміна: файл на короткий час відсутній"
+                "nonAtomicReplace": "Неатомарна заміна: файл на короткий час відсутній",
+                "moreOptions": "Інші параметри",
+                "panelAria": "Панель схвалення інструментів"
             },
             "settings": {
                 "title": "Налаштування ШІ",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Запасна",
                 "routingNoFallback": "Немає",
                 "bedrockNeedsModel": "Перед перевіркою додайте й увімкніть модель Bedrock на вкладці Моделі.",
-                "bedrockSetup": "Установіть Runtime URL для свого регіону AWS. На вкладці Моделі додайте ID, що підтримує Chat Completions у Bedrock Runtime. Runtime не показує список моделей. Тест надсилає невеликий запит на інференцію, за який AWS може стягувати плату."
+                "bedrockSetup": "Установіть Runtime URL для свого регіону AWS. На вкладці Моделі додайте ID, що підтримує Chat Completions у Bedrock Runtime. Runtime не показує список моделей. Тест надсилає невеликий запит на інференцію, за який AWS може стягувати плату.",
+                "detectOllamaModelsTooltip": "Автоматично виявити доступні моделі Ollama",
+                "kTokens": "{count}K токенів",
+                "modelEditorAria": "Редактор моделей ШІ",
+                "supportsTools": "Підтримує інструменти",
+                "supportsVision": "Підтримує зір",
+                "thinkingReasoning": "Мислення/Міркування",
+                "toolQuality": "Якість інструментів: {quality}/5"
             },
             "copy": "Копіювати",
             "attachImage": "Прикріпити зображення",
@@ -2699,7 +2850,9 @@
                 "run": "Запустити в терміналі",
                 "insert": "Вставити в редактор",
                 "diff": "Порівняти з оригіналом",
-                "diffNoFile": "Немає файлу для порівняння"
+                "diffNoFile": "Немає файлу для порівняння",
+                "commandBlocked": "Команду заблоковано: потенційно руйнівна",
+                "confirmRun": "Підтвердіть запуск: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Розмірковую...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Змінити гілку",
                 "delete": "Видалити гілку",
                 "newBranch": "Нова гілка",
-                "branchFrom": "Відгалузити від цієї точки"
+                "branchFrom": "Відгалузити від цієї точки",
+                "messageCountShort": "{count} повід.",
+                "unnamed": "Гілка"
             },
             "context": {
                 "projectDetected": "Проєкт виявлено",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "працює",
                 "expired": "закінчився",
-                "refresh": "Оновити"
+                "refresh": "Оновити",
+                "modelsRunningMany": "Запущено моделей: {count}",
+                "modelsRunningOne": "Запущено {count} модель",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Кешування контексту",
@@ -2956,7 +3114,8 @@
                 "warning": "Усі файлові операції будуть виконані негайно без схвалення. Використовуйте на власний ризик.",
                 "disable": "Вимкнути",
                 "securityWarning": "Попередження безпеки",
-                "understood": "Зрозуміло"
+                "understood": "Зрозуміло",
+                "warningAria": "Попередження про екстремальний режим"
             },
             "errorServerError": "Сервер провайдера ШІ має проблеми. Спробуйте ще раз через мить.",
             "errorServiceUnavailable": "Провайдер ШІ тимчасово недоступний (перевантажений). Безкоштовні сервіси можуть мати обмеження. Спробуйте пізніше.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Без обмежень",
                 "roleAI": "AI",
-                "roleUser": "Користувач"
+                "roleUser": "Користувач",
+                "noConversations": "Ще немає розмов",
+                "titleCount": "Історія ({count})"
             },
             "dropFileToAnalyze": "Перетягніть файл для аналізу за допомогою AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} вхідних токенів, {output} вихідних токенів, за підрахунком провайдера",
-                "breakdownCache": "{input} вхідних токенів, {output} вихідних токенів, {cacheRead} прочитано з кешу промпту, {cacheWritten} записано в нього, за підрахунком провайдера"
+                "breakdownCache": "{input} вхідних токенів, {output} вихідних токенів, {cacheRead} прочитано з кешу промпту, {cacheWritten} записано в нього, за підрахунком провайдера",
+                "countShort": "{count} ток."
             },
             "executeOperations": "Виконати операції: {count}",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Буде пропущено",
                     "skipped": "Пропущено",
                     "existedAtCheckpoint": "існував у контрольній точці",
-                    "absentAtCheckpoint": "був відсутній у контрольній точці"
+                    "absentAtCheckpoint": "був відсутній у контрольній точці",
+                    "noFiles": "До цього результату відновлення не ввійшло жодного файлу.",
+                    "otherActions": "Інші дії",
+                    "requestedPaths": "Запитана підмножина шляхів",
+                    "scopeAll": "Обсяг: усі файли, збережені в контрольній точці.",
+                    "titleApplied": "Відновлення контрольної точки застосовано",
+                    "titleApplyReview": "Перевірка застосування відновлення контрольної точки",
+                    "titleDryRunComplete": "Пробний запуск відновлення контрольної точки завершено",
+                    "titleDryRunReview": "Перевірка пробного відновлення контрольної точки"
                 },
                 "checks": {
                     "exitSummary": "код виходу {code} · {seconds}s",
                     "continueOnFailure": "Виконує всі перевірки, навіть якщо одна з них не пройде.",
-                    "stopOnFailure": "Зупиняється на першій невдалій перевірці."
+                    "stopOnFailure": "Зупиняється на першій невдалій перевірці.",
+                    "checkLabel": "Перевірка:",
+                    "checksLabel": "Перевірки:",
+                    "exitChip": "код виходу {code}",
+                    "filterChip": "фільтр: {filter}",
+                    "filterLabel": "Фільтр:",
+                    "notAvailable": "н/д",
+                    "passedCount": "{passed}/{total} пройдено",
+                    "runCheckNote": "Запускає відібрану команду build/test/lint у робочій області. Скрипти збирання й тести виконують справжній код.",
+                    "runProjectCheck": "Запустити перевірку проєкту",
+                    "runVerification": "Запустити прохід верифікації",
+                    "runVerificationNote": "Запускає відібрані команди build/test/lint у робочій області. Скрипти збирання й тести виконують справжній код.",
+                    "stoppedEarly": "Зупинено на першій невдалій перевірці.",
+                    "timeoutLabel": "Тайм-аут: {seconds} с",
+                    "verification": "Верифікація"
                 },
                 "diagnostics": {
-                    "none": "Діагностичних повідомлень немає."
+                    "none": "Діагностичних повідомлень немає.",
+                    "errorCountMany": "{count} помилок",
+                    "errorCountOne": "{count} помилка",
+                    "title": "Діагностика",
+                    "truncated": "Список діагностики було обрізано.",
+                    "warningCountMany": "{count} попереджень",
+                    "warningCountOne": "{count} попередження"
                 },
                 "search": {
-                    "none": "Збігів не знайдено."
+                    "none": "Збігів не знайдено.",
+                    "ignoreCase": "без урахування регістру",
+                    "inPath": "у {path}",
+                    "literal": "буквально",
+                    "matchCountMany": "Збігів: {count}",
+                    "matchCountOne": "{count} збіг",
+                    "title": "Пошук у робочій області",
+                    "truncated": "Результати було скорочено."
                 },
                 "git": {
                     "noStagedDiff": "Немає виводу diff для змін в індексі.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Підтвердження індексації Git",
                     "commitNote": "Це створює коміт git з поточного індексу. Спершу перегляньте coding_git_status і coding_git_diff з staged=true.",
                     "stagePreviewNote": "Це показує попередній перегляд того, які із запитаних шляхів буде проіндексовано; індекс не зміниться.",
-                    "stageNote": "Це змінює індекс git для запитаних шляхів."
+                    "stageNote": "Це змінює індекс git для запитаних шляхів.",
+                    "afterCounts": "Після: {counts}",
+                    "beforeCounts": "До: {counts}",
+                    "clean": "Робоче дерево чисте.",
+                    "commitCountMany": "{count} комітів",
+                    "commitCountOne": "{count} коміт",
+                    "conflicted": "у конфлікті",
+                    "diffTruncated": "Вивід відмінностей було обрізано.",
+                    "logTitle": "Журнал Git",
+                    "pathsChip": "шляхи: {paths}",
+                    "showingNewest": "Показано найновіші {count}; є ще.",
+                    "statusCounts": "{staged} проіндексовано, {unstaged} не проіндексовано, {untracked} невідстежуваних, {conflicted} у конфлікті",
+                    "titleCommitCreated": "Коміт Git створено",
+                    "titleCommitDryRun": "Пробний коміт Git",
+                    "titleCommitReview": "Перевірка коміту Git",
+                    "titleReview": "Перевірка Git",
+                    "titleStageApplied": "Індексацію Git застосовано",
+                    "titleStagedDiff": "Проіндексовані відмінності Git",
+                    "titleStageDryRun": "Пробна індексація Git",
+                    "titleStatus": "Статус Git",
+                    "titleUnstagedDiff": "Непроіндексовані відмінності Git",
+                    "untracked": "невідстежуваний"
                 },
                 "patch": {
                     "validateNote": "Це перевіряє патч без зміни файлів.",
                     "applyNote": "Цей запит на застосування з високим ризиком записує файли після того, як бекенд створить контрольну точку перед застосуванням.",
                     "hideDiff": "Приховати уніфікований diff",
-                    "showDiff": "Показати уніфікований diff"
-                }
+                    "showDiff": "Показати уніфікований diff",
+                    "actualLabel": "фактично:",
+                    "checkpointCreated": "Створено контрольну точку перед застосуванням",
+                    "diffTruncated": "Попередній перегляд відмінностей обрізано для відображення.",
+                    "expectedLabel": "очікувано:",
+                    "firstLines": "перші {shown} з {total} рядків",
+                    "hunkCountMany": "{count} фрагментів",
+                    "hunkCountOne": "{count} фрагмент",
+                    "hunkIndex": "фрагмент {index}",
+                    "restoreManual": "Відновлення виконується вручну: після перевірки використайте {tool} з цим ідентифікатором контрольної точки.",
+                    "titleApplied": "Патч застосовано",
+                    "titleApplyBlocked": "Застосування патча заблоковано",
+                    "titleApplyReview": "Перевірка застосування патча",
+                    "titleDryRunConflicts": "Пробний запуск патча виявив конфлікти",
+                    "titleDryRunPassed": "Пробний запуск патча пройдено",
+                    "titleDryRunReview": "Перевірка пробного запуску патча",
+                    "warnings": "Попередження"
+                },
+                "binary": "двійковий",
+                "fileCountMany": "{count} файлів",
+                "fileCountOne": "{count} файл",
+                "moreCount": "+ще {count}",
+                "plan": {
+                    "likelyFiles": "Ймовірні файли",
+                    "openQuestions": "Відкриті питання",
+                    "reviewOnlyNote": "Артефакт лише для перегляду. Редагування та змінювальні інструменти й надалі використовують поточний режим підтвердження.",
+                    "riskHigh": "високий ризик",
+                    "riskLow": "низький ризик",
+                    "riskMedium": "середній ризик",
+                    "risks": "Ризики",
+                    "title": "План кодування"
+                },
+                "state": {
+                    "clean": "чисто",
+                    "failed": "помилка",
+                    "passed": "пройдено",
+                    "timedOut": "минув час"
+                },
+                "timeoutChip": "тайм-аут {seconds}s",
+                "truncated": "скорочено",
+                "workspaceLabel": "Робоча область:"
+            },
+            "attachedImageAlt": "Прикріплене зображення",
+            "stepNumber": "Крок {step}",
+            "transcribingLocally": "Локальна транскрипція...",
+            "transferPlan": {
+                "dependsOnMany": "Залежить від {count} підготовчих кроків",
+                "dependsOnOne": "Залежить від {count} підготовчого кроку",
+                "destination": "Призначення: {destination}",
+                "title": "Перевірка плану передавання",
+                "warnings": "Попередження"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Заголовок або маніфест сховища відновлено з парності.",
             "repairMetadataSuccess": "Відновлення завершено: заголовок або маніфест сховища відновлено з парності",
             "errorCorrectionBadge": "Виправлення помилок",
-            "itemsInFolder": "{count} елементів у /{folder}"
+            "itemsInFolder": "{count} елементів у /{folder}",
+            "compressionProfileArchive": "Архів (zstd -15)",
+            "compressionProfileBalanced": "Збалансований (zstd -9)",
+            "compressionProfileFast": "Швидкий (zstd -3)",
+            "damagedChunkLocation": "{id} - зміщення {offset} (довжина {len})",
+            "fallbackName": "Сховище",
+            "folderScanSummary": "Файлів: {files}, тек: {dirs} ({size})",
+            "namePlaceholderVault": "Моє захищене сховище",
+            "namePlaceholderZip": "Мій архів",
+            "recentDaysAgo": "{count} дн. тому",
+            "recentFileCountMany": "Файлів: {count}",
+            "recentFileCountOne": "{count} файл",
+            "recentMonthsAgo": "{count} міс. тому"
         },
         "cryptomator": {
             "title": "Сховище Cryptomator",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Шифрування вибраних елементів...",
             "ingestSkipped": "Сховище створено, але деякі елементи не вдалося додати:",
             "selectionInfo": "{count} елемент(ів) буде зашифровано у сховище",
-            "decrypting": "Розшифрування…"
+            "decrypting": "Розшифрування…",
+            "compatibleWithApp": "Сумісно з програмою Cryptomator",
+            "createFormatBadge": "Cryptomator формат 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Вміст AES-GCM",
+            "featureNameCipher": "Імена AES-SIV",
+            "formatVersion": "Формат {version}"
         },
         "compress": {
             "title": "Стиснути файли",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Деякі файли отримають однакові назви. Змініть шаблон.",
             "apply": "Застосувати",
             "existingCollision": "Деякі нові імена збігаються з файлами, які вже є в цій папці; ці файли не буде перезаписано, а їх перейменування пропущено.",
-            "existingCollisionHint": "(вже існує)"
+            "existingCollisionHint": "(вже існує)",
+            "baseNamePlaceholder": "файл",
+            "invalidName": "{name} (недійсне)"
         },
         "lockScreen": {
             "locked": "Додаток заблоковано",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Не змонтовано робочим столом. Від’єднайте та знову під’єднайте кабель, потім відкрийте знову.",
             "volumes_need_mount_observe": "У snap томи з'являються після підключення дозволу mount-observe. Виконайте це в терміналі, а потім поверніться до AeroFTP:",
             "volumes_unavailable": "Не вдалося прочитати змонтовані томи.",
-            "portable_device": "Портативний пристрій"
+            "portable_device": "Портативний пристрій",
+            "drivesLeftPanel": "Диски лівої панелі",
+            "drivesRightPanel": "Диски правої панелі",
+            "modeGroupLabel": "Режим бічної панелі",
+            "placesSidebarLabel": "Бічна панель місць"
         },
         "viewMode": {
             "list": "Список",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Переглянути сусідні каталоги",
             "loading": "Завантаження...",
             "noSubdirectories": "Немає підкаталогів",
-            "browseChildren": "Переглянути підкаталоги"
+            "browseChildren": "Переглянути підкаталоги",
+            "ariaLabel": "Навігаційний ланцюжок",
+            "syncBoundaryTitle": "{path} (межа синхронізації)"
         },
         "bridge": {
             "checking": "Перевірка {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Попередній перегляд недоступний",
-            "title": "Швидкий перегляд"
+            "title": "Швидкий перегляд",
+            "closePreview": "Закрити попередній перегляд",
+            "dialogLabel": "Швидкий перегляд: {name}",
+            "nextFile": "Наступний файл",
+            "position": "{index} з {total}",
+            "previousFile": "Попередній файл"
         },
         "properties": {
             "general": "Загальні",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Контрольна сума об'єкта, яку Immich записує під час вивантаження.",
                 "crypt-overlay-ciphertext": "Хеш покриває зашифровані байти, збережені на сервері."
             },
-            "readOnlyIsLinkTarget": "Це символьне посилання: права належать файлу, на який воно вказує. Щоб змінити їх, відкрийте властивості цього файлу."
+            "readOnlyIsLinkTarget": "Це символьне посилання: права належать файлу, на який воно вказує. Щоб змінити їх, відкрийте властивості цього файлу.",
+            "exactBytes": "({bytes} байтів)"
         },
         "duplicates": {
             "sortWasted": "Витрачене місце",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Побайтово ідентичні",
             "modeNonIdenticalHint": "Перцептивна або текстова схожість, без автовидалення",
             "potentialWasteSelected": "потенційно марно (вибрані)",
-            "similarityDistance": "{similarity}, відст. {distance}"
+            "similarityDistance": "{similarity}, відст. {distance}",
+            "modeExact": "Точний",
+            "modeLabel": "Режим:",
+            "modeNonIdentical": "Неідентичні"
         },
         "diskUsage": {
             "title": "Використання диска",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Немає мережевої активності. Передайте файли для відображення подій.",
                 "time": "Час",
                 "event": "Подія",
-                "detail": "Деталі"
+                "detail": "Деталі",
+                "command": "Команда",
+                "ipcTransfersCount": "IPC + Передавання ({count})",
+                "status": "Стан",
+                "type": "Тип"
             },
             "system": {
                 "appVersion": "Версія AeroFTP",
@@ -3953,7 +4258,8 @@
                 "dark": "Темна",
                 "light": "Світла",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Ключі LocalStorage"
+                "localStorageKeysTitle": "Ключі LocalStorage",
+                "localStorageEntrySummary": "{size} байтів · {preview}"
             },
             "copyFileListToClipboard": "Скопіювати список файлів до буфера обміну",
             "filesCopied": "{count} записів файлів скопійовано до буфера обміну",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Двічі клацніть виділення або натисніть Enter, щоб застосувати, Esc, щоб скасувати",
                     "cropRatio": "Пропорції",
                     "cropRatioFree": "Довільно",
-                    "cropRatioOriginal": "Оригінал"
+                    "cropRatioOriginal": "Оригінал",
+                    "rotateCcw90Short": "90° ліворуч",
+                    "rotateCw90Short": "90° праворуч"
                 },
                 "toggleTransparencyBg": "Тло прозорості (перемкнути)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "Завантаження PDF...",
                 "open": "Відкрити PDF",
                 "page": "Сторінка",
-                "zoom": "Масштаб"
+                "zoom": "Масштаб",
+                "documentTitle": "PDF-документ"
             },
             "text": {
                 "auto": "Авто",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Планшет (768px)",
                 "wordWrap": "Перенос слів",
                 "zoomIn": "Збільшити",
-                "zoomOut": "Зменшити"
+                "zoomOut": "Зменшити",
+                "htmlPreviewFrameTitle": "Попередній перегляд HTML"
             },
             "video": {
                 "exitFullscreen": "Вийти з повноекранного режиму (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Виявлено накладку Rclone Crypt",
             "aerocryptImportDesc": "Профіль імпортовано з rclone.conf для {name}: відкрити накладку зараз?",
             "aerocryptImportOpen": "Відкрити накладку",
-            "aerovaultOverlayExpired": "AeroVault Overlay заблоковано через неактивність. Відкрийте сховище знову, щоб продовжити."
+            "aerovaultOverlayExpired": "AeroVault Overlay заблоковано через неактивність. Відкрийте сховище знову, щоб продовжити.",
+            "aerovaultOverlaySource": "Оверлей AeroVault активний ({source})",
+            "fileOperationsLabel": "Операції з файлами",
+            "overlayBadge": "ОВЕРЛЕЙ"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Двофакторна автентифікація",
                 "verify": "Перевірити та увімкнути",
                 "active": "2FA активна",
-                "inactive": "2FA неактивна"
+                "inactive": "2FA неактивна",
+                "codeGroupLabel": "Код із {count} цифр",
+                "digitLabel": "Цифра {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Огляд",
                     "installed": "Встановлені"
-                }
+                },
+                "remoteInstallDisabled": "Віддалене встановлення плагінів наразі вимкнено, доки реєстр не буде автентифіковано на стороні клієнта. Локально встановлені плагіни продовжують працювати як зазвичай."
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "Відновлені файли знову з'являться у своїй оригінальній папці",
             "connectionNamePlaceholder": "Назва з'єднання (напр. Мій FileLu Cloud)",
             "trashAutoExpiry": "Файли у кошику автоматично видаляються FileLu через 7 днів",
-            "rsyncTransferOnly": "Кінцева точка лише для передачі: перегляд недоступний у Rsync. Використовуй Native API, WebDAV, S3 або FTP для навігації; переключися на Rsync для delta-передач з високою пропускною здатністю."
+            "rsyncTransferOnly": "Кінцева точка лише для передачі: перегляд недоступний у Rsync. Використовуй Native API, WebDAV, S3 або FTP для навігації; переключися на Rsync для delta-передач з високою пропускною здатністю.",
+            "badgePasswordProtected": "Захищено паролем",
+            "badgeWatermarked": "З водяним знаком"
         },
         "box": {
             "addComment": "Додати коментар",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Безкоштовний тариф",
             "freeCardTier": "Безкошт. + картка",
-            "paidTier": "Платно"
+            "paidTier": "Платно",
+            "extraFeatures": "Додатково",
+            "coreOpsList": "Вивантаження, Завантаження, Видалення, Перейменування, Переміщення, Створення теки, Пошук",
+            "coreOpsLegend": "Базові = Вивантаження, Завантаження, Видалення, Перейменування, Переміщення, Створення теки, Пошук"
         },
         "healthCheck": {
             "title": "Перевірка стану сервера",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} файл",
             "releaseAssetMany": "Файлів: {count}",
             "repoPrivate": "Приватний",
-            "repoPublic": "Публічний"
+            "repoPublic": "Публічний",
+            "actionsLiveBadge": "Наживо",
+            "actionsRunningTitle": "GitHub Actions (виконується)",
+            "coAuthors": "Співавтори",
+            "pagesPathPlaceholder": "/ або /docs",
+            "pagesStatusBuilding": "збирається",
+            "pagesStatusBuilt": "зібрано",
+            "pagesStatusErrored": "помилка",
+            "refreshBranches": "Оновити гілки",
+            "repoPrivateTitle": "Приватний репозиторій",
+            "repoPublicTitle": "Публічний репозиторій",
+            "unpushedCommitsOnBranchMany": "{count} невідправлених комітів у {branch}",
+            "unpushedCommitsOnBranchOne": "{count} невідправлений коміт у {branch}"
         },
         "filenNotes": {
             "title": "Зашифровані нотатки",
@@ -4967,7 +5300,8 @@
             "tagName": "Назва тегу",
             "removeTag": "Прибрати тег",
             "manageTags": "Керування тегами",
-            "deleteTagConfirm": "Видалити тег «{name}»? Нотатки збережуть свій текст."
+            "deleteTagConfirm": "Видалити тег «{name}»? Нотатки збережуть свій текст.",
+            "betaBadge": "БЕТА"
         },
         "shareLinkModal": {
             "title": "Посилання для спільного доступу",
@@ -5077,7 +5411,8 @@
                 "down": "Недоступний",
                 "pending": "Перевірка...",
                 "unknown": "Не перевірено",
-                "clickToRetry": "натисніть, щоб перевірити знову"
+                "clickToRetry": "натисніть, щоб перевірити знову",
+                "withActiveSession": "{title} (активний сеанс)"
             },
             "densityCompact": "Компактні рядки",
             "densityComfortable": "Зручні рядки",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Шифрований оверлей AeroCrypt (нативний): імена та вміст зашифровані на цьому сервері.",
-                "rcloneTitle": "Оверлей rclone crypt (interop): імена та вміст зашифровані на цьому сервері."
+                "rcloneTitle": "Оверлей rclone crypt (interop): імена та вміст зашифровані на цьому сервері.",
+                "keyBits": "{bits} біт"
             },
             "sidebar": {
                 "filters": "Фільтри",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "Нам не вдалося прочитати налаштування шифрування цього кошика, оскільки ключ застосунку не має можливості readBucketEncryption. Значення, яке нам не дозволено бачити, не означає, що шифрування вимкнено.",
                 "unknownShapeTitle": "Нам не вдалося прочитати налаштування шифрування цього кошика, оскільки відповідь не мала задокументованої структури. Ключ мав право її прочитати, тож ідеться про відповідь, а не про дозволи."
             },
-            "exportProfile": "Експорт..."
+            "exportProfile": "Експорт...",
+            "quotaLabel": "Квота",
+            "storageNoCapReported": "{used} (ліміт квоти не повідомлено)",
+            "e2eBitsBadge": "E2E {bits} біт",
+            "filenAuthVersionTitle": "Визначено з Filen auth/info під час успішного підключення",
+            "demoBadge": "ДЕМО",
+            "timeAgo": {
+                "now": "зараз",
+                "minutes": "{count} хв",
+                "hours": "{count} год",
+                "days": "{count} д",
+                "months": "{count} міс"
+            }
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",
@@ -5221,7 +5569,8 @@
             "linkType": "Тип",
             "createMergeRequest": "Створити Merge Request",
             "mrTitle": "Заголовок MR",
-            "mrBody": "Опис (необов'язково)"
+            "mrBody": "Опис (необов'язково)",
+            "sourceCode": "Вихідний код"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "Дублювати користувача (лише сервери, без паролів)",
             "copyLockedHint": "Спершу перемкніться на цей обліковий запис, щоб дублювати його сервери",
             "crossUserDedupTitle": "Уже збережено іншим обліковим записом",
-            "crossUserDedupMessage": "\"{name}\" використовує серверний обліковий запис, який також збережено на цьому пристрої в: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" використовує серверний обліковий запис, який також збережено на цьому пристрої в: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Закрити діалог скидання пароля",
+                "confirmPassword": "Підтвердьте новий пароль",
+                "errMismatch": "Нові паролі облікового запису не збігаються.",
+                "errNewRequired": "Введіть новий пароль облікового запису.",
+                "errNotAuthorized": "Щоб скинути пароль іншого облікового запису, потрібно бути адміністратором.",
+                "errNotForSelf": "У своєму обліковому записі скористайтеся командою Змінити пароль.",
+                "errStoreNotReady": "Спершу розблокуйте сховище та повторіть спробу.",
+                "errTypeReset": "Введіть RESET, щоб підтвердити цю руйнівну операцію.",
+                "errUserNotFound": "Цього користувача більше не існує.",
+                "newPassword": "Новий пароль облікового запису",
+                "statEncryptedBytes": "зашифрованих байтів",
+                "statProfiles": "профілів",
+                "statSettings": "налаштувань",
+                "title": "Скидання пароля = знищення даних",
+                "typeReset": "Введіть RESET",
+                "wipeDetail": "Поточний пароль неможливо відновити. AeroFTP видалить збережені сервери, налаштування користувача та стан блокування цільового облікового запису, а потім випустить новий ключ шифрування, захищений новим паролем.",
+                "wipeWarning": "Це назавжди зітре зашифрований розділ цільового облікового запису."
+            },
+            "dropdown": {
+                "accountPassword": "Пароль облікового запису",
+                "lock": "Заблокувати",
+                "newUser": "Новий користувач",
+                "noUsers": "Користувачів ще немає. Скористайтеся кнопкою «Новий користувач» нижче, щоб додати першого.",
+                "protectionNote": "Ваш обліковий запис захищено шифруванням Argon2id + AES-KW + AES-256-GCM",
+                "users": "Користувачі"
+            }
         },
         "aerocryptNative": {
             "title": "Накладання AeroCrypt",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Режим вибирається під час створення з'єднання й залишається незмінним під час редагування збереженого профілю. Щоб використати інший режим, створіть нове з'єднання."
+                "lockedInEdit": "Режим вибирається під час створення з'єднання й залишається незмінним під час редагування збереженого профілю. Щоб використати інший режим, створіть нове з'єднання.",
+                "notInBuild": "Не входить до цієї збірки AeroFTP."
             }
         },
         "flatpak": {

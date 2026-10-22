@@ -4,6 +4,7 @@
 import React, { useMemo } from 'react';
 import { CheckCircle2, FileCode2, RotateCcw, ShieldAlert } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import type { TranslationFunction } from '../../i18n';
 import type { CodingCheckpointRestoreResult } from './aiChatTypes';
 
 interface CodingCheckpointRestoreReviewProps {
@@ -42,14 +43,14 @@ const actionClasses = (action: string): string => {
     }
 };
 
-const actionLabel = (action: string, dryRun: boolean): string => {
+const actionLabel = (action: string, dryRun: boolean, t: TranslationFunction): string => {
     switch (action) {
         case 'restore':
-            return dryRun ? 'would rewrite' : 'rewritten';
+            return dryRun ? t('ai.coding.restore.wouldRewrite') : t('ai.coding.restore.rewritten');
         case 'delete':
-            return dryRun ? 'would delete' : 'deleted';
+            return dryRun ? t('ai.coding.restore.wouldDelete') : t('ai.coding.restore.deleted');
         case 'noop':
-            return dryRun ? 'would skip' : 'skipped';
+            return dryRun ? t('ai.coding.restore.wouldSkip') : t('ai.coding.restore.skipped');
         default:
             return action;
     }
@@ -78,8 +79,8 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
     if (!result && !effectiveCheckpointId) return null;
 
     const title = !result
-        ? effectiveDryRun ? 'Checkpoint Restore Dry Run Review' : 'Checkpoint Restore Apply Review'
-        : effectiveDryRun ? 'Checkpoint Restore Dry Run Complete' : 'Checkpoint Restore Applied';
+        ? effectiveDryRun ? t('ai.coding.restore.titleDryRunReview') : t('ai.coding.restore.titleApplyReview')
+        : effectiveDryRun ? t('ai.coding.restore.titleDryRunComplete') : t('ai.coding.restore.titleApplied');
     const Icon = result ? CheckCircle2 : effectiveDryRun ? RotateCcw : ShieldAlert;
     const shellClass = result
         ? effectiveDryRun
@@ -125,7 +126,7 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
                     </span>
                     {result && (
                         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/65">
-                            {result.files.length} file{result.files.length === 1 ? '' : 's'}
+                            {t(result.files.length === 1 ? 'ai.coding.fileCountOne' : 'ai.coding.fileCountMany', { count: result.files.length })}
                         </span>
                     )}
                 </div>
@@ -172,7 +173,7 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
                     </div>
                     {otherCount > 0 && (
                         <div className="rounded-lg border border-purple-400/20 bg-purple-400/10 p-2 sm:col-span-3">
-                            <div className="text-[10px] uppercase tracking-wide text-purple-200/70">Other actions</div>
+                            <div className="text-[10px] uppercase tracking-wide text-purple-200/70">{t('ai.coding.restore.otherActions')}</div>
                             <div className="mt-1 text-lg font-semibold text-purple-100">{otherCount}</div>
                         </div>
                     )}
@@ -182,7 +183,7 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
             {selectedPaths.length > 0 ? (
                 <div className="mt-3">
                     <div className="mb-1 text-[10px] uppercase tracking-wide text-white/40">
-                        Requested path subset
+                        {t('ai.coding.restore.requestedPaths')}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                         {selectedPaths.slice(0, 12).map(path => (
@@ -192,14 +193,14 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
                         ))}
                         {selectedPaths.length > 12 && (
                             <span className="rounded border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/50">
-                                +{selectedPaths.length - 12} more
+                                {t('ai.coding.moreCount', { count: selectedPaths.length - 12 })}
                             </span>
                         )}
                     </div>
                 </div>
             ) : !result && (
                 <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2 text-white/60">
-                    Scope: all files captured in the checkpoint.
+                    {t('ai.coding.restore.scopeAll')}
                 </div>
             )}
 
@@ -213,7 +214,7 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
                                     {file.path}
                                 </span>
                                 <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${actionClasses(file.action)}`}>
-                                    {actionLabel(file.action, effectiveDryRun)}
+                                    {actionLabel(file.action, effectiveDryRun, t)}
                                 </span>
                             </div>
                             <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-white/50">
@@ -232,7 +233,7 @@ export const CodingCheckpointRestoreReview: React.FC<CodingCheckpointRestoreRevi
 
             {result && result.files.length === 0 && (
                 <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2 text-white/60">
-                    No files were included in this restore result.
+                    {t('ai.coding.restore.noFiles')}
                 </div>
             )}
         </div>

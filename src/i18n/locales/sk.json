@@ -337,7 +337,38 @@
             "protonSignOut": "Odhlásiť sa",
             "protonSignOutHelp": "Ukončí reláciu v Proton a odstráni ju z tohto profilu.",
             "protonSignInExpired": "Platnosť prihlasovacej stránky vypršala. Prihláste sa znova.",
-            "protonNativeUnavailable": "Táto zostava neobsahuje natívneho klienta Proton Drive."
+            "protonNativeUnavailable": "Táto zostava neobsahuje natívneho klienta Proton Drive.",
+            "forms": {
+                "publicApiKey": "Verejný kľúč API",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Verejný kľúč.",
+                "secretApiKey": "Tajný kľúč API",
+                "uploadcareSecretHint": "Používa sa iba na správu súborov cez REST s overením {scheme}.",
+                "flatMediaLibrary": "Plochá knižnica médií",
+                "uploadcareNoFolders": "Uploadcare neposkytuje natívne priečinky; súbory projektu sú uvedené v koreni podľa UUID.",
+                "urlEndpointId": "ID koncového bodu URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Koncový bod URL.",
+                "privateApiKey": "Súkromný kľúč API",
+                "storedVaultBasicAuth": "Uložené v miestnom trezore a odosielané iba do {provider} cez Basic Auth.",
+                "cloudName": "Názov cloudu",
+                "cloudinaryCloudNameHint": "Nájdete v Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Kľúč API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Kľúč API.",
+                "apiSecret": "Tajomstvo API",
+                "apiSecretPlaceholder": "Tajomstvo API",
+                "openProviderLink": "Otvoriť odkaz {provider}",
+                "githubPatHint": "Podrobný PAT s oprávnením Contents (čítanie a zápis).",
+                "generateToken": "Vygenerovať token",
+                "applicationKeyId": "ID kľúča aplikácie",
+                "backblazeKeyIdHint": "ID aplikačného kľúča B2, začína na 003. Vygenerujte ho na stránke App Keys v Backblaze.",
+                "applicationKey": "Aplikačný kľúč",
+                "backblazeKeyHint": "Zobrazí sa iba raz pri vytvorení. Zaobchádzajte s ním ako s heslom.",
+                "bucketNameExactHint": "Presný názov bucketu, rozlišujú sa veľké a malé písmená.",
+                "megacmdSetupFirst": "Najprv nastavte MEGAcmd",
+                "megacmdFetchUrlTitle": "Spustiť {cmd} a automaticky vyplniť URL",
+                "fetchUrl": "Načítať URL",
+                "megacmdWebdavHint": "Používateľské meno a heslo sú zámerne vynechané. AeroFTP pri pripojení sám spustí „{cmd}“, aby naštartoval most a načítal túto adresu: pole môže zostať prázdne. „Načítať URL“ je voliteľné ručné obnovenie; ak MEGAcmd používa vlastný port, zmeňte ho tu."
+            },
+            "manualStorageUnitLabel": "Jednotka {label}"
         },
         "browser": {
             "remote": "Vzdialený",
@@ -390,7 +421,19 @@
             "listingPath": "Načítava sa {path}...",
             "pleaseWait": "Čakajte prosím...",
             "sameNameLeakChip": "rovnaký názov",
-            "sameNameLeakTooltip": "Tento názov sa objavuje aj na inej ceste v tomto šifrovanom trezore. Keďže sa názvy šifrujú deterministicky, pozorovateľ šifrovaného úložiska dokáže zistiť, že oba zdieľajú rovnaký názov."
+            "sameNameLeakTooltip": "Tento názov sa objavuje aj na inej ceste v tomto šifrovanom trezore. Keďže sa názvy šifrujú deterministicky, pozorovateľ šifrovaného úložiska dokáže zistiť, že oba zdieľajú rovnaký názov.",
+            "endpointSelector": {
+                "localFolder": "Miestny priečinok",
+                "localFolderHint": "Vyberte miestnu cestu pre tento panel",
+                "noSavedProfiles": "Žiadne uložené profily",
+                "savedProfiles": "Uložené vzdialené profily",
+                "title": "Koncový bod"
+            },
+            "leftPanelMarker": "Ľavý panel",
+            "localFilesLabel": "Miestne súbory",
+            "localFilesRightLabel": "Miestne súbory (pravý panel)",
+            "remoteFilesLabel": "Vzdialené súbory",
+            "rightPanelMarker": "Pravý panel"
         },
         "contextMenu": {
             "askAeroAgent": "Opýtať sa AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Graf rýchlosti",
             "hideSpeedGraph": "Skryť graf rýchlosti",
             "speedAvg": "priem. {speed}",
-            "speedPeak": "max. {speed}"
+            "speedPeak": "max. {speed}",
+            "badgeBatch": "DÁVKA",
+            "badgeDownload": "SŤAHOVANIE",
+            "badgeLive": "NAŽIVO",
+            "badgeStream": "PRÚD",
+            "badgeUpload": "NAHRÁVANIE",
+            "earlierItemsHidden": "Skryté staršie položky: {count}",
+            "folderFilesProgress": "{done}/{total} súborov",
+            "laneDone": "hotovo",
+            "laneError": "chyba",
+            "unifiedPlan": {
+                "destination": "Cieľ",
+                "dialogLabel": "Plán prenosu",
+                "engineAerovaultOverlay": "Prekrytie AeroVault",
+                "engineCompareOnly": "Iba porovnať",
+                "engineCrossProfileSync": "Synchronizácia medzi profilmi",
+                "engineCrossProfileTransfer": "Prenos medzi profilmi",
+                "engineLocalDelta": "Lokálny delta prenos",
+                "engineLocalFs": "Lokálny súborový systém",
+                "engineProviderDownload": "Sťahovanie od poskytovateľa",
+                "engineProviderUpload": "Nahrávanie k poskytovateľovi",
+                "engineUnsupported": "Nepodporované",
+                "execute": "Vykonať",
+                "items": "Položky",
+                "modeBackup": "Záloha",
+                "modeBisync": "Obojsmerná synchronizácia",
+                "modeCompare": "Porovnať",
+                "modeCopy": "Kopírovať",
+                "modeMirror": "Zrkadliť",
+                "modeMove": "Presunúť",
+                "modeSync": "Synchronizovať",
+                "notExecutable": "Túto dvojicu koncových bodov zatiaľ nemožno spustiť.",
+                "parallel": "Paralelne",
+                "reviewBeforeExecution": "Skontrolovať pred spustením",
+                "route": "{pair} cez {engine}",
+                "size": "Veľkosť",
+                "source": "Zdroj",
+                "title": "Plán: {mode}"
+            }
         },
         "settings": {
             "title": "Nastavenia",
@@ -1040,7 +1121,13 @@
                 "title": "Natívny rsync (beta)",
                 "description": "Použite zabudovanú implementáciu protokolu rsync v AeroFTP namiesto spúšťania systémového binárneho rsync. Znižuje réžiu procesov; môže byť menej overená v hraničných prípadoch.",
                 "enableToggle": "Povoliť natívny rsync pre delta synchronizáciu cez SFTP",
-                "experimental": "Experimentálne: pri chybe sa automaticky vráti na klasický rsync. Nezhody host kľúča sa objavia ako kritické chyby bez tichej zálohy."
+                "experimental": "Experimentálne: pri chybe sa automaticky vráti na klasický rsync. Nezhody host kľúča sa objavia ako kritické chyby bez tichej zálohy.",
+                "modeAuto": "Automaticky",
+                "modeClassic": "Klasický",
+                "modeNative": "Natívny",
+                "classicNotFoundTooltip": "Klasický program rsync sa v PATH nenašiel. Na povolenie tohto režimu nainštalujte rsync (balík pre Linux/macOS, Windows cez WSL/cygwin/scoop).",
+                "classicAt": "Klasický rsync v {path}",
+                "classicNotDetected": "Klasický program rsync sa v PATH nezistil. Natívny je jediný dostupný engine na tomto počítači."
             },
             "startMinimizedOnAutostart": "Spustiť minimalizované do oznamovacej oblasti",
             "startMinimizedOnAutostartDesc": "Skryť hlavné okno pri automatickom spustení. AeroFTP beží ďalej v oznamovacej oblasti, otvor ho cez ikonu v lište, keď ho budeš potrebovať.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "V nešifrovanom úložisku nájdené overovacie údaje OAuth: {count}",
             "fontSystemInstall": "inštalácia do systému",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Odporúča sa pre maximálne zabezpečenie",
+            "fontCustomOption": "Vlastné...",
+            "fontSystemInstallHint": "Vyžaduje inštaláciu do systému. Ak nie je k dispozícii, AeroFTP automaticky použije náhradu.",
+            "fontSizeIndicatorLabel": "Písmo"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Zastaviť",
                 "stopShell": "Zastaviť shell",
                 "closed": "Terminál zatvorený.",
-                "commandInsertedReview": "Príkaz vložený do Terminalu. Stlačte Enter pre spustenie."
+                "commandInsertedReview": "Príkaz vložený do Terminalu. Stlačte Enter pre spustenie.",
+                "decreaseFont": "Zmenšiť písmo (Ctrl+-)",
+                "emptyClickPlus": "Kliknutím na {plus} otvoríte terminál",
+                "emptySshHint": "alebo {ssh} pre vzdialený shell na {host}",
+                "increaseFont": "Zväčšiť písmo (Ctrl+=)",
+                "newTab": "Nová karta terminálu",
+                "sshShellTo": "SSH shell na {host}",
+                "theme": "Motív terminálu"
             },
             "editorPanel": {
                 "emptyState": "Kliknite pravým tlačidlom na súbor a zvoľte \"Zobraziť zdroj\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Ukladanie...",
                 "noFileSelected": "Nebol vybraný žiadny súbor na zobrazenie",
                 "loading": "Načítavanie editora...",
-                "dragToTerminalRun": "Pretiahnite do Terminalu pre vloženie príkazu na spustenie"
+                "dragToTerminalRun": "Pretiahnite do Terminalu pre vloženie príkazu na spustenie",
+                "closeEditor": "Zavrieť editor",
+                "resetChanges": "Zahodiť zmeny"
             },
             "previewPanel": {
                 "emptyState": "Kliknite pravým tlačidlom na súbor a zvoľte \"Náhľad\""
             },
             "codeEditor": "Editor kódu",
-            "sshTerminal": "SSH terminál"
+            "sshTerminal": "SSH terminál",
+            "comingSoon": "Už čoskoro",
+            "soonBadge": "Čoskoro"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Ak je token zrušený, autorizujte znova ručne"
             },
             "profilesLoadFailed": "Uložené servery sa nepodarilo načítať: {error}",
-            "cleanupSummary": "{count} súborov, uvoľnené {size}"
+            "cleanupSummary": "{count} súborov, uvoľnené {size}",
+            "maturity": {
+                "alpha": "Alfa"
+            },
+            "dialogDashboardLabel": "Prehľad cloudovej synchronizácie",
+            "dialogLoadingLabel": "Načítava sa cloudová synchronizácia",
+            "dialogSettingsLabel": "Nastavenia cloudovej synchronizácie",
+            "dialogSetupLabel": "Konfigurácia cloudovej synchronizácie",
+            "onePerLineHint": "(jeden na riadok)",
+            "pairsEditorLabel": "Editor párov AeroCloud",
+            "remoteSubfolderPlaceholder": "oblak"
         },
         "statusBar": {
             "connected": "Pripojený",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "čiastočné, nečitateľné priečinky: {count}",
             "usedScanFailed": "Prehľadávanie využitého úložiska zlyhalo",
             "usedScanEmpty": "Prehľadávanie cesty {path} nenašlo žiadne súbory; ponechala sa hodnota z vyrovnávacej pamäte. Skontrolujte cestu alebo podporu rekurzívneho výpisu na serveri.",
-            "filenBridgeAccountTotal": "Filen Desktop tu neuvádza celkové využitie vášho účtu: zobrazená hodnota je súčet súborov v tejto ceste. Natívne pripojenie k Filen zobrazí celkové využitie účtu okamžite."
+            "filenBridgeAccountTotal": "Filen Desktop tu neuvádza celkové využitie vášho účtu: zobrazená hodnota je súčet súborov v tejto ceste. Natívne pripojenie k Filen zobrazí celkové využitie účtu okamžite.",
+            "ariaLabel": "Stavový riadok",
+            "debugBadge": "LADENIE",
+            "debugModeActive": "Režim ladenia je aktívny"
         },
         "dialogs": {
             "confirmTitle": "Potvrdiť",
@@ -1620,7 +1735,8 @@
                 "apRole": "Zakladateľ, vývojár, správca, spoluautor dizajnu",
                 "ekRole": "Výskumník, inžinier zabezpečenia kvality, spoluautor dizajnu"
             },
-            "madeBy": "spoločnosťou {author}"
+            "madeBy": "spoločnosťou {author}",
+            "statsLine": "{protocols} protokolov · {languages} jazykov · archívy AES-256"
         },
         "support": {
             "title": "Podporte AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Projekt (Unixname)",
             "opendriveNotApiKey": "(nie je to váš API kľúč OpenDrive)",
             "endpoint": "Koncový bod",
-            "accountId": "ID účtu"
+            "accountId": "ID účtu",
+            "servicesHeading": "Služby",
+            "sourceforgeSshKeyHelp": "SourceForge vyžaduje overenie kľúčom SSH. Vygenerujte kľúč pomocou {cmd} a nahrajte ho na {link}.",
+            "sourceforgeSshSettings": "Nastavenia SSH",
+            "fullGuide": "Úplná príručka",
+            "endpointTemplateExample": "napr. {template}",
+            "jurisdiction": "Jurisdikcia",
+            "insecureCertDialogLabel": "Upozornenie na nezabezpečený certifikát",
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Overenie kľúča hostiteľa"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -2111,7 +2236,10 @@
             "rename": "Premenovať",
             "resume": "Pokračovať",
             "resumeHint": "Pokračovať v prerušenom prenose namiesto jeho reštartovania",
-            "cancel": "Zrušiť"
+            "cancel": "Zrušiť",
+            "dialogLabel": "Potvrdenie prepísania",
+            "moreInQueue": "+{count} v poradí",
+            "unknownDate": "Neznáme"
         },
         "statusbar": {
             "queue": "Fronta",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Použiteľné páry ciest (miestna/vzdialená) v tejto šablóne: {count}. Okno AeroSync pracuje s práve jedným párom, preto sa nič neimportovalo. Upravte šablónu tak, aby v nej zostal jediný pár, a potom ju importujte znova.",
             "templateNamePlaceholder": "napr. Nočná záloha do S3",
             "templateDescPlaceholder": "Na čo slúži táto šablóna (voliteľné)",
-            "templateExportCliDesc": "Obalový skript pre aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Obalový skript pre aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Zakázať",
+            "multiPathEditorLabel": "Editor viacerých ciest",
+            "multiPathEnablePair": "Povoliť",
+            "multiPathLocalPlaceholder": "Miestna cesta",
+            "multiPathRemotePlaceholder": "Vzdialená cesta",
+            "rollbackDialogLabel": "Snímka na vrátenie",
+            "rollbackMoreFiles": "+{count} ďalších...",
+            "rollbackSnapshotSummaryMany": "{count} súborov, {size}",
+            "rollbackSnapshotSummaryOne": "{count} súbor, {size}",
+            "templateDialogLabel": "Šablóna synchronizácie",
+            "templateExcludes": "Vylúčenia",
+            "templateLocal": "Miestne",
+            "templateRemote": "Vzdialené",
+            "templateRetries": "Opakovania"
         },
         "ui": {
             "syncing": "Synchronizácia...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Zamietnuť vykonanie nástroja",
                 "toggleDetails": "Zobraziť/skryť detaily",
                 "allowSession": "Povoliť pre túto reláciu",
-                "nonAtomicReplace": "Neatomická náhrada: súbor krátko chýba"
+                "nonAtomicReplace": "Neatomická náhrada: súbor krátko chýba",
+                "moreOptions": "Ďalšie možnosti",
+                "panelAria": "Panel schvaľovania nástrojov"
             },
             "settings": {
                 "title": "Nastavenia AI",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Záložný",
                 "routingNoFallback": "Žiadny",
                 "bedrockNeedsModel": "Pred testovaním pridajte a povoľte model Bedrock na karte Modely.",
-                "bedrockSetup": "Nastavte Runtime URL pre svoj región AWS. Na karte Modely pridajte ID, ktoré podporuje Chat Completions v Bedrock Runtime. Runtime nezobrazuje zoznam modelov. Test odošle malú inferenčnú požiadavku, za ktorú môže AWS účtovať poplatky."
+                "bedrockSetup": "Nastavte Runtime URL pre svoj región AWS. Na karte Modely pridajte ID, ktoré podporuje Chat Completions v Bedrock Runtime. Runtime nezobrazuje zoznam modelov. Test odošle malú inferenčnú požiadavku, za ktorú môže AWS účtovať poplatky.",
+                "detectOllamaModelsTooltip": "Automaticky zistiť dostupné modely Ollama",
+                "kTokens": "{count}K tokenov",
+                "modelEditorAria": "Editor modelov AI",
+                "supportsTools": "Podporuje nástroje",
+                "supportsVision": "Podporuje videnie",
+                "thinkingReasoning": "Premýšľanie/Uvažovanie",
+                "toolQuality": "Kvalita nástrojov: {quality}/5"
             },
             "copy": "Kopírovať",
             "attachImage": "Priložiť obrázok",
@@ -2699,7 +2850,9 @@
                 "run": "Spustiť v termináli",
                 "insert": "Vložiť do editora",
                 "diff": "Porovnať s originálom",
-                "diffNoFile": "Žiadny súbor na porovnanie"
+                "diffNoFile": "Žiadny súbor na porovnanie",
+                "commandBlocked": "Príkaz zablokovaný: potenciálne deštruktívny",
+                "confirmRun": "Potvrdiť spustenie: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Premyslam...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Prepnúť vetvu",
                 "delete": "Zmazať vetvu",
                 "newBranch": "Nová vetva",
-                "branchFrom": "Rozvetvit od tohto bodu"
+                "branchFrom": "Rozvetvit od tohto bodu",
+                "messageCountShort": "{count} spr.",
+                "unnamed": "Vetva"
             },
             "context": {
                 "projectDetected": "Projekt detekovany",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "beží",
                 "expired": "vypršal",
-                "refresh": "Obnoviť"
+                "refresh": "Obnoviť",
+                "modelsRunningMany": "Spustené modely: {count}",
+                "modelsRunningOne": "Spustený {count} model",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Cachovanie kontextu",
@@ -2956,7 +3114,8 @@
                 "warning": "Všetky operácie so súbormi sa vykonajú okamžite bez schválenia. Používajte na vlastné riziko.",
                 "disable": "Vypnúť",
                 "securityWarning": "Bezpečnostné varovanie",
-                "understood": "Rozumiem"
+                "understood": "Rozumiem",
+                "warningAria": "Upozornenie na extrémny režim"
             },
             "errorServerError": "Server poskytovateľa AI má problémy. Skúste to o chvíľu znova.",
             "errorServiceUnavailable": "Poskytovateľ AI je dočasne nedostupný (preťažený). Bezplatné služby môžu mať obmedzenia. Skúste to neskôr.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Neobmedzené",
                 "roleAI": "AI",
-                "roleUser": "Používateľ"
+                "roleUser": "Používateľ",
+                "noConversations": "Zatiaľ žiadne konverzácie",
+                "titleCount": "História ({count})"
             },
             "dropFileToAnalyze": "Presuňte súbor na analýzu pomocou AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} vstupných tokenov, {output} výstupných tokenov, podľa počtu poskytovateľa",
-                "breakdownCache": "{input} vstupných tokenov, {output} výstupných tokenov, {cacheRead} načítaných z vyrovnávacej pamäte promptu, {cacheWritten} zapísaných do nej, podľa počtu poskytovateľa"
+                "breakdownCache": "{input} vstupných tokenov, {output} výstupných tokenov, {cacheRead} načítaných z vyrovnávacej pamäte promptu, {cacheWritten} zapísaných do nej, podľa počtu poskytovateľa",
+                "countShort": "{count} tok."
             },
             "executeOperations": "Vykonať operácie: {count}",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Bude preskočené",
                     "skipped": "Preskočené",
                     "existedAtCheckpoint": "existoval v kontrolnom bode",
-                    "absentAtCheckpoint": "chýbal v kontrolnom bode"
+                    "absentAtCheckpoint": "chýbal v kontrolnom bode",
+                    "noFiles": "Tento výsledok obnovenia neobsahuje žiadne súbory.",
+                    "otherActions": "Ďalšie akcie",
+                    "requestedPaths": "Požadovaná podmnožina ciest",
+                    "scopeAll": "Rozsah: všetky súbory zachytené v kontrolnom bode.",
+                    "titleApplied": "Obnovenie kontrolného bodu použité",
+                    "titleApplyReview": "Kontrola použitia obnovenia kontrolného bodu",
+                    "titleDryRunComplete": "Skúšobný beh obnovenia kontrolného bodu dokončený",
+                    "titleDryRunReview": "Kontrola skúšobného obnovenia kontrolného bodu"
                 },
                 "checks": {
                     "exitSummary": "návratový kód {code} · {seconds}s",
                     "continueOnFailure": "Spustí všetky kontroly, aj keď niektorá zlyhá.",
-                    "stopOnFailure": "Zastaví sa pri prvej neúspešnej kontrole."
+                    "stopOnFailure": "Zastaví sa pri prvej neúspešnej kontrole.",
+                    "checkLabel": "Kontrola:",
+                    "checksLabel": "Kontroly:",
+                    "exitChip": "návratový kód {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "nedost.",
+                    "passedCount": "{passed}/{total} úspešných",
+                    "runCheckNote": "Spustí v pracovnom priestore vybraný príkaz build/test/lint. Zostavovacie skripty a testy spúšťajú skutočný kód.",
+                    "runProjectCheck": "Spustiť kontrolu projektu",
+                    "runVerification": "Spustiť overovací prechod",
+                    "runVerificationNote": "Spustí v pracovnom priestore vybrané príkazy build/test/lint. Zostavovacie skripty a testy spúšťajú skutočný kód.",
+                    "stoppedEarly": "Zastavené pri prvej neúspešnej kontrole.",
+                    "timeoutLabel": "Časový limit: {seconds} s",
+                    "verification": "Overenie"
                 },
                 "diagnostics": {
-                    "none": "Nebola hlásená žiadna diagnostika."
+                    "none": "Nebola hlásená žiadna diagnostika.",
+                    "errorCountMany": "{count} chýb",
+                    "errorCountOne": "{count} chyba",
+                    "title": "Diagnostika",
+                    "truncated": "Zoznam diagnostiky bol skrátený.",
+                    "warningCountMany": "{count} upozornení",
+                    "warningCountOne": "{count} upozornenie"
                 },
                 "search": {
-                    "none": "Nenašli sa žiadne zhody."
+                    "none": "Nenašli sa žiadne zhody.",
+                    "ignoreCase": "ignorovať veľkosť písmen",
+                    "inPath": "v {path}",
+                    "literal": "doslovne",
+                    "matchCountMany": "{count} zhôd",
+                    "matchCountOne": "{count} zhoda",
+                    "title": "Hľadanie v pracovnom priestore",
+                    "truncated": "Výsledky boli skrátené."
                 },
                 "git": {
                     "noStagedDiff": "Žiadny výstup diff pre pripravené zmeny.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Schválenie Git prípravy",
                     "commitNote": "Týmto sa vytvorí git commit z aktuálneho pripraveného indexu. Najprv skontrolujte coding_git_status a coding_git_diff so staged=true.",
                     "stagePreviewNote": "Týmto sa zobrazí náhľad, ktoré z požadovaných ciest by boli pripravené; index sa nezmení.",
-                    "stageNote": "Týmto sa zmení git index pre požadované cesty."
+                    "stageNote": "Týmto sa zmení git index pre požadované cesty.",
+                    "afterCounts": "Po: {counts}",
+                    "beforeCounts": "Pred: {counts}",
+                    "clean": "Pracovný strom je čistý.",
+                    "commitCountMany": "{count} commitov",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "v konflikte",
+                    "diffTruncated": "Výstup diffu bol skrátený.",
+                    "logTitle": "Protokol Gitu",
+                    "pathsChip": "cesty: {paths}",
+                    "showingNewest": "Zobrazuje sa najnovších {count}; existujú ďalšie.",
+                    "statusCounts": "{staged} pripravené, {unstaged} nepripravené, {untracked} nesledované, {conflicted} v konflikte",
+                    "titleCommitCreated": "Git commit vytvorený",
+                    "titleCommitDryRun": "Skúšobný Git commit",
+                    "titleCommitReview": "Kontrola Git commitu",
+                    "titleReview": "Kontrola Gitu",
+                    "titleStageApplied": "Git príprava použitá",
+                    "titleStagedDiff": "Git diff pripravených zmien",
+                    "titleStageDryRun": "Skúšobná Git príprava",
+                    "titleStatus": "Stav Gitu",
+                    "titleUnstagedDiff": "Git diff nepripravených zmien",
+                    "untracked": "nesledované"
                 },
                 "patch": {
                     "validateNote": "Týmto sa overí patch bez zmeny súborov.",
                     "applyNote": "Táto vysoko riziková požiadavka na použitie zapíše súbory po tom, čo backend vytvorí kontrolný bod pred použitím.",
                     "hideDiff": "Skryť zjednotený diff",
-                    "showDiff": "Zobraziť zjednotený diff"
-                }
+                    "showDiff": "Zobraziť zjednotený diff",
+                    "actualLabel": "skutočné:",
+                    "checkpointCreated": "Vytvorený kontrolný bod pred použitím",
+                    "diffTruncated": "Náhľad diffu skrátený na zobrazenie.",
+                    "expectedLabel": "očakávané:",
+                    "firstLines": "prvých {shown} z {total} riadkov",
+                    "hunkCountMany": "{count} blokov",
+                    "hunkCountOne": "{count} blok",
+                    "hunkIndex": "blok {index}",
+                    "restoreManual": "Obnovenie je manuálne: po kontrole použite {tool} s týmto ID kontrolného bodu.",
+                    "titleApplied": "Oprava použitá",
+                    "titleApplyBlocked": "Použitie opravy zablokované",
+                    "titleApplyReview": "Kontrola použitia opravy",
+                    "titleDryRunConflicts": "Skúšobný beh opravy našiel konflikty",
+                    "titleDryRunPassed": "Skúšobný beh opravy prešiel",
+                    "titleDryRunReview": "Kontrola skúšobného behu opravy",
+                    "warnings": "Upozornenia"
+                },
+                "binary": "binárny",
+                "fileCountMany": "{count} súborov",
+                "fileCountOne": "{count} súbor",
+                "moreCount": "+{count} ďalšie",
+                "plan": {
+                    "likelyFiles": "Pravdepodobné súbory",
+                    "openQuestions": "Otvorené otázky",
+                    "reviewOnlyNote": "Artefakt iba na kontrolu. Úpravy a meniace nástroje stále používajú aktuálny režim schvaľovania.",
+                    "riskHigh": "vysoké riziko",
+                    "riskLow": "nízke riziko",
+                    "riskMedium": "stredné riziko",
+                    "risks": "Riziká",
+                    "title": "Plán kódovania"
+                },
+                "state": {
+                    "clean": "čisté",
+                    "failed": "zlyhalo",
+                    "passed": "prešlo",
+                    "timedOut": "vypršal čas"
+                },
+                "timeoutChip": "časový limit {seconds}s",
+                "truncated": "skrátené",
+                "workspaceLabel": "Pracovný priestor:"
+            },
+            "attachedImageAlt": "Priložený obrázok",
+            "stepNumber": "Krok {step}",
+            "transcribingLocally": "Prebieha lokálny prepis...",
+            "transferPlan": {
+                "dependsOnMany": "Závisí od {count} prípravných krokov",
+                "dependsOnOne": "Závisí od {count} prípravného kroku",
+                "destination": "Cieľ: {destination}",
+                "title": "Kontrola plánu prenosu",
+                "warnings": "Upozornenia"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Z parity bola obnovená hlavička alebo manifest trezoru.",
             "repairMetadataSuccess": "Oprava dokončená: z parity bola obnovená hlavička alebo manifest trezoru",
             "errorCorrectionBadge": "Oprava chýb",
-            "itemsInFolder": "{count} položiek v /{folder}"
+            "itemsInFolder": "{count} položiek v /{folder}",
+            "compressionProfileArchive": "Archív (zstd -15)",
+            "compressionProfileBalanced": "Vyvážený (zstd -9)",
+            "compressionProfileFast": "Rýchly (zstd -3)",
+            "damagedChunkLocation": "{id} - posun {offset} (dĺžka {len})",
+            "fallbackName": "Trezor",
+            "folderScanSummary": "{files} súborov v {dirs} adresároch ({size})",
+            "namePlaceholderVault": "Môj zabezpečený trezor",
+            "namePlaceholderZip": "Môj archív",
+            "recentDaysAgo": "pred {count} d",
+            "recentFileCountMany": "{count} súborov",
+            "recentFileCountOne": "{count} súbor",
+            "recentMonthsAgo": "pred {count} mes."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Šifrovanie vybraných položiek...",
             "ingestSkipped": "Trezor bol vytvorený, ale niektoré položky sa nepodarilo pridať:",
             "selectionInfo": "{count} položiek bude zašifrovaných do trezora",
-            "decrypting": "Dešifrovanie…"
+            "decrypting": "Dešifrovanie…",
+            "compatibleWithApp": "Kompatibilné s aplikáciou Cryptomator",
+            "createFormatBadge": "Cryptomator formát 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Obsah AES-GCM",
+            "featureNameCipher": "Názvy AES-SIV",
+            "formatVersion": "Formát {version}"
         },
         "compress": {
             "title": "Komprimovať súbory",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Niektoré súbory budú mať rovnaké názvy. Upravte vzor.",
             "apply": "Aplikovat",
             "existingCollision": "Niektoré nové názvy sa zhodujú so súbormi, ktoré sa už nachádzajú v tomto priečinku; tieto súbory nebudú prepísané a ich premenovanie sa preskočí.",
-            "existingCollisionHint": "(už existuje)"
+            "existingCollisionHint": "(už existuje)",
+            "baseNamePlaceholder": "súbor",
+            "invalidName": "{name} (neplatné)"
         },
         "lockScreen": {
             "locked": "Aplikácia zamknutá",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Nie je pripojené desktopom. Odpojte a znova zapojte kábel a potom ho znova otvorte.",
             "volumes_need_mount_observe": "V balíku snap sa zväzky zobrazia po pripojení oprávnenia mount-observe. Spustite toto v termináli a potom sa vráťte do AeroFTP:",
             "volumes_unavailable": "Pripojené zväzky sa nepodarilo načítať.",
-            "portable_device": "Prenosné zariadenie"
+            "portable_device": "Prenosné zariadenie",
+            "drivesLeftPanel": "Jednotky ľavého panela",
+            "drivesRightPanel": "Jednotky pravého panela",
+            "modeGroupLabel": "Režim bočného panela",
+            "placesSidebarLabel": "Bočný panel miest"
         },
         "viewMode": {
             "list": "Zoznam",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Prehľadávať susedné adresáre",
             "loading": "Načítavanie...",
             "noSubdirectories": "Žiadne podadresáre",
-            "browseChildren": "Prehliadať podadresáre"
+            "browseChildren": "Prehliadať podadresáre",
+            "ariaLabel": "Navigačná cesta",
+            "syncBoundaryTitle": "{path} (hranica synchronizácie)"
         },
         "bridge": {
             "checking": "Kontrola {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Náhľad nedostupný",
-            "title": "Rýchly náhľad"
+            "title": "Rýchly náhľad",
+            "closePreview": "Zavrieť náhľad",
+            "dialogLabel": "Rýchly náhľad: {name}",
+            "nextFile": "Ďalší súbor",
+            "position": "{index} z {total}",
+            "previousFile": "Predchádzajúci súbor"
         },
         "properties": {
             "general": "Všeobecné",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Kontrolný súčet položky, ktorý si Immich zaznamená pri nahraní.",
                 "crypt-overlay-ciphertext": "Odtlačok pokrýva zašifrované bajty uložené na serveri."
             },
-            "readOnlyIsLinkTarget": "Toto je symbolický odkaz: oprávnenia patria súboru, na ktorý ukazuje. Ak ich chcete zmeniť, otvorte vlastnosti daného súboru."
+            "readOnlyIsLinkTarget": "Toto je symbolický odkaz: oprávnenia patria súboru, na ktorý ukazuje. Ak ich chcete zmeniť, otvorte vlastnosti daného súboru.",
+            "exactBytes": "({bytes} bajtov)"
         },
         "duplicates": {
             "sortWasted": "Premrhané miesto",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Zhodné bajt po bajte",
             "modeNonIdenticalHint": "Percepčná alebo textová podobnosť, bez automatického mazania",
             "potentialWasteSelected": "potenciálne zbytočné (vybrané)",
-            "similarityDistance": "{similarity}, vzdial. {distance}"
+            "similarityDistance": "{similarity}, vzdial. {distance}",
+            "modeExact": "Presná",
+            "modeLabel": "Režim:",
+            "modeNonIdentical": "Neidentické"
         },
         "diskUsage": {
             "title": "Využitie disku",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Žiadna sieťová aktivita. Preneste súbory pre zobrazenie udalostí.",
                 "time": "Čas",
                 "event": "Udalost",
-                "detail": "Detail"
+                "detail": "Detail",
+                "command": "Príkaz",
+                "ipcTransfersCount": "IPC + Prenosy ({count})",
+                "status": "Stav",
+                "type": "Typ"
             },
             "system": {
                 "appVersion": "Verzia AeroFTP",
@@ -3953,7 +4258,8 @@
                 "dark": "Tmavé",
                 "light": "Svetlé",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Kľúče LocalStorage"
+                "localStorageKeysTitle": "Kľúče LocalStorage",
+                "localStorageEntrySummary": "{size} bajtov · {preview}"
             },
             "copyFileListToClipboard": "Kopírovať zoznam súborov do schránky",
             "filesCopied": "{count} záznamov súborov skopírovaných do schránky",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Dvojitým kliknutím na výber alebo stlačením Enter použijete, Esc zrušíte",
                     "cropRatio": "Pomer strán",
                     "cropRatioFree": "Voľný",
-                    "cropRatioOriginal": "Pôvodný"
+                    "cropRatioOriginal": "Pôvodný",
+                    "rotateCcw90Short": "90° doľava",
+                    "rotateCw90Short": "90° doprava"
                 },
                 "toggleTransparencyBg": "Pozadie priehľadnosti (prepnúť)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "Načítavanie PDF...",
                 "open": "Otvoriť PDF",
                 "page": "Strana",
-                "zoom": "Priblizenie"
+                "zoom": "Priblizenie",
+                "documentTitle": "Dokument PDF"
             },
             "text": {
                 "auto": "Auto",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Zalamovanie textu",
                 "zoomIn": "Priblizit",
-                "zoomOut": "Oddialit"
+                "zoomOut": "Oddialit",
+                "htmlPreviewFrameTitle": "Náhľad HTML"
             },
             "video": {
                 "exitFullscreen": "Opustiť celoobrazkový režim (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Zistené prekrytie Rclone Crypt",
             "aerocryptImportDesc": "Profil importovaný z rclone.conf pre {name}: otvoriť prekrytie teraz?",
             "aerocryptImportOpen": "Otvoriť prekrytie",
-            "aerovaultOverlayExpired": "AeroVault Overlay je uzamknutý kvôli nečinnosti. Pre pokračovanie znovu otvorte trezor."
+            "aerovaultOverlayExpired": "AeroVault Overlay je uzamknutý kvôli nečinnosti. Pre pokračovanie znovu otvorte trezor.",
+            "aerovaultOverlaySource": "Prekrytie AeroVault aktívne ({source})",
+            "fileOperationsLabel": "Operácie so súbormi",
+            "overlayBadge": "PREKRYTIE"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Dvojfaktorová autentifikácia",
                 "verify": "Overiť a zapnúť",
                 "active": "2FA aktívne",
-                "inactive": "2FA neaktívne"
+                "inactive": "2FA neaktívne",
+                "codeGroupLabel": "{count}-miestny kód",
+                "digitLabel": "Číslica {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Prehľadávať",
                     "installed": "Nainštalované"
-                }
+                },
+                "remoteInstallDisabled": "Vzdialená inštalácia doplnkov je momentálne zakázaná, kým sa register neoverí na strane klienta. Lokálne nainštalované doplnky naďalej fungujú normálne."
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "Obnovené súbory sa znova objavia v pôvodnom priečinku",
             "connectionNamePlaceholder": "Názov pripojenia (napr. Môj FileLu Cloud)",
             "trashAutoExpiry": "Súbory v koši FileLu automaticky odstráni po 7 dňoch",
-            "rsyncTransferOnly": "Koncový bod len na prenos: prehliadanie nie je v Rsync dostupné. Na navigáciu použi Native API, WebDAV, S3 alebo FTP; prepni na Rsync pre delta prenosy s vysokou šírkou pásma."
+            "rsyncTransferOnly": "Koncový bod len na prenos: prehliadanie nie je v Rsync dostupné. Na navigáciu použi Native API, WebDAV, S3 alebo FTP; prepni na Rsync pre delta prenosy s vysokou šírkou pásma.",
+            "badgePasswordProtected": "Chránené heslom",
+            "badgeWatermarked": "S vodoznakom"
         },
         "box": {
             "addComment": "Pridať komentár",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Bezplatný plán",
             "freeCardTier": "Zadarmo + karta",
-            "paidTier": "Platené"
+            "paidTier": "Platené",
+            "extraFeatures": "Navyše",
+            "coreOpsList": "Nahratie, Stiahnutie, Odstránenie, Premenovanie, Presun, Vytvorenie priečinka, Hľadanie",
+            "coreOpsLegend": "Základ = Nahratie, Stiahnutie, Odstránenie, Premenovanie, Presun, Vytvorenie priečinka, Hľadanie"
         },
         "healthCheck": {
             "title": "Kontrola stavu servera",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} príloha",
             "releaseAssetMany": "Prílohy: {count}",
             "repoPrivate": "Súkromný",
-            "repoPublic": "Verejný"
+            "repoPublic": "Verejný",
+            "actionsLiveBadge": "Naživo",
+            "actionsRunningTitle": "GitHub Actions (prebieha)",
+            "coAuthors": "Spoluautori",
+            "pagesPathPlaceholder": "/ alebo /docs",
+            "pagesStatusBuilding": "zostavuje sa",
+            "pagesStatusBuilt": "zostavené",
+            "pagesStatusErrored": "chyba",
+            "refreshBranches": "Obnoviť vetvy",
+            "repoPrivateTitle": "Súkromný repozitár",
+            "repoPublicTitle": "Verejný repozitár",
+            "unpushedCommitsOnBranchMany": "{count} neodoslaných commitov vo vetve {branch}",
+            "unpushedCommitsOnBranchOne": "{count} neodoslaný commit vo vetve {branch}"
         },
         "filenNotes": {
             "title": "Šifrované poznámky",
@@ -4967,7 +5300,8 @@
             "tagName": "Názov štítka",
             "removeTag": "Odstrániť štítok",
             "manageTags": "Spravovať štítky",
-            "deleteTagConfirm": "Odstrániť štítok „{name}“? Poznámky si ponechajú svoj text."
+            "deleteTagConfirm": "Odstrániť štítok „{name}“? Poznámky si ponechajú svoj text.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Odkaz na zdieľanie",
@@ -5077,7 +5411,8 @@
                 "down": "Nedostupný",
                 "pending": "Kontroluje sa...",
                 "unknown": "Neoverené",
-                "clickToRetry": "kliknite pre opätovnú kontrolu"
+                "clickToRetry": "kliknite pre opätovnú kontrolu",
+                "withActiveSession": "{title} (aktívna relácia)"
             },
             "densityCompact": "Kompaktné riadky",
             "densityComfortable": "Pohodlné riadky",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Šifrovaná vrstva AeroCrypt (natívna): názvy a obsah sú na tomto serveri šifrované.",
-                "rcloneTitle": "Vrstva rclone crypt (interop): názvy a obsah sú na tomto serveri šifrované."
+                "rcloneTitle": "Vrstva rclone crypt (interop): názvy a obsah sú na tomto serveri šifrované.",
+                "keyBits": "{bits}-bitový"
             },
             "sidebar": {
                 "filters": "Filtre",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože aplikačný kľúč nemá oprávnenie readBucketEncryption. Hodnota, ktorú nesmieme vidieť, neznamená, že je šifrovanie vypnuté.",
                 "unknownShapeTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože odpoveď nemala dokumentovaný tvar. Kľúč ju čítať smel, takže ide o odpoveď, nie o oprávnenia."
             },
-            "exportProfile": "Exportovať..."
+            "exportProfile": "Exportovať...",
+            "quotaLabel": "Kvóta",
+            "storageNoCapReported": "{used} (limit kvóty nebol nahlásený)",
+            "e2eBitsBadge": "E2E {bits}-bitový",
+            "filenAuthVersionTitle": "Zistené z Filen auth/info pri úspešnom pripojení",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "teraz",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} d",
+                "months": "{count} mes."
+            }
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",
@@ -5221,7 +5569,8 @@
             "linkType": "Typ",
             "createMergeRequest": "Vytvoriť Merge Request",
             "mrTitle": "Názov MR",
-            "mrBody": "Popis (voliteľné)"
+            "mrBody": "Popis (voliteľné)",
+            "sourceCode": "Zdrojový kód"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "Duplikovať používateľa (iba servery, bez hesiel)",
             "copyLockedHint": "Najprv prepnite na tento účet, aby ste mohli duplikovať jeho servery",
             "crossUserDedupTitle": "Už uložené iným účtom",
-            "crossUserDedupMessage": "\"{name}\" používa serverový účet, ktorý je v tomto zariadení uložený aj u: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" používa serverový účet, ktorý je v tomto zariadení uložený aj u: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Zavrieť dialóg obnovenia hesla",
+                "confirmPassword": "Potvrďte nové heslo",
+                "errMismatch": "Nové heslá účtu sa nezhodujú.",
+                "errNewRequired": "Zadajte nové heslo účtu.",
+                "errNotAuthorized": "Na obnovenie hesla iného účtu musíte byť správca.",
+                "errNotForSelf": "Pri vlastnom účte použite Zmeniť heslo.",
+                "errStoreNotReady": "Najprv odomknite trezor a skúste to znova.",
+                "errTypeReset": "Túto deštruktívnu operáciu potvrďte zadaním RESET.",
+                "errUserNotFound": "Tento používateľ už neexistuje.",
+                "newPassword": "Nové heslo účtu",
+                "statEncryptedBytes": "šifrovaných bajtov",
+                "statProfiles": "profilov",
+                "statSettings": "nastavení",
+                "title": "Obnovenie hesla = zničenie údajov",
+                "typeReset": "Zadajte RESET",
+                "wipeDetail": "Aktuálne heslo nie je možné obnoviť. AeroFTP odstráni uložené servery, používateľské nastavenia a stav uzamknutia cieľového účtu a potom vydá nový šifrovací kľúč chránený novým heslom.",
+                "wipeWarning": "Týmto sa natrvalo vymaže šifrovaný oddiel cieľového účtu."
+            },
+            "dropdown": {
+                "accountPassword": "Heslo účtu",
+                "lock": "Zamknúť",
+                "newUser": "Nový používateľ",
+                "noUsers": "Zatiaľ žiadni používatelia. Prvého pridáte pomocou tlačidla „Nový používateľ“ nižšie.",
+                "protectionNote": "Váš účet je chránený šifrovaním Argon2id + AES-KW + AES-256-GCM",
+                "users": "Používatelia"
+            }
         },
         "aerocryptNative": {
             "title": "Vrstva AeroCrypt",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Režim sa vyberá pri vytváraní pripojenia a zostáva nezmenený počas úpravy uloženého profilu. Ak chcete použiť iný režim, vytvorte nové pripojenie."
+                "lockedInEdit": "Režim sa vyberá pri vytváraní pripojenia a zostáva nezmenený počas úpravy uloženého profilu. Ak chcete použiť iný režim, vytvorte nové pripojenie.",
+                "notInBuild": "Nie je súčasťou tohto zostavenia AeroFTP."
             }
         },
         "flatpak": {

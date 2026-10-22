@@ -337,7 +337,38 @@
             "protonSignOut": "Դուրս գալ",
             "protonSignOutHelp": "Ավարտում է նիստը Proton-ում և հեռացնում այն այս պրոֆիլից։",
             "protonSignInExpired": "Մուտքի էջի ժամկետը սպառվել է։ Կրկին մուտք գործեք։",
-            "protonNativeUnavailable": "Այս կառուցումը չի ներառում Proton Drive-ի բնիկ հաճախորդը։"
+            "protonNativeUnavailable": "Այս կառուցումը չի ներառում Proton Drive-ի բնիկ հաճախորդը։",
+            "forms": {
+                "publicApiKey": "Հանրային API բանալի",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Հանրային բանալի։",
+                "secretApiKey": "Գաղտնի API բանալի",
+                "uploadcareSecretHint": "Օգտագործվում է միայն REST ֆայլերի կառավարման համար՝ {scheme} նույնականացմամբ։",
+                "flatMediaLibrary": "Հարթ մեդիագրադարան",
+                "uploadcareNoFolders": "Uploadcare-ը չունի բնիկ թղթապանակներ. նախագծի ֆայլերը ցուցադրվում են արմատում՝ ըստ UUID-ի։",
+                "urlEndpointId": "URL վերջնակետի ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL վերջնակետ։",
+                "privateApiKey": "Մասնավոր API բանալի",
+                "storedVaultBasicAuth": "Պահվում է տեղային պահոցում և ուղարկվում է միայն {provider}-ին Basic Auth-ի միջոցով։",
+                "cloudName": "Ամպի անուն",
+                "cloudinaryCloudNameHint": "Գտնվում է ձեր Cloudinary Dashboard - Account Details բաժնում։",
+                "apiKeyPlaceholder": "API բանալի",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API բանալի։",
+                "apiSecret": "API գաղտնիք",
+                "apiSecretPlaceholder": "API գաղտնիք",
+                "openProviderLink": "Բացել {provider} հղումը",
+                "githubPatHint": "Մանրամասն թույլտվություններով PAT՝ Contents (կարդալ և գրել)։",
+                "generateToken": "Ստեղծել թոքեն",
+                "applicationKeyId": "Հավելվածի բանալու ID",
+                "backblazeKeyIdHint": "B2 հավելվածի բանալու ID, սկսվում է 003-ով։ Ստեղծեք այն Backblaze-ի App Keys էջից։",
+                "applicationKey": "Հավելվածի բանալի",
+                "backblazeKeyHint": "Ցուցադրվում է միայն մեկ անգամ՝ ստեղծելիս։ Վերաբերվեք դրան որպես գաղտնաբառի։",
+                "bucketNameExactHint": "Bucket-ի ճշգրիտ անունը, մեծատառերը և փոքրատառերը տարբերվում են։",
+                "megacmdSetupFirst": "Նախ կարգավորեք MEGAcmd-ը",
+                "megacmdFetchUrlTitle": "Գործարկել {cmd}-ը և ինքնաշխատ լրացնել URL-ը",
+                "fetchUrl": "Ստանալ URL-ը",
+                "megacmdWebdavHint": "Օգտանունը և գաղտնաբառը միտումնավոր բաց են թողնված։ Միանալիս AeroFTP-ն ինքն է գործարկում «{cmd}»-ը՝ կամուրջը սկսելու և այս հասցեն կարդալու համար. դաշտը կարելի է դատարկ թողնել։ «Ստանալ URL-ը» կամընտիր ձեռքով թարմացում է. փոխեք պորտն այստեղ, եթե MEGAcmd-ն օգտագործում է այլ պորտ։"
+            },
+            "manualStorageUnitLabel": "{label} միավոր"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -390,7 +421,19 @@
             "listingPath": "{path}-ի ցուցակագրում...",
             "pleaseWait": "Խնդրում ենք սպասել...",
             "sameNameLeakChip": "նույն անունը",
-            "sameNameLeakTooltip": "Այս անունը հայտնվում է նաև այս գաղտնագրված պահոցի մեկ այլ ուղու վրա։ Քանի որ անունները գաղտնագրվում են դետերմինիստական կերպով, գաղտնագրված պահեստի դիտորդը կարող է հասկանալ, որ երկուսն ունեն նույն անունը։"
+            "sameNameLeakTooltip": "Այս անունը հայտնվում է նաև այս գաղտնագրված պահոցի մեկ այլ ուղու վրա։ Քանի որ անունները գաղտնագրվում են դետերմինիստական կերպով, գաղտնագրված պահեստի դիտորդը կարող է հասկանալ, որ երկուսն ունեն նույն անունը։",
+            "endpointSelector": {
+                "localFolder": "Տեղային թղթապանակ",
+                "localFolderHint": "Ընտրեք տեղային ուղի այս վահանակի համար",
+                "noSavedProfiles": "Պահված պրոֆիլներ չկան",
+                "savedProfiles": "Պահված հեռավոր պրոֆիլներ",
+                "title": "Վերջնակետ"
+            },
+            "leftPanelMarker": "Ձախ վահանակ",
+            "localFilesLabel": "Տեղային ֆայլեր",
+            "localFilesRightLabel": "Տեղային ֆայլեր (աջ վահանակ)",
+            "remoteFilesLabel": "Հեռավոր ֆայլեր",
+            "rightPanelMarker": "Աջ վահանակ"
         },
         "contextMenu": {
             "askAeroAgent": "Հարցնել AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Արագության գրաֆիկ",
             "hideSpeedGraph": "Թաքցնել արագության գրաֆիկը",
             "speedAvg": "միջ. {speed}",
-            "speedPeak": "առավ. {speed}"
+            "speedPeak": "առավ. {speed}",
+            "badgeBatch": "ՓԱԹԵԹ",
+            "badgeDownload": "ՆԵՐԲԵՌՆՈՒՄ",
+            "badgeLive": "ՈՒՂԻՂ",
+            "badgeStream": "ՀՈՍՔ",
+            "badgeUpload": "ՎԵՐԲԵՌՆՈՒՄ",
+            "earlierItemsHidden": "Թաքցված է {count} նախորդ տարր",
+            "folderFilesProgress": "{done}/{total} ֆայլ",
+            "laneDone": "ավարտված",
+            "laneError": "սխալ",
+            "unifiedPlan": {
+                "destination": "Նպատակակետ",
+                "dialogLabel": "Փոխանցման պլան",
+                "engineAerovaultOverlay": "AeroVault շերտ",
+                "engineCompareOnly": "Միայն համեմատել",
+                "engineCrossProfileSync": "Պրոֆիլների միջև համաժամեցում",
+                "engineCrossProfileTransfer": "Պրոֆիլների միջև փոխանցում",
+                "engineLocalDelta": "Տեղային դելտա փոխադրում",
+                "engineLocalFs": "Տեղային ֆայլային համակարգ",
+                "engineProviderDownload": "Ներբեռնում մատակարարից",
+                "engineProviderUpload": "Վերբեռնում մատակարարին",
+                "engineUnsupported": "Չի աջակցվում",
+                "execute": "Կատարել",
+                "items": "Տարրեր",
+                "modeBackup": "Պահուստային պատճեն",
+                "modeBisync": "Երկկողմանի համաժամեցում",
+                "modeCompare": "Համեմատել",
+                "modeCopy": "Պատճենել",
+                "modeMirror": "Հայելի",
+                "modeMove": "Տեղափոխել",
+                "modeSync": "Համաժամեցնել",
+                "notExecutable": "Վերջնակետերի այս զույգը դեռ հնարավոր չէ կատարել։",
+                "parallel": "Զուգահեռ",
+                "reviewBeforeExecution": "Ստուգել կատարումից առաջ",
+                "route": "{pair} (շարժիչ՝ {engine})",
+                "size": "Չափ",
+                "source": "Աղբյուր",
+                "title": "Պլան՝ {mode}"
+            }
         },
         "settings": {
             "title": "Կարգավորումներ",
@@ -1040,7 +1121,13 @@
                 "title": "Բնիկ rsync (բետա)",
                 "description": "Ընտրեք, թե ինչպես է SFTP դելտա համաժամեցումը կատարում rsync փոխանցումները։",
                 "enableToggle": "Միացնել բնիկ rsync-ը SFTP-ի դելտա համաժամեցման համար",
-                "experimental": "Ավտոմատը նախընտրում է AeroRsync-ը՝ դասականին հետդարձով. Դասականն օգտագործում է համակարգի rsync երկուական ֆայլը, որտեղ այն հասանելի է. Բնիկը բաց է թողնում դասական երկուականին հետդարձը։"
+                "experimental": "Ավտոմատը նախընտրում է AeroRsync-ը՝ դասականին հետդարձով. Դասականն օգտագործում է համակարգի rsync երկուական ֆայլը, որտեղ այն հասանելի է. Բնիկը բաց է թողնում դասական երկուականին հետդարձը։",
+                "modeAuto": "Ավտոմատ",
+                "modeClassic": "Դասական",
+                "modeNative": "Ներկառուցված",
+                "classicNotFoundTooltip": "Դասական rsync երկուական ֆայլը չի գտնվել PATH-ում։ Այս ռեժիմը միացնելու համար տեղադրեք rsync (Linux/macOS փաթեթ, Windows՝ WSL/cygwin/scoop միջոցով)։",
+                "classicAt": "Դասական rsync՝ {path}",
+                "classicNotDetected": "Դասական rsync երկուական ֆայլը չի հայտնաբերվել PATH-ում։ Այս համակարգչում հասանելի միակ շարժիչը Ներկառուցվածն է։"
             },
             "startMinimizedOnAutostart": "Գործարկել նվազագույնացված՝ համակարգային սկուտեղում",
             "startMinimizedOnAutostartDesc": "Թաքցնել գլխավոր պատուհանը ավտոմատ գործարկման ժամանակ։ AeroFTP-ն շարունակում է աշխատել համակարգային սկուտեղում - բացեք այն սկուտեղի պատկերակից, երբ անհրաժեշտ է։",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "Չկոդավորված պահոցում գտնվել է {count} OAuth հավատարմագիր",
             "fontSystemInstall": "համակարգային տեղադրում",
             "fontSizeMin": "նվազ",
-            "fontSizeMax": "առավ"
+            "fontSizeMax": "առավ",
+            "migrationCleanupHint": "Խորհուրդ է տրվում առավելագույն անվտանգության համար",
+            "fontCustomOption": "Հատուկ...",
+            "fontSystemInstallHint": "Պահանջում է համակարգային տեղադրում։ Անհասանելի լինելու դեպքում AeroFTP-ն ինքնաշխատ անցնում է այլընտրանքի։",
+            "fontSizeIndicatorLabel": "Տառատեսակ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Դադարեցնել",
                 "stopShell": "Դադարեցնել թերմինալը",
                 "closed": "Տերմինալը փակված է։",
-                "commandInsertedReview": "Հրամանը զետեղված է Terminal-ում։ Սեղմեք Enter՝ գործարկելու համար։"
+                "commandInsertedReview": "Հրամանը զետեղված է Terminal-ում։ Սեղմեք Enter՝ գործարկելու համար։",
+                "decreaseFont": "Փոքրացնել տառաչափը (Ctrl+-)",
+                "emptyClickPlus": "Սեղմեք {plus}՝ տերմինալ բացելու համար",
+                "emptySshHint": "կամ {ssh}՝ {host}-ում հեռավոր հրամանային վահանակի համար",
+                "increaseFont": "Մեծացնել տառաչափը (Ctrl+=)",
+                "newTab": "Տերմինալի նոր ներդիր",
+                "sshShellTo": "SSH հրամանային վահանակ {host}-ում",
+                "theme": "Տերմինալի թեմա"
             },
             "editorPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Դիտել կոդը»",
@@ -1278,13 +1376,17 @@
                 "saving": "Պահպանվում է...",
                 "noFileSelected": "Դիտելու համար ֆայլ ընտրված չէ",
                 "loading": "Խմբագիր բեռնվում է...",
-                "dragToTerminalRun": "քաշեք դեպի Terminal՝ գործարկման հրամանը զետեղելու համար"
+                "dragToTerminalRun": "քաշեք դեպի Terminal՝ գործարկման հրամանը զետեղելու համար",
+                "closeEditor": "Փակել խմբագրիչը",
+                "resetChanges": "Վերակայել փոփոխությունները"
             },
             "previewPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Նախադիտում»"
             },
             "codeEditor": "Կոդի խմբագիր",
-            "sshTerminal": "SSH տերմինալ"
+            "sshTerminal": "SSH տերմինալ",
+            "comingSoon": "Շուտով հասանելի",
+            "soonBadge": "Շուտով"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Եթե թոքենը չեղարկվել է, նորից թույլատրեք ձեռքով"
             },
             "profilesLoadFailed": "Ձեր պահված սերվերները չհաջողվեց կարդալ: {error}",
-            "cleanupSummary": "{count} ֆայլ, ազատվել է {size}"
+            "cleanupSummary": "{count} ֆայլ, ազատվել է {size}",
+            "maturity": {
+                "alpha": "Ալֆա"
+            },
+            "dialogDashboardLabel": "Ամպային համաժամացման վահանակ",
+            "dialogLoadingLabel": "Ամպային համաժամացման բեռնում",
+            "dialogSettingsLabel": "Ամպային համաժամացման կարգավորումներ",
+            "dialogSetupLabel": "Ամպային համաժամացման կազմաձևում",
+            "onePerLineHint": "(մեկական յուրաքանչյուր տողում)",
+            "pairsEditorLabel": "AeroCloud զույգերի խմբագիր",
+            "remoteSubfolderPlaceholder": "ամպ"
         },
         "statusBar": {
             "connected": "Միացված է",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "մասնակի, անընթեռնելի թղթապանակներ՝ {count}",
             "usedScanFailed": "Օգտագործված տարածքի սկանավորումը ձախողվեց",
             "usedScanEmpty": "{path}-ի սկանավորումը ֆայլ չգտավ, քեշավորված արժեքը պահպանվեց։ Ստուգեք ուղին կամ սերվերի ռեկուրսիվ ցուցակագրման աջակցությունը։",
-            "filenBridgeAccountTotal": "Filen Desktop-ը այստեղ չի ներկայացնում ձեր հաշվի ընդհանուր ծավալը. ցուցադրվող օգտագործված չափը այս ուղու ներքո գտնվող ֆայլերի գումարն է։ Filen-ի բնիկ կապը անմիջապես ցույց է տալիս հաշվի ընդհանուր ծավալը։"
+            "filenBridgeAccountTotal": "Filen Desktop-ը այստեղ չի ներկայացնում ձեր հաշվի ընդհանուր ծավալը. ցուցադրվող օգտագործված չափը այս ուղու ներքո գտնվող ֆայլերի գումարն է։ Filen-ի բնիկ կապը անմիջապես ցույց է տալիս հաշվի ընդհանուր ծավալը։",
+            "ariaLabel": "Կարգավիճակի գոտի",
+            "debugBadge": "ՎՐԻՊԱԶԵՐԾՈՒՄ",
+            "debugModeActive": "Վրիպազերծման ռեժիմը ակտիվ է"
         },
         "toast": {
             "connectionSuccess": "Միացված է՝ {server}",
@@ -1613,7 +1728,8 @@
                 "apRole": "Հիմնադիր, մշակող, սպասարկող, համադիզայներ",
                 "ekRole": "Հետազոտող, որակի ապահովման ինժեներ, համադիզայներ"
             },
-            "madeBy": "{author} ընկերության կողմից"
+            "madeBy": "{author} ընկերության կողմից",
+            "statsLine": "{protocols} արձանագրություն · {languages} լեզու · AES-256 արխիվներ"
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",
@@ -2038,7 +2154,16 @@
             "sourceforgeProject": "Նախագիծ (Unixname)",
             "opendriveNotApiKey": "(ոչ ձեր OpenDrive API բանալին)",
             "endpoint": "Վերջնակետ",
-            "accountId": "Հաշվի ID"
+            "accountId": "Հաշվի ID",
+            "servicesHeading": "Ծառայություններ",
+            "sourceforgeSshKeyHelp": "SourceForge-ը պահանջում է SSH բանալիով նույնականացում։ Ստեղծեք բանալի {cmd}-ով և վերբեռնեք այն {link}-ում։",
+            "sourceforgeSshSettings": "SSH կարգավորումներ",
+            "fullGuide": "Ամբողջական ուղեցույց",
+            "endpointTemplateExample": "օր.՝ {template}",
+            "jurisdiction": "Իրավասություն",
+            "insecureCertDialogLabel": "Անապահով վկայականի զգուշացում",
+            "betaBadge": "ԲԵՏԱ",
+            "hostKeyDialogLabel": "Հոսթի բանալու ստուգում"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -2104,7 +2229,10 @@
             "rename": "Անվանափոխել",
             "resume": "Վերսկսել",
             "resumeHint": "Շարունակել ընդհատված փոխանցումը՝ նորից չսկսելով",
-            "cancel": "Չեղարկել"
+            "cancel": "Չեղարկել",
+            "dialogLabel": "Վերագրանցման հաստատում",
+            "moreInQueue": "+{count} հերթում",
+            "unknownDate": "Անհայտ"
         },
         "statusbar": {
             "queue": "Հերթ",
@@ -2332,7 +2460,21 @@
             "templateImportPathPairs": "Օգտագործելի ուղիների զույգեր (տեղային/հեռավոր) այս կաղապարում՝ {count}։ AeroSync-ի պատուհանն աշխատում է ճիշտ մեկ զույգի հետ, ուստի ոչինչ չի ներմուծվել։ Խմբագրեք կաղապարը՝ թողնելով միայն մեկ զույգ, ապա նորից ներմուծեք այն։",
             "templateNamePlaceholder": "օր. Գիշերային պահուստավորում դեպի S3",
             "templateDescPlaceholder": "Ինչի համար է այս ձևանմուշը (ըստ ցանկության)",
-            "templateExportCliDesc": "aeroftp-cli sync հրամանի փաթաթիչ ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync հրամանի փաթաթիչ ({shell})",
+            "multiPathDisablePair": "Անջատել",
+            "multiPathEditorLabel": "Բազմաուղի խմբագրիչ",
+            "multiPathEnablePair": "Միացնել",
+            "multiPathLocalPlaceholder": "Տեղային ուղի",
+            "multiPathRemotePlaceholder": "Հեռավոր ուղի",
+            "rollbackDialogLabel": "Հետ գլորման պատկեր",
+            "rollbackMoreFiles": "+ևս {count}...",
+            "rollbackSnapshotSummaryMany": "{count} ֆայլ, {size}",
+            "rollbackSnapshotSummaryOne": "{count} ֆայլ, {size}",
+            "templateDialogLabel": "Համաժամեցման ձևանմուշ",
+            "templateExcludes": "Բացառություններ",
+            "templateLocal": "Տեղային",
+            "templateRemote": "Հեռավոր",
+            "templateRetries": "Կրկնափորձեր"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",
@@ -2522,7 +2664,9 @@
                 "rejectExecution": "Մերժել գործիքի գործարկումը",
                 "toggleDetails": "Մանրամասներ ցուցադրել/թաքցնել",
                 "allowSession": "Թույլատրել այս նիստի համար",
-                "nonAtomicReplace": "Ոչ ատոմային փոխարինում: ֆայլը կարճ ժամանակով բացակայում է"
+                "nonAtomicReplace": "Ոչ ատոմային փոխարինում: ֆայլը կարճ ժամանակով բացակայում է",
+                "moreOptions": "Այլ ընտրանքներ",
+                "panelAria": "Գործիքների հաստատման վահանակ"
             },
             "settings": {
                 "title": "AI կարգավորումներ",
@@ -2677,7 +2821,14 @@
                 "routingFallback": "Պահեստային",
                 "routingNoFallback": "Չկա",
                 "bedrockNeedsModel": "Փորձարկելուց առաջ Մոդելներ ներդիրում ավելացրեք և միացրեք Bedrock մոդել։",
-                "bedrockSetup": "Սահմանեք ձեր AWS տարածաշրջանի Runtime URL-ը։ Մոդելներ ներդիրում ավելացրեք ID, որն աջակցում է Chat Completions-ին Bedrock Runtime-ում։ Runtime-ը չի ցուցադրում մոդելների ցանկը։ Փորձարկումն ուղարկում է փոքր եզրահանգման հարցում, որի համար AWS-ը կարող է վճար գանձել։"
+                "bedrockSetup": "Սահմանեք ձեր AWS տարածաշրջանի Runtime URL-ը։ Մոդելներ ներդիրում ավելացրեք ID, որն աջակցում է Chat Completions-ին Bedrock Runtime-ում։ Runtime-ը չի ցուցադրում մոդելների ցանկը։ Փորձարկումն ուղարկում է փոքր եզրահանգման հարցում, որի համար AWS-ը կարող է վճար գանձել։",
+                "detectOllamaModelsTooltip": "Ավտոմատ հայտնաբերել հասանելի Ollama մոդելները",
+                "kTokens": "{count}K թոքեն",
+                "modelEditorAria": "ԱԲ մոդելների խմբագրիչ",
+                "supportsTools": "Աջակցում է գործիքներ",
+                "supportsVision": "Աջակցում է տեսողություն",
+                "thinkingReasoning": "Մտածում/Դատողություն",
+                "toolQuality": "Գործիքների որակ: {quality}/5"
             },
             "rag": {
                 "indexing": "Ֆայլերի ինդեքսավորում...",
@@ -2692,7 +2843,9 @@
                 "run": "Գործարկել տերմինալում",
                 "insert": "Տեղադրել խմբագրիչում",
                 "diff": "Համեմատել բնագրի հետ",
-                "diffNoFile": "Համեմատության համար բաց ֆայլ չկա"
+                "diffNoFile": "Համեմատության համար բաց ֆայլ չկա",
+                "commandBlocked": "Հրամանն արգելափակված է: հնարավոր է՝ կործանարար",
+                "confirmRun": "Հաստատել գործարկումը: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Մտածում է...",
@@ -2740,7 +2893,9 @@
                 "switchBranch": "Փոխել ճյուղը",
                 "delete": "Ջնջել ճյուղը",
                 "newBranch": "Նոր ճյուղ",
-                "branchFrom": "Ճյուղավորել այս կետից"
+                "branchFrom": "Ճյուղավորել այս կետից",
+                "messageCountShort": "{count} հաղ.",
+                "unnamed": "Ճյուղ"
             },
             "context": {
                 "projectDetected": "Նախագիծը հայտնաբերված է",
@@ -2836,7 +2991,10 @@
                 "vram": "VRAM",
                 "running": "աշխատում է",
                 "expired": "ժամկետը լրացել է",
-                "refresh": "Թարմացնել"
+                "refresh": "Թարմացնել",
+                "modelsRunningMany": "{count} մոդել աշխատում է",
+                "modelsRunningOne": "{count} մոդել աշխատում է",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Համատեքստի քեշավորում",
@@ -2949,7 +3107,8 @@
                 "warning": "Ֆայլի բոլոր գործողությունները կկատարվեն անմիջապես առանց հաստատման: Օգտագործեք ձեր ռիսկով:",
                 "disable": "Անջատել",
                 "securityWarning": "Անվտանգության զգուշացում",
-                "understood": "Հասկանալի է"
+                "understood": "Հասկանալի է",
+                "warningAria": "Ծայրահեղ ռեժիմի զգուշացում"
             },
             "errorServerError": "AI մատակարարի սերվերը խնդիրներ ունի: Մի պահ նորից փորձեք:",
             "errorServiceUnavailable": "AI մատակարարը ժամանակավորապես անհասանելի է (ծանրաբեռնված): Անվճար մակարդակի ծառայությունները կարող են սահմաններ ունենալ: Փորձեք ավելի ուշ:",
@@ -3045,7 +3204,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Անսահմանափակ",
                 "roleAI": "AI",
-                "roleUser": "Օգտատեր"
+                "roleUser": "Օգտատեր",
+                "noConversations": "Դեռ զրույցներ չկան",
+                "titleCount": "Պատմություն ({count})"
             },
             "dropFileToAnalyze": "Քաշեք ֆայլը AeroAgent-ի միջոցով վերլուծելու համար",
             "plugins": {
@@ -3201,7 +3362,8 @@
             },
             "tokens": {
                 "breakdown": "{input} մուտքային տոկեն, {output} ելքային տոկեն, ըստ մատակարարի հաշվարկի",
-                "breakdownCache": "{input} մուտքային տոկեն, {output} ելքային տոկեն, {cacheRead} կարդացվել է հուշման քեշից, {cacheWritten} գրվել է դրա մեջ, ըստ մատակարարի հաշվարկի"
+                "breakdownCache": "{input} մուտքային տոկեն, {output} ելքային տոկեն, {cacheRead} կարդացվել է հուշման քեշից, {cacheWritten} գրվել է դրա մեջ, ըստ մատակարարի հաշվարկի",
+                "countShort": "{count} թոք."
             },
             "executeOperations": "Կատարել {count} գործողություն",
             "coding": {
@@ -3218,18 +3380,53 @@
                     "wouldSkip": "Բաց կթողնվեն",
                     "skipped": "Բաց թողնված",
                     "existedAtCheckpoint": "գոյություն ուներ վերահսկման կետում",
-                    "absentAtCheckpoint": "բացակայում էր վերահսկման կետում"
+                    "absentAtCheckpoint": "բացակայում էր վերահսկման կետում",
+                    "noFiles": "Այս վերականգնման արդյունքում ֆայլեր չեն ներառվել։",
+                    "otherActions": "Այլ գործողություններ",
+                    "requestedPaths": "Պահանջված ուղիների ենթաբազմություն",
+                    "scopeAll": "Շրջանակ. վերահսկման կետում պահված բոլոր ֆայլերը։",
+                    "titleApplied": "Վերահսկման կետի վերականգնումը կիրառվեց",
+                    "titleApplyReview": "Վերահսկման կետի վերականգնման կիրառման վերանայում",
+                    "titleDryRunComplete": "Վերահսկման կետի վերականգնման փորձնական գործարկումն ավարտվեց",
+                    "titleDryRunReview": "Ստուգակետի վերականգնման փորձնական գործարկման ստուգում"
                 },
                 "checks": {
                     "exitSummary": "ելքի կոդ {code} · {seconds}s",
                     "continueOnFailure": "Գործարկում է բոլոր ստուգումները, նույնիսկ եթե մեկը ձախողվի։",
-                    "stopOnFailure": "Կանգ է առնում առաջին ձախողված ստուգման վրա։"
+                    "stopOnFailure": "Կանգ է առնում առաջին ձախողված ստուգման վրա։",
+                    "checkLabel": "Ստուգում:",
+                    "checksLabel": "Ստուգումներ:",
+                    "exitChip": "ելքի կոդ {code}",
+                    "filterChip": "զտիչ: {filter}",
+                    "filterLabel": "Զտիչ:",
+                    "notAvailable": "չկա",
+                    "passedCount": "{passed}/{total} անցած",
+                    "runCheckNote": "Աշխատատարածքում գործարկում է ընտրված build/test/lint հրաման։ Կառուցման սկրիպտներն ու թեստերը կատարում են իրական կոդ։",
+                    "runProjectCheck": "Գործարկել նախագծի ստուգումը",
+                    "runVerification": "Գործարկել ստուգման փուլը",
+                    "runVerificationNote": "Աշխատատարածքում գործարկում է ընտրված build/test/lint հրամաններ։ Կառուցման սկրիպտներն ու թեստերը կատարում են իրական կոդ։",
+                    "stoppedEarly": "Կանգ առավ առաջին ձախողված ստուգման վրա։",
+                    "timeoutLabel": "Ժամանակի սահման: {seconds} վ",
+                    "verification": "Ստուգում"
                 },
                 "diagnostics": {
-                    "none": "Ախտորոշումներ չեն հաղորդվել։"
+                    "none": "Ախտորոշումներ չեն հաղորդվել։",
+                    "errorCountMany": "{count} սխալ",
+                    "errorCountOne": "{count} սխալ",
+                    "title": "Ախտորոշում",
+                    "truncated": "Ախտորոշման ցանկը կրճատվել է։",
+                    "warningCountMany": "{count} նախազգուշացում",
+                    "warningCountOne": "{count} նախազգուշացում"
                 },
                 "search": {
-                    "none": "Համընկնումներ չեն գտնվել։"
+                    "none": "Համընկնումներ չեն գտնվել։",
+                    "ignoreCase": "անտեսել մեծատառերը",
+                    "inPath": "{path}-ում",
+                    "literal": "բառացի",
+                    "matchCountMany": "{count} համընկնում",
+                    "matchCountOne": "{count} համընկնում",
+                    "title": "Աշխատանքային տարածքի որոնում",
+                    "truncated": "Արդյունքները կրճատվել են։"
                 },
                 "git": {
                     "noStagedDiff": "Նախապատրաստված փոփոխությունների diff ելք չկա։",
@@ -3240,14 +3437,84 @@
                     "stageApproval": "Git նախապատրաստման հաստատում",
                     "commitNote": "Սա ստեղծում է git կոմիթ ընթացիկ նախապատրաստված ինդեքսից։ Նախ ստուգեք coding_git_status և coding_git_diff գործիքները staged=true պարամետրով։",
                     "stagePreviewNote": "Սա նախադիտում է, թե պահանջված ուղիներից որոնք կնախապատրաստվեին։ Ինդեքսը չի փոխվի։",
-                    "stageNote": "Սա փոխում է git ինդեքսը պահանջված ուղիների համար։"
+                    "stageNote": "Սա փոխում է git ինդեքսը պահանջված ուղիների համար։",
+                    "afterCounts": "Հետո: {counts}",
+                    "beforeCounts": "Առաջ: {counts}",
+                    "clean": "Աշխատանքային ծառը մաքուր է։",
+                    "commitCountMany": "{count} կոմիթ",
+                    "commitCountOne": "{count} կոմիթ",
+                    "conflicted": "կոնֆլիկտային",
+                    "diffTruncated": "Տարբերությունների ելքը կրճատվել է։",
+                    "logTitle": "Git մատյան",
+                    "pathsChip": "ուղիներ: {paths}",
+                    "showingNewest": "Ցուցադրվում են ամենանոր {count}; կան ավելին։",
+                    "statusCounts": "{staged} պատրաստված, {unstaged} չպատրաստված, {untracked} չհետևվող, {conflicted} կոնֆլիկտային",
+                    "titleCommitCreated": "Git կոմիթը ստեղծվեց",
+                    "titleCommitDryRun": "Git կոմիթի փորձնական գործարկում",
+                    "titleCommitReview": "Git կոմիթի վերանայում",
+                    "titleReview": "Git վերանայում",
+                    "titleStageApplied": "Git պատրաստումը կիրառվեց",
+                    "titleStagedDiff": "Git պատրաստված տարբերություններ",
+                    "titleStageDryRun": "Git պատրաստման փորձնական գործարկում",
+                    "titleStatus": "Git կարգավիճակ",
+                    "titleUnstagedDiff": "Git չպատրաստված տարբերություններ",
+                    "untracked": "չհետևվող"
                 },
                 "patch": {
                     "validateNote": "Սա վավերացնում է պատչը՝ առանց ֆայլերը փոխելու։",
                     "applyNote": "Բարձր վտանգի այս կիրառման հարցումը գրում է ֆայլերը այն բանից հետո, երբ backend համակարգը ստեղծում է կիրառումից առաջ վերահսկման կետ։",
                     "hideDiff": "Թաքցնել միասնական diff",
-                    "showDiff": "Ցույց տալ միասնական diff"
-                }
+                    "showDiff": "Ցույց տալ միասնական diff",
+                    "actualLabel": "իրական:",
+                    "checkpointCreated": "Կիրառումից առաջ ստուգակետը ստեղծվեց",
+                    "diffTruncated": "Տարբերությունների նախադիտումը կրճատվել է ցուցադրման համար։",
+                    "expectedLabel": "սպասվող:",
+                    "firstLines": "առաջին {shown}-ը {total} տողից",
+                    "hunkCountMany": "{count} հատված",
+                    "hunkCountOne": "{count} հատված",
+                    "hunkIndex": "հատված {index}",
+                    "restoreManual": "Վերականգնումը ձեռքով է. վերանայումից հետո օգտագործեք {tool}-ը վերահսկման կետի այս նույնացուցիչով։",
+                    "titleApplied": "Կարկատանը կիրառվեց",
+                    "titleApplyBlocked": "Կարկատանի կիրառումն արգելափակվեց",
+                    "titleApplyReview": "Կարկատանի կիրառման վերանայում",
+                    "titleDryRunConflicts": "Կարկատանի փորձնական գործարկումը հայտնաբերեց հակասություններ",
+                    "titleDryRunPassed": "Կարկատանի փորձնական գործարկումը հաջողվեց",
+                    "titleDryRunReview": "Կարկատանի փորձնական գործարկման վերանայում",
+                    "warnings": "Զգուշացումներ"
+                },
+                "binary": "երկուական",
+                "fileCountMany": "{count} ֆայլ",
+                "fileCountOne": "{count} ֆայլ",
+                "moreCount": "+{count} ևս",
+                "plan": {
+                    "likelyFiles": "Հավանական ֆայլեր",
+                    "openQuestions": "Բաց հարցեր",
+                    "reviewOnlyNote": "Միայն վերանայման համար նախատեսված արտեֆակտ։ Խմբագրումները և փոփոխող գործիքները դեռ օգտագործում են հաստատման ընթացիկ ռեժիմը։",
+                    "riskHigh": "բարձր ռիսկ",
+                    "riskLow": "ցածր ռիսկ",
+                    "riskMedium": "միջին ռիսկ",
+                    "risks": "Ռիսկեր",
+                    "title": "Ծրագրավորման պլան"
+                },
+                "state": {
+                    "clean": "մաքուր",
+                    "failed": "ձախողված",
+                    "passed": "անցած",
+                    "timedOut": "ժամանակը սպառված"
+                },
+                "timeoutChip": "ժամանակի սահման {seconds}s",
+                "truncated": "կրճատված",
+                "workspaceLabel": "Աշխատանքային տարածք՝"
+            },
+            "attachedImageAlt": "Կցված պատկեր",
+            "stepNumber": "Քայլ {step}",
+            "transcribingLocally": "Տեղային տառադարձում...",
+            "transferPlan": {
+                "dependsOnMany": "Կախված է {count} նախապատրաստական քայլերից",
+                "dependsOnOne": "Կախված է {count} նախապատրաստական քայլից",
+                "destination": "Նպատակակետ: {destination}",
+                "title": "Փոխանցման պլանի վերանայում",
+                "warnings": "Զգուշացումներ"
             }
         },
         "archive": {
@@ -3475,7 +3742,19 @@
             "metadataRepaired": "Պահոցի վերնագիրը կամ մանիֆեստը վերակառուցվեց զույգությունից։",
             "repairMetadataSuccess": "Վերականգնումն ավարտված է՝ պահոցի վերնագիրը կամ մանիֆեստը վերակառուցվեց զույգությունից",
             "errorCorrectionBadge": "Սխալների ուղղում",
-            "itemsInFolder": "{count} տարր /{folder} թղթապանակում"
+            "itemsInFolder": "{count} տարր /{folder} թղթապանակում",
+            "compressionProfileArchive": "Արխիվ (zstd -15)",
+            "compressionProfileBalanced": "Հավասարակշռված (zstd -9)",
+            "compressionProfileFast": "Արագ (zstd -3)",
+            "damagedChunkLocation": "{id} - շեղում {offset} (երկարություն {len})",
+            "fallbackName": "Պահոց",
+            "folderScanSummary": "{files} ֆայլ {dirs} թղթապանակում ({size})",
+            "namePlaceholderVault": "Իմ անվտանգ պահոցը",
+            "namePlaceholderZip": "Իմ արխիվը",
+            "recentDaysAgo": "{count} օր առաջ",
+            "recentFileCountMany": "{count} ֆայլ",
+            "recentFileCountOne": "{count} ֆայլ",
+            "recentMonthsAgo": "{count} ամիս առաջ"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",
@@ -3505,7 +3784,12 @@
             "encryptingSelection": "Ընտրված տարրերի գաղտնագրում...",
             "ingestSkipped": "Պահոցը ստեղծվեց, սակայն որոշ տարրեր հնարավոր չեղավ ավելացնել․",
             "selectionInfo": "{count} տարր կգաղտնագրվի պահոցում",
-            "decrypting": "Վերծանվում է…"
+            "decrypting": "Վերծանվում է…",
+            "compatibleWithApp": "Համատեղելի է Cryptomator հավելվածի հետ",
+            "createFormatBadge": "Cryptomator ձևաչափ 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM բովանդակություն",
+            "featureNameCipher": "AES-SIV անուններ",
+            "formatVersion": "Ձևաչափ {version}"
         },
         "compress": {
             "title": "Սեղմել ֆայլերը",
@@ -3575,7 +3859,9 @@
             "noChange": "(փոփոխություն չկա)",
             "conflictWarning": "Որոշ ֆայլեր կունենան նույն անունը։ Խնդրում ենք կարգավորել կաղապարը։",
             "existingCollision": "Որոշ նոր անուններ համընկնում են այս թղթապանակում արդեն առկա ֆայլերի հետ. այդ ֆայլերը չեն վերագրվի, և դրանց վերանվանումը կբաց թողնվի։",
-            "existingCollisionHint": "(արդեն գոյություն ունի)"
+            "existingCollisionHint": "(արդեն գոյություն ունի)",
+            "baseNamePlaceholder": "ֆայլ",
+            "invalidName": "{name} (անվավեր)"
         },
         "lockScreen": {
             "locked": "Հավելվածը կողպված է",
@@ -3671,7 +3957,11 @@
             "portable_needs_replug": "Աշխատասեղանի կողմից չի միացվել։ Անջատեք և նորից միացրեք մալուխը, ապա կրկին բացեք։",
             "volumes_need_mount_observe": "Snap-ում ծավալները երևում են, երբ mount-observe թույլտվությունը միացվի։ Գործարկեք սա տերմինալում և վերադարձեք AeroFTP:",
             "volumes_unavailable": "Չհաջողվեց կարդալ միացված ծավալները։",
-            "portable_device": "Շարժական սարք"
+            "portable_device": "Շարժական սարք",
+            "drivesLeftPanel": "Ձախ վահանակի սկավառակներ",
+            "drivesRightPanel": "Աջ վահանակի սկավառակներ",
+            "modeGroupLabel": "Կողագոտու ռեժիմ",
+            "placesSidebarLabel": "Վայրերի կողագոտի"
         },
         "viewMode": {
             "list": "Ցուցակ",
@@ -3686,7 +3976,9 @@
             "browseSiblings": "Զննել հարևան թղթապանակները",
             "noSubdirectories": "Ենթապանակներ չկան",
             "loading": "Բեռնվում է...",
-            "browseChildren": "Դիտել ենթապանակները"
+            "browseChildren": "Դիտել ենթապանակները",
+            "ariaLabel": "Նավարկման ուղի",
+            "syncBoundaryTitle": "{path} (համաժամացման սահման)"
         },
         "bridge": {
             "checking": "{app}-ի ստուգում…",
@@ -3719,7 +4011,12 @@
         },
         "quickLook": {
             "noPreview": "Նախադիտում հասանելի չէ",
-            "title": "Արագ դիտում"
+            "title": "Արագ դիտում",
+            "closePreview": "Փակել նախադիտումը",
+            "dialogLabel": "Արագ դիտում: {name}",
+            "nextFile": "Հաջորդ ֆայլը",
+            "position": "{index}՝ {total}-ից",
+            "previousFile": "Նախորդ ֆայլը"
         },
         "properties": {
             "general": "Ընդհանուր",
@@ -3796,7 +4093,8 @@
                 "immich-asset-checksum": "Այն մեդիաֆայլի ստուգիչ գումարը, որը Immich-ը գրանցում է վերբեռնման պահին։",
                 "crypt-overlay-ciphertext": "Հեշը վերաբերում է սերվերում պահվող գաղտնագրված բայթերին։"
             },
-            "readOnlyIsLinkTarget": "Սա խորհրդանշական հղում է. թույլտվությունները պատկանում են այն ֆայլին, որին այն ցույց է տալիս։ Դրանք փոխելու համար բացեք այդ ֆայլի հատկությունները։"
+            "readOnlyIsLinkTarget": "Սա խորհրդանշական հղում է. թույլտվությունները պատկանում են այն ֆայլին, որին այն ցույց է տալիս։ Դրանք փոխելու համար բացեք այդ ֆայլի հատկությունները։",
+            "exactBytes": "({bytes} բայթ)"
         },
         "duplicates": {
             "sortWasted": "Վատնված տարածք",
@@ -3837,7 +4135,10 @@
             "modeExactHint": "Բայթ առ բայթ նույնական",
             "modeNonIdenticalHint": "Ընկալողական կամ տեքստային նմանություն, առանց ավտոմատ ջնջման",
             "potentialWasteSelected": "հնարավոր վատնում (ընտրված)",
-            "similarityDistance": "{similarity}, հեռավ. {distance}"
+            "similarityDistance": "{similarity}, հեռավ. {distance}",
+            "modeExact": "Ճշգրիտ",
+            "modeLabel": "Ռեժիմ:",
+            "modeNonIdentical": "Ոչ նույնական"
         },
         "diskUsage": {
             "title": "Սկավառակի օգտագործում",
@@ -3899,7 +4200,11 @@
                 "noActivity": "Ցանցի ակտիվություն դեռևս չկա։ Փոխանցեք ֆայլեր՝ իրադարձությունները տեսնելու համար։",
                 "time": "Ժամանակ",
                 "event": "Իրադարձություն",
-                "detail": "Մանրամասներ"
+                "detail": "Մանրամասներ",
+                "command": "Հրաման",
+                "ipcTransfersCount": "IPC + Փոխանցումներ ({count})",
+                "status": "Կարգավիճակ",
+                "type": "Տեսակ"
             },
             "system": {
                 "appVersion": "AeroFTP տարբերակ",
@@ -3946,7 +4251,8 @@
                 "dark": "Մուգ",
                 "light": "Լուսավոր",
                 "userAgent": "Օգտատիրոջ գործակալ",
-                "localStorageKeysTitle": "LocalStorage բանալիներ"
+                "localStorageKeysTitle": "LocalStorage բանալիներ",
+                "localStorageEntrySummary": "{size} բայթ · {preview}"
             },
             "copyFileListToClipboard": "Պատճենել ֆայլերի ցանկը սեղմատախտակին",
             "filesCopied": "{count} ֆայլի գրառում պատճենվեց սեղմատախտակ",
@@ -4192,7 +4498,9 @@
                     "cropHint": "Կրկնակի սեղմեք ընտրության վրա կամ սեղմեք Enter՝ կիրառելու համար, Esc՝ չեղարկելու համար",
                     "cropRatio": "Համամասնություններ",
                     "cropRatioFree": "Ազատ",
-                    "cropRatioOriginal": "Բնօրինակ"
+                    "cropRatioOriginal": "Բնօրինակ",
+                    "rotateCcw90Short": "90° ժամասլաքին հակառակ",
+                    "rotateCw90Short": "90° ժամասլաքի ուղղությամբ"
                 },
                 "toggleTransparencyBg": "Թափանցիկության ֆոն (փոխել)"
             },
@@ -4212,7 +4520,8 @@
                 "loading": "PDF-ի բեռնում...",
                 "open": "Բացել PDF",
                 "page": "Էջ",
-                "zoom": "Խոշորացույց"
+                "zoom": "Խոշորացույց",
+                "documentTitle": "PDF փաստաթուղթ"
             },
             "text": {
                 "auto": "Ինքնաշխատ",
@@ -4243,7 +4552,8 @@
                 "viewportTablet": "Պլանշետ (768px)",
                 "wordWrap": "Բառերի տեղափոխում",
                 "zoomIn": "Մեծացնել",
-                "zoomOut": "Փոքրացնել"
+                "zoomOut": "Փոքրացնել",
+                "htmlPreviewFrameTitle": "HTML նախադիտում"
             },
             "video": {
                 "exitFullscreen": "Դուրս գալ լիաէկրանից (F)",
@@ -4442,7 +4752,10 @@
             "aerocryptImportTitle": "Հայտնաբերվել է Rclone Crypt շերտ",
             "aerocryptImportDesc": "Պրոֆիլը ներմուծված է rclone.conf-ից {name}-ի համար. բացե՞լ շերտը հիմա:",
             "aerocryptImportOpen": "Բացել շերտը",
-            "aerovaultOverlayExpired": "AeroVault Overlay-ը կողպված է անգործության պատճառով։ Շարունակելու համար նորից բացեք պահոցը։"
+            "aerovaultOverlayExpired": "AeroVault Overlay-ը կողպված է անգործության պատճառով։ Շարունակելու համար նորից բացեք պահոցը։",
+            "aerovaultOverlaySource": "AeroVault շերտը ակտիվ է ({source})",
+            "fileOperationsLabel": "Ֆայլային գործողություններ",
+            "overlayBadge": "ՇԵՐՏ"
         },
         "dialogs": {
             "confirmTitle": "Հաստատել",
@@ -4465,7 +4778,9 @@
                 "setup": "Երկգործոն նույնականացում",
                 "verify": "Ստուգել և միացնել",
                 "active": "2FA ակտիվ է",
-                "inactive": "2FA ակտիվ չէ"
+                "inactive": "2FA ակտիվ չէ",
+                "codeGroupLabel": "{count}-նիշանի կոդ",
+                "digitLabel": "Թվանշան {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Դիտարկել",
                     "installed": "Տեղադրված"
-                }
+                },
+                "remoteInstallDisabled": "Պլագինների հեռավոր տեղադրումը ներկայումս անջատված է, մինչև ռեեստրը նույնականացվի հաճախորդի կողմում։ Տեղային տեղադրված պլագինները շարունակում են նորմալ աշխատել։"
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "Վերականգնված ֆայլերը կհայտնվեն իրենց սկզբնական թղթապանակում",
             "connectionNamePlaceholder": "Կապակցության անունը (օր. Իմ FileLu Cloud-ը)",
             "trashAutoExpiry": "Աղբարկղում գտնվող ֆայլերը FileLu-ն ավտոմատ ջնջում է 7 օր անց",
-            "rsyncTransferOnly": "Միայն փոխանցման վերջնակետ. զննարկումը հասանելի չէ Rsync-ում։ Օգտագործիր Native API, WebDAV, S3 կամ FTP՝ նավարկելու համար, անցիր Rsync-ին՝ բարձր թողունակությամբ delta փոխանցումների համար։"
+            "rsyncTransferOnly": "Միայն փոխանցման վերջնակետ. զննարկումը հասանելի չէ Rsync-ում։ Օգտագործիր Native API, WebDAV, S3 կամ FTP՝ նավարկելու համար, անցիր Rsync-ին՝ բարձր թողունակությամբ delta փոխանցումների համար։",
+            "badgePasswordProtected": "Պաշտպանված է գաղտնաբառով",
+            "badgeWatermarked": "Ջրանիշով"
         },
         "box": {
             "addComment": "Ավելացնել մեկնաբանություն",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Անվճար փաթեթ",
             "freeCardTier": "Անվճար + քարտ",
-            "paidTier": "Վճարովի"
+            "paidTier": "Վճարովի",
+            "extraFeatures": "Լրացուցիչ",
+            "coreOpsList": "Վերբեռնում, Ներբեռնում, Ջնջում, Վերանվանում, Տեղափոխում, Թղթապանակի ստեղծում, Որոնում",
+            "coreOpsLegend": "Հիմնական = Վերբեռնում, Ներբեռնում, Ջնջում, Վերանվանում, Տեղափոխում, Թղթապանակի ստեղծում, Որոնում"
         },
         "healthCheck": {
             "title": "Սերվերի առողջության ստուգում",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} ֆայլ",
             "releaseAssetMany": "{count} ֆայլ",
             "repoPrivate": "Մասնավոր",
-            "repoPublic": "Հանրային"
+            "repoPublic": "Հանրային",
+            "actionsLiveBadge": "Ուղիղ",
+            "actionsRunningTitle": "GitHub Actions (ընթացքում)",
+            "coAuthors": "Համահեղինակներ",
+            "pagesPathPlaceholder": "/ կամ /docs",
+            "pagesStatusBuilding": "կառուցվում է",
+            "pagesStatusBuilt": "կառուցված",
+            "pagesStatusErrored": "սխալ",
+            "refreshBranches": "Թարմացնել ճյուղերը",
+            "repoPrivateTitle": "Մասնավոր պահոց",
+            "repoPublicTitle": "Հանրային պահոց",
+            "unpushedCommitsOnBranchMany": "{count} չուղարկված commit {branch}-ում",
+            "unpushedCommitsOnBranchOne": "{count} չուղարկված commit {branch}-ում"
         },
         "filenNotes": {
             "title": "Գաղտնագրված գրառումներ",
@@ -4967,7 +5300,8 @@
             "tagName": "Պիտակի անունը",
             "removeTag": "Հեռացնել պիտակը",
             "manageTags": "Կառավարել պիտակները",
-            "deleteTagConfirm": "Ջնջե՞լ «{name}» պիտակը։ Գրառումները կպահպանեն իրենց տեքստը։"
+            "deleteTagConfirm": "Ջնջե՞լ «{name}» պիտակը։ Գրառումները կպահպանեն իրենց տեքստը։",
+            "betaBadge": "ԲԵՏԱ"
         },
         "shareLinkModal": {
             "title": "Տարածման հղում",
@@ -5077,7 +5411,8 @@
                 "down": "անհասանելի",
                 "pending": "ստուգում...",
                 "unknown": "չստուգված",
-                "clickToRetry": "սեղմեք՝ կրկին ստուգելու համար"
+                "clickToRetry": "սեղմեք՝ կրկին ստուգելու համար",
+                "withActiveSession": "{title} (ակտիվ նստաշրջան)"
             },
             "densityCompact": "Կոմպակտ տողեր",
             "densityComfortable": "Հարմարավետ տողեր",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt գաղտնագրված շերտ (բնիկ)․ անունները և բովանդակությունը գաղտնագրված են այս սերվերում։",
-                "rcloneTitle": "rclone crypt շերտ (փոխգործելի)․ անունները և բովանդակությունը գաղտնագրված են այս սերվերում։"
+                "rcloneTitle": "rclone crypt շերտ (փոխգործելի)․ անունները և բովանդակությունը գաղտնագրված են այս սերվերում։",
+                "keyBits": "{bits}-բիթ"
             },
             "sidebar": {
                 "filters": "Զտիչներ",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "Մենք չկարողացանք կարդալ այս զամբյուղի գաղտնագրման կարգավորումը, քանի որ հավելվածի բանալին չունի readBucketEncryption հնարավորությունը։ Այն արժեքը, որը մեզ թույլատրված չէ տեսնել, չի նշանակում, որ գաղտնագրումն անջատված է։",
                 "unknownShapeTitle": "Մենք չկարողացանք կարդալ այս զամբյուղի գաղտնագրման կարգավորումը, քանի որ պատասխանը փաստաթղթավորված ձև չուներ։ Բանալին թույլտվություն ուներ այն կարդալու, ուստի խնդիրը պատասխանի մեջ է, ոչ թե թույլտվությունների։"
             },
-            "exportProfile": "Արտահանել..."
+            "exportProfile": "Արտահանել...",
+            "quotaLabel": "Քվոտա",
+            "storageNoCapReported": "{used} (քվոտայի սահմանաչափ չի հաղորդվել)",
+            "e2eBitsBadge": "E2E {bits}-բիթ",
+            "filenAuthVersionTitle": "Հայտնաբերվել է Filen auth/info-ից հաջող միացման ժամանակ",
+            "demoBadge": "ԴԵՄՈ",
+            "timeAgo": {
+                "now": "հիմա",
+                "minutes": "{count} ր",
+                "hours": "{count} ժ",
+                "days": "{count} օր",
+                "months": "{count} ամս"
+            }
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",
@@ -5221,7 +5569,8 @@
             "linkType": "Տեսակ",
             "createMergeRequest": "Ստեղծել միաձուլման հարցում",
             "mrTitle": "MR վերնագիր",
-            "mrBody": "Նկարագրություն (կամընտիր)"
+            "mrBody": "Նկարագրություն (կամընտիր)",
+            "sourceCode": "Սկզբնական կոդ"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "Կրկնօրինակել օգտատիրոջը (միայն սերվերներ, առանց գաղտնաբառերի)",
             "copyLockedHint": "Նախ անցեք այս հաշվին՝ դրա սերվերները կրկնօրինակելու համար",
             "crossUserDedupTitle": "Արդեն պահպանված է մեկ այլ հաշվի կողմից",
-            "crossUserDedupMessage": "\"{name}\"-ը օգտագործում է սերվերի հաշիվ, որը այս սարքում նաև պահպանել է՝ {accounts}"
+            "crossUserDedupMessage": "\"{name}\"-ը օգտագործում է սերվերի հաշիվ, որը այս սարքում նաև պահպանել է՝ {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Փակել գաղտնաբառի վերակայման պատուհանը",
+                "confirmPassword": "Հաստատեք նոր գաղտնաբառը",
+                "errMismatch": "Հաշվի նոր գաղտնաբառերը չեն համընկնում։",
+                "errNewRequired": "Մուտքագրեք հաշվի նոր գաղտնաբառ։",
+                "errNotAuthorized": "Մեկ այլ հաշվի գաղտնաբառը վերակայելու համար պետք է ադմինիստրատոր լինեք։",
+                "errNotForSelf": "Ձեր սեփական հաշվում օգտագործեք Փոխել գաղտնաբառը։",
+                "errStoreNotReady": "Նախ ապակողպեք պահոցը, ապա կրկին փորձեք։",
+                "errTypeReset": "Մուտքագրեք RESET՝ այս կործանարար գործողությունը հաստատելու համար։",
+                "errUserNotFound": "Այս օգտատերն այլևս գոյություն չունի։",
+                "newPassword": "Հաշվի նոր գաղտնաբառ",
+                "statEncryptedBytes": "գաղտնագրված բայթ",
+                "statProfiles": "պրոֆիլ",
+                "statSettings": "կարգավորում",
+                "title": "Գաղտնաբառի վերակայում = տվյալների ոչնչացում",
+                "typeReset": "Մուտքագրեք RESET",
+                "wipeDetail": "Ընթացիկ գաղտնաբառը հնարավոր չէ վերականգնել։ AeroFTP-ն կջնջի թիրախային հաշվի պահված սերվերները, օգտատիրոջ կարգավորումները և կողպման վիճակը, ապա կթողարկի նոր գաղտնագրման բանալի՝ պաշտպանված նոր գաղտնաբառով։",
+                "wipeWarning": "Սա ընդմիշտ կջնջի թիրախային հաշվի գաղտնագրված բաժինը։"
+            },
+            "dropdown": {
+                "accountPassword": "Հաշվի գաղտնաբառ",
+                "lock": "Կողպել",
+                "newUser": "Նոր օգտատեր",
+                "noUsers": "Դեռ օգտատերեր չկան։ Առաջինն ավելացնելու համար օգտագործեք ստորև «Նոր օգտատեր» կոճակը։",
+                "protectionNote": "Ձեր հաշիվը պաշտպանված է Argon2id + AES-KW + AES-256-GCM գաղտնագրմամբ",
+                "users": "Օգտատերեր"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt ծածկույթ",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Ռեժիմն ընտրվում է կապը ստեղծելիս և մնում է անփոփոխ պահպանված պրոֆիլը խմբագրելիս։ Այլ ռեժիմ օգտագործելու համար ստեղծեք նոր կապ։"
+                "lockedInEdit": "Ռեժիմն ընտրվում է կապը ստեղծելիս և մնում է անփոփոխ պահպանված պրոֆիլը խմբագրելիս։ Այլ ռեժիմ օգտագործելու համար ստեղծեք նոր կապ։",
+                "notInBuild": "Ներառված չէ AeroFTP-ի այս տարբերակում։"
             }
         },
         "flatpak": {

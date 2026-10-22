@@ -40,8 +40,8 @@ export const CodingSearchReview: React.FC<CodingSearchReviewProps> = ({ data }) 
     const tone = result.timed_out ? 'text-amber-200' : 'text-emerald-200';
     const StateIcon = result.timed_out ? TimerReset : Search;
     const stateLabel = result.timed_out
-        ? 'timed-out'
-        : `${result.total_matches} match(es)`;
+        ? t('ai.coding.state.timedOut')
+        : t(result.total_matches === 1 ? 'ai.coding.search.matchCountOne' : 'ai.coding.search.matchCountMany', { count: result.total_matches });
     const visible = result.matches.slice(0, MAX_VISIBLE);
     const hidden = result.matches.length - visible.length;
 
@@ -49,7 +49,7 @@ export const CodingSearchReview: React.FC<CodingSearchReviewProps> = ({ data }) 
         <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
             <div className="flex items-center gap-2">
                 <Search className="h-4 w-4 text-white/55" />
-                <span className="text-xs font-semibold text-white/85">Workspace Search</span>
+                <span className="text-xs font-semibold text-white/85">{t('ai.coding.search.title')}</span>
                 <span className={`ml-auto flex items-center gap-1 text-[11px] font-semibold ${tone}`}>
                     <StateIcon className="h-3.5 w-3.5" />
                     {stateLabel}
@@ -58,12 +58,12 @@ export const CodingSearchReview: React.FC<CodingSearchReviewProps> = ({ data }) 
 
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className={`${chipClass} font-mono`} title={result.pattern}>{result.pattern}</span>
-                {result.fixed_strings && <span className={chipClass}>literal</span>}
-                {result.case_insensitive && <span className={chipClass}>ignore-case</span>}
-                {result.path && <span className={chipClass}>in {result.path}</span>}
-                <span className={chipClass}>{result.file_count} file(s)</span>
+                {result.fixed_strings && <span className={chipClass}>{t('ai.coding.search.literal')}</span>}
+                {result.case_insensitive && <span className={chipClass}>{t('ai.coding.search.ignoreCase')}</span>}
+                {result.path && <span className={chipClass}>{t('ai.coding.search.inPath', { path: result.path })}</span>}
+                <span className={chipClass}>{t(result.file_count === 1 ? 'ai.coding.fileCountOne' : 'ai.coding.fileCountMany', { count: result.file_count })}</span>
                 {result.timed_out ? (
-                    <span className={chipClass}>timeout {result.timeout_secs}s</span>
+                    <span className={chipClass}>{t('ai.coding.timeoutChip', { seconds: result.timeout_secs })}</span>
                 ) : (
                     <span className={chipClass}>{(result.duration_ms / 1000).toFixed(1)}s</span>
                 )}
@@ -75,10 +75,10 @@ export const CodingSearchReview: React.FC<CodingSearchReviewProps> = ({ data }) 
                         <MatchRow key={`${match.file}-${match.line}-${match.column}-${idx}`} match={match} />
                     ))}
                     {hidden > 0 && (
-                        <div className="text-[10px] text-white/40">+{hidden} more</div>
+                        <div className="text-[10px] text-white/40">{t('ai.coding.moreCount', { count: hidden })}</div>
                     )}
                     {result.truncated && (
-                        <div className="text-[10px] text-amber-300/70">Results were truncated.</div>
+                        <div className="text-[10px] text-amber-300/70">{t('ai.coding.search.truncated')}</div>
                     )}
                 </div>
             ) : (

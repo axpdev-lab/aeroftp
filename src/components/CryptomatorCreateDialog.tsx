@@ -219,7 +219,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
         <div className="mb-5 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
           <Shield size={16} className="text-emerald-500 flex-shrink-0" />
           <span className="text-xs text-emerald-600 dark:text-emerald-400">
-            Cryptomator Format 8: AES-256-GCM + AES-SIV
+            {t('cryptomator.createFormatBadge')}
           </span>
         </div>
 

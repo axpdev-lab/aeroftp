@@ -295,7 +295,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
             style={{ color: 'var(--color-text-secondary)' }}
           >
             <Users size={12} />
-            <span>Co-Authors</span>
+            <span>{t('github.coAuthors')}</span>
             {coAuthors.filter(a => a.enabled).length > 0 && (
               <span
                 className="px-1.5 py-0.5 rounded-full text-[10px] font-medium"

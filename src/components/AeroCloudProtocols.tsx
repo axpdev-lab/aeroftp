@@ -74,12 +74,13 @@ export function useAeroCloudCaveat(): (protocol: string | undefined) => string {
 
 /** "Beta" / "Alpha" mark for a protocol; nothing for a stable one. */
 export const AeroCloudMaturityBadge: React.FC<{ protocol: string | undefined; className?: string }> = ({ protocol, className = '' }) => {
+    const t = useTranslation();
     const maturity = aeroCloudMaturity(protocol);
     if (maturity === 'beta') {
-        return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 ${className}`.trim()}>Beta</span>;
+        return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 ${className}`.trim()}>{t('aeroShare.experimentalTag')}</span>;
     }
     if (maturity === 'alpha') {
-        return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold bg-red-500/20 text-red-700 dark:text-red-400 ${className}`.trim()}>Alpha</span>;
+        return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold bg-red-500/20 text-red-700 dark:text-red-400 ${className}`.trim()}>{t('cloud.maturity.alpha')}</span>;
     }
     return null;
 };

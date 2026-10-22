@@ -119,6 +119,14 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
 
   const normalizeStatus = (status: string | null): string => status || 'built';
 
+  const statusLabel = (status: string | null): string => {
+    const s = normalizeStatus(status);
+    if (s === 'built') return t('github.pagesStatusBuilt');
+    if (s === 'building') return t('github.pagesStatusBuilding');
+    if (s === 'errored') return t('github.pagesStatusErrored');
+    return s;
+  };
+
   const StatusIcon: React.FC<{ status: string | null; size?: number }> = ({ status, size = 14 }) => {
     const s = normalizeStatus(status);
     if (s === 'built') return <CheckCircle size={size} className="text-green-500" />;
@@ -213,7 +221,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                   <div className="flex items-center gap-2">
                     <StatusIcon status={site.status} />
                     <span className={`text-xs font-medium uppercase ${statusColor(site.status)}`}>
-                      {normalizeStatus(site.status)}
+                      {statusLabel(site.status)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -356,7 +364,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                           onChange={e => setConfigPath(e.target.value)}
                           className="flex-1 text-xs px-2 py-1 rounded border"
                           style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
-                          placeholder="/ or /docs"
+                          placeholder={t('github.pagesPathPlaceholder')}
                         />
                       </div>
                       <div className="flex items-center gap-2">

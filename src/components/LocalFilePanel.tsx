@@ -522,7 +522,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
       data-testid={TID.panel}
       data-panel={panelKey}
       role="region"
-      aria-label={panelKey === 'local2' ? 'Local files (right panel)' : 'Local files'}
+      aria-label={panelKey === 'local2' ? t('browser.localFilesRightLabel') : t('browser.localFilesLabel')}
       className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : style ? 'min-w-0' : 'w-1/2'} min-h-0 flex flex-col ${crossPanelRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
       style={style}
       onDragOver={(e) => onPanelDragOver(e, panelKey)}
@@ -549,8 +549,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             the PlacesSidebar header markers (same letter, same accent). */}
         {isDualMode && (
           <span
-            aria-label={panelKey === 'local2' ? 'Right panel' : 'Left panel'}
-            title={panelKey === 'local2' ? 'Right panel' : 'Left panel'}
+            aria-label={panelKey === 'local2' ? t('browser.rightPanelMarker') : t('browser.leftPanelMarker')}
+            title={panelKey === 'local2' ? t('browser.rightPanelMarker') : t('browser.leftPanelMarker')}
             className={`flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold tracking-wider transition-opacity ${
               isFocused ? 'opacity-100' : 'opacity-40'
             } ${

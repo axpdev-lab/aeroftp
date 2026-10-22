@@ -337,7 +337,38 @@
             "protonSignOut": "Logga ut",
             "protonSignOutHelp": "Avslutar sessionen hos Proton och tar bort den från den här profilen.",
             "protonSignInExpired": "Inloggningssidan har gått ut. Logga in igen.",
-            "protonNativeUnavailable": "Den här versionen innehåller inte den inbyggda Proton Drive-klienten."
+            "protonNativeUnavailable": "Den här versionen innehåller inte den inbyggda Proton Drive-klienten.",
+            "forms": {
+                "publicApiKey": "Offentlig API-nyckel",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Offentlig nyckel.",
+                "secretApiKey": "Hemlig API-nyckel",
+                "uploadcareSecretHint": "Används endast för REST-filhantering via {scheme}-autentisering.",
+                "flatMediaLibrary": "Platt mediebibliotek",
+                "uploadcareNoFolders": "Uploadcare har inga egna mappar; projektfiler listas i roten efter UUID.",
+                "urlEndpointId": "URL-slutpunkts-ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-slutpunkt.",
+                "privateApiKey": "Privat API-nyckel",
+                "storedVaultBasicAuth": "Lagras i det lokala valvet och skickas endast till {provider} via Basic Auth.",
+                "cloudName": "Molnnamn",
+                "cloudinaryCloudNameHint": "Finns i din Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-nyckel",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-nyckel.",
+                "apiSecret": "API-hemlighet",
+                "apiSecretPlaceholder": "API-hemlighet",
+                "openProviderLink": "Öppna {provider}-länk",
+                "githubPatHint": "Finkornig PAT med Contents (läsa och skriva).",
+                "generateToken": "Generera token",
+                "applicationKeyId": "Programnyckel-ID",
+                "backblazeKeyIdHint": "B2-applikationsnyckel-ID, börjar med 003. Skapa en på sidan App Keys hos Backblaze.",
+                "applicationKey": "Applikationsnyckel",
+                "backblazeKeyHint": "Visas bara en gång när den skapas. Behandla den som ett lösenord.",
+                "bucketNameExactHint": "Exakt bucket-namn, skiftlägeskänsligt.",
+                "megacmdSetupFirst": "Konfigurera MEGAcmd först",
+                "megacmdFetchUrlTitle": "Kör {cmd} och fyll i URL:en automatiskt",
+                "fetchUrl": "Hämta URL",
+                "megacmdWebdavHint": "Användarnamn och lösenord är avsiktligt utelämnade. AeroFTP kör själv \"{cmd}\" vid anslutning för att starta bryggan och läsa den här adressen: fältet kan lämnas tomt. Hämta URL är en valfri manuell uppdatering; ändra porten här om MEGAcmd använder en anpassad port."
+            },
+            "manualStorageUnitLabel": "{label}-enhet"
         },
         "browser": {
             "remote": "Fjärr",
@@ -390,7 +421,19 @@
             "listingPath": "Listar {path}...",
             "pleaseWait": "Vänta...",
             "sameNameLeakChip": "samma namn",
-            "sameNameLeakTooltip": "Det här namnet visas även på en annan sökväg i det här krypterade valvet. Eftersom namn krypteras deterministiskt kan en observatör av det krypterade lagret se att de två delar ett namn."
+            "sameNameLeakTooltip": "Det här namnet visas även på en annan sökväg i det här krypterade valvet. Eftersom namn krypteras deterministiskt kan en observatör av det krypterade lagret se att de två delar ett namn.",
+            "endpointSelector": {
+                "localFolder": "Lokal mapp",
+                "localFolderHint": "Välj en lokal sökväg för den här panelen",
+                "noSavedProfiles": "Inga sparade profiler",
+                "savedProfiles": "Sparade fjärrprofiler",
+                "title": "Slutpunkt"
+            },
+            "leftPanelMarker": "Vänster panel",
+            "localFilesLabel": "Lokala filer",
+            "localFilesRightLabel": "Lokala filer (höger panel)",
+            "remoteFilesLabel": "Fjärrfiler",
+            "rightPanelMarker": "Höger panel"
         },
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Hastighetsgraf",
             "hideSpeedGraph": "Dölj hastighetsgraf",
             "speedAvg": "snitt {speed}",
-            "speedPeak": "topp {speed}"
+            "speedPeak": "topp {speed}",
+            "badgeBatch": "BATCH",
+            "badgeDownload": "NEDLADDNING",
+            "badgeLive": "LIVE",
+            "badgeStream": "STRÖM",
+            "badgeUpload": "UPPLADDNING",
+            "earlierItemsHidden": "{count} tidigare objekt dolda",
+            "folderFilesProgress": "{done}/{total} filer",
+            "laneDone": "klar",
+            "laneError": "fel",
+            "unifiedPlan": {
+                "destination": "Mål",
+                "dialogLabel": "Överföringsplan",
+                "engineAerovaultOverlay": "AeroVault-överlägg",
+                "engineCompareOnly": "Endast jämförelse",
+                "engineCrossProfileSync": "Synkronisering mellan profiler",
+                "engineCrossProfileTransfer": "Överföring mellan profiler",
+                "engineLocalDelta": "Lokal deltatransport",
+                "engineLocalFs": "Lokalt filsystem",
+                "engineProviderDownload": "Nedladdning från leverantör",
+                "engineProviderUpload": "Uppladdning till leverantör",
+                "engineUnsupported": "Stöds inte",
+                "execute": "Kör",
+                "items": "Objekt",
+                "modeBackup": "Säkerhetskopia",
+                "modeBisync": "Tvåvägssynk",
+                "modeCompare": "Jämför",
+                "modeCopy": "Kopiera",
+                "modeMirror": "Spegla",
+                "modeMove": "Flytta",
+                "modeSync": "Synkronisera",
+                "notExecutable": "Det här slutpunktsparet kan inte köras än.",
+                "parallel": "Parallell",
+                "reviewBeforeExecution": "Granska före körning",
+                "route": "{pair} via {engine}",
+                "size": "Storlek",
+                "source": "Källa",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Inställningar",
@@ -1040,7 +1121,13 @@
                 "title": "Inbyggd rsync (beta)",
                 "description": "Använd AeroFTP:s inbyggda implementation av rsync-protokollet istället för att starta systemets rsync-binär. Minskar processoverhead; kan vara mindre beprövad i gränsfall.",
                 "enableToggle": "Aktivera inbyggd rsync för delta-synk över SFTP",
-                "experimental": "Auto föredrar AeroRsync med klassisk reserv; Classic använder systemets rsync-binärfil där den finns; Native hoppar över den klassiska binära reserven."
+                "experimental": "Auto föredrar AeroRsync med klassisk reserv; Classic använder systemets rsync-binärfil där den finns; Native hoppar över den klassiska binära reserven.",
+                "modeAuto": "Automatiskt",
+                "modeClassic": "Klassiskt",
+                "modeNative": "Inbyggt",
+                "classicNotFoundTooltip": "Klassisk rsync-binär hittades inte i PATH. Installera rsync (Linux/macOS-paket, Windows via WSL/cygwin/scoop) för att aktivera det här läget.",
+                "classicAt": "Klassisk rsync i {path}",
+                "classicNotDetected": "Klassisk rsync-binär upptäcktes inte i PATH. Inbyggt är den enda tillgängliga motorn på den här datorn."
             },
             "startMinimizedOnAutostart": "Starta minimerad i aktivitetsfältet",
             "startMinimizedOnAutostartDesc": "Dölj huvudfönstret vid automatisk start. AeroFTP fortsätter att köras i systemfältet, öppna det från ikonen när du behöver det.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "{count} OAuth-uppgifter hittades i okrypterad lagring",
             "fontSystemInstall": "systeminstallation",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Rekommenderas för maximal säkerhet",
+            "fontCustomOption": "Anpassat...",
+            "fontSystemInstallHint": "Kräver systeminstallation. AeroFTP faller tillbaka automatiskt om det inte är tillgängligt.",
+            "fontSizeIndicatorLabel": "Teckensnitt"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Stoppa",
                 "stopShell": "Stoppa skal",
                 "closed": "Terminalen stängd.",
-                "commandInsertedReview": "Kommando infogat i Terminal. Tryck Enter för att köra."
+                "commandInsertedReview": "Kommando infogat i Terminal. Tryck Enter för att köra.",
+                "decreaseFont": "Minska teckenstorlek (Ctrl+-)",
+                "emptyClickPlus": "Klicka på {plus} för att öppna en terminal",
+                "emptySshHint": "eller {ssh} för fjärrskal till {host}",
+                "increaseFont": "Öka teckenstorlek (Ctrl+=)",
+                "newTab": "Ny terminalflik",
+                "sshShellTo": "SSH-skal till {host}",
+                "theme": "Terminaltema"
             },
             "editorPanel": {
                 "emptyState": "Högerklicka på en fil och välj \"Visa källa\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Sparar...",
                 "noFileSelected": "Ingen fil vald för visning",
                 "loading": "Läser in redigerare...",
-                "dragToTerminalRun": "Dra till Terminal för att infoga körningskommando"
+                "dragToTerminalRun": "Dra till Terminal för att infoga körningskommando",
+                "closeEditor": "Stäng redigeraren",
+                "resetChanges": "Återställ ändringar"
             },
             "previewPanel": {
                 "emptyState": "Högerklicka på en fil och välj \"Förhandsgranska\""
             },
             "codeEditor": "Kodredigerare",
-            "sshTerminal": "SSH-terminal"
+            "sshTerminal": "SSH-terminal",
+            "comingSoon": "Kommer snart",
+            "soonBadge": "Snart"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Auktorisera manuellt igen om token återkallas"
             },
             "profilesLoadFailed": "Dina sparade servrar kunde inte läsas: {error}",
-            "cleanupSummary": "{count} filer, {size} frigjort"
+            "cleanupSummary": "{count} filer, {size} frigjort",
+            "maturity": {
+                "alpha": "Alfa"
+            },
+            "dialogDashboardLabel": "Översikt för molnsynkronisering",
+            "dialogLoadingLabel": "Molnsynkronisering läses in",
+            "dialogSettingsLabel": "Inställningar för molnsynkronisering",
+            "dialogSetupLabel": "Konfiguration av molnsynkronisering",
+            "onePerLineHint": "(en per rad)",
+            "pairsEditorLabel": "Redigerare för AeroCloud-par",
+            "remoteSubfolderPlaceholder": "moln"
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "delvis, oläsbara mappar: {count}",
             "usedScanFailed": "Skanning av använd lagring misslyckades",
             "usedScanEmpty": "Skanning av {path} hittade inga filer; det cachade värdet behölls. Kontrollera sökvägen eller serverns stöd för rekursiv listning.",
-            "filenBridgeAccountTotal": "Filen Desktop rapporterar inte kontots totala användning här: det visade värdet är summan av filerna under den här sökvägen. Den inbyggda Filen-anslutningen visar kontots totala användning direkt."
+            "filenBridgeAccountTotal": "Filen Desktop rapporterar inte kontots totala användning här: det visade värdet är summan av filerna under den här sökvägen. Den inbyggda Filen-anslutningen visar kontots totala användning direkt.",
+            "ariaLabel": "Statusfält",
+            "debugBadge": "FELSÖKNING",
+            "debugModeActive": "Felsökningsläge aktivt"
         },
         "dialogs": {
             "confirmTitle": "Bekräfta",
@@ -1620,7 +1735,8 @@
                 "apRole": "Grundare, utvecklare, underhållare, meddesigner",
                 "ekRole": "Forskare, kvalitetssäkringsingenjör, meddesigner"
             },
-            "madeBy": "av {author}"
+            "madeBy": "av {author}",
+            "statsLine": "{protocols} protokoll · {languages} språk · AES-256-arkiv"
         },
         "support": {
             "title": "Stöd AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Projekt (Unixname)",
             "opendriveNotApiKey": "(inte din OpenDrive API-nyckel)",
             "endpoint": "Slutpunkt",
-            "accountId": "Konto-ID"
+            "accountId": "Konto-ID",
+            "servicesHeading": "Tjänster",
+            "sourceforgeSshKeyHelp": "SourceForge kräver autentisering med SSH-nyckel. Generera en nyckel med {cmd} och ladda upp den till {link}.",
+            "sourceforgeSshSettings": "SSH-inställningar",
+            "fullGuide": "Fullständig guide",
+            "endpointTemplateExample": "t.ex. {template}",
+            "jurisdiction": "Jurisdiktion",
+            "insecureCertDialogLabel": "Varning för osäkert certifikat",
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Verifiering av värdnyckel"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -2111,7 +2236,10 @@
             "rename": "Byt namn",
             "resume": "Återuppta",
             "resumeHint": "Återuppta den avbrutna överföringen i stället för att börja om",
-            "cancel": "Avbryt"
+            "cancel": "Avbryt",
+            "dialogLabel": "Bekräfta överskrivning",
+            "moreInQueue": "+{count} i kö",
+            "unknownDate": "Okänt"
         },
         "statusbar": {
             "queue": "Kö",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Användbara sökvägspar (lokal/fjärr) i den här mallen: {count}. Ett AeroSync-fönster arbetar med exakt ett par, så ingenting importerades. Redigera mallen så att bara ett par återstår och importera den sedan igen.",
             "templateNamePlaceholder": "t.ex. Nattlig säkerhetskopia till S3",
             "templateDescPlaceholder": "Vad den här mallen används till (valfritt)",
-            "templateExportCliDesc": "Omslutningsskript för aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Omslutningsskript för aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Inaktivera",
+            "multiPathEditorLabel": "Redigerare för flera sökvägar",
+            "multiPathEnablePair": "Aktivera",
+            "multiPathLocalPlaceholder": "Lokal sökväg",
+            "multiPathRemotePlaceholder": "Fjärrsökväg",
+            "rollbackDialogLabel": "Återställningsögonblicksbild",
+            "rollbackMoreFiles": "+{count} till...",
+            "rollbackSnapshotSummaryMany": "{count} filer, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fil, {size}",
+            "templateDialogLabel": "Synkroniseringsmall",
+            "templateExcludes": "Undantag",
+            "templateLocal": "Lokal",
+            "templateRemote": "Fjärr",
+            "templateRetries": "Nya försök"
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Avvisa verktygskörning",
                 "toggleDetails": "Visa/dölj detaljer",
                 "allowSession": "Tillåt för denna session",
-                "nonAtomicReplace": "Icke-atomiskt utbyte: filen saknas kortvarigt"
+                "nonAtomicReplace": "Icke-atomiskt utbyte: filen saknas kortvarigt",
+                "moreOptions": "Fler alternativ",
+                "panelAria": "Panel för verktygsgodkännande"
             },
             "settings": {
                 "title": "AI-inställningar",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Reserv",
                 "routingNoFallback": "Ingen",
                 "bedrockNeedsModel": "Lägg till och aktivera en Bedrock-modell på fliken Modeller innan du testar.",
-                "bedrockSetup": "Ange Runtime URL för din AWS-region. Under Modeller lägger du till ett ID som stöder Chat Completions på Bedrock Runtime. Runtime visar ingen modellista. Testet skickar en liten inferensbegäran som kan medföra AWS-kostnader."
+                "bedrockSetup": "Ange Runtime URL för din AWS-region. Under Modeller lägger du till ett ID som stöder Chat Completions på Bedrock Runtime. Runtime visar ingen modellista. Testet skickar en liten inferensbegäran som kan medföra AWS-kostnader.",
+                "detectOllamaModelsTooltip": "Identifiera tillgängliga Ollama-modeller automatiskt",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "AI-modellredigerare",
+                "supportsTools": "Stöder verktyg",
+                "supportsVision": "Stöder bildförståelse",
+                "thinkingReasoning": "Tänkande/Resonemang",
+                "toolQuality": "Verktygskvalitet: {quality}/5"
             },
             "copy": "Kopiera",
             "attachImage": "Bifoga bild",
@@ -2699,7 +2850,9 @@
                 "run": "Kör i terminal",
                 "insert": "Infoga i redigerare",
                 "diff": "Jämför med original",
-                "diffNoFile": "Ingen fil öppen för jämförelse"
+                "diffNoFile": "Ingen fil öppen för jämförelse",
+                "commandBlocked": "Kommando blockerat: potentiellt destruktivt",
+                "confirmRun": "Bekräfta körning: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Tänker...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Byt gren",
                 "delete": "Ta bort gren",
                 "newBranch": "Ny gren",
-                "branchFrom": "Förgrena från denna punkt"
+                "branchFrom": "Förgrena från denna punkt",
+                "messageCountShort": "{count} medd.",
+                "unnamed": "Gren"
             },
             "context": {
                 "projectDetected": "Projekt identifierat",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "körs",
                 "expired": "utgången",
-                "refresh": "Uppdatera"
+                "refresh": "Uppdatera",
+                "modelsRunningMany": "{count} modeller körs",
+                "modelsRunningOne": "{count} modell körs",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Kontextcachelagring",
@@ -2956,7 +3114,8 @@
                 "warning": "Alla filoperationer kommer att utföras omedelbart utan godkännande. Använd på egen risk.",
                 "disable": "Inaktivera",
                 "securityWarning": "Säkerhetsvarning",
-                "understood": "Förstått"
+                "understood": "Förstått",
+                "warningAria": "Varning för extremläge"
             },
             "errorServerError": "AI-leverantörens server har problem. Försök igen om en stund.",
             "errorServiceUnavailable": "AI-leverantören är tillfälligt otillgänglig (överbelastad). Gratistjänster kan ha begränsningar. Försök igen senare.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Obegränsat",
                 "roleAI": "AI",
-                "roleUser": "Användare"
+                "roleUser": "Användare",
+                "noConversations": "Inga konversationer än",
+                "titleCount": "Historik ({count})"
             },
             "dropFileToAnalyze": "Släpp fil för att analysera med AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} indatatokens, {output} utdatatokens, enligt leverantörens räkning",
-                "breakdownCache": "{input} indatatokens, {output} utdatatokens, {cacheRead} lästa från promptcachen, {cacheWritten} skrivna till den, enligt leverantörens räkning"
+                "breakdownCache": "{input} indatatokens, {output} utdatatokens, {cacheRead} lästa från promptcachen, {cacheWritten} skrivna till den, enligt leverantörens räkning",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Utför {count} åtgärd(er)",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Skulle hoppas över",
                     "skipped": "Överhoppade",
                     "existedAtCheckpoint": "fanns vid kontrollpunkten",
-                    "absentAtCheckpoint": "saknades vid kontrollpunkten"
+                    "absentAtCheckpoint": "saknades vid kontrollpunkten",
+                    "noFiles": "Inga filer ingick i detta återställningsresultat.",
+                    "otherActions": "Andra åtgärder",
+                    "requestedPaths": "Begärd delmängd av sökvägar",
+                    "scopeAll": "Omfattning: alla filer som fångats i kontrollpunkten.",
+                    "titleApplied": "Återställning av kontrollpunkt tillämpad",
+                    "titleApplyReview": "Granskning av tillämpad kontrollpunktsåterställning",
+                    "titleDryRunComplete": "Provkörning av kontrollpunktsåterställning slutförd",
+                    "titleDryRunReview": "Granskning av provåterställning av kontrollpunkt"
                 },
                 "checks": {
                     "exitSummary": "slutkod {code} · {seconds}s",
                     "continueOnFailure": "Kör alla kontroller även om en misslyckas.",
-                    "stopOnFailure": "Stoppar vid den första kontrollen som misslyckas."
+                    "stopOnFailure": "Stoppar vid den första kontrollen som misslyckas.",
+                    "checkLabel": "Kontroll:",
+                    "checksLabel": "Kontroller:",
+                    "exitChip": "exit {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "e/t",
+                    "passedCount": "{passed}/{total} godkända",
+                    "runCheckNote": "Kör ett utvalt build/test/lint-kommando i arbetsytan. Byggskript och tester kör riktig kod.",
+                    "runProjectCheck": "Kör projektkontroll",
+                    "runVerification": "Kör verifieringsomgång",
+                    "runVerificationNote": "Kör utvalda build/test/lint-kommandon i arbetsytan. Byggskript och tester kör riktig kod.",
+                    "stoppedEarly": "Stoppade vid den första misslyckade kontrollen.",
+                    "timeoutLabel": "Tidsgräns: {seconds}s",
+                    "verification": "Verifiering"
                 },
                 "diagnostics": {
-                    "none": "Ingen diagnostik rapporterad."
+                    "none": "Ingen diagnostik rapporterad.",
+                    "errorCountMany": "{count} fel",
+                    "errorCountOne": "{count} fel",
+                    "title": "Diagnostik",
+                    "truncated": "Diagnostiklistan kortades av.",
+                    "warningCountMany": "{count} varningar",
+                    "warningCountOne": "{count} varning"
                 },
                 "search": {
-                    "none": "Inga träffar hittades."
+                    "none": "Inga träffar hittades.",
+                    "ignoreCase": "ignorera skiftläge",
+                    "inPath": "i {path}",
+                    "literal": "bokstavlig",
+                    "matchCountMany": "{count} träffar",
+                    "matchCountOne": "{count} träff",
+                    "title": "Sökning i arbetsyta",
+                    "truncated": "Resultaten trunkerades."
                 },
                 "git": {
                     "noStagedDiff": "Ingen diff-utdata för köade ändringar.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Godkännande av Git-köning",
                     "commitNote": "Detta skapar en git-incheckning från det aktuella köade indexet. Granska först coding_git_status och coding_git_diff med staged=true.",
                     "stagePreviewNote": "Detta förhandsgranskar vilka begärda sökvägar som skulle köas; indexet ändras inte.",
-                    "stageNote": "Detta ändrar git-indexet för de begärda sökvägarna."
+                    "stageNote": "Detta ändrar git-indexet för de begärda sökvägarna.",
+                    "afterCounts": "Efter: {counts}",
+                    "beforeCounts": "Före: {counts}",
+                    "clean": "Arbetsträdet är rent.",
+                    "commitCountMany": "{count} incheckningar",
+                    "commitCountOne": "{count} incheckning",
+                    "conflicted": "i konflikt",
+                    "diffTruncated": "Diff-utdata kortades.",
+                    "logTitle": "Git-logg",
+                    "pathsChip": "sökvägar: {paths}",
+                    "showingNewest": "Visar de {count} senaste; det finns fler.",
+                    "statusCounts": "{staged} köade, {unstaged} ej köade, {untracked} ospårade, {conflicted} i konflikt",
+                    "titleCommitCreated": "Git-incheckning skapad",
+                    "titleCommitDryRun": "Testkörning av Git-incheckning",
+                    "titleCommitReview": "Granskning av Git-incheckning",
+                    "titleReview": "Git-granskning",
+                    "titleStageApplied": "Git-köning tillämpad",
+                    "titleStagedDiff": "Köad Git-diff",
+                    "titleStageDryRun": "Testkörning av Git-köning",
+                    "titleStatus": "Git-status",
+                    "titleUnstagedDiff": "Ej köad Git-diff",
+                    "untracked": "ospårad"
                 },
                 "patch": {
                     "validateNote": "Detta validerar patchen utan att ändra filer.",
                     "applyNote": "Denna högriskbegäran om tillämpning skriver filer efter att backend har skapat en kontrollpunkt före tillämpningen.",
                     "hideDiff": "Dölj enhetlig diff",
-                    "showDiff": "Visa enhetlig diff"
-                }
+                    "showDiff": "Visa enhetlig diff",
+                    "actualLabel": "faktiskt:",
+                    "checkpointCreated": "Kontrollpunkt före tillämpning skapad",
+                    "diffTruncated": "Diff-förhandsvisning kortad för visning.",
+                    "expectedLabel": "förväntat:",
+                    "firstLines": "första {shown} av {total} rader",
+                    "hunkCountMany": "{count} block",
+                    "hunkCountOne": "{count} block",
+                    "hunkIndex": "block {index}",
+                    "restoreManual": "Återställningen är manuell: använd {tool} med detta kontrollpunkts-ID efter granskning.",
+                    "titleApplied": "Patch tillämpad",
+                    "titleApplyBlocked": "Tillämpning av patch blockerad",
+                    "titleApplyReview": "Granskning av patchtillämpning",
+                    "titleDryRunConflicts": "Provkörning av patch hittade konflikter",
+                    "titleDryRunPassed": "Provkörning av patch godkänd",
+                    "titleDryRunReview": "Granskning av patchprovkörning",
+                    "warnings": "Varningar"
+                },
+                "binary": "binär",
+                "fileCountMany": "{count} filer",
+                "fileCountOne": "{count} fil",
+                "moreCount": "+{count} till",
+                "plan": {
+                    "likelyFiles": "Troliga filer",
+                    "openQuestions": "Öppna frågor",
+                    "reviewOnlyNote": "Endast för granskning. Redigeringar och ändrande verktyg använder fortfarande det aktuella godkännandeläget.",
+                    "riskHigh": "hög risk",
+                    "riskLow": "låg risk",
+                    "riskMedium": "medelhög risk",
+                    "risks": "Risker",
+                    "title": "Kodningsplan"
+                },
+                "state": {
+                    "clean": "ren",
+                    "failed": "misslyckad",
+                    "passed": "godkänd",
+                    "timedOut": "tidsgräns nådd"
+                },
+                "timeoutChip": "tidsgräns {seconds}s",
+                "truncated": "trunkerad",
+                "workspaceLabel": "Arbetsyta:"
+            },
+            "attachedImageAlt": "Bifogad bild",
+            "stepNumber": "Steg {step}",
+            "transcribingLocally": "Transkriberar lokalt...",
+            "transferPlan": {
+                "dependsOnMany": "Beror på {count} förberedande steg",
+                "dependsOnOne": "Beror på {count} förberedande steg",
+                "destination": "Mål: {destination}",
+                "title": "Granskning av överföringsplan",
+                "warnings": "Varningar"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Valvets header eller manifest byggdes upp igen från paritet.",
             "repairMetadataSuccess": "Reparation klar: valvets header eller manifest byggdes upp igen från paritet",
             "errorCorrectionBadge": "Felkorrigering",
-            "itemsInFolder": "{count} objekt i /{folder}"
+            "itemsInFolder": "{count} objekt i /{folder}",
+            "compressionProfileArchive": "Arkiv (zstd -15)",
+            "compressionProfileBalanced": "Balanserad (zstd -9)",
+            "compressionProfileFast": "Snabb (zstd -3)",
+            "damagedChunkLocation": "{id} - förskjutning {offset} (längd {len})",
+            "fallbackName": "Valv",
+            "folderScanSummary": "{files} filer i {dirs} mappar ({size})",
+            "namePlaceholderVault": "Mitt säkra valv",
+            "namePlaceholderZip": "Mitt arkiv",
+            "recentDaysAgo": "för {count} d sedan",
+            "recentFileCountMany": "{count} filer",
+            "recentFileCountOne": "{count} fil",
+            "recentMonthsAgo": "för {count} mån sedan"
         },
         "cryptomator": {
             "title": "Cryptomator-valv",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Krypterar valda objekt...",
             "ingestSkipped": "Valvet skapades, men vissa objekt kunde inte läggas till:",
             "selectionInfo": "{count} objekt kommer att krypteras till valvet",
-            "decrypting": "Dekrypterar…"
+            "decrypting": "Dekrypterar…",
+            "compatibleWithApp": "Kompatibel med Cryptomator-appen",
+            "createFormatBadge": "Cryptomator-format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM-innehåll",
+            "featureNameCipher": "AES-SIV-namn",
+            "formatVersion": "Formatversion {version}"
         },
         "compress": {
             "title": "Komprimera filer",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Vissa filer skulle få samma namn. Justera mönstret.",
             "apply": "Tillämpa",
             "existingCollision": "Vissa nya namn matchar filer som redan finns i den här mappen; dessa filer skrivs inte över och deras namnbyte hoppas över.",
-            "existingCollisionHint": "(finns redan)"
+            "existingCollisionHint": "(finns redan)",
+            "baseNamePlaceholder": "fil",
+            "invalidName": "{name} (ogiltigt)"
         },
         "lockScreen": {
             "locked": "Appen är låst",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Inte monterat av skrivbordet. Dra ur och sätt i kabeln igen, öppna sedan igen.",
             "volumes_need_mount_observe": "I snap visas volymer när behörigheten mount-observe är ansluten. Kör detta i en terminal och gå sedan tillbaka till AeroFTP:",
             "volumes_unavailable": "Det gick inte att läsa de monterade volymerna.",
-            "portable_device": "Bärbar enhet"
+            "portable_device": "Bärbar enhet",
+            "drivesLeftPanel": "Enheter i vänster panel",
+            "drivesRightPanel": "Enheter i höger panel",
+            "modeGroupLabel": "Sidofältsläge",
+            "placesSidebarLabel": "Sidofält med platser"
         },
         "viewMode": {
             "list": "Lista",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Bläddra bland syskonkataloger",
             "loading": "Laddar...",
             "noSubdirectories": "Inga underkataloger",
-            "browseChildren": "Bläddra i underkataloger"
+            "browseChildren": "Bläddra i underkataloger",
+            "ariaLabel": "Sökvägsnavigering",
+            "syncBoundaryTitle": "{path} (synkroniseringsgräns)"
         },
         "bridge": {
             "checking": "Kontrollerar {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Ingen förhandsgranskning tillgänglig",
-            "title": "Snabbvisning"
+            "title": "Snabbvisning",
+            "closePreview": "Stäng förhandsvisning",
+            "dialogLabel": "Snabbvisning: {name}",
+            "nextFile": "Nästa fil",
+            "position": "{index} av {total}",
+            "previousFile": "Föregående fil"
         },
         "properties": {
             "general": "Allmänt",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Kontrollsumman för objektet som Immich registrerar vid uppladdning.",
                 "crypt-overlay-ciphertext": "Kontrollsumman täcker de krypterade bytena som lagras på servern."
             },
-            "readOnlyIsLinkTarget": "Det här är en symbolisk länk: behörigheterna tillhör filen som den pekar på. Öppna egenskaperna för den filen för att ändra dem."
+            "readOnlyIsLinkTarget": "Det här är en symbolisk länk: behörigheterna tillhör filen som den pekar på. Öppna egenskaperna för den filen för att ändra dem.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Bortkastat utrymme",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Identiska byte för byte",
             "modeNonIdenticalHint": "Perceptuell eller textuell likhet, ingen automatisk borttagning",
             "potentialWasteSelected": "potentiellt slöseri (markerade)",
-            "similarityDistance": "{similarity}, avst. {distance}"
+            "similarityDistance": "{similarity}, avst. {distance}",
+            "modeExact": "Exakt",
+            "modeLabel": "Läge:",
+            "modeNonIdentical": "Ej identisk"
         },
         "diskUsage": {
             "title": "Diskanvändning",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Ingen nätverksaktivitet ännu. Överför filer för att se händelser.",
                 "time": "Tid",
                 "event": "Händelse",
-                "detail": "Detalj"
+                "detail": "Detalj",
+                "command": "Kommando",
+                "ipcTransfersCount": "IPC + Överföringar ({count})",
+                "status": "Status",
+                "type": "Typ"
             },
             "system": {
                 "appVersion": "AeroFTP-version",
@@ -3953,7 +4258,8 @@
                 "dark": "Mörkt",
                 "light": "Ljust",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "LocalStorage-nycklar"
+                "localStorageKeysTitle": "LocalStorage-nycklar",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Kopiera fillista till urklipp",
             "filesCopied": "{count} filposter kopierade till urklipp",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Dubbelklicka på markeringen eller tryck på Enter för att tillämpa, Esc för att avbryta",
                     "cropRatio": "Proportioner",
                     "cropRatioFree": "Fri",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° moturs",
+                    "rotateCw90Short": "90° medurs"
                 },
                 "toggleTransparencyBg": "Genomskinlighetsbakgrund (växla)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "Laddar PDF...",
                 "open": "Öppna PDF",
                 "page": "Sida",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "PDF-dokument"
             },
             "text": {
                 "auto": "Auto",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Surfplatta (768px)",
                 "wordWrap": "Radbrytning",
                 "zoomIn": "Zooma in",
-                "zoomOut": "Zooma ut"
+                "zoomOut": "Zooma ut",
+                "htmlPreviewFrameTitle": "HTML-förhandsvisning"
             },
             "video": {
                 "exitFullscreen": "Avsluta helskärmsläge (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt-överlägg upptäckt",
             "aerocryptImportDesc": "Profil importerad från rclone.conf för {name}: öppna överlägget nu?",
             "aerocryptImportOpen": "Öppna överlägg",
-            "aerovaultOverlayExpired": "AeroVault Overlay låst på grund av inaktivitet. Öppna valvet igen för att fortsätta."
+            "aerovaultOverlayExpired": "AeroVault Overlay låst på grund av inaktivitet. Öppna valvet igen för att fortsätta.",
+            "aerovaultOverlaySource": "AeroVault-överlägg aktivt ({source})",
+            "fileOperationsLabel": "Filåtgärder",
+            "overlayBadge": "ÖVERLÄGG"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Tvåfaktorsautentisering",
                 "verify": "Verifiera & Aktivera",
                 "active": "2FA aktiv",
-                "inactive": "2FA inaktiv"
+                "inactive": "2FA inaktiv",
+                "codeGroupLabel": "{count}-siffrig kod",
+                "digitLabel": "Siffra {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Bläddra",
                     "installed": "Installerade"
-                }
+                },
+                "remoteInstallDisabled": "Fjärrinstallation av tillägg är för närvarande inaktiverad tills registret autentiseras på klientsidan. Lokalt installerade tillägg fortsätter att fungera som vanligt."
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "Återställda filer kommer att återvisas i sin ursprungliga mapp",
             "connectionNamePlaceholder": "Anslutningsnamn (t.ex. Mitt FileLu Cloud)",
             "trashAutoExpiry": "Filer i papperskorgen raderas automatiskt av FileLu efter 7 dagar",
-            "rsyncTransferOnly": "Endpoint endast för överföring: bläddring är inte tillgänglig på Rsync. Använd Native API, WebDAV, S3 eller FTP för att navigera; byt till Rsync för delta-överföringar med hög bandbredd."
+            "rsyncTransferOnly": "Endpoint endast för överföring: bläddring är inte tillgänglig på Rsync. Använd Native API, WebDAV, S3 eller FTP för att navigera; byt till Rsync för delta-överföringar med hög bandbredd.",
+            "badgePasswordProtected": "Lösenordsskyddad",
+            "badgeWatermarked": "Vattenmärkt"
         },
         "box": {
             "addComment": "Lägg till kommentar",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Gratisplan",
             "freeCardTier": "Gratis + kort",
-            "paidTier": "Betald"
+            "paidTier": "Betald",
+            "extraFeatures": "Extra",
+            "coreOpsList": "Ladda upp, Ladda ned, Ta bort, Byt namn, Flytta, Skapa mapp, Sök",
+            "coreOpsLegend": "Bas = Ladda upp, Ladda ned, Ta bort, Byt namn, Flytta, Skapa mapp, Sök"
         },
         "healthCheck": {
             "title": "Serverhälsokontroll",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} fil",
             "releaseAssetMany": "{count} filer",
             "repoPrivate": "Privat",
-            "repoPublic": "Offentligt"
+            "repoPublic": "Offentligt",
+            "actionsLiveBadge": "Aktiv",
+            "actionsRunningTitle": "GitHub Actions (körs)",
+            "coAuthors": "Medförfattare",
+            "pagesPathPlaceholder": "/ eller /docs",
+            "pagesStatusBuilding": "byggs",
+            "pagesStatusBuilt": "byggd",
+            "pagesStatusErrored": "fel",
+            "refreshBranches": "Uppdatera grenar",
+            "repoPrivateTitle": "Privat arkiv",
+            "repoPublicTitle": "Offentligt arkiv",
+            "unpushedCommitsOnBranchMany": "{count} ej pushade commits på {branch}",
+            "unpushedCommitsOnBranchOne": "{count} ej pushad commit på {branch}"
         },
         "filenNotes": {
             "title": "Krypterade anteckningar",
@@ -4967,7 +5300,8 @@
             "tagName": "Taggnamn",
             "removeTag": "Ta bort tagg",
             "manageTags": "Hantera taggar",
-            "deleteTagConfirm": "Ta bort taggen ”{name}”? Anteckningarna behåller sin text."
+            "deleteTagConfirm": "Ta bort taggen ”{name}”? Anteckningarna behåller sin text.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Delningslänk",
@@ -5077,7 +5411,8 @@
                 "down": "Onåbar",
                 "pending": "Kontrollerar...",
                 "unknown": "Ej kontrollerad",
-                "clickToRetry": "klicka för att kontrollera igen"
+                "clickToRetry": "klicka för att kontrollera igen",
+                "withActiveSession": "{title} (aktiv session)"
             },
             "densityCompact": "Kompakta rader",
             "densityComfortable": "Bekväma rader",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt krypterat överlägg (inbyggt): namn och innehåll är krypterade på den här servern.",
-                "rcloneTitle": "rclone crypt-överlägg (interop): namn och innehåll är krypterade på den här servern."
+                "rcloneTitle": "rclone crypt-överlägg (interop): namn och innehåll är krypterade på den här servern.",
+                "keyBits": "{bits}-bitars"
             },
             "sidebar": {
                 "filters": "Filter",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "Vi kunde inte läsa krypteringsinställningen för den här bucketen, eftersom applikationsnyckeln saknar behörigheten readBucketEncryption. Ett värde som vi inte får se betyder inte att krypteringen är avstängd.",
                 "unknownShapeTitle": "Vi kunde inte läsa krypteringsinställningen för den här bucketen, eftersom svaret inte hade en dokumenterad form. Nyckeln fick läsa den, så det handlar om svaret och inte om behörigheter."
             },
-            "exportProfile": "Exportera..."
+            "exportProfile": "Exportera...",
+            "quotaLabel": "Kvot",
+            "storageNoCapReported": "{used} (ingen kvotgräns rapporterad)",
+            "e2eBitsBadge": "E2E {bits}-bitars",
+            "filenAuthVersionTitle": "Identifierad från Filen auth/info vid lyckad anslutning",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nu",
+                "minutes": "{count} min",
+                "hours": "{count} tim",
+                "days": "{count} d",
+                "months": "{count} mån"
+            }
         },
         "gitlab": {
             "projectPath": "Projektsökväg",
@@ -5221,7 +5569,8 @@
             "linkType": "Typ",
             "createMergeRequest": "Skapa Merge Request",
             "mrTitle": "MR-titel",
-            "mrBody": "Beskrivning (valfri)"
+            "mrBody": "Beskrivning (valfri)",
+            "sourceCode": "Källkod"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "Duplicera användare (endast servrar, inga lösenord)",
             "copyLockedHint": "Byt till det här kontot först för att duplicera dess servrar",
             "crossUserDedupTitle": "Redan sparat av ett annat konto",
-            "crossUserDedupMessage": "\"{name}\" använder ett serverkonto som även är sparat på den här enheten av: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" använder ett serverkonto som även är sparat på den här enheten av: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Stäng dialogrutan för lösenordsåterställning",
+                "confirmPassword": "Bekräfta nytt lösenord",
+                "errMismatch": "De nya kontolösenorden matchar inte.",
+                "errNewRequired": "Ange ett nytt kontolösenord.",
+                "errNotAuthorized": "Du måste vara administratör för att återställa ett annat kontos lösenord.",
+                "errNotForSelf": "Använd Ändra lösenord på ditt eget konto.",
+                "errStoreNotReady": "Lås upp valvet först och försök igen.",
+                "errTypeReset": "Skriv RESET för att bekräfta denna destruktiva åtgärd.",
+                "errUserNotFound": "Den här användaren finns inte längre.",
+                "newPassword": "Nytt kontolösenord",
+                "statEncryptedBytes": "krypterade byte",
+                "statProfiles": "profiler",
+                "statSettings": "inställningar",
+                "title": "Återställ lösenord = dataförstöring",
+                "typeReset": "Skriv RESET",
+                "wipeDetail": "Det nuvarande lösenordet kan inte återställas. AeroFTP raderar målkontots sparade servrar, användarinställningar och låsningsstatus och utfärdar sedan en ny krypteringsnyckel som skyddas av det nya lösenordet.",
+                "wipeWarning": "Detta raderar målkontots krypterade partition permanent."
+            },
+            "dropdown": {
+                "accountPassword": "Kontolösenord",
+                "lock": "Lås",
+                "newUser": "Ny användare",
+                "noUsers": "Inga användare än. Använd ”Ny användare” nedan för att lägga till den första.",
+                "protectionNote": "Ditt konto skyddas med Argon2id + AES-KW + AES-256-GCM-kryptering",
+                "users": "Användare"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt-överlägg",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Läget väljs när anslutningen skapas och förblir oförändrat när en sparad profil redigeras. Skapa en ny anslutning för att använda ett annat läge."
+                "lockedInEdit": "Läget väljs när anslutningen skapas och förblir oförändrat när en sparad profil redigeras. Skapa en ny anslutning för att använda ett annat läge.",
+                "notInBuild": "Ingår inte i den här versionen av AeroFTP."
             }
         },
         "flatpak": {

@@ -337,7 +337,38 @@
             "protonSignOut": "Keluar",
             "protonSignOutHelp": "Mengakhiri sesi di Proton dan menghapusnya dari profil ini.",
             "protonSignInExpired": "Halaman masuk telah kedaluwarsa. Masuk lagi.",
-            "protonNativeUnavailable": "Build ini tidak menyertakan klien Proton Drive bawaan."
+            "protonNativeUnavailable": "Build ini tidak menyertakan klien Proton Drive bawaan.",
+            "forms": {
+                "publicApiKey": "Kunci API Publik",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Kunci publik.",
+                "secretApiKey": "Kunci API Rahasia",
+                "uploadcareSecretHint": "Hanya digunakan untuk pengelolaan file REST melalui autentikasi {scheme}.",
+                "flatMediaLibrary": "Pustaka media datar",
+                "uploadcareNoFolders": "Uploadcare tidak menyediakan folder bawaan; file proyek dicantumkan di akar berdasarkan UUID.",
+                "urlEndpointId": "ID Titik Akhir URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Titik akhir URL.",
+                "privateApiKey": "Kunci API Privat",
+                "storedVaultBasicAuth": "Disimpan di brankas lokal dan hanya dikirim ke {provider} melalui Basic Auth.",
+                "cloudName": "Nama Cloud",
+                "cloudinaryCloudNameHint": "Terdapat di Cloudinary Dashboard - Account Details Anda.",
+                "apiKeyPlaceholder": "Kunci API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Kunci API.",
+                "apiSecret": "Rahasia API",
+                "apiSecretPlaceholder": "Rahasia API",
+                "openProviderLink": "Buka tautan {provider}",
+                "githubPatHint": "PAT terperinci dengan Contents (Baca & Tulis).",
+                "generateToken": "Buat token",
+                "applicationKeyId": "ID Kunci Aplikasi",
+                "backblazeKeyIdHint": "ID Kunci Aplikasi B2, diawali 003. Buat satu dari halaman App Keys Backblaze.",
+                "applicationKey": "Kunci Aplikasi",
+                "backblazeKeyHint": "Hanya ditampilkan sekali saat dibuat. Perlakukan seperti kata sandi.",
+                "bucketNameExactHint": "Nama bucket yang tepat, peka huruf besar/kecil.",
+                "megacmdSetupFirst": "Siapkan MEGAcmd terlebih dahulu",
+                "megacmdFetchUrlTitle": "Jalankan {cmd} dan isi URL secara otomatis",
+                "fetchUrl": "Ambil URL",
+                "megacmdWebdavHint": "Nama pengguna dan kata sandi sengaja dihilangkan. AeroFTP menjalankan \"{cmd}\" sendiri saat terhubung untuk memulai jembatan dan membaca alamat ini: boleh dibiarkan kosong. Ambil URL adalah penyegaran manual opsional; ubah port di sini jika MEGAcmd memakai port khusus."
+            },
+            "manualStorageUnitLabel": "Satuan {label}"
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -390,7 +421,19 @@
             "listingPath": "Menampilkan daftar {path}...",
             "pleaseWait": "Harap tunggu...",
             "sameNameLeakChip": "nama sama",
-            "sameNameLeakTooltip": "Nama ini juga muncul di jalur lain dalam brankas terenkripsi ini. Karena nama dienkripsi secara deterministik, pengamat penyimpanan terenkripsi dapat mengetahui bahwa keduanya berbagi nama."
+            "sameNameLeakTooltip": "Nama ini juga muncul di jalur lain dalam brankas terenkripsi ini. Karena nama dienkripsi secara deterministik, pengamat penyimpanan terenkripsi dapat mengetahui bahwa keduanya berbagi nama.",
+            "endpointSelector": {
+                "localFolder": "Folder lokal",
+                "localFolderHint": "Pilih jalur lokal untuk panel ini",
+                "noSavedProfiles": "Tidak ada profil tersimpan",
+                "savedProfiles": "Profil jarak jauh tersimpan",
+                "title": "Titik akhir"
+            },
+            "leftPanelMarker": "Panel kiri",
+            "localFilesLabel": "Berkas lokal",
+            "localFilesRightLabel": "Berkas lokal (panel kanan)",
+            "remoteFilesLabel": "Berkas jarak jauh",
+            "rightPanelMarker": "Panel kanan"
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Grafik kecepatan",
             "hideSpeedGraph": "Sembunyikan grafik kecepatan",
             "speedAvg": "rata-rata {speed}",
-            "speedPeak": "puncak {speed}"
+            "speedPeak": "puncak {speed}",
+            "badgeBatch": "KELOMPOK",
+            "badgeDownload": "UNDUH",
+            "badgeLive": "LANGSUNG",
+            "badgeStream": "ALIRAN",
+            "badgeUpload": "UNGGAH",
+            "earlierItemsHidden": "{count} item sebelumnya disembunyikan",
+            "folderFilesProgress": "{done}/{total} file",
+            "laneDone": "selesai",
+            "laneError": "galat",
+            "unifiedPlan": {
+                "destination": "Tujuan",
+                "dialogLabel": "Rencana transfer",
+                "engineAerovaultOverlay": "Lapisan AeroVault",
+                "engineCompareOnly": "Hanya bandingkan",
+                "engineCrossProfileSync": "Sinkronisasi antarprofil",
+                "engineCrossProfileTransfer": "Transfer antarprofil",
+                "engineLocalDelta": "Transport delta lokal",
+                "engineLocalFs": "Sistem file lokal",
+                "engineProviderDownload": "Unduhan penyedia",
+                "engineProviderUpload": "Unggahan penyedia",
+                "engineUnsupported": "Tidak didukung",
+                "execute": "Jalankan",
+                "items": "Item",
+                "modeBackup": "Cadangan",
+                "modeBisync": "Sinkronisasi dua arah",
+                "modeCompare": "Bandingkan",
+                "modeCopy": "Salin",
+                "modeMirror": "Cermin",
+                "modeMove": "Pindahkan",
+                "modeSync": "Sinkronkan",
+                "notExecutable": "Pasangan titik akhir ini belum dapat dijalankan.",
+                "parallel": "Paralel",
+                "reviewBeforeExecution": "Tinjau sebelum eksekusi",
+                "route": "{pair} melalui {engine}",
+                "size": "Ukuran",
+                "source": "Sumber",
+                "title": "Rencana {mode}"
+            }
         },
         "settings": {
             "title": "Pengaturan",
@@ -1040,7 +1121,13 @@
                 "title": "Rsync native (beta)",
                 "description": "Pilih cara SFTP Delta Sync mengirim transfer rsync.",
                 "enableToggle": "Aktifkan rsync native untuk sinkronisasi delta SFTP",
-                "experimental": "Auto mengutamakan AeroRsync dengan cadangan klasik; Classic memakai biner rsync sistem jika tersedia; Native melewati cadangan biner klasik."
+                "experimental": "Auto mengutamakan AeroRsync dengan cadangan klasik; Classic memakai biner rsync sistem jika tersedia; Native melewati cadangan biner klasik.",
+                "modeAuto": "Otomatis",
+                "modeClassic": "Klasik",
+                "modeNative": "Bawaan",
+                "classicNotFoundTooltip": "Biner rsync klasik tidak ditemukan di PATH. Instal rsync (paket Linux/macOS, Windows melalui WSL/cygwin/scoop) untuk mengaktifkan mode ini.",
+                "classicAt": "rsync klasik di {path}",
+                "classicNotDetected": "Biner rsync klasik tidak terdeteksi di PATH. Bawaan adalah satu-satunya mesin yang tersedia di komputer ini."
             },
             "startMinimizedOnAutostart": "Mulai diminimalkan ke baki",
             "startMinimizedOnAutostartDesc": "Sembunyikan jendela utama saat peluncuran otomatis. AeroFTP tetap berjalan di baki sistem, buka dari ikon baki saat Anda membutuhkannya.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "{count} kredensial OAuth ditemukan di penyimpanan yang tidak terenkripsi",
             "fontSystemInstall": "instal di sistem",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "Disarankan untuk keamanan maksimal",
+            "fontCustomOption": "Kustom...",
+            "fontSystemInstallHint": "Memerlukan instalasi sistem. AeroFTP beralih otomatis ke alternatif jika tidak tersedia.",
+            "fontSizeIndicatorLabel": "Huruf"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Berhenti",
                 "stopShell": "Hentikan shell",
                 "closed": "Terminal ditutup.",
-                "commandInsertedReview": "Perintah disisipkan di Terminal. Tekan Enter untuk menjalankan."
+                "commandInsertedReview": "Perintah disisipkan di Terminal. Tekan Enter untuk menjalankan.",
+                "decreaseFont": "Perkecil ukuran font (Ctrl+-)",
+                "emptyClickPlus": "Klik {plus} untuk membuka terminal",
+                "emptySshHint": "atau {ssh} untuk shell jarak jauh ke {host}",
+                "increaseFont": "Perbesar ukuran font (Ctrl+=)",
+                "newTab": "Tab terminal baru",
+                "sshShellTo": "Shell SSH ke {host}",
+                "theme": "Tema terminal"
             },
             "editorPanel": {
                 "emptyState": "Klik kanan pada file dan pilih \"Lihat sumber\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Menyimpan...",
                 "noFileSelected": "Tidak ada file yang dipilih untuk dilihat",
                 "loading": "Memuat editor...",
-                "dragToTerminalRun": "Seret ke Terminal untuk menyisipkan perintah jalankan"
+                "dragToTerminalRun": "Seret ke Terminal untuk menyisipkan perintah jalankan",
+                "closeEditor": "Tutup editor",
+                "resetChanges": "Atur ulang perubahan"
             },
             "previewPanel": {
                 "emptyState": "Klik kanan pada file dan pilih \"Pratinjau\""
             },
             "codeEditor": "Editor Kode",
-            "sshTerminal": "Terminal SSH"
+            "sshTerminal": "Terminal SSH",
+            "comingSoon": "Segera hadir",
+            "soonBadge": "Segera"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Otorisasi ulang secara manual jika token dicabut"
             },
             "profilesLoadFailed": "Server tersimpan Anda tidak dapat dibaca: {error}",
-            "cleanupSummary": "{count} file, {size} dibebaskan"
+            "cleanupSummary": "{count} file, {size} dibebaskan",
+            "maturity": {
+                "alpha": "Alfa"
+            },
+            "dialogDashboardLabel": "Dasbor Sinkronisasi Awan",
+            "dialogLoadingLabel": "Memuat Sinkronisasi Awan",
+            "dialogSettingsLabel": "Pengaturan Sinkronisasi Awan",
+            "dialogSetupLabel": "Penyiapan Sinkronisasi Awan",
+            "onePerLineHint": "(satu per baris)",
+            "pairsEditorLabel": "Editor Pasangan AeroCloud",
+            "remoteSubfolderPlaceholder": "awan"
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "parsial, folder tak terbaca: {count}",
             "usedScanFailed": "Pemindaian penyimpanan terpakai gagal",
             "usedScanEmpty": "Pemindaian {path} tidak menemukan berkas; angka yang tersimpan di cache dipertahankan. Periksa jalur atau dukungan daftar rekursif server.",
-            "filenBridgeAccountTotal": "Filen Desktop tidak melaporkan total akun Anda di sini: angka terpakai adalah jumlah file di bawah path ini. Koneksi Filen native langsung menampilkan total akun."
+            "filenBridgeAccountTotal": "Filen Desktop tidak melaporkan total akun Anda di sini: angka terpakai adalah jumlah file di bawah path ini. Koneksi Filen native langsung menampilkan total akun.",
+            "ariaLabel": "Bilah status",
+            "debugBadge": "DEBUG",
+            "debugModeActive": "Mode Debug Aktif"
         },
         "dialogs": {
             "confirmTitle": "Konfirmasi",
@@ -1620,7 +1735,8 @@
                 "apRole": "Pendiri, pengembang, pengelola, rekan perancang",
                 "ekRole": "Peneliti, insinyur penjaminan mutu, rekan perancang"
             },
-            "madeBy": "oleh {author}"
+            "madeBy": "oleh {author}",
+            "statsLine": "{protocols} protokol · {languages} bahasa · arsip AES-256"
         },
         "support": {
             "title": "Dukung AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Proyek (Unixname)",
             "opendriveNotApiKey": "(bukan kunci API OpenDrive Anda)",
             "endpoint": "Endpoint",
-            "accountId": "ID Akun"
+            "accountId": "ID Akun",
+            "servicesHeading": "Layanan",
+            "sourceforgeSshKeyHelp": "SourceForge memerlukan autentikasi kunci SSH. Buat kunci dengan {cmd} lalu unggah ke {link}.",
+            "sourceforgeSshSettings": "Pengaturan SSH",
+            "fullGuide": "Panduan lengkap",
+            "endpointTemplateExample": "mis. {template}",
+            "jurisdiction": "Yurisdiksi",
+            "insecureCertDialogLabel": "Peringatan Sertifikat Tidak Aman",
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Verifikasi kunci host"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -2111,7 +2236,10 @@
             "rename": "Ganti nama",
             "resume": "Lanjutkan",
             "resumeHint": "Lanjutkan transfer yang terputus alih-alih memulainya lagi",
-            "cancel": "Batal"
+            "cancel": "Batal",
+            "dialogLabel": "Konfirmasi penimpaan",
+            "moreInQueue": "+{count} dalam antrean",
+            "unknownDate": "Tidak diketahui"
         },
         "statusbar": {
             "queue": "Antrian",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Pasangan path lokal/remote yang dapat digunakan dalam template ini: {count}. Jendela AeroSync bekerja dengan tepat satu pasangan, jadi tidak ada yang diimpor. Edit template agar hanya tersisa satu pasangan, lalu impor lagi.",
             "templateNamePlaceholder": "mis. Cadangan malam ke S3",
             "templateDescPlaceholder": "Untuk apa templat ini (opsional)",
-            "templateExportCliDesc": "Pembungkus aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Pembungkus aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Nonaktifkan",
+            "multiPathEditorLabel": "Editor Multi-Jalur",
+            "multiPathEnablePair": "Aktifkan",
+            "multiPathLocalPlaceholder": "Jalur lokal",
+            "multiPathRemotePlaceholder": "Jalur jarak jauh",
+            "rollbackDialogLabel": "Snapshot Pemulihan",
+            "rollbackMoreFiles": "+{count} lagi...",
+            "rollbackSnapshotSummaryMany": "{count} berkas, {size}",
+            "rollbackSnapshotSummaryOne": "{count} berkas, {size}",
+            "templateDialogLabel": "Templat Sinkronisasi",
+            "templateExcludes": "Pengecualian",
+            "templateLocal": "Lokal",
+            "templateRemote": "Jarak jauh",
+            "templateRetries": "Percobaan ulang"
         },
         "ui": {
             "syncing": "Menyinkronkan...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Tolak eksekusi alat",
                 "toggleDetails": "Tampilkan/sembunyikan detail",
                 "allowSession": "Izinkan untuk sesi ini",
-                "nonAtomicReplace": "Penggantian non-atomik: berkas sesaat tidak ada"
+                "nonAtomicReplace": "Penggantian non-atomik: berkas sesaat tidak ada",
+                "moreOptions": "Opsi lainnya",
+                "panelAria": "Panel persetujuan alat"
             },
             "settings": {
                 "title": "Pengaturan AI",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Cadangan",
                 "routingNoFallback": "Tidak ada",
                 "bedrockNeedsModel": "Tambahkan dan aktifkan model Bedrock di tab Model sebelum menguji.",
-                "bedrockSetup": "Atur Runtime URL untuk Wilayah AWS Anda. Di Model, tambahkan ID yang mendukung Chat Completions pada Bedrock Runtime. Runtime tidak mencantumkan model. Pengujian mengirim permintaan inferensi kecil yang mungkin dikenai biaya AWS."
+                "bedrockSetup": "Atur Runtime URL untuk Wilayah AWS Anda. Di Model, tambahkan ID yang mendukung Chat Completions pada Bedrock Runtime. Runtime tidak mencantumkan model. Pengujian mengirim permintaan inferensi kecil yang mungkin dikenai biaya AWS.",
+                "detectOllamaModelsTooltip": "Deteksi otomatis model Ollama yang tersedia",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "Editor model AI",
+                "supportsTools": "Mendukung alat",
+                "supportsVision": "Mendukung visi",
+                "thinkingReasoning": "Berpikir/Penalaran",
+                "toolQuality": "Kualitas alat: {quality}/5"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",
@@ -2699,7 +2850,9 @@
                 "run": "Jalankan di Terminal",
                 "insert": "Sisipkan di Editor",
                 "diff": "Diff dengan Asli",
-                "diffNoFile": "Tidak ada file terbuka untuk diff"
+                "diffNoFile": "Tidak ada file terbuka untuk diff",
+                "commandBlocked": "Perintah diblokir: berpotensi merusak",
+                "confirmRun": "Konfirmasi jalankan: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Berpikir...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Ganti Cabang",
                 "delete": "Hapus Cabang",
                 "newBranch": "Cabang Baru",
-                "branchFrom": "Cabang dari titik ini"
+                "branchFrom": "Cabang dari titik ini",
+                "messageCountShort": "{count} pesan",
+                "unnamed": "Cabang"
             },
             "context": {
                 "projectDetected": "Proyek Terdeteksi",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "berjalan",
                 "expired": "kadaluarsa",
-                "refresh": "Segarkan"
+                "refresh": "Segarkan",
+                "modelsRunningMany": "{count} model berjalan",
+                "modelsRunningOne": "{count} model berjalan",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Caching Konteks",
@@ -2956,7 +3114,8 @@
                 "warning": "Semua operasi file akan dijalankan segera tanpa persetujuan. Gunakan dengan risiko Anda sendiri.",
                 "disable": "Nonaktifkan",
                 "securityWarning": "Peringatan Keamanan",
-                "understood": "Mengerti"
+                "understood": "Mengerti",
+                "warningAria": "Peringatan mode ekstrem"
             },
             "errorServerError": "Server penyedia AI mengalami masalah. Coba lagi sebentar lagi.",
             "errorServiceUnavailable": "Penyedia AI sementara tidak tersedia (kelebihan beban). Layanan gratis mungkin memiliki batasan. Coba lagi nanti.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Tak Terbatas",
                 "roleAI": "AI",
-                "roleUser": "Pengguna"
+                "roleUser": "Pengguna",
+                "noConversations": "Belum ada percakapan",
+                "titleCount": "Riwayat ({count})"
             },
             "dropFileToAnalyze": "Jatuhkan berkas untuk dianalisis dengan AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} token input, {output} token output, sesuai penghitungan penyedia",
-                "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca dari cache prompt, {cacheWritten} ditulis ke dalamnya, sesuai penghitungan penyedia"
+                "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca dari cache prompt, {cacheWritten} ditulis ke dalamnya, sesuai penghitungan penyedia",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Jalankan {count} operasi",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Akan dilewati",
                     "skipped": "Dilewati",
                     "existedAtCheckpoint": "ada pada titik pemeriksaan",
-                    "absentAtCheckpoint": "tidak ada pada titik pemeriksaan"
+                    "absentAtCheckpoint": "tidak ada pada titik pemeriksaan",
+                    "noFiles": "Tidak ada berkas yang disertakan dalam hasil pemulihan ini.",
+                    "otherActions": "Tindakan lain",
+                    "requestedPaths": "Subhimpunan jalur yang diminta",
+                    "scopeAll": "Cakupan: semua berkas yang tersimpan di titik pemeriksaan.",
+                    "titleApplied": "Pemulihan titik pemeriksaan diterapkan",
+                    "titleApplyReview": "Tinjauan penerapan pemulihan titik pemeriksaan",
+                    "titleDryRunComplete": "Uji coba pemulihan titik pemeriksaan selesai",
+                    "titleDryRunReview": "Tinjauan uji coba pemulihan titik periksa"
                 },
                 "checks": {
                     "exitSummary": "kode keluar {code} · {seconds}s",
                     "continueOnFailure": "Menjalankan semua pemeriksaan meskipun salah satunya gagal.",
-                    "stopOnFailure": "Berhenti pada pemeriksaan pertama yang gagal."
+                    "stopOnFailure": "Berhenti pada pemeriksaan pertama yang gagal.",
+                    "checkLabel": "Pemeriksaan:",
+                    "checksLabel": "Pemeriksaan:",
+                    "exitChip": "kode keluar {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "t/a",
+                    "passedCount": "{passed}/{total} lulus",
+                    "runCheckNote": "Menjalankan perintah build/test/lint pilihan di ruang kerja. Skrip build dan pengujian menjalankan kode sungguhan.",
+                    "runProjectCheck": "Jalankan pemeriksaan proyek",
+                    "runVerification": "Jalankan putaran verifikasi",
+                    "runVerificationNote": "Menjalankan perintah build/test/lint pilihan di ruang kerja. Skrip build dan pengujian menjalankan kode sungguhan.",
+                    "stoppedEarly": "Berhenti pada pemeriksaan pertama yang gagal.",
+                    "timeoutLabel": "Batas waktu: {seconds} dtk",
+                    "verification": "Verifikasi"
                 },
                 "diagnostics": {
-                    "none": "Tidak ada diagnostik yang dilaporkan."
+                    "none": "Tidak ada diagnostik yang dilaporkan.",
+                    "errorCountMany": "{count} galat",
+                    "errorCountOne": "{count} galat",
+                    "title": "Diagnostik",
+                    "truncated": "Daftar diagnostik dipotong.",
+                    "warningCountMany": "{count} peringatan",
+                    "warningCountOne": "{count} peringatan"
                 },
                 "search": {
-                    "none": "Tidak ada kecocokan ditemukan."
+                    "none": "Tidak ada kecocokan ditemukan.",
+                    "ignoreCase": "abaikan huruf besar/kecil",
+                    "inPath": "di {path}",
+                    "literal": "harfiah",
+                    "matchCountMany": "{count} kecocokan",
+                    "matchCountOne": "{count} kecocokan",
+                    "title": "Pencarian ruang kerja",
+                    "truncated": "Hasil dipotong."
                 },
                 "git": {
                     "noStagedDiff": "Tidak ada keluaran diff untuk perubahan yang disiapkan.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Persetujuan Penyiapan Git",
                     "commitNote": "Ini membuat git commit dari indeks yang disiapkan saat ini. Tinjau coding_git_status dan coding_git_diff dengan staged=true terlebih dahulu.",
                     "stagePreviewNote": "Ini menampilkan pratinjau jalur yang diminta yang akan disiapkan; indeks tidak akan berubah.",
-                    "stageNote": "Ini mengubah indeks git untuk jalur yang diminta."
+                    "stageNote": "Ini mengubah indeks git untuk jalur yang diminta.",
+                    "afterCounts": "Sesudah: {counts}",
+                    "beforeCounts": "Sebelum: {counts}",
+                    "clean": "Pohon kerja bersih.",
+                    "commitCountMany": "{count} komit",
+                    "commitCountOne": "{count} komit",
+                    "conflicted": "berkonflik",
+                    "diffTruncated": "Keluaran diff terpotong.",
+                    "logTitle": "Log Git",
+                    "pathsChip": "jalur: {paths}",
+                    "showingNewest": "Menampilkan {count} terbaru; masih ada lagi.",
+                    "statusCounts": "{staged} di-stage, {unstaged} belum di-stage, {untracked} tidak dilacak, {conflicted} berkonflik",
+                    "titleCommitCreated": "Komit Git dibuat",
+                    "titleCommitDryRun": "Uji coba komit Git",
+                    "titleCommitReview": "Tinjauan komit Git",
+                    "titleReview": "Tinjauan Git",
+                    "titleStageApplied": "Stage Git diterapkan",
+                    "titleStagedDiff": "Diff Git yang di-stage",
+                    "titleStageDryRun": "Uji coba stage Git",
+                    "titleStatus": "Status Git",
+                    "titleUnstagedDiff": "Diff Git yang belum di-stage",
+                    "untracked": "tidak dilacak"
                 },
                 "patch": {
                     "validateNote": "Ini memvalidasi patch tanpa mengubah file.",
                     "applyNote": "Permintaan penerapan berisiko tinggi ini menulis file setelah backend membuat titik pemulihan sebelum penerapan.",
                     "hideDiff": "Sembunyikan diff terpadu",
-                    "showDiff": "Tampilkan diff terpadu"
-                }
+                    "showDiff": "Tampilkan diff terpadu",
+                    "actualLabel": "aktual:",
+                    "checkpointCreated": "Titik pemeriksaan sebelum penerapan dibuat",
+                    "diffTruncated": "Pratinjau diff dipotong untuk tampilan.",
+                    "expectedLabel": "diharapkan:",
+                    "firstLines": "{shown} baris pertama dari {total}",
+                    "hunkCountMany": "{count} blok",
+                    "hunkCountOne": "{count} blok",
+                    "hunkIndex": "blok {index}",
+                    "restoreManual": "Pemulihan dilakukan manual: gunakan {tool} dengan ID titik pemeriksaan ini setelah ditinjau.",
+                    "titleApplied": "Tambalan diterapkan",
+                    "titleApplyBlocked": "Penerapan tambalan diblokir",
+                    "titleApplyReview": "Tinjauan penerapan tambalan",
+                    "titleDryRunConflicts": "Uji coba tambalan menemukan konflik",
+                    "titleDryRunPassed": "Uji coba tambalan lolos",
+                    "titleDryRunReview": "Tinjauan uji coba tambalan",
+                    "warnings": "Peringatan"
+                },
+                "binary": "biner",
+                "fileCountMany": "{count} berkas",
+                "fileCountOne": "{count} berkas",
+                "moreCount": "+{count} lainnya",
+                "plan": {
+                    "likelyFiles": "Berkas yang mungkin terkait",
+                    "openQuestions": "Pertanyaan terbuka",
+                    "reviewOnlyNote": "Artefak khusus tinjauan. Pengeditan dan alat yang mengubah tetap memakai mode persetujuan saat ini.",
+                    "riskHigh": "risiko tinggi",
+                    "riskLow": "risiko rendah",
+                    "riskMedium": "risiko sedang",
+                    "risks": "Risiko",
+                    "title": "Rencana pengodean"
+                },
+                "state": {
+                    "clean": "bersih",
+                    "failed": "gagal",
+                    "passed": "lulus",
+                    "timedOut": "waktu habis"
+                },
+                "timeoutChip": "batas waktu {seconds}s",
+                "truncated": "dipotong",
+                "workspaceLabel": "Ruang kerja:"
+            },
+            "attachedImageAlt": "Gambar terlampir",
+            "stepNumber": "Langkah {step}",
+            "transcribingLocally": "Mentranskripsi secara lokal...",
+            "transferPlan": {
+                "dependsOnMany": "Bergantung pada {count} langkah persiapan",
+                "dependsOnOne": "Bergantung pada {count} langkah persiapan",
+                "destination": "Tujuan: {destination}",
+                "title": "Tinjauan Rencana Transfer",
+                "warnings": "Peringatan"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Header atau manifes vault telah dibangun ulang dari paritas.",
             "repairMetadataSuccess": "Perbaikan selesai: header atau manifes vault dibangun ulang dari paritas",
             "errorCorrectionBadge": "Koreksi Kesalahan",
-            "itemsInFolder": "{count} item di /{folder}"
+            "itemsInFolder": "{count} item di /{folder}",
+            "compressionProfileArchive": "Arsip (zstd -15)",
+            "compressionProfileBalanced": "Seimbang (zstd -9)",
+            "compressionProfileFast": "Cepat (zstd -3)",
+            "damagedChunkLocation": "{id} - offset {offset} (panjang {len})",
+            "fallbackName": "Brankas",
+            "folderScanSummary": "{files} berkas dalam {dirs} direktori ({size})",
+            "namePlaceholderVault": "Brankas aman saya",
+            "namePlaceholderZip": "Arsip saya",
+            "recentDaysAgo": "{count} hr lalu",
+            "recentFileCountMany": "{count} berkas",
+            "recentFileCountOne": "{count} berkas",
+            "recentMonthsAgo": "{count} bln lalu"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Mengenkripsi item yang dipilih...",
             "ingestSkipped": "Brankas dibuat, tetapi beberapa item tidak dapat ditambahkan:",
             "selectionInfo": "{count} item akan dienkripsi ke dalam brankas",
-            "decrypting": "Mendekripsi…"
+            "decrypting": "Mendekripsi…",
+            "compatibleWithApp": "Kompatibel dengan aplikasi Cryptomator",
+            "createFormatBadge": "Cryptomator Format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Konten AES-GCM",
+            "featureNameCipher": "Nama AES-SIV",
+            "formatVersion": "Versi format {version}"
         },
         "compress": {
             "title": "Kompres File",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Beberapa file akan memiliki nama yang sama. Harap sesuaikan pola.",
             "apply": "Terapkan",
             "existingCollision": "Beberapa nama baru cocok dengan berkas yang sudah ada di folder ini; berkas tersebut tidak akan ditimpa dan penggantian namanya dilewati.",
-            "existingCollisionHint": "(sudah ada)"
+            "existingCollisionHint": "(sudah ada)",
+            "baseNamePlaceholder": "berkas",
+            "invalidName": "{name} (tidak valid)"
         },
         "lockScreen": {
             "locked": "Aplikasi Terkunci",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Tidak dimuat oleh desktop. Cabut dan colokkan kembali kabelnya, lalu buka lagi.",
             "volumes_need_mount_observe": "Di snap, volume muncul setelah izin mount-observe terhubung. Jalankan ini di terminal, lalu kembali ke AeroFTP:",
             "volumes_unavailable": "Tidak dapat membaca volume yang terpasang.",
-            "portable_device": "Perangkat portabel"
+            "portable_device": "Perangkat portabel",
+            "drivesLeftPanel": "Drive panel kiri",
+            "drivesRightPanel": "Drive panel kanan",
+            "modeGroupLabel": "Mode bilah sisi",
+            "placesSidebarLabel": "Bilah sisi lokasi"
         },
         "viewMode": {
             "list": "Daftar",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Jelajahi direktori saudara",
             "loading": "Memuat...",
             "noSubdirectories": "Tidak ada subdirektori",
-            "browseChildren": "Telusuri subdirektori"
+            "browseChildren": "Telusuri subdirektori",
+            "ariaLabel": "Jalur navigasi",
+            "syncBoundaryTitle": "{path} (batas sinkronisasi)"
         },
         "bridge": {
             "checking": "Memeriksa {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Tidak ada pratinjau tersedia",
-            "title": "Lihat Cepat"
+            "title": "Lihat Cepat",
+            "closePreview": "Tutup pratinjau",
+            "dialogLabel": "Lihat Cepat: {name}",
+            "nextFile": "Berkas berikutnya",
+            "position": "{index} dari {total}",
+            "previousFile": "Berkas sebelumnya"
         },
         "properties": {
             "general": "Umum",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Checksum aset yang dicatat Immich pada saat unggah.",
                 "crypt-overlay-ciphertext": "Hash mencakup bita terenkripsi yang tersimpan di server."
             },
-            "readOnlyIsLinkTarget": "Ini adalah tautan simbolik: izin dimiliki oleh berkas yang ditunjuknya. Buka properti berkas tersebut untuk mengubahnya."
+            "readOnlyIsLinkTarget": "Ini adalah tautan simbolik: izin dimiliki oleh berkas yang ditunjuknya. Buka properti berkas tersebut untuk mengubahnya.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Ruang terbuang",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Identik byte demi byte",
             "modeNonIdenticalHint": "Kemiripan perseptual atau teks, tanpa hapus otomatis",
             "potentialWasteSelected": "potensi terbuang (dipilih)",
-            "similarityDistance": "{similarity}, jarak {distance}"
+            "similarityDistance": "{similarity}, jarak {distance}",
+            "modeExact": "Persis",
+            "modeLabel": "Mode:",
+            "modeNonIdentical": "Tidak identik"
         },
         "diskUsage": {
             "title": "Penggunaan Disk",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Belum ada aktivitas jaringan. Transfer file untuk melihat peristiwa.",
                 "time": "Waktu",
                 "event": "Peristiwa",
-                "detail": "Detail"
+                "detail": "Detail",
+                "command": "Perintah",
+                "ipcTransfersCount": "IPC + Transfer ({count})",
+                "status": "Status",
+                "type": "Jenis"
             },
             "system": {
                 "appVersion": "Versi AeroFTP",
@@ -3953,7 +4258,8 @@
                 "dark": "Gelap",
                 "light": "Terang",
                 "userAgent": "Agen Pengguna",
-                "localStorageKeysTitle": "Kunci LocalStorage"
+                "localStorageKeysTitle": "Kunci LocalStorage",
+                "localStorageEntrySummary": "{size} bita · {preview}"
             },
             "copyFileListToClipboard": "Salin daftar file ke clipboard",
             "filesCopied": "{count} entri file disalin ke clipboard",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Klik dua kali pada pilihan atau tekan Enter untuk menerapkan, Esc untuk membatalkan",
                     "cropRatio": "Proporsi",
                     "cropRatioFree": "Bebas",
-                    "cropRatioOriginal": "Asli"
+                    "cropRatioOriginal": "Asli",
+                    "rotateCcw90Short": "90° ke kiri",
+                    "rotateCw90Short": "90° ke kanan"
                 },
                 "toggleTransparencyBg": "Latar transparansi (ganti)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "Memuat PDF...",
                 "open": "Buka PDF",
                 "page": "Halaman",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "Dokumen PDF"
             },
             "text": {
                 "auto": "Otomatis",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Bungkus Kata",
                 "zoomIn": "Perbesar",
-                "zoomOut": "Perkecil"
+                "zoomOut": "Perkecil",
+                "htmlPreviewFrameTitle": "Pratinjau HTML"
             },
             "video": {
                 "exitFullscreen": "Keluar Layar Penuh (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Lapisan Rclone Crypt terdeteksi",
             "aerocryptImportDesc": "Profil diimpor dari rclone.conf untuk {name}: buka lapisan sekarang?",
             "aerocryptImportOpen": "Buka lapisan",
-            "aerovaultOverlayExpired": "AeroVault Overlay terkunci karena tidak aktif. Buka kembali brankas untuk melanjutkan."
+            "aerovaultOverlayExpired": "AeroVault Overlay terkunci karena tidak aktif. Buka kembali brankas untuk melanjutkan.",
+            "aerovaultOverlaySource": "Lapisan AeroVault aktif ({source})",
+            "fileOperationsLabel": "Operasi file",
+            "overlayBadge": "LAPISAN"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Autentikasi Dua Faktor",
                 "verify": "Verifikasi & Aktifkan",
                 "active": "2FA Aktif",
-                "inactive": "2FA Nonaktif"
+                "inactive": "2FA Nonaktif",
+                "codeGroupLabel": "Kode {count} digit",
+                "digitLabel": "Digit {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Jelajahi",
                     "installed": "Terpasang"
-                }
+                },
+                "remoteInstallDisabled": "Instalasi plugin jarak jauh saat ini dinonaktifkan hingga registri diautentikasi di sisi klien. Plugin yang terpasang secara lokal tetap berfungsi seperti biasa."
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "File yang dipulihkan akan muncul kembali di folder aslinya",
             "connectionNamePlaceholder": "Nama Koneksi (mis. FileLu Cloud Saya)",
             "trashAutoExpiry": "Berkas di tempat sampah dihapus otomatis oleh FileLu setelah 7 hari",
-            "rsyncTransferOnly": "Endpoint khusus transfer: penelusuran tidak tersedia di Rsync. Gunakan Native API, WebDAV, S3 atau FTP untuk navigasi; beralih ke Rsync untuk transfer delta dengan bandwidth tinggi."
+            "rsyncTransferOnly": "Endpoint khusus transfer: penelusuran tidak tersedia di Rsync. Gunakan Native API, WebDAV, S3 atau FTP untuk navigasi; beralih ke Rsync untuk transfer delta dengan bandwidth tinggi.",
+            "badgePasswordProtected": "Dilindungi kata sandi",
+            "badgeWatermarked": "Bertanda air"
         },
         "box": {
             "addComment": "Tambah Komentar",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Paket gratis",
             "freeCardTier": "Gratis + kartu",
-            "paidTier": "Berbayar"
+            "paidTier": "Berbayar",
+            "extraFeatures": "Tambahan",
+            "coreOpsList": "Unggah, Unduh, Hapus, Ganti nama, Pindahkan, Buat folder, Cari",
+            "coreOpsLegend": "Dasar = Unggah, Unduh, Hapus, Ganti nama, Pindahkan, Buat folder, Cari"
         },
         "healthCheck": {
             "title": "Pemeriksaan Kesehatan Server",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} aset",
             "releaseAssetMany": "{count} aset",
             "repoPrivate": "Pribadi",
-            "repoPublic": "Publik"
+            "repoPublic": "Publik",
+            "actionsLiveBadge": "Langsung",
+            "actionsRunningTitle": "GitHub Actions (berjalan)",
+            "coAuthors": "Rekan penulis",
+            "pagesPathPlaceholder": "/ atau /docs",
+            "pagesStatusBuilding": "sedang dibangun",
+            "pagesStatusBuilt": "dibangun",
+            "pagesStatusErrored": "galat",
+            "refreshBranches": "Segarkan cabang",
+            "repoPrivateTitle": "Repositori pribadi",
+            "repoPublicTitle": "Repositori publik",
+            "unpushedCommitsOnBranchMany": "{count} commit belum di-push di {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit belum di-push di {branch}"
         },
         "filenNotes": {
             "title": "Catatan Terenkripsi",
@@ -4967,7 +5300,8 @@
             "tagName": "Nama tag",
             "removeTag": "Hapus tag",
             "manageTags": "Kelola tag",
-            "deleteTagConfirm": "Hapus tag “{name}”? Catatan tetap menyimpan teksnya."
+            "deleteTagConfirm": "Hapus tag “{name}”? Catatan tetap menyimpan teksnya.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Tautan Berbagi",
@@ -5077,7 +5411,8 @@
                 "down": "Tidak dapat dijangkau",
                 "pending": "Memeriksa...",
                 "unknown": "Belum diperiksa",
-                "clickToRetry": "klik untuk memeriksa ulang"
+                "clickToRetry": "klik untuk memeriksa ulang",
+                "withActiveSession": "{title} (sesi aktif)"
             },
             "densityCompact": "Baris ringkas",
             "densityComfortable": "Baris nyaman",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Lapisan terenkripsi AeroCrypt (asli): nama dan konten dienkripsi di server ini.",
-                "rcloneTitle": "Lapisan rclone crypt (interop): nama dan konten dienkripsi di server ini."
+                "rcloneTitle": "Lapisan rclone crypt (interop): nama dan konten dienkripsi di server ini.",
+                "keyBits": "{bits}-bit"
             },
             "sidebar": {
                 "filters": "Filter",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "Kami tidak dapat membaca pengaturan enkripsi bucket ini, karena kunci aplikasi tidak memiliki kemampuan readBucketEncryption. Nilai yang tidak boleh kami lihat tidak berarti enkripsi dimatikan.",
                 "unknownShapeTitle": "Kami tidak dapat membaca pengaturan enkripsi bucket ini, karena jawabannya tidak memiliki bentuk yang terdokumentasi. Kunci tersebut diizinkan membacanya, jadi ini tentang jawabannya dan bukan tentang izin."
             },
-            "exportProfile": "Ekspor..."
+            "exportProfile": "Ekspor...",
+            "quotaLabel": "Kuota",
+            "storageNoCapReported": "{used} (batas kuota tidak dilaporkan)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Terdeteksi dari Filen auth/info saat berhasil terhubung",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "sekarang",
+                "minutes": "{count} mnt",
+                "hours": "{count} j",
+                "days": "{count} h",
+                "months": "{count} bln"
+            }
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",
@@ -5221,7 +5569,8 @@
             "linkType": "Jenis",
             "createMergeRequest": "Buat Merge Request",
             "mrTitle": "Judul MR",
-            "mrBody": "Deskripsi (opsional)"
+            "mrBody": "Deskripsi (opsional)",
+            "sourceCode": "Kode sumber"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "Duplikat pengguna (hanya server, tanpa kata sandi)",
             "copyLockedHint": "Beralih ke akun ini dulu untuk menduplikasi servernya",
             "crossUserDedupTitle": "Sudah disimpan oleh akun lain",
-            "crossUserDedupMessage": "\"{name}\" menggunakan akun server yang juga disimpan di perangkat ini oleh: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" menggunakan akun server yang juga disimpan di perangkat ini oleh: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Tutup dialog atur ulang kata sandi",
+                "confirmPassword": "Konfirmasi kata sandi baru",
+                "errMismatch": "Kata sandi akun baru tidak cocok.",
+                "errNewRequired": "Masukkan kata sandi akun baru.",
+                "errNotAuthorized": "Anda harus menjadi admin untuk mengatur ulang kata sandi akun lain.",
+                "errNotForSelf": "Gunakan Ubah Kata Sandi pada akun Anda sendiri.",
+                "errStoreNotReady": "Buka kunci brankas dulu, lalu coba lagi.",
+                "errTypeReset": "Ketik RESET untuk mengonfirmasi operasi destruktif ini.",
+                "errUserNotFound": "Pengguna ini sudah tidak ada.",
+                "newPassword": "Kata sandi akun baru",
+                "statEncryptedBytes": "byte terenkripsi",
+                "statProfiles": "profil",
+                "statSettings": "pengaturan",
+                "title": "Setel ulang kata sandi = penghancuran data",
+                "typeReset": "Ketik RESET",
+                "wipeDetail": "Kata sandi saat ini tidak dapat dipulihkan. AeroFTP akan menghapus server tersimpan, pengaturan pengguna, dan status penguncian akun target, lalu menerbitkan kunci enkripsi baru yang dilindungi oleh kata sandi baru.",
+                "wipeWarning": "Ini akan menghapus permanen partisi terenkripsi akun target."
+            },
+            "dropdown": {
+                "accountPassword": "Kata sandi akun",
+                "lock": "Kunci",
+                "newUser": "Pengguna baru",
+                "noUsers": "Belum ada pengguna. Gunakan \"Pengguna baru\" di bawah untuk menambahkan yang pertama.",
+                "protectionNote": "Akun Anda dilindungi enkripsi Argon2id + AES-KW + AES-256-GCM",
+                "users": "Pengguna"
+            }
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Mode dipilih saat koneksi dibuat dan tetap tidak berubah saat mengedit profil tersimpan. Untuk menggunakan mode berbeda, buat koneksi baru."
+                "lockedInEdit": "Mode dipilih saat koneksi dibuat dan tetap tidak berubah saat mengedit profil tersimpan. Untuk menggunakan mode berbeda, buat koneksi baru.",
+                "notInBuild": "Tidak disertakan dalam build AeroFTP ini."
             }
         },
         "flatpak": {

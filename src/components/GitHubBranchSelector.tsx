@@ -158,14 +158,14 @@ export const GitHubBranchSelector: React.FC<GitHubBranchSelectorProps> = ({
               className="text-xs font-medium"
               style={{ color: 'var(--color-text-secondary)' }}
             >
-              Branches
+              {t('providers.branches')}
               <span className="ml-1 opacity-60">({branches.length})</span>
             </span>
             <button
               onClick={handleRefresh}
               className="p-1 rounded transition-colors hover:opacity-80"
               style={{ color: 'var(--color-text-secondary)' }}
-              title="Refresh branches"
+              title={t('github.refreshBranches')}
             >
               <RefreshCw size={12} />
             </button>

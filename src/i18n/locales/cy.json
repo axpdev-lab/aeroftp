@@ -337,7 +337,38 @@
             "protonSignOut": "Allgofnodi",
             "protonSignOutHelp": "Yn dod â'r sesiwn ar Proton i ben ac yn ei thynnu o'r proffil hwn.",
             "protonSignInExpired": "Mae'r dudalen fewngofnodi wedi dod i ben. Mewngofnodwch eto.",
-            "protonNativeUnavailable": "Nid yw'r adeiladwaith hwn yn cynnwys y cleient Proton Drive brodorol."
+            "protonNativeUnavailable": "Nid yw'r adeiladwaith hwn yn cynnwys y cleient Proton Drive brodorol.",
+            "forms": {
+                "publicApiKey": "Allwedd API Gyhoeddus",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Allwedd gyhoeddus.",
+                "secretApiKey": "Allwedd API Gyfrinachol",
+                "uploadcareSecretHint": "Defnyddir ar gyfer rheoli ffeiliau REST drwy ddilysu {scheme} yn unig.",
+                "flatMediaLibrary": "Llyfrgell cyfryngau wastad",
+                "uploadcareNoFolders": "Nid yw Uploadcare yn cynnig ffolderi brodorol; rhestrir ffeiliau'r prosiect yn y gwraidd yn ôl UUID.",
+                "urlEndpointId": "ID Pwynt Terfyn URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Pwynt terfyn URL.",
+                "privateApiKey": "Allwedd API Breifat",
+                "storedVaultBasicAuth": "Wedi'i storio yn y gladdgell leol a'i hanfon at {provider} yn unig drwy Basic Auth.",
+                "cloudName": "Enw'r Cwmwl",
+                "cloudinaryCloudNameHint": "I'w gael yn eich Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Allwedd API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Allwedd API.",
+                "apiSecret": "Cyfrinach API",
+                "apiSecretPlaceholder": "Cyfrinach API",
+                "openProviderLink": "Agor dolen {provider}",
+                "githubPatHint": "PAT manwl gyda Contents (Darllen ac Ysgrifennu).",
+                "generateToken": "Cynhyrchu tocyn",
+                "applicationKeyId": "ID Allwedd y Rhaglen",
+                "backblazeKeyIdHint": "ID Allwedd Rhaglen B2, yn dechrau gyda 003. Crëwch un o dudalen App Keys Backblaze.",
+                "applicationKey": "Allwedd Rhaglen",
+                "backblazeKeyHint": "Dim ond unwaith y caiff ei dangos wrth ei chreu. Triniwch hi fel cyfrinair.",
+                "bucketNameExactHint": "Union enw'r bwced, yn sensitif i briflythrennau.",
+                "megacmdSetupFirst": "Gosodwch MEGAcmd yn gyntaf",
+                "megacmdFetchUrlTitle": "Rhedeg {cmd} a llenwi'r URL yn awtomatig",
+                "fetchUrl": "Nôl URL",
+                "megacmdWebdavHint": "Mae'r Enw Defnyddiwr a'r Cyfrinair wedi'u hepgor yn fwriadol. Mae AeroFTP yn rhedeg \"{cmd}\" ei hun wrth gysylltu i gychwyn y bont a darllen y cyfeiriad hwn: mae'n iawn ei adael yn wag. Adnewyddiad â llaw dewisol yw Nôl URL; newidiwch y porth yma os yw MEGAcmd yn defnyddio un personol."
+            },
+            "manualStorageUnitLabel": "Uned {label}"
         },
         "browser": {
             "remote": "Pell",
@@ -390,7 +421,19 @@
             "listingPath": "Wrthi'n rhestru {path}...",
             "pleaseWait": "Arhoswch...",
             "sameNameLeakChip": "enw'r un",
-            "sameNameLeakTooltip": "Mae'r enw hwn hefyd yn ymddangos ar lwybr arall yn y gladdgell wedi'i hamgryptio hon. Gan fod enwau'n cael eu hamgryptio'n benderfyniadol, gall arsylwr o'r storfa wedi'i hamgryptio ganfod bod y ddau'n rhannu enw."
+            "sameNameLeakTooltip": "Mae'r enw hwn hefyd yn ymddangos ar lwybr arall yn y gladdgell wedi'i hamgryptio hon. Gan fod enwau'n cael eu hamgryptio'n benderfyniadol, gall arsylwr o'r storfa wedi'i hamgryptio ganfod bod y ddau'n rhannu enw.",
+            "endpointSelector": {
+                "localFolder": "Ffolder lleol",
+                "localFolderHint": "Dewiswch lwybr lleol ar gyfer y panel hwn",
+                "noSavedProfiles": "Dim proffiliau wedi'u cadw",
+                "savedProfiles": "Proffiliau pell wedi'u cadw",
+                "title": "Pwynt terfyn"
+            },
+            "leftPanelMarker": "Panel chwith",
+            "localFilesLabel": "Ffeiliau lleol",
+            "localFilesRightLabel": "Ffeiliau lleol (panel de)",
+            "remoteFilesLabel": "Ffeiliau pell",
+            "rightPanelMarker": "Panel de"
         },
         "contextMenu": {
             "askAeroAgent": "Gofyn i AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Graff cyflymder",
             "hideSpeedGraph": "Cuddio'r graff cyflymder",
             "speedAvg": "cyfart. {speed}",
-            "speedPeak": "uchaf {speed}"
+            "speedPeak": "uchaf {speed}",
+            "badgeBatch": "SWP",
+            "badgeDownload": "LAWRLWYTHO",
+            "badgeLive": "BYW",
+            "badgeStream": "FFRWD",
+            "badgeUpload": "LANLWYTHO",
+            "earlierItemsHidden": "{count} eitem gynharach wedi'u cuddio",
+            "folderFilesProgress": "{done}/{total} ffeil",
+            "laneDone": "wedi gorffen",
+            "laneError": "gwall",
+            "unifiedPlan": {
+                "destination": "Cyrchfan",
+                "dialogLabel": "Cynllun trosglwyddo",
+                "engineAerovaultOverlay": "Troshaen AeroVault",
+                "engineCompareOnly": "Cymharu yn unig",
+                "engineCrossProfileSync": "Cysoni rhwng proffiliau",
+                "engineCrossProfileTransfer": "Trosglwyddo rhwng proffiliau",
+                "engineLocalDelta": "Cludiant delta lleol",
+                "engineLocalFs": "System ffeiliau leol",
+                "engineProviderDownload": "Lawrlwytho gan y darparwr",
+                "engineProviderUpload": "Lanlwytho i'r darparwr",
+                "engineUnsupported": "Heb ei gefnogi",
+                "execute": "Gweithredu",
+                "items": "Eitemau",
+                "modeBackup": "Copi wrth gefn",
+                "modeBisync": "Cysoni dwyffordd",
+                "modeCompare": "Cymharu",
+                "modeCopy": "Copïo",
+                "modeMirror": "Drych",
+                "modeMove": "Symud",
+                "modeSync": "Cysoni",
+                "notExecutable": "Nid oes modd gweithredu'r pâr pwyntiau terfyn hwn eto.",
+                "parallel": "Cyfochrog",
+                "reviewBeforeExecution": "Adolygu cyn gweithredu",
+                "route": "{pair} drwy {engine}",
+                "size": "Maint",
+                "source": "Ffynhonnell",
+                "title": "Cynllun: {mode}"
+            }
         },
         "settings": {
             "title": "Gosodiadau",
@@ -1040,7 +1121,13 @@
                 "title": "Rsync brodorol (beta)",
                 "description": "Dewiswch sut mae SFTP Delta Sync yn anfon trosglwyddiadau rsync.",
                 "enableToggle": "Galluogi rsync brodorol ar gyfer cydamseriad delta SFTP",
-                "experimental": "Mae Auto yn ffafrio AeroRsync gyda mecanwaith clasurol wrth gefn; mae Classic yn defnyddio ffeil ddeuaidd rsync y system lle mae ar gael; mae Native yn hepgor y mecanwaith deuaidd clasurol wrth gefn."
+                "experimental": "Mae Auto yn ffafrio AeroRsync gyda mecanwaith clasurol wrth gefn; mae Classic yn defnyddio ffeil ddeuaidd rsync y system lle mae ar gael; mae Native yn hepgor y mecanwaith deuaidd clasurol wrth gefn.",
+                "modeAuto": "Awtomatig",
+                "modeClassic": "Clasurol",
+                "modeNative": "Brodorol",
+                "classicNotFoundTooltip": "Heb ganfod ffeil rsync glasurol ar y PATH. Gosodwch rsync (pecyn Linux/macOS, Windows drwy WSL/cygwin/scoop) i alluogi'r modd hwn.",
+                "classicAt": "rsync clasurol yn {path}",
+                "classicNotDetected": "Heb ganfod ffeil rsync glasurol ar y PATH. Brodorol yw'r unig beiriant sydd ar gael ar y peiriant hwn."
             },
             "startMinimizedOnAutostart": "Cychwyn wedi'i leihau i'r hambwrdd",
             "startMinimizedOnAutostartDesc": "Cuddio'r prif ffenestr wrth gychwyn yn awtomatig. Mae AeroFTP yn parhau i redeg yn hambwrdd y system, agorwch ef o'r eicon hambwrdd pan fydd ei angen arnoch.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "Canfuwyd {count} manylion adnabod OAuth mewn storfa heb ei hamgryptio",
             "fontSystemInstall": "gosod ar y system",
             "fontSizeMin": "isaf",
-            "fontSizeMax": "uchaf"
+            "fontSizeMax": "uchaf",
+            "migrationCleanupHint": "Argymhellir ar gyfer y diogelwch mwyaf",
+            "fontCustomOption": "Personol...",
+            "fontSystemInstallHint": "Angen ei osod yn y system. Mae AeroFTP yn newid i ddewis arall yn awtomatig os nad yw ar gael.",
+            "fontSizeIndicatorLabel": "Ffont"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Stopio",
                 "stopShell": "Stopio'r plisgyn",
                 "closed": "Terfynell wedi cau.",
-                "commandInsertedReview": "Gorchymyn wedi'i fewnosod yn y Terminal. Pwyswch Enter i redeg."
+                "commandInsertedReview": "Gorchymyn wedi'i fewnosod yn y Terminal. Pwyswch Enter i redeg.",
+                "decreaseFont": "Lleihau maint y ffont (Ctrl+-)",
+                "emptyClickPlus": "Cliciwch {plus} i agor terfynell",
+                "emptySshHint": "neu {ssh} am gragen bell i {host}",
+                "increaseFont": "Cynyddu maint y ffont (Ctrl+=)",
+                "newTab": "Tab terfynell newydd",
+                "sshShellTo": "Cragen SSH i {host}",
+                "theme": "Thema'r derfynell"
             },
             "editorPanel": {
                 "emptyState": "De-gliciwch ar ffeil a dewiswch \"Gweld y ffynhonnell\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Yn cadw...",
                 "noFileSelected": "Dim ffeil wedi'i dewis i'w gweld",
                 "loading": "Yn llwytho'r golygydd...",
-                "dragToTerminalRun": "Llusgwch i'r Terminal i fewnosod gorchymyn rhedeg"
+                "dragToTerminalRun": "Llusgwch i'r Terminal i fewnosod gorchymyn rhedeg",
+                "closeEditor": "Cau'r golygydd",
+                "resetChanges": "Ailosod newidiadau"
             },
             "previewPanel": {
                 "emptyState": "De-gliciwch ar ffeil a dewiswch \"Rhagolwg\""
             },
             "codeEditor": "Golygydd Cod",
-            "sshTerminal": "Terfynell SSH"
+            "sshTerminal": "Terfynell SSH",
+            "comingSoon": "Yn dod yn fuan",
+            "soonBadge": "Cyn bo hir"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Ail-awdurdodwch â llaw os caiff y tocyn ei ddirymu"
             },
             "profilesLoadFailed": "Doedd dim modd darllen eich gweinyddion wedi'u cadw: {error}",
-            "cleanupSummary": "{count} ffeil, {size} wedi'u rhyddhau"
+            "cleanupSummary": "{count} ffeil, {size} wedi'u rhyddhau",
+            "maturity": {
+                "alpha": "Alffa"
+            },
+            "dialogDashboardLabel": "Dangosfwrdd Cysoni Cwmwl",
+            "dialogLoadingLabel": "Cysoni Cwmwl yn llwytho",
+            "dialogSettingsLabel": "Gosodiadau Cysoni Cwmwl",
+            "dialogSetupLabel": "Gosod Cysoni Cwmwl",
+            "onePerLineHint": "(un i bob llinell)",
+            "pairsEditorLabel": "Golygydd Parau AeroCloud",
+            "remoteSubfolderPlaceholder": "cwmwl"
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "rhannol, ffolderi na ellid eu darllen: {count}",
             "usedScanFailed": "Methodd sgan y storfa a ddefnyddiwyd",
             "usedScanEmpty": "Ni chanfu sgan {path} unrhyw ffeiliau; cadwyd y ffigur o'r storfa. Gwiriwch y llwybr neu gefnogaeth rhestru ailadroddus y gweinydd.",
-            "filenBridgeAccountTotal": "Nid yw Filen Desktop yn adrodd cyfanswm eich cyfrif yma: y ffigur a ddefnyddiwyd yw cyfanswm y ffeiliau o dan y llwybr hwn. Mae'r cysylltiad Filen brodorol yn dangos cyfanswm y cyfrif ar unwaith."
+            "filenBridgeAccountTotal": "Nid yw Filen Desktop yn adrodd cyfanswm eich cyfrif yma: y ffigur a ddefnyddiwyd yw cyfanswm y ffeiliau o dan y llwybr hwn. Mae'r cysylltiad Filen brodorol yn dangos cyfanswm y cyfrif ar unwaith.",
+            "ariaLabel": "Bar statws",
+            "debugBadge": "DADFYGIO",
+            "debugModeActive": "Modd Dadfygio yn Weithredol"
         },
         "dialogs": {
             "confirmTitle": "Cadarnhau",
@@ -1620,7 +1735,8 @@
                 "apRole": "Sylfaenydd, datblygwr, cynhaliwr, cyd-ddylunydd",
                 "ekRole": "Ymchwilydd, peiriannydd sicrhau ansawdd, cyd-ddylunydd"
             },
-            "madeBy": "gan {author}"
+            "madeBy": "gan {author}",
+            "statsLine": "{protocols} protocol · {languages} iaith · archifau AES-256"
         },
         "support": {
             "title": "Cefnogi AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Prosiect (Unixname)",
             "opendriveNotApiKey": "(nid eich allwedd API OpenDrive)",
             "endpoint": "Pwynt Terfyn",
-            "accountId": "ID cyfrif"
+            "accountId": "ID cyfrif",
+            "servicesHeading": "Gwasanaethau",
+            "sourceforgeSshKeyHelp": "Mae SourceForge yn gofyn am ddilysu ag allwedd SSH. Crëwch allwedd gyda {cmd} a'i llwytho i fyny i {link}.",
+            "sourceforgeSshSettings": "Gosodiadau SSH",
+            "fullGuide": "Canllaw llawn",
+            "endpointTemplateExample": "e.e. {template}",
+            "jurisdiction": "Awdurdodaeth",
+            "insecureCertDialogLabel": "Rhybudd tystysgrif anniogel",
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Gwirio allwedd gwesteiwr"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
@@ -2111,7 +2236,10 @@
             "rename": "Ailenwi",
             "resume": "Ailddechrau",
             "resumeHint": "Parhau'r trosglwyddiad a ataliwyd yn lle ei ailddechrau",
-            "cancel": "Canslo"
+            "cancel": "Canslo",
+            "dialogLabel": "Cadarnhau trosysgrifo",
+            "moreInQueue": "+{count} yn y ciw",
+            "unknownDate": "Anhysbys"
         },
         "statusbar": {
             "queue": "Queue",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Parau llwybr lleol/pell defnyddiadwy yn y templed hwn: {count}. Mae ffenestr AeroSync yn gweithio ar un pâr yn union, felly ni fewnforiwyd dim. Golygwch y templed i gadw un pâr yn unig, ac yna ei fewnforio eto.",
             "templateNamePlaceholder": "e.e. Copi wrth gefn nosol i S3",
             "templateDescPlaceholder": "At beth mae'r templed hwn (dewisol)",
-            "templateExportCliDesc": "Lapiwr aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Lapiwr aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Analluogi",
+            "multiPathEditorLabel": "Golygydd Llwybrau Lluosog",
+            "multiPathEnablePair": "Galluogi",
+            "multiPathLocalPlaceholder": "Llwybr lleol",
+            "multiPathRemotePlaceholder": "Llwybr pell",
+            "rollbackDialogLabel": "Ciplun Adfer",
+            "rollbackMoreFiles": "+{count} arall...",
+            "rollbackSnapshotSummaryMany": "{count} ffeil, {size}",
+            "rollbackSnapshotSummaryOne": "{count} ffeil, {size}",
+            "templateDialogLabel": "Templed Cysoni",
+            "templateExcludes": "Eithriadau",
+            "templateLocal": "Lleol",
+            "templateRemote": "Pell",
+            "templateRetries": "Ailgeisiadau"
         },
         "ui": {
             "syncing": "Yn cysoni...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Gwrthod rhedeg yr offeryn",
                 "toggleDetails": "Toglo manylion",
                 "allowSession": "Caniatáu ar gyfer y sesiwn hon",
-                "nonAtomicReplace": "Amnewid heb fod yn atomig: mae'r ffeil ar goll am ennyd"
+                "nonAtomicReplace": "Amnewid heb fod yn atomig: mae'r ffeil ar goll am ennyd",
+                "moreOptions": "Rhagor o ddewisiadau",
+                "panelAria": "Panel cymeradwyo offer"
             },
             "settings": {
                 "title": "Gosodiadau AI",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Wrth gefn",
                 "routingNoFallback": "Dim",
                 "bedrockNeedsModel": "Ychwanegwch ac actifadwch fodel Bedrock yn y tab Modelau cyn profi.",
-                "bedrockSetup": "Gosodwch y Runtime URL ar gyfer eich rhanbarth AWS. Yn Modelau, ychwanegwch ID sy'n cefnogi Chat Completions ar Bedrock Runtime. Nid yw Runtime yn rhestru modelau. Mae'r prawf yn anfon cais casgliad bach a all achosi taliadau AWS."
+                "bedrockSetup": "Gosodwch y Runtime URL ar gyfer eich rhanbarth AWS. Yn Modelau, ychwanegwch ID sy'n cefnogi Chat Completions ar Bedrock Runtime. Nid yw Runtime yn rhestru modelau. Mae'r prawf yn anfon cais casgliad bach a all achosi taliadau AWS.",
+                "detectOllamaModelsTooltip": "Canfod modelau Ollama sydd ar gael yn awtomatig",
+                "kTokens": "{count}K tocyn",
+                "modelEditorAria": "Golygydd modelau DA",
+                "supportsTools": "Yn cefnogi offer",
+                "supportsVision": "Yn cefnogi golwg",
+                "thinkingReasoning": "Meddwl/Rhesymu",
+                "toolQuality": "Ansawdd offer: {quality}/5"
             },
             "copy": "Copïo",
             "attachImage": "Atodi delwedd",
@@ -2699,7 +2850,9 @@
                 "run": "Rhedeg yn y Derfynell",
                 "insert": "Mewnosod yn y Golygydd",
                 "diff": "Cymharu â'r gwreiddiol",
-                "diffNoFile": "Dim ffeil ar agor ar gyfer cymharu"
+                "diffNoFile": "Dim ffeil ar agor ar gyfer cymharu",
+                "commandBlocked": "Gorchymyn wedi'i rwystro: gallai fod yn ddinistriol",
+                "confirmRun": "Cadarnhau rhedeg: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Yn meddwl...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Newid cangen",
                 "delete": "Dileu cangen",
                 "newBranch": "Cangen newydd",
-                "branchFrom": "Canghenu o'r pwynt hwn"
+                "branchFrom": "Canghenu o'r pwynt hwn",
+                "messageCountShort": "{count} neg.",
+                "unnamed": "Cangen"
             },
             "context": {
                 "projectDetected": "Prosiect wedi'i ganfod",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "yn rhedeg",
                 "expired": "wedi dod i ben",
-                "refresh": "Adnewyddu"
+                "refresh": "Adnewyddu",
+                "modelsRunningMany": "{count} model yn rhedeg",
+                "modelsRunningOne": "{count} model yn rhedeg",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Storio Cyd-destun Dros Dro",
@@ -2956,7 +3114,8 @@
                 "warning": "Bydd pob gweithrediad ffeil yn cael ei weithredu ar unwaith heb gymeradwyaeth. Defnyddiwch ar eich risg eich hun.",
                 "disable": "Analluogi",
                 "securityWarning": "Rhybudd Diogelwch",
-                "understood": "Deallwyd"
+                "understood": "Deallwyd",
+                "warningAria": "Rhybudd modd eithafol"
             },
             "errorServerError": "Mae gweinydd y darparwr AI yn cael problemau. Rhowch gynnig arni eto mewn eiliad.",
             "errorServiceUnavailable": "Mae'r darparwr AI ddim ar gael dros dro (gorlwytho). Gall gwasanaethau am ddim fod â therfynau. Rhowch gynnig arni'n ddiweddarach.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Diderfyn",
                 "roleAI": "AI",
-                "roleUser": "Defnyddiwr"
+                "roleUser": "Defnyddiwr",
+                "noConversations": "Dim sgyrsiau eto",
+                "titleCount": "Hanes ({count})"
             },
             "dropFileToAnalyze": "Gollyngwch ffeil i'w dadansoddi gydag AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} tocyn mewnbwn, {output} tocyn allbwn, yn ôl cyfrif y darparwr",
-                "breakdownCache": "{input} tocyn mewnbwn, {output} tocyn allbwn, {cacheRead} wedi'i ddarllen o storfa dros dro'r anogwr, {cacheWritten} wedi'i ysgrifennu iddi, yn ôl cyfrif y darparwr"
+                "breakdownCache": "{input} tocyn mewnbwn, {output} tocyn allbwn, {cacheRead} wedi'i ddarllen o storfa dros dro'r anogwr, {cacheWritten} wedi'i ysgrifennu iddi, yn ôl cyfrif y darparwr",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Gweithredu {count} gweithrediad",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Byddai'n hepgor",
                     "skipped": "Wedi hepgor",
                     "existedAtCheckpoint": "yn bodoli ar y pwynt gwirio",
-                    "absentAtCheckpoint": "yn absennol ar y pwynt gwirio"
+                    "absentAtCheckpoint": "yn absennol ar y pwynt gwirio",
+                    "noFiles": "Ni chynhwyswyd unrhyw ffeiliau yn y canlyniad adfer hwn.",
+                    "otherActions": "Camau eraill",
+                    "requestedPaths": "Is-set llwybrau y gofynnwyd amdani",
+                    "scopeAll": "Cwmpas: pob ffeil a gipiwyd yn y pwynt gwirio.",
+                    "titleApplied": "Adfer pwynt gwirio wedi'i gymhwyso",
+                    "titleApplyReview": "Adolygu cymhwyso adfer pwynt gwirio",
+                    "titleDryRunComplete": "Rhediad prawf adfer pwynt gwirio wedi'i gwblhau",
+                    "titleDryRunReview": "Adolygiad rhediad prawf adfer pwynt gwirio"
                 },
                 "checks": {
                     "exitSummary": "cod gadael {code} · {seconds}s",
                     "continueOnFailure": "Yn rhedeg pob gwiriad hyd yn oed os bydd un yn methu.",
-                    "stopOnFailure": "Yn stopio wrth y gwiriad cyntaf sy'n methu."
+                    "stopOnFailure": "Yn stopio wrth y gwiriad cyntaf sy'n methu.",
+                    "checkLabel": "Gwiriad:",
+                    "checksLabel": "Gwiriadau:",
+                    "exitChip": "cod gadael {code}",
+                    "filterChip": "hidlydd: {filter}",
+                    "filterLabel": "Hidlydd:",
+                    "notAvailable": "amh.",
+                    "passedCount": "{passed}/{total} wedi pasio",
+                    "runCheckNote": "Yn rhedeg gorchymyn build/test/lint dethol yn y gweithle. Mae sgriptiau adeiladu a phrofion yn gweithredu cod go iawn.",
+                    "runProjectCheck": "Rhedeg gwiriad y prosiect",
+                    "runVerification": "Rhedeg rownd ddilysu",
+                    "runVerificationNote": "Yn rhedeg gorchmynion build/test/lint dethol yn y gweithle. Mae sgriptiau adeiladu a phrofion yn gweithredu cod go iawn.",
+                    "stoppedEarly": "Wedi stopio wrth y gwiriad cyntaf a fethodd.",
+                    "timeoutLabel": "Terfyn amser: {seconds} e",
+                    "verification": "Dilysu"
                 },
                 "diagnostics": {
-                    "none": "Dim diagnosteg wedi'i hadrodd."
+                    "none": "Dim diagnosteg wedi'i hadrodd.",
+                    "errorCountMany": "{count} gwall",
+                    "errorCountOne": "{count} gwall",
+                    "title": "Diagnosteg",
+                    "truncated": "Cafodd y rhestr ddiagnosteg ei chwtogi.",
+                    "warningCountMany": "{count} rhybudd",
+                    "warningCountOne": "{count} rhybudd"
                 },
                 "search": {
-                    "none": "Heb ganfod unrhyw gyfatebiaethau."
+                    "none": "Heb ganfod unrhyw gyfatebiaethau.",
+                    "ignoreCase": "anwybyddu priflythrennau",
+                    "inPath": "yn {path}",
+                    "literal": "llythrennol",
+                    "matchCountMany": "{count} cyfatebiaeth",
+                    "matchCountOne": "{count} cyfatebiaeth",
+                    "title": "Chwilio'r gweithle",
+                    "truncated": "Cafodd y canlyniadau eu cwtogi."
                 },
                 "git": {
                     "noStagedDiff": "Dim allbwn diff wedi'i lwyfannu.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Cymeradwyo Llwyfannu Git",
                     "commitNote": "Mae hyn yn creu commit git o'r mynegai cyfredol sydd wedi'i lwyfannu. Adolygwch coding_git_status a coding_git_diff gyda staged=true yn gyntaf.",
                     "stagePreviewNote": "Mae hyn yn rhagweld pa lwybrau y gofynnwyd amdanynt a fyddai'n cael eu llwyfannu; ni fydd y mynegai yn newid.",
-                    "stageNote": "Mae hyn yn newid mynegai git ar gyfer y llwybrau y gofynnwyd amdanynt."
+                    "stageNote": "Mae hyn yn newid mynegai git ar gyfer y llwybrau y gofynnwyd amdanynt.",
+                    "afterCounts": "Ar ôl: {counts}",
+                    "beforeCounts": "Cyn: {counts}",
+                    "clean": "Mae'r goeden waith yn lân.",
+                    "commitCountMany": "{count} ymrwymiad",
+                    "commitCountOne": "{count} ymrwymiad",
+                    "conflicted": "mewn gwrthdaro",
+                    "diffTruncated": "Cafodd allbwn y gwahaniaeth ei gwtogi.",
+                    "logTitle": "Log Git",
+                    "pathsChip": "llwybrau: {paths}",
+                    "showingNewest": "Yn dangos y {count} mwyaf diweddar; mae rhagor.",
+                    "statusCounts": "{staged} wedi'u llwyfannu, {unstaged} heb eu llwyfannu, {untracked} heb eu tracio, {conflicted} mewn gwrthdaro",
+                    "titleCommitCreated": "Ymrwymiad Git wedi'i greu",
+                    "titleCommitDryRun": "Rhediad prawf ymrwymiad Git",
+                    "titleCommitReview": "Adolygiad ymrwymiad Git",
+                    "titleReview": "Adolygiad Git",
+                    "titleStageApplied": "Llwyfannu Git wedi'i gymhwyso",
+                    "titleStagedDiff": "Gwahaniaeth Git wedi'i lwyfannu",
+                    "titleStageDryRun": "Rhediad prawf llwyfannu Git",
+                    "titleStatus": "Statws Git",
+                    "titleUnstagedDiff": "Gwahaniaeth Git heb ei lwyfannu",
+                    "untracked": "heb ei dracio"
                 },
                 "patch": {
                     "validateNote": "Mae hyn yn dilysu'r clwt heb newid ffeiliau.",
                     "applyNote": "Mae'r cais cymhwyso perygl uchel hwn yn ysgrifennu ffeiliau ar ôl i'r gefnwedd greu pwynt gwirio cyn cymhwyso.",
                     "hideDiff": "Cuddio diff unedig",
-                    "showDiff": "Dangos diff unedig"
-                }
+                    "showDiff": "Dangos diff unedig",
+                    "actualLabel": "gwirioneddol:",
+                    "checkpointCreated": "Pwynt gwirio cyn cymhwyso wedi'i greu",
+                    "diffTruncated": "Rhagolwg y gwahaniaeth wedi'i gwtogi i'w ddangos.",
+                    "expectedLabel": "disgwyliedig:",
+                    "firstLines": "y {shown} llinell gyntaf o {total}",
+                    "hunkCountMany": "{count} talp",
+                    "hunkCountOne": "{count} talp",
+                    "hunkIndex": "talp {index}",
+                    "restoreManual": "Mae adfer yn waith llaw: defnyddiwch {tool} gyda'r ID pwynt gwirio hwn ar ôl adolygu.",
+                    "titleApplied": "Clwt wedi'i gymhwyso",
+                    "titleApplyBlocked": "Cymhwyso clwt wedi'i rwystro",
+                    "titleApplyReview": "Adolygu cymhwyso clwt",
+                    "titleDryRunConflicts": "Daeth rhediad prawf y clwt o hyd i wrthdaro",
+                    "titleDryRunPassed": "Rhediad prawf y clwt wedi llwyddo",
+                    "titleDryRunReview": "Adolygu rhediad prawf y clwt",
+                    "warnings": "Rhybuddion"
+                },
+                "binary": "deuaidd",
+                "fileCountMany": "{count} ffeil",
+                "fileCountOne": "{count} ffeil",
+                "moreCount": "+{count} arall",
+                "plan": {
+                    "likelyFiles": "Ffeiliau tebygol",
+                    "openQuestions": "Cwestiynau agored",
+                    "reviewOnlyNote": "Arteffact i'w adolygu yn unig. Mae golygiadau ac offer sy'n newid yn dal i ddefnyddio'r modd cymeradwyo cyfredol.",
+                    "riskHigh": "risg uchel",
+                    "riskLow": "risg isel",
+                    "riskMedium": "risg canolig",
+                    "risks": "Risgiau",
+                    "title": "Cynllun codio"
+                },
+                "state": {
+                    "clean": "glân",
+                    "failed": "wedi methu",
+                    "passed": "wedi pasio",
+                    "timedOut": "wedi dod i ben"
+                },
+                "timeoutChip": "terfyn amser {seconds}s",
+                "truncated": "wedi'i gwtogi",
+                "workspaceLabel": "Gweithle:"
+            },
+            "attachedImageAlt": "Delwedd atodedig",
+            "stepNumber": "Cam {step}",
+            "transcribingLocally": "Yn trawsgrifio'n lleol...",
+            "transferPlan": {
+                "dependsOnMany": "Yn dibynnu ar {count} cam paratoi",
+                "dependsOnOne": "Yn dibynnu ar {count} cam paratoi",
+                "destination": "Cyrchfan: {destination}",
+                "title": "Adolygu'r Cynllun Trosglwyddo",
+                "warnings": "Rhybuddion"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Ailadeiladwyd pennyn neu faniffest y gladdgell o'r paredd.",
             "repairMetadataSuccess": "Atgyweirio wedi'i gwblhau: ailadeiladwyd pennyn neu faniffest y gladdgell o'r paredd",
             "errorCorrectionBadge": "Cywiro gwallau",
-            "itemsInFolder": "{count} o eitemau yn /{folder}"
+            "itemsInFolder": "{count} o eitemau yn /{folder}",
+            "compressionProfileArchive": "Archif (zstd -15)",
+            "compressionProfileBalanced": "Cytbwys (zstd -9)",
+            "compressionProfileFast": "Cyflym (zstd -3)",
+            "damagedChunkLocation": "{id} - gwrthbwys {offset} (hyd {len})",
+            "fallbackName": "Cell",
+            "folderScanSummary": "{files} ffeil mewn {dirs} cyfeiriadur ({size})",
+            "namePlaceholderVault": "Fy nghell ddiogel",
+            "namePlaceholderZip": "Fy archif",
+            "recentDaysAgo": "{count} d yn ôl",
+            "recentFileCountMany": "{count} ffeil",
+            "recentFileCountOne": "{count} ffeil",
+            "recentMonthsAgo": "{count} mis yn ôl"
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Wrthi'n amgryptio'r eitemau a ddewiswyd...",
             "ingestSkipped": "Crëwyd y gell, ond ni ellid ychwanegu rhai eitemau:",
             "selectionInfo": "Bydd {count} eitem yn cael eu hamgryptio i'r gell",
-            "decrypting": "Yn dadgryptio…"
+            "decrypting": "Yn dadgryptio…",
+            "compatibleWithApp": "Yn gydnaws ag ap Cryptomator",
+            "createFormatBadge": "Cryptomator Fformat 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Cynnwys AES-GCM",
+            "featureNameCipher": "Enwau AES-SIV",
+            "formatVersion": "Fformat {version}"
         },
         "compress": {
             "title": "Cywasgu Ffeiliau",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Byddai rhai ffeiliau'n cael yr un enw. Addaswch y patrwm os gwelwch yn dda.",
             "apply": "Cymhwyso",
             "existingCollision": "Mae rhai enwau newydd yn cyfateb i ffeiliau sydd eisoes yn y ffolder hwn; ni chaiff y ffeiliau hynny eu trosysgrifo a chaiff eu hail-enwi ei hepgor.",
-            "existingCollisionHint": "(yn bodoli eisoes)"
+            "existingCollisionHint": "(yn bodoli eisoes)",
+            "baseNamePlaceholder": "ffeil",
+            "invalidName": "{name} (annilys)"
         },
         "lockScreen": {
             "locked": "Ap Wedi'i Gloi",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Heb ei osod gan y bwrdd gwaith. Dad-blygiwch ac ail-blygiwch y cebl, yna ei agor eto.",
             "volumes_need_mount_observe": "Yn y snap, mae cyfrolau'n ymddangos unwaith y bydd y caniatâd mount-observe wedi'i gysylltu. Rhedwch hyn mewn terfynell, yna dychwelwch i AeroFTP:",
             "volumes_unavailable": "Methwyd darllen y cyfrolau sydd wedi'u gosod.",
-            "portable_device": "Dyfais gludadwy"
+            "portable_device": "Dyfais gludadwy",
+            "drivesLeftPanel": "Gyriannau'r panel chwith",
+            "drivesRightPanel": "Gyriannau'r panel de",
+            "modeGroupLabel": "Modd y bar ochr",
+            "placesSidebarLabel": "Bar ochr lleoedd"
         },
         "viewMode": {
             "list": "Rhestr",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Pori cyfeiriaduron brawd/chwaer",
             "loading": "Yn llwytho...",
             "noSubdirectories": "Dim is-gyfeiriaduron",
-            "browseChildren": "Pori isgyfeiriaduron"
+            "browseChildren": "Pori isgyfeiriaduron",
+            "ariaLabel": "Llwybr llywio",
+            "syncBoundaryTitle": "{path} (ffin cysoni)"
         },
         "bridge": {
             "checking": "Gwirio {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Dim rhagolwg ar gael",
-            "title": "Cipolwg Cyflym"
+            "title": "Cipolwg Cyflym",
+            "closePreview": "Cau'r rhagolwg",
+            "dialogLabel": "Cipolwg Cyflym: {name}",
+            "nextFile": "Ffeil nesaf",
+            "position": "{index} o {total}",
+            "previousFile": "Ffeil flaenorol"
         },
         "properties": {
             "general": "Cyffredinol",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Y swm gwirio ar gyfer yr eitem y mae Immich yn ei gofnodi adeg ei lwytho.",
                 "crypt-overlay-ciphertext": "Mae'r crynodeb yn cwmpasu'r beitiau wedi'u hamgryptio sydd wedi'u cadw ar y gweinydd."
             },
-            "readOnlyIsLinkTarget": "Dolen symbolaidd yw hon: mae'r caniatadau'n perthyn i'r ffeil y mae'n pwyntio ati. Agorwch briodweddau'r ffeil honno i'w newid."
+            "readOnlyIsLinkTarget": "Dolen symbolaidd yw hon: mae'r caniatadau'n perthyn i'r ffeil y mae'n pwyntio ati. Agorwch briodweddau'r ffeil honno i'w newid.",
+            "exactBytes": "({bytes} beit)"
         },
         "duplicates": {
             "sortWasted": "Gofod wedi'i wastraffu",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Union yr un fath beit wrth beit",
             "modeNonIdenticalHint": "Tebygrwydd canfyddiadol neu destun, dim dileu awtomatig",
             "potentialWasteSelected": "gwastraff posibl (wedi'u dewis)",
-            "similarityDistance": "{similarity}, pellter {distance}"
+            "similarityDistance": "{similarity}, pellter {distance}",
+            "modeExact": "Union",
+            "modeLabel": "Modd:",
+            "modeNonIdentical": "Ddim yn union yr un fath"
         },
         "diskUsage": {
             "title": "Defnydd Disg",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Dim gweithgaredd rhwydwaith eto. Trosglwyddwch ffeiliau i weld digwyddiadau.",
                 "time": "Amser",
                 "event": "Digwyddiad",
-                "detail": "Manylion"
+                "detail": "Manylion",
+                "command": "Gorchymyn",
+                "ipcTransfersCount": "IPC + Trosglwyddiadau ({count})",
+                "status": "Statws",
+                "type": "Math"
             },
             "system": {
                 "appVersion": "Fersiwn AeroFTP",
@@ -3953,7 +4258,8 @@
                 "dark": "Tywyll",
                 "light": "Golau",
                 "userAgent": "Asiant Defnyddiwr",
-                "localStorageKeysTitle": "Allweddi LocalStorage"
+                "localStorageKeysTitle": "Allweddi LocalStorage",
+                "localStorageEntrySummary": "{size} beit · {preview}"
             },
             "copyFileListToClipboard": "Copïo rhestr ffeiliau i'r clipfwrdd",
             "filesCopied": "{count} cofnod ffeiliau wedi'u copïo i'r clipfwrdd",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Cliciwch ddwywaith ar y dewisiad neu pwyswch Enter i gymhwyso, Esc i ganslo",
                     "cropRatio": "Cyfrannau",
                     "cropRatioFree": "Rhydd",
-                    "cropRatioOriginal": "Gwreiddiol"
+                    "cropRatioOriginal": "Gwreiddiol",
+                    "rotateCcw90Short": "90° gwrthglocwedd",
+                    "rotateCw90Short": "90° clocwedd"
                 },
                 "toggleTransparencyBg": "Cefndir tryloywder (cylchdroi)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "Yn llwytho PDF...",
                 "open": "Agor PDF",
                 "page": "Tudalen",
-                "zoom": "Chwyddo"
+                "zoom": "Chwyddo",
+                "documentTitle": "Dogfen PDF"
             },
             "text": {
                 "auto": "Awtomatig",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Tabled (768px)",
                 "wordWrap": "Lapio geiriau",
                 "zoomIn": "Chwyddo i mewn",
-                "zoomOut": "Chwyddo allan"
+                "zoomOut": "Chwyddo allan",
+                "htmlPreviewFrameTitle": "Rhagolwg HTML"
             },
             "video": {
                 "exitFullscreen": "Gadael sgrin lawn (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Canfuwyd haen Rclone Crypt",
             "aerocryptImportDesc": "Proffil wedi'i fewnforio o rclone.conf ar gyfer {name}: agor yr haen nawr?",
             "aerocryptImportOpen": "Agor yr haen",
-            "aerovaultOverlayExpired": "Mae AeroVault Overlay wedi'i gloi oherwydd anweithgarwch. Ailagor y gladdgell i barhau."
+            "aerovaultOverlayExpired": "Mae AeroVault Overlay wedi'i gloi oherwydd anweithgarwch. Ailagor y gladdgell i barhau.",
+            "aerovaultOverlaySource": "Troshaen AeroVault yn weithredol ({source})",
+            "fileOperationsLabel": "Gweithrediadau ffeiliau",
+            "overlayBadge": "TROSHAEN"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Dilysu dau ffactor",
                 "verify": "Gwirio a galluogi",
                 "active": "2FA yn weithredol",
-                "inactive": "2FA yn anweithredol"
+                "inactive": "2FA yn anweithredol",
+                "codeGroupLabel": "Cod {count} digid",
+                "digitLabel": "Digid {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Pori",
                     "installed": "Wedi gosod"
-                }
+                },
+                "remoteInstallDisabled": "Mae gosod ategion o bell wedi'i analluogi ar hyn o bryd nes bod y gofrestrfa wedi'i dilysu ar ochr y cleient. Mae ategion sydd wedi'u gosod yn lleol yn parhau i weithio fel arfer."
             }
         },
         "commandPalette.category.ai": {},
@@ -4616,7 +4932,9 @@
             "trashFooter": "Bydd ffeiliau a adferirwyd yn ailymddangos yn eu ffolder wreiddiol",
             "connectionNamePlaceholder": "Enw'r Cysylltiad (e.e. Fy FileLu Cloud)",
             "trashAutoExpiry": "Mae FileLu yn dileu ffeiliau'r sbwriel yn awtomatig ar ôl 7 diwrnod",
-            "rsyncTransferOnly": "Pwynt terfyn trosglwyddo'n unig: nid yw pori ar gael ar Rsync. Defnyddia Native API, WebDAV, S3 neu FTP i lywio; newid i Rsync ar gyfer trosglwyddiadau delta llif-band uchel."
+            "rsyncTransferOnly": "Pwynt terfyn trosglwyddo'n unig: nid yw pori ar gael ar Rsync. Defnyddia Native API, WebDAV, S3 neu FTP i lywio; newid i Rsync ar gyfer trosglwyddiadau delta llif-band uchel.",
+            "badgePasswordProtected": "Wedi'i diogelu gan gyfrinair",
+            "badgeWatermarked": "Gyda dyfrnod"
         },
         "box": {
             "addComment": "Ychwanegu Sylw",
@@ -4698,7 +5016,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Cynllun am ddim",
             "freeCardTier": "Am ddim + cerdyn",
-            "paidTier": "Taledig"
+            "paidTier": "Taledig",
+            "extraFeatures": "Ychwanegol",
+            "coreOpsList": "Llwytho i fyny, Llwytho i lawr, Dileu, Ailenwi, Symud, Creu ffolder, Chwilio",
+            "coreOpsLegend": "Sylfaenol = Llwytho i fyny, Llwytho i lawr, Dileu, Ailenwi, Symud, Creu ffolder, Chwilio"
         },
         "healthCheck": {
             "title": "Gwiriad Iechyd y Gweinydd",
@@ -4948,7 +5269,19 @@
             "releaseAssetOne": "{count} ased",
             "releaseAssetMany": "{count} o asedau",
             "repoPrivate": "Preifat",
-            "repoPublic": "Cyhoeddus"
+            "repoPublic": "Cyhoeddus",
+            "actionsLiveBadge": "Byw",
+            "actionsRunningTitle": "GitHub Actions (yn rhedeg)",
+            "coAuthors": "Cyd-awduron",
+            "pagesPathPlaceholder": "/ neu /docs",
+            "pagesStatusBuilding": "yn adeiladu",
+            "pagesStatusBuilt": "wedi'i adeiladu",
+            "pagesStatusErrored": "gwall",
+            "refreshBranches": "Adnewyddu canghennau",
+            "repoPrivateTitle": "Ystorfa breifat",
+            "repoPublicTitle": "Ystorfa gyhoeddus",
+            "unpushedCommitsOnBranchMany": "{count} commit heb eu gwthio ar {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit heb ei wthio ar {branch}"
         },
         "filenNotes": {
             "title": "Nodiadau Wedi'u Hamgryptio",
@@ -4986,7 +5319,8 @@
             "tagName": "Enw'r tag",
             "removeTag": "Tynnu'r tag",
             "manageTags": "Rheoli tagiau",
-            "deleteTagConfirm": "Dileu'r tag “{name}”? Mae'r nodiadau'n cadw eu testun."
+            "deleteTagConfirm": "Dileu'r tag “{name}”? Mae'r nodiadau'n cadw eu testun.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Dolen Rhannu",
@@ -5096,7 +5430,8 @@
                 "down": "Anghyrraeddadwy",
                 "pending": "Yn gwirio...",
                 "unknown": "Heb ei wirio",
-                "clickToRetry": "cliciwch i ailwirio"
+                "clickToRetry": "cliciwch i ailwirio",
+                "withActiveSession": "{title} (sesiwn weithredol)"
             },
             "densityCompact": "Rhesi cryno",
             "densityComfortable": "Rhesi cyfforddus",
@@ -5186,7 +5521,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Troshaen wedi'i hamgryptio AeroCrypt (brodorol): mae enwau a chynnwys wedi'u hamgryptio ar y gweinydd hwn.",
-                "rcloneTitle": "Troshaen rclone crypt (rhyngweithredol): mae enwau a chynnwys wedi'u hamgryptio ar y gweinydd hwn."
+                "rcloneTitle": "Troshaen rclone crypt (rhyngweithredol): mae enwau a chynnwys wedi'u hamgryptio ar y gweinydd hwn.",
+                "keyBits": "{bits}-did"
             },
             "sidebar": {
                 "filters": "Hidlyddion",
@@ -5206,7 +5542,19 @@
                 "unknownKeyTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oes gan yr allwedd rhaglen y gallu readBucketEncryption. Nid yw gwerth nad oes hawl gennym i'w weld yn golygu bod amgryptio wedi ei ddiffodd.",
                 "unknownShapeTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oedd gan yr ateb siâp wedi ei ddogfennu. Roedd gan yr allwedd hawl i'w ddarllen, felly mae hyn yn ymwneud â'r ateb ac nid â chaniatâd."
             },
-            "exportProfile": "Allforio..."
+            "exportProfile": "Allforio...",
+            "quotaLabel": "Cwota",
+            "storageNoCapReported": "{used} (dim terfyn cwota wedi'i adrodd)",
+            "e2eBitsBadge": "E2E {bits}-did",
+            "filenAuthVersionTitle": "Wedi'i ganfod o Filen auth/info wrth gysylltu'n llwyddiannus",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nawr",
+                "minutes": "{count} mun",
+                "hours": "{count} awr",
+                "days": "{count} d",
+                "months": "{count} mis"
+            }
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",
@@ -5240,7 +5588,8 @@
             "linkType": "Math",
             "createMergeRequest": "Creu Merge Request",
             "mrTitle": "Teitl MR",
-            "mrBody": "Disgrifiad (dewisol)"
+            "mrBody": "Disgrifiad (dewisol)",
+            "sourceCode": "Cod ffynhonnell"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5822,7 +6171,34 @@
             "copy": "Dyblygu defnyddiwr (gweinyddion yn unig, dim cyfrineiriau)",
             "copyLockedHint": "Newidiwch i'r cyfrif hwn yn gyntaf i ddyblygu ei weinyddion",
             "crossUserDedupTitle": "Eisoes wedi'i gadw gan gyfrif arall",
-            "crossUserDedupMessage": "Mae \"{name}\" yn defnyddio cyfrif gweinydd sydd hefyd wedi'i gadw ar y ddyfais hon gan: {accounts}"
+            "crossUserDedupMessage": "Mae \"{name}\" yn defnyddio cyfrif gweinydd sydd hefyd wedi'i gadw ar y ddyfais hon gan: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Cau'r ddeialog ailosod cyfrinair",
+                "confirmPassword": "Cadarnhau'r cyfrinair newydd",
+                "errMismatch": "Nid yw cyfrineiriau newydd y cyfrif yn cyfateb.",
+                "errNewRequired": "Rhowch gyfrinair cyfrif newydd.",
+                "errNotAuthorized": "Rhaid i chi fod yn weinyddwr i ailosod cyfrinair cyfrif arall.",
+                "errNotForSelf": "Defnyddiwch Newid Cyfrinair ar eich cyfrif eich hun.",
+                "errStoreNotReady": "Datgloi'r gladdfa yn gyntaf, yna rhowch gynnig arall arni.",
+                "errTypeReset": "Teipiwch RESET i gadarnhau'r weithred ddinistriol hon.",
+                "errUserNotFound": "Nid yw'r defnyddiwr hwn yn bodoli mwyach.",
+                "newPassword": "Cyfrinair newydd y cyfrif",
+                "statEncryptedBytes": "beit wedi'u hamgryptio",
+                "statProfiles": "proffiliau",
+                "statSettings": "gosodiadau",
+                "title": "Ailosod cyfrinair = dinistrio data",
+                "typeReset": "Teipiwch RESET",
+                "wipeDetail": "Nid oes modd adfer y cyfrinair presennol. Bydd AeroFTP yn dileu gweinyddion cadw, gosodiadau defnyddiwr a chyflwr cloi'r cyfrif targed, yna'n cyhoeddi allwedd amgryptio newydd wedi'i diogelu gan y cyfrinair newydd.",
+                "wipeWarning": "Bydd hyn yn clirio rhaniad wedi'i amgryptio'r cyfrif targed yn barhaol."
+            },
+            "dropdown": {
+                "accountPassword": "Cyfrinair y cyfrif",
+                "lock": "Cloi",
+                "newUser": "Defnyddiwr newydd",
+                "noUsers": "Dim defnyddwyr eto. Defnyddiwch \"Defnyddiwr newydd\" isod i ychwanegu'r cyntaf.",
+                "protectionNote": "Mae eich cyfrif wedi'i ddiogelu gydag amgryptio Argon2id + AES-KW + AES-256-GCM",
+                "users": "Defnyddwyr"
+            }
         },
         "aerocryptNative": {
             "title": "Troshaen AeroCrypt",
@@ -6248,7 +6624,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Dewisir y modd wrth greu'r cysylltiad ac mae'n aros yn sefydlog wrth olygu proffil a gadwyd. I ddefnyddio modd gwahanol, crëwch gysylltiad newydd."
+                "lockedInEdit": "Dewisir y modd wrth greu'r cysylltiad ac mae'n aros yn sefydlog wrth olygu proffil a gadwyd. I ddefnyddio modd gwahanol, crëwch gysylltiad newydd.",
+                "notInBuild": "Heb ei gynnwys yn y fersiwn hon o AeroFTP."
             }
         },
         "flatpak": {

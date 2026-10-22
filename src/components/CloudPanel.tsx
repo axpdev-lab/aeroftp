@@ -490,7 +490,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
 
     if (isLoading) {
         return (
-            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Loading">
+            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.dialogLoadingLabel')}>
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-3">
                         <Loader2 className="animate-spin" size={32} />
@@ -504,7 +504,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // Show setup wizard if not configured
     if (!config?.enabled) {
         return (
-            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Setup">
+            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.dialogSetupLabel')}>
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-xl font-semibold flex items-center gap-2"><Cloud className="text-cyan-500" /> {t('cloud.title')} {t('cloud.setup')}</h2>
@@ -527,7 +527,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         const syncIntervalValue = isHours ? Math.round(syncSecs / 3600) : Math.round(syncSecs / 60);
 
         return (
-            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-start justify-center backdrop-blur-sm overflow-y-auto py-6" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Settings">
+            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-start justify-center backdrop-blur-sm overflow-y-auto py-6" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.dialogSettingsLabel')}>
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full mx-4 my-auto flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                         <h2 className="text-xl font-semibold flex items-center gap-2"><Settings className="text-cyan-500" /> {t('cloud.title')} {t('common.settings')}</h2>
@@ -800,7 +800,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
 
     // Show dashboard
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Dashboard">
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.dialogDashboardLabel')}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-semibold flex items-center gap-2"><Cloud className="text-cyan-500" /> {t('cloud.title')}</h2>

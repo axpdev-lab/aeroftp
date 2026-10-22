@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { HardDrive } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 
 export type ManualStorageUnit = 'MB' | 'GB' | 'TB' | 'PB';
 
@@ -52,6 +53,7 @@ export const ManualStorageField: React.FC<ManualStorageFieldProps> = ({
     hint,
     disabled = false,
 }) => {
+    const t = useTranslation();
     const initial = manualStorageInput(valueBytes);
     const [amount, setAmount] = useState(initial.amount);
     const [unit, setUnit] = useState<ManualStorageUnit>(initial.unit);
@@ -110,7 +112,7 @@ export const ManualStorageField: React.FC<ManualStorageFieldProps> = ({
                         commit(amount, next);
                     }}
                     disabled={disabled}
-                    aria-label={`${label} unit`}
+                    aria-label={t('connection.manualStorageUnitLabel', { label })}
                     className="w-24 px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                 >
                     {(['MB', 'GB', 'TB', 'PB'] as ManualStorageUnit[]).map(option => (

@@ -337,7 +337,38 @@
             "protonSignOut": "সাইন আউট",
             "protonSignOutHelp": "Proton-এ সেশনটি শেষ করে এবং এই প্রোফাইল থেকে সেটি সরিয়ে দেয়।",
             "protonSignInExpired": "সাইন-ইন পৃষ্ঠার মেয়াদ শেষ হয়ে গেছে। আবার সাইন ইন করুন।",
-            "protonNativeUnavailable": "এই বিল্ডে নেটিভ Proton Drive ক্লায়েন্ট অন্তর্ভুক্ত নেই।"
+            "protonNativeUnavailable": "এই বিল্ডে নেটিভ Proton Drive ক্লায়েন্ট অন্তর্ভুক্ত নেই।",
+            "forms": {
+                "publicApiKey": "পাবলিক API কী",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - পাবলিক কী।",
+                "secretApiKey": "সিক্রেট API কী",
+                "uploadcareSecretHint": "শুধুমাত্র {scheme} প্রমাণীকরণের মাধ্যমে REST ফাইল ব্যবস্থাপনার জন্য ব্যবহৃত।",
+                "flatMediaLibrary": "ফ্ল্যাট মিডিয়া লাইব্রেরি",
+                "uploadcareNoFolders": "Uploadcare নেটিভ ফোল্ডার প্রদান করে না; প্রকল্পের ফাইলগুলি UUID অনুযায়ী রুটে তালিকাভুক্ত হয়।",
+                "urlEndpointId": "URL এন্ডপয়েন্ট ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL এন্ডপয়েন্ট।",
+                "privateApiKey": "প্রাইভেট API কী",
+                "storedVaultBasicAuth": "স্থানীয় ভল্টে সংরক্ষিত এবং শুধুমাত্র Basic Auth এর মাধ্যমে {provider}-এ পাঠানো হয়।",
+                "cloudName": "ক্লাউডের নাম",
+                "cloudinaryCloudNameHint": "আপনার Cloudinary Dashboard - Account Details-এ পাওয়া যায়।",
+                "apiKeyPlaceholder": "API কী",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API কী।",
+                "apiSecret": "API সিক্রেট",
+                "apiSecretPlaceholder": "API সিক্রেট",
+                "openProviderLink": "{provider} লিংক খুলুন",
+                "githubPatHint": "Contents (পড়া ও লেখা) সহ সূক্ষ্ম-অনুমতির PAT।",
+                "generateToken": "টোকেন তৈরি করুন",
+                "applicationKeyId": "অ্যাপ্লিকেশন কী ID",
+                "backblazeKeyIdHint": "B2 অ্যাপ্লিকেশন কী আইডি, 003 দিয়ে শুরু হয়। Backblaze-এর App Keys পৃষ্ঠা থেকে একটি তৈরি করুন।",
+                "applicationKey": "অ্যাপ্লিকেশন কী",
+                "backblazeKeyHint": "তৈরির সময় শুধু একবার দেখানো হয়। এটিকে পাসওয়ার্ডের মতো গোপন রাখুন।",
+                "bucketNameExactHint": "বাকেটের সঠিক নাম, বড় ও ছোট হাতের অক্ষর আলাদা ধরা হয়।",
+                "megacmdSetupFirst": "আগে MEGAcmd সেট আপ করুন",
+                "megacmdFetchUrlTitle": "{cmd} চালান এবং URL স্বয়ংক্রিয়ভাবে পূরণ করুন",
+                "fetchUrl": "URL আনুন",
+                "megacmdWebdavHint": "ব্যবহারকারীর নাম ও পাসওয়ার্ড ইচ্ছাকৃতভাবে বাদ রাখা হয়েছে। সংযোগের সময় AeroFTP নিজেই \"{cmd}\" চালিয়ে ব্রিজ শুরু করে এবং এই ঠিকানা পড়ে নেয়: ঘরটি ফাঁকা রাখলেও চলবে। \"URL আনুন\" একটি ঐচ্ছিক ম্যানুয়াল রিফ্রেশ; MEGAcmd কাস্টম পোর্ট ব্যবহার করলে এখানে পোর্ট বদলান।"
+            },
+            "manualStorageUnitLabel": "{label} একক"
         },
         "browser": {
             "remote": "রিমোট",
@@ -390,7 +421,19 @@
             "listingPath": "{path} তালিকাভুক্ত করা হচ্ছে...",
             "pleaseWait": "অনুগ্রহ করে অপেক্ষা করুন...",
             "sameNameLeakChip": "একই নাম",
-            "sameNameLeakTooltip": "এই নামটি এই এনক্রিপ্ট করা ভল্টের অন্য একটি পথেও দেখা যায়। যেহেতু নামগুলি নির্ধারণমূলকভাবে এনক্রিপ্ট করা হয়, এনক্রিপ্ট করা স্টোরের একজন পর্যবেক্ষক বুঝতে পারেন যে দুটি একই নাম ভাগ করে।"
+            "sameNameLeakTooltip": "এই নামটি এই এনক্রিপ্ট করা ভল্টের অন্য একটি পথেও দেখা যায়। যেহেতু নামগুলি নির্ধারণমূলকভাবে এনক্রিপ্ট করা হয়, এনক্রিপ্ট করা স্টোরের একজন পর্যবেক্ষক বুঝতে পারেন যে দুটি একই নাম ভাগ করে।",
+            "endpointSelector": {
+                "localFolder": "স্থানীয় ফোল্ডার",
+                "localFolderHint": "এই প্যানেলের জন্য একটি স্থানীয় পথ বেছে নিন",
+                "noSavedProfiles": "কোনো সংরক্ষিত প্রোফাইল নেই",
+                "savedProfiles": "সংরক্ষিত রিমোট প্রোফাইল",
+                "title": "এন্ডপয়েন্ট"
+            },
+            "leftPanelMarker": "বাম প্যানেল",
+            "localFilesLabel": "স্থানীয় ফাইল",
+            "localFilesRightLabel": "স্থানীয় ফাইল (ডান প্যানেল)",
+            "remoteFilesLabel": "রিমোট ফাইল",
+            "rightPanelMarker": "ডান প্যানেল"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent-কে জিজ্ঞাসা করুন...",
@@ -650,7 +693,45 @@
             "speedGraph": "গতির গ্রাফ",
             "hideSpeedGraph": "গতির গ্রাফ লুকান",
             "speedAvg": "গড় {speed}",
-            "speedPeak": "সর্বোচ্চ {speed}"
+            "speedPeak": "সর্বোচ্চ {speed}",
+            "badgeBatch": "ব্যাচ",
+            "badgeDownload": "ডাউনলোড",
+            "badgeLive": "লাইভ",
+            "badgeStream": "স্ট্রিম",
+            "badgeUpload": "আপলোড",
+            "earlierItemsHidden": "{count}টি আগের আইটেম লুকানো",
+            "folderFilesProgress": "{done}/{total}টি ফাইল",
+            "laneDone": "সম্পন্ন",
+            "laneError": "ত্রুটি",
+            "unifiedPlan": {
+                "destination": "গন্তব্য",
+                "dialogLabel": "স্থানান্তর পরিকল্পনা",
+                "engineAerovaultOverlay": "AeroVault ওভারলে",
+                "engineCompareOnly": "শুধু তুলনা",
+                "engineCrossProfileSync": "প্রোফাইল-জুড়ে সিঙ্ক",
+                "engineCrossProfileTransfer": "প্রোফাইল-জুড়ে স্থানান্তর",
+                "engineLocalDelta": "স্থানীয় ডেল্টা পরিবহন",
+                "engineLocalFs": "স্থানীয় ফাইল সিস্টেম",
+                "engineProviderDownload": "প্রদানকারী থেকে ডাউনলোড",
+                "engineProviderUpload": "প্রদানকারীতে আপলোড",
+                "engineUnsupported": "অসমর্থিত",
+                "execute": "সম্পাদন করুন",
+                "items": "আইটেম",
+                "modeBackup": "ব্যাকআপ",
+                "modeBisync": "দ্বিমুখী সিঙ্ক",
+                "modeCompare": "তুলনা",
+                "modeCopy": "অনুলিপি",
+                "modeMirror": "প্রতিবিম্ব",
+                "modeMove": "সরান",
+                "modeSync": "সিঙ্ক",
+                "notExecutable": "এই এন্ডপয়েন্ট জোড়াটি এখনও চালানো যায় না।",
+                "parallel": "সমান্তরাল",
+                "reviewBeforeExecution": "চালানোর আগে পর্যালোচনা করুন",
+                "route": "{engine} এর মাধ্যমে {pair}",
+                "size": "আকার",
+                "source": "উৎস",
+                "title": "{mode} পরিকল্পনা"
+            }
         },
         "settings": {
             "title": "সেটিংস",
@@ -1040,7 +1121,13 @@
                 "title": "নেটিভ rsync (বিটা)",
                 "description": "SFTP Delta Sync কীভাবে rsync স্থানান্তর পাঠায় তা বেছে নিন।",
                 "enableToggle": "SFTP ডেল্টা সিঙ্কের জন্য নেটিভ rsync সক্ষম করুন",
-                "experimental": "Auto AeroRsync-কে ক্লাসিক ফলব্যাকসহ অগ্রাধিকার দেয়; Classic যেখানে পাওয়া যায় সেখানে সিস্টেমের rsync বাইনারি ব্যবহার করে; Native ক্লাসিক বাইনারি ফলব্যাক এড়িয়ে যায়।"
+                "experimental": "Auto AeroRsync-কে ক্লাসিক ফলব্যাকসহ অগ্রাধিকার দেয়; Classic যেখানে পাওয়া যায় সেখানে সিস্টেমের rsync বাইনারি ব্যবহার করে; Native ক্লাসিক বাইনারি ফলব্যাক এড়িয়ে যায়।",
+                "modeAuto": "স্বয়ংক্রিয়",
+                "modeClassic": "ক্লাসিক",
+                "modeNative": "নেটিভ",
+                "classicNotFoundTooltip": "PATH-এ ক্লাসিক rsync বাইনারি পাওয়া যায়নি। এই মোড চালু করতে rsync ইনস্টল করুন (Linux/macOS প্যাকেজ, Windows-এ WSL/cygwin/scoop-এর মাধ্যমে)।",
+                "classicAt": "ক্লাসিক rsync: {path}",
+                "classicNotDetected": "PATH-এ ক্লাসিক rsync বাইনারি শনাক্ত হয়নি। এই মেশিনে নেটিভই একমাত্র উপলব্ধ ইঞ্জিন।"
             },
             "startMinimizedOnAutostart": "ট্রেতে ছোট করে চালু করুন",
             "startMinimizedOnAutostartDesc": "অটোস্টার্ট চালু হলে মূল উইন্ডো লুকান। AeroFTP সিস্টেম ট্রেতে চলতে থাকে, প্রয়োজনে ট্রে আইকন থেকে খুলুন।",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "এনক্রিপ্ট না করা স্টোরেজে {count} টি OAuth ক্রেডেনশিয়াল পাওয়া গেছে",
             "fontSystemInstall": "সিস্টেমে ইনস্টল",
             "fontSizeMin": "সর্বনিম্ন",
-            "fontSizeMax": "সর্বোচ্চ"
+            "fontSizeMax": "সর্বোচ্চ",
+            "migrationCleanupHint": "সর্বোচ্চ নিরাপত্তার জন্য প্রস্তাবিত",
+            "fontCustomOption": "কাস্টম...",
+            "fontSystemInstallHint": "সিস্টেমে ইনস্টল করা প্রয়োজন। উপলব্ধ না থাকলে AeroFTP স্বয়ংক্রিয়ভাবে বিকল্প ব্যবহার করে।",
+            "fontSizeIndicatorLabel": "ফন্ট"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "থামান",
                 "stopShell": "শেল থামান",
                 "closed": "টার্মিনাল বন্ধ হয়েছে।",
-                "commandInsertedReview": "Terminal-এ কমান্ড সন্নিবেশিত হয়েছে। চালানোর জন্য Enter চাপুন।"
+                "commandInsertedReview": "Terminal-এ কমান্ড সন্নিবেশিত হয়েছে। চালানোর জন্য Enter চাপুন।",
+                "decreaseFont": "ফন্টের আকার কমান (Ctrl+-)",
+                "emptyClickPlus": "টার্মিনাল খুলতে {plus} ক্লিক করুন",
+                "emptySshHint": "অথবা {host}-এ রিমোট শেলের জন্য {ssh}",
+                "increaseFont": "ফন্টের আকার বাড়ান (Ctrl+=)",
+                "newTab": "নতুন টার্মিনাল ট্যাব",
+                "sshShellTo": "{host}-এ SSH শেল",
+                "theme": "টার্মিনাল থিম"
             },
             "editorPanel": {
                 "emptyState": "একটি ফাইলে ডান ক্লিক করুন এবং \"উৎস দেখুন\" নির্বাচন করুন",
@@ -1278,13 +1376,17 @@
                 "saving": "সংরক্ষণ করা হচ্ছে...",
                 "noFileSelected": "দেখার জন্য কোনো ফাইল নির্বাচিত হয়নি",
                 "loading": "সম্পাদক লোড করা হচ্ছে...",
-                "dragToTerminalRun": "চালানোর কমান্ড সন্নিবেশ করতে Terminal-এ টেনে আনুন"
+                "dragToTerminalRun": "চালানোর কমান্ড সন্নিবেশ করতে Terminal-এ টেনে আনুন",
+                "closeEditor": "সম্পাদক বন্ধ করুন",
+                "resetChanges": "পরিবর্তনগুলি রিসেট করুন"
             },
             "previewPanel": {
                 "emptyState": "একটি ফাইলে রাইট-ক্লিক করুন এবং \"প্রিভিউ\" নির্বাচন করুন"
             },
             "codeEditor": "কোড এডিটর",
-            "sshTerminal": "SSH টার্মিনাল"
+            "sshTerminal": "SSH টার্মিনাল",
+            "comingSoon": "শীঘ্রই আসছে",
+            "soonBadge": "শীঘ্রই"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "টোকেন প্রত্যাহার করা হলে নিজে আবার অনুমোদন দিন"
             },
             "profilesLoadFailed": "আপনার সংরক্ষিত সার্ভারগুলো পড়া যায়নি: {error}",
-            "cleanupSummary": "{count} টি ফাইল, {size} খালি করা হয়েছে"
+            "cleanupSummary": "{count} টি ফাইল, {size} খালি করা হয়েছে",
+            "maturity": {
+                "alpha": "আলফা"
+            },
+            "dialogDashboardLabel": "ক্লাউড সিঙ্ক ড্যাশবোর্ড",
+            "dialogLoadingLabel": "ক্লাউড সিঙ্ক লোড হচ্ছে",
+            "dialogSettingsLabel": "ক্লাউড সিঙ্ক সেটিংস",
+            "dialogSetupLabel": "ক্লাউড সিঙ্ক সেটআপ",
+            "onePerLineHint": "(প্রতি লাইনে একটি)",
+            "pairsEditorLabel": "AeroCloud জোড়া সম্পাদক",
+            "remoteSubfolderPlaceholder": "ক্লাউড"
         },
         "statusBar": {
             "connected": "সংযুক্ত",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "আংশিক, অপঠিত ফোল্ডার: {count}",
             "usedScanFailed": "ব্যবহৃত-স্টোরেজ স্ক্যান ব্যর্থ হয়েছে",
             "usedScanEmpty": "{path} এর স্ক্যানে কোনো ফাইল পাওয়া যায়নি; ক্যাশ করা মান রাখা হয়েছে। পথটি বা সার্ভারের রিকার্সিভ-লিস্টিং সমর্থন পরীক্ষা করুন।",
-            "filenBridgeAccountTotal": "Filen Desktop এখানে আপনার অ্যাকাউন্টের মোট ব্যবহার জানায় না: দেখানো ব্যবহৃত পরিমাণ এই পাথের অধীনে থাকা ফাইলগুলির যোগফল। নেটিভ Filen সংযোগ অ্যাকাউন্টের মোট ব্যবহার সঙ্গে সঙ্গে দেখায়।"
+            "filenBridgeAccountTotal": "Filen Desktop এখানে আপনার অ্যাকাউন্টের মোট ব্যবহার জানায় না: দেখানো ব্যবহৃত পরিমাণ এই পাথের অধীনে থাকা ফাইলগুলির যোগফল। নেটিভ Filen সংযোগ অ্যাকাউন্টের মোট ব্যবহার সঙ্গে সঙ্গে দেখায়।",
+            "ariaLabel": "স্ট্যাটাস বার",
+            "debugBadge": "ডিবাগ",
+            "debugModeActive": "ডিবাগ মোড সক্রিয়"
         },
         "dialogs": {
             "confirmTitle": "নিশ্চিত করুন",
@@ -1620,7 +1735,8 @@
                 "apRole": "প্রতিষ্ঠাতা, ডেভেলপার, রক্ষণাবেক্ষণকারী, সহ-ডিজাইনার",
                 "ekRole": "গবেষক, কোয়ালিটি অ্যাসিউরেন্স ইঞ্জিনিয়ার, সহ-ডিজাইনার"
             },
-            "madeBy": "{author} দ্বারা"
+            "madeBy": "{author} দ্বারা",
+            "statsLine": "{protocols}টি প্রোটোকল · {languages}টি ভাষা · AES-256 আর্কাইভ"
         },
         "support": {
             "title": "AeroFTP সমর্থন করুন",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "প্রকল্প (Unixname)",
             "opendriveNotApiKey": "(আপনার OpenDrive API কী নয়)",
             "endpoint": "এন্ডপয়েন্ট",
-            "accountId": "অ্যাকাউন্ট ID"
+            "accountId": "অ্যাকাউন্ট ID",
+            "servicesHeading": "পরিষেবা",
+            "sourceforgeSshKeyHelp": "SourceForge-এ SSH কী প্রমাণীকরণ প্রয়োজন। {cmd} দিয়ে একটি কী তৈরি করুন এবং সেটি {link}-এ আপলোড করুন।",
+            "sourceforgeSshSettings": "SSH সেটিংস",
+            "fullGuide": "সম্পূর্ণ নির্দেশিকা",
+            "endpointTemplateExample": "যেমন {template}",
+            "jurisdiction": "বিচারাধিকার",
+            "insecureCertDialogLabel": "অনিরাপদ সার্টিফিকেট সতর্কতা",
+            "betaBadge": "বেটা",
+            "hostKeyDialogLabel": "হোস্ট কী যাচাইকরণ"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -2111,7 +2236,10 @@
             "rename": "নাম পরিবর্তন",
             "resume": "পুনরায় শুরু",
             "resumeHint": "স্থানান্তরটি পুনরায় শুরু না করে থেমে যাওয়া জায়গা থেকে চালিয়ে যান",
-            "cancel": "বাতিল"
+            "cancel": "বাতিল",
+            "dialogLabel": "ওভাররাইট নিশ্চিতকরণ",
+            "moreInQueue": "সারিতে +{count}",
+            "unknownDate": "অজানা"
         },
         "statusbar": {
             "queue": "কিউ",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "এই টেমপ্লেটে ব্যবহারযোগ্য স্থানীয়/রিমোট পাথ জোড়া: {count}। একটি AeroSync উইন্ডো ঠিক একটি জোড়া নিয়ে কাজ করে, তাই কিছুই আমদানি করা হয়নি। টেমপ্লেট সম্পাদনা করে কেবল একটি জোড়া রাখুন, তারপর আবার আমদানি করুন।",
             "templateNamePlaceholder": "যেমন S3-তে রাতের ব্যাকআপ",
             "templateDescPlaceholder": "এই টেমপ্লেটটি কীসের জন্য (ঐচ্ছিক)",
-            "templateExportCliDesc": "aeroftp-cli sync মোড়ক স্ক্রিপ্ট ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync মোড়ক স্ক্রিপ্ট ({shell})",
+            "multiPathDisablePair": "নিষ্ক্রিয় করুন",
+            "multiPathEditorLabel": "বহু-পাথ সম্পাদক",
+            "multiPathEnablePair": "সক্রিয় করুন",
+            "multiPathLocalPlaceholder": "লোকাল পাথ",
+            "multiPathRemotePlaceholder": "রিমোট পাথ",
+            "rollbackDialogLabel": "রোলব্যাক স্ন্যাপশট",
+            "rollbackMoreFiles": "+আরও {count}টি...",
+            "rollbackSnapshotSummaryMany": "{count}টি ফাইল, {size}",
+            "rollbackSnapshotSummaryOne": "{count}টি ফাইল, {size}",
+            "templateDialogLabel": "সিঙ্ক টেমপ্লেট",
+            "templateExcludes": "বাদ দেওয়া",
+            "templateLocal": "লোকাল",
+            "templateRemote": "রিমোট",
+            "templateRetries": "পুনঃচেষ্টা"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "টুল চালানো প্রত্যাখ্যান করুন",
                 "toggleDetails": "বিস্তারিত টগল করুন",
                 "allowSession": "এই সেশনের জন্য অনুমতি দিন",
-                "nonAtomicReplace": "নন-অ্যাটমিক প্রতিস্থাপন: ফাইলটি সংক্ষিপ্তভাবে অনুপস্থিত থাকে"
+                "nonAtomicReplace": "নন-অ্যাটমিক প্রতিস্থাপন: ফাইলটি সংক্ষিপ্তভাবে অনুপস্থিত থাকে",
+                "moreOptions": "আরও বিকল্প",
+                "panelAria": "সরঞ্জাম অনুমোদন প্যানেল"
             },
             "settings": {
                 "title": "AI সেটিংস",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "বিকল্প",
                 "routingNoFallback": "কোনোটি নয়",
                 "bedrockNeedsModel": "পরীক্ষার আগে মডেল ট্যাবে একটি Bedrock মডেল যোগ করে সক্রিয় করুন।",
-                "bedrockSetup": "আপনার AWS অঞ্চলের জন্য Runtime URL সেট করুন। মডেল ট্যাবে Bedrock Runtime-এ Chat Completions সমর্থন করে এমন একটি ID যোগ করুন। Runtime মডেলের তালিকা দেখায় না। পরীক্ষা একটি ছোট ইনফারেন্স অনুরোধ পাঠায়, যার জন্য AWS চার্জ নিতে পারে।"
+                "bedrockSetup": "আপনার AWS অঞ্চলের জন্য Runtime URL সেট করুন। মডেল ট্যাবে Bedrock Runtime-এ Chat Completions সমর্থন করে এমন একটি ID যোগ করুন। Runtime মডেলের তালিকা দেখায় না। পরীক্ষা একটি ছোট ইনফারেন্স অনুরোধ পাঠায়, যার জন্য AWS চার্জ নিতে পারে।",
+                "detectOllamaModelsTooltip": "উপলব্ধ Ollama মডেল স্বয়ংক্রিয়ভাবে শনাক্ত করুন",
+                "kTokens": "{count}K টোকেন",
+                "modelEditorAria": "এআই মডেল সম্পাদক",
+                "supportsTools": "টুল সমর্থন করে",
+                "supportsVision": "দৃষ্টি সমর্থন করে",
+                "thinkingReasoning": "চিন্তা/যুক্তি",
+                "toolQuality": "সরঞ্জামের মান: {quality}/5"
             },
             "copy": "অনুলিপি",
             "attachImage": "ছবি সংযুক্ত করুন",
@@ -2699,7 +2850,9 @@
                 "run": "টার্মিনালে চালান",
                 "insert": "এডিটরে সন্নিবেশ করান",
                 "diff": "মূলের সাথে পার্থক্য",
-                "diffNoFile": "পার্থক্যের জন্য কোনো ফাইল খোলা নেই"
+                "diffNoFile": "পার্থক্যের জন্য কোনো ফাইল খোলা নেই",
+                "commandBlocked": "কমান্ড অবরুদ্ধ: সম্ভাব্য ধ্বংসাত্মক",
+                "confirmRun": "চালানো নিশ্চিত করুন: {command}"
             },
             "thinkingBlock": {
                 "thinking": "চিন্তা করা হচ্ছে...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "ব্রাঞ্চ পরিবর্তন করুন",
                 "delete": "ব্রাঞ্চ মুছুন",
                 "newBranch": "নতুন ব্রাঞ্চ",
-                "branchFrom": "এই পয়েন্ট থেকে ব্রাঞ্চ"
+                "branchFrom": "এই পয়েন্ট থেকে ব্রাঞ্চ",
+                "messageCountShort": "{count}টি বার্তা",
+                "unnamed": "শাখা"
             },
             "context": {
                 "projectDetected": "প্রজেক্ট সনাক্ত করা হয়েছে",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "চলছে",
                 "expired": "মেয়াদ শেষ",
-                "refresh": "রিফ্রেশ"
+                "refresh": "রিফ্রেশ",
+                "modelsRunningMany": "{count}টি মডেল চলছে",
+                "modelsRunningOne": "{count}টি মডেল চলছে",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "প্রসঙ্গ ক্যাশিং",
@@ -2956,7 +3114,8 @@
                 "warning": "সমস্ত ফাইল অপারেশন অনুমোদন ছাড়াই অবিলম্বে কার্যকর হবে। নিজের ঝুঁকিতে ব্যবহার করুন।",
                 "disable": "নিষ্ক্রিয় করুন",
                 "securityWarning": "নিরাপত্তা সতর্কতা",
-                "understood": "বুঝেছি"
+                "understood": "বুঝেছি",
+                "warningAria": "এক্সট্রিম মোড সতর্কতা"
             },
             "errorServerError": "AI প্রদানকারীর সার্ভারে সমস্যা হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করুন।",
             "errorServiceUnavailable": "AI প্রদানকারী সাময়িকভাবে অনুপলব্ধ (ওভারলোড)। বিনামূল্যে পরিষেবার সীমা থাকতে পারে। পরে আবার চেষ্টা করুন।",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "সীমাহীন",
                 "roleAI": "AI",
-                "roleUser": "ব্যবহারকারী"
+                "roleUser": "ব্যবহারকারী",
+                "noConversations": "এখনও কোনো কথোপকথন নেই",
+                "titleCount": "ইতিহাস ({count})"
             },
             "dropFileToAnalyze": "AeroAgent দিয়ে বিশ্লেষণ করতে ফাইল ছেড়ে দিন",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} ইনপুট টোকেন, {output} আউটপুট টোকেন, প্রদানকারীর গণনা অনুযায়ী",
-                "breakdownCache": "{input} ইনপুট টোকেন, {output} আউটপুট টোকেন, প্রম্পট ক্যাশ থেকে {cacheRead} পড়া হয়েছে, এতে {cacheWritten} লেখা হয়েছে, প্রদানকারীর গণনা অনুযায়ী"
+                "breakdownCache": "{input} ইনপুট টোকেন, {output} আউটপুট টোকেন, প্রম্পট ক্যাশ থেকে {cacheRead} পড়া হয়েছে, এতে {cacheWritten} লেখা হয়েছে, প্রদানকারীর গণনা অনুযায়ী",
+                "countShort": "{count} টোকেন"
             },
             "executeOperations": "{count} টি অপারেশন চালান",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "এড়িয়ে যাওয়া হবে",
                     "skipped": "এড়িয়ে যাওয়া হয়েছে",
                     "existedAtCheckpoint": "চেকপয়েন্টে বিদ্যমান ছিল",
-                    "absentAtCheckpoint": "চেকপয়েন্টে অনুপস্থিত ছিল"
+                    "absentAtCheckpoint": "চেকপয়েন্টে অনুপস্থিত ছিল",
+                    "noFiles": "এই পুনরুদ্ধার ফলাফলে কোনো ফাইল অন্তর্ভুক্ত ছিল না।",
+                    "otherActions": "অন্যান্য ক্রিয়া",
+                    "requestedPaths": "অনুরোধকৃত পাথ উপসেট",
+                    "scopeAll": "পরিসর: চেকপয়েন্টে সংরক্ষিত সমস্ত ফাইল।",
+                    "titleApplied": "চেকপয়েন্ট পুনরুদ্ধার প্রয়োগ হয়েছে",
+                    "titleApplyReview": "চেকপয়েন্ট পুনরুদ্ধার প্রয়োগ পর্যালোচনা",
+                    "titleDryRunComplete": "চেকপয়েন্ট পুনরুদ্ধার ড্রাই-রান সম্পন্ন",
+                    "titleDryRunReview": "চেকপয়েন্ট পুনরুদ্ধার ড্রাই রান পর্যালোচনা"
                 },
                 "checks": {
                     "exitSummary": "প্রস্থান কোড {code} · {seconds}s",
                     "continueOnFailure": "একটি ব্যর্থ হলেও সব পরীক্ষা চালায়।",
-                    "stopOnFailure": "প্রথম ব্যর্থ পরীক্ষায় থেমে যায়।"
+                    "stopOnFailure": "প্রথম ব্যর্থ পরীক্ষায় থেমে যায়।",
+                    "checkLabel": "পরীক্ষা:",
+                    "checksLabel": "পরীক্ষাসমূহ:",
+                    "exitChip": "প্রস্থান কোড {code}",
+                    "filterChip": "ফিল্টার: {filter}",
+                    "filterLabel": "ফিল্টার:",
+                    "notAvailable": "প্রযোজ্য নয়",
+                    "passedCount": "{passed}/{total} উত্তীর্ণ",
+                    "runCheckNote": "ওয়ার্কস্পেসে বাছাই করা একটি build/test/lint কমান্ড চালায়। বিল্ড স্ক্রিপ্ট ও পরীক্ষা আসল কোড চালায়।",
+                    "runProjectCheck": "প্রকল্প পরীক্ষা চালান",
+                    "runVerification": "যাচাই ধাপ চালান",
+                    "runVerificationNote": "ওয়ার্কস্পেসে বাছাই করা build/test/lint কমান্ডগুলো চালায়। বিল্ড স্ক্রিপ্ট ও পরীক্ষা আসল কোড চালায়।",
+                    "stoppedEarly": "প্রথম ব্যর্থ পরীক্ষায় থেমে গেছে।",
+                    "timeoutLabel": "সময়সীমা: {seconds} সেকেন্ড",
+                    "verification": "যাচাই"
                 },
                 "diagnostics": {
-                    "none": "কোনো ডায়াগনস্টিক রিপোর্ট করা হয়নি।"
+                    "none": "কোনো ডায়াগনস্টিক রিপোর্ট করা হয়নি।",
+                    "errorCountMany": "{count}টি ত্রুটি",
+                    "errorCountOne": "{count}টি ত্রুটি",
+                    "title": "ডায়াগনস্টিকস",
+                    "truncated": "ডায়াগনস্টিকস তালিকা ছেঁটে ফেলা হয়েছে।",
+                    "warningCountMany": "{count}টি সতর্কতা",
+                    "warningCountOne": "{count}টি সতর্কতা"
                 },
                 "search": {
-                    "none": "কোনো মিল পাওয়া যায়নি।"
+                    "none": "কোনো মিল পাওয়া যায়নি।",
+                    "ignoreCase": "অক্ষরের ছোট-বড় উপেক্ষা",
+                    "inPath": "{path}-এ",
+                    "literal": "আক্ষরিক",
+                    "matchCountMany": "{count}টি মিল",
+                    "matchCountOne": "{count}টি মিল",
+                    "title": "ওয়ার্কস্পেস অনুসন্ধান",
+                    "truncated": "ফলাফল সংক্ষিপ্ত করা হয়েছে।"
                 },
                 "git": {
                     "noStagedDiff": "স্টেজ করা পরিবর্তনের কোনো diff আউটপুট নেই।",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Git স্টেজ অনুমোদন",
                     "commitNote": "এটি বর্তমান স্টেজ করা ইনডেক্স থেকে একটি git কমিট তৈরি করে। আগে staged=true সহ coding_git_status এবং coding_git_diff পর্যালোচনা করুন।",
                     "stagePreviewNote": "এটি পূর্বরূপ দেখায় অনুরোধ করা কোন পাথগুলো স্টেজ করা হবে; ইনডেক্স পরিবর্তন হবে না।",
-                    "stageNote": "এটি অনুরোধ করা পাথগুলোর জন্য git ইনডেক্স পরিবর্তন করে।"
+                    "stageNote": "এটি অনুরোধ করা পাথগুলোর জন্য git ইনডেক্স পরিবর্তন করে।",
+                    "afterCounts": "পরে: {counts}",
+                    "beforeCounts": "আগে: {counts}",
+                    "clean": "ওয়ার্কিং ট্রি পরিষ্কার।",
+                    "commitCountMany": "{count}টি কমিট",
+                    "commitCountOne": "{count}টি কমিট",
+                    "conflicted": "দ্বন্দ্বযুক্ত",
+                    "diffTruncated": "পার্থক্যের আউটপুট ছেঁটে ফেলা হয়েছে।",
+                    "logTitle": "Git লগ",
+                    "pathsChip": "পাথ: {paths}",
+                    "showingNewest": "সর্বশেষ {count}টি দেখানো হচ্ছে; আরও আছে।",
+                    "statusCounts": "{staged} স্টেজড, {unstaged} আনস্টেজড, {untracked} আনট্র্যাকড, {conflicted} দ্বন্দ্বযুক্ত",
+                    "titleCommitCreated": "Git কমিট তৈরি হয়েছে",
+                    "titleCommitDryRun": "Git কমিট পরীক্ষামূলক রান",
+                    "titleCommitReview": "Git কমিট পর্যালোচনা",
+                    "titleReview": "Git পর্যালোচনা",
+                    "titleStageApplied": "Git স্টেজ প্রয়োগ করা হয়েছে",
+                    "titleStagedDiff": "Git স্টেজড পার্থক্য",
+                    "titleStageDryRun": "Git স্টেজ পরীক্ষামূলক রান",
+                    "titleStatus": "Git স্ট্যাটাস",
+                    "titleUnstagedDiff": "Git আনস্টেজড পার্থক্য",
+                    "untracked": "আনট্র্যাকড"
                 },
                 "patch": {
                     "validateNote": "এটি কোনো ফাইল পরিবর্তন না করে প্যাচটি যাচাই করে।",
                     "applyNote": "এই উচ্চ ঝুঁকির প্রয়োগ অনুরোধটি ব্যাকএন্ড প্রয়োগের আগের একটি চেকপয়েন্ট তৈরি করার পর ফাইল লেখে।",
                     "hideDiff": "ইউনিফায়েড diff লুকান",
-                    "showDiff": "ইউনিফায়েড diff দেখান"
-                }
+                    "showDiff": "ইউনিফায়েড diff দেখান",
+                    "actualLabel": "প্রকৃত:",
+                    "checkpointCreated": "প্রয়োগের আগের চেকপয়েন্ট তৈরি হয়েছে",
+                    "diffTruncated": "প্রদর্শনের জন্য পার্থক্যের প্রিভিউ ছেঁটে ফেলা হয়েছে।",
+                    "expectedLabel": "প্রত্যাশিত:",
+                    "firstLines": "{total}টির মধ্যে প্রথম {shown}টি লাইন",
+                    "hunkCountMany": "{count}টি খণ্ড",
+                    "hunkCountOne": "{count}টি খণ্ড",
+                    "hunkIndex": "খণ্ড {index}",
+                    "restoreManual": "পুনরুদ্ধার ম্যানুয়াল: পর্যালোচনার পরে এই চেকপয়েন্ট আইডি দিয়ে {tool} ব্যবহার করুন।",
+                    "titleApplied": "প্যাচ প্রয়োগ হয়েছে",
+                    "titleApplyBlocked": "প্যাচ প্রয়োগ অবরুদ্ধ",
+                    "titleApplyReview": "প্যাচ প্রয়োগ পর্যালোচনা",
+                    "titleDryRunConflicts": "প্যাচ ড্রাই-রানে দ্বন্দ্ব পাওয়া গেছে",
+                    "titleDryRunPassed": "প্যাচ ড্রাই-রান সফল",
+                    "titleDryRunReview": "প্যাচ ড্রাই-রান পর্যালোচনা",
+                    "warnings": "সতর্কতা"
+                },
+                "binary": "বাইনারি",
+                "fileCountMany": "{count}টি ফাইল",
+                "fileCountOne": "{count}টি ফাইল",
+                "moreCount": "+আরও {count}টি",
+                "plan": {
+                    "likelyFiles": "সম্ভাব্য ফাইল",
+                    "openQuestions": "খোলা প্রশ্ন",
+                    "reviewOnlyNote": "শুধু পর্যালোচনার জন্য আর্টিফ্যাক্ট। সম্পাদনা এবং পরিবর্তনকারী টুলগুলি এখনও বর্তমান অনুমোদন মোড ব্যবহার করে।",
+                    "riskHigh": "উচ্চ ঝুঁকি",
+                    "riskLow": "কম ঝুঁকি",
+                    "riskMedium": "মাঝারি ঝুঁকি",
+                    "risks": "ঝুঁকিসমূহ",
+                    "title": "কোডিং পরিকল্পনা"
+                },
+                "state": {
+                    "clean": "পরিষ্কার",
+                    "failed": "ব্যর্থ",
+                    "passed": "উত্তীর্ণ",
+                    "timedOut": "সময় শেষ"
+                },
+                "timeoutChip": "সময়সীমা {seconds}s",
+                "truncated": "সংক্ষিপ্ত",
+                "workspaceLabel": "ওয়ার্কস্পেস:"
+            },
+            "attachedImageAlt": "সংযুক্ত ছবি",
+            "stepNumber": "ধাপ {step}",
+            "transcribingLocally": "স্থানীয়ভাবে প্রতিলিপি করা হচ্ছে...",
+            "transferPlan": {
+                "dependsOnMany": "{count}টি প্রস্তুতিমূলক ধাপের উপর নির্ভরশীল",
+                "dependsOnOne": "{count}টি প্রস্তুতিমূলক ধাপের উপর নির্ভরশীল",
+                "destination": "গন্তব্য: {destination}",
+                "title": "স্থানান্তর পরিকল্পনা পর্যালোচনা",
+                "warnings": "সতর্কতা"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "প্যারিটি থেকে ভল্ট হেডার বা ম্যানিফেস্ট পুনর্নির্মাণ করা হয়েছে।",
             "repairMetadataSuccess": "মেরামত সম্পন্ন: প্যারিটি থেকে ভল্ট হেডার বা ম্যানিফেস্ট পুনর্নির্মাণ করা হয়েছে",
             "errorCorrectionBadge": "ত্রুটি সংশোধন",
-            "itemsInFolder": "/{folder} ফোল্ডারে {count} টি আইটেম"
+            "itemsInFolder": "/{folder} ফোল্ডারে {count} টি আইটেম",
+            "compressionProfileArchive": "আর্কাইভ (zstd -15)",
+            "compressionProfileBalanced": "ভারসাম্যপূর্ণ (zstd -9)",
+            "compressionProfileFast": "দ্রুত (zstd -3)",
+            "damagedChunkLocation": "{id} - অফসেট {offset} (দৈর্ঘ্য {len})",
+            "fallbackName": "ভল্ট",
+            "folderScanSummary": "{dirs}টি ডিরেক্টরিতে {files}টি ফাইল ({size})",
+            "namePlaceholderVault": "আমার সুরক্ষিত ভল্ট",
+            "namePlaceholderZip": "আমার আর্কাইভ",
+            "recentDaysAgo": "{count} দিন আগে",
+            "recentFileCountMany": "{count}টি ফাইল",
+            "recentFileCountOne": "{count}টি ফাইল",
+            "recentMonthsAgo": "{count} মাস আগে"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "নির্বাচিত আইটেম এনক্রিপ্ট করা হচ্ছে...",
             "ingestSkipped": "ভল্ট তৈরি হয়েছে, তবে কিছু আইটেম যোগ করা যায়নি:",
             "selectionInfo": "{count}টি আইটেম ভল্টে এনক্রিপ্ট করা হবে",
-            "decrypting": "ডিক্রিপ্ট করা হচ্ছে…"
+            "decrypting": "ডিক্রিপ্ট করা হচ্ছে…",
+            "compatibleWithApp": "Cryptomator অ্যাপের সাথে সামঞ্জস্যপূর্ণ",
+            "createFormatBadge": "Cryptomator ফরম্যাট 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM বিষয়বস্তু",
+            "featureNameCipher": "AES-SIV নাম",
+            "formatVersion": "ফরম্যাট {version}"
         },
         "compress": {
             "title": "ফাইল কম্প্রেস করুন",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "কিছু ফাইলের নাম একই হতে পারে। অনুগ্রহ করে প্যাটার্নটি সামঞ্জস্য করুন।",
             "apply": "প্রয়োগ করুন",
             "existingCollision": "কিছু নতুন নাম এই ফোল্ডারে ইতিমধ্যে থাকা ফাইলের সাথে মিলে যায়; সেই ফাইলগুলি ওভাররাইট করা হবে না এবং সেগুলির নাম পরিবর্তন এড়িয়ে যাওয়া হবে।",
-            "existingCollisionHint": "(ইতিমধ্যে বিদ্যমান)"
+            "existingCollisionHint": "(ইতিমধ্যে বিদ্যমান)",
+            "baseNamePlaceholder": "ফাইল",
+            "invalidName": "{name} (অবৈধ)"
         },
         "lockScreen": {
             "locked": "অ্যাপ লক করা",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "ডেস্কটপ দ্বারা মাউন্ট করা হয়নি। কেবলটি খুলে আবার লাগান, তারপর আবার খুলুন।",
             "volumes_need_mount_observe": "snap-এ ভলিউমগুলো mount-observe অনুমতি সংযুক্ত হওয়ার পরই দেখা যায়। এটি একটি টার্মিনালে চালান, তারপর AeroFTP-এ ফিরে আসুন:",
             "volumes_unavailable": "মাউন্ট করা ভলিউমগুলো পড়া যায়নি।",
-            "portable_device": "পোর্টেবল ডিভাইস"
+            "portable_device": "পোর্টেবল ডিভাইস",
+            "drivesLeftPanel": "ড্রাইভ, বাম প্যানেল",
+            "drivesRightPanel": "ড্রাইভ, ডান প্যানেল",
+            "modeGroupLabel": "সাইডবার মোড",
+            "placesSidebarLabel": "স্থানের সাইডবার"
         },
         "viewMode": {
             "list": "তালিকা",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "ভাই-বোন ডিরেক্টরি ব্রাউজ করুন",
             "loading": "লোড হচ্ছে...",
             "noSubdirectories": "কোনো সাব-ডিরেক্টরি নেই",
-            "browseChildren": "উপ-ডিরেক্টরিগুলি ব্রাউজ করুন"
+            "browseChildren": "উপ-ডিরেক্টরিগুলি ব্রাউজ করুন",
+            "ariaLabel": "নেভিগেশন পথ",
+            "syncBoundaryTitle": "{path} (সিঙ্ক সীমানা)"
         },
         "bridge": {
             "checking": "{app} পরীক্ষা করা হচ্ছে…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "প্রিভিউ অনুপলব্ধ",
-            "title": "কুইক লুক"
+            "title": "কুইক লুক",
+            "closePreview": "প্রিভিউ বন্ধ করুন",
+            "dialogLabel": "কুইক লুক: {name}",
+            "nextFile": "পরের ফাইল",
+            "position": "{total}-এর মধ্যে {index}",
+            "previousFile": "আগের ফাইল"
         },
         "properties": {
             "general": "সাধারণ",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Immich আপলোডের সময় যে অ্যাসেট চেকসাম নথিভুক্ত করে।",
                 "crypt-overlay-ciphertext": "ডাইজেস্টটি সার্ভারে সংরক্ষিত এনক্রিপ্ট করা বাইটের উপর গণনা করা হয়।"
             },
-            "readOnlyIsLinkTarget": "এটি একটি সিম্বলিক লিঙ্ক: অনুমতিগুলি সেই ফাইলের, যেটির দিকে এটি নির্দেশ করে। সেগুলি পরিবর্তন করতে ওই ফাইলের বৈশিষ্ট্য খুলুন।"
+            "readOnlyIsLinkTarget": "এটি একটি সিম্বলিক লিঙ্ক: অনুমতিগুলি সেই ফাইলের, যেটির দিকে এটি নির্দেশ করে। সেগুলি পরিবর্তন করতে ওই ফাইলের বৈশিষ্ট্য খুলুন।",
+            "exactBytes": "({bytes} বাইট)"
         },
         "duplicates": {
             "sortWasted": "অপচয় হওয়া জায়গা",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "বাইট বাই বাইট অভিন্ন",
             "modeNonIdenticalHint": "দৃশ্যগত বা টেক্সট সাদৃশ্য, স্বয়ংক্রিয় মুছে ফেলা নেই",
             "potentialWasteSelected": "সম্ভাব্য অপচয় (নির্বাচিত)",
-            "similarityDistance": "{similarity}, দূরত্ব {distance}"
+            "similarityDistance": "{similarity}, দূরত্ব {distance}",
+            "modeExact": "হুবহু",
+            "modeLabel": "মোড:",
+            "modeNonIdentical": "অভিন্ন নয়"
         },
         "diskUsage": {
             "title": "ডিস্ক ব্যবহার",
@@ -3906,7 +4207,11 @@
                 "noActivity": "এখনও কোনো নেটওয়ার্ক কার্যকলাপ নেই। ইভেন্ট দেখতে ফাইল ট্রান্সফার করুন।",
                 "time": "সময়",
                 "event": "ইভেন্ট",
-                "detail": "বিস্তারিত"
+                "detail": "বিস্তারিত",
+                "command": "কমান্ড",
+                "ipcTransfersCount": "IPC + স্থানান্তর ({count})",
+                "status": "অবস্থা",
+                "type": "ধরন"
             },
             "system": {
                 "appVersion": "AeroFTP সংস্করণ",
@@ -3953,7 +4258,8 @@
                 "dark": "ডার্ক",
                 "light": "লাইট",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "LocalStorage Keys"
+                "localStorageKeysTitle": "LocalStorage Keys",
+                "localStorageEntrySummary": "{size} বাইট · {preview}"
             },
             "copyFileListToClipboard": "ফাইল তালিকা ক্লিপবোর্ডে অনুলিপি করুন",
             "filesCopied": "{count}টি ফাইল এন্ট্রি ক্লিপবোর্ডে কপি করা হয়েছে",
@@ -4199,7 +4505,9 @@
                     "cropHint": "প্রয়োগ করতে নির্বাচনে ডাবল-ক্লিক করুন বা Enter চাপুন, বাতিল করতে Esc চাপুন",
                     "cropRatio": "অনুপাত",
                     "cropRatioFree": "মুক্ত",
-                    "cropRatioOriginal": "মূল"
+                    "cropRatioOriginal": "মূল",
+                    "rotateCcw90Short": "90° ঘড়ির কাঁটার বিপরীতে",
+                    "rotateCw90Short": "90° ঘড়ির কাঁটার দিকে"
                 },
                 "toggleTransparencyBg": "স্বচ্ছতা পটভূমি (চক্র)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "PDF লোড হচ্ছে...",
                 "open": "PDF খুলুন",
                 "page": "পৃষ্ঠা",
-                "zoom": "জুম"
+                "zoom": "জুম",
+                "documentTitle": "PDF নথি"
             },
             "text": {
                 "auto": "স্বয়ংক্রিয়",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "ট্যাবলেট (768px)",
                 "wordWrap": "ওয়ার্ড র‍্যাপ",
                 "zoomIn": "জুম ইন",
-                "zoomOut": "জুম আউট"
+                "zoomOut": "জুম আউট",
+                "htmlPreviewFrameTitle": "HTML প্রিভিউ"
             },
             "video": {
                 "exitFullscreen": "ফুলস্ক্রিন থেকে বেরিয়ে আসুন (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt ওভারলে সনাক্ত হয়েছে",
             "aerocryptImportDesc": "{name} এর জন্য rclone.conf থেকে প্রোফাইল আমদানি করা হয়েছে: এখন ওভারলে খুলবেন?",
             "aerocryptImportOpen": "ওভারলে খুলুন",
-            "aerovaultOverlayExpired": "নিষ্ক্রিয়তার কারণে AeroVault Overlay লক হয়েছে। চালিয়ে যেতে ভল্ট আবার খুলুন।"
+            "aerovaultOverlayExpired": "নিষ্ক্রিয়তার কারণে AeroVault Overlay লক হয়েছে। চালিয়ে যেতে ভল্ট আবার খুলুন।",
+            "aerovaultOverlaySource": "AeroVault ওভারলে সক্রিয় ({source})",
+            "fileOperationsLabel": "ফাইল অপারেশন",
+            "overlayBadge": "ওভারলে"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "দ্বি-ধাপ প্রমাণীকরণ",
                 "verify": "যাচাই ও সক্রিয় করুন",
                 "active": "2FA সক্রিয়",
-                "inactive": "2FA নিষ্ক্রিয়"
+                "inactive": "2FA নিষ্ক্রিয়",
+                "codeGroupLabel": "{count}-অঙ্কের কোড",
+                "digitLabel": "অঙ্ক {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "ব্রাউজ",
                     "installed": "ইনস্টল করা"
-                }
+                },
+                "remoteInstallDisabled": "ক্লায়েন্ট পক্ষে রেজিস্ট্রি প্রমাণীকৃত না হওয়া পর্যন্ত রিমোট প্লাগইন ইনস্টলেশন বর্তমানে নিষ্ক্রিয় রয়েছে। স্থানীয়ভাবে ইনস্টল করা প্লাগইনগুলি স্বাভাবিকভাবে কাজ করতে থাকবে।"
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "পুনরুদ্ধার করা ফাইল তাদের মূল ফোল্ডারে আবার দেখা যাবে",
             "connectionNamePlaceholder": "সংযোগের নাম (যেমন আমার FileLu Cloud)",
             "trashAutoExpiry": "ট্র্যাশে থাকা ফাইলগুলি ৭ দিন পরে FileLu স্বয়ংক্রিয়ভাবে মুছে ফেলে",
-            "rsyncTransferOnly": "শুধুমাত্র ট্রান্সফার এন্ডপয়েন্ট: Rsync-এ ব্রাউজিং উপলব্ধ নয়। নেভিগেট করতে Native API, WebDAV, S3 বা FTP ব্যবহার করুন; উচ্চ-ব্যান্ডউইথ delta ট্রান্সফারের জন্য Rsync-এ স্যুইচ করুন।"
+            "rsyncTransferOnly": "শুধুমাত্র ট্রান্সফার এন্ডপয়েন্ট: Rsync-এ ব্রাউজিং উপলব্ধ নয়। নেভিগেট করতে Native API, WebDAV, S3 বা FTP ব্যবহার করুন; উচ্চ-ব্যান্ডউইথ delta ট্রান্সফারের জন্য Rsync-এ স্যুইচ করুন।",
+            "badgePasswordProtected": "পাসওয়ার্ড দ্বারা সুরক্ষিত",
+            "badgeWatermarked": "জলছাপযুক্ত"
         },
         "box": {
             "addComment": "মন্তব্য যোগ করুন",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "ফ্রি প্ল্যান",
             "freeCardTier": "ফ্রি + কার্ড",
-            "paidTier": "পেইড"
+            "paidTier": "পেইড",
+            "extraFeatures": "অতিরিক্ত",
+            "coreOpsList": "আপলোড, ডাউনলোড, মুছুন, নাম পরিবর্তন, সরান, ফোল্ডার তৈরি, অনুসন্ধান",
+            "coreOpsLegend": "মৌলিক = আপলোড, ডাউনলোড, মুছুন, নাম পরিবর্তন, সরান, ফোল্ডার তৈরি, অনুসন্ধান"
         },
         "healthCheck": {
             "title": "সার্ভার স্বাস্থ্য পরীক্ষা",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} টি অ্যাসেট",
             "releaseAssetMany": "{count} টি অ্যাসেট",
             "repoPrivate": "ব্যক্তিগত",
-            "repoPublic": "সর্বজনীন"
+            "repoPublic": "সর্বজনীন",
+            "actionsLiveBadge": "লাইভ",
+            "actionsRunningTitle": "GitHub Actions (চলছে)",
+            "coAuthors": "সহ-লেখক",
+            "pagesPathPlaceholder": "/ অথবা /docs",
+            "pagesStatusBuilding": "তৈরি হচ্ছে",
+            "pagesStatusBuilt": "তৈরি হয়েছে",
+            "pagesStatusErrored": "ত্রুটি",
+            "refreshBranches": "শাখা রিফ্রেশ করুন",
+            "repoPrivateTitle": "ব্যক্তিগত রিপোজিটরি",
+            "repoPublicTitle": "পাবলিক রিপোজিটরি",
+            "unpushedCommitsOnBranchMany": "{branch}-এ {count}টি পুশ না করা কমিট",
+            "unpushedCommitsOnBranchOne": "{branch}-এ {count}টি পুশ না করা কমিট"
         },
         "filenNotes": {
             "title": "এনক্রিপ্টেড নোট",
@@ -4967,7 +5300,8 @@
             "tagName": "ট্যাগের নাম",
             "removeTag": "ট্যাগ সরান",
             "manageTags": "ট্যাগ পরিচালনা",
-            "deleteTagConfirm": "ট্যাগ “{name}” মুছবেন? নোটগুলোর লেখা থেকে যাবে।"
+            "deleteTagConfirm": "ট্যাগ “{name}” মুছবেন? নোটগুলোর লেখা থেকে যাবে।",
+            "betaBadge": "বিটা"
         },
         "shareLinkModal": {
             "title": "শেয়ার লিঙ্ক",
@@ -5077,7 +5411,8 @@
                 "down": "পৌঁছানো যায় না",
                 "pending": "পরীক্ষা করা হচ্ছে...",
                 "unknown": "যাচাই করা হয়নি",
-                "clickToRetry": "পুনরায় পরীক্ষা করতে ক্লিক করুন"
+                "clickToRetry": "পুনরায় পরীক্ষা করতে ক্লিক করুন",
+                "withActiveSession": "{title} (সক্রিয় সেশন)"
             },
             "densityCompact": "কম্প্যাক্ট সারি",
             "densityComfortable": "আরামদায়ক সারি",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt এনক্রিপ্টেড ওভারলে (নেটিভ): এই সার্ভারে নাম এবং বিষয়বস্তু এনক্রিপ্ট করা থাকে।",
-                "rcloneTitle": "rclone crypt ওভারলে (ইন্টারঅপ): এই সার্ভারে নাম এবং বিষয়বস্তু এনক্রিপ্ট করা থাকে।"
+                "rcloneTitle": "rclone crypt ওভারলে (ইন্টারঅপ): এই সার্ভারে নাম এবং বিষয়বস্তু এনক্রিপ্ট করা থাকে।",
+                "keyBits": "{bits}-বিট"
             },
             "sidebar": {
                 "filters": "ফিল্টার",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "আমরা এই বাকেটের এনক্রিপশন সেটিং পড়তে পারিনি, কারণ অ্যাপ্লিকেশন কী-এর readBucketEncryption ক্ষমতা নেই। যে মান দেখার অনুমতি আমাদের নেই, তার মানে এই নয় যে এনক্রিপশন বন্ধ আছে।",
                 "unknownShapeTitle": "আমরা এই বাকেটের এনক্রিপশন সেটিং পড়তে পারিনি, কারণ উত্তরটির কোনো নথিভুক্ত গঠন ছিল না। কী-এর এটি পড়ার অনুমতি ছিল, তাই বিষয়টি উত্তর নিয়ে, অনুমতি নিয়ে নয়।"
             },
-            "exportProfile": "এক্সপোর্ট..."
+            "exportProfile": "এক্সপোর্ট...",
+            "quotaLabel": "কোটা",
+            "storageNoCapReported": "{used} (কোনো কোটা সীমা জানানো হয়নি)",
+            "e2eBitsBadge": "E2E {bits}-বিট",
+            "filenAuthVersionTitle": "সফল সংযোগে Filen auth/info থেকে শনাক্ত করা হয়েছে",
+            "demoBadge": "ডেমো",
+            "timeAgo": {
+                "now": "এখন",
+                "minutes": "{count} মি",
+                "hours": "{count} ঘ",
+                "days": "{count} দি",
+                "months": "{count} মাস"
+            }
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",
@@ -5221,7 +5569,8 @@
             "linkType": "ধরন",
             "createMergeRequest": "মার্জ রিকোয়েস্ট তৈরি করুন",
             "mrTitle": "MR শিরোনাম",
-            "mrBody": "বিবরণ (ঐচ্ছিক)"
+            "mrBody": "বিবরণ (ঐচ্ছিক)",
+            "sourceCode": "সোর্স কোড"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "ব্যবহারকারী নকল করুন (শুধু সার্ভার, পাসওয়ার্ড নয়)",
             "copyLockedHint": "সার্ভারগুলি নকল করতে আগে এই অ্যাকাউন্টে স্যুইচ করুন",
             "crossUserDedupTitle": "অন্য অ্যাকাউন্টে ইতিমধ্যে সংরক্ষিত",
-            "crossUserDedupMessage": "\"{name}\" যে সার্ভার অ্যাকাউন্ট ব্যবহার করে, সেটি এই ডিভাইসে এঁরাও সংরক্ষণ করেছেন: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" যে সার্ভার অ্যাকাউন্ট ব্যবহার করে, সেটি এই ডিভাইসে এঁরাও সংরক্ষণ করেছেন: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "পাসওয়ার্ড রিসেট ডায়ালগ বন্ধ করুন",
+                "confirmPassword": "নতুন পাসওয়ার্ড নিশ্চিত করুন",
+                "errMismatch": "নতুন অ্যাকাউন্ট পাসওয়ার্ড মিলছে না।",
+                "errNewRequired": "একটি নতুন অ্যাকাউন্ট পাসওয়ার্ড লিখুন।",
+                "errNotAuthorized": "অন্য অ্যাকাউন্টের পাসওয়ার্ড রিসেট করতে আপনাকে অ্যাডমিন হতে হবে।",
+                "errNotForSelf": "নিজের অ্যাকাউন্টে পাসওয়ার্ড পরিবর্তন ব্যবহার করুন।",
+                "errStoreNotReady": "প্রথমে ভল্ট আনলক করুন, তারপর আবার চেষ্টা করুন।",
+                "errTypeReset": "এই ধ্বংসাত্মক কাজটি নিশ্চিত করতে RESET লিখুন।",
+                "errUserNotFound": "এই ব্যবহারকারী আর বিদ্যমান নেই।",
+                "newPassword": "নতুন অ্যাকাউন্ট পাসওয়ার্ড",
+                "statEncryptedBytes": "এনক্রিপ্ট করা বাইট",
+                "statProfiles": "প্রোফাইল",
+                "statSettings": "সেটিংস",
+                "title": "পাসওয়ার্ড রিসেট = ডেটা ধ্বংস",
+                "typeReset": "RESET লিখুন",
+                "wipeDetail": "বর্তমান পাসওয়ার্ড পুনরুদ্ধার করা যাবে না। AeroFTP লক্ষ্য অ্যাকাউন্টের সংরক্ষিত সার্ভার, ব্যবহারকারী সেটিংস এবং লকআউট অবস্থা মুছে ফেলবে, তারপর নতুন পাসওয়ার্ড দিয়ে সুরক্ষিত একটি নতুন এনক্রিপশন কী জারি করবে।",
+                "wipeWarning": "এটি লক্ষ্য অ্যাকাউন্টের এনক্রিপ্ট করা পার্টিশন স্থায়ীভাবে মুছে ফেলবে।"
+            },
+            "dropdown": {
+                "accountPassword": "অ্যাকাউন্ট পাসওয়ার্ড",
+                "lock": "লক করুন",
+                "newUser": "নতুন ব্যবহারকারী",
+                "noUsers": "এখনও কোনো ব্যবহারকারী নেই। প্রথমজনকে যোগ করতে নিচের \"নতুন ব্যবহারকারী\" ব্যবহার করুন।",
+                "protectionNote": "আপনার অ্যাকাউন্ট Argon2id + AES-KW + AES-256-GCM এনক্রিপশন দিয়ে সুরক্ষিত",
+                "users": "ব্যবহারকারী"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt ওভারলে",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "সংযোগ তৈরি করার সময় মোড নির্বাচন করা হয় এবং সংরক্ষিত প্রোফাইল সম্পাদনার সময় এটি স্থির থাকে। ভিন্ন মোড ব্যবহার করতে, একটি নতুন সংযোগ তৈরি করুন।"
+                "lockedInEdit": "সংযোগ তৈরি করার সময় মোড নির্বাচন করা হয় এবং সংরক্ষিত প্রোফাইল সম্পাদনার সময় এটি স্থির থাকে। ভিন্ন মোড ব্যবহার করতে, একটি নতুন সংযোগ তৈরি করুন।",
+                "notInBuild": "AeroFTP-এর এই বিল্ডে অন্তর্ভুক্ত নয়।"
             }
         },
         "flatpak": {

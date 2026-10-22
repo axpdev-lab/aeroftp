@@ -337,7 +337,38 @@
             "protonSignOut": "退出登录",
             "protonSignOutHelp": "结束 Proton 上的会话，并将其从此配置文件中移除。",
             "protonSignInExpired": "登录页面已过期。请重新登录。",
-            "protonNativeUnavailable": "此版本不包含原生 Proton Drive 客户端。"
+            "protonNativeUnavailable": "此版本不包含原生 Proton Drive 客户端。",
+            "forms": {
+                "publicApiKey": "公共 API 密钥",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - 公钥。",
+                "secretApiKey": "秘密 API 密钥",
+                "uploadcareSecretHint": "仅用于通过 {scheme} 认证进行 REST 文件管理。",
+                "flatMediaLibrary": "扁平媒体库",
+                "uploadcareNoFolders": "Uploadcare 不提供原生文件夹；项目文件按 UUID 列在根目录。",
+                "urlEndpointId": "URL 端点 ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL 端点。",
+                "privateApiKey": "私有 API 密钥",
+                "storedVaultBasicAuth": "存储在本地保险库中，仅通过 Basic Auth 发送给 {provider}。",
+                "cloudName": "云名称",
+                "cloudinaryCloudNameHint": "可在您的 Cloudinary Dashboard - Account Details 中找到。",
+                "apiKeyPlaceholder": "API 密钥",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API 密钥。",
+                "apiSecret": "API 机密",
+                "apiSecretPlaceholder": "API 机密",
+                "openProviderLink": "打开 {provider} 链接",
+                "githubPatHint": "具有 Contents（读写）权限的细粒度 PAT。",
+                "generateToken": "生成令牌",
+                "applicationKeyId": "应用密钥 ID",
+                "backblazeKeyIdHint": "B2 应用程序密钥 ID,以 003 开头。可在 Backblaze 的 App Keys 页面生成。",
+                "applicationKey": "应用程序密钥",
+                "backblazeKeyHint": "仅在创建时显示一次。请像对待密码一样妥善保管。",
+                "bucketNameExactHint": "准确的存储桶名称,区分大小写。",
+                "megacmdSetupFirst": "请先设置 MEGAcmd",
+                "megacmdFetchUrlTitle": "运行 {cmd} 并自动填写 URL",
+                "fetchUrl": "获取 URL",
+                "megacmdWebdavHint": "有意省略了用户名和密码。AeroFTP 在连接时会自行运行“{cmd}”以启动桥接并读取此地址:留空即可。“获取 URL”是可选的手动刷新;如果 MEGAcmd 使用自定义端口,请在此处更改端口。"
+            },
+            "manualStorageUnitLabel": "{label} 单位"
         },
         "browser": {
             "remote": "远程",
@@ -390,7 +421,19 @@
             "listingPath": "正在列出 {path}...",
             "pleaseWait": "请稍候...",
             "sameNameLeakChip": "同名",
-            "sameNameLeakTooltip": "此名称也出现在该加密保险库的另一个路径中。由于名称采用确定性加密，加密存储的观察者可以判断两者共享同一个名称。"
+            "sameNameLeakTooltip": "此名称也出现在该加密保险库的另一个路径中。由于名称采用确定性加密，加密存储的观察者可以判断两者共享同一个名称。",
+            "endpointSelector": {
+                "localFolder": "本地文件夹",
+                "localFolderHint": "为此面板选择本地路径",
+                "noSavedProfiles": "没有已保存的配置文件",
+                "savedProfiles": "已保存的远程配置文件",
+                "title": "端点"
+            },
+            "leftPanelMarker": "左侧面板",
+            "localFilesLabel": "本地文件",
+            "localFilesRightLabel": "本地文件 (右侧面板)",
+            "remoteFilesLabel": "远程文件",
+            "rightPanelMarker": "右侧面板"
         },
         "contextMenu": {
             "askAeroAgent": "询问 AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "速度图表",
             "hideSpeedGraph": "隐藏速度图表",
             "speedAvg": "平均 {speed}",
-            "speedPeak": "峰值 {speed}"
+            "speedPeak": "峰值 {speed}",
+            "badgeBatch": "批量",
+            "badgeDownload": "下载",
+            "badgeLive": "实时",
+            "badgeStream": "流式",
+            "badgeUpload": "上传",
+            "earlierItemsHidden": "已隐藏 {count} 个较早的项目",
+            "folderFilesProgress": "{done}/{total} 个文件",
+            "laneDone": "完成",
+            "laneError": "错误",
+            "unifiedPlan": {
+                "destination": "目标",
+                "dialogLabel": "传输计划",
+                "engineAerovaultOverlay": "AeroVault 覆盖层",
+                "engineCompareOnly": "仅比较",
+                "engineCrossProfileSync": "跨配置文件同步",
+                "engineCrossProfileTransfer": "跨配置文件传输",
+                "engineLocalDelta": "本地增量传输",
+                "engineLocalFs": "本地文件系统",
+                "engineProviderDownload": "提供商下载",
+                "engineProviderUpload": "提供商上传",
+                "engineUnsupported": "不支持",
+                "execute": "执行",
+                "items": "项目",
+                "modeBackup": "备份",
+                "modeBisync": "双向同步",
+                "modeCompare": "比较",
+                "modeCopy": "复制",
+                "modeMirror": "镜像",
+                "modeMove": "移动",
+                "modeSync": "同步",
+                "notExecutable": "此端点组合暂不可执行。",
+                "parallel": "并行",
+                "reviewBeforeExecution": "执行前检查",
+                "route": "{pair}（通过 {engine}）",
+                "size": "大小",
+                "source": "源",
+                "title": "{mode}计划"
+            }
         },
         "settings": {
             "title": "设置",
@@ -1040,7 +1121,13 @@
                 "title": "原生 rsync（测试版）",
                 "description": "选择 SFTP Delta Sync 如何调度 rsync 传输。",
                 "enableToggle": "为 SFTP 增量同步启用原生 rsync",
-                "experimental": "Auto 优先使用 AeroRsync，并可回退到经典方式; Classic 在可用时使用系统的 rsync 二进制文件; Native 跳过向经典二进制文件的回退。"
+                "experimental": "Auto 优先使用 AeroRsync，并可回退到经典方式; Classic 在可用时使用系统的 rsync 二进制文件; Native 跳过向经典二进制文件的回退。",
+                "modeAuto": "自动",
+                "modeClassic": "经典",
+                "modeNative": "原生",
+                "classicNotFoundTooltip": "在 PATH 中未找到经典 rsync 程序。请安装 rsync (Linux/macOS 软件包，Windows 通过 WSL/cygwin/scoop) 以启用此模式。",
+                "classicAt": "经典 rsync 位于 {path}",
+                "classicNotDetected": "在 PATH 中未检测到经典 rsync 程序。原生是此计算机上唯一可用的引擎。"
             },
             "startMinimizedOnAutostart": "启动时最小化到托盘",
             "startMinimizedOnAutostartDesc": "在自动启动时隐藏主窗口。AeroFTP 会在系统托盘中持续运行,需要时可从托盘图标打开。",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "在未加密存储中发现 {count} 个 OAuth 凭据",
             "fontSystemInstall": "需系统安装",
             "fontSizeMin": "最小",
-            "fontSizeMax": "最大"
+            "fontSizeMax": "最大",
+            "migrationCleanupHint": "建议启用以获得最高安全性",
+            "fontCustomOption": "自定义...",
+            "fontSystemInstallHint": "需要在系统中安装。如不可用，AeroFTP 会自动回退。",
+            "fontSizeIndicatorLabel": "字体"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "停止",
                 "stopShell": "停止终端",
                 "closed": "终端已关闭。",
-                "commandInsertedReview": "命令已插入 Terminal。按 Enter 运行。"
+                "commandInsertedReview": "命令已插入 Terminal。按 Enter 运行。",
+                "decreaseFont": "减小字号 (Ctrl+-)",
+                "emptyClickPlus": "点击 {plus} 打开终端",
+                "emptySshHint": "或通过 {ssh} 打开到 {host} 的远程命令行",
+                "increaseFont": "增大字号 (Ctrl+=)",
+                "newTab": "新建终端标签页",
+                "sshShellTo": "到 {host} 的 SSH 命令行",
+                "theme": "终端主题"
             },
             "editorPanel": {
                 "emptyState": "右键点击文件并选择\"查看源代码\"",
@@ -1278,13 +1376,17 @@
                 "saving": "保存中...",
                 "noFileSelected": "未选择要查看的文件",
                 "loading": "加载编辑器中...",
-                "dragToTerminalRun": "拖到 Terminal 以插入运行命令"
+                "dragToTerminalRun": "拖到 Terminal 以插入运行命令",
+                "closeEditor": "关闭编辑器",
+                "resetChanges": "重置更改"
             },
             "previewPanel": {
                 "emptyState": "右键点击文件并选择\"预览\""
             },
             "codeEditor": "代码编辑器",
-            "sshTerminal": "SSH 终端"
+            "sshTerminal": "SSH 终端",
+            "comingSoon": "即将推出",
+            "soonBadge": "即将"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "如果令牌被撤销，请手动重新授权"
             },
             "profilesLoadFailed": "无法读取已保存的服务器：{error}",
-            "cleanupSummary": "{count} 个文件，已释放 {size}"
+            "cleanupSummary": "{count} 个文件，已释放 {size}",
+            "maturity": {
+                "alpha": "内测版"
+            },
+            "dialogDashboardLabel": "云同步仪表板",
+            "dialogLoadingLabel": "正在加载云同步",
+            "dialogSettingsLabel": "云同步设置",
+            "dialogSetupLabel": "云同步配置",
+            "onePerLineHint": "(每行一个)",
+            "pairsEditorLabel": "AeroCloud 配对编辑器",
+            "remoteSubfolderPlaceholder": "云"
         },
         "statusBar": {
             "connected": "已连接",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "部分完成，无法读取的文件夹：{count}",
             "usedScanFailed": "已用存储扫描失败",
             "usedScanEmpty": "扫描路径 {path} 未找到任何文件；已保留缓存中的数值。请检查路径或服务器对递归列目录的支持。",
-            "filenBridgeAccountTotal": "Filen Desktop 在此不会报告您的账户总用量：显示的已用量是此路径下所有文件的总和。原生 Filen 连接可立即显示账户总用量。"
+            "filenBridgeAccountTotal": "Filen Desktop 在此不会报告您的账户总用量：显示的已用量是此路径下所有文件的总和。原生 Filen 连接可立即显示账户总用量。",
+            "ariaLabel": "状态栏",
+            "debugBadge": "调试",
+            "debugModeActive": "调试模式已启用"
         },
         "dialogs": {
             "confirmTitle": "确认",
@@ -1620,7 +1735,8 @@
                 "apRole": "创始人、开发者、维护者、联合设计者",
                 "ekRole": "研究员、质量保证工程师、联合设计者"
             },
-            "madeBy": "{author} 出品"
+            "madeBy": "{author} 出品",
+            "statsLine": "{protocols} 种协议 · {languages} 种语言 · AES-256 归档"
         },
         "support": {
             "title": "支持 AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "项目 (Unixname)",
             "opendriveNotApiKey": "(不是您的 OpenDrive API 密钥)",
             "endpoint": "端点",
-            "accountId": "账户 ID"
+            "accountId": "账户 ID",
+            "servicesHeading": "服务",
+            "sourceforgeSshKeyHelp": "SourceForge 需要 SSH 密钥认证。请使用 {cmd} 生成密钥并上传到 {link}。",
+            "sourceforgeSshSettings": "SSH 设置",
+            "fullGuide": "完整指南",
+            "endpointTemplateExample": "例如 {template}",
+            "jurisdiction": "司法管辖区",
+            "insecureCertDialogLabel": "不安全证书警告",
+            "betaBadge": "测试版",
+            "hostKeyDialogLabel": "主机密钥验证"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -2111,7 +2236,10 @@
             "rename": "重命名",
             "resume": "继续",
             "resumeHint": "继续中断的传输，而不是重新开始",
-            "cancel": "取消"
+            "cancel": "取消",
+            "dialogLabel": "覆盖确认",
+            "moreInQueue": "队列中 +{count}",
+            "unknownDate": "未知"
         },
         "statusbar": {
             "queue": "队列",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "此模板中可用的本地/远程路径对：{count}。一个 AeroSync 窗口恰好对应一个路径对，因此未导入任何内容。请编辑模板，只保留一个路径对，然后重新导入。",
             "templateNamePlaceholder": "例如：夜间备份到 S3",
             "templateDescPlaceholder": "此模板的用途（可选）",
-            "templateExportCliDesc": "aeroftp-cli sync 包装脚本 ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync 包装脚本 ({shell})",
+            "multiPathDisablePair": "禁用",
+            "multiPathEditorLabel": "多路径编辑器",
+            "multiPathEnablePair": "启用",
+            "multiPathLocalPlaceholder": "本地路径",
+            "multiPathRemotePlaceholder": "远程路径",
+            "rollbackDialogLabel": "回滚快照",
+            "rollbackMoreFiles": "+另外 {count} 个...",
+            "rollbackSnapshotSummaryMany": "{count} 个文件，{size}",
+            "rollbackSnapshotSummaryOne": "{count} 个文件，{size}",
+            "templateDialogLabel": "同步模板",
+            "templateExcludes": "排除项",
+            "templateLocal": "本地",
+            "templateRemote": "远程",
+            "templateRetries": "重试次数"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "拒绝工具执行",
                 "toggleDetails": "切换详情",
                 "allowSession": "允许本次会话",
-                "nonAtomicReplace": "非原子替换：文件会短暂消失"
+                "nonAtomicReplace": "非原子替换：文件会短暂消失",
+                "moreOptions": "更多选项",
+                "panelAria": "工具审批面板"
             },
             "settings": {
                 "title": "AI 设置",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "备用",
                 "routingNoFallback": "无",
                 "bedrockNeedsModel": "测试前，请在模型选项卡中添加并启用 Bedrock 模型。",
-                "bedrockSetup": "设置您的 AWS 区域的 Runtime URL。在模型中添加支持 Bedrock Runtime 上 Chat Completions 的 ID。Runtime 不会列出模型。测试会发送一个小型推理请求，可能产生 AWS 费用。"
+                "bedrockSetup": "设置您的 AWS 区域的 Runtime URL。在模型中添加支持 Bedrock Runtime 上 Chat Completions 的 ID。Runtime 不会列出模型。测试会发送一个小型推理请求，可能产生 AWS 费用。",
+                "detectOllamaModelsTooltip": "自动检测可用的 Ollama 模型",
+                "kTokens": "{count}K 令牌",
+                "modelEditorAria": "AI 模型编辑器",
+                "supportsTools": "支持工具",
+                "supportsVision": "支持视觉",
+                "thinkingReasoning": "思考/推理",
+                "toolQuality": "工具质量：{quality}/5"
             },
             "copy": "复制",
             "attachImage": "附加图片",
@@ -2699,7 +2850,9 @@
                 "run": "在终端中运行",
                 "insert": "插入到编辑器",
                 "diff": "与原文件对比",
-                "diffNoFile": "没有打开的文件可供对比"
+                "diffNoFile": "没有打开的文件可供对比",
+                "commandBlocked": "命令已阻止：可能具有破坏性",
+                "confirmRun": "确认运行：{command}"
             },
             "thinkingBlock": {
                 "thinking": "正在思考...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "切换分支",
                 "delete": "删除分支",
                 "newBranch": "新分支",
-                "branchFrom": "从此处创建分支"
+                "branchFrom": "从此处创建分支",
+                "messageCountShort": "{count} 条消息",
+                "unnamed": "分支"
             },
             "context": {
                 "projectDetected": "已检测到项目",
@@ -2830,7 +2985,10 @@
                 "vram": "显存",
                 "running": "运行中",
                 "expired": "已过期",
-                "refresh": "刷新"
+                "refresh": "刷新",
+                "modelsRunningMany": "{count} 个模型正在运行",
+                "modelsRunningOne": "{count} 个模型正在运行",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "上下文缓存",
@@ -2956,7 +3114,8 @@
                 "warning": "所有文件操作将立即执行，无需审批。使用风险自负。",
                 "disable": "禁用",
                 "securityWarning": "安全警告",
-                "understood": "已理解"
+                "understood": "已理解",
+                "warningAria": "极限模式警告"
             },
             "errorServerError": "AI 提供商服务器出现问题。请稍后重试。",
             "errorServiceUnavailable": "AI 提供商暂时不可用（过载）。免费服务可能有限制。请稍后重试。",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "无限制",
                 "roleAI": "AI",
-                "roleUser": "用户"
+                "roleUser": "用户",
+                "noConversations": "暂无对话",
+                "titleCount": "历史记录 ({count})"
             },
             "dropFileToAnalyze": "拖放文件以使用 AeroAgent 进行分析",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "输入 {input} 个 token，输出 {output} 个 token，以提供商统计为准",
-                "breakdownCache": "输入 {input} 个 token，输出 {output} 个 token，从提示缓存读取 {cacheRead} 个，写入提示缓存 {cacheWritten} 个，以提供商统计为准"
+                "breakdownCache": "输入 {input} 个 token，输出 {output} 个 token，从提示缓存读取 {cacheRead} 个，写入提示缓存 {cacheWritten} 个，以提供商统计为准",
+                "countShort": "{count} 词元"
             },
             "executeOperations": "执行 {count} 个操作",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "将跳过",
                     "skipped": "已跳过",
                     "existedAtCheckpoint": "检查点时存在",
-                    "absentAtCheckpoint": "检查点时不存在"
+                    "absentAtCheckpoint": "检查点时不存在",
+                    "noFiles": "此恢复结果中未包含任何文件。",
+                    "otherActions": "其他操作",
+                    "requestedPaths": "请求的路径子集",
+                    "scopeAll": "范围：检查点中捕获的所有文件。",
+                    "titleApplied": "检查点恢复已应用",
+                    "titleApplyReview": "检查点恢复应用审查",
+                    "titleDryRunComplete": "检查点恢复试运行已完成",
+                    "titleDryRunReview": "检查点恢复试运行审查"
                 },
                 "checks": {
                     "exitSummary": "退出码 {code} · {seconds}s",
                     "continueOnFailure": "即使某项检查失败，也会运行所有检查。",
-                    "stopOnFailure": "在第一个失败的检查处停止。"
+                    "stopOnFailure": "在第一个失败的检查处停止。",
+                    "checkLabel": "检查：",
+                    "checksLabel": "检查项：",
+                    "exitChip": "退出码 {code}",
+                    "filterChip": "筛选：{filter}",
+                    "filterLabel": "筛选：",
+                    "notAvailable": "不适用",
+                    "passedCount": "{passed}/{total} 通过",
+                    "runCheckNote": "在工作区运行精选的 build/test/lint 命令。构建脚本和测试会执行真实代码。",
+                    "runProjectCheck": "运行项目检查",
+                    "runVerification": "运行验证流程",
+                    "runVerificationNote": "在工作区运行精选的 build/test/lint 命令。构建脚本和测试会执行真实代码。",
+                    "stoppedEarly": "已在第一个失败的检查处停止。",
+                    "timeoutLabel": "超时：{seconds} 秒",
+                    "verification": "验证"
                 },
                 "diagnostics": {
-                    "none": "未报告诊断信息。"
+                    "none": "未报告诊断信息。",
+                    "errorCountMany": "{count} 个错误",
+                    "errorCountOne": "{count} 个错误",
+                    "title": "诊断",
+                    "truncated": "诊断列表已被截断。",
+                    "warningCountMany": "{count} 个警告",
+                    "warningCountOne": "{count} 个警告"
                 },
                 "search": {
-                    "none": "未找到匹配项。"
+                    "none": "未找到匹配项。",
+                    "ignoreCase": "忽略大小写",
+                    "inPath": "在 {path} 中",
+                    "literal": "字面",
+                    "matchCountMany": "{count} 个匹配",
+                    "matchCountOne": "{count} 个匹配",
+                    "title": "工作区搜索",
+                    "truncated": "结果已截断。"
                 },
                 "git": {
                     "noStagedDiff": "没有已暂存的差异输出。",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Git 暂存审批",
                     "commitNote": "这将从当前暂存区索引创建一个 git 提交。请先使用 staged=true 检查 coding_git_status 和 coding_git_diff。",
                     "stagePreviewNote": "这将预览哪些请求的路径会被暂存；索引不会改变。",
-                    "stageNote": "这将更改所请求路径的 git 索引。"
+                    "stageNote": "这将更改所请求路径的 git 索引。",
+                    "afterCounts": "之后：{counts}",
+                    "beforeCounts": "之前：{counts}",
+                    "clean": "工作树是干净的。",
+                    "commitCountMany": "{count} 个提交",
+                    "commitCountOne": "{count} 个提交",
+                    "conflicted": "冲突",
+                    "diffTruncated": "差异输出已被截断。",
+                    "logTitle": "Git 日志",
+                    "pathsChip": "路径：{paths}",
+                    "showingNewest": "显示最新的 {count} 个；还有更多。",
+                    "statusCounts": "已暂存 {staged}，未暂存 {unstaged}，未跟踪 {untracked}，冲突 {conflicted}",
+                    "titleCommitCreated": "已创建 Git 提交",
+                    "titleCommitDryRun": "Git 提交试运行",
+                    "titleCommitReview": "Git 提交审查",
+                    "titleReview": "Git 审查",
+                    "titleStageApplied": "已应用 Git 暂存",
+                    "titleStagedDiff": "Git 已暂存差异",
+                    "titleStageDryRun": "Git 暂存试运行",
+                    "titleStatus": "Git 状态",
+                    "titleUnstagedDiff": "Git 未暂存差异",
+                    "untracked": "未跟踪"
                 },
                 "patch": {
                     "validateNote": "这将验证补丁而不更改文件。",
                     "applyNote": "此高风险应用请求会在后端创建应用前检查点后写入文件。",
                     "hideDiff": "隐藏统一差异",
-                    "showDiff": "显示统一差异"
-                }
+                    "showDiff": "显示统一差异",
+                    "actualLabel": "实际：",
+                    "checkpointCreated": "已创建应用前检查点",
+                    "diffTruncated": "差异预览已为显示而截断。",
+                    "expectedLabel": "预期：",
+                    "firstLines": "前 {shown} 行，共 {total} 行",
+                    "hunkCountMany": "{count} 个块",
+                    "hunkCountOne": "{count} 个块",
+                    "hunkIndex": "块 {index}",
+                    "restoreManual": "恢复需手动进行：审查后，使用 {tool} 并指定此检查点 ID。",
+                    "titleApplied": "补丁已应用",
+                    "titleApplyBlocked": "补丁应用被阻止",
+                    "titleApplyReview": "补丁应用审查",
+                    "titleDryRunConflicts": "补丁试运行发现冲突",
+                    "titleDryRunPassed": "补丁试运行通过",
+                    "titleDryRunReview": "补丁试运行审查",
+                    "warnings": "警告"
+                },
+                "binary": "二进制",
+                "fileCountMany": "{count} 个文件",
+                "fileCountOne": "{count} 个文件",
+                "moreCount": "+{count} 个",
+                "plan": {
+                    "likelyFiles": "可能涉及的文件",
+                    "openQuestions": "待解决问题",
+                    "reviewOnlyNote": "仅供审查的产物。编辑和修改类工具仍使用当前审批模式。",
+                    "riskHigh": "高风险",
+                    "riskLow": "低风险",
+                    "riskMedium": "中等风险",
+                    "risks": "风险",
+                    "title": "编码计划"
+                },
+                "state": {
+                    "clean": "干净",
+                    "failed": "失败",
+                    "passed": "通过",
+                    "timedOut": "超时"
+                },
+                "timeoutChip": "超时 {seconds}s",
+                "truncated": "已截断",
+                "workspaceLabel": "工作区:"
+            },
+            "attachedImageAlt": "附加的图片",
+            "stepNumber": "步骤 {step}",
+            "transcribingLocally": "正在本地转录...",
+            "transferPlan": {
+                "dependsOnMany": "依赖 {count} 个准备步骤",
+                "dependsOnOne": "依赖 {count} 个准备步骤",
+                "destination": "目标：{destination}",
+                "title": "传输计划审查",
+                "warnings": "警告"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "已从校验数据重建保险库头部或清单。",
             "repairMetadataSuccess": "修复完成：已从校验数据重建保险库头部或清单",
             "errorCorrectionBadge": "纠错",
-            "itemsInFolder": "/{folder} 中的 {count} 个项目"
+            "itemsInFolder": "/{folder} 中的 {count} 个项目",
+            "compressionProfileArchive": "归档 (zstd -15)",
+            "compressionProfileBalanced": "均衡 (zstd -9)",
+            "compressionProfileFast": "快速 (zstd -3)",
+            "damagedChunkLocation": "{id} - 偏移 {offset}（长度 {len}）",
+            "fallbackName": "保险库",
+            "folderScanSummary": "{dirs} 个目录中的 {files} 个文件 ({size})",
+            "namePlaceholderVault": "我的安全保险库",
+            "namePlaceholderZip": "我的归档",
+            "recentDaysAgo": "{count}天前",
+            "recentFileCountMany": "{count} 个文件",
+            "recentFileCountOne": "{count} 个文件",
+            "recentMonthsAgo": "{count}个月前"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "正在加密所选项目...",
             "ingestSkipped": "保险库已创建，但无法添加某些项目：",
             "selectionInfo": "{count} 个项目将被加密到保险库中",
-            "decrypting": "正在解密…"
+            "decrypting": "正在解密…",
+            "compatibleWithApp": "兼容 Cryptomator 应用",
+            "createFormatBadge": "Cryptomator 格式 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM 内容",
+            "featureNameCipher": "AES-SIV 名称",
+            "formatVersion": "格式 {version}"
         },
         "compress": {
             "title": "压缩文件",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "部分文件将会重名。请调整命名规则。",
             "apply": "应用",
             "existingCollision": "部分新名称与此文件夹中已有的文件相同；这些文件不会被覆盖，其重命名将被跳过。",
-            "existingCollisionHint": "(已存在)"
+            "existingCollisionHint": "(已存在)",
+            "baseNamePlaceholder": "文件",
+            "invalidName": "{name} (无效)"
         },
         "lockScreen": {
             "locked": "应用已锁定",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "桌面未挂载。请拔下并重新插入电缆，然后再次打开。",
             "volumes_need_mount_observe": "在 snap 中，连接 mount-observe 权限后才会显示卷。请在终端中运行以下命令，然后返回 AeroFTP：",
             "volumes_unavailable": "无法读取已挂载的卷。",
-            "portable_device": "便携设备"
+            "portable_device": "便携设备",
+            "drivesLeftPanel": "左侧面板驱动器",
+            "drivesRightPanel": "右侧面板驱动器",
+            "modeGroupLabel": "侧边栏模式",
+            "placesSidebarLabel": "位置侧边栏"
         },
         "viewMode": {
             "list": "列表",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "浏览同级目录",
             "loading": "加载中...",
             "noSubdirectories": "没有子目录",
-            "browseChildren": "浏览子目录"
+            "browseChildren": "浏览子目录",
+            "ariaLabel": "面包屑导航",
+            "syncBoundaryTitle": "{path} (同步边界)"
         },
         "bridge": {
             "checking": "正在检查 {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "无法预览",
-            "title": "快速预览"
+            "title": "快速预览",
+            "closePreview": "关闭预览",
+            "dialogLabel": "快速预览：{name}",
+            "nextFile": "下一个文件",
+            "position": "第 {index} 个，共 {total} 个",
+            "previousFile": "上一个文件"
         },
         "properties": {
             "general": "常规",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Immich 在上传时记录的资源校验和。",
                 "crypt-overlay-ciphertext": "摘要覆盖的是存储在服务器上的加密字节。"
             },
-            "readOnlyIsLinkTarget": "这是一个符号链接：权限属于它指向的文件。请打开该文件的属性进行更改。"
+            "readOnlyIsLinkTarget": "这是一个符号链接：权限属于它指向的文件。请打开该文件的属性进行更改。",
+            "exactBytes": "({bytes} 字节)"
         },
         "duplicates": {
             "sortWasted": "浪费的空间",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "字节完全相同",
             "modeNonIdenticalHint": "感知或文本相似度，不自动删除",
             "potentialWasteSelected": "潜在浪费（已选）",
-            "similarityDistance": "{similarity}，距离 {distance}"
+            "similarityDistance": "{similarity}，距离 {distance}",
+            "modeExact": "完全相同",
+            "modeLabel": "模式:",
+            "modeNonIdentical": "不完全相同"
         },
         "diskUsage": {
             "title": "磁盘使用情况",
@@ -3906,7 +4207,11 @@
                 "noActivity": "尚无网络活动。传输文件后可查看事件。",
                 "time": "时间",
                 "event": "事件",
-                "detail": "详情"
+                "detail": "详情",
+                "command": "命令",
+                "ipcTransfersCount": "IPC + 传输 ({count})",
+                "status": "状态",
+                "type": "类型"
             },
             "system": {
                 "appVersion": "AeroFTP 版本",
@@ -3953,7 +4258,8 @@
                 "dark": "深色",
                 "light": "浅色",
                 "userAgent": "用户代理",
-                "localStorageKeysTitle": "LocalStorage 键"
+                "localStorageKeysTitle": "LocalStorage 键",
+                "localStorageEntrySummary": "{size} 字节 · {preview}"
             },
             "copyFileListToClipboard": "将文件列表复制到剪贴板",
             "filesCopied": "已复制 {count} 个文件条目到剪贴板",
@@ -4199,7 +4505,9 @@
                     "cropHint": "双击选区或按 Enter 应用，按 Esc 取消",
                     "cropRatio": "比例",
                     "cropRatioFree": "自由",
-                    "cropRatioOriginal": "原始"
+                    "cropRatioOriginal": "原始",
+                    "rotateCcw90Short": "逆时针 90°",
+                    "rotateCw90Short": "顺时针 90°"
                 },
                 "toggleTransparencyBg": "透明背景（循环切换）"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "加载 PDF 中...",
                 "open": "打开 PDF",
                 "page": "页面",
-                "zoom": "缩放"
+                "zoom": "缩放",
+                "documentTitle": "PDF 文档"
             },
             "text": {
                 "auto": "自动",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "平板 (768px)",
                 "wordWrap": "自动换行",
                 "zoomIn": "放大",
-                "zoomOut": "缩小"
+                "zoomOut": "缩小",
+                "htmlPreviewFrameTitle": "HTML 预览"
             },
             "video": {
                 "exitFullscreen": "退出全屏 (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "检测到 Rclone Crypt 叠加层",
             "aerocryptImportDesc": "已从 rclone.conf 为 {name} 导入配置:现在打开叠加层吗?",
             "aerocryptImportOpen": "打开叠加层",
-            "aerovaultOverlayExpired": "AeroVault Overlay 因不活动已锁定。请重新打开保险库以继续。"
+            "aerovaultOverlayExpired": "AeroVault Overlay 因不活动已锁定。请重新打开保险库以继续。",
+            "aerovaultOverlaySource": "AeroVault 覆盖层已启用 ({source})",
+            "fileOperationsLabel": "文件操作",
+            "overlayBadge": "覆盖层"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "双因素认证",
                 "verify": "验证并启用",
                 "active": "2FA 已启用",
-                "inactive": "2FA 未启用"
+                "inactive": "2FA 未启用",
+                "codeGroupLabel": "{count} 位验证码",
+                "digitLabel": "第 {index} 位"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "浏览",
                     "installed": "已安装"
-                }
+                },
+                "remoteInstallDisabled": "在客户端完成注册表认证之前，远程插件安装目前处于停用状态。本地已安装的插件可继续正常使用。"
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "恢复的文件将重新出现在其原始文件夹中",
             "connectionNamePlaceholder": "连接名称（例如：我的 FileLu Cloud）",
             "trashAutoExpiry": "回收站中的文件将在 7 天后由 FileLu 自动删除",
-            "rsyncTransferOnly": "仅传输端点: Rsync 上不支持浏览。请使用 Native API、WebDAV、S3 或 FTP 进行导航; 切换到 Rsync 以进行高带宽 delta 传输。"
+            "rsyncTransferOnly": "仅传输端点: Rsync 上不支持浏览。请使用 Native API、WebDAV、S3 或 FTP 进行导航; 切换到 Rsync 以进行高带宽 delta 传输。",
+            "badgePasswordProtected": "受密码保护",
+            "badgeWatermarked": "已加水印"
         },
         "box": {
             "addComment": "添加评论",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "免费套餐",
             "freeCardTier": "免费 + 卡",
-            "paidTier": "付费"
+            "paidTier": "付费",
+            "extraFeatures": "扩展",
+            "coreOpsList": "上传、下载、删除、重命名、移动、新建文件夹、搜索",
+            "coreOpsLegend": "基础 = 上传、下载、删除、重命名、移动、新建文件夹、搜索"
         },
         "healthCheck": {
             "title": "服务器健康检查",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} 个资源",
             "releaseAssetMany": "{count} 个资源",
             "repoPrivate": "私有",
-            "repoPublic": "公开"
+            "repoPublic": "公开",
+            "actionsLiveBadge": "实时",
+            "actionsRunningTitle": "GitHub Actions (运行中)",
+            "coAuthors": "共同作者",
+            "pagesPathPlaceholder": "/ 或 /docs",
+            "pagesStatusBuilding": "构建中",
+            "pagesStatusBuilt": "已构建",
+            "pagesStatusErrored": "出错",
+            "refreshBranches": "刷新分支",
+            "repoPrivateTitle": "私有仓库",
+            "repoPublicTitle": "公开仓库",
+            "unpushedCommitsOnBranchMany": "{branch} 上有 {count} 个未推送的提交",
+            "unpushedCommitsOnBranchOne": "{branch} 上有 {count} 个未推送的提交"
         },
         "filenNotes": {
             "title": "加密笔记",
@@ -4967,7 +5300,8 @@
             "tagName": "标签名称",
             "removeTag": "移除标签",
             "manageTags": "管理标签",
-            "deleteTagConfirm": "删除标签“{name}”？笔记会保留其文本。"
+            "deleteTagConfirm": "删除标签“{name}”？笔记会保留其文本。",
+            "betaBadge": "测试版"
         },
         "shareLinkModal": {
             "title": "共享链接",
@@ -5077,7 +5411,8 @@
                 "down": "不可访问",
                 "pending": "正在检查...",
                 "unknown": "未探测",
-                "clickToRetry": "点击重新检查"
+                "clickToRetry": "点击重新检查",
+                "withActiveSession": "{title}(活动会话)"
             },
             "densityCompact": "紧凑行",
             "densityComfortable": "舒适行",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt 加密叠加层（原生）：此服务器上的名称和内容均已加密。",
-                "rcloneTitle": "rclone crypt 叠加层（互通）：此服务器上的名称和内容均已加密。"
+                "rcloneTitle": "rclone crypt 叠加层（互通）：此服务器上的名称和内容均已加密。",
+                "keyBits": "{bits} 位"
             },
             "sidebar": {
                 "filters": "筛选",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "我们无法读取此存储桶的加密设置，因为应用程序密钥不具备 readBucketEncryption 权限。我们无权查看的值并不意味着加密已关闭。",
                 "unknownShapeTitle": "我们无法读取此存储桶的加密设置，因为响应没有已记录的格式。密钥本身有读取权限，所以这与响应有关，而与权限无关。"
             },
-            "exportProfile": "导出..."
+            "exportProfile": "导出...",
+            "quotaLabel": "配额",
+            "storageNoCapReported": "{used}(未报告配额上限)",
+            "e2eBitsBadge": "E2E {bits} 位",
+            "filenAuthVersionTitle": "连接成功时从 Filen auth/info 检测到",
+            "demoBadge": "演示",
+            "timeAgo": {
+                "now": "刚刚",
+                "minutes": "{count}分钟",
+                "hours": "{count}小时",
+                "days": "{count}天",
+                "months": "{count}个月"
+            }
         },
         "gitlab": {
             "projectPath": "项目路径",
@@ -5221,7 +5569,8 @@
             "linkType": "类型",
             "createMergeRequest": "创建 Merge Request",
             "mrTitle": "MR 标题",
-            "mrBody": "描述 (可选)"
+            "mrBody": "描述 (可选)",
+            "sourceCode": "源代码"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "复制用户（仅服务器，不含密码）",
             "copyLockedHint": "请先切换到此账户以复制其服务器",
             "crossUserDedupTitle": "已被其他账户保存",
-            "crossUserDedupMessage": "“{name}”使用的服务器账户也已被此设备上的以下账户保存：{accounts}"
+            "crossUserDedupMessage": "“{name}”使用的服务器账户也已被此设备上的以下账户保存：{accounts}",
+            "destructiveReset": {
+                "closeDialog": "关闭重置密码对话框",
+                "confirmPassword": "确认新密码",
+                "errMismatch": "新的账户密码不一致。",
+                "errNewRequired": "请输入新的账户密码。",
+                "errNotAuthorized": "您必须是管理员才能重置其他账户的密码。",
+                "errNotForSelf": "请在您自己的账户上使用“更改密码”。",
+                "errStoreNotReady": "请先解锁保险库，然后重试。",
+                "errTypeReset": "输入 RESET 以确认此破坏性操作。",
+                "errUserNotFound": "该用户已不存在。",
+                "newPassword": "新账户密码",
+                "statEncryptedBytes": "加密字节",
+                "statProfiles": "配置文件",
+                "statSettings": "设置",
+                "title": "重置密码 = 销毁数据",
+                "typeReset": "输入 RESET",
+                "wipeDetail": "当前密码无法恢复。AeroFTP 将删除目标账户已保存的服务器、用户设置和锁定状态，然后签发一个由新密码保护的新加密密钥。",
+                "wipeWarning": "这将永久清除目标账户的加密分区。"
+            },
+            "dropdown": {
+                "accountPassword": "账户密码",
+                "lock": "锁定",
+                "newUser": "新用户",
+                "noUsers": "暂无用户。使用下方的“新用户”添加第一个用户。",
+                "protectionNote": "您的账户受 Argon2id + AES-KW + AES-256-GCM 加密保护",
+                "users": "用户"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt 叠加层",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "模式在创建连接时选择，编辑已保存的配置文件时保持不变。要使用其他模式，请创建新连接。"
+                "lockedInEdit": "模式在创建连接时选择，编辑已保存的配置文件时保持不变。要使用其他模式，请创建新连接。",
+                "notInBuild": "此 AeroFTP 版本未包含该功能。"
             }
         },
         "flatpak": {

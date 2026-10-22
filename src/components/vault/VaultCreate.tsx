@@ -254,12 +254,12 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                     </div>
                     {state.folderScanResult ? (
                         <p className="mt-1 text-[11px]">
-                            {state.folderScanResult.file_count} files in {state.folderScanResult.dir_count} directories ({formatSize(state.folderScanResult.total_size)})
+                            {t('vault.folderScanSummary', { files: state.folderScanResult.file_count, dirs: state.folderScanResult.dir_count, size: formatSize(state.folderScanResult.total_size) })}
                         </p>
                     ) : (
                         <div className="mt-1 flex items-center gap-1.5 text-[11px]">
                             <Loader2 size={10} className="animate-spin" />
-                            Scanning folder...
+                            {t('vault.scanningFolder')}
                         </div>
                     )}
                 </div>
@@ -284,7 +284,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                         style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
                         onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
-                        placeholder={isZip ? 'My archive' : 'My secure vault'}
+                        placeholder={isZip ? t('vault.namePlaceholderZip') : t('vault.namePlaceholderVault')}
                     />
                     <span className="text-xs font-mono whitespace-nowrap" style={{ color: 'var(--compress-text-muted)' }}>{isZip ? '.aerozip' : '.aerovault'}</span>
                 </div>

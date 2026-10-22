@@ -337,7 +337,38 @@
             "protonSignOut": "Skrá út",
             "protonSignOutHelp": "Lýkur lotunni hjá Proton og fjarlægir hana úr þessum prófíl.",
             "protonSignInExpired": "Innskráningarsíðan rann út. Skráðu þig inn aftur.",
-            "protonNativeUnavailable": "Þessi útgáfa inniheldur ekki innbyggða Proton Drive-biðlarann."
+            "protonNativeUnavailable": "Þessi útgáfa inniheldur ekki innbyggða Proton Drive-biðlarann.",
+            "forms": {
+                "publicApiKey": "Opinber API-lykill",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Opinber lykill.",
+                "secretApiKey": "Leynilegur API-lykill",
+                "uploadcareSecretHint": "Aðeins notað fyrir REST-skráastjórnun með {scheme}-auðkenningu.",
+                "flatMediaLibrary": "Flatt miðlasafn",
+                "uploadcareNoFolders": "Uploadcare býður ekki upp á eigin möppur; skrár verkefnisins eru taldar upp í rót eftir UUID.",
+                "urlEndpointId": "Auðkenni URL-endapunkts",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-endapunktur.",
+                "privateApiKey": "Einka-API-lykill",
+                "storedVaultBasicAuth": "Geymt í staðbundnu hvelfingunni og aðeins sent til {provider} með Basic Auth.",
+                "cloudName": "Heiti skýs",
+                "cloudinaryCloudNameHint": "Finnst í Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-lykill",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-lykill.",
+                "apiSecret": "API-leyndarmál",
+                "apiSecretPlaceholder": "API-leyndarmál",
+                "openProviderLink": "Opna tengil {provider}",
+                "githubPatHint": "Fínstilltur PAT með Contents (lesa og skrifa).",
+                "generateToken": "Búa til tóka",
+                "applicationKeyId": "Auðkenni forritslykils",
+                "backblazeKeyIdHint": "Auðkenni forritslykils B2, byrjar á 003. Búðu til einn á App Keys-síðu Backblaze.",
+                "applicationKey": "Forritslykill",
+                "backblazeKeyHint": "Birtist aðeins einu sinni við stofnun. Farðu með hann eins og lykilorð.",
+                "bucketNameExactHint": "Nákvæmt heiti bucket, gerir greinarmun á há- og lágstöfum.",
+                "megacmdSetupFirst": "Settu upp MEGAcmd fyrst",
+                "megacmdFetchUrlTitle": "Keyra {cmd} og fylla út vefslóðina sjálfkrafa",
+                "fetchUrl": "Sækja vefslóð",
+                "megacmdWebdavHint": "Notandanafni og lykilorði er sleppt viljandi. AeroFTP keyrir sjálft „{cmd}“ við tengingu til að ræsa brúna og lesa þetta vistfang: það má vera autt. „Sækja vefslóð“ er valfrjáls handvirk uppfærsla; breyttu gáttinni hér ef MEGAcmd notar sérsniðna gátt."
+            },
+            "manualStorageUnitLabel": "{label}-eining"
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -390,7 +421,19 @@
             "listingPath": "Skrái {path}...",
             "pleaseWait": "Vinsamlegast bíðið...",
             "sameNameLeakChip": "sama nafn",
-            "sameNameLeakTooltip": "Þetta nafn birtist einnig á annarri slóð í þessum dulkóðaða hvelfingu. Þar sem nöfn eru dulkóðuð með ákveðnum hætti getur áhorfandi dulkóðaða geymslunnar séð að þau tvö deila nafni."
+            "sameNameLeakTooltip": "Þetta nafn birtist einnig á annarri slóð í þessum dulkóðaða hvelfingu. Þar sem nöfn eru dulkóðuð með ákveðnum hætti getur áhorfandi dulkóðaða geymslunnar séð að þau tvö deila nafni.",
+            "endpointSelector": {
+                "localFolder": "Staðbundin mappa",
+                "localFolderHint": "Veldu staðbundna slóð fyrir þetta spjald",
+                "noSavedProfiles": "Engin vistuð snið",
+                "savedProfiles": "Vistuð fjartengd snið",
+                "title": "Endapunktur"
+            },
+            "leftPanelMarker": "Vinstra spjald",
+            "localFilesLabel": "Staðbundnar skrár",
+            "localFilesRightLabel": "Staðbundnar skrár (hægra spjald)",
+            "remoteFilesLabel": "Fjartengdar skrár",
+            "rightPanelMarker": "Hægra spjald"
         },
         "contextMenu": {
             "askAeroAgent": "Spyrja AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Hraðarit",
             "hideSpeedGraph": "Fela hraðarit",
             "speedAvg": "meðal {speed}",
-            "speedPeak": "hámark {speed}"
+            "speedPeak": "hámark {speed}",
+            "badgeBatch": "LOTA",
+            "badgeDownload": "NIÐURHAL",
+            "badgeLive": "BEINT",
+            "badgeStream": "STREYMI",
+            "badgeUpload": "UPPHAL",
+            "earlierItemsHidden": "{count} eldri atriði falin",
+            "folderFilesProgress": "{done}/{total} skrár",
+            "laneDone": "lokið",
+            "laneError": "villa",
+            "unifiedPlan": {
+                "destination": "Áfangastaður",
+                "dialogLabel": "Flutningsáætlun",
+                "engineAerovaultOverlay": "AeroVault-yfirlag",
+                "engineCompareOnly": "Aðeins samanburður",
+                "engineCrossProfileSync": "Samstilling milli sniða",
+                "engineCrossProfileTransfer": "Flutningur milli sniða",
+                "engineLocalDelta": "Staðbundinn delta-flutningur",
+                "engineLocalFs": "Staðbundið skráakerfi",
+                "engineProviderDownload": "Niðurhal frá þjónustuaðila",
+                "engineProviderUpload": "Upphal til þjónustuaðila",
+                "engineUnsupported": "Ekki stutt",
+                "execute": "Keyra",
+                "items": "Atriði",
+                "modeBackup": "Afrit",
+                "modeBisync": "Tvíátta samstilling",
+                "modeCompare": "Bera saman",
+                "modeCopy": "Afrita",
+                "modeMirror": "Spegla",
+                "modeMove": "Færa",
+                "modeSync": "Samstilla",
+                "notExecutable": "Ekki er enn hægt að keyra þetta endapunktapar.",
+                "parallel": "Samhliða",
+                "reviewBeforeExecution": "Yfirfara fyrir keyrslu",
+                "route": "{pair} um {engine}",
+                "size": "Stærð",
+                "source": "Uppruni",
+                "title": "Áætlun: {mode}"
+            }
         },
         "settings": {
             "title": "Stillingar",
@@ -1040,7 +1121,13 @@
                 "title": "Innbyggt rsync (beta)",
                 "description": "Veldu hvernig SFTP Delta Sync sendir rsync-flutninga.",
                 "enableToggle": "Virkja innbyggt rsync fyrir delta samstillingu yfir SFTP",
-                "experimental": "Auto kýs AeroRsync með klassískri varaleið; Classic notar rsync-tvíundarskrá kerfisins þar sem hún er tiltæk; Native sleppir klassískri varaleið tvíundarskrárinnar."
+                "experimental": "Auto kýs AeroRsync með klassískri varaleið; Classic notar rsync-tvíundarskrá kerfisins þar sem hún er tiltæk; Native sleppir klassískri varaleið tvíundarskrárinnar.",
+                "modeAuto": "Sjálfvirkt",
+                "modeClassic": "Hefðbundið",
+                "modeNative": "Innbyggt",
+                "classicNotFoundTooltip": "Hefðbundin rsync-keyrsluskrá fannst ekki í PATH. Settu upp rsync (Linux/macOS-pakki, Windows með WSL/cygwin/scoop) til að virkja þennan ham.",
+                "classicAt": "Hefðbundið rsync í {path}",
+                "classicNotDetected": "Hefðbundin rsync-keyrsluskrá greindist ekki í PATH. Innbyggt er eina vélin sem er í boði á þessari tölvu."
             },
             "startMinimizedOnAutostart": "Ræsa lágmarkað í kerfisbakka",
             "startMinimizedOnAutostartDesc": "Fela aðalgluggann við sjálfvirka ræsingu. AeroFTP heldur áfram að keyra í kerfisbakkanum, opnaðu það úr bakkatákninu þegar þú þarft á því að halda.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "{count} OAuth skilríki fundust í ódulkóðaðri geymslu",
             "fontSystemInstall": "kerfisuppsetning",
             "fontSizeMin": "lágm",
-            "fontSizeMax": "hám"
+            "fontSizeMax": "hám",
+            "migrationCleanupHint": "Mælt með fyrir hámarksöryggi",
+            "fontCustomOption": "Sérsniðið...",
+            "fontSystemInstallHint": "Krefst uppsetningar í kerfinu. AeroFTP notar sjálfkrafa varaleið ef það er ekki tiltækt.",
+            "fontSizeIndicatorLabel": "Letur"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Stöðva",
                 "stopShell": "Stöðva skel",
                 "closed": "Flugstöð lokuð.",
-                "commandInsertedReview": "Skipun sett inn í Terminal. Ýttu á Enter til að keyra."
+                "commandInsertedReview": "Skipun sett inn í Terminal. Ýttu á Enter til að keyra.",
+                "decreaseFont": "Minnka leturstærð (Ctrl+-)",
+                "emptyClickPlus": "Smelltu á {plus} til að opna útstöð",
+                "emptySshHint": "eða {ssh} fyrir fjarskel á {host}",
+                "increaseFont": "Stækka leturstærð (Ctrl+=)",
+                "newTab": "Nýr útstöðvarflipi",
+                "sshShellTo": "SSH-skel á {host}",
+                "theme": "Þema útstöðvar"
             },
             "editorPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Skoða frumkóða\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Vistar...",
                 "noFileSelected": "Engin skrá valin til skoðunar",
                 "loading": "Hleð ritli...",
-                "dragToTerminalRun": "Dragðu í Terminal til að setja inn keyrsluskipun"
+                "dragToTerminalRun": "Dragðu í Terminal til að setja inn keyrsluskipun",
+                "closeEditor": "Loka ritli",
+                "resetChanges": "Endurstilla breytingar"
             },
             "previewPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Forskoða\""
             },
             "codeEditor": "Kóðaritill",
-            "sshTerminal": "SSH-útstöð"
+            "sshTerminal": "SSH-útstöð",
+            "comingSoon": "Væntanlegt",
+            "soonBadge": "Bráðum"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Veittu heimild aftur handvirkt ef tákninu er afturkallað"
             },
             "profilesLoadFailed": "Ekki tókst að lesa vistuðu netþjónana þína: {error}",
-            "cleanupSummary": "{count} skrár, {size} losað"
+            "cleanupSummary": "{count} skrár, {size} losað",
+            "maturity": {
+                "alpha": "Alfa"
+            },
+            "dialogDashboardLabel": "Yfirlit skýjasamstillingar",
+            "dialogLoadingLabel": "Hleður skýjasamstillingu",
+            "dialogSettingsLabel": "Stillingar skýjasamstillingar",
+            "dialogSetupLabel": "Uppsetning skýjasamstillingar",
+            "onePerLineHint": "(eitt í hverri línu)",
+            "pairsEditorLabel": "Ritill fyrir AeroCloud-pör",
+            "remoteSubfolderPlaceholder": "ský"
         },
         "statusBar": {
             "connected": "Tengt",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "að hluta, ólæsilegar möppur: {count}",
             "usedScanFailed": "Skönnun á notaðri geymslu mistókst",
             "usedScanEmpty": "Skönnun á {path} fann engar skrár; gildið í skyndiminni var haldið. Athugaðu slóðina eða stuðning þjónsins við endurkvæma upptalningu.",
-            "filenBridgeAccountTotal": "Filen Desktop gefur ekki upp heildarnotkun reikningsins þíns hér: notkunartalan er summa skránna undir þessari slóð. Upprunalega Filen-tengingin sýnir heildarnotkun reikningsins strax."
+            "filenBridgeAccountTotal": "Filen Desktop gefur ekki upp heildarnotkun reikningsins þíns hér: notkunartalan er summa skránna undir þessari slóð. Upprunalega Filen-tengingin sýnir heildarnotkun reikningsins strax.",
+            "ariaLabel": "Stöðustika",
+            "debugBadge": "VILLULEIT",
+            "debugModeActive": "Villuleitarhamur virkur"
         },
         "dialogs": {
             "confirmTitle": "Staðfesta",
@@ -1620,7 +1735,8 @@
                 "apRole": "Stofnandi, forritari, umsjónarmaður, meðhönnuður",
                 "ekRole": "Rannsakandi, gæðatryggingarverkfræðingur, meðhönnuður"
             },
-            "madeBy": "af {author}"
+            "madeBy": "af {author}",
+            "statsLine": "{protocols} samskiptareglur · {languages} tungumál · AES-256 safnskrár"
         },
         "support": {
             "title": "Styðja AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Verkefni (Unixname)",
             "opendriveNotApiKey": "(ekki OpenDrive API lykillinn þinn)",
             "endpoint": "Endapunktur",
-            "accountId": "Reiknings-ID"
+            "accountId": "Reiknings-ID",
+            "servicesHeading": "Þjónustur",
+            "sourceforgeSshKeyHelp": "SourceForge krefst auðkenningar með SSH-lykli. Búðu til lykil með {cmd} og hladdu honum upp á {link}.",
+            "sourceforgeSshSettings": "SSH-stillingar",
+            "fullGuide": "Heildarleiðbeiningar",
+            "endpointTemplateExample": "t.d. {template}",
+            "jurisdiction": "Lögsaga",
+            "insecureCertDialogLabel": "Viðvörun um óöruggt skilríki",
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Staðfesting hýsillykils"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -2111,7 +2236,10 @@
             "rename": "Endurnefna",
             "resume": "Halda áfram",
             "resumeHint": "Halda áfram með rofna flutninginn í stað þess að byrja upp á nýtt",
-            "cancel": "Hætta við"
+            "cancel": "Hætta við",
+            "dialogLabel": "Staðfesting á yfirskrift",
+            "moreInQueue": "+{count} í biðröð",
+            "unknownDate": "Óþekkt"
         },
         "statusbar": {
             "queue": "Queue",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Nothæf slóðapör (staðbundið/fjartengt) í þessu sniðmáti: {count}. AeroSync-gluggi vinnur með nákvæmlega eitt par, svo ekkert var flutt inn. Breyttu sniðmátinu þannig að aðeins eitt par standi eftir og flyttu það síðan inn aftur.",
             "templateNamePlaceholder": "t.d. Næturafritun í S3",
             "templateDescPlaceholder": "Til hvers þetta sniðmát er (valfrjálst)",
-            "templateExportCliDesc": "Umbúðaskrifta fyrir aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Umbúðaskrifta fyrir aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Afvirkja",
+            "multiPathEditorLabel": "Ritill fyrir margar slóðir",
+            "multiPathEnablePair": "Virkja",
+            "multiPathLocalPlaceholder": "Staðbundin slóð",
+            "multiPathRemotePlaceholder": "Fjartengd slóð",
+            "rollbackDialogLabel": "Endurheimtarmynd",
+            "rollbackMoreFiles": "+{count} í viðbót...",
+            "rollbackSnapshotSummaryMany": "{count} skrár, {size}",
+            "rollbackSnapshotSummaryOne": "{count} skrá, {size}",
+            "templateDialogLabel": "Samstillingarsniðmát",
+            "templateExcludes": "Undanskilið",
+            "templateLocal": "Staðbundið",
+            "templateRemote": "Fjartengt",
+            "templateRetries": "Endurtilraunir"
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Hafna keyrslu verkfæris",
                 "toggleDetails": "Víxla upplýsingum",
                 "allowSession": "Leyfa fyrir þessa lotu",
-                "nonAtomicReplace": "Ósamfelld útskipting: skráin er horfin í skamma stund"
+                "nonAtomicReplace": "Ósamfelld útskipting: skráin er horfin í skamma stund",
+                "moreOptions": "Fleiri valkostir",
+                "panelAria": "Samþykktarspjald verkfæra"
             },
             "settings": {
                 "title": "AI Stillingar",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Varalíkan",
                 "routingNoFallback": "Ekkert",
                 "bedrockNeedsModel": "Bættu við og virkjaðu Bedrock-líkan á flipanum Líkön áður en þú prófar.",
-                "bedrockSetup": "Stilltu Runtime URL fyrir AWS-svæðið þitt. Í Líkön skaltu bæta við ID sem styður Chat Completions í Bedrock Runtime. Runtime birtir ekki lista yfir líkön. Prófunin sendir litla ályktunarbeiðni sem getur valdið AWS-gjöldum."
+                "bedrockSetup": "Stilltu Runtime URL fyrir AWS-svæðið þitt. Í Líkön skaltu bæta við ID sem styður Chat Completions í Bedrock Runtime. Runtime birtir ekki lista yfir líkön. Prófunin sendir litla ályktunarbeiðni sem getur valdið AWS-gjöldum.",
+                "detectOllamaModelsTooltip": "Greina tiltæk Ollama-líkön sjálfkrafa",
+                "kTokens": "{count}K tókar",
+                "modelEditorAria": "Ritill gervigreindarlíkana",
+                "supportsTools": "Styður verkfæri",
+                "supportsVision": "Styður myndgreiningu",
+                "thinkingReasoning": "Hugsun/Röksemdafærsla",
+                "toolQuality": "Gæði verkfæra: {quality}/5"
             },
             "copy": "Afrita",
             "attachImage": "Hengja mynd við",
@@ -2699,7 +2850,9 @@
                 "run": "Keyra í útstöð",
                 "insert": "Setja inn í ritil",
                 "diff": "Mismunur frá upprunalegri",
-                "diffNoFile": "Engin skrá opin fyrir samanburð"
+                "diffNoFile": "Engin skrá opin fyrir samanburð",
+                "commandBlocked": "Skipun lokuð: getur valdið eyðileggingu",
+                "confirmRun": "Staðfesta keyrslu: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Hugsar...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Skipta um grein",
                 "delete": "Eyða grein",
                 "newBranch": "Ný grein",
-                "branchFrom": "Grein frá þessum punkti"
+                "branchFrom": "Grein frá þessum punkti",
+                "messageCountShort": "{count} skil.",
+                "unnamed": "Grein"
             },
             "context": {
                 "projectDetected": "Verkefni greint",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "keyrir",
                 "expired": "útrunnið",
-                "refresh": "Endurhlaða"
+                "refresh": "Endurhlaða",
+                "modelsRunningMany": "{count} líkön í gangi",
+                "modelsRunningOne": "{count} líkan í gangi",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Samhengis-skyndiminni",
@@ -2956,7 +3114,8 @@
                 "warning": "Allar skráaaðgerðir verða keyrðar strax án samþykkis. Notaðu á eigin ábyrgð.",
                 "disable": "Slökkva",
                 "securityWarning": "Öryggisviðvörun",
-                "understood": "Skilið"
+                "understood": "Skilið",
+                "warningAria": "Viðvörun um öfgaham"
             },
             "errorServerError": "Þjónn gervigreindarveitunnar á í vandræðum. Reyndu aftur eftir smá stund.",
             "errorServiceUnavailable": "Gervigreindarveitandinn er tímabundið ótiltækur (ofhlaðinn). Ókeypis þjónustur geta haft takmarkanir. Reyndu aftur síðar.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Ótakmarkað",
                 "roleAI": "AI",
-                "roleUser": "Notandi"
+                "roleUser": "Notandi",
+                "noConversations": "Engin samtöl enn",
+                "titleCount": "Saga ({count})"
             },
             "dropFileToAnalyze": "Slepptu skrá til að greina með AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} inntakstóken, {output} úttakstóken, samkvæmt talningu þjónustuveitunnar",
-                "breakdownCache": "{input} inntakstóken, {output} úttakstóken, {cacheRead} lesin úr skyndiminni fyrirmæla, {cacheWritten} skrifuð í það, samkvæmt talningu þjónustuveitunnar"
+                "breakdownCache": "{input} inntakstóken, {output} úttakstóken, {cacheRead} lesin úr skyndiminni fyrirmæla, {cacheWritten} skrifuð í það, samkvæmt talningu þjónustuveitunnar",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Framkvæma {count} aðgerð(ir)",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Yrði sleppt",
                     "skipped": "Sleppt",
                     "existedAtCheckpoint": "var til við vistunarpunkt",
-                    "absentAtCheckpoint": "vantaði við vistunarpunkt"
+                    "absentAtCheckpoint": "vantaði við vistunarpunkt",
+                    "noFiles": "Engar skrár voru í þessari endurheimtarniðurstöðu.",
+                    "otherActions": "Aðrar aðgerðir",
+                    "requestedPaths": "Umbeðið undirmengi slóða",
+                    "scopeAll": "Umfang: allar skrár sem vistaðar voru í vistunarpunktinum.",
+                    "titleApplied": "Endurheimt vistunarpunkts beitt",
+                    "titleApplyReview": "Yfirferð á beitingu endurheimtar vistunarpunkts",
+                    "titleDryRunComplete": "Þurrkeyrslu endurheimtar vistunarpunkts lokið",
+                    "titleDryRunReview": "Yfirferð á prufuendurheimt eftirlitspunkts"
                 },
                 "checks": {
                     "exitSummary": "útgangskóði {code} · {seconds}s",
                     "continueOnFailure": "Keyrir allar athuganir þótt ein mistakist.",
-                    "stopOnFailure": "Stöðvast við fyrstu athugun sem mistekst."
+                    "stopOnFailure": "Stöðvast við fyrstu athugun sem mistekst.",
+                    "checkLabel": "Prófun:",
+                    "checksLabel": "Prófanir:",
+                    "exitChip": "útgangur {code}",
+                    "filterChip": "sía: {filter}",
+                    "filterLabel": "Sía:",
+                    "notAvailable": "á ekki við",
+                    "passedCount": "{passed}/{total} stóðust",
+                    "runCheckNote": "Keyrir valda build/test/lint-skipun í vinnusvæðinu. Smíðaskriftur og prófanir keyra raunverulegan kóða.",
+                    "runProjectCheck": "Keyra verkefnisprófun",
+                    "runVerification": "Keyra staðfestingarumferð",
+                    "runVerificationNote": "Keyrir valdar build/test/lint-skipanir í vinnusvæðinu. Smíðaskriftur og prófanir keyra raunverulegan kóða.",
+                    "stoppedEarly": "Stöðvað við fyrstu prófun sem mistókst.",
+                    "timeoutLabel": "Tímamörk: {seconds} s",
+                    "verification": "Staðfesting"
                 },
                 "diagnostics": {
-                    "none": "Engin greining tilkynnt."
+                    "none": "Engin greining tilkynnt.",
+                    "errorCountMany": "{count} villur",
+                    "errorCountOne": "{count} villa",
+                    "title": "Greining",
+                    "truncated": "Greiningarlistinn var styttur.",
+                    "warningCountMany": "{count} viðvaranir",
+                    "warningCountOne": "{count} viðvörun"
                 },
                 "search": {
-                    "none": "Engar samsvaranir fundust."
+                    "none": "Engar samsvaranir fundust.",
+                    "ignoreCase": "hunsa hástafi",
+                    "inPath": "í {path}",
+                    "literal": "bókstaflegt",
+                    "matchCountMany": "{count} samsvaranir",
+                    "matchCountOne": "{count} samsvörun",
+                    "title": "Leit í vinnusvæði",
+                    "truncated": "Niðurstöður voru styttar."
                 },
                 "git": {
                     "noStagedDiff": "Ekkert diff-úttak fyrir undirbúnar breytingar.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Samþykki Git-undirbúnings",
                     "commitNote": "Þetta býr til git-innfærslu (commit) úr núverandi undirbúnum vísi. Farðu fyrst yfir coding_git_status og coding_git_diff með staged=true.",
                     "stagePreviewNote": "Þetta sýnir forskoðun á því hvaða umbeðnar slóðir yrðu undirbúnar; vísirinn breytist ekki.",
-                    "stageNote": "Þetta breytir git-vísinum fyrir umbeðnar slóðir."
+                    "stageNote": "Þetta breytir git-vísinum fyrir umbeðnar slóðir.",
+                    "afterCounts": "Eftir: {counts}",
+                    "beforeCounts": "Fyrir: {counts}",
+                    "clean": "Vinnutréð er hreint.",
+                    "commitCountMany": "{count} framlög",
+                    "commitCountOne": "{count} framlag",
+                    "conflicted": "í árekstri",
+                    "diffTruncated": "Mismunaúttak var stytt.",
+                    "logTitle": "Git-atvikaskrá",
+                    "pathsChip": "slóðir: {paths}",
+                    "showingNewest": "Sýni nýjustu {count}; fleiri eru til.",
+                    "statusCounts": "{staged} sviðsett, {unstaged} ósviðsett, {untracked} óvöktuð, {conflicted} í árekstri",
+                    "titleCommitCreated": "Git-framlag búið til",
+                    "titleCommitDryRun": "Prufukeyrsla Git-framlags",
+                    "titleCommitReview": "Yfirferð Git-framlags",
+                    "titleReview": "Git-yfirferð",
+                    "titleStageApplied": "Git-sviðsetningu beitt",
+                    "titleStagedDiff": "Sviðsettur Git-mismunur",
+                    "titleStageDryRun": "Prufukeyrsla Git-sviðsetningar",
+                    "titleStatus": "Git-staða",
+                    "titleUnstagedDiff": "Ósviðsettur Git-mismunur",
+                    "untracked": "óvaktað"
                 },
                 "patch": {
                     "validateNote": "Þetta staðfestir plásturinn án þess að breyta skrám.",
                     "applyNote": "Þessi áhættusama beiðni um beitingu skrifar skrár eftir að bakendinn býr til endurheimtarpunkt fyrir beitingu.",
                     "hideDiff": "Fela sameinað diff",
-                    "showDiff": "Sýna sameinað diff"
-                }
+                    "showDiff": "Sýna sameinað diff",
+                    "actualLabel": "raunverulegt:",
+                    "checkpointCreated": "Eftirlitspunktur fyrir beitingu búinn til",
+                    "diffTruncated": "Forskoðun mismunar stytt til birtingar.",
+                    "expectedLabel": "væntanlegt:",
+                    "firstLines": "fyrstu {shown} af {total} línum",
+                    "hunkCountMany": "{count} bútar",
+                    "hunkCountOne": "{count} bútur",
+                    "hunkIndex": "bútur {index}",
+                    "restoreManual": "Endurheimt er handvirk: notaðu {tool} með þessu auðkenni vistunarpunkts eftir yfirferð.",
+                    "titleApplied": "Plástur settur inn",
+                    "titleApplyBlocked": "Innsetning plásturs hindruð",
+                    "titleApplyReview": "Yfirferð á innsetningu plásturs",
+                    "titleDryRunConflicts": "Þurrkeyrsla plásturs fann árekstra",
+                    "titleDryRunPassed": "Þurrkeyrsla plásturs stóðst",
+                    "titleDryRunReview": "Yfirferð á þurrkeyrslu plásturs",
+                    "warnings": "Viðvaranir"
+                },
+                "binary": "tvíunda",
+                "fileCountMany": "{count} skrár",
+                "fileCountOne": "{count} skrá",
+                "moreCount": "+{count} í viðbót",
+                "plan": {
+                    "likelyFiles": "Líklegar skrár",
+                    "openQuestions": "Opnar spurningar",
+                    "reviewOnlyNote": "Aðeins til yfirferðar. Breytingar og breytandi verkfæri nota enn núverandi samþykkisham.",
+                    "riskHigh": "mikil áhætta",
+                    "riskLow": "lítil áhætta",
+                    "riskMedium": "miðlungs áhætta",
+                    "risks": "Áhættur",
+                    "title": "Forritunaráætlun"
+                },
+                "state": {
+                    "clean": "hreint",
+                    "failed": "mistókst",
+                    "passed": "stóðst",
+                    "timedOut": "tími rann út"
+                },
+                "timeoutChip": "tímamörk {seconds}s",
+                "truncated": "stytt",
+                "workspaceLabel": "Vinnusvæði:"
+            },
+            "attachedImageAlt": "Viðhengd mynd",
+            "stepNumber": "Skref {step}",
+            "transcribingLocally": "Umritar staðbundið...",
+            "transferPlan": {
+                "dependsOnMany": "Háð {count} undirbúningsskrefum",
+                "dependsOnOne": "Háð {count} undirbúningsskrefi",
+                "destination": "Áfangastaður: {destination}",
+                "title": "Yfirferð flutningsáætlunar",
+                "warnings": "Viðvaranir"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Haus eða skráarlisti hvelfingarinnar var endurbyggður úr jöfnun.",
             "repairMetadataSuccess": "Viðgerð lokið: haus eða skráarlisti hvelfingarinnar endurbyggður úr jöfnun",
             "errorCorrectionBadge": "Villuleiðrétting",
-            "itemsInFolder": "{count} hlutir í /{folder}"
+            "itemsInFolder": "{count} hlutir í /{folder}",
+            "compressionProfileArchive": "Safnvistun (zstd -15)",
+            "compressionProfileBalanced": "Jafnvægi (zstd -9)",
+            "compressionProfileFast": "Hratt (zstd -3)",
+            "damagedChunkLocation": "{id} - hliðrun {offset} (lengd {len})",
+            "fallbackName": "Hvelfing",
+            "folderScanSummary": "{files} skrár í {dirs} möppum ({size})",
+            "namePlaceholderVault": "Örugga hvelfingin mín",
+            "namePlaceholderZip": "Safnið mitt",
+            "recentDaysAgo": "fyrir {count} d.",
+            "recentFileCountMany": "{count} skrár",
+            "recentFileCountOne": "{count} skrá",
+            "recentMonthsAgo": "fyrir {count} mán."
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Dulkóða valin atriði...",
             "ingestSkipped": "Hvelfingin var búin til, en ekki var hægt að bæta við sumum atriðum:",
             "selectionInfo": "{count} atriði verða dulkóðuð í hvelfinguna",
-            "decrypting": "Afkóðun…"
+            "decrypting": "Afkóðun…",
+            "compatibleWithApp": "Samhæft við Cryptomator-forritið",
+            "createFormatBadge": "Cryptomator snið 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM efni",
+            "featureNameCipher": "AES-SIV nöfn",
+            "formatVersion": "Snið {version}"
         },
         "compress": {
             "title": "Þjappa Skrár",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Sumar skrár munu hafa sama nafn. Vinsamlegast lagaðu mynstrið.",
             "apply": "Nota",
             "existingCollision": "Sum ný heiti passa við skrár sem eru þegar í þessari möppu; þeim skrám verður ekki skrifað yfir og endurnefning þeirra er sleppt.",
-            "existingCollisionHint": "(er þegar til)"
+            "existingCollisionHint": "(er þegar til)",
+            "baseNamePlaceholder": "skrá",
+            "invalidName": "{name} (ógilt)"
         },
         "lockScreen": {
             "locked": "Forrit Læst",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Ekki fest af skjáborðinu. Taktu snúruna úr og settu hana aftur í, opnaðu síðan aftur.",
             "volumes_need_mount_observe": "Í snap birtast drif þegar mount-observe heimildin er tengd. Keyrðu þetta í skipanalínu og farðu svo aftur í AeroFTP:",
             "volumes_unavailable": "Ekki tókst að lesa tengd drif.",
-            "portable_device": "Færanlegt tæki"
+            "portable_device": "Færanlegt tæki",
+            "drivesLeftPanel": "Drif í vinstri glugga",
+            "drivesRightPanel": "Drif í hægri glugga",
+            "modeGroupLabel": "Hamur hliðarstiku",
+            "placesSidebarLabel": "Hliðarstika staða"
         },
         "viewMode": {
             "list": "Listi",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Skoða systkinamöppur",
             "loading": "Hleður...",
             "noSubdirectories": "Engar undirmöppur",
-            "browseChildren": "Skoða undirmöppur"
+            "browseChildren": "Skoða undirmöppur",
+            "ariaLabel": "Slóðaleiðsögn",
+            "syncBoundaryTitle": "{path} (samstillingarmörk)"
         },
         "bridge": {
             "checking": "Athuga {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Engin forskoðun tiltæk",
-            "title": "Flýtiskoðun"
+            "title": "Flýtiskoðun",
+            "closePreview": "Loka forskoðun",
+            "dialogLabel": "Flýtiskoðun: {name}",
+            "nextFile": "Næsta skrá",
+            "position": "{index} af {total}",
+            "previousFile": "Fyrri skrá"
         },
         "properties": {
             "general": "Almennt",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Tékksumma efnisins sem Immich skráir við upphleðslu.",
                 "crypt-overlay-ciphertext": "Tætigildið nær yfir dulkóðuðu bætin sem geymd eru á þjóninum."
             },
-            "readOnlyIsLinkTarget": "Þetta er tákntengill: heimildirnar tilheyra skránni sem hann vísar á. Opnaðu eiginleika þeirrar skráar til að breyta þeim."
+            "readOnlyIsLinkTarget": "Þetta er tákntengill: heimildirnar tilheyra skránni sem hann vísar á. Opnaðu eiginleika þeirrar skráar til að breyta þeim.",
+            "exactBytes": "({bytes} bæti)"
         },
         "duplicates": {
             "sortWasted": "Sóað pláss",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Eins bæti fyrir bæti",
             "modeNonIdenticalHint": "Skynjunar- eða textalíkindi, engin sjálfvirk eyðing",
             "potentialWasteSelected": "hugsanleg sóun (valið)",
-            "similarityDistance": "{similarity}, fjarl. {distance}"
+            "similarityDistance": "{similarity}, fjarl. {distance}",
+            "modeExact": "Nákvæmt",
+            "modeLabel": "Hamur:",
+            "modeNonIdentical": "Ekki eins"
         },
         "diskUsage": {
             "title": "Disknotkun",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Engin netvirkni ennþá. Flytja skrár til að sjá atburði.",
                 "time": "Tími",
                 "event": "Atburður",
-                "detail": "Smáatriði"
+                "detail": "Smáatriði",
+                "command": "Skipun",
+                "ipcTransfersCount": "IPC + Flutningar ({count})",
+                "status": "Staða",
+                "type": "Tegund"
             },
             "system": {
                 "appVersion": "AeroFTP Útgáfa",
@@ -3953,7 +4258,8 @@
                 "dark": "Dökkt",
                 "light": "Ljóst",
                 "userAgent": "Notandamiðill (User Agent)",
-                "localStorageKeysTitle": "LocalStorage Lyklar"
+                "localStorageKeysTitle": "LocalStorage Lyklar",
+                "localStorageEntrySummary": "{size} bæti · {preview}"
             },
             "copyFileListToClipboard": "Afrita skráalista á klippispjald",
             "filesCopied": "{count} skráarfærslur afritaðar á klippispjald",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Tvísmelltu á valið eða ýttu á Enter til að beita, Esc til að hætta við",
                     "cropRatio": "Hlutföll",
                     "cropRatioFree": "Frjálst",
-                    "cropRatioOriginal": "Upprunalegt"
+                    "cropRatioOriginal": "Upprunalegt",
+                    "rotateCcw90Short": "90° rangsælis",
+                    "rotateCw90Short": "90° réttsælis"
                 },
                 "toggleTransparencyBg": "Bakgrunnur gegnsæis (skipta)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "Hleð PDF...",
                 "open": "Opna PDF",
                 "page": "Síða",
-                "zoom": "Aðdráttur"
+                "zoom": "Aðdráttur",
+                "documentTitle": "PDF-skjal"
             },
             "text": {
                 "auto": "Sjálfvirkt",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Spjaldtölva (768px)",
                 "wordWrap": "Orðaumbrot",
                 "zoomIn": "Stækka",
-                "zoomOut": "Minnka"
+                "zoomOut": "Minnka",
+                "htmlPreviewFrameTitle": "HTML-forskoðun"
             },
             "video": {
                 "exitFullscreen": "Hætta í fullum skjá (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt yfirlag fundið",
             "aerocryptImportDesc": "Snið flutt inn úr rclone.conf fyrir {name}: opna yfirlagið núna?",
             "aerocryptImportOpen": "Opna yfirlag",
-            "aerovaultOverlayExpired": "AeroVault Overlay læst vegna aðgerðaleysis. Opnaðu hvelfinguna aftur til að halda áfram."
+            "aerovaultOverlayExpired": "AeroVault Overlay læst vegna aðgerðaleysis. Opnaðu hvelfinguna aftur til að halda áfram.",
+            "aerovaultOverlaySource": "AeroVault-yfirlag virkt ({source})",
+            "fileOperationsLabel": "Skráaaðgerðir",
+            "overlayBadge": "YFIRLAG"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Tvíþátta auðkenning",
                 "verify": "Staðfesta & Virkja",
                 "active": "2FA virkt",
-                "inactive": "2FA óvirkt"
+                "inactive": "2FA óvirkt",
+                "codeGroupLabel": "{count} stafa kóði",
+                "digitLabel": "Tölustafur {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Skoða",
                     "installed": "Uppsett"
-                }
+                },
+                "remoteInstallDisabled": "Fjaruppsetning viðbóta er óvirk eins og er þar til skráningarsafnið hefur verið auðkennt á biðlarahlið. Viðbætur sem settar eru upp staðbundið virka áfram eðlilega."
             }
         },
         "commandPalette.category.ai": {},
@@ -4616,7 +4932,9 @@
             "trashFooter": "Endurheimtar skrár munu birtast aftur í upprunalegu möppunni sinni",
             "connectionNamePlaceholder": "Heiti tengingar (t.d. FileLu skýið mitt)",
             "trashAutoExpiry": "FileLu eyðir skrám í ruslinu sjálfkrafa eftir 7 daga",
-            "rsyncTransferOnly": "Aðeins flutningsendapunktur: vafur er ekki tiltækt á Rsync. Notaðu Native API, WebDAV, S3 eða FTP til að fletta; skiptu yfir í Rsync fyrir delta-flutninga með háu bandvíddinni."
+            "rsyncTransferOnly": "Aðeins flutningsendapunktur: vafur er ekki tiltækt á Rsync. Notaðu Native API, WebDAV, S3 eða FTP til að fletta; skiptu yfir í Rsync fyrir delta-flutninga með háu bandvíddinni.",
+            "badgePasswordProtected": "Varið með lykilorði",
+            "badgeWatermarked": "Með vatnsmerki"
         },
         "box": {
             "addComment": "Bæta við athugasemd",
@@ -4698,7 +5016,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Ókeypis áskrift",
             "freeCardTier": "Frítt + kort",
-            "paidTier": "Gjaldskylt"
+            "paidTier": "Gjaldskylt",
+            "extraFeatures": "Auka",
+            "coreOpsList": "Hlaða upp, Sækja, Eyða, Endurnefna, Færa, Búa til möppu, Leita",
+            "coreOpsLegend": "Grunnur = Hlaða upp, Sækja, Eyða, Endurnefna, Færa, Búa til möppu, Leita"
         },
         "healthCheck": {
             "title": "Heilsufarsskoðun netþjóns",
@@ -4948,7 +5269,19 @@
             "releaseAssetOne": "{count} skrá",
             "releaseAssetMany": "{count} skrár",
             "repoPrivate": "Einka",
-            "repoPublic": "Opinber"
+            "repoPublic": "Opinber",
+            "actionsLiveBadge": "Í gangi",
+            "actionsRunningTitle": "GitHub Actions (í keyrslu)",
+            "coAuthors": "Meðhöfundar",
+            "pagesPathPlaceholder": "/ eða /docs",
+            "pagesStatusBuilding": "í smíðum",
+            "pagesStatusBuilt": "smíðað",
+            "pagesStatusErrored": "villa",
+            "refreshBranches": "Endurnýja greinar",
+            "repoPrivateTitle": "Einkageymsla",
+            "repoPublicTitle": "Opinber geymsla",
+            "unpushedCommitsOnBranchMany": "{count} commit ekki ýtt á {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit ekki ýtt á {branch}"
         },
         "filenNotes": {
             "title": "Dulkóðaðar minnispunktar",
@@ -4986,7 +5319,8 @@
             "tagName": "Heiti merkis",
             "removeTag": "Fjarlægja merki",
             "manageTags": "Sýsla með merki",
-            "deleteTagConfirm": "Eyða merkinu „{name}“? Minnismiðar halda textanum sínum."
+            "deleteTagConfirm": "Eyða merkinu „{name}“? Minnismiðar halda textanum sínum.",
+            "betaBadge": "PRÓFUN"
         },
         "shareLinkModal": {
             "title": "Deilitengill",
@@ -5026,7 +5360,7 @@
             "manageRevoked": "Tengill afturkalladur",
             "manageRevokeFailed": "Ekki tókst að afturkalla tengil",
             "manageRevokeConfirm": "Afturkalla þennan deilingartengil? Allir með tengilinn missa aðgang.",
-            "manageCreated": "Buinn til",
+            "manageCreated": "Búið til",
             "manageExpires": "Rennur út",
             "manageNeverExpires": "Aldrei",
             "managePasswordProtected": "Lykilordavarinn"
@@ -5096,7 +5430,8 @@
                 "down": "Næst ekki í",
                 "pending": "Athuga...",
                 "unknown": "Ekki athugað",
-                "clickToRetry": "smelltu til að athuga aftur"
+                "clickToRetry": "smelltu til að athuga aftur",
+                "withActiveSession": "{title} (virk lota)"
             },
             "densityCompact": "Þéttar línur",
             "densityComfortable": "Þægilegar línur",
@@ -5186,7 +5521,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt dulkóðað yfirlag (innbyggt): nöfn og innihald eru dulkóðuð á þessum þjóni.",
-                "rcloneTitle": "rclone crypt yfirlag (samvirkt): nöfn og innihald eru dulkóðuð á þessum þjóni."
+                "rcloneTitle": "rclone crypt yfirlag (samvirkt): nöfn og innihald eru dulkóðuð á þessum þjóni.",
+                "keyBits": "{bits} bita"
             },
             "sidebar": {
                 "filters": "Síur",
@@ -5206,7 +5542,19 @@
                 "unknownKeyTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því forritslykillinn hefur ekki heimildina readBucketEncryption. Gildi sem við megum ekki sjá þýðir ekki að dulkóðun sé slökkt.",
                 "unknownShapeTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því svarið hafði ekki skjalfest form. Lykillinn mátti lesa hana, svo þetta snýst um svarið en ekki um heimildir."
             },
-            "exportProfile": "Flytja út..."
+            "exportProfile": "Flytja út...",
+            "quotaLabel": "Kvóti",
+            "storageNoCapReported": "{used} (ekkert kvótaþak tilkynnt)",
+            "e2eBitsBadge": "E2E {bits} bita",
+            "filenAuthVersionTitle": "Greint úr Filen auth/info við vel heppnaða tengingu",
+            "demoBadge": "SÝNISHORN",
+            "timeAgo": {
+                "now": "núna",
+                "minutes": "{count} mín",
+                "hours": "{count} klst",
+                "days": "{count} d",
+                "months": "{count} mán"
+            }
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",
@@ -5240,7 +5588,8 @@
             "linkType": "Tegund",
             "createMergeRequest": "Búa til samrunabeðni",
             "mrTitle": "MR titill",
-            "mrBody": "Lýsing (valfrjálst)"
+            "mrBody": "Lýsing (valfrjálst)",
+            "sourceCode": "Frumkóði"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5822,7 +6171,34 @@
             "copy": "Afrita notanda (aðeins netþjónar, engin lykilorð)",
             "copyLockedHint": "Skiptu fyrst yfir á þennan reikning til að afrita netþjóna hans",
             "crossUserDedupTitle": "Þegar vistað af öðrum aðgangi",
-            "crossUserDedupMessage": "\"{name}\" notar þjónsaðgang sem er einnig vistaður í þessu tæki af: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" notar þjónsaðgang sem er einnig vistaður í þessu tæki af: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Loka glugga fyrir endurstillingu lykilorðs",
+                "confirmPassword": "Staðfestu nýtt lykilorð",
+                "errMismatch": "Nýju lykilorð aðgangsins passa ekki saman.",
+                "errNewRequired": "Sláðu inn nýtt lykilorð fyrir aðganginn.",
+                "errNotAuthorized": "Þú verður að vera stjórnandi til að endurstilla lykilorð annars aðgangs.",
+                "errNotForSelf": "Notaðu Breyta lykilorði á þínum eigin reikningi.",
+                "errStoreNotReady": "Opnaðu hvelfinguna fyrst og reyndu aftur.",
+                "errTypeReset": "Sláðu inn RESET til að staðfesta þessa eyðandi aðgerð.",
+                "errUserNotFound": "Þessi notandi er ekki lengur til.",
+                "newPassword": "Nýtt lykilorð reiknings",
+                "statEncryptedBytes": "dulkóðuð bæti",
+                "statProfiles": "snið",
+                "statSettings": "stillingar",
+                "title": "Endurstilla lykilorð = gögnum eytt",
+                "typeReset": "Sláðu inn RESET",
+                "wipeDetail": "Ekki er hægt að endurheimta núverandi lykilorð. AeroFTP eyðir vistuðum netþjónum, notandastillingum og læsingarstöðu markreikningsins og gefur síðan út nýjan dulkóðunarlykil sem varinn er með nýja lykilorðinu.",
+                "wipeWarning": "Þetta þurrkar varanlega út dulkóðaða skiptingu markreikningsins."
+            },
+            "dropdown": {
+                "accountPassword": "Lykilorð reiknings",
+                "lock": "Læsa",
+                "newUser": "Nýr notandi",
+                "noUsers": "Engir notendur enn. Notaðu „Nýr notandi“ hér fyrir neðan til að bæta þeim fyrsta við.",
+                "protectionNote": "Reikningurinn þinn er varinn með Argon2id + AES-KW + AES-256-GCM dulkóðun",
+                "users": "Notendur"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt-yfirlag",
@@ -6248,7 +6624,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Hamurinn er valinn þegar tengingin er stofnuð og helst óbreyttur meðan vistuðu sniði er breytt. Til að nota annan ham skaltu stofna nýja tengingu."
+                "lockedInEdit": "Hamurinn er valinn þegar tengingin er stofnuð og helst óbreyttur meðan vistuðu sniði er breytt. Til að nota annan ham skaltu stofna nýja tengingu.",
+                "notInBuild": "Ekki innifalið í þessari útgáfu af AeroFTP."
             }
         },
         "flatpak": {

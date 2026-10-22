@@ -203,10 +203,10 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                         : 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
                     }`}
                     title={blocked
-                        ? 'Command blocked: potentially destructive'
+                        ? t('ai.codeBlock.commandBlocked')
                         : confirmRun
-                            ? `Confirm run: ${code.length > 200 ? code.slice(0, 200) + '...' : code}`
-                            : (t('ai.codeBlock.run') || 'Run in terminal')
+                            ? t('ai.codeBlock.confirmRun', { command: code.length > 200 ? code.slice(0, 200) + '...' : code })
+                            : t('ai.codeBlock.run')
                     }
                 >
                     {blocked ? <ShieldAlert size={13} /> : confirmRun ? <AlertTriangle size={13} /> : <Terminal size={13} />}

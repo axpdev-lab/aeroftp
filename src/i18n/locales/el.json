@@ -337,7 +337,38 @@
             "protonSignOut": "Αποσύνδεση",
             "protonSignOutHelp": "Τερματίζει τη συνεδρία στο Proton και την αφαιρεί από αυτό το προφίλ.",
             "protonSignInExpired": "Η σελίδα σύνδεσης έληξε. Συνδεθείτε ξανά.",
-            "protonNativeUnavailable": "Αυτή η έκδοση δεν περιλαμβάνει το εγγενές πρόγραμμα-πελάτη Proton Drive."
+            "protonNativeUnavailable": "Αυτή η έκδοση δεν περιλαμβάνει το εγγενές πρόγραμμα-πελάτη Proton Drive.",
+            "forms": {
+                "publicApiKey": "Δημόσιο κλειδί API",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Δημόσιο κλειδί.",
+                "secretApiKey": "Μυστικό κλειδί API",
+                "uploadcareSecretHint": "Χρησιμοποιείται μόνο για διαχείριση αρχείων REST μέσω ταυτοποίησης {scheme}.",
+                "flatMediaLibrary": "Επίπεδη βιβλιοθήκη πολυμέσων",
+                "uploadcareNoFolders": "Το Uploadcare δεν διαθέτει εγγενείς φακέλους· τα αρχεία του έργου εμφανίζονται στη ρίζα ανά UUID.",
+                "urlEndpointId": "Αναγνωριστικό τελικού σημείου URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Τελικό σημείο URL.",
+                "privateApiKey": "Ιδιωτικό κλειδί API",
+                "storedVaultBasicAuth": "Αποθηκεύεται στο τοπικό θησαυροφυλάκιο και αποστέλλεται μόνο στο {provider} μέσω Basic Auth.",
+                "cloudName": "Όνομα νέφους",
+                "cloudinaryCloudNameHint": "Βρίσκεται στο Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Κλειδί API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Κλειδί API.",
+                "apiSecret": "Μυστικό API",
+                "apiSecretPlaceholder": "Μυστικό API",
+                "openProviderLink": "Άνοιγμα συνδέσμου {provider}",
+                "githubPatHint": "PAT λεπτομερών δικαιωμάτων με Contents (ανάγνωση και εγγραφή).",
+                "generateToken": "Δημιουργία διακριτικού",
+                "applicationKeyId": "Αναγνωριστικό κλειδιού εφαρμογής",
+                "backblazeKeyIdHint": "Αναγνωριστικό κλειδιού εφαρμογής B2, ξεκινά με 003. Δημιουργήστε ένα από τη σελίδα App Keys του Backblaze.",
+                "applicationKey": "Κλειδί εφαρμογής",
+                "backblazeKeyHint": "Εμφανίζεται μόνο μία φορά κατά τη δημιουργία. Χειριστείτε το σαν κωδικό πρόσβασης.",
+                "bucketNameExactHint": "Ακριβές όνομα bucket, με διάκριση πεζών-κεφαλαίων.",
+                "megacmdSetupFirst": "Ρυθμίστε πρώτα το MEGAcmd",
+                "megacmdFetchUrlTitle": "Εκτέλεση {cmd} και αυτόματη συμπλήρωση του URL",
+                "fetchUrl": "Λήψη URL",
+                "megacmdWebdavHint": "Το όνομα χρήστη και ο κωδικός πρόσβασης παραλείπονται σκόπιμα. Το AeroFTP εκτελεί το ίδιο το «{cmd}» κατά τη σύνδεση για να ξεκινήσει τη γέφυρα και να διαβάσει αυτή τη διεύθυνση: μπορείτε να το αφήσετε κενό. Η «Λήψη URL» είναι μια προαιρετική χειροκίνητη ανανέωση· αλλάξτε τη θύρα εδώ αν το MEGAcmd χρησιμοποιεί προσαρμοσμένη."
+            },
+            "manualStorageUnitLabel": "Μονάδα {label}"
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -390,7 +421,19 @@
             "listingPath": "Ανάγνωση του {path}...",
             "pleaseWait": "Παρακαλώ περιμένετε...",
             "sameNameLeakChip": "ίδιο όνομα",
-            "sameNameLeakTooltip": "Αυτό το όνομα εμφανίζεται επίσης σε άλλη διαδρομή σε αυτό το κρυπτογραφημένο θησαυροφυλάκιο. Επειδή τα ονόματα κρυπτογραφούνται ντετερμινιστικά, ένας παρατηρητής του κρυπτογραφημένου χώρου αποθήκευσης μπορεί να διαπιστώσει ότι τα δύο μοιράζονται ένα όνομα."
+            "sameNameLeakTooltip": "Αυτό το όνομα εμφανίζεται επίσης σε άλλη διαδρομή σε αυτό το κρυπτογραφημένο θησαυροφυλάκιο. Επειδή τα ονόματα κρυπτογραφούνται ντετερμινιστικά, ένας παρατηρητής του κρυπτογραφημένου χώρου αποθήκευσης μπορεί να διαπιστώσει ότι τα δύο μοιράζονται ένα όνομα.",
+            "endpointSelector": {
+                "localFolder": "Τοπικός φάκελος",
+                "localFolderHint": "Επιλέξτε μια τοπική διαδρομή για αυτό το πλαίσιο",
+                "noSavedProfiles": "Δεν υπάρχουν αποθηκευμένα προφίλ",
+                "savedProfiles": "Αποθηκευμένα απομακρυσμένα προφίλ",
+                "title": "Τελικό σημείο"
+            },
+            "leftPanelMarker": "Αριστερό πλαίσιο",
+            "localFilesLabel": "Τοπικά αρχεία",
+            "localFilesRightLabel": "Τοπικά αρχεία (δεξί πλαίσιο)",
+            "remoteFilesLabel": "Απομακρυσμένα αρχεία",
+            "rightPanelMarker": "Δεξί πλαίσιο"
         },
         "contextMenu": {
             "askAeroAgent": "Ρωτήστε το AeroAgent...",
@@ -650,7 +693,45 @@
             "speedGraph": "Γράφημα ταχύτητας",
             "hideSpeedGraph": "Απόκρυψη γραφήματος ταχύτητας",
             "speedAvg": "μέσ. {speed}",
-            "speedPeak": "μέγ. {speed}"
+            "speedPeak": "μέγ. {speed}",
+            "badgeBatch": "ΔΕΣΜΗ",
+            "badgeDownload": "ΛΗΨΗ",
+            "badgeLive": "ΖΩΝΤΑΝΑ",
+            "badgeStream": "ΡΟΗ",
+            "badgeUpload": "ΜΕΤΑΦΟΡΤΩΣΗ",
+            "earlierItemsHidden": "{count} παλαιότερα στοιχεία κρυμμένα",
+            "folderFilesProgress": "{done}/{total} αρχεία",
+            "laneDone": "ολοκληρώθηκε",
+            "laneError": "σφάλμα",
+            "unifiedPlan": {
+                "destination": "Προορισμός",
+                "dialogLabel": "Σχέδιο μεταφοράς",
+                "engineAerovaultOverlay": "Επικάλυψη AeroVault",
+                "engineCompareOnly": "Μόνο σύγκριση",
+                "engineCrossProfileSync": "Συγχρονισμός μεταξύ προφίλ",
+                "engineCrossProfileTransfer": "Μεταφορά μεταξύ προφίλ",
+                "engineLocalDelta": "Τοπική μεταφορά delta",
+                "engineLocalFs": "Τοπικό σύστημα αρχείων",
+                "engineProviderDownload": "Λήψη από πάροχο",
+                "engineProviderUpload": "Μεταφόρτωση σε πάροχο",
+                "engineUnsupported": "Δεν υποστηρίζεται",
+                "execute": "Εκτέλεση",
+                "items": "Στοιχεία",
+                "modeBackup": "Αντίγραφο ασφαλείας",
+                "modeBisync": "Αμφίδρομος συγχρονισμός",
+                "modeCompare": "Σύγκριση",
+                "modeCopy": "Αντιγραφή",
+                "modeMirror": "Κατοπτρισμός",
+                "modeMove": "Μετακίνηση",
+                "modeSync": "Συγχρονισμός",
+                "notExecutable": "Αυτό το ζεύγος τελικών σημείων δεν είναι ακόμη εκτελέσιμο.",
+                "parallel": "Παράλληλα",
+                "reviewBeforeExecution": "Έλεγχος πριν από την εκτέλεση",
+                "route": "{pair} μέσω {engine}",
+                "size": "Μέγεθος",
+                "source": "Προέλευση",
+                "title": "Σχέδιο: {mode}"
+            }
         },
         "settings": {
             "title": "Ρυθμίσεις",
@@ -1040,7 +1121,13 @@
                 "title": "Εγγενές rsync (βήτα)",
                 "description": "Επιλέξτε πώς το SFTP Delta Sync δρομολογεί τις μεταφορές rsync.",
                 "enableToggle": "Ενεργοποίηση εγγενούς rsync για συγχρονισμό δέλτα μέσω SFTP",
-                "experimental": "Auto προτιμά το AeroRsync με κλασική εφεδρική λύση· Classic χρησιμοποιεί το εκτελέσιμο rsync του συστήματος όπου είναι διαθέσιμο· Native παραλείπει την κλασική εφεδρική λύση εκτελέσιμου."
+                "experimental": "Auto προτιμά το AeroRsync με κλασική εφεδρική λύση· Classic χρησιμοποιεί το εκτελέσιμο rsync του συστήματος όπου είναι διαθέσιμο· Native παραλείπει την κλασική εφεδρική λύση εκτελέσιμου.",
+                "modeAuto": "Αυτόματο",
+                "modeClassic": "Κλασικό",
+                "modeNative": "Εγγενές",
+                "classicNotFoundTooltip": "Το κλασικό εκτελέσιμο rsync δεν βρέθηκε στο PATH. Εγκαταστήστε το rsync (πακέτο Linux/macOS, Windows μέσω WSL/cygwin/scoop) για να ενεργοποιήσετε αυτή τη λειτουργία.",
+                "classicAt": "Κλασικό rsync στο {path}",
+                "classicNotDetected": "Το κλασικό εκτελέσιμο rsync δεν εντοπίστηκε στο PATH. Το Εγγενές είναι η μόνη διαθέσιμη μηχανή σε αυτό το μηχάνημα."
             },
             "startMinimizedOnAutostart": "Εκκίνηση ελαχιστοποιημένο στην περιοχή ειδοποιήσεων",
             "startMinimizedOnAutostartDesc": "Απόκρυψη του κύριου παραθύρου κατά την αυτόματη εκκίνηση. Το AeroFTP συνεχίζει να εκτελείται στην περιοχή ειδοποιήσεων, ανοίξτε το από το εικονίδιο όταν το χρειάζεστε.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "Βρέθηκαν {count} διαπιστευτήρια OAuth σε μη κρυπτογραφημένο χώρο αποθήκευσης",
             "fontSystemInstall": "εγκατάσταση στο σύστημα",
             "fontSizeMin": "ελάχ",
-            "fontSizeMax": "μέγ"
+            "fontSizeMax": "μέγ",
+            "migrationCleanupHint": "Συνιστάται για μέγιστη ασφάλεια",
+            "fontCustomOption": "Προσαρμοσμένη...",
+            "fontSystemInstallHint": "Απαιτεί εγκατάσταση στο σύστημα. Το AeroFTP χρησιμοποιεί αυτόματα εναλλακτική αν δεν είναι διαθέσιμη.",
+            "fontSizeIndicatorLabel": "Γραμματοσειρά"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Διακοπή",
                 "stopShell": "Διακοπή κελύφους",
                 "closed": "Το τερματικό έκλεισε.",
-                "commandInsertedReview": "Η εντολή εισήχθη στο Terminal. Πατήστε Enter για εκτέλεση."
+                "commandInsertedReview": "Η εντολή εισήχθη στο Terminal. Πατήστε Enter για εκτέλεση.",
+                "decreaseFont": "Μείωση μεγέθους γραμματοσειράς (Ctrl+-)",
+                "emptyClickPlus": "Κάντε κλικ στο {plus} για να ανοίξετε τερματικό",
+                "emptySshHint": "ή {ssh} για απομακρυσμένο κέλυφος στο {host}",
+                "increaseFont": "Αύξηση μεγέθους γραμματοσειράς (Ctrl+=)",
+                "newTab": "Νέα καρτέλα τερματικού",
+                "sshShellTo": "Κέλυφος SSH στο {host}",
+                "theme": "Θέμα τερματικού"
             },
             "editorPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Προβολή πηγής\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Αποθήκευση...",
                 "noFileSelected": "Δεν έχει επιλεγεί αρχείο για προβολή",
                 "loading": "Φόρτωση επεξεργαστή...",
-                "dragToTerminalRun": "Σύρετε στο Terminal για να εισαγάγετε εντολή εκτέλεσης"
+                "dragToTerminalRun": "Σύρετε στο Terminal για να εισαγάγετε εντολή εκτέλεσης",
+                "closeEditor": "Κλείσιμο επεξεργαστή",
+                "resetChanges": "Επαναφορά αλλαγών"
             },
             "previewPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Προεπισκόπηση\""
             },
             "codeEditor": "Επεξεργαστής κώδικα",
-            "sshTerminal": "Τερματικό SSH"
+            "sshTerminal": "Τερματικό SSH",
+            "comingSoon": "Έρχεται σύντομα",
+            "soonBadge": "Σύντομα"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Εξουσιοδοτήστε ξανά χειροκίνητα αν το token ανακληθεί"
             },
             "profilesLoadFailed": "Δεν ήταν δυνατή η ανάγνωση των αποθηκευμένων διακομιστών σας: {error}",
-            "cleanupSummary": "{count} αρχεία, ελευθερώθηκαν {size}"
+            "cleanupSummary": "{count} αρχεία, ελευθερώθηκαν {size}",
+            "maturity": {
+                "alpha": "Άλφα"
+            },
+            "dialogDashboardLabel": "Πίνακας ελέγχου συγχρονισμού νέφους",
+            "dialogLoadingLabel": "Φόρτωση συγχρονισμού νέφους",
+            "dialogSettingsLabel": "Ρυθμίσεις συγχρονισμού νέφους",
+            "dialogSetupLabel": "Διαμόρφωση συγχρονισμού νέφους",
+            "onePerLineHint": "(ένα ανά γραμμή)",
+            "pairsEditorLabel": "Επεξεργαστής ζευγών AeroCloud",
+            "remoteSubfolderPlaceholder": "νέφος"
         },
         "statusBar": {
             "connected": "Συνδεδεμένο",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "μερικό, μη αναγνώσιμοι φάκελοι: {count}",
             "usedScanFailed": "Η σάρωση χρησιμοποιημένου χώρου απέτυχε",
             "usedScanEmpty": "Η σάρωση του {path} δεν βρήκε αρχεία· η αποθηκευμένη τιμή διατηρήθηκε. Ελέγξτε τη διαδρομή ή την υποστήριξη αναδρομικής παράθεσης του διακομιστή.",
-            "filenBridgeAccountTotal": "Το Filen Desktop δεν αναφέρει εδώ το συνολικό χώρο του λογαριασμού σας: η τιμή χρήσης είναι το άθροισμα των αρχείων κάτω από αυτή τη διαδρομή. Η εγγενής σύνδεση Filen εμφανίζει αμέσως το σύνολο του λογαριασμού."
+            "filenBridgeAccountTotal": "Το Filen Desktop δεν αναφέρει εδώ το συνολικό χώρο του λογαριασμού σας: η τιμή χρήσης είναι το άθροισμα των αρχείων κάτω από αυτή τη διαδρομή. Η εγγενής σύνδεση Filen εμφανίζει αμέσως το σύνολο του λογαριασμού.",
+            "ariaLabel": "Γραμμή κατάστασης",
+            "debugBadge": "ΑΠΟΣΦΑΛΜΑΤΩΣΗ",
+            "debugModeActive": "Η λειτουργία αποσφαλμάτωσης είναι ενεργή"
         },
         "dialogs": {
             "confirmTitle": "Επιβεβαίωση",
@@ -1620,7 +1735,8 @@
                 "apRole": "Ιδρυτής, προγραμματιστής, συντηρητής, συν-σχεδιαστής",
                 "ekRole": "Ερευνητής, μηχανικός διασφάλισης ποιότητας, συν-σχεδιαστής"
             },
-            "madeBy": "από την {author}"
+            "madeBy": "από την {author}",
+            "statsLine": "{protocols} πρωτόκολλα · {languages} γλώσσες · αρχεία AES-256"
         },
         "support": {
             "title": "Υποστηρίξτε το AeroFTP",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Έργο (Unixname)",
             "opendriveNotApiKey": "(δεν είναι το κλειδί API σας για το OpenDrive)",
             "endpoint": "Τελικό Σημείο",
-            "accountId": "ID λογαριασμού"
+            "accountId": "ID λογαριασμού",
+            "servicesHeading": "Υπηρεσίες",
+            "sourceforgeSshKeyHelp": "Το SourceForge απαιτεί έλεγχο ταυτότητας με κλειδί SSH. Δημιουργήστε ένα κλειδί με {cmd} και ανεβάστε το στο {link}.",
+            "sourceforgeSshSettings": "Ρυθμίσεις SSH",
+            "fullGuide": "Πλήρης οδηγός",
+            "endpointTemplateExample": "π.χ. {template}",
+            "jurisdiction": "Δικαιοδοσία",
+            "insecureCertDialogLabel": "Προειδοποίηση μη ασφαλούς πιστοποιητικού",
+            "betaBadge": "ΒΗΤΑ",
+            "hostKeyDialogLabel": "Επαλήθευση κλειδιού κεντρικού υπολογιστή"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -2111,7 +2236,10 @@
             "rename": "Μετονομασία",
             "resume": "Συνέχιση",
             "resumeHint": "Συνέχιση της διακοπείσας μεταφοράς αντί για επανεκκίνηση",
-            "cancel": "Ακύρωση"
+            "cancel": "Ακύρωση",
+            "dialogLabel": "Επιβεβαίωση αντικατάστασης",
+            "moreInQueue": "+{count} στην ουρά",
+            "unknownDate": "Άγνωστο"
         },
         "statusbar": {
             "queue": "Ουρά",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Χρησιμοποιήσιμα ζεύγη διαδρομών (τοπική/απομακρυσμένη) σε αυτό το πρότυπο: {count}. Ένα παράθυρο του AeroSync λειτουργεί με ακριβώς ένα ζεύγος, οπότε δεν εισήχθη τίποτα. Επεξεργαστείτε το πρότυπο ώστε να μείνει ένα μόνο ζεύγος και έπειτα εισαγάγετέ το ξανά.",
             "templateNamePlaceholder": "π.χ. Νυχτερινό αντίγραφο ασφαλείας στο S3",
             "templateDescPlaceholder": "Σε τι χρησιμεύει αυτό το πρότυπο (προαιρετικό)",
-            "templateExportCliDesc": "Σενάριο περιτύλιξης για το aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Σενάριο περιτύλιξης για το aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Απενεργοποίηση",
+            "multiPathEditorLabel": "Επεξεργαστής πολλαπλών διαδρομών",
+            "multiPathEnablePair": "Ενεργοποίηση",
+            "multiPathLocalPlaceholder": "Τοπική διαδρομή",
+            "multiPathRemotePlaceholder": "Απομακρυσμένη διαδρομή",
+            "rollbackDialogLabel": "Στιγμιότυπο επαναφοράς",
+            "rollbackMoreFiles": "+{count} ακόμη...",
+            "rollbackSnapshotSummaryMany": "{count} αρχεία, {size}",
+            "rollbackSnapshotSummaryOne": "{count} αρχείο, {size}",
+            "templateDialogLabel": "Πρότυπο συγχρονισμού",
+            "templateExcludes": "Εξαιρέσεις",
+            "templateLocal": "Τοπικό",
+            "templateRemote": "Απομακρυσμένο",
+            "templateRetries": "Επαναλήψεις"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Απόρριψη εκτέλεσης εργαλείου",
                 "toggleDetails": "Εναλλαγή λεπτομερειών",
                 "allowSession": "Να επιτραπεί για αυτή τη συνεδρία",
-                "nonAtomicReplace": "Μη ατομική αντικατάσταση: το αρχείο λείπει για λίγο"
+                "nonAtomicReplace": "Μη ατομική αντικατάσταση: το αρχείο λείπει για λίγο",
+                "moreOptions": "Περισσότερες επιλογές",
+                "panelAria": "Πίνακας έγκρισης εργαλείων"
             },
             "settings": {
                 "title": "Ρυθμίσεις AI",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Εφεδρικό",
                 "routingNoFallback": "Κανένα",
                 "bedrockNeedsModel": "Προσθέστε και ενεργοποιήστε ένα μοντέλο Bedrock στην καρτέλα Μοντέλα πριν από τη δοκιμή.",
-                "bedrockSetup": "Ορίστε το Runtime URL για την περιοχή AWS σας. Στην καρτέλα Μοντέλα, προσθέστε ένα ID που υποστηρίζει Chat Completions στο Bedrock Runtime. Το Runtime δεν παραθέτει μοντέλα. Η δοκιμή στέλνει ένα μικρό αίτημα συμπερασμού που ενδέχεται να επιφέρει χρεώσεις AWS."
+                "bedrockSetup": "Ορίστε το Runtime URL για την περιοχή AWS σας. Στην καρτέλα Μοντέλα, προσθέστε ένα ID που υποστηρίζει Chat Completions στο Bedrock Runtime. Το Runtime δεν παραθέτει μοντέλα. Η δοκιμή στέλνει ένα μικρό αίτημα συμπερασμού που ενδέχεται να επιφέρει χρεώσεις AWS.",
+                "detectOllamaModelsTooltip": "Αυτόματος εντοπισμός διαθέσιμων μοντέλων Ollama",
+                "kTokens": "{count}K tokens",
+                "modelEditorAria": "Επεξεργαστής μοντέλων ΤΝ",
+                "supportsTools": "Υποστηρίζει εργαλεία",
+                "supportsVision": "Υποστηρίζει όραση",
+                "thinkingReasoning": "Σκέψη/Συλλογισμός",
+                "toolQuality": "Ποιότητα εργαλείων: {quality}/5"
             },
             "copy": "Αντιγραφή",
             "attachImage": "Επισύναψη εικόνας",
@@ -2699,7 +2850,9 @@
                 "run": "Εκτέλεση στο Τερματικό",
                 "insert": "Εισαγωγή στον Επεξεργαστή",
                 "diff": "Σύγκριση με πρωτότυπο",
-                "diffNoFile": "Δεν υπάρχει ανοιχτό αρχείο για σύγκριση"
+                "diffNoFile": "Δεν υπάρχει ανοιχτό αρχείο για σύγκριση",
+                "commandBlocked": "Η εντολή αποκλείστηκε: πιθανώς καταστροφική",
+                "confirmRun": "Επιβεβαίωση εκτέλεσης: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Σκέψη...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Εναλλαγή κλάδου",
                 "delete": "Διαγραφή κλάδου",
                 "newBranch": "Νέος κλάδος",
-                "branchFrom": "Διακλάδωση από αυτό το σημείο"
+                "branchFrom": "Διακλάδωση από αυτό το σημείο",
+                "messageCountShort": "{count} μην.",
+                "unnamed": "Κλάδος"
             },
             "context": {
                 "projectDetected": "Ανιχνεύθηκε έργο",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "σε εκτέλεση",
                 "expired": "έληξε",
-                "refresh": "Ανανέωση"
+                "refresh": "Ανανέωση",
+                "modelsRunningMany": "{count} μοντέλα σε εκτέλεση",
+                "modelsRunningOne": "{count} μοντέλο σε εκτέλεση",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Αποθήκευση Πλαισίου",
@@ -2956,7 +3114,8 @@
                 "warning": "Όλες οι λειτουργίες αρχείων θα εκτελούνται αμέσως χωρίς έγκριση. Χρησιμοποιήστε με δική σας ευθύνη.",
                 "disable": "Απενεργοποίηση",
                 "securityWarning": "Προειδοποίηση ασφαλείας",
-                "understood": "Κατανοητό"
+                "understood": "Κατανοητό",
+                "warningAria": "Προειδοποίηση ακραίας λειτουργίας"
             },
             "errorServerError": "Ο διακομιστής του παρόχου AI αντιμετωπίζει προβλήματα. Δοκιμάστε ξανά σε λίγο.",
             "errorServiceUnavailable": "Ο πάροχος AI δεν είναι προσωρινά διαθέσιμος (υπερφορτωμένος). Οι δωρεάν υπηρεσίες μπορεί να έχουν περιορισμούς. Δοκιμάστε αργότερα.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Απεριόριστο",
                 "roleAI": "AI",
-                "roleUser": "Χρήστης"
+                "roleUser": "Χρήστης",
+                "noConversations": "Δεν υπάρχουν ακόμα συνομιλίες",
+                "titleCount": "Ιστορικό ({count})"
             },
             "dropFileToAnalyze": "Αφήστε αρχείο για ανάλυση με το AeroAgent",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} token εισόδου, {output} token εξόδου, όπως μετρήθηκαν από τον πάροχο",
-                "breakdownCache": "{input} token εισόδου, {output} token εξόδου, {cacheRead} που διαβάστηκαν από την προσωρινή μνήμη του prompt, {cacheWritten} που γράφτηκαν σε αυτήν, όπως μετρήθηκαν από τον πάροχο"
+                "breakdownCache": "{input} token εισόδου, {output} token εξόδου, {cacheRead} που διαβάστηκαν από την προσωρινή μνήμη του prompt, {cacheWritten} που γράφτηκαν σε αυτήν, όπως μετρήθηκαν από τον πάροχο",
+                "countShort": "{count} τόκ."
             },
             "executeOperations": "Εκτέλεση λειτουργιών: {count}",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Θα παραλειφθούν",
                     "skipped": "Παραλείφθηκαν",
                     "existedAtCheckpoint": "υπήρχε στο σημείο ελέγχου",
-                    "absentAtCheckpoint": "απουσίαζε στο σημείο ελέγχου"
+                    "absentAtCheckpoint": "απουσίαζε στο σημείο ελέγχου",
+                    "noFiles": "Δεν συμπεριλήφθηκαν αρχεία σε αυτό το αποτέλεσμα επαναφοράς.",
+                    "otherActions": "Άλλες ενέργειες",
+                    "requestedPaths": "Ζητούμενο υποσύνολο διαδρομών",
+                    "scopeAll": "Εύρος: όλα τα αρχεία που καταγράφηκαν στο σημείο ελέγχου.",
+                    "titleApplied": "Η επαναφορά σημείου ελέγχου εφαρμόστηκε",
+                    "titleApplyReview": "Έλεγχος εφαρμογής επαναφοράς σημείου ελέγχου",
+                    "titleDryRunComplete": "Η δοκιμαστική επαναφορά σημείου ελέγχου ολοκληρώθηκε",
+                    "titleDryRunReview": "Αναθεώρηση δοκιμαστικής επαναφοράς σημείου ελέγχου"
                 },
                 "checks": {
                     "exitSummary": "κωδικός εξόδου {code} · {seconds}s",
                     "continueOnFailure": "Εκτελεί όλους τους ελέγχους ακόμη κι αν κάποιος αποτύχει.",
-                    "stopOnFailure": "Σταματά στον πρώτο έλεγχο που αποτυγχάνει."
+                    "stopOnFailure": "Σταματά στον πρώτο έλεγχο που αποτυγχάνει.",
+                    "checkLabel": "Έλεγχος:",
+                    "checksLabel": "Έλεγχοι:",
+                    "exitChip": "κωδικός εξόδου {code}",
+                    "filterChip": "φίλτρο: {filter}",
+                    "filterLabel": "Φίλτρο:",
+                    "notAvailable": "μ/δ",
+                    "passedCount": "{passed}/{total} επιτυχείς",
+                    "runCheckNote": "Εκτελεί μια επιλεγμένη εντολή build/test/lint στον χώρο εργασίας. Τα σενάρια δόμησης και οι δοκιμές εκτελούν πραγματικό κώδικα.",
+                    "runProjectCheck": "Εκτέλεση ελέγχου έργου",
+                    "runVerification": "Εκτέλεση γύρου επαλήθευσης",
+                    "runVerificationNote": "Εκτελεί επιλεγμένες εντολές build/test/lint στον χώρο εργασίας. Τα σενάρια δόμησης και οι δοκιμές εκτελούν πραγματικό κώδικα.",
+                    "stoppedEarly": "Διακόπηκε στον πρώτο αποτυχημένο έλεγχο.",
+                    "timeoutLabel": "Χρονικό όριο: {seconds} δ",
+                    "verification": "Επαλήθευση"
                 },
                 "diagnostics": {
-                    "none": "Δεν αναφέρθηκαν διαγνωστικά."
+                    "none": "Δεν αναφέρθηκαν διαγνωστικά.",
+                    "errorCountMany": "{count} σφάλματα",
+                    "errorCountOne": "{count} σφάλμα",
+                    "title": "Διαγνωστικά",
+                    "truncated": "Η λίστα διαγνωστικών περικόπηκε.",
+                    "warningCountMany": "{count} προειδοποιήσεις",
+                    "warningCountOne": "{count} προειδοποίηση"
                 },
                 "search": {
-                    "none": "Δεν βρέθηκαν αντιστοιχίες."
+                    "none": "Δεν βρέθηκαν αντιστοιχίες.",
+                    "ignoreCase": "αγνόηση πεζών/κεφαλαίων",
+                    "inPath": "στο {path}",
+                    "literal": "κυριολεκτικά",
+                    "matchCountMany": "{count} αντιστοιχίες",
+                    "matchCountOne": "{count} αντιστοιχία",
+                    "title": "Αναζήτηση στον χώρο εργασίας",
+                    "truncated": "Τα αποτελέσματα περικόπηκαν."
                 },
                 "git": {
                     "noStagedDiff": "Δεν υπάρχει έξοδος diff για αλλαγές στο ευρετήριο.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Έγκριση προσθήκης στο ευρετήριο Git",
                     "commitNote": "Αυτό δημιουργεί ένα git commit από το τρέχον ευρετήριο. Ελέγξτε πρώτα τα coding_git_status και coding_git_diff με staged=true.",
                     "stagePreviewNote": "Αυτό δείχνει σε προεπισκόπηση ποιες από τις ζητούμενες διαδρομές θα προστίθεντο στο ευρετήριο. Το ευρετήριο δεν θα αλλάξει.",
-                    "stageNote": "Αυτό αλλάζει το ευρετήριο git για τις ζητούμενες διαδρομές."
+                    "stageNote": "Αυτό αλλάζει το ευρετήριο git για τις ζητούμενες διαδρομές.",
+                    "afterCounts": "Μετά: {counts}",
+                    "beforeCounts": "Πριν: {counts}",
+                    "clean": "Το δέντρο εργασίας είναι καθαρό.",
+                    "commitCountMany": "{count} υποβολές",
+                    "commitCountOne": "{count} υποβολή",
+                    "conflicted": "σε σύγκρουση",
+                    "diffTruncated": "Η έξοδος διαφορών περικόπηκε.",
+                    "logTitle": "Αρχείο καταγραφής Git",
+                    "pathsChip": "διαδρομές: {paths}",
+                    "showingNewest": "Εμφανίζονται οι {count} νεότερες· υπάρχουν κι άλλες.",
+                    "statusCounts": "{staged} προετοιμασμένα, {unstaged} μη προετοιμασμένα, {untracked} μη παρακολουθούμενα, {conflicted} σε σύγκρουση",
+                    "titleCommitCreated": "Η υποβολή Git δημιουργήθηκε",
+                    "titleCommitDryRun": "Δοκιμαστική υποβολή Git",
+                    "titleCommitReview": "Έλεγχος υποβολής Git",
+                    "titleReview": "Έλεγχος Git",
+                    "titleStageApplied": "Η προετοιμασία Git εφαρμόστηκε",
+                    "titleStagedDiff": "Προετοιμασμένες διαφορές Git",
+                    "titleStageDryRun": "Δοκιμαστική προετοιμασία Git",
+                    "titleStatus": "Κατάσταση Git",
+                    "titleUnstagedDiff": "Μη προετοιμασμένες διαφορές Git",
+                    "untracked": "μη παρακολουθούμενο"
                 },
                 "patch": {
                     "validateNote": "Αυτό επικυρώνει το patch χωρίς να αλλάξει αρχεία.",
                     "applyNote": "Αυτό το αίτημα εφαρμογής υψηλού κινδύνου γράφει αρχεία αφού το backend δημιουργήσει ένα σημείο ελέγχου πριν από την εφαρμογή.",
                     "hideDiff": "Απόκρυψη ενοποιημένου diff",
-                    "showDiff": "Εμφάνιση ενοποιημένου diff"
-                }
+                    "showDiff": "Εμφάνιση ενοποιημένου diff",
+                    "actualLabel": "πραγματικό:",
+                    "checkpointCreated": "Δημιουργήθηκε σημείο ελέγχου πριν από την εφαρμογή",
+                    "diffTruncated": "Η προεπισκόπηση διαφορών περικόπηκε για εμφάνιση.",
+                    "expectedLabel": "αναμενόμενο:",
+                    "firstLines": "πρώτες {shown} από {total} γραμμές",
+                    "hunkCountMany": "{count} τμήματα",
+                    "hunkCountOne": "{count} τμήμα",
+                    "hunkIndex": "τμήμα {index}",
+                    "restoreManual": "Η επαναφορά είναι χειροκίνητη: μετά τον έλεγχο, χρησιμοποιήστε το {tool} με αυτό το αναγνωριστικό σημείου ελέγχου.",
+                    "titleApplied": "Η διόρθωση εφαρμόστηκε",
+                    "titleApplyBlocked": "Η εφαρμογή της διόρθωσης αποκλείστηκε",
+                    "titleApplyReview": "Έλεγχος εφαρμογής διόρθωσης",
+                    "titleDryRunConflicts": "Η δοκιμαστική εκτέλεση της διόρθωσης βρήκε συγκρούσεις",
+                    "titleDryRunPassed": "Η δοκιμαστική εκτέλεση της διόρθωσης πέτυχε",
+                    "titleDryRunReview": "Έλεγχος δοκιμαστικής εκτέλεσης διόρθωσης",
+                    "warnings": "Προειδοποιήσεις"
+                },
+                "binary": "δυαδικό",
+                "fileCountMany": "{count} αρχεία",
+                "fileCountOne": "{count} αρχείο",
+                "moreCount": "+{count} ακόμη",
+                "plan": {
+                    "likelyFiles": "Πιθανά αρχεία",
+                    "openQuestions": "Ανοιχτά ερωτήματα",
+                    "reviewOnlyNote": "Τεχνούργημα μόνο για έλεγχο. Οι επεξεργασίες και τα εργαλεία τροποποίησης εξακολουθούν να χρησιμοποιούν την τρέχουσα λειτουργία έγκρισης.",
+                    "riskHigh": "υψηλός κίνδυνος",
+                    "riskLow": "χαμηλός κίνδυνος",
+                    "riskMedium": "μέτριος κίνδυνος",
+                    "risks": "Κίνδυνοι",
+                    "title": "Σχέδιο κώδικα"
+                },
+                "state": {
+                    "clean": "καθαρό",
+                    "failed": "απέτυχε",
+                    "passed": "επιτυχές",
+                    "timedOut": "έληξε ο χρόνος"
+                },
+                "timeoutChip": "χρονικό όριο {seconds}s",
+                "truncated": "περικομμένο",
+                "workspaceLabel": "Χώρος εργασίας:"
+            },
+            "attachedImageAlt": "Συνημμένη εικόνα",
+            "stepNumber": "Βήμα {step}",
+            "transcribingLocally": "Τοπική μεταγραφή...",
+            "transferPlan": {
+                "dependsOnMany": "Εξαρτάται από {count} προπαρασκευαστικά βήματα",
+                "dependsOnOne": "Εξαρτάται από {count} προπαρασκευαστικό βήμα",
+                "destination": "Προορισμός: {destination}",
+                "title": "Αναθεώρηση σχεδίου μεταφοράς",
+                "warnings": "Προειδοποιήσεις"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Η κεφαλίδα ή το manifest του vault ανακατασκευάστηκε από την ισοτιμία.",
             "repairMetadataSuccess": "Η επιδιόρθωση ολοκληρώθηκε: η κεφαλίδα ή το manifest του vault ανακατασκευάστηκε από την ισοτιμία",
             "errorCorrectionBadge": "Διόρθωση σφαλμάτων",
-            "itemsInFolder": "{count} στοιχεία στο /{folder}"
+            "itemsInFolder": "{count} στοιχεία στο /{folder}",
+            "compressionProfileArchive": "Αρχειοθέτηση (zstd -15)",
+            "compressionProfileBalanced": "Ισορροπημένο (zstd -9)",
+            "compressionProfileFast": "Γρήγορο (zstd -3)",
+            "damagedChunkLocation": "{id} - μετατόπιση {offset} (μήκος {len})",
+            "fallbackName": "Θησαυροφυλάκιο",
+            "folderScanSummary": "{files} αρχεία σε {dirs} καταλόγους ({size})",
+            "namePlaceholderVault": "Το ασφαλές θησαυροφυλάκιό μου",
+            "namePlaceholderZip": "Η αρχειοθήκη μου",
+            "recentDaysAgo": "πριν από {count} ημ.",
+            "recentFileCountMany": "{count} αρχεία",
+            "recentFileCountOne": "{count} αρχείο",
+            "recentMonthsAgo": "πριν από {count} μήν."
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Κρυπτογράφηση επιλεγμένων στοιχείων...",
             "ingestSkipped": "Η θυρίδα δημιουργήθηκε, αλλά ορισμένα στοιχεία δεν ήταν δυνατό να προστεθούν:",
             "selectionInfo": "{count} στοιχείο(α) θα κρυπτογραφηθούν στη θυρίδα",
-            "decrypting": "Αποκρυπτογράφηση…"
+            "decrypting": "Αποκρυπτογράφηση…",
+            "compatibleWithApp": "Συμβατό με την εφαρμογή Cryptomator",
+            "createFormatBadge": "Cryptomator μορφή 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Περιεχόμενο AES-GCM",
+            "featureNameCipher": "Ονόματα AES-SIV",
+            "formatVersion": "Μορφή {version}"
         },
         "compress": {
             "title": "Συμπίεση Αρχείων",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Ορισμένα αρχεία θα έχουν το ίδιο όνομα. Παρακαλώ προσαρμόστε το μοτίβο.",
             "apply": "Εφαρμογή",
             "existingCollision": "Ορισμένα νέα ονόματα ταιριάζουν με αρχεία που υπάρχουν ήδη σε αυτόν τον φάκελο· αυτά τα αρχεία δεν θα αντικατασταθούν και η μετονομασία τους παραλείπεται.",
-            "existingCollisionHint": "(υπάρχει ήδη)"
+            "existingCollisionHint": "(υπάρχει ήδη)",
+            "baseNamePlaceholder": "αρχείο",
+            "invalidName": "{name} (μη έγκυρο)"
         },
         "lockScreen": {
             "locked": "Η Εφαρμογή Κλειδώθηκε",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Δεν έχει προσαρτηθεί από την επιφάνεια εργασίας. Αποσυνδέστε και επανασυνδέστε το καλώδιο, μετά ανοίξτε το ξανά.",
             "volumes_need_mount_observe": "Στο snap, οι τόμοι εμφανίζονται μόλις συνδεθεί το δικαίωμα mount-observe. Εκτελέστε αυτό σε ένα τερματικό και μετά επιστρέψτε στο AeroFTP:",
             "volumes_unavailable": "Δεν ήταν δυνατή η ανάγνωση των προσαρτημένων τόμων.",
-            "portable_device": "Φορητή συσκευή"
+            "portable_device": "Φορητή συσκευή",
+            "drivesLeftPanel": "Μονάδες αριστερού πλαισίου",
+            "drivesRightPanel": "Μονάδες δεξιού πλαισίου",
+            "modeGroupLabel": "Λειτουργία πλευρικής στήλης",
+            "placesSidebarLabel": "Πλευρική στήλη τοποθεσιών"
         },
         "viewMode": {
             "list": "Λίστα",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Περιήγηση αδελφών καταλόγων",
             "loading": "Φόρτωση...",
             "noSubdirectories": "Δεν υπάρχουν υποκατάλογοι",
-            "browseChildren": "Περιήγηση σε υποφακέλους"
+            "browseChildren": "Περιήγηση σε υποφακέλους",
+            "ariaLabel": "Διαδρομή πλοήγησης",
+            "syncBoundaryTitle": "{path} (όριο συγχρονισμού)"
         },
         "bridge": {
             "checking": "Έλεγχος {app}…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Δεν υπάρχει διαθέσιμη προεπισκόπηση",
-            "title": "Γρήγορη Προβολή"
+            "title": "Γρήγορη Προβολή",
+            "closePreview": "Κλείσιμο προεπισκόπησης",
+            "dialogLabel": "Γρήγορη Προβολή: {name}",
+            "nextFile": "Επόμενο αρχείο",
+            "position": "{index} από {total}",
+            "previousFile": "Προηγούμενο αρχείο"
         },
         "properties": {
             "general": "Γενικά",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Το άθροισμα ελέγχου του στοιχείου που καταγράφει το Immich κατά τη μεταφόρτωση.",
                 "crypt-overlay-ciphertext": "Το hash καλύπτει τα κρυπτογραφημένα byte που είναι αποθηκευμένα στον διακομιστή."
             },
-            "readOnlyIsLinkTarget": "Αυτός είναι συμβολικός σύνδεσμος: τα δικαιώματα ανήκουν στο αρχείο στο οποίο δείχνει. Ανοίξτε τις ιδιότητες εκείνου του αρχείου για να τα αλλάξετε."
+            "readOnlyIsLinkTarget": "Αυτός είναι συμβολικός σύνδεσμος: τα δικαιώματα ανήκουν στο αρχείο στο οποίο δείχνει. Ανοίξτε τις ιδιότητες εκείνου του αρχείου για να τα αλλάξετε.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Χαμένος χώρος",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Πανομοιότυπα byte προς byte",
             "modeNonIdenticalHint": "Αντιληπτική ή κειμενική ομοιότητα, χωρίς αυτόματη διαγραφή",
             "potentialWasteSelected": "πιθανή σπατάλη (επιλεγμένα)",
-            "similarityDistance": "{similarity}, απόστ. {distance}"
+            "similarityDistance": "{similarity}, απόστ. {distance}",
+            "modeExact": "Ακριβής",
+            "modeLabel": "Λειτουργία:",
+            "modeNonIdentical": "Μη πανομοιότυπα"
         },
         "diskUsage": {
             "title": "Χρήση Δίσκου",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Δεν υπάρχει ακόμα δικτυακή δραστηριότητα. Μεταφέρετε αρχεία για να δείτε συμβάντα.",
                 "time": "Ώρα",
                 "event": "Συμβάν",
-                "detail": "Λεπτομέρεια"
+                "detail": "Λεπτομέρεια",
+                "command": "Εντολή",
+                "ipcTransfersCount": "IPC + Μεταφορές ({count})",
+                "status": "Κατάσταση",
+                "type": "Τύπος"
             },
             "system": {
                 "appVersion": "Έκδοση AeroFTP",
@@ -3953,7 +4258,8 @@
                 "dark": "Σκούρο",
                 "light": "Φωτεινό",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Κλειδιά LocalStorage"
+                "localStorageKeysTitle": "Κλειδιά LocalStorage",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Αντιγραφή λίστας αρχείων στο πρόχειρο",
             "filesCopied": "{count} εγγραφές αρχείων αντιγράφηκαν στο πρόχειρο",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Κάντε διπλό κλικ στην επιλογή ή πατήστε Enter για εφαρμογή, Esc για ακύρωση",
                     "cropRatio": "Αναλογίες",
                     "cropRatioFree": "Ελεύθερο",
-                    "cropRatioOriginal": "Αρχικό"
+                    "cropRatioOriginal": "Αρχικό",
+                    "rotateCcw90Short": "90° αριστερόστροφα",
+                    "rotateCw90Short": "90° δεξιόστροφα"
                 },
                 "toggleTransparencyBg": "Φόντο διαφάνειας (εναλλαγή)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "Φόρτωση PDF...",
                 "open": "Άνοιγμα PDF",
                 "page": "Σελίδα",
-                "zoom": "Ζουμ"
+                "zoom": "Ζουμ",
+                "documentTitle": "Έγγραφο PDF"
             },
             "text": {
                 "auto": "Αυτόματο",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Αναδίπλωση λέξεων",
                 "zoomIn": "Μεγέθυνση",
-                "zoomOut": "Σμίκρυνση"
+                "zoomOut": "Σμίκρυνση",
+                "htmlPreviewFrameTitle": "Προεπισκόπηση HTML"
             },
             "video": {
                 "exitFullscreen": "Έξοδος πλήρους οθόνης (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Εντοπίστηκε επικάλυψη Rclone Crypt",
             "aerocryptImportDesc": "Εισήχθη προφίλ από το rclone.conf για το {name}: άνοιγμα της επικάλυψης τώρα;",
             "aerocryptImportOpen": "Άνοιγμα επικάλυψης",
-            "aerovaultOverlayExpired": "Το AeroVault Overlay κλειδώθηκε λόγω αδράνειας. Ανοίξτε ξανά το θησαυροφυλάκιο για να συνεχίσετε."
+            "aerovaultOverlayExpired": "Το AeroVault Overlay κλειδώθηκε λόγω αδράνειας. Ανοίξτε ξανά το θησαυροφυλάκιο για να συνεχίσετε.",
+            "aerovaultOverlaySource": "Επικάλυψη AeroVault ενεργή ({source})",
+            "fileOperationsLabel": "Λειτουργίες αρχείων",
+            "overlayBadge": "ΕΠΙΚΑΛΥΨΗ"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Έλεγχος ταυτότητας δύο παραγόντων",
                 "verify": "Επαλήθευση & Ενεργοποίηση",
                 "active": "2FA ενεργό",
-                "inactive": "2FA ανενεργό"
+                "inactive": "2FA ανενεργό",
+                "codeGroupLabel": "Κωδικός {count} ψηφίων",
+                "digitLabel": "Ψηφίο {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Περιήγηση",
                     "installed": "Εγκατεστημένα"
-                }
+                },
+                "remoteInstallDisabled": "Η απομακρυσμένη εγκατάσταση προσθέτων είναι προς το παρόν απενεργοποιημένη έως ότου το μητρώο πιστοποιηθεί στην πλευρά του πελάτη. Τα τοπικά εγκατεστημένα πρόσθετα συνεχίζουν να λειτουργούν κανονικά."
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "Τα επαναφερθέντα αρχεία θα επανεμφανιστούν στον αρχικό τους φάκελο",
             "connectionNamePlaceholder": "Όνομα σύνδεσης (π.χ. Το FileLu Cloud μου)",
             "trashAutoExpiry": "Τα αρχεία στον κάδο διαγράφονται αυτόματα από το FileLu μετά από 7 ημέρες",
-            "rsyncTransferOnly": "Σημείο μόνο μεταφοράς: η περιήγηση δεν είναι διαθέσιμη στο Rsync. Χρησιμοποίησε Native API, WebDAV, S3 ή FTP για πλοήγηση και άλλαξε σε Rsync για delta μεταφορές υψηλού εύρους ζώνης."
+            "rsyncTransferOnly": "Σημείο μόνο μεταφοράς: η περιήγηση δεν είναι διαθέσιμη στο Rsync. Χρησιμοποίησε Native API, WebDAV, S3 ή FTP για πλοήγηση και άλλαξε σε Rsync για delta μεταφορές υψηλού εύρους ζώνης.",
+            "badgePasswordProtected": "Με κωδικό πρόσβασης",
+            "badgeWatermarked": "Με υδατογράφημα"
         },
         "box": {
             "addComment": "Προσθήκη σχολίου",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Δωρεάν πλάνο",
             "freeCardTier": "Δωρεάν + κάρτα",
-            "paidTier": "Επί πληρωμή"
+            "paidTier": "Επί πληρωμή",
+            "extraFeatures": "Επιπλέον",
+            "coreOpsList": "Μεταφόρτωση, Λήψη, Διαγραφή, Μετονομασία, Μετακίνηση, Δημιουργία φακέλου, Αναζήτηση",
+            "coreOpsLegend": "Βασικά = Μεταφόρτωση, Λήψη, Διαγραφή, Μετονομασία, Μετακίνηση, Δημιουργία φακέλου, Αναζήτηση"
         },
         "healthCheck": {
             "title": "Έλεγχος υγείας διακομιστή",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} αρχείο",
             "releaseAssetMany": "{count} αρχεία",
             "repoPrivate": "Ιδιωτικό",
-            "repoPublic": "Δημόσιο"
+            "repoPublic": "Δημόσιο",
+            "actionsLiveBadge": "Ζωντανά",
+            "actionsRunningTitle": "GitHub Actions (σε εκτέλεση)",
+            "coAuthors": "Συν-συγγραφείς",
+            "pagesPathPlaceholder": "/ ή /docs",
+            "pagesStatusBuilding": "δημιουργείται",
+            "pagesStatusBuilt": "δημιουργήθηκε",
+            "pagesStatusErrored": "σφάλμα",
+            "refreshBranches": "Ανανέωση κλάδων",
+            "repoPrivateTitle": "Ιδιωτικό αποθετήριο",
+            "repoPublicTitle": "Δημόσιο αποθετήριο",
+            "unpushedCommitsOnBranchMany": "{count} μη απεσταλμένα commit στο {branch}",
+            "unpushedCommitsOnBranchOne": "{count} μη απεσταλμένο commit στο {branch}"
         },
         "filenNotes": {
             "title": "Κρυπτογραφημένες σημειώσεις",
@@ -4967,7 +5300,8 @@
             "tagName": "Όνομα ετικέτας",
             "removeTag": "Κατάργηση ετικέτας",
             "manageTags": "Διαχείριση ετικετών",
-            "deleteTagConfirm": "Διαγραφή της ετικέτας «{name}»; Οι σημειώσεις διατηρούν το κείμενό τους."
+            "deleteTagConfirm": "Διαγραφή της ετικέτας «{name}»; Οι σημειώσεις διατηρούν το κείμενό τους.",
+            "betaBadge": "ΔΟΚΙΜΑΣΤΙΚΟ"
         },
         "shareLinkModal": {
             "title": "Σύνδεσμος Κοινοποίησης",
@@ -5077,7 +5411,8 @@
                 "down": "Μη προσβάσιμος",
                 "pending": "Έλεγχος...",
                 "unknown": "Δεν ελέγχθηκε",
-                "clickToRetry": "κάντε κλικ για επανέλεγχο"
+                "clickToRetry": "κάντε κλικ για επανέλεγχο",
+                "withActiveSession": "{title} (ενεργή συνεδρία)"
             },
             "densityCompact": "Συμπαγείς γραμμές",
             "densityComfortable": "Άνετες γραμμές",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Κρυπτογραφημένη επικάλυψη AeroCrypt (εγγενής): τα ονόματα και τα περιεχόμενα είναι κρυπτογραφημένα σε αυτόν τον διακομιστή.",
-                "rcloneTitle": "Επικάλυψη rclone crypt (διαλειτουργική): τα ονόματα και τα περιεχόμενα είναι κρυπτογραφημένα σε αυτόν τον διακομιστή."
+                "rcloneTitle": "Επικάλυψη rclone crypt (διαλειτουργική): τα ονόματα και τα περιεχόμενα είναι κρυπτογραφημένα σε αυτόν τον διακομιστή.",
+                "keyBits": "{bits}-bit"
             },
             "sidebar": {
                 "filters": "Φίλτρα",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "Δεν μπορέσαμε να διαβάσουμε τη ρύθμιση κρυπτογράφησης αυτού του bucket, επειδή το κλειδί εφαρμογής δεν διαθέτει τη δυνατότητα readBucketEncryption. Μια τιμή που δεν μας επιτρέπεται να δούμε δεν σημαίνει ότι η κρυπτογράφηση είναι απενεργοποιημένη.",
                 "unknownShapeTitle": "Δεν μπορέσαμε να διαβάσουμε τη ρύθμιση κρυπτογράφησης αυτού του bucket, επειδή η απάντηση δεν είχε τεκμηριωμένη μορφή. Το κλειδί είχε δικαίωμα να τη διαβάσει, οπότε το ζήτημα αφορά την απάντηση και όχι τα δικαιώματα."
             },
-            "exportProfile": "Εξαγωγή..."
+            "exportProfile": "Εξαγωγή...",
+            "quotaLabel": "Όριο χώρου",
+            "storageNoCapReported": "{used} (δεν αναφέρθηκε όριο χώρου)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Εντοπίστηκε από το Filen auth/info κατά την επιτυχή σύνδεση",
+            "demoBadge": "ΕΠΙΔΕΙΞΗ",
+            "timeAgo": {
+                "now": "τώρα",
+                "minutes": "{count} λ",
+                "hours": "{count} ώ",
+                "days": "{count} ημ",
+                "months": "{count} μήν"
+            }
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",
@@ -5221,7 +5569,8 @@
             "linkType": "Τύπος",
             "createMergeRequest": "Δημιουργία Merge Request",
             "mrTitle": "Τίτλος MR",
-            "mrBody": "Περιγραφή (προαιρετική)"
+            "mrBody": "Περιγραφή (προαιρετική)",
+            "sourceCode": "Πηγαίος κώδικας"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "Αντιγραφή χρήστη (μόνο διακομιστές, χωρίς κωδικούς)",
             "copyLockedHint": "Μεταβείτε πρώτα σε αυτόν τον λογαριασμό για να αντιγράψετε τους διακομιστές του",
             "crossUserDedupTitle": "Ήδη αποθηκευμένο από άλλο λογαριασμό",
-            "crossUserDedupMessage": "Το \"{name}\" χρησιμοποιεί λογαριασμό διακομιστή που είναι επίσης αποθηκευμένος σε αυτή τη συσκευή από: {accounts}"
+            "crossUserDedupMessage": "Το \"{name}\" χρησιμοποιεί λογαριασμό διακομιστή που είναι επίσης αποθηκευμένος σε αυτή τη συσκευή από: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Κλείσιμο διαλόγου επαναφοράς κωδικού πρόσβασης",
+                "confirmPassword": "Επιβεβαίωση νέου κωδικού πρόσβασης",
+                "errMismatch": "Οι νέοι κωδικοί πρόσβασης του λογαριασμού δεν ταιριάζουν.",
+                "errNewRequired": "Εισαγάγετε νέο κωδικό πρόσβασης λογαριασμού.",
+                "errNotAuthorized": "Πρέπει να είστε διαχειριστής για να επαναφέρετε τον κωδικό πρόσβασης άλλου λογαριασμού.",
+                "errNotForSelf": "Χρησιμοποιήστε την Αλλαγή κωδικού στον δικό σας λογαριασμό.",
+                "errStoreNotReady": "Ξεκλειδώστε πρώτα το θησαυροφυλάκιο και δοκιμάστε ξανά.",
+                "errTypeReset": "Πληκτρολογήστε RESET για να επιβεβαιώσετε αυτήν την καταστροφική ενέργεια.",
+                "errUserNotFound": "Αυτός ο χρήστης δεν υπάρχει πλέον.",
+                "newPassword": "Νέος κωδικός λογαριασμού",
+                "statEncryptedBytes": "κρυπτογραφημένα byte",
+                "statProfiles": "προφίλ",
+                "statSettings": "ρυθμίσεις",
+                "title": "Επαναφορά κωδικού = καταστροφή δεδομένων",
+                "typeReset": "Πληκτρολογήστε RESET",
+                "wipeDetail": "Ο τρέχων κωδικός δεν μπορεί να ανακτηθεί. Το AeroFTP θα διαγράψει τους αποθηκευμένους διακομιστές, τις ρυθμίσεις χρήστη και την κατάσταση κλειδώματος του λογαριασμού-στόχου και στη συνέχεια θα εκδώσει ένα νέο κλειδί κρυπτογράφησης που προστατεύεται από τον νέο κωδικό.",
+                "wipeWarning": "Αυτό θα διαγράψει οριστικά το κρυπτογραφημένο διαμέρισμα του λογαριασμού-στόχου."
+            },
+            "dropdown": {
+                "accountPassword": "Κωδικός λογαριασμού",
+                "lock": "Κλείδωμα",
+                "newUser": "Νέος χρήστης",
+                "noUsers": "Δεν υπάρχουν ακόμη χρήστες. Χρησιμοποιήστε το «Νέος χρήστης» παρακάτω για να προσθέσετε τον πρώτο.",
+                "protectionNote": "Ο λογαριασμός σας προστατεύεται με κρυπτογράφηση Argon2id + AES-KW + AES-256-GCM",
+                "users": "Χρήστες"
+            }
         },
         "aerocryptNative": {
             "title": "Επικάλυψη AeroCrypt",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Η λειτουργία επιλέγεται κατά τη δημιουργία της σύνδεσης και παραμένει σταθερή κατά την επεξεργασία ενός αποθηκευμένου προφίλ. Για να χρησιμοποιήσετε διαφορετική λειτουργία, δημιουργήστε νέα σύνδεση."
+                "lockedInEdit": "Η λειτουργία επιλέγεται κατά τη δημιουργία της σύνδεσης και παραμένει σταθερή κατά την επεξεργασία ενός αποθηκευμένου προφίλ. Για να χρησιμοποιήσετε διαφορετική λειτουργία, δημιουργήστε νέα σύνδεση.",
+                "notInBuild": "Δεν περιλαμβάνεται σε αυτή την έκδοση του AeroFTP."
             }
         },
         "flatpak": {

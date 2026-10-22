@@ -113,7 +113,7 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                 {message.images && message.images.length > 0 && (
                     <div className="flex gap-1.5 mb-2 flex-wrap">
                         {message.images.map((img, i) => (
-                            <img key={i} src={img.preview} alt="Attached image" className="h-16 w-16 object-cover rounded border border-white/20" />
+                            <img key={i} src={img.preview} alt={t('ai.attachedImageAlt')} className="h-16 w-16 object-cover rounded border border-white/20" />
                         ))}
                     </div>
                 )}
@@ -250,7 +250,7 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                     )}
                     {message.tokenInfo && (
                         <span className="flex items-center gap-1 text-gray-500 cursor-help" title={tokenBreakdown(message.tokenInfo, t)}>
-                            • {message.tokenInfo.totalTokens ?? ((message.tokenInfo.inputTokens || 0) + (message.tokenInfo.outputTokens || 0))} tok
+                            • {t('ai.tokens.countShort', { count: message.tokenInfo.totalTokens ?? ((message.tokenInfo.inputTokens || 0) + (message.tokenInfo.outputTokens || 0)) })}
                         </span>
                     )}
                 </div>

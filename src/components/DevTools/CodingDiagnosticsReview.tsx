@@ -53,10 +53,10 @@ export const CodingDiagnosticsReview: React.FC<CodingDiagnosticsReviewProps> = (
             : 'text-red-200';
     const StateIcon = result.timed_out ? TimerReset : result.success ? CheckCircle2 : XCircle;
     const stateLabel = result.timed_out
-        ? 'timed-out'
+        ? t('ai.coding.state.timedOut')
         : result.success
-            ? 'clean'
-            : `${result.error_count} error(s)`;
+            ? t('ai.coding.state.clean')
+            : t(result.error_count === 1 ? 'ai.coding.diagnostics.errorCountOne' : 'ai.coding.diagnostics.errorCountMany', { count: result.error_count });
     const visible = result.diagnostics.slice(0, MAX_VISIBLE);
     const hidden = result.diagnostics.length - visible.length;
 
@@ -64,7 +64,7 @@ export const CodingDiagnosticsReview: React.FC<CodingDiagnosticsReviewProps> = (
         <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
             <div className="flex items-center gap-2">
                 <Stethoscope className="h-4 w-4 text-white/55" />
-                <span className="text-xs font-semibold text-white/85">Diagnostics</span>
+                <span className="text-xs font-semibold text-white/85">{t('ai.coding.diagnostics.title')}</span>
                 <span className={`ml-auto flex items-center gap-1 text-[11px] font-semibold ${tone}`}>
                     <StateIcon className="h-3.5 w-3.5" />
                     {stateLabel}
@@ -73,10 +73,10 @@ export const CodingDiagnosticsReview: React.FC<CodingDiagnosticsReviewProps> = (
 
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className={chipClass}>{result.source}</span>
-                <span className={chipClass}>{result.error_count} error(s)</span>
-                <span className={chipClass}>{result.warning_count} warning(s)</span>
+                <span className={chipClass}>{t(result.error_count === 1 ? 'ai.coding.diagnostics.errorCountOne' : 'ai.coding.diagnostics.errorCountMany', { count: result.error_count })}</span>
+                <span className={chipClass}>{t(result.warning_count === 1 ? 'ai.coding.diagnostics.warningCountOne' : 'ai.coding.diagnostics.warningCountMany', { count: result.warning_count })}</span>
                 {result.timed_out ? (
-                    <span className={chipClass}>timeout {result.timeout_secs}s</span>
+                    <span className={chipClass}>{t('ai.coding.timeoutChip', { seconds: result.timeout_secs })}</span>
                 ) : (
                     <span className={chipClass}>{(result.duration_ms / 1000).toFixed(1)}s</span>
                 )}
@@ -88,10 +88,10 @@ export const CodingDiagnosticsReview: React.FC<CodingDiagnosticsReviewProps> = (
                         <DiagnosticRow key={`${diagnostic.file ?? 'none'}-${idx}`} diagnostic={diagnostic} />
                     ))}
                     {hidden > 0 && (
-                        <div className="text-[10px] text-white/40">+{hidden} more</div>
+                        <div className="text-[10px] text-white/40">{t('ai.coding.moreCount', { count: hidden })}</div>
                     )}
                     {result.truncated && (
-                        <div className="text-[10px] text-amber-300/70">Diagnostics list was truncated.</div>
+                        <div className="text-[10px] text-amber-300/70">{t('ai.coding.diagnostics.truncated')}</div>
                     )}
                 </div>
             ) : (

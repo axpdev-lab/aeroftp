@@ -337,7 +337,38 @@
             "protonSignOut": "Logi välja",
             "protonSignOutHelp": "Lõpetab seansi Protonis ja eemaldab selle sellest profiilist.",
             "protonSignInExpired": "Sisselogimisleht aegus. Logi uuesti sisse.",
-            "protonNativeUnavailable": "See versioon ei sisalda natiivset Proton Drive'i klienti."
+            "protonNativeUnavailable": "See versioon ei sisalda natiivset Proton Drive'i klienti.",
+            "forms": {
+                "publicApiKey": "Avalik API-võti",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Avalik võti.",
+                "secretApiKey": "Salajane API-võti",
+                "uploadcareSecretHint": "Kasutatakse ainult REST-failihalduseks {scheme} autentimisega.",
+                "flatMediaLibrary": "Lame meediateek",
+                "uploadcareNoFolders": "Uploadcare ei paku omaseid kaustu; projekti failid on loetletud juurkaustas UUID järgi.",
+                "urlEndpointId": "URL-i lõpp-punkti ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-i lõpp-punkt.",
+                "privateApiKey": "Privaatne API-võti",
+                "storedVaultBasicAuth": "Salvestatud kohalikku seifi ja saadetakse ainult teenusele {provider} Basic Auth kaudu.",
+                "cloudName": "Pilve nimi",
+                "cloudinaryCloudNameHint": "Leiad oma Cloudinary Dashboard - Account Details alt.",
+                "apiKeyPlaceholder": "API-võti",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-võti.",
+                "apiSecret": "API saladus",
+                "apiSecretPlaceholder": "API saladus",
+                "openProviderLink": "Ava {provider} link",
+                "githubPatHint": "Peeneteraline PAT õigusega Contents (lugemine ja kirjutamine).",
+                "generateToken": "Loo tõend",
+                "applicationKeyId": "Rakenduse võtme ID",
+                "backblazeKeyIdHint": "B2 rakendusvõtme ID, algab numbritega 003. Looge see Backblaze'i lehel App Keys.",
+                "applicationKey": "Rakendusvõti",
+                "backblazeKeyHint": "Kuvatakse ainult üks kord loomisel. Käsitlege seda nagu parooli.",
+                "bucketNameExactHint": "Bucketi täpne nimi, tõstutundlik.",
+                "megacmdSetupFirst": "Seadistage esmalt MEGAcmd",
+                "megacmdFetchUrlTitle": "Käivita {cmd} ja täida URL automaatselt",
+                "fetchUrl": "Too URL",
+                "megacmdWebdavHint": "Kasutajanimi ja parool on meelega välja jäetud. AeroFTP käivitab ühendamisel ise käsu \"{cmd}\", et silla käivitada ja see aadress lugeda: välja võib tühjaks jätta. \"Too URL\" on valikuline käsitsi värskendus; muutke porti siin, kui MEGAcmd kasutab kohandatud porti."
+            },
+            "manualStorageUnitLabel": "{label} ühik"
         },
         "browser": {
             "remote": "Kaugserver",
@@ -390,7 +421,19 @@
             "listingPath": "{path} loendamine...",
             "pleaseWait": "Palun oodake...",
             "sameNameLeakChip": "sama nimi",
-            "sameNameLeakTooltip": "See nimi esineb ka teisel teel selles krüpteeritud hoidlas. Kuna nimed krüpteeritakse deterministlikult, saab krüpteeritud salvestusruumi vaatleja aru, et kaks jagavad sama nime."
+            "sameNameLeakTooltip": "See nimi esineb ka teisel teel selles krüpteeritud hoidlas. Kuna nimed krüpteeritakse deterministlikult, saab krüpteeritud salvestusruumi vaatleja aru, et kaks jagavad sama nime.",
+            "endpointSelector": {
+                "localFolder": "Kohalik kaust",
+                "localFolderHint": "Vali sellele paneelile kohalik tee",
+                "noSavedProfiles": "Salvestatud profiile pole",
+                "savedProfiles": "Salvestatud kaugprofiilid",
+                "title": "Lõpp-punkt"
+            },
+            "leftPanelMarker": "Vasak paneel",
+            "localFilesLabel": "Kohalikud failid",
+            "localFilesRightLabel": "Kohalikud failid (parem paneel)",
+            "remoteFilesLabel": "Kaugfailid",
+            "rightPanelMarker": "Parem paneel"
         },
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",
@@ -650,7 +693,45 @@
             "speedGraph": "Kiirusegraafik",
             "hideSpeedGraph": "Peida kiirusegraafik",
             "speedAvg": "keskm {speed}",
-            "speedPeak": "tipp {speed}"
+            "speedPeak": "tipp {speed}",
+            "badgeBatch": "PAKK",
+            "badgeDownload": "ALLALAADIMINE",
+            "badgeLive": "OTSE",
+            "badgeStream": "VOOG",
+            "badgeUpload": "ÜLESLAADIMINE",
+            "earlierItemsHidden": "{count} varasemat üksust peidetud",
+            "folderFilesProgress": "{done}/{total} faili",
+            "laneDone": "valmis",
+            "laneError": "viga",
+            "unifiedPlan": {
+                "destination": "Sihtkoht",
+                "dialogLabel": "Edastusplaan",
+                "engineAerovaultOverlay": "AeroVaulti ülekate",
+                "engineCompareOnly": "Ainult võrdlus",
+                "engineCrossProfileSync": "Profiilidevaheline sünkroonimine",
+                "engineCrossProfileTransfer": "Profiilidevaheline edastus",
+                "engineLocalDelta": "Kohalik deltaedastus",
+                "engineLocalFs": "Kohalik failisüsteem",
+                "engineProviderDownload": "Teenusepakkuja allalaadimine",
+                "engineProviderUpload": "Teenusepakkuja üleslaadimine",
+                "engineUnsupported": "Ei toetata",
+                "execute": "Käivita",
+                "items": "Üksused",
+                "modeBackup": "Varukoopia",
+                "modeBisync": "Kahesuunaline sünkroonimine",
+                "modeCompare": "Võrdle",
+                "modeCopy": "Kopeeri",
+                "modeMirror": "Peegelda",
+                "modeMove": "Teisalda",
+                "modeSync": "Sünkrooni",
+                "notExecutable": "Seda lõpp-punktide paari ei saa veel käivitada.",
+                "parallel": "Paralleelne",
+                "reviewBeforeExecution": "Vaata enne käivitamist üle",
+                "route": "{pair} (mootor {engine})",
+                "size": "Suurus",
+                "source": "Allikas",
+                "title": "Plaan: {mode}"
+            }
         },
         "settings": {
             "title": "Seaded",
@@ -1040,7 +1121,13 @@
                 "title": "Natiivne rsync (beta)",
                 "description": "Valige, kuidas SFTP Delta Sync saadab rsync-edastused.",
                 "enableToggle": "Luba natiivne rsync SFTP delta-sünkroonimiseks",
-                "experimental": "Auto eelistab AeroRsync-i klassikalise varuvariandiga; Classic kasutab süsteemi rsync-binaari, kus see on saadaval; Native jätab klassikalise binaari varuvariandi vahele."
+                "experimental": "Auto eelistab AeroRsync-i klassikalise varuvariandiga; Classic kasutab süsteemi rsync-binaari, kus see on saadaval; Native jätab klassikalise binaari varuvariandi vahele.",
+                "modeAuto": "Automaatne",
+                "modeClassic": "Klassikaline",
+                "modeNative": "Omane",
+                "classicNotFoundTooltip": "Klassikalist rsync-binaari ei leitud PATH-ist. Selle režiimi lubamiseks paigalda rsync (Linux/macOS pakett, Windowsis WSL/cygwin/scoop kaudu).",
+                "classicAt": "Klassikaline rsync asukohas {path}",
+                "classicNotDetected": "Klassikalist rsync-binaari ei tuvastatud PATH-is. Omane on selles masinas ainus saadaolev mootor."
             },
             "startMinimizedOnAutostart": "Käivita minimeerituna salve",
             "startMinimizedOnAutostartDesc": "Peida peaaken automaatsel käivitamisel. AeroFTP jätkab töötamist süsteemisalves, ava see salveikoonilt, kui seda vajad.",
@@ -1231,7 +1318,11 @@
             "migrationOauthFound": "Krüptimata salvestusruumist leiti {count} OAuth mandaati",
             "fontSystemInstall": "süsteemi paigaldus",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Soovitatav maksimaalse turvalisuse jaoks",
+            "fontCustomOption": "Kohandatud...",
+            "fontSystemInstallHint": "Nõuab süsteemi paigaldust. AeroFTP kasutab puudumisel automaatselt varulahendust.",
+            "fontSizeIndicatorLabel": "Kiri"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1269,7 +1360,14 @@
                 "stop": "Peata",
                 "stopShell": "Peata shell",
                 "closed": "Terminal suletud.",
-                "commandInsertedReview": "Käsk sisestatud Terminali. Käivitamiseks vajutage Enter."
+                "commandInsertedReview": "Käsk sisestatud Terminali. Käivitamiseks vajutage Enter.",
+                "decreaseFont": "Vähenda fondi suurust (Ctrl+-)",
+                "emptyClickPlus": "Terminali avamiseks klõpsa {plus}",
+                "emptySshHint": "või {ssh} kaugkesta jaoks hostis {host}",
+                "increaseFont": "Suurenda fondi suurust (Ctrl+=)",
+                "newTab": "Uus terminali vahekaart",
+                "sshShellTo": "SSH-kest hostis {host}",
+                "theme": "Terminali teema"
             },
             "editorPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Kuva lähtekood\"",
@@ -1278,13 +1376,17 @@
                 "saving": "Salvestamine...",
                 "noFileSelected": "Vaatamiseks pole faili valitud",
                 "loading": "Redaktori laadimine...",
-                "dragToTerminalRun": "Lohistage Terminali, et sisestada käivituskäsk"
+                "dragToTerminalRun": "Lohistage Terminali, et sisestada käivituskäsk",
+                "closeEditor": "Sulge redaktor",
+                "resetChanges": "Lähtesta muudatused"
             },
             "previewPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Eelvaade\""
             },
             "codeEditor": "Koodiredaktor",
-            "sshTerminal": "SSH terminal"
+            "sshTerminal": "SSH terminal",
+            "comingSoon": "Tulekul",
+            "soonBadge": "Varsti"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -1418,7 +1520,17 @@
                 "fourshared": "Kui token tühistatakse, volitage käsitsi uuesti"
             },
             "profilesLoadFailed": "Salvestatud servereid ei õnnestunud lugeda: {error}",
-            "cleanupSummary": "{count} faili, vabastati {size}"
+            "cleanupSummary": "{count} faili, vabastati {size}",
+            "maturity": {
+                "alpha": "Alfa"
+            },
+            "dialogDashboardLabel": "Pilvesünkroonimise töölaud",
+            "dialogLoadingLabel": "Pilvesünkroonimise laadimine",
+            "dialogSettingsLabel": "Pilvesünkroonimise seaded",
+            "dialogSetupLabel": "Pilvesünkroonimise seadistamine",
+            "onePerLineHint": "(üks rea kohta)",
+            "pairsEditorLabel": "AeroCloudi paaride redaktor",
+            "remoteSubfolderPlaceholder": "pilv"
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -1452,7 +1564,10 @@
             "usedScanUnreadable": "osaline, loetamatud kaustad: {count}",
             "usedScanFailed": "Kasutatud salvestusruumi skannimine ebaõnnestus",
             "usedScanEmpty": "Tee {path} skannimisel ei leitud faile; vahemällu salvestatud väärtus säilitati. Kontrollige teed või serveri rekursiivse loendamise tuge.",
-            "filenBridgeAccountTotal": "Filen Desktop ei teata siin teie konto kogukasutust: kuvatud kasutus on selle tee all olevate failide summa. Natiivne Filen-ühendus näitab konto kogukasutust kohe."
+            "filenBridgeAccountTotal": "Filen Desktop ei teata siin teie konto kogukasutust: kuvatud kasutus on selle tee all olevate failide summa. Natiivne Filen-ühendus näitab konto kogukasutust kohe.",
+            "ariaLabel": "Olekuriba",
+            "debugBadge": "SILUMINE",
+            "debugModeActive": "Silumisrežiim on aktiivne"
         },
         "dialogs": {
             "confirmTitle": "Kinnita",
@@ -1620,7 +1735,8 @@
                 "apRole": "Asutaja, arendaja, hooldaja, kaasdisainer",
                 "ekRole": "Teadur, kvaliteedi tagamise insener, kaasdisainer"
             },
-            "madeBy": "{author} poolt"
+            "madeBy": "{author} poolt",
+            "statsLine": "{protocols} protokolli · {languages} keelt · AES-256 arhiivid"
         },
         "support": {
             "title": "Toeta AeroFTP-d",
@@ -2045,7 +2161,16 @@
             "sourceforgeProject": "Projekt (Unixname)",
             "opendriveNotApiKey": "(mitte teie OpenDrive API võti)",
             "endpoint": "Lõpp-punkt",
-            "accountId": "Konto ID"
+            "accountId": "Konto ID",
+            "servicesHeading": "Teenused",
+            "sourceforgeSshKeyHelp": "SourceForge nõuab SSH-võtmega autentimist. Loo võti käsuga {cmd} ja laadi see üles aadressile {link}.",
+            "sourceforgeSshSettings": "SSH seaded",
+            "fullGuide": "Täielik juhend",
+            "endpointTemplateExample": "nt {template}",
+            "jurisdiction": "Jurisdiktsioon",
+            "insecureCertDialogLabel": "Ebaturvalise sertifikaadi hoiatus",
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Hostivõtme kontrollimine"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -2111,7 +2236,10 @@
             "rename": "Nimeta ümber",
             "resume": "Jätka",
             "resumeHint": "Jätka katkenud ülekannet, selle asemel et alustada uuesti",
-            "cancel": "Tühista"
+            "cancel": "Tühista",
+            "dialogLabel": "Ülekirjutamise kinnitus",
+            "moreInQueue": "+{count} järjekorras",
+            "unknownDate": "Tundmatu"
         },
         "statusbar": {
             "queue": "Järjekord",
@@ -2339,7 +2467,21 @@
             "templateImportPathPairs": "Kasutatavad teepaarid (kohalik/kaug) selles mallis: {count}. AeroSynci aken töötab täpselt ühe paariga, seega ei imporditud midagi. Muuda malli nii, et alles jääks ainult üks paar, ja impordi see seejärel uuesti.",
             "templateNamePlaceholder": "nt Öine varundus S3-sse",
             "templateDescPlaceholder": "Milleks see mall on mõeldud (valikuline)",
-            "templateExportCliDesc": "aeroftp-cli sync ümbrisskript ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync ümbrisskript ({shell})",
+            "multiPathDisablePair": "Keela",
+            "multiPathEditorLabel": "Mitme raja redaktor",
+            "multiPathEnablePair": "Luba",
+            "multiPathLocalPlaceholder": "Kohalik rada",
+            "multiPathRemotePlaceholder": "Kaugrada",
+            "rollbackDialogLabel": "Taastamise hetktõmmis",
+            "rollbackMoreFiles": "+{count} veel...",
+            "rollbackSnapshotSummaryMany": "{count} faili, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fail, {size}",
+            "templateDialogLabel": "Sünkroonimise mall",
+            "templateExcludes": "Välistused",
+            "templateLocal": "Kohalik",
+            "templateRemote": "Kaug",
+            "templateRetries": "Kordused"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -2510,7 +2652,9 @@
                 "rejectExecution": "Keeldu tööriista käivitamisest",
                 "toggleDetails": "Lülita üksikasjad",
                 "allowSession": "Luba selles seansis",
-                "nonAtomicReplace": "Mitteatomaarne asendamine: fail on hetkeks puudu"
+                "nonAtomicReplace": "Mitteatomaarne asendamine: fail on hetkeks puudu",
+                "moreOptions": "Rohkem valikuid",
+                "panelAria": "Tööriistade kinnitamise paneel"
             },
             "settings": {
                 "title": "AI seaded",
@@ -2665,7 +2809,14 @@
                 "routingFallback": "Varumudel",
                 "routingNoFallback": "Puudub",
                 "bedrockNeedsModel": "Lisa ja luba enne testimist vahekaardil Mudelid Bedrocki mudel.",
-                "bedrockSetup": "Määra oma AWS-i piirkonna Runtime URL. Lisa vahekaardil Mudelid ID, mis toetab Chat Completions teenuses Bedrock Runtime. Runtime ei kuva mudelite loendit. Test saadab väikese järelduspäringu, millega võivad kaasneda AWS-i tasud."
+                "bedrockSetup": "Määra oma AWS-i piirkonna Runtime URL. Lisa vahekaardil Mudelid ID, mis toetab Chat Completions teenuses Bedrock Runtime. Runtime ei kuva mudelite loendit. Test saadab väikese järelduspäringu, millega võivad kaasneda AWS-i tasud.",
+                "detectOllamaModelsTooltip": "Tuvasta saadaolevad Ollama mudelid automaatselt",
+                "kTokens": "{count}K märgi",
+                "modelEditorAria": "Tehisintellekti mudelite redaktor",
+                "supportsTools": "Toetab tööriistu",
+                "supportsVision": "Toetab nägemist",
+                "thinkingReasoning": "Mõtlemine/Arutlemine",
+                "toolQuality": "Tööriistade kvaliteet: {quality}/5"
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",
@@ -2699,7 +2850,9 @@
                 "run": "Käivita terminalis",
                 "insert": "Sisesta redaktorisse",
                 "diff": "Võrdle originaaliga",
-                "diffNoFile": "Faili pole avatud võrdlemiseks"
+                "diffNoFile": "Faili pole avatud võrdlemiseks",
+                "commandBlocked": "Käsk blokeeritud: võib olla hävitav",
+                "confirmRun": "Kinnita käivitamine: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Mõtleb...",
@@ -2747,7 +2900,9 @@
                 "switchBranch": "Vaheta haru",
                 "delete": "Kustuta haru",
                 "newBranch": "Uus haru",
-                "branchFrom": "Haruta sellest punktist"
+                "branchFrom": "Haruta sellest punktist",
+                "messageCountShort": "{count} sõn.",
+                "unnamed": "Haru"
             },
             "context": {
                 "projectDetected": "Projekt tuvastatud",
@@ -2830,7 +2985,10 @@
                 "vram": "VRAM",
                 "running": "töötab",
                 "expired": "aegunud",
-                "refresh": "Värskenda"
+                "refresh": "Värskenda",
+                "modelsRunningMany": "{count} mudelit töötab",
+                "modelsRunningOne": "{count} mudel töötab",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Konteksti vahemälu",
@@ -2956,7 +3114,8 @@
                 "warning": "Kõik failitoimingud käivitatakse kohe ilma kinnituseta. Kasutage omal vastutusel.",
                 "disable": "Keela",
                 "securityWarning": "Turvahoiatus",
-                "understood": "Selge"
+                "understood": "Selge",
+                "warningAria": "Ekstreemrežiimi hoiatus"
             },
             "errorServerError": "AI teenusepakkuja serveril on probleeme. Proovige hetke pärast uuesti.",
             "errorServiceUnavailable": "AI teenusepakkuja on ajutiselt kättesaamatu (ülekoormatud). Tasuta teenustel võivad olla piirangud. Proovige hiljem uuesti.",
@@ -3052,7 +3211,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Piiramatu",
                 "roleAI": "AI",
-                "roleUser": "Kasutaja"
+                "roleUser": "Kasutaja",
+                "noConversations": "Vestlusi veel pole",
+                "titleCount": "Ajalugu ({count})"
             },
             "dropFileToAnalyze": "Kukutage fail AeroAgent-iga analüüsimiseks",
             "plugins": {
@@ -3208,7 +3369,8 @@
             },
             "tokens": {
                 "breakdown": "{input} sisendtokenit, {output} väljundtokenit, teenusepakkuja arvestuse järgi",
-                "breakdownCache": "{input} sisendtokenit, {output} väljundtokenit, {cacheRead} loetud viiba vahemälust, {cacheWritten} sinna kirjutatud, teenusepakkuja arvestuse järgi"
+                "breakdownCache": "{input} sisendtokenit, {output} väljundtokenit, {cacheRead} loetud viiba vahemälust, {cacheWritten} sinna kirjutatud, teenusepakkuja arvestuse järgi",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Käivita toiminguid: {count}",
             "coding": {
@@ -3225,18 +3387,53 @@
                     "wouldSkip": "Jäetaks vahele",
                     "skipped": "Vahele jäetud",
                     "existedAtCheckpoint": "oli kontrollpunktis olemas",
-                    "absentAtCheckpoint": "puudus kontrollpunktis"
+                    "absentAtCheckpoint": "puudus kontrollpunktis",
+                    "noFiles": "Sellesse taastamistulemusse ei kaasatud ühtegi faili.",
+                    "otherActions": "Muud toimingud",
+                    "requestedPaths": "Taotletud teede alamhulk",
+                    "scopeAll": "Ulatus: kõik kontrollpunktis salvestatud failid.",
+                    "titleApplied": "Kontrollpunkti taastamine rakendatud",
+                    "titleApplyReview": "Kontrollpunkti taastamise rakendamise ülevaatus",
+                    "titleDryRunComplete": "Kontrollpunkti taastamise proovikäik lõpetatud",
+                    "titleDryRunReview": "Kontrollpunkti taastamise proovikäigu ülevaatus"
                 },
                 "checks": {
                     "exitSummary": "väljumiskood {code} · {seconds}s",
                     "continueOnFailure": "Käivitab kõik kontrollid, isegi kui mõni ebaõnnestub.",
-                    "stopOnFailure": "Peatub esimese ebaõnnestunud kontrolli juures."
+                    "stopOnFailure": "Peatub esimese ebaõnnestunud kontrolli juures.",
+                    "checkLabel": "Kontroll:",
+                    "checksLabel": "Kontrollid:",
+                    "exitChip": "väljumiskood {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "pole saadaval",
+                    "passedCount": "{passed}/{total} läbitud",
+                    "runCheckNote": "Käivitab tööalas valitud build/test/lint-käsu. Ehitusskriptid ja testid käivitavad päris koodi.",
+                    "runProjectCheck": "Käivita projekti kontroll",
+                    "runVerification": "Käivita kontrollkäik",
+                    "runVerificationNote": "Käivitab tööalas valitud build/test/lint-käske. Ehitusskriptid ja testid käivitavad päris koodi.",
+                    "stoppedEarly": "Peatus esimese ebaõnnestunud kontrolli juures.",
+                    "timeoutLabel": "Ajalõpp: {seconds} s",
+                    "verification": "Kontrollimine"
                 },
                 "diagnostics": {
-                    "none": "Diagnostikat ei teatatud."
+                    "none": "Diagnostikat ei teatatud.",
+                    "errorCountMany": "{count} viga",
+                    "errorCountOne": "{count} viga",
+                    "title": "Diagnostika",
+                    "truncated": "Diagnostika loendit kärbiti.",
+                    "warningCountMany": "{count} hoiatust",
+                    "warningCountOne": "{count} hoiatus"
                 },
                 "search": {
-                    "none": "Vasteid ei leitud."
+                    "none": "Vasteid ei leitud.",
+                    "ignoreCase": "eira tõstu",
+                    "inPath": "asukohas {path}",
+                    "literal": "sõnasõnaline",
+                    "matchCountMany": "{count} vastet",
+                    "matchCountOne": "{count} vaste",
+                    "title": "Tööruumi otsing",
+                    "truncated": "Tulemusi kärbiti."
                 },
                 "git": {
                     "noStagedDiff": "Ettevalmistatud muudatuste diff-väljund puudub.",
@@ -3247,14 +3444,84 @@
                     "stageApproval": "Git-i ettevalmistamise kinnitamine",
                     "commitNote": "See loob praegusest ettevalmistatud indeksist git-i sissekande (commit). Vaadake esmalt üle coding_git_status ja coding_git_diff parameetriga staged=true.",
                     "stagePreviewNote": "See näitab eelvaates, millised soovitud teed ette valmistataks; indeks ei muutu.",
-                    "stageNote": "See muudab git-i indeksit soovitud teede jaoks."
+                    "stageNote": "See muudab git-i indeksit soovitud teede jaoks.",
+                    "afterCounts": "Pärast: {counts}",
+                    "beforeCounts": "Enne: {counts}",
+                    "clean": "Tööpuu on puhas.",
+                    "commitCountMany": "{count} sissekannet",
+                    "commitCountOne": "{count} sissekanne",
+                    "conflicted": "konfliktis",
+                    "diffTruncated": "Erinevuste väljund kärbiti.",
+                    "logTitle": "Git'i logi",
+                    "pathsChip": "teed: {paths}",
+                    "showingNewest": "Kuvatakse uusimad {count}; neid on rohkem.",
+                    "statusCounts": "{staged} lavastatud, {unstaged} lavastamata, {untracked} jälgimata, {conflicted} konfliktis",
+                    "titleCommitCreated": "Git'i sissekanne loodud",
+                    "titleCommitDryRun": "Git'i sissekande proovikäik",
+                    "titleCommitReview": "Git'i sissekande ülevaatus",
+                    "titleReview": "Git'i ülevaatus",
+                    "titleStageApplied": "Git'i lavastamine rakendatud",
+                    "titleStagedDiff": "Git'i lavastatud erinevused",
+                    "titleStageDryRun": "Git'i lavastamise proovikäik",
+                    "titleStatus": "Git'i olek",
+                    "titleUnstagedDiff": "Git'i lavastamata erinevused",
+                    "untracked": "jälgimata"
                 },
                 "patch": {
                     "validateNote": "See valideerib paiga ilma faile muutmata.",
                     "applyNote": "See kõrge ohuga rakendamistaotlus kirjutab failid pärast seda, kui taustaprogramm on loonud rakendamiseelse kontrollpunkti.",
                     "hideDiff": "Peida ühtne diff",
-                    "showDiff": "Näita ühtset diffi"
-                }
+                    "showDiff": "Näita ühtset diffi",
+                    "actualLabel": "tegelik:",
+                    "checkpointCreated": "Rakendamiseelne kontrollpunkt loodud",
+                    "diffTruncated": "Erinevuste eelvaade kärbiti kuvamiseks.",
+                    "expectedLabel": "oodatud:",
+                    "firstLines": "esimesed {shown} rida {total}-st",
+                    "hunkCountMany": "{count} plokki",
+                    "hunkCountOne": "{count} plokk",
+                    "hunkIndex": "plokk {index}",
+                    "restoreManual": "Taastamine on käsitsi: kasutage pärast ülevaatust tööriista {tool} selle kontrollpunkti ID-ga.",
+                    "titleApplied": "Paik rakendatud",
+                    "titleApplyBlocked": "Paiga rakendamine blokeeritud",
+                    "titleApplyReview": "Paiga rakendamise ülevaatus",
+                    "titleDryRunConflicts": "Paiga proovikäik leidis konflikte",
+                    "titleDryRunPassed": "Paiga proovikäik õnnestus",
+                    "titleDryRunReview": "Paiga proovikäigu ülevaatus",
+                    "warnings": "Hoiatused"
+                },
+                "binary": "binaarne",
+                "fileCountMany": "{count} faili",
+                "fileCountOne": "{count} fail",
+                "moreCount": "+{count} veel",
+                "plan": {
+                    "likelyFiles": "Tõenäolised failid",
+                    "openQuestions": "Lahtised küsimused",
+                    "reviewOnlyNote": "Ainult ülevaatamiseks. Muudatused ja muutvad tööriistad kasutavad endiselt praegust kinnitusrežiimi.",
+                    "riskHigh": "kõrge risk",
+                    "riskLow": "madal risk",
+                    "riskMedium": "keskmine risk",
+                    "risks": "Riskid",
+                    "title": "Kodeerimisplaan"
+                },
+                "state": {
+                    "clean": "puhas",
+                    "failed": "ebaõnnestus",
+                    "passed": "läbitud",
+                    "timedOut": "aegunud"
+                },
+                "timeoutChip": "ajalõpp {seconds}s",
+                "truncated": "kärbitud",
+                "workspaceLabel": "Tööruum:"
+            },
+            "attachedImageAlt": "Lisatud pilt",
+            "stepNumber": "Samm {step}",
+            "transcribingLocally": "Kohalik transkribeerimine...",
+            "transferPlan": {
+                "dependsOnMany": "Sõltub {count} ettevalmistavast sammust",
+                "dependsOnOne": "Sõltub {count} ettevalmistavast sammust",
+                "destination": "Sihtkoht: {destination}",
+                "title": "Edastusplaani ülevaatus",
+                "warnings": "Hoiatused"
             }
         },
         "archive": {
@@ -3482,7 +3749,19 @@
             "metadataRepaired": "Hoidla päis või manifest taastati pariteedist.",
             "repairMetadataSuccess": "Parandamine lõpetatud: hoidla päis või manifest taastati pariteedist",
             "errorCorrectionBadge": "Vigade parandus",
-            "itemsInFolder": "{count} üksust kaustas /{folder}"
+            "itemsInFolder": "{count} üksust kaustas /{folder}",
+            "compressionProfileArchive": "Arhiiv (zstd -15)",
+            "compressionProfileBalanced": "Tasakaalustatud (zstd -9)",
+            "compressionProfileFast": "Kiire (zstd -3)",
+            "damagedChunkLocation": "{id} - nihe {offset} (pikkus {len})",
+            "fallbackName": "Seif",
+            "folderScanSummary": "{files} faili {dirs} kaustas ({size})",
+            "namePlaceholderVault": "Minu turvaline seif",
+            "namePlaceholderZip": "Minu arhiiv",
+            "recentDaysAgo": "{count} p tagasi",
+            "recentFileCountMany": "{count} faili",
+            "recentFileCountOne": "{count} fail",
+            "recentMonthsAgo": "{count} k tagasi"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",
@@ -3512,7 +3791,12 @@
             "encryptingSelection": "Valitud üksuste krüpteerimine...",
             "ingestSkipped": "Hoidla loodi, kuid mõnda üksust ei õnnestunud lisada:",
             "selectionInfo": "{count} üksust krüpteeritakse hoidlasse",
-            "decrypting": "Dekrüpteerimine…"
+            "decrypting": "Dekrüpteerimine…",
+            "compatibleWithApp": "Ühildub Cryptomatori rakendusega",
+            "createFormatBadge": "Cryptomatori vorming 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM sisu",
+            "featureNameCipher": "AES-SIV nimed",
+            "formatVersion": "Vorming {version}"
         },
         "compress": {
             "title": "Paki failid",
@@ -3582,7 +3866,9 @@
             "conflictWarning": "Mõnel failil oleks sama nimi. Palun kohandage mustrit.",
             "apply": "Rakenda",
             "existingCollision": "Mõned uued nimed langevad kokku failidega, mis on juba selles kaustas; neid faile üle ei kirjutata ja nende ümbernimetamine jäetakse vahele.",
-            "existingCollisionHint": "(on juba olemas)"
+            "existingCollisionHint": "(on juba olemas)",
+            "baseNamePlaceholder": "fail",
+            "invalidName": "{name} (vigane)"
         },
         "lockScreen": {
             "locked": "Rakendus lukustatud",
@@ -3678,7 +3964,11 @@
             "portable_needs_replug": "Töölaua poolt ei ole haagitud. Ühendage kaabel lahti ja uuesti sisse, seejärel avage uuesti.",
             "volumes_need_mount_observe": "Snapis ilmuvad köited pärast mount-observe loa ühendamist. Käivitage see terminalis ja naaske seejärel AeroFTP-sse:",
             "volumes_unavailable": "Ühendatud köiteid ei õnnestunud lugeda.",
-            "portable_device": "Kaasaskantav seade"
+            "portable_device": "Kaasaskantav seade",
+            "drivesLeftPanel": "Vasaku paneeli kettad",
+            "drivesRightPanel": "Parema paneeli kettad",
+            "modeGroupLabel": "Külgriba režiim",
+            "placesSidebarLabel": "Asukohtade külgriba"
         },
         "viewMode": {
             "list": "Loend",
@@ -3693,7 +3983,9 @@
             "browseSiblings": "Sirvi õdekkatalooge",
             "loading": "Laadimine...",
             "noSubdirectories": "Alamkatalooge pole",
-            "browseChildren": "Sirvi alamkaustu"
+            "browseChildren": "Sirvi alamkaustu",
+            "ariaLabel": "Asukohariba",
+            "syncBoundaryTitle": "{path} (sünkroonimise piir)"
         },
         "bridge": {
             "checking": "{app} kontrollimine…",
@@ -3726,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Eelvaade pole saadaval",
-            "title": "Kiirvaade"
+            "title": "Kiirvaade",
+            "closePreview": "Sulge eelvaade",
+            "dialogLabel": "Kiirvaade: {name}",
+            "nextFile": "Järgmine fail",
+            "position": "{index} / {total}",
+            "previousFile": "Eelmine fail"
         },
         "properties": {
             "general": "Üldine",
@@ -3803,7 +4100,8 @@
                 "immich-asset-checksum": "Üksuse kontrollsumma, mille Immich üleslaadimisel kirja paneb.",
                 "crypt-overlay-ciphertext": "Räsi katab serveris hoitavaid krüpteeritud baite."
             },
-            "readOnlyIsLinkTarget": "See on sümbolviit: õigused kuuluvad failile, millele see osutab. Nende muutmiseks ava selle faili omadused."
+            "readOnlyIsLinkTarget": "See on sümbolviit: õigused kuuluvad failile, millele see osutab. Nende muutmiseks ava selle faili omadused.",
+            "exactBytes": "({bytes} baiti)"
         },
         "duplicates": {
             "sortWasted": "Raisatud ruum",
@@ -3844,7 +4142,10 @@
             "modeExactHint": "Baithaaval identne",
             "modeNonIdenticalHint": "Tajupõhine või tekstiline sarnasus, automaatset kustutamist pole",
             "potentialWasteSelected": "potentsiaalselt raisatud (valitud)",
-            "similarityDistance": "{similarity}, kaugus {distance}"
+            "similarityDistance": "{similarity}, kaugus {distance}",
+            "modeExact": "Täpne",
+            "modeLabel": "Režiim:",
+            "modeNonIdentical": "Mitteidentne"
         },
         "diskUsage": {
             "title": "Kettakasutus",
@@ -3906,7 +4207,11 @@
                 "noActivity": "Võrgutegevust pole veel. Edastage faile sündmuste nägemiseks.",
                 "time": "Aeg",
                 "event": "Sündmus",
-                "detail": "Üksikasi"
+                "detail": "Üksikasi",
+                "command": "Käsk",
+                "ipcTransfersCount": "IPC + Edastused ({count})",
+                "status": "Olek",
+                "type": "Tüüp"
             },
             "system": {
                 "appVersion": "AeroFTP versioon",
@@ -3953,7 +4258,8 @@
                 "dark": "Tume",
                 "light": "Hele",
                 "userAgent": "Kasutajaagent",
-                "localStorageKeysTitle": "LocalStorage võtmed"
+                "localStorageKeysTitle": "LocalStorage võtmed",
+                "localStorageEntrySummary": "{size} baiti · {preview}"
             },
             "copyFileListToClipboard": "Kopeeri failide nimekiri lõikelauale",
             "filesCopied": "{count} failikirjet kopeeritud lõikelauale",
@@ -4199,7 +4505,9 @@
                     "cropHint": "Rakendamiseks tehke valikul topeltklõps või vajutage Enter, tühistamiseks Esc",
                     "cropRatio": "Proportsioonid",
                     "cropRatioFree": "Vaba",
-                    "cropRatioOriginal": "Originaal"
+                    "cropRatioOriginal": "Originaal",
+                    "rotateCcw90Short": "90° vastupäeva",
+                    "rotateCw90Short": "90° päripäeva"
                 },
                 "toggleTransparencyBg": "Läbipaistvuse taust (vaheta)"
             },
@@ -4219,7 +4527,8 @@
                 "loading": "PDF-i laadimine...",
                 "open": "Ava PDF",
                 "page": "Lehekülg",
-                "zoom": "Suum"
+                "zoom": "Suum",
+                "documentTitle": "PDF-dokument"
             },
             "text": {
                 "auto": "Automaatne",
@@ -4250,7 +4559,8 @@
                 "viewportTablet": "Tahvelarvuti (768px)",
                 "wordWrap": "Reamurdmine",
                 "zoomIn": "Suurenda",
-                "zoomOut": "Vähenda"
+                "zoomOut": "Vähenda",
+                "htmlPreviewFrameTitle": "HTML-eelvaade"
             },
             "video": {
                 "exitFullscreen": "Välju täisekraanilt (F)",
@@ -4449,7 +4759,10 @@
             "aerocryptImportTitle": "Tuvastati Rclone Crypti kiht",
             "aerocryptImportDesc": "Profiil imporditud rclone.conf-ist {name} jaoks: kas avada kiht nüüd?",
             "aerocryptImportOpen": "Ava kiht",
-            "aerovaultOverlayExpired": "AeroVault Overlay on mitteaktiivsuse tõttu lukustatud. Jätkamiseks ava varahoidla uuesti."
+            "aerovaultOverlayExpired": "AeroVault Overlay on mitteaktiivsuse tõttu lukustatud. Jätkamiseks ava varahoidla uuesti.",
+            "aerovaultOverlaySource": "AeroVaulti ülekate aktiivne ({source})",
+            "fileOperationsLabel": "Failitoimingud",
+            "overlayBadge": "ÜLEKATE"
         },
         "security": {
             "totp": {
@@ -4465,7 +4778,9 @@
                 "setup": "Kaheastmeline autentimine",
                 "verify": "Kinnita ja luba",
                 "active": "2FA aktiivne",
-                "inactive": "2FA mitteaktiivne"
+                "inactive": "2FA mitteaktiivne",
+                "codeGroupLabel": "{count}-kohaline kood",
+                "digitLabel": "Number {index}"
             }
         },
         "vaultSync": {
@@ -4554,7 +4869,8 @@
                 "tab": {
                     "browse": "Sirvi",
                     "installed": "Paigaldatud"
-                }
+                },
+                "remoteInstallDisabled": "Pistikprogrammide kaugpaigaldus on praegu keelatud, kuni register on kliendi poolel autenditud. Kohalikult paigaldatud pistikprogrammid töötavad edasi tavapäraselt."
             }
         },
         "filelu": {
@@ -4597,7 +4913,9 @@
             "trashFooter": "Taastatud failid ilmuvad uuesti oma algses kaustas",
             "connectionNamePlaceholder": "Ühenduse nimi (nt Minu FileLu Cloud)",
             "trashAutoExpiry": "FileLu kustutab prügikastis olevad failid automaatselt 7 päeva pärast",
-            "rsyncTransferOnly": "Ainult ülekande lõpp-punkt: sirvimine pole Rsyncis saadaval. Navigeerimiseks kasuta Native API, WebDAV, S3 või FTP; lülitu Rsynci suure ribalaiusega delta-ülekanneteks."
+            "rsyncTransferOnly": "Ainult ülekande lõpp-punkt: sirvimine pole Rsyncis saadaval. Navigeerimiseks kasuta Native API, WebDAV, S3 või FTP; lülitu Rsynci suure ribalaiusega delta-ülekanneteks.",
+            "badgePasswordProtected": "Parooliga kaitstud",
+            "badgeWatermarked": "Vesimärgiga"
         },
         "box": {
             "addComment": "Lisa kommentaar",
@@ -4679,7 +4997,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Tasuta pakett",
             "freeCardTier": "Tasuta + kaart",
-            "paidTier": "Tasuline"
+            "paidTier": "Tasuline",
+            "extraFeatures": "Lisa",
+            "coreOpsList": "Üleslaadimine, Allalaadimine, Kustutamine, Ümbernimetamine, Teisaldamine, Kausta loomine, Otsing",
+            "coreOpsLegend": "Põhi = Üleslaadimine, Allalaadimine, Kustutamine, Ümbernimetamine, Teisaldamine, Kausta loomine, Otsing"
         },
         "healthCheck": {
             "title": "Serveri seisundikontroll",
@@ -4929,7 +5250,19 @@
             "releaseAssetOne": "{count} fail",
             "releaseAssetMany": "{count} faili",
             "repoPrivate": "Privaatne",
-            "repoPublic": "Avalik"
+            "repoPublic": "Avalik",
+            "actionsLiveBadge": "Otse",
+            "actionsRunningTitle": "GitHub Actions (töötab)",
+            "coAuthors": "Kaasautorid",
+            "pagesPathPlaceholder": "/ või /docs",
+            "pagesStatusBuilding": "ehitatakse",
+            "pagesStatusBuilt": "ehitatud",
+            "pagesStatusErrored": "viga",
+            "refreshBranches": "Värskenda harusid",
+            "repoPrivateTitle": "Privaatne hoidla",
+            "repoPublicTitle": "Avalik hoidla",
+            "unpushedCommitsOnBranchMany": "{count} lükkamata commiti harus {branch}",
+            "unpushedCommitsOnBranchOne": "{count} lükkamata commit harus {branch}"
         },
         "filenNotes": {
             "title": "Krüpteeritud märkmed",
@@ -4967,7 +5300,8 @@
             "tagName": "Sildi nimi",
             "removeTag": "Eemalda silt",
             "manageTags": "Halda silte",
-            "deleteTagConfirm": "Kas kustutada silt „{name}“? Märkmed säilitavad oma teksti."
+            "deleteTagConfirm": "Kas kustutada silt „{name}“? Märkmed säilitavad oma teksti.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Jagamislink",
@@ -5077,7 +5411,8 @@
                 "down": "Pole kättesaadav",
                 "pending": "Kontrollimine...",
                 "unknown": "Pole kontrollitud",
-                "clickToRetry": "klõpsa uuesti kontrollimiseks"
+                "clickToRetry": "klõpsa uuesti kontrollimiseks",
+                "withActiveSession": "{title} (aktiivne seanss)"
             },
             "densityCompact": "Tihendatud read",
             "densityComfortable": "Mugavad read",
@@ -5167,7 +5502,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt krüpteeritud kiht (omakeskne): nimed ja sisu on selles serveris krüpteeritud.",
-                "rcloneTitle": "rclone crypt kiht (ühilduv): nimed ja sisu on selles serveris krüpteeritud."
+                "rcloneTitle": "rclone crypt kiht (ühilduv): nimed ja sisu on selles serveris krüpteeritud.",
+                "keyBits": "{bits}-bitine"
             },
             "sidebar": {
                 "filters": "Filtrid",
@@ -5187,7 +5523,19 @@
                 "unknownKeyTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest rakenduse võtmel puudub õigus readBucketEncryption. Väärtus, mida meil ei ole lubatud näha, ei tähenda, et krüpteering oleks välja lülitatud.",
                 "unknownShapeTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest vastusel ei olnud dokumenteeritud kuju. Võtmel oli lubatud seda lugeda, seega on asi vastuses, mitte õigustes."
             },
-            "exportProfile": "Ekspordi..."
+            "exportProfile": "Ekspordi...",
+            "quotaLabel": "Kvoot",
+            "storageNoCapReported": "{used} (kvoodi ülempiiri pole teatatud)",
+            "e2eBitsBadge": "E2E {bits}-bitine",
+            "filenAuthVersionTitle": "Tuvastatud Filen auth/info põhjal eduka ühenduse korral",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nüüd",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} p",
+                "months": "{count} k"
+            }
         },
         "gitlab": {
             "projectPath": "Projekti tee",
@@ -5221,7 +5569,8 @@
             "linkType": "Tüüp",
             "createMergeRequest": "Loo ühendamistaotlus",
             "mrTitle": "MR pealkiri",
-            "mrBody": "Kirjeldus (valikuline)"
+            "mrBody": "Kirjeldus (valikuline)",
+            "sourceCode": "Lähtekood"
         },
         "mcp": {
             "title": "MCP Server",
@@ -5803,7 +6152,34 @@
             "copy": "Dubleeri kasutaja (ainult serverid, paroole pole)",
             "copyLockedHint": "Lülitu esmalt sellele kontole, et dubleerida selle servereid",
             "crossUserDedupTitle": "Juba salvestatud teise konto poolt",
-            "crossUserDedupMessage": "\"{name}\" kasutab serverikontot, mille on sellesse seadmesse salvestanud ka: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" kasutab serverikontot, mille on sellesse seadmesse salvestanud ka: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Sulge parooli lähtestamise dialoog",
+                "confirmPassword": "Kinnita uus parool",
+                "errMismatch": "Konto uued paroolid ei ühti.",
+                "errNewRequired": "Sisesta konto uus parool.",
+                "errNotAuthorized": "Teise konto parooli lähtestamiseks pead olema administraator.",
+                "errNotForSelf": "Kasuta oma kontol valikut Muuda parooli.",
+                "errStoreNotReady": "Ava esmalt hoidla ja proovi uuesti.",
+                "errTypeReset": "Selle hävitava toimingu kinnitamiseks sisesta RESET.",
+                "errUserNotFound": "Seda kasutajat pole enam olemas.",
+                "newPassword": "Konto uus parool",
+                "statEncryptedBytes": "krüpteeritud baiti",
+                "statProfiles": "profiili",
+                "statSettings": "seadet",
+                "title": "Parooli lähtestamine = andmete hävitamine",
+                "typeReset": "Sisesta RESET",
+                "wipeDetail": "Praegust parooli ei saa taastada. AeroFTP kustutab sihtkonto salvestatud serverid, kasutajaseaded ja lukustusoleku ning väljastab seejärel uue krüpteerimisvõtme, mida kaitseb uus parool.",
+                "wipeWarning": "See kustutab jäädavalt sihtkonto krüpteeritud partitsiooni."
+            },
+            "dropdown": {
+                "accountPassword": "Konto parool",
+                "lock": "Lukusta",
+                "newUser": "Uus kasutaja",
+                "noUsers": "Kasutajaid veel pole. Esimese lisamiseks kasuta allpool nuppu „Uus kasutaja“.",
+                "protectionNote": "Sinu konto on kaitstud Argon2id + AES-KW + AES-256-GCM krüpteeringuga",
+                "users": "Kasutajad"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypti kattekiht",
@@ -6229,7 +6605,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Režiim valitakse ühenduse loomisel ja jääb salvestatud profiili muutmise ajal muutumatuks. Teistsuguse režiimi kasutamiseks looge uus ühendus."
+                "lockedInEdit": "Režiim valitakse ühenduse loomisel ja jääb salvestatud profiili muutmise ajal muutumatuks. Teistsuguse režiimi kasutamiseks looge uus ühendus.",
+                "notInBuild": "Ei sisaldu selles AeroFTP järgus."
             }
         },
         "flatpak": {

@@ -4,6 +4,7 @@
 import React from 'react';
 import { CheckCircle2, ListChecks, PlayCircle, TerminalSquare, TimerReset, XCircle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import type { TranslationFunction } from '../../i18n';
 import { commandLine } from './aiChatCodingChecks';
 import type { CodingRunCheckResult, CodingRunCheckResultData, CodingVerifyResultData } from './aiChatTypes';
 
@@ -25,12 +26,13 @@ interface CodingChecksApprovalPreviewProps {
 const chipClass = 'rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/65';
 
 const OutputBlock: React.FC<{ title: string; body: string; truncated: boolean }> = ({ title, body, truncated }) => {
+    const t = useTranslation();
     if (!body.trim()) return null;
     return (
         <div className="rounded-lg border border-white/10 bg-black/30 p-2">
             <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-white/55">
                 <span>{title}</span>
-                {truncated && <span className="text-amber-300/70">truncated</span>}
+                {truncated && <span className="text-amber-300/70">{t('ai.coding.truncated')}</span>}
             </div>
             <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-snug text-white/75">
                 {body}
@@ -40,8 +42,13 @@ const OutputBlock: React.FC<{ title: string; body: string; truncated: boolean }>
 };
 
 export const CodingChecksReview: React.FC<CodingChecksReviewProps> = ({ data }) => {
+    const t = useTranslation();
     const { result } = data;
-    const state = result.timed_out ? 'timed-out' : result.success ? 'passed' : 'failed';
+    const state = result.timed_out
+        ? t('ai.coding.state.timedOut')
+        : result.success
+            ? t('ai.coding.state.passed')
+            : t('ai.coding.state.failed');
     const tone = result.timed_out
         ? 'text-amber-200'
         : result.success
@@ -62,12 +69,12 @@ export const CodingChecksReview: React.FC<CodingChecksReviewProps> = ({ data }) 
 
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className={chipClass}>{result.check}</span>
-                {result.filter && <span className={chipClass}>filter: {result.filter}</span>}
+                {result.filter && <span className={chipClass}>{t('ai.coding.checks.filterChip', { filter: result.filter })}</span>}
                 {result.timed_out ? (
-                    <span className={chipClass}>timeout {result.timeout_secs}s</span>
+                    <span className={chipClass}>{t('ai.coding.timeoutChip', { seconds: result.timeout_secs })}</span>
                 ) : (
                     <>
-                        <span className={chipClass}>exit {result.exit_code ?? 'n/a'}</span>
+                        <span className={chipClass}>{t('ai.coding.checks.exitChip', { code: result.exit_code ?? t('ai.coding.checks.notAvailable') })}</span>
                         <span className={chipClass}>{(result.duration_ms / 1000).toFixed(1)}s</span>
                     </>
                 )}
@@ -87,10 +94,10 @@ export const CodingChecksReview: React.FC<CodingChecksReviewProps> = ({ data }) 
     );
 };
 
-const checkState = (result: CodingRunCheckResult): { label: string; tone: string; Icon: typeof CheckCircle2 } => {
-    if (result.timed_out) return { label: 'timed-out', tone: 'text-amber-200', Icon: TimerReset };
-    if (result.success) return { label: 'passed', tone: 'text-emerald-200', Icon: CheckCircle2 };
-    return { label: 'failed', tone: 'text-red-200', Icon: XCircle };
+const checkState = (result: CodingRunCheckResult, t: TranslationFunction): { label: string; tone: string; Icon: typeof CheckCircle2 } => {
+    if (result.timed_out) return { label: t('ai.coding.state.timedOut'), tone: 'text-amber-200', Icon: TimerReset };
+    if (result.success) return { label: t('ai.coding.state.passed'), tone: 'text-emerald-200', Icon: CheckCircle2 };
+    return { label: t('ai.coding.state.failed'), tone: 'text-red-200', Icon: XCircle };
 };
 
 export const CodingVerifyReview: React.FC<CodingVerifyReviewProps> = ({ data }) => {
@@ -104,18 +111,18 @@ export const CodingVerifyReview: React.FC<CodingVerifyReviewProps> = ({ data }) 
         <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
             <div className="flex items-center gap-2">
                 <ListChecks className="h-4 w-4 text-white/55" />
-                <span className="text-xs font-semibold text-white/85">Verification</span>
+                <span className="text-xs font-semibold text-white/85">{t('ai.coding.checks.verification')}</span>
                 <span className={`ml-auto flex items-center gap-1 text-[11px] font-semibold ${tone}`}>
                     <OverallIcon className="h-3.5 w-3.5" />
-                    {passed}/{result.checks.length} passed
+                    {t('ai.coding.checks.passedCount', { passed, total: result.checks.length })}
                 </span>
             </div>
             {result.stopped_early && (
-                <div className="mt-1 text-[10px] text-amber-300/70">Stopped at the first failing check.</div>
+                <div className="mt-1 text-[10px] text-amber-300/70">{t('ai.coding.checks.stoppedEarly')}</div>
             )}
             <div className="mt-2 space-y-2">
                 {result.checks.map((check, idx) => {
-                    const state = checkState(check);
+                    const state = checkState(check, t);
                     return (
                         <div key={`${check.check}-${idx}`} className="rounded-lg border border-white/10 bg-white/5 p-2">
                             <div className="flex items-center gap-2">
@@ -146,25 +153,28 @@ export const CodingChecksApprovalPreview: React.FC<CodingChecksApprovalPreviewPr
     check,
     filter,
     timeoutSecs,
-}) => (
-    <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-2">
-        <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-100">
-            <PlayCircle className="h-3.5 w-3.5" />
-            Run project check
+}) => {
+    const t = useTranslation();
+    return (
+        <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-2">
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-100">
+                <PlayCircle className="h-3.5 w-3.5" />
+                {t('ai.coding.checks.runProjectCheck')}
+            </div>
+            <div className="mt-1 space-y-0.5 text-[11px] text-white/70">
+                {check && <div>{t('ai.coding.checks.checkLabel')} <span className="font-mono text-white/85">{check}</span></div>}
+                {workspaceRoot && (
+                    <div className="truncate" title={workspaceRoot}>{t('ai.coding.workspaceLabel')} <span className="font-mono text-white/85">{workspaceRoot}</span></div>
+                )}
+                {filter && <div>{t('ai.coding.checks.filterLabel')} <span className="font-mono text-white/85">{filter}</span></div>}
+                {typeof timeoutSecs === 'number' && <div>{t('ai.coding.checks.timeoutLabel', { seconds: timeoutSecs })}</div>}
+            </div>
+            <div className="mt-1 text-[10px] text-amber-200/70">
+                {t('ai.coding.checks.runCheckNote')}
+            </div>
         </div>
-        <div className="mt-1 space-y-0.5 text-[11px] text-white/70">
-            {check && <div>Check: <span className="font-mono text-white/85">{check}</span></div>}
-            {workspaceRoot && (
-                <div className="truncate" title={workspaceRoot}>Workspace: <span className="font-mono text-white/85">{workspaceRoot}</span></div>
-            )}
-            {filter && <div>Filter: <span className="font-mono text-white/85">{filter}</span></div>}
-            {typeof timeoutSecs === 'number' && <div>Timeout: {timeoutSecs}s</div>}
-        </div>
-        <div className="mt-1 text-[10px] text-amber-200/70">
-            Runs a curated build/test/lint command in the workspace. Build scripts and tests execute real code.
-        </div>
-    </div>
-);
+    );
+};
 
 export const CodingVerifyApprovalPreview: React.FC<{
     workspaceRoot?: string;
@@ -176,19 +186,19 @@ export const CodingVerifyApprovalPreview: React.FC<{
         <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-2">
             <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-100">
                 <ListChecks className="h-3.5 w-3.5" />
-                Run verification pass
+                {t('ai.coding.checks.runVerification')}
             </div>
             <div className="mt-1 space-y-0.5 text-[11px] text-white/70">
                 {checks && checks.length > 0 && (
-                    <div>Checks: <span className="font-mono text-white/85">{checks.join(', ')}</span></div>
+                    <div>{t('ai.coding.checks.checksLabel')} <span className="font-mono text-white/85">{checks.join(', ')}</span></div>
                 )}
                 {workspaceRoot && (
-                    <div className="truncate" title={workspaceRoot}>Workspace: <span className="font-mono text-white/85">{workspaceRoot}</span></div>
+                    <div className="truncate" title={workspaceRoot}>{t('ai.coding.workspaceLabel')} <span className="font-mono text-white/85">{workspaceRoot}</span></div>
                 )}
                 <div>{continueOnFailure ? t('ai.coding.checks.continueOnFailure') : t('ai.coding.checks.stopOnFailure')}</div>
             </div>
             <div className="mt-1 text-[10px] text-amber-200/70">
-                Runs curated build/test/lint commands in the workspace. Build scripts and tests execute real code.
+                {t('ai.coding.checks.runVerificationNote')}
             </div>
         </div>
     );
