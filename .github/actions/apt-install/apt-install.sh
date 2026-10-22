@@ -78,6 +78,10 @@ install)
   [ "$#" -gt 0 ] || { echo "no packages given" >&2; exit 2; }
   # shellcheck disable=SC1090
   . "$state"
+  # This phase starts where the archive restore ended, so the restore's cost
+  # is on record for the one failure that happens before apt runs at all.
+  restored=$(date +%s)
+  echo "restored=${restored}" >> "$state"
   deadline=$((started + budget - reserve - kill_after))
   mkdir -p "$archives/partial"
   echo "before=$(fingerprint)" >> "$state"
@@ -120,7 +124,7 @@ install)
   while [ "$attempt" -lt "$max_attempts" ]; do
     left=$((deadline - $(date +%s)))
     if [ "$left" -lt 60 ]; then
-      echo "apt-install: ${left}s left before the deadline, not starting another attempt" >&2
+      echo "apt-install: ${left}s left before the deadline, not starting attempt $((attempt + 1))" >&2
       break
     fi
     attempt=$((attempt + 1))
@@ -162,10 +166,15 @@ install)
     exit 0
   fi
 
+  # No attempt started: the restore (or whatever ran before this phase) left
+  # under 60s of the budget. Neither a slow mirror nor an apt error, and rc
+  # is still 0, so it gets its own message rather than "apt exited 0".
+  if [ "$attempt" -eq 0 ]; then
+    echo "::error title=apt budget spent before apt started::No apt attempt ran: the archive restore took $((restored - started))s of a ${budget}s budget (${reserve}s reserved for the save, ${kill_after}s for kill-after), leaving under 60s for apt. Check the restore step's timing; the mirror was never contacted."
   # 124 is timeout's own TERM, 137 its KILL after kill_after: the budget ran
   # out with apt still working. Anything else is apt failing on its own
   # terms, which no budget would fix.
-  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+  elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
     echo "::error title=apt mirror too slow::The apt install did not finish within its budget: ${summary}. Completed and partial archives are saved to the cache, so a rerun resumes from here instead of from zero."
   else
     echo "::error title=apt install failed::apt exited ${rc} on attempt ${attempt} (${summary}). This is an apt or package error, not a slow mirror; see the attempt groups above."
