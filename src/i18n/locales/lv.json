@@ -1269,7 +1269,14 @@
                 "stop": "Apturēt",
                 "stopShell": "Apturēt čaulu",
                 "closed": "Terminālis aizvērts.",
-                "commandInsertedReview": "Komanda ievietota Terminal. Nospiediet Enter, lai palaistu."
+                "commandInsertedReview": "Komanda ievietota Terminal. Nospiediet Enter, lai palaistu.",
+                "decreaseFont": "Samazināt fonta lielumu (Ctrl+-)",
+                "emptyClickPlus": "Noklikšķiniet uz {plus}, lai atvērtu termināli",
+                "emptySshHint": "vai {ssh} attālai čaulai uz {host}",
+                "increaseFont": "Palielināt fonta lielumu (Ctrl+=)",
+                "newTab": "Jauna termināļa cilne",
+                "sshShellTo": "SSH čaula uz {host}",
+                "theme": "Termināļa motīvs"
             },
             "editorPanel": {
                 "emptyState": "Ar peles labo pogu noklikšķiniet uz faila un izvēlieties \"Skatīt pirmkodu\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Saglabā...",
                 "noFileSelected": "Nav izvēlēts fails skatīšanai",
                 "loading": "Tiek ielādēts redaktors...",
-                "dragToTerminalRun": "Velciet uz Terminal, lai ievietotu palaišanas komandu"
+                "dragToTerminalRun": "Velciet uz Terminal, lai ievietotu palaišanas komandu",
+                "closeEditor": "Aizvērt redaktoru",
+                "resetChanges": "Atiestatīt izmaiņas"
             },
             "previewPanel": {
                 "emptyState": "Ar peles labo pogu noklikšķiniet uz faila un izvēlieties \"Priekšskatījums\""
             },
             "codeEditor": "Koda redaktors",
-            "sshTerminal": "SSH terminālis"
+            "sshTerminal": "SSH terminālis",
+            "comingSoon": "Drīzumā",
+            "soonBadge": "Drīz"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Noraidīt rīka izpildi",
                 "toggleDetails": "Pārslēgt detaļas",
                 "allowSession": "Atļaut šai sesijai",
-                "nonAtomicReplace": "Neatomiska aizstāšana: fails īslaicīgi pazūd"
+                "nonAtomicReplace": "Neatomiska aizstāšana: fails īslaicīgi pazūd",
+                "moreOptions": "Vairāk opciju",
+                "panelAria": "Rīku apstiprināšanas panelis"
             },
             "settings": {
                 "title": "AI iestatījumi",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Rezerves",
                 "routingNoFallback": "Nav",
                 "bedrockNeedsModel": "Pirms testēšanas cilnē Modeļi pievienojiet un iespējojiet Bedrock modeli.",
-                "bedrockSetup": "Iestatiet Runtime URL savam AWS reģionam. Cilnē Modeļi pievienojiet ID, kas atbalsta Chat Completions pakalpojumā Bedrock Runtime. Runtime nerāda modeļu sarakstu. Pārbaude nosūta nelielu inferenču pieprasījumu, par kuru AWS var piemērot maksu."
+                "bedrockSetup": "Iestatiet Runtime URL savam AWS reģionam. Cilnē Modeļi pievienojiet ID, kas atbalsta Chat Completions pakalpojumā Bedrock Runtime. Runtime nerāda modeļu sarakstu. Pārbaude nosūta nelielu inferenču pieprasījumu, par kuru AWS var piemērot maksu.",
+                "detectOllamaModelsTooltip": "Automātiski noteikt pieejamos Ollama modeļus",
+                "kTokens": "{count}K marķieru",
+                "modelEditorAria": "MI modeļu redaktors",
+                "supportsTools": "Atbalsta rīkus",
+                "supportsVision": "Atbalsta redzi",
+                "thinkingReasoning": "Domāšana/Spriešana",
+                "toolQuality": "Rīku kvalitāte: {quality}/5"
             },
             "copy": "Kopēt",
             "attachImage": "Pievienot attēlu",
@@ -2699,7 +2719,9 @@
                 "run": "Palaist terminālī",
                 "insert": "Ievietot redaktorā",
                 "diff": "Salīdzināt ar oriģinālu",
-                "diffNoFile": "Nav atvērta faila salīdzināšanai"
+                "diffNoFile": "Nav atvērta faila salīdzināšanai",
+                "commandBlocked": "Komanda bloķēta: potenciāli destruktīva",
+                "confirmRun": "Apstiprināt izpildi: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Domā...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Pārslēgt zaru",
                 "delete": "Dzēst zaru",
                 "newBranch": "Jauns zars",
-                "branchFrom": "Sazarot no šī punkta"
+                "branchFrom": "Sazarot no šī punkta",
+                "messageCountShort": "{count} ziņ.",
+                "unnamed": "Zars"
             },
             "context": {
                 "projectDetected": "Projekts noteikts",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "darbojas",
                 "expired": "beidzies",
-                "refresh": "Atsvaidzināt"
+                "refresh": "Atsvaidzināt",
+                "modelsRunningMany": "Darbojas modeļi: {count}",
+                "modelsRunningOne": "Darbojas {count} modelis",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Konteksta kešošana",
@@ -2956,7 +2983,8 @@
                 "warning": "Visas failu operācijas tiks izpildītas nekavējoties bez apstiprinājuma. Lietojiet uz savu risku.",
                 "disable": "Atspējot",
                 "securityWarning": "Drošības brīdinājums",
-                "understood": "Sapratu"
+                "understood": "Sapratu",
+                "warningAria": "Ekstrēmā režīma brīdinājums"
             },
             "errorServerError": "AI pakalpojumu sniedzēja serverim ir problēmas. Mēģiniet vēlreiz pēc brīža.",
             "errorServiceUnavailable": "AI pakalpojumu sniedzējs īslaicīgi nav pieejams (pārslogots). Bezmaksas pakalpojumiem var būt ierobežojumi. Mēģiniet vēlāk.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Neierobežots",
                 "roleAI": "AI",
-                "roleUser": "Lietotājs"
+                "roleUser": "Lietotājs",
+                "noConversations": "Vēl nav sarunu",
+                "titleCount": "Vēsture ({count})"
             },
             "dropFileToAnalyze": "Nometiet failu, lai analizētu ar AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "Ievades tokeni: {input}, izvades tokeni: {output}, pēc pakalpojumu sniedzēja uzskaites",
-                "breakdownCache": "Ievades tokeni: {input}, izvades tokeni: {output}, nolasīti no uzvednes kešatmiņas: {cacheRead}, ierakstīti tajā: {cacheWritten}, pēc pakalpojumu sniedzēja uzskaites"
+                "breakdownCache": "Ievades tokeni: {input}, izvades tokeni: {output}, nolasīti no uzvednes kešatmiņas: {cacheRead}, ierakstīti tajā: {cacheWritten}, pēc pakalpojumu sniedzēja uzskaites",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Izpildīt darbības: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Tiktu izlaisti",
                     "skipped": "Izlaisti",
                     "existedAtCheckpoint": "pastāvēja kontrolpunktā",
-                    "absentAtCheckpoint": "nebija kontrolpunktā"
+                    "absentAtCheckpoint": "nebija kontrolpunktā",
+                    "noFiles": "Šajā atjaunošanas rezultātā netika iekļauts neviens fails.",
+                    "otherActions": "Citas darbības",
+                    "requestedPaths": "Pieprasītā ceļu apakškopa",
+                    "scopeAll": "Tvērums: visi kontrolpunktā saglabātie faili.",
+                    "titleApplied": "Kontrolpunkta atjaunošana lietota",
+                    "titleApplyReview": "Kontrolpunkta atjaunošanas lietošanas pārskatīšana",
+                    "titleDryRunComplete": "Kontrolpunkta atjaunošanas izmēģinājums pabeigts",
+                    "titleDryRunReview": "Kontrolpunkta atjaunošanas izmēģinājuma pārskats"
                 },
                 "checks": {
                     "exitSummary": "izejas kods {code} · {seconds}s",
                     "continueOnFailure": "Palaiž visas pārbaudes, pat ja kāda neizdodas.",
-                    "stopOnFailure": "Apstājas pie pirmās neizdevušās pārbaudes."
+                    "stopOnFailure": "Apstājas pie pirmās neizdevušās pārbaudes.",
+                    "checkLabel": "Pārbaude:",
+                    "checksLabel": "Pārbaudes:",
+                    "exitChip": "izejas kods {code}",
+                    "filterChip": "filtrs: {filter}",
+                    "filterLabel": "Filtrs:",
+                    "notAvailable": "nav pieejams",
+                    "passedCount": "{passed}/{total} izturētas",
+                    "runCheckNote": "Darbvietā izpilda atlasītu build/test/lint komandu. Būvēšanas skripti un testi izpilda īstu kodu.",
+                    "runProjectCheck": "Palaist projekta pārbaudi",
+                    "runVerification": "Palaist verifikācijas kārtu",
+                    "runVerificationNote": "Darbvietā izpilda atlasītas build/test/lint komandas. Būvēšanas skripti un testi izpilda īstu kodu.",
+                    "stoppedEarly": "Apturēts pie pirmās neizdevušās pārbaudes.",
+                    "timeoutLabel": "Taimauts: {seconds} s",
+                    "verification": "Verifikācija"
                 },
                 "diagnostics": {
-                    "none": "Nav ziņots par diagnostiku."
+                    "none": "Nav ziņots par diagnostiku.",
+                    "errorCountMany": "{count} kļūdas",
+                    "errorCountOne": "{count} kļūda",
+                    "title": "Diagnostika",
+                    "truncated": "Diagnostikas saraksts tika saīsināts.",
+                    "warningCountMany": "{count} brīdinājumi",
+                    "warningCountOne": "{count} brīdinājums"
                 },
                 "search": {
-                    "none": "Atbilstības nav atrastas."
+                    "none": "Atbilstības nav atrastas.",
+                    "ignoreCase": "ignorēt reģistru",
+                    "inPath": "ceļā {path}",
+                    "literal": "burtisks",
+                    "matchCountMany": "{count} atbilstības",
+                    "matchCountOne": "{count} atbilstība",
+                    "title": "Darbvietas meklēšana",
+                    "truncated": "Rezultāti tika saīsināti."
                 },
                 "git": {
                     "noStagedDiff": "Nav sagatavoto izmaiņu diff izvades.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git sagatavošanas apstiprināšana",
                     "commitNote": "Tas izveido git iesūtījumu (commit) no pašreizējā sagatavotā indeksa. Vispirms pārskatiet coding_git_status un coding_git_diff ar staged=true.",
                     "stagePreviewNote": "Tas priekšskatījumā parāda, kuri pieprasītie ceļi tiktu sagatavoti; indekss nemainīsies.",
-                    "stageNote": "Tas maina git indeksu pieprasītajiem ceļiem."
+                    "stageNote": "Tas maina git indeksu pieprasītajiem ceļiem.",
+                    "afterCounts": "Pēc: {counts}",
+                    "beforeCounts": "Pirms: {counts}",
+                    "clean": "Darba koks ir tīrs.",
+                    "commitCountMany": "{count} komiti",
+                    "commitCountOne": "{count} komits",
+                    "conflicted": "konfliktā",
+                    "diffTruncated": "Atšķirību izvade tika saīsināta.",
+                    "logTitle": "Git žurnāls",
+                    "pathsChip": "ceļi: {paths}",
+                    "showingNewest": "Rāda jaunākos {count}; ir vēl.",
+                    "statusCounts": "{staged} sagatavoti, {unstaged} nesagatavoti, {untracked} neizsekoti, {conflicted} konfliktā",
+                    "titleCommitCreated": "Git komits izveidots",
+                    "titleCommitDryRun": "Git komita izmēģinājums",
+                    "titleCommitReview": "Git komita pārskats",
+                    "titleReview": "Git pārskats",
+                    "titleStageApplied": "Git sagatavošana lietota",
+                    "titleStagedDiff": "Sagatavotās Git atšķirības",
+                    "titleStageDryRun": "Git sagatavošanas izmēģinājums",
+                    "titleStatus": "Git statuss",
+                    "titleUnstagedDiff": "Nesagatavotās Git atšķirības",
+                    "untracked": "neizsekots"
                 },
                 "patch": {
                     "validateNote": "Tas validē ielāpu, nemainot failus.",
                     "applyNote": "Šis augsta riska lietošanas pieprasījums ieraksta failus pēc tam, kad aizmugursistēma izveido kontrolpunktu pirms lietošanas.",
                     "hideDiff": "Slēpt vienoto diff",
-                    "showDiff": "Rādīt vienoto diff"
-                }
+                    "showDiff": "Rādīt vienoto diff",
+                    "actualLabel": "faktiskais:",
+                    "checkpointCreated": "Izveidots kontrolpunkts pirms lietošanas",
+                    "diffTruncated": "Atšķirību priekšskatījums saīsināts attēlošanai.",
+                    "expectedLabel": "sagaidāmais:",
+                    "firstLines": "pirmās {shown} no {total} rindām",
+                    "hunkCountMany": "{count} fragmenti",
+                    "hunkCountOne": "{count} fragments",
+                    "hunkIndex": "fragments {index}",
+                    "restoreManual": "Atjaunošana ir manuāla: pēc pārskatīšanas izmantojiet {tool} ar šo kontrolpunkta ID.",
+                    "titleApplied": "Ielāps lietots",
+                    "titleApplyBlocked": "Ielāpa lietošana bloķēta",
+                    "titleApplyReview": "Ielāpa lietošanas pārskatīšana",
+                    "titleDryRunConflicts": "Ielāpa izmēģinājumā atrasti konflikti",
+                    "titleDryRunPassed": "Ielāpa izmēģinājums izdevās",
+                    "titleDryRunReview": "Ielāpa izmēģinājuma pārskatīšana",
+                    "warnings": "Brīdinājumi"
+                },
+                "binary": "binārs",
+                "fileCountMany": "{count} faili",
+                "fileCountOne": "{count} fails",
+                "moreCount": "+{count} vēl",
+                "plan": {
+                    "likelyFiles": "Iespējamie faili",
+                    "openQuestions": "Atklātie jautājumi",
+                    "reviewOnlyNote": "Artefakts tikai pārskatīšanai. Labojumi un mainošie rīki joprojām izmanto pašreizējo apstiprināšanas režīmu.",
+                    "riskHigh": "augsts risks",
+                    "riskLow": "zems risks",
+                    "riskMedium": "vidējs risks",
+                    "risks": "Riski",
+                    "title": "Programmēšanas plāns"
+                },
+                "state": {
+                    "clean": "tīrs",
+                    "failed": "neizdevās",
+                    "passed": "izturēts",
+                    "timedOut": "noildze"
+                },
+                "timeoutChip": "noildze {seconds}s",
+                "truncated": "saīsināts",
+                "workspaceLabel": "Darbvieta:"
+            },
+            "attachedImageAlt": "Pievienotais attēls",
+            "stepNumber": "{step}. solis",
+            "transcribingLocally": "Notiek lokāla transkribēšana...",
+            "transferPlan": {
+                "dependsOnMany": "Atkarīgs no {count} sagatavošanas soļiem",
+                "dependsOnOne": "Atkarīgs no {count} sagatavošanas soļa",
+                "destination": "Galamērķis: {destination}",
+                "title": "Pārsūtīšanas plāna pārskats",
+                "warnings": "Brīdinājumi"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Pārlūkot",
                     "installed": "Instalēti"
-                }
+                },
+                "remoteInstallDisabled": "Spraudņu attālā instalēšana pašlaik ir atspējota, līdz reģistrs tiek autentificēts klienta pusē. Lokāli instalētie spraudņi turpina darboties kā parasti."
             }
         },
         "filelu": {

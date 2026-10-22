@@ -1269,7 +1269,14 @@
                 "stop": "থামান",
                 "stopShell": "শেল থামান",
                 "closed": "টার্মিনাল বন্ধ হয়েছে।",
-                "commandInsertedReview": "Terminal-এ কমান্ড সন্নিবেশিত হয়েছে। চালানোর জন্য Enter চাপুন।"
+                "commandInsertedReview": "Terminal-এ কমান্ড সন্নিবেশিত হয়েছে। চালানোর জন্য Enter চাপুন।",
+                "decreaseFont": "ফন্টের আকার কমান (Ctrl+-)",
+                "emptyClickPlus": "টার্মিনাল খুলতে {plus} ক্লিক করুন",
+                "emptySshHint": "অথবা {host}-এ রিমোট শেলের জন্য {ssh}",
+                "increaseFont": "ফন্টের আকার বাড়ান (Ctrl+=)",
+                "newTab": "নতুন টার্মিনাল ট্যাব",
+                "sshShellTo": "{host}-এ SSH শেল",
+                "theme": "টার্মিনাল থিম"
             },
             "editorPanel": {
                 "emptyState": "একটি ফাইলে ডান ক্লিক করুন এবং \"উৎস দেখুন\" নির্বাচন করুন",
@@ -1278,13 +1285,17 @@
                 "saving": "সংরক্ষণ করা হচ্ছে...",
                 "noFileSelected": "দেখার জন্য কোনো ফাইল নির্বাচিত হয়নি",
                 "loading": "সম্পাদক লোড করা হচ্ছে...",
-                "dragToTerminalRun": "চালানোর কমান্ড সন্নিবেশ করতে Terminal-এ টেনে আনুন"
+                "dragToTerminalRun": "চালানোর কমান্ড সন্নিবেশ করতে Terminal-এ টেনে আনুন",
+                "closeEditor": "সম্পাদক বন্ধ করুন",
+                "resetChanges": "পরিবর্তনগুলি রিসেট করুন"
             },
             "previewPanel": {
                 "emptyState": "একটি ফাইলে রাইট-ক্লিক করুন এবং \"প্রিভিউ\" নির্বাচন করুন"
             },
             "codeEditor": "কোড এডিটর",
-            "sshTerminal": "SSH টার্মিনাল"
+            "sshTerminal": "SSH টার্মিনাল",
+            "comingSoon": "শীঘ্রই আসছে",
+            "soonBadge": "শীঘ্রই"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "টুল চালানো প্রত্যাখ্যান করুন",
                 "toggleDetails": "বিস্তারিত টগল করুন",
                 "allowSession": "এই সেশনের জন্য অনুমতি দিন",
-                "nonAtomicReplace": "নন-অ্যাটমিক প্রতিস্থাপন: ফাইলটি সংক্ষিপ্তভাবে অনুপস্থিত থাকে"
+                "nonAtomicReplace": "নন-অ্যাটমিক প্রতিস্থাপন: ফাইলটি সংক্ষিপ্তভাবে অনুপস্থিত থাকে",
+                "moreOptions": "আরও বিকল্প",
+                "panelAria": "সরঞ্জাম অনুমোদন প্যানেল"
             },
             "settings": {
                 "title": "AI সেটিংস",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "বিকল্প",
                 "routingNoFallback": "কোনোটি নয়",
                 "bedrockNeedsModel": "পরীক্ষার আগে মডেল ট্যাবে একটি Bedrock মডেল যোগ করে সক্রিয় করুন।",
-                "bedrockSetup": "আপনার AWS অঞ্চলের জন্য Runtime URL সেট করুন। মডেল ট্যাবে Bedrock Runtime-এ Chat Completions সমর্থন করে এমন একটি ID যোগ করুন। Runtime মডেলের তালিকা দেখায় না। পরীক্ষা একটি ছোট ইনফারেন্স অনুরোধ পাঠায়, যার জন্য AWS চার্জ নিতে পারে।"
+                "bedrockSetup": "আপনার AWS অঞ্চলের জন্য Runtime URL সেট করুন। মডেল ট্যাবে Bedrock Runtime-এ Chat Completions সমর্থন করে এমন একটি ID যোগ করুন। Runtime মডেলের তালিকা দেখায় না। পরীক্ষা একটি ছোট ইনফারেন্স অনুরোধ পাঠায়, যার জন্য AWS চার্জ নিতে পারে।",
+                "detectOllamaModelsTooltip": "উপলব্ধ Ollama মডেল স্বয়ংক্রিয়ভাবে শনাক্ত করুন",
+                "kTokens": "{count}K টোকেন",
+                "modelEditorAria": "এআই মডেল সম্পাদক",
+                "supportsTools": "টুল সমর্থন করে",
+                "supportsVision": "দৃষ্টি সমর্থন করে",
+                "thinkingReasoning": "চিন্তা/যুক্তি",
+                "toolQuality": "সরঞ্জামের মান: {quality}/5"
             },
             "copy": "অনুলিপি",
             "attachImage": "ছবি সংযুক্ত করুন",
@@ -2699,7 +2719,9 @@
                 "run": "টার্মিনালে চালান",
                 "insert": "এডিটরে সন্নিবেশ করান",
                 "diff": "মূলের সাথে পার্থক্য",
-                "diffNoFile": "পার্থক্যের জন্য কোনো ফাইল খোলা নেই"
+                "diffNoFile": "পার্থক্যের জন্য কোনো ফাইল খোলা নেই",
+                "commandBlocked": "কমান্ড অবরুদ্ধ: সম্ভাব্য ধ্বংসাত্মক",
+                "confirmRun": "চালানো নিশ্চিত করুন: {command}"
             },
             "thinkingBlock": {
                 "thinking": "চিন্তা করা হচ্ছে...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "ব্রাঞ্চ পরিবর্তন করুন",
                 "delete": "ব্রাঞ্চ মুছুন",
                 "newBranch": "নতুন ব্রাঞ্চ",
-                "branchFrom": "এই পয়েন্ট থেকে ব্রাঞ্চ"
+                "branchFrom": "এই পয়েন্ট থেকে ব্রাঞ্চ",
+                "messageCountShort": "{count}টি বার্তা",
+                "unnamed": "শাখা"
             },
             "context": {
                 "projectDetected": "প্রজেক্ট সনাক্ত করা হয়েছে",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "চলছে",
                 "expired": "মেয়াদ শেষ",
-                "refresh": "রিফ্রেশ"
+                "refresh": "রিফ্রেশ",
+                "modelsRunningMany": "{count}টি মডেল চলছে",
+                "modelsRunningOne": "{count}টি মডেল চলছে",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "প্রসঙ্গ ক্যাশিং",
@@ -2956,7 +2983,8 @@
                 "warning": "সমস্ত ফাইল অপারেশন অনুমোদন ছাড়াই অবিলম্বে কার্যকর হবে। নিজের ঝুঁকিতে ব্যবহার করুন।",
                 "disable": "নিষ্ক্রিয় করুন",
                 "securityWarning": "নিরাপত্তা সতর্কতা",
-                "understood": "বুঝেছি"
+                "understood": "বুঝেছি",
+                "warningAria": "এক্সট্রিম মোড সতর্কতা"
             },
             "errorServerError": "AI প্রদানকারীর সার্ভারে সমস্যা হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করুন।",
             "errorServiceUnavailable": "AI প্রদানকারী সাময়িকভাবে অনুপলব্ধ (ওভারলোড)। বিনামূল্যে পরিষেবার সীমা থাকতে পারে। পরে আবার চেষ্টা করুন।",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "সীমাহীন",
                 "roleAI": "AI",
-                "roleUser": "ব্যবহারকারী"
+                "roleUser": "ব্যবহারকারী",
+                "noConversations": "এখনও কোনো কথোপকথন নেই",
+                "titleCount": "ইতিহাস ({count})"
             },
             "dropFileToAnalyze": "AeroAgent দিয়ে বিশ্লেষণ করতে ফাইল ছেড়ে দিন",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} ইনপুট টোকেন, {output} আউটপুট টোকেন, প্রদানকারীর গণনা অনুযায়ী",
-                "breakdownCache": "{input} ইনপুট টোকেন, {output} আউটপুট টোকেন, প্রম্পট ক্যাশ থেকে {cacheRead} পড়া হয়েছে, এতে {cacheWritten} লেখা হয়েছে, প্রদানকারীর গণনা অনুযায়ী"
+                "breakdownCache": "{input} ইনপুট টোকেন, {output} আউটপুট টোকেন, প্রম্পট ক্যাশ থেকে {cacheRead} পড়া হয়েছে, এতে {cacheWritten} লেখা হয়েছে, প্রদানকারীর গণনা অনুযায়ী",
+                "countShort": "{count} টোকেন"
             },
             "executeOperations": "{count} টি অপারেশন চালান",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "এড়িয়ে যাওয়া হবে",
                     "skipped": "এড়িয়ে যাওয়া হয়েছে",
                     "existedAtCheckpoint": "চেকপয়েন্টে বিদ্যমান ছিল",
-                    "absentAtCheckpoint": "চেকপয়েন্টে অনুপস্থিত ছিল"
+                    "absentAtCheckpoint": "চেকপয়েন্টে অনুপস্থিত ছিল",
+                    "noFiles": "এই পুনরুদ্ধার ফলাফলে কোনো ফাইল অন্তর্ভুক্ত ছিল না।",
+                    "otherActions": "অন্যান্য ক্রিয়া",
+                    "requestedPaths": "অনুরোধকৃত পাথ উপসেট",
+                    "scopeAll": "পরিসর: চেকপয়েন্টে সংরক্ষিত সমস্ত ফাইল।",
+                    "titleApplied": "চেকপয়েন্ট পুনরুদ্ধার প্রয়োগ হয়েছে",
+                    "titleApplyReview": "চেকপয়েন্ট পুনরুদ্ধার প্রয়োগ পর্যালোচনা",
+                    "titleDryRunComplete": "চেকপয়েন্ট পুনরুদ্ধার ড্রাই-রান সম্পন্ন",
+                    "titleDryRunReview": "চেকপয়েন্ট পুনরুদ্ধার ড্রাই রান পর্যালোচনা"
                 },
                 "checks": {
                     "exitSummary": "প্রস্থান কোড {code} · {seconds}s",
                     "continueOnFailure": "একটি ব্যর্থ হলেও সব পরীক্ষা চালায়।",
-                    "stopOnFailure": "প্রথম ব্যর্থ পরীক্ষায় থেমে যায়।"
+                    "stopOnFailure": "প্রথম ব্যর্থ পরীক্ষায় থেমে যায়।",
+                    "checkLabel": "পরীক্ষা:",
+                    "checksLabel": "পরীক্ষাসমূহ:",
+                    "exitChip": "প্রস্থান কোড {code}",
+                    "filterChip": "ফিল্টার: {filter}",
+                    "filterLabel": "ফিল্টার:",
+                    "notAvailable": "প্রযোজ্য নয়",
+                    "passedCount": "{passed}/{total} উত্তীর্ণ",
+                    "runCheckNote": "ওয়ার্কস্পেসে বাছাই করা একটি build/test/lint কমান্ড চালায়। বিল্ড স্ক্রিপ্ট ও পরীক্ষা আসল কোড চালায়।",
+                    "runProjectCheck": "প্রকল্প পরীক্ষা চালান",
+                    "runVerification": "যাচাই ধাপ চালান",
+                    "runVerificationNote": "ওয়ার্কস্পেসে বাছাই করা build/test/lint কমান্ডগুলো চালায়। বিল্ড স্ক্রিপ্ট ও পরীক্ষা আসল কোড চালায়।",
+                    "stoppedEarly": "প্রথম ব্যর্থ পরীক্ষায় থেমে গেছে।",
+                    "timeoutLabel": "সময়সীমা: {seconds} সেকেন্ড",
+                    "verification": "যাচাই"
                 },
                 "diagnostics": {
-                    "none": "কোনো ডায়াগনস্টিক রিপোর্ট করা হয়নি।"
+                    "none": "কোনো ডায়াগনস্টিক রিপোর্ট করা হয়নি।",
+                    "errorCountMany": "{count}টি ত্রুটি",
+                    "errorCountOne": "{count}টি ত্রুটি",
+                    "title": "ডায়াগনস্টিকস",
+                    "truncated": "ডায়াগনস্টিকস তালিকা ছেঁটে ফেলা হয়েছে।",
+                    "warningCountMany": "{count}টি সতর্কতা",
+                    "warningCountOne": "{count}টি সতর্কতা"
                 },
                 "search": {
-                    "none": "কোনো মিল পাওয়া যায়নি।"
+                    "none": "কোনো মিল পাওয়া যায়নি।",
+                    "ignoreCase": "অক্ষরের ছোট-বড় উপেক্ষা",
+                    "inPath": "{path}-এ",
+                    "literal": "আক্ষরিক",
+                    "matchCountMany": "{count}টি মিল",
+                    "matchCountOne": "{count}টি মিল",
+                    "title": "ওয়ার্কস্পেস অনুসন্ধান",
+                    "truncated": "ফলাফল সংক্ষিপ্ত করা হয়েছে।"
                 },
                 "git": {
                     "noStagedDiff": "স্টেজ করা পরিবর্তনের কোনো diff আউটপুট নেই।",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git স্টেজ অনুমোদন",
                     "commitNote": "এটি বর্তমান স্টেজ করা ইনডেক্স থেকে একটি git কমিট তৈরি করে। আগে staged=true সহ coding_git_status এবং coding_git_diff পর্যালোচনা করুন।",
                     "stagePreviewNote": "এটি পূর্বরূপ দেখায় অনুরোধ করা কোন পাথগুলো স্টেজ করা হবে; ইনডেক্স পরিবর্তন হবে না।",
-                    "stageNote": "এটি অনুরোধ করা পাথগুলোর জন্য git ইনডেক্স পরিবর্তন করে।"
+                    "stageNote": "এটি অনুরোধ করা পাথগুলোর জন্য git ইনডেক্স পরিবর্তন করে।",
+                    "afterCounts": "পরে: {counts}",
+                    "beforeCounts": "আগে: {counts}",
+                    "clean": "ওয়ার্কিং ট্রি পরিষ্কার।",
+                    "commitCountMany": "{count}টি কমিট",
+                    "commitCountOne": "{count}টি কমিট",
+                    "conflicted": "দ্বন্দ্বযুক্ত",
+                    "diffTruncated": "পার্থক্যের আউটপুট ছেঁটে ফেলা হয়েছে।",
+                    "logTitle": "Git লগ",
+                    "pathsChip": "পাথ: {paths}",
+                    "showingNewest": "সর্বশেষ {count}টি দেখানো হচ্ছে; আরও আছে।",
+                    "statusCounts": "{staged} স্টেজড, {unstaged} আনস্টেজড, {untracked} আনট্র্যাকড, {conflicted} দ্বন্দ্বযুক্ত",
+                    "titleCommitCreated": "Git কমিট তৈরি হয়েছে",
+                    "titleCommitDryRun": "Git কমিট পরীক্ষামূলক রান",
+                    "titleCommitReview": "Git কমিট পর্যালোচনা",
+                    "titleReview": "Git পর্যালোচনা",
+                    "titleStageApplied": "Git স্টেজ প্রয়োগ করা হয়েছে",
+                    "titleStagedDiff": "Git স্টেজড পার্থক্য",
+                    "titleStageDryRun": "Git স্টেজ পরীক্ষামূলক রান",
+                    "titleStatus": "Git স্ট্যাটাস",
+                    "titleUnstagedDiff": "Git আনস্টেজড পার্থক্য",
+                    "untracked": "আনট্র্যাকড"
                 },
                 "patch": {
                     "validateNote": "এটি কোনো ফাইল পরিবর্তন না করে প্যাচটি যাচাই করে।",
                     "applyNote": "এই উচ্চ ঝুঁকির প্রয়োগ অনুরোধটি ব্যাকএন্ড প্রয়োগের আগের একটি চেকপয়েন্ট তৈরি করার পর ফাইল লেখে।",
                     "hideDiff": "ইউনিফায়েড diff লুকান",
-                    "showDiff": "ইউনিফায়েড diff দেখান"
-                }
+                    "showDiff": "ইউনিফায়েড diff দেখান",
+                    "actualLabel": "প্রকৃত:",
+                    "checkpointCreated": "প্রয়োগের আগের চেকপয়েন্ট তৈরি হয়েছে",
+                    "diffTruncated": "প্রদর্শনের জন্য পার্থক্যের প্রিভিউ ছেঁটে ফেলা হয়েছে।",
+                    "expectedLabel": "প্রত্যাশিত:",
+                    "firstLines": "{total}টির মধ্যে প্রথম {shown}টি লাইন",
+                    "hunkCountMany": "{count}টি খণ্ড",
+                    "hunkCountOne": "{count}টি খণ্ড",
+                    "hunkIndex": "খণ্ড {index}",
+                    "restoreManual": "পুনরুদ্ধার ম্যানুয়াল: পর্যালোচনার পরে এই চেকপয়েন্ট আইডি দিয়ে {tool} ব্যবহার করুন।",
+                    "titleApplied": "প্যাচ প্রয়োগ হয়েছে",
+                    "titleApplyBlocked": "প্যাচ প্রয়োগ অবরুদ্ধ",
+                    "titleApplyReview": "প্যাচ প্রয়োগ পর্যালোচনা",
+                    "titleDryRunConflicts": "প্যাচ ড্রাই-রানে দ্বন্দ্ব পাওয়া গেছে",
+                    "titleDryRunPassed": "প্যাচ ড্রাই-রান সফল",
+                    "titleDryRunReview": "প্যাচ ড্রাই-রান পর্যালোচনা",
+                    "warnings": "সতর্কতা"
+                },
+                "binary": "বাইনারি",
+                "fileCountMany": "{count}টি ফাইল",
+                "fileCountOne": "{count}টি ফাইল",
+                "moreCount": "+আরও {count}টি",
+                "plan": {
+                    "likelyFiles": "সম্ভাব্য ফাইল",
+                    "openQuestions": "খোলা প্রশ্ন",
+                    "reviewOnlyNote": "শুধু পর্যালোচনার জন্য আর্টিফ্যাক্ট। সম্পাদনা এবং পরিবর্তনকারী টুলগুলি এখনও বর্তমান অনুমোদন মোড ব্যবহার করে।",
+                    "riskHigh": "উচ্চ ঝুঁকি",
+                    "riskLow": "কম ঝুঁকি",
+                    "riskMedium": "মাঝারি ঝুঁকি",
+                    "risks": "ঝুঁকিসমূহ",
+                    "title": "কোডিং পরিকল্পনা"
+                },
+                "state": {
+                    "clean": "পরিষ্কার",
+                    "failed": "ব্যর্থ",
+                    "passed": "উত্তীর্ণ",
+                    "timedOut": "সময় শেষ"
+                },
+                "timeoutChip": "সময়সীমা {seconds}s",
+                "truncated": "সংক্ষিপ্ত",
+                "workspaceLabel": "ওয়ার্কস্পেস:"
+            },
+            "attachedImageAlt": "সংযুক্ত ছবি",
+            "stepNumber": "ধাপ {step}",
+            "transcribingLocally": "স্থানীয়ভাবে প্রতিলিপি করা হচ্ছে...",
+            "transferPlan": {
+                "dependsOnMany": "{count}টি প্রস্তুতিমূলক ধাপের উপর নির্ভরশীল",
+                "dependsOnOne": "{count}টি প্রস্তুতিমূলক ধাপের উপর নির্ভরশীল",
+                "destination": "গন্তব্য: {destination}",
+                "title": "স্থানান্তর পরিকল্পনা পর্যালোচনা",
+                "warnings": "সতর্কতা"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "ব্রাউজ",
                     "installed": "ইনস্টল করা"
-                }
+                },
+                "remoteInstallDisabled": "ক্লায়েন্ট পক্ষে রেজিস্ট্রি প্রমাণীকৃত না হওয়া পর্যন্ত রিমোট প্লাগইন ইনস্টলেশন বর্তমানে নিষ্ক্রিয় রয়েছে। স্থানীয়ভাবে ইনস্টল করা প্লাগইনগুলি স্বাভাবিকভাবে কাজ করতে থাকবে।"
             }
         },
         "filelu": {

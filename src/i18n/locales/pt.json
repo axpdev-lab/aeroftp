@@ -1269,7 +1269,14 @@
                 "stop": "Parar",
                 "stopShell": "Parar shell",
                 "closed": "Terminal encerrado.",
-                "commandInsertedReview": "Comando inserido no Terminal. Pressione Enter para executar."
+                "commandInsertedReview": "Comando inserido no Terminal. Pressione Enter para executar.",
+                "decreaseFont": "Diminuir tamanho da fonte (Ctrl+-)",
+                "emptyClickPlus": "Clique em {plus} para abrir um terminal",
+                "emptySshHint": "ou {ssh} para um shell remoto em {host}",
+                "increaseFont": "Aumentar tamanho da fonte (Ctrl+=)",
+                "newTab": "Nova aba de terminal",
+                "sshShellTo": "Shell SSH para {host}",
+                "theme": "Tema do terminal"
             },
             "editorPanel": {
                 "emptyState": "Clique com o botão direito num ficheiro e escolha \"Ver código-fonte\"",
@@ -1278,13 +1285,17 @@
                 "saving": "A guardar...",
                 "noFileSelected": "Nenhum ficheiro selecionado para visualização",
                 "loading": "Carregando editor...",
-                "dragToTerminalRun": "Arraste para o Terminal para inserir o comando de execução"
+                "dragToTerminalRun": "Arraste para o Terminal para inserir o comando de execução",
+                "closeEditor": "Fechar editor",
+                "resetChanges": "Redefinir alterações"
             },
             "previewPanel": {
                 "emptyState": "Clique com o botão direito num ficheiro e escolha \"Pré-visualizar\""
             },
             "codeEditor": "Editor de código",
-            "sshTerminal": "Terminal SSH"
+            "sshTerminal": "Terminal SSH",
+            "comingSoon": "Em breve",
+            "soonBadge": "Em breve"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Rejeitar execução da ferramenta",
                 "toggleDetails": "Mostrar/ocultar detalhes",
                 "allowSession": "Permitir para esta sessão",
-                "nonAtomicReplace": "Substituição não atómica: o ficheiro fica ausente por um instante"
+                "nonAtomicReplace": "Substituição não atómica: o ficheiro fica ausente por um instante",
+                "moreOptions": "Mais opções",
+                "panelAria": "Painel de aprovação de ferramentas"
             },
             "settings": {
                 "title": "Configurações de IA",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Alternativo",
                 "routingNoFallback": "Nenhum",
                 "bedrockNeedsModel": "Adicione e ative um modelo Bedrock no separador Modelos antes de testar.",
-                "bedrockSetup": "Defina o Runtime URL para a sua região AWS. Em Modelos, adicione um ID compatível com Chat Completions no Bedrock Runtime. O Runtime não apresenta uma lista de modelos. O teste envia um pequeno pedido de inferência que pode implicar custos da AWS."
+                "bedrockSetup": "Defina o Runtime URL para a sua região AWS. Em Modelos, adicione um ID compatível com Chat Completions no Bedrock Runtime. O Runtime não apresenta uma lista de modelos. O teste envia um pequeno pedido de inferência que pode implicar custos da AWS.",
+                "detectOllamaModelsTooltip": "Detetar automaticamente os modelos Ollama disponíveis",
+                "kTokens": "{count}K tokens",
+                "modelEditorAria": "Editor de modelos de IA",
+                "supportsTools": "Suporta ferramentas",
+                "supportsVision": "Suporta visão",
+                "thinkingReasoning": "Pensamento/Raciocínio",
+                "toolQuality": "Qualidade das ferramentas: {quality}/5"
             },
             "copy": "Copiar",
             "attachImage": "Anexar imagem",
@@ -2699,7 +2719,9 @@
                 "run": "Executar no Terminal",
                 "insert": "Inserir no Editor",
                 "diff": "Comparar com original",
-                "diffNoFile": "Nenhum arquivo aberto para comparação"
+                "diffNoFile": "Nenhum arquivo aberto para comparação",
+                "commandBlocked": "Comando bloqueado: potencialmente destrutivo",
+                "confirmRun": "Confirmar execução: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Pensando...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Trocar ramificação",
                 "delete": "Excluir ramificação",
                 "newBranch": "Nova ramificação",
-                "branchFrom": "Ramificar a partir deste ponto"
+                "branchFrom": "Ramificar a partir deste ponto",
+                "messageCountShort": "{count} msg",
+                "unnamed": "Ramo"
             },
             "context": {
                 "projectDetected": "Projeto detectado",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "em execução",
                 "expired": "expirado",
-                "refresh": "Atualizar"
+                "refresh": "Atualizar",
+                "modelsRunningMany": "{count} modelos em execução",
+                "modelsRunningOne": "{count} modelo em execução",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Cache de Contexto",
@@ -2956,7 +2983,8 @@
                 "warning": "Todas as operações de ficheiros serão executadas imediatamente sem aprovação. Use por sua conta e risco.",
                 "disable": "Desativar",
                 "securityWarning": "Aviso de Segurança",
-                "understood": "Entendido"
+                "understood": "Entendido",
+                "warningAria": "Aviso do modo extremo"
             },
             "errorServerError": "O servidor do provedor de IA está com problemas. Tente novamente em um momento.",
             "errorServiceUnavailable": "O provedor de IA está temporariamente indisponível (sobrecarregado). Serviços gratuitos podem ter limites. Tente novamente mais tarde.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Ilimitado",
                 "roleAI": "AI",
-                "roleUser": "Utilizador"
+                "roleUser": "Utilizador",
+                "noConversations": "Ainda não há conversas",
+                "titleCount": "Histórico ({count})"
             },
             "dropFileToAnalyze": "Largue o ficheiro para analisar com o AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} tokens de entrada, {output} de saída, conforme a contagem do provedor",
-                "breakdownCache": "{input} tokens de entrada, {output} de saída, {cacheRead} lidos do cache do prompt, {cacheWritten} gravados nele, conforme a contagem do provedor"
+                "breakdownCache": "{input} tokens de entrada, {output} de saída, {cacheRead} lidos do cache do prompt, {cacheWritten} gravados nele, conforme a contagem do provedor",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Executar {count} operação(ões)",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Seriam ignorados",
                     "skipped": "Ignorados",
                     "existedAtCheckpoint": "existia no ponto de controle",
-                    "absentAtCheckpoint": "ausente no ponto de controle"
+                    "absentAtCheckpoint": "ausente no ponto de controle",
+                    "noFiles": "Nenhum arquivo foi incluído neste resultado de restauração.",
+                    "otherActions": "Outras ações",
+                    "requestedPaths": "Subconjunto de caminhos solicitado",
+                    "scopeAll": "Escopo: todos os arquivos capturados no ponto de controle.",
+                    "titleApplied": "Restauração do ponto de controle aplicada",
+                    "titleApplyReview": "Revisão da aplicação da restauração do ponto de controle",
+                    "titleDryRunComplete": "Simulação da restauração do ponto de controle concluída",
+                    "titleDryRunReview": "Revisão da simulação de restauração do ponto de verificação"
                 },
                 "checks": {
                     "exitSummary": "código de saída {code} · {seconds}s",
                     "continueOnFailure": "Executa todas as verificações mesmo que uma falhe.",
-                    "stopOnFailure": "Para na primeira verificação com falha."
+                    "stopOnFailure": "Para na primeira verificação com falha.",
+                    "checkLabel": "Verificação:",
+                    "checksLabel": "Verificações:",
+                    "exitChip": "saída {code}",
+                    "filterChip": "filtro: {filter}",
+                    "filterLabel": "Filtro:",
+                    "notAvailable": "n/d",
+                    "passedCount": "{passed}/{total} aprovadas",
+                    "runCheckNote": "Executa um comando selecionado de build/test/lint no espaço de trabalho. Scripts de build e testes executam código real.",
+                    "runProjectCheck": "Executar verificação do projeto",
+                    "runVerification": "Executar passagem de verificação",
+                    "runVerificationNote": "Executa comandos selecionados de build/test/lint no espaço de trabalho. Scripts de build e testes executam código real.",
+                    "stoppedEarly": "Parado na primeira verificação com falha.",
+                    "timeoutLabel": "Tempo limite: {seconds}s",
+                    "verification": "Verificação"
                 },
                 "diagnostics": {
-                    "none": "Nenhum diagnóstico relatado."
+                    "none": "Nenhum diagnóstico relatado.",
+                    "errorCountMany": "{count} erros",
+                    "errorCountOne": "{count} erro",
+                    "title": "Diagnósticos",
+                    "truncated": "A lista de diagnósticos foi truncada.",
+                    "warningCountMany": "{count} avisos",
+                    "warningCountOne": "{count} aviso"
                 },
                 "search": {
-                    "none": "Nenhuma correspondência encontrada."
+                    "none": "Nenhuma correspondência encontrada.",
+                    "ignoreCase": "ignorar maiúsculas",
+                    "inPath": "em {path}",
+                    "literal": "literal",
+                    "matchCountMany": "{count} correspondências",
+                    "matchCountOne": "{count} correspondência",
+                    "title": "Pesquisa no espaço de trabalho",
+                    "truncated": "Os resultados foram truncados."
                 },
                 "git": {
                     "noStagedDiff": "Nenhuma saída de diff para as alterações preparadas.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Aprovação de preparação do Git",
                     "commitNote": "Isso cria um commit do git a partir do índice preparado atual. Revise primeiro coding_git_status e coding_git_diff com staged=true.",
                     "stagePreviewNote": "Isso mostra uma prévia de quais caminhos solicitados seriam preparados; o índice não será alterado.",
-                    "stageNote": "Isso altera o índice do git para os caminhos solicitados."
+                    "stageNote": "Isso altera o índice do git para os caminhos solicitados.",
+                    "afterCounts": "Depois: {counts}",
+                    "beforeCounts": "Antes: {counts}",
+                    "clean": "A árvore de trabalho está limpa.",
+                    "commitCountMany": "{count} commits",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "em conflito",
+                    "diffTruncated": "A saída do diff foi truncada.",
+                    "logTitle": "Registro do Git",
+                    "pathsChip": "caminhos: {paths}",
+                    "showingNewest": "Mostrando os {count} mais recentes; há mais.",
+                    "statusCounts": "{staged} preparados, {unstaged} não preparados, {untracked} não rastreados, {conflicted} em conflito",
+                    "titleCommitCreated": "Commit do Git criado",
+                    "titleCommitDryRun": "Simulação de commit do Git",
+                    "titleCommitReview": "Revisão do commit do Git",
+                    "titleReview": "Revisão do Git",
+                    "titleStageApplied": "Preparação do Git aplicada",
+                    "titleStagedDiff": "Diff preparado do Git",
+                    "titleStageDryRun": "Simulação de preparação do Git",
+                    "titleStatus": "Status do Git",
+                    "titleUnstagedDiff": "Diff não preparado do Git",
+                    "untracked": "não rastreado"
                 },
                 "patch": {
                     "validateNote": "Isso valida o patch sem alterar arquivos.",
                     "applyNote": "Esta solicitação de aplicação de alto risco grava arquivos depois que o backend cria um ponto de verificação anterior à aplicação.",
                     "hideDiff": "Ocultar diff unificado",
-                    "showDiff": "Mostrar diff unificado"
-                }
+                    "showDiff": "Mostrar diff unificado",
+                    "actualLabel": "real:",
+                    "checkpointCreated": "Ponto de verificação pré-aplicação criado",
+                    "diffTruncated": "Prévia do diff truncada para exibição.",
+                    "expectedLabel": "esperado:",
+                    "firstLines": "primeiras {shown} de {total} linhas",
+                    "hunkCountMany": "{count} blocos",
+                    "hunkCountOne": "{count} bloco",
+                    "hunkIndex": "bloco {index}",
+                    "restoreManual": "A restauração é manual: use {tool} com este ID de ponto de controle após a revisão.",
+                    "titleApplied": "Patch aplicado",
+                    "titleApplyBlocked": "Aplicação do patch bloqueada",
+                    "titleApplyReview": "Revisão da aplicação do patch",
+                    "titleDryRunConflicts": "A simulação do patch encontrou conflitos",
+                    "titleDryRunPassed": "Simulação do patch aprovada",
+                    "titleDryRunReview": "Revisão da simulação do patch",
+                    "warnings": "Avisos"
+                },
+                "binary": "binário",
+                "fileCountMany": "{count} arquivos",
+                "fileCountOne": "{count} arquivo",
+                "moreCount": "+{count} mais",
+                "plan": {
+                    "likelyFiles": "Arquivos prováveis",
+                    "openQuestions": "Perguntas em aberto",
+                    "reviewOnlyNote": "Artefato somente para revisão. Edições e ferramentas que modificam ainda usam o modo de aprovação atual.",
+                    "riskHigh": "risco alto",
+                    "riskLow": "risco baixo",
+                    "riskMedium": "risco médio",
+                    "risks": "Riscos",
+                    "title": "Plano de programação"
+                },
+                "state": {
+                    "clean": "limpo",
+                    "failed": "falhou",
+                    "passed": "aprovado",
+                    "timedOut": "expirado"
+                },
+                "timeoutChip": "tempo limite {seconds}s",
+                "truncated": "truncado",
+                "workspaceLabel": "Espaço de trabalho:"
+            },
+            "attachedImageAlt": "Imagem anexada",
+            "stepNumber": "Passo {step}",
+            "transcribingLocally": "Transcrevendo localmente...",
+            "transferPlan": {
+                "dependsOnMany": "Depende de {count} passos preparatórios",
+                "dependsOnOne": "Depende de {count} passo preparatório",
+                "destination": "Destino: {destination}",
+                "title": "Revisão do plano de transferência",
+                "warnings": "Avisos"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Explorar",
                     "installed": "Instalados"
-                }
+                },
+                "remoteInstallDisabled": "A instalação remota de plugins está desativada até que o registro seja autenticado no lado do cliente. Os plugins instalados localmente continuam funcionando normalmente."
             }
         },
         "filelu": {

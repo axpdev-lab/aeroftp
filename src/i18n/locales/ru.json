@@ -1269,7 +1269,14 @@
                 "stop": "Остановить",
                 "stopShell": "Остановить оболочку",
                 "closed": "Терминал закрыт.",
-                "commandInsertedReview": "Команда вставлена в Terminal. Нажмите Enter для запуска."
+                "commandInsertedReview": "Команда вставлена в Terminal. Нажмите Enter для запуска.",
+                "decreaseFont": "Уменьшить шрифт (Ctrl+-)",
+                "emptyClickPlus": "Нажмите {plus}, чтобы открыть терминал",
+                "emptySshHint": "или {ssh} для удалённой оболочки на {host}",
+                "increaseFont": "Увеличить шрифт (Ctrl+=)",
+                "newTab": "Новая вкладка терминала",
+                "sshShellTo": "Оболочка SSH на {host}",
+                "theme": "Тема терминала"
             },
             "editorPanel": {
                 "emptyState": "Щелкните правой кнопкой мыши по файлу и выберите \"Просмотр исходного кода\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Сохранение...",
                 "noFileSelected": "Файл для просмотра не выбран",
                 "loading": "Загрузка редактора...",
-                "dragToTerminalRun": "Перетащите в Terminal, чтобы вставить команду запуска"
+                "dragToTerminalRun": "Перетащите в Terminal, чтобы вставить команду запуска",
+                "closeEditor": "Закрыть редактор",
+                "resetChanges": "Сбросить изменения"
             },
             "previewPanel": {
                 "emptyState": "Щелкните правой кнопкой на файле и выберите \"Предпросмотр\""
             },
             "codeEditor": "Редактор кода",
-            "sshTerminal": "SSH-терминал"
+            "sshTerminal": "SSH-терминал",
+            "comingSoon": "Скоро появится",
+            "soonBadge": "Скоро"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Отклонить выполнение инструмента",
                 "toggleDetails": "Показать/скрыть детали",
                 "allowSession": "Разрешить для этой сессии",
-                "nonAtomicReplace": "Неатомарная замена: файл на короткое время отсутствует"
+                "nonAtomicReplace": "Неатомарная замена: файл на короткое время отсутствует",
+                "moreOptions": "Другие параметры",
+                "panelAria": "Панель одобрения инструментов"
             },
             "settings": {
                 "title": "Настройки ИИ",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Запасная",
                 "routingNoFallback": "Нет",
                 "bedrockNeedsModel": "Перед проверкой добавьте и включите модель Bedrock на вкладке Модели.",
-                "bedrockSetup": "Укажите Runtime URL для вашего региона AWS. На вкладке Модели добавьте ID, поддерживающий Chat Completions в Bedrock Runtime. Runtime не показывает список моделей. Тест отправляет небольшой запрос на вывод, за который AWS может взимать плату."
+                "bedrockSetup": "Укажите Runtime URL для вашего региона AWS. На вкладке Модели добавьте ID, поддерживающий Chat Completions в Bedrock Runtime. Runtime не показывает список моделей. Тест отправляет небольшой запрос на вывод, за который AWS может взимать плату.",
+                "detectOllamaModelsTooltip": "Автоматически обнаружить доступные модели Ollama",
+                "kTokens": "{count}K токенов",
+                "modelEditorAria": "Редактор моделей ИИ",
+                "supportsTools": "Поддерживает инструменты",
+                "supportsVision": "Поддерживает зрение",
+                "thinkingReasoning": "Мышление/Рассуждение",
+                "toolQuality": "Качество инструментов: {quality}/5"
             },
             "copy": "Копировать",
             "attachImage": "Прикрепить изображение",
@@ -2699,7 +2719,9 @@
                 "run": "Запустить в терминале",
                 "insert": "Вставить в редактор",
                 "diff": "Сравнить с оригиналом",
-                "diffNoFile": "Нет файла для сравнения"
+                "diffNoFile": "Нет файла для сравнения",
+                "commandBlocked": "Команда заблокирована: потенциально разрушительная",
+                "confirmRun": "Подтвердите запуск: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Размышление...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Сменить ветку",
                 "delete": "Удалить ветку",
                 "newBranch": "Новая ветка",
-                "branchFrom": "Ответвить от этой точки"
+                "branchFrom": "Ответвить от этой точки",
+                "messageCountShort": "{count} сообщ.",
+                "unnamed": "Ветка"
             },
             "context": {
                 "projectDetected": "Проект обнаружен",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "работает",
                 "expired": "истёк",
-                "refresh": "Обновить"
+                "refresh": "Обновить",
+                "modelsRunningMany": "Запущено моделей: {count}",
+                "modelsRunningOne": "Запущена {count} модель",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Кэширование контекста",
@@ -2956,7 +2983,8 @@
                 "warning": "Все файловые операции будут выполняться немедленно без одобрения. Используйте на свой страх и риск.",
                 "disable": "Отключить",
                 "securityWarning": "Предупреждение безопасности",
-                "understood": "Понятно"
+                "understood": "Понятно",
+                "warningAria": "Предупреждение об экстремальном режиме"
             },
             "errorServerError": "Сервер провайдера ИИ испытывает проблемы. Попробуйте снова через мгновение.",
             "errorServiceUnavailable": "Провайдер ИИ временно недоступен (перегружен). Бесплатные сервисы могут иметь ограничения. Попробуйте позже.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Без ограничений",
                 "roleAI": "AI",
-                "roleUser": "Пользователь"
+                "roleUser": "Пользователь",
+                "noConversations": "Пока нет бесед",
+                "titleCount": "История ({count})"
             },
             "dropFileToAnalyze": "Перетащите файл для анализа с помощью AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} входных токенов, {output} выходных токенов, по данным провайдера",
-                "breakdownCache": "{input} входных токенов, {output} выходных токенов, {cacheRead} прочитано из кэша промпта, {cacheWritten} записано в него, по данным провайдера"
+                "breakdownCache": "{input} входных токенов, {output} выходных токенов, {cacheRead} прочитано из кэша промпта, {cacheWritten} записано в него, по данным провайдера",
+                "countShort": "{count} ток."
             },
             "executeOperations": "Выполнить операции: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Будет пропущено",
                     "skipped": "Пропущено",
                     "existedAtCheckpoint": "существовал в контрольной точке",
-                    "absentAtCheckpoint": "отсутствовал в контрольной точке"
+                    "absentAtCheckpoint": "отсутствовал в контрольной точке",
+                    "noFiles": "В этот результат восстановления не вошло ни одного файла.",
+                    "otherActions": "Другие действия",
+                    "requestedPaths": "Запрошенное подмножество путей",
+                    "scopeAll": "Область: все файлы, сохранённые в контрольной точке.",
+                    "titleApplied": "Восстановление контрольной точки применено",
+                    "titleApplyReview": "Проверка применения восстановления контрольной точки",
+                    "titleDryRunComplete": "Пробный запуск восстановления контрольной точки завершён",
+                    "titleDryRunReview": "Проверка пробного восстановления контрольной точки"
                 },
                 "checks": {
                     "exitSummary": "код выхода {code} · {seconds}s",
                     "continueOnFailure": "Выполняет все проверки, даже если одна из них не пройдёт.",
-                    "stopOnFailure": "Останавливается на первой неудачной проверке."
+                    "stopOnFailure": "Останавливается на первой неудачной проверке.",
+                    "checkLabel": "Проверка:",
+                    "checksLabel": "Проверки:",
+                    "exitChip": "код выхода {code}",
+                    "filterChip": "фильтр: {filter}",
+                    "filterLabel": "Фильтр:",
+                    "notAvailable": "н/д",
+                    "passedCount": "{passed}/{total} пройдено",
+                    "runCheckNote": "Запускает отобранную команду build/test/lint в рабочей области. Скрипты сборки и тесты выполняют реальный код.",
+                    "runProjectCheck": "Запустить проверку проекта",
+                    "runVerification": "Запустить проход верификации",
+                    "runVerificationNote": "Запускает отобранные команды build/test/lint в рабочей области. Скрипты сборки и тесты выполняют реальный код.",
+                    "stoppedEarly": "Остановлено на первой неудачной проверке.",
+                    "timeoutLabel": "Тайм-аут: {seconds} с",
+                    "verification": "Верификация"
                 },
                 "diagnostics": {
-                    "none": "Диагностических сообщений нет."
+                    "none": "Диагностических сообщений нет.",
+                    "errorCountMany": "{count} ошибок",
+                    "errorCountOne": "{count} ошибка",
+                    "title": "Диагностика",
+                    "truncated": "Список диагностики был обрезан.",
+                    "warningCountMany": "{count} предупреждений",
+                    "warningCountOne": "{count} предупреждение"
                 },
                 "search": {
-                    "none": "Совпадений не найдено."
+                    "none": "Совпадений не найдено.",
+                    "ignoreCase": "без учёта регистра",
+                    "inPath": "в {path}",
+                    "literal": "буквально",
+                    "matchCountMany": "Совпадений: {count}",
+                    "matchCountOne": "{count} совпадение",
+                    "title": "Поиск в рабочей области",
+                    "truncated": "Результаты были усечены."
                 },
                 "git": {
                     "noStagedDiff": "Нет вывода diff для изменений в индексе.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Подтверждение индексации Git",
                     "commitNote": "Это создаёт коммит git из текущего индекса. Сначала проверьте coding_git_status и coding_git_diff с staged=true.",
                     "stagePreviewNote": "Это показывает, какие из запрошенных путей будут проиндексированы; индекс не изменится.",
-                    "stageNote": "Это изменяет индекс git для запрошенных путей."
+                    "stageNote": "Это изменяет индекс git для запрошенных путей.",
+                    "afterCounts": "После: {counts}",
+                    "beforeCounts": "До: {counts}",
+                    "clean": "Рабочее дерево чистое.",
+                    "commitCountMany": "{count} коммитов",
+                    "commitCountOne": "{count} коммит",
+                    "conflicted": "в конфликте",
+                    "diffTruncated": "Вывод различий был усечён.",
+                    "logTitle": "Журнал Git",
+                    "pathsChip": "пути: {paths}",
+                    "showingNewest": "Показаны последние {count}; есть ещё.",
+                    "statusCounts": "{staged} в индексе, {unstaged} вне индекса, {untracked} неотслеживаемых, {conflicted} в конфликте",
+                    "titleCommitCreated": "Коммит Git создан",
+                    "titleCommitDryRun": "Пробный коммит Git",
+                    "titleCommitReview": "Проверка коммита Git",
+                    "titleReview": "Проверка Git",
+                    "titleStageApplied": "Индексация Git применена",
+                    "titleStagedDiff": "Различия Git в индексе",
+                    "titleStageDryRun": "Пробная индексация Git",
+                    "titleStatus": "Статус Git",
+                    "titleUnstagedDiff": "Различия Git вне индекса",
+                    "untracked": "неотслеживаемый"
                 },
                 "patch": {
                     "validateNote": "Это проверяет патч без изменения файлов.",
                     "applyNote": "Этот запрос на применение с высоким риском записывает файлы после того, как бэкенд создаст контрольную точку перед применением.",
                     "hideDiff": "Скрыть унифицированный diff",
-                    "showDiff": "Показать унифицированный diff"
-                }
+                    "showDiff": "Показать унифицированный diff",
+                    "actualLabel": "фактически:",
+                    "checkpointCreated": "Создана контрольная точка перед применением",
+                    "diffTruncated": "Предпросмотр различий усечён для отображения.",
+                    "expectedLabel": "ожидается:",
+                    "firstLines": "первые {shown} из {total} строк",
+                    "hunkCountMany": "{count} фрагментов",
+                    "hunkCountOne": "{count} фрагмент",
+                    "hunkIndex": "фрагмент {index}",
+                    "restoreManual": "Восстановление выполняется вручную: после проверки используйте {tool} с этим идентификатором контрольной точки.",
+                    "titleApplied": "Патч применён",
+                    "titleApplyBlocked": "Применение патча заблокировано",
+                    "titleApplyReview": "Проверка применения патча",
+                    "titleDryRunConflicts": "Пробный запуск патча обнаружил конфликты",
+                    "titleDryRunPassed": "Пробный запуск патча пройден",
+                    "titleDryRunReview": "Проверка пробного запуска патча",
+                    "warnings": "Предупреждения"
+                },
+                "binary": "двоичный",
+                "fileCountMany": "{count} файлов",
+                "fileCountOne": "{count} файл",
+                "moreCount": "+ещё {count}",
+                "plan": {
+                    "likelyFiles": "Вероятные файлы",
+                    "openQuestions": "Открытые вопросы",
+                    "reviewOnlyNote": "Артефакт только для просмотра. Правки и изменяющие инструменты по-прежнему используют текущий режим подтверждения.",
+                    "riskHigh": "высокий риск",
+                    "riskLow": "низкий риск",
+                    "riskMedium": "средний риск",
+                    "risks": "Риски",
+                    "title": "План кодирования"
+                },
+                "state": {
+                    "clean": "чисто",
+                    "failed": "ошибка",
+                    "passed": "пройдено",
+                    "timedOut": "истекло время"
+                },
+                "timeoutChip": "тайм-аут {seconds}s",
+                "truncated": "усечено",
+                "workspaceLabel": "Рабочая область:"
+            },
+            "attachedImageAlt": "Прикреплённое изображение",
+            "stepNumber": "Шаг {step}",
+            "transcribingLocally": "Локальная расшифровка...",
+            "transferPlan": {
+                "dependsOnMany": "Зависит от {count} подготовительных шагов",
+                "dependsOnOne": "Зависит от {count} подготовительного шага",
+                "destination": "Назначение: {destination}",
+                "title": "Проверка плана передачи",
+                "warnings": "Предупреждения"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Обзор",
                     "installed": "Установлено"
-                }
+                },
+                "remoteInstallDisabled": "Удалённая установка плагинов временно отключена, пока реестр не будет аутентифицирован на стороне клиента. Локально установленные плагины продолжают работать как обычно."
             }
         },
         "filelu": {

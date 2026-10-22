@@ -119,11 +119,11 @@ export const DevToolsPanel: React.FC<DevToolsPanelProps> = ({
                                         ? 'text-gray-400 hover:text-white hover:bg-gray-700/50'
                                         : 'text-gray-600 cursor-not-allowed'
                                     }`}
-                                title={!tab.available ? 'Coming soon' : tab.label}
+                                title={!tab.available ? t('devtools.comingSoon') : tab.label}
                             >
                                 {tab.icon}
                                 {tab.label}
-                                {!tab.available && <span className="text-[10px] text-gray-500 ml-1">Soon</span>}
+                                {!tab.available && <span className="text-[10px] text-gray-500 ml-1">{t('devtools.soonBadge')}</span>}
                             </button>
                         ))}
                     </div>
@@ -143,7 +143,7 @@ export const DevToolsPanel: React.FC<DevToolsPanelProps> = ({
                     <button
                         onClick={toggleMaximize}
                         className="p-1 hover:bg-gray-700 rounded transition-colors"
-                        title={isMaximized ? 'Restore' : 'Maximize'}
+                        title={isMaximized ? t('devtools.restore') : t('devtools.maximize')}
                     >
                         {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                     </button>

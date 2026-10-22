@@ -1269,7 +1269,14 @@
                 "stop": "გაჩერება",
                 "stopShell": "ტერმინალის გაჩერება",
                 "closed": "ტერმინალი დაიხურა.",
-                "commandInsertedReview": "ბრძანება ჩასმულია Terminal-ში. დააჭირეთ Enter-ს გასაშვებად."
+                "commandInsertedReview": "ბრძანება ჩასმულია Terminal-ში. დააჭირეთ Enter-ს გასაშვებად.",
+                "decreaseFont": "შრიფტის შემცირება (Ctrl+-)",
+                "emptyClickPlus": "დააწკაპუნეთ {plus}-ზე ტერმინალის გასახსნელად",
+                "emptySshHint": "ან {ssh} დისტანციური გარსისთვის {host}-ზე",
+                "increaseFont": "შრიფტის გაზრდა (Ctrl+=)",
+                "newTab": "ტერმინალის ახალი ჩანართი",
+                "sshShellTo": "SSH გარსი {host}-ზე",
+                "theme": "ტერმინალის თემა"
             },
             "editorPanel": {
                 "emptyState": "დააწკაპუნეთ მარჯვენა ღილაკით ფაილზე და აირჩიეთ \"წყაროს ნახვა\"",
@@ -1278,13 +1285,17 @@
                 "saving": "ინახება...",
                 "noFileSelected": "სანახავად ფაილი არჩეული არ არის",
                 "loading": "რედაქტორის ჩატვირთვა...",
-                "dragToTerminalRun": "გადაიტანეთ Terminal-ში გასაშვები ბრძანების ჩასასმელად"
+                "dragToTerminalRun": "გადაიტანეთ Terminal-ში გასაშვები ბრძანების ჩასასმელად",
+                "closeEditor": "რედაქტორის დახურვა",
+                "resetChanges": "ცვლილებების გაუქმება"
             },
             "previewPanel": {
                 "emptyState": "დააწკაპუნეთ მარჯვენა ღილაკით ფაილზე და აირჩიეთ \"გადახედვა\""
             },
             "codeEditor": "კოდის რედაქტორი",
-            "sshTerminal": "SSH ტერმინალი"
+            "sshTerminal": "SSH ტერმინალი",
+            "comingSoon": "მალე ხელმისაწვდომი",
+            "soonBadge": "მალე"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "ინსტრუმენტის შესრულების უარყოფა",
                 "toggleDetails": "დეტალების გადართვა",
                 "allowSession": "ნება დართეთ ამ სესიისთვის",
-                "nonAtomicReplace": "არაატომური ჩანაცვლება: ფაილი მოკლედ არ არსებობს"
+                "nonAtomicReplace": "არაატომური ჩანაცვლება: ფაილი მოკლედ არ არსებობს",
+                "moreOptions": "მეტი პარამეტრი",
+                "panelAria": "ხელსაწყოების დამტკიცების პანელი"
             },
             "settings": {
                 "title": "AI პარამეტრები",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "სარეზერვო",
                 "routingNoFallback": "არცერთი",
                 "bedrockNeedsModel": "ტესტირებამდე მოდელები ჩანართში დაამატეთ და ჩართეთ Bedrock მოდელი.",
-                "bedrockSetup": "დააყენეთ Runtime URL თქვენი AWS რეგიონისთვის. მოდელები ჩანართში დაამატეთ ID, რომელსაც Bedrock Runtime-ზე Chat Completions-ის მხარდაჭერა აქვს. Runtime მოდელების სიას არ აჩვენებს. ტესტი აგზავნის მცირე ინფერენციის მოთხოვნას, რამაც შეიძლება AWS-ის საფასური გამოიწვიოს."
+                "bedrockSetup": "დააყენეთ Runtime URL თქვენი AWS რეგიონისთვის. მოდელები ჩანართში დაამატეთ ID, რომელსაც Bedrock Runtime-ზე Chat Completions-ის მხარდაჭერა აქვს. Runtime მოდელების სიას არ აჩვენებს. ტესტი აგზავნის მცირე ინფერენციის მოთხოვნას, რამაც შეიძლება AWS-ის საფასური გამოიწვიოს.",
+                "detectOllamaModelsTooltip": "ხელმისაწვდომი Ollama მოდელების ავტომატური აღმოჩენა",
+                "kTokens": "{count}K ტოკენი",
+                "modelEditorAria": "ხელოვნური ინტელექტის მოდელების რედაქტორი",
+                "supportsTools": "მხარს უჭერს ხელსაწყოებს",
+                "supportsVision": "მხარს უჭერს ხედვას",
+                "thinkingReasoning": "ფიქრი/მსჯელობა",
+                "toolQuality": "ხელსაწყოების ხარისხი: {quality}/5"
             },
             "copy": "კოპირება",
             "attachImage": "სურათის მიმაგრება",
@@ -2699,7 +2719,9 @@
                 "run": "ტერმინალში გაშვება",
                 "insert": "რედაქტორში ჩასმა",
                 "diff": "საწყისთან განსხვავება",
-                "diffNoFile": "დიფისათვის ფაილი არ არის გახსნილი"
+                "diffNoFile": "დიფისათვის ფაილი არ არის გახსნილი",
+                "commandBlocked": "ბრძანება დაბლოკილია: შესაძლოა დამანგრეველი",
+                "confirmRun": "გაშვების დადასტურება: {command}"
             },
             "thinkingBlock": {
                 "thinking": "ფიქრი...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "ბრენჩის შეცვლა",
                 "delete": "ბრენჩის წაშლა",
                 "newBranch": "ახალი ბრენჩი",
-                "branchFrom": "ამ წერტილიდან ბრენჩი"
+                "branchFrom": "ამ წერტილიდან ბრენჩი",
+                "messageCountShort": "{count} შეტყ.",
+                "unnamed": "განშტოება"
             },
             "context": {
                 "projectDetected": "პროექტი აღმოჩენილია",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "გაშვებულია",
                 "expired": "ვადაგასულია",
-                "refresh": "განახლება"
+                "refresh": "განახლება",
+                "modelsRunningMany": "{count} მოდელი მუშაობს",
+                "modelsRunningOne": "{count} მოდელი მუშაობს",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "კონტექსტის ქეში",
@@ -2956,7 +2983,8 @@
                 "warning": "ფაილის ყველა ოპერაცია დაუყოვნებლივ შესრულდება დამტკიცების გარეშე. გამოიყენეთ საკუთარი რისკით.",
                 "disable": "გამორთვა",
                 "securityWarning": "უსაფრთხოების გაფრთხილება",
-                "understood": "გასაგებია"
+                "understood": "გასაგებია",
+                "warningAria": "ექსტრემალური რეჟიმის გაფრთხილება"
             },
             "errorServerError": "AI პროვაიდერის სერვერს პრობლემები აქვს. სცადეთ ცოტა ხანში.",
             "errorServiceUnavailable": "AI პროვაიდერი დროებით მიუწვდომელია (გადატვირთული). უფასო სერვისებს შეიძლება ჰქონდეთ ლიმიტები. სცადეთ მოგვიანებით.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "შეუზღუდავი",
                 "roleAI": "AI",
-                "roleUser": "მომხმარებელი"
+                "roleUser": "მომხმარებელი",
+                "noConversations": "საუბრები ჯერ არ არის",
+                "titleCount": "ისტორია ({count})"
             },
             "dropFileToAnalyze": "ჩააგდეთ ფაილი AeroAgent-ით ანალიზისთვის",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} შემავალი ტოკენი, {output} გამავალი ტოკენი, პროვაიდერის დათვლით",
-                "breakdownCache": "{input} შემავალი ტოკენი, {output} გამავალი ტოკენი, {cacheRead} წაკითხულია პრომპტის ქეშიდან, {cacheWritten} ჩაწერილია მასში, პროვაიდერის დათვლით"
+                "breakdownCache": "{input} შემავალი ტოკენი, {output} გამავალი ტოკენი, {cacheRead} წაკითხულია პრომპტის ქეშიდან, {cacheWritten} ჩაწერილია მასში, პროვაიდერის დათვლით",
+                "countShort": "{count} ტოკ."
             },
             "executeOperations": "{count} ოპერაციის შესრულება",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "გამოტოვდება",
                     "skipped": "გამოტოვებული",
                     "existedAtCheckpoint": "არსებობდა საკონტროლო წერტილში",
-                    "absentAtCheckpoint": "არ არსებობდა საკონტროლო წერტილში"
+                    "absentAtCheckpoint": "არ არსებობდა საკონტროლო წერტილში",
+                    "noFiles": "აღდგენის ამ შედეგში ფაილები არ შესულა.",
+                    "otherActions": "სხვა მოქმედებები",
+                    "requestedPaths": "მოთხოვნილი ბილიკების ქვესიმრავლე",
+                    "scopeAll": "მოცულობა: საკონტროლო წერტილში აღბეჭდილი ყველა ფაილი.",
+                    "titleApplied": "საკონტროლო წერტილის აღდგენა გამოყენებულია",
+                    "titleApplyReview": "საკონტროლო წერტილის აღდგენის გამოყენების განხილვა",
+                    "titleDryRunComplete": "საკონტროლო წერტილის აღდგენის საცდელი გაშვება დასრულდა",
+                    "titleDryRunReview": "საკონტროლო წერტილის აღდგენის საცდელი გაშვების მიმოხილვა"
                 },
                 "checks": {
                     "exitSummary": "გასვლის კოდი {code} · {seconds}s",
                     "continueOnFailure": "უშვებს ყველა შემოწმებას, მაშინაც კი, თუ რომელიმე ჩავარდება.",
-                    "stopOnFailure": "ჩერდება პირველ წარუმატებელ შემოწმებაზე."
+                    "stopOnFailure": "ჩერდება პირველ წარუმატებელ შემოწმებაზე.",
+                    "checkLabel": "შემოწმება:",
+                    "checksLabel": "შემოწმებები:",
+                    "exitChip": "გასვლის კოდი {code}",
+                    "filterChip": "ფილტრი: {filter}",
+                    "filterLabel": "ფილტრი:",
+                    "notAvailable": "არ არის",
+                    "passedCount": "{passed}/{total} გავლილი",
+                    "runCheckNote": "სამუშაო სივრცეში უშვებს შერჩეულ build/test/lint ბრძანებას. აგების სკრიპტები და ტესტები რეალურ კოდს ასრულებენ.",
+                    "runProjectCheck": "პროექტის შემოწმების გაშვება",
+                    "runVerification": "გადამოწმების ციკლის გაშვება",
+                    "runVerificationNote": "სამუშაო სივრცეში უშვებს შერჩეულ build/test/lint ბრძანებებს. აგების სკრიპტები და ტესტები რეალურ კოდს ასრულებენ.",
+                    "stoppedEarly": "შეჩერდა პირველ წარუმატებელ შემოწმებაზე.",
+                    "timeoutLabel": "დროის ლიმიტი: {seconds} წმ",
+                    "verification": "გადამოწმება"
                 },
                 "diagnostics": {
-                    "none": "დიაგნოსტიკა არ დაფიქსირებულა."
+                    "none": "დიაგნოსტიკა არ დაფიქსირებულა.",
+                    "errorCountMany": "{count} შეცდომა",
+                    "errorCountOne": "{count} შეცდომა",
+                    "title": "დიაგნოსტიკა",
+                    "truncated": "დიაგნოსტიკის სია შემოკლდა.",
+                    "warningCountMany": "{count} გაფრთხილება",
+                    "warningCountOne": "{count} გაფრთხილება"
                 },
                 "search": {
-                    "none": "დამთხვევები ვერ მოიძებნა."
+                    "none": "დამთხვევები ვერ მოიძებნა.",
+                    "ignoreCase": "რეგისტრის იგნორირება",
+                    "inPath": "{path}-ში",
+                    "literal": "სიტყვასიტყვით",
+                    "matchCountMany": "{count} დამთხვევა",
+                    "matchCountOne": "{count} დამთხვევა",
+                    "title": "სამუშაო სივრცეში ძიება",
+                    "truncated": "შედეგები შემოკლდა."
                 },
                 "git": {
                     "noStagedDiff": "მომზადებული ცვლილებების diff გამონატანი არ არის.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git მომზადების დამტკიცება",
                     "commitNote": "ეს ქმნის git კომიტს მიმდინარე მომზადებული ინდექსიდან. ჯერ გადახედეთ coding_git_status და coding_git_diff ხელსაწყოებს staged=true პარამეტრით.",
                     "stagePreviewNote": "ეს წინასწარ აჩვენებს, მოთხოვნილი გზებიდან რომელი მომზადდებოდა; ინდექსი არ შეიცვლება.",
-                    "stageNote": "ეს ცვლის git ინდექსს მოთხოვნილი გზებისთვის."
+                    "stageNote": "ეს ცვლის git ინდექსს მოთხოვნილი გზებისთვის.",
+                    "afterCounts": "შემდეგ: {counts}",
+                    "beforeCounts": "მანამდე: {counts}",
+                    "clean": "სამუშაო ხე სუფთაა.",
+                    "commitCountMany": "{count} კომიტი",
+                    "commitCountOne": "{count} კომიტი",
+                    "conflicted": "კონფლიქტური",
+                    "diffTruncated": "განსხვავებების გამონატანი შემოკლდა.",
+                    "logTitle": "Git-ის ჟურნალი",
+                    "pathsChip": "ბილიკები: {paths}",
+                    "showingNewest": "ნაჩვენებია უახლესი {count}; არსებობს მეტი.",
+                    "statusCounts": "{staged} მომზადებული, {unstaged} მოუმზადებელი, {untracked} თვალყურდაუდევნელი, {conflicted} კონფლიქტური",
+                    "titleCommitCreated": "Git-ის კომიტი შეიქმნა",
+                    "titleCommitDryRun": "Git-ის კომიტის საცდელი გაშვება",
+                    "titleCommitReview": "Git-ის კომიტის მიმოხილვა",
+                    "titleReview": "Git-ის მიმოხილვა",
+                    "titleStageApplied": "Git-ის მომზადება გამოყენებულია",
+                    "titleStagedDiff": "Git-ის მომზადებული განსხვავებები",
+                    "titleStageDryRun": "Git-ის მომზადების საცდელი გაშვება",
+                    "titleStatus": "Git-ის სტატუსი",
+                    "titleUnstagedDiff": "Git-ის მოუმზადებელი განსხვავებები",
+                    "untracked": "თვალყურდაუდევნელი"
                 },
                 "patch": {
                     "validateNote": "ეს ამოწმებს პატჩს ფაილების შეცვლის გარეშე.",
                     "applyNote": "ეს მაღალი რისკის გამოყენების მოთხოვნა ჩაწერს ფაილებს მას შემდეგ, რაც ბექენდი შექმნის გამოყენებამდე საკონტროლო წერტილს.",
                     "hideDiff": "გაერთიანებული diff ხედის დამალვა",
-                    "showDiff": "გაერთიანებული diff ხედის ჩვენება"
-                }
+                    "showDiff": "გაერთიანებული diff ხედის ჩვენება",
+                    "actualLabel": "ფაქტობრივი:",
+                    "checkpointCreated": "გამოყენებამდე საკონტროლო წერტილი შეიქმნა",
+                    "diffTruncated": "განსხვავებების გადახედვა შემოკლდა საჩვენებლად.",
+                    "expectedLabel": "მოსალოდნელი:",
+                    "firstLines": "პირველი {shown} {total} ხაზიდან",
+                    "hunkCountMany": "{count} ფრაგმენტი",
+                    "hunkCountOne": "{count} ფრაგმენტი",
+                    "hunkIndex": "ფრაგმენტი {index}",
+                    "restoreManual": "აღდგენა ხელით ხდება: განხილვის შემდეგ გამოიყენეთ {tool} საკონტროლო წერტილის ამ იდენტიფიკატორით.",
+                    "titleApplied": "პაჩი გამოყენებულია",
+                    "titleApplyBlocked": "პაჩის გამოყენება დაბლოკილია",
+                    "titleApplyReview": "პაჩის გამოყენების განხილვა",
+                    "titleDryRunConflicts": "პაჩის საცდელმა გაშვებამ კონფლიქტები აღმოაჩინა",
+                    "titleDryRunPassed": "პაჩის საცდელი გაშვება წარმატებულია",
+                    "titleDryRunReview": "პაჩის საცდელი გაშვების განხილვა",
+                    "warnings": "გაფრთხილებები"
+                },
+                "binary": "ორობითი",
+                "fileCountMany": "{count} ფაილი",
+                "fileCountOne": "{count} ფაილი",
+                "moreCount": "+{count} კიდევ",
+                "plan": {
+                    "likelyFiles": "სავარაუდო ფაილები",
+                    "openQuestions": "ღია კითხვები",
+                    "reviewOnlyNote": "მხოლოდ განხილვისთვის განკუთვნილი არტეფაქტი. რედაქტირებები და ცვლილების შემტანი ხელსაწყოები კვლავ იყენებენ დამტკიცების მიმდინარე რეჟიმს.",
+                    "riskHigh": "მაღალი რისკი",
+                    "riskLow": "დაბალი რისკი",
+                    "riskMedium": "საშუალო რისკი",
+                    "risks": "რისკები",
+                    "title": "კოდირების გეგმა"
+                },
+                "state": {
+                    "clean": "სუფთა",
+                    "failed": "ვერ შესრულდა",
+                    "passed": "გავიდა",
+                    "timedOut": "დრო ამოიწურა"
+                },
+                "timeoutChip": "დროის ლიმიტი {seconds}s",
+                "truncated": "შემოკლებული",
+                "workspaceLabel": "სამუშაო სივრცე:"
+            },
+            "attachedImageAlt": "მიმაგრებული სურათი",
+            "stepNumber": "ნაბიჯი {step}",
+            "transcribingLocally": "ლოკალური ტრანსკრიფცია...",
+            "transferPlan": {
+                "dependsOnMany": "დამოკიდებულია {count} მოსამზადებელ ნაბიჯზე",
+                "dependsOnOne": "დამოკიდებულია {count} მოსამზადებელ ნაბიჯზე",
+                "destination": "დანიშნულება: {destination}",
+                "title": "გადაცემის გეგმის მიმოხილვა",
+                "warnings": "გაფრთხილებები"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "დათვალიერება",
                     "installed": "დაინსტალირებული"
-                }
+                },
+                "remoteInstallDisabled": "მოდულების დისტანციური ინსტალაცია ამჟამად გამორთულია, სანამ რეესტრი კლიენტის მხარეს არ იქნება ავთენტიფიცირებული. ლოკალურად დაინსტალირებული მოდულები ჩვეულებრივ აგრძელებენ მუშაობას."
             }
         },
         "filelu": {

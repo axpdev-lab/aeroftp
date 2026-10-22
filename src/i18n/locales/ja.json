@@ -1269,7 +1269,14 @@
                 "stop": "停止",
                 "stopShell": "シェルを停止",
                 "closed": "ターミナルが閉じました。",
-                "commandInsertedReview": "コマンドを Terminal に挿入しました。Enter を押して実行します。"
+                "commandInsertedReview": "コマンドを Terminal に挿入しました。Enter を押して実行します。",
+                "decreaseFont": "フォントサイズを小さく (Ctrl+-)",
+                "emptyClickPlus": "{plus} をクリックしてターミナルを開く",
+                "emptySshHint": "または {ssh} で {host} へのリモートシェル",
+                "increaseFont": "フォントサイズを大きく (Ctrl+=)",
+                "newTab": "新しいターミナルタブ",
+                "sshShellTo": "{host} への SSH シェル",
+                "theme": "ターミナルテーマ"
             },
             "editorPanel": {
                 "emptyState": "ファイルを右クリックして「ソースを表示」を選択してください",
@@ -1278,13 +1285,17 @@
                 "saving": "保存中...",
                 "noFileSelected": "表示するファイルが選択されていません",
                 "loading": "エディターを読み込み中...",
-                "dragToTerminalRun": "Terminal にドラッグして実行コマンドを挿入"
+                "dragToTerminalRun": "Terminal にドラッグして実行コマンドを挿入",
+                "closeEditor": "エディターを閉じる",
+                "resetChanges": "変更をリセット"
             },
             "previewPanel": {
                 "emptyState": "ファイルを右クリックして「プレビュー」を選択"
             },
             "codeEditor": "コードエディタ",
-            "sshTerminal": "SSHターミナル"
+            "sshTerminal": "SSHターミナル",
+            "comingSoon": "近日公開",
+            "soonBadge": "近日"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2474,7 +2485,9 @@
                 "rejectExecution": "ツールの実行を拒否",
                 "toggleDetails": "詳細を切替",
                 "allowSession": "このセッションで許可",
-                "nonAtomicReplace": "非アトミックな置き換え: ファイルが一瞬存在しなくなります"
+                "nonAtomicReplace": "非アトミックな置き換え: ファイルが一瞬存在しなくなります",
+                "moreOptions": "その他のオプション",
+                "panelAria": "ツール承認パネル"
             },
             "settings": {
                 "title": "AI設定",
@@ -2629,7 +2642,14 @@
                 "routingFallback": "フォールバック",
                 "routingNoFallback": "なし",
                 "bedrockNeedsModel": "テストする前に、モデル タブで Bedrock モデルを追加して有効にしてください。",
-                "bedrockSetup": "AWS リージョンの Runtime URL を設定してください。モデル で、Bedrock Runtime の Chat Completions に対応する ID を追加してください。Runtime はモデルを一覧表示しません。テストでは小さな推論リクエストを送信するため、AWS の料金が発生する場合があります。"
+                "bedrockSetup": "AWS リージョンの Runtime URL を設定してください。モデル で、Bedrock Runtime の Chat Completions に対応する ID を追加してください。Runtime はモデルを一覧表示しません。テストでは小さな推論リクエストを送信するため、AWS の料金が発生する場合があります。",
+                "detectOllamaModelsTooltip": "利用可能な Ollama モデルを自動検出",
+                "kTokens": "{count}K トークン",
+                "modelEditorAria": "AI モデルエディター",
+                "supportsTools": "ツール対応",
+                "supportsVision": "ビジョン対応",
+                "thinkingReasoning": "思考/推論",
+                "toolQuality": "ツール品質: {quality}/5"
             },
             "copy": "コピー",
             "attachImage": "画像を添付",
@@ -2663,7 +2683,9 @@
                 "run": "ターミナルで実行",
                 "insert": "エディターに挿入",
                 "diff": "元のコードと差分",
-                "diffNoFile": "比較するファイルが開かれていません"
+                "diffNoFile": "比較するファイルが開かれていません",
+                "commandBlocked": "コマンドをブロックしました: 破壊的な可能性があります",
+                "confirmRun": "実行を確認: {command}"
             },
             "thinkingBlock": {
                 "thinking": "考え中...",
@@ -2711,7 +2733,9 @@
                 "switchBranch": "ブランチを切り替え",
                 "delete": "ブランチを削除",
                 "newBranch": "新しいブランチ",
-                "branchFrom": "この地点からブランチ"
+                "branchFrom": "この地点からブランチ",
+                "messageCountShort": "{count} 件",
+                "unnamed": "ブランチ"
             },
             "context": {
                 "projectDetected": "プロジェクトを検出",
@@ -2794,7 +2818,10 @@
                 "vram": "VRAM",
                 "running": "実行中",
                 "expired": "期限切れ",
-                "refresh": "更新"
+                "refresh": "更新",
+                "modelsRunningMany": "{count} 個のモデルが実行中",
+                "modelsRunningOne": "{count} 個のモデルが実行中",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "コンテキストキャッシュ",
@@ -2920,7 +2947,8 @@
                 "warning": "すべてのファイル操作が承認なしで即座に実行されます。自己責任でご利用ください。",
                 "disable": "無効にする",
                 "securityWarning": "セキュリティ警告",
-                "understood": "了解"
+                "understood": "了解",
+                "warningAria": "エクストリームモードの警告"
             },
             "errorServerError": "AIプロバイダーのサーバーに問題が発生しています。しばらくしてから再試行してください。",
             "errorServiceUnavailable": "AIプロバイダーが一時的に利用できません（過負荷）。無料プランには制限がある場合があります。後で再試行してください。",
@@ -3016,7 +3044,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "無制限",
                 "roleAI": "AI",
-                "roleUser": "ユーザー"
+                "roleUser": "ユーザー",
+                "noConversations": "まだ会話はありません",
+                "titleCount": "履歴 ({count})"
             },
             "dropFileToAnalyze": "ファイルをドロップしてAeroAgentで分析",
             "plugins": {
@@ -3172,7 +3202,8 @@
             },
             "tokens": {
                 "breakdown": "入力 {input} トークン、出力 {output} トークン、プロバイダーによる集計",
-                "breakdownCache": "入力 {input} トークン、出力 {output} トークン、プロンプトキャッシュからの読み取り {cacheRead}、プロンプトキャッシュへの書き込み {cacheWritten}、プロバイダーによる集計"
+                "breakdownCache": "入力 {input} トークン、出力 {output} トークン、プロンプトキャッシュからの読み取り {cacheRead}、プロンプトキャッシュへの書き込み {cacheWritten}、プロバイダーによる集計",
+                "countShort": "{count} トークン"
             },
             "executeOperations": "{count} 件の操作を実行",
             "coding": {
@@ -3189,18 +3220,53 @@
                     "wouldSkip": "スキップ予定",
                     "skipped": "スキップ済み",
                     "existedAtCheckpoint": "チェックポイント時点で存在",
-                    "absentAtCheckpoint": "チェックポイント時点で不在"
+                    "absentAtCheckpoint": "チェックポイント時点で不在",
+                    "noFiles": "この復元結果に含まれるファイルはありません。",
+                    "otherActions": "その他の操作",
+                    "requestedPaths": "要求されたパスのサブセット",
+                    "scopeAll": "範囲: チェックポイントで取得されたすべてのファイル。",
+                    "titleApplied": "チェックポイントの復元を適用しました",
+                    "titleApplyReview": "チェックポイント復元の適用レビュー",
+                    "titleDryRunComplete": "チェックポイント復元のドライランが完了しました",
+                    "titleDryRunReview": "チェックポイント復元ドライランのレビュー"
                 },
                 "checks": {
                     "exitSummary": "終了コード {code} · {seconds}s",
                     "continueOnFailure": "いずれかが失敗してもすべてのチェックを実行します。",
-                    "stopOnFailure": "最初に失敗したチェックで停止します。"
+                    "stopOnFailure": "最初に失敗したチェックで停止します。",
+                    "checkLabel": "チェック:",
+                    "checksLabel": "チェック:",
+                    "exitChip": "終了コード {code}",
+                    "filterChip": "フィルター: {filter}",
+                    "filterLabel": "フィルター:",
+                    "notAvailable": "なし",
+                    "passedCount": "{passed}/{total} 合格",
+                    "runCheckNote": "ワークスペースで厳選された build/test/lint コマンドを実行します。ビルドスクリプトとテストは実際のコードを実行します。",
+                    "runProjectCheck": "プロジェクトチェックを実行",
+                    "runVerification": "検証パスを実行",
+                    "runVerificationNote": "ワークスペースで厳選された build/test/lint コマンドを実行します。ビルドスクリプトとテストは実際のコードを実行します。",
+                    "stoppedEarly": "最初に失敗したチェックで停止しました。",
+                    "timeoutLabel": "タイムアウト: {seconds} 秒",
+                    "verification": "検証"
                 },
                 "diagnostics": {
-                    "none": "診断は報告されていません。"
+                    "none": "診断は報告されていません。",
+                    "errorCountMany": "{count} 件のエラー",
+                    "errorCountOne": "{count} 件のエラー",
+                    "title": "診断",
+                    "truncated": "診断リストは切り詰められました。",
+                    "warningCountMany": "{count} 件の警告",
+                    "warningCountOne": "{count} 件の警告"
                 },
                 "search": {
-                    "none": "一致するものが見つかりません。"
+                    "none": "一致するものが見つかりません。",
+                    "ignoreCase": "大文字小文字を区別しない",
+                    "inPath": "{path} 内",
+                    "literal": "リテラル",
+                    "matchCountMany": "{count} 件一致",
+                    "matchCountOne": "{count} 件一致",
+                    "title": "ワークスペース検索",
+                    "truncated": "結果は切り詰められました。"
                 },
                 "git": {
                     "noStagedDiff": "ステージ済みの差分出力はありません。",
@@ -3211,14 +3277,84 @@
                     "stageApproval": "Git ステージの承認",
                     "commitNote": "現在のステージ済みインデックスから git コミットを作成します。先に staged=true で coding_git_status と coding_git_diff を確認してください。",
                     "stagePreviewNote": "要求されたパスのうちどれがステージされるかをプレビューします。インデックスは変更されません。",
-                    "stageNote": "要求されたパスについて git インデックスを変更します。"
+                    "stageNote": "要求されたパスについて git インデックスを変更します。",
+                    "afterCounts": "変更後: {counts}",
+                    "beforeCounts": "変更前: {counts}",
+                    "clean": "作業ツリーはクリーンです。",
+                    "commitCountMany": "{count} 件のコミット",
+                    "commitCountOne": "{count} 件のコミット",
+                    "conflicted": "競合",
+                    "diffTruncated": "差分出力は切り詰められました。",
+                    "logTitle": "Git ログ",
+                    "pathsChip": "パス: {paths}",
+                    "showingNewest": "最新の {count} 件を表示中。さらにあります。",
+                    "statusCounts": "ステージ済み {staged}、未ステージ {unstaged}、未追跡 {untracked}、競合 {conflicted}",
+                    "titleCommitCreated": "Git コミットを作成しました",
+                    "titleCommitDryRun": "Git コミットのドライラン",
+                    "titleCommitReview": "Git コミットのレビュー",
+                    "titleReview": "Git レビュー",
+                    "titleStageApplied": "Git ステージを適用しました",
+                    "titleStagedDiff": "Git ステージ済み差分",
+                    "titleStageDryRun": "Git ステージのドライラン",
+                    "titleStatus": "Git ステータス",
+                    "titleUnstagedDiff": "Git 未ステージ差分",
+                    "untracked": "未追跡"
                 },
                 "patch": {
                     "validateNote": "ファイルを変更せずにパッチを検証します。",
                     "applyNote": "この高リスクな適用リクエストは、バックエンドが適用前のチェックポイントを作成した後にファイルを書き込みます。",
                     "hideDiff": "統合差分を非表示",
-                    "showDiff": "統合差分を表示"
-                }
+                    "showDiff": "統合差分を表示",
+                    "actualLabel": "実際:",
+                    "checkpointCreated": "適用前のチェックポイントを作成しました",
+                    "diffTruncated": "差分プレビューは表示用に切り詰められました。",
+                    "expectedLabel": "期待値:",
+                    "firstLines": "{total} 行中の最初の {shown} 行",
+                    "hunkCountMany": "{count} 個のハンク",
+                    "hunkCountOne": "{count} 個のハンク",
+                    "hunkIndex": "ハンク {index}",
+                    "restoreManual": "復元は手動です。レビュー後、このチェックポイント ID を指定して {tool} を使用してください。",
+                    "titleApplied": "パッチを適用しました",
+                    "titleApplyBlocked": "パッチの適用がブロックされました",
+                    "titleApplyReview": "パッチ適用のレビュー",
+                    "titleDryRunConflicts": "パッチのドライランで競合が見つかりました",
+                    "titleDryRunPassed": "パッチのドライランに成功しました",
+                    "titleDryRunReview": "パッチのドライランのレビュー",
+                    "warnings": "警告"
+                },
+                "binary": "バイナリ",
+                "fileCountMany": "{count} ファイル",
+                "fileCountOne": "{count} 個のファイル",
+                "moreCount": "+{count} 件",
+                "plan": {
+                    "likelyFiles": "関連しそうなファイル",
+                    "openQuestions": "未解決の質問",
+                    "reviewOnlyNote": "レビュー専用の成果物です。編集や変更を伴うツールは引き続き現在の承認モードを使用します。",
+                    "riskHigh": "高リスク",
+                    "riskLow": "低リスク",
+                    "riskMedium": "中リスク",
+                    "risks": "リスク",
+                    "title": "コーディング計画"
+                },
+                "state": {
+                    "clean": "クリーン",
+                    "failed": "失敗",
+                    "passed": "成功",
+                    "timedOut": "タイムアウト"
+                },
+                "timeoutChip": "タイムアウト {seconds}s",
+                "truncated": "切り詰め",
+                "workspaceLabel": "ワークスペース:"
+            },
+            "attachedImageAlt": "添付画像",
+            "stepNumber": "ステップ {step}",
+            "transcribingLocally": "ローカルで文字起こし中...",
+            "transferPlan": {
+                "dependsOnMany": "{count} 件の準備ステップに依存",
+                "dependsOnOne": "{count} 件の準備ステップに依存",
+                "destination": "宛先: {destination}",
+                "title": "転送計画のレビュー",
+                "warnings": "警告"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "参照",
                     "installed": "インストール済み"
-                }
+                },
+                "remoteInstallDisabled": "レジストリがクライアント側で認証されるまで、リモートからのプラグインのインストールは現在無効です。ローカルにインストールされたプラグインは引き続き通常どおり動作します。"
             }
         },
         "filelu": {

@@ -1269,7 +1269,14 @@
                 "stop": "หยุด",
                 "stopShell": "หยุดเชลล์",
                 "closed": "ปิดเทอร์มินัลแล้ว",
-                "commandInsertedReview": "แทรกคำสั่งใน Terminal แล้ว กด Enter เพื่อรัน"
+                "commandInsertedReview": "แทรกคำสั่งใน Terminal แล้ว กด Enter เพื่อรัน",
+                "decreaseFont": "ลดขนาดตัวอักษร (Ctrl+-)",
+                "emptyClickPlus": "คลิก {plus} เพื่อเปิดเทอร์มินัล",
+                "emptySshHint": "หรือ {ssh} สำหรับเชลล์ระยะไกลไปยัง {host}",
+                "increaseFont": "เพิ่มขนาดตัวอักษร (Ctrl+=)",
+                "newTab": "แท็บเทอร์มินัลใหม่",
+                "sshShellTo": "เชลล์ SSH ไปยัง {host}",
+                "theme": "ธีมเทอร์มินัล"
             },
             "editorPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"ดูต้นฉบับ\"",
@@ -1278,13 +1285,17 @@
                 "saving": "กำลังบันทึก...",
                 "noFileSelected": "ไม่ได้เลือกไฟล์สำหรับดู",
                 "loading": "กำลังโหลดตัวแก้ไข...",
-                "dragToTerminalRun": "ลากไปยัง Terminal เพื่อแทรกคำสั่งสำหรับรัน"
+                "dragToTerminalRun": "ลากไปยัง Terminal เพื่อแทรกคำสั่งสำหรับรัน",
+                "closeEditor": "ปิดตัวแก้ไข",
+                "resetChanges": "รีเซ็ตการเปลี่ยนแปลง"
             },
             "previewPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"ดูตัวอย่าง\""
             },
             "codeEditor": "โปรแกรมแก้ไขโค้ด",
-            "sshTerminal": "เทอร์มินอล SSH"
+            "sshTerminal": "เทอร์มินอล SSH",
+            "comingSoon": "เร็วๆ นี้",
+            "soonBadge": "เร็วๆ นี้"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "ปฏิเสธการดำเนินการเครื่องมือ",
                 "toggleDetails": "แสดง/ซ่อนรายละเอียด",
                 "allowSession": "อนุญาตสำหรับเซสชันนี้",
-                "nonAtomicReplace": "การแทนที่แบบไม่อะตอมมิก: ไฟล์จะหายไปชั่วขณะ"
+                "nonAtomicReplace": "การแทนที่แบบไม่อะตอมมิก: ไฟล์จะหายไปชั่วขณะ",
+                "moreOptions": "ตัวเลือกเพิ่มเติม",
+                "panelAria": "แผงอนุมัติเครื่องมือ"
             },
             "settings": {
                 "title": "การตั้งค่า AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "สำรอง",
                 "routingNoFallback": "ไม่มี",
                 "bedrockNeedsModel": "เพิ่มและเปิดใช้งานโมเดล Bedrock ในแท็บ โมเดล ก่อนทดสอบ",
-                "bedrockSetup": "ตั้งค่า Runtime URL สำหรับภูมิภาค AWS ของคุณ ใน โมเดล ให้เพิ่ม ID ที่รองรับ Chat Completions บน Bedrock Runtime Runtime ไม่แสดงรายการโมเดล การทดสอบจะส่งคำขออนุมานขนาดเล็กซึ่งอาจมีค่าใช้จ่ายจาก AWS"
+                "bedrockSetup": "ตั้งค่า Runtime URL สำหรับภูมิภาค AWS ของคุณ ใน โมเดล ให้เพิ่ม ID ที่รองรับ Chat Completions บน Bedrock Runtime Runtime ไม่แสดงรายการโมเดล การทดสอบจะส่งคำขออนุมานขนาดเล็กซึ่งอาจมีค่าใช้จ่ายจาก AWS",
+                "detectOllamaModelsTooltip": "ตรวจหาโมเดล Ollama ที่ใช้ได้โดยอัตโนมัติ",
+                "kTokens": "{count}K โทเค็น",
+                "modelEditorAria": "ตัวแก้ไขโมเดล AI",
+                "supportsTools": "รองรับเครื่องมือ",
+                "supportsVision": "รองรับการมองเห็น",
+                "thinkingReasoning": "การคิด/การให้เหตุผล",
+                "toolQuality": "คุณภาพเครื่องมือ: {quality}/5"
             },
             "copy": "คัดลอก",
             "attachImage": "แนบรูปภาพ",
@@ -2699,7 +2719,9 @@
                 "run": "เรียกใช้ในเทอร์มินัล",
                 "insert": "แทรกในตัวแก้ไข",
                 "diff": "เปรียบเทียบกับต้นฉบับ",
-                "diffNoFile": "ไม่มีไฟล์เปิดสำหรับเปรียบเทียบ"
+                "diffNoFile": "ไม่มีไฟล์เปิดสำหรับเปรียบเทียบ",
+                "commandBlocked": "คำสั่งถูกบล็อก: อาจก่อความเสียหาย",
+                "confirmRun": "ยืนยันการเรียกใช้: {command}"
             },
             "thinkingBlock": {
                 "thinking": "กำลังคิด...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "สลับสาขา",
                 "delete": "ลบสาขา",
                 "newBranch": "สาขาใหม่",
-                "branchFrom": "แยกสาขาจากจุดนี้"
+                "branchFrom": "แยกสาขาจากจุดนี้",
+                "messageCountShort": "{count} ข้อความ",
+                "unnamed": "สาขา"
             },
             "context": {
                 "projectDetected": "ตรวจพบโปรเจกต์",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "กำลังทำงาน",
                 "expired": "หมดอายุ",
-                "refresh": "รีเฟรช"
+                "refresh": "รีเฟรช",
+                "modelsRunningMany": "กำลังรัน {count} โมเดล",
+                "modelsRunningOne": "กำลังรัน {count} โมเดล",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "แคชบริบท",
@@ -2956,7 +2983,8 @@
                 "warning": "การดำเนินการไฟล์ทั้งหมดจะถูกดำเนินการทันทีโดยไม่ต้องอนุมัติ ใช้งานด้วยความเสี่ยงของคุณเอง",
                 "disable": "ปิดใช้งาน",
                 "securityWarning": "คำเตือนด้านความปลอดภัย",
-                "understood": "เข้าใจแล้ว"
+                "understood": "เข้าใจแล้ว",
+                "warningAria": "คำเตือนโหมดสุดขีด"
             },
             "errorServerError": "เซิร์ฟเวอร์ของผู้ให้บริการ AI มีปัญหา ลองอีกครั้งในอีกสักครู่",
             "errorServiceUnavailable": "ผู้ให้บริการ AI ไม่สามารถใช้งานได้ชั่วคราว (โอเวอร์โหลด) บริการฟรีอาจมีข้อจำกัด ลองใหม่ภายหลัง",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "ไม่จำกัด",
                 "roleAI": "AI",
-                "roleUser": "ผู้ใช้"
+                "roleUser": "ผู้ใช้",
+                "noConversations": "ยังไม่มีการสนทนา",
+                "titleCount": "ประวัติ ({count})"
             },
             "dropFileToAnalyze": "วางไฟล์เพื่อวิเคราะห์ด้วย AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "โทเคนอินพุต {input}, โทเคนเอาต์พุต {output}, ตามที่ผู้ให้บริการนับ",
-                "breakdownCache": "โทเคนอินพุต {input}, โทเคนเอาต์พุต {output}, อ่านจากแคชพรอมต์ {cacheRead}, เขียนลงแคชพรอมต์ {cacheWritten}, ตามที่ผู้ให้บริการนับ"
+                "breakdownCache": "โทเคนอินพุต {input}, โทเคนเอาต์พุต {output}, อ่านจากแคชพรอมต์ {cacheRead}, เขียนลงแคชพรอมต์ {cacheWritten}, ตามที่ผู้ให้บริการนับ",
+                "countShort": "{count} โทเค็น"
             },
             "executeOperations": "ดำเนินการ {count} รายการ",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "จะข้าม",
                     "skipped": "ข้ามแล้ว",
                     "existedAtCheckpoint": "มีอยู่ ณ จุดตรวจสอบ",
-                    "absentAtCheckpoint": "ไม่มีอยู่ ณ จุดตรวจสอบ"
+                    "absentAtCheckpoint": "ไม่มีอยู่ ณ จุดตรวจสอบ",
+                    "noFiles": "ไม่มีไฟล์รวมอยู่ในผลการกู้คืนนี้",
+                    "otherActions": "การดำเนินการอื่น",
+                    "requestedPaths": "ชุดย่อยของพาธที่ขอ",
+                    "scopeAll": "ขอบเขต: ไฟล์ทั้งหมดที่บันทึกไว้ในจุดตรวจสอบ",
+                    "titleApplied": "ใช้การกู้คืนจุดตรวจสอบแล้ว",
+                    "titleApplyReview": "ตรวจทานการใช้การกู้คืนจุดตรวจสอบ",
+                    "titleDryRunComplete": "การรันทดสอบการกู้คืนจุดตรวจสอบเสร็จสิ้น",
+                    "titleDryRunReview": "ตรวจทานการทดลองกู้คืนจุดตรวจสอบ"
                 },
                 "checks": {
                     "exitSummary": "รหัสออก {code} · {seconds}s",
                     "continueOnFailure": "รันการตรวจสอบทั้งหมดแม้ว่าจะมีรายการหนึ่งล้มเหลว",
-                    "stopOnFailure": "หยุดที่การตรวจสอบแรกที่ล้มเหลว"
+                    "stopOnFailure": "หยุดที่การตรวจสอบแรกที่ล้มเหลว",
+                    "checkLabel": "การตรวจสอบ:",
+                    "checksLabel": "การตรวจสอบ:",
+                    "exitChip": "รหัสออก {code}",
+                    "filterChip": "ตัวกรอง: {filter}",
+                    "filterLabel": "ตัวกรอง:",
+                    "notAvailable": "ไม่มี",
+                    "passedCount": "ผ่าน {passed}/{total}",
+                    "runCheckNote": "เรียกใช้คำสั่ง build/test/lint ที่คัดสรรไว้ในพื้นที่ทำงาน สคริปต์บิลด์และการทดสอบจะรันโค้ดจริง",
+                    "runProjectCheck": "เรียกใช้การตรวจสอบโปรเจกต์",
+                    "runVerification": "เรียกใช้รอบการยืนยัน",
+                    "runVerificationNote": "เรียกใช้คำสั่ง build/test/lint ที่คัดสรรไว้ในพื้นที่ทำงาน สคริปต์บิลด์และการทดสอบจะรันโค้ดจริง",
+                    "stoppedEarly": "หยุดที่การตรวจสอบแรกที่ล้มเหลว",
+                    "timeoutLabel": "หมดเวลา: {seconds} วินาที",
+                    "verification": "การยืนยัน"
                 },
                 "diagnostics": {
-                    "none": "ไม่มีการรายงานการวินิจฉัย"
+                    "none": "ไม่มีการรายงานการวินิจฉัย",
+                    "errorCountMany": "ข้อผิดพลาด {count} รายการ",
+                    "errorCountOne": "ข้อผิดพลาด {count} รายการ",
+                    "title": "การวินิจฉัย",
+                    "truncated": "รายการวินิจฉัยถูกตัดทอน",
+                    "warningCountMany": "คำเตือน {count} รายการ",
+                    "warningCountOne": "คำเตือน {count} รายการ"
                 },
                 "search": {
-                    "none": "ไม่พบรายการที่ตรงกัน"
+                    "none": "ไม่พบรายการที่ตรงกัน",
+                    "ignoreCase": "ไม่สนตัวพิมพ์",
+                    "inPath": "ใน {path}",
+                    "literal": "ตามตัวอักษร",
+                    "matchCountMany": "ตรงกัน {count} รายการ",
+                    "matchCountOne": "ตรงกัน {count} รายการ",
+                    "title": "ค้นหาในพื้นที่ทำงาน",
+                    "truncated": "ผลลัพธ์ถูกตัดทอน"
                 },
                 "git": {
                     "noStagedDiff": "ไม่มีผลลัพธ์ diff ของการเปลี่ยนแปลงที่สเตจแล้ว",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "การอนุมัติการสเตจ Git",
                     "commitNote": "การดำเนินการนี้จะสร้างคอมมิต git จากดัชนีที่สเตจไว้ในปัจจุบัน โปรดตรวจสอบ coding_git_status และ coding_git_diff ด้วย staged=true ก่อน",
                     "stagePreviewNote": "การดำเนินการนี้จะแสดงตัวอย่างว่าพาธที่ขอใดบ้างจะถูกสเตจ โดยดัชนีจะไม่เปลี่ยนแปลง",
-                    "stageNote": "การดำเนินการนี้จะเปลี่ยนดัชนี git สำหรับพาธที่ขอ"
+                    "stageNote": "การดำเนินการนี้จะเปลี่ยนดัชนี git สำหรับพาธที่ขอ",
+                    "afterCounts": "หลัง: {counts}",
+                    "beforeCounts": "ก่อน: {counts}",
+                    "clean": "ไดเรกทอรีทำงานสะอาด",
+                    "commitCountMany": "{count} คอมมิต",
+                    "commitCountOne": "{count} คอมมิต",
+                    "conflicted": "ขัดแย้ง",
+                    "diffTruncated": "ผลลัพธ์ส่วนต่างถูกตัดทอน",
+                    "logTitle": "บันทึก Git",
+                    "pathsChip": "พาธ: {paths}",
+                    "showingNewest": "แสดง {count} รายการล่าสุด ยังมีอีก",
+                    "statusCounts": "สเตจแล้ว {staged}, ยังไม่สเตจ {unstaged}, ไม่ได้ติดตาม {untracked}, ขัดแย้ง {conflicted}",
+                    "titleCommitCreated": "สร้างคอมมิต Git แล้ว",
+                    "titleCommitDryRun": "ทดลองคอมมิต Git",
+                    "titleCommitReview": "ตรวจทานคอมมิต Git",
+                    "titleReview": "ตรวจทาน Git",
+                    "titleStageApplied": "ใช้การสเตจ Git แล้ว",
+                    "titleStagedDiff": "ส่วนต่าง Git ที่สเตจแล้ว",
+                    "titleStageDryRun": "ทดลองสเตจ Git",
+                    "titleStatus": "สถานะ Git",
+                    "titleUnstagedDiff": "ส่วนต่าง Git ที่ยังไม่สเตจ",
+                    "untracked": "ไม่ได้ติดตาม"
                 },
                 "patch": {
                     "validateNote": "การดำเนินการนี้จะตรวจสอบแพตช์โดยไม่เปลี่ยนแปลงไฟล์",
                     "applyNote": "คำขอนำไปใช้ที่มีความเสี่ยงสูงนี้จะเขียนไฟล์หลังจากแบ็กเอนด์สร้างจุดตรวจสอบก่อนนำไปใช้",
                     "hideDiff": "ซ่อน diff แบบรวม",
-                    "showDiff": "แสดง diff แบบรวม"
-                }
+                    "showDiff": "แสดง diff แบบรวม",
+                    "actualLabel": "จริง:",
+                    "checkpointCreated": "สร้างจุดตรวจสอบก่อนนำไปใช้แล้ว",
+                    "diffTruncated": "ตัวอย่างส่วนต่างถูกตัดทอนเพื่อแสดงผล",
+                    "expectedLabel": "คาดหวัง:",
+                    "firstLines": "{shown} บรรทัดแรกจาก {total} บรรทัด",
+                    "hunkCountMany": "{count} ส่วน",
+                    "hunkCountOne": "{count} ส่วน",
+                    "hunkIndex": "ส่วน {index}",
+                    "restoreManual": "การกู้คืนต้องทำด้วยตนเอง: หลังตรวจทาน ให้ใช้ {tool} กับรหัสจุดตรวจสอบนี้",
+                    "titleApplied": "ใช้แพตช์แล้ว",
+                    "titleApplyBlocked": "การใช้แพตช์ถูกบล็อก",
+                    "titleApplyReview": "ตรวจทานการใช้แพตช์",
+                    "titleDryRunConflicts": "การรันทดสอบแพตช์พบข้อขัดแย้ง",
+                    "titleDryRunPassed": "การรันทดสอบแพตช์ผ่าน",
+                    "titleDryRunReview": "ตรวจทานการรันทดสอบแพตช์",
+                    "warnings": "คำเตือน"
+                },
+                "binary": "ไบนารี",
+                "fileCountMany": "{count} ไฟล์",
+                "fileCountOne": "{count} ไฟล์",
+                "moreCount": "+อีก {count}",
+                "plan": {
+                    "likelyFiles": "ไฟล์ที่น่าจะเกี่ยวข้อง",
+                    "openQuestions": "คำถามที่ยังเปิดอยู่",
+                    "reviewOnlyNote": "อาร์ทิแฟกต์สำหรับตรวจทานเท่านั้น การแก้ไขและเครื่องมือที่เปลี่ยนแปลงข้อมูลยังคงใช้โหมดการอนุมัติปัจจุบัน",
+                    "riskHigh": "ความเสี่ยงสูง",
+                    "riskLow": "ความเสี่ยงต่ำ",
+                    "riskMedium": "ความเสี่ยงปานกลาง",
+                    "risks": "ความเสี่ยง",
+                    "title": "แผนการเขียนโค้ด"
+                },
+                "state": {
+                    "clean": "สะอาด",
+                    "failed": "ล้มเหลว",
+                    "passed": "ผ่าน",
+                    "timedOut": "หมดเวลา"
+                },
+                "timeoutChip": "หมดเวลา {seconds}s",
+                "truncated": "ถูกตัดทอน",
+                "workspaceLabel": "พื้นที่ทำงาน:"
+            },
+            "attachedImageAlt": "รูปภาพที่แนบ",
+            "stepNumber": "ขั้นตอนที่ {step}",
+            "transcribingLocally": "กำลังถอดเสียงในเครื่อง...",
+            "transferPlan": {
+                "dependsOnMany": "ขึ้นอยู่กับขั้นตอนเตรียมการ {count} ขั้นตอน",
+                "dependsOnOne": "ขึ้นอยู่กับขั้นตอนเตรียมการ {count} ขั้นตอน",
+                "destination": "ปลายทาง: {destination}",
+                "title": "ตรวจสอบแผนการถ่ายโอน",
+                "warnings": "คำเตือน"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "เรียกดู",
                     "installed": "ติดตั้งแล้ว"
-                }
+                },
+                "remoteInstallDisabled": "การติดตั้งปลั๊กอินระยะไกลถูกปิดใช้งานอยู่ในขณะนี้จนกว่ารีจิสทรีจะได้รับการยืนยันตัวตนฝั่งไคลเอนต์ ปลั๊กอินที่ติดตั้งในเครื่องยังคงทำงานได้ตามปกติ"
             }
         },
         "filelu": {

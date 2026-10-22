@@ -490,13 +490,13 @@ const TransferPlanReview: React.FC<{
                 <div>
                     <div className="flex items-center gap-2 text-sm font-semibold text-cyan-300">
                         {plan.direction === 'upload' ? <Upload size={14} /> : <Download size={14} />}
-                        <span>Transfer Plan Review</span>
+                        <span>{t('ai.transferPlan.title')}</span>
                     </div>
                     <p className="mt-1 text-xs text-cyan-100/80">
                         {plan.summary}
                     </p>
                     <p className="mt-1 text-[11px] text-cyan-100/60">
-                        Destination: {plan.destination}
+                        {t('ai.transferPlan.destination', { destination: plan.destination })}
                     </p>
                 </div>
                 <button
@@ -512,7 +512,7 @@ const TransferPlanReview: React.FC<{
                 <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-100">
                     <div className="mb-1 flex items-center gap-1 font-medium text-amber-300">
                         <AlertTriangle size={12} />
-                        <span>Warnings</span>
+                        <span>{t('ai.transferPlan.warnings')}</span>
                     </div>
                     <ul className="space-y-1">
                         {plan.warnings.map((warning, index) => (
@@ -546,7 +546,7 @@ const TransferPlanReview: React.FC<{
                                 <p className="mt-1 text-white/70">{operation.description}</p>
                                 {Array.isArray(operation.dependsOn) && operation.dependsOn.length > 0 && (
                                     <p className="mt-1 text-[10px] text-white/45">
-                                        Depends on {operation.dependsOn.length} preparatory step(s)
+                                        {t(operation.dependsOn.length === 1 ? 'ai.transferPlan.dependsOnOne' : 'ai.transferPlan.dependsOnMany', { count: operation.dependsOn.length })}
                                     </p>
                                 )}
                             </div>
@@ -3153,7 +3153,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             {showHistory && (
                 <div className={`w-48 flex-shrink-0 border-r ${ct.sidebarBg} flex flex-col overflow-hidden`}>
                     <div className={`p-2 text-[10px] ${ct.textMuted} uppercase tracking-wider font-medium`}>
-                        History ({conversations.length})
+                        {t('ai.history.titleCount', { count: conversations.length })}
                     </div>
                     <div className="flex-1 overflow-y-auto">
                         {conversations.map(conv => (
@@ -3177,7 +3177,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             </div>
                         ))}
                         {conversations.length === 0 && (
-                            <div className={`px-2 py-4 text-center text-[10px] ${ct.textMuted}`}>No conversations yet</div>
+                            <div className={`px-2 py-4 text-center text-[10px] ${ct.textMuted}`}>{t('ai.history.noConversations')}</div>
                         )}
                     </div>
                 </div>
@@ -3211,7 +3211,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             {/* Extreme Mode security warning modal */}
             {showExtremeWarning && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowExtremeWarning(false)} role="dialog" aria-modal="true" aria-label="Extreme Mode Warning">
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowExtremeWarning(false)} role="dialog" aria-modal="true" aria-label={t('ai.extremeMode.warningAria')}>
                     <div
                         className="w-[380px] rounded-lg border border-red-500/50 bg-[#0a0e17] shadow-2xl shadow-red-500/10 p-5 animate-scale-in"
                         onClick={(e) => e.stopPropagation()}
@@ -3397,8 +3397,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                     <GridSpinner size={14} className="text-purple-400 shrink-0" />
                                     {isAutoExecuting && autoStepCount > 1 ? (
                                         <>
-                                            {agentMode === 'extreme' && <span className="text-red-400 font-bold animate-pulse mr-1">EXTREME</span>}
-                                            <span>Step {autoStepCount}</span>
+                                            {agentMode === 'extreme' && <span className="text-red-400 font-bold animate-pulse mr-1 uppercase">{t('ai.agentMode.extreme')}</span>}
+                                            <span>{t('ai.stepNumber', { step: autoStepCount })}</span>
                                             <span className="mx-1">-</span>
                                             <button
                                                 onClick={requestStopGeneration}
@@ -3549,7 +3549,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         <div className={`flex gap-2 px-3 py-2 border-b ${ct.border} overflow-x-auto`}>
                             {attachedImages.map((img, i) => (
                                 <div key={i} className="relative group shrink-0">
-                                    <img src={img.preview} alt="Attached image" className={`h-12 w-12 object-cover rounded border ${ct.borderSolid}`} />
+                                    <img src={img.preview} alt={t('ai.attachedImageAlt')} className={`h-12 w-12 object-cover rounded border ${ct.borderSolid}`} />
                                     <button
                                         onClick={() => removeImage(i)}
                                         className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -3623,7 +3623,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             title={!voiceSupported
                                 ? t('ai.speechNotSupported')
                                 : isTranscribingAudio
-                                    ? 'Transcribing locally...'
+                                    ? t('ai.transcribingLocally')
                                     : isListening
                                         ? t('ai.stopListening')
                                         : t('ai.voiceInput')}
@@ -3817,7 +3817,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                         {/* The conversation's tokens, as the providers reported them */}
                         {conversationTokens !== null && (
-                            <span className="text-[10px] text-gray-500">{conversationTokens.toLocaleString()} tok</span>
+                            <span className="text-[10px] text-gray-500">{t('ai.tokens.countShort', { count: conversationTokens.toLocaleString() })}</span>
                         )}
                         {/* AI Disclaimer */}
                         <span className={`text-[10px] ${ct.textMuted}`}>{t('ai.disclaimer')}</span>

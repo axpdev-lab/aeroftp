@@ -1269,7 +1269,14 @@
                 "stop": "បញ្ឈប់",
                 "stopShell": "បញ្ឈប់សែល",
                 "closed": "Terminal បានបិទ។",
-                "commandInsertedReview": "បានបញ្ចូលពាក្យបញ្ជាទៅក្នុង Terminal។ ចុច Enter ដើម្បីដំណើរការ។"
+                "commandInsertedReview": "បានបញ្ចូលពាក្យបញ្ជាទៅក្នុង Terminal។ ចុច Enter ដើម្បីដំណើរការ។",
+                "decreaseFont": "បន្ថយទំហំពុម្ពអក្សរ (Ctrl+-)",
+                "emptyClickPlus": "ចុច {plus} ដើម្បីបើកស្ថានីយ",
+                "emptySshHint": "ឬ {ssh} សម្រាប់សែលពីចម្ងាយទៅ {host}",
+                "increaseFont": "បង្កើនទំហំពុម្ពអក្សរ (Ctrl+=)",
+                "newTab": "ផ្ទាំងស្ថានីយថ្មី",
+                "sshShellTo": "សែល SSH ទៅ {host}",
+                "theme": "រចនាប័ទ្មស្ថានីយ"
             },
             "editorPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារ ហើយជ្រើសរើស \"មើលកូដប្រភព\"",
@@ -1278,13 +1285,17 @@
                 "saving": "កំពុងរក្សាទុក...",
                 "noFileSelected": "មិនមានឯកសារដែលបានជ្រើសរើសដើម្បីមើលទេ",
                 "loading": "កំពុងផ្ទុកកម្មវិធីនិពន្ធ...",
-                "dragToTerminalRun": "អូសទៅ Terminal ដើម្បីបញ្ចូលពាក្យបញ្ជាដំណើរការ"
+                "dragToTerminalRun": "អូសទៅ Terminal ដើម្បីបញ្ចូលពាក្យបញ្ជាដំណើរការ",
+                "closeEditor": "បិទកម្មវិធីកែសម្រួល",
+                "resetChanges": "កំណត់ការផ្លាស់ប្ដូរឡើងវិញ"
             },
             "previewPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារហើយជ្រើសរើស \"មើលជាមុន\""
             },
             "codeEditor": "កម្មវិធីកែកូដ",
-            "sshTerminal": "SSH តឺរ្មីណាល"
+            "sshTerminal": "SSH តឺរ្មីណាល",
+            "comingSoon": "មកដល់ឆាប់ៗ",
+            "soonBadge": "ឆាប់ៗ"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "បដិសេធការប្រតិបត្តិឧបករណ៍",
                 "toggleDetails": "បិទបើកព័ត៌មានលម្អិត",
                 "allowSession": "អនុញ្ញាតសម្រាប់សម័យនេះ",
-                "nonAtomicReplace": "ការជំនួសមិនអាតូមិក: ឯកសារបាត់មួយភ្លែត"
+                "nonAtomicReplace": "ការជំនួសមិនអាតូមិក: ឯកសារបាត់មួយភ្លែត",
+                "moreOptions": "ជម្រើសច្រើនទៀត",
+                "panelAria": "ផ្ទាំងអនុម័តឧបករណ៍"
             },
             "settings": {
                 "title": "ការកំណត់ AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "បម្រុង",
                 "routingNoFallback": "គ្មាន",
                 "bedrockNeedsModel": "បន្ថែម និងបើកម៉ូដែល Bedrock នៅផ្ទាំង ម៉ូដែល មុនពេលសាកល្បង។",
-                "bedrockSetup": "កំណត់ Runtime URL សម្រាប់តំបន់ AWS របស់អ្នក។ នៅក្នុង ម៉ូដែល បន្ថែម ID ដែលគាំទ្រ Chat Completions លើ Bedrock Runtime។ Runtime មិនបង្ហាញបញ្ជីម៉ូដែលទេ។ ការសាកល្បងផ្ញើសំណើអនុមានតូចមួយ ដែលអាចបណ្តាលឱ្យមានការគិតថ្លៃពី AWS។"
+                "bedrockSetup": "កំណត់ Runtime URL សម្រាប់តំបន់ AWS របស់អ្នក។ នៅក្នុង ម៉ូដែល បន្ថែម ID ដែលគាំទ្រ Chat Completions លើ Bedrock Runtime។ Runtime មិនបង្ហាញបញ្ជីម៉ូដែលទេ។ ការសាកល្បងផ្ញើសំណើអនុមានតូចមួយ ដែលអាចបណ្តាលឱ្យមានការគិតថ្លៃពី AWS។",
+                "detectOllamaModelsTooltip": "រកឃើញម៉ូដែល Ollama ដែលមានដោយស្វ័យប្រវត្តិ",
+                "kTokens": "{count}K ថូខឹន",
+                "modelEditorAria": "កម្មវិធីកែម៉ូដែល AI",
+                "supportsTools": "គាំទ្រឧបករណ៍",
+                "supportsVision": "គាំទ្រការមើលឃើញ",
+                "thinkingReasoning": "ការគិត/ការវែកញែក",
+                "toolQuality": "គុណភាពឧបករណ៍៖ {quality}/5"
             },
             "copy": "ចម្លង",
             "attachImage": "ភ្ជាប់រូបភាព",
@@ -2699,7 +2719,9 @@
                 "run": "ដំណើរការក្នុងស្ថានីយ",
                 "insert": "បញ្ចូលក្នុងកម្មវិធីនិពន្ធ",
                 "diff": "ប្រៀបធៀបជាមួយដើម",
-                "diffNoFile": "គ្មានឯកសារបើកដើម្បីប្រៀបធៀប"
+                "diffNoFile": "គ្មានឯកសារបើកដើម្បីប្រៀបធៀប",
+                "commandBlocked": "ពាក្យបញ្ជាត្រូវបានរារាំង: អាចបំផ្លិចបំផ្លាញ",
+                "confirmRun": "បញ្ជាក់ការដំណើរការ: {command}"
             },
             "thinkingBlock": {
                 "thinking": "កំពុងគិត...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "ប្តូរសាខា",
                 "delete": "លុបសាខា",
                 "newBranch": "សាខាថ្មី",
-                "branchFrom": "បំបែកពីចំណុចនេះ"
+                "branchFrom": "បំបែកពីចំណុចនេះ",
+                "messageCountShort": "{count} សារ",
+                "unnamed": "សាខា"
             },
             "context": {
                 "projectDetected": "បានរកឃើញគម្រោង",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "កំពុងដំណើរការ",
                 "expired": "ផុតកំណត់",
-                "refresh": "ផ្ទុកឡើងវិញ"
+                "refresh": "ផ្ទុកឡើងវិញ",
+                "modelsRunningMany": "ម៉ូដែល {count} កំពុងដំណើរការ",
+                "modelsRunningOne": "ម៉ូដែល {count} កំពុងដំណើរការ",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "ការរក្សាទុកបរិបទ",
@@ -2956,7 +2983,8 @@
                 "warning": "ប្រតិបត្តិការឯកសារទាំងអស់នឹងត្រូវប្រតិបត្តិភ្លាមៗដោយមិនមានការអនុម័ត។ ប្រើប្រាស់ដោយទទួលខុសត្រូវខ្លួនឯង។",
                 "disable": "បិទ",
                 "securityWarning": "ការព្រមានសុវត្ថិភាព",
-                "understood": "យល់ហើយ"
+                "understood": "យល់ហើយ",
+                "warningAria": "ការព្រមានរបៀបខ្លាំងបំផុត"
             },
             "errorServerError": "ម៉ាស៊ីនមេរបស់អ្នកផ្តល់ AI កំពុងមានបញ្ហា។ សាកល្បងម្តងទៀតក្នុងពេលបន្តិច។",
             "errorServiceUnavailable": "អ្នកផ្តល់ AI មិនអាចប្រើបានបណ្ដោះអាសន្ន (ផ្ទុកលើស)។ សេវាកម្មឥតគិតថ្លៃអាចមានដែនកំណត់។ សូមសាកល្បងម្តងទៀតនៅពេលក្រោយ។",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "គ្មានដែនកំណត់",
                 "roleAI": "AI",
-                "roleUser": "អ្នកប្រើ"
+                "roleUser": "អ្នកប្រើ",
+                "noConversations": "មិនទាន់មានការសន្ទនា",
+                "titleCount": "ប្រវត្តិ ({count})"
             },
             "dropFileToAnalyze": "ទម្លាក់ឯកសារដើម្បីវិភាគជាមួយ AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} ថូខឹនបញ្ចូល, {output} ថូខឹនលទ្ធផល, តាមការរាប់របស់អ្នកផ្តល់សេវា",
-                "breakdownCache": "{input} ថូខឹនបញ្ចូល, {output} ថូខឹនលទ្ធផល, {cacheRead} បានអានពីឃ្លាំងសម្ងាត់ប្រូមភ្ត៍, {cacheWritten} បានសរសេរចូលទៅក្នុងវា, តាមការរាប់របស់អ្នកផ្តល់សេវា"
+                "breakdownCache": "{input} ថូខឹនបញ្ចូល, {output} ថូខឹនលទ្ធផល, {cacheRead} បានអានពីឃ្លាំងសម្ងាត់ប្រូមភ្ត៍, {cacheWritten} បានសរសេរចូលទៅក្នុងវា, តាមការរាប់របស់អ្នកផ្តល់សេវា",
+                "countShort": "{count} តូខឹន"
             },
             "executeOperations": "អនុវត្តប្រតិបត្តិការ {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "នឹងរំលង",
                     "skipped": "បានរំលង",
                     "existedAtCheckpoint": "មាននៅចំណុចត្រួតពិនិត្យ",
-                    "absentAtCheckpoint": "មិនមាននៅចំណុចត្រួតពិនិត្យ"
+                    "absentAtCheckpoint": "មិនមាននៅចំណុចត្រួតពិនិត្យ",
+                    "noFiles": "គ្មានឯកសារណាមួយត្រូវបានរួមបញ្ចូលក្នុងលទ្ធផលស្ដារនេះទេ។",
+                    "otherActions": "សកម្មភាពផ្សេងទៀត",
+                    "requestedPaths": "សំណុំរងនៃផ្លូវដែលបានស្នើ",
+                    "scopeAll": "វិសាលភាព៖ ឯកសារទាំងអស់ដែលបានរក្សាទុកក្នុងចំណុចត្រួតពិនិត្យ។",
+                    "titleApplied": "បានអនុវត្តការស្ដារចំណុចត្រួតពិនិត្យ",
+                    "titleApplyReview": "ពិនិត្យការអនុវត្តការស្ដារចំណុចត្រួតពិនិត្យ",
+                    "titleDryRunComplete": "ការសាកល្បងស្ដារចំណុចត្រួតពិនិត្យបានបញ្ចប់",
+                    "titleDryRunReview": "ពិនិត្យការសាកល្បងស្ដារចំណុចត្រួតពិនិត្យ"
                 },
                 "checks": {
                     "exitSummary": "កូដចេញ {code} · {seconds}s",
                     "continueOnFailure": "ដំណើរការការត្រួតពិនិត្យទាំងអស់ ទោះបីមួយបរាជ័យក៏ដោយ។",
-                    "stopOnFailure": "ឈប់នៅការត្រួតពិនិត្យដំបូងដែលបរាជ័យ។"
+                    "stopOnFailure": "ឈប់នៅការត្រួតពិនិត្យដំបូងដែលបរាជ័យ។",
+                    "checkLabel": "ការត្រួតពិនិត្យ:",
+                    "checksLabel": "ការត្រួតពិនិត្យ:",
+                    "exitChip": "កូដចាកចេញ {code}",
+                    "filterChip": "តម្រង: {filter}",
+                    "filterLabel": "តម្រង:",
+                    "notAvailable": "គ្មាន",
+                    "passedCount": "ឆ្លងកាត់ {passed}/{total}",
+                    "runCheckNote": "ដំណើរការពាក្យបញ្ជា build/test/lint ដែលបានជ្រើសរើសក្នុងកន្លែងធ្វើការ។ ស្គ្រីបបង្កើត និងការធ្វើតេស្តប្រតិបត្តិកូដពិត។",
+                    "runProjectCheck": "ដំណើរការការត្រួតពិនិត្យគម្រោង",
+                    "runVerification": "ដំណើរការជុំផ្ទៀងផ្ទាត់",
+                    "runVerificationNote": "ដំណើរការពាក្យបញ្ជា build/test/lint ដែលបានជ្រើសរើសក្នុងកន្លែងធ្វើការ។ ស្គ្រីបបង្កើត និងការធ្វើតេស្តប្រតិបត្តិកូដពិត។",
+                    "stoppedEarly": "បានឈប់នៅការត្រួតពិនិត្យដំបូងដែលបរាជ័យ។",
+                    "timeoutLabel": "អស់ពេល: {seconds} វិនាទី",
+                    "verification": "ការផ្ទៀងផ្ទាត់"
                 },
                 "diagnostics": {
-                    "none": "គ្មានការវិនិច្ឆ័យត្រូវបានរាយការណ៍ទេ។"
+                    "none": "គ្មានការវិនិច្ឆ័យត្រូវបានរាយការណ៍ទេ។",
+                    "errorCountMany": "កំហុស {count}",
+                    "errorCountOne": "កំហុស {count}",
+                    "title": "ការវិនិច្ឆ័យ",
+                    "truncated": "បញ្ជីការវិនិច្ឆ័យត្រូវបានកាត់ខ្លី។",
+                    "warningCountMany": "ការព្រមាន {count}",
+                    "warningCountOne": "ការព្រមាន {count}"
                 },
                 "search": {
-                    "none": "រកមិនឃើញការផ្គូផ្គងទេ។"
+                    "none": "រកមិនឃើញការផ្គូផ្គងទេ។",
+                    "ignoreCase": "មិនខ្វល់អក្សរធំតូច",
+                    "inPath": "ក្នុង {path}",
+                    "literal": "តាមព្យញ្ជនៈ",
+                    "matchCountMany": "ត្រូវគ្នា {count}",
+                    "matchCountOne": "ត្រូវគ្នា {count}",
+                    "title": "ស្វែងរកក្នុងកន្លែងធ្វើការ",
+                    "truncated": "លទ្ធផលត្រូវបានកាត់ខ្លី។"
                 },
                 "git": {
                     "noStagedDiff": "គ្មានលទ្ធផល diff សម្រាប់ការផ្លាស់ប្តូរដែលបានរៀបចំទេ។",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "ការអនុម័តការរៀបចំ Git",
                     "commitNote": "វាបង្កើត git commit ពីលិបិក្រមដែលបានរៀបចំបច្ចុប្បន្ន។ សូមពិនិត្យ coding_git_status និង coding_git_diff ជាមួយ staged=true ជាមុនសិន។",
                     "stagePreviewNote": "វាបង្ហាញការមើលជាមុនថាផ្លូវណាខ្លះដែលបានស្នើនឹងត្រូវរៀបចំ ហើយលិបិក្រមនឹងមិនផ្លាស់ប្តូរទេ។",
-                    "stageNote": "វាផ្លាស់ប្តូរលិបិក្រម git សម្រាប់ផ្លូវដែលបានស្នើ។"
+                    "stageNote": "វាផ្លាស់ប្តូរលិបិក្រម git សម្រាប់ផ្លូវដែលបានស្នើ។",
+                    "afterCounts": "បន្ទាប់: {counts}",
+                    "beforeCounts": "មុន: {counts}",
+                    "clean": "មែកធាងការងារស្អាត។",
+                    "commitCountMany": "ខមមិត {count}",
+                    "commitCountOne": "ខមមិត {count}",
+                    "conflicted": "មានជម្លោះ",
+                    "diffTruncated": "លទ្ធផលភាពខុសគ្នាត្រូវបានកាត់ខ្លី។",
+                    "logTitle": "កំណត់ហេតុ Git",
+                    "pathsChip": "ផ្លូវ: {paths}",
+                    "showingNewest": "កំពុងបង្ហាញ {count} ថ្មីបំផុត; នៅមានទៀត។",
+                    "statusCounts": "បានរៀបចំ {staged}, មិនទាន់រៀបចំ {unstaged}, មិនបានតាមដាន {untracked}, មានជម្លោះ {conflicted}",
+                    "titleCommitCreated": "បានបង្កើតខមមិត Git",
+                    "titleCommitDryRun": "ការសាកល្បងខមមិត Git",
+                    "titleCommitReview": "ការពិនិត្យខមមិត Git",
+                    "titleReview": "ការពិនិត្យ Git",
+                    "titleStageApplied": "បានអនុវត្តការរៀបចំ Git",
+                    "titleStagedDiff": "ភាពខុសគ្នា Git ដែលបានរៀបចំ",
+                    "titleStageDryRun": "ការសាកល្បងការរៀបចំ Git",
+                    "titleStatus": "ស្ថានភាព Git",
+                    "titleUnstagedDiff": "ភាពខុសគ្នា Git ដែលមិនទាន់រៀបចំ",
+                    "untracked": "មិនបានតាមដាន"
                 },
                 "patch": {
                     "validateNote": "វាផ្ទៀងផ្ទាត់បំណះដោយមិនផ្លាស់ប្តូរឯកសារ។",
                     "applyNote": "សំណើអនុវត្តដែលមានគ្រោះថ្នាក់ខ្ពស់នេះសរសេរឯកសារបន្ទាប់ពី backend បង្កើតចំណុចត្រួតពិនិត្យមុនការអនុវត្ត។",
                     "hideDiff": "លាក់ diff រួម",
-                    "showDiff": "បង្ហាញ diff រួម"
-                }
+                    "showDiff": "បង្ហាញ diff រួម",
+                    "actualLabel": "ជាក់ស្តែង:",
+                    "checkpointCreated": "បានបង្កើតចំណុចត្រួតពិនិត្យមុនការអនុវត្ត",
+                    "diffTruncated": "ការមើលជាមុនភាពខុសគ្នាត្រូវបានកាត់ខ្លីសម្រាប់ការបង្ហាញ។",
+                    "expectedLabel": "រំពឹងទុក:",
+                    "firstLines": "{shown} បន្ទាត់ដំបូងក្នុងចំណោម {total}",
+                    "hunkCountMany": "{count} ផ្នែក",
+                    "hunkCountOne": "{count} ផ្នែក",
+                    "hunkIndex": "ផ្នែក {index}",
+                    "restoreManual": "ការស្ដារគឺធ្វើដោយដៃ៖ បន្ទាប់ពីពិនិត្យ សូមប្រើ {tool} ជាមួយលេខសម្គាល់ចំណុចត្រួតពិនិត្យនេះ។",
+                    "titleApplied": "បានអនុវត្តបំណះ",
+                    "titleApplyBlocked": "ការអនុវត្តបំណះត្រូវបានរារាំង",
+                    "titleApplyReview": "ពិនិត្យការអនុវត្តបំណះ",
+                    "titleDryRunConflicts": "ការសាកល្បងបំណះបានរកឃើញជម្លោះ",
+                    "titleDryRunPassed": "ការសាកល្បងបំណះបានជោគជ័យ",
+                    "titleDryRunReview": "ពិនិត្យការសាកល្បងបំណះ",
+                    "warnings": "ការព្រមាន"
+                },
+                "binary": "ប្រព័ន្ធគោលពីរ",
+                "fileCountMany": "ឯកសារ {count}",
+                "fileCountOne": "ឯកសារ {count}",
+                "moreCount": "+{count} ទៀត",
+                "plan": {
+                    "likelyFiles": "ឯកសារដែលទំនងពាក់ព័ន្ធ",
+                    "openQuestions": "សំណួរដែលនៅចំហ",
+                    "reviewOnlyNote": "វត្ថុសម្រាប់តែពិនិត្យប៉ុណ្ណោះ។ ការកែសម្រួល និងឧបករណ៍ដែលផ្លាស់ប្ដូរ នៅតែប្រើរបៀបអនុម័តបច្ចុប្បន្ន។",
+                    "riskHigh": "ហានិភ័យខ្ពស់",
+                    "riskLow": "ហានិភ័យទាប",
+                    "riskMedium": "ហានិភ័យមធ្យម",
+                    "risks": "ហានិភ័យនានា",
+                    "title": "ផែនការសរសេរកូដ"
+                },
+                "state": {
+                    "clean": "ស្អាត",
+                    "failed": "បរាជ័យ",
+                    "passed": "ជាប់",
+                    "timedOut": "អស់ពេល"
+                },
+                "timeoutChip": "ពេលកំណត់ {seconds}s",
+                "truncated": "បានកាត់ខ្លី",
+                "workspaceLabel": "កន្លែងធ្វើការ៖"
+            },
+            "attachedImageAlt": "រូបភាពដែលបានភ្ជាប់",
+            "stepNumber": "ជំហាន {step}",
+            "transcribingLocally": "កំពុងចម្លងសំឡេងជាអក្សរនៅលើឧបករណ៍...",
+            "transferPlan": {
+                "dependsOnMany": "អាស្រ័យលើជំហានរៀបចំ {count}",
+                "dependsOnOne": "អាស្រ័យលើជំហានរៀបចំ {count}",
+                "destination": "គោលដៅ៖ {destination}",
+                "title": "ការពិនិត្យផែនការផ្ទេរ",
+                "warnings": "ការព្រមាន"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "រុករក",
                     "installed": "បានដំឡើង"
-                }
+                },
+                "remoteInstallDisabled": "ការដំឡើងកម្មវិធីជំនួយពីចម្ងាយត្រូវបានបិទជាបណ្ដោះអាសន្ន រហូតដល់បញ្ជីឈ្មោះត្រូវបានផ្ទៀងផ្ទាត់នៅផ្នែកម៉ាស៊ីនភ្ញៀវ។ កម្មវិធីជំនួយដែលបានដំឡើងក្នុងតំបន់នៅតែដំណើរការធម្មតា។"
             }
         },
         "commandPalette.category.ai": {},

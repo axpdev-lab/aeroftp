@@ -4,7 +4,7 @@
 import React from 'react';
 import { CheckCircle2, FileDiff, GitBranch, GitCommit, GitPullRequest, ShieldAlert } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { statusCounts } from './aiChatCodingGit';
+import type { TranslationFunction } from '../../i18n';
 import type {
     CodingGitCommitResult,
     CodingGitDiffResult,
@@ -44,7 +44,15 @@ const isCommitResult = (data: CodingGitResultData): data is CodingGitResultData 
     data.toolName === 'coding_git_commit'
 );
 
+const statusCounts = (status: CodingGitStatusResult, t: TranslationFunction): string => t('ai.coding.git.statusCounts', {
+    staged: status.staged.length,
+    unstaged: status.unstaged.length,
+    untracked: status.untracked.length,
+    conflicted: status.conflicted.length,
+});
+
 const FileGroup: React.FC<{ title: string; entries: CodingGitFileStatus[]; tone: string }> = ({ title, entries, tone }) => {
+    const t = useTranslation();
     if (entries.length === 0) return null;
     return (
         <div className="rounded-lg border border-white/10 bg-white/5 p-2">
@@ -63,53 +71,56 @@ const FileGroup: React.FC<{ title: string; entries: CodingGitFileStatus[]; tone:
                     </div>
                 ))}
                 {entries.length > 12 && (
-                    <div className="text-[10px] text-white/40">+{entries.length - 12} more</div>
+                    <div className="text-[10px] text-white/40">{t('ai.coding.moreCount', { count: entries.length - 12 })}</div>
                 )}
             </div>
         </div>
     );
 };
 
-const StatusSummary: React.FC<{ status: CodingGitStatusResult }> = ({ status }) => (
-    <>
-        <div className="mt-3 grid gap-2 sm:grid-cols-4">
-            <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2">
-                <div className="text-[10px] uppercase tracking-wide text-emerald-200/70">Staged</div>
-                <div className="mt-1 text-lg font-semibold text-emerald-100">{status.staged.length}</div>
+const StatusSummary: React.FC<{ status: CodingGitStatusResult }> = ({ status }) => {
+    const t = useTranslation();
+    return (
+        <>
+            <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-emerald-200/70">{t('ai.coding.git.staged')}</div>
+                    <div className="mt-1 text-lg font-semibold text-emerald-100">{status.staged.length}</div>
+                </div>
+                <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-amber-200/70">{t('ai.coding.git.unstaged')}</div>
+                    <div className="mt-1 text-lg font-semibold text-amber-100">{status.unstaged.length}</div>
+                </div>
+                <div className="rounded-lg border border-sky-400/20 bg-sky-400/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-sky-200/70">{t('ai.coding.git.untracked')}</div>
+                    <div className="mt-1 text-lg font-semibold text-sky-100">{status.untracked.length}</div>
+                </div>
+                <div className="rounded-lg border border-red-400/20 bg-red-400/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-red-200/70">{t('ai.coding.git.conflicted')}</div>
+                    <div className="mt-1 text-lg font-semibold text-red-100">{status.conflicted.length}</div>
+                </div>
             </div>
-            <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-2">
-                <div className="text-[10px] uppercase tracking-wide text-amber-200/70">Unstaged</div>
-                <div className="mt-1 text-lg font-semibold text-amber-100">{status.unstaged.length}</div>
+            <div className="mt-3 grid gap-2">
+                <FileGroup title={t('ai.coding.git.staged')} entries={status.staged} tone="text-emerald-200/75" />
+                <FileGroup title={t('ai.coding.git.unstaged')} entries={status.unstaged} tone="text-amber-200/75" />
+                <FileGroup title={t('ai.coding.git.untracked')} entries={status.untracked} tone="text-sky-200/75" />
+                <FileGroup title={t('ai.coding.git.conflicted')} entries={status.conflicted} tone="text-red-200/75" />
             </div>
-            <div className="rounded-lg border border-sky-400/20 bg-sky-400/10 p-2">
-                <div className="text-[10px] uppercase tracking-wide text-sky-200/70">Untracked</div>
-                <div className="mt-1 text-lg font-semibold text-sky-100">{status.untracked.length}</div>
-            </div>
-            <div className="rounded-lg border border-red-400/20 bg-red-400/10 p-2">
-                <div className="text-[10px] uppercase tracking-wide text-red-200/70">Conflicted</div>
-                <div className="mt-1 text-lg font-semibold text-red-100">{status.conflicted.length}</div>
-            </div>
-        </div>
-        <div className="mt-3 grid gap-2">
-            <FileGroup title="staged" entries={status.staged} tone="text-emerald-200/75" />
-            <FileGroup title="unstaged" entries={status.unstaged} tone="text-amber-200/75" />
-            <FileGroup title="untracked" entries={status.untracked} tone="text-sky-200/75" />
-            <FileGroup title="conflicted" entries={status.conflicted} tone="text-red-200/75" />
-        </div>
-        {status.clean && (
-            <div className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2 text-emerald-100/80">
-                Working tree is clean.
-            </div>
-        )}
-    </>
-);
+            {status.clean && (
+                <div className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2 text-emerald-100/80">
+                    {t('ai.coding.git.clean')}
+                </div>
+            )}
+        </>
+    );
+};
 
 const DiffSummary: React.FC<{ diff: CodingGitDiffResult }> = ({ diff }) => {
     const t = useTranslation();
     return (
         <>
             <div className="mt-3 flex flex-wrap gap-1.5">
-                <span className={chipClass}>{diff.file_count} file{diff.file_count === 1 ? '' : 's'}</span>
+                <span className={chipClass}>{t(diff.file_count === 1 ? 'ai.coding.fileCountOne' : 'ai.coding.fileCountMany', { count: diff.file_count })}</span>
                 <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-100">
                     +{diff.total_additions}
                 </span>
@@ -118,7 +129,7 @@ const DiffSummary: React.FC<{ diff: CodingGitDiffResult }> = ({ diff }) => {
                 </span>
                 {diff.truncated && (
                     <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-100">
-                        truncated
+                        {t('ai.coding.truncated')}
                     </span>
                 )}
             </div>
@@ -130,10 +141,10 @@ const DiffSummary: React.FC<{ diff: CodingGitDiffResult }> = ({ diff }) => {
                                 <span className="w-16 shrink-0 font-mono text-[10px] text-emerald-200/70">+{stat.additions}</span>
                                 <span className="w-16 shrink-0 font-mono text-[10px] text-red-200/70">-{stat.deletions}</span>
                                 <span className="min-w-0 truncate font-mono text-[11px] text-white/75" title={stat.path}>{stat.path}</span>
-                                {stat.binary && <span className="text-[10px] text-white/40">binary</span>}
+                                {stat.binary && <span className="text-[10px] text-white/40">{t('ai.coding.binary')}</span>}
                             </div>
                         ))}
-                        {diff.stats.length > 12 && <div className="text-[10px] text-white/40">+{diff.stats.length - 12} more</div>}
+                        {diff.stats.length > 12 && <div className="text-[10px] text-white/40">{t('ai.coding.moreCount', { count: diff.stats.length - 12 })}</div>}
                     </div>
                 </div>
             )}
@@ -154,14 +165,14 @@ export const CodingGitReview: React.FC<CodingGitReviewProps> = ({ data }) => {
     const t = useTranslation();
     const result = data.result;
     const title = isStatusResult(data)
-        ? 'Git Status'
+        ? t('ai.coding.git.titleStatus')
         : isDiffResult(data)
-            ? data.result.staged ? 'Git Staged Diff' : 'Git Unstaged Diff'
+            ? data.result.staged ? t('ai.coding.git.titleStagedDiff') : t('ai.coding.git.titleUnstagedDiff')
             : isStageResult(data)
-                ? data.result.dry_run ? 'Git Stage Dry Run' : 'Git Stage Applied'
+                ? data.result.dry_run ? t('ai.coding.git.titleStageDryRun') : t('ai.coding.git.titleStageApplied')
                 : isCommitResult(data)
-                    ? data.result.dry_run ? 'Git Commit Dry Run' : data.result.committed ? 'Git Commit Created' : 'Git Commit Review'
-                    : 'Git Review';
+                    ? data.result.dry_run ? t('ai.coding.git.titleCommitDryRun') : data.result.committed ? t('ai.coding.git.titleCommitCreated') : t('ai.coding.git.titleCommitReview')
+                    : t('ai.coding.git.titleReview');
     const Icon = isDiffResult(data)
         ? FileDiff
         : isStageResult(data)
@@ -228,8 +239,8 @@ export const CodingGitReview: React.FC<CodingGitReviewProps> = ({ data }) => {
                             </span>
                         ))}
                     </div>
-                    <div className="mt-3 text-[11px] text-white/55">Before: {statusCounts(data.result.before)}</div>
-                    {data.result.after && <div className="mt-1 text-[11px] text-white/55">After: {statusCounts(data.result.after)}</div>}
+                    <div className="mt-3 text-[11px] text-white/55">{t('ai.coding.git.beforeCounts', { counts: statusCounts(data.result.before, t) })}</div>
+                    {data.result.after && <div className="mt-1 text-[11px] text-white/55">{t('ai.coding.git.afterCounts', { counts: statusCounts(data.result.after, t) })}</div>}
                     <StatusSummary status={data.result.after ?? data.result.before} />
                 </>
             )}
@@ -241,8 +252,8 @@ export const CodingGitReview: React.FC<CodingGitReviewProps> = ({ data }) => {
                             <span>{data.result.message}</span>
                         </div>
                     </div>
-                    <div className="mt-3 text-[11px] text-white/55">Before: {statusCounts(data.result.before)}</div>
-                    {data.result.after && <div className="mt-1 text-[11px] text-white/55">After: {statusCounts(data.result.after)}</div>}
+                    <div className="mt-3 text-[11px] text-white/55">{t('ai.coding.git.beforeCounts', { counts: statusCounts(data.result.before, t) })}</div>
+                    {data.result.after && <div className="mt-1 text-[11px] text-white/55">{t('ai.coding.git.afterCounts', { counts: statusCounts(data.result.after, t) })}</div>}
                     {data.result.stdout.trim() && (
                         <pre className="mt-3 max-h-40 overflow-auto rounded-lg border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
                             {data.result.stdout.trim()}
@@ -291,7 +302,7 @@ export const CodingGitApprovalPreview: React.FC<CodingGitApprovalPreviewProps> =
             </div>
             {isCommit && commitMessage && (
                 <div className="mt-2 rounded-lg border border-white/10 bg-white/5 p-2">
-                    <div className="mb-1 text-[10px] uppercase tracking-wide text-white/40">Commit message</div>
+                    <div className="mb-1 text-[10px] uppercase tracking-wide text-white/40">{t('github.commitMessage')}</div>
                     <div className="font-mono text-[11px] text-white/75">{commitMessage}</div>
                 </div>
             )}
@@ -304,7 +315,7 @@ export const CodingGitApprovalPreview: React.FC<CodingGitApprovalPreviewProps> =
                     ))}
                     {paths.length > 12 && (
                         <span className="rounded border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/50">
-                            +{paths.length - 12} more
+                            {t('ai.coding.moreCount', { count: paths.length - 12 })}
                         </span>
                     )}
                 </div>

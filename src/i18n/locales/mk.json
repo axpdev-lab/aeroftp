@@ -1269,7 +1269,14 @@
                 "stop": "Запри",
                 "stopShell": "Запри школка",
                 "closed": "Терминалот е затворен.",
-                "commandInsertedReview": "Командата е вметната во Terminal. Притиснете Enter за извршување."
+                "commandInsertedReview": "Командата е вметната во Terminal. Притиснете Enter за извршување.",
+                "decreaseFont": "Намали фонт (Ctrl+-)",
+                "emptyClickPlus": "Кликнете {plus} за да отворите терминал",
+                "emptySshHint": "или {ssh} за далечинска школка до {host}",
+                "increaseFont": "Зголеми фонт (Ctrl+=)",
+                "newTab": "Ново јазиче на терминал",
+                "sshShellTo": "SSH школка до {host}",
+                "theme": "Тема на терминалот"
             },
             "editorPanel": {
                 "emptyState": "Кликнете со десното копче на датотека и изберете \"Преглед на изворниот код\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Зачувување...",
                 "noFileSelected": "Не е избрана датотека за прегледување",
                 "loading": "Вчитување на уредувачот...",
-                "dragToTerminalRun": "Повлечете во Terminal за да вметнете команда за извршување"
+                "dragToTerminalRun": "Повлечете во Terminal за да вметнете команда за извршување",
+                "closeEditor": "Затвори уредник",
+                "resetChanges": "Ресетирај промени"
             },
             "previewPanel": {
                 "emptyState": "Кликнете со десно копче на датотека и изберете \"Преглед\""
             },
             "codeEditor": "Уредувач на код",
-            "sshTerminal": "SSH терминал"
+            "sshTerminal": "SSH терминал",
+            "comingSoon": "Наскоро достапно",
+            "soonBadge": "Наскоро"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Одбиј извршување на алатка",
                 "toggleDetails": "Прикажи/сокриј детали",
                 "allowSession": "Дозволи за оваа сесија",
-                "nonAtomicReplace": "Неатомска замена: датотеката привремено недостасува"
+                "nonAtomicReplace": "Неатомска замена: датотеката привремено недостасува",
+                "moreOptions": "Повеќе опции",
+                "panelAria": "Панел за одобрување алатки"
             },
             "settings": {
                 "title": "AI поставки",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Резервен",
                 "routingNoFallback": "Нема",
                 "bedrockNeedsModel": "Додајте и овозможете Bedrock модел во картичката Модели пред тестирање.",
-                "bedrockSetup": "Поставете го Runtime URL за вашиот AWS регион. Во Модели додајте ID што поддржува Chat Completions на Bedrock Runtime. Runtime не прикажува список на модели. Тестот испраќа мало барање за заклучување што може да предизвика трошоци од AWS."
+                "bedrockSetup": "Поставете го Runtime URL за вашиот AWS регион. Во Модели додајте ID што поддржува Chat Completions на Bedrock Runtime. Runtime не прикажува список на модели. Тестот испраќа мало барање за заклучување што може да предизвика трошоци од AWS.",
+                "detectOllamaModelsTooltip": "Автоматски откриј достапни Ollama модели",
+                "kTokens": "{count}K токени",
+                "modelEditorAria": "Уредувач на модели на ВИ",
+                "supportsTools": "Поддржува алатки",
+                "supportsVision": "Поддржува вид",
+                "thinkingReasoning": "Размислување/Расудување",
+                "toolQuality": "Квалитет на алатките: {quality}/5"
             },
             "copy": "Копирај",
             "attachImage": "Прикачи слика",
@@ -2699,7 +2719,9 @@
                 "run": "Изврши во терминал",
                 "insert": "Внеси во уредувач",
                 "diff": "Разлики со оригинал",
-                "diffNoFile": "Нема отворена датотека за споредба"
+                "diffNoFile": "Нема отворена датотека за споредба",
+                "commandBlocked": "Командата е блокирана: потенцијално деструктивна",
+                "confirmRun": "Потврди извршување: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Размислува...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Промени гранка",
                 "delete": "Избриши гранка",
                 "newBranch": "Нова гранка",
-                "branchFrom": "Разграни од оваа точка"
+                "branchFrom": "Разграни од оваа точка",
+                "messageCountShort": "{count} пор.",
+                "unnamed": "Гранка"
             },
             "context": {
                 "projectDetected": "Детектиран проект",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "работи",
                 "expired": "истечено",
-                "refresh": "Освежи"
+                "refresh": "Освежи",
+                "modelsRunningMany": "Активни модели: {count}",
+                "modelsRunningOne": "Активен {count} модел",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Кеширање на контекст",
@@ -2956,7 +2983,8 @@
                 "warning": "Сите операции со датотеки ќе се извршат веднаш без одобрување. Користете на сопствен ризик.",
                 "disable": "Оневозможи",
                 "securityWarning": "Безбедносно предупредување",
-                "understood": "Разбрав"
+                "understood": "Разбрав",
+                "warningAria": "Предупредување за екстремен режим"
             },
             "errorServerError": "Серверот на AI провајдерот има проблеми. Обидете се повторно по момент.",
             "errorServiceUnavailable": "AI провајдерот е привремено недостапен (преоптоварен). Бесплатните услуги може да имаат ограничувања. Обидете се подоцна.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Неограничено",
                 "roleAI": "AI",
-                "roleUser": "Корисник"
+                "roleUser": "Корисник",
+                "noConversations": "Сѐ уште нема разговори",
+                "titleCount": "Историја ({count})"
             },
             "dropFileToAnalyze": "Пуштете датотека за анализа со AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} влезни токени, {output} излезни токени, според бројањето на давателот на услугата",
-                "breakdownCache": "{input} влезни токени, {output} излезни токени, {cacheRead} прочитани од кешот на промптот, {cacheWritten} запишани во него, според бројањето на давателот на услугата"
+                "breakdownCache": "{input} влезни токени, {output} излезни токени, {cacheRead} прочитани од кешот на промптот, {cacheWritten} запишани во него, според бројањето на давателот на услугата",
+                "countShort": "{count} ток."
             },
             "executeOperations": "Изврши операции: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Ќе се прескокнат",
                     "skipped": "Прескокнати",
                     "existedAtCheckpoint": "постоела во контролната точка",
-                    "absentAtCheckpoint": "отсутна во контролната точка"
+                    "absentAtCheckpoint": "отсутна во контролната точка",
+                    "noFiles": "Во овој резултат од враќањето не се вклучени датотеки.",
+                    "otherActions": "Други дејства",
+                    "requestedPaths": "Побарано подмножество патеки",
+                    "scopeAll": "Опсег: сите датотеки зачувани во контролната точка.",
+                    "titleApplied": "Враќањето на контролната точка е применето",
+                    "titleApplyReview": "Преглед на примената на враќањето на контролната точка",
+                    "titleDryRunComplete": "Пробното враќање на контролната точка е завршено",
+                    "titleDryRunReview": "Преглед на пробно враќање на контролна точка"
                 },
                 "checks": {
                     "exitSummary": "излезен код {code} · {seconds}s",
                     "continueOnFailure": "Ги извршува сите проверки дури и ако некоја не успее.",
-                    "stopOnFailure": "Запира на првата неуспешна проверка."
+                    "stopOnFailure": "Запира на првата неуспешна проверка.",
+                    "checkLabel": "Проверка:",
+                    "checksLabel": "Проверки:",
+                    "exitChip": "излезен код {code}",
+                    "filterChip": "филтер: {filter}",
+                    "filterLabel": "Филтер:",
+                    "notAvailable": "н/д",
+                    "passedCount": "{passed}/{total} поминати",
+                    "runCheckNote": "Извршува избрана build/test/lint команда во работниот простор. Скриптите за градење и тестовите извршуваат вистински код.",
+                    "runProjectCheck": "Изврши проверка на проектот",
+                    "runVerification": "Изврши премин за верификација",
+                    "runVerificationNote": "Извршува избрани build/test/lint команди во работниот простор. Скриптите за градење и тестовите извршуваат вистински код.",
+                    "stoppedEarly": "Запрено на првата неуспешна проверка.",
+                    "timeoutLabel": "Временско ограничување: {seconds} s",
+                    "verification": "Верификација"
                 },
                 "diagnostics": {
-                    "none": "Не е пријавена дијагностика."
+                    "none": "Не е пријавена дијагностика.",
+                    "errorCountMany": "{count} грешки",
+                    "errorCountOne": "{count} грешка",
+                    "title": "Дијагностика",
+                    "truncated": "Листата со дијагностика е скратена.",
+                    "warningCountMany": "{count} предупредувања",
+                    "warningCountOne": "{count} предупредување"
                 },
                 "search": {
-                    "none": "Не се пронајдени совпаѓања."
+                    "none": "Не се пронајдени совпаѓања.",
+                    "ignoreCase": "игнорирај големина на букви",
+                    "inPath": "во {path}",
+                    "literal": "дословно",
+                    "matchCountMany": "{count} совпаѓања",
+                    "matchCountOne": "{count} совпаѓање",
+                    "title": "Пребарување во работниот простор",
+                    "truncated": "Резултатите се скратени."
                 },
                 "git": {
                     "noStagedDiff": "Нема diff излез за подготвените промени.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Одобрување на Git подготовка",
                     "commitNote": "Ова создава git комит од тековниот подготвен индекс. Прво прегледајте ги coding_git_status и coding_git_diff со staged=true.",
                     "stagePreviewNote": "Ова прикажува преглед кои од побараните патеки би биле подготвени; индексот нема да се промени.",
-                    "stageNote": "Ова го менува git индексот за побараните патеки."
+                    "stageNote": "Ова го менува git индексот за побараните патеки.",
+                    "afterCounts": "По: {counts}",
+                    "beforeCounts": "Пред: {counts}",
+                    "clean": "Работното дрво е чисто.",
+                    "commitCountMany": "{count} комити",
+                    "commitCountOne": "{count} комит",
+                    "conflicted": "во конфликт",
+                    "diffTruncated": "Излезот со разлики беше скратен.",
+                    "logTitle": "Git дневник",
+                    "pathsChip": "патеки: {paths}",
+                    "showingNewest": "Се прикажуваат најновите {count}; има уште.",
+                    "statusCounts": "{staged} подготвени, {unstaged} неподготвени, {untracked} неследени, {conflicted} во конфликт",
+                    "titleCommitCreated": "Git комитот е создаден",
+                    "titleCommitDryRun": "Пробен Git комит",
+                    "titleCommitReview": "Преглед на Git комит",
+                    "titleReview": "Git преглед",
+                    "titleStageApplied": "Git подготовката е применета",
+                    "titleStagedDiff": "Подготвени Git разлики",
+                    "titleStageDryRun": "Пробна Git подготовка",
+                    "titleStatus": "Git статус",
+                    "titleUnstagedDiff": "Неподготвени Git разлики",
+                    "untracked": "неследено"
                 },
                 "patch": {
                     "validateNote": "Ова ја валидира закрпата без менување датотеки.",
                     "applyNote": "Ова барање за примена со висок ризик запишува датотеки откако бекендот ќе создаде контролна точка пред примената.",
                     "hideDiff": "Скриј унифициран diff",
-                    "showDiff": "Прикажи унифициран diff"
-                }
+                    "showDiff": "Прикажи унифициран diff",
+                    "actualLabel": "вистинско:",
+                    "checkpointCreated": "Создадена е контролна точка пред примена",
+                    "diffTruncated": "Прегледот на разликите е скратен за прикажување.",
+                    "expectedLabel": "очекувано:",
+                    "firstLines": "првите {shown} од {total} реда",
+                    "hunkCountMany": "{count} блокови",
+                    "hunkCountOne": "{count} блок",
+                    "hunkIndex": "блок {index}",
+                    "restoreManual": "Враќањето е рачно: по прегледот користете {tool} со овој ИД на контролната точка.",
+                    "titleApplied": "Закрпата е применета",
+                    "titleApplyBlocked": "Примената на закрпата е блокирана",
+                    "titleApplyReview": "Преглед на примената на закрпата",
+                    "titleDryRunConflicts": "Пробното извршување на закрпата пронајде конфликти",
+                    "titleDryRunPassed": "Пробното извршување на закрпата помина",
+                    "titleDryRunReview": "Преглед на пробното извршување на закрпата",
+                    "warnings": "Предупредувања"
+                },
+                "binary": "бинарно",
+                "fileCountMany": "{count} датотеки",
+                "fileCountOne": "{count} датотека",
+                "moreCount": "+{count} уште",
+                "plan": {
+                    "likelyFiles": "Веројатни датотеки",
+                    "openQuestions": "Отворени прашања",
+                    "reviewOnlyNote": "Артефакт само за преглед. Уредувањата и алатките што прават измени сѐ уште го користат тековниот режим на одобрување.",
+                    "riskHigh": "висок ризик",
+                    "riskLow": "низок ризик",
+                    "riskMedium": "среден ризик",
+                    "risks": "Ризици",
+                    "title": "План за кодирање"
+                },
+                "state": {
+                    "clean": "чисто",
+                    "failed": "неуспешно",
+                    "passed": "поминато",
+                    "timedOut": "истечено време"
+                },
+                "timeoutChip": "временско ограничување {seconds}s",
+                "truncated": "скратено",
+                "workspaceLabel": "Работен простор:"
+            },
+            "attachedImageAlt": "Прикачена слика",
+            "stepNumber": "Чекор {step}",
+            "transcribingLocally": "Локално транскрибирање...",
+            "transferPlan": {
+                "dependsOnMany": "Зависи од {count} подготвителни чекори",
+                "dependsOnOne": "Зависи од {count} подготвителен чекор",
+                "destination": "Одредиште: {destination}",
+                "title": "Преглед на планот за пренос",
+                "warnings": "Предупредувања"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Прегледај",
                     "installed": "Инсталирани"
-                }
+                },
+                "remoteInstallDisabled": "Далечинското инсталирање приклучоци е моментално оневозможено додека регистарот не се автентицира на страната на клиентот. Локално инсталираните приклучоци продолжуваат да работат нормално."
             }
         },
         "commandPalette.category.ai": {},

@@ -1269,7 +1269,14 @@
                 "stop": "Stoppen",
                 "stopShell": "Shell stoppen",
                 "closed": "Terminal geschlossen.",
-                "commandInsertedReview": "Befehl im Terminal eingefügt. Enter drücken zum Ausführen."
+                "commandInsertedReview": "Befehl im Terminal eingefügt. Enter drücken zum Ausführen.",
+                "decreaseFont": "Schrift verkleinern (Ctrl+-)",
+                "emptyClickPlus": "Klicken Sie auf {plus}, um ein Terminal zu öffnen",
+                "emptySshHint": "oder {ssh} für eine Remote-Shell zu {host}",
+                "increaseFont": "Schrift vergrößern (Ctrl+=)",
+                "newTab": "Neuer Terminal-Tab",
+                "sshShellTo": "SSH-Shell zu {host}",
+                "theme": "Terminal-Design"
             },
             "editorPanel": {
                 "emptyState": "Rechtsklick auf eine Datei und \"Quelltext anzeigen\" wählen",
@@ -1278,13 +1285,17 @@
                 "saving": "Wird gespeichert...",
                 "noFileSelected": "Keine Datei zum Anzeigen ausgewählt",
                 "loading": "Editor wird geladen...",
-                "dragToTerminalRun": "In das Terminal ziehen, um den Ausführungsbefehl einzufügen"
+                "dragToTerminalRun": "In das Terminal ziehen, um den Ausführungsbefehl einzufügen",
+                "closeEditor": "Editor schließen",
+                "resetChanges": "Änderungen zurücksetzen"
             },
             "previewPanel": {
                 "emptyState": "Rechtsklick auf eine Datei und \"Vorschau\" wählen"
             },
             "codeEditor": "Code-Editor",
-            "sshTerminal": "SSH-Terminal"
+            "sshTerminal": "SSH-Terminal",
+            "comingSoon": "Demnächst verfügbar",
+            "soonBadge": "Bald"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Werkzeugausführung ablehnen",
                 "toggleDetails": "Details ein-/ausblenden",
                 "allowSession": "Für diese Sitzung erlauben",
-                "nonAtomicReplace": "Nicht atomarer Ersatz: die Datei fehlt kurz"
+                "nonAtomicReplace": "Nicht atomarer Ersatz: die Datei fehlt kurz",
+                "moreOptions": "Weitere Optionen",
+                "panelAria": "Bereich zur Werkzeugfreigabe"
             },
             "settings": {
                 "title": "KI-Einstellungen",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Ersatz",
                 "routingNoFallback": "Keiner",
                 "bedrockNeedsModel": "Fügen Sie vor dem Testen auf der Registerkarte Modelle ein Bedrock-Modell hinzu und aktivieren Sie es.",
-                "bedrockSetup": "Legen Sie die Runtime URL für Ihre AWS-Region fest. Fügen Sie unter Modelle eine ID hinzu, die Chat Completions auf Bedrock Runtime unterstützt. Runtime listet keine Modelle auf. Der Test sendet eine kleine Inferenzanfrage, für die AWS Gebühren berechnen kann."
+                "bedrockSetup": "Legen Sie die Runtime URL für Ihre AWS-Region fest. Fügen Sie unter Modelle eine ID hinzu, die Chat Completions auf Bedrock Runtime unterstützt. Runtime listet keine Modelle auf. Der Test sendet eine kleine Inferenzanfrage, für die AWS Gebühren berechnen kann.",
+                "detectOllamaModelsTooltip": "Verfügbare Ollama-Modelle automatisch erkennen",
+                "kTokens": "{count}K Token",
+                "modelEditorAria": "KI-Modell-Editor",
+                "supportsTools": "Unterstützt Werkzeuge",
+                "supportsVision": "Unterstützt Bildverarbeitung",
+                "thinkingReasoning": "Denken/Schlussfolgern",
+                "toolQuality": "Werkzeugqualität: {quality}/5"
             },
             "copy": "Kopieren",
             "attachImage": "Bild anhängen",
@@ -2699,7 +2719,9 @@
                 "run": "Im Terminal ausführen",
                 "insert": "In Editor einfügen",
                 "diff": "Mit Original vergleichen",
-                "diffNoFile": "Keine Datei zum Vergleichen geöffnet"
+                "diffNoFile": "Keine Datei zum Vergleichen geöffnet",
+                "commandBlocked": "Befehl blockiert: potenziell destruktiv",
+                "confirmRun": "Ausführung bestätigen: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Denke nach...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Zweig wechseln",
                 "delete": "Zweig löschen",
                 "newBranch": "Neuer Zweig",
-                "branchFrom": "Von diesem Punkt verzweigen"
+                "branchFrom": "Von diesem Punkt verzweigen",
+                "messageCountShort": "{count} Nachr.",
+                "unnamed": "Zweig"
             },
             "context": {
                 "projectDetected": "Projekt erkannt",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "aktiv",
                 "expired": "abgelaufen",
-                "refresh": "Aktualisieren"
+                "refresh": "Aktualisieren",
+                "modelsRunningMany": "{count} Modelle laufen",
+                "modelsRunningOne": "{count} Modell läuft",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Kontext-Caching",
@@ -2956,7 +2983,8 @@
                 "warning": "Alle Dateioperationen werden sofort ohne Genehmigung ausgeführt. Nutzung auf eigene Gefahr.",
                 "disable": "Deaktivieren",
                 "securityWarning": "Sicherheitswarnung",
-                "understood": "Verstanden"
+                "understood": "Verstanden",
+                "warningAria": "Warnung Extremmodus"
             },
             "errorServerError": "Der Server des KI-Anbieters hat Probleme. Versuchen Sie es gleich noch einmal.",
             "errorServiceUnavailable": "Der KI-Anbieter ist vorübergehend nicht verfügbar (überlastet). Kostenlose Dienste können Beschränkungen haben. Versuchen Sie es später erneut.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Unbegrenzt",
                 "roleAI": "AI",
-                "roleUser": "Benutzer"
+                "roleUser": "Benutzer",
+                "noConversations": "Noch keine Unterhaltungen",
+                "titleCount": "Verlauf ({count})"
             },
             "dropFileToAnalyze": "Datei zum Analysieren mit AeroAgent ablegen",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} Eingabe-Tokens, {output} Ausgabe-Tokens, laut Zählung des Anbieters",
-                "breakdownCache": "{input} Eingabe-Tokens, {output} Ausgabe-Tokens, {cacheRead} aus dem Prompt-Cache gelesen, {cacheWritten} hineingeschrieben, laut Zählung des Anbieters"
+                "breakdownCache": "{input} Eingabe-Tokens, {output} Ausgabe-Tokens, {cacheRead} aus dem Prompt-Cache gelesen, {cacheWritten} hineingeschrieben, laut Zählung des Anbieters",
+                "countShort": "{count} Tok."
             },
             "executeOperations": "{count} Operation(en) ausführen",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Würde überspringen",
                     "skipped": "Übersprungen",
                     "existedAtCheckpoint": "existierte im Sicherungspunkt",
-                    "absentAtCheckpoint": "fehlte im Sicherungspunkt"
+                    "absentAtCheckpoint": "fehlte im Sicherungspunkt",
+                    "noFiles": "In diesem Wiederherstellungsergebnis sind keine Dateien enthalten.",
+                    "otherActions": "Weitere Aktionen",
+                    "requestedPaths": "Angeforderte Pfadauswahl",
+                    "scopeAll": "Umfang: alle im Sicherungspunkt erfassten Dateien.",
+                    "titleApplied": "Wiederherstellung des Sicherungspunkts angewendet",
+                    "titleApplyReview": "Prüfung der Wiederherstellung des Sicherungspunkts",
+                    "titleDryRunComplete": "Probelauf der Wiederherstellung des Sicherungspunkts abgeschlossen",
+                    "titleDryRunReview": "Prüfung der Probewiederherstellung des Checkpoints"
                 },
                 "checks": {
                     "exitSummary": "Rückgabecode {code} · {seconds}s",
                     "continueOnFailure": "Führt alle Prüfungen aus, auch wenn eine fehlschlägt.",
-                    "stopOnFailure": "Stoppt bei der ersten fehlgeschlagenen Prüfung."
+                    "stopOnFailure": "Stoppt bei der ersten fehlgeschlagenen Prüfung.",
+                    "checkLabel": "Prüfung:",
+                    "checksLabel": "Prüfungen:",
+                    "exitChip": "Exit {code}",
+                    "filterChip": "Filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "k. A.",
+                    "passedCount": "{passed}/{total} bestanden",
+                    "runCheckNote": "Führt einen kuratierten Build-/Test-/Lint-Befehl im Arbeitsbereich aus. Build-Skripte und Tests führen echten Code aus.",
+                    "runProjectCheck": "Projektprüfung ausführen",
+                    "runVerification": "Verifizierungsdurchlauf ausführen",
+                    "runVerificationNote": "Führt kuratierte Build-/Test-/Lint-Befehle im Arbeitsbereich aus. Build-Skripte und Tests führen echten Code aus.",
+                    "stoppedEarly": "Bei der ersten fehlgeschlagenen Prüfung angehalten.",
+                    "timeoutLabel": "Zeitlimit: {seconds}s",
+                    "verification": "Verifizierung"
                 },
                 "diagnostics": {
-                    "none": "Keine Diagnosen gemeldet."
+                    "none": "Keine Diagnosen gemeldet.",
+                    "errorCountMany": "{count} Fehler",
+                    "errorCountOne": "{count} Fehler",
+                    "title": "Diagnose",
+                    "truncated": "Die Diagnoseliste wurde gekürzt.",
+                    "warningCountMany": "{count} Warnungen",
+                    "warningCountOne": "{count} Warnung"
                 },
                 "search": {
-                    "none": "Keine Treffer gefunden."
+                    "none": "Keine Treffer gefunden.",
+                    "ignoreCase": "Groß-/Kleinschreibung ignorieren",
+                    "inPath": "in {path}",
+                    "literal": "wörtlich",
+                    "matchCountMany": "{count} Treffer",
+                    "matchCountOne": "{count} Treffer",
+                    "title": "Arbeitsbereichssuche",
+                    "truncated": "Ergebnisse wurden gekürzt."
                 },
                 "git": {
                     "noStagedDiff": "Keine Diff-Ausgabe für vorgemerkte Änderungen.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Freigabe für Git-Vormerkung",
                     "commitNote": "Dies erstellt einen git-Commit aus dem aktuell vorgemerkten Index. Prüfen Sie zuerst coding_git_status und coding_git_diff mit staged=true.",
                     "stagePreviewNote": "Dies zeigt in einer Vorschau, welche angeforderten Pfade vorgemerkt würden; der Index bleibt unverändert.",
-                    "stageNote": "Dies ändert den git-Index für die angeforderten Pfade."
+                    "stageNote": "Dies ändert den git-Index für die angeforderten Pfade.",
+                    "afterCounts": "Nachher: {counts}",
+                    "beforeCounts": "Vorher: {counts}",
+                    "clean": "Der Arbeitsbaum ist sauber.",
+                    "commitCountMany": "{count} Commits",
+                    "commitCountOne": "{count} Commit",
+                    "conflicted": "in Konflikt",
+                    "diffTruncated": "Die Diff-Ausgabe wurde gekürzt.",
+                    "logTitle": "Git-Protokoll",
+                    "pathsChip": "Pfade: {paths}",
+                    "showingNewest": "Die neuesten {count} werden angezeigt; es gibt weitere.",
+                    "statusCounts": "{staged} vorgemerkt, {unstaged} nicht vorgemerkt, {untracked} nicht verfolgt, {conflicted} in Konflikt",
+                    "titleCommitCreated": "Git-Commit erstellt",
+                    "titleCommitDryRun": "Git-Commit-Probelauf",
+                    "titleCommitReview": "Git-Commit-Prüfung",
+                    "titleReview": "Git-Prüfung",
+                    "titleStageApplied": "Git-Vormerkung angewendet",
+                    "titleStagedDiff": "Vorgemerkter Git-Diff",
+                    "titleStageDryRun": "Probelauf der Git-Vormerkung",
+                    "titleStatus": "Git-Status",
+                    "titleUnstagedDiff": "Nicht vorgemerkter Git-Diff",
+                    "untracked": "nicht verfolgt"
                 },
                 "patch": {
                     "validateNote": "Dies validiert den Patch, ohne Dateien zu ändern.",
                     "applyNote": "Diese Anwendungsanfrage mit hohem Risiko schreibt Dateien, nachdem das Backend einen Checkpoint vor dem Anwenden erstellt hat.",
                     "hideDiff": "Vereinheitlichten Diff ausblenden",
-                    "showDiff": "Vereinheitlichten Diff anzeigen"
-                }
+                    "showDiff": "Vereinheitlichten Diff anzeigen",
+                    "actualLabel": "tatsächlich:",
+                    "checkpointCreated": "Checkpoint vor dem Anwenden erstellt",
+                    "diffTruncated": "Diff-Vorschau für die Anzeige gekürzt.",
+                    "expectedLabel": "erwartet:",
+                    "firstLines": "erste {shown} von {total} Zeilen",
+                    "hunkCountMany": "{count} Abschnitte",
+                    "hunkCountOne": "{count} Abschnitt",
+                    "hunkIndex": "Abschnitt {index}",
+                    "restoreManual": "Die Wiederherstellung erfolgt manuell: nach der Prüfung {tool} mit dieser Sicherungspunkt-ID verwenden.",
+                    "titleApplied": "Patch angewendet",
+                    "titleApplyBlocked": "Patch-Anwendung blockiert",
+                    "titleApplyReview": "Prüfung der Patch-Anwendung",
+                    "titleDryRunConflicts": "Patch-Probelauf hat Konflikte gefunden",
+                    "titleDryRunPassed": "Patch-Probelauf bestanden",
+                    "titleDryRunReview": "Prüfung des Patch-Probelaufs",
+                    "warnings": "Warnungen"
+                },
+                "binary": "binär",
+                "fileCountMany": "{count} Dateien",
+                "fileCountOne": "{count} Datei",
+                "moreCount": "+{count} weitere",
+                "plan": {
+                    "likelyFiles": "Wahrscheinliche Dateien",
+                    "openQuestions": "Offene Fragen",
+                    "reviewOnlyNote": "Nur zur Prüfung. Bearbeitungen und ändernde Werkzeuge verwenden weiterhin den aktuellen Genehmigungsmodus.",
+                    "riskHigh": "hohes Risiko",
+                    "riskLow": "geringes Risiko",
+                    "riskMedium": "mittleres Risiko",
+                    "risks": "Risiken",
+                    "title": "Programmierplan"
+                },
+                "state": {
+                    "clean": "sauber",
+                    "failed": "fehlgeschlagen",
+                    "passed": "bestanden",
+                    "timedOut": "Zeitüberschreitung"
+                },
+                "timeoutChip": "Timeout {seconds}s",
+                "truncated": "gekürzt",
+                "workspaceLabel": "Arbeitsbereich:"
+            },
+            "attachedImageAlt": "Angehängtes Bild",
+            "stepNumber": "Schritt {step}",
+            "transcribingLocally": "Lokale Transkription...",
+            "transferPlan": {
+                "dependsOnMany": "Hängt von {count} vorbereitenden Schritten ab",
+                "dependsOnOne": "Hängt von {count} vorbereitenden Schritt ab",
+                "destination": "Ziel: {destination}",
+                "title": "Überprüfung des Übertragungsplans",
+                "warnings": "Warnungen"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Durchsuchen",
                     "installed": "Installiert"
-                }
+                },
+                "remoteInstallDisabled": "Die Remote-Installation von Plugins ist derzeit deaktiviert, bis die Registry clientseitig authentifiziert wird. Lokal installierte Plugins funktionieren weiterhin normal."
             }
         },
         "filelu": {

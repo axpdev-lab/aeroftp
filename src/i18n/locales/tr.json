@@ -1269,7 +1269,14 @@
                 "stop": "Durdur",
                 "stopShell": "Kabuğu durdur",
                 "closed": "Terminal kapatıldı.",
-                "commandInsertedReview": "Komut Terminal'a eklendi. Çalıştırmak için Enter'a basın."
+                "commandInsertedReview": "Komut Terminal'a eklendi. Çalıştırmak için Enter'a basın.",
+                "decreaseFont": "Yazı tipini küçült (Ctrl+-)",
+                "emptyClickPlus": "Terminal açmak için {plus} öğesine tıklayın",
+                "emptySshHint": "veya {host} üzerinde uzak kabuk için {ssh}",
+                "increaseFont": "Yazı tipini büyüt (Ctrl+=)",
+                "newTab": "Yeni terminal sekmesi",
+                "sshShellTo": "{host} için SSH kabuğu",
+                "theme": "Terminal teması"
             },
             "editorPanel": {
                 "emptyState": "Bir dosyaya sağ tıklayın ve \"Kaynağı görüntüle\" seçeneğini seçin",
@@ -1278,13 +1285,17 @@
                 "saving": "Kaydediliyor...",
                 "noFileSelected": "Görüntüleme için dosya seçilmedi",
                 "loading": "Düzenleyici yükleniyor...",
-                "dragToTerminalRun": "Çalıştırma komutunu eklemek için Terminal'a sürükleyin"
+                "dragToTerminalRun": "Çalıştırma komutunu eklemek için Terminal'a sürükleyin",
+                "closeEditor": "Düzenleyiciyi kapat",
+                "resetChanges": "Değişiklikleri sıfırla"
             },
             "previewPanel": {
                 "emptyState": "Bir dosyaya sağ tıklayın ve \"Önizle\" seçeneğini seçin"
             },
             "codeEditor": "Kod Düzenleyici",
-            "sshTerminal": "SSH Terminali"
+            "sshTerminal": "SSH Terminali",
+            "comingSoon": "Çok yakında",
+            "soonBadge": "Yakında"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Araç çalıştırmayı reddet",
                 "toggleDetails": "Ayrıntıları aç/kapat",
                 "allowSession": "Bu oturum için izin ver",
-                "nonAtomicReplace": "Atomik olmayan değiştirme: dosya kısa süreliğine kaybolur"
+                "nonAtomicReplace": "Atomik olmayan değiştirme: dosya kısa süreliğine kaybolur",
+                "moreOptions": "Diğer seçenekler",
+                "panelAria": "Araç onay paneli"
             },
             "settings": {
                 "title": "AI Ayarları",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Yedek",
                 "routingNoFallback": "Yok",
                 "bedrockNeedsModel": "Test etmeden önce Modeller sekmesinde bir Bedrock modeli ekleyip etkinleştirin.",
-                "bedrockSetup": "AWS Bölgeniz için Runtime URL değerini ayarlayın. Modeller sekmesinde Bedrock Runtime üzerinde Chat Completions özelliğini destekleyen bir ID ekleyin. Runtime modelleri listelemez. Test, AWS ücretlerine yol açabilecek küçük bir çıkarım isteği gönderir."
+                "bedrockSetup": "AWS Bölgeniz için Runtime URL değerini ayarlayın. Modeller sekmesinde Bedrock Runtime üzerinde Chat Completions özelliğini destekleyen bir ID ekleyin. Runtime modelleri listelemez. Test, AWS ücretlerine yol açabilecek küçük bir çıkarım isteği gönderir.",
+                "detectOllamaModelsTooltip": "Kullanılabilir Ollama modellerini otomatik algıla",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "Yapay zekâ model düzenleyici",
+                "supportsTools": "Araçları destekler",
+                "supportsVision": "Görmeyi destekler",
+                "thinkingReasoning": "Düşünme/Akıl yürütme",
+                "toolQuality": "Araç kalitesi: {quality}/5"
             },
             "copy": "Kopyala",
             "attachImage": "Görsel ekle",
@@ -2699,7 +2719,9 @@
                 "run": "Terminalde Çalıştır",
                 "insert": "Düzenleyiciye Ekle",
                 "diff": "Orijinalle karşılaştır",
-                "diffNoFile": "Karşılaştırma için açık dosya yok"
+                "diffNoFile": "Karşılaştırma için açık dosya yok",
+                "commandBlocked": "Komut engellendi: yıkıcı olabilir",
+                "confirmRun": "Çalıştırmayı onayla: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Düşünülüyor...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Dal değiştir",
                 "delete": "Dalı sil",
                 "newBranch": "Yeni dal",
-                "branchFrom": "Bu noktadan dallan"
+                "branchFrom": "Bu noktadan dallan",
+                "messageCountShort": "{count} mesaj",
+                "unnamed": "Dal"
             },
             "context": {
                 "projectDetected": "Proje algılandı",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "çalışıyor",
                 "expired": "süresi doldu",
-                "refresh": "Yenile"
+                "refresh": "Yenile",
+                "modelsRunningMany": "{count} model çalışıyor",
+                "modelsRunningOne": "{count} model çalışıyor",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Bağlam Önbelleği",
@@ -2956,7 +2983,8 @@
                 "warning": "Tüm dosya işlemleri onay olmadan hemen yürütülecektir. Riski size aittir.",
                 "disable": "Devre dışı bırak",
                 "securityWarning": "Güvenlik Uyarısı",
-                "understood": "Anlaşıldı"
+                "understood": "Anlaşıldı",
+                "warningAria": "Aşırı mod uyarısı"
             },
             "errorServerError": "AI sağlayıcısının sunucusunda sorun yaşanıyor. Birazdan tekrar deneyin.",
             "errorServiceUnavailable": "AI sağlayıcısı geçici olarak kullanılamıyor (aşırı yüklü). Ücretsiz hizmetlerin sınırları olabilir. Daha sonra tekrar deneyin.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Sınırsız",
                 "roleAI": "AI",
-                "roleUser": "Kullanıcı"
+                "roleUser": "Kullanıcı",
+                "noConversations": "Henüz sohbet yok",
+                "titleCount": "Geçmiş ({count})"
             },
             "dropFileToAnalyze": "AeroAgent ile analiz etmek için dosyayı bırakın",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} giriş tokeni, {output} çıkış tokeni, sağlayıcının sayımına göre",
-                "breakdownCache": "{input} giriş tokeni, {output} çıkış tokeni, istem önbelleğinden {cacheRead} okundu, ona {cacheWritten} yazıldı, sağlayıcının sayımına göre"
+                "breakdownCache": "{input} giriş tokeni, {output} çıkış tokeni, istem önbelleğinden {cacheRead} okundu, ona {cacheWritten} yazıldı, sağlayıcının sayımına göre",
+                "countShort": "{count} tok"
             },
             "executeOperations": "{count} işlemi yürüt",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Atlanacak",
                     "skipped": "Atlandı",
                     "existedAtCheckpoint": "kontrol noktasında mevcuttu",
-                    "absentAtCheckpoint": "kontrol noktasında yoktu"
+                    "absentAtCheckpoint": "kontrol noktasında yoktu",
+                    "noFiles": "Bu geri yükleme sonucuna hiçbir dosya dahil edilmedi.",
+                    "otherActions": "Diğer eylemler",
+                    "requestedPaths": "İstenen yol alt kümesi",
+                    "scopeAll": "Kapsam: kontrol noktasında yakalanan tüm dosyalar.",
+                    "titleApplied": "Kontrol noktası geri yüklemesi uygulandı",
+                    "titleApplyReview": "Kontrol noktası geri yükleme uygulama incelemesi",
+                    "titleDryRunComplete": "Kontrol noktası geri yükleme deneme çalıştırması tamamlandı",
+                    "titleDryRunReview": "Kontrol noktası geri yükleme deneme incelemesi"
                 },
                 "checks": {
                     "exitSummary": "çıkış kodu {code} · {seconds}s",
                     "continueOnFailure": "Biri başarısız olsa bile tüm denetimleri çalıştırır.",
-                    "stopOnFailure": "İlk başarısız denetimde durur."
+                    "stopOnFailure": "İlk başarısız denetimde durur.",
+                    "checkLabel": "Denetim:",
+                    "checksLabel": "Denetimler:",
+                    "exitChip": "çıkış kodu {code}",
+                    "filterChip": "filtre: {filter}",
+                    "filterLabel": "Filtre:",
+                    "notAvailable": "yok",
+                    "passedCount": "{passed}/{total} geçti",
+                    "runCheckNote": "Çalışma alanında seçilmiş bir build/test/lint komutu çalıştırır. Derleme betikleri ve testler gerçek kod çalıştırır.",
+                    "runProjectCheck": "Proje denetimini çalıştır",
+                    "runVerification": "Doğrulama turunu çalıştır",
+                    "runVerificationNote": "Çalışma alanında seçilmiş build/test/lint komutlarını çalıştırır. Derleme betikleri ve testler gerçek kod çalıştırır.",
+                    "stoppedEarly": "İlk başarısız denetimde durduruldu.",
+                    "timeoutLabel": "Zaman aşımı: {seconds} sn",
+                    "verification": "Doğrulama"
                 },
                 "diagnostics": {
-                    "none": "Bildirilen tanılama yok."
+                    "none": "Bildirilen tanılama yok.",
+                    "errorCountMany": "{count} hata",
+                    "errorCountOne": "{count} hata",
+                    "title": "Tanılama",
+                    "truncated": "Tanılama listesi kısaltıldı.",
+                    "warningCountMany": "{count} uyarı",
+                    "warningCountOne": "{count} uyarı"
                 },
                 "search": {
-                    "none": "Eşleşme bulunamadı."
+                    "none": "Eşleşme bulunamadı.",
+                    "ignoreCase": "büyük/küçük harf yoksay",
+                    "inPath": "{path} içinde",
+                    "literal": "birebir",
+                    "matchCountMany": "{count} eşleşme",
+                    "matchCountOne": "{count} eşleşme",
+                    "title": "Çalışma alanı araması",
+                    "truncated": "Sonuçlar kısaltıldı."
                 },
                 "git": {
                     "noStagedDiff": "Hazırlanmış değişiklikler için diff çıktısı yok.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git Hazırlama Onayı",
                     "commitNote": "Bu, mevcut hazırlanmış dizinden bir git commit'i oluşturur. Önce staged=true ile coding_git_status ve coding_git_diff çıktılarını inceleyin.",
                     "stagePreviewNote": "Bu, istenen yollardan hangilerinin hazırlanacağını önizler; indeks değişmez.",
-                    "stageNote": "Bu, istenen yollar için git indeksini değiştirir."
+                    "stageNote": "Bu, istenen yollar için git indeksini değiştirir.",
+                    "afterCounts": "Sonra: {counts}",
+                    "beforeCounts": "Önce: {counts}",
+                    "clean": "Çalışma ağacı temiz.",
+                    "commitCountMany": "{count} işleme",
+                    "commitCountOne": "{count} işleme",
+                    "conflicted": "çakışmalı",
+                    "diffTruncated": "Fark çıktısı kısaltıldı.",
+                    "logTitle": "Git günlüğü",
+                    "pathsChip": "yollar: {paths}",
+                    "showingNewest": "En yeni {count} gösteriliyor; daha fazlası var.",
+                    "statusCounts": "{staged} hazırlanmış, {unstaged} hazırlanmamış, {untracked} izlenmeyen, {conflicted} çakışmalı",
+                    "titleCommitCreated": "Git işlemesi oluşturuldu",
+                    "titleCommitDryRun": "Git işlemesi deneme çalıştırması",
+                    "titleCommitReview": "Git işlemesi incelemesi",
+                    "titleReview": "Git incelemesi",
+                    "titleStageApplied": "Git hazırlama uygulandı",
+                    "titleStagedDiff": "Git hazırlanmış farkı",
+                    "titleStageDryRun": "Git hazırlama deneme çalıştırması",
+                    "titleStatus": "Git durumu",
+                    "titleUnstagedDiff": "Git hazırlanmamış farkı",
+                    "untracked": "izlenmeyen"
                 },
                 "patch": {
                     "validateNote": "Bu, dosyaları değiştirmeden yamayı doğrular.",
                     "applyNote": "Bu yüksek riskli uygulama isteği, arka uç uygulama öncesi bir kontrol noktası oluşturduktan sonra dosyaları yazar.",
                     "hideDiff": "Birleşik diff'i gizle",
-                    "showDiff": "Birleşik diff'i göster"
-                }
+                    "showDiff": "Birleşik diff'i göster",
+                    "actualLabel": "gerçek:",
+                    "checkpointCreated": "Uygulama öncesi denetim noktası oluşturuldu",
+                    "diffTruncated": "Fark önizlemesi görüntüleme için kısaltıldı.",
+                    "expectedLabel": "beklenen:",
+                    "firstLines": "{total} satırın ilk {shown} satırı",
+                    "hunkCountMany": "{count} parça",
+                    "hunkCountOne": "{count} parça",
+                    "hunkIndex": "parça {index}",
+                    "restoreManual": "Geri yükleme elle yapılır: incelemeden sonra bu kontrol noktası kimliğiyle {tool} aracını kullanın.",
+                    "titleApplied": "Yama uygulandı",
+                    "titleApplyBlocked": "Yama uygulaması engellendi",
+                    "titleApplyReview": "Yama uygulama incelemesi",
+                    "titleDryRunConflicts": "Yama deneme çalıştırması çakışmalar buldu",
+                    "titleDryRunPassed": "Yama deneme çalıştırması başarılı",
+                    "titleDryRunReview": "Yama deneme çalıştırması incelemesi",
+                    "warnings": "Uyarılar"
+                },
+                "binary": "ikili",
+                "fileCountMany": "{count} dosya",
+                "fileCountOne": "{count} dosya",
+                "moreCount": "+{count} daha",
+                "plan": {
+                    "likelyFiles": "Olası dosyalar",
+                    "openQuestions": "Açık sorular",
+                    "reviewOnlyNote": "Yalnızca inceleme amaçlı yapıt. Düzenlemeler ve değişiklik yapan araçlar hâlâ geçerli onay modunu kullanır.",
+                    "riskHigh": "yüksek risk",
+                    "riskLow": "düşük risk",
+                    "riskMedium": "orta risk",
+                    "risks": "Riskler",
+                    "title": "Kodlama planı"
+                },
+                "state": {
+                    "clean": "temiz",
+                    "failed": "başarısız",
+                    "passed": "geçti",
+                    "timedOut": "zaman aşımı"
+                },
+                "timeoutChip": "zaman aşımı {seconds}s",
+                "truncated": "kısaltıldı",
+                "workspaceLabel": "Çalışma alanı:"
+            },
+            "attachedImageAlt": "Ekli görsel",
+            "stepNumber": "Adım {step}",
+            "transcribingLocally": "Yerel olarak yazıya dökülüyor...",
+            "transferPlan": {
+                "dependsOnMany": "{count} hazırlık adımına bağlı",
+                "dependsOnOne": "{count} hazırlık adımına bağlı",
+                "destination": "Hedef: {destination}",
+                "title": "Aktarım Planı İncelemesi",
+                "warnings": "Uyarılar"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Göz at",
                     "installed": "Yüklü"
-                }
+                },
+                "remoteInstallDisabled": "Kayıt defteri istemci tarafında doğrulanana kadar uzaktan eklenti kurulumu şu anda devre dışı. Yerel olarak kurulan eklentiler normal şekilde çalışmaya devam eder."
             }
         },
         "filelu": {

@@ -1269,7 +1269,14 @@
                 "stop": "Դադարեցնել",
                 "stopShell": "Դադարեցնել թերմինալը",
                 "closed": "Տերմինալը փակված է։",
-                "commandInsertedReview": "Հրամանը զետեղված է Terminal-ում։ Սեղմեք Enter՝ գործարկելու համար։"
+                "commandInsertedReview": "Հրամանը զետեղված է Terminal-ում։ Սեղմեք Enter՝ գործարկելու համար։",
+                "decreaseFont": "Փոքրացնել տառաչափը (Ctrl+-)",
+                "emptyClickPlus": "Սեղմեք {plus}՝ տերմինալ բացելու համար",
+                "emptySshHint": "կամ {ssh}՝ {host}-ում հեռավոր հրամանային վահանակի համար",
+                "increaseFont": "Մեծացնել տառաչափը (Ctrl+=)",
+                "newTab": "Տերմինալի նոր ներդիր",
+                "sshShellTo": "SSH հրամանային վահանակ {host}-ում",
+                "theme": "Տերմինալի թեմա"
             },
             "editorPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Դիտել կոդը»",
@@ -1278,13 +1285,17 @@
                 "saving": "Պահպանվում է...",
                 "noFileSelected": "Դիտելու համար ֆայլ ընտրված չէ",
                 "loading": "Խմբագիր բեռնվում է...",
-                "dragToTerminalRun": "քաշեք դեպի Terminal՝ գործարկման հրամանը զետեղելու համար"
+                "dragToTerminalRun": "քաշեք դեպի Terminal՝ գործարկման հրամանը զետեղելու համար",
+                "closeEditor": "Փակել խմբագրիչը",
+                "resetChanges": "Վերակայել փոփոխությունները"
             },
             "previewPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Նախադիտում»"
             },
             "codeEditor": "Կոդի խմբագիր",
-            "sshTerminal": "SSH տերմինալ"
+            "sshTerminal": "SSH տերմինալ",
+            "comingSoon": "Շուտով հասանելի",
+            "soonBadge": "Շուտով"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2522,7 +2533,9 @@
                 "rejectExecution": "Մերժել գործիքի գործարկումը",
                 "toggleDetails": "Մանրամասներ ցուցադրել/թաքցնել",
                 "allowSession": "Թույլատրել այս նիստի համար",
-                "nonAtomicReplace": "Ոչ ատոմային փոխարինում: ֆայլը կարճ ժամանակով բացակայում է"
+                "nonAtomicReplace": "Ոչ ատոմային փոխարինում: ֆայլը կարճ ժամանակով բացակայում է",
+                "moreOptions": "Այլ ընտրանքներ",
+                "panelAria": "Գործիքների հաստատման վահանակ"
             },
             "settings": {
                 "title": "AI կարգավորումներ",
@@ -2677,7 +2690,14 @@
                 "routingFallback": "Պահեստային",
                 "routingNoFallback": "Չկա",
                 "bedrockNeedsModel": "Փորձարկելուց առաջ Մոդելներ ներդիրում ավելացրեք և միացրեք Bedrock մոդել։",
-                "bedrockSetup": "Սահմանեք ձեր AWS տարածաշրջանի Runtime URL-ը։ Մոդելներ ներդիրում ավելացրեք ID, որն աջակցում է Chat Completions-ին Bedrock Runtime-ում։ Runtime-ը չի ցուցադրում մոդելների ցանկը։ Փորձարկումն ուղարկում է փոքր եզրահանգման հարցում, որի համար AWS-ը կարող է վճար գանձել։"
+                "bedrockSetup": "Սահմանեք ձեր AWS տարածաշրջանի Runtime URL-ը։ Մոդելներ ներդիրում ավելացրեք ID, որն աջակցում է Chat Completions-ին Bedrock Runtime-ում։ Runtime-ը չի ցուցադրում մոդելների ցանկը։ Փորձարկումն ուղարկում է փոքր եզրահանգման հարցում, որի համար AWS-ը կարող է վճար գանձել։",
+                "detectOllamaModelsTooltip": "Ավտոմատ հայտնաբերել հասանելի Ollama մոդելները",
+                "kTokens": "{count}K թոքեն",
+                "modelEditorAria": "ԱԲ մոդելների խմբագրիչ",
+                "supportsTools": "Աջակցում է գործիքներ",
+                "supportsVision": "Աջակցում է տեսողություն",
+                "thinkingReasoning": "Մտածում/Դատողություն",
+                "toolQuality": "Գործիքների որակ: {quality}/5"
             },
             "rag": {
                 "indexing": "Ֆայլերի ինդեքսավորում...",
@@ -2692,7 +2712,9 @@
                 "run": "Գործարկել տերմինալում",
                 "insert": "Տեղադրել խմբագրիչում",
                 "diff": "Համեմատել բնագրի հետ",
-                "diffNoFile": "Համեմատության համար բաց ֆայլ չկա"
+                "diffNoFile": "Համեմատության համար բաց ֆայլ չկա",
+                "commandBlocked": "Հրամանն արգելափակված է: հնարավոր է՝ կործանարար",
+                "confirmRun": "Հաստատել գործարկումը: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Մտածում է...",
@@ -2740,7 +2762,9 @@
                 "switchBranch": "Փոխել ճյուղը",
                 "delete": "Ջնջել ճյուղը",
                 "newBranch": "Նոր ճյուղ",
-                "branchFrom": "Ճյուղավորել այս կետից"
+                "branchFrom": "Ճյուղավորել այս կետից",
+                "messageCountShort": "{count} հաղ.",
+                "unnamed": "Ճյուղ"
             },
             "context": {
                 "projectDetected": "Նախագիծը հայտնաբերված է",
@@ -2836,7 +2860,10 @@
                 "vram": "VRAM",
                 "running": "աշխատում է",
                 "expired": "ժամկետը լրացել է",
-                "refresh": "Թարմացնել"
+                "refresh": "Թարմացնել",
+                "modelsRunningMany": "{count} մոդել աշխատում է",
+                "modelsRunningOne": "{count} մոդել աշխատում է",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Համատեքստի քեշավորում",
@@ -2949,7 +2976,8 @@
                 "warning": "Ֆայլի բոլոր գործողությունները կկատարվեն անմիջապես առանց հաստատման: Օգտագործեք ձեր ռիսկով:",
                 "disable": "Անջատել",
                 "securityWarning": "Անվտանգության զգուշացում",
-                "understood": "Հասկանալի է"
+                "understood": "Հասկանալի է",
+                "warningAria": "Ծայրահեղ ռեժիմի զգուշացում"
             },
             "errorServerError": "AI մատակարարի սերվերը խնդիրներ ունի: Մի պահ նորից փորձեք:",
             "errorServiceUnavailable": "AI մատակարարը ժամանակավորապես անհասանելի է (ծանրաբեռնված): Անվճար մակարդակի ծառայությունները կարող են սահմաններ ունենալ: Փորձեք ավելի ուշ:",
@@ -3045,7 +3073,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Անսահմանափակ",
                 "roleAI": "AI",
-                "roleUser": "Օգտատեր"
+                "roleUser": "Օգտատեր",
+                "noConversations": "Դեռ զրույցներ չկան",
+                "titleCount": "Պատմություն ({count})"
             },
             "dropFileToAnalyze": "Քաշեք ֆայլը AeroAgent-ի միջոցով վերլուծելու համար",
             "plugins": {
@@ -3201,7 +3231,8 @@
             },
             "tokens": {
                 "breakdown": "{input} մուտքային տոկեն, {output} ելքային տոկեն, ըստ մատակարարի հաշվարկի",
-                "breakdownCache": "{input} մուտքային տոկեն, {output} ելքային տոկեն, {cacheRead} կարդացվել է հուշման քեշից, {cacheWritten} գրվել է դրա մեջ, ըստ մատակարարի հաշվարկի"
+                "breakdownCache": "{input} մուտքային տոկեն, {output} ելքային տոկեն, {cacheRead} կարդացվել է հուշման քեշից, {cacheWritten} գրվել է դրա մեջ, ըստ մատակարարի հաշվարկի",
+                "countShort": "{count} թոք."
             },
             "executeOperations": "Կատարել {count} գործողություն",
             "coding": {
@@ -3218,18 +3249,53 @@
                     "wouldSkip": "Բաց կթողնվեն",
                     "skipped": "Բաց թողնված",
                     "existedAtCheckpoint": "գոյություն ուներ վերահսկման կետում",
-                    "absentAtCheckpoint": "բացակայում էր վերահսկման կետում"
+                    "absentAtCheckpoint": "բացակայում էր վերահսկման կետում",
+                    "noFiles": "Այս վերականգնման արդյունքում ֆայլեր չեն ներառվել։",
+                    "otherActions": "Այլ գործողություններ",
+                    "requestedPaths": "Պահանջված ուղիների ենթաբազմություն",
+                    "scopeAll": "Շրջանակ. վերահսկման կետում պահված բոլոր ֆայլերը։",
+                    "titleApplied": "Վերահսկման կետի վերականգնումը կիրառվեց",
+                    "titleApplyReview": "Վերահսկման կետի վերականգնման կիրառման վերանայում",
+                    "titleDryRunComplete": "Վերահսկման կետի վերականգնման փորձնական գործարկումն ավարտվեց",
+                    "titleDryRunReview": "Ստուգակետի վերականգնման փորձնական գործարկման ստուգում"
                 },
                 "checks": {
                     "exitSummary": "ելքի կոդ {code} · {seconds}s",
                     "continueOnFailure": "Գործարկում է բոլոր ստուգումները, նույնիսկ եթե մեկը ձախողվի։",
-                    "stopOnFailure": "Կանգ է առնում առաջին ձախողված ստուգման վրա։"
+                    "stopOnFailure": "Կանգ է առնում առաջին ձախողված ստուգման վրա։",
+                    "checkLabel": "Ստուգում:",
+                    "checksLabel": "Ստուգումներ:",
+                    "exitChip": "ելքի կոդ {code}",
+                    "filterChip": "զտիչ: {filter}",
+                    "filterLabel": "Զտիչ:",
+                    "notAvailable": "չկա",
+                    "passedCount": "{passed}/{total} անցած",
+                    "runCheckNote": "Աշխատատարածքում գործարկում է ընտրված build/test/lint հրաման։ Կառուցման սկրիպտներն ու թեստերը կատարում են իրական կոդ։",
+                    "runProjectCheck": "Գործարկել նախագծի ստուգումը",
+                    "runVerification": "Գործարկել ստուգման փուլը",
+                    "runVerificationNote": "Աշխատատարածքում գործարկում է ընտրված build/test/lint հրամաններ։ Կառուցման սկրիպտներն ու թեստերը կատարում են իրական կոդ։",
+                    "stoppedEarly": "Կանգ առավ առաջին ձախողված ստուգման վրա։",
+                    "timeoutLabel": "Ժամանակի սահման: {seconds} վ",
+                    "verification": "Ստուգում"
                 },
                 "diagnostics": {
-                    "none": "Ախտորոշումներ չեն հաղորդվել։"
+                    "none": "Ախտորոշումներ չեն հաղորդվել։",
+                    "errorCountMany": "{count} սխալ",
+                    "errorCountOne": "{count} սխալ",
+                    "title": "Ախտորոշում",
+                    "truncated": "Ախտորոշման ցանկը կրճատվել է։",
+                    "warningCountMany": "{count} նախազգուշացում",
+                    "warningCountOne": "{count} նախազգուշացում"
                 },
                 "search": {
-                    "none": "Համընկնումներ չեն գտնվել։"
+                    "none": "Համընկնումներ չեն գտնվել։",
+                    "ignoreCase": "անտեսել մեծատառերը",
+                    "inPath": "{path}-ում",
+                    "literal": "բառացի",
+                    "matchCountMany": "{count} համընկնում",
+                    "matchCountOne": "{count} համընկնում",
+                    "title": "Աշխատանքային տարածքի որոնում",
+                    "truncated": "Արդյունքները կրճատվել են։"
                 },
                 "git": {
                     "noStagedDiff": "Նախապատրաստված փոփոխությունների diff ելք չկա։",
@@ -3240,14 +3306,84 @@
                     "stageApproval": "Git նախապատրաստման հաստատում",
                     "commitNote": "Սա ստեղծում է git կոմիթ ընթացիկ նախապատրաստված ինդեքսից։ Նախ ստուգեք coding_git_status և coding_git_diff գործիքները staged=true պարամետրով։",
                     "stagePreviewNote": "Սա նախադիտում է, թե պահանջված ուղիներից որոնք կնախապատրաստվեին։ Ինդեքսը չի փոխվի։",
-                    "stageNote": "Սա փոխում է git ինդեքսը պահանջված ուղիների համար։"
+                    "stageNote": "Սա փոխում է git ինդեքսը պահանջված ուղիների համար։",
+                    "afterCounts": "Հետո: {counts}",
+                    "beforeCounts": "Առաջ: {counts}",
+                    "clean": "Աշխատանքային ծառը մաքուր է։",
+                    "commitCountMany": "{count} կոմիթ",
+                    "commitCountOne": "{count} կոմիթ",
+                    "conflicted": "կոնֆլիկտային",
+                    "diffTruncated": "Տարբերությունների ելքը կրճատվել է։",
+                    "logTitle": "Git մատյան",
+                    "pathsChip": "ուղիներ: {paths}",
+                    "showingNewest": "Ցուցադրվում են ամենանոր {count}; կան ավելին։",
+                    "statusCounts": "{staged} պատրաստված, {unstaged} չպատրաստված, {untracked} չհետևվող, {conflicted} կոնֆլիկտային",
+                    "titleCommitCreated": "Git կոմիթը ստեղծվեց",
+                    "titleCommitDryRun": "Git կոմիթի փորձնական գործարկում",
+                    "titleCommitReview": "Git կոմիթի վերանայում",
+                    "titleReview": "Git վերանայում",
+                    "titleStageApplied": "Git պատրաստումը կիրառվեց",
+                    "titleStagedDiff": "Git պատրաստված տարբերություններ",
+                    "titleStageDryRun": "Git պատրաստման փորձնական գործարկում",
+                    "titleStatus": "Git կարգավիճակ",
+                    "titleUnstagedDiff": "Git չպատրաստված տարբերություններ",
+                    "untracked": "չհետևվող"
                 },
                 "patch": {
                     "validateNote": "Սա վավերացնում է պատչը՝ առանց ֆայլերը փոխելու։",
                     "applyNote": "Բարձր վտանգի այս կիրառման հարցումը գրում է ֆայլերը այն բանից հետո, երբ backend համակարգը ստեղծում է կիրառումից առաջ վերահսկման կետ։",
                     "hideDiff": "Թաքցնել միասնական diff",
-                    "showDiff": "Ցույց տալ միասնական diff"
-                }
+                    "showDiff": "Ցույց տալ միասնական diff",
+                    "actualLabel": "իրական:",
+                    "checkpointCreated": "Կիրառումից առաջ ստուգակետը ստեղծվեց",
+                    "diffTruncated": "Տարբերությունների նախադիտումը կրճատվել է ցուցադրման համար։",
+                    "expectedLabel": "սպասվող:",
+                    "firstLines": "առաջին {shown}-ը {total} տողից",
+                    "hunkCountMany": "{count} հատված",
+                    "hunkCountOne": "{count} հատված",
+                    "hunkIndex": "հատված {index}",
+                    "restoreManual": "Վերականգնումը ձեռքով է. վերանայումից հետո օգտագործեք {tool}-ը վերահսկման կետի այս նույնացուցիչով։",
+                    "titleApplied": "Կարկատանը կիրառվեց",
+                    "titleApplyBlocked": "Կարկատանի կիրառումն արգելափակվեց",
+                    "titleApplyReview": "Կարկատանի կիրառման վերանայում",
+                    "titleDryRunConflicts": "Կարկատանի փորձնական գործարկումը հայտնաբերեց հակասություններ",
+                    "titleDryRunPassed": "Կարկատանի փորձնական գործարկումը հաջողվեց",
+                    "titleDryRunReview": "Կարկատանի փորձնական գործարկման վերանայում",
+                    "warnings": "Զգուշացումներ"
+                },
+                "binary": "երկուական",
+                "fileCountMany": "{count} ֆայլ",
+                "fileCountOne": "{count} ֆայլ",
+                "moreCount": "+{count} ևս",
+                "plan": {
+                    "likelyFiles": "Հավանական ֆայլեր",
+                    "openQuestions": "Բաց հարցեր",
+                    "reviewOnlyNote": "Միայն վերանայման համար նախատեսված արտեֆակտ։ Խմբագրումները և փոփոխող գործիքները դեռ օգտագործում են հաստատման ընթացիկ ռեժիմը։",
+                    "riskHigh": "բարձր ռիսկ",
+                    "riskLow": "ցածր ռիսկ",
+                    "riskMedium": "միջին ռիսկ",
+                    "risks": "Ռիսկեր",
+                    "title": "Ծրագրավորման պլան"
+                },
+                "state": {
+                    "clean": "մաքուր",
+                    "failed": "ձախողված",
+                    "passed": "անցած",
+                    "timedOut": "ժամանակը սպառված"
+                },
+                "timeoutChip": "ժամանակի սահման {seconds}s",
+                "truncated": "կրճատված",
+                "workspaceLabel": "Աշխատանքային տարածք՝"
+            },
+            "attachedImageAlt": "Կցված պատկեր",
+            "stepNumber": "Քայլ {step}",
+            "transcribingLocally": "Տեղային տառադարձում...",
+            "transferPlan": {
+                "dependsOnMany": "Կախված է {count} նախապատրաստական քայլերից",
+                "dependsOnOne": "Կախված է {count} նախապատրաստական քայլից",
+                "destination": "Նպատակակետ: {destination}",
+                "title": "Փոխանցման պլանի վերանայում",
+                "warnings": "Զգուշացումներ"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Դիտարկել",
                     "installed": "Տեղադրված"
-                }
+                },
+                "remoteInstallDisabled": "Պլագինների հեռավոր տեղադրումը ներկայումս անջատված է, մինչև ռեեստրը նույնականացվի հաճախորդի կողմում։ Տեղային տեղադրված պլագինները շարունակում են նորմալ աշխատել։"
             }
         },
         "filelu": {

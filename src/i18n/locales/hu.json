@@ -1269,7 +1269,14 @@
                 "stop": "Leállítás",
                 "stopShell": "Shell leállítása",
                 "closed": "Terminál bezárva.",
-                "commandInsertedReview": "Parancs beillesztve a Terminálba. Nyomjon Enter-t a futtatáshoz."
+                "commandInsertedReview": "Parancs beillesztve a Terminálba. Nyomjon Enter-t a futtatáshoz.",
+                "decreaseFont": "Betűméret csökkentése (Ctrl+-)",
+                "emptyClickPlus": "Kattintson a {plus} gombra egy terminál megnyitásához",
+                "emptySshHint": "vagy {ssh} távoli héjhoz itt: {host}",
+                "increaseFont": "Betűméret növelése (Ctrl+=)",
+                "newTab": "Új terminállap",
+                "sshShellTo": "SSH-héj ide: {host}",
+                "theme": "Terminál témája"
             },
             "editorPanel": {
                 "emptyState": "Kattintson jobb gombbal egy fájlra, és válassza a \"Forrás megtekintése\" lehetőséget",
@@ -1278,13 +1285,17 @@
                 "saving": "Mentés...",
                 "noFileSelected": "Nincs fájl kiválasztva megtekintésre",
                 "loading": "Szerkesztő betöltése...",
-                "dragToTerminalRun": "Húzza a Terminálba a futtatási parancs beillesztéséhez"
+                "dragToTerminalRun": "Húzza a Terminálba a futtatási parancs beillesztéséhez",
+                "closeEditor": "Szerkesztő bezárása",
+                "resetChanges": "Módosítások visszaállítása"
             },
             "previewPanel": {
                 "emptyState": "Kattintson jobb gombbal egy fájlra, és válassza az \"Előnézet\" lehetőséget"
             },
             "codeEditor": "Kódszerkesztő",
-            "sshTerminal": "SSH terminál"
+            "sshTerminal": "SSH terminál",
+            "comingSoon": "Hamarosan elérhető",
+            "soonBadge": "Hamarosan"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Eszköz futtatásának elutasítása",
                 "toggleDetails": "Részletek megjelenítése/elrejtése",
                 "allowSession": "Engedélyezés ehhez a munkamenethez",
-                "nonAtomicReplace": "Nem atomi csere: a fájl rövid ideig hiányzik"
+                "nonAtomicReplace": "Nem atomi csere: a fájl rövid ideig hiányzik",
+                "moreOptions": "További lehetőségek",
+                "panelAria": "Eszközjóváhagyási panel"
             },
             "settings": {
                 "title": "MI beállítások",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Tartalék",
                 "routingNoFallback": "Nincs",
                 "bedrockNeedsModel": "A tesztelés előtt adjon hozzá és engedélyezzen egy Bedrock-modellt a(z) Modellek lapon.",
-                "bedrockSetup": "Állítsa be az AWS-régió Runtime URL címét. A(z) Modellek lapon adjon hozzá egy ID azonosítót, amely támogatja a Chat Completions funkciót a Bedrock Runtime szolgáltatásban. A Runtime nem sorolja fel a modelleket. A teszt egy kis következtetési kérést küld, amely AWS-díjakkal járhat."
+                "bedrockSetup": "Állítsa be az AWS-régió Runtime URL címét. A(z) Modellek lapon adjon hozzá egy ID azonosítót, amely támogatja a Chat Completions funkciót a Bedrock Runtime szolgáltatásban. A Runtime nem sorolja fel a modelleket. A teszt egy kis következtetési kérést küld, amely AWS-díjakkal járhat.",
+                "detectOllamaModelsTooltip": "Elérhető Ollama modellek automatikus felismerése",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "MI-modellszerkesztő",
+                "supportsTools": "Támogatja az eszközöket",
+                "supportsVision": "Támogatja a látást",
+                "thinkingReasoning": "Gondolkodás/Érvelés",
+                "toolQuality": "Eszközminőség: {quality}/5"
             },
             "copy": "Másolás",
             "attachImage": "Kép csatolása",
@@ -2699,7 +2719,9 @@
                 "run": "Futtatás terminálban",
                 "insert": "Beszúrás szerkesztőbe",
                 "diff": "Összehasonlítás az eredetivel",
-                "diffNoFile": "Nincs megnyitott fájl az összehasonlításhoz"
+                "diffNoFile": "Nincs megnyitott fájl az összehasonlításhoz",
+                "commandBlocked": "Parancs letiltva: potenciálisan romboló",
+                "confirmRun": "Futtatás megerősítése: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Gondolkodás...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Ág váltása",
                 "delete": "Ág törlése",
                 "newBranch": "Új ág",
-                "branchFrom": "Elágazás innen"
+                "branchFrom": "Elágazás innen",
+                "messageCountShort": "{count} üz.",
+                "unnamed": "Ág"
             },
             "context": {
                 "projectDetected": "Projekt észlelve",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "futó",
                 "expired": "lejárt",
-                "refresh": "Frissítés"
+                "refresh": "Frissítés",
+                "modelsRunningMany": "{count} modell fut",
+                "modelsRunningOne": "{count} modell fut",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Kontextus gyorsítótárazás",
@@ -2956,7 +2983,8 @@
                 "warning": "Minden fájlművelet azonnal végrehajtódik jóváhagyás nélkül. Saját felelősségre használja.",
                 "disable": "Letiltás",
                 "securityWarning": "Biztonsági figyelmeztetés",
-                "understood": "Megértettem"
+                "understood": "Megértettem",
+                "warningAria": "Extrém mód figyelmeztetés"
             },
             "errorServerError": "Az AI szolgáltató szervere problémákat tapasztal. Próbálja újra egy pillanat múlva.",
             "errorServiceUnavailable": "Az AI szolgáltató ideiglenesen nem érhető el (túlterhelt). Az ingyenes szolgáltatásoknak lehetnek korlátai. Próbálja újra később.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Korlátlan",
                 "roleAI": "AI",
-                "roleUser": "Felhasználó"
+                "roleUser": "Felhasználó",
+                "noConversations": "Még nincsenek beszélgetések",
+                "titleCount": "Előzmények ({count})"
             },
             "dropFileToAnalyze": "Húzza ide a fájlt az AeroAgent elemzéséhez",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} bemeneti token, {output} kimeneti token, a szolgáltató számítása szerint",
-                "breakdownCache": "{input} bemeneti token, {output} kimeneti token, {cacheRead} olvasva a prompt gyorsítótárából, {cacheWritten} írva bele, a szolgáltató számítása szerint"
+                "breakdownCache": "{input} bemeneti token, {output} kimeneti token, {cacheRead} olvasva a prompt gyorsítótárából, {cacheWritten} írva bele, a szolgáltató számítása szerint",
+                "countShort": "{count} tok"
             },
             "executeOperations": "{count} művelet végrehajtása",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Kihagyásra kerülne",
                     "skipped": "Kihagyva",
                     "existedAtCheckpoint": "létezett az ellenőrzőpontnál",
-                    "absentAtCheckpoint": "hiányzott az ellenőrzőpontnál"
+                    "absentAtCheckpoint": "hiányzott az ellenőrzőpontnál",
+                    "noFiles": "Ez a visszaállítási eredmény nem tartalmaz fájlokat.",
+                    "otherActions": "Egyéb műveletek",
+                    "requestedPaths": "Kért útvonal-részhalmaz",
+                    "scopeAll": "Hatókör: az ellenőrzőpontban rögzített összes fájl.",
+                    "titleApplied": "Ellenőrzőpont-visszaállítás alkalmazva",
+                    "titleApplyReview": "Ellenőrzőpont-visszaállítás alkalmazásának áttekintése",
+                    "titleDryRunComplete": "Ellenőrzőpont-visszaállítás próbafuttatása kész",
+                    "titleDryRunReview": "Ellenőrzőpont-visszaállítás próbafuttatásának áttekintése"
                 },
                 "checks": {
                     "exitSummary": "kilépési kód {code} · {seconds}s",
                     "continueOnFailure": "Minden ellenőrzést lefuttat, még ha valamelyik sikertelen is.",
-                    "stopOnFailure": "Az első sikertelen ellenőrzésnél leáll."
+                    "stopOnFailure": "Az első sikertelen ellenőrzésnél leáll.",
+                    "checkLabel": "Ellenőrzés:",
+                    "checksLabel": "Ellenőrzések:",
+                    "exitChip": "kilépési kód {code}",
+                    "filterChip": "szűrő: {filter}",
+                    "filterLabel": "Szűrő:",
+                    "notAvailable": "nincs",
+                    "passedCount": "{passed}/{total} sikeres",
+                    "runCheckNote": "Egy kiválasztott build/test/lint parancsot futtat a munkaterületen. A build szkriptek és a tesztek valódi kódot futtatnak.",
+                    "runProjectCheck": "Projektellenőrzés futtatása",
+                    "runVerification": "Ellenőrző kör futtatása",
+                    "runVerificationNote": "Kiválasztott build/test/lint parancsokat futtat a munkaterületen. A build szkriptek és a tesztek valódi kódot futtatnak.",
+                    "stoppedEarly": "Az első sikertelen ellenőrzésnél leállt.",
+                    "timeoutLabel": "Időkorlát: {seconds} mp",
+                    "verification": "Ellenőrzés"
                 },
                 "diagnostics": {
-                    "none": "Nem jelentettek diagnosztikát."
+                    "none": "Nem jelentettek diagnosztikát.",
+                    "errorCountMany": "{count} hiba",
+                    "errorCountOne": "{count} hiba",
+                    "title": "Diagnosztika",
+                    "truncated": "A diagnosztikai lista csonkolva lett.",
+                    "warningCountMany": "{count} figyelmeztetés",
+                    "warningCountOne": "{count} figyelmeztetés"
                 },
                 "search": {
-                    "none": "Nincs találat."
+                    "none": "Nincs találat.",
+                    "ignoreCase": "kis- és nagybetű figyelmen kívül",
+                    "inPath": "itt: {path}",
+                    "literal": "szó szerinti",
+                    "matchCountMany": "{count} találat",
+                    "matchCountOne": "{count} találat",
+                    "title": "Keresés a munkaterületen",
+                    "truncated": "Az eredmények csonkolva lettek."
                 },
                 "git": {
                     "noStagedDiff": "Nincs diff kimenet az előkészített változásokhoz.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git előkészítés jóváhagyása",
                     "commitNote": "Ez git commitot hoz létre a jelenlegi előkészített indexből. Előbb ellenőrizze a coding_git_status és a coding_git_diff kimenetét staged=true értékkel.",
                     "stagePreviewNote": "Ez előnézetben mutatja, hogy a kért útvonalak közül melyek kerülnének előkészítésre; az index nem változik.",
-                    "stageNote": "Ez módosítja a git indexet a kért útvonalakhoz."
+                    "stageNote": "Ez módosítja a git indexet a kért útvonalakhoz.",
+                    "afterCounts": "Utána: {counts}",
+                    "beforeCounts": "Előtte: {counts}",
+                    "clean": "A munkafa tiszta.",
+                    "commitCountMany": "{count} véglegesítés",
+                    "commitCountOne": "{count} véglegesítés",
+                    "conflicted": "ütköző",
+                    "diffTruncated": "A diff kimenet csonkolva lett.",
+                    "logTitle": "Git napló",
+                    "pathsChip": "útvonalak: {paths}",
+                    "showingNewest": "A legújabb {count} látható; van még több.",
+                    "statusCounts": "{staged} előkészítve, {unstaged} nincs előkészítve, {untracked} nem követett, {conflicted} ütköző",
+                    "titleCommitCreated": "Git véglegesítés létrehozva",
+                    "titleCommitDryRun": "Git véglegesítés próbafuttatása",
+                    "titleCommitReview": "Git véglegesítés áttekintése",
+                    "titleReview": "Git áttekintés",
+                    "titleStageApplied": "Git előkészítés alkalmazva",
+                    "titleStagedDiff": "Előkészített Git diff",
+                    "titleStageDryRun": "Git előkészítés próbafuttatása",
+                    "titleStatus": "Git állapot",
+                    "titleUnstagedDiff": "Nem előkészített Git diff",
+                    "untracked": "nem követett"
                 },
                 "patch": {
                     "validateNote": "Ez a fájlok módosítása nélkül ellenőrzi a javítást.",
                     "applyNote": "Ez a magas kockázatú alkalmazási kérés azután írja a fájlokat, hogy a háttérrendszer létrehozott egy alkalmazás előtti ellenőrzőpontot.",
                     "hideDiff": "Egységes diff elrejtése",
-                    "showDiff": "Egységes diff megjelenítése"
-                }
+                    "showDiff": "Egységes diff megjelenítése",
+                    "actualLabel": "tényleges:",
+                    "checkpointCreated": "Alkalmazás előtti ellenőrzőpont létrehozva",
+                    "diffTruncated": "A diff előnézete csonkolva a megjelenítéshez.",
+                    "expectedLabel": "várt:",
+                    "firstLines": "első {shown} / {total} sor",
+                    "hunkCountMany": "{count} blokk",
+                    "hunkCountOne": "{count} blokk",
+                    "hunkIndex": "{index}. blokk",
+                    "restoreManual": "A visszaállítás kézi: ellenőrzés után használja a(z) {tool} eszközt ezzel az ellenőrzőpont-azonosítóval.",
+                    "titleApplied": "Javítás alkalmazva",
+                    "titleApplyBlocked": "Javítás alkalmazása letiltva",
+                    "titleApplyReview": "Javítás alkalmazásának áttekintése",
+                    "titleDryRunConflicts": "A javítás próbafuttatása ütközéseket talált",
+                    "titleDryRunPassed": "A javítás próbafuttatása sikeres",
+                    "titleDryRunReview": "Javítás próbafuttatásának áttekintése",
+                    "warnings": "Figyelmeztetések"
+                },
+                "binary": "bináris",
+                "fileCountMany": "{count} fájl",
+                "fileCountOne": "{count} fájl",
+                "moreCount": "+{count} további",
+                "plan": {
+                    "likelyFiles": "Valószínű fájlok",
+                    "openQuestions": "Nyitott kérdések",
+                    "reviewOnlyNote": "Csak áttekintésre szolgáló anyag. A szerkesztések és a módosító eszközök továbbra is az aktuális jóváhagyási módot használják.",
+                    "riskHigh": "magas kockázat",
+                    "riskLow": "alacsony kockázat",
+                    "riskMedium": "közepes kockázat",
+                    "risks": "Kockázatok",
+                    "title": "Kódolási terv"
+                },
+                "state": {
+                    "clean": "tiszta",
+                    "failed": "sikertelen",
+                    "passed": "sikeres",
+                    "timedOut": "időtúllépés"
+                },
+                "timeoutChip": "időkorlát {seconds}s",
+                "truncated": "csonkolva",
+                "workspaceLabel": "Munkaterület:"
+            },
+            "attachedImageAlt": "Csatolt kép",
+            "stepNumber": "{step}. lépés",
+            "transcribingLocally": "Helyi átírás...",
+            "transferPlan": {
+                "dependsOnMany": "{count} előkészítő lépéstől függ",
+                "dependsOnOne": "{count} előkészítő lépéstől függ",
+                "destination": "Cél: {destination}",
+                "title": "Átviteli terv áttekintése",
+                "warnings": "Figyelmeztetések"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Böngészés",
                     "installed": "Telepített"
-                }
+                },
+                "remoteInstallDisabled": "A bővítmények távoli telepítése jelenleg le van tiltva, amíg a jegyzék hitelesítése meg nem történik az ügyféloldalon. A helyben telepített bővítmények továbbra is normálisan működnek."
             }
         },
         "filelu": {

@@ -1269,7 +1269,14 @@
                 "stop": "Pysäytä",
                 "stopShell": "Pysäytä komentotulkki",
                 "closed": "Terminaali suljettu.",
-                "commandInsertedReview": "Komento lisätty Terminaliin. Suorita painamalla Enter."
+                "commandInsertedReview": "Komento lisätty Terminaliin. Suorita painamalla Enter.",
+                "decreaseFont": "Pienennä fonttikokoa (Ctrl+-)",
+                "emptyClickPlus": "Avaa pääte napsauttamalla {plus}",
+                "emptySshHint": "tai {ssh} etäkuoreen kohteessa {host}",
+                "increaseFont": "Suurenna fonttikokoa (Ctrl+=)",
+                "newTab": "Uusi päätevälilehti",
+                "sshShellTo": "SSH-kuori kohteeseen {host}",
+                "theme": "Päätteen teema"
             },
             "editorPanel": {
                 "emptyState": "Napsauta tiedostoa hiiren oikealla painikkeella ja valitse \"Näytä lähde\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Tallennetaan...",
                 "noFileSelected": "Yhtään tiedostoa ei ole valittu tarkasteltavaksi",
                 "loading": "Ladataan editoria...",
-                "dragToTerminalRun": "Vedä Terminaliin lisätäksesi suorituskomennon"
+                "dragToTerminalRun": "Vedä Terminaliin lisätäksesi suorituskomennon",
+                "closeEditor": "Sulje editori",
+                "resetChanges": "Palauta muutokset"
             },
             "previewPanel": {
                 "emptyState": "Napsauta tiedostoa hiiren oikealla painikkeella ja valitse \"Esikatselu\""
             },
             "codeEditor": "Koodieditori",
-            "sshTerminal": "SSH-pääte"
+            "sshTerminal": "SSH-pääte",
+            "comingSoon": "Tulossa pian",
+            "soonBadge": "Pian"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Hylkää työkalun suoritus",
                 "toggleDetails": "Näytä/piilota tiedot",
                 "allowSession": "Salli tälle istunnolle",
-                "nonAtomicReplace": "Ei-atominen korvaus: tiedosto puuttuu hetken"
+                "nonAtomicReplace": "Ei-atominen korvaus: tiedosto puuttuu hetken",
+                "moreOptions": "Lisää vaihtoehtoja",
+                "panelAria": "Työkalujen hyväksyntäpaneeli"
             },
             "settings": {
                 "title": "Tekoälyasetukset",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Varamalli",
                 "routingNoFallback": "Ei mitään",
                 "bedrockNeedsModel": "Lisää ja ota Bedrock-malli käyttöön Mallit-välilehdellä ennen testausta.",
-                "bedrockSetup": "Määritä AWS-alueesi Runtime URL. Lisää Mallit-välilehdellä ID, joka tukee Chat Completions -toimintoa Bedrock Runtimessa. Runtime ei listaa malleja. Testi lähettää pienen päättelypyynnön, josta AWS voi veloittaa."
+                "bedrockSetup": "Määritä AWS-alueesi Runtime URL. Lisää Mallit-välilehdellä ID, joka tukee Chat Completions -toimintoa Bedrock Runtimessa. Runtime ei listaa malleja. Testi lähettää pienen päättelypyynnön, josta AWS voi veloittaa.",
+                "detectOllamaModelsTooltip": "Tunnista saatavilla olevat Ollama-mallit automaattisesti",
+                "kTokens": "{count}K tokenia",
+                "modelEditorAria": "Tekoälymallien muokkain",
+                "supportsTools": "Tukee työkaluja",
+                "supportsVision": "Tukee näkökykyä",
+                "thinkingReasoning": "Ajattelu/Päättely",
+                "toolQuality": "Työkalujen laatu: {quality}/5"
             },
             "copy": "Kopioi",
             "attachImage": "Liitä kuva",
@@ -2699,7 +2719,9 @@
                 "run": "Suorita päätteessä",
                 "insert": "Lisää editoriin",
                 "diff": "Vertaa alkuperäiseen",
-                "diffNoFile": "Ei tiedostoa auki vertailua varten"
+                "diffNoFile": "Ei tiedostoa auki vertailua varten",
+                "commandBlocked": "Komento estetty: mahdollisesti tuhoava",
+                "confirmRun": "Vahvista suoritus: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Ajattelee...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Vaihda haara",
                 "delete": "Poista haara",
                 "newBranch": "Uusi haara",
-                "branchFrom": "Haaraudu tästä kohdasta"
+                "branchFrom": "Haaraudu tästä kohdasta",
+                "messageCountShort": "{count} viest.",
+                "unnamed": "Haara"
             },
             "context": {
                 "projectDetected": "Projekti tunnistettu",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "käynnissä",
                 "expired": "vanhentunut",
-                "refresh": "Päivitä"
+                "refresh": "Päivitä",
+                "modelsRunningMany": "{count} mallia käynnissä",
+                "modelsRunningOne": "{count} malli käynnissä",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Kontekstin välimuistitallennus",
@@ -2956,7 +2983,8 @@
                 "warning": "Kaikki tiedostotoiminnot suoritetaan välittömästi ilman hyväksyntää. Käytä omalla vastuullasi.",
                 "disable": "Poista käytöstä",
                 "securityWarning": "Turvallisuusvaroitus",
-                "understood": "Ymmärretty"
+                "understood": "Ymmärretty",
+                "warningAria": "Äärimmäisen tilan varoitus"
             },
             "errorServerError": "AI-palveluntarjoajan palvelimella on ongelmia. Yritä hetken kuluttua uudelleen.",
             "errorServiceUnavailable": "AI-palveluntarjoaja on tilapäisesti poissa käytöstä (ylikuormitettu). Ilmaisilla palveluilla voi olla rajoituksia. Yritä myöhemmin uudelleen.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Rajoittamaton",
                 "roleAI": "AI",
-                "roleUser": "Käyttäjä"
+                "roleUser": "Käyttäjä",
+                "noConversations": "Ei vielä keskusteluja",
+                "titleCount": "Historia ({count})"
             },
             "dropFileToAnalyze": "Pudota tiedosto analysoitavaksi AeroAgent-illa",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} syötetokenia, {output} vastaustokenia, palveluntarjoajan laskemana",
-                "breakdownCache": "{input} syötetokenia, {output} vastaustokenia, {cacheRead} luettu kehotteen välimuistista, {cacheWritten} kirjoitettu siihen, palveluntarjoajan laskemana"
+                "breakdownCache": "{input} syötetokenia, {output} vastaustokenia, {cacheRead} luettu kehotteen välimuistista, {cacheWritten} kirjoitettu siihen, palveluntarjoajan laskemana",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Suorita {count} toiminto(a)",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Ohitettaisiin",
                     "skipped": "Ohitettu",
                     "existedAtCheckpoint": "oli olemassa tarkistuspisteessä",
-                    "absentAtCheckpoint": "puuttui tarkistuspisteestä"
+                    "absentAtCheckpoint": "puuttui tarkistuspisteestä",
+                    "noFiles": "Tähän palautustulokseen ei sisältynyt tiedostoja.",
+                    "otherActions": "Muut toiminnot",
+                    "requestedPaths": "Pyydetty polkujen osajoukko",
+                    "scopeAll": "Laajuus: kaikki tarkistuspisteeseen tallennetut tiedostot.",
+                    "titleApplied": "Tarkistuspisteen palautus otettu käyttöön",
+                    "titleApplyReview": "Tarkistuspisteen palautuksen käyttöönoton tarkistus",
+                    "titleDryRunComplete": "Tarkistuspisteen palautuksen koeajo valmis",
+                    "titleDryRunReview": "Tarkistuspisteen palautuksen kuivaharjoituksen tarkastelu"
                 },
                 "checks": {
                     "exitSummary": "poistumiskoodi {code} · {seconds}s",
                     "continueOnFailure": "Suorittaa kaikki tarkistukset, vaikka jokin epäonnistuisi.",
-                    "stopOnFailure": "Pysähtyy ensimmäiseen epäonnistuneeseen tarkistukseen."
+                    "stopOnFailure": "Pysähtyy ensimmäiseen epäonnistuneeseen tarkistukseen.",
+                    "checkLabel": "Tarkistus:",
+                    "checksLabel": "Tarkistukset:",
+                    "exitChip": "poistumiskoodi {code}",
+                    "filterChip": "suodatin: {filter}",
+                    "filterLabel": "Suodatin:",
+                    "notAvailable": "ei saatavilla",
+                    "passedCount": "{passed}/{total} läpäisty",
+                    "runCheckNote": "Suorittaa valitun build/test/lint-komennon työtilassa. Koontiskriptit ja testit suorittavat oikeaa koodia.",
+                    "runProjectCheck": "Suorita projektin tarkistus",
+                    "runVerification": "Suorita varmennuskierros",
+                    "runVerificationNote": "Suorittaa valittuja build/test/lint-komentoja työtilassa. Koontiskriptit ja testit suorittavat oikeaa koodia.",
+                    "stoppedEarly": "Pysähtyi ensimmäiseen epäonnistuneeseen tarkistukseen.",
+                    "timeoutLabel": "Aikakatkaisu: {seconds} s",
+                    "verification": "Varmennus"
                 },
                 "diagnostics": {
-                    "none": "Diagnostiikkaa ei raportoitu."
+                    "none": "Diagnostiikkaa ei raportoitu.",
+                    "errorCountMany": "{count} virhettä",
+                    "errorCountOne": "{count} virhe",
+                    "title": "Diagnostiikka",
+                    "truncated": "Diagnostiikkaluettelo katkaistiin.",
+                    "warningCountMany": "{count} varoitusta",
+                    "warningCountOne": "{count} varoitus"
                 },
                 "search": {
-                    "none": "Osumia ei löytynyt."
+                    "none": "Osumia ei löytynyt.",
+                    "ignoreCase": "ohita kirjainkoko",
+                    "inPath": "polussa {path}",
+                    "literal": "kirjaimellinen",
+                    "matchCountMany": "{count} osumaa",
+                    "matchCountOne": "{count} osuma",
+                    "title": "Työtilan haku",
+                    "truncated": "Tuloksia lyhennettiin."
                 },
                 "git": {
                     "noStagedDiff": "Valmisteltujen muutosten diff-tuloste on tyhjä.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git-valmistelun hyväksyntä",
                     "commitNote": "Tämä luo git-commitin nykyisestä valmistellusta indeksistä. Tarkista ensin coding_git_status ja coding_git_diff parametrilla staged=true.",
                     "stagePreviewNote": "Tämä esikatselee, mitkä pyydetyistä poluista valmisteltaisiin; indeksi ei muutu.",
-                    "stageNote": "Tämä muuttaa git-indeksiä pyydettyjen polkujen osalta."
+                    "stageNote": "Tämä muuttaa git-indeksiä pyydettyjen polkujen osalta.",
+                    "afterCounts": "Jälkeen: {counts}",
+                    "beforeCounts": "Ennen: {counts}",
+                    "clean": "Työpuu on puhdas.",
+                    "commitCountMany": "{count} committia",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "ristiriidassa",
+                    "diffTruncated": "Diff-tuloste katkaistiin.",
+                    "logTitle": "Git-loki",
+                    "pathsChip": "polut: {paths}",
+                    "showingNewest": "Näytetään uusimmat {count}; lisää on olemassa.",
+                    "statusCounts": "{staged} valmisteltu, {unstaged} valmistelematta, {untracked} seuraamatta, {conflicted} ristiriidassa",
+                    "titleCommitCreated": "Git-commit luotu",
+                    "titleCommitDryRun": "Git-commitin testiajo",
+                    "titleCommitReview": "Git-commitin tarkistus",
+                    "titleReview": "Git-tarkistus",
+                    "titleStageApplied": "Git-valmistelu otettu käyttöön",
+                    "titleStagedDiff": "Valmisteltu Git-diff",
+                    "titleStageDryRun": "Git-valmistelun testiajo",
+                    "titleStatus": "Git-tila",
+                    "titleUnstagedDiff": "Valmistelematon Git-diff",
+                    "untracked": "seuraamaton"
                 },
                 "patch": {
                     "validateNote": "Tämä vahvistaa korjaustiedoston muuttamatta tiedostoja.",
                     "applyNote": "Tämä korkean riskin käyttöpyyntö kirjoittaa tiedostot sen jälkeen, kun taustajärjestelmä on luonut käyttöä edeltävän palautuspisteen.",
                     "hideDiff": "Piilota yhtenäinen diff",
-                    "showDiff": "Näytä yhtenäinen diff"
-                }
+                    "showDiff": "Näytä yhtenäinen diff",
+                    "actualLabel": "todellinen:",
+                    "checkpointCreated": "Käyttöönottoa edeltävä tarkistuspiste luotu",
+                    "diffTruncated": "Diff-esikatselu katkaistu näyttöä varten.",
+                    "expectedLabel": "odotettu:",
+                    "firstLines": "ensimmäiset {shown}/{total} riviä",
+                    "hunkCountMany": "{count} lohkoa",
+                    "hunkCountOne": "{count} lohko",
+                    "hunkIndex": "lohko {index}",
+                    "restoreManual": "Palautus on manuaalinen: käytä tarkistuksen jälkeen {tool}-työkalua tämän tarkistuspisteen tunnisteen kanssa.",
+                    "titleApplied": "Korjaustiedosto otettu käyttöön",
+                    "titleApplyBlocked": "Korjaustiedoston käyttöönotto estetty",
+                    "titleApplyReview": "Korjaustiedoston käyttöönoton tarkistus",
+                    "titleDryRunConflicts": "Korjaustiedoston koeajo löysi ristiriitoja",
+                    "titleDryRunPassed": "Korjaustiedoston koeajo läpäisty",
+                    "titleDryRunReview": "Korjaustiedoston koeajon tarkistus",
+                    "warnings": "Varoitukset"
+                },
+                "binary": "binääri",
+                "fileCountMany": "{count} tiedostoa",
+                "fileCountOne": "{count} tiedosto",
+                "moreCount": "+{count} lisää",
+                "plan": {
+                    "likelyFiles": "Todennäköiset tiedostot",
+                    "openQuestions": "Avoimet kysymykset",
+                    "reviewOnlyNote": "Vain tarkistettavaksi. Muokkaukset ja muuttavat työkalut käyttävät yhä nykyistä hyväksyntätilaa.",
+                    "riskHigh": "suuri riski",
+                    "riskLow": "pieni riski",
+                    "riskMedium": "kohtalainen riski",
+                    "risks": "Riskit",
+                    "title": "Koodaussuunnitelma"
+                },
+                "state": {
+                    "clean": "puhdas",
+                    "failed": "epäonnistui",
+                    "passed": "läpäisi",
+                    "timedOut": "aikakatkaistu"
+                },
+                "timeoutChip": "aikakatkaisu {seconds}s",
+                "truncated": "lyhennetty",
+                "workspaceLabel": "Työtila:"
+            },
+            "attachedImageAlt": "Liitetty kuva",
+            "stepNumber": "Vaihe {step}",
+            "transcribingLocally": "Litteroidaan paikallisesti...",
+            "transferPlan": {
+                "dependsOnMany": "Riippuu {count} valmistelevasta vaiheesta",
+                "dependsOnOne": "Riippuu {count} valmistelevasta vaiheesta",
+                "destination": "Kohde: {destination}",
+                "title": "Siirtosuunnitelman tarkistus",
+                "warnings": "Varoitukset"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Selaa",
                     "installed": "Asennetut"
-                }
+                },
+                "remoteInstallDisabled": "Lisäosien etäasennus on toistaiseksi poistettu käytöstä, kunnes rekisteri on todennettu asiakaspuolella. Paikallisesti asennetut lisäosat toimivat edelleen normaalisti."
             }
         },
         "filelu": {

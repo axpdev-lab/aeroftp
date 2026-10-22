@@ -1269,7 +1269,14 @@
                 "stop": "Зупинити",
                 "stopShell": "Зупинити оболонку",
                 "closed": "Термінал закрито.",
-                "commandInsertedReview": "Команду вставлено в Terminal. Натисніть Enter, щоб запустити."
+                "commandInsertedReview": "Команду вставлено в Terminal. Натисніть Enter, щоб запустити.",
+                "decreaseFont": "Зменшити шрифт (Ctrl+-)",
+                "emptyClickPlus": "Натисніть {plus}, щоб відкрити термінал",
+                "emptySshHint": "або {ssh} для віддаленої оболонки на {host}",
+                "increaseFont": "Збільшити шрифт (Ctrl+=)",
+                "newTab": "Нова вкладка термінала",
+                "sshShellTo": "Оболонка SSH на {host}",
+                "theme": "Тема термінала"
             },
             "editorPanel": {
                 "emptyState": "Клацніть правою кнопкою миші на файлі та виберіть \"Переглянути вихідний код\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Збереження...",
                 "noFileSelected": "Файл для перегляду не вибрано",
                 "loading": "Завантаження редактора...",
-                "dragToTerminalRun": "Перетягніть у Terminal, щоб вставити команду запуску"
+                "dragToTerminalRun": "Перетягніть у Terminal, щоб вставити команду запуску",
+                "closeEditor": "Закрити редактор",
+                "resetChanges": "Скинути зміни"
             },
             "previewPanel": {
                 "emptyState": "Клацніть правою кнопкою на файлі та виберіть \"Попередній перегляд\""
             },
             "codeEditor": "Редактор коду",
-            "sshTerminal": "SSH-термінал"
+            "sshTerminal": "SSH-термінал",
+            "comingSoon": "Незабаром",
+            "soonBadge": "Скоро"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Відхилити виконання інструменту",
                 "toggleDetails": "Перемкнути деталі",
                 "allowSession": "Дозволити для цієї сесії",
-                "nonAtomicReplace": "Неатомарна заміна: файл на короткий час відсутній"
+                "nonAtomicReplace": "Неатомарна заміна: файл на короткий час відсутній",
+                "moreOptions": "Інші параметри",
+                "panelAria": "Панель схвалення інструментів"
             },
             "settings": {
                 "title": "Налаштування ШІ",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Запасна",
                 "routingNoFallback": "Немає",
                 "bedrockNeedsModel": "Перед перевіркою додайте й увімкніть модель Bedrock на вкладці Моделі.",
-                "bedrockSetup": "Установіть Runtime URL для свого регіону AWS. На вкладці Моделі додайте ID, що підтримує Chat Completions у Bedrock Runtime. Runtime не показує список моделей. Тест надсилає невеликий запит на інференцію, за який AWS може стягувати плату."
+                "bedrockSetup": "Установіть Runtime URL для свого регіону AWS. На вкладці Моделі додайте ID, що підтримує Chat Completions у Bedrock Runtime. Runtime не показує список моделей. Тест надсилає невеликий запит на інференцію, за який AWS може стягувати плату.",
+                "detectOllamaModelsTooltip": "Автоматично виявити доступні моделі Ollama",
+                "kTokens": "{count}K токенів",
+                "modelEditorAria": "Редактор моделей ШІ",
+                "supportsTools": "Підтримує інструменти",
+                "supportsVision": "Підтримує зір",
+                "thinkingReasoning": "Мислення/Міркування",
+                "toolQuality": "Якість інструментів: {quality}/5"
             },
             "copy": "Копіювати",
             "attachImage": "Прикріпити зображення",
@@ -2699,7 +2719,9 @@
                 "run": "Запустити в терміналі",
                 "insert": "Вставити в редактор",
                 "diff": "Порівняти з оригіналом",
-                "diffNoFile": "Немає файлу для порівняння"
+                "diffNoFile": "Немає файлу для порівняння",
+                "commandBlocked": "Команду заблоковано: потенційно руйнівна",
+                "confirmRun": "Підтвердіть запуск: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Розмірковую...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Змінити гілку",
                 "delete": "Видалити гілку",
                 "newBranch": "Нова гілка",
-                "branchFrom": "Відгалузити від цієї точки"
+                "branchFrom": "Відгалузити від цієї точки",
+                "messageCountShort": "{count} повід.",
+                "unnamed": "Гілка"
             },
             "context": {
                 "projectDetected": "Проєкт виявлено",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "працює",
                 "expired": "закінчився",
-                "refresh": "Оновити"
+                "refresh": "Оновити",
+                "modelsRunningMany": "Запущено моделей: {count}",
+                "modelsRunningOne": "Запущено {count} модель",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Кешування контексту",
@@ -2956,7 +2983,8 @@
                 "warning": "Усі файлові операції будуть виконані негайно без схвалення. Використовуйте на власний ризик.",
                 "disable": "Вимкнути",
                 "securityWarning": "Попередження безпеки",
-                "understood": "Зрозуміло"
+                "understood": "Зрозуміло",
+                "warningAria": "Попередження про екстремальний режим"
             },
             "errorServerError": "Сервер провайдера ШІ має проблеми. Спробуйте ще раз через мить.",
             "errorServiceUnavailable": "Провайдер ШІ тимчасово недоступний (перевантажений). Безкоштовні сервіси можуть мати обмеження. Спробуйте пізніше.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Без обмежень",
                 "roleAI": "AI",
-                "roleUser": "Користувач"
+                "roleUser": "Користувач",
+                "noConversations": "Ще немає розмов",
+                "titleCount": "Історія ({count})"
             },
             "dropFileToAnalyze": "Перетягніть файл для аналізу за допомогою AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} вхідних токенів, {output} вихідних токенів, за підрахунком провайдера",
-                "breakdownCache": "{input} вхідних токенів, {output} вихідних токенів, {cacheRead} прочитано з кешу промпту, {cacheWritten} записано в нього, за підрахунком провайдера"
+                "breakdownCache": "{input} вхідних токенів, {output} вихідних токенів, {cacheRead} прочитано з кешу промпту, {cacheWritten} записано в нього, за підрахунком провайдера",
+                "countShort": "{count} ток."
             },
             "executeOperations": "Виконати операції: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Буде пропущено",
                     "skipped": "Пропущено",
                     "existedAtCheckpoint": "існував у контрольній точці",
-                    "absentAtCheckpoint": "був відсутній у контрольній точці"
+                    "absentAtCheckpoint": "був відсутній у контрольній точці",
+                    "noFiles": "До цього результату відновлення не ввійшло жодного файлу.",
+                    "otherActions": "Інші дії",
+                    "requestedPaths": "Запитана підмножина шляхів",
+                    "scopeAll": "Обсяг: усі файли, збережені в контрольній точці.",
+                    "titleApplied": "Відновлення контрольної точки застосовано",
+                    "titleApplyReview": "Перевірка застосування відновлення контрольної точки",
+                    "titleDryRunComplete": "Пробний запуск відновлення контрольної точки завершено",
+                    "titleDryRunReview": "Перевірка пробного відновлення контрольної точки"
                 },
                 "checks": {
                     "exitSummary": "код виходу {code} · {seconds}s",
                     "continueOnFailure": "Виконує всі перевірки, навіть якщо одна з них не пройде.",
-                    "stopOnFailure": "Зупиняється на першій невдалій перевірці."
+                    "stopOnFailure": "Зупиняється на першій невдалій перевірці.",
+                    "checkLabel": "Перевірка:",
+                    "checksLabel": "Перевірки:",
+                    "exitChip": "код виходу {code}",
+                    "filterChip": "фільтр: {filter}",
+                    "filterLabel": "Фільтр:",
+                    "notAvailable": "н/д",
+                    "passedCount": "{passed}/{total} пройдено",
+                    "runCheckNote": "Запускає відібрану команду build/test/lint у робочій області. Скрипти збирання й тести виконують справжній код.",
+                    "runProjectCheck": "Запустити перевірку проєкту",
+                    "runVerification": "Запустити прохід верифікації",
+                    "runVerificationNote": "Запускає відібрані команди build/test/lint у робочій області. Скрипти збирання й тести виконують справжній код.",
+                    "stoppedEarly": "Зупинено на першій невдалій перевірці.",
+                    "timeoutLabel": "Тайм-аут: {seconds} с",
+                    "verification": "Верифікація"
                 },
                 "diagnostics": {
-                    "none": "Діагностичних повідомлень немає."
+                    "none": "Діагностичних повідомлень немає.",
+                    "errorCountMany": "{count} помилок",
+                    "errorCountOne": "{count} помилка",
+                    "title": "Діагностика",
+                    "truncated": "Список діагностики було обрізано.",
+                    "warningCountMany": "{count} попереджень",
+                    "warningCountOne": "{count} попередження"
                 },
                 "search": {
-                    "none": "Збігів не знайдено."
+                    "none": "Збігів не знайдено.",
+                    "ignoreCase": "без урахування регістру",
+                    "inPath": "у {path}",
+                    "literal": "буквально",
+                    "matchCountMany": "Збігів: {count}",
+                    "matchCountOne": "{count} збіг",
+                    "title": "Пошук у робочій області",
+                    "truncated": "Результати було скорочено."
                 },
                 "git": {
                     "noStagedDiff": "Немає виводу diff для змін в індексі.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Підтвердження індексації Git",
                     "commitNote": "Це створює коміт git з поточного індексу. Спершу перегляньте coding_git_status і coding_git_diff з staged=true.",
                     "stagePreviewNote": "Це показує попередній перегляд того, які із запитаних шляхів буде проіндексовано; індекс не зміниться.",
-                    "stageNote": "Це змінює індекс git для запитаних шляхів."
+                    "stageNote": "Це змінює індекс git для запитаних шляхів.",
+                    "afterCounts": "Після: {counts}",
+                    "beforeCounts": "До: {counts}",
+                    "clean": "Робоче дерево чисте.",
+                    "commitCountMany": "{count} комітів",
+                    "commitCountOne": "{count} коміт",
+                    "conflicted": "у конфлікті",
+                    "diffTruncated": "Вивід відмінностей було обрізано.",
+                    "logTitle": "Журнал Git",
+                    "pathsChip": "шляхи: {paths}",
+                    "showingNewest": "Показано найновіші {count}; є ще.",
+                    "statusCounts": "{staged} проіндексовано, {unstaged} не проіндексовано, {untracked} невідстежуваних, {conflicted} у конфлікті",
+                    "titleCommitCreated": "Коміт Git створено",
+                    "titleCommitDryRun": "Пробний коміт Git",
+                    "titleCommitReview": "Перевірка коміту Git",
+                    "titleReview": "Перевірка Git",
+                    "titleStageApplied": "Індексацію Git застосовано",
+                    "titleStagedDiff": "Проіндексовані відмінності Git",
+                    "titleStageDryRun": "Пробна індексація Git",
+                    "titleStatus": "Статус Git",
+                    "titleUnstagedDiff": "Непроіндексовані відмінності Git",
+                    "untracked": "невідстежуваний"
                 },
                 "patch": {
                     "validateNote": "Це перевіряє патч без зміни файлів.",
                     "applyNote": "Цей запит на застосування з високим ризиком записує файли після того, як бекенд створить контрольну точку перед застосуванням.",
                     "hideDiff": "Приховати уніфікований diff",
-                    "showDiff": "Показати уніфікований diff"
-                }
+                    "showDiff": "Показати уніфікований diff",
+                    "actualLabel": "фактично:",
+                    "checkpointCreated": "Створено контрольну точку перед застосуванням",
+                    "diffTruncated": "Попередній перегляд відмінностей обрізано для відображення.",
+                    "expectedLabel": "очікувано:",
+                    "firstLines": "перші {shown} з {total} рядків",
+                    "hunkCountMany": "{count} фрагментів",
+                    "hunkCountOne": "{count} фрагмент",
+                    "hunkIndex": "фрагмент {index}",
+                    "restoreManual": "Відновлення виконується вручну: після перевірки використайте {tool} з цим ідентифікатором контрольної точки.",
+                    "titleApplied": "Патч застосовано",
+                    "titleApplyBlocked": "Застосування патча заблоковано",
+                    "titleApplyReview": "Перевірка застосування патча",
+                    "titleDryRunConflicts": "Пробний запуск патча виявив конфлікти",
+                    "titleDryRunPassed": "Пробний запуск патча пройдено",
+                    "titleDryRunReview": "Перевірка пробного запуску патча",
+                    "warnings": "Попередження"
+                },
+                "binary": "двійковий",
+                "fileCountMany": "{count} файлів",
+                "fileCountOne": "{count} файл",
+                "moreCount": "+ще {count}",
+                "plan": {
+                    "likelyFiles": "Ймовірні файли",
+                    "openQuestions": "Відкриті питання",
+                    "reviewOnlyNote": "Артефакт лише для перегляду. Редагування та змінювальні інструменти й надалі використовують поточний режим підтвердження.",
+                    "riskHigh": "високий ризик",
+                    "riskLow": "низький ризик",
+                    "riskMedium": "середній ризик",
+                    "risks": "Ризики",
+                    "title": "План кодування"
+                },
+                "state": {
+                    "clean": "чисто",
+                    "failed": "помилка",
+                    "passed": "пройдено",
+                    "timedOut": "минув час"
+                },
+                "timeoutChip": "тайм-аут {seconds}s",
+                "truncated": "скорочено",
+                "workspaceLabel": "Робоча область:"
+            },
+            "attachedImageAlt": "Прикріплене зображення",
+            "stepNumber": "Крок {step}",
+            "transcribingLocally": "Локальна транскрипція...",
+            "transferPlan": {
+                "dependsOnMany": "Залежить від {count} підготовчих кроків",
+                "dependsOnOne": "Залежить від {count} підготовчого кроку",
+                "destination": "Призначення: {destination}",
+                "title": "Перевірка плану передавання",
+                "warnings": "Попередження"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Огляд",
                     "installed": "Встановлені"
-                }
+                },
+                "remoteInstallDisabled": "Віддалене встановлення плагінів наразі вимкнено, доки реєстр не буде автентифіковано на стороні клієнта. Локально встановлені плагіни продовжують працювати як зазвичай."
             }
         },
         "filelu": {

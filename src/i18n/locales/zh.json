@@ -1269,7 +1269,14 @@
                 "stop": "停止",
                 "stopShell": "停止终端",
                 "closed": "终端已关闭。",
-                "commandInsertedReview": "命令已插入 Terminal。按 Enter 运行。"
+                "commandInsertedReview": "命令已插入 Terminal。按 Enter 运行。",
+                "decreaseFont": "减小字号 (Ctrl+-)",
+                "emptyClickPlus": "点击 {plus} 打开终端",
+                "emptySshHint": "或通过 {ssh} 打开到 {host} 的远程命令行",
+                "increaseFont": "增大字号 (Ctrl+=)",
+                "newTab": "新建终端标签页",
+                "sshShellTo": "到 {host} 的 SSH 命令行",
+                "theme": "终端主题"
             },
             "editorPanel": {
                 "emptyState": "右键点击文件并选择\"查看源代码\"",
@@ -1278,13 +1285,17 @@
                 "saving": "保存中...",
                 "noFileSelected": "未选择要查看的文件",
                 "loading": "加载编辑器中...",
-                "dragToTerminalRun": "拖到 Terminal 以插入运行命令"
+                "dragToTerminalRun": "拖到 Terminal 以插入运行命令",
+                "closeEditor": "关闭编辑器",
+                "resetChanges": "重置更改"
             },
             "previewPanel": {
                 "emptyState": "右键点击文件并选择\"预览\""
             },
             "codeEditor": "代码编辑器",
-            "sshTerminal": "SSH 终端"
+            "sshTerminal": "SSH 终端",
+            "comingSoon": "即将推出",
+            "soonBadge": "即将"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "拒绝工具执行",
                 "toggleDetails": "切换详情",
                 "allowSession": "允许本次会话",
-                "nonAtomicReplace": "非原子替换：文件会短暂消失"
+                "nonAtomicReplace": "非原子替换：文件会短暂消失",
+                "moreOptions": "更多选项",
+                "panelAria": "工具审批面板"
             },
             "settings": {
                 "title": "AI 设置",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "备用",
                 "routingNoFallback": "无",
                 "bedrockNeedsModel": "测试前，请在模型选项卡中添加并启用 Bedrock 模型。",
-                "bedrockSetup": "设置您的 AWS 区域的 Runtime URL。在模型中添加支持 Bedrock Runtime 上 Chat Completions 的 ID。Runtime 不会列出模型。测试会发送一个小型推理请求，可能产生 AWS 费用。"
+                "bedrockSetup": "设置您的 AWS 区域的 Runtime URL。在模型中添加支持 Bedrock Runtime 上 Chat Completions 的 ID。Runtime 不会列出模型。测试会发送一个小型推理请求，可能产生 AWS 费用。",
+                "detectOllamaModelsTooltip": "自动检测可用的 Ollama 模型",
+                "kTokens": "{count}K 令牌",
+                "modelEditorAria": "AI 模型编辑器",
+                "supportsTools": "支持工具",
+                "supportsVision": "支持视觉",
+                "thinkingReasoning": "思考/推理",
+                "toolQuality": "工具质量：{quality}/5"
             },
             "copy": "复制",
             "attachImage": "附加图片",
@@ -2699,7 +2719,9 @@
                 "run": "在终端中运行",
                 "insert": "插入到编辑器",
                 "diff": "与原文件对比",
-                "diffNoFile": "没有打开的文件可供对比"
+                "diffNoFile": "没有打开的文件可供对比",
+                "commandBlocked": "命令已阻止：可能具有破坏性",
+                "confirmRun": "确认运行：{command}"
             },
             "thinkingBlock": {
                 "thinking": "正在思考...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "切换分支",
                 "delete": "删除分支",
                 "newBranch": "新分支",
-                "branchFrom": "从此处创建分支"
+                "branchFrom": "从此处创建分支",
+                "messageCountShort": "{count} 条消息",
+                "unnamed": "分支"
             },
             "context": {
                 "projectDetected": "已检测到项目",
@@ -2830,7 +2854,10 @@
                 "vram": "显存",
                 "running": "运行中",
                 "expired": "已过期",
-                "refresh": "刷新"
+                "refresh": "刷新",
+                "modelsRunningMany": "{count} 个模型正在运行",
+                "modelsRunningOne": "{count} 个模型正在运行",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "上下文缓存",
@@ -2956,7 +2983,8 @@
                 "warning": "所有文件操作将立即执行，无需审批。使用风险自负。",
                 "disable": "禁用",
                 "securityWarning": "安全警告",
-                "understood": "已理解"
+                "understood": "已理解",
+                "warningAria": "极限模式警告"
             },
             "errorServerError": "AI 提供商服务器出现问题。请稍后重试。",
             "errorServiceUnavailable": "AI 提供商暂时不可用（过载）。免费服务可能有限制。请稍后重试。",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "无限制",
                 "roleAI": "AI",
-                "roleUser": "用户"
+                "roleUser": "用户",
+                "noConversations": "暂无对话",
+                "titleCount": "历史记录 ({count})"
             },
             "dropFileToAnalyze": "拖放文件以使用 AeroAgent 进行分析",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "输入 {input} 个 token，输出 {output} 个 token，以提供商统计为准",
-                "breakdownCache": "输入 {input} 个 token，输出 {output} 个 token，从提示缓存读取 {cacheRead} 个，写入提示缓存 {cacheWritten} 个，以提供商统计为准"
+                "breakdownCache": "输入 {input} 个 token，输出 {output} 个 token，从提示缓存读取 {cacheRead} 个，写入提示缓存 {cacheWritten} 个，以提供商统计为准",
+                "countShort": "{count} 词元"
             },
             "executeOperations": "执行 {count} 个操作",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "将跳过",
                     "skipped": "已跳过",
                     "existedAtCheckpoint": "检查点时存在",
-                    "absentAtCheckpoint": "检查点时不存在"
+                    "absentAtCheckpoint": "检查点时不存在",
+                    "noFiles": "此恢复结果中未包含任何文件。",
+                    "otherActions": "其他操作",
+                    "requestedPaths": "请求的路径子集",
+                    "scopeAll": "范围：检查点中捕获的所有文件。",
+                    "titleApplied": "检查点恢复已应用",
+                    "titleApplyReview": "检查点恢复应用审查",
+                    "titleDryRunComplete": "检查点恢复试运行已完成",
+                    "titleDryRunReview": "检查点恢复试运行审查"
                 },
                 "checks": {
                     "exitSummary": "退出码 {code} · {seconds}s",
                     "continueOnFailure": "即使某项检查失败，也会运行所有检查。",
-                    "stopOnFailure": "在第一个失败的检查处停止。"
+                    "stopOnFailure": "在第一个失败的检查处停止。",
+                    "checkLabel": "检查：",
+                    "checksLabel": "检查项：",
+                    "exitChip": "退出码 {code}",
+                    "filterChip": "筛选：{filter}",
+                    "filterLabel": "筛选：",
+                    "notAvailable": "不适用",
+                    "passedCount": "{passed}/{total} 通过",
+                    "runCheckNote": "在工作区运行精选的 build/test/lint 命令。构建脚本和测试会执行真实代码。",
+                    "runProjectCheck": "运行项目检查",
+                    "runVerification": "运行验证流程",
+                    "runVerificationNote": "在工作区运行精选的 build/test/lint 命令。构建脚本和测试会执行真实代码。",
+                    "stoppedEarly": "已在第一个失败的检查处停止。",
+                    "timeoutLabel": "超时：{seconds} 秒",
+                    "verification": "验证"
                 },
                 "diagnostics": {
-                    "none": "未报告诊断信息。"
+                    "none": "未报告诊断信息。",
+                    "errorCountMany": "{count} 个错误",
+                    "errorCountOne": "{count} 个错误",
+                    "title": "诊断",
+                    "truncated": "诊断列表已被截断。",
+                    "warningCountMany": "{count} 个警告",
+                    "warningCountOne": "{count} 个警告"
                 },
                 "search": {
-                    "none": "未找到匹配项。"
+                    "none": "未找到匹配项。",
+                    "ignoreCase": "忽略大小写",
+                    "inPath": "在 {path} 中",
+                    "literal": "字面",
+                    "matchCountMany": "{count} 个匹配",
+                    "matchCountOne": "{count} 个匹配",
+                    "title": "工作区搜索",
+                    "truncated": "结果已截断。"
                 },
                 "git": {
                     "noStagedDiff": "没有已暂存的差异输出。",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git 暂存审批",
                     "commitNote": "这将从当前暂存区索引创建一个 git 提交。请先使用 staged=true 检查 coding_git_status 和 coding_git_diff。",
                     "stagePreviewNote": "这将预览哪些请求的路径会被暂存；索引不会改变。",
-                    "stageNote": "这将更改所请求路径的 git 索引。"
+                    "stageNote": "这将更改所请求路径的 git 索引。",
+                    "afterCounts": "之后：{counts}",
+                    "beforeCounts": "之前：{counts}",
+                    "clean": "工作树是干净的。",
+                    "commitCountMany": "{count} 个提交",
+                    "commitCountOne": "{count} 个提交",
+                    "conflicted": "冲突",
+                    "diffTruncated": "差异输出已被截断。",
+                    "logTitle": "Git 日志",
+                    "pathsChip": "路径：{paths}",
+                    "showingNewest": "显示最新的 {count} 个；还有更多。",
+                    "statusCounts": "已暂存 {staged}，未暂存 {unstaged}，未跟踪 {untracked}，冲突 {conflicted}",
+                    "titleCommitCreated": "已创建 Git 提交",
+                    "titleCommitDryRun": "Git 提交试运行",
+                    "titleCommitReview": "Git 提交审查",
+                    "titleReview": "Git 审查",
+                    "titleStageApplied": "已应用 Git 暂存",
+                    "titleStagedDiff": "Git 已暂存差异",
+                    "titleStageDryRun": "Git 暂存试运行",
+                    "titleStatus": "Git 状态",
+                    "titleUnstagedDiff": "Git 未暂存差异",
+                    "untracked": "未跟踪"
                 },
                 "patch": {
                     "validateNote": "这将验证补丁而不更改文件。",
                     "applyNote": "此高风险应用请求会在后端创建应用前检查点后写入文件。",
                     "hideDiff": "隐藏统一差异",
-                    "showDiff": "显示统一差异"
-                }
+                    "showDiff": "显示统一差异",
+                    "actualLabel": "实际：",
+                    "checkpointCreated": "已创建应用前检查点",
+                    "diffTruncated": "差异预览已为显示而截断。",
+                    "expectedLabel": "预期：",
+                    "firstLines": "前 {shown} 行，共 {total} 行",
+                    "hunkCountMany": "{count} 个块",
+                    "hunkCountOne": "{count} 个块",
+                    "hunkIndex": "块 {index}",
+                    "restoreManual": "恢复需手动进行：审查后，使用 {tool} 并指定此检查点 ID。",
+                    "titleApplied": "补丁已应用",
+                    "titleApplyBlocked": "补丁应用被阻止",
+                    "titleApplyReview": "补丁应用审查",
+                    "titleDryRunConflicts": "补丁试运行发现冲突",
+                    "titleDryRunPassed": "补丁试运行通过",
+                    "titleDryRunReview": "补丁试运行审查",
+                    "warnings": "警告"
+                },
+                "binary": "二进制",
+                "fileCountMany": "{count} 个文件",
+                "fileCountOne": "{count} 个文件",
+                "moreCount": "+{count} 个",
+                "plan": {
+                    "likelyFiles": "可能涉及的文件",
+                    "openQuestions": "待解决问题",
+                    "reviewOnlyNote": "仅供审查的产物。编辑和修改类工具仍使用当前审批模式。",
+                    "riskHigh": "高风险",
+                    "riskLow": "低风险",
+                    "riskMedium": "中等风险",
+                    "risks": "风险",
+                    "title": "编码计划"
+                },
+                "state": {
+                    "clean": "干净",
+                    "failed": "失败",
+                    "passed": "通过",
+                    "timedOut": "超时"
+                },
+                "timeoutChip": "超时 {seconds}s",
+                "truncated": "已截断",
+                "workspaceLabel": "工作区:"
+            },
+            "attachedImageAlt": "附加的图片",
+            "stepNumber": "步骤 {step}",
+            "transcribingLocally": "正在本地转录...",
+            "transferPlan": {
+                "dependsOnMany": "依赖 {count} 个准备步骤",
+                "dependsOnOne": "依赖 {count} 个准备步骤",
+                "destination": "目标：{destination}",
+                "title": "传输计划审查",
+                "warnings": "警告"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "浏览",
                     "installed": "已安装"
-                }
+                },
+                "remoteInstallDisabled": "在客户端完成注册表认证之前，远程插件安装目前处于停用状态。本地已安装的插件可继续正常使用。"
             }
         },
         "filelu": {

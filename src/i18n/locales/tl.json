@@ -1269,7 +1269,14 @@
                 "stop": "Ihinto",
                 "stopShell": "Ihinto ang shell",
                 "closed": "Nakasara ang terminal.",
-                "commandInsertedReview": "Naipasok ang utos sa Terminal. Pindutin ang Enter upang patakbuhin."
+                "commandInsertedReview": "Naipasok ang utos sa Terminal. Pindutin ang Enter upang patakbuhin.",
+                "decreaseFont": "Paliitin ang laki ng font (Ctrl+-)",
+                "emptyClickPlus": "I-click ang {plus} para magbukas ng terminal",
+                "emptySshHint": "o {ssh} para sa malayuang shell sa {host}",
+                "increaseFont": "Palakihin ang laki ng font (Ctrl+=)",
+                "newTab": "Bagong tab ng terminal",
+                "sshShellTo": "SSH shell sa {host}",
+                "theme": "Tema ng terminal"
             },
             "editorPanel": {
                 "emptyState": "Mag-right-click sa isang file at piliin ang \"Tingnan ang pinagmulan\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Nagse-save...",
                 "noFileSelected": "Walang napiling file para tingnan",
                 "loading": "Naglo-load ng editor...",
-                "dragToTerminalRun": "I-drag sa Terminal upang ipasok ang utos na patakbuhin"
+                "dragToTerminalRun": "I-drag sa Terminal upang ipasok ang utos na patakbuhin",
+                "closeEditor": "Isara ang editor",
+                "resetChanges": "I-reset ang mga pagbabago"
             },
             "previewPanel": {
                 "emptyState": "Mag-right-click sa isang file at piliin ang \"Preview\""
             },
             "codeEditor": "Editor ng Code",
-            "sshTerminal": "SSH Terminal"
+            "sshTerminal": "SSH Terminal",
+            "comingSoon": "Malapit nang dumating",
+            "soonBadge": "Malapit na"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Tanggihan ang tool execution",
                 "toggleDetails": "I-toggle ang mga detalye",
                 "allowSession": "Payagan para sa session na ito",
-                "nonAtomicReplace": "Hindi atomikong pagpapalit: pansamantalang nawawala ang file"
+                "nonAtomicReplace": "Hindi atomikong pagpapalit: pansamantalang nawawala ang file",
+                "moreOptions": "Higit pang opsyon",
+                "panelAria": "Panel ng pag-apruba ng kasangkapan"
             },
             "settings": {
                 "title": "AI Settings",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Panghalili",
                 "routingNoFallback": "Wala",
                 "bedrockNeedsModel": "Magdagdag at paganahin ang isang Bedrock model sa tab na Mga Model bago subukan.",
-                "bedrockSetup": "Itakda ang Runtime URL para sa iyong rehiyon sa AWS. Sa Mga Model, idagdag ang ID na sumusuporta sa Chat Completions sa Bedrock Runtime. Hindi inililista ng Runtime ang mga modelo. Nagpapadala ang pagsubok ng maliit na inference request na maaaring magkaroon ng singil sa AWS."
+                "bedrockSetup": "Itakda ang Runtime URL para sa iyong rehiyon sa AWS. Sa Mga Model, idagdag ang ID na sumusuporta sa Chat Completions sa Bedrock Runtime. Hindi inililista ng Runtime ang mga modelo. Nagpapadala ang pagsubok ng maliit na inference request na maaaring magkaroon ng singil sa AWS.",
+                "detectOllamaModelsTooltip": "Awtomatikong tuklasin ang mga available na modelo ng Ollama",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "Editor ng modelo ng AI",
+                "supportsTools": "Sumusuporta sa mga tool",
+                "supportsVision": "Sumusuporta sa paningin",
+                "thinkingReasoning": "Pag-iisip/Pangangatwiran",
+                "toolQuality": "Kalidad ng kasangkapan: {quality}/5"
             },
             "copy": "Kopyahin",
             "attachImage": "Mag-attach ng larawan",
@@ -2699,7 +2719,9 @@
                 "run": "Patakbuhin sa Terminal",
                 "insert": "Ilagay sa Editor",
                 "diff": "Ihambing sa orihinal",
-                "diffNoFile": "Walang bukas na file para ihambing"
+                "diffNoFile": "Walang bukas na file para ihambing",
+                "commandBlocked": "Naharang ang utos: posibleng mapaminsala",
+                "confirmRun": "Kumpirmahin ang pagpapatakbo: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Nag-iisip...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Lumipat ng branch",
                 "delete": "Tanggalin ang branch",
                 "newBranch": "Bagong branch",
-                "branchFrom": "Mag-branch mula sa puntong ito"
+                "branchFrom": "Mag-branch mula sa puntong ito",
+                "messageCountShort": "{count} mensahe",
+                "unnamed": "Sangay"
             },
             "context": {
                 "projectDetected": "Na-detect ang proyekto",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "tumatakbo",
                 "expired": "nag-expire",
-                "refresh": "I-refresh"
+                "refresh": "I-refresh",
+                "modelsRunningMany": "{count} modelong tumatakbo",
+                "modelsRunningOne": "{count} modelong tumatakbo",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Context Caching",
@@ -2956,7 +2983,8 @@
                 "warning": "Lahat ng file operation ay kaagad na isasagawa nang walang pag-apruba. Gamitin sa sariling peligro.",
                 "disable": "I-disable",
                 "securityWarning": "Babala sa Seguridad",
-                "understood": "Naiintindihan"
+                "understood": "Naiintindihan",
+                "warningAria": "Babala sa matinding mode"
             },
             "errorServerError": "Ang server ng AI provider ay may problema. Subukan muli mamaya.",
             "errorServiceUnavailable": "Ang AI provider ay pansamantalang hindi available (overloaded). Ang libreng serbisyo ay maaaring may limitasyon. Subukan muli mamaya.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Walang limitasyon",
                 "roleAI": "AI",
-                "roleUser": "Gumagamit"
+                "roleUser": "Gumagamit",
+                "noConversations": "Wala pang mga pag-uusap",
+                "titleCount": "Kasaysayan ({count})"
             },
             "dropFileToAnalyze": "I-drop ang file para suriin gamit ang AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} input token, {output} output token, ayon sa bilang ng provider",
-                "breakdownCache": "{input} input token, {output} output token, {cacheRead} nabasa mula sa prompt cache, {cacheWritten} naisulat dito, ayon sa bilang ng provider"
+                "breakdownCache": "{input} input token, {output} output token, {cacheRead} nabasa mula sa prompt cache, {cacheWritten} naisulat dito, ayon sa bilang ng provider",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Isagawa ang {count} operasyon",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Lalaktawan",
                     "skipped": "Nilaktawan",
                     "existedAtCheckpoint": "umiiral sa punto ng pagsusuri",
-                    "absentAtCheckpoint": "wala sa punto ng pagsusuri"
+                    "absentAtCheckpoint": "wala sa punto ng pagsusuri",
+                    "noFiles": "Walang file na isinama sa resultang ito ng pagpapanumbalik.",
+                    "otherActions": "Iba pang aksyon",
+                    "requestedPaths": "Hiniling na bahagi ng mga landas",
+                    "scopeAll": "Saklaw: lahat ng file na nakuha sa punto ng pagsusuri.",
+                    "titleApplied": "Nailapat ang pagpapanumbalik ng punto ng pagsusuri",
+                    "titleApplyReview": "Pagsusuri sa paglalapat ng pagpapanumbalik ng punto ng pagsusuri",
+                    "titleDryRunComplete": "Tapos na ang pansubok na takbo ng pagpapanumbalik ng punto ng pagsusuri",
+                    "titleDryRunReview": "Pagsusuri ng subok na pagbabalik ng checkpoint"
                 },
                 "checks": {
                     "exitSummary": "code ng paglabas {code} · {seconds}s",
                     "continueOnFailure": "Pinapatakbo ang lahat ng pagsusuri kahit pumalya ang isa.",
-                    "stopOnFailure": "Humihinto sa unang pumalyang pagsusuri."
+                    "stopOnFailure": "Humihinto sa unang pumalyang pagsusuri.",
+                    "checkLabel": "Pagsusuri:",
+                    "checksLabel": "Mga pagsusuri:",
+                    "exitChip": "code ng paglabas {code}",
+                    "filterChip": "salaan: {filter}",
+                    "filterLabel": "Salaan:",
+                    "notAvailable": "wala",
+                    "passedCount": "{passed}/{total} pumasa",
+                    "runCheckNote": "Nagpapatakbo ng piniling build/test/lint na utos sa lugar ng trabaho. Ang mga build script at test ay nagpapatakbo ng totoong code.",
+                    "runProjectCheck": "Patakbuhin ang pagsusuri ng proyekto",
+                    "runVerification": "Patakbuhin ang pag-verify",
+                    "runVerificationNote": "Nagpapatakbo ng mga piniling build/test/lint na utos sa lugar ng trabaho. Ang mga build script at test ay nagpapatakbo ng totoong code.",
+                    "stoppedEarly": "Huminto sa unang pumalyang pagsusuri.",
+                    "timeoutLabel": "Takdang oras: {seconds}s",
+                    "verification": "Pag-verify"
                 },
                 "diagnostics": {
-                    "none": "Walang naiulat na diagnostiko."
+                    "none": "Walang naiulat na diagnostiko.",
+                    "errorCountMany": "{count} mali",
+                    "errorCountOne": "{count} mali",
+                    "title": "Diyagnostiko",
+                    "truncated": "Pinaikli ang listahan ng diyagnostiko.",
+                    "warningCountMany": "{count} babala",
+                    "warningCountOne": "{count} babala"
                 },
                 "search": {
-                    "none": "Walang nahanap na tugma."
+                    "none": "Walang nahanap na tugma.",
+                    "ignoreCase": "huwag pansinin ang laki ng titik",
+                    "inPath": "sa {path}",
+                    "literal": "literal",
+                    "matchCountMany": "{count} tugma",
+                    "matchCountOne": "{count} tugma",
+                    "title": "Paghahanap sa workspace",
+                    "truncated": "Pinutol ang mga resulta."
                 },
                 "git": {
                     "noStagedDiff": "Walang lumabas na diff para sa mga naka-stage na pagbabago.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Pag-apruba ng Git Stage",
                     "commitNote": "Gumagawa ito ng git commit mula sa kasalukuyang naka-stage na index. Suriin muna ang coding_git_status at coding_git_diff gamit ang staged=true.",
                     "stagePreviewNote": "Ipinapakita nito kung aling mga hiniling na path ang mai-stage; hindi magbabago ang index.",
-                    "stageNote": "Binabago nito ang git index para sa mga hiniling na path."
+                    "stageNote": "Binabago nito ang git index para sa mga hiniling na path.",
+                    "afterCounts": "Pagkatapos: {counts}",
+                    "beforeCounts": "Bago: {counts}",
+                    "clean": "Malinis ang puno ng trabaho.",
+                    "commitCountMany": "{count} na commit",
+                    "commitCountOne": "{count} na commit",
+                    "conflicted": "may salungatan",
+                    "diffTruncated": "Pinaikli ang resulta ng diff.",
+                    "logTitle": "Log ng Git",
+                    "pathsChip": "mga landas: {paths}",
+                    "showingNewest": "Ipinapakita ang {count} pinakabago; may iba pa.",
+                    "statusCounts": "{staged} naka-stage, {unstaged} hindi naka-stage, {untracked} hindi sinusubaybayan, {conflicted} may salungatan",
+                    "titleCommitCreated": "Nagawa ang commit ng Git",
+                    "titleCommitDryRun": "Pagsubok na commit ng Git",
+                    "titleCommitReview": "Pagsusuri ng commit ng Git",
+                    "titleReview": "Pagsusuri ng Git",
+                    "titleStageApplied": "Nailapat ang stage ng Git",
+                    "titleStagedDiff": "Naka-stage na diff ng Git",
+                    "titleStageDryRun": "Pagsubok na stage ng Git",
+                    "titleStatus": "Katayuan ng Git",
+                    "titleUnstagedDiff": "Hindi naka-stage na diff ng Git",
+                    "untracked": "hindi sinusubaybayan"
                 },
                 "patch": {
                     "validateNote": "Sinusuri nito ang patch nang hindi binabago ang mga file.",
                     "applyNote": "Ang mataas na panganib na kahilingang ito na ilapat ay nagsusulat ng mga file pagkatapos gumawa ang backend ng checkpoint bago ilapat.",
                     "hideDiff": "Itago ang pinag-isang diff",
-                    "showDiff": "Ipakita ang pinag-isang diff"
-                }
+                    "showDiff": "Ipakita ang pinag-isang diff",
+                    "actualLabel": "aktwal:",
+                    "checkpointCreated": "Nagawa ang checkpoint bago ilapat",
+                    "diffTruncated": "Pinaikli ang silip ng diff para maipakita.",
+                    "expectedLabel": "inaasahan:",
+                    "firstLines": "unang {shown} sa {total} linya",
+                    "hunkCountMany": "{count} na bahagi",
+                    "hunkCountOne": "{count} bahagi",
+                    "hunkIndex": "bahagi {index}",
+                    "restoreManual": "Mano-mano ang pagpapanumbalik: pagkatapos ng pagsusuri, gamitin ang {tool} kasama ang ID ng puntong ito ng pagsusuri.",
+                    "titleApplied": "Nailapat ang tagpi",
+                    "titleApplyBlocked": "Hinarang ang paglalapat ng tagpi",
+                    "titleApplyReview": "Pagsusuri sa paglalapat ng tagpi",
+                    "titleDryRunConflicts": "May nakitang salungatan ang pansubok na takbo ng tagpi",
+                    "titleDryRunPassed": "Pumasa ang pansubok na takbo ng tagpi",
+                    "titleDryRunReview": "Pagsusuri sa pansubok na takbo ng tagpi",
+                    "warnings": "Mga babala"
+                },
+                "binary": "binaryo",
+                "fileCountMany": "{count} file",
+                "fileCountOne": "{count} na file",
+                "moreCount": "+{count} pa",
+                "plan": {
+                    "likelyFiles": "Mga posibleng file",
+                    "openQuestions": "Mga bukas na tanong",
+                    "reviewOnlyNote": "Para sa pagsusuri lamang. Ang mga pag-edit at mga kasangkapang nagbabago ay gumagamit pa rin ng kasalukuyang mode ng pag-apruba.",
+                    "riskHigh": "mataas na panganib",
+                    "riskLow": "mababang panganib",
+                    "riskMedium": "katamtamang panganib",
+                    "risks": "Mga panganib",
+                    "title": "Plano sa pag-code"
+                },
+                "state": {
+                    "clean": "malinis",
+                    "failed": "nabigo",
+                    "passed": "pumasa",
+                    "timedOut": "naubos ang oras"
+                },
+                "timeoutChip": "limitasyon ng oras {seconds}s",
+                "truncated": "pinutol",
+                "workspaceLabel": "Workspace:"
+            },
+            "attachedImageAlt": "Nakalakip na larawan",
+            "stepNumber": "Hakbang {step}",
+            "transcribingLocally": "Isinasalin sa teksto nang lokal...",
+            "transferPlan": {
+                "dependsOnMany": "Nakadepende sa {count} hakbang na paghahanda",
+                "dependsOnOne": "Nakadepende sa {count} hakbang na paghahanda",
+                "destination": "Patutunguhan: {destination}",
+                "title": "Pagsusuri ng Plano ng Paglilipat",
+                "warnings": "Mga babala"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Mag-browse",
                     "installed": "Naka-install"
-                }
+                },
+                "remoteInstallDisabled": "Kasalukuyang naka-disable ang malayuang pag-install ng plugin hanggang ma-authenticate ang registry sa panig ng client. Patuloy na gumagana nang normal ang mga plugin na naka-install nang lokal."
             }
         },
         "commandPalette.category.ai": {},

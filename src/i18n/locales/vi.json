@@ -1269,7 +1269,14 @@
                 "stop": "Dừng",
                 "stopShell": "Dừng terminal",
                 "closed": "Đã đóng terminal.",
-                "commandInsertedReview": "Đã chèn lệnh vào Terminal. Nhấn Enter để chạy."
+                "commandInsertedReview": "Đã chèn lệnh vào Terminal. Nhấn Enter để chạy.",
+                "decreaseFont": "Giảm cỡ chữ (Ctrl+-)",
+                "emptyClickPlus": "Nhấp {plus} để mở thiết bị đầu cuối",
+                "emptySshHint": "hoặc {ssh} để mở shell từ xa tới {host}",
+                "increaseFont": "Tăng cỡ chữ (Ctrl+=)",
+                "newTab": "Thẻ thiết bị đầu cuối mới",
+                "sshShellTo": "Shell SSH tới {host}",
+                "theme": "Chủ đề thiết bị đầu cuối"
             },
             "editorPanel": {
                 "emptyState": "Nhấn chuột phải vào tệp và chọn \"Xem mã nguồn\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Đang lưu...",
                 "noFileSelected": "Chưa chọn tệp để xem",
                 "loading": "Đang tải trình chỉnh sửa...",
-                "dragToTerminalRun": "Kéo vào Terminal để chèn lệnh chạy"
+                "dragToTerminalRun": "Kéo vào Terminal để chèn lệnh chạy",
+                "closeEditor": "Đóng trình soạn thảo",
+                "resetChanges": "Đặt lại thay đổi"
             },
             "previewPanel": {
                 "emptyState": "Nhấn chuột phải vào tệp và chọn \"Xem trước\""
             },
             "codeEditor": "Trình soạn mã",
-            "sshTerminal": "Terminal SSH"
+            "sshTerminal": "Terminal SSH",
+            "comingSoon": "Sắp ra mắt",
+            "soonBadge": "Sắp có"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Từ chối thực thi công cụ",
                 "toggleDetails": "Bật/tắt chi tiết",
                 "allowSession": "Cho phép cho phiên này",
-                "nonAtomicReplace": "Thay thế không nguyên tử: tệp biến mất trong chốc lát"
+                "nonAtomicReplace": "Thay thế không nguyên tử: tệp biến mất trong chốc lát",
+                "moreOptions": "Tùy chọn khác",
+                "panelAria": "Bảng phê duyệt công cụ"
             },
             "settings": {
                 "title": "Cài đặt AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Dự phòng",
                 "routingNoFallback": "Không có",
                 "bedrockNeedsModel": "Thêm và bật mô hình Bedrock trong thẻ Mô hình trước khi kiểm tra.",
-                "bedrockSetup": "Đặt Runtime URL cho Khu vực AWS của bạn. Trong Mô hình, thêm ID hỗ trợ Chat Completions trên Bedrock Runtime. Runtime không liệt kê các mô hình. Bài kiểm tra gửi một yêu cầu suy luận nhỏ và có thể phát sinh phí AWS."
+                "bedrockSetup": "Đặt Runtime URL cho Khu vực AWS của bạn. Trong Mô hình, thêm ID hỗ trợ Chat Completions trên Bedrock Runtime. Runtime không liệt kê các mô hình. Bài kiểm tra gửi một yêu cầu suy luận nhỏ và có thể phát sinh phí AWS.",
+                "detectOllamaModelsTooltip": "Tự động phát hiện các mô hình Ollama khả dụng",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "Trình chỉnh sửa mô hình AI",
+                "supportsTools": "Hỗ trợ công cụ",
+                "supportsVision": "Hỗ trợ thị giác",
+                "thinkingReasoning": "Suy nghĩ/Lập luận",
+                "toolQuality": "Chất lượng công cụ: {quality}/5"
             },
             "copy": "Sao chép",
             "attachImage": "Đính kèm hình ảnh",
@@ -2699,7 +2719,9 @@
                 "run": "Chạy trong Terminal",
                 "insert": "Chèn vào trình soạn thảo",
                 "diff": "So sánh với bản gốc",
-                "diffNoFile": "Không có tệp nào mở để so sánh"
+                "diffNoFile": "Không có tệp nào mở để so sánh",
+                "commandBlocked": "Lệnh bị chặn: có thể gây phá hủy",
+                "confirmRun": "Xác nhận chạy: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Đang suy nghĩ...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Chuyển nhánh",
                 "delete": "Xóa nhánh",
                 "newBranch": "Nhánh mới",
-                "branchFrom": "Rẽ nhánh từ điểm này"
+                "branchFrom": "Rẽ nhánh từ điểm này",
+                "messageCountShort": "{count} tin",
+                "unnamed": "Nhánh"
             },
             "context": {
                 "projectDetected": "Đã phát hiện dự án",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "đang chạy",
                 "expired": "đã hết hạn",
-                "refresh": "Làm mới"
+                "refresh": "Làm mới",
+                "modelsRunningMany": "{count} mô hình đang chạy",
+                "modelsRunningOne": "{count} mô hình đang chạy",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Bộ nhớ đệm ngữ cảnh",
@@ -2956,7 +2983,8 @@
                 "warning": "Tất cả các thao tác tệp sẽ được thực hiện ngay lập tức mà không cần phê duyệt. Sử dụng tự chịu rủi ro.",
                 "disable": "Tắt",
                 "securityWarning": "Cảnh báo bảo mật",
-                "understood": "Đã hiểu"
+                "understood": "Đã hiểu",
+                "warningAria": "Cảnh báo chế độ cực hạn"
             },
             "errorServerError": "Máy chủ nhà cung cấp AI đang gặp sự cố. Hãy thử lại sau giây lát.",
             "errorServiceUnavailable": "Nhà cung cấp AI tạm thời không khả dụng (quá tải). Dịch vụ miễn phí có thể có giới hạn. Hãy thử lại sau.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Không giới hạn",
                 "roleAI": "AI",
-                "roleUser": "Người dùng"
+                "roleUser": "Người dùng",
+                "noConversations": "Chưa có cuộc trò chuyện nào",
+                "titleCount": "Lịch sử ({count})"
             },
             "dropFileToAnalyze": "Thả tệp để phân tích bằng AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} token đầu vào, {output} token đầu ra, theo số liệu của nhà cung cấp",
-                "breakdownCache": "{input} token đầu vào, {output} token đầu ra, {cacheRead} đọc từ bộ nhớ đệm prompt, {cacheWritten} ghi vào đó, theo số liệu của nhà cung cấp"
+                "breakdownCache": "{input} token đầu vào, {output} token đầu ra, {cacheRead} đọc từ bộ nhớ đệm prompt, {cacheWritten} ghi vào đó, theo số liệu của nhà cung cấp",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Thực thi {count} thao tác",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Sẽ bỏ qua",
                     "skipped": "Đã bỏ qua",
                     "existedAtCheckpoint": "đã tồn tại tại điểm kiểm tra",
-                    "absentAtCheckpoint": "không có tại điểm kiểm tra"
+                    "absentAtCheckpoint": "không có tại điểm kiểm tra",
+                    "noFiles": "Không có tệp nào trong kết quả khôi phục này.",
+                    "otherActions": "Thao tác khác",
+                    "requestedPaths": "Tập con đường dẫn được yêu cầu",
+                    "scopeAll": "Phạm vi: tất cả tệp được ghi lại trong điểm kiểm tra.",
+                    "titleApplied": "Đã áp dụng khôi phục điểm kiểm tra",
+                    "titleApplyReview": "Xem xét áp dụng khôi phục điểm kiểm tra",
+                    "titleDryRunComplete": "Đã hoàn tất chạy thử khôi phục điểm kiểm tra",
+                    "titleDryRunReview": "Xem xét chạy thử khôi phục điểm kiểm tra"
                 },
                 "checks": {
                     "exitSummary": "mã thoát {code} · {seconds}s",
                     "continueOnFailure": "Chạy tất cả kiểm tra ngay cả khi một kiểm tra thất bại.",
-                    "stopOnFailure": "Dừng ở kiểm tra thất bại đầu tiên."
+                    "stopOnFailure": "Dừng ở kiểm tra thất bại đầu tiên.",
+                    "checkLabel": "Kiểm tra:",
+                    "checksLabel": "Các kiểm tra:",
+                    "exitChip": "mã thoát {code}",
+                    "filterChip": "bộ lọc: {filter}",
+                    "filterLabel": "Bộ lọc:",
+                    "notAvailable": "không có",
+                    "passedCount": "{passed}/{total} đạt",
+                    "runCheckNote": "Chạy một lệnh build/test/lint được chọn trong không gian làm việc. Script build và kiểm thử thực thi mã thật.",
+                    "runProjectCheck": "Chạy kiểm tra dự án",
+                    "runVerification": "Chạy lượt xác minh",
+                    "runVerificationNote": "Chạy các lệnh build/test/lint được chọn trong không gian làm việc. Script build và kiểm thử thực thi mã thật.",
+                    "stoppedEarly": "Đã dừng ở lần kiểm tra thất bại đầu tiên.",
+                    "timeoutLabel": "Thời gian chờ: {seconds} giây",
+                    "verification": "Xác minh"
                 },
                 "diagnostics": {
-                    "none": "Không có chẩn đoán nào được báo cáo."
+                    "none": "Không có chẩn đoán nào được báo cáo.",
+                    "errorCountMany": "{count} lỗi",
+                    "errorCountOne": "{count} lỗi",
+                    "title": "Chẩn đoán",
+                    "truncated": "Danh sách chẩn đoán đã bị cắt bớt.",
+                    "warningCountMany": "{count} cảnh báo",
+                    "warningCountOne": "{count} cảnh báo"
                 },
                 "search": {
-                    "none": "Không tìm thấy kết quả khớp."
+                    "none": "Không tìm thấy kết quả khớp.",
+                    "ignoreCase": "bỏ qua hoa thường",
+                    "inPath": "trong {path}",
+                    "literal": "nguyên văn",
+                    "matchCountMany": "{count} kết quả khớp",
+                    "matchCountOne": "{count} kết quả khớp",
+                    "title": "Tìm kiếm không gian làm việc",
+                    "truncated": "Kết quả đã bị cắt bớt."
                 },
                 "git": {
                     "noStagedDiff": "Không có đầu ra diff cho các thay đổi trong chỉ mục.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Phê duyệt đưa vào chỉ mục Git",
                     "commitNote": "Thao tác này tạo một git commit từ chỉ mục hiện tại. Hãy xem lại coding_git_status và coding_git_diff với staged=true trước.",
                     "stagePreviewNote": "Thao tác này xem trước những đường dẫn được yêu cầu nào sẽ được đưa vào chỉ mục; chỉ mục sẽ không thay đổi.",
-                    "stageNote": "Thao tác này thay đổi chỉ mục git cho các đường dẫn được yêu cầu."
+                    "stageNote": "Thao tác này thay đổi chỉ mục git cho các đường dẫn được yêu cầu.",
+                    "afterCounts": "Sau: {counts}",
+                    "beforeCounts": "Trước: {counts}",
+                    "clean": "Cây làm việc sạch.",
+                    "commitCountMany": "{count} lần commit",
+                    "commitCountOne": "{count} lần commit",
+                    "conflicted": "xung đột",
+                    "diffTruncated": "Đầu ra diff đã bị cắt bớt.",
+                    "logTitle": "Nhật ký Git",
+                    "pathsChip": "đường dẫn: {paths}",
+                    "showingNewest": "Đang hiển thị {count} mới nhất; còn nữa.",
+                    "statusCounts": "{staged} đã stage, {unstaged} chưa stage, {untracked} chưa theo dõi, {conflicted} xung đột",
+                    "titleCommitCreated": "Đã tạo commit Git",
+                    "titleCommitDryRun": "Chạy thử commit Git",
+                    "titleCommitReview": "Xem xét commit Git",
+                    "titleReview": "Xem xét Git",
+                    "titleStageApplied": "Đã áp dụng stage Git",
+                    "titleStagedDiff": "Diff Git đã stage",
+                    "titleStageDryRun": "Chạy thử stage Git",
+                    "titleStatus": "Trạng thái Git",
+                    "titleUnstagedDiff": "Diff Git chưa stage",
+                    "untracked": "chưa theo dõi"
                 },
                 "patch": {
                     "validateNote": "Thao tác này xác thực bản vá mà không thay đổi tệp.",
                     "applyNote": "Yêu cầu áp dụng rủi ro cao này ghi tệp sau khi backend tạo điểm kiểm tra trước khi áp dụng.",
                     "hideDiff": "Ẩn diff hợp nhất",
-                    "showDiff": "Hiện diff hợp nhất"
-                }
+                    "showDiff": "Hiện diff hợp nhất",
+                    "actualLabel": "thực tế:",
+                    "checkpointCreated": "Đã tạo điểm kiểm tra trước khi áp dụng",
+                    "diffTruncated": "Bản xem trước diff đã bị cắt bớt để hiển thị.",
+                    "expectedLabel": "mong đợi:",
+                    "firstLines": "{shown} dòng đầu trong {total} dòng",
+                    "hunkCountMany": "{count} khối",
+                    "hunkCountOne": "{count} khối",
+                    "hunkIndex": "khối {index}",
+                    "restoreManual": "Khôi phục là thủ công: sau khi xem xét, hãy dùng {tool} với ID điểm kiểm tra này.",
+                    "titleApplied": "Đã áp dụng bản vá",
+                    "titleApplyBlocked": "Áp dụng bản vá bị chặn",
+                    "titleApplyReview": "Xem xét áp dụng bản vá",
+                    "titleDryRunConflicts": "Chạy thử bản vá phát hiện xung đột",
+                    "titleDryRunPassed": "Chạy thử bản vá thành công",
+                    "titleDryRunReview": "Xem xét chạy thử bản vá",
+                    "warnings": "Cảnh báo"
+                },
+                "binary": "nhị phân",
+                "fileCountMany": "{count} tệp",
+                "fileCountOne": "{count} tệp",
+                "moreCount": "+{count} nữa",
+                "plan": {
+                    "likelyFiles": "Tệp có khả năng liên quan",
+                    "openQuestions": "Câu hỏi còn mở",
+                    "reviewOnlyNote": "Sản phẩm chỉ để xem xét. Các chỉnh sửa và công cụ thay đổi vẫn dùng chế độ phê duyệt hiện tại.",
+                    "riskHigh": "rủi ro cao",
+                    "riskLow": "rủi ro thấp",
+                    "riskMedium": "rủi ro trung bình",
+                    "risks": "Rủi ro",
+                    "title": "Kế hoạch lập trình"
+                },
+                "state": {
+                    "clean": "sạch",
+                    "failed": "thất bại",
+                    "passed": "đạt",
+                    "timedOut": "hết thời gian"
+                },
+                "timeoutChip": "thời gian chờ {seconds}s",
+                "truncated": "đã cắt bớt",
+                "workspaceLabel": "Không gian làm việc:"
+            },
+            "attachedImageAlt": "Hình ảnh đính kèm",
+            "stepNumber": "Bước {step}",
+            "transcribingLocally": "Đang chép lời cục bộ...",
+            "transferPlan": {
+                "dependsOnMany": "Phụ thuộc vào {count} bước chuẩn bị",
+                "dependsOnOne": "Phụ thuộc vào {count} bước chuẩn bị",
+                "destination": "Đích: {destination}",
+                "title": "Xem xét kế hoạch truyền",
+                "warnings": "Cảnh báo"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Duyệt",
                     "installed": "Đã cài đặt"
-                }
+                },
+                "remoteInstallDisabled": "Tính năng cài đặt plugin từ xa hiện đang bị tắt cho đến khi sổ đăng ký được xác thực phía máy khách. Các plugin được cài đặt cục bộ vẫn hoạt động bình thường."
             }
         },
         "filelu": {

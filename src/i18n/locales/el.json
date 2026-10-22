@@ -1269,7 +1269,14 @@
                 "stop": "Διακοπή",
                 "stopShell": "Διακοπή κελύφους",
                 "closed": "Το τερματικό έκλεισε.",
-                "commandInsertedReview": "Η εντολή εισήχθη στο Terminal. Πατήστε Enter για εκτέλεση."
+                "commandInsertedReview": "Η εντολή εισήχθη στο Terminal. Πατήστε Enter για εκτέλεση.",
+                "decreaseFont": "Μείωση μεγέθους γραμματοσειράς (Ctrl+-)",
+                "emptyClickPlus": "Κάντε κλικ στο {plus} για να ανοίξετε τερματικό",
+                "emptySshHint": "ή {ssh} για απομακρυσμένο κέλυφος στο {host}",
+                "increaseFont": "Αύξηση μεγέθους γραμματοσειράς (Ctrl+=)",
+                "newTab": "Νέα καρτέλα τερματικού",
+                "sshShellTo": "Κέλυφος SSH στο {host}",
+                "theme": "Θέμα τερματικού"
             },
             "editorPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Προβολή πηγής\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Αποθήκευση...",
                 "noFileSelected": "Δεν έχει επιλεγεί αρχείο για προβολή",
                 "loading": "Φόρτωση επεξεργαστή...",
-                "dragToTerminalRun": "Σύρετε στο Terminal για να εισαγάγετε εντολή εκτέλεσης"
+                "dragToTerminalRun": "Σύρετε στο Terminal για να εισαγάγετε εντολή εκτέλεσης",
+                "closeEditor": "Κλείσιμο επεξεργαστή",
+                "resetChanges": "Επαναφορά αλλαγών"
             },
             "previewPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Προεπισκόπηση\""
             },
             "codeEditor": "Επεξεργαστής κώδικα",
-            "sshTerminal": "Τερματικό SSH"
+            "sshTerminal": "Τερματικό SSH",
+            "comingSoon": "Έρχεται σύντομα",
+            "soonBadge": "Σύντομα"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Απόρριψη εκτέλεσης εργαλείου",
                 "toggleDetails": "Εναλλαγή λεπτομερειών",
                 "allowSession": "Να επιτραπεί για αυτή τη συνεδρία",
-                "nonAtomicReplace": "Μη ατομική αντικατάσταση: το αρχείο λείπει για λίγο"
+                "nonAtomicReplace": "Μη ατομική αντικατάσταση: το αρχείο λείπει για λίγο",
+                "moreOptions": "Περισσότερες επιλογές",
+                "panelAria": "Πίνακας έγκρισης εργαλείων"
             },
             "settings": {
                 "title": "Ρυθμίσεις AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Εφεδρικό",
                 "routingNoFallback": "Κανένα",
                 "bedrockNeedsModel": "Προσθέστε και ενεργοποιήστε ένα μοντέλο Bedrock στην καρτέλα Μοντέλα πριν από τη δοκιμή.",
-                "bedrockSetup": "Ορίστε το Runtime URL για την περιοχή AWS σας. Στην καρτέλα Μοντέλα, προσθέστε ένα ID που υποστηρίζει Chat Completions στο Bedrock Runtime. Το Runtime δεν παραθέτει μοντέλα. Η δοκιμή στέλνει ένα μικρό αίτημα συμπερασμού που ενδέχεται να επιφέρει χρεώσεις AWS."
+                "bedrockSetup": "Ορίστε το Runtime URL για την περιοχή AWS σας. Στην καρτέλα Μοντέλα, προσθέστε ένα ID που υποστηρίζει Chat Completions στο Bedrock Runtime. Το Runtime δεν παραθέτει μοντέλα. Η δοκιμή στέλνει ένα μικρό αίτημα συμπερασμού που ενδέχεται να επιφέρει χρεώσεις AWS.",
+                "detectOllamaModelsTooltip": "Αυτόματος εντοπισμός διαθέσιμων μοντέλων Ollama",
+                "kTokens": "{count}K tokens",
+                "modelEditorAria": "Επεξεργαστής μοντέλων ΤΝ",
+                "supportsTools": "Υποστηρίζει εργαλεία",
+                "supportsVision": "Υποστηρίζει όραση",
+                "thinkingReasoning": "Σκέψη/Συλλογισμός",
+                "toolQuality": "Ποιότητα εργαλείων: {quality}/5"
             },
             "copy": "Αντιγραφή",
             "attachImage": "Επισύναψη εικόνας",
@@ -2699,7 +2719,9 @@
                 "run": "Εκτέλεση στο Τερματικό",
                 "insert": "Εισαγωγή στον Επεξεργαστή",
                 "diff": "Σύγκριση με πρωτότυπο",
-                "diffNoFile": "Δεν υπάρχει ανοιχτό αρχείο για σύγκριση"
+                "diffNoFile": "Δεν υπάρχει ανοιχτό αρχείο για σύγκριση",
+                "commandBlocked": "Η εντολή αποκλείστηκε: πιθανώς καταστροφική",
+                "confirmRun": "Επιβεβαίωση εκτέλεσης: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Σκέψη...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Εναλλαγή κλάδου",
                 "delete": "Διαγραφή κλάδου",
                 "newBranch": "Νέος κλάδος",
-                "branchFrom": "Διακλάδωση από αυτό το σημείο"
+                "branchFrom": "Διακλάδωση από αυτό το σημείο",
+                "messageCountShort": "{count} μην.",
+                "unnamed": "Κλάδος"
             },
             "context": {
                 "projectDetected": "Ανιχνεύθηκε έργο",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "σε εκτέλεση",
                 "expired": "έληξε",
-                "refresh": "Ανανέωση"
+                "refresh": "Ανανέωση",
+                "modelsRunningMany": "{count} μοντέλα σε εκτέλεση",
+                "modelsRunningOne": "{count} μοντέλο σε εκτέλεση",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Αποθήκευση Πλαισίου",
@@ -2956,7 +2983,8 @@
                 "warning": "Όλες οι λειτουργίες αρχείων θα εκτελούνται αμέσως χωρίς έγκριση. Χρησιμοποιήστε με δική σας ευθύνη.",
                 "disable": "Απενεργοποίηση",
                 "securityWarning": "Προειδοποίηση ασφαλείας",
-                "understood": "Κατανοητό"
+                "understood": "Κατανοητό",
+                "warningAria": "Προειδοποίηση ακραίας λειτουργίας"
             },
             "errorServerError": "Ο διακομιστής του παρόχου AI αντιμετωπίζει προβλήματα. Δοκιμάστε ξανά σε λίγο.",
             "errorServiceUnavailable": "Ο πάροχος AI δεν είναι προσωρινά διαθέσιμος (υπερφορτωμένος). Οι δωρεάν υπηρεσίες μπορεί να έχουν περιορισμούς. Δοκιμάστε αργότερα.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Απεριόριστο",
                 "roleAI": "AI",
-                "roleUser": "Χρήστης"
+                "roleUser": "Χρήστης",
+                "noConversations": "Δεν υπάρχουν ακόμα συνομιλίες",
+                "titleCount": "Ιστορικό ({count})"
             },
             "dropFileToAnalyze": "Αφήστε αρχείο για ανάλυση με το AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} token εισόδου, {output} token εξόδου, όπως μετρήθηκαν από τον πάροχο",
-                "breakdownCache": "{input} token εισόδου, {output} token εξόδου, {cacheRead} που διαβάστηκαν από την προσωρινή μνήμη του prompt, {cacheWritten} που γράφτηκαν σε αυτήν, όπως μετρήθηκαν από τον πάροχο"
+                "breakdownCache": "{input} token εισόδου, {output} token εξόδου, {cacheRead} που διαβάστηκαν από την προσωρινή μνήμη του prompt, {cacheWritten} που γράφτηκαν σε αυτήν, όπως μετρήθηκαν από τον πάροχο",
+                "countShort": "{count} τόκ."
             },
             "executeOperations": "Εκτέλεση λειτουργιών: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Θα παραλειφθούν",
                     "skipped": "Παραλείφθηκαν",
                     "existedAtCheckpoint": "υπήρχε στο σημείο ελέγχου",
-                    "absentAtCheckpoint": "απουσίαζε στο σημείο ελέγχου"
+                    "absentAtCheckpoint": "απουσίαζε στο σημείο ελέγχου",
+                    "noFiles": "Δεν συμπεριλήφθηκαν αρχεία σε αυτό το αποτέλεσμα επαναφοράς.",
+                    "otherActions": "Άλλες ενέργειες",
+                    "requestedPaths": "Ζητούμενο υποσύνολο διαδρομών",
+                    "scopeAll": "Εύρος: όλα τα αρχεία που καταγράφηκαν στο σημείο ελέγχου.",
+                    "titleApplied": "Η επαναφορά σημείου ελέγχου εφαρμόστηκε",
+                    "titleApplyReview": "Έλεγχος εφαρμογής επαναφοράς σημείου ελέγχου",
+                    "titleDryRunComplete": "Η δοκιμαστική επαναφορά σημείου ελέγχου ολοκληρώθηκε",
+                    "titleDryRunReview": "Αναθεώρηση δοκιμαστικής επαναφοράς σημείου ελέγχου"
                 },
                 "checks": {
                     "exitSummary": "κωδικός εξόδου {code} · {seconds}s",
                     "continueOnFailure": "Εκτελεί όλους τους ελέγχους ακόμη κι αν κάποιος αποτύχει.",
-                    "stopOnFailure": "Σταματά στον πρώτο έλεγχο που αποτυγχάνει."
+                    "stopOnFailure": "Σταματά στον πρώτο έλεγχο που αποτυγχάνει.",
+                    "checkLabel": "Έλεγχος:",
+                    "checksLabel": "Έλεγχοι:",
+                    "exitChip": "κωδικός εξόδου {code}",
+                    "filterChip": "φίλτρο: {filter}",
+                    "filterLabel": "Φίλτρο:",
+                    "notAvailable": "μ/δ",
+                    "passedCount": "{passed}/{total} επιτυχείς",
+                    "runCheckNote": "Εκτελεί μια επιλεγμένη εντολή build/test/lint στον χώρο εργασίας. Τα σενάρια δόμησης και οι δοκιμές εκτελούν πραγματικό κώδικα.",
+                    "runProjectCheck": "Εκτέλεση ελέγχου έργου",
+                    "runVerification": "Εκτέλεση γύρου επαλήθευσης",
+                    "runVerificationNote": "Εκτελεί επιλεγμένες εντολές build/test/lint στον χώρο εργασίας. Τα σενάρια δόμησης και οι δοκιμές εκτελούν πραγματικό κώδικα.",
+                    "stoppedEarly": "Διακόπηκε στον πρώτο αποτυχημένο έλεγχο.",
+                    "timeoutLabel": "Χρονικό όριο: {seconds} δ",
+                    "verification": "Επαλήθευση"
                 },
                 "diagnostics": {
-                    "none": "Δεν αναφέρθηκαν διαγνωστικά."
+                    "none": "Δεν αναφέρθηκαν διαγνωστικά.",
+                    "errorCountMany": "{count} σφάλματα",
+                    "errorCountOne": "{count} σφάλμα",
+                    "title": "Διαγνωστικά",
+                    "truncated": "Η λίστα διαγνωστικών περικόπηκε.",
+                    "warningCountMany": "{count} προειδοποιήσεις",
+                    "warningCountOne": "{count} προειδοποίηση"
                 },
                 "search": {
-                    "none": "Δεν βρέθηκαν αντιστοιχίες."
+                    "none": "Δεν βρέθηκαν αντιστοιχίες.",
+                    "ignoreCase": "αγνόηση πεζών/κεφαλαίων",
+                    "inPath": "στο {path}",
+                    "literal": "κυριολεκτικά",
+                    "matchCountMany": "{count} αντιστοιχίες",
+                    "matchCountOne": "{count} αντιστοιχία",
+                    "title": "Αναζήτηση στον χώρο εργασίας",
+                    "truncated": "Τα αποτελέσματα περικόπηκαν."
                 },
                 "git": {
                     "noStagedDiff": "Δεν υπάρχει έξοδος diff για αλλαγές στο ευρετήριο.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Έγκριση προσθήκης στο ευρετήριο Git",
                     "commitNote": "Αυτό δημιουργεί ένα git commit από το τρέχον ευρετήριο. Ελέγξτε πρώτα τα coding_git_status και coding_git_diff με staged=true.",
                     "stagePreviewNote": "Αυτό δείχνει σε προεπισκόπηση ποιες από τις ζητούμενες διαδρομές θα προστίθεντο στο ευρετήριο. Το ευρετήριο δεν θα αλλάξει.",
-                    "stageNote": "Αυτό αλλάζει το ευρετήριο git για τις ζητούμενες διαδρομές."
+                    "stageNote": "Αυτό αλλάζει το ευρετήριο git για τις ζητούμενες διαδρομές.",
+                    "afterCounts": "Μετά: {counts}",
+                    "beforeCounts": "Πριν: {counts}",
+                    "clean": "Το δέντρο εργασίας είναι καθαρό.",
+                    "commitCountMany": "{count} υποβολές",
+                    "commitCountOne": "{count} υποβολή",
+                    "conflicted": "σε σύγκρουση",
+                    "diffTruncated": "Η έξοδος διαφορών περικόπηκε.",
+                    "logTitle": "Αρχείο καταγραφής Git",
+                    "pathsChip": "διαδρομές: {paths}",
+                    "showingNewest": "Εμφανίζονται οι {count} νεότερες· υπάρχουν κι άλλες.",
+                    "statusCounts": "{staged} προετοιμασμένα, {unstaged} μη προετοιμασμένα, {untracked} μη παρακολουθούμενα, {conflicted} σε σύγκρουση",
+                    "titleCommitCreated": "Η υποβολή Git δημιουργήθηκε",
+                    "titleCommitDryRun": "Δοκιμαστική υποβολή Git",
+                    "titleCommitReview": "Έλεγχος υποβολής Git",
+                    "titleReview": "Έλεγχος Git",
+                    "titleStageApplied": "Η προετοιμασία Git εφαρμόστηκε",
+                    "titleStagedDiff": "Προετοιμασμένες διαφορές Git",
+                    "titleStageDryRun": "Δοκιμαστική προετοιμασία Git",
+                    "titleStatus": "Κατάσταση Git",
+                    "titleUnstagedDiff": "Μη προετοιμασμένες διαφορές Git",
+                    "untracked": "μη παρακολουθούμενο"
                 },
                 "patch": {
                     "validateNote": "Αυτό επικυρώνει το patch χωρίς να αλλάξει αρχεία.",
                     "applyNote": "Αυτό το αίτημα εφαρμογής υψηλού κινδύνου γράφει αρχεία αφού το backend δημιουργήσει ένα σημείο ελέγχου πριν από την εφαρμογή.",
                     "hideDiff": "Απόκρυψη ενοποιημένου diff",
-                    "showDiff": "Εμφάνιση ενοποιημένου diff"
-                }
+                    "showDiff": "Εμφάνιση ενοποιημένου diff",
+                    "actualLabel": "πραγματικό:",
+                    "checkpointCreated": "Δημιουργήθηκε σημείο ελέγχου πριν από την εφαρμογή",
+                    "diffTruncated": "Η προεπισκόπηση διαφορών περικόπηκε για εμφάνιση.",
+                    "expectedLabel": "αναμενόμενο:",
+                    "firstLines": "πρώτες {shown} από {total} γραμμές",
+                    "hunkCountMany": "{count} τμήματα",
+                    "hunkCountOne": "{count} τμήμα",
+                    "hunkIndex": "τμήμα {index}",
+                    "restoreManual": "Η επαναφορά είναι χειροκίνητη: μετά τον έλεγχο, χρησιμοποιήστε το {tool} με αυτό το αναγνωριστικό σημείου ελέγχου.",
+                    "titleApplied": "Η διόρθωση εφαρμόστηκε",
+                    "titleApplyBlocked": "Η εφαρμογή της διόρθωσης αποκλείστηκε",
+                    "titleApplyReview": "Έλεγχος εφαρμογής διόρθωσης",
+                    "titleDryRunConflicts": "Η δοκιμαστική εκτέλεση της διόρθωσης βρήκε συγκρούσεις",
+                    "titleDryRunPassed": "Η δοκιμαστική εκτέλεση της διόρθωσης πέτυχε",
+                    "titleDryRunReview": "Έλεγχος δοκιμαστικής εκτέλεσης διόρθωσης",
+                    "warnings": "Προειδοποιήσεις"
+                },
+                "binary": "δυαδικό",
+                "fileCountMany": "{count} αρχεία",
+                "fileCountOne": "{count} αρχείο",
+                "moreCount": "+{count} ακόμη",
+                "plan": {
+                    "likelyFiles": "Πιθανά αρχεία",
+                    "openQuestions": "Ανοιχτά ερωτήματα",
+                    "reviewOnlyNote": "Τεχνούργημα μόνο για έλεγχο. Οι επεξεργασίες και τα εργαλεία τροποποίησης εξακολουθούν να χρησιμοποιούν την τρέχουσα λειτουργία έγκρισης.",
+                    "riskHigh": "υψηλός κίνδυνος",
+                    "riskLow": "χαμηλός κίνδυνος",
+                    "riskMedium": "μέτριος κίνδυνος",
+                    "risks": "Κίνδυνοι",
+                    "title": "Σχέδιο κώδικα"
+                },
+                "state": {
+                    "clean": "καθαρό",
+                    "failed": "απέτυχε",
+                    "passed": "επιτυχές",
+                    "timedOut": "έληξε ο χρόνος"
+                },
+                "timeoutChip": "χρονικό όριο {seconds}s",
+                "truncated": "περικομμένο",
+                "workspaceLabel": "Χώρος εργασίας:"
+            },
+            "attachedImageAlt": "Συνημμένη εικόνα",
+            "stepNumber": "Βήμα {step}",
+            "transcribingLocally": "Τοπική μεταγραφή...",
+            "transferPlan": {
+                "dependsOnMany": "Εξαρτάται από {count} προπαρασκευαστικά βήματα",
+                "dependsOnOne": "Εξαρτάται από {count} προπαρασκευαστικό βήμα",
+                "destination": "Προορισμός: {destination}",
+                "title": "Αναθεώρηση σχεδίου μεταφοράς",
+                "warnings": "Προειδοποιήσεις"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Περιήγηση",
                     "installed": "Εγκατεστημένα"
-                }
+                },
+                "remoteInstallDisabled": "Η απομακρυσμένη εγκατάσταση προσθέτων είναι προς το παρόν απενεργοποιημένη έως ότου το μητρώο πιστοποιηθεί στην πλευρά του πελάτη. Τα τοπικά εγκατεστημένα πρόσθετα συνεχίζουν να λειτουργούν κανονικά."
             }
         },
         "filelu": {

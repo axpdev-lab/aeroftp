@@ -1269,7 +1269,14 @@
                 "stop": "Zastavit",
                 "stopShell": "Zastavit shell",
                 "closed": "Terminál uzavřen.",
-                "commandInsertedReview": "Příkaz vložen do Terminalu. Stiskněte Enter pro spuštění."
+                "commandInsertedReview": "Příkaz vložen do Terminalu. Stiskněte Enter pro spuštění.",
+                "decreaseFont": "Zmenšit písmo (Ctrl+-)",
+                "emptyClickPlus": "Kliknutím na {plus} otevřete terminál",
+                "emptySshHint": "nebo {ssh} pro vzdálený shell na {host}",
+                "increaseFont": "Zvětšit písmo (Ctrl+=)",
+                "newTab": "Nová karta terminálu",
+                "sshShellTo": "SSH shell na {host}",
+                "theme": "Motiv terminálu"
             },
             "editorPanel": {
                 "emptyState": "Klikněte pravým tlačítkem na soubor a zvolte \"Zobrazit zdroj\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Ukládání...",
                 "noFileSelected": "Nebyl vybrán žádný soubor k zobrazení",
                 "loading": "Načítání editoru...",
-                "dragToTerminalRun": "Přetáhněte do Terminalu pro vložení příkazu ke spuštění"
+                "dragToTerminalRun": "Přetáhněte do Terminalu pro vložení příkazu ke spuštění",
+                "closeEditor": "Zavřít editor",
+                "resetChanges": "Zahodit změny"
             },
             "previewPanel": {
                 "emptyState": "Klikněte pravým tlačítkem na soubor a zvolte \"Náhled\""
             },
             "codeEditor": "Editor kódu",
-            "sshTerminal": "SSH terminál"
+            "sshTerminal": "SSH terminál",
+            "comingSoon": "Již brzy",
+            "soonBadge": "Brzy"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Odmítnout spuštění nástroje",
                 "toggleDetails": "Přepnout podrobnosti",
                 "allowSession": "Povolit pro tuto relaci",
-                "nonAtomicReplace": "Neatomické nahrazení: soubor krátce chybí"
+                "nonAtomicReplace": "Neatomické nahrazení: soubor krátce chybí",
+                "moreOptions": "Další možnosti",
+                "panelAria": "Panel schvalování nástrojů"
             },
             "settings": {
                 "title": "Nastavení AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Záložní",
                 "routingNoFallback": "Žádný",
                 "bedrockNeedsModel": "Před testováním přidejte a povolte model Bedrock na kartě Modely.",
-                "bedrockSetup": "Nastavte Runtime URL pro svůj region AWS. Na kartě Modely přidejte ID, které podporuje Chat Completions v Bedrock Runtime. Runtime neuvádí seznam modelů. Test odešle malý inferenční požadavek, za který může AWS účtovat poplatky."
+                "bedrockSetup": "Nastavte Runtime URL pro svůj region AWS. Na kartě Modely přidejte ID, které podporuje Chat Completions v Bedrock Runtime. Runtime neuvádí seznam modelů. Test odešle malý inferenční požadavek, za který může AWS účtovat poplatky.",
+                "detectOllamaModelsTooltip": "Automaticky zjistit dostupné modely Ollama",
+                "kTokens": "{count}K tokenů",
+                "modelEditorAria": "Editor modelů AI",
+                "supportsTools": "Podporuje nástroje",
+                "supportsVision": "Podporuje vidění",
+                "thinkingReasoning": "Přemýšlení/Uvažování",
+                "toolQuality": "Kvalita nástrojů: {quality}/5"
             },
             "copy": "Kopírovat",
             "attachImage": "Přiložit obrázek",
@@ -2699,7 +2719,9 @@
                 "run": "Spustit v terminálu",
                 "insert": "Vložit do editoru",
                 "diff": "Porovnat s originalem",
-                "diffNoFile": "Žádný soubor k porovnání"
+                "diffNoFile": "Žádný soubor k porovnání",
+                "commandBlocked": "Příkaz zablokován: potenciálně destruktivní",
+                "confirmRun": "Potvrdit spuštění: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Přemýšlím...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Přepnout větev",
                 "delete": "Smazat větev",
                 "newBranch": "Nová větev",
-                "branchFrom": "Rozvětvit od tohoto bodu"
+                "branchFrom": "Rozvětvit od tohoto bodu",
+                "messageCountShort": "{count} zpr.",
+                "unnamed": "Větev"
             },
             "context": {
                 "projectDetected": "Projekt detekovan",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "běží",
                 "expired": "vypršel",
-                "refresh": "Obnovit"
+                "refresh": "Obnovit",
+                "modelsRunningMany": "Spuštěné modely: {count}",
+                "modelsRunningOne": "Spuštěn {count} model",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Cachování kontextu",
@@ -2956,7 +2983,8 @@
                 "warning": "Všechny souborové operace budou provedeny okamžitě bez schválení. Používejte na vlastní riziko.",
                 "disable": "Zakázat",
                 "securityWarning": "Bezpečnostní varování",
-                "understood": "Rozumím"
+                "understood": "Rozumím",
+                "warningAria": "Upozornění na extrémní režim"
             },
             "errorServerError": "Server poskytovatele AI má problémy. Zkuste to za chvíli znovu.",
             "errorServiceUnavailable": "Poskytovatel AI je dočasně nedostupný (přetížený). Bezplatné služby mohou mít omezení. Zkuste to později.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Neomezeně",
                 "roleAI": "AI",
-                "roleUser": "Uživatel"
+                "roleUser": "Uživatel",
+                "noConversations": "Zatím žádné konverzace",
+                "titleCount": "Historie ({count})"
             },
             "dropFileToAnalyze": "Přetažte soubor pro analýzu pomocí AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} vstupních tokenů, {output} výstupních tokenů, podle počtu poskytovatele",
-                "breakdownCache": "{input} vstupních tokenů, {output} výstupních tokenů, {cacheRead} načteno z mezipaměti promptu, {cacheWritten} zapsáno do ní, podle počtu poskytovatele"
+                "breakdownCache": "{input} vstupních tokenů, {output} výstupních tokenů, {cacheRead} načteno z mezipaměti promptu, {cacheWritten} zapsáno do ní, podle počtu poskytovatele",
+                "countShort": "{count} tok."
             },
             "executeOperations": "Provést operace: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Bude přeskočeno",
                     "skipped": "Přeskočeno",
                     "existedAtCheckpoint": "existoval v kontrolním bodě",
-                    "absentAtCheckpoint": "chyběl v kontrolním bodě"
+                    "absentAtCheckpoint": "chyběl v kontrolním bodě",
+                    "noFiles": "Tento výsledek obnovení neobsahuje žádné soubory.",
+                    "otherActions": "Další akce",
+                    "requestedPaths": "Požadovaná podmnožina cest",
+                    "scopeAll": "Rozsah: všechny soubory zachycené v kontrolním bodě.",
+                    "titleApplied": "Obnovení kontrolního bodu použito",
+                    "titleApplyReview": "Kontrola použití obnovení kontrolního bodu",
+                    "titleDryRunComplete": "Zkušební běh obnovení kontrolního bodu dokončen",
+                    "titleDryRunReview": "Kontrola zkušebního obnovení kontrolního bodu"
                 },
                 "checks": {
                     "exitSummary": "návratový kód {code} · {seconds}s",
                     "continueOnFailure": "Spustí všechny kontroly, i když některá selže.",
-                    "stopOnFailure": "Zastaví se u první neúspěšné kontroly."
+                    "stopOnFailure": "Zastaví se u první neúspěšné kontroly.",
+                    "checkLabel": "Kontrola:",
+                    "checksLabel": "Kontroly:",
+                    "exitChip": "návratový kód {code}",
+                    "filterChip": "filtr: {filter}",
+                    "filterLabel": "Filtr:",
+                    "notAvailable": "nedost.",
+                    "passedCount": "{passed}/{total} prošlo",
+                    "runCheckNote": "Spustí v pracovním prostoru vybraný příkaz build/test/lint. Sestavovací skripty a testy spouštějí skutečný kód.",
+                    "runProjectCheck": "Spustit kontrolu projektu",
+                    "runVerification": "Spustit ověřovací průchod",
+                    "runVerificationNote": "Spustí v pracovním prostoru vybrané příkazy build/test/lint. Sestavovací skripty a testy spouštějí skutečný kód.",
+                    "stoppedEarly": "Zastaveno u první neúspěšné kontroly.",
+                    "timeoutLabel": "Časový limit: {seconds} s",
+                    "verification": "Ověření"
                 },
                 "diagnostics": {
-                    "none": "Nebyla hlášena žádná diagnostika."
+                    "none": "Nebyla hlášena žádná diagnostika.",
+                    "errorCountMany": "{count} chyb",
+                    "errorCountOne": "{count} chyba",
+                    "title": "Diagnostika",
+                    "truncated": "Seznam diagnostiky byl zkrácen.",
+                    "warningCountMany": "{count} varování",
+                    "warningCountOne": "{count} varování"
                 },
                 "search": {
-                    "none": "Nebyly nalezeny žádné shody."
+                    "none": "Nebyly nalezeny žádné shody.",
+                    "ignoreCase": "ignorovat velikost písmen",
+                    "inPath": "v {path}",
+                    "literal": "doslovně",
+                    "matchCountMany": "{count} shod",
+                    "matchCountOne": "{count} shoda",
+                    "title": "Hledání v pracovním prostoru",
+                    "truncated": "Výsledky byly zkráceny."
                 },
                 "git": {
                     "noStagedDiff": "Žádný výstup diff pro připravené změny.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Schválení Git přípravy",
                     "commitNote": "Tímto se vytvoří git commit z aktuálního připraveného indexu. Nejprve zkontrolujte coding_git_status a coding_git_diff se staged=true.",
                     "stagePreviewNote": "Tímto se zobrazí náhled, které z požadovaných cest by byly připraveny; index se nezmění.",
-                    "stageNote": "Tímto se změní git index pro požadované cesty."
+                    "stageNote": "Tímto se změní git index pro požadované cesty.",
+                    "afterCounts": "Po: {counts}",
+                    "beforeCounts": "Před: {counts}",
+                    "clean": "Pracovní strom je čistý.",
+                    "commitCountMany": "{count} commitů",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "v konfliktu",
+                    "diffTruncated": "Výstup diffu byl zkrácen.",
+                    "logTitle": "Protokol Gitu",
+                    "pathsChip": "cesty: {paths}",
+                    "showingNewest": "Zobrazeno nejnovějších {count}; existují další.",
+                    "statusCounts": "{staged} připraveno, {unstaged} nepřipraveno, {untracked} nesledováno, {conflicted} v konfliktu",
+                    "titleCommitCreated": "Git commit vytvořen",
+                    "titleCommitDryRun": "Zkušební Git commit",
+                    "titleCommitReview": "Kontrola Git commitu",
+                    "titleReview": "Kontrola Gitu",
+                    "titleStageApplied": "Git příprava použita",
+                    "titleStagedDiff": "Git diff připravených změn",
+                    "titleStageDryRun": "Zkušební Git příprava",
+                    "titleStatus": "Stav Gitu",
+                    "titleUnstagedDiff": "Git diff nepřipravených změn",
+                    "untracked": "nesledováno"
                 },
                 "patch": {
                     "validateNote": "Tímto se ověří patch bez změny souborů.",
                     "applyNote": "Tento vysoce rizikový požadavek na použití zapíše soubory poté, co backend vytvoří kontrolní bod před použitím.",
                     "hideDiff": "Skrýt sjednocený diff",
-                    "showDiff": "Zobrazit sjednocený diff"
-                }
+                    "showDiff": "Zobrazit sjednocený diff",
+                    "actualLabel": "skutečné:",
+                    "checkpointCreated": "Vytvořen kontrolní bod před použitím",
+                    "diffTruncated": "Náhled diffu byl pro zobrazení zkrácen.",
+                    "expectedLabel": "očekávané:",
+                    "firstLines": "prvních {shown} z {total} řádků",
+                    "hunkCountMany": "{count} bloků",
+                    "hunkCountOne": "{count} blok",
+                    "hunkIndex": "blok {index}",
+                    "restoreManual": "Obnovení je ruční: po kontrole použijte {tool} s tímto ID kontrolního bodu.",
+                    "titleApplied": "Oprava použita",
+                    "titleApplyBlocked": "Použití opravy zablokováno",
+                    "titleApplyReview": "Kontrola použití opravy",
+                    "titleDryRunConflicts": "Zkušební běh opravy našel konflikty",
+                    "titleDryRunPassed": "Zkušební běh opravy prošel",
+                    "titleDryRunReview": "Kontrola zkušebního běhu opravy",
+                    "warnings": "Upozornění"
+                },
+                "binary": "binární",
+                "fileCountMany": "{count} souborů",
+                "fileCountOne": "{count} soubor",
+                "moreCount": "+{count} další",
+                "plan": {
+                    "likelyFiles": "Pravděpodobné soubory",
+                    "openQuestions": "Otevřené otázky",
+                    "reviewOnlyNote": "Artefakt pouze ke kontrole. Úpravy a měnící nástroje stále používají aktuální režim schvalování.",
+                    "riskHigh": "vysoké riziko",
+                    "riskLow": "nízké riziko",
+                    "riskMedium": "střední riziko",
+                    "risks": "Rizika",
+                    "title": "Plán kódování"
+                },
+                "state": {
+                    "clean": "čisté",
+                    "failed": "selhalo",
+                    "passed": "prošlo",
+                    "timedOut": "vypršel čas"
+                },
+                "timeoutChip": "časový limit {seconds}s",
+                "truncated": "zkráceno",
+                "workspaceLabel": "Pracovní prostor:"
+            },
+            "attachedImageAlt": "Přiložený obrázek",
+            "stepNumber": "Krok {step}",
+            "transcribingLocally": "Probíhá místní přepis...",
+            "transferPlan": {
+                "dependsOnMany": "Závisí na {count} přípravných krocích",
+                "dependsOnOne": "Závisí na {count} přípravném kroku",
+                "destination": "Cíl: {destination}",
+                "title": "Kontrola plánu přenosu",
+                "warnings": "Upozornění"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Procházet",
                     "installed": "Nainstalované"
-                }
+                },
+                "remoteInstallDisabled": "Vzdálená instalace zásuvných modulů je momentálně zakázána, dokud nebude registr ověřen na straně klienta. Místně nainstalované zásuvné moduly nadále fungují normálně."
             }
         },
         "filelu": {

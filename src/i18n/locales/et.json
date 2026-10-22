@@ -1269,7 +1269,14 @@
                 "stop": "Peata",
                 "stopShell": "Peata shell",
                 "closed": "Terminal suletud.",
-                "commandInsertedReview": "Käsk sisestatud Terminali. Käivitamiseks vajutage Enter."
+                "commandInsertedReview": "Käsk sisestatud Terminali. Käivitamiseks vajutage Enter.",
+                "decreaseFont": "Vähenda fondi suurust (Ctrl+-)",
+                "emptyClickPlus": "Terminali avamiseks klõpsa {plus}",
+                "emptySshHint": "või {ssh} kaugkesta jaoks hostis {host}",
+                "increaseFont": "Suurenda fondi suurust (Ctrl+=)",
+                "newTab": "Uus terminali vahekaart",
+                "sshShellTo": "SSH-kest hostis {host}",
+                "theme": "Terminali teema"
             },
             "editorPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Kuva lähtekood\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Salvestamine...",
                 "noFileSelected": "Vaatamiseks pole faili valitud",
                 "loading": "Redaktori laadimine...",
-                "dragToTerminalRun": "Lohistage Terminali, et sisestada käivituskäsk"
+                "dragToTerminalRun": "Lohistage Terminali, et sisestada käivituskäsk",
+                "closeEditor": "Sulge redaktor",
+                "resetChanges": "Lähtesta muudatused"
             },
             "previewPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Eelvaade\""
             },
             "codeEditor": "Koodiredaktor",
-            "sshTerminal": "SSH terminal"
+            "sshTerminal": "SSH terminal",
+            "comingSoon": "Tulekul",
+            "soonBadge": "Varsti"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Keeldu tööriista käivitamisest",
                 "toggleDetails": "Lülita üksikasjad",
                 "allowSession": "Luba selles seansis",
-                "nonAtomicReplace": "Mitteatomaarne asendamine: fail on hetkeks puudu"
+                "nonAtomicReplace": "Mitteatomaarne asendamine: fail on hetkeks puudu",
+                "moreOptions": "Rohkem valikuid",
+                "panelAria": "Tööriistade kinnitamise paneel"
             },
             "settings": {
                 "title": "AI seaded",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Varumudel",
                 "routingNoFallback": "Puudub",
                 "bedrockNeedsModel": "Lisa ja luba enne testimist vahekaardil Mudelid Bedrocki mudel.",
-                "bedrockSetup": "Määra oma AWS-i piirkonna Runtime URL. Lisa vahekaardil Mudelid ID, mis toetab Chat Completions teenuses Bedrock Runtime. Runtime ei kuva mudelite loendit. Test saadab väikese järelduspäringu, millega võivad kaasneda AWS-i tasud."
+                "bedrockSetup": "Määra oma AWS-i piirkonna Runtime URL. Lisa vahekaardil Mudelid ID, mis toetab Chat Completions teenuses Bedrock Runtime. Runtime ei kuva mudelite loendit. Test saadab väikese järelduspäringu, millega võivad kaasneda AWS-i tasud.",
+                "detectOllamaModelsTooltip": "Tuvasta saadaolevad Ollama mudelid automaatselt",
+                "kTokens": "{count}K märgi",
+                "modelEditorAria": "Tehisintellekti mudelite redaktor",
+                "supportsTools": "Toetab tööriistu",
+                "supportsVision": "Toetab nägemist",
+                "thinkingReasoning": "Mõtlemine/Arutlemine",
+                "toolQuality": "Tööriistade kvaliteet: {quality}/5"
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",
@@ -2699,7 +2719,9 @@
                 "run": "Käivita terminalis",
                 "insert": "Sisesta redaktorisse",
                 "diff": "Võrdle originaaliga",
-                "diffNoFile": "Faili pole avatud võrdlemiseks"
+                "diffNoFile": "Faili pole avatud võrdlemiseks",
+                "commandBlocked": "Käsk blokeeritud: võib olla hävitav",
+                "confirmRun": "Kinnita käivitamine: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Mõtleb...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Vaheta haru",
                 "delete": "Kustuta haru",
                 "newBranch": "Uus haru",
-                "branchFrom": "Haruta sellest punktist"
+                "branchFrom": "Haruta sellest punktist",
+                "messageCountShort": "{count} sõn.",
+                "unnamed": "Haru"
             },
             "context": {
                 "projectDetected": "Projekt tuvastatud",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "töötab",
                 "expired": "aegunud",
-                "refresh": "Värskenda"
+                "refresh": "Värskenda",
+                "modelsRunningMany": "{count} mudelit töötab",
+                "modelsRunningOne": "{count} mudel töötab",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Konteksti vahemälu",
@@ -2956,7 +2983,8 @@
                 "warning": "Kõik failitoimingud käivitatakse kohe ilma kinnituseta. Kasutage omal vastutusel.",
                 "disable": "Keela",
                 "securityWarning": "Turvahoiatus",
-                "understood": "Selge"
+                "understood": "Selge",
+                "warningAria": "Ekstreemrežiimi hoiatus"
             },
             "errorServerError": "AI teenusepakkuja serveril on probleeme. Proovige hetke pärast uuesti.",
             "errorServiceUnavailable": "AI teenusepakkuja on ajutiselt kättesaamatu (ülekoormatud). Tasuta teenustel võivad olla piirangud. Proovige hiljem uuesti.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Piiramatu",
                 "roleAI": "AI",
-                "roleUser": "Kasutaja"
+                "roleUser": "Kasutaja",
+                "noConversations": "Vestlusi veel pole",
+                "titleCount": "Ajalugu ({count})"
             },
             "dropFileToAnalyze": "Kukutage fail AeroAgent-iga analüüsimiseks",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} sisendtokenit, {output} väljundtokenit, teenusepakkuja arvestuse järgi",
-                "breakdownCache": "{input} sisendtokenit, {output} väljundtokenit, {cacheRead} loetud viiba vahemälust, {cacheWritten} sinna kirjutatud, teenusepakkuja arvestuse järgi"
+                "breakdownCache": "{input} sisendtokenit, {output} väljundtokenit, {cacheRead} loetud viiba vahemälust, {cacheWritten} sinna kirjutatud, teenusepakkuja arvestuse järgi",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Käivita toiminguid: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Jäetaks vahele",
                     "skipped": "Vahele jäetud",
                     "existedAtCheckpoint": "oli kontrollpunktis olemas",
-                    "absentAtCheckpoint": "puudus kontrollpunktis"
+                    "absentAtCheckpoint": "puudus kontrollpunktis",
+                    "noFiles": "Sellesse taastamistulemusse ei kaasatud ühtegi faili.",
+                    "otherActions": "Muud toimingud",
+                    "requestedPaths": "Taotletud teede alamhulk",
+                    "scopeAll": "Ulatus: kõik kontrollpunktis salvestatud failid.",
+                    "titleApplied": "Kontrollpunkti taastamine rakendatud",
+                    "titleApplyReview": "Kontrollpunkti taastamise rakendamise ülevaatus",
+                    "titleDryRunComplete": "Kontrollpunkti taastamise proovikäik lõpetatud",
+                    "titleDryRunReview": "Kontrollpunkti taastamise proovikäigu ülevaatus"
                 },
                 "checks": {
                     "exitSummary": "väljumiskood {code} · {seconds}s",
                     "continueOnFailure": "Käivitab kõik kontrollid, isegi kui mõni ebaõnnestub.",
-                    "stopOnFailure": "Peatub esimese ebaõnnestunud kontrolli juures."
+                    "stopOnFailure": "Peatub esimese ebaõnnestunud kontrolli juures.",
+                    "checkLabel": "Kontroll:",
+                    "checksLabel": "Kontrollid:",
+                    "exitChip": "väljumiskood {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "pole saadaval",
+                    "passedCount": "{passed}/{total} läbitud",
+                    "runCheckNote": "Käivitab tööalas valitud build/test/lint-käsu. Ehitusskriptid ja testid käivitavad päris koodi.",
+                    "runProjectCheck": "Käivita projekti kontroll",
+                    "runVerification": "Käivita kontrollkäik",
+                    "runVerificationNote": "Käivitab tööalas valitud build/test/lint-käske. Ehitusskriptid ja testid käivitavad päris koodi.",
+                    "stoppedEarly": "Peatus esimese ebaõnnestunud kontrolli juures.",
+                    "timeoutLabel": "Ajalõpp: {seconds} s",
+                    "verification": "Kontrollimine"
                 },
                 "diagnostics": {
-                    "none": "Diagnostikat ei teatatud."
+                    "none": "Diagnostikat ei teatatud.",
+                    "errorCountMany": "{count} viga",
+                    "errorCountOne": "{count} viga",
+                    "title": "Diagnostika",
+                    "truncated": "Diagnostika loendit kärbiti.",
+                    "warningCountMany": "{count} hoiatust",
+                    "warningCountOne": "{count} hoiatus"
                 },
                 "search": {
-                    "none": "Vasteid ei leitud."
+                    "none": "Vasteid ei leitud.",
+                    "ignoreCase": "eira tõstu",
+                    "inPath": "asukohas {path}",
+                    "literal": "sõnasõnaline",
+                    "matchCountMany": "{count} vastet",
+                    "matchCountOne": "{count} vaste",
+                    "title": "Tööruumi otsing",
+                    "truncated": "Tulemusi kärbiti."
                 },
                 "git": {
                     "noStagedDiff": "Ettevalmistatud muudatuste diff-väljund puudub.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git-i ettevalmistamise kinnitamine",
                     "commitNote": "See loob praegusest ettevalmistatud indeksist git-i sissekande (commit). Vaadake esmalt üle coding_git_status ja coding_git_diff parameetriga staged=true.",
                     "stagePreviewNote": "See näitab eelvaates, millised soovitud teed ette valmistataks; indeks ei muutu.",
-                    "stageNote": "See muudab git-i indeksit soovitud teede jaoks."
+                    "stageNote": "See muudab git-i indeksit soovitud teede jaoks.",
+                    "afterCounts": "Pärast: {counts}",
+                    "beforeCounts": "Enne: {counts}",
+                    "clean": "Tööpuu on puhas.",
+                    "commitCountMany": "{count} sissekannet",
+                    "commitCountOne": "{count} sissekanne",
+                    "conflicted": "konfliktis",
+                    "diffTruncated": "Erinevuste väljund kärbiti.",
+                    "logTitle": "Git'i logi",
+                    "pathsChip": "teed: {paths}",
+                    "showingNewest": "Kuvatakse uusimad {count}; neid on rohkem.",
+                    "statusCounts": "{staged} lavastatud, {unstaged} lavastamata, {untracked} jälgimata, {conflicted} konfliktis",
+                    "titleCommitCreated": "Git'i sissekanne loodud",
+                    "titleCommitDryRun": "Git'i sissekande proovikäik",
+                    "titleCommitReview": "Git'i sissekande ülevaatus",
+                    "titleReview": "Git'i ülevaatus",
+                    "titleStageApplied": "Git'i lavastamine rakendatud",
+                    "titleStagedDiff": "Git'i lavastatud erinevused",
+                    "titleStageDryRun": "Git'i lavastamise proovikäik",
+                    "titleStatus": "Git'i olek",
+                    "titleUnstagedDiff": "Git'i lavastamata erinevused",
+                    "untracked": "jälgimata"
                 },
                 "patch": {
                     "validateNote": "See valideerib paiga ilma faile muutmata.",
                     "applyNote": "See kõrge ohuga rakendamistaotlus kirjutab failid pärast seda, kui taustaprogramm on loonud rakendamiseelse kontrollpunkti.",
                     "hideDiff": "Peida ühtne diff",
-                    "showDiff": "Näita ühtset diffi"
-                }
+                    "showDiff": "Näita ühtset diffi",
+                    "actualLabel": "tegelik:",
+                    "checkpointCreated": "Rakendamiseelne kontrollpunkt loodud",
+                    "diffTruncated": "Erinevuste eelvaade kärbiti kuvamiseks.",
+                    "expectedLabel": "oodatud:",
+                    "firstLines": "esimesed {shown} rida {total}-st",
+                    "hunkCountMany": "{count} plokki",
+                    "hunkCountOne": "{count} plokk",
+                    "hunkIndex": "plokk {index}",
+                    "restoreManual": "Taastamine on käsitsi: kasutage pärast ülevaatust tööriista {tool} selle kontrollpunkti ID-ga.",
+                    "titleApplied": "Paik rakendatud",
+                    "titleApplyBlocked": "Paiga rakendamine blokeeritud",
+                    "titleApplyReview": "Paiga rakendamise ülevaatus",
+                    "titleDryRunConflicts": "Paiga proovikäik leidis konflikte",
+                    "titleDryRunPassed": "Paiga proovikäik õnnestus",
+                    "titleDryRunReview": "Paiga proovikäigu ülevaatus",
+                    "warnings": "Hoiatused"
+                },
+                "binary": "binaarne",
+                "fileCountMany": "{count} faili",
+                "fileCountOne": "{count} fail",
+                "moreCount": "+{count} veel",
+                "plan": {
+                    "likelyFiles": "Tõenäolised failid",
+                    "openQuestions": "Lahtised küsimused",
+                    "reviewOnlyNote": "Ainult ülevaatamiseks. Muudatused ja muutvad tööriistad kasutavad endiselt praegust kinnitusrežiimi.",
+                    "riskHigh": "kõrge risk",
+                    "riskLow": "madal risk",
+                    "riskMedium": "keskmine risk",
+                    "risks": "Riskid",
+                    "title": "Kodeerimisplaan"
+                },
+                "state": {
+                    "clean": "puhas",
+                    "failed": "ebaõnnestus",
+                    "passed": "läbitud",
+                    "timedOut": "aegunud"
+                },
+                "timeoutChip": "ajalõpp {seconds}s",
+                "truncated": "kärbitud",
+                "workspaceLabel": "Tööruum:"
+            },
+            "attachedImageAlt": "Lisatud pilt",
+            "stepNumber": "Samm {step}",
+            "transcribingLocally": "Kohalik transkribeerimine...",
+            "transferPlan": {
+                "dependsOnMany": "Sõltub {count} ettevalmistavast sammust",
+                "dependsOnOne": "Sõltub {count} ettevalmistavast sammust",
+                "destination": "Sihtkoht: {destination}",
+                "title": "Edastusplaani ülevaatus",
+                "warnings": "Hoiatused"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Sirvi",
                     "installed": "Paigaldatud"
-                }
+                },
+                "remoteInstallDisabled": "Pistikprogrammide kaugpaigaldus on praegu keelatud, kuni register on kliendi poolel autenditud. Kohalikult paigaldatud pistikprogrammid töötavad edasi tavapäraselt."
             }
         },
         "filelu": {

@@ -1269,7 +1269,14 @@
                 "stop": "Спри",
                 "stopShell": "Спри обвивка",
                 "closed": "Терминалът е затворен.",
-                "commandInsertedReview": "Командата е въведена в Terminal. Натиснете Enter за изпълнение."
+                "commandInsertedReview": "Командата е въведена в Terminal. Натиснете Enter за изпълнение.",
+                "decreaseFont": "Намали шрифта (Ctrl+-)",
+                "emptyClickPlus": "Щракнете върху {plus}, за да отворите терминал",
+                "emptySshHint": "или {ssh} за отдалечена обвивка към {host}",
+                "increaseFont": "Увеличи шрифта (Ctrl+=)",
+                "newTab": "Нов раздел на терминала",
+                "sshShellTo": "SSH обвивка към {host}",
+                "theme": "Тема на терминала"
             },
             "editorPanel": {
                 "emptyState": "Натиснете с десен бутон върху файл и изберете \"Преглед на изходния код\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Запазване...",
                 "noFileSelected": "Не е избран файл за преглед",
                 "loading": "Зареждане на редактор...",
-                "dragToTerminalRun": "Плъзнете към Terminal, за да вмъкнете команда за изпълнение"
+                "dragToTerminalRun": "Плъзнете към Terminal, за да вмъкнете команда за изпълнение",
+                "closeEditor": "Затвори редактора",
+                "resetChanges": "Нулирай промените"
             },
             "previewPanel": {
                 "emptyState": "Натиснете с десен бутон върху файл и изберете \"Преглед\""
             },
             "codeEditor": "Редактор на код",
-            "sshTerminal": "SSH терминал"
+            "sshTerminal": "SSH терминал",
+            "comingSoon": "Очаквайте скоро",
+            "soonBadge": "Скоро"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Откажи изпълнението на инструмент",
                 "toggleDetails": "Превключи подробности",
                 "allowSession": "Разреши за тази сесия",
-                "nonAtomicReplace": "Неатомарна замяна: файлът временно липсва"
+                "nonAtomicReplace": "Неатомарна замяна: файлът временно липсва",
+                "moreOptions": "Още опции",
+                "panelAria": "Панел за одобрение на инструменти"
             },
             "settings": {
                 "title": "AI настройки",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Резервен",
                 "routingNoFallback": "Няма",
                 "bedrockNeedsModel": "Добавете и активирайте модел на Bedrock в раздела Модели, преди да тествате.",
-                "bedrockSetup": "Задайте Runtime URL за вашия регион на AWS. В Модели добавете ID, който поддържа Chat Completions в Bedrock Runtime. Runtime не показва списък с модели. Тестът изпраща малка заявка за извод, която може да доведе до такси от AWS."
+                "bedrockSetup": "Задайте Runtime URL за вашия регион на AWS. В Модели добавете ID, който поддържа Chat Completions в Bedrock Runtime. Runtime не показва списък с модели. Тестът изпраща малка заявка за извод, която може да доведе до такси от AWS.",
+                "detectOllamaModelsTooltip": "Автоматично откриване на наличните модели на Ollama",
+                "kTokens": "{count}K токена",
+                "modelEditorAria": "Редактор на модели с ИИ",
+                "supportsTools": "Поддържа инструменти",
+                "supportsVision": "Поддържа зрение",
+                "thinkingReasoning": "Мислене/Разсъждение",
+                "toolQuality": "Качество на инструментите: {quality}/5"
             },
             "copy": "Копиране",
             "attachImage": "Прикачване на изображение",
@@ -2699,7 +2719,9 @@
                 "run": "Изпълнение в терминала",
                 "insert": "Вмъкване в редактора",
                 "diff": "Сравняване с оригинала",
-                "diffNoFile": "Няма отворен файл за сравняване"
+                "diffNoFile": "Няма отворен файл за сравняване",
+                "commandBlocked": "Командата е блокирана: потенциално разрушителна",
+                "confirmRun": "Потвърдете изпълнението: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Мисля...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Превключване на клон",
                 "delete": "Изтриване на клон",
                 "newBranch": "Нов клон",
-                "branchFrom": "Разклоняване от тази точка"
+                "branchFrom": "Разклоняване от тази точка",
+                "messageCountShort": "{count} съобщ.",
+                "unnamed": "Клон"
             },
             "context": {
                 "projectDetected": "Открит проект",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "работещ",
                 "expired": "изтекъл",
-                "refresh": "Опресняване"
+                "refresh": "Опресняване",
+                "modelsRunningMany": "Работещи модели: {count}",
+                "modelsRunningOne": "Работи {count} модел",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Кеширане на контекст",
@@ -2956,7 +2983,8 @@
                 "warning": "Всички файлови операции ще се изпълняват незабавно без одобрение. Използвайте на свой риск.",
                 "disable": "Деактивиране",
                 "securityWarning": "Предупреждение за сигурност",
-                "understood": "Разбрах"
+                "understood": "Разбрах",
+                "warningAria": "Предупреждение за екстремен режим"
             },
             "errorServerError": "Сървърът на AI доставчика има проблеми. Опитайте отново след малко.",
             "errorServiceUnavailable": "AI доставчикът е временно недостъпен (претоварен). Безплатните услуги може да имат ограничения. Опитайте по-късно.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Неограничено",
                 "roleAI": "AI",
-                "roleUser": "Потребител"
+                "roleUser": "Потребител",
+                "noConversations": "Все още няма разговори",
+                "titleCount": "История ({count})"
             },
             "dropFileToAnalyze": "Пуснете файл за анализ с AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} входни токена, {output} изходни токена, според отчитането на доставчика",
-                "breakdownCache": "{input} входни токена, {output} изходни токена, {cacheRead} прочетени от кеша на промпта, {cacheWritten} записани в него, според отчитането на доставчика"
+                "breakdownCache": "{input} входни токена, {output} изходни токена, {cacheRead} прочетени от кеша на промпта, {cacheWritten} записани в него, според отчитането на доставчика",
+                "countShort": "{count} ток."
             },
             "executeOperations": "Изпълнение на операции: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Ще бъдат пропуснати",
                     "skipped": "Пропуснати",
                     "existedAtCheckpoint": "съществуваше в контролната точка",
-                    "absentAtCheckpoint": "липсваше в контролната точка"
+                    "absentAtCheckpoint": "липсваше в контролната точка",
+                    "noFiles": "В този резултат от възстановяването не са включени файлове.",
+                    "otherActions": "Други действия",
+                    "requestedPaths": "Заявено подмножество от пътища",
+                    "scopeAll": "Обхват: всички файлове, записани в контролната точка.",
+                    "titleApplied": "Възстановяването от контролна точка е приложено",
+                    "titleApplyReview": "Преглед на прилагането на възстановяването от контролна точка",
+                    "titleDryRunComplete": "Пробното възстановяване от контролна точка завърши",
+                    "titleDryRunReview": "Преглед на пробно възстановяване на контролна точка"
                 },
                 "checks": {
                     "exitSummary": "код на изход {code} · {seconds}s",
                     "continueOnFailure": "Изпълнява всички проверки, дори ако някоя се провали.",
-                    "stopOnFailure": "Спира при първата неуспешна проверка."
+                    "stopOnFailure": "Спира при първата неуспешна проверка.",
+                    "checkLabel": "Проверка:",
+                    "checksLabel": "Проверки:",
+                    "exitChip": "изходен код {code}",
+                    "filterChip": "филтър: {filter}",
+                    "filterLabel": "Филтър:",
+                    "notAvailable": "н/д",
+                    "passedCount": "{passed}/{total} успешни",
+                    "runCheckNote": "Изпълнява избрана build/test/lint команда в работното пространство. Скриптовете за компилиране и тестовете изпълняват реален код.",
+                    "runProjectCheck": "Изпълни проверка на проекта",
+                    "runVerification": "Изпълни верификационен цикъл",
+                    "runVerificationNote": "Изпълнява избрани build/test/lint команди в работното пространство. Скриптовете за компилиране и тестовете изпълняват реален код.",
+                    "stoppedEarly": "Спряно при първата неуспешна проверка.",
+                    "timeoutLabel": "Време за изчакване: {seconds} s",
+                    "verification": "Верификация"
                 },
                 "diagnostics": {
-                    "none": "Няма докладвана диагностика."
+                    "none": "Няма докладвана диагностика.",
+                    "errorCountMany": "{count} грешки",
+                    "errorCountOne": "{count} грешка",
+                    "title": "Диагностика",
+                    "truncated": "Списъкът с диагностика беше съкратен.",
+                    "warningCountMany": "{count} предупреждения",
+                    "warningCountOne": "{count} предупреждение"
                 },
                 "search": {
-                    "none": "Няма намерени съвпадения."
+                    "none": "Няма намерени съвпадения.",
+                    "ignoreCase": "без значение от регистъра",
+                    "inPath": "в {path}",
+                    "literal": "буквално",
+                    "matchCountMany": "{count} съвпадения",
+                    "matchCountOne": "{count} съвпадение",
+                    "title": "Търсене в работното пространство",
+                    "truncated": "Резултатите бяха съкратени."
                 },
                 "git": {
                     "noStagedDiff": "Няма изход от diff за промените в индекса.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Одобрение на Git индексиране",
                     "commitNote": "Това създава git къмит от текущия индекс. Първо прегледайте coding_git_status и coding_git_diff със staged=true.",
                     "stagePreviewNote": "Това показва предварително кои от заявените пътища биха били индексирани; индексът няма да се промени.",
-                    "stageNote": "Това променя git индекса за заявените пътища."
+                    "stageNote": "Това променя git индекса за заявените пътища.",
+                    "afterCounts": "След: {counts}",
+                    "beforeCounts": "Преди: {counts}",
+                    "clean": "Работното дърво е чисто.",
+                    "commitCountMany": "{count} комита",
+                    "commitCountOne": "{count} комит",
+                    "conflicted": "в конфликт",
+                    "diffTruncated": "Изходът с разликите беше съкратен.",
+                    "logTitle": "Git дневник",
+                    "pathsChip": "пътища: {paths}",
+                    "showingNewest": "Показани са най-новите {count}; има още.",
+                    "statusCounts": "{staged} в индекса, {unstaged} извън индекса, {untracked} непроследени, {conflicted} в конфликт",
+                    "titleCommitCreated": "Git комитът е създаден",
+                    "titleCommitDryRun": "Пробен Git комит",
+                    "titleCommitReview": "Преглед на Git комит",
+                    "titleReview": "Git преглед",
+                    "titleStageApplied": "Git индексирането е приложено",
+                    "titleStagedDiff": "Git разлики в индекса",
+                    "titleStageDryRun": "Пробно Git индексиране",
+                    "titleStatus": "Git статус",
+                    "titleUnstagedDiff": "Git разлики извън индекса",
+                    "untracked": "непроследен"
                 },
                 "patch": {
                     "validateNote": "Това валидира пача, без да променя файлове.",
                     "applyNote": "Тази заявка за прилагане с висок риск записва файлове, след като бекендът създаде контролна точка преди прилагането.",
                     "hideDiff": "Скриване на унифицирания diff",
-                    "showDiff": "Показване на унифицирания diff"
-                }
+                    "showDiff": "Показване на унифицирания diff",
+                    "actualLabel": "действително:",
+                    "checkpointCreated": "Създадена е контролна точка преди прилагане",
+                    "diffTruncated": "Прегледът на разликите е съкратен за показване.",
+                    "expectedLabel": "очаквано:",
+                    "firstLines": "първите {shown} от {total} реда",
+                    "hunkCountMany": "{count} блока",
+                    "hunkCountOne": "{count} блок",
+                    "hunkIndex": "блок {index}",
+                    "restoreManual": "Възстановяването е ръчно: след преглед използвайте {tool} с този ИД на контролната точка.",
+                    "titleApplied": "Корекцията е приложена",
+                    "titleApplyBlocked": "Прилагането на корекцията е блокирано",
+                    "titleApplyReview": "Преглед на прилагането на корекцията",
+                    "titleDryRunConflicts": "Пробното изпълнение на корекцията откри конфликти",
+                    "titleDryRunPassed": "Пробното изпълнение на корекцията е успешно",
+                    "titleDryRunReview": "Преглед на пробното изпълнение на корекцията",
+                    "warnings": "Предупреждения"
+                },
+                "binary": "двоичен",
+                "fileCountMany": "{count} файла",
+                "fileCountOne": "{count} файл",
+                "moreCount": "+{count} още",
+                "plan": {
+                    "likelyFiles": "Вероятни файлове",
+                    "openQuestions": "Отворени въпроси",
+                    "reviewOnlyNote": "Артефакт само за преглед. Редакциите и променящите инструменти все още използват текущия режим на одобрение.",
+                    "riskHigh": "висок риск",
+                    "riskLow": "нисък риск",
+                    "riskMedium": "среден риск",
+                    "risks": "Рискове",
+                    "title": "План за кодиране"
+                },
+                "state": {
+                    "clean": "чисто",
+                    "failed": "неуспешно",
+                    "passed": "успешно",
+                    "timedOut": "изтекло време"
+                },
+                "timeoutChip": "време за изчакване {seconds}s",
+                "truncated": "съкратено",
+                "workspaceLabel": "Работно пространство:"
+            },
+            "attachedImageAlt": "Прикачено изображение",
+            "stepNumber": "Стъпка {step}",
+            "transcribingLocally": "Локално транскрибиране...",
+            "transferPlan": {
+                "dependsOnMany": "Зависи от {count} подготвителни стъпки",
+                "dependsOnOne": "Зависи от {count} подготвителна стъпка",
+                "destination": "Местоназначение: {destination}",
+                "title": "Преглед на плана за прехвърляне",
+                "warnings": "Предупреждения"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Преглед",
                     "installed": "Инсталирани"
-                }
+                },
+                "remoteInstallDisabled": "Отдалеченото инсталиране на добавки в момента е изключено, докато регистърът не бъде удостоверен от страна на клиента. Локално инсталираните добавки продължават да работят нормално."
             }
         },
         "filelu": {

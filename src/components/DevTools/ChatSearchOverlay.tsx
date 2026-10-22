@@ -143,7 +143,7 @@ const ChatSearchOverlayImpl: React.FC<ChatSearchOverlayProps> = ({
                 value={query}
                 onChange={handleQueryChange}
                 onKeyDown={handleKeyDown}
-                placeholder="Search messages..."
+                placeholder={t('ai.search.placeholder')}
                 className="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none min-w-0"
                 autoComplete="off"
             />

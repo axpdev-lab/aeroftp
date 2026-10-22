@@ -1269,7 +1269,14 @@
                 "stop": "Stoppen",
                 "stopShell": "Shell stoppen",
                 "closed": "Terminal gesloten.",
-                "commandInsertedReview": "Opdracht ingevoegd in Terminal. Druk op Enter om uit te voeren."
+                "commandInsertedReview": "Opdracht ingevoegd in Terminal. Druk op Enter om uit te voeren.",
+                "decreaseFont": "Lettergrootte verkleinen (Ctrl+-)",
+                "emptyClickPlus": "Klik op {plus} om een terminal te openen",
+                "emptySshHint": "of {ssh} voor een externe shell naar {host}",
+                "increaseFont": "Lettergrootte vergroten (Ctrl+=)",
+                "newTab": "Nieuw terminaltabblad",
+                "sshShellTo": "SSH-shell naar {host}",
+                "theme": "Terminalthema"
             },
             "editorPanel": {
                 "emptyState": "Klik met de rechtermuisknop op een bestand en kies \"Bron weergeven\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Opslaan...",
                 "noFileSelected": "Geen bestand geselecteerd om te bekijken",
                 "loading": "Editor laden...",
-                "dragToTerminalRun": "Sleep naar Terminal om de uitvoeringsopdracht in te voegen"
+                "dragToTerminalRun": "Sleep naar Terminal om de uitvoeringsopdracht in te voegen",
+                "closeEditor": "Editor sluiten",
+                "resetChanges": "Wijzigingen herstellen"
             },
             "previewPanel": {
                 "emptyState": "Klik met de rechtermuisknop op een bestand en kies \"Voorbeeld\""
             },
             "codeEditor": "Code-editor",
-            "sshTerminal": "SSH-terminal"
+            "sshTerminal": "SSH-terminal",
+            "comingSoon": "Binnenkort beschikbaar",
+            "soonBadge": "Binnenkort"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Tooluitvoering afwijzen",
                 "toggleDetails": "Details in-/uitschakelen",
                 "allowSession": "Toestaan voor deze sessie",
-                "nonAtomicReplace": "Niet-atomaire vervanging: het bestand is even afwezig"
+                "nonAtomicReplace": "Niet-atomaire vervanging: het bestand is even afwezig",
+                "moreOptions": "Meer opties",
+                "panelAria": "Paneel voor goedkeuring van hulpmiddelen"
             },
             "settings": {
                 "title": "AI-instellingen",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Reserve",
                 "routingNoFallback": "Geen",
                 "bedrockNeedsModel": "Voeg vóór het testen een Bedrock-model toe en schakel het in op het tabblad Modellen.",
-                "bedrockSetup": "Stel de Runtime URL voor uw AWS-regio in. Voeg onder Modellen een ID toe die Chat Completions op Bedrock Runtime ondersteunt. Runtime geeft geen modellenlijst weer. De test verstuurt een kleine inferentieaanvraag waarvoor AWS kosten in rekening kan brengen."
+                "bedrockSetup": "Stel de Runtime URL voor uw AWS-regio in. Voeg onder Modellen een ID toe die Chat Completions op Bedrock Runtime ondersteunt. Runtime geeft geen modellenlijst weer. De test verstuurt een kleine inferentieaanvraag waarvoor AWS kosten in rekening kan brengen.",
+                "detectOllamaModelsTooltip": "Beschikbare Ollama-modellen automatisch detecteren",
+                "kTokens": "{count}K tokens",
+                "modelEditorAria": "AI-modeleditor",
+                "supportsTools": "Ondersteunt tools",
+                "supportsVision": "Ondersteunt beeldherkenning",
+                "thinkingReasoning": "Denken/Redeneren",
+                "toolQuality": "Kwaliteit van hulpmiddelen: {quality}/5"
             },
             "copy": "Kopiëren",
             "attachImage": "Afbeelding bijvoegen",
@@ -2699,7 +2719,9 @@
                 "run": "Uitvoeren in terminal",
                 "insert": "Invoegen in editor",
                 "diff": "Vergelijken met origineel",
-                "diffNoFile": "Geen bestand geopend om te vergelijken"
+                "diffNoFile": "Geen bestand geopend om te vergelijken",
+                "commandBlocked": "Opdracht geblokkeerd: mogelijk destructief",
+                "confirmRun": "Uitvoeren bevestigen: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Nadenken...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Tak wisselen",
                 "delete": "Tak verwijderen",
                 "newBranch": "Nieuwe tak",
-                "branchFrom": "Vertakken vanaf dit punt"
+                "branchFrom": "Vertakken vanaf dit punt",
+                "messageCountShort": "{count} ber.",
+                "unnamed": "Tak"
             },
             "context": {
                 "projectDetected": "Project gedetecteerd",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "actief",
                 "expired": "verlopen",
-                "refresh": "Vernieuwen"
+                "refresh": "Vernieuwen",
+                "modelsRunningMany": "{count} modellen actief",
+                "modelsRunningOne": "{count} model actief",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Contextcaching",
@@ -2956,7 +2983,8 @@
                 "warning": "Alle bestandsbewerkingen worden onmiddellijk uitgevoerd zonder goedkeuring. Gebruik op eigen risico.",
                 "disable": "Uitschakelen",
                 "securityWarning": "Beveiligingswaarschuwing",
-                "understood": "Begrepen"
+                "understood": "Begrepen",
+                "warningAria": "Waarschuwing extreme modus"
             },
             "errorServerError": "De server van de AI-provider heeft problemen. Probeer het zo opnieuw.",
             "errorServiceUnavailable": "De AI-provider is tijdelijk niet beschikbaar (overbelast). Gratis diensten kunnen beperkingen hebben. Probeer het later opnieuw.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Onbeperkt",
                 "roleAI": "AI",
-                "roleUser": "Gebruiker"
+                "roleUser": "Gebruiker",
+                "noConversations": "Nog geen gesprekken",
+                "titleCount": "Geschiedenis ({count})"
             },
             "dropFileToAnalyze": "Sleep een bestand om te analyseren met AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} invoertokens, {output} uitvoertokens, zoals geteld door de provider",
-                "breakdownCache": "{input} invoertokens, {output} uitvoertokens, {cacheRead} gelezen uit de promptcache, {cacheWritten} ernaar geschreven, zoals geteld door de provider"
+                "breakdownCache": "{input} invoertokens, {output} uitvoertokens, {cacheRead} gelezen uit de promptcache, {cacheWritten} ernaar geschreven, zoals geteld door de provider",
+                "countShort": "{count} tok"
             },
             "executeOperations": "{count} bewerking(en) uitvoeren",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Zou overslaan",
                     "skipped": "Overgeslagen",
                     "existedAtCheckpoint": "bestond bij controlepunt",
-                    "absentAtCheckpoint": "ontbrak bij controlepunt"
+                    "absentAtCheckpoint": "ontbrak bij controlepunt",
+                    "noFiles": "Er zijn geen bestanden opgenomen in dit herstelresultaat.",
+                    "otherActions": "Andere acties",
+                    "requestedPaths": "Gevraagde deelverzameling van paden",
+                    "scopeAll": "Bereik: alle bestanden vastgelegd in het controlepunt.",
+                    "titleApplied": "Herstel van controlepunt toegepast",
+                    "titleApplyReview": "Beoordeling toepassen herstel van controlepunt",
+                    "titleDryRunComplete": "Proefrun herstel van controlepunt voltooid",
+                    "titleDryRunReview": "Controle proefherstel van checkpoint"
                 },
                 "checks": {
                     "exitSummary": "afsluitcode {code} · {seconds}s",
                     "continueOnFailure": "Voert alle controles uit, ook als er een mislukt.",
-                    "stopOnFailure": "Stopt bij de eerste mislukte controle."
+                    "stopOnFailure": "Stopt bij de eerste mislukte controle.",
+                    "checkLabel": "Controle:",
+                    "checksLabel": "Controles:",
+                    "exitChip": "exit {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "n.v.t.",
+                    "passedCount": "{passed}/{total} geslaagd",
+                    "runCheckNote": "Voert een geselecteerde build/test/lint-opdracht uit in de werkruimte. Buildscripts en tests voeren echte code uit.",
+                    "runProjectCheck": "Projectcontrole uitvoeren",
+                    "runVerification": "Verificatieronde uitvoeren",
+                    "runVerificationNote": "Voert geselecteerde build/test/lint-opdrachten uit in de werkruimte. Buildscripts en tests voeren echte code uit.",
+                    "stoppedEarly": "Gestopt bij de eerste mislukte controle.",
+                    "timeoutLabel": "Time-out: {seconds}s",
+                    "verification": "Verificatie"
                 },
                 "diagnostics": {
-                    "none": "Geen diagnostiek gemeld."
+                    "none": "Geen diagnostiek gemeld.",
+                    "errorCountMany": "{count} fouten",
+                    "errorCountOne": "{count} fout",
+                    "title": "Diagnostiek",
+                    "truncated": "De diagnostieklijst is ingekort.",
+                    "warningCountMany": "{count} waarschuwingen",
+                    "warningCountOne": "{count} waarschuwing"
                 },
                 "search": {
-                    "none": "Geen overeenkomsten gevonden."
+                    "none": "Geen overeenkomsten gevonden.",
+                    "ignoreCase": "hoofdletters negeren",
+                    "inPath": "in {path}",
+                    "literal": "letterlijk",
+                    "matchCountMany": "{count} overeenkomsten",
+                    "matchCountOne": "{count} overeenkomst",
+                    "title": "Zoeken in werkruimte",
+                    "truncated": "Resultaten zijn ingekort."
                 },
                 "git": {
                     "noStagedDiff": "Geen diff-uitvoer voor klaargezette wijzigingen.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Goedkeuring Git-klaarzetten",
                     "commitNote": "Dit maakt een git-commit van de huidige klaargezette index. Controleer eerst coding_git_status en coding_git_diff met staged=true.",
                     "stagePreviewNote": "Dit toont een voorbeeld van welke gevraagde paden klaargezet zouden worden; de index verandert niet.",
-                    "stageNote": "Dit wijzigt de git-index voor de gevraagde paden."
+                    "stageNote": "Dit wijzigt de git-index voor de gevraagde paden.",
+                    "afterCounts": "Na: {counts}",
+                    "beforeCounts": "Voor: {counts}",
+                    "clean": "De werkmap is schoon.",
+                    "commitCountMany": "{count} commits",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "in conflict",
+                    "diffTruncated": "De diff-uitvoer is ingekort.",
+                    "logTitle": "Git-logboek",
+                    "pathsChip": "paden: {paths}",
+                    "showingNewest": "De nieuwste {count} worden getoond; er zijn er meer.",
+                    "statusCounts": "{staged} gestaged, {unstaged} niet gestaged, {untracked} niet gevolgd, {conflicted} in conflict",
+                    "titleCommitCreated": "Git-commit aangemaakt",
+                    "titleCommitDryRun": "Proefrun Git-commit",
+                    "titleCommitReview": "Controle Git-commit",
+                    "titleReview": "Git-controle",
+                    "titleStageApplied": "Git-staging toegepast",
+                    "titleStagedDiff": "Gestagede Git-diff",
+                    "titleStageDryRun": "Proefrun Git-staging",
+                    "titleStatus": "Git-status",
+                    "titleUnstagedDiff": "Niet-gestagede Git-diff",
+                    "untracked": "niet gevolgd"
                 },
                 "patch": {
                     "validateNote": "Dit valideert de patch zonder bestanden te wijzigen.",
                     "applyNote": "Dit toepassingsverzoek met hoog risico schrijft bestanden nadat de backend een controlepunt vóór het toepassen heeft gemaakt.",
                     "hideDiff": "Uniforme diff verbergen",
-                    "showDiff": "Uniforme diff tonen"
-                }
+                    "showDiff": "Uniforme diff tonen",
+                    "actualLabel": "werkelijk:",
+                    "checkpointCreated": "Checkpoint vóór toepassen aangemaakt",
+                    "diffTruncated": "Diff-voorbeeld ingekort voor weergave.",
+                    "expectedLabel": "verwacht:",
+                    "firstLines": "eerste {shown} van {total} regels",
+                    "hunkCountMany": "{count} blokken",
+                    "hunkCountOne": "{count} blok",
+                    "hunkIndex": "blok {index}",
+                    "restoreManual": "Herstellen is handmatig: gebruik na beoordeling {tool} met deze controlepunt-ID.",
+                    "titleApplied": "Patch toegepast",
+                    "titleApplyBlocked": "Patch toepassen geblokkeerd",
+                    "titleApplyReview": "Beoordeling patch toepassen",
+                    "titleDryRunConflicts": "Proefrun van patch vond conflicten",
+                    "titleDryRunPassed": "Proefrun van patch geslaagd",
+                    "titleDryRunReview": "Beoordeling proefrun van patch",
+                    "warnings": "Waarschuwingen"
+                },
+                "binary": "binair",
+                "fileCountMany": "{count} bestanden",
+                "fileCountOne": "{count} bestand",
+                "moreCount": "+{count} meer",
+                "plan": {
+                    "likelyFiles": "Waarschijnlijke bestanden",
+                    "openQuestions": "Open vragen",
+                    "reviewOnlyNote": "Alleen ter beoordeling. Bewerkingen en wijzigende hulpmiddelen gebruiken nog steeds de huidige goedkeuringsmodus.",
+                    "riskHigh": "hoog risico",
+                    "riskLow": "laag risico",
+                    "riskMedium": "gemiddeld risico",
+                    "risks": "Risico's",
+                    "title": "Codeerplan"
+                },
+                "state": {
+                    "clean": "schoon",
+                    "failed": "mislukt",
+                    "passed": "geslaagd",
+                    "timedOut": "verlopen"
+                },
+                "timeoutChip": "time-out {seconds}s",
+                "truncated": "ingekort",
+                "workspaceLabel": "Werkruimte:"
+            },
+            "attachedImageAlt": "Bijgevoegde afbeelding",
+            "stepNumber": "Stap {step}",
+            "transcribingLocally": "Lokaal transcriberen...",
+            "transferPlan": {
+                "dependsOnMany": "Afhankelijk van {count} voorbereidende stappen",
+                "dependsOnOne": "Afhankelijk van {count} voorbereidende stap",
+                "destination": "Bestemming: {destination}",
+                "title": "Controle van overdrachtsplan",
+                "warnings": "Waarschuwingen"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Bladeren",
                     "installed": "Geïnstalleerd"
-                }
+                },
+                "remoteInstallDisabled": "Externe installatie van plug-ins is momenteel uitgeschakeld totdat het register aan clientzijde is geauthenticeerd. Lokaal geïnstalleerde plug-ins blijven normaal werken."
             }
         },
         "filelu": {

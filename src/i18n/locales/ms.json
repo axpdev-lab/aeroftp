@@ -1269,7 +1269,14 @@
                 "stop": "Berhenti",
                 "stopShell": "Hentikan shell",
                 "closed": "Terminal ditutup.",
-                "commandInsertedReview": "Arahan dimasukkan ke dalam Terminal. Tekan Enter untuk menjalankan."
+                "commandInsertedReview": "Arahan dimasukkan ke dalam Terminal. Tekan Enter untuk menjalankan.",
+                "decreaseFont": "Kecilkan saiz fon (Ctrl+-)",
+                "emptyClickPlus": "Klik {plus} untuk membuka terminal",
+                "emptySshHint": "atau {ssh} untuk shell jauh ke {host}",
+                "increaseFont": "Besarkan saiz fon (Ctrl+=)",
+                "newTab": "Tab terminal baharu",
+                "sshShellTo": "Shell SSH ke {host}",
+                "theme": "Tema terminal"
             },
             "editorPanel": {
                 "emptyState": "Klik kanan pada fail dan pilih \"Lihat sumber\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Menyimpan...",
                 "noFileSelected": "Tiada fail dipilih untuk dilihat",
                 "loading": "Memuatkan editor...",
-                "dragToTerminalRun": "Seret ke Terminal untuk memasukkan arahan jalankan"
+                "dragToTerminalRun": "Seret ke Terminal untuk memasukkan arahan jalankan",
+                "closeEditor": "Tutup editor",
+                "resetChanges": "Tetapkan semula perubahan"
             },
             "previewPanel": {
                 "emptyState": "Klik kanan pada fail dan pilih \"Pratonton\""
             },
             "codeEditor": "Editor Kod",
-            "sshTerminal": "Terminal SSH"
+            "sshTerminal": "Terminal SSH",
+            "comingSoon": "Akan datang",
+            "soonBadge": "Tidak lama lagi"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Tolak pelaksanaan alat",
                 "toggleDetails": "Togol butiran",
                 "allowSession": "Benarkan untuk sesi ini",
-                "nonAtomicReplace": "Penggantian bukan atom: fail hilang seketika"
+                "nonAtomicReplace": "Penggantian bukan atom: fail hilang seketika",
+                "moreOptions": "Lagi pilihan",
+                "panelAria": "Panel kelulusan alat"
             },
             "settings": {
                 "title": "Tetapan AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Sandaran",
                 "routingNoFallback": "Tiada",
                 "bedrockNeedsModel": "Tambah dan dayakan model Bedrock dalam tab Model sebelum menguji.",
-                "bedrockSetup": "Tetapkan Runtime URL untuk rantau AWS anda. Dalam Model, tambah ID yang menyokong Chat Completions pada Bedrock Runtime. Runtime tidak menyenaraikan model. Ujian menghantar permintaan inferens kecil yang mungkin dikenakan caj AWS."
+                "bedrockSetup": "Tetapkan Runtime URL untuk rantau AWS anda. Dalam Model, tambah ID yang menyokong Chat Completions pada Bedrock Runtime. Runtime tidak menyenaraikan model. Ujian menghantar permintaan inferens kecil yang mungkin dikenakan caj AWS.",
+                "detectOllamaModelsTooltip": "Kesan automatik model Ollama yang tersedia",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "Editor model AI",
+                "supportsTools": "Menyokong alat",
+                "supportsVision": "Menyokong penglihatan",
+                "thinkingReasoning": "Pemikiran/Penaakulan",
+                "toolQuality": "Kualiti alat: {quality}/5"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan imej",
@@ -2699,7 +2719,9 @@
                 "run": "Jalankan di Terminal",
                 "insert": "Sisipkan dalam Editor",
                 "diff": "Beza dengan asal",
-                "diffNoFile": "Tiada fail dibuka untuk perbandingan"
+                "diffNoFile": "Tiada fail dibuka untuk perbandingan",
+                "commandBlocked": "Arahan disekat: berpotensi merosakkan",
+                "confirmRun": "Sahkan jalankan: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Berfikir...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Tukar cabang",
                 "delete": "Padam cabang",
                 "newBranch": "Cabang baharu",
-                "branchFrom": "Cabang dari titik ini"
+                "branchFrom": "Cabang dari titik ini",
+                "messageCountShort": "{count} mesej",
+                "unnamed": "Cabang"
             },
             "context": {
                 "projectDetected": "Projek dikesan",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "berjalan",
                 "expired": "tamat tempoh",
-                "refresh": "Muat Semula"
+                "refresh": "Muat Semula",
+                "modelsRunningMany": "{count} model sedang berjalan",
+                "modelsRunningOne": "{count} model sedang berjalan",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Cache Konteks",
@@ -2956,7 +2983,8 @@
                 "warning": "Semua operasi fail akan dilaksanakan serta-merta tanpa kelulusan. Gunakan atas risiko anda sendiri.",
                 "disable": "Lumpuhkan",
                 "securityWarning": "Amaran Keselamatan",
-                "understood": "Difahami"
+                "understood": "Difahami",
+                "warningAria": "Amaran mod ekstrem"
             },
             "errorServerError": "Pelayan penyedia AI menghadapi masalah. Cuba lagi sebentar lagi.",
             "errorServiceUnavailable": "Penyedia AI tidak tersedia buat sementara (terlebih beban). Perkhidmatan percuma mungkin mempunyai had. Cuba lagi kemudian.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Tanpa Had",
                 "roleAI": "AI",
-                "roleUser": "Pengguna"
+                "roleUser": "Pengguna",
+                "noConversations": "Belum ada perbualan",
+                "titleCount": "Sejarah ({count})"
             },
             "dropFileToAnalyze": "Lepaskan fail untuk dianalisis dengan AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} token input, {output} token output, seperti yang dikira oleh penyedia",
-                "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca daripada cache prompt, {cacheWritten} ditulis ke dalamnya, seperti yang dikira oleh penyedia"
+                "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca daripada cache prompt, {cacheWritten} ditulis ke dalamnya, seperti yang dikira oleh penyedia",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Laksanakan {count} operasi",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Akan dilangkau",
                     "skipped": "Dilangkau",
                     "existedAtCheckpoint": "wujud pada titik semak",
-                    "absentAtCheckpoint": "tiada pada titik semak"
+                    "absentAtCheckpoint": "tiada pada titik semak",
+                    "noFiles": "Tiada fail disertakan dalam hasil pemulihan ini.",
+                    "otherActions": "Tindakan lain",
+                    "requestedPaths": "Subset laluan yang diminta",
+                    "scopeAll": "Skop: semua fail yang dirakam dalam titik semak.",
+                    "titleApplied": "Pemulihan titik semak digunakan",
+                    "titleApplyReview": "Semakan penggunaan pemulihan titik semak",
+                    "titleDryRunComplete": "Larian uji pemulihan titik semak selesai",
+                    "titleDryRunReview": "Semakan larian cubaan pemulihan titik semak"
                 },
                 "checks": {
                     "exitSummary": "kod keluar {code} · {seconds}s",
                     "continueOnFailure": "Menjalankan semua semakan walaupun satu gagal.",
-                    "stopOnFailure": "Berhenti pada semakan pertama yang gagal."
+                    "stopOnFailure": "Berhenti pada semakan pertama yang gagal.",
+                    "checkLabel": "Semakan:",
+                    "checksLabel": "Semakan:",
+                    "exitChip": "kod keluar {code}",
+                    "filterChip": "penapis: {filter}",
+                    "filterLabel": "Penapis:",
+                    "notAvailable": "t/b",
+                    "passedCount": "{passed}/{total} lulus",
+                    "runCheckNote": "Menjalankan arahan build/test/lint terpilih dalam ruang kerja. Skrip binaan dan ujian melaksanakan kod sebenar.",
+                    "runProjectCheck": "Jalankan semakan projek",
+                    "runVerification": "Jalankan pusingan pengesahan",
+                    "runVerificationNote": "Menjalankan arahan build/test/lint terpilih dalam ruang kerja. Skrip binaan dan ujian melaksanakan kod sebenar.",
+                    "stoppedEarly": "Berhenti pada semakan pertama yang gagal.",
+                    "timeoutLabel": "Had masa: {seconds} s",
+                    "verification": "Pengesahan"
                 },
                 "diagnostics": {
-                    "none": "Tiada diagnostik dilaporkan."
+                    "none": "Tiada diagnostik dilaporkan.",
+                    "errorCountMany": "{count} ralat",
+                    "errorCountOne": "{count} ralat",
+                    "title": "Diagnostik",
+                    "truncated": "Senarai diagnostik telah dipotong.",
+                    "warningCountMany": "{count} amaran",
+                    "warningCountOne": "{count} amaran"
                 },
                 "search": {
-                    "none": "Tiada padanan ditemui."
+                    "none": "Tiada padanan ditemui.",
+                    "ignoreCase": "abaikan huruf besar/kecil",
+                    "inPath": "dalam {path}",
+                    "literal": "harfiah",
+                    "matchCountMany": "{count} padanan",
+                    "matchCountOne": "{count} padanan",
+                    "title": "Carian ruang kerja",
+                    "truncated": "Keputusan telah dipotong."
                 },
                 "git": {
                     "noStagedDiff": "Tiada keluaran diff untuk perubahan yang disediakan.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Kelulusan Penyediaan Git",
                     "commitNote": "Ini mencipta komit git daripada indeks yang disediakan semasa. Semak coding_git_status dan coding_git_diff dengan staged=true terlebih dahulu.",
                     "stagePreviewNote": "Ini mempratonton laluan yang diminta yang akan disediakan; indeks tidak akan berubah.",
-                    "stageNote": "Ini mengubah indeks git untuk laluan yang diminta."
+                    "stageNote": "Ini mengubah indeks git untuk laluan yang diminta.",
+                    "afterCounts": "Selepas: {counts}",
+                    "beforeCounts": "Sebelum: {counts}",
+                    "clean": "Pepohon kerja bersih.",
+                    "commitCountMany": "{count} komit",
+                    "commitCountOne": "{count} komit",
+                    "conflicted": "berkonflik",
+                    "diffTruncated": "Keluaran diff telah dipotong.",
+                    "logTitle": "Log Git",
+                    "pathsChip": "laluan: {paths}",
+                    "showingNewest": "Menunjukkan {count} terbaharu; ada lagi.",
+                    "statusCounts": "{staged} diperingkatkan, {unstaged} tidak diperingkatkan, {untracked} tidak dijejak, {conflicted} berkonflik",
+                    "titleCommitCreated": "Komit Git dicipta",
+                    "titleCommitDryRun": "Larian percubaan komit Git",
+                    "titleCommitReview": "Semakan komit Git",
+                    "titleReview": "Semakan Git",
+                    "titleStageApplied": "Peringkat Git digunakan",
+                    "titleStagedDiff": "Diff Git yang diperingkatkan",
+                    "titleStageDryRun": "Larian percubaan peringkat Git",
+                    "titleStatus": "Status Git",
+                    "titleUnstagedDiff": "Diff Git yang tidak diperingkatkan",
+                    "untracked": "tidak dijejak"
                 },
                 "patch": {
                     "validateNote": "Ini mengesahkan tampalan tanpa mengubah fail.",
                     "applyNote": "Permintaan penggunaan berisiko tinggi ini menulis fail selepas backend mencipta titik semak sebelum penggunaan.",
                     "hideDiff": "Sembunyikan diff bersatu",
-                    "showDiff": "Tunjukkan diff bersatu"
-                }
+                    "showDiff": "Tunjukkan diff bersatu",
+                    "actualLabel": "sebenar:",
+                    "checkpointCreated": "Titik semak pra-penggunaan dicipta",
+                    "diffTruncated": "Pratonton diff dipotong untuk paparan.",
+                    "expectedLabel": "dijangka:",
+                    "firstLines": "{shown} baris pertama daripada {total}",
+                    "hunkCountMany": "{count} blok",
+                    "hunkCountOne": "{count} blok",
+                    "hunkIndex": "blok {index}",
+                    "restoreManual": "Pemulihan adalah manual: gunakan {tool} dengan ID titik semak ini selepas semakan.",
+                    "titleApplied": "Tampung digunakan",
+                    "titleApplyBlocked": "Penggunaan tampung disekat",
+                    "titleApplyReview": "Semakan penggunaan tampung",
+                    "titleDryRunConflicts": "Larian uji tampung menemui konflik",
+                    "titleDryRunPassed": "Larian uji tampung lulus",
+                    "titleDryRunReview": "Semakan larian uji tampung",
+                    "warnings": "Amaran"
+                },
+                "binary": "binari",
+                "fileCountMany": "{count} fail",
+                "fileCountOne": "{count} fail",
+                "moreCount": "+{count} lagi",
+                "plan": {
+                    "likelyFiles": "Fail berkemungkinan",
+                    "openQuestions": "Soalan terbuka",
+                    "reviewOnlyNote": "Artifak untuk semakan sahaja. Suntingan dan alat yang mengubah masih menggunakan mod kelulusan semasa.",
+                    "riskHigh": "risiko tinggi",
+                    "riskLow": "risiko rendah",
+                    "riskMedium": "risiko sederhana",
+                    "risks": "Risiko",
+                    "title": "Pelan pengekodan"
+                },
+                "state": {
+                    "clean": "bersih",
+                    "failed": "gagal",
+                    "passed": "lulus",
+                    "timedOut": "tamat masa"
+                },
+                "timeoutChip": "had masa {seconds}s",
+                "truncated": "dipotong",
+                "workspaceLabel": "Ruang kerja:"
+            },
+            "attachedImageAlt": "Imej dilampirkan",
+            "stepNumber": "Langkah {step}",
+            "transcribingLocally": "Mentranskripsi secara setempat...",
+            "transferPlan": {
+                "dependsOnMany": "Bergantung pada {count} langkah persediaan",
+                "dependsOnOne": "Bergantung pada {count} langkah persediaan",
+                "destination": "Destinasi: {destination}",
+                "title": "Semakan Pelan Pemindahan",
+                "warnings": "Amaran"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Semak imbas",
                     "installed": "Dipasang"
-                }
+                },
+                "remoteInstallDisabled": "Pemasangan pemalam jauh kini dilumpuhkan sehingga pendaftaran disahkan di sisi klien. Pemalam yang dipasang secara setempat terus berfungsi seperti biasa."
             }
         },
         "filelu": {

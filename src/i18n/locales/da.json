@@ -1269,7 +1269,14 @@
                 "stop": "Stop",
                 "stopShell": "Stop shell",
                 "closed": "Terminal lukket.",
-                "commandInsertedReview": "Kommando indsat i Terminal. Tryk Enter for at køre."
+                "commandInsertedReview": "Kommando indsat i Terminal. Tryk Enter for at køre.",
+                "decreaseFont": "Formindsk skriftstørrelse (Ctrl+-)",
+                "emptyClickPlus": "Klik på {plus} for at åbne en terminal",
+                "emptySshHint": "eller {ssh} for fjern-shell til {host}",
+                "increaseFont": "Forstør skriftstørrelse (Ctrl+=)",
+                "newTab": "Ny terminalfane",
+                "sshShellTo": "SSH-shell til {host}",
+                "theme": "Terminaltema"
             },
             "editorPanel": {
                 "emptyState": "Højreklik på en fil og vælg \"Redigér\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Gemmer...",
                 "noFileSelected": "Ingen fil valgt til visning",
                 "loading": "Indlæser editor...",
-                "dragToTerminalRun": "Træk til Terminal for at indsætte kørselskommando"
+                "dragToTerminalRun": "Træk til Terminal for at indsætte kørselskommando",
+                "closeEditor": "Luk editor",
+                "resetChanges": "Nulstil ændringer"
             },
             "previewPanel": {
                 "emptyState": "Højreklik på en fil og vælg \"Forhåndsvisning\""
             },
             "codeEditor": "Kodeeditor",
-            "sshTerminal": "SSH-terminal"
+            "sshTerminal": "SSH-terminal",
+            "comingSoon": "Kommer snart",
+            "soonBadge": "Snart"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Afvis værktøjsudførelse",
                 "toggleDetails": "Vis/skjul detaljer",
                 "allowSession": "Tillad for denne session",
-                "nonAtomicReplace": "Ikke-atomisk udskiftning: filen mangler kortvarigt"
+                "nonAtomicReplace": "Ikke-atomisk udskiftning: filen mangler kortvarigt",
+                "moreOptions": "Flere muligheder",
+                "panelAria": "Panel til godkendelse af værktøjer"
             },
             "settings": {
                 "title": "AI-indstillinger",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Reserve",
                 "routingNoFallback": "Ingen",
                 "bedrockNeedsModel": "Tilføj og aktivér en Bedrock-model på fanen Modeller, før du tester.",
-                "bedrockSetup": "Angiv Runtime URL for din AWS-region. Under Modeller skal du tilføje et ID, der understøtter Chat Completions på Bedrock Runtime. Runtime viser ikke en liste over modeller. Testen sender en lille inferensanmodning, som kan medføre AWS-gebyrer."
+                "bedrockSetup": "Angiv Runtime URL for din AWS-region. Under Modeller skal du tilføje et ID, der understøtter Chat Completions på Bedrock Runtime. Runtime viser ikke en liste over modeller. Testen sender en lille inferensanmodning, som kan medføre AWS-gebyrer.",
+                "detectOllamaModelsTooltip": "Registrer tilgængelige Ollama-modeller automatisk",
+                "kTokens": "{count}K tokens",
+                "modelEditorAria": "AI-modeleditor",
+                "supportsTools": "Understøtter værktøjer",
+                "supportsVision": "Understøtter billedgenkendelse",
+                "thinkingReasoning": "Tænkning/Ræsonnement",
+                "toolQuality": "Værktøjskvalitet: {quality}/5"
             },
             "copy": "Kopiér",
             "attachImage": "Vedhæft billede",
@@ -2699,7 +2719,9 @@
                 "run": "Kør i terminal",
                 "insert": "Indsæt i editor",
                 "diff": "Diff med original",
-                "diffNoFile": "Ingen fil åben til diff"
+                "diffNoFile": "Ingen fil åben til diff",
+                "commandBlocked": "Kommando blokeret: potentielt destruktiv",
+                "confirmRun": "Bekræft kørsel: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Tænker...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Skift gren",
                 "delete": "Slet gren",
                 "newBranch": "Ny gren",
-                "branchFrom": "Forgren fra dette punkt"
+                "branchFrom": "Forgren fra dette punkt",
+                "messageCountShort": "{count} besk.",
+                "unnamed": "Gren"
             },
             "context": {
                 "projectDetected": "Projekt registreret",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "kører",
                 "expired": "udløbet",
-                "refresh": "Opdatér"
+                "refresh": "Opdatér",
+                "modelsRunningMany": "{count} modeller kører",
+                "modelsRunningOne": "{count} model kører",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Kontekst-caching",
@@ -2956,7 +2983,8 @@
                 "warning": "Alle filoperationer vil blive udført øjeblikkeligt uden godkendelse. Brug på egen risiko.",
                 "disable": "Deaktivér",
                 "securityWarning": "Sikkerhedsadvarsel",
-                "understood": "Forstået"
+                "understood": "Forstået",
+                "warningAria": "Advarsel om ekstrem tilstand"
             },
             "errorServerError": "AI-udbyderens server har problemer. Prøv igen om et øjeblik.",
             "errorServiceUnavailable": "AI-udbyderen er midlertidigt utilgængelig (overbelastet). Gratis tjenester kan have begrænsninger. Prøv igen senere.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Ubegrænset",
                 "roleAI": "AI",
-                "roleUser": "Bruger"
+                "roleUser": "Bruger",
+                "noConversations": "Ingen samtaler endnu",
+                "titleCount": "Historik ({count})"
             },
             "dropFileToAnalyze": "Slip fil for at analysere med AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} inputtokens, {output} outputtokens, ifølge udbyderens optælling",
-                "breakdownCache": "{input} inputtokens, {output} outputtokens, {cacheRead} læst fra prompt-cachen, {cacheWritten} skrevet til den, ifølge udbyderens optælling"
+                "breakdownCache": "{input} inputtokens, {output} outputtokens, {cacheRead} læst fra prompt-cachen, {cacheWritten} skrevet til den, ifølge udbyderens optælling",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Udfør {count} handling(er)",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Ville springe over",
                     "skipped": "Sprunget over",
                     "existedAtCheckpoint": "fandtes ved kontrolpunktet",
-                    "absentAtCheckpoint": "fraværende ved kontrolpunktet"
+                    "absentAtCheckpoint": "fraværende ved kontrolpunktet",
+                    "noFiles": "Ingen filer var inkluderet i dette gendannelsesresultat.",
+                    "otherActions": "Andre handlinger",
+                    "requestedPaths": "Anmodet delmængde af stier",
+                    "scopeAll": "Omfang: alle filer registreret i kontrolpunktet.",
+                    "titleApplied": "Gendannelse af kontrolpunkt anvendt",
+                    "titleApplyReview": "Gennemgang af anvendelse af kontrolpunktsgendannelse",
+                    "titleDryRunComplete": "Tørkørsel af kontrolpunktsgendannelse fuldført",
+                    "titleDryRunReview": "Gennemgang af prøvegendannelse af kontrolpunkt"
                 },
                 "checks": {
                     "exitSummary": "afslutningskode {code} · {seconds}s",
                     "continueOnFailure": "Kører alle kontroller, selv hvis én fejler.",
-                    "stopOnFailure": "Stopper ved den første kontrol, der fejler."
+                    "stopOnFailure": "Stopper ved den første kontrol, der fejler.",
+                    "checkLabel": "Kontrol:",
+                    "checksLabel": "Kontroller:",
+                    "exitChip": "exit {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "i/t",
+                    "passedCount": "{passed}/{total} bestået",
+                    "runCheckNote": "Kører en udvalgt build/test/lint-kommando i arbejdsområdet. Build-scripts og tests kører rigtig kode.",
+                    "runProjectCheck": "Kør projektkontrol",
+                    "runVerification": "Kør verifikationsrunde",
+                    "runVerificationNote": "Kører udvalgte build/test/lint-kommandoer i arbejdsområdet. Build-scripts og tests kører rigtig kode.",
+                    "stoppedEarly": "Stoppede ved den første fejlede kontrol.",
+                    "timeoutLabel": "Tidsgrænse: {seconds}s",
+                    "verification": "Verifikation"
                 },
                 "diagnostics": {
-                    "none": "Ingen diagnostik rapporteret."
+                    "none": "Ingen diagnostik rapporteret.",
+                    "errorCountMany": "{count} fejl",
+                    "errorCountOne": "{count} fejl",
+                    "title": "Diagnostik",
+                    "truncated": "Diagnostiklisten blev afkortet.",
+                    "warningCountMany": "{count} advarsler",
+                    "warningCountOne": "{count} advarsel"
                 },
                 "search": {
-                    "none": "Ingen forekomster fundet."
+                    "none": "Ingen forekomster fundet.",
+                    "ignoreCase": "ignorer store/små bogstaver",
+                    "inPath": "i {path}",
+                    "literal": "bogstavelig",
+                    "matchCountMany": "{count} match",
+                    "matchCountOne": "{count} match",
+                    "title": "Søgning i arbejdsområde",
+                    "truncated": "Resultaterne blev afkortet."
                 },
                 "git": {
                     "noStagedDiff": "Intet diff-output for klargjorte ændringer.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Godkendelse af Git-klargøring",
                     "commitNote": "Dette opretter et git-commit fra det aktuelle klargjorte indeks. Gennemgå først coding_git_status og coding_git_diff med staged=true.",
                     "stagePreviewNote": "Dette viser en forhåndsvisning af, hvilke af de anmodede stier der ville blive klargjort; indekset ændres ikke.",
-                    "stageNote": "Dette ændrer git-indekset for de anmodede stier."
+                    "stageNote": "Dette ændrer git-indekset for de anmodede stier.",
+                    "afterCounts": "Efter: {counts}",
+                    "beforeCounts": "Før: {counts}",
+                    "clean": "Arbejdstræet er rent.",
+                    "commitCountMany": "{count} commits",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "i konflikt",
+                    "diffTruncated": "Diff-outputtet blev afkortet.",
+                    "logTitle": "Git-log",
+                    "pathsChip": "stier: {paths}",
+                    "showingNewest": "Viser de nyeste {count}; der er flere.",
+                    "statusCounts": "{staged} klargjort, {unstaged} ikke klargjort, {untracked} ikke sporet, {conflicted} i konflikt",
+                    "titleCommitCreated": "Git-commit oprettet",
+                    "titleCommitDryRun": "Prøvekørsel af Git-commit",
+                    "titleCommitReview": "Gennemgang af Git-commit",
+                    "titleReview": "Git-gennemgang",
+                    "titleStageApplied": "Git-klargøring anvendt",
+                    "titleStagedDiff": "Klargjort Git-diff",
+                    "titleStageDryRun": "Prøvekørsel af Git-klargøring",
+                    "titleStatus": "Git-status",
+                    "titleUnstagedDiff": "Ikke-klargjort Git-diff",
+                    "untracked": "ikke sporet"
                 },
                 "patch": {
                     "validateNote": "Dette validerer patchen uden at ændre filer.",
                     "applyNote": "Denne højrisikoanmodning om anvendelse skriver filer, efter at backend har oprettet et kontrolpunkt før anvendelsen.",
                     "hideDiff": "Skjul samlet diff",
-                    "showDiff": "Vis samlet diff"
-                }
+                    "showDiff": "Vis samlet diff",
+                    "actualLabel": "faktisk:",
+                    "checkpointCreated": "Kontrolpunkt før anvendelse oprettet",
+                    "diffTruncated": "Diff-forhåndsvisning afkortet til visning.",
+                    "expectedLabel": "forventet:",
+                    "firstLines": "første {shown} af {total} linjer",
+                    "hunkCountMany": "{count} blokke",
+                    "hunkCountOne": "{count} blok",
+                    "hunkIndex": "blok {index}",
+                    "restoreManual": "Gendannelse er manuel: brug {tool} med dette kontrolpunkt-ID efter gennemgang.",
+                    "titleApplied": "Patch anvendt",
+                    "titleApplyBlocked": "Anvendelse af patch blokeret",
+                    "titleApplyReview": "Gennemgang af patchanvendelse",
+                    "titleDryRunConflicts": "Tørkørsel af patch fandt konflikter",
+                    "titleDryRunPassed": "Tørkørsel af patch bestået",
+                    "titleDryRunReview": "Gennemgang af patchtørkørsel",
+                    "warnings": "Advarsler"
+                },
+                "binary": "binær",
+                "fileCountMany": "{count} filer",
+                "fileCountOne": "{count} fil",
+                "moreCount": "+{count} mere",
+                "plan": {
+                    "likelyFiles": "Sandsynlige filer",
+                    "openQuestions": "Åbne spørgsmål",
+                    "reviewOnlyNote": "Kun til gennemgang. Redigeringer og ændrende værktøjer bruger stadig den aktuelle godkendelsestilstand.",
+                    "riskHigh": "høj risiko",
+                    "riskLow": "lav risiko",
+                    "riskMedium": "mellem risiko",
+                    "risks": "Risici",
+                    "title": "Kodningsplan"
+                },
+                "state": {
+                    "clean": "ren",
+                    "failed": "mislykket",
+                    "passed": "bestået",
+                    "timedOut": "udløbet"
+                },
+                "timeoutChip": "timeout {seconds}s",
+                "truncated": "afkortet",
+                "workspaceLabel": "Arbejdsområde:"
+            },
+            "attachedImageAlt": "Vedhæftet billede",
+            "stepNumber": "Trin {step}",
+            "transcribingLocally": "Transskriberer lokalt...",
+            "transferPlan": {
+                "dependsOnMany": "Afhænger af {count} forberedende trin",
+                "dependsOnOne": "Afhænger af {count} forberedende trin",
+                "destination": "Destination: {destination}",
+                "title": "Gennemgang af overførselsplan",
+                "warnings": "Advarsler"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Gennemse",
                     "installed": "Installeret"
-                }
+                },
+                "remoteInstallDisabled": "Fjerninstallation af plugins er i øjeblikket deaktiveret, indtil registret er godkendt på klientsiden. Lokalt installerede plugins fortsætter med at fungere normalt."
             }
         },
         "filelu": {

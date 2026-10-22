@@ -1173,6 +1173,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         }
     }, [activeTabId, tabs, startShell]);
 
+    const [emptyBefore, emptyAfter] = t('devtools.terminalPanel.emptyClickPlus').split('{plus}');
+    const [sshHintBefore, sshHintAfter] = t('devtools.terminalPanel.emptySshHint', { host: sshConnection?.host ?? '', ssh: '{ssh}' }).split('{ssh}');
+
     return (
         <div className={`flex flex-col h-full ${className}`} style={{ backgroundColor: currentTheme.colors.background }}>
             {/* Toolbar: tabs + controls */}
@@ -1205,7 +1208,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                     <button
                         onClick={addTab}
                         className="flex items-center px-1.5 py-1 text-gray-500 hover:text-gray-300 transition-colors"
-                        title="New terminal tab"
+                        title={t('devtools.terminalPanel.newTab')}
                     >
                         <Plus size={12} />
                     </button>
@@ -1213,7 +1216,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                         <button
                             onClick={addSshTab}
                             className="flex items-center gap-0.5 px-1.5 py-1 text-gray-500 hover:text-cyan-300 transition-colors"
-                            title={`SSH shell to ${sshConnection.host}`}
+                            title={t('devtools.terminalPanel.sshShellTo', { host: sshConnection.host })}
                         >
                             <Globe size={12} />
                             <span className="text-[10px]">SSH</span>
@@ -1228,7 +1231,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                         <button
                             onClick={() => setShowThemeMenu(!showThemeMenu)}
                             className="flex items-center gap-1 px-1.5 py-1 text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                            title="Terminal theme"
+                            title={t('devtools.terminalPanel.theme')}
                         >
                             <Palette size={12} />
                             <ChevronDown size={10} />
@@ -1262,7 +1265,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                     <button
                         onClick={() => updateSettings({ fontSize: Math.max(8, settings.fontSize - 1) })}
                         className="p-1 text-gray-400 hover:text-gray-200 transition-colors"
-                        title="Decrease font size (Ctrl+-)"
+                        title={t('devtools.terminalPanel.decreaseFont')}
                     >
                         <ZoomOut size={12} />
                     </button>
@@ -1270,7 +1273,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                     <button
                         onClick={() => updateSettings({ fontSize: Math.min(28, settings.fontSize + 1) })}
                         className="p-1 text-gray-400 hover:text-gray-200 transition-colors"
-                        title="Increase font size (Ctrl+=)"
+                        title={t('devtools.terminalPanel.increaseFont')}
                     >
                         <ZoomIn size={12} />
                     </button>
@@ -1317,9 +1320,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                     style={{ backgroundColor: currentTheme.colors.background }}
                 >
                     <TerminalIcon size={32} className="text-gray-600" />
-                    <span className="text-gray-500 text-sm">Click <strong>+</strong> to open a terminal</span>
+                    <span className="text-gray-500 text-sm">{emptyBefore}<strong>+</strong>{emptyAfter}</span>
                     {sshConnection && (
-                        <span className="text-gray-600 text-xs">or <strong>SSH</strong> for remote shell to {sshConnection.host}</span>
+                        <span className="text-gray-600 text-xs">{sshHintBefore}<strong>SSH</strong>{sshHintAfter}</span>
                     )}
                 </div>
             ) : (

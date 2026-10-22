@@ -1269,7 +1269,14 @@
                 "stop": "Gelditu",
                 "stopShell": "Gelditu shell-a",
                 "closed": "Terminala itxita.",
-                "commandInsertedReview": "Komandoa Terminalean txertatuta. Sakatu Enter exekutatzeko."
+                "commandInsertedReview": "Komandoa Terminalean txertatuta. Sakatu Enter exekutatzeko.",
+                "decreaseFont": "Txikitu letra-tamaina (Ctrl+-)",
+                "emptyClickPlus": "Egin klik {plus} botoian terminal bat irekitzeko",
+                "emptySshHint": "edo {ssh} {host} ostalariko urruneko shellerako",
+                "increaseFont": "Handitu letra-tamaina (Ctrl+=)",
+                "newTab": "Terminal-fitxa berria",
+                "sshShellTo": "SSH shella {host} ostalarira",
+                "theme": "Terminalaren gaia"
             },
             "editorPanel": {
                 "emptyState": "Egin eskuin-klika fitxategi batean eta aukeratu \"Ikusi iturburua\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Gordetzen...",
                 "noFileSelected": "Ez da fitxategirik hautatu ikusteko",
                 "loading": "Editorea kargatzen...",
-                "dragToTerminalRun": "Arrastatu Terminalera exekutatzeko komandoa txertatzeko"
+                "dragToTerminalRun": "Arrastatu Terminalera exekutatzeko komandoa txertatzeko",
+                "closeEditor": "Itxi editorea",
+                "resetChanges": "Berrezarri aldaketak"
             },
             "previewPanel": {
                 "emptyState": "Egin eskuin-klika fitxategi batean eta aukeratu \"Aurrebista\""
             },
             "codeEditor": "Kode editorea",
-            "sshTerminal": "SSH terminala"
+            "sshTerminal": "SSH terminala",
+            "comingSoon": "Laster erabilgarri",
+            "soonBadge": "Laster"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2529,7 +2540,9 @@
                 "rejectExecution": "Ukatu tresnaren exekuzioa",
                 "toggleDetails": "Txandakatu xehetasunak",
                 "allowSession": "Baimendu saio honetarako",
-                "nonAtomicReplace": "Ordezkapen ez-atomikoa: fitxategia labur batez falta da"
+                "nonAtomicReplace": "Ordezkapen ez-atomikoa: fitxategia labur batez falta da",
+                "moreOptions": "Aukera gehiago",
+                "panelAria": "Tresnen onarpen-panela"
             },
             "settings": {
                 "title": "AI Ezarpenak",
@@ -2684,7 +2697,14 @@
                 "routingFallback": "Ordezkoa",
                 "routingNoFallback": "Bat ere ez",
                 "bedrockNeedsModel": "Gehitu eta gaitu Bedrock modelo bat Ereduak fitxan probatu aurretik.",
-                "bedrockSetup": "Ezarri zure AWS eskualdeko Runtime URL. Ereduak fitxan, gehitu Bedrock Runtime-n Chat Completions onartzen duen ID bat. Runtime-k ez du modeloen zerrendarik eskaintzen. Probak inferentzia-eskaera txiki bat bidaltzen du, eta AWSren kostuak sor ditzake."
+                "bedrockSetup": "Ezarri zure AWS eskualdeko Runtime URL. Ereduak fitxan, gehitu Bedrock Runtime-n Chat Completions onartzen duen ID bat. Runtime-k ez du modeloen zerrendarik eskaintzen. Probak inferentzia-eskaera txiki bat bidaltzen du, eta AWSren kostuak sor ditzake.",
+                "detectOllamaModelsTooltip": "Hauteman automatikoki Ollama eredu erabilgarriak",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "AA ereduen editorea",
+                "supportsTools": "Tresnak onartzen ditu",
+                "supportsVision": "Ikusmena onartzen du",
+                "thinkingReasoning": "Pentsamendua/Arrazoiketa",
+                "toolQuality": "Tresnen kalitatea: {quality}/5"
             },
             "rag": {
                 "indexing": "Fitxategiak indexatzen...",
@@ -2699,7 +2719,9 @@
                 "run": "Terminalean Exekutatu",
                 "insert": "Editorean Txertatu",
                 "diff": "Jatorrizkoarekin alderatu",
-                "diffNoFile": "Ez dago fitxategirik irekita alderatzeko"
+                "diffNoFile": "Ez dago fitxategirik irekita alderatzeko",
+                "commandBlocked": "Komandoa blokeatuta: suntsitzailea izan daiteke",
+                "confirmRun": "Berretsi exekuzioa: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Pentsatzen...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Adarra aldatu",
                 "delete": "Adarra ezabatu",
                 "newBranch": "Adar berria",
-                "branchFrom": "Puntu honetatik adartu"
+                "branchFrom": "Puntu honetatik adartu",
+                "messageCountShort": "{count} mez.",
+                "unnamed": "Adarra"
             },
             "context": {
                 "projectDetected": "Proiektua detektatuta",
@@ -2843,7 +2867,10 @@
                 "vram": "VRAM",
                 "running": "martxan",
                 "expired": "iraungita",
-                "refresh": "Freskatu"
+                "refresh": "Freskatu",
+                "modelsRunningMany": "{count} eredu exekutatzen",
+                "modelsRunningOne": "{count} eredu exekutatzen",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Testuinguru Cachea",
@@ -2956,7 +2983,8 @@
                 "warning": "Fitxategi-eragiketa guztiak berehala exekutatuko dira onartzarik gabe. Erabili zure ardurapean.",
                 "disable": "Desaktibatu",
                 "securityWarning": "Segurtasun-abisua",
-                "understood": "Ulertuta"
+                "understood": "Ulertuta",
+                "warningAria": "Modu muturrekoaren abisua"
             },
             "errorServerError": "AI hornitzailearen zerbitzariak arazoak ditu. Saiatu berriro momentu batean.",
             "errorServiceUnavailable": "AI hornitzailea une batean ez dago erabilgarri (gainkargatuta). Doako zerbitzuek mugak izan ditzakete. Saiatu berriro geroago.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Mugagabe",
                 "roleAI": "AI",
-                "roleUser": "Erabiltzailea"
+                "roleUser": "Erabiltzailea",
+                "noConversations": "Oraindik ez dago elkarrizketarik",
+                "titleCount": "Historia ({count})"
             },
             "dropFileToAnalyze": "Jaregin fitxategia AeroAgent-ekin aztertzeko",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} sarrerako token, {output} irteerako token, hornitzaileak zenbatu bezala",
-                "breakdownCache": "{input} sarrerako token, {output} irteerako token, promptaren cachetik {cacheRead} irakurri dira, {cacheWritten} idatzi dira, hornitzaileak zenbatu bezala"
+                "breakdownCache": "{input} sarrerako token, {output} irteerako token, promptaren cachetik {cacheRead} irakurri dira, {cacheWritten} idatzi dira, hornitzaileak zenbatu bezala",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Exekutatu {count} eragiketa",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Saltatuko lirateke",
                     "skipped": "Saltatuta",
                     "existedAtCheckpoint": "kontrol-puntuan existitzen zen",
-                    "absentAtCheckpoint": "kontrol-puntuan ez zegoen"
+                    "absentAtCheckpoint": "kontrol-puntuan ez zegoen",
+                    "noFiles": "Ez da fitxategirik sartu leheneratze-emaitza honetan.",
+                    "otherActions": "Beste ekintza batzuk",
+                    "requestedPaths": "Eskatutako bide-azpimultzoa",
+                    "scopeAll": "Esparrua: kontrol-puntuan jasotako fitxategi guztiak.",
+                    "titleApplied": "Kontrol-puntuaren leheneratzea aplikatuta",
+                    "titleApplyReview": "Kontrol-puntuaren leheneratzearen aplikazioaren berrikuspena",
+                    "titleDryRunComplete": "Kontrol-puntuaren leheneratzearen proba-exekuzioa osatuta",
+                    "titleDryRunReview": "Kontrol-puntuaren leheneratze-simulazioaren berrikuspena"
                 },
                 "checks": {
                     "exitSummary": "irteera-kodea {code} · {seconds}s",
                     "continueOnFailure": "Egiaztapen guztiak exekutatzen ditu, bat huts egin arren.",
-                    "stopOnFailure": "Huts egiten duen lehen egiaztapenean gelditzen da."
+                    "stopOnFailure": "Huts egiten duen lehen egiaztapenean gelditzen da.",
+                    "checkLabel": "Egiaztapena:",
+                    "checksLabel": "Egiaztapenak:",
+                    "exitChip": "irteera {code}",
+                    "filterChip": "iragazkia: {filter}",
+                    "filterLabel": "Iragazkia:",
+                    "notAvailable": "e/e",
+                    "passedCount": "{passed}/{total} gaindituta",
+                    "runCheckNote": "Hautatutako build/test/lint komando bat exekutatzen du lan-eremuan. Build scriptek eta probek benetako kodea exekutatzen dute.",
+                    "runProjectCheck": "Exekutatu proiektuaren egiaztapena",
+                    "runVerification": "Exekutatu egiaztapen-pasada",
+                    "runVerificationNote": "Hautatutako build/test/lint komandoak exekutatzen ditu lan-eremuan. Build scriptek eta probek benetako kodea exekutatzen dute.",
+                    "stoppedEarly": "Huts egin duen lehen egiaztapenean gelditu da.",
+                    "timeoutLabel": "Denbora-muga: {seconds} s",
+                    "verification": "Egiaztapena"
                 },
                 "diagnostics": {
-                    "none": "Ez da diagnostikorik jakinarazi."
+                    "none": "Ez da diagnostikorik jakinarazi.",
+                    "errorCountMany": "{count} errore",
+                    "errorCountOne": "{count} errore",
+                    "title": "Diagnostikoak",
+                    "truncated": "Diagnostikoen zerrenda moztu egin da.",
+                    "warningCountMany": "{count} abisu",
+                    "warningCountOne": "{count} abisu"
                 },
                 "search": {
-                    "none": "Ez da bat-etortzerik aurkitu."
+                    "none": "Ez da bat-etortzerik aurkitu.",
+                    "ignoreCase": "ez ikusi maiuskulak",
+                    "inPath": "{path} barruan",
+                    "literal": "literala",
+                    "matchCountMany": "{count} bat etortze",
+                    "matchCountOne": "{count} bat etortze",
+                    "title": "Laneko eremuko bilaketa",
+                    "truncated": "Emaitzak moztu egin dira."
                 },
                 "git": {
                     "noStagedDiff": "Ez dago prestatutako aldaketen diff irteerarik.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git prestaketa onarpena",
                     "commitNote": "Honek git commit bat sortzen du uneko indize prestatutik. Berrikusi lehenik coding_git_status eta coding_git_diff staged=true erabiliz.",
                     "stagePreviewNote": "Honek aurrez erakusten du eskatutako zein bide prestatuko liratekeen; indizea ez da aldatuko.",
-                    "stageNote": "Honek git indizea aldatzen du eskatutako bideetarako."
+                    "stageNote": "Honek git indizea aldatzen du eskatutako bideetarako.",
+                    "afterCounts": "Ondoren: {counts}",
+                    "beforeCounts": "Aurretik: {counts}",
+                    "clean": "Laneko zuhaitza garbi dago.",
+                    "commitCountMany": "{count} commit",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "gatazkan",
+                    "diffTruncated": "Diff irteera moztu egin da.",
+                    "logTitle": "Git erregistroa",
+                    "pathsChip": "bideak: {paths}",
+                    "showingNewest": "{count} berrienak erakusten dira; gehiago daude.",
+                    "statusCounts": "{staged} prestatuta, {unstaged} prestatu gabe, {untracked} jarraitu gabe, {conflicted} gatazkan",
+                    "titleCommitCreated": "Git commita sortu da",
+                    "titleCommitDryRun": "Git commitaren proba",
+                    "titleCommitReview": "Git commitaren berrikuspena",
+                    "titleReview": "Git berrikuspena",
+                    "titleStageApplied": "Git prestaketa aplikatu da",
+                    "titleStagedDiff": "Prestatutako Git diffa",
+                    "titleStageDryRun": "Git prestaketaren proba",
+                    "titleStatus": "Git egoera",
+                    "titleUnstagedDiff": "Prestatu gabeko Git diffa",
+                    "untracked": "jarraitu gabe"
                 },
                 "patch": {
                     "validateNote": "Honek adabakia balioztatzen du fitxategiak aldatu gabe.",
                     "applyNote": "Arrisku handiko aplikazio eskaera honek fitxategiak idazten ditu backendak aplikatu aurreko kontrol puntu bat sortu ondoren.",
                     "hideDiff": "Ezkutatu diff bateratua",
-                    "showDiff": "Erakutsi diff bateratua"
-                }
+                    "showDiff": "Erakutsi diff bateratua",
+                    "actualLabel": "benetakoa:",
+                    "checkpointCreated": "Aplikatu aurreko kontrol-puntua sortu da",
+                    "diffTruncated": "Diff aurrebista moztu egin da bistaratzeko.",
+                    "expectedLabel": "espero zena:",
+                    "firstLines": "lehen {shown} lerroak, {total} guztira",
+                    "hunkCountMany": "{count} bloke",
+                    "hunkCountOne": "{count} bloke",
+                    "hunkIndex": "{index}. blokea",
+                    "restoreManual": "Leheneratzea eskuzkoa da: berrikusi ondoren, erabili {tool} kontrol-puntuaren ID honekin.",
+                    "titleApplied": "Adabakia aplikatuta",
+                    "titleApplyBlocked": "Adabakiaren aplikazioa blokeatuta",
+                    "titleApplyReview": "Adabakiaren aplikazioaren berrikuspena",
+                    "titleDryRunConflicts": "Adabakiaren proba-exekuzioak gatazkak aurkitu ditu",
+                    "titleDryRunPassed": "Adabakiaren proba-exekuzioa gaindituta",
+                    "titleDryRunReview": "Adabakiaren proba-exekuzioaren berrikuspena",
+                    "warnings": "Abisuak"
+                },
+                "binary": "bitarra",
+                "fileCountMany": "{count} fitxategi",
+                "fileCountOne": "{count} fitxategi",
+                "moreCount": "+{count} gehiago",
+                "plan": {
+                    "likelyFiles": "Fitxategi probableak",
+                    "openQuestions": "Galdera irekiak",
+                    "reviewOnlyNote": "Berrikusteko soilik den artefaktua. Edizioek eta aldaketak egiten dituzten tresnek uneko onarpen-modua erabiltzen dute oraindik.",
+                    "riskHigh": "arrisku handia",
+                    "riskLow": "arrisku txikia",
+                    "riskMedium": "arrisku ertaina",
+                    "risks": "Arriskuak",
+                    "title": "Kodetze-plana"
+                },
+                "state": {
+                    "clean": "garbia",
+                    "failed": "huts egin du",
+                    "passed": "gainditua",
+                    "timedOut": "denbora agortua"
+                },
+                "timeoutChip": "denbora-muga {seconds}s",
+                "truncated": "moztua",
+                "workspaceLabel": "Laneko eremua:"
+            },
+            "attachedImageAlt": "Erantsitako irudia",
+            "stepNumber": "{step}. urratsa",
+            "transcribingLocally": "Lokalean transkribatzen...",
+            "transferPlan": {
+                "dependsOnMany": "{count} prestaketa-urratsen mende dago",
+                "dependsOnOne": "{count} prestaketa-urratsaren mende dago",
+                "destination": "Helmuga: {destination}",
+                "title": "Transferentzia-planaren berrikuspena",
+                "warnings": "Abisuak"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Arakatu",
                     "installed": "Instalatuta"
-                }
+                },
+                "remoteInstallDisabled": "Pluginen urruneko instalazioa desgaituta dago erregistroa bezeroaren aldean autentifikatu arte. Lokalean instalatutako pluginek normal funtzionatzen jarraitzen dute."
             }
         },
         "commandPalette.category.ai": {},

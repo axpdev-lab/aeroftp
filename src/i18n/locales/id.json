@@ -1269,7 +1269,14 @@
                 "stop": "Berhenti",
                 "stopShell": "Hentikan shell",
                 "closed": "Terminal ditutup.",
-                "commandInsertedReview": "Perintah disisipkan di Terminal. Tekan Enter untuk menjalankan."
+                "commandInsertedReview": "Perintah disisipkan di Terminal. Tekan Enter untuk menjalankan.",
+                "decreaseFont": "Perkecil ukuran font (Ctrl+-)",
+                "emptyClickPlus": "Klik {plus} untuk membuka terminal",
+                "emptySshHint": "atau {ssh} untuk shell jarak jauh ke {host}",
+                "increaseFont": "Perbesar ukuran font (Ctrl+=)",
+                "newTab": "Tab terminal baru",
+                "sshShellTo": "Shell SSH ke {host}",
+                "theme": "Tema terminal"
             },
             "editorPanel": {
                 "emptyState": "Klik kanan pada file dan pilih \"Lihat sumber\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Menyimpan...",
                 "noFileSelected": "Tidak ada file yang dipilih untuk dilihat",
                 "loading": "Memuat editor...",
-                "dragToTerminalRun": "Seret ke Terminal untuk menyisipkan perintah jalankan"
+                "dragToTerminalRun": "Seret ke Terminal untuk menyisipkan perintah jalankan",
+                "closeEditor": "Tutup editor",
+                "resetChanges": "Atur ulang perubahan"
             },
             "previewPanel": {
                 "emptyState": "Klik kanan pada file dan pilih \"Pratinjau\""
             },
             "codeEditor": "Editor Kode",
-            "sshTerminal": "Terminal SSH"
+            "sshTerminal": "Terminal SSH",
+            "comingSoon": "Segera hadir",
+            "soonBadge": "Segera"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Tolak eksekusi alat",
                 "toggleDetails": "Tampilkan/sembunyikan detail",
                 "allowSession": "Izinkan untuk sesi ini",
-                "nonAtomicReplace": "Penggantian non-atomik: berkas sesaat tidak ada"
+                "nonAtomicReplace": "Penggantian non-atomik: berkas sesaat tidak ada",
+                "moreOptions": "Opsi lainnya",
+                "panelAria": "Panel persetujuan alat"
             },
             "settings": {
                 "title": "Pengaturan AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Cadangan",
                 "routingNoFallback": "Tidak ada",
                 "bedrockNeedsModel": "Tambahkan dan aktifkan model Bedrock di tab Model sebelum menguji.",
-                "bedrockSetup": "Atur Runtime URL untuk Wilayah AWS Anda. Di Model, tambahkan ID yang mendukung Chat Completions pada Bedrock Runtime. Runtime tidak mencantumkan model. Pengujian mengirim permintaan inferensi kecil yang mungkin dikenai biaya AWS."
+                "bedrockSetup": "Atur Runtime URL untuk Wilayah AWS Anda. Di Model, tambahkan ID yang mendukung Chat Completions pada Bedrock Runtime. Runtime tidak mencantumkan model. Pengujian mengirim permintaan inferensi kecil yang mungkin dikenai biaya AWS.",
+                "detectOllamaModelsTooltip": "Deteksi otomatis model Ollama yang tersedia",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "Editor model AI",
+                "supportsTools": "Mendukung alat",
+                "supportsVision": "Mendukung visi",
+                "thinkingReasoning": "Berpikir/Penalaran",
+                "toolQuality": "Kualitas alat: {quality}/5"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",
@@ -2699,7 +2719,9 @@
                 "run": "Jalankan di Terminal",
                 "insert": "Sisipkan di Editor",
                 "diff": "Diff dengan Asli",
-                "diffNoFile": "Tidak ada file terbuka untuk diff"
+                "diffNoFile": "Tidak ada file terbuka untuk diff",
+                "commandBlocked": "Perintah diblokir: berpotensi merusak",
+                "confirmRun": "Konfirmasi jalankan: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Berpikir...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Ganti Cabang",
                 "delete": "Hapus Cabang",
                 "newBranch": "Cabang Baru",
-                "branchFrom": "Cabang dari titik ini"
+                "branchFrom": "Cabang dari titik ini",
+                "messageCountShort": "{count} pesan",
+                "unnamed": "Cabang"
             },
             "context": {
                 "projectDetected": "Proyek Terdeteksi",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "berjalan",
                 "expired": "kadaluarsa",
-                "refresh": "Segarkan"
+                "refresh": "Segarkan",
+                "modelsRunningMany": "{count} model berjalan",
+                "modelsRunningOne": "{count} model berjalan",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Caching Konteks",
@@ -2956,7 +2983,8 @@
                 "warning": "Semua operasi file akan dijalankan segera tanpa persetujuan. Gunakan dengan risiko Anda sendiri.",
                 "disable": "Nonaktifkan",
                 "securityWarning": "Peringatan Keamanan",
-                "understood": "Mengerti"
+                "understood": "Mengerti",
+                "warningAria": "Peringatan mode ekstrem"
             },
             "errorServerError": "Server penyedia AI mengalami masalah. Coba lagi sebentar lagi.",
             "errorServiceUnavailable": "Penyedia AI sementara tidak tersedia (kelebihan beban). Layanan gratis mungkin memiliki batasan. Coba lagi nanti.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Tak Terbatas",
                 "roleAI": "AI",
-                "roleUser": "Pengguna"
+                "roleUser": "Pengguna",
+                "noConversations": "Belum ada percakapan",
+                "titleCount": "Riwayat ({count})"
             },
             "dropFileToAnalyze": "Jatuhkan berkas untuk dianalisis dengan AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} token input, {output} token output, sesuai penghitungan penyedia",
-                "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca dari cache prompt, {cacheWritten} ditulis ke dalamnya, sesuai penghitungan penyedia"
+                "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca dari cache prompt, {cacheWritten} ditulis ke dalamnya, sesuai penghitungan penyedia",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Jalankan {count} operasi",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Akan dilewati",
                     "skipped": "Dilewati",
                     "existedAtCheckpoint": "ada pada titik pemeriksaan",
-                    "absentAtCheckpoint": "tidak ada pada titik pemeriksaan"
+                    "absentAtCheckpoint": "tidak ada pada titik pemeriksaan",
+                    "noFiles": "Tidak ada berkas yang disertakan dalam hasil pemulihan ini.",
+                    "otherActions": "Tindakan lain",
+                    "requestedPaths": "Subhimpunan jalur yang diminta",
+                    "scopeAll": "Cakupan: semua berkas yang tersimpan di titik pemeriksaan.",
+                    "titleApplied": "Pemulihan titik pemeriksaan diterapkan",
+                    "titleApplyReview": "Tinjauan penerapan pemulihan titik pemeriksaan",
+                    "titleDryRunComplete": "Uji coba pemulihan titik pemeriksaan selesai",
+                    "titleDryRunReview": "Tinjauan uji coba pemulihan titik periksa"
                 },
                 "checks": {
                     "exitSummary": "kode keluar {code} · {seconds}s",
                     "continueOnFailure": "Menjalankan semua pemeriksaan meskipun salah satunya gagal.",
-                    "stopOnFailure": "Berhenti pada pemeriksaan pertama yang gagal."
+                    "stopOnFailure": "Berhenti pada pemeriksaan pertama yang gagal.",
+                    "checkLabel": "Pemeriksaan:",
+                    "checksLabel": "Pemeriksaan:",
+                    "exitChip": "kode keluar {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "t/a",
+                    "passedCount": "{passed}/{total} lulus",
+                    "runCheckNote": "Menjalankan perintah build/test/lint pilihan di ruang kerja. Skrip build dan pengujian menjalankan kode sungguhan.",
+                    "runProjectCheck": "Jalankan pemeriksaan proyek",
+                    "runVerification": "Jalankan putaran verifikasi",
+                    "runVerificationNote": "Menjalankan perintah build/test/lint pilihan di ruang kerja. Skrip build dan pengujian menjalankan kode sungguhan.",
+                    "stoppedEarly": "Berhenti pada pemeriksaan pertama yang gagal.",
+                    "timeoutLabel": "Batas waktu: {seconds} dtk",
+                    "verification": "Verifikasi"
                 },
                 "diagnostics": {
-                    "none": "Tidak ada diagnostik yang dilaporkan."
+                    "none": "Tidak ada diagnostik yang dilaporkan.",
+                    "errorCountMany": "{count} galat",
+                    "errorCountOne": "{count} galat",
+                    "title": "Diagnostik",
+                    "truncated": "Daftar diagnostik dipotong.",
+                    "warningCountMany": "{count} peringatan",
+                    "warningCountOne": "{count} peringatan"
                 },
                 "search": {
-                    "none": "Tidak ada kecocokan ditemukan."
+                    "none": "Tidak ada kecocokan ditemukan.",
+                    "ignoreCase": "abaikan huruf besar/kecil",
+                    "inPath": "di {path}",
+                    "literal": "harfiah",
+                    "matchCountMany": "{count} kecocokan",
+                    "matchCountOne": "{count} kecocokan",
+                    "title": "Pencarian ruang kerja",
+                    "truncated": "Hasil dipotong."
                 },
                 "git": {
                     "noStagedDiff": "Tidak ada keluaran diff untuk perubahan yang disiapkan.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Persetujuan Penyiapan Git",
                     "commitNote": "Ini membuat git commit dari indeks yang disiapkan saat ini. Tinjau coding_git_status dan coding_git_diff dengan staged=true terlebih dahulu.",
                     "stagePreviewNote": "Ini menampilkan pratinjau jalur yang diminta yang akan disiapkan; indeks tidak akan berubah.",
-                    "stageNote": "Ini mengubah indeks git untuk jalur yang diminta."
+                    "stageNote": "Ini mengubah indeks git untuk jalur yang diminta.",
+                    "afterCounts": "Sesudah: {counts}",
+                    "beforeCounts": "Sebelum: {counts}",
+                    "clean": "Pohon kerja bersih.",
+                    "commitCountMany": "{count} komit",
+                    "commitCountOne": "{count} komit",
+                    "conflicted": "berkonflik",
+                    "diffTruncated": "Keluaran diff terpotong.",
+                    "logTitle": "Log Git",
+                    "pathsChip": "jalur: {paths}",
+                    "showingNewest": "Menampilkan {count} terbaru; masih ada lagi.",
+                    "statusCounts": "{staged} di-stage, {unstaged} belum di-stage, {untracked} tidak dilacak, {conflicted} berkonflik",
+                    "titleCommitCreated": "Komit Git dibuat",
+                    "titleCommitDryRun": "Uji coba komit Git",
+                    "titleCommitReview": "Tinjauan komit Git",
+                    "titleReview": "Tinjauan Git",
+                    "titleStageApplied": "Stage Git diterapkan",
+                    "titleStagedDiff": "Diff Git yang di-stage",
+                    "titleStageDryRun": "Uji coba stage Git",
+                    "titleStatus": "Status Git",
+                    "titleUnstagedDiff": "Diff Git yang belum di-stage",
+                    "untracked": "tidak dilacak"
                 },
                 "patch": {
                     "validateNote": "Ini memvalidasi patch tanpa mengubah file.",
                     "applyNote": "Permintaan penerapan berisiko tinggi ini menulis file setelah backend membuat titik pemulihan sebelum penerapan.",
                     "hideDiff": "Sembunyikan diff terpadu",
-                    "showDiff": "Tampilkan diff terpadu"
-                }
+                    "showDiff": "Tampilkan diff terpadu",
+                    "actualLabel": "aktual:",
+                    "checkpointCreated": "Titik pemeriksaan sebelum penerapan dibuat",
+                    "diffTruncated": "Pratinjau diff dipotong untuk tampilan.",
+                    "expectedLabel": "diharapkan:",
+                    "firstLines": "{shown} baris pertama dari {total}",
+                    "hunkCountMany": "{count} blok",
+                    "hunkCountOne": "{count} blok",
+                    "hunkIndex": "blok {index}",
+                    "restoreManual": "Pemulihan dilakukan manual: gunakan {tool} dengan ID titik pemeriksaan ini setelah ditinjau.",
+                    "titleApplied": "Tambalan diterapkan",
+                    "titleApplyBlocked": "Penerapan tambalan diblokir",
+                    "titleApplyReview": "Tinjauan penerapan tambalan",
+                    "titleDryRunConflicts": "Uji coba tambalan menemukan konflik",
+                    "titleDryRunPassed": "Uji coba tambalan lolos",
+                    "titleDryRunReview": "Tinjauan uji coba tambalan",
+                    "warnings": "Peringatan"
+                },
+                "binary": "biner",
+                "fileCountMany": "{count} berkas",
+                "fileCountOne": "{count} berkas",
+                "moreCount": "+{count} lainnya",
+                "plan": {
+                    "likelyFiles": "Berkas yang mungkin terkait",
+                    "openQuestions": "Pertanyaan terbuka",
+                    "reviewOnlyNote": "Artefak khusus tinjauan. Pengeditan dan alat yang mengubah tetap memakai mode persetujuan saat ini.",
+                    "riskHigh": "risiko tinggi",
+                    "riskLow": "risiko rendah",
+                    "riskMedium": "risiko sedang",
+                    "risks": "Risiko",
+                    "title": "Rencana pengodean"
+                },
+                "state": {
+                    "clean": "bersih",
+                    "failed": "gagal",
+                    "passed": "lulus",
+                    "timedOut": "waktu habis"
+                },
+                "timeoutChip": "batas waktu {seconds}s",
+                "truncated": "dipotong",
+                "workspaceLabel": "Ruang kerja:"
+            },
+            "attachedImageAlt": "Gambar terlampir",
+            "stepNumber": "Langkah {step}",
+            "transcribingLocally": "Mentranskripsi secara lokal...",
+            "transferPlan": {
+                "dependsOnMany": "Bergantung pada {count} langkah persiapan",
+                "dependsOnOne": "Bergantung pada {count} langkah persiapan",
+                "destination": "Tujuan: {destination}",
+                "title": "Tinjauan Rencana Transfer",
+                "warnings": "Peringatan"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Jelajahi",
                     "installed": "Terpasang"
-                }
+                },
+                "remoteInstallDisabled": "Instalasi plugin jarak jauh saat ini dinonaktifkan hingga registri diautentikasi di sisi klien. Plugin yang terpasang secara lokal tetap berfungsi seperti biasa."
             }
         },
         "filelu": {

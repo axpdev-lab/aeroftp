@@ -1269,7 +1269,14 @@
                 "stop": "Simamisha",
                 "stopShell": "Simamisha ganda",
                 "closed": "Terminali imefungwa.",
-                "commandInsertedReview": "Amri imeingizwa katika Terminal. Bonyeza Enter ili kuendesha."
+                "commandInsertedReview": "Amri imeingizwa katika Terminal. Bonyeza Enter ili kuendesha.",
+                "decreaseFont": "Punguza ukubwa wa fonti (Ctrl+-)",
+                "emptyClickPlus": "Bofya {plus} ili kufungua terminali",
+                "emptySshHint": "au {ssh} kwa shell ya mbali kwenda {host}",
+                "increaseFont": "Ongeza ukubwa wa fonti (Ctrl+=)",
+                "newTab": "Kichupo kipya cha terminali",
+                "sshShellTo": "Shell ya SSH kwenda {host}",
+                "theme": "Mandhari ya terminali"
             },
             "editorPanel": {
                 "emptyState": "Bofya kulia kwenye faili na uchague \"Angalia chanzo\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Inahifadhi...",
                 "noFileSelected": "Hakuna faili iliyochaguliwa kutazamwa",
                 "loading": "Kupakia mhariri...",
-                "dragToTerminalRun": "Buruta hadi Terminal ili kuingiza amri ya kuendesha"
+                "dragToTerminalRun": "Buruta hadi Terminal ili kuingiza amri ya kuendesha",
+                "closeEditor": "Funga kihariri",
+                "resetChanges": "Weka upya mabadiliko"
             },
             "previewPanel": {
                 "emptyState": "Bofya kulia kwenye faili na uchague \"Onyesho la Awali\""
             },
             "codeEditor": "Kihariri cha Msimbo",
-            "sshTerminal": "Terminali ya SSH"
+            "sshTerminal": "Terminali ya SSH",
+            "comingSoon": "Inakuja hivi karibuni",
+            "soonBadge": "Karibuni"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Kataa utekelezaji wa zana",
                 "toggleDetails": "Onyesha/ficha maelezo",
                 "allowSession": "Ruhusu kwa kipindi hiki",
-                "nonAtomicReplace": "Ubadilishaji si atomiki: faili haipo kwa muda mfupi"
+                "nonAtomicReplace": "Ubadilishaji si atomiki: faili haipo kwa muda mfupi",
+                "moreOptions": "Chaguo zaidi",
+                "panelAria": "Paneli ya kuidhinisha zana"
             },
             "settings": {
                 "title": "Mipangilio ya AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Mbadala",
                 "routingNoFallback": "Hakuna",
                 "bedrockNeedsModel": "Ongeza na uwashe muundo wa Bedrock kwenye kichupo cha Modeli kabla ya kujaribu.",
-                "bedrockSetup": "Weka Runtime URL ya eneo lako la AWS. Katika Modeli, ongeza ID inayotumia Chat Completions kwenye Bedrock Runtime. Runtime haionyeshi orodha ya miundo. Jaribio hutuma ombi dogo la utoaji makisio ambalo linaweza kusababisha gharama za AWS."
+                "bedrockSetup": "Weka Runtime URL ya eneo lako la AWS. Katika Modeli, ongeza ID inayotumia Chat Completions kwenye Bedrock Runtime. Runtime haionyeshi orodha ya miundo. Jaribio hutuma ombi dogo la utoaji makisio ambalo linaweza kusababisha gharama za AWS.",
+                "detectOllamaModelsTooltip": "Gundua kiotomatiki miundo ya Ollama inayopatikana",
+                "kTokens": "Tokeni {count}K",
+                "modelEditorAria": "Kihariri cha miundo ya AI",
+                "supportsTools": "Inaauni zana",
+                "supportsVision": "Inaauni maono",
+                "thinkingReasoning": "Kufikiri/Kutoa hoja",
+                "toolQuality": "Ubora wa zana: {quality}/5"
             },
             "copy": "Nakili",
             "attachImage": "Ambatanisha picha",
@@ -2699,7 +2719,9 @@
                 "run": "Endesha kwenye Terminal",
                 "insert": "Ingiza kwenye Kihariri",
                 "diff": "Linganisha na asili",
-                "diffNoFile": "Hakuna faili iliyofunguliwa kwa kulinganisha"
+                "diffNoFile": "Hakuna faili iliyofunguliwa kwa kulinganisha",
+                "commandBlocked": "Amri imezuiwa: inaweza kuharibu",
+                "confirmRun": "Thibitisha kuendesha: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Inafikiria...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Badilisha tawi",
                 "delete": "Futa tawi",
                 "newBranch": "Tawi jipya",
-                "branchFrom": "Gawa kutoka hatua hii"
+                "branchFrom": "Gawa kutoka hatua hii",
+                "messageCountShort": "ujumbe {count}",
+                "unnamed": "Tawi"
             },
             "context": {
                 "projectDetected": "Mradi umegunduliwa",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "inafanya kazi",
                 "expired": "imeisha muda",
-                "refresh": "Onyesha Upya"
+                "refresh": "Onyesha Upya",
+                "modelsRunningMany": "Miundo {count} inaendeshwa",
+                "modelsRunningOne": "Muundo {count} unaendeshwa",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Kuhifadhi Muktadha",
@@ -2956,7 +2983,8 @@
                 "warning": "Shughuli zote za faili zitatekelezwa mara moja bila idhini. Tumia kwa hatari yako mwenyewe.",
                 "disable": "Zima",
                 "securityWarning": "Onyo la usalama",
-                "understood": "Nimuelewa"
+                "understood": "Nimuelewa",
+                "warningAria": "Onyo la hali kali"
             },
             "errorServerError": "Seva ya mtoa huduma wa AI ina matatizo. Jaribu tena baadaye.",
             "errorServiceUnavailable": "Mtoa huduma wa AI hapatikani kwa muda (kupakia kupita kiasi). Huduma za bure zinaweza kuwa na vikomo. Jaribu tena baadaye.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Bila kikomo",
                 "roleAI": "AI",
-                "roleUser": "Mtumiaji"
+                "roleUser": "Mtumiaji",
+                "noConversations": "Bado hakuna mazungumzo",
+                "titleCount": "Historia ({count})"
             },
             "dropFileToAnalyze": "Dondosha faili ili kuchambuliwa na AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "tokeni {input} za ingizo, tokeni {output} za towe, kama zilivyohesabiwa na mtoa huduma",
-                "breakdownCache": "tokeni {input} za ingizo, tokeni {output} za towe, {cacheRead} zilizosomwa kutoka kwenye akiba ya maelekezo, {cacheWritten} zilizoandikwa humo, kama zilivyohesabiwa na mtoa huduma"
+                "breakdownCache": "tokeni {input} za ingizo, tokeni {output} za towe, {cacheRead} zilizosomwa kutoka kwenye akiba ya maelekezo, {cacheWritten} zilizoandikwa humo, kama zilivyohesabiwa na mtoa huduma",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Tekeleza operesheni {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Ingerukwa",
                     "skipped": "Imerukwa",
                     "existedAtCheckpoint": "ilikuwepo kwenye kituo cha ukaguzi",
-                    "absentAtCheckpoint": "haikuwepo kwenye kituo cha ukaguzi"
+                    "absentAtCheckpoint": "haikuwepo kwenye kituo cha ukaguzi",
+                    "noFiles": "Hakuna faili zilizojumuishwa katika tokeo hili la urejeshaji.",
+                    "otherActions": "Vitendo vingine",
+                    "requestedPaths": "Kikundi kidogo cha njia kilichoombwa",
+                    "scopeAll": "Upeo: faili zote zilizohifadhiwa kwenye kituo cha ukaguzi.",
+                    "titleApplied": "Urejeshaji wa kituo cha ukaguzi umetumika",
+                    "titleApplyReview": "Ukaguzi wa utumiaji wa urejeshaji wa kituo cha ukaguzi",
+                    "titleDryRunComplete": "Jaribio la urejeshaji wa kituo cha ukaguzi limekamilika",
+                    "titleDryRunReview": "Mapitio ya jaribio la kurejesha kituo cha ukaguzi"
                 },
                 "checks": {
                     "exitSummary": "msimbo wa kutoka {code} · {seconds}s",
                     "continueOnFailure": "Huendesha ukaguzi wote hata kama mmoja ukishindwa.",
-                    "stopOnFailure": "Husimama kwenye ukaguzi wa kwanza unaoshindwa."
+                    "stopOnFailure": "Husimama kwenye ukaguzi wa kwanza unaoshindwa.",
+                    "checkLabel": "Ukaguzi:",
+                    "checksLabel": "Ukaguzi:",
+                    "exitChip": "msimbo wa kutoka {code}",
+                    "filterChip": "kichujio: {filter}",
+                    "filterLabel": "Kichujio:",
+                    "notAvailable": "haipatikani",
+                    "passedCount": "{passed}/{total} zimefaulu",
+                    "runCheckNote": "Huendesha amri teule ya build/test/lint kwenye eneo la kazi. Hati za kujenga na majaribio huendesha msimbo halisi.",
+                    "runProjectCheck": "Endesha ukaguzi wa mradi",
+                    "runVerification": "Endesha mzunguko wa uthibitishaji",
+                    "runVerificationNote": "Huendesha amri teule za build/test/lint kwenye eneo la kazi. Hati za kujenga na majaribio huendesha msimbo halisi.",
+                    "stoppedEarly": "Ilisimama kwenye ukaguzi wa kwanza ulioshindwa.",
+                    "timeoutLabel": "Muda wa kusubiri: sekunde {seconds}",
+                    "verification": "Uthibitishaji"
                 },
                 "diagnostics": {
-                    "none": "Hakuna uchunguzi ulioripotiwa."
+                    "none": "Hakuna uchunguzi ulioripotiwa.",
+                    "errorCountMany": "hitilafu {count}",
+                    "errorCountOne": "hitilafu {count}",
+                    "title": "Uchunguzi",
+                    "truncated": "Orodha ya uchunguzi ilifupishwa.",
+                    "warningCountMany": "maonyo {count}",
+                    "warningCountOne": "onyo {count}"
                 },
                 "search": {
-                    "none": "Hakuna yanayolingana yaliyopatikana."
+                    "none": "Hakuna yanayolingana yaliyopatikana.",
+                    "ignoreCase": "puuza herufi kubwa/ndogo",
+                    "inPath": "katika {path}",
+                    "literal": "halisi",
+                    "matchCountMany": "Ulinganifu {count}",
+                    "matchCountOne": "Ulinganifu {count}",
+                    "title": "Utafutaji wa eneo la kazi",
+                    "truncated": "Matokeo yalifupishwa."
                 },
                 "git": {
                     "noStagedDiff": "Hakuna matokeo ya diff kwa mabadiliko yaliyoandaliwa.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Idhini ya Kuandaa Git",
                     "commitNote": "Hii huunda commit ya git kutoka kwa faharasa iliyoandaliwa sasa. Kagua coding_git_status na coding_git_diff kwa staged=true kwanza.",
                     "stagePreviewNote": "Hii huonyesha mapema njia zipi zilizoombwa zingeandaliwa; faharasa haitabadilika.",
-                    "stageNote": "Hii hubadilisha faharasa ya git kwa njia zilizoombwa."
+                    "stageNote": "Hii hubadilisha faharasa ya git kwa njia zilizoombwa.",
+                    "afterCounts": "Baada: {counts}",
+                    "beforeCounts": "Kabla: {counts}",
+                    "clean": "Mti wa kazi ni safi.",
+                    "commitCountMany": "Michango {count}",
+                    "commitCountOne": "Mchango {count}",
+                    "conflicted": "kuna mgongano",
+                    "diffTruncated": "Matokeo ya tofauti yalikatwa.",
+                    "logTitle": "Kumbukumbu ya Git",
+                    "pathsChip": "njia: {paths}",
+                    "showingNewest": "Inaonyesha {count} za hivi karibuni; zipo zaidi.",
+                    "statusCounts": "{staged} zimeandaliwa, {unstaged} hazijaandaliwa, {untracked} hazifuatiliwi, {conflicted} zina mgongano",
+                    "titleCommitCreated": "Mchango wa Git umeundwa",
+                    "titleCommitDryRun": "Jaribio la mchango wa Git",
+                    "titleCommitReview": "Ukaguzi wa mchango wa Git",
+                    "titleReview": "Ukaguzi wa Git",
+                    "titleStageApplied": "Maandalizi ya Git yametumika",
+                    "titleStagedDiff": "Tofauti za Git zilizoandaliwa",
+                    "titleStageDryRun": "Jaribio la maandalizi ya Git",
+                    "titleStatus": "Hali ya Git",
+                    "titleUnstagedDiff": "Tofauti za Git ambazo hazijaandaliwa",
+                    "untracked": "haifuatiliwi"
                 },
                 "patch": {
                     "validateNote": "Hii huthibitisha kiraka bila kubadilisha faili.",
                     "applyNote": "Ombi hili la kutumia lenye hatari kubwa huandika faili baada ya backend kuunda kituo cha ukaguzi kabla ya kutumia.",
                     "hideDiff": "Ficha diff iliyounganishwa",
-                    "showDiff": "Onyesha diff iliyounganishwa"
-                }
+                    "showDiff": "Onyesha diff iliyounganishwa",
+                    "actualLabel": "halisi:",
+                    "checkpointCreated": "Kituo cha ukaguzi kabla ya kutumia kimeundwa",
+                    "diffTruncated": "Hakiki ya tofauti imekatwa kwa ajili ya kuonyesha.",
+                    "expectedLabel": "inayotarajiwa:",
+                    "firstLines": "mistari {shown} ya kwanza kati ya {total}",
+                    "hunkCountMany": "vipande {count}",
+                    "hunkCountOne": "kipande {count}",
+                    "hunkIndex": "kipande {index}",
+                    "restoreManual": "Urejeshaji ni wa mkono: baada ya ukaguzi, tumia {tool} pamoja na kitambulisho hiki cha kituo cha ukaguzi.",
+                    "titleApplied": "Kiraka kimetumika",
+                    "titleApplyBlocked": "Utumiaji wa kiraka umezuiwa",
+                    "titleApplyReview": "Ukaguzi wa utumiaji wa kiraka",
+                    "titleDryRunConflicts": "Jaribio la kiraka limepata migongano",
+                    "titleDryRunPassed": "Jaribio la kiraka limefaulu",
+                    "titleDryRunReview": "Ukaguzi wa jaribio la kiraka",
+                    "warnings": "Maonyo"
+                },
+                "binary": "jozi",
+                "fileCountMany": "faili {count}",
+                "fileCountOne": "Faili {count}",
+                "moreCount": "+{count} zaidi",
+                "plan": {
+                    "likelyFiles": "Faili zinazowezekana",
+                    "openQuestions": "Maswali yaliyo wazi",
+                    "reviewOnlyNote": "Kipengee cha ukaguzi pekee. Mabadiliko na zana zinazobadilisha bado zinatumia hali ya sasa ya idhini.",
+                    "riskHigh": "hatari kubwa",
+                    "riskLow": "hatari ndogo",
+                    "riskMedium": "hatari ya wastani",
+                    "risks": "Hatari",
+                    "title": "Mpango wa usimbaji"
+                },
+                "state": {
+                    "clean": "safi",
+                    "failed": "imeshindwa",
+                    "passed": "imepita",
+                    "timedOut": "muda umeisha"
+                },
+                "timeoutChip": "kikomo cha muda {seconds}s",
+                "truncated": "imefupishwa",
+                "workspaceLabel": "Eneo la kazi:"
+            },
+            "attachedImageAlt": "Picha iliyoambatishwa",
+            "stepNumber": "Hatua {step}",
+            "transcribingLocally": "Inanukuu ndani ya kifaa...",
+            "transferPlan": {
+                "dependsOnMany": "Inategemea hatua {count} za maandalizi",
+                "dependsOnOne": "Inategemea hatua {count} ya maandalizi",
+                "destination": "Mahali pa kwenda: {destination}",
+                "title": "Ukaguzi wa Mpango wa Uhamisho",
+                "warnings": "Maonyo"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Vinjari",
                     "installed": "Imewekwa"
-                }
+                },
+                "remoteInstallDisabled": "Usakinishaji wa programu-jalizi kwa mbali umezimwa kwa sasa hadi sajili ithibitishwe upande wa mteja. Programu-jalizi zilizosakinishwa ndani ya kifaa zinaendelea kufanya kazi kama kawaida."
             }
         },
         "filelu": {

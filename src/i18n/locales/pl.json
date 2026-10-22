@@ -1269,7 +1269,14 @@
                 "stop": "Stop",
                 "stopShell": "Zatrzymaj powłokę",
                 "closed": "Terminal zamknięty.",
-                "commandInsertedReview": "Polecenie wstawione do Terminalu. Naciśnij Enter, aby uruchomić."
+                "commandInsertedReview": "Polecenie wstawione do Terminalu. Naciśnij Enter, aby uruchomić.",
+                "decreaseFont": "Zmniejsz rozmiar czcionki (Ctrl+-)",
+                "emptyClickPlus": "Kliknij {plus}, aby otworzyć terminal",
+                "emptySshHint": "lub {ssh}, aby otworzyć zdalną powłokę na {host}",
+                "increaseFont": "Zwiększ rozmiar czcionki (Ctrl+=)",
+                "newTab": "Nowa karta terminala",
+                "sshShellTo": "Powłoka SSH na {host}",
+                "theme": "Motyw terminala"
             },
             "editorPanel": {
                 "emptyState": "Kliknij prawym przyciskiem na plik i wybierz \"Pokaż źródło\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Zapisywanie...",
                 "noFileSelected": "Nie wybrano pliku do wyświetlenia",
                 "loading": "Ładowanie edytora...",
-                "dragToTerminalRun": "Przeciągnij do Terminalu, aby wstawić polecenie uruchamiania"
+                "dragToTerminalRun": "Przeciągnij do Terminalu, aby wstawić polecenie uruchamiania",
+                "closeEditor": "Zamknij edytor",
+                "resetChanges": "Resetuj zmiany"
             },
             "previewPanel": {
                 "emptyState": "Kliknij prawym przyciskiem na plik i wybierz \"Podgląd\""
             },
             "codeEditor": "Edytor kodu",
-            "sshTerminal": "Terminal SSH"
+            "sshTerminal": "Terminal SSH",
+            "comingSoon": "Wkrótce dostępne",
+            "soonBadge": "Wkrótce"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Odrzuć wykonanie narzędzia",
                 "toggleDetails": "Pokaż/ukryj szczegóły",
                 "allowSession": "Zezwól na tę sesję",
-                "nonAtomicReplace": "Nieatomowa zamiana: plik chwilowo nie istnieje"
+                "nonAtomicReplace": "Nieatomowa zamiana: plik chwilowo nie istnieje",
+                "moreOptions": "Więcej opcji",
+                "panelAria": "Panel zatwierdzania narzędzi"
             },
             "settings": {
                 "title": "Ustawienia AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Zapasowy",
                 "routingNoFallback": "Brak",
                 "bedrockNeedsModel": "Przed testowaniem dodaj i włącz model Bedrock na karcie Modele.",
-                "bedrockSetup": "Ustaw Runtime URL dla swojego regionu AWS. Na karcie Modele dodaj ID obsługujący Chat Completions w Bedrock Runtime. Runtime nie wyświetla listy modeli. Test wysyła niewielkie żądanie wnioskowania, które może spowodować naliczenie opłat przez AWS."
+                "bedrockSetup": "Ustaw Runtime URL dla swojego regionu AWS. Na karcie Modele dodaj ID obsługujący Chat Completions w Bedrock Runtime. Runtime nie wyświetla listy modeli. Test wysyła niewielkie żądanie wnioskowania, które może spowodować naliczenie opłat przez AWS.",
+                "detectOllamaModelsTooltip": "Automatycznie wykryj dostępne modele Ollama",
+                "kTokens": "{count}K tokenów",
+                "modelEditorAria": "Edytor modeli AI",
+                "supportsTools": "Obsługuje narzędzia",
+                "supportsVision": "Obsługuje obraz",
+                "thinkingReasoning": "Myślenie/Rozumowanie",
+                "toolQuality": "Jakość narzędzi: {quality}/5"
             },
             "copy": "Kopiuj",
             "attachImage": "Załącz obraz",
@@ -2699,7 +2719,9 @@
                 "run": "Uruchom w terminalu",
                 "insert": "Wstaw do edytora",
                 "diff": "Porównaj z oryginałem",
-                "diffNoFile": "Brak pliku do porównania"
+                "diffNoFile": "Brak pliku do porównania",
+                "commandBlocked": "Polecenie zablokowane: potencjalnie destrukcyjne",
+                "confirmRun": "Potwierdź uruchomienie: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Myślę...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Zmień gałąź",
                 "delete": "Usuń gałąź",
                 "newBranch": "Nowa gałąź",
-                "branchFrom": "Rozgałęź od tego punktu"
+                "branchFrom": "Rozgałęź od tego punktu",
+                "messageCountShort": "{count} wiad.",
+                "unnamed": "Gałąź"
             },
             "context": {
                 "projectDetected": "Projekt wykryty",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "działa",
                 "expired": "wygasł",
-                "refresh": "Odśwież"
+                "refresh": "Odśwież",
+                "modelsRunningMany": "Uruchomione modele: {count}",
+                "modelsRunningOne": "Uruchomiony {count} model",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Buforowanie kontekstu",
@@ -2956,7 +2983,8 @@
                 "warning": "Wszystkie operacje na plikach zostaną wykonane natychmiast bez zatwierdzenia. Używasz na własne ryzyko.",
                 "disable": "Wyłącz",
                 "securityWarning": "Ostrzeżenie bezpieczeństwa",
-                "understood": "Rozumiem"
+                "understood": "Rozumiem",
+                "warningAria": "Ostrzeżenie o trybie ekstremalnym"
             },
             "errorServerError": "Serwer dostawcy AI ma problemy. Spróbuj ponownie za chwilę.",
             "errorServiceUnavailable": "Dostawca AI jest tymczasowo niedostępny (przeciążony). Darmowe usługi mogą mieć ograniczenia. Spróbuj ponownie później.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Bez limitu",
                 "roleAI": "AI",
-                "roleUser": "Użytkownik"
+                "roleUser": "Użytkownik",
+                "noConversations": "Brak rozmów",
+                "titleCount": "Historia ({count})"
             },
             "dropFileToAnalyze": "Upuść plik, aby przeanalizować go za pomocą AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} tokenów wejściowych, {output} tokenów wyjściowych, według liczenia dostawcy",
-                "breakdownCache": "{input} tokenów wejściowych, {output} tokenów wyjściowych, {cacheRead} odczytanych z pamięci podręcznej promptu, {cacheWritten} zapisanych w niej, według liczenia dostawcy"
+                "breakdownCache": "{input} tokenów wejściowych, {output} tokenów wyjściowych, {cacheRead} odczytanych z pamięci podręcznej promptu, {cacheWritten} zapisanych w niej, według liczenia dostawcy",
+                "countShort": "{count} tok."
             },
             "executeOperations": "Wykonaj operacje: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Zostałyby pominięte",
                     "skipped": "Pominięte",
                     "existedAtCheckpoint": "istniał w punkcie kontrolnym",
-                    "absentAtCheckpoint": "nieobecny w punkcie kontrolnym"
+                    "absentAtCheckpoint": "nieobecny w punkcie kontrolnym",
+                    "noFiles": "Ten wynik przywracania nie zawiera żadnych plików.",
+                    "otherActions": "Inne działania",
+                    "requestedPaths": "Żądany podzbiór ścieżek",
+                    "scopeAll": "Zakres: wszystkie pliki zapisane w punkcie kontrolnym.",
+                    "titleApplied": "Przywracanie punktu kontrolnego zastosowane",
+                    "titleApplyReview": "Przegląd zastosowania przywracania punktu kontrolnego",
+                    "titleDryRunComplete": "Próbny przebieg przywracania punktu kontrolnego zakończony",
+                    "titleDryRunReview": "Przegląd próbnego przywracania punktu kontrolnego"
                 },
                 "checks": {
                     "exitSummary": "kod wyjścia {code} · {seconds}s",
                     "continueOnFailure": "Uruchamia wszystkie sprawdzenia, nawet jeśli jedno się nie powiedzie.",
-                    "stopOnFailure": "Zatrzymuje się na pierwszym nieudanym sprawdzeniu."
+                    "stopOnFailure": "Zatrzymuje się na pierwszym nieudanym sprawdzeniu.",
+                    "checkLabel": "Sprawdzenie:",
+                    "checksLabel": "Sprawdzenia:",
+                    "exitChip": "kod wyjścia {code}",
+                    "filterChip": "filtr: {filter}",
+                    "filterLabel": "Filtr:",
+                    "notAvailable": "b/d",
+                    "passedCount": "{passed}/{total} zaliczonych",
+                    "runCheckNote": "Uruchamia wybrane polecenie build/test/lint w obszarze roboczym. Skrypty budowania i testy wykonują prawdziwy kod.",
+                    "runProjectCheck": "Uruchom sprawdzenie projektu",
+                    "runVerification": "Uruchom przebieg weryfikacji",
+                    "runVerificationNote": "Uruchamia wybrane polecenia build/test/lint w obszarze roboczym. Skrypty budowania i testy wykonują prawdziwy kod.",
+                    "stoppedEarly": "Zatrzymano na pierwszym nieudanym sprawdzeniu.",
+                    "timeoutLabel": "Limit czasu: {seconds} s",
+                    "verification": "Weryfikacja"
                 },
                 "diagnostics": {
-                    "none": "Nie zgłoszono diagnostyki."
+                    "none": "Nie zgłoszono diagnostyki.",
+                    "errorCountMany": "{count} błędów",
+                    "errorCountOne": "{count} błąd",
+                    "title": "Diagnostyka",
+                    "truncated": "Lista diagnostyki została obcięta.",
+                    "warningCountMany": "{count} ostrzeżeń",
+                    "warningCountOne": "{count} ostrzeżenie"
                 },
                 "search": {
-                    "none": "Nie znaleziono dopasowań."
+                    "none": "Nie znaleziono dopasowań.",
+                    "ignoreCase": "ignoruj wielkość liter",
+                    "inPath": "w {path}",
+                    "literal": "dosłownie",
+                    "matchCountMany": "{count} dopasowań",
+                    "matchCountOne": "{count} dopasowanie",
+                    "title": "Wyszukiwanie w obszarze roboczym",
+                    "truncated": "Wyniki zostały obcięte."
                 },
                 "git": {
                     "noStagedDiff": "Brak wyniku diff dla zmian w poczekalni.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Zatwierdzenie dodania do poczekalni Git",
                     "commitNote": "To tworzy commit git z bieżącej zawartości poczekalni. Najpierw sprawdź coding_git_status i coding_git_diff z staged=true.",
                     "stagePreviewNote": "To pokazuje podgląd, które z żądanych ścieżek zostałyby dodane do poczekalni; indeks się nie zmieni.",
-                    "stageNote": "To zmienia indeks git dla żądanych ścieżek."
+                    "stageNote": "To zmienia indeks git dla żądanych ścieżek.",
+                    "afterCounts": "Po: {counts}",
+                    "beforeCounts": "Przed: {counts}",
+                    "clean": "Drzewo robocze jest czyste.",
+                    "commitCountMany": "{count} commitów",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "w konflikcie",
+                    "diffTruncated": "Wynik diff został obcięty.",
+                    "logTitle": "Dziennik Git",
+                    "pathsChip": "ścieżki: {paths}",
+                    "showingNewest": "Wyświetlono {count} najnowszych; jest ich więcej.",
+                    "statusCounts": "{staged} w poczekalni, {unstaged} poza poczekalnią, {untracked} nieśledzonych, {conflicted} w konflikcie",
+                    "titleCommitCreated": "Utworzono commit Git",
+                    "titleCommitDryRun": "Próbny commit Git",
+                    "titleCommitReview": "Przegląd commita Git",
+                    "titleReview": "Przegląd Git",
+                    "titleStageApplied": "Zastosowano dodanie do poczekalni Git",
+                    "titleStagedDiff": "Diff Git z poczekalni",
+                    "titleStageDryRun": "Próbne dodanie do poczekalni Git",
+                    "titleStatus": "Stan Git",
+                    "titleUnstagedDiff": "Diff Git spoza poczekalni",
+                    "untracked": "nieśledzony"
                 },
                 "patch": {
                     "validateNote": "To weryfikuje łatkę bez zmieniania plików.",
                     "applyNote": "To żądanie zastosowania o wysokim ryzyku zapisuje pliki po utworzeniu przez backend punktu kontrolnego przed zastosowaniem.",
                     "hideDiff": "Ukryj ujednolicony diff",
-                    "showDiff": "Pokaż ujednolicony diff"
-                }
+                    "showDiff": "Pokaż ujednolicony diff",
+                    "actualLabel": "rzeczywiste:",
+                    "checkpointCreated": "Utworzono punkt kontrolny przed zastosowaniem",
+                    "diffTruncated": "Podgląd diff obcięty do wyświetlenia.",
+                    "expectedLabel": "oczekiwane:",
+                    "firstLines": "pierwsze {shown} z {total} wierszy",
+                    "hunkCountMany": "{count} fragmentów",
+                    "hunkCountOne": "{count} fragment",
+                    "hunkIndex": "fragment {index}",
+                    "restoreManual": "Przywracanie jest ręczne: po przeglądzie użyj {tool} z tym identyfikatorem punktu kontrolnego.",
+                    "titleApplied": "Poprawka zastosowana",
+                    "titleApplyBlocked": "Zastosowanie poprawki zablokowane",
+                    "titleApplyReview": "Przegląd zastosowania poprawki",
+                    "titleDryRunConflicts": "Próbny przebieg poprawki wykrył konflikty",
+                    "titleDryRunPassed": "Próbny przebieg poprawki zaliczony",
+                    "titleDryRunReview": "Przegląd próbnego przebiegu poprawki",
+                    "warnings": "Ostrzeżenia"
+                },
+                "binary": "binarny",
+                "fileCountMany": "{count} plików",
+                "fileCountOne": "{count} plik",
+                "moreCount": "+{count} więcej",
+                "plan": {
+                    "likelyFiles": "Prawdopodobne pliki",
+                    "openQuestions": "Otwarte pytania",
+                    "reviewOnlyNote": "Artefakt tylko do przeglądu. Edycje i narzędzia modyfikujące nadal używają bieżącego trybu zatwierdzania.",
+                    "riskHigh": "wysokie ryzyko",
+                    "riskLow": "niskie ryzyko",
+                    "riskMedium": "średnie ryzyko",
+                    "risks": "Ryzyka",
+                    "title": "Plan kodowania"
+                },
+                "state": {
+                    "clean": "czysty",
+                    "failed": "niepowodzenie",
+                    "passed": "zaliczony",
+                    "timedOut": "przekroczono czas"
+                },
+                "timeoutChip": "limit czasu {seconds}s",
+                "truncated": "obcięte",
+                "workspaceLabel": "Obszar roboczy:"
+            },
+            "attachedImageAlt": "Załączony obraz",
+            "stepNumber": "Krok {step}",
+            "transcribingLocally": "Transkrypcja lokalna...",
+            "transferPlan": {
+                "dependsOnMany": "Zależy od {count} kroków przygotowawczych",
+                "dependsOnOne": "Zależy od {count} kroku przygotowawczego",
+                "destination": "Cel: {destination}",
+                "title": "Przegląd planu transferu",
+                "warnings": "Ostrzeżenia"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Przeglądaj",
                     "installed": "Zainstalowane"
-                }
+                },
+                "remoteInstallDisabled": "Zdalna instalacja wtyczek jest obecnie wyłączona do czasu uwierzytelnienia rejestru po stronie klienta. Lokalnie zainstalowane wtyczki nadal działają normalnie."
             }
         },
         "filelu": {

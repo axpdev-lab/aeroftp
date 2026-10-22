@@ -1269,7 +1269,14 @@
                 "stop": "Ustavi",
                 "stopShell": "Ustavi lupino",
                 "closed": "Terminal zaprt.",
-                "commandInsertedReview": "Ukaz vstavljen v Terminal. Pritisnite Enter za zagon."
+                "commandInsertedReview": "Ukaz vstavljen v Terminal. Pritisnite Enter za zagon.",
+                "decreaseFont": "Pomanjšaj pisavo (Ctrl+-)",
+                "emptyClickPlus": "Kliknite {plus} za odpiranje terminala",
+                "emptySshHint": "ali {ssh} za oddaljeno lupino na {host}",
+                "increaseFont": "Povečaj pisavo (Ctrl+=)",
+                "newTab": "Nov zavihek terminala",
+                "sshShellTo": "Lupina SSH na {host}",
+                "theme": "Tema terminala"
             },
             "editorPanel": {
                 "emptyState": "Z desno tipko kliknite na datoteko in izberite \"Prikaži izvorno kodo\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Shranjevanje...",
                 "noFileSelected": "Nobena datoteka ni izbrana za ogled",
                 "loading": "Nalaganje urejevalnika...",
-                "dragToTerminalRun": "Povlecite v Terminal za vstavitev ukaza za zagon"
+                "dragToTerminalRun": "Povlecite v Terminal za vstavitev ukaza za zagon",
+                "closeEditor": "Zapri urejevalnik",
+                "resetChanges": "Ponastavi spremembe"
             },
             "previewPanel": {
                 "emptyState": "Z desno tipko kliknite na datoteko in izberite \"Predogled\""
             },
             "codeEditor": "Urejevalnik kode",
-            "sshTerminal": "SSH terminal"
+            "sshTerminal": "SSH terminal",
+            "comingSoon": "Kmalu na voljo",
+            "soonBadge": "Kmalu"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Zavrni izvajanje orodja",
                 "toggleDetails": "Preklopi podrobnosti",
                 "allowSession": "Dovoli za to sejo",
-                "nonAtomicReplace": "Neatomarna zamenjava: datoteka za trenutek manjka"
+                "nonAtomicReplace": "Neatomarna zamenjava: datoteka za trenutek manjka",
+                "moreOptions": "Več možnosti",
+                "panelAria": "Plošča za odobritev orodij"
             },
             "settings": {
                 "title": "Nastavitve AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Rezervni",
                 "routingNoFallback": "Brez",
                 "bedrockNeedsModel": "Pred preizkusom dodajte in omogočite model Bedrock na zavihku Modeli.",
-                "bedrockSetup": "Nastavite Runtime URL za svojo regijo AWS. Na zavihku Modeli dodajte ID, ki podpira Chat Completions v Bedrock Runtime. Runtime ne prikaže seznama modelov. Preizkus pošlje majhno zahtevo za sklepanje, ki lahko povzroči stroške AWS."
+                "bedrockSetup": "Nastavite Runtime URL za svojo regijo AWS. Na zavihku Modeli dodajte ID, ki podpira Chat Completions v Bedrock Runtime. Runtime ne prikaže seznama modelov. Preizkus pošlje majhno zahtevo za sklepanje, ki lahko povzroči stroške AWS.",
+                "detectOllamaModelsTooltip": "Samodejno zaznaj razpoložljive modele Ollama",
+                "kTokens": "{count}K žetonov",
+                "modelEditorAria": "Urejevalnik modelov UI",
+                "supportsTools": "Podpira orodja",
+                "supportsVision": "Podpira vid",
+                "thinkingReasoning": "Razmišljanje/Sklepanje",
+                "toolQuality": "Kakovost orodij: {quality}/5"
             },
             "copy": "Kopiraj",
             "attachImage": "Priloži sliko",
@@ -2699,7 +2719,9 @@
                 "run": "Zaženi v terminalu",
                 "insert": "Vstavi v urejevalnik",
                 "diff": "Primerjaj z izvirnikom",
-                "diffNoFile": "Ni odprte datoteke za primerjavo"
+                "diffNoFile": "Ni odprte datoteke za primerjavo",
+                "commandBlocked": "Ukaz blokiran: potencialno uničujoč",
+                "confirmRun": "Potrdi zagon: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Razmišljam...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Zamenjaj vejo",
                 "delete": "Izbriši vejo",
                 "newBranch": "Nova veja",
-                "branchFrom": "Razveji od te točke"
+                "branchFrom": "Razveji od te točke",
+                "messageCountShort": "{count} spor.",
+                "unnamed": "Veja"
             },
             "context": {
                 "projectDetected": "Projekt zaznan",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "v teku",
                 "expired": "poteklo",
-                "refresh": "Osveži"
+                "refresh": "Osveži",
+                "modelsRunningMany": "Delujoči modeli: {count}",
+                "modelsRunningOne": "Deluje {count} model",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Predpomnjenje konteksta",
@@ -2956,7 +2983,8 @@
                 "warning": "Vse datotečne operacije se bodo izvedle takoj brez odobritve. Uporabljajte na lastno odgovornost.",
                 "disable": "Onemogoči",
                 "securityWarning": "Varnostno opozorilo",
-                "understood": "Razumem"
+                "understood": "Razumem",
+                "warningAria": "Opozorilo o skrajnem načinu"
             },
             "errorServerError": "Strežnik ponudnika AI ima težave. Poskusite znova čez trenutek.",
             "errorServiceUnavailable": "Ponudnik AI je začasno nedosegljiv (preobremenjen). Brezplačne storitve imajo lahko omejitve. Poskusite znova pozneje.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Neomejeno",
                 "roleAI": "AI",
-                "roleUser": "Uporabnik"
+                "roleUser": "Uporabnik",
+                "noConversations": "Še ni pogovorov",
+                "titleCount": "Zgodovina ({count})"
             },
             "dropFileToAnalyze": "Spustite datoteko za analizo z AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "Vhodni žetoni: {input}, izhodni žetoni: {output}, po štetju ponudnika",
-                "breakdownCache": "Vhodni žetoni: {input}, izhodni žetoni: {output}, prebrano iz predpomnilnika poziva: {cacheRead}, zapisano vanj: {cacheWritten}, po štetju ponudnika"
+                "breakdownCache": "Vhodni žetoni: {input}, izhodni žetoni: {output}, prebrano iz predpomnilnika poziva: {cacheRead}, zapisano vanj: {cacheWritten}, po štetju ponudnika",
+                "countShort": "{count} tok."
             },
             "executeOperations": "Izvedi operacije: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Bi preskočilo",
                     "skipped": "Preskočeno",
                     "existedAtCheckpoint": "obstajala v kontrolni točki",
-                    "absentAtCheckpoint": "ni obstajala v kontrolni točki"
+                    "absentAtCheckpoint": "ni obstajala v kontrolni točki",
+                    "noFiles": "V ta rezultat obnovitve ni bila vključena nobena datoteka.",
+                    "otherActions": "Druga dejanja",
+                    "requestedPaths": "Zahtevana podmnožica poti",
+                    "scopeAll": "Obseg: vse datoteke, zajete v kontrolni točki.",
+                    "titleApplied": "Obnovitev kontrolne točke uveljavljena",
+                    "titleApplyReview": "Pregled uveljavitve obnovitve kontrolne točke",
+                    "titleDryRunComplete": "Preizkus obnovitve kontrolne točke končan",
+                    "titleDryRunReview": "Pregled poskusne obnovitve kontrolne točke"
                 },
                 "checks": {
                     "exitSummary": "izhodna koda {code} · {seconds}s",
                     "continueOnFailure": "Izvede vse preverbe, tudi če katera ne uspe.",
-                    "stopOnFailure": "Ustavi se pri prvi neuspešni preverbi."
+                    "stopOnFailure": "Ustavi se pri prvi neuspešni preverbi.",
+                    "checkLabel": "Preverjanje:",
+                    "checksLabel": "Preverjanja:",
+                    "exitChip": "izhodna koda {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "n/r",
+                    "passedCount": "{passed}/{total} uspešnih",
+                    "runCheckNote": "V delovnem prostoru zažene izbran ukaz build/test/lint. Skripti za gradnjo in testi izvajajo pravo kodo.",
+                    "runProjectCheck": "Zaženi preverjanje projekta",
+                    "runVerification": "Zaženi preverjalni prehod",
+                    "runVerificationNote": "V delovnem prostoru zažene izbrane ukaze build/test/lint. Skripti za gradnjo in testi izvajajo pravo kodo.",
+                    "stoppedEarly": "Ustavljeno pri prvem neuspešnem preverjanju.",
+                    "timeoutLabel": "Časovna omejitev: {seconds} s",
+                    "verification": "Preverjanje"
                 },
                 "diagnostics": {
-                    "none": "Ni sporočene diagnostike."
+                    "none": "Ni sporočene diagnostike.",
+                    "errorCountMany": "{count} napak",
+                    "errorCountOne": "{count} napaka",
+                    "title": "Diagnostika",
+                    "truncated": "Seznam diagnostike je bil skrajšan.",
+                    "warningCountMany": "{count} opozoril",
+                    "warningCountOne": "{count} opozorilo"
                 },
                 "search": {
-                    "none": "Ni najdenih ujemanj."
+                    "none": "Ni najdenih ujemanj.",
+                    "ignoreCase": "prezri velikost črk",
+                    "inPath": "v {path}",
+                    "literal": "dobesedno",
+                    "matchCountMany": "{count} zadetkov",
+                    "matchCountOne": "{count} zadetek",
+                    "title": "Iskanje v delovnem prostoru",
+                    "truncated": "Rezultati so bili prirezani."
                 },
                 "git": {
                     "noStagedDiff": "Ni izhoda diff za pripravljene spremembe.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Odobritev priprave Git",
                     "commitNote": "To ustvari git uveljavitev (commit) iz trenutnega pripravljenega indeksa. Najprej preglejte coding_git_status in coding_git_diff s staged=true.",
                     "stagePreviewNote": "To prikaže predogled, katere zahtevane poti bi bile pripravljene; indeks se ne bo spremenil.",
-                    "stageNote": "To spremeni git indeks za zahtevane poti."
+                    "stageNote": "To spremeni git indeks za zahtevane poti.",
+                    "afterCounts": "Po: {counts}",
+                    "beforeCounts": "Pred: {counts}",
+                    "clean": "Delovno drevo je čisto.",
+                    "commitCountMany": "{count} uveljavitev",
+                    "commitCountOne": "{count} uveljavitev",
+                    "conflicted": "v sporu",
+                    "diffTruncated": "Izpis razlik je bil prirezan.",
+                    "logTitle": "Dnevnik Git",
+                    "pathsChip": "poti: {paths}",
+                    "showingNewest": "Prikazanih je najnovejših {count}; obstaja jih več.",
+                    "statusCounts": "{staged} v pripravi, {unstaged} zunaj priprave, {untracked} nesledenih, {conflicted} v sporu",
+                    "titleCommitCreated": "Uveljavitev Git ustvarjena",
+                    "titleCommitDryRun": "Poskusna uveljavitev Git",
+                    "titleCommitReview": "Pregled uveljavitve Git",
+                    "titleReview": "Pregled Git",
+                    "titleStageApplied": "Priprava Git uporabljena",
+                    "titleStagedDiff": "Razlike Git v pripravi",
+                    "titleStageDryRun": "Poskusna priprava Git",
+                    "titleStatus": "Stanje Git",
+                    "titleUnstagedDiff": "Razlike Git zunaj priprave",
+                    "untracked": "nesledeno"
                 },
                 "patch": {
                     "validateNote": "To preveri popravek brez spreminjanja datotek.",
                     "applyNote": "Ta zelo tvegana zahteva za uporabo zapiše datoteke, ko zaledni sistem ustvari kontrolno točko pred uporabo.",
                     "hideDiff": "Skrij poenoten diff",
-                    "showDiff": "Prikaži poenoten diff"
-                }
+                    "showDiff": "Prikaži poenoten diff",
+                    "actualLabel": "dejansko:",
+                    "checkpointCreated": "Ustvarjena kontrolna točka pred uporabo",
+                    "diffTruncated": "Predogled razlik prirezan za prikaz.",
+                    "expectedLabel": "pričakovano:",
+                    "firstLines": "prvih {shown} od {total} vrstic",
+                    "hunkCountMany": "{count} kosov",
+                    "hunkCountOne": "{count} kos",
+                    "hunkIndex": "kos {index}",
+                    "restoreManual": "Obnovitev je ročna: po pregledu uporabite {tool} s tem ID-jem kontrolne točke.",
+                    "titleApplied": "Popravek uveljavljen",
+                    "titleApplyBlocked": "Uveljavitev popravka blokirana",
+                    "titleApplyReview": "Pregled uveljavitve popravka",
+                    "titleDryRunConflicts": "Preizkus popravka je našel konflikte",
+                    "titleDryRunPassed": "Preizkus popravka uspešen",
+                    "titleDryRunReview": "Pregled preizkusa popravka",
+                    "warnings": "Opozorila"
+                },
+                "binary": "binarno",
+                "fileCountMany": "{count} datotek",
+                "fileCountOne": "{count} datoteka",
+                "moreCount": "+{count} več",
+                "plan": {
+                    "likelyFiles": "Verjetne datoteke",
+                    "openQuestions": "Odprta vprašanja",
+                    "reviewOnlyNote": "Artefakt samo za pregled. Urejanja in orodja, ki spreminjajo, še vedno uporabljajo trenutni način odobritve.",
+                    "riskHigh": "visoko tveganje",
+                    "riskLow": "nizko tveganje",
+                    "riskMedium": "srednje tveganje",
+                    "risks": "Tveganja",
+                    "title": "Načrt kodiranja"
+                },
+                "state": {
+                    "clean": "čisto",
+                    "failed": "neuspešno",
+                    "passed": "uspešno",
+                    "timedOut": "časovna omejitev potekla"
+                },
+                "timeoutChip": "časovna omejitev {seconds}s",
+                "truncated": "prirezano",
+                "workspaceLabel": "Delovni prostor:"
+            },
+            "attachedImageAlt": "Priložena slika",
+            "stepNumber": "Korak {step}",
+            "transcribingLocally": "Lokalno prepisovanje...",
+            "transferPlan": {
+                "dependsOnMany": "Odvisno od {count} pripravljalnih korakov",
+                "dependsOnOne": "Odvisno od {count} pripravljalnega koraka",
+                "destination": "Cilj: {destination}",
+                "title": "Pregled načrta prenosa",
+                "warnings": "Opozorila"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Prebrskaj",
                     "installed": "Nameščeno"
-                }
+                },
+                "remoteInstallDisabled": "Oddaljena namestitev vtičnikov je trenutno onemogočena, dokler register ni overjen na strani odjemalca. Lokalno nameščeni vtičniki še naprej delujejo normalno."
             }
         },
         "filelu": {

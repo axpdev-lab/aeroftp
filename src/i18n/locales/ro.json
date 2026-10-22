@@ -1269,7 +1269,14 @@
                 "stop": "Oprire",
                 "stopShell": "Oprire shell",
                 "closed": "Terminalul s-a închis.",
-                "commandInsertedReview": "Comandă inserată în Terminal. Apăsați Enter pentru a executa."
+                "commandInsertedReview": "Comandă inserată în Terminal. Apăsați Enter pentru a executa.",
+                "decreaseFont": "Micșorează fontul (Ctrl+-)",
+                "emptyClickPlus": "Faceți clic pe {plus} pentru a deschide un terminal",
+                "emptySshHint": "sau {ssh} pentru un shell la distanță pe {host}",
+                "increaseFont": "Mărește fontul (Ctrl+=)",
+                "newTab": "Filă nouă de terminal",
+                "sshShellTo": "Shell SSH către {host}",
+                "theme": "Tema terminalului"
             },
             "editorPanel": {
                 "emptyState": "Faceți clic dreapta pe un fișier și alegeți \"Vizualizare sursă\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Se salvează...",
                 "noFileSelected": "Niciun fișier selectat pentru vizualizare",
                 "loading": "Se încarcă editorul...",
-                "dragToTerminalRun": "Trageți în Terminal pentru a insera comanda de executare"
+                "dragToTerminalRun": "Trageți în Terminal pentru a insera comanda de executare",
+                "closeEditor": "Închide editorul",
+                "resetChanges": "Resetează modificările"
             },
             "previewPanel": {
                 "emptyState": "Faceți clic dreapta pe un fișier și alegeți \"Previzualizare\""
             },
             "codeEditor": "Editor de cod",
-            "sshTerminal": "Terminal SSH"
+            "sshTerminal": "Terminal SSH",
+            "comingSoon": "În curând",
+            "soonBadge": "Curând"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Respinge executarea instrumentului",
                 "toggleDetails": "Afișează/ascunde detalii",
                 "allowSession": "Permite pentru această sesiune",
-                "nonAtomicReplace": "Înlocuire neatomică: fișierul lipsește pentru o clipă"
+                "nonAtomicReplace": "Înlocuire neatomică: fișierul lipsește pentru o clipă",
+                "moreOptions": "Mai multe opțiuni",
+                "panelAria": "Panou de aprobare a instrumentelor"
             },
             "settings": {
                 "title": "Setări AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Rezervă",
                 "routingNoFallback": "Niciunul",
                 "bedrockNeedsModel": "Adăugați și activați un model Bedrock în fila Modele înainte de testare.",
-                "bedrockSetup": "Setați Runtime URL pentru regiunea dvs. AWS. În fila Modele, adăugați un ID care acceptă Chat Completions pe Bedrock Runtime. Runtime nu afișează o listă de modele. Testul trimite o mică solicitare de inferență care poate genera costuri AWS."
+                "bedrockSetup": "Setați Runtime URL pentru regiunea dvs. AWS. În fila Modele, adăugați un ID care acceptă Chat Completions pe Bedrock Runtime. Runtime nu afișează o listă de modele. Testul trimite o mică solicitare de inferență care poate genera costuri AWS.",
+                "detectOllamaModelsTooltip": "Detectează automat modelele Ollama disponibile",
+                "kTokens": "{count}K tokenuri",
+                "modelEditorAria": "Editor de modele IA",
+                "supportsTools": "Acceptă instrumente",
+                "supportsVision": "Acceptă viziune",
+                "thinkingReasoning": "Gândire/Raționament",
+                "toolQuality": "Calitatea instrumentelor: {quality}/5"
             },
             "copy": "Copiază",
             "attachImage": "Atașează imagine",
@@ -2699,7 +2719,9 @@
                 "run": "Rulează în Terminal",
                 "insert": "Inserează în Editor",
                 "diff": "Diferențe față de original",
-                "diffNoFile": "Niciun fișier deschis pentru comparare"
+                "diffNoFile": "Niciun fișier deschis pentru comparare",
+                "commandBlocked": "Comandă blocată: potențial distructivă",
+                "confirmRun": "Confirmă rularea: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Se gândește...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Schimbă ramura",
                 "delete": "Șterge ramura",
                 "newBranch": "Ramură nouă",
-                "branchFrom": "Ramifică din acest punct"
+                "branchFrom": "Ramifică din acest punct",
+                "messageCountShort": "{count} mesaje",
+                "unnamed": "Ramură"
             },
             "context": {
                 "projectDetected": "Proiect detectat",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "rulează",
                 "expired": "expirat",
-                "refresh": "Reîmprospătare"
+                "refresh": "Reîmprospătare",
+                "modelsRunningMany": "{count} modele rulează",
+                "modelsRunningOne": "{count} model rulează",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Cache context",
@@ -2956,7 +2983,8 @@
                 "warning": "Toate operațiile cu fișiere se vor executa imediat fără aprobare. Utilizați pe propriul risc.",
                 "disable": "Dezactivează",
                 "securityWarning": "Avertisment de securitate",
-                "understood": "Înțeles"
+                "understood": "Înțeles",
+                "warningAria": "Avertisment mod extrem"
             },
             "errorServerError": "Serverul furnizorului AI întâmpină probleme. Încercați din nou într-un moment.",
             "errorServiceUnavailable": "Furnizorul AI este temporar indisponibil (supraîncărcat). Serviciile gratuite pot avea limite. Încercați din nou mai târziu.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Nelimitat",
                 "roleAI": "AI",
-                "roleUser": "Utilizator"
+                "roleUser": "Utilizator",
+                "noConversations": "Încă nu există conversații",
+                "titleCount": "Istoric ({count})"
             },
             "dropFileToAnalyze": "Trageți fișierul pentru a-l analiza cu AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} tokeni de intrare, {output} tokeni de ieșire, conform numărării furnizorului",
-                "breakdownCache": "{input} tokeni de intrare, {output} tokeni de ieșire, {cacheRead} citiți din cache-ul promptului, {cacheWritten} scriși în el, conform numărării furnizorului"
+                "breakdownCache": "{input} tokeni de intrare, {output} tokeni de ieșire, {cacheRead} citiți din cache-ul promptului, {cacheWritten} scriși în el, conform numărării furnizorului",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Execută operațiuni: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Ar fi omise",
                     "skipped": "Omise",
                     "existedAtCheckpoint": "exista la punctul de control",
-                    "absentAtCheckpoint": "absent la punctul de control"
+                    "absentAtCheckpoint": "absent la punctul de control",
+                    "noFiles": "Niciun fișier nu a fost inclus în acest rezultat al restaurării.",
+                    "otherActions": "Alte acțiuni",
+                    "requestedPaths": "Subset de căi solicitat",
+                    "scopeAll": "Domeniu: toate fișierele capturate în punctul de control.",
+                    "titleApplied": "Restaurarea punctului de control aplicată",
+                    "titleApplyReview": "Revizuirea aplicării restaurării punctului de control",
+                    "titleDryRunComplete": "Simularea restaurării punctului de control finalizată",
+                    "titleDryRunReview": "Revizuirea simulării restaurării punctului de control"
                 },
                 "checks": {
                     "exitSummary": "cod de ieșire {code} · {seconds}s",
                     "continueOnFailure": "Rulează toate verificările chiar dacă una eșuează.",
-                    "stopOnFailure": "Se oprește la prima verificare eșuată."
+                    "stopOnFailure": "Se oprește la prima verificare eșuată.",
+                    "checkLabel": "Verificare:",
+                    "checksLabel": "Verificări:",
+                    "exitChip": "cod de ieșire {code}",
+                    "filterChip": "filtru: {filter}",
+                    "filterLabel": "Filtru:",
+                    "notAvailable": "indisp.",
+                    "passedCount": "{passed}/{total} reușite",
+                    "runCheckNote": "Rulează o comandă selectată de build/test/lint în spațiul de lucru. Scripturile de build și testele execută cod real.",
+                    "runProjectCheck": "Rulează verificarea proiectului",
+                    "runVerification": "Rulează o trecere de verificare",
+                    "runVerificationNote": "Rulează comenzi selectate de build/test/lint în spațiul de lucru. Scripturile de build și testele execută cod real.",
+                    "stoppedEarly": "Oprit la prima verificare eșuată.",
+                    "timeoutLabel": "Timp limită: {seconds} s",
+                    "verification": "Verificare"
                 },
                 "diagnostics": {
-                    "none": "Nu au fost raportate diagnostice."
+                    "none": "Nu au fost raportate diagnostice.",
+                    "errorCountMany": "{count} erori",
+                    "errorCountOne": "{count} eroare",
+                    "title": "Diagnostice",
+                    "truncated": "Lista de diagnostice a fost trunchiată.",
+                    "warningCountMany": "{count} avertismente",
+                    "warningCountOne": "{count} avertisment"
                 },
                 "search": {
-                    "none": "Nu s-au găsit potriviri."
+                    "none": "Nu s-au găsit potriviri.",
+                    "ignoreCase": "ignoră majusculele",
+                    "inPath": "în {path}",
+                    "literal": "literal",
+                    "matchCountMany": "{count} potriviri",
+                    "matchCountOne": "{count} potrivire",
+                    "title": "Căutare în spațiul de lucru",
+                    "truncated": "Rezultatele au fost trunchiate."
                 },
                 "git": {
                     "noStagedDiff": "Nicio ieșire diff pentru modificările pregătite.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Aprobare pregătire Git",
                     "commitNote": "Aceasta creează un commit git din indexul pregătit curent. Verificați mai întâi coding_git_status și coding_git_diff cu staged=true.",
                     "stagePreviewNote": "Aceasta previzualizează care dintre căile solicitate ar fi pregătite; indexul nu se va modifica.",
-                    "stageNote": "Aceasta modifică indexul git pentru căile solicitate."
+                    "stageNote": "Aceasta modifică indexul git pentru căile solicitate.",
+                    "afterCounts": "După: {counts}",
+                    "beforeCounts": "Înainte: {counts}",
+                    "clean": "Arborele de lucru este curat.",
+                    "commitCountMany": "{count} commituri",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "în conflict",
+                    "diffTruncated": "Ieșirea diff a fost trunchiată.",
+                    "logTitle": "Jurnal Git",
+                    "pathsChip": "căi: {paths}",
+                    "showingNewest": "Se afișează cele mai noi {count}; mai există.",
+                    "statusCounts": "{staged} pregătite, {unstaged} nepregătite, {untracked} neurmărite, {conflicted} în conflict",
+                    "titleCommitCreated": "Commit Git creat",
+                    "titleCommitDryRun": "Simulare commit Git",
+                    "titleCommitReview": "Revizuire commit Git",
+                    "titleReview": "Revizuire Git",
+                    "titleStageApplied": "Pregătire Git aplicată",
+                    "titleStagedDiff": "Diff Git pregătit",
+                    "titleStageDryRun": "Simulare pregătire Git",
+                    "titleStatus": "Stare Git",
+                    "titleUnstagedDiff": "Diff Git nepregătit",
+                    "untracked": "neurmărit"
                 },
                 "patch": {
                     "validateNote": "Aceasta validează patch-ul fără a modifica fișiere.",
                     "applyNote": "Această cerere de aplicare cu risc ridicat scrie fișiere după ce backend-ul creează un punct de control înainte de aplicare.",
                     "hideDiff": "Ascunde diff unificat",
-                    "showDiff": "Afișează diff unificat"
-                }
+                    "showDiff": "Afișează diff unificat",
+                    "actualLabel": "real:",
+                    "checkpointCreated": "Punct de control înainte de aplicare creat",
+                    "diffTruncated": "Previzualizarea diff a fost trunchiată pentru afișare.",
+                    "expectedLabel": "așteptat:",
+                    "firstLines": "primele {shown} din {total} rânduri",
+                    "hunkCountMany": "{count} blocuri",
+                    "hunkCountOne": "{count} bloc",
+                    "hunkIndex": "blocul {index}",
+                    "restoreManual": "Restaurarea este manuală: folosește {tool} cu acest ID de punct de control după revizuire.",
+                    "titleApplied": "Patch aplicat",
+                    "titleApplyBlocked": "Aplicarea patch-ului a fost blocată",
+                    "titleApplyReview": "Revizuirea aplicării patch-ului",
+                    "titleDryRunConflicts": "Simularea patch-ului a găsit conflicte",
+                    "titleDryRunPassed": "Simularea patch-ului a reușit",
+                    "titleDryRunReview": "Revizuirea simulării patch-ului",
+                    "warnings": "Avertismente"
+                },
+                "binary": "binar",
+                "fileCountMany": "{count} fișiere",
+                "fileCountOne": "{count} fișier",
+                "moreCount": "+{count} în plus",
+                "plan": {
+                    "likelyFiles": "Fișiere probabile",
+                    "openQuestions": "Întrebări deschise",
+                    "reviewOnlyNote": "Artefact doar pentru revizuire. Editările și instrumentele care modifică folosesc în continuare modul de aprobare curent.",
+                    "riskHigh": "risc ridicat",
+                    "riskLow": "risc scăzut",
+                    "riskMedium": "risc mediu",
+                    "risks": "Riscuri",
+                    "title": "Plan de programare"
+                },
+                "state": {
+                    "clean": "curat",
+                    "failed": "eșuat",
+                    "passed": "reușit",
+                    "timedOut": "expirat"
+                },
+                "timeoutChip": "timp limită {seconds}s",
+                "truncated": "trunchiat",
+                "workspaceLabel": "Spațiu de lucru:"
+            },
+            "attachedImageAlt": "Imagine atașată",
+            "stepNumber": "Pasul {step}",
+            "transcribingLocally": "Se transcrie local...",
+            "transferPlan": {
+                "dependsOnMany": "Depinde de {count} pași pregătitori",
+                "dependsOnOne": "Depinde de {count} pas pregătitor",
+                "destination": "Destinație: {destination}",
+                "title": "Revizuirea planului de transfer",
+                "warnings": "Avertismente"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Răsfoiește",
                     "installed": "Instalate"
-                }
+                },
+                "remoteInstallDisabled": "Instalarea de la distanță a pluginurilor este momentan dezactivată până când registrul este autentificat pe partea clientului. Pluginurile instalate local continuă să funcționeze normal."
             }
         },
         "filelu": {

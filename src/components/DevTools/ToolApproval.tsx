@@ -293,7 +293,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                                     <button
                                         onClick={() => setMenuOpen(!menuOpen)}
                                         className="tool-approval-allow flex items-center px-1.5 py-1 rounded-r-lg border-l border-white/20 text-xs transition-colors"
-                                        aria-label="More options"
+                                        aria-label={t('ai.toolApproval.moreOptions')}
                                         aria-haspopup="true"
                                         aria-expanded={menuOpen}
                                     >

@@ -1269,7 +1269,14 @@
                 "stop": "Stoppa",
                 "stopShell": "Stoppa skal",
                 "closed": "Terminalen stängd.",
-                "commandInsertedReview": "Kommando infogat i Terminal. Tryck Enter för att köra."
+                "commandInsertedReview": "Kommando infogat i Terminal. Tryck Enter för att köra.",
+                "decreaseFont": "Minska teckenstorlek (Ctrl+-)",
+                "emptyClickPlus": "Klicka på {plus} för att öppna en terminal",
+                "emptySshHint": "eller {ssh} för fjärrskal till {host}",
+                "increaseFont": "Öka teckenstorlek (Ctrl+=)",
+                "newTab": "Ny terminalflik",
+                "sshShellTo": "SSH-skal till {host}",
+                "theme": "Terminaltema"
             },
             "editorPanel": {
                 "emptyState": "Högerklicka på en fil och välj \"Visa källa\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Sparar...",
                 "noFileSelected": "Ingen fil vald för visning",
                 "loading": "Läser in redigerare...",
-                "dragToTerminalRun": "Dra till Terminal för att infoga körningskommando"
+                "dragToTerminalRun": "Dra till Terminal för att infoga körningskommando",
+                "closeEditor": "Stäng redigeraren",
+                "resetChanges": "Återställ ändringar"
             },
             "previewPanel": {
                 "emptyState": "Högerklicka på en fil och välj \"Förhandsgranska\""
             },
             "codeEditor": "Kodredigerare",
-            "sshTerminal": "SSH-terminal"
+            "sshTerminal": "SSH-terminal",
+            "comingSoon": "Kommer snart",
+            "soonBadge": "Snart"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Avvisa verktygskörning",
                 "toggleDetails": "Visa/dölj detaljer",
                 "allowSession": "Tillåt för denna session",
-                "nonAtomicReplace": "Icke-atomiskt utbyte: filen saknas kortvarigt"
+                "nonAtomicReplace": "Icke-atomiskt utbyte: filen saknas kortvarigt",
+                "moreOptions": "Fler alternativ",
+                "panelAria": "Panel för verktygsgodkännande"
             },
             "settings": {
                 "title": "AI-inställningar",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Reserv",
                 "routingNoFallback": "Ingen",
                 "bedrockNeedsModel": "Lägg till och aktivera en Bedrock-modell på fliken Modeller innan du testar.",
-                "bedrockSetup": "Ange Runtime URL för din AWS-region. Under Modeller lägger du till ett ID som stöder Chat Completions på Bedrock Runtime. Runtime visar ingen modellista. Testet skickar en liten inferensbegäran som kan medföra AWS-kostnader."
+                "bedrockSetup": "Ange Runtime URL för din AWS-region. Under Modeller lägger du till ett ID som stöder Chat Completions på Bedrock Runtime. Runtime visar ingen modellista. Testet skickar en liten inferensbegäran som kan medföra AWS-kostnader.",
+                "detectOllamaModelsTooltip": "Identifiera tillgängliga Ollama-modeller automatiskt",
+                "kTokens": "{count}K token",
+                "modelEditorAria": "AI-modellredigerare",
+                "supportsTools": "Stöder verktyg",
+                "supportsVision": "Stöder bildförståelse",
+                "thinkingReasoning": "Tänkande/Resonemang",
+                "toolQuality": "Verktygskvalitet: {quality}/5"
             },
             "copy": "Kopiera",
             "attachImage": "Bifoga bild",
@@ -2699,7 +2719,9 @@
                 "run": "Kör i terminal",
                 "insert": "Infoga i redigerare",
                 "diff": "Jämför med original",
-                "diffNoFile": "Ingen fil öppen för jämförelse"
+                "diffNoFile": "Ingen fil öppen för jämförelse",
+                "commandBlocked": "Kommando blockerat: potentiellt destruktivt",
+                "confirmRun": "Bekräfta körning: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Tänker...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Byt gren",
                 "delete": "Ta bort gren",
                 "newBranch": "Ny gren",
-                "branchFrom": "Förgrena från denna punkt"
+                "branchFrom": "Förgrena från denna punkt",
+                "messageCountShort": "{count} medd.",
+                "unnamed": "Gren"
             },
             "context": {
                 "projectDetected": "Projekt identifierat",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "körs",
                 "expired": "utgången",
-                "refresh": "Uppdatera"
+                "refresh": "Uppdatera",
+                "modelsRunningMany": "{count} modeller körs",
+                "modelsRunningOne": "{count} modell körs",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Kontextcachelagring",
@@ -2956,7 +2983,8 @@
                 "warning": "Alla filoperationer kommer att utföras omedelbart utan godkännande. Använd på egen risk.",
                 "disable": "Inaktivera",
                 "securityWarning": "Säkerhetsvarning",
-                "understood": "Förstått"
+                "understood": "Förstått",
+                "warningAria": "Varning för extremläge"
             },
             "errorServerError": "AI-leverantörens server har problem. Försök igen om en stund.",
             "errorServiceUnavailable": "AI-leverantören är tillfälligt otillgänglig (överbelastad). Gratistjänster kan ha begränsningar. Försök igen senare.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Obegränsat",
                 "roleAI": "AI",
-                "roleUser": "Användare"
+                "roleUser": "Användare",
+                "noConversations": "Inga konversationer än",
+                "titleCount": "Historik ({count})"
             },
             "dropFileToAnalyze": "Släpp fil för att analysera med AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} indatatokens, {output} utdatatokens, enligt leverantörens räkning",
-                "breakdownCache": "{input} indatatokens, {output} utdatatokens, {cacheRead} lästa från promptcachen, {cacheWritten} skrivna till den, enligt leverantörens räkning"
+                "breakdownCache": "{input} indatatokens, {output} utdatatokens, {cacheRead} lästa från promptcachen, {cacheWritten} skrivna till den, enligt leverantörens räkning",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Utför {count} åtgärd(er)",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Skulle hoppas över",
                     "skipped": "Överhoppade",
                     "existedAtCheckpoint": "fanns vid kontrollpunkten",
-                    "absentAtCheckpoint": "saknades vid kontrollpunkten"
+                    "absentAtCheckpoint": "saknades vid kontrollpunkten",
+                    "noFiles": "Inga filer ingick i detta återställningsresultat.",
+                    "otherActions": "Andra åtgärder",
+                    "requestedPaths": "Begärd delmängd av sökvägar",
+                    "scopeAll": "Omfattning: alla filer som fångats i kontrollpunkten.",
+                    "titleApplied": "Återställning av kontrollpunkt tillämpad",
+                    "titleApplyReview": "Granskning av tillämpad kontrollpunktsåterställning",
+                    "titleDryRunComplete": "Provkörning av kontrollpunktsåterställning slutförd",
+                    "titleDryRunReview": "Granskning av provåterställning av kontrollpunkt"
                 },
                 "checks": {
                     "exitSummary": "slutkod {code} · {seconds}s",
                     "continueOnFailure": "Kör alla kontroller även om en misslyckas.",
-                    "stopOnFailure": "Stoppar vid den första kontrollen som misslyckas."
+                    "stopOnFailure": "Stoppar vid den första kontrollen som misslyckas.",
+                    "checkLabel": "Kontroll:",
+                    "checksLabel": "Kontroller:",
+                    "exitChip": "exit {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "e/t",
+                    "passedCount": "{passed}/{total} godkända",
+                    "runCheckNote": "Kör ett utvalt build/test/lint-kommando i arbetsytan. Byggskript och tester kör riktig kod.",
+                    "runProjectCheck": "Kör projektkontroll",
+                    "runVerification": "Kör verifieringsomgång",
+                    "runVerificationNote": "Kör utvalda build/test/lint-kommandon i arbetsytan. Byggskript och tester kör riktig kod.",
+                    "stoppedEarly": "Stoppade vid den första misslyckade kontrollen.",
+                    "timeoutLabel": "Tidsgräns: {seconds}s",
+                    "verification": "Verifiering"
                 },
                 "diagnostics": {
-                    "none": "Ingen diagnostik rapporterad."
+                    "none": "Ingen diagnostik rapporterad.",
+                    "errorCountMany": "{count} fel",
+                    "errorCountOne": "{count} fel",
+                    "title": "Diagnostik",
+                    "truncated": "Diagnostiklistan kortades av.",
+                    "warningCountMany": "{count} varningar",
+                    "warningCountOne": "{count} varning"
                 },
                 "search": {
-                    "none": "Inga träffar hittades."
+                    "none": "Inga träffar hittades.",
+                    "ignoreCase": "ignorera skiftläge",
+                    "inPath": "i {path}",
+                    "literal": "bokstavlig",
+                    "matchCountMany": "{count} träffar",
+                    "matchCountOne": "{count} träff",
+                    "title": "Sökning i arbetsyta",
+                    "truncated": "Resultaten trunkerades."
                 },
                 "git": {
                     "noStagedDiff": "Ingen diff-utdata för köade ändringar.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Godkännande av Git-köning",
                     "commitNote": "Detta skapar en git-incheckning från det aktuella köade indexet. Granska först coding_git_status och coding_git_diff med staged=true.",
                     "stagePreviewNote": "Detta förhandsgranskar vilka begärda sökvägar som skulle köas; indexet ändras inte.",
-                    "stageNote": "Detta ändrar git-indexet för de begärda sökvägarna."
+                    "stageNote": "Detta ändrar git-indexet för de begärda sökvägarna.",
+                    "afterCounts": "Efter: {counts}",
+                    "beforeCounts": "Före: {counts}",
+                    "clean": "Arbetsträdet är rent.",
+                    "commitCountMany": "{count} incheckningar",
+                    "commitCountOne": "{count} incheckning",
+                    "conflicted": "i konflikt",
+                    "diffTruncated": "Diff-utdata kortades.",
+                    "logTitle": "Git-logg",
+                    "pathsChip": "sökvägar: {paths}",
+                    "showingNewest": "Visar de {count} senaste; det finns fler.",
+                    "statusCounts": "{staged} köade, {unstaged} ej köade, {untracked} ospårade, {conflicted} i konflikt",
+                    "titleCommitCreated": "Git-incheckning skapad",
+                    "titleCommitDryRun": "Testkörning av Git-incheckning",
+                    "titleCommitReview": "Granskning av Git-incheckning",
+                    "titleReview": "Git-granskning",
+                    "titleStageApplied": "Git-köning tillämpad",
+                    "titleStagedDiff": "Köad Git-diff",
+                    "titleStageDryRun": "Testkörning av Git-köning",
+                    "titleStatus": "Git-status",
+                    "titleUnstagedDiff": "Ej köad Git-diff",
+                    "untracked": "ospårad"
                 },
                 "patch": {
                     "validateNote": "Detta validerar patchen utan att ändra filer.",
                     "applyNote": "Denna högriskbegäran om tillämpning skriver filer efter att backend har skapat en kontrollpunkt före tillämpningen.",
                     "hideDiff": "Dölj enhetlig diff",
-                    "showDiff": "Visa enhetlig diff"
-                }
+                    "showDiff": "Visa enhetlig diff",
+                    "actualLabel": "faktiskt:",
+                    "checkpointCreated": "Kontrollpunkt före tillämpning skapad",
+                    "diffTruncated": "Diff-förhandsvisning kortad för visning.",
+                    "expectedLabel": "förväntat:",
+                    "firstLines": "första {shown} av {total} rader",
+                    "hunkCountMany": "{count} block",
+                    "hunkCountOne": "{count} block",
+                    "hunkIndex": "block {index}",
+                    "restoreManual": "Återställningen är manuell: använd {tool} med detta kontrollpunkts-ID efter granskning.",
+                    "titleApplied": "Patch tillämpad",
+                    "titleApplyBlocked": "Tillämpning av patch blockerad",
+                    "titleApplyReview": "Granskning av patchtillämpning",
+                    "titleDryRunConflicts": "Provkörning av patch hittade konflikter",
+                    "titleDryRunPassed": "Provkörning av patch godkänd",
+                    "titleDryRunReview": "Granskning av patchprovkörning",
+                    "warnings": "Varningar"
+                },
+                "binary": "binär",
+                "fileCountMany": "{count} filer",
+                "fileCountOne": "{count} fil",
+                "moreCount": "+{count} till",
+                "plan": {
+                    "likelyFiles": "Troliga filer",
+                    "openQuestions": "Öppna frågor",
+                    "reviewOnlyNote": "Endast för granskning. Redigeringar och ändrande verktyg använder fortfarande det aktuella godkännandeläget.",
+                    "riskHigh": "hög risk",
+                    "riskLow": "låg risk",
+                    "riskMedium": "medelhög risk",
+                    "risks": "Risker",
+                    "title": "Kodningsplan"
+                },
+                "state": {
+                    "clean": "ren",
+                    "failed": "misslyckad",
+                    "passed": "godkänd",
+                    "timedOut": "tidsgräns nådd"
+                },
+                "timeoutChip": "tidsgräns {seconds}s",
+                "truncated": "trunkerad",
+                "workspaceLabel": "Arbetsyta:"
+            },
+            "attachedImageAlt": "Bifogad bild",
+            "stepNumber": "Steg {step}",
+            "transcribingLocally": "Transkriberar lokalt...",
+            "transferPlan": {
+                "dependsOnMany": "Beror på {count} förberedande steg",
+                "dependsOnOne": "Beror på {count} förberedande steg",
+                "destination": "Mål: {destination}",
+                "title": "Granskning av överföringsplan",
+                "warnings": "Varningar"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Bläddra",
                     "installed": "Installerade"
-                }
+                },
+                "remoteInstallDisabled": "Fjärrinstallation av tillägg är för närvarande inaktiverad tills registret autentiseras på klientsidan. Lokalt installerade tillägg fortsätter att fungera som vanligt."
             }
         },
         "filelu": {

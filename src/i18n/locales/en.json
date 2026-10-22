@@ -274,7 +274,9 @@
                 "fork": "Fork conversation here",
                 "main": "Main",
                 "newBranch": "New branch",
-                "switchBranch": "Switch branch"
+                "switchBranch": "Switch branch",
+                "messageCountShort": "{count} msg",
+                "unnamed": "Branch"
             },
             "budget": {
                 "available": "Available",
@@ -299,7 +301,9 @@
                 "diff": "Diff with original",
                 "diffNoFile": "No file open for diff",
                 "insert": "Insert in Editor",
-                "run": "Run in Terminal"
+                "run": "Run in Terminal",
+                "commandBlocked": "Command blocked: potentially destructive",
+                "confirmRun": "Confirm run: {command}"
             },
             "codeContext": "Regarding this code from `{file}`:",
             "codeExec": {
@@ -380,7 +384,10 @@
                 "refresh": "Refresh",
                 "running": "running",
                 "title": "GPU Monitor",
-                "vram": "VRAM"
+                "vram": "VRAM",
+                "modelsRunningMany": "{count} models running",
+                "modelsRunningOne": "{count} model running",
+                "vramAmount": "{size} VRAM"
             },
             "hideHistory": "Hide history",
             "history": {
@@ -406,7 +413,9 @@
                 "searching": "Searching...",
                 "sessions": "Sessions",
                 "totalTokens": "Tokens",
-                "unlimited": "Unlimited"
+                "unlimited": "Unlimited",
+                "noConversations": "No conversations yet",
+                "titleCount": "History ({count})"
             },
             "imageLimitReached": "Maximum 5 images per message",
             "insertPath": "Insert path",
@@ -650,7 +659,14 @@
                 "vision": "Vision",
                 "routingPreferred": "Preferred",
                 "routingFallback": "Fallback",
-                "routingNoFallback": "None"
+                "routingNoFallback": "None",
+                "detectOllamaModelsTooltip": "Auto-detect available Ollama models",
+                "kTokens": "{count}K tokens",
+                "modelEditorAria": "AI Model Editor",
+                "supportsTools": "Supports tools",
+                "supportsVision": "Supports vision",
+                "thinkingReasoning": "Thinking/Reasoning",
+                "toolQuality": "Tool quality: {quality}/5"
             },
             "shortcuts": {
                 "clearChat": "Clear chat (Ctrl+L)",
@@ -674,7 +690,8 @@
             },
             "tokens": {
                 "breakdown": "{input} input, {output} output, as counted by the provider",
-                "breakdownCache": "{input} input, {output} output, {cacheRead} read from the prompt cache, {cacheWritten} written to it, as counted by the provider"
+                "breakdownCache": "{input} input, {output} output, {cacheRead} read from the prompt cache, {cacheWritten} written to it, as counted by the provider",
+                "countShort": "{count} tok"
             },
             "agentMode": {
                 "title": "Agent Mode",
@@ -695,7 +712,8 @@
                 "enable": "Enable Extreme Mode",
                 "securityWarning": "Security Warning",
                 "understood": "Understood",
-                "warning": "All file operations will execute immediately without approval. Use at your own risk."
+                "warning": "All file operations will execute immediately without approval. Use at your own risk.",
+                "warningAria": "Extreme Mode Warning"
             },
             "templates": {
                 "analyzeUi": "Analyze UI screenshot for layout, accessibility, and UX issues",
@@ -771,7 +789,9 @@
                 "toggleDetails": "Toggle details",
                 "toolExecution": "Tool Execution",
                 "allowSession": "Allow for this session",
-                "nonAtomicReplace": "Non-atomic replace: the file is briefly missing"
+                "nonAtomicReplace": "Non-atomic replace: the file is briefly missing",
+                "moreOptions": "More options",
+                "panelAria": "Tool approval panel"
             },
             "toolFailed": "Tool failed: {error}",
             "toolLabels": {
@@ -1037,18 +1057,53 @@
                     "wouldSkip": "Would skip",
                     "skipped": "Skipped",
                     "existedAtCheckpoint": "existed at checkpoint",
-                    "absentAtCheckpoint": "absent at checkpoint"
+                    "absentAtCheckpoint": "absent at checkpoint",
+                    "noFiles": "No files were included in this restore result.",
+                    "otherActions": "Other actions",
+                    "requestedPaths": "Requested path subset",
+                    "scopeAll": "Scope: all files captured in the checkpoint.",
+                    "titleApplied": "Checkpoint Restore Applied",
+                    "titleApplyReview": "Checkpoint Restore Apply Review",
+                    "titleDryRunComplete": "Checkpoint Restore Dry Run Complete",
+                    "titleDryRunReview": "Checkpoint Restore Dry Run Review"
                 },
                 "checks": {
                     "exitSummary": "exit {code} · {seconds}s",
                     "continueOnFailure": "Runs all checks even if one fails.",
-                    "stopOnFailure": "Stops at the first failing check."
+                    "stopOnFailure": "Stops at the first failing check.",
+                    "checkLabel": "Check:",
+                    "checksLabel": "Checks:",
+                    "exitChip": "exit {code}",
+                    "filterChip": "filter: {filter}",
+                    "filterLabel": "Filter:",
+                    "notAvailable": "n/a",
+                    "passedCount": "{passed}/{total} passed",
+                    "runCheckNote": "Runs a curated build/test/lint command in the workspace. Build scripts and tests execute real code.",
+                    "runProjectCheck": "Run project check",
+                    "runVerification": "Run verification pass",
+                    "runVerificationNote": "Runs curated build/test/lint commands in the workspace. Build scripts and tests execute real code.",
+                    "stoppedEarly": "Stopped at the first failing check.",
+                    "timeoutLabel": "Timeout: {seconds}s",
+                    "verification": "Verification"
                 },
                 "diagnostics": {
-                    "none": "No diagnostics reported."
+                    "none": "No diagnostics reported.",
+                    "errorCountMany": "{count} errors",
+                    "errorCountOne": "{count} error",
+                    "title": "Diagnostics",
+                    "truncated": "Diagnostics list was truncated.",
+                    "warningCountMany": "{count} warnings",
+                    "warningCountOne": "{count} warning"
                 },
                 "search": {
-                    "none": "No matches found."
+                    "none": "No matches found.",
+                    "ignoreCase": "ignore-case",
+                    "inPath": "in {path}",
+                    "literal": "literal",
+                    "matchCountMany": "{count} matches",
+                    "matchCountOne": "{count} match",
+                    "title": "Workspace Search",
+                    "truncated": "Results were truncated."
                 },
                 "git": {
                     "noStagedDiff": "No staged diff output.",
@@ -1059,14 +1114,84 @@
                     "stageApproval": "Git Stage Approval",
                     "commitNote": "This creates a git commit from the current staged index. Review coding_git_status and coding_git_diff with staged=true first.",
                     "stagePreviewNote": "This previews which requested paths would be staged; the index will not change.",
-                    "stageNote": "This changes the git index for the requested paths."
+                    "stageNote": "This changes the git index for the requested paths.",
+                    "afterCounts": "After: {counts}",
+                    "beforeCounts": "Before: {counts}",
+                    "clean": "Working tree is clean.",
+                    "commitCountMany": "{count} commits",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "conflicted",
+                    "diffTruncated": "Diff output was truncated.",
+                    "logTitle": "Git Log",
+                    "pathsChip": "paths: {paths}",
+                    "showingNewest": "Showing newest {count}; more exist.",
+                    "statusCounts": "{staged} staged, {unstaged} unstaged, {untracked} untracked, {conflicted} conflicted",
+                    "titleCommitCreated": "Git Commit Created",
+                    "titleCommitDryRun": "Git Commit Dry Run",
+                    "titleCommitReview": "Git Commit Review",
+                    "titleReview": "Git Review",
+                    "titleStageApplied": "Git Stage Applied",
+                    "titleStagedDiff": "Git Staged Diff",
+                    "titleStageDryRun": "Git Stage Dry Run",
+                    "titleStatus": "Git Status",
+                    "titleUnstagedDiff": "Git Unstaged Diff",
+                    "untracked": "untracked"
                 },
                 "patch": {
                     "validateNote": "This validates the patch without changing files.",
                     "applyNote": "This high-danger apply request writes files after the backend creates a pre-apply checkpoint.",
                     "hideDiff": "Hide unified diff",
-                    "showDiff": "Show unified diff"
-                }
+                    "showDiff": "Show unified diff",
+                    "actualLabel": "actual:",
+                    "checkpointCreated": "Pre-apply checkpoint created",
+                    "diffTruncated": "Diff preview truncated for display.",
+                    "expectedLabel": "expected:",
+                    "firstLines": "first {shown} of {total} lines",
+                    "hunkCountMany": "{count} hunks",
+                    "hunkCountOne": "{count} hunk",
+                    "hunkIndex": "hunk {index}",
+                    "restoreManual": "Restore is manual: use {tool} with this checkpoint id after review.",
+                    "titleApplied": "Patch Applied",
+                    "titleApplyBlocked": "Patch Apply Blocked",
+                    "titleApplyReview": "Patch Apply Review",
+                    "titleDryRunConflicts": "Patch Dry Run Found Conflicts",
+                    "titleDryRunPassed": "Patch Dry Run Passed",
+                    "titleDryRunReview": "Patch Dry Run Review",
+                    "warnings": "Warnings"
+                },
+                "binary": "binary",
+                "fileCountMany": "{count} files",
+                "fileCountOne": "{count} file",
+                "moreCount": "+{count} more",
+                "plan": {
+                    "likelyFiles": "Likely Files",
+                    "openQuestions": "Open Questions",
+                    "reviewOnlyNote": "Review-only artifact. Edits and mutating tools still use the current approval mode.",
+                    "riskHigh": "high risk",
+                    "riskLow": "low risk",
+                    "riskMedium": "medium risk",
+                    "risks": "Risks",
+                    "title": "Coding Plan"
+                },
+                "state": {
+                    "clean": "clean",
+                    "failed": "failed",
+                    "passed": "passed",
+                    "timedOut": "timed-out"
+                },
+                "timeoutChip": "timeout {seconds}s",
+                "truncated": "truncated",
+                "workspaceLabel": "Workspace:"
+            },
+            "attachedImageAlt": "Attached image",
+            "stepNumber": "Step {step}",
+            "transcribingLocally": "Transcribing locally...",
+            "transferPlan": {
+                "dependsOnMany": "Depends on {count} preparatory steps",
+                "dependsOnOne": "Depends on {count} preparatory step",
+                "destination": "Destination: {destination}",
+                "title": "Transfer Plan Review",
+                "warnings": "Warnings"
             }
         },
         "appearance": {
@@ -2246,7 +2371,14 @@
                 "starting": "Starting...",
                 "stop": "Stop",
                 "stopShell": "Stop shell",
-                "closed": "Terminal closed."
+                "closed": "Terminal closed.",
+                "decreaseFont": "Decrease font size (Ctrl+-)",
+                "emptyClickPlus": "Click {plus} to open a terminal",
+                "emptySshHint": "or {ssh} for remote shell to {host}",
+                "increaseFont": "Increase font size (Ctrl+=)",
+                "newTab": "New terminal tab",
+                "sshShellTo": "SSH shell to {host}",
+                "theme": "Terminal theme"
             },
             "editorPanel": {
                 "dragToTerminalRun": "Drag to Terminal to insert run command",
@@ -2255,11 +2387,15 @@
                 "noFileSelected": "No file selected for viewing",
                 "reset": "Reset",
                 "save": "Save",
-                "saving": "Saving..."
+                "saving": "Saving...",
+                "closeEditor": "Close editor",
+                "resetChanges": "Reset changes"
             },
             "previewPanel": {
                 "emptyState": "Right-click on a file and choose \"Preview\""
-            }
+            },
+            "comingSoon": "Coming soon",
+            "soonBadge": "Soon"
         },
         "dialogs": {
             "confirmTitle": "Confirm",
@@ -2949,7 +3085,8 @@
                     "browse": "Browse",
                     "installed": "Installed"
                 },
-                "title": "Plugin Browser"
+                "title": "Plugin Browser",
+                "remoteInstallDisabled": "Remote plugin installation is currently disabled until the registry is authenticated client-side. Locally installed plugins continue to work normally."
             }
         },
         "properties": {

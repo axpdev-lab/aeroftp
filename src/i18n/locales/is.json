@@ -1269,7 +1269,14 @@
                 "stop": "Stöðva",
                 "stopShell": "Stöðva skel",
                 "closed": "Flugstöð lokuð.",
-                "commandInsertedReview": "Skipun sett inn í Terminal. Ýttu á Enter til að keyra."
+                "commandInsertedReview": "Skipun sett inn í Terminal. Ýttu á Enter til að keyra.",
+                "decreaseFont": "Minnka leturstærð (Ctrl+-)",
+                "emptyClickPlus": "Smelltu á {plus} til að opna útstöð",
+                "emptySshHint": "eða {ssh} fyrir fjarskel á {host}",
+                "increaseFont": "Stækka leturstærð (Ctrl+=)",
+                "newTab": "Nýr útstöðvarflipi",
+                "sshShellTo": "SSH-skel á {host}",
+                "theme": "Þema útstöðvar"
             },
             "editorPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Skoða frumkóða\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Vistar...",
                 "noFileSelected": "Engin skrá valin til skoðunar",
                 "loading": "Hleð ritli...",
-                "dragToTerminalRun": "Dragðu í Terminal til að setja inn keyrsluskipun"
+                "dragToTerminalRun": "Dragðu í Terminal til að setja inn keyrsluskipun",
+                "closeEditor": "Loka ritli",
+                "resetChanges": "Endurstilla breytingar"
             },
             "previewPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Forskoða\""
             },
             "codeEditor": "Kóðaritill",
-            "sshTerminal": "SSH-útstöð"
+            "sshTerminal": "SSH-útstöð",
+            "comingSoon": "Væntanlegt",
+            "soonBadge": "Bráðum"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Hafna keyrslu verkfæris",
                 "toggleDetails": "Víxla upplýsingum",
                 "allowSession": "Leyfa fyrir þessa lotu",
-                "nonAtomicReplace": "Ósamfelld útskipting: skráin er horfin í skamma stund"
+                "nonAtomicReplace": "Ósamfelld útskipting: skráin er horfin í skamma stund",
+                "moreOptions": "Fleiri valkostir",
+                "panelAria": "Samþykktarspjald verkfæra"
             },
             "settings": {
                 "title": "AI Stillingar",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Varalíkan",
                 "routingNoFallback": "Ekkert",
                 "bedrockNeedsModel": "Bættu við og virkjaðu Bedrock-líkan á flipanum Líkön áður en þú prófar.",
-                "bedrockSetup": "Stilltu Runtime URL fyrir AWS-svæðið þitt. Í Líkön skaltu bæta við ID sem styður Chat Completions í Bedrock Runtime. Runtime birtir ekki lista yfir líkön. Prófunin sendir litla ályktunarbeiðni sem getur valdið AWS-gjöldum."
+                "bedrockSetup": "Stilltu Runtime URL fyrir AWS-svæðið þitt. Í Líkön skaltu bæta við ID sem styður Chat Completions í Bedrock Runtime. Runtime birtir ekki lista yfir líkön. Prófunin sendir litla ályktunarbeiðni sem getur valdið AWS-gjöldum.",
+                "detectOllamaModelsTooltip": "Greina tiltæk Ollama-líkön sjálfkrafa",
+                "kTokens": "{count}K tókar",
+                "modelEditorAria": "Ritill gervigreindarlíkana",
+                "supportsTools": "Styður verkfæri",
+                "supportsVision": "Styður myndgreiningu",
+                "thinkingReasoning": "Hugsun/Röksemdafærsla",
+                "toolQuality": "Gæði verkfæra: {quality}/5"
             },
             "copy": "Afrita",
             "attachImage": "Hengja mynd við",
@@ -2699,7 +2719,9 @@
                 "run": "Keyra í útstöð",
                 "insert": "Setja inn í ritil",
                 "diff": "Mismunur frá upprunalegri",
-                "diffNoFile": "Engin skrá opin fyrir samanburð"
+                "diffNoFile": "Engin skrá opin fyrir samanburð",
+                "commandBlocked": "Skipun lokuð: getur valdið eyðileggingu",
+                "confirmRun": "Staðfesta keyrslu: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Hugsar...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Skipta um grein",
                 "delete": "Eyða grein",
                 "newBranch": "Ný grein",
-                "branchFrom": "Grein frá þessum punkti"
+                "branchFrom": "Grein frá þessum punkti",
+                "messageCountShort": "{count} skil.",
+                "unnamed": "Grein"
             },
             "context": {
                 "projectDetected": "Verkefni greint",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "keyrir",
                 "expired": "útrunnið",
-                "refresh": "Endurhlaða"
+                "refresh": "Endurhlaða",
+                "modelsRunningMany": "{count} líkön í gangi",
+                "modelsRunningOne": "{count} líkan í gangi",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Samhengis-skyndiminni",
@@ -2956,7 +2983,8 @@
                 "warning": "Allar skráaaðgerðir verða keyrðar strax án samþykkis. Notaðu á eigin ábyrgð.",
                 "disable": "Slökkva",
                 "securityWarning": "Öryggisviðvörun",
-                "understood": "Skilið"
+                "understood": "Skilið",
+                "warningAria": "Viðvörun um öfgaham"
             },
             "errorServerError": "Þjónn gervigreindarveitunnar á í vandræðum. Reyndu aftur eftir smá stund.",
             "errorServiceUnavailable": "Gervigreindarveitandinn er tímabundið ótiltækur (ofhlaðinn). Ókeypis þjónustur geta haft takmarkanir. Reyndu aftur síðar.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Ótakmarkað",
                 "roleAI": "AI",
-                "roleUser": "Notandi"
+                "roleUser": "Notandi",
+                "noConversations": "Engin samtöl enn",
+                "titleCount": "Saga ({count})"
             },
             "dropFileToAnalyze": "Slepptu skrá til að greina með AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} inntakstóken, {output} úttakstóken, samkvæmt talningu þjónustuveitunnar",
-                "breakdownCache": "{input} inntakstóken, {output} úttakstóken, {cacheRead} lesin úr skyndiminni fyrirmæla, {cacheWritten} skrifuð í það, samkvæmt talningu þjónustuveitunnar"
+                "breakdownCache": "{input} inntakstóken, {output} úttakstóken, {cacheRead} lesin úr skyndiminni fyrirmæla, {cacheWritten} skrifuð í það, samkvæmt talningu þjónustuveitunnar",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Framkvæma {count} aðgerð(ir)",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Yrði sleppt",
                     "skipped": "Sleppt",
                     "existedAtCheckpoint": "var til við vistunarpunkt",
-                    "absentAtCheckpoint": "vantaði við vistunarpunkt"
+                    "absentAtCheckpoint": "vantaði við vistunarpunkt",
+                    "noFiles": "Engar skrár voru í þessari endurheimtarniðurstöðu.",
+                    "otherActions": "Aðrar aðgerðir",
+                    "requestedPaths": "Umbeðið undirmengi slóða",
+                    "scopeAll": "Umfang: allar skrár sem vistaðar voru í vistunarpunktinum.",
+                    "titleApplied": "Endurheimt vistunarpunkts beitt",
+                    "titleApplyReview": "Yfirferð á beitingu endurheimtar vistunarpunkts",
+                    "titleDryRunComplete": "Þurrkeyrslu endurheimtar vistunarpunkts lokið",
+                    "titleDryRunReview": "Yfirferð á prufuendurheimt eftirlitspunkts"
                 },
                 "checks": {
                     "exitSummary": "útgangskóði {code} · {seconds}s",
                     "continueOnFailure": "Keyrir allar athuganir þótt ein mistakist.",
-                    "stopOnFailure": "Stöðvast við fyrstu athugun sem mistekst."
+                    "stopOnFailure": "Stöðvast við fyrstu athugun sem mistekst.",
+                    "checkLabel": "Prófun:",
+                    "checksLabel": "Prófanir:",
+                    "exitChip": "útgangur {code}",
+                    "filterChip": "sía: {filter}",
+                    "filterLabel": "Sía:",
+                    "notAvailable": "á ekki við",
+                    "passedCount": "{passed}/{total} stóðust",
+                    "runCheckNote": "Keyrir valda build/test/lint-skipun í vinnusvæðinu. Smíðaskriftur og prófanir keyra raunverulegan kóða.",
+                    "runProjectCheck": "Keyra verkefnisprófun",
+                    "runVerification": "Keyra staðfestingarumferð",
+                    "runVerificationNote": "Keyrir valdar build/test/lint-skipanir í vinnusvæðinu. Smíðaskriftur og prófanir keyra raunverulegan kóða.",
+                    "stoppedEarly": "Stöðvað við fyrstu prófun sem mistókst.",
+                    "timeoutLabel": "Tímamörk: {seconds} s",
+                    "verification": "Staðfesting"
                 },
                 "diagnostics": {
-                    "none": "Engin greining tilkynnt."
+                    "none": "Engin greining tilkynnt.",
+                    "errorCountMany": "{count} villur",
+                    "errorCountOne": "{count} villa",
+                    "title": "Greining",
+                    "truncated": "Greiningarlistinn var styttur.",
+                    "warningCountMany": "{count} viðvaranir",
+                    "warningCountOne": "{count} viðvörun"
                 },
                 "search": {
-                    "none": "Engar samsvaranir fundust."
+                    "none": "Engar samsvaranir fundust.",
+                    "ignoreCase": "hunsa hástafi",
+                    "inPath": "í {path}",
+                    "literal": "bókstaflegt",
+                    "matchCountMany": "{count} samsvaranir",
+                    "matchCountOne": "{count} samsvörun",
+                    "title": "Leit í vinnusvæði",
+                    "truncated": "Niðurstöður voru styttar."
                 },
                 "git": {
                     "noStagedDiff": "Ekkert diff-úttak fyrir undirbúnar breytingar.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Samþykki Git-undirbúnings",
                     "commitNote": "Þetta býr til git-innfærslu (commit) úr núverandi undirbúnum vísi. Farðu fyrst yfir coding_git_status og coding_git_diff með staged=true.",
                     "stagePreviewNote": "Þetta sýnir forskoðun á því hvaða umbeðnar slóðir yrðu undirbúnar; vísirinn breytist ekki.",
-                    "stageNote": "Þetta breytir git-vísinum fyrir umbeðnar slóðir."
+                    "stageNote": "Þetta breytir git-vísinum fyrir umbeðnar slóðir.",
+                    "afterCounts": "Eftir: {counts}",
+                    "beforeCounts": "Fyrir: {counts}",
+                    "clean": "Vinnutréð er hreint.",
+                    "commitCountMany": "{count} framlög",
+                    "commitCountOne": "{count} framlag",
+                    "conflicted": "í árekstri",
+                    "diffTruncated": "Mismunaúttak var stytt.",
+                    "logTitle": "Git-atvikaskrá",
+                    "pathsChip": "slóðir: {paths}",
+                    "showingNewest": "Sýni nýjustu {count}; fleiri eru til.",
+                    "statusCounts": "{staged} sviðsett, {unstaged} ósviðsett, {untracked} óvöktuð, {conflicted} í árekstri",
+                    "titleCommitCreated": "Git-framlag búið til",
+                    "titleCommitDryRun": "Prufukeyrsla Git-framlags",
+                    "titleCommitReview": "Yfirferð Git-framlags",
+                    "titleReview": "Git-yfirferð",
+                    "titleStageApplied": "Git-sviðsetningu beitt",
+                    "titleStagedDiff": "Sviðsettur Git-mismunur",
+                    "titleStageDryRun": "Prufukeyrsla Git-sviðsetningar",
+                    "titleStatus": "Git-staða",
+                    "titleUnstagedDiff": "Ósviðsettur Git-mismunur",
+                    "untracked": "óvaktað"
                 },
                 "patch": {
                     "validateNote": "Þetta staðfestir plásturinn án þess að breyta skrám.",
                     "applyNote": "Þessi áhættusama beiðni um beitingu skrifar skrár eftir að bakendinn býr til endurheimtarpunkt fyrir beitingu.",
                     "hideDiff": "Fela sameinað diff",
-                    "showDiff": "Sýna sameinað diff"
-                }
+                    "showDiff": "Sýna sameinað diff",
+                    "actualLabel": "raunverulegt:",
+                    "checkpointCreated": "Eftirlitspunktur fyrir beitingu búinn til",
+                    "diffTruncated": "Forskoðun mismunar stytt til birtingar.",
+                    "expectedLabel": "væntanlegt:",
+                    "firstLines": "fyrstu {shown} af {total} línum",
+                    "hunkCountMany": "{count} bútar",
+                    "hunkCountOne": "{count} bútur",
+                    "hunkIndex": "bútur {index}",
+                    "restoreManual": "Endurheimt er handvirk: notaðu {tool} með þessu auðkenni vistunarpunkts eftir yfirferð.",
+                    "titleApplied": "Plástur settur inn",
+                    "titleApplyBlocked": "Innsetning plásturs hindruð",
+                    "titleApplyReview": "Yfirferð á innsetningu plásturs",
+                    "titleDryRunConflicts": "Þurrkeyrsla plásturs fann árekstra",
+                    "titleDryRunPassed": "Þurrkeyrsla plásturs stóðst",
+                    "titleDryRunReview": "Yfirferð á þurrkeyrslu plásturs",
+                    "warnings": "Viðvaranir"
+                },
+                "binary": "tvíunda",
+                "fileCountMany": "{count} skrár",
+                "fileCountOne": "{count} skrá",
+                "moreCount": "+{count} í viðbót",
+                "plan": {
+                    "likelyFiles": "Líklegar skrár",
+                    "openQuestions": "Opnar spurningar",
+                    "reviewOnlyNote": "Aðeins til yfirferðar. Breytingar og breytandi verkfæri nota enn núverandi samþykkisham.",
+                    "riskHigh": "mikil áhætta",
+                    "riskLow": "lítil áhætta",
+                    "riskMedium": "miðlungs áhætta",
+                    "risks": "Áhættur",
+                    "title": "Forritunaráætlun"
+                },
+                "state": {
+                    "clean": "hreint",
+                    "failed": "mistókst",
+                    "passed": "stóðst",
+                    "timedOut": "tími rann út"
+                },
+                "timeoutChip": "tímamörk {seconds}s",
+                "truncated": "stytt",
+                "workspaceLabel": "Vinnusvæði:"
+            },
+            "attachedImageAlt": "Viðhengd mynd",
+            "stepNumber": "Skref {step}",
+            "transcribingLocally": "Umritar staðbundið...",
+            "transferPlan": {
+                "dependsOnMany": "Háð {count} undirbúningsskrefum",
+                "dependsOnOne": "Háð {count} undirbúningsskrefi",
+                "destination": "Áfangastaður: {destination}",
+                "title": "Yfirferð flutningsáætlunar",
+                "warnings": "Viðvaranir"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Skoða",
                     "installed": "Uppsett"
-                }
+                },
+                "remoteInstallDisabled": "Fjaruppsetning viðbóta er óvirk eins og er þar til skráningarsafnið hefur verið auðkennt á biðlarahlið. Viðbætur sem settar eru upp staðbundið virka áfram eðlilega."
             }
         },
         "commandPalette.category.ai": {},
@@ -5026,7 +5163,7 @@
             "manageRevoked": "Tengill afturkalladur",
             "manageRevokeFailed": "Ekki tókst að afturkalla tengil",
             "manageRevokeConfirm": "Afturkalla þennan deilingartengil? Allir með tengilinn missa aðgang.",
-            "manageCreated": "Buinn til",
+            "manageCreated": "Búið til",
             "manageExpires": "Rennur út",
             "manageNeverExpires": "Aldrei",
             "managePasswordProtected": "Lykilordavarinn"

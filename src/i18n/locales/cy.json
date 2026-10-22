@@ -1269,7 +1269,14 @@
                 "stop": "Stopio",
                 "stopShell": "Stopio'r plisgyn",
                 "closed": "Terfynell wedi cau.",
-                "commandInsertedReview": "Gorchymyn wedi'i fewnosod yn y Terminal. Pwyswch Enter i redeg."
+                "commandInsertedReview": "Gorchymyn wedi'i fewnosod yn y Terminal. Pwyswch Enter i redeg.",
+                "decreaseFont": "Lleihau maint y ffont (Ctrl+-)",
+                "emptyClickPlus": "Cliciwch {plus} i agor terfynell",
+                "emptySshHint": "neu {ssh} am gragen bell i {host}",
+                "increaseFont": "Cynyddu maint y ffont (Ctrl+=)",
+                "newTab": "Tab terfynell newydd",
+                "sshShellTo": "Cragen SSH i {host}",
+                "theme": "Thema'r derfynell"
             },
             "editorPanel": {
                 "emptyState": "De-gliciwch ar ffeil a dewiswch \"Gweld y ffynhonnell\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Yn cadw...",
                 "noFileSelected": "Dim ffeil wedi'i dewis i'w gweld",
                 "loading": "Yn llwytho'r golygydd...",
-                "dragToTerminalRun": "Llusgwch i'r Terminal i fewnosod gorchymyn rhedeg"
+                "dragToTerminalRun": "Llusgwch i'r Terminal i fewnosod gorchymyn rhedeg",
+                "closeEditor": "Cau'r golygydd",
+                "resetChanges": "Ailosod newidiadau"
             },
             "previewPanel": {
                 "emptyState": "De-gliciwch ar ffeil a dewiswch \"Rhagolwg\""
             },
             "codeEditor": "Golygydd Cod",
-            "sshTerminal": "Terfynell SSH"
+            "sshTerminal": "Terfynell SSH",
+            "comingSoon": "Yn dod yn fuan",
+            "soonBadge": "Cyn bo hir"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Gwrthod rhedeg yr offeryn",
                 "toggleDetails": "Toglo manylion",
                 "allowSession": "Caniatáu ar gyfer y sesiwn hon",
-                "nonAtomicReplace": "Amnewid heb fod yn atomig: mae'r ffeil ar goll am ennyd"
+                "nonAtomicReplace": "Amnewid heb fod yn atomig: mae'r ffeil ar goll am ennyd",
+                "moreOptions": "Rhagor o ddewisiadau",
+                "panelAria": "Panel cymeradwyo offer"
             },
             "settings": {
                 "title": "Gosodiadau AI",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Wrth gefn",
                 "routingNoFallback": "Dim",
                 "bedrockNeedsModel": "Ychwanegwch ac actifadwch fodel Bedrock yn y tab Modelau cyn profi.",
-                "bedrockSetup": "Gosodwch y Runtime URL ar gyfer eich rhanbarth AWS. Yn Modelau, ychwanegwch ID sy'n cefnogi Chat Completions ar Bedrock Runtime. Nid yw Runtime yn rhestru modelau. Mae'r prawf yn anfon cais casgliad bach a all achosi taliadau AWS."
+                "bedrockSetup": "Gosodwch y Runtime URL ar gyfer eich rhanbarth AWS. Yn Modelau, ychwanegwch ID sy'n cefnogi Chat Completions ar Bedrock Runtime. Nid yw Runtime yn rhestru modelau. Mae'r prawf yn anfon cais casgliad bach a all achosi taliadau AWS.",
+                "detectOllamaModelsTooltip": "Canfod modelau Ollama sydd ar gael yn awtomatig",
+                "kTokens": "{count}K tocyn",
+                "modelEditorAria": "Golygydd modelau DA",
+                "supportsTools": "Yn cefnogi offer",
+                "supportsVision": "Yn cefnogi golwg",
+                "thinkingReasoning": "Meddwl/Rhesymu",
+                "toolQuality": "Ansawdd offer: {quality}/5"
             },
             "copy": "Copïo",
             "attachImage": "Atodi delwedd",
@@ -2699,7 +2719,9 @@
                 "run": "Rhedeg yn y Derfynell",
                 "insert": "Mewnosod yn y Golygydd",
                 "diff": "Cymharu â'r gwreiddiol",
-                "diffNoFile": "Dim ffeil ar agor ar gyfer cymharu"
+                "diffNoFile": "Dim ffeil ar agor ar gyfer cymharu",
+                "commandBlocked": "Gorchymyn wedi'i rwystro: gallai fod yn ddinistriol",
+                "confirmRun": "Cadarnhau rhedeg: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Yn meddwl...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Newid cangen",
                 "delete": "Dileu cangen",
                 "newBranch": "Cangen newydd",
-                "branchFrom": "Canghenu o'r pwynt hwn"
+                "branchFrom": "Canghenu o'r pwynt hwn",
+                "messageCountShort": "{count} neg.",
+                "unnamed": "Cangen"
             },
             "context": {
                 "projectDetected": "Prosiect wedi'i ganfod",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "yn rhedeg",
                 "expired": "wedi dod i ben",
-                "refresh": "Adnewyddu"
+                "refresh": "Adnewyddu",
+                "modelsRunningMany": "{count} model yn rhedeg",
+                "modelsRunningOne": "{count} model yn rhedeg",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Storio Cyd-destun Dros Dro",
@@ -2956,7 +2983,8 @@
                 "warning": "Bydd pob gweithrediad ffeil yn cael ei weithredu ar unwaith heb gymeradwyaeth. Defnyddiwch ar eich risg eich hun.",
                 "disable": "Analluogi",
                 "securityWarning": "Rhybudd Diogelwch",
-                "understood": "Deallwyd"
+                "understood": "Deallwyd",
+                "warningAria": "Rhybudd modd eithafol"
             },
             "errorServerError": "Mae gweinydd y darparwr AI yn cael problemau. Rhowch gynnig arni eto mewn eiliad.",
             "errorServiceUnavailable": "Mae'r darparwr AI ddim ar gael dros dro (gorlwytho). Gall gwasanaethau am ddim fod â therfynau. Rhowch gynnig arni'n ddiweddarach.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Diderfyn",
                 "roleAI": "AI",
-                "roleUser": "Defnyddiwr"
+                "roleUser": "Defnyddiwr",
+                "noConversations": "Dim sgyrsiau eto",
+                "titleCount": "Hanes ({count})"
             },
             "dropFileToAnalyze": "Gollyngwch ffeil i'w dadansoddi gydag AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} tocyn mewnbwn, {output} tocyn allbwn, yn ôl cyfrif y darparwr",
-                "breakdownCache": "{input} tocyn mewnbwn, {output} tocyn allbwn, {cacheRead} wedi'i ddarllen o storfa dros dro'r anogwr, {cacheWritten} wedi'i ysgrifennu iddi, yn ôl cyfrif y darparwr"
+                "breakdownCache": "{input} tocyn mewnbwn, {output} tocyn allbwn, {cacheRead} wedi'i ddarllen o storfa dros dro'r anogwr, {cacheWritten} wedi'i ysgrifennu iddi, yn ôl cyfrif y darparwr",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Gweithredu {count} gweithrediad",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Byddai'n hepgor",
                     "skipped": "Wedi hepgor",
                     "existedAtCheckpoint": "yn bodoli ar y pwynt gwirio",
-                    "absentAtCheckpoint": "yn absennol ar y pwynt gwirio"
+                    "absentAtCheckpoint": "yn absennol ar y pwynt gwirio",
+                    "noFiles": "Ni chynhwyswyd unrhyw ffeiliau yn y canlyniad adfer hwn.",
+                    "otherActions": "Camau eraill",
+                    "requestedPaths": "Is-set llwybrau y gofynnwyd amdani",
+                    "scopeAll": "Cwmpas: pob ffeil a gipiwyd yn y pwynt gwirio.",
+                    "titleApplied": "Adfer pwynt gwirio wedi'i gymhwyso",
+                    "titleApplyReview": "Adolygu cymhwyso adfer pwynt gwirio",
+                    "titleDryRunComplete": "Rhediad prawf adfer pwynt gwirio wedi'i gwblhau",
+                    "titleDryRunReview": "Adolygiad rhediad prawf adfer pwynt gwirio"
                 },
                 "checks": {
                     "exitSummary": "cod gadael {code} · {seconds}s",
                     "continueOnFailure": "Yn rhedeg pob gwiriad hyd yn oed os bydd un yn methu.",
-                    "stopOnFailure": "Yn stopio wrth y gwiriad cyntaf sy'n methu."
+                    "stopOnFailure": "Yn stopio wrth y gwiriad cyntaf sy'n methu.",
+                    "checkLabel": "Gwiriad:",
+                    "checksLabel": "Gwiriadau:",
+                    "exitChip": "cod gadael {code}",
+                    "filterChip": "hidlydd: {filter}",
+                    "filterLabel": "Hidlydd:",
+                    "notAvailable": "amh.",
+                    "passedCount": "{passed}/{total} wedi pasio",
+                    "runCheckNote": "Yn rhedeg gorchymyn build/test/lint dethol yn y gweithle. Mae sgriptiau adeiladu a phrofion yn gweithredu cod go iawn.",
+                    "runProjectCheck": "Rhedeg gwiriad y prosiect",
+                    "runVerification": "Rhedeg rownd ddilysu",
+                    "runVerificationNote": "Yn rhedeg gorchmynion build/test/lint dethol yn y gweithle. Mae sgriptiau adeiladu a phrofion yn gweithredu cod go iawn.",
+                    "stoppedEarly": "Wedi stopio wrth y gwiriad cyntaf a fethodd.",
+                    "timeoutLabel": "Terfyn amser: {seconds} e",
+                    "verification": "Dilysu"
                 },
                 "diagnostics": {
-                    "none": "Dim diagnosteg wedi'i hadrodd."
+                    "none": "Dim diagnosteg wedi'i hadrodd.",
+                    "errorCountMany": "{count} gwall",
+                    "errorCountOne": "{count} gwall",
+                    "title": "Diagnosteg",
+                    "truncated": "Cafodd y rhestr ddiagnosteg ei chwtogi.",
+                    "warningCountMany": "{count} rhybudd",
+                    "warningCountOne": "{count} rhybudd"
                 },
                 "search": {
-                    "none": "Heb ganfod unrhyw gyfatebiaethau."
+                    "none": "Heb ganfod unrhyw gyfatebiaethau.",
+                    "ignoreCase": "anwybyddu priflythrennau",
+                    "inPath": "yn {path}",
+                    "literal": "llythrennol",
+                    "matchCountMany": "{count} cyfatebiaeth",
+                    "matchCountOne": "{count} cyfatebiaeth",
+                    "title": "Chwilio'r gweithle",
+                    "truncated": "Cafodd y canlyniadau eu cwtogi."
                 },
                 "git": {
                     "noStagedDiff": "Dim allbwn diff wedi'i lwyfannu.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Cymeradwyo Llwyfannu Git",
                     "commitNote": "Mae hyn yn creu commit git o'r mynegai cyfredol sydd wedi'i lwyfannu. Adolygwch coding_git_status a coding_git_diff gyda staged=true yn gyntaf.",
                     "stagePreviewNote": "Mae hyn yn rhagweld pa lwybrau y gofynnwyd amdanynt a fyddai'n cael eu llwyfannu; ni fydd y mynegai yn newid.",
-                    "stageNote": "Mae hyn yn newid mynegai git ar gyfer y llwybrau y gofynnwyd amdanynt."
+                    "stageNote": "Mae hyn yn newid mynegai git ar gyfer y llwybrau y gofynnwyd amdanynt.",
+                    "afterCounts": "Ar ôl: {counts}",
+                    "beforeCounts": "Cyn: {counts}",
+                    "clean": "Mae'r goeden waith yn lân.",
+                    "commitCountMany": "{count} ymrwymiad",
+                    "commitCountOne": "{count} ymrwymiad",
+                    "conflicted": "mewn gwrthdaro",
+                    "diffTruncated": "Cafodd allbwn y gwahaniaeth ei gwtogi.",
+                    "logTitle": "Log Git",
+                    "pathsChip": "llwybrau: {paths}",
+                    "showingNewest": "Yn dangos y {count} mwyaf diweddar; mae rhagor.",
+                    "statusCounts": "{staged} wedi'u llwyfannu, {unstaged} heb eu llwyfannu, {untracked} heb eu tracio, {conflicted} mewn gwrthdaro",
+                    "titleCommitCreated": "Ymrwymiad Git wedi'i greu",
+                    "titleCommitDryRun": "Rhediad prawf ymrwymiad Git",
+                    "titleCommitReview": "Adolygiad ymrwymiad Git",
+                    "titleReview": "Adolygiad Git",
+                    "titleStageApplied": "Llwyfannu Git wedi'i gymhwyso",
+                    "titleStagedDiff": "Gwahaniaeth Git wedi'i lwyfannu",
+                    "titleStageDryRun": "Rhediad prawf llwyfannu Git",
+                    "titleStatus": "Statws Git",
+                    "titleUnstagedDiff": "Gwahaniaeth Git heb ei lwyfannu",
+                    "untracked": "heb ei dracio"
                 },
                 "patch": {
                     "validateNote": "Mae hyn yn dilysu'r clwt heb newid ffeiliau.",
                     "applyNote": "Mae'r cais cymhwyso perygl uchel hwn yn ysgrifennu ffeiliau ar ôl i'r gefnwedd greu pwynt gwirio cyn cymhwyso.",
                     "hideDiff": "Cuddio diff unedig",
-                    "showDiff": "Dangos diff unedig"
-                }
+                    "showDiff": "Dangos diff unedig",
+                    "actualLabel": "gwirioneddol:",
+                    "checkpointCreated": "Pwynt gwirio cyn cymhwyso wedi'i greu",
+                    "diffTruncated": "Rhagolwg y gwahaniaeth wedi'i gwtogi i'w ddangos.",
+                    "expectedLabel": "disgwyliedig:",
+                    "firstLines": "y {shown} llinell gyntaf o {total}",
+                    "hunkCountMany": "{count} talp",
+                    "hunkCountOne": "{count} talp",
+                    "hunkIndex": "talp {index}",
+                    "restoreManual": "Mae adfer yn waith llaw: defnyddiwch {tool} gyda'r ID pwynt gwirio hwn ar ôl adolygu.",
+                    "titleApplied": "Clwt wedi'i gymhwyso",
+                    "titleApplyBlocked": "Cymhwyso clwt wedi'i rwystro",
+                    "titleApplyReview": "Adolygu cymhwyso clwt",
+                    "titleDryRunConflicts": "Daeth rhediad prawf y clwt o hyd i wrthdaro",
+                    "titleDryRunPassed": "Rhediad prawf y clwt wedi llwyddo",
+                    "titleDryRunReview": "Adolygu rhediad prawf y clwt",
+                    "warnings": "Rhybuddion"
+                },
+                "binary": "deuaidd",
+                "fileCountMany": "{count} ffeil",
+                "fileCountOne": "{count} ffeil",
+                "moreCount": "+{count} arall",
+                "plan": {
+                    "likelyFiles": "Ffeiliau tebygol",
+                    "openQuestions": "Cwestiynau agored",
+                    "reviewOnlyNote": "Arteffact i'w adolygu yn unig. Mae golygiadau ac offer sy'n newid yn dal i ddefnyddio'r modd cymeradwyo cyfredol.",
+                    "riskHigh": "risg uchel",
+                    "riskLow": "risg isel",
+                    "riskMedium": "risg canolig",
+                    "risks": "Risgiau",
+                    "title": "Cynllun codio"
+                },
+                "state": {
+                    "clean": "glân",
+                    "failed": "wedi methu",
+                    "passed": "wedi pasio",
+                    "timedOut": "wedi dod i ben"
+                },
+                "timeoutChip": "terfyn amser {seconds}s",
+                "truncated": "wedi'i gwtogi",
+                "workspaceLabel": "Gweithle:"
+            },
+            "attachedImageAlt": "Delwedd atodedig",
+            "stepNumber": "Cam {step}",
+            "transcribingLocally": "Yn trawsgrifio'n lleol...",
+            "transferPlan": {
+                "dependsOnMany": "Yn dibynnu ar {count} cam paratoi",
+                "dependsOnOne": "Yn dibynnu ar {count} cam paratoi",
+                "destination": "Cyrchfan: {destination}",
+                "title": "Adolygu'r Cynllun Trosglwyddo",
+                "warnings": "Rhybuddion"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Pori",
                     "installed": "Wedi gosod"
-                }
+                },
+                "remoteInstallDisabled": "Mae gosod ategion o bell wedi'i analluogi ar hyn o bryd nes bod y gofrestrfa wedi'i dilysu ar ochr y cleient. Mae ategion sydd wedi'u gosod yn lleol yn parhau i weithio fel arfer."
             }
         },
         "commandPalette.category.ai": {},

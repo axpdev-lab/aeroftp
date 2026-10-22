@@ -1269,7 +1269,14 @@
                 "stop": "Aturar",
                 "stopShell": "Aturar shell",
                 "closed": "Terminal tancat.",
-                "commandInsertedReview": "Ordre inserida al Terminal. Premeu Enter per executar."
+                "commandInsertedReview": "Ordre inserida al Terminal. Premeu Enter per executar.",
+                "decreaseFont": "Redueix la mida de la lletra (Ctrl+-)",
+                "emptyClickPlus": "Feu clic a {plus} per obrir un terminal",
+                "emptySshHint": "o {ssh} per a un intèrpret remot a {host}",
+                "increaseFont": "Augmenta la mida de la lletra (Ctrl+=)",
+                "newTab": "Pestanya de terminal nova",
+                "sshShellTo": "Intèrpret SSH a {host}",
+                "theme": "Tema del terminal"
             },
             "editorPanel": {
                 "emptyState": "Fes clic dret en un fitxer i tria \"Veure el codi font\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Guardant...",
                 "noFileSelected": "Cap fitxer seleccionat per visualitzar",
                 "loading": "Carregant editor...",
-                "dragToTerminalRun": "Arrossegueu al Terminal per inserir l'ordre d'execució"
+                "dragToTerminalRun": "Arrossegueu al Terminal per inserir l'ordre d'execució",
+                "closeEditor": "Tanca l'editor",
+                "resetChanges": "Restableix els canvis"
             },
             "previewPanel": {
                 "emptyState": "Fes clic dret en un fitxer i tria \"Vista prèvia\""
             },
             "codeEditor": "Editor de codi",
-            "sshTerminal": "Terminal SSH"
+            "sshTerminal": "Terminal SSH",
+            "comingSoon": "Properament",
+            "soonBadge": "Aviat"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Rebutjar l'execució de l'eina",
                 "toggleDetails": "Alternar detalls",
                 "allowSession": "Permet per a aquesta sessió",
-                "nonAtomicReplace": "Substitució no atòmica: el fitxer desapareix un instant"
+                "nonAtomicReplace": "Substitució no atòmica: el fitxer desapareix un instant",
+                "moreOptions": "Més opcions",
+                "panelAria": "Tauler d'aprovació d'eines"
             },
             "settings": {
                 "title": "Configuració d'IA",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Alternatiu",
                 "routingNoFallback": "Cap",
                 "bedrockNeedsModel": "Afegiu i activeu un model de Bedrock a la pestanya Models abans de fer la prova.",
-                "bedrockSetup": "Configureu la Runtime URL de la vostra regió d'AWS. A Models, afegiu un ID compatible amb Chat Completions a Bedrock Runtime. Runtime no mostra cap llista de models. La prova envia una petita sol·licitud d'inferència que pot generar càrrecs d'AWS."
+                "bedrockSetup": "Configureu la Runtime URL de la vostra regió d'AWS. A Models, afegiu un ID compatible amb Chat Completions a Bedrock Runtime. Runtime no mostra cap llista de models. La prova envia una petita sol·licitud d'inferència que pot generar càrrecs d'AWS.",
+                "detectOllamaModelsTooltip": "Detecta automàticament els models d'Ollama disponibles",
+                "kTokens": "{count}K testimonis",
+                "modelEditorAria": "Editor de models d'IA",
+                "supportsTools": "Admet eines",
+                "supportsVision": "Admet visió",
+                "thinkingReasoning": "Pensament/Raonament",
+                "toolQuality": "Qualitat de les eines: {quality}/5"
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imatge",
@@ -2699,7 +2719,9 @@
                 "run": "Executar al terminal",
                 "insert": "Inserir a l'editor",
                 "diff": "Comparar amb l'original",
-                "diffNoFile": "No hi ha cap fitxer obert per comparar"
+                "diffNoFile": "No hi ha cap fitxer obert per comparar",
+                "commandBlocked": "Ordre bloquejada: potencialment destructiva",
+                "confirmRun": "Confirma l'execució: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Pensant...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Canviar de branca",
                 "delete": "Eliminar branca",
                 "newBranch": "Nova branca",
-                "branchFrom": "Bifurcar des d'aquest punt"
+                "branchFrom": "Bifurcar des d'aquest punt",
+                "messageCountShort": "{count} miss.",
+                "unnamed": "Branca"
             },
             "context": {
                 "projectDetected": "Projecte detectat",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "en execució",
                 "expired": "expirat",
-                "refresh": "Actualitzar"
+                "refresh": "Actualitzar",
+                "modelsRunningMany": "{count} models en execució",
+                "modelsRunningOne": "{count} model en execució",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Memòria cau de context",
@@ -2956,7 +2983,8 @@
                 "warning": "Totes les operacions de fitxers s'executaran immediatament sense aprovació. Utilitzeu-ho sota la vostra responsabilitat.",
                 "disable": "Desactivar",
                 "securityWarning": "Avís de seguretat",
-                "understood": "Entesos"
+                "understood": "Entesos",
+                "warningAria": "Avís del mode extrem"
             },
             "errorServerError": "El servidor del proveïdor d'IA té problemes. Torneu-ho a provar d'aquí un moment.",
             "errorServiceUnavailable": "El proveïdor d'IA no està disponible temporalment (sobrecarregat). Els serveis gratuïts poden tenir límits. Torneu-ho a provar més tard.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Il·limitat",
                 "roleAI": "AI",
-                "roleUser": "Usuari"
+                "roleUser": "Usuari",
+                "noConversations": "Encara no hi ha converses",
+                "titleCount": "Historial ({count})"
             },
             "dropFileToAnalyze": "Deixeu anar el fitxer per analitzar amb AeroAgent",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} tokens d'entrada, {output} tokens de sortida, segons el recompte del proveïdor",
-                "breakdownCache": "{input} tokens d'entrada, {output} tokens de sortida, {cacheRead} llegits de la memòria cau del prompt, {cacheWritten} escrits en aquesta, segons el recompte del proveïdor"
+                "breakdownCache": "{input} tokens d'entrada, {output} tokens de sortida, {cacheRead} llegits de la memòria cau del prompt, {cacheWritten} escrits en aquesta, segons el recompte del proveïdor",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Executar operacions: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "S'ometrien",
                     "skipped": "Omesos",
                     "existedAtCheckpoint": "existia al punt de control",
-                    "absentAtCheckpoint": "absent al punt de control"
+                    "absentAtCheckpoint": "absent al punt de control",
+                    "noFiles": "No s'ha inclòs cap fitxer en aquest resultat de restauració.",
+                    "otherActions": "Altres accions",
+                    "requestedPaths": "Subconjunt de camins sol·licitat",
+                    "scopeAll": "Abast: tots els fitxers capturats al punt de control.",
+                    "titleApplied": "Restauració del punt de control aplicada",
+                    "titleApplyReview": "Revisió de l'aplicació de la restauració del punt de control",
+                    "titleDryRunComplete": "Simulació de la restauració del punt de control completada",
+                    "titleDryRunReview": "Revisió de la simulació de restauració del punt de control"
                 },
                 "checks": {
                     "exitSummary": "sortida {code} · {seconds}s",
                     "continueOnFailure": "Executa totes les comprovacions encara que una falli.",
-                    "stopOnFailure": "S'atura a la primera comprovació que falla."
+                    "stopOnFailure": "S'atura a la primera comprovació que falla.",
+                    "checkLabel": "Comprovació:",
+                    "checksLabel": "Comprovacions:",
+                    "exitChip": "sortida {code}",
+                    "filterChip": "filtre: {filter}",
+                    "filterLabel": "Filtre:",
+                    "notAvailable": "n/d",
+                    "passedCount": "{passed}/{total} superades",
+                    "runCheckNote": "Executa una ordre seleccionada de build/test/lint a l'espai de treball. Els scripts de build i les proves executen codi real.",
+                    "runProjectCheck": "Executa la comprovació del projecte",
+                    "runVerification": "Executa una passada de verificació",
+                    "runVerificationNote": "Executa ordres seleccionades de build/test/lint a l'espai de treball. Els scripts de build i les proves executen codi real.",
+                    "stoppedEarly": "Aturat a la primera comprovació fallida.",
+                    "timeoutLabel": "Temps límit: {seconds} s",
+                    "verification": "Verificació"
                 },
                 "diagnostics": {
-                    "none": "No s'ha informat de cap diagnòstic."
+                    "none": "No s'ha informat de cap diagnòstic.",
+                    "errorCountMany": "{count} errors",
+                    "errorCountOne": "{count} error",
+                    "title": "Diagnòstics",
+                    "truncated": "La llista de diagnòstics s'ha truncat.",
+                    "warningCountMany": "{count} avisos",
+                    "warningCountOne": "{count} avís"
                 },
                 "search": {
-                    "none": "No s'han trobat coincidències."
+                    "none": "No s'han trobat coincidències.",
+                    "ignoreCase": "ignora majúscules",
+                    "inPath": "a {path}",
+                    "literal": "literal",
+                    "matchCountMany": "{count} coincidències",
+                    "matchCountOne": "{count} coincidència",
+                    "title": "Cerca a l'espai de treball",
+                    "truncated": "Els resultats s'han truncat."
                 },
                 "git": {
                     "noStagedDiff": "No hi ha sortida de diff dels canvis preparats.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Aprovació de preparació de Git",
                     "commitNote": "Això crea un commit de git a partir de l'índex preparat actual. Reviseu primer coding_git_status i coding_git_diff amb staged=true.",
                     "stagePreviewNote": "Això previsualitza quins camins sol·licitats es prepararien; l'índex no canviarà.",
-                    "stageNote": "Això canvia l'índex de git per als camins sol·licitats."
+                    "stageNote": "Això canvia l'índex de git per als camins sol·licitats.",
+                    "afterCounts": "Després: {counts}",
+                    "beforeCounts": "Abans: {counts}",
+                    "clean": "L'arbre de treball està net.",
+                    "commitCountMany": "{count} commits",
+                    "commitCountOne": "{count} commit",
+                    "conflicted": "en conflicte",
+                    "diffTruncated": "La sortida del diff s'ha truncat.",
+                    "logTitle": "Registre de Git",
+                    "pathsChip": "camins: {paths}",
+                    "showingNewest": "Es mostren els {count} més recents; n'hi ha més.",
+                    "statusCounts": "{staged} preparats, {unstaged} no preparats, {untracked} sense seguiment, {conflicted} en conflicte",
+                    "titleCommitCreated": "Commit de Git creat",
+                    "titleCommitDryRun": "Simulació de commit de Git",
+                    "titleCommitReview": "Revisió del commit de Git",
+                    "titleReview": "Revisió de Git",
+                    "titleStageApplied": "Preparació de Git aplicada",
+                    "titleStagedDiff": "Diff preparat de Git",
+                    "titleStageDryRun": "Simulació de preparació de Git",
+                    "titleStatus": "Estat de Git",
+                    "titleUnstagedDiff": "Diff no preparat de Git",
+                    "untracked": "sense seguiment"
                 },
                 "patch": {
                     "validateNote": "Això valida el pedaç sense canviar fitxers.",
                     "applyNote": "Aquesta sol·licitud d'aplicació d'alt perill escriu fitxers després que el backend creï un punt de control previ a l'aplicació.",
                     "hideDiff": "Amaga el diff unificat",
-                    "showDiff": "Mostra el diff unificat"
-                }
+                    "showDiff": "Mostra el diff unificat",
+                    "actualLabel": "real:",
+                    "checkpointCreated": "Punt de control previ a l'aplicació creat",
+                    "diffTruncated": "Vista prèvia del diff truncada per a la visualització.",
+                    "expectedLabel": "esperat:",
+                    "firstLines": "primeres {shown} de {total} línies",
+                    "hunkCountMany": "{count} blocs",
+                    "hunkCountOne": "{count} bloc",
+                    "hunkIndex": "bloc {index}",
+                    "restoreManual": "La restauració és manual: utilitza {tool} amb aquest ID de punt de control després de la revisió.",
+                    "titleApplied": "Pedaç aplicat",
+                    "titleApplyBlocked": "Aplicació del pedaç bloquejada",
+                    "titleApplyReview": "Revisió de l'aplicació del pedaç",
+                    "titleDryRunConflicts": "La simulació del pedaç ha trobat conflictes",
+                    "titleDryRunPassed": "Simulació del pedaç superada",
+                    "titleDryRunReview": "Revisió de la simulació del pedaç",
+                    "warnings": "Advertiments"
+                },
+                "binary": "binari",
+                "fileCountMany": "{count} fitxers",
+                "fileCountOne": "{count} fitxer",
+                "moreCount": "+{count} més",
+                "plan": {
+                    "likelyFiles": "Fitxers probables",
+                    "openQuestions": "Preguntes obertes",
+                    "reviewOnlyNote": "Artefacte només de revisió. Les edicions i les eines que modifiquen continuen fent servir el mode d'aprovació actual.",
+                    "riskHigh": "risc alt",
+                    "riskLow": "risc baix",
+                    "riskMedium": "risc mitjà",
+                    "risks": "Riscos",
+                    "title": "Pla de programació"
+                },
+                "state": {
+                    "clean": "net",
+                    "failed": "fallit",
+                    "passed": "superat",
+                    "timedOut": "esgotat"
+                },
+                "timeoutChip": "temps límit {seconds}s",
+                "truncated": "truncat",
+                "workspaceLabel": "Espai de treball:"
+            },
+            "attachedImageAlt": "Imatge adjunta",
+            "stepNumber": "Pas {step}",
+            "transcribingLocally": "S'està transcrivint localment...",
+            "transferPlan": {
+                "dependsOnMany": "Depèn de {count} passos preparatoris",
+                "dependsOnOne": "Depèn de {count} pas preparatori",
+                "destination": "Destinació: {destination}",
+                "title": "Revisió del pla de transferència",
+                "warnings": "Advertiments"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Explorar",
                     "installed": "Instal·lats"
-                }
+                },
+                "remoteInstallDisabled": "La instal·lació remota de connectors està desactivada fins que el registre s'autentiqui al costat del client. Els connectors instal·lats localment continuen funcionant amb normalitat."
             }
         },
         "commandPalette.category.ai": {},

@@ -50,7 +50,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isComplet
                 <span className="font-medium">{headerLabel}</span>
                 {isComplete && thinkingTokens && (
                     <span className="ml-auto text-[10px] text-gray-600 font-mono">
-                        {thinkingTokens.toLocaleString()} tok
+                        {t('ai.tokens.countShort', { count: thinkingTokens.toLocaleString() })}
                         {responseTokens && (
                             <span className="text-gray-700"> / {(thinkingTokens + responseTokens).toLocaleString()}</span>
                         )}

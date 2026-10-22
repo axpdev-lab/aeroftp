@@ -1269,7 +1269,14 @@
                 "stop": "Sustabdyti",
                 "stopShell": "Sustabdyti apvalkalą",
                 "closed": "Terminalas uždarytas.",
-                "commandInsertedReview": "Komanda įterpta į Terminal. Paspauskite Enter, kad paleistumėte."
+                "commandInsertedReview": "Komanda įterpta į Terminal. Paspauskite Enter, kad paleistumėte.",
+                "decreaseFont": "Sumažinti šrifto dydį (Ctrl+-)",
+                "emptyClickPlus": "Spustelėkite {plus}, kad atidarytumėte terminalą",
+                "emptySshHint": "arba {ssh} nuotoliniam apvalkalui į {host}",
+                "increaseFont": "Padidinti šrifto dydį (Ctrl+=)",
+                "newTab": "Nauja terminalo kortelė",
+                "sshShellTo": "SSH apvalkalas į {host}",
+                "theme": "Terminalo tema"
             },
             "editorPanel": {
                 "emptyState": "Spustelėkite dešiniuoju pelės mygtuku ant failo ir pasirinkite \"Rodyti pirminį kodą\"",
@@ -1278,13 +1285,17 @@
                 "saving": "Išsaugoma...",
                 "noFileSelected": "Nepasirinktas failas peržiūrai",
                 "loading": "Redaktoriaus įkėlimas...",
-                "dragToTerminalRun": "Vilkite į Terminal, kad įterptumėte paleidimo komandą"
+                "dragToTerminalRun": "Vilkite į Terminal, kad įterptumėte paleidimo komandą",
+                "closeEditor": "Uždaryti redaktorių",
+                "resetChanges": "Atkurti pakeitimus"
             },
             "previewPanel": {
                 "emptyState": "Spustelėkite dešiniuoju pelės mygtuku ant failo ir pasirinkite \"Peržiūra\""
             },
             "codeEditor": "Kodo redaktorius",
-            "sshTerminal": "SSH terminalas"
+            "sshTerminal": "SSH terminalas",
+            "comingSoon": "Netrukus",
+            "soonBadge": "Greitai"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "Atmesti įrankio vykdymą",
                 "toggleDetails": "Rodyti/slėpti detales",
                 "allowSession": "Leisti šiai sesijai",
-                "nonAtomicReplace": "Neatominis pakeitimas: failas trumpam pranyksta"
+                "nonAtomicReplace": "Neatominis pakeitimas: failas trumpam pranyksta",
+                "moreOptions": "Daugiau parinkčių",
+                "panelAria": "Įrankių patvirtinimo skydelis"
             },
             "settings": {
                 "title": "AI nustatymai",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "Atsarginis",
                 "routingNoFallback": "Nėra",
                 "bedrockNeedsModel": "Prieš bandydami pridėkite ir įjunkite Bedrock modelį skirtuke Modeliai.",
-                "bedrockSetup": "Nustatykite savo AWS regiono Runtime URL. Skirtuke Modeliai pridėkite ID, kuris palaiko Chat Completions sistemoje Bedrock Runtime. Runtime nerodo modelių sąrašo. Bandymas siunčia nedidelę išvadų užklausą, už kurią AWS gali taikyti mokestį."
+                "bedrockSetup": "Nustatykite savo AWS regiono Runtime URL. Skirtuke Modeliai pridėkite ID, kuris palaiko Chat Completions sistemoje Bedrock Runtime. Runtime nerodo modelių sąrašo. Bandymas siunčia nedidelę išvadų užklausą, už kurią AWS gali taikyti mokestį.",
+                "detectOllamaModelsTooltip": "Automatiškai aptikti prieinamus Ollama modelius",
+                "kTokens": "{count}K žetonų",
+                "modelEditorAria": "DI modelių redaktorius",
+                "supportsTools": "Palaiko įrankius",
+                "supportsVision": "Palaiko vaizdą",
+                "thinkingReasoning": "Mąstymas/Samprotavimas",
+                "toolQuality": "Įrankių kokybė: {quality}/5"
             },
             "copy": "Kopijuoti",
             "attachImage": "Pridėti vaizdą",
@@ -2699,7 +2719,9 @@
                 "run": "Paleisti terminale",
                 "insert": "Įterpti į redaktorių",
                 "diff": "Palyginti su originalu",
-                "diffNoFile": "Nėra atidaryto failo palyginimui"
+                "diffNoFile": "Nėra atidaryto failo palyginimui",
+                "commandBlocked": "Komanda užblokuota: gali būti destruktyvi",
+                "confirmRun": "Patvirtinti vykdymą: {command}"
             },
             "thinkingBlock": {
                 "thinking": "Mąstoma...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "Perjungti šaką",
                 "delete": "Ištrinti šaką",
                 "newBranch": "Nauja šaka",
-                "branchFrom": "Iššakoti nuo šio taško"
+                "branchFrom": "Iššakoti nuo šio taško",
+                "messageCountShort": "{count} žin.",
+                "unnamed": "Šaka"
             },
             "context": {
                 "projectDetected": "Projektas aptiktas",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "veikia",
                 "expired": "pasibaigė",
-                "refresh": "Atnaujinti"
+                "refresh": "Atnaujinti",
+                "modelsRunningMany": "Veikia modelių: {count}",
+                "modelsRunningOne": "Veikia {count} modelis",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "Konteksto talpykla",
@@ -2956,7 +2983,8 @@
                 "warning": "Visos failų operacijos bus vykdomos iš karto be patvirtinimo. Naudokite savo rizika.",
                 "disable": "Išjungti",
                 "securityWarning": "Saugumo įspėjimas",
-                "understood": "Supratau"
+                "understood": "Supratau",
+                "warningAria": "Ekstremalaus režimo įspėjimas"
             },
             "errorServerError": "AI tiekėjo serveris turi problemų. Pabandykite dar kartą po akimirkos.",
             "errorServiceUnavailable": "AI tiekėjas laikinai nepasiekiamas (perkrautas). Nemokamos paslaugos gali turėti apribojimus. Bandykite vėliau.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "Neribota",
                 "roleAI": "AI",
-                "roleUser": "Vartotojas"
+                "roleUser": "Vartotojas",
+                "noConversations": "Pokalbių dar nėra",
+                "titleCount": "Istorija ({count})"
             },
             "dropFileToAnalyze": "Numeskite failą, kad AeroAgent jį išanalizuotų",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "{input} įvesties žetonų, {output} išvesties žetonų, pagal teikėjo skaičiavimą",
-                "breakdownCache": "{input} įvesties žetonų, {output} išvesties žetonų, {cacheRead} perskaityta iš užklausos talpyklos, {cacheWritten} įrašyta į ją, pagal teikėjo skaičiavimą"
+                "breakdownCache": "{input} įvesties žetonų, {output} išvesties žetonų, {cacheRead} perskaityta iš užklausos talpyklos, {cacheWritten} įrašyta į ją, pagal teikėjo skaičiavimą",
+                "countShort": "{count} tok"
             },
             "executeOperations": "Vykdyti operacijas: {count}",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "Būtų praleista",
                     "skipped": "Praleista",
                     "existedAtCheckpoint": "buvo kontroliniame taške",
-                    "absentAtCheckpoint": "nebuvo kontroliniame taške"
+                    "absentAtCheckpoint": "nebuvo kontroliniame taške",
+                    "noFiles": "Į šį atkūrimo rezultatą neįtraukta jokių failų.",
+                    "otherActions": "Kiti veiksmai",
+                    "requestedPaths": "Prašomas kelių poaibis",
+                    "scopeAll": "Apimtis: visi kontroliniame taške užfiksuoti failai.",
+                    "titleApplied": "Kontrolinio taško atkūrimas pritaikytas",
+                    "titleApplyReview": "Kontrolinio taško atkūrimo taikymo peržiūra",
+                    "titleDryRunComplete": "Bandomasis kontrolinio taško atkūrimas baigtas",
+                    "titleDryRunReview": "Kontrolinio taško atkūrimo bandomojo vykdymo peržiūra"
                 },
                 "checks": {
                     "exitSummary": "išėjimo kodas {code} · {seconds}s",
                     "continueOnFailure": "Vykdo visus patikrinimus, net jei vienas nepavyksta.",
-                    "stopOnFailure": "Sustoja ties pirmu nepavykusiu patikrinimu."
+                    "stopOnFailure": "Sustoja ties pirmu nepavykusiu patikrinimu.",
+                    "checkLabel": "Patikra:",
+                    "checksLabel": "Patikros:",
+                    "exitChip": "išėjimo kodas {code}",
+                    "filterChip": "filtras: {filter}",
+                    "filterLabel": "Filtras:",
+                    "notAvailable": "nėra",
+                    "passedCount": "{passed}/{total} išlaikyta",
+                    "runCheckNote": "Darbo srityje vykdo atrinktą build/test/lint komandą. Kūrimo scenarijai ir testai vykdo tikrą kodą.",
+                    "runProjectCheck": "Vykdyti projekto patikrą",
+                    "runVerification": "Vykdyti tikrinimo etapą",
+                    "runVerificationNote": "Darbo srityje vykdo atrinktas build/test/lint komandas. Kūrimo scenarijai ir testai vykdo tikrą kodą.",
+                    "stoppedEarly": "Sustota ties pirma nepavykusia patikra.",
+                    "timeoutLabel": "Laiko limitas: {seconds} s",
+                    "verification": "Tikrinimas"
                 },
                 "diagnostics": {
-                    "none": "Diagnostikos pranešimų nėra."
+                    "none": "Diagnostikos pranešimų nėra.",
+                    "errorCountMany": "{count} klaidos",
+                    "errorCountOne": "{count} klaida",
+                    "title": "Diagnostika",
+                    "truncated": "Diagnostikos sąrašas buvo sutrumpintas.",
+                    "warningCountMany": "{count} įspėjimai",
+                    "warningCountOne": "{count} įspėjimas"
                 },
                 "search": {
-                    "none": "Atitikmenų nerasta."
+                    "none": "Atitikmenų nerasta.",
+                    "ignoreCase": "ignoruoti raidžių dydį",
+                    "inPath": "kelyje {path}",
+                    "literal": "pažodinis",
+                    "matchCountMany": "{count} atitikmenys",
+                    "matchCountOne": "{count} atitikmuo",
+                    "title": "Darbo srities paieška",
+                    "truncated": "Rezultatai buvo sutrumpinti."
                 },
                 "git": {
                     "noStagedDiff": "Nėra paruoštų pakeitimų diff išvesties.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git paruošimo patvirtinimas",
                     "commitNote": "Tai sukuria git užfiksavimą (commit) iš dabartinio paruošto indekso. Pirmiausia peržiūrėkite coding_git_status ir coding_git_diff su staged=true.",
                     "stagePreviewNote": "Tai parodo peržiūrą, kurie prašomi keliai būtų paruošti; indeksas nepasikeis.",
-                    "stageNote": "Tai pakeičia git indeksą prašomiems keliams."
+                    "stageNote": "Tai pakeičia git indeksą prašomiems keliams.",
+                    "afterCounts": "Po: {counts}",
+                    "beforeCounts": "Prieš: {counts}",
+                    "clean": "Darbinis medis švarus.",
+                    "commitCountMany": "{count} komitai",
+                    "commitCountOne": "{count} komitas",
+                    "conflicted": "konflikte",
+                    "diffTruncated": "Skirtumų išvestis buvo sutrumpinta.",
+                    "logTitle": "Git žurnalas",
+                    "pathsChip": "keliai: {paths}",
+                    "showingNewest": "Rodomi naujausi {count}; yra daugiau.",
+                    "statusCounts": "{staged} parengta, {unstaged} neparengta, {untracked} nesekama, {conflicted} konflikte",
+                    "titleCommitCreated": "Git komitas sukurtas",
+                    "titleCommitDryRun": "Bandomasis Git komitas",
+                    "titleCommitReview": "Git komito peržiūra",
+                    "titleReview": "Git peržiūra",
+                    "titleStageApplied": "Git parengimas pritaikytas",
+                    "titleStagedDiff": "Parengti Git skirtumai",
+                    "titleStageDryRun": "Bandomasis Git parengimas",
+                    "titleStatus": "Git būsena",
+                    "titleUnstagedDiff": "Neparengti Git skirtumai",
+                    "untracked": "nesekamas"
                 },
                 "patch": {
                     "validateNote": "Tai patikrina pataisą nekeičiant failų.",
                     "applyNote": "Ši didelės rizikos taikymo užklausa įrašo failus po to, kai foninė sistema sukuria kontrolinį tašką prieš taikymą.",
                     "hideDiff": "Slėpti suvienodintą diff",
-                    "showDiff": "Rodyti suvienodintą diff"
-                }
+                    "showDiff": "Rodyti suvienodintą diff",
+                    "actualLabel": "faktinis:",
+                    "checkpointCreated": "Sukurtas kontrolinis taškas prieš taikymą",
+                    "diffTruncated": "Skirtumų peržiūra sutrumpinta rodymui.",
+                    "expectedLabel": "laukiamas:",
+                    "firstLines": "pirmosios {shown} iš {total} eilučių",
+                    "hunkCountMany": "{count} fragmentai",
+                    "hunkCountOne": "{count} fragmentas",
+                    "hunkIndex": "fragmentas {index}",
+                    "restoreManual": "Atkūrimas atliekamas rankiniu būdu: po peržiūros naudokite {tool} su šiuo kontrolinio taško ID.",
+                    "titleApplied": "Pataisa pritaikyta",
+                    "titleApplyBlocked": "Pataisos taikymas užblokuotas",
+                    "titleApplyReview": "Pataisos taikymo peržiūra",
+                    "titleDryRunConflicts": "Bandomasis pataisos vykdymas rado konfliktų",
+                    "titleDryRunPassed": "Bandomasis pataisos vykdymas sėkmingas",
+                    "titleDryRunReview": "Bandomojo pataisos vykdymo peržiūra",
+                    "warnings": "Įspėjimai"
+                },
+                "binary": "dvejetainis",
+                "fileCountMany": "{count} failai",
+                "fileCountOne": "{count} failas",
+                "moreCount": "+{count} daugiau",
+                "plan": {
+                    "likelyFiles": "Tikėtini failai",
+                    "openQuestions": "Atviri klausimai",
+                    "reviewOnlyNote": "Tik peržiūrai skirtas artefaktas. Redagavimai ir keičiantys įrankiai vis dar naudoja dabartinį patvirtinimo režimą.",
+                    "riskHigh": "didelė rizika",
+                    "riskLow": "maža rizika",
+                    "riskMedium": "vidutinė rizika",
+                    "risks": "Rizikos",
+                    "title": "Programavimo planas"
+                },
+                "state": {
+                    "clean": "švarus",
+                    "failed": "nepavyko",
+                    "passed": "išlaikyta",
+                    "timedOut": "baigėsi laikas"
+                },
+                "timeoutChip": "laiko riba {seconds}s",
+                "truncated": "sutrumpinta",
+                "workspaceLabel": "Darbo sritis:"
+            },
+            "attachedImageAlt": "Pridėtas vaizdas",
+            "stepNumber": "{step} žingsnis",
+            "transcribingLocally": "Transkribuojama vietoje...",
+            "transferPlan": {
+                "dependsOnMany": "Priklauso nuo {count} parengiamųjų žingsnių",
+                "dependsOnOne": "Priklauso nuo {count} parengiamojo žingsnio",
+                "destination": "Paskirtis: {destination}",
+                "title": "Perdavimo plano peržiūra",
+                "warnings": "Įspėjimai"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "Naršyti",
                     "installed": "Įdiegta"
-                }
+                },
+                "remoteInstallDisabled": "Nuotolinis papildinių diegimas šiuo metu išjungtas, kol registras nebus autentifikuotas kliento pusėje. Vietoje įdiegti papildiniai toliau veikia įprastai."
             }
         },
         "filelu": {

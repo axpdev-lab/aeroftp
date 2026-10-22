@@ -1269,7 +1269,14 @@
                 "stop": "중지",
                 "stopShell": "셸 중지",
                 "closed": "터미널이 닫혔습니다.",
-                "commandInsertedReview": "Terminal에 명령이 삽입되었습니다. 실행하려면 Enter를 누르세요."
+                "commandInsertedReview": "Terminal에 명령이 삽입되었습니다. 실행하려면 Enter를 누르세요.",
+                "decreaseFont": "글꼴 크기 줄이기 (Ctrl+-)",
+                "emptyClickPlus": "{plus}을(를) 클릭하여 터미널 열기",
+                "emptySshHint": "또는 {ssh}(으)로 {host}에 원격 셸 연결",
+                "increaseFont": "글꼴 크기 키우기 (Ctrl+=)",
+                "newTab": "새 터미널 탭",
+                "sshShellTo": "{host}에 대한 SSH 셸",
+                "theme": "터미널 테마"
             },
             "editorPanel": {
                 "emptyState": "파일을 우클릭하고 \"소스 보기\"를 선택하세요",
@@ -1278,13 +1285,17 @@
                 "saving": "저장 중...",
                 "noFileSelected": "열람할 파일이 선택되지 않았습니다",
                 "loading": "편집기 로드 중...",
-                "dragToTerminalRun": "실행 명령을 삽입하려면 Terminal로 끌어다 놓으세요"
+                "dragToTerminalRun": "실행 명령을 삽입하려면 Terminal로 끌어다 놓으세요",
+                "closeEditor": "편집기 닫기",
+                "resetChanges": "변경 사항 초기화"
             },
             "previewPanel": {
                 "emptyState": "파일을 우클릭하고 \"미리보기\"를 선택하세요"
             },
             "codeEditor": "코드 에디터",
-            "sshTerminal": "SSH 터미널"
+            "sshTerminal": "SSH 터미널",
+            "comingSoon": "출시 예정",
+            "soonBadge": "예정"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -2510,7 +2521,9 @@
                 "rejectExecution": "도구 실행 거부",
                 "toggleDetails": "상세 정보 전환",
                 "allowSession": "이 세션 동안 허용",
-                "nonAtomicReplace": "비원자적 교체: 파일이 잠시 사라집니다"
+                "nonAtomicReplace": "비원자적 교체: 파일이 잠시 사라집니다",
+                "moreOptions": "추가 옵션",
+                "panelAria": "도구 승인 패널"
             },
             "settings": {
                 "title": "AI 설정",
@@ -2665,7 +2678,14 @@
                 "routingFallback": "대체",
                 "routingNoFallback": "없음",
                 "bedrockNeedsModel": "테스트하기 전에 모델 탭에서 Bedrock 모델을 추가하고 활성화하세요.",
-                "bedrockSetup": "AWS 리전의 Runtime URL을 설정하세요. 모델에서 Bedrock Runtime의 Chat Completions를 지원하는 ID를 추가하세요. Runtime은 모델 목록을 제공하지 않습니다. 테스트는 작은 추론 요청을 보내며 AWS 요금이 발생할 수 있습니다."
+                "bedrockSetup": "AWS 리전의 Runtime URL을 설정하세요. 모델에서 Bedrock Runtime의 Chat Completions를 지원하는 ID를 추가하세요. Runtime은 모델 목록을 제공하지 않습니다. 테스트는 작은 추론 요청을 보내며 AWS 요금이 발생할 수 있습니다.",
+                "detectOllamaModelsTooltip": "사용 가능한 Ollama 모델 자동 감지",
+                "kTokens": "{count}K 토큰",
+                "modelEditorAria": "AI 모델 편집기",
+                "supportsTools": "도구 지원",
+                "supportsVision": "비전 지원",
+                "thinkingReasoning": "사고/추론",
+                "toolQuality": "도구 품질: {quality}/5"
             },
             "copy": "복사",
             "attachImage": "이미지 첨부",
@@ -2699,7 +2719,9 @@
                 "run": "터미널에서 실행",
                 "insert": "편집기에 삽입",
                 "diff": "원본과 비교",
-                "diffNoFile": "비교할 파일이 열려 있지 않습니다"
+                "diffNoFile": "비교할 파일이 열려 있지 않습니다",
+                "commandBlocked": "명령 차단됨: 파괴적일 수 있음",
+                "confirmRun": "실행 확인: {command}"
             },
             "thinkingBlock": {
                 "thinking": "생각 중...",
@@ -2747,7 +2769,9 @@
                 "switchBranch": "분기 전환",
                 "delete": "분기 삭제",
                 "newBranch": "새 분기",
-                "branchFrom": "이 지점에서 분기"
+                "branchFrom": "이 지점에서 분기",
+                "messageCountShort": "메시지 {count}개",
+                "unnamed": "브랜치"
             },
             "context": {
                 "projectDetected": "프로젝트 감지됨",
@@ -2830,7 +2854,10 @@
                 "vram": "VRAM",
                 "running": "실행 중",
                 "expired": "만료됨",
-                "refresh": "새로고침"
+                "refresh": "새로고침",
+                "modelsRunningMany": "{count}개 모델 실행 중",
+                "modelsRunningOne": "{count}개 모델 실행 중",
+                "vramAmount": "{size} VRAM"
             },
             "geminiCache": {
                 "title": "컨텍스트 캐싱",
@@ -2956,7 +2983,8 @@
                 "warning": "모든 파일 작업이 승인 없이 즉시 실행됩니다. 본인 책임하에 사용하십시오.",
                 "disable": "비활성화",
                 "securityWarning": "보안 경고",
-                "understood": "이해했습니다"
+                "understood": "이해했습니다",
+                "warningAria": "익스트림 모드 경고"
             },
             "errorServerError": "AI 제공업체 서버에 문제가 발생했습니다. 잠시 후 다시 시도하세요.",
             "errorServiceUnavailable": "AI 제공업체가 일시적으로 이용 불가합니다 (과부하). 무료 서비스에는 제한이 있을 수 있습니다. 나중에 다시 시도하세요.",
@@ -3052,7 +3080,9 @@
                 "totalTokens": "Tokens",
                 "unlimited": "무제한",
                 "roleAI": "AI",
-                "roleUser": "사용자"
+                "roleUser": "사용자",
+                "noConversations": "아직 대화가 없습니다",
+                "titleCount": "기록 ({count})"
             },
             "dropFileToAnalyze": "AeroAgent로 분석할 파일을 드롭하세요",
             "plugins": {
@@ -3208,7 +3238,8 @@
             },
             "tokens": {
                 "breakdown": "입력 토큰 {input}개, 출력 토큰 {output}개, 제공업체 집계 기준",
-                "breakdownCache": "입력 토큰 {input}개, 출력 토큰 {output}개, 프롬프트 캐시에서 읽음 {cacheRead}개, 프롬프트 캐시에 기록 {cacheWritten}개, 제공업체 집계 기준"
+                "breakdownCache": "입력 토큰 {input}개, 출력 토큰 {output}개, 프롬프트 캐시에서 읽음 {cacheRead}개, 프롬프트 캐시에 기록 {cacheWritten}개, 제공업체 집계 기준",
+                "countShort": "{count} 토큰"
             },
             "executeOperations": "{count}개 작업 실행",
             "coding": {
@@ -3225,18 +3256,53 @@
                     "wouldSkip": "건너뛸 예정",
                     "skipped": "건너뜀",
                     "existedAtCheckpoint": "체크포인트 시점에 존재함",
-                    "absentAtCheckpoint": "체크포인트 시점에 없음"
+                    "absentAtCheckpoint": "체크포인트 시점에 없음",
+                    "noFiles": "이 복원 결과에 포함된 파일이 없습니다.",
+                    "otherActions": "기타 작업",
+                    "requestedPaths": "요청된 경로 하위 집합",
+                    "scopeAll": "범위: 체크포인트에 캡처된 모든 파일.",
+                    "titleApplied": "체크포인트 복원 적용됨",
+                    "titleApplyReview": "체크포인트 복원 적용 검토",
+                    "titleDryRunComplete": "체크포인트 복원 시험 실행 완료",
+                    "titleDryRunReview": "체크포인트 복원 시험 실행 검토"
                 },
                 "checks": {
                     "exitSummary": "종료 코드 {code} · {seconds}s",
                     "continueOnFailure": "하나가 실패해도 모든 검사를 실행합니다.",
-                    "stopOnFailure": "처음 실패한 검사에서 중지합니다."
+                    "stopOnFailure": "처음 실패한 검사에서 중지합니다.",
+                    "checkLabel": "검사:",
+                    "checksLabel": "검사 항목:",
+                    "exitChip": "종료 코드 {code}",
+                    "filterChip": "필터: {filter}",
+                    "filterLabel": "필터:",
+                    "notAvailable": "해당 없음",
+                    "passedCount": "{passed}/{total} 통과",
+                    "runCheckNote": "작업 공간에서 선별된 build/test/lint 명령을 실행합니다. 빌드 스크립트와 테스트는 실제 코드를 실행합니다.",
+                    "runProjectCheck": "프로젝트 검사 실행",
+                    "runVerification": "검증 단계 실행",
+                    "runVerificationNote": "작업 공간에서 선별된 build/test/lint 명령들을 실행합니다. 빌드 스크립트와 테스트는 실제 코드를 실행합니다.",
+                    "stoppedEarly": "처음 실패한 검사에서 중지했습니다.",
+                    "timeoutLabel": "시간 제한: {seconds}초",
+                    "verification": "검증"
                 },
                 "diagnostics": {
-                    "none": "보고된 진단이 없습니다."
+                    "none": "보고된 진단이 없습니다.",
+                    "errorCountMany": "오류 {count}개",
+                    "errorCountOne": "오류 {count}개",
+                    "title": "진단",
+                    "truncated": "진단 목록이 잘렸습니다.",
+                    "warningCountMany": "경고 {count}개",
+                    "warningCountOne": "경고 {count}개"
                 },
                 "search": {
-                    "none": "일치하는 항목이 없습니다."
+                    "none": "일치하는 항목이 없습니다.",
+                    "ignoreCase": "대소문자 무시",
+                    "inPath": "{path} 내",
+                    "literal": "리터럴",
+                    "matchCountMany": "{count}개 일치",
+                    "matchCountOne": "{count}개 일치",
+                    "title": "작업 공간 검색",
+                    "truncated": "결과가 잘렸습니다."
                 },
                 "git": {
                     "noStagedDiff": "스테이징된 diff 출력이 없습니다.",
@@ -3247,14 +3313,84 @@
                     "stageApproval": "Git 스테이징 승인",
                     "commitNote": "현재 스테이징된 인덱스로 git 커밋을 만듭니다. 먼저 staged=true로 coding_git_status 및 coding_git_diff를 검토하세요.",
                     "stagePreviewNote": "요청된 경로 중 어떤 경로가 스테이징될지 미리 봅니다. 인덱스는 변경되지 않습니다.",
-                    "stageNote": "요청된 경로에 대해 git 인덱스를 변경합니다."
+                    "stageNote": "요청된 경로에 대해 git 인덱스를 변경합니다.",
+                    "afterCounts": "이후: {counts}",
+                    "beforeCounts": "이전: {counts}",
+                    "clean": "작업 트리가 깨끗합니다.",
+                    "commitCountMany": "커밋 {count}개",
+                    "commitCountOne": "커밋 {count}개",
+                    "conflicted": "충돌",
+                    "diffTruncated": "차이 출력이 잘렸습니다.",
+                    "logTitle": "Git 로그",
+                    "pathsChip": "경로: {paths}",
+                    "showingNewest": "최신 {count}개 표시 중, 더 있습니다.",
+                    "statusCounts": "스테이징됨 {staged}, 스테이징 안 됨 {unstaged}, 추적 안 됨 {untracked}, 충돌 {conflicted}",
+                    "titleCommitCreated": "Git 커밋 생성됨",
+                    "titleCommitDryRun": "Git 커밋 시험 실행",
+                    "titleCommitReview": "Git 커밋 검토",
+                    "titleReview": "Git 검토",
+                    "titleStageApplied": "Git 스테이징 적용됨",
+                    "titleStagedDiff": "Git 스테이징된 차이",
+                    "titleStageDryRun": "Git 스테이징 시험 실행",
+                    "titleStatus": "Git 상태",
+                    "titleUnstagedDiff": "Git 스테이징 안 된 차이",
+                    "untracked": "추적 안 됨"
                 },
                 "patch": {
                     "validateNote": "파일을 변경하지 않고 패치를 검증합니다.",
                     "applyNote": "이 고위험 적용 요청은 백엔드가 적용 전 체크포인트를 만든 후 파일을 씁니다.",
                     "hideDiff": "통합 diff 숨기기",
-                    "showDiff": "통합 diff 표시"
-                }
+                    "showDiff": "통합 diff 표시",
+                    "actualLabel": "실제:",
+                    "checkpointCreated": "적용 전 체크포인트 생성됨",
+                    "diffTruncated": "표시를 위해 차이 미리보기가 잘렸습니다.",
+                    "expectedLabel": "예상:",
+                    "firstLines": "{total}줄 중 처음 {shown}줄",
+                    "hunkCountMany": "헝크 {count}개",
+                    "hunkCountOne": "헝크 {count}개",
+                    "hunkIndex": "헝크 {index}",
+                    "restoreManual": "복원은 수동입니다: 검토 후 이 체크포인트 ID로 {tool}을(를) 사용하세요.",
+                    "titleApplied": "패치 적용됨",
+                    "titleApplyBlocked": "패치 적용 차단됨",
+                    "titleApplyReview": "패치 적용 검토",
+                    "titleDryRunConflicts": "패치 시험 실행에서 충돌 발견",
+                    "titleDryRunPassed": "패치 시험 실행 통과",
+                    "titleDryRunReview": "패치 시험 실행 검토",
+                    "warnings": "경고"
+                },
+                "binary": "바이너리",
+                "fileCountMany": "파일 {count}개",
+                "fileCountOne": "파일 {count}개",
+                "moreCount": "+{count}개 더",
+                "plan": {
+                    "likelyFiles": "관련 가능성이 높은 파일",
+                    "openQuestions": "미해결 질문",
+                    "reviewOnlyNote": "검토 전용 산출물입니다. 편집 및 변경 도구는 여전히 현재 승인 모드를 사용합니다.",
+                    "riskHigh": "높은 위험",
+                    "riskLow": "낮은 위험",
+                    "riskMedium": "중간 위험",
+                    "risks": "위험 요소",
+                    "title": "코딩 계획"
+                },
+                "state": {
+                    "clean": "깨끗함",
+                    "failed": "실패",
+                    "passed": "통과",
+                    "timedOut": "시간 초과"
+                },
+                "timeoutChip": "시간 제한 {seconds}s",
+                "truncated": "잘림",
+                "workspaceLabel": "작업 공간:"
+            },
+            "attachedImageAlt": "첨부된 이미지",
+            "stepNumber": "단계 {step}",
+            "transcribingLocally": "로컬에서 전사 중...",
+            "transferPlan": {
+                "dependsOnMany": "준비 단계 {count}개에 의존",
+                "dependsOnOne": "준비 단계 {count}개에 의존",
+                "destination": "대상: {destination}",
+                "title": "전송 계획 검토",
+                "warnings": "경고"
             }
         },
         "archive": {
@@ -4554,7 +4690,8 @@
                 "tab": {
                     "browse": "탐색",
                     "installed": "설치됨"
-                }
+                },
+                "remoteInstallDisabled": "레지스트리가 클라이언트 측에서 인증될 때까지 원격 플러그인 설치는 현재 비활성화되어 있습니다. 로컬에 설치된 플러그인은 계속 정상적으로 작동합니다."
             }
         },
         "filelu": {

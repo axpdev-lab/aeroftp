@@ -45,15 +45,15 @@ export const BranchSelector: React.FC<ConversationBranchProps> = ({
     if (branches.length === 0) return null;
 
     const activeName = activeBranchId
-        ? branches.find(b => b.id === activeBranchId)?.name || 'Branch'
-        : (t('ai.branch.main') || 'Main');
+        ? branches.find(b => b.id === activeBranchId)?.name || t('ai.branch.unnamed')
+        : t('ai.branch.main');
 
     return (
         <div className="relative" ref={dropdownRef}>
             <button
                 onClick={() => setOpen(!open)}
                 className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 rounded hover:bg-gray-700/50 transition-colors"
-                title={t('ai.branch.switchBranch') || 'Switch branch'}
+                title={t('ai.branch.switchBranch')}
             >
                 <GitBranch size={12} />
                 <span className="max-w-[100px] truncate">{activeName}</span>
@@ -71,7 +71,7 @@ export const BranchSelector: React.FC<ConversationBranchProps> = ({
                         }`}
                     >
                         <GitBranch size={11} className="text-green-400" />
-                        <span className="font-medium">{t('ai.branch.main') || 'Main'}</span>
+                        <span className="font-medium">{t('ai.branch.main')}</span>
                     </button>
 
                     {/* Branches */}
@@ -88,12 +88,12 @@ export const BranchSelector: React.FC<ConversationBranchProps> = ({
                             >
                                 <GitBranch size={11} className="text-purple-400" />
                                 <span className="truncate">{branch.name}</span>
-                                <span className="text-gray-600 text-[10px]">{branch.messageCount} msg</span>
+                                <span className="text-gray-600 text-[10px]">{t('ai.branch.messageCountShort', { count: branch.messageCount })}</span>
                             </button>
                             <button
                                 onClick={(e) => { e.stopPropagation(); onDeleteBranch(branch.id); }}
                                 className="p-0.5 text-gray-600 hover:text-red-400 transition-colors"
-                                title={t('ai.branch.delete') || 'Delete branch'}
+                                title={t('ai.branch.delete')}
                             >
                                 <X size={10} />
                             </button>
