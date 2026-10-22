@@ -39,6 +39,9 @@ async fn session(stream: tokio::net::TcpStream, commands: Arc<Mutex<Vec<String>>
         return;
     }
     let mut lines = BufReader::new(read).lines();
+    // Keep passive listeners alive until the control session ends. The
+    // client may connect the data socket before validating the STOR name.
+    let mut passive_listeners = Vec::new();
     while let Ok(Some(line)) = lines.next_line().await {
         commands.lock().unwrap().push(line.clone());
         let verb = line.split_whitespace().next().unwrap_or("").to_uppercase();
@@ -58,6 +61,7 @@ async fn session(stream: tokio::net::TcpStream, commands: Arc<Mutex<Vec<String>>
                 port / 256,
                 port % 256
             );
+            passive_listeners.push(data);
             if write.write_all(msg.as_bytes()).await.is_err() {
                 return;
             }
