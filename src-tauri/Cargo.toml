@@ -150,7 +150,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
-suppaftp = { version = "=12.1.0", features = ["tokio", "tokio-rustls-aws-lc-rs", "deprecated"] }
+suppaftp = { version = "=12.2.1", features = ["tokio", "tokio-rustls-aws-lc-rs", "deprecated"] }
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26"
 rustls-pki-types = "1"
@@ -545,7 +545,7 @@ unrar = { path = "vendor/unrar" }
 # vendor/proton-rpgp/AEROFTP-PATCH.md for the change list and removal condition.
 proton-rpgp = { path = "vendor/proton-rpgp" }
 n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35e827f642635a1028606f0bbd4e9c530ae0" }
-# suppaftp: the v12.1.0 release commit plus ONE method,
+# suppaftp: the v12.2.1 release commit plus ONE method,
 # `ControlSocket::buffered_reply_bytes()`, on the tokio control guard, so the
 # data-channel watch in `providers/ftp.rs` can see a reply that the control
 # reader has already pulled off the socket. A server that sends `150` and the
@@ -553,14 +553,15 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # the BufReader, and a peek on the bare socket is blind to it: the transfer
 # then waits out the full data idle timeout for an answer that arrived with
 # the first one. The fork can be audited at a glance:
-# `git diff c841f5e6 8d7c78f6` (c841f5e6 is upstream's v12.1.0 tag, which the
-# fork does not carry) shows only that method, its two tests and a doc note.
+# `git diff 18e0a88b 9aaa0002` (18e0a88b is upstream's v12.2.1 tag) shows
+# only that method, its two tests and a doc note.
 #
-# WHERE THE PIN LIVES: commit 8d7c78f6 on branch `aeroftp/v12.1.0` of
+# WHERE THE PIN LIVES: commit 9aaa0002 on branch `aeroftp/v12.2.1` of
 # axpdev-lab/suppaftp and, because a branch can move and a rev it no longer
 # reaches stops resolving for every uncached build, under the annotated tag
-# `aeroftp-v12.1.0-buffered-reply-bytes-8d7c78f6`. The 4.2.0 pin (v10.0.2 plus
-# the same method, 2d39fadc) has `aeroftp-v10.0.2-buffered-reply-bytes-2d39fad`.
+# `aeroftp-v12.2.1-buffered-reply-bytes-9aaa0002`. The previous v12.1.0 pin
+# remains under `aeroftp-v12.1.0-buffered-reply-bytes-8d7c78f6`; the 4.2.0 pin
+# has `aeroftp-v10.0.2-buffered-reply-bytes-2d39fad`.
 # Nothing on the fork stops a tag or a branch from moving yet: a ruleset on
 # `refs/tags/aeroftp-*` and the `aeroftp/*` branches is the owner's call; an
 # upstream pull request starts from a new branch, never by rewriting these.
@@ -570,7 +571,7 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # stream. Pinned by `rev` on purpose, for the same reason as n0-mainline
 # above.
 #
-# UPSTREAM: NOTHING FILED as of 2026-09-26, and the branch being ready is not
+# UPSTREAM: NOTHING FILED as of 2026-10-22, and the branch being ready is not
 # the same as the contribution being ready. suppaftp asks for an issue first
 # (CONTRIBUTING.md), and its PR checklist wants tests and a local
 # `just check_code`. The tests exist now (two tokio tests in `control.rs`,
@@ -579,10 +580,10 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # the branch was built. It also has a binding AI_POLICY.md: disclosure is
 # mandatory and must go through their PR template, and the contributor has to
 # be a person who understands the change and answers review in their own
-# words. The issue text, the disclosure wording and the remaining work are in
-# the release 4.2.1 S-lane handoff under `docs/dev`,
-# outside the public tree. Filing it is an action on somebody else's
-# repository under somebody's name, so it belongs to the account owner rather
+# words. The issue draft, disclosure agreement and validation evidence are in
+# the local suppaftp strategy/handoff under `docs/dev`, outside the public tree.
+# Filing it is an action on somebody else's repository under somebody's name,
+# so it belongs to the account owner rather
 # than to whoever edits this file.
 #
 # COST OF STAYING FORKED, stated because it is easy to forget once it builds:
@@ -590,7 +591,7 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # crates.io index, and a git source is not that. So for as long as this entry
 # exists, suppaftp is outside the advisory scanning the released version would
 # get, and a RUSTSEC advisory landing on it may not turn the audit lane red.
-# The pin is v12.1.0 plus one method, so the exposure is that of v12.1.0, but
+# The pin is v12.2.1 plus one method, so the exposure is that of v12.2.1, but
 # nothing here will TELL us if that changes. That is a reason to file upstream
 # rather than to keep the fork comfortable.
 #
@@ -601,4 +602,4 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # become permanent because the exit condition is missing; it becomes
 # permanent because the exit condition is written in a form nobody can
 # verify.
-suppaftp = { git = "https://github.com/axpdev-lab/suppaftp", rev = "8d7c78f67827a8b980e0eee4d0550615183b862e" }
+suppaftp = { git = "https://github.com/axpdev-lab/suppaftp", rev = "9aaa000273cac54762855424d1274e17e02f8fa6" }

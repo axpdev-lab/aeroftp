@@ -10848,8 +10848,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "suppaftp"
-version = "12.1.0"
-source = "git+https://github.com/axpdev-lab/suppaftp?rev=8d7c78f67827a8b980e0eee4d0550615183b862e#8d7c78f67827a8b980e0eee4d0550615183b862e"
+version = "12.2.1"
+source = "git+https://github.com/axpdev-lab/suppaftp?rev=9aaa000273cac54762855424d1274e17e02f8fa6#9aaa000273cac54762855424d1274e17e02f8fa6"
 dependencies = [
  "async-trait",
  "chrono",
