@@ -1,0 +1,75 @@
+name: apt install (slow-mirror tolerant)
+description: >-
+  Install apt packages with a shared archive cache that is saved even when the
+  install fails, and one bounded, resumable install attempt that owns the whole
+  budget. See apt-install.sh for the measurements behind each choice.
+
+inputs:
+  packages:
+    description: Whitespace-separated package list.
+    required: true
+  budget-seconds:
+    description: >-
+      Wall-clock budget for the whole action, restore and save included. Keep
+      it under the calling step's timeout-minutes so the step cap never fires
+      before the save: 720 (12 min) fits a 13-minute step.
+    default: '720'
+  cache-prefix:
+    description: >-
+      Cache key prefix. Lanes that install overlapping sets should share one,
+      so a lane that is green warms the cache for a lane whose apt is not.
+    default: apt-tauri-dev
+
+runs:
+  using: composite
+  steps:
+    - name: Start the apt budget clock
+      id: start
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/apt-install.sh" start "${{ inputs.cache-prefix }}"'
+
+    # Restore the newest entry under the prefix. Keys are content-addressed
+    # (see finish), so there is never an exact hit and `key` is a placeholder.
+    # A slow cache service must not eat the apt budget: 2 minutes per segment.
+    - name: Restore apt archives
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: '2'
+      with:
+        path: |
+          ~/apt-archives/*.deb
+          ~/apt-archives/partial/*.deb
+        key: ${{ steps.start.outputs.prefix }}restore
+        restore-keys: ${{ steps.start.outputs.prefix }}
+
+    - name: Install apt packages
+      shell: bash
+      env:
+        APT_BUDGET_SECONDS: ${{ inputs.budget-seconds }}
+        APT_PACKAGES: ${{ inputs.packages }}
+      run: |
+        read -r -d '' -a pkgs <<< "$APT_PACKAGES" || true
+        "$GITHUB_ACTION_PATH/apt-install.sh" install "${pkgs[@]}"
+
+    # Runs after a failed install too: that is the point. The old combined
+    # actions/cache saved from a `post-if: success()` post step, so any red
+    # job threw away the bytes it had paid for, and the lane that failed in
+    # apt could never warm its own cache.
+    - name: Hand back apt archives
+      id: finish
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/apt-install.sh" finish'
+
+    # Best effort: a parallel lane may have saved the same content-addressed
+    # key a moment earlier, and a cache-service hiccup must not turn an
+    # install that succeeded into a red step.
+    - name: Save apt archives
+      if: ${{ !cancelled() && steps.finish.outputs.changed == 'true' }}
+      continue-on-error: true
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          ~/apt-archives/*.deb
+          ~/apt-archives/partial/*.deb
+        key: ${{ steps.start.outputs.prefix }}${{ steps.finish.outputs.fingerprint }}
