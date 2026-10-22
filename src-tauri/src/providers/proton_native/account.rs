@@ -226,6 +226,20 @@ fn unlock_account<P: PGPProviderSync>(
     })
 }
 
+/// An account with one address, `me0@example.com`, whose keys are generated
+/// here (tests of the Drive client).
+#[cfg(test)]
+pub(crate) fn test_account() -> ProtonAccount<impl PGPProviderSync + Send + Sync + 'static> {
+    let (user, addresses) = tests::generated_account(b"pw", 1, false);
+    unlock_account(
+        proton_crypto_account::proton_crypto::new_pgp_provider(),
+        user,
+        addresses,
+        &KeySecret::new(b"pw".to_vec()),
+    )
+    .expect("the generated account unlocks")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,7 +279,7 @@ mod tests {
     /// token encrypted to and signed by that user key, as Proton stores them.
     /// `swap_signatures` gives each address key the token signature of the
     /// other one, which must make verification fail.
-    fn generated_account(
+    pub(super) fn generated_account(
         password: &[u8],
         addresses: usize,
         swap_signatures: bool,

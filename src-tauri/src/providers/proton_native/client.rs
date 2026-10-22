@@ -338,6 +338,25 @@ impl<P: PGPProviderSync> DriveClient<P> {
         })
     }
 
+    /// A client over `my_files` without the `my-files` request, and with a
+    /// client UID of its own instead of the machine's (tests).
+    #[cfg(test)]
+    pub(crate) fn for_tests(
+        api: Arc<ProtonApi>,
+        account: ProtonAccount<P>,
+        my_files: MyFiles<P>,
+    ) -> Self {
+        Self {
+            api,
+            account,
+            my_files,
+            nodes: Mutex::new(HashMap::new()),
+            other_public_keys: Mutex::new(HashMap::new()),
+            client_uid: "aeroftp-test".into(),
+            block_uploads: tokio::sync::Semaphore::new(super::upload::MAX_BLOCK_UPLOADS_IN_FLIGHT),
+        }
+    }
+
     pub fn provider(&self) -> &P {
         self.account.provider()
     }
@@ -460,6 +479,19 @@ impl<P: PGPProviderSync> DriveClient<P> {
     pub async fn root(&self) -> Result<Arc<Node<P>>, ProtonError> {
         let root = self.my_files.root_link_id.clone();
         self.node(&root).await
+    }
+
+    /// The node `link_id` if this client holds it, without a request.
+    pub(crate) async fn cached_node(&self, link_id: &str) -> Option<Arc<Node<P>>> {
+        self.nodes.lock().await.get(link_id).map(Arc::clone)
+    }
+
+    /// Keeps `node`, which this client made, as if it had been loaded.
+    pub(crate) async fn remember_node(&self, node: Node<P>) {
+        self.nodes
+            .lock()
+            .await
+            .insert(node.link_id.clone(), Arc::new(node));
     }
 
     /// Drops cached nodes after a change, so the next read reloads them.

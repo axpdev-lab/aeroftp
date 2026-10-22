@@ -2143,6 +2143,38 @@ pub fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
     ))
 }
 
+/// Creates the folder `path` and every missing folder above it, as the
+/// CLI's `put -r` does for its target before any upload: `Ok` and
+/// `AlreadyExists` both mean the folder is there. `path` itself goes first:
+/// when its parent exists, the usual case, that one request settles the
+/// chain (a walk from the top asked again for every level that was already
+/// there, and on Proton each of those is a refused create). Only when it
+/// fails are the levels made from the top down. With `strict`, the first
+/// failure of that walk stops it and comes back with the folder it was for;
+/// without, failures are skipped, since backends with virtual folders refuse
+/// a level that does not need to exist.
+pub async fn create_folder_chain(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    strict: bool,
+) -> Result<(), (String, ProviderError)> {
+    let ladder = crate::community_benchmark::benchmark_mkdir_ladder(path);
+    let Some(deepest) = ladder.last() else {
+        return Ok(());
+    };
+    if let Ok(()) | Err(ProviderError::AlreadyExists(_)) = provider.mkdir(deepest).await {
+        return Ok(());
+    }
+    for folder in ladder {
+        match provider.mkdir(&folder).await {
+            Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
+            Err(error) if strict => return Err((folder, error)),
+            Err(_) => {}
+        }
+    }
+    Ok(())
+}
+
 /// Remove `path` only if it is an empty directory: [`StorageProvider::rmdir`],
 /// which refuses a directory that holds anything on every backend. The one
 /// primitive behind `rm` without `-r`, the served FTP RMD and SFTP RMDIR, the
@@ -6075,5 +6107,58 @@ mod http_timeout_class_tests {
             misplaced.is_empty(),
             "map_http_err where nothing was sent yet (use `map_err`): {misplaced:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod folder_chain_tests {
+    use super::probe_fake::ProbeFake;
+    use super::*;
+
+    /// A folder put into one that exists costs one request; the levels
+    /// above are walked only when the parent is missing.
+    #[tokio::test]
+    async fn a_folder_chain_starts_from_the_deepest_folder() {
+        let mut fake = ProbeFake::new().with_folders(&["/a", "/a/b"]);
+        create_folder_chain(&mut fake, "/a/b/c", true)
+            .await
+            .unwrap();
+        assert_eq!(fake.writes, vec!["mkdir /a/b/c"]);
+
+        let mut fake = ProbeFake::new().with_folders(&["/a", "/a/b", "/a/b/c"]);
+        create_folder_chain(&mut fake, "/a/b/c", true)
+            .await
+            .unwrap();
+        assert_eq!(fake.writes, vec!["mkdir /a/b/c"]);
+
+        let mut fake = ProbeFake::new().with_folders(&["/a"]);
+        create_folder_chain(&mut fake, "/a/b/c", true)
+            .await
+            .unwrap();
+        assert_eq!(
+            fake.writes,
+            vec!["mkdir /a/b/c", "mkdir /a", "mkdir /a/b", "mkdir /a/b/c"]
+        );
+        assert!(fake.has_folder("/a/b/c"));
+    }
+
+    /// A refusal that is not a missing parent stops a strict chain at the
+    /// folder it was for; a lenient one goes on to the next level.
+    #[tokio::test]
+    async fn a_strict_folder_chain_reports_the_folder_that_failed() {
+        let mut fake = ProbeFake::new().with_folders(&[]);
+        fake.refuse_mkdir = Some("/a".into());
+        let (folder, error) = create_folder_chain(&mut fake, "/a/b", true)
+            .await
+            .unwrap_err();
+        assert_eq!(folder, "/a");
+        assert!(
+            matches!(error, ProviderError::PermissionDenied(_)),
+            "{error:?}"
+        );
+
+        let mut fake = ProbeFake::new().with_folders(&[]);
+        fake.refuse_mkdir = Some("/a".into());
+        create_folder_chain(&mut fake, "/a/b", false).await.unwrap();
     }
 }

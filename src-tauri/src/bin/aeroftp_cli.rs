@@ -36753,25 +36753,26 @@ async fn cmd_put_recursive(
     // reports `AlreadyExists` now, so the answer is read rather than guessed.
     if resolved_remote_base != "/" {
         let strict_ancestors = matches!(ptype, ProviderType::Ftp | ProviderType::Ftps);
-        for ancestor in benchmark_mkdir_ladder(&resolved_remote_base) {
-            match provider.mkdir(&ancestor).await {
-                Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
-                Err(mkd_err) if strict_ancestors => {
-                    let code = provider_error_to_exit_code(&mkd_err);
-                    print_error(
-                        format,
-                        &format!("Cannot create remote directory '{}': {}", ancestor, mkd_err),
-                        code,
-                    );
-                    let _ = provider.disconnect().await;
-                    return code;
-                }
-                Err(_) => {}
-            }
+        if let Err((ancestor, mkd_err)) = ftp_client_gui_lib::providers::create_folder_chain(
+            &mut *provider,
+            &resolved_remote_base,
+            strict_ancestors,
+        )
+        .await
+        {
+            let code = provider_error_to_exit_code(&mkd_err);
+            print_error(
+                format,
+                &format!("Cannot create remote directory '{}': {}", ancestor, mkd_err),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
         }
     }
 
-    for dir in &dirs {
+    // remote_base itself was made by the chain above.
+    for dir in dirs.iter().filter(|dir| **dir != resolved_remote_base) {
         let _ = provider.mkdir(dir).await;
     }
 

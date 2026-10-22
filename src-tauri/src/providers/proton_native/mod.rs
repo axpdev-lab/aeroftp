@@ -46,6 +46,8 @@ pub mod management;
 pub mod nodes;
 pub mod provider;
 pub mod session;
+#[cfg(test)]
+mod test_drive;
 pub mod upload;
 pub mod vault;
 
@@ -209,7 +211,7 @@ mod live_tests {
                 );
                 let mut out = Vec::new();
                 let outcome = drive
-                    .download(&node, &mut out, |_| {})
+                    .download(&node, &mut out, |_| {}, false)
                     .await
                     .expect("download");
                 assert_eq!(&out, data, "downloaded content differs");
@@ -272,7 +274,7 @@ mod live_tests {
             assert_eq!(moved.display_name(), Some("c.txt"));
             let mut out = Vec::new();
             drive
-                .download(&moved, &mut out, |_| {})
+                .download(&moved, &mut out, |_| {}, false)
                 .await
                 .expect("download after move");
             assert_eq!(out, small, "content must survive the move");
@@ -292,7 +294,7 @@ mod live_tests {
                 .expect("path after dirmove");
             let mut out = Vec::new();
             drive
-                .download(&resolved, &mut out, |_| {})
+                .download(&resolved, &mut out, |_| {}, false)
                 .await
                 .expect("download after dirmove");
             assert_eq!(out, small);

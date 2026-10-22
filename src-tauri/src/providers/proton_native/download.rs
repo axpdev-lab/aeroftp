@@ -34,6 +34,8 @@ const BLOCK_PAGE_SIZE: u32 = 20;
 const BLOCK_INTEGRITY_RETRIES: u32 = 1;
 /// The SDK refreshes expired storage tokens without a cap; the port caps it.
 const TOKEN_REFRESH_LIMIT: u32 = 5;
+/// `RevisionState` of the revision a file reads as its content.
+const REVISION_STATE_ACTIVE: i64 = 1;
 /// Blocks of one file fetched at once (`fileDownloader.ts::MAX_DOWNLOAD_BLOCK_SIZE`).
 /// They are still written in index order.
 const BLOCKS_IN_FLIGHT: usize = 10;
@@ -47,6 +49,9 @@ struct RevisionResponse {
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
 struct RevisionPage {
+    /// `RevisionState`: 0 draft, 1 active, 2 obsolete.
+    #[serde(default)]
+    state: Option<i64>,
     #[serde(default)]
     manifest_signature: Option<String>,
     #[serde(default)]
@@ -163,11 +168,18 @@ impl<P: PGPProviderSync> DriveClient<P> {
 
     /// Downloads the active revision of `node` into `out`. `progress` gets
     /// the plaintext bytes written so far.
+    ///
+    /// A revision the server no longer has as active is
+    /// [`ProtonError::RevisionNotActive`], before anything is written. With
+    /// `confirm_active` (a node held since a listing) the server must say it
+    /// is active; without (a node just read), only a state other than active
+    /// is refused.
     pub async fn download<W: AsyncWrite + Unpin>(
         &self,
         node: &Node<P>,
         out: &mut W,
         mut progress: impl FnMut(u64),
+        confirm_active: bool,
     ) -> Result<DownloadOutcome, ProtonError> {
         if node.is_folder() {
             return Err(ProtonError::Decode("cannot download a folder".into()));
@@ -193,6 +205,13 @@ impl<P: PGPProviderSync> DriveClient<P> {
         let mut page = self
             .revision_page(node, &revision.revision_id, next_index, BLOCK_PAGE_SIZE)
             .await?;
+        let active = match page.state {
+            Some(state) => state == REVISION_STATE_ACTIVE,
+            None => !confirm_active,
+        };
+        if !active {
+            return Err(ProtonError::RevisionNotActive);
+        }
         let manifest_signature = page.manifest_signature.take().filter(|s| !s.is_empty());
         for thumbnail in std::mem::take(&mut page.thumbnails) {
             let hash = BASE64
@@ -215,11 +234,25 @@ impl<P: PGPProviderSync> DriveClient<P> {
                 }
             }
             // The next page is read while this one's blocks download, as the
-            // SDK's generator does, so the empty page that ends every file
-            // costs no round trip of its own.
+            // SDK's generator does. It is left out when this page was short
+            // and its blocks complete the count the attributes give: the
+            // server has nothing more to send, and the empty page it would
+            // answer costs a request per file. The manifest signature covers
+            // every block either way, so a block the server failed to list
+            // still fails the download below.
             let following = next_index + blocks.len() as u64;
-            let next_page =
-                self.revision_page(node, &revision.revision_id, following, BLOCK_PAGE_SIZE);
+            let complete = blocks.len() < BLOCK_PAGE_SIZE as usize
+                && !node.xattr.block_sizes.is_empty()
+                && following - 1 == node.xattr.block_sizes.len() as u64;
+            let next_page = async {
+                if complete {
+                    Ok(None)
+                } else {
+                    self.revision_page(node, &revision.revision_id, following, BLOCK_PAGE_SIZE)
+                        .await
+                        .map(Some)
+                }
+            };
             let this_page = async {
                 // Fetched up to BLOCKS_IN_FLIGHT at a time, handed over in order.
                 let mut fetched = futures_util::stream::iter(blocks.into_iter().map(|block| {
@@ -239,7 +272,10 @@ impl<P: PGPProviderSync> DriveClient<P> {
             };
             let (next, done) = tokio::join!(next_page, this_page);
             done?;
-            page = next?;
+            match next? {
+                Some(next) => page = next,
+                None => break,
+            }
         }
         out.flush().await.map_err(ProtonError::LocalIo)?;
 
@@ -293,5 +329,150 @@ impl<P: PGPProviderSync> DriveClient<P> {
             blocks: block_digests.len() as u64,
             sha1,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::account::test_account;
+    use super::super::provider::DriveOps;
+    use super::super::test_drive::{TestDrive, ROOT};
+    use super::*;
+
+    /// `count` blocks of a few bytes each, all different.
+    fn blocks(count: usize) -> Vec<Vec<u8>> {
+        (0..count)
+            .map(|i| format!("block {i:03};").into_bytes())
+            .collect()
+    }
+
+    fn refs(blocks: &[Vec<u8>]) -> Vec<&[u8]> {
+        blocks.iter().map(Vec::as_slice).collect()
+    }
+
+    async fn download(
+        client: &(impl DriveOps + ?Sized),
+        link_id: &str,
+    ) -> Result<Vec<u8>, ProtonError> {
+        let mut out = Vec::new();
+        client.download(link_id, &mut out, &mut |_| {}).await?;
+        Ok(out)
+    }
+
+    /// A file the listing just decrypted downloads from that node: the
+    /// revision page and the block, without loading the node again (the
+    /// official client reads from its synced cache the same way).
+    #[tokio::test]
+    async fn a_listed_file_downloads_without_reloading_its_node() {
+        let account = test_account();
+        let mut drive = TestDrive::start(&account).await;
+        let content = blocks(1);
+        let (file, _) = drive.add_file(account.provider(), ROOT, "a.txt", &refs(&content));
+        let client = drive.client(account);
+        DriveOps::children(&client, ROOT).await.unwrap();
+        drive.reset_counts();
+
+        assert_eq!(download(&client, &file).await.unwrap(), content.concat());
+        assert_eq!(drive.count("links"), 0, "{:?}", drive.log());
+        assert_eq!(drive.count("storage"), 1);
+    }
+
+    /// A revision written after the listing: the listed node names the old
+    /// one, the server says it is no longer active, and the download takes
+    /// the node again and reads the new content.
+    #[tokio::test]
+    async fn a_revision_replaced_after_the_listing_downloads_the_new_content() {
+        let account = test_account();
+        let mut drive = TestDrive::start(&account).await;
+        let old = blocks(2);
+        let docs = drive.add_folder(account.provider(), ROOT, "docs");
+        let (file, _) = drive.add_file(account.provider(), &docs, "a.txt", &refs(&old));
+        let new = vec![b"new content".to_vec()];
+        let client = drive.client(account);
+        DriveOps::children(&client, ROOT).await.unwrap();
+        DriveOps::children(&client, &docs).await.unwrap();
+        drive.new_revision(client.provider(), &file, &refs(&new));
+        drive.reset_counts();
+
+        assert_eq!(download(&client, &file).await.unwrap(), new.concat());
+        assert_eq!(drive.count("links"), 1, "{:?}", drive.log());
+        // The obsolete revision's blocks are never fetched.
+        assert_eq!(drive.count("storage"), 1);
+    }
+
+    /// The page that ends a file is read only when the blocks so far do not
+    /// account for it: a short page whose blocks match the attributes ends
+    /// the file, a full page (exactly the page size) is followed by another.
+    #[tokio::test]
+    async fn the_closing_revision_page_is_read_only_when_needed() {
+        let account = test_account();
+        let mut drive = TestDrive::start(&account).await;
+        let page = BLOCK_PAGE_SIZE as usize;
+        let cases = [
+            (1, 1),
+            (page - 1, 1),
+            (page, 2),
+            (page + 1, 2),
+            (2 * page, 3),
+        ];
+        let mut files = Vec::new();
+        for (count, _) in cases {
+            let content = blocks(count);
+            let (file, _) = drive.add_file(
+                account.provider(),
+                ROOT,
+                &format!("{count}.bin"),
+                &refs(&content),
+            );
+            files.push((file, content));
+        }
+        let client = drive.client(account);
+        DriveOps::children(&client, ROOT).await.unwrap();
+        for ((count, pages), (file, content)) in cases.iter().zip(&files) {
+            drive.reset_counts();
+            assert_eq!(
+                download(&client, file).await.unwrap(),
+                content.concat(),
+                "{count} blocks"
+            );
+            assert_eq!(
+                drive.count("revision"),
+                *pages,
+                "{count} blocks: {:?}",
+                drive.log()
+            );
+            assert_eq!(drive.count("storage"), *count);
+        }
+    }
+
+    /// A server that drops the end of a file: the manifest signature covers
+    /// every block, so the download fails instead of returning less, whether
+    /// the page looks complete or not.
+    #[tokio::test]
+    async fn a_file_missing_its_last_blocks_fails_the_manifest() {
+        let account = test_account();
+        let mut drive = TestDrive::start(&account).await;
+        let page = BLOCK_PAGE_SIZE as usize;
+        let mut files = Vec::new();
+        for count in [2, page + 1] {
+            let content = blocks(count);
+            let (file, revision) = drive.add_file(
+                account.provider(),
+                ROOT,
+                &format!("{count}.bin"),
+                &refs(&content),
+            );
+            drive.truncate_blocks(&file, &revision, count - 1);
+            files.push(file);
+        }
+        let client = drive.client(account);
+        DriveOps::children(&client, ROOT).await.unwrap();
+        for file in files {
+            let error = download(&client, &file).await.unwrap_err();
+            assert!(
+                matches!(&error, ProtonError::Integrity(reason) if reason.contains("manifest")),
+                "{error:?}"
+            );
+        }
     }
 }
