@@ -27,6 +27,7 @@ on:
       - 'src-tauri/tests/fixtures/sftp-rsync/**'
       - 'src-tauri/tests/integration_delta_sync.rs'
       - '.github/workflows/delta-sync-integration.yml'
+      - '.github/actions/apt-install/**'
   pull_request:
     branches: [main]
     paths:
@@ -43,6 +44,7 @@ on:
       - 'src-tauri/tests/fixtures/sftp-rsync/**'
       - 'src-tauri/tests/integration_delta_sync.rs'
       - '.github/workflows/delta-sync-integration.yml'
+      - '.github/actions/apt-install/**'
   workflow_dispatch:
 
 permissions:
@@ -64,13 +66,13 @@ jobs:
     # marks every test `skipped`, which is indistinguishable at a glance from
     # a code defect. So the expensive steps below now carry their own budget
     # and the job cap is only a backstop. The arithmetic it has to cover:
-    # ~1.6 min before apt, up to 10 for apt (two 5-minute attempts), up to ~22
-    # for the cargo steps on a cold cache, ~1 for teardown and the cache save
-    # = ~35 in the usual slow case. The independently bounded cache, apt,
+    # ~1.6 min before apt, up to 12 for apt (one budget, archive restore and
+    # save included), up to ~22 for the cargo steps on a cold cache, ~1 for
+    # teardown and the cache save = ~37 in the usual slow case. The independently bounded cache, apt,
     # Docker and test steps can legitimately run longer in combination, so a
     # 40-minute backstop could still cancel an individually healthy step and
     # recreate the unattributed signal this layout is meant to prevent. The
-    # declared sequential step limits total 93 minutes before checkout and
+    # declared sequential step limits total 109 minutes before checkout and
     # teardown, so 110 remains a finite backstop while leaving those named
     # budgets in charge.
     timeout-minutes: 110
@@ -112,113 +114,26 @@ jobs:
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      # The apt step below fetches 61.5 MB of .deb, and that download is the
-      # entire observed failure mode. In run 30488867618 the Azure mirror
-      # served this runner at roughly 45 kB/s: `libwebkit2gtk-4.1-0` alone
-      # (25.1 MB) took 12m02s, and the step was still fetching at 23m02s when
-      # the job cap killed it. `apt-get update` is *not* the cost -- in that
-      # same run it fetched 10.9 MB in 7s -- so caching the archives is what
-      # takes the mirror off the critical path. The key rotates weekly so
-      # security updates still land, and `restore-keys` means a rotation costs
-      # only the packages that actually changed.
-      - name: apt archive cache key
-        id: apt-archive-key
-        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache apt archives
-        timeout-minutes: 10
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/apt-archives
-          key: apt-delta-sync-keyauth-${{ runner.os }}-${{ steps.apt-archive-key.outputs.week }}
-          restore-keys: |
-            apt-delta-sync-keyauth-${{ runner.os }}-
-
-      # Bounded and retried by GNU timeout run as root, not nick-fields/retry.
-      # That wrapper (v3 pin ad98453, also tagged v4) dies with `kill EPERM`
-      # when the child is sudo/apt (issue #124, still open; PR #161 unmerged),
-      # so max_attempts never started attempt 2. Measured on #789 run
-      # 34603359227 attempts 1 and 2: both spent ~4m54s in Attempt 1, then
-      # EPERM, cache miss, 178 packages / 59.7 MB. Warm runs are 20-86s; 300s
-      # per attempt is a cold 59.7 MB fetch at ~200 kB/s plus unpack.
-      # Acquire::http::Timeout=30 and Retries=2 cut a hung mirror from 4.5 min
-      # of silence to 30s. timeout must run as root: kill(2) allows a signal
-      # only if the sender is privileged or the uids match, so a runner-user
-      # timeout cannot TERM/KILL apt and dpkg, which would leave the dpkg/apt
-      # locks held into attempt 2. uid/gid are captured before sudo because
-      # inside, id -u is 0 and chown would make the cache unsavable. Two
-      # attempts + 30s kill-after + 2s reap + 15s pause = 677s, so the step
-      # cap is 13 minutes.
+      # The 74 MB .deb download is this lane's whole observed failure mode: an
+      # Azure mirror serving one runner at 43-170 kB/s while the next got
+      # 7 MB/s (runs 30488867618, 39794879996, 39815053371). The shared action
+      # owns the measurements: one bounded, resumable attempt that keeps the
+      # budget instead of two 300s halves, and an archive cache that is saved
+      # right after the install, also when it fails, and shared with every lane
+      # that installs this stack, so a green lane warms the cache for a red one
+      # and a rerun resumes instead of starting from zero.
+      #
+      # rsync + ssh client for the host side of the integration test; the
+      # WebKit/GTK stack because compiling the aeroftp lib pulls Tauri deps even
+      # when only one test binary runs. --no-install-recommends (inside the
+      # action) matches every other Linux lane in this repo.
       - name: Install system dependencies
         timeout-minutes: 13
-        run: |
-          set -euo pipefail
-          export RUNNER_UID RUNNER_GID
-          RUNNER_UID=$(id -u)
-          RUNNER_GID=$(id -g)
-          run_attempt() {
-            set -euo pipefail
-            # An attempt killed mid-unpack leaves dpkg half-configured, and the
-            # next apt-get would refuse to run until it is told to finish.
-            dpkg --configure -a || true
-            mkdir -p "$HOME/apt-archives/partial"
-            # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
-            # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
-            # mismatch on Packages.gz), and nothing here installs from any of them.
-            rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
-            apt-get update \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=30 \
-              -o Acquire::https::Timeout=30 \
-              -o DPkg::Lock::Timeout=30
-            # rsync + ssh client for the host side of the integration test.
-            # Webkit/GTK stack is needed because compiling the aeroftp
-            # library pulls Tauri deps even when we only run one test binary.
-            # --no-install-recommends matches every other Linux lane in this
-            # repo (cli-smoke, aerorsync-protocol, portal-chooser,
-            # nightly-telemetry), which compile the same crate with the same
-            # three -dev packages.
-            apt-get install -y --no-install-recommends \
-              -o Dir::Cache::archives="$HOME/apt-archives/" \
-              -o APT::Keep-Downloaded-Packages=true \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=30 \
-              -o Acquire::https::Timeout=30 \
-              -o DPkg::Lock::Timeout=30 \
-              rsync \
-              openssh-client \
-              acl \
-              attr \
-              libacl1 \
-              libacl1-dev \
-              libwebkit2gtk-4.1-dev \
-              libappindicator3-dev \
-              librsvg2-dev
-            # apt ran as root (sudo timeout); hand the archives back so the
-            # cache save (which runs as the runner user) can read them.
-            chown -R "${RUNNER_UID}:${RUNNER_GID}" "$HOME/apt-archives"
-          }
-          ok=0
-          for attempt in 1 2; do
-            echo "Install system dependencies: attempt ${attempt}/2"
-            if sudo --preserve-env=HOME,RUNNER_UID,RUNNER_GID \
-                 timeout --signal=TERM --kill-after=30s 300s \
-                 bash -euo pipefail -c "$(declare -f run_attempt); run_attempt"; then
-              ok=1
-              break
-            fi
-            echo "attempt ${attempt} failed (timeout or apt error)" >&2
-            sudo pkill -9 -x apt-get || true
-            sudo pkill -9 -x dpkg || true
-            sleep 2
-            if [ "$attempt" -lt 2 ]; then
-              sleep 15
-            fi
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "Install system dependencies failed after 2 attempts" >&2
-            exit 1
-          fi
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            rsync openssh-client acl attr libacl1 libacl1-dev
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
 
       - name: Generate fixture SSH key
         working-directory: src-tauri/tests/fixtures/sftp-rsync
@@ -408,83 +323,18 @@ jobs:
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      # See the key-auth job for the measurements this is based on. Separate
-      # cache key: this lane installs sshpass on top of the same set.
-      - name: apt archive cache key
-        id: apt-archive-key
-        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache apt archives
-        timeout-minutes: 10
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/apt-archives
-          key: apt-delta-sync-fallback-${{ runner.os }}-${{ steps.apt-archive-key.outputs.week }}
-          restore-keys: |
-            apt-delta-sync-fallback-${{ runner.os }}-
-
+      # Same action and the same shared cache as the key-auth job: this lane
+      # failed in apt three times on 2026-10-22 while the key-auth lane, which
+      # had just fetched at 7 MB/s, held a complete entry under its own key.
+      # sshpass polls the password-auth fixture's readiness (the test itself
+      # uses russh through SftpProvider).
       - name: Install system dependencies
-        # sshpass needed to poll the password-auth fixture readiness
-        # (the integration test itself uses russh via SftpProvider -
-        # sshpass is just a scripting convenience). Same sudo-timeout loop as
-        # the key-auth job: 300s per attempt, 13-minute step cap. See that
-        # job's comment for kill(2) and why nick-fields/retry is gone.
         timeout-minutes: 13
-        run: |
-          set -euo pipefail
-          export RUNNER_UID RUNNER_GID
-          RUNNER_UID=$(id -u)
-          RUNNER_GID=$(id -g)
-          run_attempt() {
-            set -euo pipefail
-            dpkg --configure -a || true
-            mkdir -p "$HOME/apt-archives/partial"
-            # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
-            # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
-            # mismatch on Packages.gz), and nothing here installs from any of them.
-            rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
-            apt-get update \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=30 \
-              -o Acquire::https::Timeout=30 \
-              -o DPkg::Lock::Timeout=30
-            apt-get install -y --no-install-recommends \
-              -o Dir::Cache::archives="$HOME/apt-archives/" \
-              -o APT::Keep-Downloaded-Packages=true \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=30 \
-              -o Acquire::https::Timeout=30 \
-              -o DPkg::Lock::Timeout=30 \
-              rsync \
-              openssh-client \
-              sshpass \
-              libacl1-dev \
-              libwebkit2gtk-4.1-dev \
-              libappindicator3-dev \
-              librsvg2-dev
-            chown -R "${RUNNER_UID}:${RUNNER_GID}" "$HOME/apt-archives"
-          }
-          ok=0
-          for attempt in 1 2; do
-            echo "Install system dependencies: attempt ${attempt}/2"
-            if sudo --preserve-env=HOME,RUNNER_UID,RUNNER_GID \
-                 timeout --signal=TERM --kill-after=30s 300s \
-                 bash -euo pipefail -c "$(declare -f run_attempt); run_attempt"; then
-              ok=1
-              break
-            fi
-            echo "attempt ${attempt} failed (timeout or apt error)" >&2
-            sudo pkill -9 -x apt-get || true
-            sudo pkill -9 -x dpkg || true
-            sleep 2
-            if [ "$attempt" -lt 2 ]; then
-              sleep 15
-            fi
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "Install system dependencies failed after 2 attempts" >&2
-            exit 1
-          fi
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            rsync openssh-client sshpass libacl1-dev
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
 
       - name: Build & start password-auth docker fixture
         timeout-minutes: 13

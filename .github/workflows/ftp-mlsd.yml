@@ -21,6 +21,7 @@ on:
       - 'src-tauri/tests/fixtures/ftp-mlsd/**'
       - 'src-tauri/tests/fixtures/ftp/**'
       - '.github/workflows/ftp-mlsd.yml'
+      - '.github/actions/apt-install/**'
   pull_request:
     branches: [main]
     paths:
@@ -31,6 +32,7 @@ on:
       - 'src-tauri/tests/fixtures/ftp-mlsd/**'
       - 'src-tauri/tests/fixtures/ftp/**'
       - '.github/workflows/ftp-mlsd.yml'
+      - '.github/actions/apt-install/**'
   workflow_dispatch:
 
 permissions:
@@ -56,90 +58,20 @@ jobs:
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      # The three packages are the right ones and were not the whole answer.
-      # delta-sync-integration.yml caches these archives because that download
-      # IS the observed failure mode of these lanes, with the measurements in
-      # its own comment: 61.5 MB of .deb, an Azure mirror serving one runner at
-      # roughly 45 kB/s, `libwebkit2gtk-4.1-0` alone taking 12m02s, and the step
-      # still fetching at 23m02s when the job cap killed it. `apt-get update` is
-      # not the cost. Installing the same list without the cache inherits that
-      # failure whole, so the cache travels with the list.
-      - name: apt archive cache key
-        id: apt-archive-key
-        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache apt archives
-        timeout-minutes: 10
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/apt-archives
-          key: apt-ftp-mlsd-${{ runner.os }}-${{ steps.apt-archive-key.outputs.week }}
-          restore-keys: |
-            apt-ftp-mlsd-${{ runner.os }}-
-
       # The test target links the Tauri crate, so the GTK/WebKit stack has to be
       # present or the glib-sys build script fails before a single test runs.
-      # Bounded and retried by GNU timeout run as root, not nick-fields/retry:
-      # that wrapper dies with `kill EPERM` on sudo/apt and never starts
-      # attempt 2 (issue #124; same pin as v4). Same numbers as
-      # delta-sync-integration.yml: 300s per attempt, Acquire timeouts 30s,
-      # 13-minute step cap. timeout runs as root because kill(2) will not
-      # deliver TERM/KILL to apt/dpkg from the runner user.
+      # Those three packages are the right ones and were not the whole answer:
+      # their 74 MB .deb download IS the observed failure mode of these lanes,
+      # an Azure mirror serving one runner at 43-170 kB/s while the next got
+      # 7 MB/s. The shared action carries the measurements: one bounded,
+      # resumable attempt, and an archive cache saved even when the install
+      # fails and shared with every lane that installs this stack.
       - name: Install system dependencies
         timeout-minutes: 13
-        run: |
-          set -euo pipefail
-          export RUNNER_UID RUNNER_GID
-          RUNNER_UID=$(id -u)
-          RUNNER_GID=$(id -g)
-          run_attempt() {
-            set -euo pipefail
-            # An attempt killed mid-unpack leaves dpkg half-configured, and the
-            # next apt-get would refuse to run until it is told to finish.
-            dpkg --configure -a || true
-            mkdir -p "$HOME/apt-archives/partial"
-            # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
-            # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
-            # mismatch on Packages.gz), and nothing here installs from any of them.
-            rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
-            apt-get update \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=30 \
-              -o Acquire::https::Timeout=30 \
-              -o DPkg::Lock::Timeout=30
-            apt-get install -y --no-install-recommends \
-              -o Dir::Cache::archives="$HOME/apt-archives/" \
-              -o APT::Keep-Downloaded-Packages=true \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=30 \
-              -o Acquire::https::Timeout=30 \
-              -o DPkg::Lock::Timeout=30 \
-              libwebkit2gtk-4.1-dev \
-              libappindicator3-dev \
-              librsvg2-dev
-            chown -R "${RUNNER_UID}:${RUNNER_GID}" "$HOME/apt-archives"
-          }
-          ok=0
-          for attempt in 1 2; do
-            echo "Install system dependencies: attempt ${attempt}/2"
-            if sudo --preserve-env=HOME,RUNNER_UID,RUNNER_GID \
-                 timeout --signal=TERM --kill-after=30s 300s \
-                 bash -euo pipefail -c "$(declare -f run_attempt); run_attempt"; then
-              ok=1
-              break
-            fi
-            echo "attempt ${attempt} failed (timeout or apt error)" >&2
-            sudo pkill -9 -x apt-get || true
-            sudo pkill -9 -x dpkg || true
-            sleep 2
-            if [ "$attempt" -lt 2 ]; then
-              sleep 15
-            fi
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "Install system dependencies failed after 2 attempts" >&2
-            exit 1
-          fi
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
 
       # It pulls a base image from Docker Hub, which this repo has seen time
       # out before (see aerorsync-protocol.yml).
@@ -233,7 +165,7 @@ jobs:
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      # The three steps below are copied from the `mlsd` job, deliberately and
+      # The install below is copied from the `mlsd` job, deliberately and
       # in full. This job was added beside that one and inherits nothing from
       # it: without them `cargo` reaches `glib-sys`, cannot find `glib-2.0`, and
       # fails with exit 101 before a single test runs, which is what happened on
@@ -247,80 +179,16 @@ jobs:
       # have become slow and intermittent rather than red, which is harder to
       # diagnose than a clean failure.
       #
-      # The cache KEY is the sibling's, not a new one. The package list is
-      # identical, so a separate key would pay the same 61.5 MB twice and the
-      # two jobs would never help each other; sharing it means whichever runs
-      # first fills it for the other.
-      - name: apt archive cache key
-        id: apt-archive-key
-        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache apt archives
-        timeout-minutes: 10
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/apt-archives
-          key: apt-ftp-mlsd-${{ runner.os }}-${{ steps.apt-archive-key.outputs.week }}
-          restore-keys: |
-            apt-ftp-mlsd-${{ runner.os }}-
-
+      # The cache is the sibling's and every other lane's that installs this
+      # stack (the action's default prefix), so whichever runs first fills it
+      # for the others.
       - name: Install system dependencies
         timeout-minutes: 13
-        run: |
-          set -euo pipefail
-          export RUNNER_UID RUNNER_GID
-          RUNNER_UID=$(id -u)
-          RUNNER_GID=$(id -g)
-          run_attempt() {
-            set -euo pipefail
-            dpkg --configure -a || true
-            mkdir -p "$HOME/apt-archives/partial"
-            # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
-            # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
-            # mismatch on Packages.gz), and nothing here installs from any of them.
-            rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
-            apt-get update \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=30 \
-              -o Acquire::https::Timeout=30 \
-              -o DPkg::Lock::Timeout=30
-            apt-get install -y --no-install-recommends \
-              -o Dir::Cache::archives="$HOME/apt-archives/" \
-              -o APT::Keep-Downloaded-Packages=true \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=30 \
-              -o Acquire::https::Timeout=30 \
-              -o DPkg::Lock::Timeout=30 \
-              libwebkit2gtk-4.1-dev \
-              libappindicator3-dev \
-              librsvg2-dev
-            chown -R "${RUNNER_UID}:${RUNNER_GID}" "$HOME/apt-archives"
-          }
-          ok=0
-          for attempt in 1 2; do
-            echo "Install system dependencies: attempt ${attempt}/2"
-            if sudo --preserve-env=HOME,RUNNER_UID,RUNNER_GID \
-                 timeout --signal=TERM --kill-after=30s 300s \
-                 bash -euo pipefail -c "$(declare -f run_attempt); run_attempt"; then
-              ok=1
-              break
-            fi
-            echo "attempt ${attempt} failed (timeout or apt error)" >&2
-            sudo pkill -9 -x apt-get || true
-            sudo pkill -9 -x dpkg || true
-            sleep 2
-            if [ "$attempt" -lt 2 ]; then
-              sleep 15
-            fi
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "Install system dependencies failed after 2 attempts" >&2
-            exit 1
-          fi
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
 
-      # 420s of hanging, not 90: the fixture must outlast the 300s budget under
-      # test. At the old default of 90 the fixture gave up first, and a test that
-      # believed it was measuring the cap measured the fixture and passed.
       - name: Start the hanging-MLSD fixture
         working-directory: src-tauri/tests/fixtures/ftp
         run: |
