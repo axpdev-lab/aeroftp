@@ -186,7 +186,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         // already-registered name (vec push order wins on `find`).
         McpToolDef {
             name: "aeroftp_upload_many",
-            description: "Upload multiple local files to a remote server in a single batch. Each item may specify its own `create_parents` and `no_clobber` flags. Applies a server-friendly backoff between operations (same contract as aeroftp_delete_many) and returns per-item results plus summary.totals. Serial-per-connection: one item at a time on the pooled connection, since most protocols (FTP, SFTP) do not parallelize uploads on a single session. Set continue_on_error=false to stop at the first failure.",
+            description: "Upload multiple local files to a remote server in a single batch. Each item may specify its own `create_parents` and `no_clobber` flags. Applies a server-friendly backoff between operations (same contract as aeroftp_delete_many) and returns per-item results plus summary.totals. Serial-per-connection: one item at a time on the pooled connection, since most protocols (FTP, SFTP) do not parallelize uploads on a single session. On a provider with a native bulk upload (Proton Drive CLI mode), local files that share a remote folder go up in one native call, with the same per-item results. Set continue_on_error=false to stop at the first failure.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "items": {

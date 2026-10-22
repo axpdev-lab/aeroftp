@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 use super::bulk::{
-    plain_bulk_name, uncertain_items, BulkProgress, BulkTransferItem, BulkTransferOutcome,
-    MAX_BULK_BYTES, MAX_BULK_FILES, MAX_BULK_PATH_BYTES,
+    command_arg_bytes, plain_bulk_name, BulkProgress, BulkTransferItem, BulkTransferOutcome,
+    BULK_COMMAND_RESERVE_BYTES, MAX_BULK_BYTES, MAX_BULK_FILES, MAX_BULK_PATH_BYTES,
 };
 use super::{
     ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageProvider,
@@ -127,21 +127,24 @@ impl ProtonCliProvider {
     /// serially, before starting its download queue. A fresh listing binds only
     /// the selected names to UIDs; a /my-files/UID lookup skips those repeated
     /// walks without recursively reading unselected siblings. Other sections
-    /// retain their established path resolution.
+    /// retain their established path resolution. The same listing gives the
+    /// size each selected file's uploader claimed, when there is one, for the
+    /// publication check.
     async fn bulk_download_sources(
         &mut self,
         remotes: &[String],
         destination_bytes: usize,
-    ) -> Vec<String> {
+    ) -> (Vec<String>, std::collections::HashMap<String, u64>) {
+        let mut claimed = std::collections::HashMap::new();
         let Some(first) = remotes.first() else {
-            return Vec::new();
+            return (Vec::new(), claimed);
         };
         let parent = parent_of(first);
         if first_segment(first) != "my-files" || remotes.iter().any(|r| parent_of(r) != parent) {
-            return remotes.to_vec();
+            return (remotes.to_vec(), claimed);
         }
         let Ok(entries) = self.list(&parent).await else {
-            return remotes.to_vec();
+            return (remotes.to_vec(), claimed);
         };
         let mut by_name = std::collections::HashMap::new();
         let mut duplicates = std::collections::HashSet::new();
@@ -152,8 +155,16 @@ impl ProtonCliProvider {
             if by_name.contains_key(&entry.name) {
                 duplicates.insert(entry.name.clone());
             }
+            if let Some(size) = entry
+                .metadata
+                .get("claimed_size")
+                .and_then(|size| size.parse::<u64>().ok())
+            {
+                claimed.insert(entry.name.clone(), size);
+            }
             by_name.insert(entry.name, entry.metadata.get("uid").cloned());
         }
+        claimed.retain(|name, _| !duplicates.contains(name));
         let candidate: Vec<_> = remotes
             .iter()
             .map(|remote| {
@@ -174,9 +185,9 @@ impl ProtonCliProvider {
         if candidate.iter().map(|p| p.len() + 3).sum::<usize>() + destination_bytes + 512
             > MAX_BULK_PATH_BYTES
         {
-            remotes.to_vec()
+            (remotes.to_vec(), claimed)
         } else {
-            candidate
+            (candidate, claimed)
         }
     }
 
@@ -216,30 +227,35 @@ impl ProtonCliProvider {
         if items.is_empty() {
             return Ok(Vec::new());
         }
+        if self.binary.is_empty() || !binary_exists(&self.binary) {
+            return Err(ProviderError::InvalidConfig(MISSING_CLI.to_string()));
+        }
+        // Admission. An item that cannot join this native call is handed back
+        // as NotAttempted, so the caller's single-file path gives it the same
+        // treatment it had before bulks existed (a renamed or changed source,
+        // a name the CLI would map, a sibling past the bounds). Nothing here
+        // has reached the wire.
+        let mut outcomes: Vec<BulkTransferOutcome> = items
+            .iter()
+            .map(|_| BulkTransferOutcome::NotAttempted("Not admitted to the native bulk".into()))
+            .collect();
         let mut bytes = 0u64;
-        let mut path_bytes = 0usize;
+        let mut arg_bytes = BULK_COMMAND_RESERVE_BYTES;
         let mut names = std::collections::HashSet::new();
         let mut remotes = Vec::with_capacity(items.len());
         let mut locals = Vec::with_capacity(items.len());
         let mut valid_indices = Vec::with_capacity(items.len());
-        let mut outcomes = uncertain_items(items.len(), "Bulk item was not attempted");
-        let mut group_parent = None;
+        let mut group_parent: Option<String> = None;
         for (index, item) in items.iter().enumerate() {
-            bytes = bytes.saturating_add(item.size);
-            path_bytes = path_bytes
-                .saturating_add(item.local_path.len())
-                .saturating_add(item.remote_path.len());
             let remote = self.resolve_path(&item.remote_path);
-            let name = plain_bulk_name(&remote).ok_or_else(|| {
-                ProviderError::InvalidPath("Bulk requires a portable file basename".into())
-            })?;
+            let Some(name) = plain_bulk_name(&remote) else {
+                continue;
+            };
             let local = Path::new(&item.local_path);
             if local.file_name().and_then(|s| s.to_str()) != Some(name)
-                || !names.insert(name.to_lowercase())
+                || names.contains(&name.to_lowercase())
             {
-                return Err(ProviderError::InvalidPath(
-                    "Bulk file names must be distinct and retain their destination spelling".into(),
-                ));
+                continue;
             }
             let parent = if upload {
                 parent_of(&remote)
@@ -250,42 +266,40 @@ impl ProtonCliProvider {
                     .to_string_lossy()
                     .into_owned()
             };
-            if group_parent.as_ref().is_some_and(|p| p != &parent) {
-                return Err(ProviderError::InvalidPath(
-                    "Bulk files must share a destination folder".into(),
-                ));
+            let item_args = command_arg_bytes(&item.local_path, &remote);
+            if group_parent.as_ref().is_some_and(|p| p != &parent)
+                || valid_indices.len() >= MAX_BULK_FILES
+                || bytes.saturating_add(item.size) > MAX_BULK_BYTES
+                || arg_bytes.saturating_add(item_args) > MAX_BULK_PATH_BYTES
+            {
+                continue;
             }
-            group_parent = Some(parent);
             if upload {
-                ensure_parent_writable(&parent_of(&remote))?;
-                let preflight = (|| {
+                // A source that changed since planning, or is not a plain
+                // file, keeps the single-file path, which sends what is there
+                // now (or reports exactly why it cannot).
+                let source = (|| {
+                    ensure_parent_writable(&parent_of(&remote))?;
                     let metadata =
                         std::fs::symlink_metadata(local).map_err(ProviderError::IoError)?;
                     if !metadata.is_file() || metadata.len() != item.size {
                         return Err(ProviderError::InvalidPath(
-                            "Bulk source changed or is not a regular file".into(),
+                            "Source changed or is not a regular file".into(),
                         ));
                     }
                     literal_local_path_for_cli(&normalize_local_path_for_cli(&item.local_path))
                 })();
-                match preflight {
+                match source {
                     Ok(path) => locals.push(path),
-                    Err(error) => {
-                        outcomes[index] = BulkTransferOutcome::Failed(error);
-                        continue;
-                    }
+                    Err(_) => continue,
                 }
             }
+            names.insert(name.to_lowercase());
+            group_parent = Some(parent);
+            bytes = bytes.saturating_add(item.size);
+            arg_bytes = arg_bytes.saturating_add(item_args);
             valid_indices.push(index);
             remotes.push(remote);
-        }
-        if items.len() > MAX_BULK_FILES
-            || bytes > MAX_BULK_BYTES
-            || path_bytes > MAX_BULK_PATH_BYTES
-        {
-            return Err(ProviderError::InvalidConfig(
-                "Bulk exceeds the bounded transfer limits".into(),
-            ));
         }
         if valid_indices.is_empty() {
             return Ok(outcomes);
@@ -307,7 +321,19 @@ impl ProtonCliProvider {
             )
         };
         if let Some(dir) = staging.as_ref() {
-            reserve_bulk_download_names(dir.path(), &remotes)?;
+            // Names this filesystem folds together (case, Unicode form) would
+            // overwrite one another in the staging folder: those go back to
+            // the single-file path, the rest stay in the bulk.
+            let aliased = reserve_bulk_download_names(dir.path(), &remotes)?;
+            (valid_indices, remotes) = valid_indices
+                .into_iter()
+                .zip(std::mem::take(&mut remotes))
+                .zip(aliased)
+                .filter_map(|(kept, aliased)| (!aliased).then_some(kept))
+                .unzip();
+            if remotes.is_empty() {
+                return Ok(outcomes);
+            }
         }
         let mut args: Vec<String> = [
             "filesystem",
@@ -325,19 +351,23 @@ impl ProtonCliProvider {
         .into_iter()
         .map(str::to_string)
         .collect();
+        let mut claimed_sizes = std::collections::HashMap::new();
         args.extend(if upload {
             locals
         } else {
-            self.bulk_download_sources(
-                &remotes,
-                staging
-                    .as_ref()
-                    .expect("download has staging")
-                    .path()
-                    .as_os_str()
-                    .len(),
-            )
-            .await
+            let (sources, claimed) = self
+                .bulk_download_sources(
+                    &remotes,
+                    staging
+                        .as_ref()
+                        .expect("download has staging")
+                        .path()
+                        .as_os_str()
+                        .len(),
+                )
+                .await;
+            claimed_sizes = claimed;
+            sources
         });
         args.push(if let Some(dir) = staging.as_ref() {
             literal_local_path_for_cli(&dir.path().to_string_lossy())?
@@ -345,28 +375,30 @@ impl ProtonCliProvider {
             parent
         });
         if args.iter().map(|arg| arg.len() + 3).sum::<usize>() > MAX_BULK_PATH_BYTES {
-            return Err(ProviderError::InvalidConfig(
-                "Encoded bulk command exceeds the command-line budget".into(),
-            ));
+            return Ok(outcomes);
         }
         for &index in &valid_indices {
             if let Some(ref cb) = progress {
                 cb(index, 0, items[index].size);
             }
         }
+        // From here on the native program may have written: a download is
+        // still only published from private staging, an upload may be on
+        // the server whatever the process says.
         let output = match self.run_bulk_once(&args).await {
             Ok(output) => output,
             Err(error) => {
                 for &index in &valid_indices {
-                    outcomes[index] = BulkTransferOutcome::Uncertain(format!(
-                        "Bulk interrupted; remote state unknown: {error}"
-                    ));
+                    outcomes[index] = unproven_bulk_item(
+                        upload,
+                        format!("Bulk interrupted; remote state unknown: {error}"),
+                    );
                 }
                 return Ok(outcomes);
             }
         };
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut results = bulk_summary_outcomes(&stdout, &remotes, output.status.success());
+        let mut results = bulk_summary_outcomes(&stdout, &remotes, output.status.success(), upload);
         for (position, result) in results.iter_mut().enumerate() {
             let index = valid_indices[position];
             if !matches!(result, BulkTransferOutcome::Completed) {
@@ -375,16 +407,37 @@ impl ProtonCliProvider {
             if let Some(dir) = staging.as_ref() {
                 let name = basename(&remotes[position]);
                 let staged = dir.path().join(&name);
-                let publish = async {
-                    let metadata = tokio::fs::symlink_metadata(&staged).await?;
-                    if !metadata.is_file() || metadata.len() != items[index].size {
-                        return Err(std::io::Error::other(
-                            "Bulk download size differs from the planned file",
-                        ));
+                // The SDK behind the CLI checks the SHA-256 of every block and
+                // the manifest signature over them. On top of that, a file
+                // must have the size its uploader claimed when the fresh
+                // listing has one. The planned size is not compared: without
+                // a claimed size Proton lists the encrypted size, which a
+                // correct download never matches.
+                let publish = match tokio::fs::symlink_metadata(&staged).await {
+                    Ok(metadata)
+                        if metadata.is_file()
+                            && claimed_sizes
+                                .get(&name)
+                                .is_some_and(|&claimed| claimed != metadata.len()) =>
+                    {
+                        Err(std::io::Error::other(
+                            "The downloaded size differs from the size its uploader claimed",
+                        ))
                     }
-                    tokio::fs::rename(&staged, &items[index].local_path).await
-                }
-                .await;
+                    Ok(metadata) if metadata.is_file() => {
+                        tokio::fs::rename(&staged, &items[index].local_path).await
+                    }
+                    Ok(_) => Err(std::io::Error::other(
+                        "The native CLI wrote something other than a regular file",
+                    )),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "The native CLI skipped this file and wrote nothing (Proton Docs and Sheets are not downloadable as files)",
+                        ))
+                    }
+                    Err(error) => Err(error),
+                };
                 if let Err(error) = publish {
                     *result = BulkTransferOutcome::Failed(ProviderError::IoError(error));
                     continue;
@@ -815,25 +868,49 @@ fn valid_cli_node_uid(uid: &str) -> bool {
 }
 
 /// Ask the actual destination filesystem, including its case/normalization
-/// rules, whether every staged name is distinct. No native transfer may
-/// overwrite one selected sibling with another in the private staging tree.
-fn reserve_bulk_download_names(dir: &Path, remotes: &[String]) -> Result<(), ProviderError> {
-    for remote in remotes {
-        let result = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(dir.join(basename(remote)));
-        match result {
-            Ok(file) => drop(file),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                return Err(ProviderError::InvalidPath(
-                    "The local filesystem cannot represent distinct bulk filenames".into(),
-                ))
+/// rules, which staged names it keeps apart. A name it folds into an earlier
+/// one is flagged; the native transfer must not overwrite one selected sibling
+/// with another. The probe files are removed again, so whatever the CLI then
+/// reports as written is what it wrote.
+fn reserve_bulk_download_names(dir: &Path, remotes: &[String]) -> Result<Vec<bool>, ProviderError> {
+    let mut aliased = vec![false; remotes.len()];
+    let mut created = Vec::with_capacity(remotes.len());
+    let mut probe = || -> Result<(), ProviderError> {
+        for (position, remote) in remotes.iter().enumerate() {
+            let path = dir.join(basename(remote));
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(file) => {
+                    drop(file);
+                    created.push(path);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    aliased[position] = true;
+                }
+                Err(error) => return Err(ProviderError::IoError(error)),
             }
-            Err(error) => return Err(ProviderError::IoError(error)),
         }
+        Ok(())
+    };
+    let probed = probe();
+    for path in &created {
+        let _ = std::fs::remove_file(path);
     }
-    Ok(())
+    probed.map(|()| aliased)
+}
+
+/// What an item whose process outcome is unknown becomes. A download was only
+/// ever written to private staging, so its single-file path may run; an upload
+/// may already be a revision on the server and is never replayed.
+fn unproven_bulk_item(upload: bool, message: String) -> BulkTransferOutcome {
+    if upload {
+        BulkTransferOutcome::Uncertain(message)
+    } else {
+        BulkTransferOutcome::NotAttempted(message)
+    }
 }
 
 /// Only a complete, unambiguous JSON summary can attest successes. Failure
@@ -843,6 +920,7 @@ fn bulk_summary_outcomes(
     stdout: &str,
     remotes: &[String],
     exit_success: bool,
+    upload: bool,
 ) -> Vec<BulkTransferOutcome> {
     let parse = || -> Option<Vec<BulkTransferOutcome>> {
         let summary: Value = serde_json::from_str(stdout.trim()).ok()?;
@@ -880,10 +958,16 @@ fn bulk_summary_outcomes(
         )
     };
     parse().unwrap_or_else(|| {
-        uncertain_items(
-            remotes.len(),
-            "Native CLI returned no complete per-file summary; remote state unknown",
-        )
+        remotes
+            .iter()
+            .map(|_| {
+                unproven_bulk_item(
+                    upload,
+                    "Native CLI returned no complete per-file summary; remote state unknown"
+                        .to_string(),
+                )
+            })
+            .collect()
     })
 }
 
@@ -1065,6 +1149,21 @@ fn ensure_not_section(abs: &str) -> Result<(), ProviderError> {
     Ok(())
 }
 
+/// Every section the CLI shows in the root. They always exist and none can be
+/// created, renamed or removed.
+const ROOT_SECTIONS: &[&str] = &[
+    "/my-files",
+    "/devices",
+    "/photos",
+    "/albums",
+    "/trash",
+    "/photos-trash",
+    "/shared-by-me",
+    "/shared-with-me",
+    "/photos-shared-by-me",
+    "/photos-shared-with-me",
+];
+
 /// Sections that hold the account's own storage, the ones a used-storage scan
 /// of the root counts. Left out: `shared-by-me` and `photos-shared-by-me`
 /// repeat items already under my-files and photos, `shared-with-me` and
@@ -1240,6 +1339,15 @@ fn parse_node(value: &Value, listed_path: &str) -> Option<RemoteEntry> {
     let mut metadata = std::collections::HashMap::new();
     if let Some(uid) = node_uid(value) {
         metadata.insert("uid".to_string(), uid);
+    }
+    // The size the uploader claimed, apart from the storage-size fallback
+    // above: only this one can be compared with a downloaded file.
+    if let Some(claimed) = value
+        .get("activeRevision")
+        .and_then(|r| r.get("claimedSize"))
+        .and_then(|v| v.as_u64())
+    {
+        metadata.insert("claimed_size".to_string(), claimed.to_string());
     }
 
     Some(RemoteEntry {
@@ -1649,6 +1757,12 @@ impl StorageProvider for ProtonCliProvider {
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let abs = self.resolve_path(path);
+        // The root and its sections always exist. Saying so lets an ancestor
+        // walk (sync conflict uploads, recursive mkdir) pass through
+        // `/my-files` instead of stopping on a refusal.
+        if abs == "/" || ROOT_SECTIONS.contains(&abs.as_str()) {
+            return Err(ProviderError::AlreadyExists(abs));
+        }
         let parent = parent_of(&abs);
         ensure_parent_writable(&parent)?;
         let name = basename(&abs);
@@ -2455,14 +2569,145 @@ mod cli_sequence_tests {
     }
 
     #[test]
-    fn bulk_staging_refuses_aliasing_names_before_native_io() {
+    fn bulk_staging_flags_aliasing_names_and_leaves_no_probe_behind() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = vec!["/one/a.txt".to_string(), "/two/a.txt".to_string()];
-        assert!(reserve_bulk_download_names(dir.path(), &paths).is_err());
+        let paths = vec![
+            "/one/a.txt".to_string(),
+            "/two/a.txt".to_string(),
+            "/one/b.txt".to_string(),
+        ];
         assert_eq!(
-            std::fs::metadata(dir.path().join("a.txt")).unwrap().len(),
-            0
+            reserve_bulk_download_names(dir.path(), &paths).unwrap(),
+            vec![false, true, false]
         );
+        // The CLI must find an empty folder: what it reports as written is
+        // what it wrote, never a probe left from the reservation.
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    /// Without `claimedSize` Proton lists the encrypted size. v4.2.4 refused
+    /// to publish such a download ("size differs from the planned file") on
+    /// every run, although the per-file path delivered it.
+    #[tokio::test]
+    async fn bulk_download_publishes_a_file_whose_listed_size_was_the_storage_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items: Vec<_> = ["a.txt", "b.txt"]
+            .iter()
+            .map(|name| BulkTransferItem {
+                local_path: dir.path().join(name).to_string_lossy().into_owned(),
+                remote_path: format!("/my-files/bulk/{name}"),
+                size: 1234,
+            })
+            .collect();
+        let results = provider(&shim).download_bulk(&items, None).await.unwrap();
+        assert!(results
+            .iter()
+            .all(|r| matches!(r, BulkTransferOutcome::Completed)));
+        for item in &items {
+            assert_eq!(
+                std::fs::read_to_string(&item.local_path).unwrap(),
+                "REMOTE-CONTENT"
+            );
+        }
+    }
+
+    /// A claimed size in the fresh listing is a promise about the plaintext:
+    /// a staged file of another size is not published. Without one, the
+    /// listed size is the storage size and only the SDK's block and manifest
+    /// checks stand behind the file.
+    #[tokio::test]
+    async fn bulk_download_holds_a_file_to_the_size_its_uploader_claimed() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let uid = |c: char| format!("{}~{}", "A".repeat(22), c.to_string().repeat(22));
+        std::fs::write(
+            dir.path().join("my-files_bulk.json"),
+            serde_json::to_vec(&serde_json::json!([
+                {"name":{"ok":true,"value":"same.txt"},"uid":uid('B'),"type":"file","activeRevision":{"claimedSize":14}},
+                {"name":{"ok":true,"value":"other.txt"},"uid":uid('C'),"type":"file","activeRevision":{"claimedSize":999}},
+                {"name":{"ok":true,"value":"unclaimed.txt"},"uid":uid('D'),"type":"file","totalStorageSize":1234}
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        let map: std::collections::HashMap<_, _> = [
+            (uid('B'), "same.txt"),
+            (uid('C'), "other.txt"),
+            (uid('D'), "unclaimed.txt"),
+        ]
+        .into_iter()
+        .collect();
+        std::fs::write(
+            dir.path().join("uid-name-map.json"),
+            serde_json::to_vec(&map).unwrap(),
+        )
+        .unwrap();
+        let items: Vec<_> = ["same.txt", "other.txt", "unclaimed.txt"]
+            .iter()
+            .map(|name| BulkTransferItem {
+                local_path: dir.path().join(name).to_string_lossy().into_owned(),
+                remote_path: format!("/my-files/bulk/{name}"),
+                size: 1234,
+            })
+            .collect();
+        let results = provider(&shim).download_bulk(&items, None).await.unwrap();
+        assert!(matches!(&results[0], BulkTransferOutcome::Completed));
+        assert!(matches!(&results[1], BulkTransferOutcome::Failed(_)));
+        assert!(matches!(&results[2], BulkTransferOutcome::Completed));
+        assert!(Path::new(&items[0].local_path).exists());
+        assert!(!Path::new(&items[1].local_path).exists());
+        assert!(Path::new(&items[2].local_path).exists());
+    }
+
+    /// The CLI resolves every source before it transfers anything; one that
+    /// vanished since the listing ends the run with zero counters. Nothing
+    /// was published, so each file goes back to the single-file path instead
+    /// of all of them being reported as unknown.
+    #[tokio::test]
+    async fn bulk_download_resolution_failure_hands_every_file_back_unattempted() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        std::fs::write(
+            dir.path().join("bulk-summary.json"),
+            r#"{"transferredItems":0,"skippedItems":0,"failedItems":0,"failures":[]}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("transfer-exit-1"), "").unwrap();
+        let items: Vec<_> = ["a.txt", "b.txt"]
+            .iter()
+            .map(|name| BulkTransferItem {
+                local_path: dir
+                    .path()
+                    .join("out")
+                    .join(name)
+                    .to_string_lossy()
+                    .into_owned(),
+                remote_path: format!("/my-files/bulk/{name}"),
+                size: 14,
+            })
+            .collect();
+        let results = provider(&shim).download_bulk(&items, None).await.unwrap();
+        assert!(results
+            .iter()
+            .all(|r| matches!(r, BulkTransferOutcome::NotAttempted(_))));
+        assert!(!dir.path().join("out").join("a.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn mkdir_on_a_section_says_it_exists_and_root_folders_stay_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let mut p = provider(&shim);
+        assert!(matches!(
+            p.mkdir("/my-files").await,
+            Err(ProviderError::AlreadyExists(_))
+        ));
+        assert!(matches!(
+            p.mkdir("/new-root-folder").await,
+            Err(ProviderError::PermissionDenied(_))
+        ));
+        assert!(verbs(&read_argv(dir.path()), "create-folder").is_empty());
     }
 
     #[tokio::test]
@@ -2649,7 +2894,7 @@ mod cli_sequence_tests {
                                 let answer = admin.run_bulk_once(&args).await?;
                                 if upload {
                                     let remotes: Vec<_> = transfer_items.iter().map(|i| i.remote_path.clone()).collect();
-                                    let outcomes = bulk_summary_outcomes(&String::from_utf8_lossy(&answer.stdout), &remotes, answer.status.success());
+                                    let outcomes = bulk_summary_outcomes(&String::from_utf8_lossy(&answer.stdout), &remotes, answer.status.success(), true);
                                     ensure(outcomes.iter().all(|o| matches!(o, BulkTransferOutcome::Completed)), "Direct CLI upload failed")?;
                                 } else {
                                     let summary: Value = serde_json::from_slice(&answer.stdout).map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -2909,21 +3154,134 @@ mod cli_sequence_tests {
     }
 
     #[tokio::test]
-    async fn bulk_rejects_collisions_changed_sources_and_different_parents_before_spawn() {
+    async fn bulk_hands_back_collisions_changed_sources_and_other_parents_unattempted() {
         let dir = tempfile::tempdir().unwrap();
         let shim = link_shim(dir.path());
-        let mut items = bulk_upload_items(dir.path(), 2);
+        let mut items = bulk_upload_items(dir.path(), 3);
         items[1].remote_path = "/my-files/other/file-001.txt".into();
-        assert!(provider(&shim).upload_bulk(&items, None).await.is_err());
-        items[1] = items[0].clone();
-        assert!(provider(&shim).upload_bulk(&items, None).await.is_err());
+        items[2] = items[0].clone();
+        let outcomes = provider(&shim).upload_bulk(&items, None).await.unwrap();
+        assert!(matches!(outcomes[0], BulkTransferOutcome::Completed));
+        assert!(matches!(outcomes[1], BulkTransferOutcome::NotAttempted(_)));
+        assert!(matches!(outcomes[2], BulkTransferOutcome::NotAttempted(_)));
+        let argv = read_argv(dir.path());
+        assert_eq!(verbs(&argv, "upload").len(), 1);
+        // A source that changed since planning goes back to the single-file
+        // path, which sends what is there now.
         items = bulk_upload_items(dir.path(), 2);
-        assert!(read_argv(dir.path()).is_empty());
         items[0].size = 8;
         let outcomes = provider(&shim).upload_bulk(&items, None).await.unwrap();
-        assert!(matches!(outcomes[0], BulkTransferOutcome::Failed(_)));
+        assert!(matches!(outcomes[0], BulkTransferOutcome::NotAttempted(_)));
         assert!(matches!(outcomes[1], BulkTransferOutcome::Completed));
+    }
+
+    /// A 429 on one file of a 200-file bulk: v4.2.4 reported it as a final
+    /// failure (exit 4), and the CLI then re-ran the whole command. Now only
+    /// that file runs again, once, on the single-file path.
+    #[tokio::test]
+    async fn bulk_transient_item_failure_runs_that_file_again_on_its_own() {
+        use crate::provider_transfer_executor::{
+            resolve_provider_transfer_runtime, ProviderUploadExecutor,
+        };
+        use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+        use crate::transfer_event_sink::{NoopTransferSink, TransferEventSink};
+        use crate::transfer_orchestrator::{execute_batch, TransferBatch};
+        use std::sync::{atomic::AtomicBool, Arc};
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items = bulk_upload_items(dir.path(), 200);
+        std::fs::write(
+            dir.path().join("bulk-summary-once.json"),
+            r#"{"transferredItems":199,"skippedItems":0,"failedItems":1,"failures":[{"name":"file-042.txt","error":"Error: 429 Too many requests"}]}"#,
+        )
+        .unwrap();
+        let provider: Arc<tokio::sync::Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(tokio::sync::Mutex::new(Some(Box::new(provider(&shim)))));
+        let (settings, model, caps) =
+            resolve_provider_transfer_runtime(&provider, Default::default()).await;
+        let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+        let result = execute_batch(
+            Arc::clone(&sink),
+            TransferBatch {
+                id: "bulk-retry".into(),
+                display_name: "Bulk".into(),
+                direction: TransferDirection::Upload,
+                config: TransferBatchConfig {
+                    max_concurrent: 1,
+                    ..Default::default()
+                },
+                entries: items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, item)| TransferEntry {
+                        id: i.to_string(),
+                        display_name: basename(&item.remote_path),
+                        local_path: item.local_path.clone(),
+                        remote_path: item.remote_path.clone(),
+                        size: item.size,
+                        modified: None,
+                    })
+                    .collect(),
+            },
+            Arc::new(ProviderUploadExecutor::new(
+                sink,
+                provider,
+                settings,
+                None,
+                tokio_util::sync::CancellationToken::new(),
+                model,
+                caps,
+            )),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!((result.completed, result.failed), (200, 0));
+        let argv = read_argv(dir.path());
+        let uploads = verbs(&argv, "upload");
+        assert_eq!(uploads.len(), 2);
+        assert!(uploads[1].iter().any(|a| a.ends_with("file-042.txt")));
+        assert!(!uploads[1].iter().any(|a| a.ends_with("file-041.txt")));
+    }
+
+    /// `put -r ./dir` passes relative local paths. v4.2.4 kept them all on the
+    /// per-file lane; they now reach the native bulk in their absolute form.
+    #[tokio::test]
+    async fn bulk_upload_accepts_relative_sources_as_absolute_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items = bulk_upload_items(dir.path(), 3);
+        let cwd = std::env::current_dir().unwrap();
+        let relative: Vec<_> = items
+            .iter()
+            .map(|item| {
+                let rel = pathdiff_from(&cwd, Path::new(&item.local_path));
+                crate::transfer_bulk::bulk_item(&rel, &item.remote_path, item.size)
+            })
+            .collect();
+        assert!(relative
+            .iter()
+            .all(|i| Path::new(&i.local_path).is_absolute()));
+        let outcomes = provider(&shim).upload_bulk(&relative, None).await.unwrap();
+        assert!(outcomes
+            .iter()
+            .all(|r| matches!(r, BulkTransferOutcome::Completed)));
         assert_eq!(verbs(&read_argv(dir.path()), "upload").len(), 1);
+    }
+
+    /// `a/b/c` relative to `base`, through `..` where needed.
+    fn pathdiff_from(base: &Path, target: &Path) -> String {
+        let base: Vec<_> = base.components().collect();
+        let target: Vec<_> = target.components().collect();
+        let common = base.iter().zip(&target).take_while(|(a, b)| a == b).count();
+        let mut out = PathBuf::new();
+        for _ in common..base.len() {
+            out.push("..");
+        }
+        for part in &target[common..] {
+            out.push(part.as_os_str());
+        }
+        out.to_string_lossy().into_owned()
     }
 
     /// Put a `proton-drive` stand-in in `dir` and return its path.

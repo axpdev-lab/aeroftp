@@ -1054,8 +1054,11 @@ pub trait StorageProvider: Send + Sync {
     /// Optional native multi-file operation. Defaults are unsupported: enabling
     /// a capability is a promise to return positional per-file outcomes and to
     /// stop owned wire work when the future is dropped. Never replay a partially
-    /// completed bulk. Adapters may expose completion-only progress if the
-    /// external program has no trustworthy per-file streaming interface.
+    /// completed bulk. An item the adapter cannot carry comes back as
+    /// `NotAttempted`, and the caller runs its single-file path for it; `Err`
+    /// means the whole call was refused before any item reached the wire.
+    /// Adapters may expose completion-only progress if the external program
+    /// has no trustworthy per-file streaming interface.
     fn supports_bulk_upload(&self) -> bool {
         false
     }

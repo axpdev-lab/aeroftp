@@ -12068,7 +12068,8 @@ struct SharedUploadOutcome {
 /// `--immutable` is NOT honoured here (the shared upload executor has no
 /// remote-stat skip, and unlike `get -r` the put scan does not
 /// pre-filter existing remote files); callers MUST keep `cli.immutable`
-/// uploads on the legacy path and emit an honest note when they do.
+/// uploads on the legacy path and emit an honest note when they do, or
+/// hand over only what [`screen_put_targets_by_listing`] left.
 /// `--max-transfer` IS enforced here: the file list is pre-flight
 /// truncated to the remaining session budget (file-granular, the legacy
 /// semantics) and the real transferred bytes are post-accounted into the
@@ -12130,20 +12131,7 @@ async fn run_shared_provider_upload_batch(
     );
     let native_bulk_is_useful = capabilities.bulk_upload
         == ftp_client_gui_lib::transfer_dag::Capability::Supported
-        && ftp_client_gui_lib::providers::bulk::reduces_cli_invocations(
-            &files
-                .iter()
-                .map(|(local, remote, size)| {
-                    ftp_client_gui_lib::providers::bulk::BulkTransferItem {
-                        local_path: local.clone(),
-                        remote_path: remote.clone(),
-                        size: *size,
-                    }
-                })
-                .collect::<Vec<_>>(),
-            true,
-            workers,
-        );
+        && native_bulk_upload_pays(files, workers);
     if !is_pool_backed && !native_bulk_is_useful {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
@@ -12275,6 +12263,233 @@ async fn run_shared_provider_upload_batch(
         over_budget: max_transfer_skipped as u32,
         engine_stats: batch_result.engine_stats,
     })
+}
+
+/// Whether one native bulk upload of `files` launches fewer provider
+/// commands than `workers` single-file uploads would: the admission
+/// [`run_shared_provider_upload_batch`] applies before it takes the bulk.
+fn native_bulk_upload_pays(files: &[(String, String, u64)], workers: usize) -> bool {
+    ftp_client_gui_lib::providers::bulk::reduces_cli_invocations(
+        &files
+            .iter()
+            .map(
+                |(local, remote, size)| ftp_client_gui_lib::providers::bulk::BulkTransferItem {
+                    local_path: local.clone(),
+                    remote_path: remote.clone(),
+                    size: *size,
+                },
+            )
+            .collect::<Vec<_>>(),
+        true,
+        workers,
+    )
+}
+
+/// Whether a `put` batch under `--immutable` or `--no-clobber` decides
+/// existence with one listing per remote folder
+/// ([`screen_put_targets_by_listing`]) and then goes to the shared batch,
+/// instead of the per-file path, which probes every target with a `stat`.
+/// That pays only where the shared batch then takes a native bulk upload: on
+/// Proton Drive's CLI each `stat` is one `proton-drive` process, so 200
+/// targets that were all there took 89 s to skip. The capability is the one
+/// the shared batch reads, from the connection already open, so the choice
+/// costs no dial; a batch the bulk would not admit keeps the per-file path
+/// rather than list folders whose files would be probed again there.
+fn put_screens_targets_by_listing(
+    provider: &dyn StorageProvider,
+    files: &[(String, String, u64)],
+    cli: &Cli,
+) -> bool {
+    provider.transfer_capabilities().bulk_upload
+        == ftp_client_gui_lib::transfer_dag::Capability::Supported
+        && native_bulk_upload_pays(files, effective_parallel_workers(cli))
+}
+
+/// What one listing of a remote folder says about the `put` targets in it.
+enum PutParentListing {
+    /// The folder's entries, by exact name: the remote is read as
+    /// case-sensitive, as the per-file `stat` of the same path is.
+    Listed(HashMap<String, RemoteEntry>),
+    /// The folder does not exist, so none of its targets do.
+    Missing,
+    /// The listing failed another way, and verifies nothing in the folder.
+    Failed {
+        message: String,
+        /// See [`TransferOnError::session_lost`].
+        session_lost: bool,
+    },
+}
+
+/// What [`filter_put_targets_by_listing`] decided for a batch.
+#[derive(Debug, Default)]
+struct PutListingScreen {
+    /// Still to upload, in the order planned.
+    upload: Vec<(String, String, u64)>,
+    /// Left alone, each reported under `UPLOAD_SKIP_PREFIX` as the per-file
+    /// path reports its skips: counted as done.
+    skipped: Vec<String>,
+    /// Neither written nor counted as done.
+    errors: Vec<String>,
+}
+
+/// The remote folder a `put` target lands in and its name there. Both
+/// batches build every target as `folder/name`; a target without a folder
+/// is relative, and lists the current folder its `stat` would resolve in.
+fn put_target_parent_and_name(remote: &str) -> (&str, &str) {
+    match remote.rsplit_once('/') {
+        Some(("", name)) => ("/", name),
+        Some((parent, name)) => (parent, name),
+        None => ("", remote),
+    }
+}
+
+/// `--immutable` / `--no-clobber` for a `put` batch, decided from one
+/// listing per remote folder instead of a `stat` per file. The rules are
+/// those of the existence check at the top of [`upload_transfer_on`], file
+/// for file, with the same messages:
+/// - a name the listing holds is skipped, or refused when this command left
+///   it incomplete or `--immutable` finds it of another size
+///   ([`immutable_size_mismatch`]);
+/// - a name it does not hold, or a folder that does not exist, is uploaded;
+/// - a folder the listing could not read verifies nothing: `--immutable`
+///   refuses to write, and `--no-clobber` does not write when the listing
+///   lost the session and uploads otherwise, as when its `stat` fails.
+///
+/// `exact`, `left_incomplete` and `local_size` are the provider, command
+/// and filesystem readings that check takes at the same points.
+fn filter_put_targets_by_listing(
+    cli: &Cli,
+    files: Vec<(String, String, u64)>,
+    listings: &HashMap<String, PutParentListing>,
+    exact: impl Fn(&RemoteEntry) -> bool,
+    left_incomplete: impl Fn(&str) -> bool,
+    local_size: impl Fn(&str) -> Option<u64>,
+) -> PutListingScreen {
+    let flag = if cli.immutable {
+        "--immutable"
+    } else {
+        "--no-clobber"
+    };
+    let mut screen = PutListingScreen::default();
+    for file in files {
+        let (local_path, remote_path, _) = &file;
+        let (parent, name) = put_target_parent_and_name(remote_path);
+        let existing = match listings.get(parent) {
+            Some(PutParentListing::Listed(entries)) => entries.get(name),
+            Some(PutParentListing::Missing) => None,
+            unread => {
+                // A folder absent from the map was never listed, which
+                // verifies no more than a listing that lost the session, and
+                // is held to the same rule.
+                let (message, session_lost) = match unread {
+                    Some(PutParentListing::Failed {
+                        message,
+                        session_lost,
+                    }) => (message.as_str(), *session_lost),
+                    _ => ("its folder was not listed", true),
+                };
+                if cli.immutable {
+                    screen.errors.push(format!(
+                        "--immutable: cannot verify that {} does not exist ({}); refusing to write rather than risk an overwrite",
+                        remote_path, message
+                    ));
+                    continue;
+                }
+                if session_lost {
+                    screen.errors.push(format!(
+                        "--no-clobber: cannot verify that {} does not exist ({}); not written",
+                        remote_path, message
+                    ));
+                    continue;
+                }
+                None
+            }
+        };
+        let Some(entry) = existing else {
+            screen.upload.push(file);
+            continue;
+        };
+        let refusal = if left_incomplete(remote_path) {
+            Some(left_incomplete_refusal(remote_path))
+        } else {
+            immutable_size_mismatch(
+                cli,
+                remote_path,
+                entry,
+                local_size(local_path),
+                exact(entry),
+            )
+        };
+        match refusal {
+            Some(message) => screen.errors.push(message),
+            None => screen
+                .skipped
+                .push(format!("{UPLOAD_SKIP_PREFIX}{flag}): {remote_path}")),
+        }
+    }
+    screen
+}
+
+/// Lists each distinct remote folder of `files` once and screens the batch
+/// with [`filter_put_targets_by_listing`], on the connection the caller then
+/// hands to the shared batch. `None` when Ctrl+C stopped the listings:
+/// nothing has been written, and nothing is to be.
+async fn screen_put_targets_by_listing(
+    provider: &mut dyn StorageProvider,
+    files: Vec<(String, String, u64)>,
+    cli: &Cli,
+    cancelled: &AtomicBool,
+) -> Option<PutListingScreen> {
+    let mut listings: HashMap<String, PutParentListing> = HashMap::new();
+    for (_, remote_path, _) in &files {
+        let (parent, _) = put_target_parent_and_name(remote_path);
+        if listings.contains_key(parent) {
+            continue;
+        }
+        if cancelled.load(Ordering::Relaxed) {
+            return None;
+        }
+        let listing = match provider.list(parent).await {
+            Ok(entries) => {
+                let mut by_name = HashMap::with_capacity(entries.len());
+                for entry in entries {
+                    by_name.entry(entry.name.clone()).or_insert(entry);
+                }
+                PutParentListing::Listed(by_name)
+            }
+            Err(ProviderError::NotFound(_)) => PutParentListing::Missing,
+            Err(e) => {
+                // Read as the per-file check reads its failed `stat`, with the
+                // folder in place of the file paths.
+                let err = TransferOnError::from_provider(&*provider, e, &[parent]);
+                PutParentListing::Failed {
+                    message: err.message,
+                    session_lost: err.session_lost,
+                }
+            }
+        };
+        listings.insert(parent.to_string(), listing);
+    }
+    let provider = &*provider;
+    let screen = filter_put_targets_by_listing(
+        cli,
+        files,
+        &listings,
+        |entry| remote_size_is_exact(provider, entry),
+        put_run_left_incomplete,
+        |local| std::fs::metadata(local).map(|m| m.len()).ok(),
+    );
+    // The per-file check notes each refusal as it makes it, so that
+    // `--retries` does not repeat an attempt whose only failures would come
+    // back the same (`put_with_retries`).
+    if screen
+        .errors
+        .iter()
+        .any(|error| error.starts_with(UPLOAD_REFUSED_PREFIX))
+    {
+        put_run_note_refused();
+    }
+    Some(screen)
 }
 
 // ── URL Parsing → ProviderConfig ───────────────────────────────────
@@ -36501,7 +36716,7 @@ async fn cmd_put_recursive(
     // `--skip-restricted` the offending entries are set aside and reported,
     // and the rest of the batch proceeds.
     let ptype = provider.provider_type();
-    let (dirs, files, restricted_skipped) = if cli.skip_restricted {
+    let (dirs, mut files, restricted_skipped) = if cli.skip_restricted {
         let split = split_restricted_targets(ptype, dirs, files);
         (split.dirs, split.files, split.notes)
     } else {
@@ -36589,14 +36804,45 @@ async fn cmd_put_recursive(
     // sink-agnostic: the upload twin of `cmd_get_recursive`. Every remote
     // directory was pre-created above while the scan provider was
     // connected, so the shared executor uploads into existing parents.
-    // `--immutable` stays on the legacy path: the shared upload executor
-    // has no remote-stat skip and the put scan (unlike get -r) does not
-    // pre-filter existing remote files. Non-pool-backed providers
+    // `--immutable` and `--no-clobber` stay on the legacy path: the shared
+    // upload executor has no remote-stat skip and the put scan (unlike
+    // get -r) does not pre-filter existing remote files. The exception is a
+    // batch the provider's native bulk upload takes, where one listing per
+    // folder screens the targets first and the shared batch gets the rest
+    // (`put_screens_targets_by_listing`). Non-pool-backed providers
     // (single-conn APIs) fall back to the legacy independent-connection
     // batch below: honest fallback, no overclaim.
     // The connection the legacy batch starts from, instead of closing it.
     let mut legacy_seed: Option<Box<dyn StorageProvider>> = None;
-    let use_legacy = if cli.immutable || no_clobber {
+    let screened =
+        (cli.immutable || no_clobber) && put_screens_targets_by_listing(&*provider, &files, cli);
+    if screened {
+        if let Some(screen) = screen_put_targets_by_listing(
+            &mut *provider,
+            std::mem::take(&mut files),
+            cli,
+            &cancelled,
+        )
+        .await
+        {
+            skipped += screen.skipped.len() as u32;
+            errors.extend(screen.errors);
+            files = screen.upload;
+        }
+        // Ctrl+C during the listings leaves no file to send, and the run
+        // reports itself interrupted.
+    }
+    // A screened batch is handed only the files the listings left, and the
+    // ones it skipped moved no bytes.
+    let (sent_files, sent_bytes) = if screened {
+        (
+            files.len(),
+            files.iter().map(|(_, _, size)| *size).sum::<u64>(),
+        )
+    } else {
+        (total_files, total_bytes)
+    };
+    let use_legacy = if (cli.immutable || no_clobber) && !screened {
         if !cli.quiet {
             eprintln!(
                 "Note: {} uses the single-stream upload path \
@@ -36610,6 +36856,9 @@ async fn cmd_put_recursive(
         }
         legacy_seed = Some(provider);
         true
+    } else if screened && files.is_empty() {
+        let _ = provider.disconnect().await;
+        false
     } else {
         match run_shared_provider_upload_batch(
             provider,
@@ -36623,8 +36872,8 @@ async fn cmd_put_recursive(
             Ok(outcome) => {
                 uploaded = outcome.uploaded;
                 done_bytes = shared_batch_bytes(
-                    uploaded as usize == total_files,
-                    total_bytes,
+                    uploaded as usize == sent_files,
+                    sent_bytes,
                     outcome.engine_stats.as_ref(),
                 );
                 over_budget = outcome.over_budget;
@@ -36638,6 +36887,9 @@ async fn cmd_put_recursive(
                 engine_stats = outcome.engine_stats;
                 false
             }
+            // After a screen this is the bulk declining what the listings
+            // left (too few files to save a launch): the per-file path sends
+            // them, and its own `stat` checks each again.
             Err(base) => {
                 legacy_seed = Some(base);
                 true
@@ -61707,7 +61959,7 @@ async fn cmd_put_glob(
         None
     };
 
-    let files: Vec<(String, String, u64)> = matched
+    let mut files: Vec<(String, String, u64)> = matched
         .into_iter()
         .map(|(local_path, filename, size)| {
             let remote_path = format!("{}/{}", remote_base.trim_end_matches('/'), filename);
@@ -61754,9 +62006,14 @@ async fn cmd_put_glob(
     // single-conn APIs) stay on the legacy batch: honest fallback, no
     // overclaim. The connection the legacy batch starts from: the probe
     // for `--immutable` and `--no-clobber`, the base the shared executor
-    // hands back otherwise.
+    // hands back otherwise. The exception is an `--immutable` or
+    // `--no-clobber` batch the provider's native bulk upload takes, where
+    // one listing of `remote_base` screens the targets first and the shared
+    // batch gets the rest (`put_screens_targets_by_listing`).
     let mut legacy_seed: Option<Box<dyn StorageProvider>> = None;
-    let use_legacy = if cli.immutable || no_clobber {
+    let screened = (cli.immutable || no_clobber)
+        && put_screens_targets_by_listing(&*probe_provider, &files, cli);
+    let use_legacy = if (cli.immutable || no_clobber) && !screened {
         if !cli.quiet {
             eprintln!(
                 "Note: {} uses the single-stream upload path \
@@ -61770,6 +62027,53 @@ async fn cmd_put_glob(
         }
         legacy_seed = Some(probe_provider);
         true
+    } else if screened {
+        // The probe is live and created `remote_base`: it lists the folder and
+        // then serves as the base of the shared batch, where a fresh dial
+        // would only add one more connect.
+        if let Some(screen) = screen_put_targets_by_listing(
+            &mut *probe_provider,
+            std::mem::take(&mut files),
+            cli,
+            &cancelled,
+        )
+        .await
+        {
+            skipped += screen.skipped.len() as u32;
+            errors.extend(screen.errors);
+            files = screen.upload;
+        }
+        // Ctrl+C during the listing leaves no file to send, and the run
+        // reports itself interrupted.
+        if files.is_empty() {
+            let _ = probe_provider.disconnect().await;
+            false
+        } else {
+            match run_shared_provider_upload_batch(
+                probe_provider,
+                &files,
+                cli,
+                overall_pb.clone(),
+                cancelled.clone(),
+            )
+            .await
+            {
+                Ok(outcome) => {
+                    uploaded = outcome.uploaded;
+                    over_budget = outcome.over_budget;
+                    errors.extend(outcome.errors);
+                    engine_stats = outcome.engine_stats;
+                    false
+                }
+                // The bulk declined what the listing left (too few files to
+                // save a launch): the per-file path sends them, and its own
+                // `stat` checks each again.
+                Err(base) => {
+                    legacy_seed = Some(base);
+                    true
+                }
+            }
+        }
     } else {
         let _ = probe_provider.disconnect().await;
         match create_and_connect(url, cli, format).await {
@@ -87911,6 +88215,467 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         );
         assert_eq!(shared_batch_bytes(true, 4096, None), 4096);
         assert_eq!(shared_batch_bytes(false, 4096, None), 0);
+    }
+
+    /// One planned `put` target, from a local path named after it.
+    fn planned_put(remote: &str, size: u64) -> (String, String, u64) {
+        (format!("/local{remote}"), remote.to_string(), size)
+    }
+
+    fn listed_folder(entries: Vec<RemoteEntry>) -> PutParentListing {
+        PutParentListing::Listed(
+            entries
+                .into_iter()
+                .map(|entry| (entry.name.clone(), entry))
+                .collect(),
+        )
+    }
+
+    /// The listing screen on a provider whose sizes are exact, with nothing
+    /// left incomplete and each local file of its planned size.
+    fn screen_put_plan(
+        cli: &Cli,
+        files: Vec<(String, String, u64)>,
+        listings: &HashMap<String, PutParentListing>,
+    ) -> PutListingScreen {
+        let sizes: HashMap<String, u64> = files
+            .iter()
+            .map(|(local, _, size)| (local.clone(), *size))
+            .collect();
+        filter_put_targets_by_listing(
+            cli,
+            files,
+            listings,
+            |_| true,
+            |_| false,
+            |local| sizes.get(local).copied(),
+        )
+    }
+
+    fn put_remotes(files: &[(String, String, u64)]) -> Vec<&str> {
+        files.iter().map(|(_, remote, _)| remote.as_str()).collect()
+    }
+
+    /// `--no-clobber` leaves alone whatever the listing holds under the
+    /// target's exact name, a folder or a file of another size included, as
+    /// the per-file `stat` does, and every skip carries the prefix the
+    /// batches count skips by.
+    #[test]
+    fn put_listing_screen_skips_what_no_clobber_finds_and_uploads_the_rest() {
+        let cli = test_cli();
+        let listings = HashMap::from([
+            (
+                "/dst".to_string(),
+                listed_folder(vec![
+                    RemoteEntry::file("a.txt".into(), "/dst/a.txt".into(), 3),
+                    RemoteEntry::directory("d".into(), "/dst/d".into()),
+                    RemoteEntry::file("B.txt".into(), "/dst/B.txt".into(), 6),
+                ]),
+            ),
+            (
+                "/".to_string(),
+                listed_folder(vec![RemoteEntry::file(
+                    "top.txt".into(),
+                    "/top.txt".into(),
+                    1,
+                )]),
+            ),
+        ]);
+        let screen = screen_put_plan(
+            &cli,
+            vec![
+                planned_put("/dst/a.txt", 6),
+                planned_put("/dst/d", 6),
+                planned_put("/dst/b.txt", 6),
+                planned_put("/top.txt", 1),
+            ],
+            &listings,
+        );
+        assert_eq!(
+            put_remotes(&screen.upload),
+            vec!["/dst/b.txt"],
+            "a name is matched exactly, case included"
+        );
+        assert_eq!(
+            screen.skipped,
+            vec![
+                format!("{UPLOAD_SKIP_PREFIX}--no-clobber): /dst/a.txt"),
+                format!("{UPLOAD_SKIP_PREFIX}--no-clobber): /dst/d"),
+                format!("{UPLOAD_SKIP_PREFIX}--no-clobber): /top.txt"),
+            ]
+        );
+        assert!(screen.errors.is_empty());
+    }
+
+    /// `--immutable` skips a target of the source's size and refuses one of
+    /// another size or one this command left incomplete, with the per-file
+    /// check's own messages. A size the provider cannot vouch for (Proton
+    /// Drive) is not compared, so that target is skipped.
+    #[test]
+    fn put_listing_screen_under_immutable_skips_the_same_size_and_refuses_another() {
+        let cli = Cli {
+            immutable: true,
+            ..test_cli()
+        };
+        let there = |name: &str, size| RemoteEntry::file(name.into(), format!("/dst/{name}"), size);
+        let listings = HashMap::from([(
+            "/dst".to_string(),
+            listed_folder(vec![
+                there("same.txt", 6),
+                there("cut.txt", 3),
+                there("left.txt", 6),
+            ]),
+        )]);
+        let files = vec![
+            planned_put("/dst/same.txt", 6),
+            planned_put("/dst/cut.txt", 6),
+            planned_put("/dst/left.txt", 6),
+            planned_put("/dst/new.txt", 6),
+        ];
+        let screen = filter_put_targets_by_listing(
+            &cli,
+            files.clone(),
+            &listings,
+            |_| true,
+            |remote| remote == "/dst/left.txt",
+            |_| Some(6),
+        );
+        assert_eq!(put_remotes(&screen.upload), vec!["/dst/new.txt"]);
+        assert_eq!(
+            screen.skipped,
+            vec![format!("{UPLOAD_SKIP_PREFIX}--immutable): /dst/same.txt")]
+        );
+        assert_eq!(
+            screen.errors,
+            vec![
+                immutable_size_mismatch(&cli, "/dst/cut.txt", &there("cut.txt", 3), Some(6), true)
+                    .expect("another size is refused"),
+                left_incomplete_refusal("/dst/left.txt"),
+            ]
+        );
+        assert!(screen
+            .errors
+            .iter()
+            .all(|error| error.starts_with(UPLOAD_REFUSED_PREFIX)));
+
+        let inexact = filter_put_targets_by_listing(
+            &cli,
+            files,
+            &listings,
+            |_| false,
+            |_| false,
+            |_| Some(6),
+        );
+        assert_eq!(put_remotes(&inexact.upload), vec!["/dst/new.txt"]);
+        assert_eq!(inexact.skipped.len(), 3);
+        assert!(inexact.errors.is_empty());
+    }
+
+    /// A folder that does not exist yet holds none of its targets, under
+    /// either flag.
+    #[test]
+    fn put_listing_screen_reads_a_missing_folder_as_holding_nothing() {
+        let immutable = Cli {
+            immutable: true,
+            ..test_cli()
+        };
+        for cli in [test_cli(), immutable] {
+            let listings = HashMap::from([("/dst/new".to_string(), PutParentListing::Missing)]);
+            let screen = screen_put_plan(
+                &cli,
+                vec![
+                    planned_put("/dst/new/a.txt", 6),
+                    planned_put("/dst/new/b.txt", 6),
+                ],
+                &listings,
+            );
+            assert_eq!(
+                put_remotes(&screen.upload),
+                vec!["/dst/new/a.txt", "/dst/new/b.txt"]
+            );
+            assert!(screen.skipped.is_empty());
+            assert!(screen.errors.is_empty());
+        }
+    }
+
+    /// A listing that failed verifies nothing, and the rule of a failed
+    /// per-file `stat` applies: `--immutable` refuses to write, `--no-clobber`
+    /// writes on a live session and not after a lost one. A folder never
+    /// listed is held to the lost-session rule. None of these is a refusal
+    /// (`UPLOAD_REFUSED_PREFIX`), so `--retries` runs the command again.
+    #[test]
+    fn put_listing_screen_on_a_failed_listing_follows_the_failed_stat_rule() {
+        let failed = |session_lost| {
+            HashMap::from([(
+                "/dst".to_string(),
+                PutParentListing::Failed {
+                    message: "boom".to_string(),
+                    session_lost,
+                },
+            )])
+        };
+        let files = || vec![planned_put("/dst/a.txt", 6)];
+        let immutable = Cli {
+            immutable: true,
+            ..test_cli()
+        };
+        for session_lost in [false, true] {
+            let screen = screen_put_plan(&immutable, files(), &failed(session_lost));
+            assert!(screen.upload.is_empty());
+            assert!(screen.skipped.is_empty());
+            assert_eq!(
+                screen.errors,
+                vec![
+                    "--immutable: cannot verify that /dst/a.txt does not exist (boom); refusing to write rather than risk an overwrite"
+                        .to_string()
+                ]
+            );
+        }
+
+        let no_clobber = test_cli();
+        let live = screen_put_plan(&no_clobber, files(), &failed(false));
+        assert_eq!(put_remotes(&live.upload), vec!["/dst/a.txt"]);
+        assert!(live.errors.is_empty());
+        let lost = screen_put_plan(&no_clobber, files(), &failed(true));
+        assert!(lost.upload.is_empty());
+        assert_eq!(
+            lost.errors,
+            vec![
+                "--no-clobber: cannot verify that /dst/a.txt does not exist (boom); not written"
+                    .to_string()
+            ]
+        );
+        let unlisted = screen_put_plan(&no_clobber, files(), &HashMap::new());
+        assert!(unlisted.upload.is_empty());
+        assert_eq!(unlisted.errors.len(), 1);
+        assert!(lost
+            .errors
+            .iter()
+            .chain(&unlisted.errors)
+            .all(|error| !error.starts_with(UPLOAD_REFUSED_PREFIX)));
+    }
+
+    #[test]
+    fn put_target_parent_and_name_splits_at_the_last_slash() {
+        assert_eq!(put_target_parent_and_name("/a/b/c.txt"), ("/a/b", "c.txt"));
+        assert_eq!(put_target_parent_and_name("/c.txt"), ("/", "c.txt"));
+        assert_eq!(put_target_parent_and_name("a/c.txt"), ("a", "c.txt"));
+        assert_eq!(put_target_parent_and_name("c.txt"), ("", "c.txt"));
+    }
+
+    /// A provider whose `list` answers from `answer` and records each call.
+    /// Its `stat` fails the test: the screen lists folders, it does not probe
+    /// files.
+    struct ListAnswerProvider {
+        answer: fn(&str) -> Result<Vec<RemoteEntry>, ProviderError>,
+        listed: Vec<String>,
+        bulk: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for ListAnswerProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::S3
+        }
+        fn display_name(&self) -> String {
+            "list-answer".to_string()
+        }
+        fn supports_bulk_upload(&self) -> bool {
+            self.bulk
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.listed.push(path.to_string());
+            (self.answer)(path)
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote: &str,
+            _local: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(&mut self, _remote: &str) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local: &str,
+            _remote: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            panic!("stat {path}: the screen must not probe a file");
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            panic!("size {path}: the screen must not probe a file");
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            panic!("exists {path}: the screen must not probe a file");
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("list-answer".to_string())
+        }
+    }
+
+    /// `/dst` holds `a.txt`, `/dst/new` does not exist, `/dst/locked` refuses
+    /// the listing on a live session, and `/dst/gone` loses it.
+    fn put_screen_folders(path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        match path {
+            "/dst" => Ok(vec![RemoteEntry::file(
+                "a.txt".into(),
+                "/dst/a.txt".into(),
+                6,
+            )]),
+            "/dst/new" => Err(ProviderError::NotFound(path.to_string())),
+            "/dst/locked" => Err(ProviderError::PermissionDenied(path.to_string())),
+            _ => Err(ProviderError::ConnectionLost(
+                "connection reset by peer".to_string(),
+            )),
+        }
+    }
+
+    /// One `list` per distinct folder, whatever the number of targets in it,
+    /// and no `stat` at all: the 200 `proton-drive filesystem info` launches
+    /// that `put -r -n` cost on v4.2.4 become one listing of the folder. A
+    /// NotFound is a folder that holds nothing, and any other failure is read
+    /// as the per-file check reads its failed `stat`.
+    #[tokio::test]
+    async fn put_listing_screen_lists_each_folder_once_and_probes_no_file() {
+        let mut provider = ListAnswerProvider {
+            answer: put_screen_folders,
+            listed: Vec::new(),
+            bulk: true,
+        };
+        let files = vec![
+            planned_put("/dst/a.txt", 6),
+            planned_put("/dst/b.txt", 6),
+            planned_put("/dst/new/c.txt", 6),
+            planned_put("/dst/new/c2.txt", 6),
+            planned_put("/dst/locked/d.txt", 6),
+            planned_put("/dst/gone/e.txt", 6),
+            planned_put("/dst/z.txt", 6),
+        ];
+        let screen = screen_put_targets_by_listing(
+            &mut provider,
+            files.clone(),
+            &test_cli(),
+            &AtomicBool::new(false),
+        )
+        .await
+        .expect("not cancelled");
+        assert_eq!(
+            provider.listed,
+            vec!["/dst", "/dst/new", "/dst/locked", "/dst/gone"]
+        );
+        assert_eq!(
+            put_remotes(&screen.upload),
+            vec![
+                "/dst/b.txt",
+                "/dst/new/c.txt",
+                "/dst/new/c2.txt",
+                "/dst/locked/d.txt",
+                "/dst/z.txt",
+            ]
+        );
+        assert_eq!(
+            screen.skipped,
+            vec![format!("{UPLOAD_SKIP_PREFIX}--no-clobber): /dst/a.txt")]
+        );
+        assert_eq!(screen.errors.len(), 1);
+        assert!(
+            screen.errors[0].starts_with("--no-clobber: cannot verify that /dst/gone/e.txt"),
+            "{}",
+            screen.errors[0]
+        );
+
+        // Ctrl+C before a listing: nothing is listed, and nothing is to be sent.
+        let mut provider = ListAnswerProvider {
+            answer: put_screen_folders,
+            listed: Vec::new(),
+            bulk: true,
+        };
+        let stopped = screen_put_targets_by_listing(
+            &mut provider,
+            files,
+            &test_cli(),
+            &AtomicBool::new(true),
+        )
+        .await;
+        assert!(stopped.is_none());
+        assert!(provider.listed.is_empty());
+    }
+
+    /// The screen is taken only where the provider has the native bulk upload
+    /// the shared batch reads, and only for a batch that bulk admits: elsewhere
+    /// `--immutable` and `--no-clobber` keep the per-file path unchanged.
+    #[test]
+    fn put_screens_by_listing_only_where_a_native_bulk_takes_the_batch() {
+        let cli = test_cli();
+        let flat: Vec<(String, String, u64)> = (0..200)
+            .map(|i| {
+                (
+                    format!("/tmp/flat/file-{i}.bin"),
+                    format!("/dst/file-{i}.bin"),
+                    4096,
+                )
+            })
+            .collect();
+        let provider = |bulk| ListAnswerProvider {
+            answer: put_screen_folders,
+            listed: Vec::new(),
+            bulk,
+        };
+        assert!(put_screens_targets_by_listing(&provider(true), &flat, &cli));
+        assert!(
+            !put_screens_targets_by_listing(&provider(false), &flat, &cli),
+            "no native bulk"
+        );
+        assert!(
+            !put_screens_targets_by_listing(&provider(true), &flat[..1], &cli),
+            "one file saves no launch"
+        );
     }
 
     /// A failed attempt takes back the bytes it added to the batch's

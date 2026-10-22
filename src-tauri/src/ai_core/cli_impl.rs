@@ -405,6 +405,19 @@ impl RemoteBackend for CliRemoteBackend {
             .map_err(|e| e.to_string())
     }
 
+    async fn upload_bulk(
+        &self,
+        items: &[crate::providers::bulk::BulkTransferItem],
+    ) -> Option<Result<Vec<crate::providers::bulk::BulkTransferOutcome>, String>> {
+        // Not connected: no native bulk, so the per-file uploads report it.
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut()?;
+        super::remote_backend::provider_upload_bulk(p.as_mut(), items)
+            .await
+            .map_err(|e| e.to_string())
+            .transpose()
+    }
+
     async fn delete(&self, path: &str) -> Result<(), String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;

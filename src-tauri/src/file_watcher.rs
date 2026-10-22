@@ -217,10 +217,13 @@ pub fn should_exclude_path(path: &Path) -> bool {
         }
     }
 
-    // Check path components for VCS directories
+    // Check path components for VCS directories and download staging
     for component in path.components() {
         if let Some(s) = component.as_os_str().to_str() {
             if s == ".git" || s == ".svn" || s == ".hg" || s == ".bzr" {
+                return true;
+            }
+            if crate::providers::atomic_write::is_download_staging_dir_name(s) {
                 return true;
             }
         }

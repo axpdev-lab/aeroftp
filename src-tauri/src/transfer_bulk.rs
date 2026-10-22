@@ -4,7 +4,7 @@
 //! Bounded native bulk planning and the provider-executor boundary. No retry
 //! wraps this operation: partial/unknown completion must not replay revisions.
 
-use std::ops::Range;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -23,13 +23,14 @@ use crate::transfer_orchestrator::TransferExecutor;
 
 pub(crate) fn group_key(entry: &TransferEntry, upload: bool) -> Option<String> {
     let name = plain_bulk_name(&entry.remote_path)?;
-    let local = Path::new(&entry.local_path);
-    // Relative paths grow when the CLI resolves them against cwd; literal
-    // glob quoting can also expand arguments beyond the planner's budget.
-    // Keep these on the established single-file path rather than admitting
-    // a group whose encoded command could be too large.
+    // A relative path is planned in the absolute spelling the native program
+    // resolves it to, so its command-line bytes are counted exactly. Literal
+    // glob quoting can expand an argument beyond the planner's budget: such
+    // paths keep the established single-file path.
+    let absolute = absolute_local_path(&entry.local_path)?;
+    let local = Path::new(&absolute);
     if !(local.is_absolute() || cfg!(windows) && local.has_root())
-        || entry.local_path.contains(['*', '?', '[', '{'])
+        || absolute.contains(['*', '?', '[', '{'])
     {
         return None;
     }
@@ -47,74 +48,98 @@ pub(crate) fn group_key(entry: &TransferEntry, upload: bool) -> Option<String> {
     }
 }
 
-/// Preserve caller ordering and conflict semantics. Adjacent compatible files
-/// share one bounded native invocation. Duplicate portable basenames split a
-/// group, even if the filesystem happens to be case-sensitive on this host.
+/// Indices into the caller's entries; one native invocation per group.
+pub(crate) type BulkGroups = Vec<Vec<usize>>;
+
 pub(crate) fn plan_groups<E: TransferExecutor>(
     entries: &[TransferEntry],
     executor: &E,
-) -> Vec<Range<usize>> {
+) -> BulkGroups {
     plan_groups_by_key(entries, |entry| executor.bulk_group_key(entry))
 }
 
+/// Files that share a key share one bounded native invocation, also when the
+/// caller interleaves them: a sync plan comes out of a hash map and a tree
+/// walk alternates folders, and adjacency alone left v4.2.4's CLI sync of a
+/// nested tree on one process per file. Groups follow the order of their
+/// first file and keep caller order inside. Interleaved files are gathered
+/// only when every destination in the batch is distinct, so reordering cannot
+/// change which of two writes to one path lands last; otherwise only adjacent
+/// files are grouped. Duplicate portable basenames split a group, even if the
+/// filesystem happens to be case-sensitive on this host.
 pub(crate) fn plan_groups_by_key(
     entries: &[TransferEntry],
     key_for: impl Fn(&TransferEntry) -> Option<String>,
-) -> Vec<Range<usize>> {
-    let mut ranges = Vec::new();
-    let mut start = 0;
-    while start < entries.len() {
-        let first = &entries[start];
-        let key = key_for(first);
-        let mut end = start + 1;
-        let mut bytes = first.size;
-        let mut path_bytes = 1024usize.saturating_add(
-            first
-                .local_path
-                .len()
-                .saturating_add(first.remote_path.len())
-                .saturating_add(6),
-        );
-        let mut names = std::collections::HashSet::new();
-        names.insert(
-            first
-                .remote_path
-                .rsplit('/')
-                .next()
-                .unwrap_or("")
-                .to_lowercase(),
-        );
-        if key.is_some() && bytes <= MAX_BULK_BYTES && path_bytes <= MAX_BULK_PATH_BYTES {
-            while end < entries.len() && end - start < MAX_BULK_FILES {
-                let entry = &entries[end];
-                let next_bytes = bytes.saturating_add(entry.size);
-                let next_paths = path_bytes
-                    .saturating_add(entry.local_path.len())
-                    .saturating_add(entry.remote_path.len())
-                    .saturating_add(6);
-                if key_for(entry) != key
-                    || next_bytes > MAX_BULK_BYTES
-                    || next_paths > MAX_BULK_PATH_BYTES
-                    || !names.insert(
-                        entry
-                            .remote_path
-                            .rsplit('/')
-                            .next()
-                            .unwrap_or("")
-                            .to_lowercase(),
-                    )
-                {
-                    break;
-                }
-                bytes = next_bytes;
-                path_bytes = next_paths;
-                end += 1;
+) -> BulkGroups {
+    struct Open {
+        group: usize,
+        bytes: u64,
+        arg_bytes: usize,
+        names: HashSet<String>,
+    }
+    let gather = destinations_are_distinct(entries);
+    let mut groups: BulkGroups = Vec::new();
+    let mut open: HashMap<String, Open> = HashMap::new();
+    for (index, entry) in entries.iter().enumerate() {
+        let absolute = absolute_local_path(&entry.local_path).unwrap_or_default();
+        let arg_bytes = command_arg_bytes(&absolute, &entry.remote_path);
+        let name = entry
+            .remote_path
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+        let key = key_for(entry).filter(|_| {
+            entry.size <= MAX_BULK_BYTES
+                && BULK_COMMAND_RESERVE_BYTES.saturating_add(arg_bytes) <= MAX_BULK_PATH_BYTES
+        });
+        let Some(key) = key else {
+            if !gather {
+                open.clear();
+            }
+            groups.push(vec![index]);
+            continue;
+        };
+        if !gather {
+            open.retain(|open_key, _| open_key == &key);
+        }
+        if let Some(current) = open.get_mut(&key) {
+            let next_bytes = current.bytes.saturating_add(entry.size);
+            let next_args = current.arg_bytes.saturating_add(arg_bytes);
+            if groups[current.group].len() < MAX_BULK_FILES
+                && next_bytes <= MAX_BULK_BYTES
+                && next_args <= MAX_BULK_PATH_BYTES
+                && !current.names.contains(&name)
+            {
+                groups[current.group].push(index);
+                current.bytes = next_bytes;
+                current.arg_bytes = next_args;
+                current.names.insert(name);
+                continue;
             }
         }
-        ranges.push(start..end);
-        start = end;
+        groups.push(vec![index]);
+        open.insert(
+            key,
+            Open {
+                group: groups.len() - 1,
+                bytes: entry.size,
+                arg_bytes: BULK_COMMAND_RESERVE_BYTES.saturating_add(arg_bytes),
+                names: HashSet::from([name]),
+            },
+        );
     }
-    ranges
+    groups
+}
+
+/// Upload and download write different sides, so both are checked; local
+/// spellings are case-folded because the local filesystem may ignore case.
+fn destinations_are_distinct(entries: &[TransferEntry]) -> bool {
+    let mut remote = HashSet::with_capacity(entries.len());
+    let mut local = HashSet::with_capacity(entries.len());
+    entries.iter().all(|entry| {
+        remote.insert(entry.remote_path.as_str()) && local.insert(entry.local_path.to_lowercase())
+    })
 }
 
 pub(crate) fn emit_event(
@@ -149,6 +174,76 @@ pub(crate) fn emit_event(
     });
 }
 
+/// What the generic layer does with one item after the native bulk returned.
+pub(crate) enum BulkSettlement {
+    Done,
+    /// Run the provider's single-file operation once. Only for an item that
+    /// never reached the wire, or one the native program reported as failed
+    /// for a transient reason: neither can duplicate a committed write.
+    SingleFile,
+    Failed(TransferFailure),
+}
+
+pub(crate) fn settle_bulk_outcome(
+    outcome: BulkTransferOutcome,
+    local_path: &str,
+) -> BulkSettlement {
+    match outcome {
+        BulkTransferOutcome::Completed => BulkSettlement::Done,
+        BulkTransferOutcome::NotAttempted(_) => BulkSettlement::SingleFile,
+        BulkTransferOutcome::Failed(error) => {
+            let mut failure =
+                crate::transfer_multipart::transfer_failure_from_provider(&error, Some(local_path));
+            if failure.retryable {
+                return BulkSettlement::SingleFile;
+            }
+            failure.retryable = false;
+            BulkSettlement::Failed(failure)
+        }
+        // May already have reached the server: never replayed.
+        BulkTransferOutcome::Uncertain(message) => BulkSettlement::Failed(TransferFailure::new(
+            TransferFailureKind::RemoteIo,
+            message,
+            false,
+        )),
+    }
+}
+
+/// One single-file attempt on the provider the bulk used. The adapter's own
+/// single-file path keeps its transient retries; no further replay follows.
+pub(crate) async fn single_file_transfer(
+    provider: &mut dyn StorageProvider,
+    item: &BulkTransferItem,
+    upload: bool,
+    per_file_seconds: u64,
+) -> Result<(), crate::providers::ProviderError> {
+    let timeout = bulk_timeout(per_file_seconds, 1, item.size);
+    let operation = async {
+        if upload {
+            provider
+                .upload(&item.local_path, &item.remote_path, None)
+                .await
+        } else {
+            provider
+                .download(&item.remote_path, &item.local_path, None)
+                .await
+        }
+    };
+    tokio::time::timeout(timeout, operation)
+        .await
+        .unwrap_or(Err(crate::providers::ProviderError::Timeout))
+}
+
+/// The provider-facing item: relative local paths become absolute here, as
+/// they were when the planner counted them.
+pub(crate) fn bulk_item(local_path: &str, remote_path: &str, size: u64) -> BulkTransferItem {
+    BulkTransferItem {
+        local_path: absolute_local_path(local_path).unwrap_or_else(|| local_path.to_string()),
+        remote_path: remote_path.to_string(),
+        size,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_provider_bulk(
     provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
@@ -179,27 +274,32 @@ pub(crate) async fn execute_provider_bulk(
             ),
         );
     };
-    // Reject any invalid path before a native process can modify any item.
-    let invalid = entries.iter().find_map(|entry| {
-        crate::restricted_chars::validate_path(provider.provider_type(), &entry.remote_path).err()
-    });
-    if let Some(error) = invalid {
-        return failed_bulk(
-            entries,
-            sink.as_ref(),
-            upload,
-            TransferFailure::new(TransferFailureKind::InvalidPath, error.to_string(), false),
-        );
+    let mut settled: Vec<Option<TransferOutcome>> = vec![None; entries.len()];
+    // An invalid path fails on its own, before a native process can modify
+    // any item; its siblings still travel together.
+    let mut submitted = Vec::with_capacity(entries.len());
+    for (index, entry) in entries.iter().enumerate() {
+        match crate::restricted_chars::validate_path(provider.provider_type(), &entry.remote_path) {
+            Ok(()) => submitted.push(index),
+            Err(error) => {
+                let failure = TransferFailure::new(
+                    TransferFailureKind::InvalidPath,
+                    error.to_string(),
+                    false,
+                );
+                emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
+                settled[index] = Some(TransferOutcome::Failed(failure));
+            }
+        }
     }
-    let items: Vec<_> = entries
+    let items: Vec<_> = submitted
         .iter()
-        .map(|e| BulkTransferItem {
-            local_path: e.local_path.clone(),
-            remote_path: e.remote_path.clone(),
-            size: e.size,
+        .map(|&index| {
+            let e = &entries[index];
+            bulk_item(&e.local_path, &e.remote_path, e.size)
         })
         .collect();
-    let progress_entries = entries.to_vec();
+    let progress_entries: Vec<_> = submitted.iter().map(|&i| entries[i].clone()).collect();
     let progress_sink = Arc::clone(sink);
     let progress_token = token.clone();
     let on_progress: BulkProgress = Box::new(move |index, sent, total| {
@@ -243,76 +343,110 @@ pub(crate) async fn execute_provider_bulk(
     // The native CLI may resolve selected paths serially before transferring.
     // Retain the per-file timeout budget for every submitted item; a Stop is
     // still observed immediately through both cancellation sources.
-    let timeout = bulk_timeout(timeout_seconds, entries.len(), bytes);
-    let operation = async {
-        if upload {
-            provider.upload_bulk(&items, Some(on_progress)).await
-        } else {
-            provider.download_bulk(&items, Some(on_progress)).await
-        }
-    };
-    let raw = tokio::select! {
-        biased;
-        _ = cancelled(token, cancel) => None,
-        result = tokio::time::timeout(timeout, operation) => Some(result),
-    };
-    let results = match raw {
-        None => {
-            return entries
-                .iter()
-                .map(|entry| {
+    let timeout = bulk_timeout(timeout_seconds, items.len(), bytes);
+    let results = if items.is_empty() {
+        Vec::new()
+    } else {
+        let operation = async {
+            if upload {
+                provider.upload_bulk(&items, Some(on_progress)).await
+            } else {
+                provider.download_bulk(&items, Some(on_progress)).await
+            }
+        };
+        let raw = tokio::select! {
+            biased;
+            _ = cancelled(token, cancel) => None,
+            result = tokio::time::timeout(timeout, operation) => Some(result),
+        };
+        match raw {
+            None => {
+                for &index in &submitted {
                     let failure = cancelled_failure();
-                    emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
-                    TransferOutcome::Failed(failure)
+                    emit_event(
+                        sink.as_ref(),
+                        &entries[index],
+                        upload,
+                        "file_error",
+                        Some(&failure),
+                    );
+                    settled[index] = Some(TransferOutcome::Failed(failure));
+                }
+                return settled.into_iter().map(Option::unwrap).collect();
+            }
+            Some(Ok(Ok(results))) if results.len() == items.len() => results,
+            // Refused before any item was handed to the native program.
+            Some(Ok(Err(error))) => items
+                .iter()
+                .map(|_| {
+                    BulkTransferOutcome::Failed(crate::providers::ProviderError::TransferFailed(
+                        error.to_string(),
+                    ))
                 })
-                .collect()
+                .collect(),
+            _ => uncertain_items(
+                items.len(),
+                "Bulk did not return complete outcomes; inspect the destination before retrying",
+            ),
         }
-        Some(Ok(Ok(results))) if results.len() == entries.len() => results,
-        Some(Ok(Err(error))) => entries
-            .iter()
-            .map(|_| {
-                BulkTransferOutcome::Failed(crate::providers::ProviderError::TransferFailed(
-                    error.to_string(),
+    };
+    let mut single_file = Vec::new();
+    for ((&index, item), result) in submitted.iter().zip(&items).zip(results) {
+        let entry = &entries[index];
+        match settle_bulk_outcome(result, &item.local_path) {
+            BulkSettlement::Done => {
+                if !upload {
+                    crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
+                }
+                emit_event(sink.as_ref(), entry, upload, "file_complete", None);
+                settled[index] = Some(TransferOutcome::Success);
+            }
+            BulkSettlement::SingleFile => single_file.push((index, item.clone())),
+            BulkSettlement::Failed(failure) => {
+                emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
+                settled[index] = Some(TransferOutcome::Failed(failure));
+            }
+        }
+    }
+    for (index, item) in single_file {
+        let entry = &entries[index];
+        let result = tokio::select! {
+            biased;
+            _ = cancelled(token, cancel) => None,
+            result = single_file_transfer(provider.as_mut(), &item, upload, timeout_seconds) => Some(result),
+        };
+        settled[index] = Some(match result {
+            Some(Ok(())) => {
+                if !upload {
+                    crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
+                }
+                emit_event(sink.as_ref(), entry, upload, "file_complete", None);
+                TransferOutcome::Success
+            }
+            other => {
+                let mut failure = match other {
+                    Some(Err(error)) => crate::transfer_multipart::transfer_failure_from_provider(
+                        &error,
+                        Some(&entry.local_path),
+                    ),
+                    _ => crate::transfer_multipart::cancelled_failure(),
+                };
+                failure.retryable = false;
+                emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
+                TransferOutcome::Failed(failure)
+            }
+        });
+    }
+    settled
+        .into_iter()
+        .map(|outcome| {
+            outcome.unwrap_or_else(|| {
+                TransferOutcome::Failed(TransferFailure::new(
+                    TransferFailureKind::Unknown,
+                    "Bulk item left unsettled; destination state unknown",
+                    false,
                 ))
             })
-            .collect(),
-        _ => uncertain_items(
-            entries.len(),
-            "Bulk did not return complete outcomes; inspect the destination before retrying",
-        ),
-    };
-    entries
-        .iter()
-        .zip(results)
-        .map(|(entry, result)| {
-            match result {
-                BulkTransferOutcome::Completed => {
-                    if !upload {
-                        crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
-                    }
-                    emit_event(sink.as_ref(), entry, upload, "file_complete", None);
-                    TransferOutcome::Success
-                }
-                other => {
-                    let mut failure = match other {
-                        BulkTransferOutcome::Failed(error) => {
-                            crate::transfer_multipart::transfer_failure_from_provider(
-                                &error,
-                                Some(&entry.local_path),
-                            )
-                        }
-                        BulkTransferOutcome::Uncertain(message) => {
-                            TransferFailure::new(TransferFailureKind::RemoteIo, message, false)
-                        }
-                        BulkTransferOutcome::Completed => unreachable!(),
-                    };
-                    // No automatic replay, even for a known failed item, until an
-                    // adapter supplies a separate file-only retry contract.
-                    failure.retryable = false;
-                    emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
-                    TransferOutcome::Failed(failure)
-                }
-            }
         })
         .collect()
 }
@@ -468,20 +602,72 @@ mod tests {
     #[test]
     fn bulk_groups_are_bounded_by_files_payload_paths_and_collisions() {
         let e = executor();
-        assert_eq!(plan_groups(&entries(300), &e), vec![0..256, 256..300]);
+        let all: Vec<usize> = (0..300).collect();
+        assert_eq!(
+            plan_groups(&entries(300), &e),
+            vec![all[..256].to_vec(), all[256..].to_vec()]
+        );
         let mut files = entries(3);
         files[1].size = MAX_BULK_BYTES;
-        assert_eq!(plan_groups(&files, &e), vec![0..1, 1..2, 2..3]);
+        assert_eq!(plan_groups(&files, &e), vec![vec![0], vec![1], vec![2]]);
+        // A repeated destination keeps the adjacent-only plan: order decides
+        // which write lands last.
         files = entries(3);
         files[1] = files[0].clone();
-        assert_eq!(plan_groups(&files, &e), vec![0..1, 1..3]);
+        assert_eq!(plan_groups(&files, &e), vec![vec![0], vec![1, 2]]);
         files = entries(3);
         files[1].local_path = format!("/{}/file-1.txt", "a".repeat(MAX_BULK_PATH_BYTES));
-        assert_eq!(plan_groups(&files, &e), vec![0..1, 1..2, 2..3]);
+        assert_eq!(plan_groups(&files, &e), vec![vec![0, 2], vec![1]]);
         files = entries(3);
         files[1].remote_path = "/other/file-1.txt".into();
-        assert_eq!(plan_groups(&files, &e), vec![0..1, 1..2, 2..3]);
+        assert_eq!(plan_groups(&files, &e), vec![vec![0, 2], vec![1]]);
     }
+
+    /// v4.2.4 grouped only adjacent files. A CLI sync plan comes out of a hash
+    /// map, so a nested tree interleaved its folders and every group was a
+    /// single file (live: 80 launches for an 80-file, 5-folder tree).
+    #[test]
+    fn bulk_groups_gather_interleaved_folders_in_first_seen_order() {
+        let e = executor();
+        let files: Vec<_> = (0..12)
+            .map(|i| TransferEntry {
+                id: i.to_string(),
+                display_name: format!("f{i}.txt"),
+                remote_path: format!("/bulk/d{}/f{i}.txt", i % 3),
+                local_path: format!("/tmp/bulk/d{}/f{i}.txt", i % 3),
+                size: 4,
+                modified: None,
+            })
+            .collect();
+        assert_eq!(
+            plan_groups(&files, &e),
+            vec![vec![0, 3, 6, 9], vec![1, 4, 7, 10], vec![2, 5, 8, 11]]
+        );
+    }
+
+    #[test]
+    fn bulk_groups_count_only_the_command_line_side_of_each_file() {
+        let e = executor();
+        // A deep local tree: 300-byte local paths, short remote paths. The
+        // v4.2.4 planner counted both sides and split 256 such files.
+        let deep = "d".repeat(280);
+        let files: Vec<_> = (0..256)
+            .map(|i| TransferEntry {
+                id: i.to_string(),
+                display_name: format!("f{i:03}.txt"),
+                remote_path: format!("/bulk/f{i:03}.txt"),
+                local_path: format!("/{deep}/f{i:03}.txt"),
+                size: 4,
+                modified: None,
+            })
+            .collect();
+        let groups = plan_groups(&files, &e);
+        // 293 command-line bytes each: all 256 fit 96 KiB; Windows keeps
+        // its 24 KiB line (80 per group). v4.2.4 made groups of 75.
+        let expected = if cfg!(windows) { 80 } else { 256 };
+        assert_eq!(groups[0].len(), expected);
+    }
+
     #[test]
     fn bulk_names_requiring_a_rename_or_portable_mapping_keep_single_file_path() {
         let mut entry = entries(1).remove(0);
@@ -493,10 +679,16 @@ mod tests {
     }
 
     #[test]
-    fn bulk_keeps_relative_and_glob_expanding_parent_paths_on_single_file_lane() {
+    fn bulk_admits_relative_paths_and_keeps_glob_expanding_parents_on_single_file_lane() {
         let mut entry = entries(1).remove(0);
         entry.local_path = "file-0.txt".into();
-        assert!(group_key(&entry, true).is_none());
+        entry.remote_path = "/bulk/file-0.txt".into();
+        assert_eq!(group_key(&entry, true).as_deref(), Some("/bulk"));
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(
+            group_key(&entry, false),
+            Some(format!("{}\0/bulk", cwd.to_str().unwrap()))
+        );
         entry.local_path = "/tmp/[archive]/file-0.txt".into();
         assert!(group_key(&entry, true).is_none());
         assert!(group_key(&entry, false).is_none());
