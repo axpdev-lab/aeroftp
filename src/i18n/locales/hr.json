@@ -337,7 +337,37 @@
             "protonSignOut": "Odjava",
             "protonSignOutHelp": "Završava sesiju na Protonu i uklanja je iz ovog profila.",
             "protonSignInExpired": "Stranica za prijavu je istekla. Prijavite se ponovno.",
-            "protonNativeUnavailable": "Ova verzija ne uključuje izvorni klijent za Proton Drive."
+            "protonNativeUnavailable": "Ova verzija ne uključuje izvorni klijent za Proton Drive.",
+            "forms": {
+                "publicApiKey": "Javni API ključ",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Javni ključ.",
+                "secretApiKey": "Tajni API ključ",
+                "uploadcareSecretHint": "Koristi se samo za upravljanje datotekama putem REST-a uz {scheme} autentifikaciju.",
+                "flatMediaLibrary": "Ravna medijska biblioteka",
+                "uploadcareNoFolders": "Uploadcare ne nudi izvorne mape; datoteke projekta navedene su u korijenu prema UUID-u.",
+                "urlEndpointId": "ID krajnje točke URL-a",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Krajnja točka URL-a.",
+                "privateApiKey": "Privatni API ključ",
+                "storedVaultBasicAuth": "Pohranjeno u lokalnom trezoru i šalje se samo usluzi {provider} putem Basic Auth.",
+                "cloudName": "Naziv oblaka",
+                "cloudinaryCloudNameHint": "Nalazi se u vašem Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API ključ",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API ključ.",
+                "apiSecret": "API tajna",
+                "apiSecretPlaceholder": "API tajna",
+                "openProviderLink": "Otvori poveznicu {provider}",
+                "githubPatHint": "Detaljni PAT s dozvolom Contents (čitanje i pisanje).",
+                "generateToken": "Generiraj token",
+                "applicationKeyId": "ID ključa aplikacije",
+                "backblazeKeyIdHint": "ID aplikacijskog ključa B2, počinje s 003. Generirajte ga na stranici App Keys u Backblazeu.",
+                "applicationKey": "Aplikacijski ključ",
+                "backblazeKeyHint": "Prikazuje se samo jednom pri stvaranju. Postupajte s njim kao s lozinkom.",
+                "bucketNameExactHint": "Točan naziv bucketa, razlikuju se velika i mala slova.",
+                "megacmdSetupFirst": "Najprije postavite MEGAcmd",
+                "megacmdFetchUrlTitle": "Pokreni {cmd} i automatski ispuni URL",
+                "fetchUrl": "Dohvati URL",
+                "megacmdWebdavHint": "Korisničko ime i lozinka namjerno su izostavljeni. AeroFTP pri povezivanju sam pokreće \"{cmd}\" kako bi pokrenuo most i pročitao ovu adresu: polje možete ostaviti prazno. \"Dohvati URL\" je neobavezno ručno osvježavanje; ovdje promijenite port ako MEGAcmd koristi prilagođeni."
+            }
         },
         "browser": {
             "remote": "Udaljeno",
@@ -1040,7 +1070,13 @@
                 "title": "Nativni rsync (beta)",
                 "description": "Odaberite kako SFTP Delta Sync raspoređuje rsync prijenose.",
                 "enableToggle": "Omogući nativni rsync za delta sinkronizaciju preko SFTP-a",
-                "experimental": "Auto daje prednost AeroRsync-u s klasičnim rezervnim postupkom; Classic koristi sistemski binarni program rsync gdje je dostupan; Native preskače klasični rezervni binarni program."
+                "experimental": "Auto daje prednost AeroRsync-u s klasičnim rezervnim postupkom; Classic koristi sistemski binarni program rsync gdje je dostupan; Native preskače klasični rezervni binarni program.",
+                "modeAuto": "Automatski",
+                "modeClassic": "Klasični",
+                "modeNative": "Izvorni",
+                "classicNotFoundTooltip": "Klasična izvršna datoteka rsync nije pronađena u PATH. Instalirajte rsync (paket za Linux/macOS, Windows putem WSL/cygwin/scoop) kako biste omogućili ovaj način.",
+                "classicAt": "Klasični rsync u {path}",
+                "classicNotDetected": "Klasična izvršna datoteka rsync nije otkrivena u PATH. Izvorni je jedini dostupni pogon na ovom računalu."
             },
             "startMinimizedOnAutostart": "Pokreni smanjeno u traku obavijesti",
             "startMinimizedOnAutostartDesc": "Sakrij glavni prozor kod automatskog pokretanja. AeroFTP nastavlja raditi u traci obavijesti, otvori ga preko ikone kada ti zatreba.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "OAuth vjerodajnice pronađene u nekriptiranoj pohrani: {count}",
             "fontSystemInstall": "instalacija u sustav",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "Preporučeno za najveću sigurnost",
+            "fontCustomOption": "Prilagođeno...",
+            "fontSystemInstallHint": "Zahtijeva instalaciju u sustav. AeroFTP automatski koristi zamjenu ako nije dostupno."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Ručno ponovno autorizirajte ako je token opozvan"
             },
             "profilesLoadFailed": "Spremljeni poslužitelji nisu se mogli pročitati: {error}",
-            "cleanupSummary": "{count} datoteka, oslobođeno {size}"
+            "cleanupSummary": "{count} datoteka, oslobođeno {size}",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Povezano",
@@ -1631,7 +1673,8 @@
                 "apRole": "Osnivač, programer, održavatelj, sudizajner",
                 "ekRole": "Istraživač, inženjer za osiguranje kvalitete, sudizajner"
             },
-            "madeBy": "u tvrtki {author}"
+            "madeBy": "u tvrtki {author}",
+            "statsLine": "{protocols} protokola · {languages} jezika · AES-256 arhive"
         },
         "support": {
             "title": "Podrži AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projekt (Unixname)",
             "opendriveNotApiKey": "(nije vaš OpenDrive API ključ)",
             "endpoint": "Krajnja točka",
-            "accountId": "ID računa"
+            "accountId": "ID računa",
+            "servicesHeading": "Usluge",
+            "sourceforgeSshKeyHelp": "SourceForge zahtijeva autentifikaciju SSH ključem. Generirajte ključ pomoću {cmd} i prenesite ga na {link}.",
+            "sourceforgeSshSettings": "SSH postavke",
+            "fullGuide": "Potpuni vodič",
+            "endpointTemplateExample": "npr. {template}",
+            "jurisdiction": "Nadležnost",
+            "insecureCertDialogLabel": "Upozorenje o nesigurnom certifikatu",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Besplatni plan",
             "freeCardTier": "Besplatno + kartica",
-            "paidTier": "Plaćeno"
+            "paidTier": "Plaćeno",
+            "extraFeatures": "Dodatno",
+            "coreOpsList": "Prijenos, Preuzimanje, Brisanje, Preimenovanje, Premještanje, Stvaranje mape, Pretraživanje",
+            "coreOpsLegend": "Osnovno = Prijenos, Preuzimanje, Brisanje, Preimenovanje, Premještanje, Stvaranje mape, Pretraživanje"
         },
         "healthCheck": {
             "title": "Provjera stanja poslužitelja",
@@ -5214,7 +5268,8 @@
                 "down": "Nedostupan",
                 "pending": "Provjera...",
                 "unknown": "Nije provjereno",
-                "clickToRetry": "kliknite za ponovnu provjeru"
+                "clickToRetry": "kliknite za ponovnu provjeru",
+                "withActiveSession": "{title} (aktivna sesija)"
             },
             "densityCompact": "Kompaktni redovi",
             "densityComfortable": "Udobni redovi",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt šifrirani sloj (izvorni): nazivi i sadržaj šifrirani su na ovom poslužitelju.",
-                "rcloneTitle": "rclone crypt sloj (interop): nazivi i sadržaj šifrirani su na ovom poslužitelju."
+                "rcloneTitle": "rclone crypt sloj (interop): nazivi i sadržaj šifrirani su na ovom poslužitelju.",
+                "keyBits": "{bits}-bitni"
             },
             "sidebar": {
                 "filters": "Filtri",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Nismo mogli pročitati postavku šifriranja ovog bucketa jer aplikacijski ključ nema mogućnost readBucketEncryption. Vrijednost koju nam nije dopušteno vidjeti ne znači da je šifriranje isključeno.",
                 "unknownShapeTitle": "Nismo mogli pročitati postavku šifriranja ovog bucketa jer odgovor nije imao dokumentirani oblik. Ključ ju je smio pročitati, pa je riječ o odgovoru, a ne o dopuštenjima."
             },
-            "exportProfile": "Izvezi..."
+            "exportProfile": "Izvezi...",
+            "quotaLabel": "Kvota",
+            "storageNoCapReported": "{used} (ograničenje kvote nije prijavljeno)",
+            "e2eBitsBadge": "E2E {bits}-bitni",
+            "filenAuthVersionTitle": "Otkriveno iz Filen auth/info pri uspješnom povezivanju",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "sada",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} d",
+                "months": "{count} mj."
+            }
         },
         "gitlab": {
             "projectPath": "Putanja projekta",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Način se odabire pri stvaranju veze i ostaje nepromijenjen tijekom uređivanja spremljenog profila. Za korištenje drugog načina stvorite novu vezu."
+                "lockedInEdit": "Način se odabire pri stvaranju veze i ostaje nepromijenjen tijekom uređivanja spremljenog profila. Za korištenje drugog načina stvorite novu vezu.",
+                "notInBuild": "Nije uključeno u ovu verziju AeroFTP-a."
             }
         },
         "flatpak": {

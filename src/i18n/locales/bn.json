@@ -337,7 +337,37 @@
             "protonSignOut": "সাইন আউট",
             "protonSignOutHelp": "Proton-এ সেশনটি শেষ করে এবং এই প্রোফাইল থেকে সেটি সরিয়ে দেয়।",
             "protonSignInExpired": "সাইন-ইন পৃষ্ঠার মেয়াদ শেষ হয়ে গেছে। আবার সাইন ইন করুন।",
-            "protonNativeUnavailable": "এই বিল্ডে নেটিভ Proton Drive ক্লায়েন্ট অন্তর্ভুক্ত নেই।"
+            "protonNativeUnavailable": "এই বিল্ডে নেটিভ Proton Drive ক্লায়েন্ট অন্তর্ভুক্ত নেই।",
+            "forms": {
+                "publicApiKey": "পাবলিক API কী",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - পাবলিক কী।",
+                "secretApiKey": "সিক্রেট API কী",
+                "uploadcareSecretHint": "শুধুমাত্র {scheme} প্রমাণীকরণের মাধ্যমে REST ফাইল ব্যবস্থাপনার জন্য ব্যবহৃত।",
+                "flatMediaLibrary": "ফ্ল্যাট মিডিয়া লাইব্রেরি",
+                "uploadcareNoFolders": "Uploadcare নেটিভ ফোল্ডার প্রদান করে না; প্রকল্পের ফাইলগুলি UUID অনুযায়ী রুটে তালিকাভুক্ত হয়।",
+                "urlEndpointId": "URL এন্ডপয়েন্ট ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL এন্ডপয়েন্ট।",
+                "privateApiKey": "প্রাইভেট API কী",
+                "storedVaultBasicAuth": "স্থানীয় ভল্টে সংরক্ষিত এবং শুধুমাত্র Basic Auth এর মাধ্যমে {provider}-এ পাঠানো হয়।",
+                "cloudName": "ক্লাউডের নাম",
+                "cloudinaryCloudNameHint": "আপনার Cloudinary Dashboard - Account Details-এ পাওয়া যায়।",
+                "apiKeyPlaceholder": "API কী",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API কী।",
+                "apiSecret": "API সিক্রেট",
+                "apiSecretPlaceholder": "API সিক্রেট",
+                "openProviderLink": "{provider} লিংক খুলুন",
+                "githubPatHint": "Contents (পড়া ও লেখা) সহ সূক্ষ্ম-অনুমতির PAT।",
+                "generateToken": "টোকেন তৈরি করুন",
+                "applicationKeyId": "অ্যাপ্লিকেশন কী ID",
+                "backblazeKeyIdHint": "B2 অ্যাপ্লিকেশন কী আইডি, 003 দিয়ে শুরু হয়। Backblaze-এর App Keys পৃষ্ঠা থেকে একটি তৈরি করুন।",
+                "applicationKey": "অ্যাপ্লিকেশন কী",
+                "backblazeKeyHint": "তৈরির সময় শুধু একবার দেখানো হয়। এটিকে পাসওয়ার্ডের মতো গোপন রাখুন।",
+                "bucketNameExactHint": "বাকেটের সঠিক নাম, বড় ও ছোট হাতের অক্ষর আলাদা ধরা হয়।",
+                "megacmdSetupFirst": "আগে MEGAcmd সেট আপ করুন",
+                "megacmdFetchUrlTitle": "{cmd} চালান এবং URL স্বয়ংক্রিয়ভাবে পূরণ করুন",
+                "fetchUrl": "URL আনুন",
+                "megacmdWebdavHint": "ব্যবহারকারীর নাম ও পাসওয়ার্ড ইচ্ছাকৃতভাবে বাদ রাখা হয়েছে। সংযোগের সময় AeroFTP নিজেই \"{cmd}\" চালিয়ে ব্রিজ শুরু করে এবং এই ঠিকানা পড়ে নেয়: ঘরটি ফাঁকা রাখলেও চলবে। \"URL আনুন\" একটি ঐচ্ছিক ম্যানুয়াল রিফ্রেশ; MEGAcmd কাস্টম পোর্ট ব্যবহার করলে এখানে পোর্ট বদলান।"
+            }
         },
         "browser": {
             "remote": "রিমোট",
@@ -1040,7 +1070,13 @@
                 "title": "নেটিভ rsync (বিটা)",
                 "description": "SFTP Delta Sync কীভাবে rsync স্থানান্তর পাঠায় তা বেছে নিন।",
                 "enableToggle": "SFTP ডেল্টা সিঙ্কের জন্য নেটিভ rsync সক্ষম করুন",
-                "experimental": "Auto AeroRsync-কে ক্লাসিক ফলব্যাকসহ অগ্রাধিকার দেয়; Classic যেখানে পাওয়া যায় সেখানে সিস্টেমের rsync বাইনারি ব্যবহার করে; Native ক্লাসিক বাইনারি ফলব্যাক এড়িয়ে যায়।"
+                "experimental": "Auto AeroRsync-কে ক্লাসিক ফলব্যাকসহ অগ্রাধিকার দেয়; Classic যেখানে পাওয়া যায় সেখানে সিস্টেমের rsync বাইনারি ব্যবহার করে; Native ক্লাসিক বাইনারি ফলব্যাক এড়িয়ে যায়।",
+                "modeAuto": "স্বয়ংক্রিয়",
+                "modeClassic": "ক্লাসিক",
+                "modeNative": "নেটিভ",
+                "classicNotFoundTooltip": "PATH-এ ক্লাসিক rsync বাইনারি পাওয়া যায়নি। এই মোড চালু করতে rsync ইনস্টল করুন (Linux/macOS প্যাকেজ, Windows-এ WSL/cygwin/scoop-এর মাধ্যমে)।",
+                "classicAt": "ক্লাসিক rsync: {path}",
+                "classicNotDetected": "PATH-এ ক্লাসিক rsync বাইনারি শনাক্ত হয়নি। এই মেশিনে নেটিভই একমাত্র উপলব্ধ ইঞ্জিন।"
             },
             "startMinimizedOnAutostart": "ট্রেতে ছোট করে চালু করুন",
             "startMinimizedOnAutostartDesc": "অটোস্টার্ট চালু হলে মূল উইন্ডো লুকান। AeroFTP সিস্টেম ট্রেতে চলতে থাকে, প্রয়োজনে ট্রে আইকন থেকে খুলুন।",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "এনক্রিপ্ট না করা স্টোরেজে {count} টি OAuth ক্রেডেনশিয়াল পাওয়া গেছে",
             "fontSystemInstall": "সিস্টেমে ইনস্টল",
             "fontSizeMin": "সর্বনিম্ন",
-            "fontSizeMax": "সর্বোচ্চ"
+            "fontSizeMax": "সর্বোচ্চ",
+            "migrationCleanupHint": "সর্বোচ্চ নিরাপত্তার জন্য প্রস্তাবিত",
+            "fontCustomOption": "কাস্টম...",
+            "fontSystemInstallHint": "সিস্টেমে ইনস্টল করা প্রয়োজন। উপলব্ধ না থাকলে AeroFTP স্বয়ংক্রিয়ভাবে বিকল্প ব্যবহার করে।"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "টোকেন প্রত্যাহার করা হলে নিজে আবার অনুমোদন দিন"
             },
             "profilesLoadFailed": "আপনার সংরক্ষিত সার্ভারগুলো পড়া যায়নি: {error}",
-            "cleanupSummary": "{count} টি ফাইল, {size} খালি করা হয়েছে"
+            "cleanupSummary": "{count} টি ফাইল, {size} খালি করা হয়েছে",
+            "maturity": {
+                "alpha": "আলফা"
+            }
         },
         "statusBar": {
             "connected": "সংযুক্ত",
@@ -1631,7 +1673,8 @@
                 "apRole": "প্রতিষ্ঠাতা, ডেভেলপার, রক্ষণাবেক্ষণকারী, সহ-ডিজাইনার",
                 "ekRole": "গবেষক, কোয়ালিটি অ্যাসিউরেন্স ইঞ্জিনিয়ার, সহ-ডিজাইনার"
             },
-            "madeBy": "{author} দ্বারা"
+            "madeBy": "{author} দ্বারা",
+            "statsLine": "{protocols}টি প্রোটোকল · {languages}টি ভাষা · AES-256 আর্কাইভ"
         },
         "support": {
             "title": "AeroFTP সমর্থন করুন",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "প্রকল্প (Unixname)",
             "opendriveNotApiKey": "(আপনার OpenDrive API কী নয়)",
             "endpoint": "এন্ডপয়েন্ট",
-            "accountId": "অ্যাকাউন্ট ID"
+            "accountId": "অ্যাকাউন্ট ID",
+            "servicesHeading": "পরিষেবা",
+            "sourceforgeSshKeyHelp": "SourceForge-এ SSH কী প্রমাণীকরণ প্রয়োজন। {cmd} দিয়ে একটি কী তৈরি করুন এবং সেটি {link}-এ আপলোড করুন।",
+            "sourceforgeSshSettings": "SSH সেটিংস",
+            "fullGuide": "সম্পূর্ণ নির্দেশিকা",
+            "endpointTemplateExample": "যেমন {template}",
+            "jurisdiction": "বিচারাধিকার",
+            "insecureCertDialogLabel": "অনিরাপদ সার্টিফিকেট সতর্কতা",
+            "betaBadge": "বেটা"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "ফ্রি প্ল্যান",
             "freeCardTier": "ফ্রি + কার্ড",
-            "paidTier": "পেইড"
+            "paidTier": "পেইড",
+            "extraFeatures": "অতিরিক্ত",
+            "coreOpsList": "আপলোড, ডাউনলোড, মুছুন, নাম পরিবর্তন, সরান, ফোল্ডার তৈরি, অনুসন্ধান",
+            "coreOpsLegend": "মৌলিক = আপলোড, ডাউনলোড, মুছুন, নাম পরিবর্তন, সরান, ফোল্ডার তৈরি, অনুসন্ধান"
         },
         "healthCheck": {
             "title": "সার্ভার স্বাস্থ্য পরীক্ষা",
@@ -5214,7 +5268,8 @@
                 "down": "পৌঁছানো যায় না",
                 "pending": "পরীক্ষা করা হচ্ছে...",
                 "unknown": "যাচাই করা হয়নি",
-                "clickToRetry": "পুনরায় পরীক্ষা করতে ক্লিক করুন"
+                "clickToRetry": "পুনরায় পরীক্ষা করতে ক্লিক করুন",
+                "withActiveSession": "{title} (সক্রিয় সেশন)"
             },
             "densityCompact": "কম্প্যাক্ট সারি",
             "densityComfortable": "আরামদায়ক সারি",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt এনক্রিপ্টেড ওভারলে (নেটিভ): এই সার্ভারে নাম এবং বিষয়বস্তু এনক্রিপ্ট করা থাকে।",
-                "rcloneTitle": "rclone crypt ওভারলে (ইন্টারঅপ): এই সার্ভারে নাম এবং বিষয়বস্তু এনক্রিপ্ট করা থাকে।"
+                "rcloneTitle": "rclone crypt ওভারলে (ইন্টারঅপ): এই সার্ভারে নাম এবং বিষয়বস্তু এনক্রিপ্ট করা থাকে।",
+                "keyBits": "{bits}-বিট"
             },
             "sidebar": {
                 "filters": "ফিল্টার",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "আমরা এই বাকেটের এনক্রিপশন সেটিং পড়তে পারিনি, কারণ অ্যাপ্লিকেশন কী-এর readBucketEncryption ক্ষমতা নেই। যে মান দেখার অনুমতি আমাদের নেই, তার মানে এই নয় যে এনক্রিপশন বন্ধ আছে।",
                 "unknownShapeTitle": "আমরা এই বাকেটের এনক্রিপশন সেটিং পড়তে পারিনি, কারণ উত্তরটির কোনো নথিভুক্ত গঠন ছিল না। কী-এর এটি পড়ার অনুমতি ছিল, তাই বিষয়টি উত্তর নিয়ে, অনুমতি নিয়ে নয়।"
             },
-            "exportProfile": "এক্সপোর্ট..."
+            "exportProfile": "এক্সপোর্ট...",
+            "quotaLabel": "কোটা",
+            "storageNoCapReported": "{used} (কোনো কোটা সীমা জানানো হয়নি)",
+            "e2eBitsBadge": "E2E {bits}-বিট",
+            "filenAuthVersionTitle": "সফল সংযোগে Filen auth/info থেকে শনাক্ত করা হয়েছে",
+            "demoBadge": "ডেমো",
+            "timeAgo": {
+                "now": "এখন",
+                "minutes": "{count} মি",
+                "hours": "{count} ঘ",
+                "days": "{count} দি",
+                "months": "{count} মাস"
+            }
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "সংযোগ তৈরি করার সময় মোড নির্বাচন করা হয় এবং সংরক্ষিত প্রোফাইল সম্পাদনার সময় এটি স্থির থাকে। ভিন্ন মোড ব্যবহার করতে, একটি নতুন সংযোগ তৈরি করুন।"
+                "lockedInEdit": "সংযোগ তৈরি করার সময় মোড নির্বাচন করা হয় এবং সংরক্ষিত প্রোফাইল সম্পাদনার সময় এটি স্থির থাকে। ভিন্ন মোড ব্যবহার করতে, একটি নতুন সংযোগ তৈরি করুন।",
+                "notInBuild": "AeroFTP-এর এই বিল্ডে অন্তর্ভুক্ত নয়।"
             }
         },
         "flatpak": {

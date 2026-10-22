@@ -337,7 +337,37 @@
             "protonSignOut": "გასვლა",
             "protonSignOutHelp": "ასრულებს სესიას Proton-ზე და შლის მას ამ პროფილიდან.",
             "protonSignInExpired": "შესვლის გვერდს ვადა გაუვიდა. შედით ხელახლა.",
-            "protonNativeUnavailable": "ეს ვერსია არ შეიცავს Proton Drive-ის მშობლიურ კლიენტს."
+            "protonNativeUnavailable": "ეს ვერსია არ შეიცავს Proton Drive-ის მშობლიურ კლიენტს.",
+            "forms": {
+                "publicApiKey": "საჯარო API გასაღები",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - საჯარო გასაღები.",
+                "secretApiKey": "საიდუმლო API გასაღები",
+                "uploadcareSecretHint": "გამოიყენება მხოლოდ REST ფაილების მართვისთვის {scheme} ავთენტიფიკაციით.",
+                "flatMediaLibrary": "ბრტყელი მედიაბიბლიოთეკა",
+                "uploadcareNoFolders": "Uploadcare არ გვთავაზობს მშობლიურ საქაღალდეებს; პროექტის ფაილები ძირში UUID-ის მიხედვით ჩამოითვლება.",
+                "urlEndpointId": "URL საბოლოო წერტილის ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL საბოლოო წერტილი.",
+                "privateApiKey": "პირადი API გასაღები",
+                "storedVaultBasicAuth": "ინახება ლოკალურ საცავში და იგზავნება მხოლოდ {provider}-ზე Basic Auth-ით.",
+                "cloudName": "ღრუბლის სახელი",
+                "cloudinaryCloudNameHint": "მოიძებნება თქვენს Cloudinary Dashboard - Account Details განყოფილებაში.",
+                "apiKeyPlaceholder": "API გასაღები",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API გასაღები.",
+                "apiSecret": "API საიდუმლო",
+                "apiSecretPlaceholder": "API საიდუმლო",
+                "openProviderLink": "{provider} ბმულის გახსნა",
+                "githubPatHint": "დეტალური უფლებების PAT, Contents (წაკითხვა და ჩაწერა).",
+                "generateToken": "ტოკენის გენერირება",
+                "applicationKeyId": "აპლიკაციის გასაღების ID",
+                "backblazeKeyIdHint": "B2 აპლიკაციის გასაღების ID, იწყება 003-ით. შექმენით იგი Backblaze-ის App Keys გვერდზე.",
+                "applicationKey": "აპლიკაციის გასაღები",
+                "backblazeKeyHint": "ნაჩვენებია მხოლოდ ერთხელ, შექმნისას. მოეპყარით მას როგორც პაროლს.",
+                "bucketNameExactHint": "Bucket-ის ზუსტი სახელი, დიდი და პატარა ასოები განსხვავდება.",
+                "megacmdSetupFirst": "ჯერ დააყენეთ MEGAcmd",
+                "megacmdFetchUrlTitle": "{cmd}-ის გაშვება და URL-ის ავტომატურად შევსება",
+                "fetchUrl": "URL-ის მიღება",
+                "megacmdWebdavHint": "მომხმარებლის სახელი და პაროლი განზრახ არის გამოტოვებული. დაკავშირებისას AeroFTP თავად უშვებს „{cmd}“-ს, რათა ჩართოს ხიდი და წაიკითხოს ეს მისამართი: ველი შეიძლება ცარიელი დატოვოთ. „URL-ის მიღება“ არასავალდებულო ხელით განახლებაა; შეცვალეთ პორტი აქ, თუ MEGAcmd საკუთარ პორტს იყენებს."
+            }
         },
         "browser": {
             "remote": "დისტანციური",
@@ -1040,7 +1070,13 @@
                 "title": "მშობლიური rsync (ბეტა)",
                 "description": "აირჩიეთ, როგორ უშვებს SFTP დელტა სინქრონიზაცია rsync გადაცემებს.",
                 "enableToggle": "მშობლიური rsync-ის ჩართვა SFTP-ის დელტა სინქრონიზაციისთვის",
-                "experimental": "Auto უპირატესობას ანიჭებს AeroRsync-ს და სარეზერვოდ კლასიკურს იყენებს; Classic იყენებს სისტემის rsync ბინარს, სადაც ის ხელმისაწვდომია; Native კლასიკურ ბინარზე სარეზერვო გადასვლას გამოტოვებს."
+                "experimental": "Auto უპირატესობას ანიჭებს AeroRsync-ს და სარეზერვოდ კლასიკურს იყენებს; Classic იყენებს სისტემის rsync ბინარს, სადაც ის ხელმისაწვდომია; Native კლასიკურ ბინარზე სარეზერვო გადასვლას გამოტოვებს.",
+                "modeAuto": "ავტომატური",
+                "modeClassic": "კლასიკური",
+                "modeNative": "ჩაშენებული",
+                "classicNotFoundTooltip": "კლასიკური rsync ბინარული ფაილი PATH-ში ვერ მოიძებნა. ამ რეჟიმის ჩასართავად დააინსტალირეთ rsync (Linux/macOS პაკეტი, Windows-ზე WSL/cygwin/scoop-ით).",
+                "classicAt": "კლასიკური rsync: {path}",
+                "classicNotDetected": "კლასიკური rsync ბინარული ფაილი PATH-ში ვერ აღმოჩნდა. ამ კომპიუტერზე ხელმისაწვდომი ერთადერთი ძრავა ჩაშენებულია."
             },
             "startMinimizedOnAutostart": "გაშვება სისტემურ პანელზე მინიმიზებული",
             "startMinimizedOnAutostartDesc": "დამალე მთავარი ფანჯარა ავტომატური გაშვებისას. AeroFTP აგრძელებს მუშაობას სისტემურ პანელში, გახსენი იგი პანელის ხატულადან, როცა დაგჭირდება.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "დაუშიფრავ საცავში ნაპოვნია OAuth ავტორიზაციის {count} მონაცემი",
             "fontSystemInstall": "სისტემაში ინსტალაცია",
             "fontSizeMin": "მინ",
-            "fontSizeMax": "მაქს"
+            "fontSizeMax": "მაქს",
+            "migrationCleanupHint": "რეკომენდებულია მაქსიმალური უსაფრთხოებისთვის",
+            "fontCustomOption": "მორგებული...",
+            "fontSystemInstallHint": "საჭიროებს სისტემაში ინსტალაციას. თუ მიუწვდომელია, AeroFTP ავტომატურად გადადის სარეზერვო ვარიანტზე."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "ტოკენის გაუქმების შემთხვევაში ხელახლა ავტორიზდით ხელით"
             },
             "profilesLoadFailed": "თქვენი შენახული სერვერების წაკითხვა ვერ მოხერხდა: {error}",
-            "cleanupSummary": "{count} ფაილი, გათავისუფლდა {size}"
+            "cleanupSummary": "{count} ფაილი, გათავისუფლდა {size}",
+            "maturity": {
+                "alpha": "ალფა"
+            }
         },
         "statusBar": {
             "connected": "დაკავშირებული",
@@ -1631,7 +1673,8 @@
                 "apRole": "დამფუძნებელი, დეველოპერი, მხარდამჭერი, თანადიზაინერი",
                 "ekRole": "მკვლევარი, ხარისხის უზრუნველყოფის ინჟინერი, თანადიზაინერი"
             },
-            "madeBy": "{author} კომპანიის მიერ"
+            "madeBy": "{author} კომპანიის მიერ",
+            "statsLine": "{protocols} პროტოკოლი · {languages} ენა · AES-256 არქივები"
         },
         "support": {
             "title": "მხარი დაუჭირეთ AeroFTP-ს",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "პროექტი (Unixname)",
             "opendriveNotApiKey": "(არა თქვენი OpenDrive API გასაღები)",
             "endpoint": "საბოლოო წერტილი",
-            "accountId": "ანგარიშის ID"
+            "accountId": "ანგარიშის ID",
+            "servicesHeading": "სერვისები",
+            "sourceforgeSshKeyHelp": "SourceForge მოითხოვს SSH გასაღებით ავთენტიფიკაციას. შექმენით გასაღები {cmd}-ით და ატვირთეთ {link}-ზე.",
+            "sourceforgeSshSettings": "SSH პარამეტრები",
+            "fullGuide": "სრული სახელმძღვანელო",
+            "endpointTemplateExample": "მაგ. {template}",
+            "jurisdiction": "იურისდიქცია",
+            "insecureCertDialogLabel": "დაუცველი სერტიფიკატის გაფრთხილება",
+            "betaBadge": "ბეტა"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "უფასო გეგმა",
             "freeCardTier": "უფასო + ბარათი",
-            "paidTier": "ფასიანი"
+            "paidTier": "ფასიანი",
+            "extraFeatures": "დამატებითი",
+            "coreOpsList": "ატვირთვა, ჩამოტვირთვა, წაშლა, გადარქმევა, გადატანა, საქაღალდის შექმნა, ძიება",
+            "coreOpsLegend": "საბაზისო = ატვირთვა, ჩამოტვირთვა, წაშლა, გადარქმევა, გადატანა, საქაღალდის შექმნა, ძიება"
         },
         "healthCheck": {
             "title": "სერვერის ჯანმრთელობის შემოწმება",
@@ -5214,7 +5268,8 @@
                 "down": "მიუწვდომელი",
                 "pending": "შემოწმება...",
                 "unknown": "არ არის შემოწმებული",
-                "clickToRetry": "დააჭირეთ ხელახლა შესამოწმებლად"
+                "clickToRetry": "დააჭირეთ ხელახლა შესამოწმებლად",
+                "withActiveSession": "{title} (აქტიური სესია)"
             },
             "densityCompact": "კომპაქტური მწკრივები",
             "densityComfortable": "კომფორტული მწკრივები",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt დაშიფრული შრე (მშობლიური): სახელები და შინაარსი დაშიფრულია ამ სერვერზე.",
-                "rcloneTitle": "rclone crypt შრე (თავსებადი): სახელები და შინაარსი დაშიფრულია ამ სერვერზე."
+                "rcloneTitle": "rclone crypt შრე (თავსებადი): სახელები და შინაარსი დაშიფრულია ამ სერვერზე.",
+                "keyBits": "{bits}-ბიტიანი"
             },
             "sidebar": {
                 "filters": "ფილტრები",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "ვერ წავიკითხეთ ამ bucket-ის დაშიფვრის პარამეტრი, რადგან აპლიკაციის გასაღებს არ აქვს readBucketEncryption შესაძლებლობა. მნიშვნელობა, რომლის ნახვის უფლებაც არ გვაქვს, არ ნიშნავს, რომ დაშიფვრა გამორთულია.",
                 "unknownShapeTitle": "ვერ წავიკითხეთ ამ bucket-ის დაშიფვრის პარამეტრი, რადგან პასუხს არ ჰქონდა დოკუმენტირებული ფორმა. გასაღებს მისი წაკითხვის უფლება ჰქონდა, ამიტომ საქმე პასუხს ეხება და არა უფლებებს."
             },
-            "exportProfile": "ექსპორტი..."
+            "exportProfile": "ექსპორტი...",
+            "quotaLabel": "კვოტა",
+            "storageNoCapReported": "{used} (კვოტის ზღვარი არ არის მითითებული)",
+            "e2eBitsBadge": "E2E {bits}-ბიტიანი",
+            "filenAuthVersionTitle": "აღმოჩენილია Filen auth/info-დან წარმატებული დაკავშირებისას",
+            "demoBadge": "დემო",
+            "timeAgo": {
+                "now": "ახლა",
+                "minutes": "{count} წთ",
+                "hours": "{count} სთ",
+                "days": "{count} დღე",
+                "months": "{count} თვე"
+            }
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "რეჟიმი აირჩევა კავშირის შექმნისას და უცვლელი რჩება შენახული პროფილის რედაქტირებისას. სხვა რეჟიმის გამოსაყენებლად შექმენით ახალი კავშირი."
+                "lockedInEdit": "რეჟიმი აირჩევა კავშირის შექმნისას და უცვლელი რჩება შენახული პროფილის რედაქტირებისას. სხვა რეჟიმის გამოსაყენებლად შექმენით ახალი კავშირი.",
+                "notInBuild": "არ შედის AeroFTP-ის ამ ვერსიაში."
             }
         },
         "flatpak": {

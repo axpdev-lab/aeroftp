@@ -337,7 +337,37 @@
             "protonSignOut": "Вийти",
             "protonSignOutHelp": "Завершує сесію в Proton і видаляє її з цього профілю.",
             "protonSignInExpired": "Термін дії сторінки входу минув. Увійдіть знову.",
-            "protonNativeUnavailable": "Ця збірка не містить вбудованого клієнта Proton Drive."
+            "protonNativeUnavailable": "Ця збірка не містить вбудованого клієнта Proton Drive.",
+            "forms": {
+                "publicApiKey": "Публічний API-ключ",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Публічний ключ.",
+                "secretApiKey": "Секретний API-ключ",
+                "uploadcareSecretHint": "Використовується лише для керування файлами через REST з автентифікацією {scheme}.",
+                "flatMediaLibrary": "Пласка медіатека",
+                "uploadcareNoFolders": "Uploadcare не має власних папок; файли проєкту показано в корені за UUID.",
+                "urlEndpointId": "ID кінцевої точки URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Кінцева точка URL.",
+                "privateApiKey": "Приватний API-ключ",
+                "storedVaultBasicAuth": "Зберігається в локальному сховищі й надсилається лише до {provider} через Basic Auth.",
+                "cloudName": "Назва хмари",
+                "cloudinaryCloudNameHint": "Знаходиться в Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-ключ",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-ключ.",
+                "apiSecret": "Секрет API",
+                "apiSecretPlaceholder": "Секрет API",
+                "openProviderLink": "Відкрити посилання {provider}",
+                "githubPatHint": "Детальний PAT з правом Contents (читання й запис).",
+                "generateToken": "Створити токен",
+                "applicationKeyId": "ID ключа застосунку",
+                "backblazeKeyIdHint": "ID ключа застосунку B2, починається з 003. Створіть його на сторінці App Keys у Backblaze.",
+                "applicationKey": "Ключ застосунку",
+                "backblazeKeyHint": "Показується лише один раз під час створення. Поводьтеся з ним як із паролем.",
+                "bucketNameExactHint": "Точне ім'я бакета з урахуванням регістру.",
+                "megacmdSetupFirst": "Спершу налаштуйте MEGAcmd",
+                "megacmdFetchUrlTitle": "Виконати {cmd} і заповнити URL автоматично",
+                "fetchUrl": "Отримати URL",
+                "megacmdWebdavHint": "Ім'я користувача та пароль навмисно пропущено. Під час підключення AeroFTP сам виконує «{cmd}», щоб запустити міст і прочитати цю адресу: поле можна залишити порожнім. «Отримати URL» означає необов'язкове ручне оновлення; змініть тут порт, якщо MEGAcmd використовує нестандартний."
+            }
         },
         "browser": {
             "remote": "Віддалений",
@@ -1040,7 +1070,13 @@
                 "title": "Нативний rsync (бета)",
                 "description": "Виберіть, як SFTP Delta Sync розподіляє передавання rsync.",
                 "enableToggle": "Увімкнути вбудований rsync для дельта-синхронізації через SFTP",
-                "experimental": "Auto віддає перевагу AeroRsync з відкатом на класичний варіант; Classic використовує системний бінарний файл rsync, де він доступний; Native пропускає відкат на класичний бінарний файл."
+                "experimental": "Auto віддає перевагу AeroRsync з відкатом на класичний варіант; Classic використовує системний бінарний файл rsync, де він доступний; Native пропускає відкат на класичний бінарний файл.",
+                "modeAuto": "Авто",
+                "modeClassic": "Класичний",
+                "modeNative": "Вбудований",
+                "classicNotFoundTooltip": "Класичний виконуваний файл rsync не знайдено в PATH. Установіть rsync (пакет для Linux/macOS, Windows через WSL/cygwin/scoop), щоб увімкнути цей режим.",
+                "classicAt": "Класичний rsync у {path}",
+                "classicNotDetected": "Класичний виконуваний файл rsync не виявлено в PATH. На цьому комп'ютері доступний лише вбудований рушій."
             },
             "startMinimizedOnAutostart": "Запускати згорнутим у трей",
             "startMinimizedOnAutostartDesc": "Приховувати головне вікно під час автозапуску. AeroFTP продовжує працювати в системному треї, відкрийте його через значок, коли знадобиться.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Знайдено облікових даних OAuth у незашифрованому сховищі: {count}",
             "fontSystemInstall": "системне встановлення",
             "fontSizeMin": "мін",
-            "fontSizeMax": "макс"
+            "fontSizeMax": "макс",
+            "migrationCleanupHint": "Рекомендовано для максимальної безпеки",
+            "fontCustomOption": "Власний...",
+            "fontSystemInstallHint": "Потрібне встановлення в систему. Якщо шрифт недоступний, AeroFTP автоматично використає заміну."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Якщо токен відкликано, повторно авторизуйтеся вручну"
             },
             "profilesLoadFailed": "Не вдалося прочитати збережені сервери: {error}",
-            "cleanupSummary": "{count} файлів, звільнено {size}"
+            "cleanupSummary": "{count} файлів, звільнено {size}",
+            "maturity": {
+                "alpha": "Альфа"
+            }
         },
         "statusBar": {
             "connected": "Підключено",
@@ -1631,7 +1673,8 @@
                 "apRole": "Засновник, розробник, мейнтейнер, співавтор дизайну",
                 "ekRole": "Дослідник, інженер із забезпечення якості, співавтор дизайну"
             },
-            "madeBy": "командою {author}"
+            "madeBy": "командою {author}",
+            "statsLine": "{protocols} протоколів · {languages} мов · архіви AES-256"
         },
         "support": {
             "title": "Підтримати AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Проєкт (Unixname)",
             "opendriveNotApiKey": "(не ваш ключ API OpenDrive)",
             "endpoint": "Кінцева точка",
-            "accountId": "ID облікового запису"
+            "accountId": "ID облікового запису",
+            "servicesHeading": "Сервіси",
+            "sourceforgeSshKeyHelp": "SourceForge вимагає автентифікації за SSH-ключем. Згенеруйте ключ за допомогою {cmd} і завантажте його на {link}.",
+            "sourceforgeSshSettings": "Налаштування SSH",
+            "fullGuide": "Повний посібник",
+            "endpointTemplateExample": "напр. {template}",
+            "jurisdiction": "Юрисдикція",
+            "insecureCertDialogLabel": "Попередження про небезпечний сертифікат",
+            "betaBadge": "БЕТА"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Безкоштовний тариф",
             "freeCardTier": "Безкошт. + картка",
-            "paidTier": "Платно"
+            "paidTier": "Платно",
+            "extraFeatures": "Додатково",
+            "coreOpsList": "Вивантаження, Завантаження, Видалення, Перейменування, Переміщення, Створення теки, Пошук",
+            "coreOpsLegend": "Базові = Вивантаження, Завантаження, Видалення, Перейменування, Переміщення, Створення теки, Пошук"
         },
         "healthCheck": {
             "title": "Перевірка стану сервера",
@@ -5214,7 +5268,8 @@
                 "down": "Недоступний",
                 "pending": "Перевірка...",
                 "unknown": "Не перевірено",
-                "clickToRetry": "натисніть, щоб перевірити знову"
+                "clickToRetry": "натисніть, щоб перевірити знову",
+                "withActiveSession": "{title} (активний сеанс)"
             },
             "densityCompact": "Компактні рядки",
             "densityComfortable": "Зручні рядки",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Шифрований оверлей AeroCrypt (нативний): імена та вміст зашифровані на цьому сервері.",
-                "rcloneTitle": "Оверлей rclone crypt (interop): імена та вміст зашифровані на цьому сервері."
+                "rcloneTitle": "Оверлей rclone crypt (interop): імена та вміст зашифровані на цьому сервері.",
+                "keyBits": "{bits} біт"
             },
             "sidebar": {
                 "filters": "Фільтри",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Нам не вдалося прочитати налаштування шифрування цього кошика, оскільки ключ застосунку не має можливості readBucketEncryption. Значення, яке нам не дозволено бачити, не означає, що шифрування вимкнено.",
                 "unknownShapeTitle": "Нам не вдалося прочитати налаштування шифрування цього кошика, оскільки відповідь не мала задокументованої структури. Ключ мав право її прочитати, тож ідеться про відповідь, а не про дозволи."
             },
-            "exportProfile": "Експорт..."
+            "exportProfile": "Експорт...",
+            "quotaLabel": "Квота",
+            "storageNoCapReported": "{used} (ліміт квоти не повідомлено)",
+            "e2eBitsBadge": "E2E {bits} біт",
+            "filenAuthVersionTitle": "Визначено з Filen auth/info під час успішного підключення",
+            "demoBadge": "ДЕМО",
+            "timeAgo": {
+                "now": "зараз",
+                "minutes": "{count} хв",
+                "hours": "{count} год",
+                "days": "{count} д",
+                "months": "{count} міс"
+            }
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Режим вибирається під час створення з'єднання й залишається незмінним під час редагування збереженого профілю. Щоб використати інший режим, створіть нове з'єднання."
+                "lockedInEdit": "Режим вибирається під час створення з'єднання й залишається незмінним під час редагування збереженого профілю. Щоб використати інший режим, створіть нове з'єднання.",
+                "notInBuild": "Не входить до цієї збірки AeroFTP."
             }
         },
         "flatpak": {

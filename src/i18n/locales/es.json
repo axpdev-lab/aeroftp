@@ -337,7 +337,37 @@
             "protonSignOut": "Cerrar sesión",
             "protonSignOutHelp": "Cierra la sesión en Proton y la quita de este perfil.",
             "protonSignInExpired": "La página de inicio de sesión ha caducado. Inicia sesión de nuevo.",
-            "protonNativeUnavailable": "Esta compilación no incluye el cliente nativo de Proton Drive."
+            "protonNativeUnavailable": "Esta compilación no incluye el cliente nativo de Proton Drive.",
+            "forms": {
+                "publicApiKey": "Clave API pública",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Clave pública.",
+                "secretApiKey": "Clave API secreta",
+                "uploadcareSecretHint": "Se usa solo para la gestión de archivos REST mediante autenticación {scheme}.",
+                "flatMediaLibrary": "Biblioteca multimedia plana",
+                "uploadcareNoFolders": "Uploadcare no ofrece carpetas nativas; los archivos del proyecto se listan en la raíz por UUID.",
+                "urlEndpointId": "ID del punto de conexión de URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Punto de conexión de URL.",
+                "privateApiKey": "Clave API privada",
+                "storedVaultBasicAuth": "Guardada en el almacén local y enviada solo a {provider} mediante Basic Auth.",
+                "cloudName": "Nombre de la nube",
+                "cloudinaryCloudNameHint": "Se encuentra en tu Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Clave API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Clave API.",
+                "apiSecret": "Secreto de API",
+                "apiSecretPlaceholder": "Secreto de API",
+                "openProviderLink": "Abrir enlace de {provider}",
+                "githubPatHint": "PAT detallado con Contents (lectura y escritura).",
+                "generateToken": "Generar token",
+                "applicationKeyId": "ID de clave de aplicación",
+                "backblazeKeyIdHint": "ID de la clave de aplicación de B2, empieza por 003. Genera una desde la página App Keys de Backblaze.",
+                "applicationKey": "Clave de aplicación",
+                "backblazeKeyHint": "Solo se muestra una vez al crearla. Trátala como una contraseña.",
+                "bucketNameExactHint": "Nombre exacto del bucket, distingue mayúsculas y minúsculas.",
+                "megacmdSetupFirst": "Configura MEGAcmd primero",
+                "megacmdFetchUrlTitle": "Ejecutar {cmd} y rellenar la URL automáticamente",
+                "fetchUrl": "Obtener URL",
+                "megacmdWebdavHint": "El usuario y la contraseña se omiten a propósito. AeroFTP ejecuta él mismo «{cmd}» al conectar para iniciar el puente y leer esta dirección: puedes dejarla en blanco. «Obtener URL» es una actualización manual opcional; cambia aquí el puerto si MEGAcmd usa uno personalizado."
+            }
         },
         "browser": {
             "remote": "Remoto",
@@ -1040,7 +1070,13 @@
                 "title": "Rsync nativo (beta)",
                 "description": "Elija cómo SFTP Delta Sync envía las transferencias rsync.",
                 "enableToggle": "Activar rsync nativo para la sincronización delta por SFTP",
-                "experimental": "Auto prefiere AeroRsync con respaldo clásico; Classic usa el binario rsync del sistema cuando está disponible; Native omite el respaldo al binario clásico."
+                "experimental": "Auto prefiere AeroRsync con respaldo clásico; Classic usa el binario rsync del sistema cuando está disponible; Native omite el respaldo al binario clásico.",
+                "modeAuto": "Automático",
+                "modeClassic": "Clásico",
+                "modeNative": "Nativo",
+                "classicNotFoundTooltip": "No se encontró el binario rsync clásico en el PATH. Instala rsync (paquete de Linux/macOS, Windows mediante WSL/cygwin/scoop) para habilitar este modo.",
+                "classicAt": "rsync clásico en {path}",
+                "classicNotDetected": "No se detectó el binario rsync clásico en el PATH. Nativo es el único motor disponible en este equipo."
             },
             "startMinimizedOnAutostart": "Iniciar minimizado en la bandeja",
             "startMinimizedOnAutostartDesc": "Ocultar la ventana principal al inicio automático. AeroFTP sigue ejecutándose en la bandeja del sistema, ábrelo desde el icono cuando lo necesites.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "{count} credenciales OAuth encontradas en almacenamiento sin cifrar",
             "fontSystemInstall": "instalación en el sistema",
             "fontSizeMin": "mín",
-            "fontSizeMax": "máx"
+            "fontSizeMax": "máx",
+            "migrationCleanupHint": "Recomendado para la máxima seguridad",
+            "fontCustomOption": "Personalizada...",
+            "fontSystemInstallHint": "Requiere instalación en el sistema. AeroFTP recurre a una alternativa automáticamente si no está disponible."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Vuelve a autorizar manualmente si se revoca el token"
             },
             "profilesLoadFailed": "No se pudieron leer los servidores guardados: {error}",
-            "cleanupSummary": "{count} archivos, {size} liberados"
+            "cleanupSummary": "{count} archivos, {size} liberados",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Conectado",
@@ -1631,7 +1673,8 @@
                 "apRole": "Fundador, desarrollador, mantenedor, codiseñador",
                 "ekRole": "Investigador, ingeniero de aseguramiento de la calidad, codiseñador"
             },
-            "madeBy": "por {author}"
+            "madeBy": "por {author}",
+            "statsLine": "{protocols} protocolos · {languages} idiomas · archivos AES-256"
         },
         "support": {
             "title": "Apoyar AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Proyecto (Unixname)",
             "opendriveNotApiKey": "(no es tu clave de API de OpenDrive)",
             "endpoint": "Endpoint",
-            "accountId": "ID de cuenta"
+            "accountId": "ID de cuenta",
+            "servicesHeading": "Servicios",
+            "sourceforgeSshKeyHelp": "SourceForge requiere autenticación con clave SSH. Genera una clave con {cmd} y súbela a {link}.",
+            "sourceforgeSshSettings": "Ajustes SSH",
+            "fullGuide": "Guía completa",
+            "endpointTemplateExample": "p. ej. {template}",
+            "jurisdiction": "Jurisdicción",
+            "insecureCertDialogLabel": "Advertencia de certificado inseguro",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Atajos de Teclado",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Plan gratuito",
             "freeCardTier": "Gratis + tarjeta",
-            "paidTier": "De pago"
+            "paidTier": "De pago",
+            "extraFeatures": "Extra",
+            "coreOpsList": "Subir, Descargar, Eliminar, Renombrar, Mover, Crear carpeta, Buscar",
+            "coreOpsLegend": "Base = Subir, Descargar, Eliminar, Renombrar, Mover, Crear carpeta, Buscar"
         },
         "healthCheck": {
             "title": "Comprobación de estado del servidor",
@@ -5214,7 +5268,8 @@
                 "down": "Inaccesible",
                 "pending": "Comprobando...",
                 "unknown": "Sin verificar",
-                "clickToRetry": "haz clic para volver a comprobar"
+                "clickToRetry": "haz clic para volver a comprobar",
+                "withActiveSession": "{title} (sesión activa)"
             },
             "densityCompact": "Filas compactas",
             "densityComfortable": "Filas cómodas",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Capa cifrada AeroCrypt (nativa): los nombres y los contenidos están cifrados en este servidor.",
-                "rcloneTitle": "Capa rclone crypt (interop): los nombres y los contenidos están cifrados en este servidor."
+                "rcloneTitle": "Capa rclone crypt (interop): los nombres y los contenidos están cifrados en este servidor.",
+                "keyBits": "{bits} bits"
             },
             "sidebar": {
                 "filters": "Filtros",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "No hemos podido leer la configuración de cifrado de este bucket, porque la clave de aplicación no tiene la capacidad readBucketEncryption. Un valor que no se nos permite ver no significa que el cifrado esté desactivado.",
                 "unknownShapeTitle": "No hemos podido leer la configuración de cifrado de este bucket, porque la respuesta no tenía una forma documentada. La clave sí tenía permiso para leerla, así que se trata de la respuesta y no de los permisos."
             },
-            "exportProfile": "Exportar..."
+            "exportProfile": "Exportar...",
+            "quotaLabel": "Cuota",
+            "storageNoCapReported": "{used} (no se ha informado de límite de cuota)",
+            "e2eBitsBadge": "E2E {bits} bits",
+            "filenAuthVersionTitle": "Detectado desde Filen auth/info al conectar correctamente",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "ahora",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} d",
+                "months": "{count} mes."
+            }
         },
         "gitlab": {
             "projectPath": "Ruta del proyecto",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "El modo se elige al crear la conexión y permanece fijo mientras se edita un perfil guardado. Para usar un modo diferente, crea una conexión nueva."
+                "lockedInEdit": "El modo se elige al crear la conexión y permanece fijo mientras se edita un perfil guardado. Para usar un modo diferente, crea una conexión nueva.",
+                "notInBuild": "No incluido en esta compilación de AeroFTP."
             }
         },
         "flatpak": {

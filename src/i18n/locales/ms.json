@@ -337,7 +337,37 @@
             "protonSignOut": "Log keluar",
             "protonSignOutHelp": "Menamatkan sesi di Proton dan mengalih keluarnya daripada profil ini.",
             "protonSignInExpired": "Halaman log masuk telah tamat tempoh. Log masuk semula.",
-            "protonNativeUnavailable": "Binaan ini tidak termasuk klien Proton Drive asli."
+            "protonNativeUnavailable": "Binaan ini tidak termasuk klien Proton Drive asli.",
+            "forms": {
+                "publicApiKey": "Kunci API Awam",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Kunci awam.",
+                "secretApiKey": "Kunci API Rahsia",
+                "uploadcareSecretHint": "Digunakan hanya untuk pengurusan fail REST melalui pengesahan {scheme}.",
+                "flatMediaLibrary": "Pustaka media rata",
+                "uploadcareNoFolders": "Uploadcare tidak menyediakan folder asli; fail projek disenaraikan di akar mengikut UUID.",
+                "urlEndpointId": "ID Titik Akhir URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Titik akhir URL.",
+                "privateApiKey": "Kunci API Peribadi",
+                "storedVaultBasicAuth": "Disimpan dalam peti besi tempatan dan dihantar hanya kepada {provider} melalui Basic Auth.",
+                "cloudName": "Nama Awan",
+                "cloudinaryCloudNameHint": "Terdapat dalam Cloudinary Dashboard - Account Details anda.",
+                "apiKeyPlaceholder": "Kunci API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Kunci API.",
+                "apiSecret": "Rahsia API",
+                "apiSecretPlaceholder": "Rahsia API",
+                "openProviderLink": "Buka pautan {provider}",
+                "githubPatHint": "PAT terperinci dengan Contents (Baca & Tulis).",
+                "generateToken": "Jana token",
+                "applicationKeyId": "ID Kunci Aplikasi",
+                "backblazeKeyIdHint": "ID Kunci Aplikasi B2, bermula dengan 003. Jana satu daripada halaman App Keys Backblaze.",
+                "applicationKey": "Kunci Aplikasi",
+                "backblazeKeyHint": "Dipaparkan sekali sahaja semasa dicipta. Anggap ia seperti kata laluan.",
+                "bucketNameExactHint": "Nama baldi yang tepat, peka huruf besar/kecil.",
+                "megacmdSetupFirst": "Sediakan MEGAcmd dahulu",
+                "megacmdFetchUrlTitle": "Jalankan {cmd} dan isi URL secara automatik",
+                "fetchUrl": "Dapatkan URL",
+                "megacmdWebdavHint": "Nama pengguna dan kata laluan sengaja ditinggalkan. AeroFTP menjalankan \"{cmd}\" sendiri semasa menyambung untuk memulakan jambatan dan membaca alamat ini: boleh dibiarkan kosong. Dapatkan URL ialah muat semula manual pilihan; tukar port di sini jika MEGAcmd menggunakan port tersuai."
+            }
         },
         "browser": {
             "remote": "Jauh",
@@ -1040,7 +1070,13 @@
                 "title": "Rsync asli (beta)",
                 "description": "Pilih cara SFTP Delta Sync menghantar pemindahan rsync.",
                 "enableToggle": "Dayakan rsync asli untuk penyegerakan delta SFTP",
-                "experimental": "Auto mengutamakan AeroRsync dengan sandaran klasik; Classic menggunakan binari rsync sistem jika tersedia; Native melangkau sandaran binari klasik."
+                "experimental": "Auto mengutamakan AeroRsync dengan sandaran klasik; Classic menggunakan binari rsync sistem jika tersedia; Native melangkau sandaran binari klasik.",
+                "modeAuto": "Automatik",
+                "modeClassic": "Klasik",
+                "modeNative": "Asli",
+                "classicNotFoundTooltip": "Binari rsync klasik tidak ditemui dalam PATH. Pasang rsync (pakej Linux/macOS, Windows melalui WSL/cygwin/scoop) untuk mendayakan mod ini.",
+                "classicAt": "rsync klasik di {path}",
+                "classicNotDetected": "Binari rsync klasik tidak dikesan dalam PATH. Asli ialah satu-satunya enjin yang tersedia pada mesin ini."
             },
             "startMinimizedOnAutostart": "Mula diminimumkan ke dulang",
             "startMinimizedOnAutostartDesc": "Sembunyikan tetingkap utama semasa pelancaran automula. AeroFTP terus berjalan dalam dulang sistem, buka dari ikon dulang apabila anda memerlukannya.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "{count} kelayakan OAuth ditemui dalam storan tidak disulitkan",
             "fontSystemInstall": "pasang pada sistem",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "Disyorkan untuk keselamatan maksimum",
+            "fontCustomOption": "Tersuai...",
+            "fontSystemInstallHint": "Memerlukan pemasangan sistem. AeroFTP beralih secara automatik jika tidak tersedia."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Beri kebenaran semula secara manual jika token dibatalkan"
             },
             "profilesLoadFailed": "Pelayan yang disimpan tidak dapat dibaca: {error}",
-            "cleanupSummary": "{count} fail, {size} dibebaskan"
+            "cleanupSummary": "{count} fail, {size} dibebaskan",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Disambung",
@@ -1631,7 +1673,8 @@
                 "apRole": "Pengasas, pembangun, penyelenggara, pereka bersama",
                 "ekRole": "Penyelidik, jurutera jaminan kualiti, pereka bersama"
             },
-            "madeBy": "oleh {author}"
+            "madeBy": "oleh {author}",
+            "statsLine": "{protocols} protokol · {languages} bahasa · arkib AES-256"
         },
         "support": {
             "title": "Sokong AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projek (Unixname)",
             "opendriveNotApiKey": "(bukan kunci API OpenDrive anda)",
             "endpoint": "Titik Akhir",
-            "accountId": "ID Akaun"
+            "accountId": "ID Akaun",
+            "servicesHeading": "Perkhidmatan",
+            "sourceforgeSshKeyHelp": "SourceForge memerlukan pengesahan kunci SSH. Jana kunci dengan {cmd} dan muat naik ke {link}.",
+            "sourceforgeSshSettings": "Tetapan SSH",
+            "fullGuide": "Panduan penuh",
+            "endpointTemplateExample": "cth. {template}",
+            "jurisdiction": "Bidang kuasa",
+            "insecureCertDialogLabel": "Amaran Sijil Tidak Selamat",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Pelan percuma",
             "freeCardTier": "Percuma + kad",
-            "paidTier": "Berbayar"
+            "paidTier": "Berbayar",
+            "extraFeatures": "Tambahan",
+            "coreOpsList": "Muat naik, Muat turun, Padam, Namakan semula, Alih, Cipta folder, Cari",
+            "coreOpsLegend": "Asas = Muat naik, Muat turun, Padam, Namakan semula, Alih, Cipta folder, Cari"
         },
         "healthCheck": {
             "title": "Pemeriksaan Kesihatan Pelayan",
@@ -5214,7 +5268,8 @@
                 "down": "Tidak boleh dicapai",
                 "pending": "Memeriksa...",
                 "unknown": "Belum disemak",
-                "clickToRetry": "klik untuk semak semula"
+                "clickToRetry": "klik untuk semak semula",
+                "withActiveSession": "{title} (sesi aktif)"
             },
             "densityCompact": "Baris padat",
             "densityComfortable": "Baris selesa",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Lapisan tersulit AeroCrypt (asli): nama dan kandungan disulitkan pada pelayan ini.",
-                "rcloneTitle": "Lapisan rclone crypt (interop): nama dan kandungan disulitkan pada pelayan ini."
+                "rcloneTitle": "Lapisan rclone crypt (interop): nama dan kandungan disulitkan pada pelayan ini.",
+                "keyBits": "{bits}-bit"
             },
             "sidebar": {
                 "filters": "Penapis",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Kami tidak dapat membaca tetapan penyulitan bucket ini, kerana kunci aplikasi tidak mempunyai keupayaan readBucketEncryption. Nilai yang tidak dibenarkan kami lihat tidak bermakna penyulitan dimatikan.",
                 "unknownShapeTitle": "Kami tidak dapat membaca tetapan penyulitan bucket ini, kerana jawapannya tidak mempunyai bentuk yang didokumenkan. Kunci itu dibenarkan membacanya, jadi ini tentang jawapan dan bukan tentang kebenaran."
             },
-            "exportProfile": "Eksport..."
+            "exportProfile": "Eksport...",
+            "quotaLabel": "Kuota",
+            "storageNoCapReported": "{used} (tiada had kuota dilaporkan)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Dikesan daripada Filen auth/info semasa sambungan berjaya",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "sekarang",
+                "minutes": "{count} min",
+                "hours": "{count} j",
+                "days": "{count} h",
+                "months": "{count} bln"
+            }
         },
         "gitlab": {
             "projectPath": "Laluan Projek",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Mod dipilih semasa sambungan dicipta dan kekal tetap semasa menyunting profil tersimpan. Untuk menggunakan mod berbeza, cipta sambungan baharu."
+                "lockedInEdit": "Mod dipilih semasa sambungan dicipta dan kekal tetap semasa menyunting profil tersimpan. Untuk menggunakan mod berbeza, cipta sambungan baharu.",
+                "notInBuild": "Tidak disertakan dalam binaan AeroFTP ini."
             }
         },
         "flatpak": {

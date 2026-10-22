@@ -337,7 +337,37 @@
             "protonSignOut": "Tanca la sessió",
             "protonSignOutHelp": "Tanca la sessió a Proton i la treu d'aquest perfil.",
             "protonSignInExpired": "La pàgina d'inici de sessió ha caducat. Torna a iniciar sessió.",
-            "protonNativeUnavailable": "Aquesta compilació no inclou el client natiu de Proton Drive."
+            "protonNativeUnavailable": "Aquesta compilació no inclou el client natiu de Proton Drive.",
+            "forms": {
+                "publicApiKey": "Clau API pública",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Clau pública.",
+                "secretApiKey": "Clau API secreta",
+                "uploadcareSecretHint": "S'utilitza només per a la gestió de fitxers REST mitjançant l'autenticació {scheme}.",
+                "flatMediaLibrary": "Biblioteca multimèdia plana",
+                "uploadcareNoFolders": "Uploadcare no ofereix carpetes natives; els fitxers del projecte es llisten a l'arrel per UUID.",
+                "urlEndpointId": "ID del punt final d'URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Punt final d'URL.",
+                "privateApiKey": "Clau API privada",
+                "storedVaultBasicAuth": "Desada a la caixa forta local i enviada només a {provider} mitjançant Basic Auth.",
+                "cloudName": "Nom del núvol",
+                "cloudinaryCloudNameHint": "Es troba a Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Clau API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Clau API.",
+                "apiSecret": "Secret de l'API",
+                "apiSecretPlaceholder": "Secret de l'API",
+                "openProviderLink": "Obre l'enllaç de {provider}",
+                "githubPatHint": "PAT detallat amb Contents (lectura i escriptura).",
+                "generateToken": "Genera un testimoni",
+                "applicationKeyId": "ID de la clau d'aplicació",
+                "backblazeKeyIdHint": "ID de la clau d'aplicació de B2, comença per 003. Genereu-ne una des de la pàgina App Keys de Backblaze.",
+                "applicationKey": "Clau d'aplicació",
+                "backblazeKeyHint": "Només es mostra una vegada en crear-la. Tracteu-la com una contrasenya.",
+                "bucketNameExactHint": "Nom exacte del bucket, distingeix majúscules i minúscules.",
+                "megacmdSetupFirst": "Configureu primer MEGAcmd",
+                "megacmdFetchUrlTitle": "Executa {cmd} i omple l'URL automàticament",
+                "fetchUrl": "Obtén l'URL",
+                "megacmdWebdavHint": "El nom d'usuari i la contrasenya s'ometen expressament. AeroFTP executa ell mateix «{cmd}» en connectar per iniciar el pont i llegir aquesta adreça: podeu deixar-la en blanc. «Obtén l'URL» és una actualització manual opcional; canvieu aquí el port si MEGAcmd en fa servir un de personalitzat."
+            }
         },
         "browser": {
             "remote": "Remot",
@@ -1040,7 +1070,13 @@
                 "title": "Rsync natiu (beta)",
                 "description": "Trieu com SFTP Delta Sync envia les transferències rsync.",
                 "enableToggle": "Activa el rsync natiu per a la sincronització delta per SFTP",
-                "experimental": "Auto prefereix AeroRsync amb reserva clàssica; Classic utilitza el binari rsync del sistema quan està disponible; Native omet la reserva del binari clàssic."
+                "experimental": "Auto prefereix AeroRsync amb reserva clàssica; Classic utilitza el binari rsync del sistema quan està disponible; Native omet la reserva del binari clàssic.",
+                "modeAuto": "Automàtic",
+                "modeClassic": "Clàssic",
+                "modeNative": "Natiu",
+                "classicNotFoundTooltip": "No s'ha trobat el binari rsync clàssic al PATH. Instal·la rsync (paquet de Linux/macOS, Windows mitjançant WSL/cygwin/scoop) per habilitar aquest mode.",
+                "classicAt": "rsync clàssic a {path}",
+                "classicNotDetected": "No s'ha detectat el binari rsync clàssic al PATH. Natiu és l'únic motor disponible en aquest equip."
             },
             "startMinimizedOnAutostart": "Iniciar minimitzat a la safata",
             "startMinimizedOnAutostartDesc": "Amaga la finestra principal en iniciar automàticament. AeroFTP continua executant-se a la safata del sistema, obre'l des de la icona de la safata quan el necessitis.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "S'han trobat {count} credencials OAuth en l'emmagatzematge sense xifrar",
             "fontSystemInstall": "instal·lació al sistema",
             "fontSizeMin": "mín",
-            "fontSizeMax": "màx"
+            "fontSizeMax": "màx",
+            "migrationCleanupHint": "Recomanat per a la màxima seguretat",
+            "fontCustomOption": "Personalitzada...",
+            "fontSystemInstallHint": "Requereix instal·lació al sistema. AeroFTP recorre automàticament a una alternativa si no està disponible."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Torneu a autoritzar manualment si el token es revoca"
             },
             "profilesLoadFailed": "No s'han pogut llegir els servidors desats: {error}",
-            "cleanupSummary": "{count} fitxers, {size} alliberats"
+            "cleanupSummary": "{count} fitxers, {size} alliberats",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Connectat",
@@ -1631,7 +1673,8 @@
                 "apRole": "Fundador, desenvolupador, mantenidor, codissenyador",
                 "ekRole": "Investigador, enginyer de garantia de qualitat, codissenyador"
             },
-            "madeBy": "per {author}"
+            "madeBy": "per {author}",
+            "statsLine": "{protocols} protocols · {languages} idiomes · arxius AES-256"
         },
         "support": {
             "title": "Donar Suport a AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projecte (Unixname)",
             "opendriveNotApiKey": "(no és la vostra clau d'API d'OpenDrive)",
             "endpoint": "Punt d'accés",
-            "accountId": "ID del compte"
+            "accountId": "ID del compte",
+            "servicesHeading": "Serveis",
+            "sourceforgeSshKeyHelp": "SourceForge requereix autenticació amb clau SSH. Genera una clau amb {cmd} i puja-la a {link}.",
+            "sourceforgeSshSettings": "Configuració SSH",
+            "fullGuide": "Guia completa",
+            "endpointTemplateExample": "p. ex. {template}",
+            "jurisdiction": "Jurisdicció",
+            "insecureCertDialogLabel": "Avís de certificat insegur",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -4835,7 +4886,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Pla gratuït",
             "freeCardTier": "Gratis + targeta",
-            "paidTier": "De pagament"
+            "paidTier": "De pagament",
+            "extraFeatures": "Extra",
+            "coreOpsList": "Pujar, Baixar, Suprimir, Canviar el nom, Moure, Crear carpeta, Cercar",
+            "coreOpsLegend": "Base = Pujar, Baixar, Suprimir, Canviar el nom, Moure, Crear carpeta, Cercar"
         },
         "healthCheck": {
             "title": "Comprovació del servidor",
@@ -5233,7 +5287,8 @@
                 "down": "Inaccessible",
                 "pending": "Comprovant...",
                 "unknown": "No verificat",
-                "clickToRetry": "fes clic per tornar a comprovar"
+                "clickToRetry": "fes clic per tornar a comprovar",
+                "withActiveSession": "{title} (sessió activa)"
             },
             "densityCompact": "Files compactes",
             "densityComfortable": "Files còmodes",
@@ -5323,7 +5378,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Capa xifrada AeroCrypt (nativa): els noms i els continguts estan xifrats en aquest servidor.",
-                "rcloneTitle": "Capa rclone crypt (interop): els noms i els continguts estan xifrats en aquest servidor."
+                "rcloneTitle": "Capa rclone crypt (interop): els noms i els continguts estan xifrats en aquest servidor.",
+                "keyBits": "{bits} bits"
             },
             "sidebar": {
                 "filters": "Filtres",
@@ -5343,7 +5399,19 @@
                 "unknownKeyTitle": "No hem pogut llegir la configuració de xifratge d'aquest bucket, perquè la clau d'aplicació no té la capacitat readBucketEncryption. Un valor que no tenim permís per veure no vol dir que el xifratge estigui desactivat.",
                 "unknownShapeTitle": "No hem pogut llegir la configuració de xifratge d'aquest bucket, perquè la resposta no tenia una forma documentada. La clau sí que tenia permís per llegir-la, així que es tracta de la resposta i no dels permisos."
             },
-            "exportProfile": "Exporta..."
+            "exportProfile": "Exporta...",
+            "quotaLabel": "Quota",
+            "storageNoCapReported": "{used} (no s'ha informat de cap límit de quota)",
+            "e2eBitsBadge": "E2E {bits} bits",
+            "filenAuthVersionTitle": "Detectat des de Filen auth/info en connectar correctament",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "ara",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} d",
+                "months": "{count} mes."
+            }
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",
@@ -6385,7 +6453,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "El mode es tria en crear la connexió i es manté fix mentre s'edita un perfil desat. Per utilitzar un mode diferent, crea una connexió nova."
+                "lockedInEdit": "El mode es tria en crear la connexió i es manté fix mentre s'edita un perfil desat. Per utilitzar un mode diferent, crea una connexió nova.",
+                "notInBuild": "No inclòs en aquesta compilació d'AeroFTP."
             }
         },
         "flatpak": {

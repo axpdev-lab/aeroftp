@@ -337,7 +337,37 @@
             "protonSignOut": "로그아웃",
             "protonSignOutHelp": "Proton의 세션을 종료하고 이 프로필에서 제거합니다.",
             "protonSignInExpired": "로그인 페이지가 만료되었습니다. 다시 로그인하세요.",
-            "protonNativeUnavailable": "이 빌드에는 네이티브 Proton Drive 클라이언트가 포함되어 있지 않습니다."
+            "protonNativeUnavailable": "이 빌드에는 네이티브 Proton Drive 클라이언트가 포함되어 있지 않습니다.",
+            "forms": {
+                "publicApiKey": "공개 API 키",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - 공개 키.",
+                "secretApiKey": "비밀 API 키",
+                "uploadcareSecretHint": "{scheme} 인증을 통한 REST 파일 관리에만 사용됩니다.",
+                "flatMediaLibrary": "평면 미디어 라이브러리",
+                "uploadcareNoFolders": "Uploadcare는 기본 폴더를 제공하지 않습니다. 프로젝트 파일은 루트에 UUID별로 나열됩니다.",
+                "urlEndpointId": "URL 엔드포인트 ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL 엔드포인트.",
+                "privateApiKey": "비공개 API 키",
+                "storedVaultBasicAuth": "로컬 보관소에 저장되며 Basic Auth를 통해 {provider}에만 전송됩니다.",
+                "cloudName": "클라우드 이름",
+                "cloudinaryCloudNameHint": "Cloudinary Dashboard - Account Details에서 찾을 수 있습니다.",
+                "apiKeyPlaceholder": "API 키",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API 키.",
+                "apiSecret": "API 시크릿",
+                "apiSecretPlaceholder": "API 시크릿",
+                "openProviderLink": "{provider} 링크 열기",
+                "githubPatHint": "Contents(읽기 및 쓰기) 권한이 있는 세분화된 PAT.",
+                "generateToken": "토큰 생성",
+                "applicationKeyId": "애플리케이션 키 ID",
+                "backblazeKeyIdHint": "B2 애플리케이션 키 ID이며 003으로 시작합니다. Backblaze App Keys 페이지에서 생성하세요.",
+                "applicationKey": "애플리케이션 키",
+                "backblazeKeyHint": "생성 시 한 번만 표시됩니다. 비밀번호처럼 취급하세요.",
+                "bucketNameExactHint": "정확한 버킷 이름, 대소문자 구분.",
+                "megacmdSetupFirst": "먼저 MEGAcmd를 설정하세요",
+                "megacmdFetchUrlTitle": "{cmd} 실행 후 URL 자동 입력",
+                "fetchUrl": "URL 가져오기",
+                "megacmdWebdavHint": "사용자 이름과 비밀번호는 의도적으로 생략되었습니다. AeroFTP는 연결 시 직접 \"{cmd}\"를 실행해 브리지를 시작하고 이 주소를 읽습니다. 비워 두어도 됩니다. \"URL 가져오기\"는 선택적 수동 새로 고침입니다. MEGAcmd가 사용자 지정 포트를 사용하면 여기서 포트를 변경하세요."
+            }
         },
         "browser": {
             "remote": "원격",
@@ -1040,7 +1070,13 @@
                 "title": "네이티브 rsync (베타)",
                 "description": "SFTP Delta Sync가 rsync 전송을 어떻게 보낼지 선택합니다.",
                 "enableToggle": "SFTP 델타 동기화에 네이티브 rsync 사용",
-                "experimental": "Auto는 AeroRsync를 우선하며 클래식으로 폴백합니다; Classic은 사용 가능한 경우 시스템 rsync 바이너리를 사용합니다; Native는 클래식 바이너리 폴백을 건너뜁니다."
+                "experimental": "Auto는 AeroRsync를 우선하며 클래식으로 폴백합니다; Classic은 사용 가능한 경우 시스템 rsync 바이너리를 사용합니다; Native는 클래식 바이너리 폴백을 건너뜁니다.",
+                "modeAuto": "자동",
+                "modeClassic": "클래식",
+                "modeNative": "네이티브",
+                "classicNotFoundTooltip": "PATH에서 클래식 rsync 바이너리를 찾을 수 없습니다. 이 모드를 사용하려면 rsync를 설치하세요 (Linux/macOS 패키지, Windows는 WSL/cygwin/scoop 사용).",
+                "classicAt": "클래식 rsync 위치: {path}",
+                "classicNotDetected": "PATH에서 클래식 rsync 바이너리가 감지되지 않았습니다. 이 컴퓨터에서 사용할 수 있는 엔진은 네이티브뿐입니다."
             },
             "startMinimizedOnAutostart": "트레이로 최소화하여 시작",
             "startMinimizedOnAutostartDesc": "자동 시작 시 메인 창을 숨깁니다. AeroFTP는 시스템 트레이에서 계속 실행되므로 필요할 때 트레이 아이콘에서 열 수 있습니다.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "암호화되지 않은 저장소에서 OAuth 자격 증명 {count}개를 찾았습니다",
             "fontSystemInstall": "시스템 설치",
             "fontSizeMin": "최소",
-            "fontSizeMax": "최대"
+            "fontSizeMax": "최대",
+            "migrationCleanupHint": "최대 보안을 위해 권장",
+            "fontCustomOption": "사용자 지정...",
+            "fontSystemInstallHint": "시스템 설치가 필요합니다. 사용할 수 없으면 AeroFTP가 자동으로 대체합니다."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "토큰이 취소되면 수동으로 다시 인증하세요"
             },
             "profilesLoadFailed": "저장된 서버를 읽을 수 없습니다: {error}",
-            "cleanupSummary": "파일 {count}개, {size} 확보"
+            "cleanupSummary": "파일 {count}개, {size} 확보",
+            "maturity": {
+                "alpha": "알파"
+            }
         },
         "statusBar": {
             "connected": "연결됨",
@@ -1631,7 +1673,8 @@
                 "apRole": "설립자, 개발자, 메인테이너, 공동 디자이너",
                 "ekRole": "연구원, 품질 보증 엔지니어, 공동 디자이너"
             },
-            "madeBy": "{author} 제작"
+            "madeBy": "{author} 제작",
+            "statsLine": "{protocols}개 프로토콜 · {languages}개 언어 · AES-256 아카이브"
         },
         "support": {
             "title": "AeroFTP 지원",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "프로젝트 (Unixname)",
             "opendriveNotApiKey": "(OpenDrive API 키가 아님)",
             "endpoint": "엔드포인트",
-            "accountId": "계정 ID"
+            "accountId": "계정 ID",
+            "servicesHeading": "서비스",
+            "sourceforgeSshKeyHelp": "SourceForge는 SSH 키 인증이 필요합니다. {cmd}(으)로 키를 생성하여 {link}에 업로드하세요.",
+            "sourceforgeSshSettings": "SSH 설정",
+            "fullGuide": "전체 가이드",
+            "endpointTemplateExample": "예: {template}",
+            "jurisdiction": "관할권",
+            "insecureCertDialogLabel": "안전하지 않은 인증서 경고",
+            "betaBadge": "베타"
         },
         "shortcuts": {
             "title": "단축키",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "무료 플랜",
             "freeCardTier": "무료 + 카드",
-            "paidTier": "유료"
+            "paidTier": "유료",
+            "extraFeatures": "추가",
+            "coreOpsList": "업로드, 다운로드, 삭제, 이름 변경, 이동, 폴더 만들기, 검색",
+            "coreOpsLegend": "기본 = 업로드, 다운로드, 삭제, 이름 변경, 이동, 폴더 만들기, 검색"
         },
         "healthCheck": {
             "title": "서버 상태 점검",
@@ -5214,7 +5268,8 @@
                 "down": "연결 불가",
                 "pending": "확인 중...",
                 "unknown": "미확인",
-                "clickToRetry": "클릭하여 다시 확인"
+                "clickToRetry": "클릭하여 다시 확인",
+                "withActiveSession": "{title} (활성 세션)"
             },
             "densityCompact": "좁은 행",
             "densityComfortable": "편안한 행",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt 암호화 오버레이(네이티브): 이 서버에서 이름과 내용이 암호화됩니다.",
-                "rcloneTitle": "rclone crypt 오버레이(상호 운용): 이 서버에서 이름과 내용이 암호화됩니다."
+                "rcloneTitle": "rclone crypt 오버레이(상호 운용): 이 서버에서 이름과 내용이 암호화됩니다.",
+                "keyBits": "{bits}비트"
             },
             "sidebar": {
                 "filters": "필터",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "이 버킷의 암호화 설정을 읽을 수 없었습니다. 애플리케이션 키에 readBucketEncryption 권한이 없기 때문입니다. 볼 수 없는 값이라고 해서 암호화가 꺼져 있다는 뜻은 아닙니다.",
                 "unknownShapeTitle": "이 버킷의 암호화 설정을 읽을 수 없었습니다. 응답이 문서화된 형식이 아니었기 때문입니다. 키에는 읽을 권한이 있었으므로 이는 응답의 문제이지 권한의 문제가 아닙니다."
             },
-            "exportProfile": "내보내기..."
+            "exportProfile": "내보내기...",
+            "quotaLabel": "할당량",
+            "storageNoCapReported": "{used} (보고된 할당량 한도 없음)",
+            "e2eBitsBadge": "E2E {bits}비트",
+            "filenAuthVersionTitle": "연결 성공 시 Filen auth/info에서 감지됨",
+            "demoBadge": "데모",
+            "timeAgo": {
+                "now": "지금",
+                "minutes": "{count}분",
+                "hours": "{count}시간",
+                "days": "{count}일",
+                "months": "{count}개월"
+            }
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "모드는 연결을 만들 때 선택되며 저장된 프로필을 편집하는 동안 고정됩니다. 다른 모드를 사용하려면 새 연결을 만드세요."
+                "lockedInEdit": "모드는 연결을 만들 때 선택되며 저장된 프로필을 편집하는 동안 고정됩니다. 다른 모드를 사용하려면 새 연결을 만드세요.",
+                "notInBuild": "이 AeroFTP 빌드에는 포함되지 않았습니다."
             }
         },
         "flatpak": {

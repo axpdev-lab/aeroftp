@@ -337,7 +337,37 @@
             "protonSignOut": "Deconectare",
             "protonSignOutHelp": "Încheie sesiunea pe Proton și o elimină din acest profil.",
             "protonSignInExpired": "Pagina de conectare a expirat. Conectați-vă din nou.",
-            "protonNativeUnavailable": "Această versiune nu include clientul Proton Drive nativ."
+            "protonNativeUnavailable": "Această versiune nu include clientul Proton Drive nativ.",
+            "forms": {
+                "publicApiKey": "Cheie API publică",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Cheie publică.",
+                "secretApiKey": "Cheie API secretă",
+                "uploadcareSecretHint": "Folosită doar pentru gestionarea fișierelor prin REST cu autentificare {scheme}.",
+                "flatMediaLibrary": "Bibliotecă media plată",
+                "uploadcareNoFolders": "Uploadcare nu oferă foldere native; fișierele proiectului sunt listate în rădăcină după UUID.",
+                "urlEndpointId": "ID punct final URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Punct final URL.",
+                "privateApiKey": "Cheie API privată",
+                "storedVaultBasicAuth": "Stocată în seiful local și trimisă doar către {provider} prin Basic Auth.",
+                "cloudName": "Numele cloudului",
+                "cloudinaryCloudNameHint": "Se găsește în Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Cheie API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Cheie API.",
+                "apiSecret": "Secret API",
+                "apiSecretPlaceholder": "Secret API",
+                "openProviderLink": "Deschide linkul {provider}",
+                "githubPatHint": "PAT cu permisiuni granulare pentru Contents (citire și scriere).",
+                "generateToken": "Generează token",
+                "applicationKeyId": "ID cheie aplicație",
+                "backblazeKeyIdHint": "ID-ul cheii de aplicație B2, începe cu 003. Generați una din pagina App Keys a Backblaze.",
+                "applicationKey": "Cheie de aplicație",
+                "backblazeKeyHint": "Afișată o singură dată la creare. Tratați-o ca pe o parolă.",
+                "bucketNameExactHint": "Numele exact al bucketului, sensibil la majuscule.",
+                "megacmdSetupFirst": "Configurați mai întâi MEGAcmd",
+                "megacmdFetchUrlTitle": "Rulează {cmd} și completează URL-ul automat",
+                "fetchUrl": "Preia URL",
+                "megacmdWebdavHint": "Numele de utilizator și parola sunt omise intenționat. AeroFTP rulează singur „{cmd}” la conectare pentru a porni puntea și a citi această adresă: câmpul poate rămâne gol. „Preia URL” este o reîmprospătare manuală opțională; schimbați portul aici dacă MEGAcmd folosește unul personalizat."
+            }
         },
         "browser": {
             "remote": "La distanță",
@@ -1040,7 +1070,13 @@
                 "title": "rsync nativ (beta)",
                 "description": "Folosește implementarea integrată a protocolului rsync din AeroFTP în locul executării binarului rsync al sistemului. Reduce costul de proces; poate fi mai puțin testată în cazuri extreme.",
                 "enableToggle": "Activează rsync nativ pentru sincronizarea delta prin SFTP",
-                "experimental": "Experimental: revine automat la rsync clasic în caz de eroare. Nepotrivirile cheii host apar ca erori blocante, fără fallback silențios."
+                "experimental": "Experimental: revine automat la rsync clasic în caz de eroare. Nepotrivirile cheii host apar ca erori blocante, fără fallback silențios.",
+                "modeAuto": "Automat",
+                "modeClassic": "Clasic",
+                "modeNative": "Nativ",
+                "classicNotFoundTooltip": "Executabilul rsync clasic nu a fost găsit în PATH. Instalează rsync (pachet Linux/macOS, Windows prin WSL/cygwin/scoop) pentru a activa acest mod.",
+                "classicAt": "rsync clasic în {path}",
+                "classicNotDetected": "Executabilul rsync clasic nu a fost detectat în PATH. Nativ este singurul motor disponibil pe acest computer."
             },
             "startMinimizedOnAutostart": "Pornește minimizat în bara de sistem",
             "startMinimizedOnAutostartDesc": "Ascunde fereastra principală la pornirea automată. AeroFTP continuă să ruleze în bara de sistem, deschide-l din pictograma barei când ai nevoie de el.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "{count} credențiale OAuth găsite în stocarea necriptată",
             "fontSystemInstall": "instalare în sistem",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Recomandat pentru securitate maximă",
+            "fontCustomOption": "Personalizat...",
+            "fontSystemInstallHint": "Necesită instalare în sistem. AeroFTP folosește automat o alternativă dacă nu este disponibil."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Reautorizați manual dacă token-ul este revocat"
             },
             "profilesLoadFailed": "Serverele salvate nu au putut fi citite: {error}",
-            "cleanupSummary": "{count} fișiere, s-au eliberat {size}"
+            "cleanupSummary": "{count} fișiere, s-au eliberat {size}",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Conectat",
@@ -1631,7 +1673,8 @@
                 "apRole": "Fondator, dezvoltator, întreținător, co-designer",
                 "ekRole": "Cercetător, inginer de asigurare a calității, co-designer"
             },
-            "madeBy": "de {author}"
+            "madeBy": "de {author}",
+            "statsLine": "{protocols} protocoale · {languages} limbi · arhive AES-256"
         },
         "support": {
             "title": "Susține AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Proiect (Unixname)",
             "opendriveNotApiKey": "(nu este cheia dvs. API OpenDrive)",
             "endpoint": "Endpoint",
-            "accountId": "ID-ul contului"
+            "accountId": "ID-ul contului",
+            "servicesHeading": "Servicii",
+            "sourceforgeSshKeyHelp": "SourceForge necesită autentificare cu cheie SSH. Generează o cheie cu {cmd} și încarc-o pe {link}.",
+            "sourceforgeSshSettings": "Setări SSH",
+            "fullGuide": "Ghid complet",
+            "endpointTemplateExample": "ex. {template}",
+            "jurisdiction": "Jurisdicție",
+            "insecureCertDialogLabel": "Avertisment certificat nesigur",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Plan gratuit",
             "freeCardTier": "Gratis + card",
-            "paidTier": "Cu plată"
+            "paidTier": "Cu plată",
+            "extraFeatures": "Extra",
+            "coreOpsList": "Încărcare, Descărcare, Ștergere, Redenumire, Mutare, Creare dosar, Căutare",
+            "coreOpsLegend": "De bază = Încărcare, Descărcare, Ștergere, Redenumire, Mutare, Creare dosar, Căutare"
         },
         "healthCheck": {
             "title": "Verificare stare server",
@@ -5214,7 +5268,8 @@
                 "down": "Inaccesibil",
                 "pending": "Se verifică...",
                 "unknown": "Neverificat",
-                "clickToRetry": "clic pentru a verifica din nou"
+                "clickToRetry": "clic pentru a verifica din nou",
+                "withActiveSession": "{title} (sesiune activă)"
             },
             "densityCompact": "Rânduri compacte",
             "densityComfortable": "Rânduri confortabile",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Strat criptat AeroCrypt (nativ): numele și conținutul sunt criptate pe acest server.",
-                "rcloneTitle": "Strat rclone crypt (interop): numele și conținutul sunt criptate pe acest server."
+                "rcloneTitle": "Strat rclone crypt (interop): numele și conținutul sunt criptate pe acest server.",
+                "keyBits": "{bits} biți"
             },
             "sidebar": {
                 "filters": "Filtre",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Nu am putut citi setarea de criptare a acestui bucket, deoarece cheia de aplicație nu are capacitatea readBucketEncryption. O valoare pe care nu avem voie să o vedem nu înseamnă că criptarea este dezactivată.",
                 "unknownShapeTitle": "Nu am putut citi setarea de criptare a acestui bucket, deoarece răspunsul nu a avut o formă documentată. Cheia avea dreptul să o citească, așadar este vorba despre răspuns și nu despre permisiuni."
             },
-            "exportProfile": "Exportă..."
+            "exportProfile": "Exportă...",
+            "quotaLabel": "Cotă",
+            "storageNoCapReported": "{used} (nicio limită de cotă raportată)",
+            "e2eBitsBadge": "E2E {bits} biți",
+            "filenAuthVersionTitle": "Detectat din Filen auth/info la conectarea reușită",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "acum",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} z",
+                "months": "{count} luni"
+            }
         },
         "gitlab": {
             "projectPath": "Calea proiectului",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Modul este ales la crearea conexiunii și rămâne fix în timpul editării unui profil salvat. Pentru a folosi un alt mod, creați o conexiune nouă."
+                "lockedInEdit": "Modul este ales la crearea conexiunii și rămâne fix în timpul editării unui profil salvat. Pentru a folosi un alt mod, creați o conexiune nouă.",
+                "notInBuild": "Nu este inclus în această versiune AeroFTP."
             }
         },
         "flatpak": {

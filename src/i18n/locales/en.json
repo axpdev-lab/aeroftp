@@ -67,7 +67,8 @@
                 "apRole": "Founder, developer, maintainer, co-designer",
                 "ekRole": "Researcher, quality assurance engineer, co-designer"
             },
-            "madeBy": "by {author}"
+            "madeBy": "by {author}",
+            "statsLine": "{protocols} protocols · {languages} languages · AES-256 archives"
         },
         "activity": {
             "connect_error": "Connection to {server} failed. Check credentials.",
@@ -1457,7 +1458,10 @@
                 "fourshared": "Re-authorize manually if the token is revoked"
             },
             "profilesLoadFailed": "Your saved servers could not be read: {error}",
-            "cleanupSummary": "{count} files, {size} freed"
+            "cleanupSummary": "{count} files, {size} freed",
+            "maturity": {
+                "alpha": "Alpha"
+            }
         },
         "common": {
             "about": "About",
@@ -1835,7 +1839,37 @@
             "twakeSignInAgain": "Sign in again",
             "twakeSignedIn": "Signed in",
             "twakeWaitingBrowser": "Finish signing in in your browser...",
-            "twakeSignInHelp": "AeroFTP opens Twake in your browser and asks for access to your files only. If Twake shows an error the first time, log in to Twake in the browser and sign in again. You can revoke access anytime in Twake Settings, Connected devices."
+            "twakeSignInHelp": "AeroFTP opens Twake in your browser and asks for access to your files only. If Twake shows an error the first time, log in to Twake in the browser and sign in again. You can revoke access anytime in Twake Settings, Connected devices.",
+            "forms": {
+                "publicApiKey": "Public API Key",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Public key.",
+                "secretApiKey": "Secret API Key",
+                "uploadcareSecretHint": "Used only for REST file management via {scheme} auth.",
+                "flatMediaLibrary": "Flat media library",
+                "uploadcareNoFolders": "Uploadcare does not expose native folders; project files are listed at root by UUID.",
+                "urlEndpointId": "URL Endpoint ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL endpoint.",
+                "privateApiKey": "Private API Key",
+                "storedVaultBasicAuth": "Stored in the local vault and sent only to {provider} via Basic Auth.",
+                "cloudName": "Cloud Name",
+                "cloudinaryCloudNameHint": "Found in your Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API key",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API Key.",
+                "apiSecret": "API Secret",
+                "apiSecretPlaceholder": "API secret",
+                "openProviderLink": "Open {provider} link",
+                "githubPatHint": "Fine-grained PAT with Contents (Read & Write).",
+                "generateToken": "Generate token",
+                "applicationKeyId": "Application Key ID",
+                "backblazeKeyIdHint": "B2 Application Key ID, starts with 003. Generate one from the Backblaze App Keys page.",
+                "applicationKey": "Application Key",
+                "backblazeKeyHint": "Shown only once at creation. Treat it as a password.",
+                "bucketNameExactHint": "Exact bucket name, case sensitive.",
+                "megacmdSetupFirst": "Setup MEGAcmd first",
+                "megacmdFetchUrlTitle": "Run {cmd} and fill the URL automatically",
+                "fetchUrl": "Fetch URL",
+                "megacmdWebdavHint": "Username and Password are intentionally omitted. AeroFTP runs \"{cmd}\" itself on connect to start the bridge and read this address: leaving it blank is fine. Fetch URL is an optional manual refresh; change the port here if MEGAcmd uses a custom one."
+            }
         },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",
@@ -3434,7 +3468,15 @@
             "sourceforgeProject": "Project (Unixname)",
             "opendriveNotApiKey": "(not your OpenDrive API key)",
             "endpoint": "Endpoint",
-            "accountId": "Account ID"
+            "accountId": "Account ID",
+            "servicesHeading": "Services",
+            "sourceforgeSshKeyHelp": "SourceForge requires SSH key authentication. Generate a key with {cmd} and upload it to {link}.",
+            "sourceforgeSshSettings": "SSH Settings",
+            "fullGuide": "Full guide",
+            "endpointTemplateExample": "e.g. {template}",
+            "jurisdiction": "Jurisdiction",
+            "insecureCertDialogLabel": "Insecure Certificate Warning",
+            "betaBadge": "BETA"
         },
         "quickLook": {
             "noPreview": "No preview available",
@@ -4023,7 +4065,13 @@
                 "title": "Native rsync (beta)",
                 "description": "Choose how SFTP Delta Sync dispatches rsync transfers.",
                 "enableToggle": "Enable native rsync for SFTP delta sync",
-                "experimental": "Auto prefers AeroRsync with classic fallback; Classic uses the system rsync binary where available; Native skips the classic binary fallback."
+                "experimental": "Auto prefers AeroRsync with classic fallback; Classic uses the system rsync binary where available; Native skips the classic binary fallback.",
+                "modeAuto": "Auto",
+                "modeClassic": "Classic",
+                "modeNative": "Native",
+                "classicNotFoundTooltip": "Classic rsync binary not found on PATH. Install rsync (Linux/macOS package, Windows via WSL/cygwin/scoop) to enable this mode.",
+                "classicAt": "Classic rsync at {path}",
+                "classicNotDetected": "Classic rsync binary not detected on PATH. Native is the only engine available on this machine."
             },
             "uninstallBadges": "Uninstall",
             "updateAvailable": "Update Available!",
@@ -4086,7 +4134,10 @@
             "migrationOauthFound": "{count} OAuth credentials found in unencrypted storage",
             "fontSystemInstall": "system install",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Recommended for maximum security",
+            "fontCustomOption": "Custom...",
+            "fontSystemInstallHint": "Requires system install. AeroFTP falls back automatically if unavailable."
         },
         "sharing": {
             "add": "Add",
@@ -5506,7 +5557,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt encrypted overlay (native): names and contents are encrypted on this server.",
-                "rcloneTitle": "rclone crypt overlay (interop): names and contents are encrypted on this server."
+                "rcloneTitle": "rclone crypt overlay (interop): names and contents are encrypted on this server.",
+                "keyBits": "{bits}-bit"
             },
             "bucketEncryption": {
                 "onTitle": "New objects in this bucket are encrypted by default ({mode}). This says nothing about objects already stored, and nothing about SSE-C or client-side encryption.",
@@ -5547,7 +5599,8 @@
                 "down": "Unreachable",
                 "pending": "Checking...",
                 "unknown": "Not probed",
-                "clickToRetry": "click to recheck"
+                "clickToRetry": "click to recheck",
+                "withActiveSession": "{title} (active session)"
             },
             "connectError": {
                 "failed": "Last connection attempt failed",
@@ -5650,7 +5703,19 @@
                 "moveRight": "Move sidebar right"
             },
             "deviceAttached": "Device attached",
-            "deviceNotAttached": "Device not attached"
+            "deviceNotAttached": "Device not attached",
+            "quotaLabel": "Quota",
+            "storageNoCapReported": "{used} (no quota cap reported)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Detected from Filen auth/info on successful connect",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "now",
+                "minutes": "{count}m",
+                "hours": "{count}h",
+                "days": "{count}d",
+                "months": "{count}mo"
+            }
         },
         "iconPicker": {
             "title": "Choose icon",
@@ -5744,7 +5809,10 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "extraFeatures": "Extra",
+            "coreOpsList": "Upload, Download, Delete, Rename, Move, Create Folder, Search",
+            "coreOpsLegend": "Base = Upload, Download, Delete, Rename, Move, Create Folder, Search"
         },
         "filenNotes": {
             "title": "Encrypted Notes",
@@ -6387,7 +6455,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection."
+                "lockedInEdit": "Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection.",
+                "notInBuild": "Not included in this build of AeroFTP."
             }
         },
         "flatpak": {

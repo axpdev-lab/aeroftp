@@ -337,7 +337,37 @@
             "protonSignOut": "Atsijungti",
             "protonSignOutHelp": "Baigia seansą Proton ir pašalina jį iš šio profilio.",
             "protonSignInExpired": "Prisijungimo puslapio galiojimas baigėsi. Prisijunkite iš naujo.",
-            "protonNativeUnavailable": "Šioje versijoje nėra integruoto Proton Drive kliento."
+            "protonNativeUnavailable": "Šioje versijoje nėra integruoto Proton Drive kliento.",
+            "forms": {
+                "publicApiKey": "Viešasis API raktas",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Viešasis raktas.",
+                "secretApiKey": "Slaptasis API raktas",
+                "uploadcareSecretHint": "Naudojamas tik REST failų valdymui per {scheme} autentifikavimą.",
+                "flatMediaLibrary": "Plokščia medijos biblioteka",
+                "uploadcareNoFolders": "Uploadcare neteikia savų aplankų; projekto failai pateikiami šaknyje pagal UUID.",
+                "urlEndpointId": "URL galinio taško ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL galinis taškas.",
+                "privateApiKey": "Privatusis API raktas",
+                "storedVaultBasicAuth": "Saugoma vietinėje saugykloje ir siunčiama tik {provider} per Basic Auth.",
+                "cloudName": "Debesies pavadinimas",
+                "cloudinaryCloudNameHint": "Rasite Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API raktas",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API raktas.",
+                "apiSecret": "API paslaptis",
+                "apiSecretPlaceholder": "API paslaptis",
+                "openProviderLink": "Atidaryti {provider} nuorodą",
+                "githubPatHint": "Detalus PAT su Contents teise (skaitymas ir rašymas).",
+                "generateToken": "Generuoti prieigos raktą",
+                "applicationKeyId": "Programos rakto ID",
+                "backblazeKeyIdHint": "B2 programos rakto ID, prasideda 003. Sukurkite jį Backblaze puslapyje App Keys.",
+                "applicationKey": "Programos raktas",
+                "backblazeKeyHint": "Rodomas tik vieną kartą kuriant. Elkitės su juo kaip su slaptažodžiu.",
+                "bucketNameExactHint": "Tikslus kibiro pavadinimas, skiriamos didžiosios ir mažosios raidės.",
+                "megacmdSetupFirst": "Pirmiausia nustatykite MEGAcmd",
+                "megacmdFetchUrlTitle": "Paleisti {cmd} ir automatiškai užpildyti URL",
+                "fetchUrl": "Gauti URL",
+                "megacmdWebdavHint": "Naudotojo vardas ir slaptažodis praleisti tyčia. Jungiantis AeroFTP pats paleidžia „{cmd}“, kad paleistų tiltą ir nuskaitytų šį adresą: lauką galima palikti tuščią. „Gauti URL“ yra pasirenkamas rankinis atnaujinimas; pakeiskite prievadą čia, jei MEGAcmd naudoja pasirinktinį."
+            }
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -1040,7 +1070,13 @@
                 "title": "Savasis rsync (beta)",
                 "description": "Pasirinkite, kaip SFTP Delta Sync siunčia rsync perdavimus.",
                 "enableToggle": "Įjungti savąjį rsync delta sinchronizavimui per SFTP",
-                "experimental": "Auto teikia pirmenybę AeroRsync su klasikiniu atsarginiu variantu; Classic naudoja sistemos rsync dvejetainį failą, kur jis prieinamas; Native praleidžia klasikinį dvejetainio failo atsarginį variantą."
+                "experimental": "Auto teikia pirmenybę AeroRsync su klasikiniu atsarginiu variantu; Classic naudoja sistemos rsync dvejetainį failą, kur jis prieinamas; Native praleidžia klasikinį dvejetainio failo atsarginį variantą.",
+                "modeAuto": "Automatinis",
+                "modeClassic": "Klasikinis",
+                "modeNative": "Vietinis",
+                "classicNotFoundTooltip": "Klasikinis rsync vykdomasis failas nerastas PATH. Įdiekite rsync (Linux/macOS paketas, Windows per WSL/cygwin/scoop), kad įjungtumėte šį režimą.",
+                "classicAt": "Klasikinis rsync: {path}",
+                "classicNotDetected": "Klasikinis rsync vykdomasis failas neaptiktas PATH. Vietinis yra vienintelis šiame kompiuteryje prieinamas variklis."
             },
             "startMinimizedOnAutostart": "Paleisti sumažintą į dėklą",
             "startMinimizedOnAutostartDesc": "Slėpti pagrindinį langą automatinio paleidimo metu. AeroFTP toliau veikia sistemos dėkle, atverkite jį iš dėklo piktogramos, kai jo prireiks.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Neužšifruotoje saugykloje rasta OAuth prisijungimo duomenų: {count}",
             "fontSystemInstall": "diegimas sistemoje",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "Rekomenduojama didžiausiam saugumui",
+            "fontCustomOption": "Pasirinktinis...",
+            "fontSystemInstallHint": "Reikia įdiegti sistemoje. Jei nepasiekiamas, AeroFTP automatiškai naudoja atsarginį variantą."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Jei prieigos raktas atšauktas, autorizuokite iš naujo rankiniu būdu"
             },
             "profilesLoadFailed": "Nepavyko nuskaityti išsaugotų serverių: {error}",
-            "cleanupSummary": "{count} failų, atlaisvinta {size}"
+            "cleanupSummary": "{count} failų, atlaisvinta {size}",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -1631,7 +1673,8 @@
                 "apRole": "Įkūrėjas, kūrėjas, prižiūrėtojas, dizaino bendraautoris",
                 "ekRole": "Tyrėjas, kokybės užtikrinimo inžinierius, dizaino bendraautoris"
             },
-            "madeBy": "bendrovės {author}"
+            "madeBy": "bendrovės {author}",
+            "statsLine": "{protocols} protokolai · {languages} kalbos · AES-256 archyvai"
         },
         "support": {
             "title": "Palaikykite AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projektas (Unixname)",
             "opendriveNotApiKey": "(ne jūsų OpenDrive API raktas)",
             "endpoint": "Galinis taškas",
-            "accountId": "Paskyros ID"
+            "accountId": "Paskyros ID",
+            "servicesHeading": "Paslaugos",
+            "sourceforgeSshKeyHelp": "SourceForge reikalauja autentifikavimo SSH raktu. Sugeneruokite raktą su {cmd} ir įkelkite jį į {link}.",
+            "sourceforgeSshSettings": "SSH nustatymai",
+            "fullGuide": "Visas vadovas",
+            "endpointTemplateExample": "pvz., {template}",
+            "jurisdiction": "Jurisdikcija",
+            "insecureCertDialogLabel": "Nesaugaus sertifikato įspėjimas",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Nemokamas planas",
             "freeCardTier": "Nemok. + kortelė",
-            "paidTier": "Mokama"
+            "paidTier": "Mokama",
+            "extraFeatures": "Papildomos",
+            "coreOpsList": "Įkėlimas, Atsisiuntimas, Ištrynimas, Pervadinimas, Perkėlimas, Aplanko kūrimas, Paieška",
+            "coreOpsLegend": "Bazinės = Įkėlimas, Atsisiuntimas, Ištrynimas, Pervadinimas, Perkėlimas, Aplanko kūrimas, Paieška"
         },
         "healthCheck": {
             "title": "Serverio būklės patikra",
@@ -5214,7 +5268,8 @@
                 "down": "Nepasiekiamas",
                 "pending": "Tikrinama...",
                 "unknown": "Nepatikrinta",
-                "clickToRetry": "spustelėkite, kad patikrintumėte iš naujo"
+                "clickToRetry": "spustelėkite, kad patikrintumėte iš naujo",
+                "withActiveSession": "{title} (aktyvi sesija)"
             },
             "densityCompact": "Glaustos eilutės",
             "densityComfortable": "Patogios eilutės",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt šifruotas sluoksnis (savasis): pavadinimai ir turinys šiame serveryje yra užšifruoti.",
-                "rcloneTitle": "rclone crypt sluoksnis (sąveikus): pavadinimai ir turinys šiame serveryje yra užšifruoti."
+                "rcloneTitle": "rclone crypt sluoksnis (sąveikus): pavadinimai ir turinys šiame serveryje yra užšifruoti.",
+                "keyBits": "{bits} bitų"
             },
             "sidebar": {
                 "filters": "Filtrai",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Nepavyko nuskaityti šio kibiro šifravimo nustatymo, nes programos raktas neturi readBucketEncryption galimybės. Reikšmė, kurios mums neleidžiama matyti, nereiškia, kad šifravimas išjungtas.",
                 "unknownShapeTitle": "Nepavyko nuskaityti šio kibiro šifravimo nustatymo, nes atsakymas neturėjo dokumentuotos formos. Raktui buvo leista jį skaityti, todėl tai susiję su atsakymu, o ne su teisėmis."
             },
-            "exportProfile": "Eksportuoti..."
+            "exportProfile": "Eksportuoti...",
+            "quotaLabel": "Kvota",
+            "storageNoCapReported": "{used} (kvotos riba nenurodyta)",
+            "e2eBitsBadge": "E2E {bits} bitų",
+            "filenAuthVersionTitle": "Aptikta iš Filen auth/info sėkmingai prisijungus",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "dabar",
+                "minutes": "{count} min.",
+                "hours": "{count} val.",
+                "days": "{count} d.",
+                "months": "{count} mėn."
+            }
         },
         "gitlab": {
             "projectPath": "Projekto kelias",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Režimas pasirenkamas kuriant ryšį ir lieka nepakitęs redaguojant išsaugotą profilį. Norėdami naudoti kitą režimą, sukurkite naują ryšį."
+                "lockedInEdit": "Režimas pasirenkamas kuriant ryšį ir lieka nepakitęs redaguojant išsaugotą profilį. Norėdami naudoti kitą režimą, sukurkite naują ryšį.",
+                "notInBuild": "Neįtraukta į šią AeroFTP versiją."
             }
         },
         "flatpak": {

@@ -337,7 +337,37 @@
             "protonSignOut": "Skrá út",
             "protonSignOutHelp": "Lýkur lotunni hjá Proton og fjarlægir hana úr þessum prófíl.",
             "protonSignInExpired": "Innskráningarsíðan rann út. Skráðu þig inn aftur.",
-            "protonNativeUnavailable": "Þessi útgáfa inniheldur ekki innbyggða Proton Drive-biðlarann."
+            "protonNativeUnavailable": "Þessi útgáfa inniheldur ekki innbyggða Proton Drive-biðlarann.",
+            "forms": {
+                "publicApiKey": "Opinber API-lykill",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Opinber lykill.",
+                "secretApiKey": "Leynilegur API-lykill",
+                "uploadcareSecretHint": "Aðeins notað fyrir REST-skráastjórnun með {scheme}-auðkenningu.",
+                "flatMediaLibrary": "Flatt miðlasafn",
+                "uploadcareNoFolders": "Uploadcare býður ekki upp á eigin möppur; skrár verkefnisins eru taldar upp í rót eftir UUID.",
+                "urlEndpointId": "Auðkenni URL-endapunkts",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-endapunktur.",
+                "privateApiKey": "Einka-API-lykill",
+                "storedVaultBasicAuth": "Geymt í staðbundnu hvelfingunni og aðeins sent til {provider} með Basic Auth.",
+                "cloudName": "Heiti skýs",
+                "cloudinaryCloudNameHint": "Finnst í Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-lykill",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-lykill.",
+                "apiSecret": "API-leyndarmál",
+                "apiSecretPlaceholder": "API-leyndarmál",
+                "openProviderLink": "Opna tengil {provider}",
+                "githubPatHint": "Fínstilltur PAT með Contents (lesa og skrifa).",
+                "generateToken": "Búa til tóka",
+                "applicationKeyId": "Auðkenni forritslykils",
+                "backblazeKeyIdHint": "Auðkenni forritslykils B2, byrjar á 003. Búðu til einn á App Keys-síðu Backblaze.",
+                "applicationKey": "Forritslykill",
+                "backblazeKeyHint": "Birtist aðeins einu sinni við stofnun. Farðu með hann eins og lykilorð.",
+                "bucketNameExactHint": "Nákvæmt heiti bucket, gerir greinarmun á há- og lágstöfum.",
+                "megacmdSetupFirst": "Settu upp MEGAcmd fyrst",
+                "megacmdFetchUrlTitle": "Keyra {cmd} og fylla út vefslóðina sjálfkrafa",
+                "fetchUrl": "Sækja vefslóð",
+                "megacmdWebdavHint": "Notandanafni og lykilorði er sleppt viljandi. AeroFTP keyrir sjálft „{cmd}“ við tengingu til að ræsa brúna og lesa þetta vistfang: það má vera autt. „Sækja vefslóð“ er valfrjáls handvirk uppfærsla; breyttu gáttinni hér ef MEGAcmd notar sérsniðna gátt."
+            }
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -1040,7 +1070,13 @@
                 "title": "Innbyggt rsync (beta)",
                 "description": "Veldu hvernig SFTP Delta Sync sendir rsync-flutninga.",
                 "enableToggle": "Virkja innbyggt rsync fyrir delta samstillingu yfir SFTP",
-                "experimental": "Auto kýs AeroRsync með klassískri varaleið; Classic notar rsync-tvíundarskrá kerfisins þar sem hún er tiltæk; Native sleppir klassískri varaleið tvíundarskrárinnar."
+                "experimental": "Auto kýs AeroRsync með klassískri varaleið; Classic notar rsync-tvíundarskrá kerfisins þar sem hún er tiltæk; Native sleppir klassískri varaleið tvíundarskrárinnar.",
+                "modeAuto": "Sjálfvirkt",
+                "modeClassic": "Hefðbundið",
+                "modeNative": "Innbyggt",
+                "classicNotFoundTooltip": "Hefðbundin rsync-keyrsluskrá fannst ekki í PATH. Settu upp rsync (Linux/macOS-pakki, Windows með WSL/cygwin/scoop) til að virkja þennan ham.",
+                "classicAt": "Hefðbundið rsync í {path}",
+                "classicNotDetected": "Hefðbundin rsync-keyrsluskrá greindist ekki í PATH. Innbyggt er eina vélin sem er í boði á þessari tölvu."
             },
             "startMinimizedOnAutostart": "Ræsa lágmarkað í kerfisbakka",
             "startMinimizedOnAutostartDesc": "Fela aðalgluggann við sjálfvirka ræsingu. AeroFTP heldur áfram að keyra í kerfisbakkanum, opnaðu það úr bakkatákninu þegar þú þarft á því að halda.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "{count} OAuth skilríki fundust í ódulkóðaðri geymslu",
             "fontSystemInstall": "kerfisuppsetning",
             "fontSizeMin": "lágm",
-            "fontSizeMax": "hám"
+            "fontSizeMax": "hám",
+            "migrationCleanupHint": "Mælt með fyrir hámarksöryggi",
+            "fontCustomOption": "Sérsniðið...",
+            "fontSystemInstallHint": "Krefst uppsetningar í kerfinu. AeroFTP notar sjálfkrafa varaleið ef það er ekki tiltækt."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Veittu heimild aftur handvirkt ef tákninu er afturkallað"
             },
             "profilesLoadFailed": "Ekki tókst að lesa vistuðu netþjónana þína: {error}",
-            "cleanupSummary": "{count} skrár, {size} losað"
+            "cleanupSummary": "{count} skrár, {size} losað",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Tengt",
@@ -1631,7 +1673,8 @@
                 "apRole": "Stofnandi, forritari, umsjónarmaður, meðhönnuður",
                 "ekRole": "Rannsakandi, gæðatryggingarverkfræðingur, meðhönnuður"
             },
-            "madeBy": "af {author}"
+            "madeBy": "af {author}",
+            "statsLine": "{protocols} samskiptareglur · {languages} tungumál · AES-256 safnskrár"
         },
         "support": {
             "title": "Styðja AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Verkefni (Unixname)",
             "opendriveNotApiKey": "(ekki OpenDrive API lykillinn þinn)",
             "endpoint": "Endapunktur",
-            "accountId": "Reiknings-ID"
+            "accountId": "Reiknings-ID",
+            "servicesHeading": "Þjónustur",
+            "sourceforgeSshKeyHelp": "SourceForge krefst auðkenningar með SSH-lykli. Búðu til lykil með {cmd} og hladdu honum upp á {link}.",
+            "sourceforgeSshSettings": "SSH-stillingar",
+            "fullGuide": "Heildarleiðbeiningar",
+            "endpointTemplateExample": "t.d. {template}",
+            "jurisdiction": "Lögsaga",
+            "insecureCertDialogLabel": "Viðvörun um óöruggt skilríki",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -4835,7 +4886,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Ókeypis áskrift",
             "freeCardTier": "Frítt + kort",
-            "paidTier": "Gjaldskylt"
+            "paidTier": "Gjaldskylt",
+            "extraFeatures": "Auka",
+            "coreOpsList": "Hlaða upp, Sækja, Eyða, Endurnefna, Færa, Búa til möppu, Leita",
+            "coreOpsLegend": "Grunnur = Hlaða upp, Sækja, Eyða, Endurnefna, Færa, Búa til möppu, Leita"
         },
         "healthCheck": {
             "title": "Heilsufarsskoðun netþjóns",
@@ -5233,7 +5287,8 @@
                 "down": "Næst ekki í",
                 "pending": "Athuga...",
                 "unknown": "Ekki athugað",
-                "clickToRetry": "smelltu til að athuga aftur"
+                "clickToRetry": "smelltu til að athuga aftur",
+                "withActiveSession": "{title} (virk lota)"
             },
             "densityCompact": "Þéttar línur",
             "densityComfortable": "Þægilegar línur",
@@ -5323,7 +5378,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt dulkóðað yfirlag (innbyggt): nöfn og innihald eru dulkóðuð á þessum þjóni.",
-                "rcloneTitle": "rclone crypt yfirlag (samvirkt): nöfn og innihald eru dulkóðuð á þessum þjóni."
+                "rcloneTitle": "rclone crypt yfirlag (samvirkt): nöfn og innihald eru dulkóðuð á þessum þjóni.",
+                "keyBits": "{bits} bita"
             },
             "sidebar": {
                 "filters": "Síur",
@@ -5343,7 +5399,19 @@
                 "unknownKeyTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því forritslykillinn hefur ekki heimildina readBucketEncryption. Gildi sem við megum ekki sjá þýðir ekki að dulkóðun sé slökkt.",
                 "unknownShapeTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því svarið hafði ekki skjalfest form. Lykillinn mátti lesa hana, svo þetta snýst um svarið en ekki um heimildir."
             },
-            "exportProfile": "Flytja út..."
+            "exportProfile": "Flytja út...",
+            "quotaLabel": "Kvóti",
+            "storageNoCapReported": "{used} (ekkert kvótaþak tilkynnt)",
+            "e2eBitsBadge": "E2E {bits} bita",
+            "filenAuthVersionTitle": "Greint úr Filen auth/info við vel heppnaða tengingu",
+            "demoBadge": "SÝNISHORN",
+            "timeAgo": {
+                "now": "núna",
+                "minutes": "{count} mín",
+                "hours": "{count} klst",
+                "days": "{count} d",
+                "months": "{count} mán"
+            }
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",
@@ -6385,7 +6453,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Hamurinn er valinn þegar tengingin er stofnuð og helst óbreyttur meðan vistuðu sniði er breytt. Til að nota annan ham skaltu stofna nýja tengingu."
+                "lockedInEdit": "Hamurinn er valinn þegar tengingin er stofnuð og helst óbreyttur meðan vistuðu sniði er breytt. Til að nota annan ham skaltu stofna nýja tengingu.",
+                "notInBuild": "Ekki innifalið í þessari útgáfu af AeroFTP."
             }
         },
         "flatpak": {

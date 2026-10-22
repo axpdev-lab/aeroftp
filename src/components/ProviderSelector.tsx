@@ -110,7 +110,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                 {!provider.stable && (
                     <div className="absolute top-0.5 left-1">
                         <span className="px-1 py-px text-[8px] font-medium bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded">
-                            BETA
+                            {t('protocol.betaBadge')}
                         </span>
                     </div>
                 )}

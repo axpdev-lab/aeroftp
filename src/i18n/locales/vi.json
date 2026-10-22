@@ -337,7 +337,37 @@
             "protonSignOut": "Đăng xuất",
             "protonSignOutHelp": "Kết thúc phiên trên Proton và xóa phiên khỏi hồ sơ này.",
             "protonSignInExpired": "Trang đăng nhập đã hết hạn. Hãy đăng nhập lại.",
-            "protonNativeUnavailable": "Bản dựng này không bao gồm ứng dụng khách Proton Drive gốc."
+            "protonNativeUnavailable": "Bản dựng này không bao gồm ứng dụng khách Proton Drive gốc.",
+            "forms": {
+                "publicApiKey": "Khóa API công khai",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Khóa công khai.",
+                "secretApiKey": "Khóa API bí mật",
+                "uploadcareSecretHint": "Chỉ dùng để quản lý tệp qua REST bằng xác thực {scheme}.",
+                "flatMediaLibrary": "Thư viện phương tiện phẳng",
+                "uploadcareNoFolders": "Uploadcare không cung cấp thư mục thực sự; tệp dự án được liệt kê ở thư mục gốc theo UUID.",
+                "urlEndpointId": "ID điểm cuối URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Điểm cuối URL.",
+                "privateApiKey": "Khóa API riêng tư",
+                "storedVaultBasicAuth": "Được lưu trong kho an toàn cục bộ và chỉ gửi đến {provider} qua Basic Auth.",
+                "cloudName": "Tên đám mây",
+                "cloudinaryCloudNameHint": "Có trong Cloudinary Dashboard - Account Details của bạn.",
+                "apiKeyPlaceholder": "Khóa API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Khóa API.",
+                "apiSecret": "Bí mật API",
+                "apiSecretPlaceholder": "Bí mật API",
+                "openProviderLink": "Mở liên kết {provider}",
+                "githubPatHint": "PAT chi tiết với quyền Contents (Đọc và Ghi).",
+                "generateToken": "Tạo mã thông báo",
+                "applicationKeyId": "ID khóa ứng dụng",
+                "backblazeKeyIdHint": "ID khóa ứng dụng B2, bắt đầu bằng 003. Tạo một khóa từ trang App Keys của Backblaze.",
+                "applicationKey": "Khóa ứng dụng",
+                "backblazeKeyHint": "Chỉ hiển thị một lần khi tạo. Hãy bảo quản như mật khẩu.",
+                "bucketNameExactHint": "Tên bucket chính xác, phân biệt chữ hoa chữ thường.",
+                "megacmdSetupFirst": "Thiết lập MEGAcmd trước",
+                "megacmdFetchUrlTitle": "Chạy {cmd} và tự động điền URL",
+                "fetchUrl": "Lấy URL",
+                "megacmdWebdavHint": "Tên người dùng và mật khẩu được cố ý bỏ qua. AeroFTP tự chạy \"{cmd}\" khi kết nối để khởi động cầu nối và đọc địa chỉ này: có thể để trống. \"Lấy URL\" là thao tác làm mới thủ công tùy chọn; hãy đổi cổng tại đây nếu MEGAcmd dùng cổng tùy chỉnh."
+            }
         },
         "browser": {
             "remote": "Từ xa",
@@ -1040,7 +1070,13 @@
                 "title": "rsync tích hợp (thử nghiệm)",
                 "description": "Sử dụng bản triển khai giao thức rsync tích hợp sẵn của AeroFTP thay vì chạy tệp nhị phân rsync của hệ thống. Giảm chi phí tiến trình; có thể ít được kiểm thử trong các trường hợp biên.",
                 "enableToggle": "Bật rsync tích hợp cho đồng bộ delta qua SFTP",
-                "experimental": "Thử nghiệm: tự động quay về rsync cổ điển khi có lỗi. Sự không khớp khóa host sẽ xuất hiện dưới dạng lỗi nghiêm trọng, không có dự phòng âm thầm."
+                "experimental": "Thử nghiệm: tự động quay về rsync cổ điển khi có lỗi. Sự không khớp khóa host sẽ xuất hiện dưới dạng lỗi nghiêm trọng, không có dự phòng âm thầm.",
+                "modeAuto": "Tự động",
+                "modeClassic": "Cổ điển",
+                "modeNative": "Gốc",
+                "classicNotFoundTooltip": "Không tìm thấy tệp thực thi rsync cổ điển trong PATH. Cài đặt rsync (gói Linux/macOS, Windows qua WSL/cygwin/scoop) để bật chế độ này.",
+                "classicAt": "rsync cổ điển tại {path}",
+                "classicNotDetected": "Không phát hiện tệp thực thi rsync cổ điển trong PATH. Gốc là công cụ duy nhất khả dụng trên máy này."
             },
             "startMinimizedOnAutostart": "Khởi động thu nhỏ vào khay",
             "startMinimizedOnAutostartDesc": "Ẩn cửa sổ chính khi khởi động tự động. AeroFTP vẫn chạy trong khay hệ thống, mở từ biểu tượng khay khi bạn cần.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Tìm thấy {count} thông tin xác thực OAuth trong bộ nhớ chưa mã hóa",
             "fontSystemInstall": "cài đặt hệ thống",
             "fontSizeMin": "tối thiểu",
-            "fontSizeMax": "tối đa"
+            "fontSizeMax": "tối đa",
+            "migrationCleanupHint": "Khuyến nghị để bảo mật tối đa",
+            "fontCustomOption": "Tùy chỉnh...",
+            "fontSystemInstallHint": "Cần cài đặt vào hệ thống. AeroFTP tự động dùng phương án dự phòng nếu không khả dụng."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Hãy ủy quyền lại thủ công nếu token bị thu hồi"
             },
             "profilesLoadFailed": "Không thể đọc các máy chủ đã lưu của bạn: {error}",
-            "cleanupSummary": "{count} tệp, đã giải phóng {size}"
+            "cleanupSummary": "{count} tệp, đã giải phóng {size}",
+            "maturity": {
+                "alpha": "Bản alpha"
+            }
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -1631,7 +1673,8 @@
                 "apRole": "Nhà sáng lập, nhà phát triển, người bảo trì, người đồng thiết kế",
                 "ekRole": "Nhà nghiên cứu, kỹ sư đảm bảo chất lượng, người đồng thiết kế"
             },
-            "madeBy": "bởi {author}"
+            "madeBy": "bởi {author}",
+            "statsLine": "{protocols} giao thức · {languages} ngôn ngữ · kho lưu trữ AES-256"
         },
         "support": {
             "title": "Hỗ trợ AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Dự án (Unixname)",
             "opendriveNotApiKey": "(không phải khóa API OpenDrive của bạn)",
             "endpoint": "Điểm cuối",
-            "accountId": "ID tài khoản"
+            "accountId": "ID tài khoản",
+            "servicesHeading": "Dịch vụ",
+            "sourceforgeSshKeyHelp": "SourceForge yêu cầu xác thực bằng khóa SSH. Tạo khóa bằng {cmd} và tải lên {link}.",
+            "sourceforgeSshSettings": "Cài đặt SSH",
+            "fullGuide": "Hướng dẫn đầy đủ",
+            "endpointTemplateExample": "vd: {template}",
+            "jurisdiction": "Quyền tài phán",
+            "insecureCertDialogLabel": "Cảnh báo chứng chỉ không an toàn",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Gói miễn phí",
             "freeCardTier": "Miễn phí + thẻ",
-            "paidTier": "Trả phí"
+            "paidTier": "Trả phí",
+            "extraFeatures": "Mở rộng",
+            "coreOpsList": "Tải lên, Tải xuống, Xóa, Đổi tên, Di chuyển, Tạo thư mục, Tìm kiếm",
+            "coreOpsLegend": "Cơ bản = Tải lên, Tải xuống, Xóa, Đổi tên, Di chuyển, Tạo thư mục, Tìm kiếm"
         },
         "healthCheck": {
             "title": "Kiểm tra tình trạng máy chủ",
@@ -5214,7 +5268,8 @@
                 "down": "Không thể truy cập",
                 "pending": "Đang kiểm tra...",
                 "unknown": "Chưa kiểm tra",
-                "clickToRetry": "nhấp để kiểm tra lại"
+                "clickToRetry": "nhấp để kiểm tra lại",
+                "withActiveSession": "{title} (phiên đang hoạt động)"
             },
             "densityCompact": "Hàng nhỏ gọn",
             "densityComfortable": "Hàng thoải mái",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Lớp phủ mã hóa AeroCrypt (gốc): tên và nội dung được mã hóa trên máy chủ này.",
-                "rcloneTitle": "Lớp phủ rclone crypt (tương tác): tên và nội dung được mã hóa trên máy chủ này."
+                "rcloneTitle": "Lớp phủ rclone crypt (tương tác): tên và nội dung được mã hóa trên máy chủ này.",
+                "keyBits": "{bits} bit"
             },
             "sidebar": {
                 "filters": "Bộ lọc",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Chúng tôi không thể đọc thiết lập mã hóa của bucket này, vì khóa ứng dụng không có khả năng readBucketEncryption. Một giá trị mà chúng tôi không được phép xem không có nghĩa là mã hóa đã bị tắt.",
                 "unknownShapeTitle": "Chúng tôi không thể đọc thiết lập mã hóa của bucket này, vì câu trả lời không có cấu trúc được ghi trong tài liệu. Khóa được phép đọc nó, nên đây là vấn đề của câu trả lời chứ không phải của quyền hạn."
             },
-            "exportProfile": "Xuất..."
+            "exportProfile": "Xuất...",
+            "quotaLabel": "Hạn mức",
+            "storageNoCapReported": "{used} (không có giới hạn hạn mức được báo cáo)",
+            "e2eBitsBadge": "E2E {bits} bit",
+            "filenAuthVersionTitle": "Phát hiện từ Filen auth/info khi kết nối thành công",
+            "demoBadge": "DÙNG THỬ",
+            "timeAgo": {
+                "now": "bây giờ",
+                "minutes": "{count} phút",
+                "hours": "{count} giờ",
+                "days": "{count} ngày",
+                "months": "{count} tháng"
+            }
         },
         "gitlab": {
             "projectPath": "Đường dẫn dự án",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Chế độ được chọn khi tạo kết nối và giữ nguyên khi chỉnh sửa hồ sơ đã lưu. Để dùng chế độ khác, hãy tạo kết nối mới."
+                "lockedInEdit": "Chế độ được chọn khi tạo kết nối và giữ nguyên khi chỉnh sửa hồ sơ đã lưu. Để dùng chế độ khác, hãy tạo kết nối mới.",
+                "notInBuild": "Không có trong bản dựng AeroFTP này."
             }
         },
         "flatpak": {

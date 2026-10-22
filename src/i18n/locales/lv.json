@@ -337,7 +337,37 @@
             "protonSignOut": "Izrakstīties",
             "protonSignOutHelp": "Beidz sesiju Proton un noņem to no šī profila.",
             "protonSignInExpired": "Pierakstīšanās lapai beidzies derīgums. Pierakstieties vēlreiz.",
-            "protonNativeUnavailable": "Šajā versijā nav iebūvētā Proton Drive klienta."
+            "protonNativeUnavailable": "Šajā versijā nav iebūvētā Proton Drive klienta.",
+            "forms": {
+                "publicApiKey": "Publiskā API atslēga",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Publiskā atslēga.",
+                "secretApiKey": "Slepenā API atslēga",
+                "uploadcareSecretHint": "Tiek izmantota tikai REST failu pārvaldībai ar {scheme} autentifikāciju.",
+                "flatMediaLibrary": "Plakana multivides bibliotēka",
+                "uploadcareNoFolders": "Uploadcare nenodrošina vietējās mapes; projekta faili tiek uzskaitīti saknē pēc UUID.",
+                "urlEndpointId": "URL galapunkta ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL galapunkts.",
+                "privateApiKey": "Privātā API atslēga",
+                "storedVaultBasicAuth": "Glabāta lokālajā glabātavā un nosūtīta tikai uz {provider}, izmantojot Basic Auth.",
+                "cloudName": "Mākoņa nosaukums",
+                "cloudinaryCloudNameHint": "Atrodams jūsu Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API atslēga",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API atslēga.",
+                "apiSecret": "API noslēpums",
+                "apiSecretPlaceholder": "API noslēpums",
+                "openProviderLink": "Atvērt {provider} saiti",
+                "githubPatHint": "Detalizēts PAT ar Contents atļauju (lasīšana un rakstīšana).",
+                "generateToken": "Ģenerēt marķieri",
+                "applicationKeyId": "Lietojumprogrammas atslēgas ID",
+                "backblazeKeyIdHint": "B2 lietotnes atslēgas ID, sākas ar 003. Izveidojiet to Backblaze lapā App Keys.",
+                "applicationKey": "Lietotnes atslēga",
+                "backblazeKeyHint": "Tiek parādīta tikai vienreiz izveides brīdī. Izturieties pret to kā pret paroli.",
+                "bucketNameExactHint": "Precīzs spaiņa nosaukums, reģistrjutīgs.",
+                "megacmdSetupFirst": "Vispirms iestatiet MEGAcmd",
+                "megacmdFetchUrlTitle": "Palaist {cmd} un automātiski aizpildīt URL",
+                "fetchUrl": "Iegūt URL",
+                "megacmdWebdavHint": "Lietotājvārds un parole ir apzināti izlaisti. Savienojoties AeroFTP pats palaiž \"{cmd}\", lai startētu tiltu un nolasītu šo adresi: lauku drīkst atstāt tukšu. \"Iegūt URL\" ir neobligāta manuāla atsvaidzināšana; mainiet portu šeit, ja MEGAcmd izmanto pielāgotu portu."
+            }
         },
         "browser": {
             "remote": "Attālināts",
@@ -1040,7 +1070,13 @@
                 "title": "Iebūvētais rsync (beta)",
                 "description": "Izvēlieties, kā SFTP Delta Sync nosūta rsync pārsūtījumus.",
                 "enableToggle": "Iespējot iebūvēto rsync SFTP delta sinhronizācijai",
-                "experimental": "Auto dod priekšroku AeroRsync ar klasisku rezerves variantu; Classic izmanto sistēmas rsync bināro failu, kur tas ir pieejams; Native izlaiž klasiskā binārā faila rezerves variantu."
+                "experimental": "Auto dod priekšroku AeroRsync ar klasisku rezerves variantu; Classic izmanto sistēmas rsync bināro failu, kur tas ir pieejams; Native izlaiž klasiskā binārā faila rezerves variantu.",
+                "modeAuto": "Automātiski",
+                "modeClassic": "Klasiskais",
+                "modeNative": "Iebūvētais",
+                "classicNotFoundTooltip": "Klasiskais rsync izpildfails nav atrasts PATH. Instalējiet rsync (Linux/macOS pakotne, Windows ar WSL/cygwin/scoop), lai iespējotu šo režīmu.",
+                "classicAt": "Klasiskais rsync: {path}",
+                "classicNotDetected": "Klasiskais rsync izpildfails PATH nav noteikts. Iebūvētais ir vienīgais pieejamais dzinējs šajā datorā."
             },
             "startMinimizedOnAutostart": "Sākt minimizētu uzdevumjoslā",
             "startMinimizedOnAutostartDesc": "Slēpt galveno logu automātiskās palaišanas laikā. AeroFTP turpina darboties sistēmas teknē, atveriet to no teknes ikonas, kad tas ir nepieciešams.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Nešifrētā krātuvē atrasti {count} OAuth akreditācijas dati",
             "fontSystemInstall": "sistēmas instalācija",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "Ieteicams maksimālai drošībai",
+            "fontCustomOption": "Pielāgots...",
+            "fontSystemInstallHint": "Nepieciešama instalēšana sistēmā. Ja nav pieejams, AeroFTP automātiski izmanto rezerves variantu."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Ja pilnvara ir atsaukta, autorizējiet atkārtoti manuāli"
             },
             "profilesLoadFailed": "Neizdevās nolasīt saglabātos serverus: {error}",
-            "cleanupSummary": "{count} faili, atbrīvoti {size}"
+            "cleanupSummary": "{count} faili, atbrīvoti {size}",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Savienots",
@@ -1631,7 +1673,8 @@
                 "apRole": "Dibinātājs, izstrādātājs, uzturētājs, līdzdizainers",
                 "ekRole": "Pētnieks, kvalitātes nodrošināšanas inženieris, līdzdizainers"
             },
-            "madeBy": "uzņēmumā {author}"
+            "madeBy": "uzņēmumā {author}",
+            "statsLine": "{protocols} protokoli · {languages} valodas · AES-256 arhīvi"
         },
         "support": {
             "title": "Atbalstīt AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projekts (Unixname)",
             "opendriveNotApiKey": "(nav jūsu OpenDrive API atslēga)",
             "endpoint": "Galapunkts",
-            "accountId": "Konta ID"
+            "accountId": "Konta ID",
+            "servicesHeading": "Pakalpojumi",
+            "sourceforgeSshKeyHelp": "SourceForge pieprasa autentifikāciju ar SSH atslēgu. Ģenerējiet atslēgu ar {cmd} un augšupielādējiet to vietnē {link}.",
+            "sourceforgeSshSettings": "SSH iestatījumi",
+            "fullGuide": "Pilna rokasgrāmata",
+            "endpointTemplateExample": "piem., {template}",
+            "jurisdiction": "Jurisdikcija",
+            "insecureCertDialogLabel": "Brīdinājums par nedrošu sertifikātu",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Bezmaksas plāns",
             "freeCardTier": "Bezmaksas + karte",
-            "paidTier": "Maksas"
+            "paidTier": "Maksas",
+            "extraFeatures": "Papildu",
+            "coreOpsList": "Augšupielāde, Lejupielāde, Dzēšana, Pārdēvēšana, Pārvietošana, Mapes izveide, Meklēšana",
+            "coreOpsLegend": "Pamata = Augšupielāde, Lejupielāde, Dzēšana, Pārdēvēšana, Pārvietošana, Mapes izveide, Meklēšana"
         },
         "healthCheck": {
             "title": "Servera veselības pārbaude",
@@ -5214,7 +5268,8 @@
                 "down": "Nesasniedzams",
                 "pending": "Pārbauda...",
                 "unknown": "Nav pārbaudīts",
-                "clickToRetry": "noklikšķiniet, lai pārbaudītu vēlreiz"
+                "clickToRetry": "noklikšķiniet, lai pārbaudītu vēlreiz",
+                "withActiveSession": "{title} (aktīva sesija)"
             },
             "densityCompact": "Kompaktas rindas",
             "densityComfortable": "Ērtas rindas",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt šifrēts pārklājums (vietējais): nosaukumi un saturs šajā serverī ir šifrēti.",
-                "rcloneTitle": "rclone crypt pārklājums (savietojams): nosaukumi un saturs šajā serverī ir šifrēti."
+                "rcloneTitle": "rclone crypt pārklājums (savietojams): nosaukumi un saturs šajā serverī ir šifrēti.",
+                "keyBits": "{bits} bitu"
             },
             "sidebar": {
                 "filters": "Filtri",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Mēs nevarējām nolasīt šī spainīša šifrēšanas iestatījumu, jo lietojumprogrammas atslēgai nav readBucketEncryption iespējas. Vērtība, kuru mums nav atļauts redzēt, nenozīmē, ka šifrēšana ir izslēgta.",
                 "unknownShapeTitle": "Mēs nevarējām nolasīt šī spainīša šifrēšanas iestatījumu, jo atbildei nebija dokumentētas formas. Atslēgai bija atļauts to lasīt, tāpēc runa ir par atbildi, nevis par atļaujām."
             },
-            "exportProfile": "Eksportēt..."
+            "exportProfile": "Eksportēt...",
+            "quotaLabel": "Kvota",
+            "storageNoCapReported": "{used} (kvotas ierobežojums nav norādīts)",
+            "e2eBitsBadge": "E2E {bits} bitu",
+            "filenAuthVersionTitle": "Noteikts no Filen auth/info pēc veiksmīga savienojuma",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "tagad",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} d",
+                "months": "{count} mēn."
+            }
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Režīms tiek izvēlēts, veidojot savienojumu, un paliek nemainīgs, rediģējot saglabātu profilu. Lai izmantotu citu režīmu, izveidojiet jaunu savienojumu."
+                "lockedInEdit": "Režīms tiek izvēlēts, veidojot savienojumu, un paliek nemainīgs, rediģējot saglabātu profilu. Lai izmantotu citu režīmu, izveidojiet jaunu savienojumu.",
+                "notInBuild": "Nav iekļauts šajā AeroFTP būvējumā."
             }
         },
         "flatpak": {

@@ -337,7 +337,37 @@
             "protonSignOut": "Logi välja",
             "protonSignOutHelp": "Lõpetab seansi Protonis ja eemaldab selle sellest profiilist.",
             "protonSignInExpired": "Sisselogimisleht aegus. Logi uuesti sisse.",
-            "protonNativeUnavailable": "See versioon ei sisalda natiivset Proton Drive'i klienti."
+            "protonNativeUnavailable": "See versioon ei sisalda natiivset Proton Drive'i klienti.",
+            "forms": {
+                "publicApiKey": "Avalik API-võti",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Avalik võti.",
+                "secretApiKey": "Salajane API-võti",
+                "uploadcareSecretHint": "Kasutatakse ainult REST-failihalduseks {scheme} autentimisega.",
+                "flatMediaLibrary": "Lame meediateek",
+                "uploadcareNoFolders": "Uploadcare ei paku omaseid kaustu; projekti failid on loetletud juurkaustas UUID järgi.",
+                "urlEndpointId": "URL-i lõpp-punkti ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-i lõpp-punkt.",
+                "privateApiKey": "Privaatne API-võti",
+                "storedVaultBasicAuth": "Salvestatud kohalikku seifi ja saadetakse ainult teenusele {provider} Basic Auth kaudu.",
+                "cloudName": "Pilve nimi",
+                "cloudinaryCloudNameHint": "Leiad oma Cloudinary Dashboard - Account Details alt.",
+                "apiKeyPlaceholder": "API-võti",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-võti.",
+                "apiSecret": "API saladus",
+                "apiSecretPlaceholder": "API saladus",
+                "openProviderLink": "Ava {provider} link",
+                "githubPatHint": "Peeneteraline PAT õigusega Contents (lugemine ja kirjutamine).",
+                "generateToken": "Loo tõend",
+                "applicationKeyId": "Rakenduse võtme ID",
+                "backblazeKeyIdHint": "B2 rakendusvõtme ID, algab numbritega 003. Looge see Backblaze'i lehel App Keys.",
+                "applicationKey": "Rakendusvõti",
+                "backblazeKeyHint": "Kuvatakse ainult üks kord loomisel. Käsitlege seda nagu parooli.",
+                "bucketNameExactHint": "Bucketi täpne nimi, tõstutundlik.",
+                "megacmdSetupFirst": "Seadistage esmalt MEGAcmd",
+                "megacmdFetchUrlTitle": "Käivita {cmd} ja täida URL automaatselt",
+                "fetchUrl": "Too URL",
+                "megacmdWebdavHint": "Kasutajanimi ja parool on meelega välja jäetud. AeroFTP käivitab ühendamisel ise käsu \"{cmd}\", et silla käivitada ja see aadress lugeda: välja võib tühjaks jätta. \"Too URL\" on valikuline käsitsi värskendus; muutke porti siin, kui MEGAcmd kasutab kohandatud porti."
+            }
         },
         "browser": {
             "remote": "Kaugserver",
@@ -1040,7 +1070,13 @@
                 "title": "Natiivne rsync (beta)",
                 "description": "Valige, kuidas SFTP Delta Sync saadab rsync-edastused.",
                 "enableToggle": "Luba natiivne rsync SFTP delta-sünkroonimiseks",
-                "experimental": "Auto eelistab AeroRsync-i klassikalise varuvariandiga; Classic kasutab süsteemi rsync-binaari, kus see on saadaval; Native jätab klassikalise binaari varuvariandi vahele."
+                "experimental": "Auto eelistab AeroRsync-i klassikalise varuvariandiga; Classic kasutab süsteemi rsync-binaari, kus see on saadaval; Native jätab klassikalise binaari varuvariandi vahele.",
+                "modeAuto": "Automaatne",
+                "modeClassic": "Klassikaline",
+                "modeNative": "Omane",
+                "classicNotFoundTooltip": "Klassikalist rsync-binaari ei leitud PATH-ist. Selle režiimi lubamiseks paigalda rsync (Linux/macOS pakett, Windowsis WSL/cygwin/scoop kaudu).",
+                "classicAt": "Klassikaline rsync asukohas {path}",
+                "classicNotDetected": "Klassikalist rsync-binaari ei tuvastatud PATH-is. Omane on selles masinas ainus saadaolev mootor."
             },
             "startMinimizedOnAutostart": "Käivita minimeerituna salve",
             "startMinimizedOnAutostartDesc": "Peida peaaken automaatsel käivitamisel. AeroFTP jätkab töötamist süsteemisalves, ava see salveikoonilt, kui seda vajad.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Krüptimata salvestusruumist leiti {count} OAuth mandaati",
             "fontSystemInstall": "süsteemi paigaldus",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Soovitatav maksimaalse turvalisuse jaoks",
+            "fontCustomOption": "Kohandatud...",
+            "fontSystemInstallHint": "Nõuab süsteemi paigaldust. AeroFTP kasutab puudumisel automaatselt varulahendust."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Kui token tühistatakse, volitage käsitsi uuesti"
             },
             "profilesLoadFailed": "Salvestatud servereid ei õnnestunud lugeda: {error}",
-            "cleanupSummary": "{count} faili, vabastati {size}"
+            "cleanupSummary": "{count} faili, vabastati {size}",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -1631,7 +1673,8 @@
                 "apRole": "Asutaja, arendaja, hooldaja, kaasdisainer",
                 "ekRole": "Teadur, kvaliteedi tagamise insener, kaasdisainer"
             },
-            "madeBy": "{author} poolt"
+            "madeBy": "{author} poolt",
+            "statsLine": "{protocols} protokolli · {languages} keelt · AES-256 arhiivid"
         },
         "support": {
             "title": "Toeta AeroFTP-d",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projekt (Unixname)",
             "opendriveNotApiKey": "(mitte teie OpenDrive API võti)",
             "endpoint": "Lõpp-punkt",
-            "accountId": "Konto ID"
+            "accountId": "Konto ID",
+            "servicesHeading": "Teenused",
+            "sourceforgeSshKeyHelp": "SourceForge nõuab SSH-võtmega autentimist. Loo võti käsuga {cmd} ja laadi see üles aadressile {link}.",
+            "sourceforgeSshSettings": "SSH seaded",
+            "fullGuide": "Täielik juhend",
+            "endpointTemplateExample": "nt {template}",
+            "jurisdiction": "Jurisdiktsioon",
+            "insecureCertDialogLabel": "Ebaturvalise sertifikaadi hoiatus",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Tasuta pakett",
             "freeCardTier": "Tasuta + kaart",
-            "paidTier": "Tasuline"
+            "paidTier": "Tasuline",
+            "extraFeatures": "Lisa",
+            "coreOpsList": "Üleslaadimine, Allalaadimine, Kustutamine, Ümbernimetamine, Teisaldamine, Kausta loomine, Otsing",
+            "coreOpsLegend": "Põhi = Üleslaadimine, Allalaadimine, Kustutamine, Ümbernimetamine, Teisaldamine, Kausta loomine, Otsing"
         },
         "healthCheck": {
             "title": "Serveri seisundikontroll",
@@ -5214,7 +5268,8 @@
                 "down": "Pole kättesaadav",
                 "pending": "Kontrollimine...",
                 "unknown": "Pole kontrollitud",
-                "clickToRetry": "klõpsa uuesti kontrollimiseks"
+                "clickToRetry": "klõpsa uuesti kontrollimiseks",
+                "withActiveSession": "{title} (aktiivne seanss)"
             },
             "densityCompact": "Tihendatud read",
             "densityComfortable": "Mugavad read",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt krüpteeritud kiht (omakeskne): nimed ja sisu on selles serveris krüpteeritud.",
-                "rcloneTitle": "rclone crypt kiht (ühilduv): nimed ja sisu on selles serveris krüpteeritud."
+                "rcloneTitle": "rclone crypt kiht (ühilduv): nimed ja sisu on selles serveris krüpteeritud.",
+                "keyBits": "{bits}-bitine"
             },
             "sidebar": {
                 "filters": "Filtrid",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest rakenduse võtmel puudub õigus readBucketEncryption. Väärtus, mida meil ei ole lubatud näha, ei tähenda, et krüpteering oleks välja lülitatud.",
                 "unknownShapeTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest vastusel ei olnud dokumenteeritud kuju. Võtmel oli lubatud seda lugeda, seega on asi vastuses, mitte õigustes."
             },
-            "exportProfile": "Ekspordi..."
+            "exportProfile": "Ekspordi...",
+            "quotaLabel": "Kvoot",
+            "storageNoCapReported": "{used} (kvoodi ülempiiri pole teatatud)",
+            "e2eBitsBadge": "E2E {bits}-bitine",
+            "filenAuthVersionTitle": "Tuvastatud Filen auth/info põhjal eduka ühenduse korral",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nüüd",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} p",
+                "months": "{count} k"
+            }
         },
         "gitlab": {
             "projectPath": "Projekti tee",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Režiim valitakse ühenduse loomisel ja jääb salvestatud profiili muutmise ajal muutumatuks. Teistsuguse režiimi kasutamiseks looge uus ühendus."
+                "lockedInEdit": "Režiim valitakse ühenduse loomisel ja jääb salvestatud profiili muutmise ajal muutumatuks. Teistsuguse režiimi kasutamiseks looge uus ühendus.",
+                "notInBuild": "Ei sisaldu selles AeroFTP järgus."
             }
         },
         "flatpak": {

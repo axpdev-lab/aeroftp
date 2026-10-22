@@ -452,6 +452,20 @@
       "folded": "exista",
       "twin": "există",
       "reason": "Exista is the imperfect of a exista (the file existed at the checkpoint), not the present există."
+    },
+    "fr\u001fconnection.forms.cloudinaryCloudNameHint\u001fDisponible dans votre Cloudinary Dashboard - Account Details.": {
+      "locale": "fr",
+      "key": "connection.forms.cloudinaryCloudNameHint",
+      "folded": "details",
+      "twin": "détails",
+      "reason": "Dashboard - Account Details names the Cloudinary console screens as Cloudinary shows them, in English, as every locale does for this hint."
+    },
+    "lv\u001fpreview.pdf.page\u001fLapa": {
+      "locale": "lv",
+      "key": "preview.pdf.page",
+      "folded": "lapa",
+      "twin": "lapā",
+      "reason": "Lapa is the nominative label for a PDF page; lapā is the locative case, which this label does not use."
     }
   }
 }

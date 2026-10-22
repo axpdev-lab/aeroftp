@@ -337,7 +337,37 @@
             "protonSignOut": "Allgofnodi",
             "protonSignOutHelp": "Yn dod â'r sesiwn ar Proton i ben ac yn ei thynnu o'r proffil hwn.",
             "protonSignInExpired": "Mae'r dudalen fewngofnodi wedi dod i ben. Mewngofnodwch eto.",
-            "protonNativeUnavailable": "Nid yw'r adeiladwaith hwn yn cynnwys y cleient Proton Drive brodorol."
+            "protonNativeUnavailable": "Nid yw'r adeiladwaith hwn yn cynnwys y cleient Proton Drive brodorol.",
+            "forms": {
+                "publicApiKey": "Allwedd API Gyhoeddus",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Allwedd gyhoeddus.",
+                "secretApiKey": "Allwedd API Gyfrinachol",
+                "uploadcareSecretHint": "Defnyddir ar gyfer rheoli ffeiliau REST drwy ddilysu {scheme} yn unig.",
+                "flatMediaLibrary": "Llyfrgell cyfryngau wastad",
+                "uploadcareNoFolders": "Nid yw Uploadcare yn cynnig ffolderi brodorol; rhestrir ffeiliau'r prosiect yn y gwraidd yn ôl UUID.",
+                "urlEndpointId": "ID Pwynt Terfyn URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Pwynt terfyn URL.",
+                "privateApiKey": "Allwedd API Breifat",
+                "storedVaultBasicAuth": "Wedi'i storio yn y gladdgell leol a'i hanfon at {provider} yn unig drwy Basic Auth.",
+                "cloudName": "Enw'r Cwmwl",
+                "cloudinaryCloudNameHint": "I'w gael yn eich Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Allwedd API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Allwedd API.",
+                "apiSecret": "Cyfrinach API",
+                "apiSecretPlaceholder": "Cyfrinach API",
+                "openProviderLink": "Agor dolen {provider}",
+                "githubPatHint": "PAT manwl gyda Contents (Darllen ac Ysgrifennu).",
+                "generateToken": "Cynhyrchu tocyn",
+                "applicationKeyId": "ID Allwedd y Rhaglen",
+                "backblazeKeyIdHint": "ID Allwedd Rhaglen B2, yn dechrau gyda 003. Crëwch un o dudalen App Keys Backblaze.",
+                "applicationKey": "Allwedd Rhaglen",
+                "backblazeKeyHint": "Dim ond unwaith y caiff ei dangos wrth ei chreu. Triniwch hi fel cyfrinair.",
+                "bucketNameExactHint": "Union enw'r bwced, yn sensitif i briflythrennau.",
+                "megacmdSetupFirst": "Gosodwch MEGAcmd yn gyntaf",
+                "megacmdFetchUrlTitle": "Rhedeg {cmd} a llenwi'r URL yn awtomatig",
+                "fetchUrl": "Nôl URL",
+                "megacmdWebdavHint": "Mae'r Enw Defnyddiwr a'r Cyfrinair wedi'u hepgor yn fwriadol. Mae AeroFTP yn rhedeg \"{cmd}\" ei hun wrth gysylltu i gychwyn y bont a darllen y cyfeiriad hwn: mae'n iawn ei adael yn wag. Adnewyddiad â llaw dewisol yw Nôl URL; newidiwch y porth yma os yw MEGAcmd yn defnyddio un personol."
+            }
         },
         "browser": {
             "remote": "Pell",
@@ -1040,7 +1070,13 @@
                 "title": "Rsync brodorol (beta)",
                 "description": "Dewiswch sut mae SFTP Delta Sync yn anfon trosglwyddiadau rsync.",
                 "enableToggle": "Galluogi rsync brodorol ar gyfer cydamseriad delta SFTP",
-                "experimental": "Mae Auto yn ffafrio AeroRsync gyda mecanwaith clasurol wrth gefn; mae Classic yn defnyddio ffeil ddeuaidd rsync y system lle mae ar gael; mae Native yn hepgor y mecanwaith deuaidd clasurol wrth gefn."
+                "experimental": "Mae Auto yn ffafrio AeroRsync gyda mecanwaith clasurol wrth gefn; mae Classic yn defnyddio ffeil ddeuaidd rsync y system lle mae ar gael; mae Native yn hepgor y mecanwaith deuaidd clasurol wrth gefn.",
+                "modeAuto": "Awtomatig",
+                "modeClassic": "Clasurol",
+                "modeNative": "Brodorol",
+                "classicNotFoundTooltip": "Heb ganfod ffeil rsync glasurol ar y PATH. Gosodwch rsync (pecyn Linux/macOS, Windows drwy WSL/cygwin/scoop) i alluogi'r modd hwn.",
+                "classicAt": "rsync clasurol yn {path}",
+                "classicNotDetected": "Heb ganfod ffeil rsync glasurol ar y PATH. Brodorol yw'r unig beiriant sydd ar gael ar y peiriant hwn."
             },
             "startMinimizedOnAutostart": "Cychwyn wedi'i leihau i'r hambwrdd",
             "startMinimizedOnAutostartDesc": "Cuddio'r prif ffenestr wrth gychwyn yn awtomatig. Mae AeroFTP yn parhau i redeg yn hambwrdd y system, agorwch ef o'r eicon hambwrdd pan fydd ei angen arnoch.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Canfuwyd {count} manylion adnabod OAuth mewn storfa heb ei hamgryptio",
             "fontSystemInstall": "gosod ar y system",
             "fontSizeMin": "isaf",
-            "fontSizeMax": "uchaf"
+            "fontSizeMax": "uchaf",
+            "migrationCleanupHint": "Argymhellir ar gyfer y diogelwch mwyaf",
+            "fontCustomOption": "Personol...",
+            "fontSystemInstallHint": "Angen ei osod yn y system. Mae AeroFTP yn newid i ddewis arall yn awtomatig os nad yw ar gael."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Ail-awdurdodwch â llaw os caiff y tocyn ei ddirymu"
             },
             "profilesLoadFailed": "Doedd dim modd darllen eich gweinyddion wedi'u cadw: {error}",
-            "cleanupSummary": "{count} ffeil, {size} wedi'u rhyddhau"
+            "cleanupSummary": "{count} ffeil, {size} wedi'u rhyddhau",
+            "maturity": {
+                "alpha": "Alffa"
+            }
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -1631,7 +1673,8 @@
                 "apRole": "Sylfaenydd, datblygwr, cynhaliwr, cyd-ddylunydd",
                 "ekRole": "Ymchwilydd, peiriannydd sicrhau ansawdd, cyd-ddylunydd"
             },
-            "madeBy": "gan {author}"
+            "madeBy": "gan {author}",
+            "statsLine": "{protocols} protocol · {languages} iaith · archifau AES-256"
         },
         "support": {
             "title": "Cefnogi AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Prosiect (Unixname)",
             "opendriveNotApiKey": "(nid eich allwedd API OpenDrive)",
             "endpoint": "Pwynt Terfyn",
-            "accountId": "ID cyfrif"
+            "accountId": "ID cyfrif",
+            "servicesHeading": "Gwasanaethau",
+            "sourceforgeSshKeyHelp": "Mae SourceForge yn gofyn am ddilysu ag allwedd SSH. Crëwch allwedd gyda {cmd} a'i llwytho i fyny i {link}.",
+            "sourceforgeSshSettings": "Gosodiadau SSH",
+            "fullGuide": "Canllaw llawn",
+            "endpointTemplateExample": "e.e. {template}",
+            "jurisdiction": "Awdurdodaeth",
+            "insecureCertDialogLabel": "Rhybudd tystysgrif anniogel",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
@@ -4835,7 +4886,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Cynllun am ddim",
             "freeCardTier": "Am ddim + cerdyn",
-            "paidTier": "Taledig"
+            "paidTier": "Taledig",
+            "extraFeatures": "Ychwanegol",
+            "coreOpsList": "Llwytho i fyny, Llwytho i lawr, Dileu, Ailenwi, Symud, Creu ffolder, Chwilio",
+            "coreOpsLegend": "Sylfaenol = Llwytho i fyny, Llwytho i lawr, Dileu, Ailenwi, Symud, Creu ffolder, Chwilio"
         },
         "healthCheck": {
             "title": "Gwiriad Iechyd y Gweinydd",
@@ -5233,7 +5287,8 @@
                 "down": "Anghyrraeddadwy",
                 "pending": "Yn gwirio...",
                 "unknown": "Heb ei wirio",
-                "clickToRetry": "cliciwch i ailwirio"
+                "clickToRetry": "cliciwch i ailwirio",
+                "withActiveSession": "{title} (sesiwn weithredol)"
             },
             "densityCompact": "Rhesi cryno",
             "densityComfortable": "Rhesi cyfforddus",
@@ -5323,7 +5378,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Troshaen wedi'i hamgryptio AeroCrypt (brodorol): mae enwau a chynnwys wedi'u hamgryptio ar y gweinydd hwn.",
-                "rcloneTitle": "Troshaen rclone crypt (rhyngweithredol): mae enwau a chynnwys wedi'u hamgryptio ar y gweinydd hwn."
+                "rcloneTitle": "Troshaen rclone crypt (rhyngweithredol): mae enwau a chynnwys wedi'u hamgryptio ar y gweinydd hwn.",
+                "keyBits": "{bits}-did"
             },
             "sidebar": {
                 "filters": "Hidlyddion",
@@ -5343,7 +5399,19 @@
                 "unknownKeyTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oes gan yr allwedd rhaglen y gallu readBucketEncryption. Nid yw gwerth nad oes hawl gennym i'w weld yn golygu bod amgryptio wedi ei ddiffodd.",
                 "unknownShapeTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oedd gan yr ateb siâp wedi ei ddogfennu. Roedd gan yr allwedd hawl i'w ddarllen, felly mae hyn yn ymwneud â'r ateb ac nid â chaniatâd."
             },
-            "exportProfile": "Allforio..."
+            "exportProfile": "Allforio...",
+            "quotaLabel": "Cwota",
+            "storageNoCapReported": "{used} (dim terfyn cwota wedi'i adrodd)",
+            "e2eBitsBadge": "E2E {bits}-did",
+            "filenAuthVersionTitle": "Wedi'i ganfod o Filen auth/info wrth gysylltu'n llwyddiannus",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nawr",
+                "minutes": "{count} mun",
+                "hours": "{count} awr",
+                "days": "{count} d",
+                "months": "{count} mis"
+            }
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",
@@ -6385,7 +6453,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Dewisir y modd wrth greu'r cysylltiad ac mae'n aros yn sefydlog wrth olygu proffil a gadwyd. I ddefnyddio modd gwahanol, crëwch gysylltiad newydd."
+                "lockedInEdit": "Dewisir y modd wrth greu'r cysylltiad ac mae'n aros yn sefydlog wrth olygu proffil a gadwyd. I ddefnyddio modd gwahanol, crëwch gysylltiad newydd.",
+                "notInBuild": "Heb ei gynnwys yn y fersiwn hon o AeroFTP."
             }
         },
         "flatpak": {

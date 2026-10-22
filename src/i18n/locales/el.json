@@ -337,7 +337,37 @@
             "protonSignOut": "Αποσύνδεση",
             "protonSignOutHelp": "Τερματίζει τη συνεδρία στο Proton και την αφαιρεί από αυτό το προφίλ.",
             "protonSignInExpired": "Η σελίδα σύνδεσης έληξε. Συνδεθείτε ξανά.",
-            "protonNativeUnavailable": "Αυτή η έκδοση δεν περιλαμβάνει το εγγενές πρόγραμμα-πελάτη Proton Drive."
+            "protonNativeUnavailable": "Αυτή η έκδοση δεν περιλαμβάνει το εγγενές πρόγραμμα-πελάτη Proton Drive.",
+            "forms": {
+                "publicApiKey": "Δημόσιο κλειδί API",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Δημόσιο κλειδί.",
+                "secretApiKey": "Μυστικό κλειδί API",
+                "uploadcareSecretHint": "Χρησιμοποιείται μόνο για διαχείριση αρχείων REST μέσω ταυτοποίησης {scheme}.",
+                "flatMediaLibrary": "Επίπεδη βιβλιοθήκη πολυμέσων",
+                "uploadcareNoFolders": "Το Uploadcare δεν διαθέτει εγγενείς φακέλους· τα αρχεία του έργου εμφανίζονται στη ρίζα ανά UUID.",
+                "urlEndpointId": "Αναγνωριστικό τελικού σημείου URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Τελικό σημείο URL.",
+                "privateApiKey": "Ιδιωτικό κλειδί API",
+                "storedVaultBasicAuth": "Αποθηκεύεται στο τοπικό θησαυροφυλάκιο και αποστέλλεται μόνο στο {provider} μέσω Basic Auth.",
+                "cloudName": "Όνομα νέφους",
+                "cloudinaryCloudNameHint": "Βρίσκεται στο Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Κλειδί API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Κλειδί API.",
+                "apiSecret": "Μυστικό API",
+                "apiSecretPlaceholder": "Μυστικό API",
+                "openProviderLink": "Άνοιγμα συνδέσμου {provider}",
+                "githubPatHint": "PAT λεπτομερών δικαιωμάτων με Contents (ανάγνωση και εγγραφή).",
+                "generateToken": "Δημιουργία διακριτικού",
+                "applicationKeyId": "Αναγνωριστικό κλειδιού εφαρμογής",
+                "backblazeKeyIdHint": "Αναγνωριστικό κλειδιού εφαρμογής B2, ξεκινά με 003. Δημιουργήστε ένα από τη σελίδα App Keys του Backblaze.",
+                "applicationKey": "Κλειδί εφαρμογής",
+                "backblazeKeyHint": "Εμφανίζεται μόνο μία φορά κατά τη δημιουργία. Χειριστείτε το σαν κωδικό πρόσβασης.",
+                "bucketNameExactHint": "Ακριβές όνομα bucket, με διάκριση πεζών-κεφαλαίων.",
+                "megacmdSetupFirst": "Ρυθμίστε πρώτα το MEGAcmd",
+                "megacmdFetchUrlTitle": "Εκτέλεση {cmd} και αυτόματη συμπλήρωση του URL",
+                "fetchUrl": "Λήψη URL",
+                "megacmdWebdavHint": "Το όνομα χρήστη και ο κωδικός πρόσβασης παραλείπονται σκόπιμα. Το AeroFTP εκτελεί το ίδιο το «{cmd}» κατά τη σύνδεση για να ξεκινήσει τη γέφυρα και να διαβάσει αυτή τη διεύθυνση: μπορείτε να το αφήσετε κενό. Η «Λήψη URL» είναι μια προαιρετική χειροκίνητη ανανέωση· αλλάξτε τη θύρα εδώ αν το MEGAcmd χρησιμοποιεί προσαρμοσμένη."
+            }
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -1040,7 +1070,13 @@
                 "title": "Εγγενές rsync (βήτα)",
                 "description": "Επιλέξτε πώς το SFTP Delta Sync δρομολογεί τις μεταφορές rsync.",
                 "enableToggle": "Ενεργοποίηση εγγενούς rsync για συγχρονισμό δέλτα μέσω SFTP",
-                "experimental": "Auto προτιμά το AeroRsync με κλασική εφεδρική λύση· Classic χρησιμοποιεί το εκτελέσιμο rsync του συστήματος όπου είναι διαθέσιμο· Native παραλείπει την κλασική εφεδρική λύση εκτελέσιμου."
+                "experimental": "Auto προτιμά το AeroRsync με κλασική εφεδρική λύση· Classic χρησιμοποιεί το εκτελέσιμο rsync του συστήματος όπου είναι διαθέσιμο· Native παραλείπει την κλασική εφεδρική λύση εκτελέσιμου.",
+                "modeAuto": "Αυτόματο",
+                "modeClassic": "Κλασικό",
+                "modeNative": "Εγγενές",
+                "classicNotFoundTooltip": "Το κλασικό εκτελέσιμο rsync δεν βρέθηκε στο PATH. Εγκαταστήστε το rsync (πακέτο Linux/macOS, Windows μέσω WSL/cygwin/scoop) για να ενεργοποιήσετε αυτή τη λειτουργία.",
+                "classicAt": "Κλασικό rsync στο {path}",
+                "classicNotDetected": "Το κλασικό εκτελέσιμο rsync δεν εντοπίστηκε στο PATH. Το Εγγενές είναι η μόνη διαθέσιμη μηχανή σε αυτό το μηχάνημα."
             },
             "startMinimizedOnAutostart": "Εκκίνηση ελαχιστοποιημένο στην περιοχή ειδοποιήσεων",
             "startMinimizedOnAutostartDesc": "Απόκρυψη του κύριου παραθύρου κατά την αυτόματη εκκίνηση. Το AeroFTP συνεχίζει να εκτελείται στην περιοχή ειδοποιήσεων, ανοίξτε το από το εικονίδιο όταν το χρειάζεστε.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Βρέθηκαν {count} διαπιστευτήρια OAuth σε μη κρυπτογραφημένο χώρο αποθήκευσης",
             "fontSystemInstall": "εγκατάσταση στο σύστημα",
             "fontSizeMin": "ελάχ",
-            "fontSizeMax": "μέγ"
+            "fontSizeMax": "μέγ",
+            "migrationCleanupHint": "Συνιστάται για μέγιστη ασφάλεια",
+            "fontCustomOption": "Προσαρμοσμένη...",
+            "fontSystemInstallHint": "Απαιτεί εγκατάσταση στο σύστημα. Το AeroFTP χρησιμοποιεί αυτόματα εναλλακτική αν δεν είναι διαθέσιμη."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Εξουσιοδοτήστε ξανά χειροκίνητα αν το token ανακληθεί"
             },
             "profilesLoadFailed": "Δεν ήταν δυνατή η ανάγνωση των αποθηκευμένων διακομιστών σας: {error}",
-            "cleanupSummary": "{count} αρχεία, ελευθερώθηκαν {size}"
+            "cleanupSummary": "{count} αρχεία, ελευθερώθηκαν {size}",
+            "maturity": {
+                "alpha": "Άλφα"
+            }
         },
         "statusBar": {
             "connected": "Συνδεδεμένο",
@@ -1631,7 +1673,8 @@
                 "apRole": "Ιδρυτής, προγραμματιστής, συντηρητής, συν-σχεδιαστής",
                 "ekRole": "Ερευνητής, μηχανικός διασφάλισης ποιότητας, συν-σχεδιαστής"
             },
-            "madeBy": "από την {author}"
+            "madeBy": "από την {author}",
+            "statsLine": "{protocols} πρωτόκολλα · {languages} γλώσσες · αρχεία AES-256"
         },
         "support": {
             "title": "Υποστηρίξτε το AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Έργο (Unixname)",
             "opendriveNotApiKey": "(δεν είναι το κλειδί API σας για το OpenDrive)",
             "endpoint": "Τελικό Σημείο",
-            "accountId": "ID λογαριασμού"
+            "accountId": "ID λογαριασμού",
+            "servicesHeading": "Υπηρεσίες",
+            "sourceforgeSshKeyHelp": "Το SourceForge απαιτεί έλεγχο ταυτότητας με κλειδί SSH. Δημιουργήστε ένα κλειδί με {cmd} και ανεβάστε το στο {link}.",
+            "sourceforgeSshSettings": "Ρυθμίσεις SSH",
+            "fullGuide": "Πλήρης οδηγός",
+            "endpointTemplateExample": "π.χ. {template}",
+            "jurisdiction": "Δικαιοδοσία",
+            "insecureCertDialogLabel": "Προειδοποίηση μη ασφαλούς πιστοποιητικού",
+            "betaBadge": "ΒΗΤΑ"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Δωρεάν πλάνο",
             "freeCardTier": "Δωρεάν + κάρτα",
-            "paidTier": "Επί πληρωμή"
+            "paidTier": "Επί πληρωμή",
+            "extraFeatures": "Επιπλέον",
+            "coreOpsList": "Μεταφόρτωση, Λήψη, Διαγραφή, Μετονομασία, Μετακίνηση, Δημιουργία φακέλου, Αναζήτηση",
+            "coreOpsLegend": "Βασικά = Μεταφόρτωση, Λήψη, Διαγραφή, Μετονομασία, Μετακίνηση, Δημιουργία φακέλου, Αναζήτηση"
         },
         "healthCheck": {
             "title": "Έλεγχος υγείας διακομιστή",
@@ -5214,7 +5268,8 @@
                 "down": "Μη προσβάσιμος",
                 "pending": "Έλεγχος...",
                 "unknown": "Δεν ελέγχθηκε",
-                "clickToRetry": "κάντε κλικ για επανέλεγχο"
+                "clickToRetry": "κάντε κλικ για επανέλεγχο",
+                "withActiveSession": "{title} (ενεργή συνεδρία)"
             },
             "densityCompact": "Συμπαγείς γραμμές",
             "densityComfortable": "Άνετες γραμμές",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Κρυπτογραφημένη επικάλυψη AeroCrypt (εγγενής): τα ονόματα και τα περιεχόμενα είναι κρυπτογραφημένα σε αυτόν τον διακομιστή.",
-                "rcloneTitle": "Επικάλυψη rclone crypt (διαλειτουργική): τα ονόματα και τα περιεχόμενα είναι κρυπτογραφημένα σε αυτόν τον διακομιστή."
+                "rcloneTitle": "Επικάλυψη rclone crypt (διαλειτουργική): τα ονόματα και τα περιεχόμενα είναι κρυπτογραφημένα σε αυτόν τον διακομιστή.",
+                "keyBits": "{bits}-bit"
             },
             "sidebar": {
                 "filters": "Φίλτρα",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Δεν μπορέσαμε να διαβάσουμε τη ρύθμιση κρυπτογράφησης αυτού του bucket, επειδή το κλειδί εφαρμογής δεν διαθέτει τη δυνατότητα readBucketEncryption. Μια τιμή που δεν μας επιτρέπεται να δούμε δεν σημαίνει ότι η κρυπτογράφηση είναι απενεργοποιημένη.",
                 "unknownShapeTitle": "Δεν μπορέσαμε να διαβάσουμε τη ρύθμιση κρυπτογράφησης αυτού του bucket, επειδή η απάντηση δεν είχε τεκμηριωμένη μορφή. Το κλειδί είχε δικαίωμα να τη διαβάσει, οπότε το ζήτημα αφορά την απάντηση και όχι τα δικαιώματα."
             },
-            "exportProfile": "Εξαγωγή..."
+            "exportProfile": "Εξαγωγή...",
+            "quotaLabel": "Όριο χώρου",
+            "storageNoCapReported": "{used} (δεν αναφέρθηκε όριο χώρου)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Εντοπίστηκε από το Filen auth/info κατά την επιτυχή σύνδεση",
+            "demoBadge": "ΕΠΙΔΕΙΞΗ",
+            "timeAgo": {
+                "now": "τώρα",
+                "minutes": "{count} λ",
+                "hours": "{count} ώ",
+                "days": "{count} ημ",
+                "months": "{count} μήν"
+            }
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Η λειτουργία επιλέγεται κατά τη δημιουργία της σύνδεσης και παραμένει σταθερή κατά την επεξεργασία ενός αποθηκευμένου προφίλ. Για να χρησιμοποιήσετε διαφορετική λειτουργία, δημιουργήστε νέα σύνδεση."
+                "lockedInEdit": "Η λειτουργία επιλέγεται κατά τη δημιουργία της σύνδεσης και παραμένει σταθερή κατά την επεξεργασία ενός αποθηκευμένου προφίλ. Για να χρησιμοποιήσετε διαφορετική λειτουργία, δημιουργήστε νέα σύνδεση.",
+                "notInBuild": "Δεν περιλαμβάνεται σε αυτή την έκδοση του AeroFTP."
             }
         },
         "flatpak": {

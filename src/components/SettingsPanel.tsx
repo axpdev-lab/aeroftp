@@ -1623,16 +1623,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <p className="text-sm text-gray-500 mt-1">{t('settings.nativeRsync.description')}</p>
                                                 <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1 max-w-md">
                                                     {[
-                                                        { value: 'auto', label: 'Auto' },
-                                                        { value: 'classic', label: 'Classic' },
-                                                        { value: 'native', label: 'Native' },
+                                                        { value: 'auto', label: t('settings.nativeRsync.modeAuto') },
+                                                        { value: 'classic', label: t('settings.nativeRsync.modeClassic') },
+                                                        { value: 'native', label: t('settings.nativeRsync.modeNative') },
                                                     ].map((option) => {
                                                         const isClassic = option.value === 'classic';
                                                         const isDisabled = isClassic && !classicRsyncAvailable;
                                                         const tooltip = isDisabled
-                                                            ? 'Classic rsync binary not found on PATH. Install rsync (Linux/macOS package, Windows via WSL/cygwin/scoop) to enable this mode.'
+                                                            ? t('settings.nativeRsync.classicNotFoundTooltip')
                                                             : isClassic && classicRsyncPath
-                                                                ? `Classic rsync at ${classicRsyncPath}`
+                                                                ? t('settings.nativeRsync.classicAt', { path: classicRsyncPath })
                                                                 : undefined;
                                                         return (
                                                             <button
@@ -1667,7 +1667,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </div>
                                                 {!classicRsyncAvailable && (
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                                                        Classic rsync binary not detected on PATH. Native is the only engine available on this machine.
+                                                        {t('settings.nativeRsync.classicNotDetected')}
                                                     </p>
                                                 )}
                                                 <p className="text-xs text-amber-600 mt-2">{t('settings.nativeRsync.experimental')}</p>
@@ -2196,10 +2196,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             {preset.bundled ? '' : ` • ${t('settings.fontSystemInstall')}`}
                                                         </option>
                                                     ))}
-                                                    <option value={CUSTOM_FONT_VALUE}>Custom...</option>
+                                                    <option value={CUSTOM_FONT_VALUE}>{t('settings.fontCustomOption')}</option>
                                                 </select>
                                                 {fontSelectValue === CUSTOM_FONT_VALUE && <input type="text" value={settings.fontFamily} onChange={(e) => updateSetting('fontFamily', e.target.value)} placeholder={t('settings.fontCustomPlaceholder')} className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />}
-                                                {selectedFontPreset && !selectedFontPreset.bundled && <p className="text-xs text-gray-500 mt-2">Requires system install. AeroFTP falls back automatically if unavailable.</p>}
+                                                {selectedFontPreset && !selectedFontPreset.bundled && <p className="text-xs text-gray-500 mt-2">{t('settings.fontSystemInstallHint')}</p>}
                                             </div>
 
                                             <div>

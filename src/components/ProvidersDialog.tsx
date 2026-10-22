@@ -329,15 +329,15 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
         <div className="flex items-center gap-4 px-5 py-2 border-b border-gray-200 dark:border-gray-700/50 shrink-0">
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
             <Check size={12} className="text-emerald-500" />
-            <span>Base</span>
+            <span>{t('providers.baseFeatures')}</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
             <Check size={12} className="text-blue-500" />
-            <span>Advanced</span>
+            <span>{t('providers.proFeatures')}</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
             <span className="text-[9px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white px-1 rounded">PRO</span>
-            <span>Enterprise only</span>
+            <span>{t('providers.enterpriseOnly')}</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
             <span className="text-[9px] font-medium px-1 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">GB</span>
@@ -358,7 +358,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                   {t('providers.provider')}
                 </th>
                 <th className="text-center py-2 px-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  Base
+                  {t('providers.baseFeatures')}
                 </th>
                 {OPTIONAL_FEATURES.map(f => (
                   <th key={f} className="text-center py-2 px-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
@@ -366,7 +366,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                   </th>
                 ))}
                 <th className="text-center py-2 px-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  Extra
+                  {t('providers.extraFeatures')}
                 </th>
                 <th className="text-center py-2 px-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
                   <span className="text-[9px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white px-1.5 py-0.5 rounded">PRO</span>
@@ -420,7 +420,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                           )}
                         </div>
                       </td>
-                      <td className="text-center py-1.5 px-2" title={hasCoreOps ? 'Upload, Download, Delete, Rename, Move, Create Folder, Search' : ''}>
+                      <td className="text-center py-1.5 px-2" title={hasCoreOps ? t('providers.coreOpsList') : ''}>
                         {hasCoreOps ? (
                           <Check size={13} className="inline-block text-emerald-500 cursor-help" />
                         ) : (
@@ -499,10 +499,10 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-2 border-t border-gray-200 dark:border-gray-700 shrink-0">
           <p className="text-[10px] text-gray-400 dark:text-gray-500">
-            Base = Upload, Download, Delete, Rename, Move, Create Folder, Search
+            {t('providers.coreOpsLegend')}
           </p>
           <p className="text-[10px] text-gray-400 dark:text-gray-500">
-            {ALL_PROVIDERS.length} integrated providers
+            {t('providers.totalCount', { count: ALL_PROVIDERS.length })}
           </p>
         </div>
       </div>

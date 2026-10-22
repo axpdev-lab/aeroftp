@@ -337,7 +337,37 @@
             "protonSignOut": "Oturumu kapat",
             "protonSignOutHelp": "Proton'daki oturumu sonlandırır ve bu profilden kaldırır.",
             "protonSignInExpired": "Giriş sayfasının süresi doldu. Tekrar giriş yapın.",
-            "protonNativeUnavailable": "Bu derleme yerel Proton Drive istemcisini içermiyor."
+            "protonNativeUnavailable": "Bu derleme yerel Proton Drive istemcisini içermiyor.",
+            "forms": {
+                "publicApiKey": "Genel API Anahtarı",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Genel anahtar.",
+                "secretApiKey": "Gizli API Anahtarı",
+                "uploadcareSecretHint": "Yalnızca {scheme} kimlik doğrulamasıyla REST dosya yönetimi için kullanılır.",
+                "flatMediaLibrary": "Düz medya kitaplığı",
+                "uploadcareNoFolders": "Uploadcare yerel klasör sunmaz; proje dosyaları kök dizinde UUID'ye göre listelenir.",
+                "urlEndpointId": "URL Uç Nokta Kimliği",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL uç noktası.",
+                "privateApiKey": "Özel API Anahtarı",
+                "storedVaultBasicAuth": "Yerel kasada saklanır ve Basic Auth ile yalnızca {provider} hizmetine gönderilir.",
+                "cloudName": "Bulut Adı",
+                "cloudinaryCloudNameHint": "Cloudinary Dashboard - Account Details bölümünde bulunur.",
+                "apiKeyPlaceholder": "API anahtarı",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API anahtarı.",
+                "apiSecret": "API Sırrı",
+                "apiSecretPlaceholder": "API sırrı",
+                "openProviderLink": "{provider} bağlantısını aç",
+                "githubPatHint": "Contents (Okuma ve Yazma) izinli ayrıntılı PAT.",
+                "generateToken": "Belirteç oluştur",
+                "applicationKeyId": "Uygulama Anahtarı Kimliği",
+                "backblazeKeyIdHint": "B2 Uygulama Anahtarı Kimliği, 003 ile başlar. Backblaze App Keys sayfasından bir tane oluşturun.",
+                "applicationKey": "Uygulama Anahtarı",
+                "backblazeKeyHint": "Oluşturulurken yalnızca bir kez gösterilir. Bir parola gibi saklayın.",
+                "bucketNameExactHint": "Tam bucket adı, büyük/küçük harfe duyarlı.",
+                "megacmdSetupFirst": "Önce MEGAcmd'yi kurun",
+                "megacmdFetchUrlTitle": "{cmd} komutunu çalıştır ve URL'yi otomatik doldur",
+                "fetchUrl": "URL'yi Getir",
+                "megacmdWebdavHint": "Kullanıcı adı ve parola bilerek atlanmıştır. AeroFTP bağlanırken köprüyü başlatmak ve bu adresi okumak için \"{cmd}\" komutunu kendisi çalıştırır: alanı boş bırakabilirsiniz. \"URL'yi Getir\" isteğe bağlı bir elle yenilemedir; MEGAcmd özel bir bağlantı noktası kullanıyorsa bağlantı noktasını burada değiştirin."
+            }
         },
         "browser": {
             "remote": "Uzak",
@@ -1040,7 +1070,13 @@
                 "title": "Yerel rsync (beta)",
                 "description": "Sistem rsync ikili dosyasını çalıştırmak yerine AeroFTP'nin dahili rsync protokolü uygulamasını kullanın. Süreç yükünü azaltır; sınır durumlarda daha az test edilmiş olabilir.",
                 "enableToggle": "SFTP delta senkronizasyonu için yerel rsync'i etkinleştir",
-                "experimental": "Deneysel: hata durumunda otomatik olarak klasik rsync'e geri döner. Host anahtarı uyumsuzlukları sessiz geri dönüş olmadan kritik hata olarak ortaya çıkar."
+                "experimental": "Deneysel: hata durumunda otomatik olarak klasik rsync'e geri döner. Host anahtarı uyumsuzlukları sessiz geri dönüş olmadan kritik hata olarak ortaya çıkar.",
+                "modeAuto": "Otomatik",
+                "modeClassic": "Klasik",
+                "modeNative": "Yerel",
+                "classicNotFoundTooltip": "Klasik rsync ikili dosyası PATH içinde bulunamadı. Bu modu etkinleştirmek için rsync yükleyin (Linux/macOS paketi, Windows için WSL/cygwin/scoop).",
+                "classicAt": "Klasik rsync: {path}",
+                "classicNotDetected": "Klasik rsync ikili dosyası PATH içinde algılanmadı. Bu makinede kullanılabilen tek motor Yerel motordur."
             },
             "startMinimizedOnAutostart": "Sistem tepsisine simge durumunda başlat",
             "startMinimizedOnAutostartDesc": "Otomatik başlatmada ana pencereyi gizle. AeroFTP sistem tepsisinde çalışmaya devam eder, ihtiyaç duyduğunuzda tepsi simgesinden açın.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Şifrelenmemiş depolamada {count} OAuth kimlik bilgisi bulundu",
             "fontSystemInstall": "sisteme kurulum",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "En yüksek güvenlik için önerilir",
+            "fontCustomOption": "Özel...",
+            "fontSystemInstallHint": "Sistem kurulumu gerektirir. Kullanılamıyorsa AeroFTP otomatik olarak yedeğe geçer."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Token iptal edilirse yetkilendirmeyi elle yeniden yapın"
             },
             "profilesLoadFailed": "Kayıtlı sunucularınız okunamadı: {error}",
-            "cleanupSummary": "{count} dosya, {size} boşaltıldı"
+            "cleanupSummary": "{count} dosya, {size} boşaltıldı",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Bağlı",
@@ -1631,7 +1673,8 @@
                 "apRole": "Kurucu, geliştirici, bakımcı, ortak tasarımcı",
                 "ekRole": "Araştırmacı, kalite güvence mühendisi, ortak tasarımcı"
             },
-            "madeBy": "{author} tarafından"
+            "madeBy": "{author} tarafından",
+            "statsLine": "{protocols} protokol · {languages} dil · AES-256 arşivleri"
         },
         "support": {
             "title": "AeroFTP'yi Destekle",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Proje (Unixname)",
             "opendriveNotApiKey": "(OpenDrive API anahtarınız değil)",
             "endpoint": "Uç Nokta",
-            "accountId": "Hesap ID'si"
+            "accountId": "Hesap ID'si",
+            "servicesHeading": "Hizmetler",
+            "sourceforgeSshKeyHelp": "SourceForge, SSH anahtarıyla kimlik doğrulama gerektirir. {cmd} ile bir anahtar oluşturun ve {link} adresine yükleyin.",
+            "sourceforgeSshSettings": "SSH Ayarları",
+            "fullGuide": "Tam kılavuz",
+            "endpointTemplateExample": "örn. {template}",
+            "jurisdiction": "Yargı yetkisi",
+            "insecureCertDialogLabel": "Güvensiz Sertifika Uyarısı",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Ücretsiz plan",
             "freeCardTier": "Ücretsiz + kart",
-            "paidTier": "Ücretli"
+            "paidTier": "Ücretli",
+            "extraFeatures": "Ek",
+            "coreOpsList": "Yükleme, İndirme, Silme, Yeniden adlandırma, Taşıma, Klasör oluşturma, Arama",
+            "coreOpsLegend": "Temel = Yükleme, İndirme, Silme, Yeniden adlandırma, Taşıma, Klasör oluşturma, Arama"
         },
         "healthCheck": {
             "title": "Sunucu sağlık kontrolü",
@@ -5214,7 +5268,8 @@
                 "down": "Erişilemez",
                 "pending": "Kontrol ediliyor...",
                 "unknown": "Doğrulanmadı",
-                "clickToRetry": "yeniden kontrol etmek için tıklayın"
+                "clickToRetry": "yeniden kontrol etmek için tıklayın",
+                "withActiveSession": "{title} (etkin oturum)"
             },
             "densityCompact": "Kompakt satırlar",
             "densityComfortable": "Rahat satırlar",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt şifreli katman (yerel): adlar ve içerikler bu sunucuda şifrelenir.",
-                "rcloneTitle": "rclone crypt katmanı (birlikte çalışabilir): adlar ve içerikler bu sunucuda şifrelenir."
+                "rcloneTitle": "rclone crypt katmanı (birlikte çalışabilir): adlar ve içerikler bu sunucuda şifrelenir.",
+                "keyBits": "{bits} bit"
             },
             "sidebar": {
                 "filters": "Filtreler",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Bu deponun şifreleme ayarını okuyamadık, çünkü uygulama anahtarında readBucketEncryption yetkisi yok. Görmemize izin verilmeyen bir değer, şifrelemenin kapalı olduğu anlamına gelmez.",
                 "unknownShapeTitle": "Bu deponun şifreleme ayarını okuyamadık, çünkü yanıtın belgelenmiş bir biçimi yoktu. Anahtarın bunu okuma izni vardı, dolayısıyla konu yanıtla ilgilidir, izinlerle değil."
             },
-            "exportProfile": "Dışa aktar..."
+            "exportProfile": "Dışa aktar...",
+            "quotaLabel": "Kota",
+            "storageNoCapReported": "{used} (kota sınırı bildirilmedi)",
+            "e2eBitsBadge": "E2E {bits} bit",
+            "filenAuthVersionTitle": "Başarılı bağlantıda Filen auth/info üzerinden algılandı",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "şimdi",
+                "minutes": "{count} dk",
+                "hours": "{count} sa",
+                "days": "{count} g",
+                "months": "{count} ay"
+            }
         },
         "gitlab": {
             "projectPath": "Proje Yolu",
@@ -5928,7 +5996,7 @@
             "cancelPasswordEdit": "Parola düzenlemesini iptal et",
             "closeAvatarEditor": "Avatar düzenleyiciyi kapat",
             "accountIdentity": "Hesap kimliği",
-            "iconLibrary": "Simge kitapligi",
+            "iconLibrary": "Simge kitaplığı",
             "color": "Renk",
             "cancel": "İptal",
             "errAckRequired": "Lütfen hesap parolalarının kurtarılamayacağını onaylayın.",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Mod, bağlantı oluşturulurken seçilir ve kayıtlı bir profil düzenlenirken sabit kalır. Farklı bir mod kullanmak için yeni bir bağlantı oluşturun."
+                "lockedInEdit": "Mod, bağlantı oluşturulurken seçilir ve kayıtlı bir profil düzenlenirken sabit kalır. Farklı bir mod kullanmak için yeni bir bağlantı oluşturun.",
+                "notInBuild": "AeroFTP'nin bu derlemesine dahil değil."
             }
         },
         "flatpak": {

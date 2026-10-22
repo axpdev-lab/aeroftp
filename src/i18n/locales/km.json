@@ -337,7 +337,37 @@
             "protonSignOut": "ចាកចេញ",
             "protonSignOutHelp": "បញ្ចប់សម័យនៅលើ Proton ហើយដកវាចេញពីប្រវត្តិរូបនេះ។",
             "protonSignInExpired": "ទំព័រចូលគណនីបានផុតកំណត់។ សូមចូលគណនីម្តងទៀត។",
-            "protonNativeUnavailable": "កំណែនេះមិនរួមបញ្ចូលកម្មវិធីភ្ញៀវ Proton Drive ដើមទេ។"
+            "protonNativeUnavailable": "កំណែនេះមិនរួមបញ្ចូលកម្មវិធីភ្ញៀវ Proton Drive ដើមទេ។",
+            "forms": {
+                "publicApiKey": "កូនសោ API សាធារណៈ",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - កូនសោសាធារណៈ។",
+                "secretApiKey": "កូនសោ API សម្ងាត់",
+                "uploadcareSecretHint": "ប្រើសម្រាប់តែការគ្រប់គ្រងឯកសារ REST តាមរយៈការផ្ទៀងផ្ទាត់ {scheme} ប៉ុណ្ណោះ។",
+                "flatMediaLibrary": "បណ្ណាល័យមេឌៀរាបស្មើ",
+                "uploadcareNoFolders": "Uploadcare មិនផ្តល់ថតដើមទេ។ ឯកសារគម្រោងត្រូវបានរាយនៅឫសតាម UUID។",
+                "urlEndpointId": "ID ចំណុចបញ្ចប់ URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - ចំណុចបញ្ចប់ URL។",
+                "privateApiKey": "កូនសោ API ឯកជន",
+                "storedVaultBasicAuth": "រក្សាទុកក្នុងឃ្លាំងសុវត្ថិភាពមូលដ្ឋាន ហើយផ្ញើទៅ {provider} តែប៉ុណ្ណោះតាមរយៈ Basic Auth។",
+                "cloudName": "ឈ្មោះពពក",
+                "cloudinaryCloudNameHint": "រកឃើញនៅក្នុង Cloudinary Dashboard - Account Details របស់អ្នក។",
+                "apiKeyPlaceholder": "កូនសោ API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - កូនសោ API។",
+                "apiSecret": "សម្ងាត់ API",
+                "apiSecretPlaceholder": "សម្ងាត់ API",
+                "openProviderLink": "បើកតំណ {provider}",
+                "githubPatHint": "PAT សិទ្ធិលម្អិត ជាមួយ Contents (អាន និងសរសេរ)។",
+                "generateToken": "បង្កើតថូខឹន",
+                "applicationKeyId": "ID កូនសោកម្មវិធី",
+                "backblazeKeyIdHint": "លេខសម្គាល់កូនសោកម្មវិធី B2 ចាប់ផ្តើមដោយ 003។ បង្កើតមួយពីទំព័រ App Keys របស់ Backblaze។",
+                "applicationKey": "កូនសោកម្មវិធី",
+                "backblazeKeyHint": "បង្ហាញតែម្តងគត់ពេលបង្កើត។ សូមចាត់ទុកវាដូចពាក្យសម្ងាត់។",
+                "bucketNameExactHint": "ឈ្មោះធុងពិតប្រាកដ ប្រកាន់អក្សរធំតូច។",
+                "megacmdSetupFirst": "រៀបចំ MEGAcmd ជាមុនសិន",
+                "megacmdFetchUrlTitle": "ដំណើរការ {cmd} ហើយបំពេញ URL ដោយស្វ័យប្រវត្តិ",
+                "fetchUrl": "ទាញយក URL",
+                "megacmdWebdavHint": "ឈ្មោះអ្នកប្រើ និងពាក្យសម្ងាត់ត្រូវបានលុបចោលដោយចេតនា។ AeroFTP ដំណើរការ \"{cmd}\" ដោយខ្លួនឯងពេលភ្ជាប់ ដើម្បីចាប់ផ្តើមស្ពាន និងអានអាសយដ្ឋាននេះ៖ ទុកវាទទេក៏បាន។ \"ទាញយក URL\" គឺជាការផ្ទុកឡើងវិញដោយដៃជាជម្រើស; ប្តូរច្រកនៅទីនេះ ប្រសិនបើ MEGAcmd ប្រើច្រកផ្ទាល់ខ្លួន។"
+            }
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -1040,7 +1070,13 @@
                 "title": "rsync ដើម (បេតា)",
                 "description": "ជ្រើសរើសរបៀបដែល SFTP Delta Sync បញ្ជូនការផ្ទេរ rsync។",
                 "enableToggle": "បើក rsync ដើមសម្រាប់ការធ្វើសមកាលកម្មដេលតាតាមរយៈ SFTP",
-                "experimental": "Auto ប្រើ AeroRsync ជាអាទិភាព ហើយត្រឡប់ទៅ rsync បុរាណពេលចាំបាច់។ Classic ប្រើ rsync binary របស់ប្រព័ន្ធ នៅពេលដែលមាន។ Native រំលងការត្រឡប់ទៅ binary បុរាណ។"
+                "experimental": "Auto ប្រើ AeroRsync ជាអាទិភាព ហើយត្រឡប់ទៅ rsync បុរាណពេលចាំបាច់។ Classic ប្រើ rsync binary របស់ប្រព័ន្ធ នៅពេលដែលមាន។ Native រំលងការត្រឡប់ទៅ binary បុរាណ។",
+                "modeAuto": "ស្វ័យប្រវត្តិ",
+                "modeClassic": "បុរាណ",
+                "modeNative": "ដើម",
+                "classicNotFoundTooltip": "រកមិនឃើញឯកសារ rsync បុរាណនៅក្នុង PATH ទេ។ ដំឡើង rsync (កញ្ចប់ Linux/macOS, Windows តាមរយៈ WSL/cygwin/scoop) ដើម្បីបើកមុខងារនេះ។",
+                "classicAt": "rsync បុរាណនៅ {path}",
+                "classicNotDetected": "រកមិនឃើញឯកសារ rsync បុរាណនៅក្នុង PATH ទេ។ ដើម គឺជាម៉ាស៊ីនតែមួយគត់ដែលមាននៅលើកុំព្យូទ័រនេះ។"
             },
             "startMinimizedOnAutostart": "ចាប់ផ្តើមដោយបង្រួមទៅថាស",
             "startMinimizedOnAutostartDesc": "លាក់បង្អួចមេនៅពេលចាប់ផ្តើមដោយស្វ័យប្រវត្តិ។ AeroFTP បន្តដំណើរការនៅក្នុងថាសប្រព័ន្ធ បើកវាពីរូបតំណាងថាសនៅពេលអ្នកត្រូវការ។",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "បានរកឃើញព័ត៌មានសម្ងាត់ OAuth {count} នៅក្នុងឃ្លាំងផ្ទុកដែលមិនបានអ៊ិនគ្រីប",
             "fontSystemInstall": "ដំឡើងក្នុងប្រព័ន្ធ",
             "fontSizeMin": "អប្បបរមា",
-            "fontSizeMax": "អតិបរមា"
+            "fontSizeMax": "អតិបរមា",
+            "migrationCleanupHint": "ណែនាំសម្រាប់សុវត្ថិភាពអតិបរមា",
+            "fontCustomOption": "ផ្ទាល់ខ្លួន...",
+            "fontSystemInstallHint": "ត្រូវការការដំឡើងក្នុងប្រព័ន្ធ។ AeroFTP នឹងប្ដូរទៅជម្រើសបម្រុងដោយស្វ័យប្រវត្តិ ប្រសិនបើមិនមាន។"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "អនុញ្ញាតឡើងវិញដោយដៃ ប្រសិនបើ token ត្រូវបានដកហូត"
             },
             "profilesLoadFailed": "មិនអាចអានម៉ាស៊ីនមេដែលបានរក្សាទុករបស់អ្នកបានទេ: {error}",
-            "cleanupSummary": "ឯកសារ {count}, ទំហំបានដោះលែង {size}"
+            "cleanupSummary": "ឯកសារ {count}, ទំហំបានដោះលែង {size}",
+            "maturity": {
+                "alpha": "អាល់ហ្វា"
+            }
         },
         "statusBar": {
             "connected": "បានតភ្ជាប់",
@@ -1631,7 +1673,8 @@
                 "apRole": "ស្ថាបនិក អ្នកអភិវឌ្ឍន៍ អ្នកថែទាំ សហអ្នករចនា",
                 "ekRole": "អ្នកស្រាវជ្រាវ វិស្វករធានាគុណភាព សហអ្នករចនា"
             },
-            "madeBy": "ដោយ {author}"
+            "madeBy": "ដោយ {author}",
+            "statsLine": "{protocols} ពិធីការ · {languages} ភាសា · បណ្ណសារ AES-256"
         },
         "support": {
             "title": "គាំទ្រ AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "គម្រោង (Unixname)",
             "opendriveNotApiKey": "(មិនមែនជាសោ API OpenDrive របស់អ្នកទេ)",
             "endpoint": "ចំណុចបញ្ចប់",
-            "accountId": "ID គណនី"
+            "accountId": "ID គណនី",
+            "servicesHeading": "សេវាកម្ម",
+            "sourceforgeSshKeyHelp": "SourceForge ត្រូវការការផ្ទៀងផ្ទាត់ដោយកូនសោ SSH។ បង្កើតកូនសោដោយប្រើ {cmd} ហើយផ្ទុកវាឡើងទៅ {link}។",
+            "sourceforgeSshSettings": "ការកំណត់ SSH",
+            "fullGuide": "មគ្គុទ្ទេសក៍ពេញលេញ",
+            "endpointTemplateExample": "ឧ. {template}",
+            "jurisdiction": "យុត្តាធិការ",
+            "insecureCertDialogLabel": "ការព្រមានវិញ្ញាបនបត្រមិនមានសុវត្ថិភាព",
+            "betaBadge": "បេតា"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -4835,7 +4886,10 @@
             "devTools": "Dev Tools",
             "freeTier": "គម្រោងឥតគិតថ្លៃ",
             "freeCardTier": "ឥតគិតថ្លៃ + កាត",
-            "paidTier": "បង់ប្រាក់"
+            "paidTier": "បង់ប្រាក់",
+            "extraFeatures": "បន្ថែម",
+            "coreOpsList": "ផ្ទុកឡើង, ទាញយក, លុប, ប្ដូរឈ្មោះ, ផ្លាស់ទី, បង្កើតថត, ស្វែងរក",
+            "coreOpsLegend": "មូលដ្ឋាន = ផ្ទុកឡើង, ទាញយក, លុប, ប្ដូរឈ្មោះ, ផ្លាស់ទី, បង្កើតថត, ស្វែងរក"
         },
         "healthCheck": {
             "title": "ការពិនិត្យសុខភាពម៉ាស៊ីន​មែ",
@@ -5233,7 +5287,8 @@
                 "down": "មិនអាចភ្ជាប់បាន",
                 "pending": "កំពុងពិនិត្យ...",
                 "unknown": "មិនបានពិនិត្យ",
-                "clickToRetry": "ចុចដើម្បីពិនិត្យឡើងវិញ"
+                "clickToRetry": "ចុចដើម្បីពិនិត្យឡើងវិញ",
+                "withActiveSession": "{title} (វគ្គសកម្ម)"
             },
             "densityCompact": "ជួរបង្រួម",
             "densityComfortable": "ជួរស្រួល",
@@ -5323,7 +5378,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "ស្រទាប់អ៊ិនគ្រីប AeroCrypt (ដើម)៖ ឈ្មោះ និងមាតិកាត្រូវបានអ៊ិនគ្រីបនៅលើម៉ាស៊ីនមេនេះ។",
-                "rcloneTitle": "ស្រទាប់ rclone crypt (អន្តរប្រតិបត្តិ)៖ ឈ្មោះ និងមាតិកាត្រូវបានអ៊ិនគ្រីបនៅលើម៉ាស៊ីនមេនេះ។"
+                "rcloneTitle": "ស្រទាប់ rclone crypt (អន្តរប្រតិបត្តិ)៖ ឈ្មោះ និងមាតិកាត្រូវបានអ៊ិនគ្រីបនៅលើម៉ាស៊ីនមេនេះ។",
+                "keyBits": "{bits} ប៊ីត"
             },
             "sidebar": {
                 "filters": "តម្រង",
@@ -5343,7 +5399,19 @@
                 "unknownKeyTitle": "យើងមិនអាចអានការកំណត់អ៊ិនគ្រីបរបស់ធុងនេះបានទេ ព្រោះកូនសោកម្មវិធីគ្មានសមត្ថភាព readBucketEncryption។ តម្លៃដែលយើងមិនត្រូវបានអនុញ្ញាតឱ្យឃើញ មិនមានន័យថាការអ៊ិនគ្រីបត្រូវបានបិទនោះទេ។",
                 "unknownShapeTitle": "យើងមិនអាចអានការកំណត់អ៊ិនគ្រីបរបស់ធុងនេះបានទេ ព្រោះចម្លើយមិនមានទម្រង់ដែលបានចងក្រងជាឯកសារ។ កូនសោមានសិទ្ធិអានវា ដូច្នេះបញ្ហានេះទាក់ទងនឹងចម្លើយ មិនមែនសិទ្ធិទេ។"
             },
-            "exportProfile": "នាំចេញ..."
+            "exportProfile": "នាំចេញ...",
+            "quotaLabel": "កូតា",
+            "storageNoCapReported": "{used} (មិនមានការរាយការណ៍ដែនកំណត់កូតា)",
+            "e2eBitsBadge": "E2E {bits} ប៊ីត",
+            "filenAuthVersionTitle": "បានរកឃើញពី Filen auth/info ពេលភ្ជាប់ជោគជ័យ",
+            "demoBadge": "សាកល្បង",
+            "timeAgo": {
+                "now": "ឥឡូវ",
+                "minutes": "{count} នាទី",
+                "hours": "{count} ម៉ោង",
+                "days": "{count} ថ្ងៃ",
+                "months": "{count} ខែ"
+            }
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",
@@ -6385,7 +6453,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "របៀបត្រូវបានជ្រើសរើសនៅពេលបង្កើតការតភ្ជាប់ ហើយនៅតែថេរនៅពេលកែសម្រួលប្រវត្តិរូបដែលបានរក្សាទុក។ ដើម្បីប្រើរបៀបផ្សេង សូមបង្កើតការតភ្ជាប់ថ្មី។"
+                "lockedInEdit": "របៀបត្រូវបានជ្រើសរើសនៅពេលបង្កើតការតភ្ជាប់ ហើយនៅតែថេរនៅពេលកែសម្រួលប្រវត្តិរូបដែលបានរក្សាទុក។ ដើម្បីប្រើរបៀបផ្សេង សូមបង្កើតការតភ្ជាប់ថ្មី។",
+                "notInBuild": "មិនមាននៅក្នុងកំណែបង្កើតនេះរបស់ AeroFTP ទេ។"
             }
         },
         "flatpak": {

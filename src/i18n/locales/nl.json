@@ -337,7 +337,37 @@
             "protonSignOut": "Uitloggen",
             "protonSignOutHelp": "Beëindigt de sessie bij Proton en verwijdert die uit dit profiel.",
             "protonSignInExpired": "De inlogpagina is verlopen. Log opnieuw in.",
-            "protonNativeUnavailable": "Deze build bevat de ingebouwde Proton Drive-client niet."
+            "protonNativeUnavailable": "Deze build bevat de ingebouwde Proton Drive-client niet.",
+            "forms": {
+                "publicApiKey": "Openbare API-sleutel",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Openbare sleutel.",
+                "secretApiKey": "Geheime API-sleutel",
+                "uploadcareSecretHint": "Alleen gebruikt voor REST-bestandsbeheer via {scheme}-authenticatie.",
+                "flatMediaLibrary": "Platte mediabibliotheek",
+                "uploadcareNoFolders": "Uploadcare biedt geen eigen mappen; projectbestanden worden in de hoofdmap op UUID weergegeven.",
+                "urlEndpointId": "URL-eindpunt-ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-eindpunt.",
+                "privateApiKey": "Privé-API-sleutel",
+                "storedVaultBasicAuth": "Opgeslagen in de lokale kluis en alleen via Basic Auth naar {provider} verzonden.",
+                "cloudName": "Cloudnaam",
+                "cloudinaryCloudNameHint": "Te vinden in je Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-sleutel",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-sleutel.",
+                "apiSecret": "API-geheim",
+                "apiSecretPlaceholder": "API-geheim",
+                "openProviderLink": "{provider}-link openen",
+                "githubPatHint": "Fijnmazige PAT met Contents (lezen en schrijven).",
+                "generateToken": "Token genereren",
+                "applicationKeyId": "Applicatiesleutel-ID",
+                "backblazeKeyIdHint": "B2-applicatiesleutel-ID, begint met 003. Maak er een aan op de pagina App Keys van Backblaze.",
+                "applicationKey": "Applicatiesleutel",
+                "backblazeKeyHint": "Wordt slechts één keer getoond bij het aanmaken. Behandel hem als een wachtwoord.",
+                "bucketNameExactHint": "Exacte bucketnaam, hoofdlettergevoelig.",
+                "megacmdSetupFirst": "Stel eerst MEGAcmd in",
+                "megacmdFetchUrlTitle": "{cmd} uitvoeren en de URL automatisch invullen",
+                "fetchUrl": "URL ophalen",
+                "megacmdWebdavHint": "Gebruikersnaam en wachtwoord zijn bewust weggelaten. AeroFTP voert bij het verbinden zelf \"{cmd}\" uit om de brug te starten en dit adres te lezen: leeg laten is prima. URL ophalen is een optionele handmatige vernieuwing; wijzig hier de poort als MEGAcmd een aangepaste poort gebruikt."
+            }
         },
         "browser": {
             "remote": "Extern",
@@ -1040,7 +1070,13 @@
                 "title": "Native rsync (beta)",
                 "description": "Kies hoe SFTP Delta Sync rsync-overdrachten verstuurt.",
                 "enableToggle": "Native rsync inschakelen voor delta-synchronisatie via SFTP",
-                "experimental": "Auto geeft de voorkeur aan AeroRsync met klassieke terugval; Classic gebruikt het rsync-binaire bestand van het systeem waar beschikbaar; Native slaat de klassieke binaire terugval over."
+                "experimental": "Auto geeft de voorkeur aan AeroRsync met klassieke terugval; Classic gebruikt het rsync-binaire bestand van het systeem waar beschikbaar; Native slaat de klassieke binaire terugval over.",
+                "modeAuto": "Automatisch",
+                "modeClassic": "Klassiek",
+                "modeNative": "Eigen",
+                "classicNotFoundTooltip": "Klassiek rsync-programma niet gevonden in PATH. Installeer rsync (Linux/macOS-pakket, Windows via WSL/cygwin/scoop) om deze modus in te schakelen.",
+                "classicAt": "Klassiek rsync in {path}",
+                "classicNotDetected": "Klassiek rsync-programma niet gedetecteerd in PATH. Eigen is de enige beschikbare engine op deze machine."
             },
             "startMinimizedOnAutostart": "Geminimaliseerd starten in systeemvak",
             "startMinimizedOnAutostartDesc": "Hoofdvenster verbergen bij automatisch opstarten. AeroFTP blijft draaien in het systeemvak, open het via het pictogram wanneer je het nodig hebt.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "{count} OAuth-inloggegevens gevonden in onversleutelde opslag",
             "fontSystemInstall": "systeeminstallatie",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Aanbevolen voor maximale beveiliging",
+            "fontCustomOption": "Aangepast...",
+            "fontSystemInstallHint": "Vereist systeeminstallatie. AeroFTP valt automatisch terug als het niet beschikbaar is."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Autoriseer handmatig opnieuw als het token is ingetrokken"
             },
             "profilesLoadFailed": "Je opgeslagen servers konden niet worden gelezen: {error}",
-            "cleanupSummary": "{count} bestanden, {size} vrijgemaakt"
+            "cleanupSummary": "{count} bestanden, {size} vrijgemaakt",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -1631,7 +1673,8 @@
                 "apRole": "Oprichter, ontwikkelaar, maintainer, mede-ontwerper",
                 "ekRole": "Onderzoeker, kwaliteitsborgingsingenieur, mede-ontwerper"
             },
-            "madeBy": "door {author}"
+            "madeBy": "door {author}",
+            "statsLine": "{protocols} protocollen · {languages} talen · AES-256-archieven"
         },
         "support": {
             "title": "Steun AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Project (Unixname)",
             "opendriveNotApiKey": "(niet uw OpenDrive API-sleutel)",
             "endpoint": "Endpoint",
-            "accountId": "Account-ID"
+            "accountId": "Account-ID",
+            "servicesHeading": "Diensten",
+            "sourceforgeSshKeyHelp": "SourceForge vereist authenticatie met een SSH-sleutel. Genereer een sleutel met {cmd} en upload deze naar {link}.",
+            "sourceforgeSshSettings": "SSH-instellingen",
+            "fullGuide": "Volledige handleiding",
+            "endpointTemplateExample": "bijv. {template}",
+            "jurisdiction": "Jurisdictie",
+            "insecureCertDialogLabel": "Waarschuwing onveilig certificaat",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Gratis abonnement",
             "freeCardTier": "Gratis + kaart",
-            "paidTier": "Betaald"
+            "paidTier": "Betaald",
+            "extraFeatures": "Extra",
+            "coreOpsList": "Uploaden, Downloaden, Verwijderen, Hernoemen, Verplaatsen, Map maken, Zoeken",
+            "coreOpsLegend": "Basis = Uploaden, Downloaden, Verwijderen, Hernoemen, Verplaatsen, Map maken, Zoeken"
         },
         "healthCheck": {
             "title": "Serverstatus controleren",
@@ -5214,7 +5268,8 @@
                 "down": "Onbereikbaar",
                 "pending": "Controleren...",
                 "unknown": "Niet gecontroleerd",
-                "clickToRetry": "klik om opnieuw te controleren"
+                "clickToRetry": "klik om opnieuw te controleren",
+                "withActiveSession": "{title} (actieve sessie)"
             },
             "densityCompact": "Compacte rijen",
             "densityComfortable": "Comfortabele rijen",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt versleutelde overlay (native): namen en inhoud zijn versleuteld op deze server.",
-                "rcloneTitle": "rclone crypt overlay (interop): namen en inhoud zijn versleuteld op deze server."
+                "rcloneTitle": "rclone crypt overlay (interop): namen en inhoud zijn versleuteld op deze server.",
+                "keyBits": "{bits}-bits"
             },
             "sidebar": {
                 "filters": "Filters",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "We konden de versleutelingsinstelling van deze bucket niet lezen, omdat de applicatiesleutel niet over de mogelijkheid readBucketEncryption beschikt. Een waarde die we niet mogen zien, betekent niet dat versleuteling uit staat.",
                 "unknownShapeTitle": "We konden de versleutelingsinstelling van deze bucket niet lezen, omdat het antwoord geen gedocumenteerde vorm had. De sleutel mocht de instelling wel lezen, dus dit gaat over het antwoord en niet over rechten."
             },
-            "exportProfile": "Exporteren..."
+            "exportProfile": "Exporteren...",
+            "quotaLabel": "Quotum",
+            "storageNoCapReported": "{used} (geen quotumlimiet gemeld)",
+            "e2eBitsBadge": "E2E {bits}-bits",
+            "filenAuthVersionTitle": "Gedetecteerd via Filen auth/info bij een geslaagde verbinding",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nu",
+                "minutes": "{count} min",
+                "hours": "{count} u",
+                "days": "{count} d",
+                "months": "{count} mnd"
+            }
         },
         "gitlab": {
             "projectPath": "Projectpad",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "De modus wordt gekozen bij het maken van de verbinding en blijft vast tijdens het bewerken van een opgeslagen profiel. Maak een nieuwe verbinding om een andere modus te gebruiken."
+                "lockedInEdit": "De modus wordt gekozen bij het maken van de verbinding en blijft vast tijdens het bewerken van een opgeslagen profiel. Maak een nieuwe verbinding om een andere modus te gebruiken.",
+                "notInBuild": "Niet opgenomen in deze build van AeroFTP."
             }
         },
         "flatpak": {

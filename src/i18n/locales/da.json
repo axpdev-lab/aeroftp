@@ -337,7 +337,37 @@
             "protonSignOut": "Log ud",
             "protonSignOutHelp": "Afslutter sessionen hos Proton og fjerner den fra denne profil.",
             "protonSignInExpired": "Loginsiden er udløbet. Log ind igen.",
-            "protonNativeUnavailable": "Denne build indeholder ikke den indbyggede Proton Drive-klient."
+            "protonNativeUnavailable": "Denne build indeholder ikke den indbyggede Proton Drive-klient.",
+            "forms": {
+                "publicApiKey": "Offentlig API-nøgle",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Offentlig nøgle.",
+                "secretApiKey": "Hemmelig API-nøgle",
+                "uploadcareSecretHint": "Bruges kun til REST-filhåndtering via {scheme}-godkendelse.",
+                "flatMediaLibrary": "Fladt mediebibliotek",
+                "uploadcareNoFolders": "Uploadcare har ikke egentlige mapper; projektfiler vises i roden efter UUID.",
+                "urlEndpointId": "URL-slutpunkt-ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-slutpunkt.",
+                "privateApiKey": "Privat API-nøgle",
+                "storedVaultBasicAuth": "Gemt i den lokale boks og kun sendt til {provider} via Basic Auth.",
+                "cloudName": "Cloud-navn",
+                "cloudinaryCloudNameHint": "Findes i dit Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-nøgle",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-nøgle.",
+                "apiSecret": "API-hemmelighed",
+                "apiSecretPlaceholder": "API-hemmelighed",
+                "openProviderLink": "Åbn {provider}-link",
+                "githubPatHint": "Finkornet PAT med Contents (læse og skrive).",
+                "generateToken": "Generér token",
+                "applicationKeyId": "Programnøgle-ID",
+                "backblazeKeyIdHint": "B2-applikationsnøgle-id, starter med 003. Opret en på siden App Keys hos Backblaze.",
+                "applicationKey": "Applikationsnøgle",
+                "backblazeKeyHint": "Vises kun én gang ved oprettelsen. Behandl den som en adgangskode.",
+                "bucketNameExactHint": "Præcist bucket-navn, skelner mellem store og små bogstaver.",
+                "megacmdSetupFirst": "Konfigurer MEGAcmd først",
+                "megacmdFetchUrlTitle": "Kør {cmd} og udfyld URL'en automatisk",
+                "fetchUrl": "Hent URL",
+                "megacmdWebdavHint": "Brugernavn og adgangskode er udeladt med vilje. AeroFTP kører selv \"{cmd}\" ved tilslutning for at starte broen og læse denne adresse: feltet må gerne være tomt. Hent URL er en valgfri manuel opdatering; skift porten her, hvis MEGAcmd bruger en brugerdefineret port."
+            }
         },
         "browser": {
             "remote": "Ekstern",
@@ -1040,7 +1070,13 @@
                 "title": "Indbygget rsync (beta)",
                 "description": "Vælg, hvordan SFTP Delta Sync sender rsync-overførsler.",
                 "enableToggle": "Aktivér indbygget rsync til delta-synkronisering via SFTP",
-                "experimental": "Auto foretrækker AeroRsync med klassisk reserve; Classic bruger systemets rsync-binærfil, hvor den er tilgængelig; Native springer den klassiske binære reserve over."
+                "experimental": "Auto foretrækker AeroRsync med klassisk reserve; Classic bruger systemets rsync-binærfil, hvor den er tilgængelig; Native springer den klassiske binære reserve over.",
+                "modeAuto": "Automatisk",
+                "modeClassic": "Klassisk",
+                "modeNative": "Indbygget",
+                "classicNotFoundTooltip": "Klassisk rsync-binær ikke fundet i PATH. Installer rsync (Linux/macOS-pakke, Windows via WSL/cygwin/scoop) for at aktivere denne tilstand.",
+                "classicAt": "Klassisk rsync i {path}",
+                "classicNotDetected": "Klassisk rsync-binær ikke registreret i PATH. Indbygget er den eneste tilgængelige motor på denne maskine."
             },
             "startMinimizedOnAutostart": "Start minimeret til proceslinjen",
             "startMinimizedOnAutostartDesc": "Skjul hovedvinduet ved automatisk start. AeroFTP fortsætter med at køre i systembakken, åbn det fra bakkeikonet, når du har brug for det.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "{count} OAuth-legitimationsoplysninger fundet i ukrypteret lager",
             "fontSystemInstall": "systeminstallation",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "Anbefales for maksimal sikkerhed",
+            "fontCustomOption": "Tilpasset...",
+            "fontSystemInstallHint": "Kræver systeminstallation. AeroFTP falder automatisk tilbage, hvis den ikke er tilgængelig."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Godkend manuelt igen, hvis tokenet tilbagekaldes"
             },
             "profilesLoadFailed": "Dine gemte servere kunne ikke læses: {error}",
-            "cleanupSummary": "{count} filer, {size} frigjort"
+            "cleanupSummary": "{count} filer, {size} frigjort",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Forbundet",
@@ -1631,7 +1673,8 @@
                 "apRole": "Grundlægger, udvikler, vedligeholder, meddesigner",
                 "ekRole": "Forsker, kvalitetssikringsingeniør, meddesigner"
             },
-            "madeBy": "af {author}"
+            "madeBy": "af {author}",
+            "statsLine": "{protocols} protokoller · {languages} sprog · AES-256-arkiver"
         },
         "support": {
             "title": "Støt AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projekt (Unixname)",
             "opendriveNotApiKey": "(ikke din OpenDrive API-nøgle)",
             "endpoint": "Slutpunkt",
-            "accountId": "Konto-ID"
+            "accountId": "Konto-ID",
+            "servicesHeading": "Tjenester",
+            "sourceforgeSshKeyHelp": "SourceForge kræver godkendelse med SSH-nøgle. Generér en nøgle med {cmd}, og upload den til {link}.",
+            "sourceforgeSshSettings": "SSH-indstillinger",
+            "fullGuide": "Fuld vejledning",
+            "endpointTemplateExample": "f.eks. {template}",
+            "jurisdiction": "Jurisdiktion",
+            "insecureCertDialogLabel": "Advarsel om usikkert certifikat",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Gratis plan",
             "freeCardTier": "Gratis + kort",
-            "paidTier": "Betalt"
+            "paidTier": "Betalt",
+            "extraFeatures": "Ekstra",
+            "coreOpsList": "Upload, Download, Slet, Omdøb, Flyt, Opret mappe, Søg",
+            "coreOpsLegend": "Basis = Upload, Download, Slet, Omdøb, Flyt, Opret mappe, Søg"
         },
         "healthCheck": {
             "title": "Serversundhedstjek",
@@ -5214,7 +5268,8 @@
                 "down": "Utilgængelig",
                 "pending": "Tjekker...",
                 "unknown": "Ikke kontrolleret",
-                "clickToRetry": "klik for at tjekke igen"
+                "clickToRetry": "klik for at tjekke igen",
+                "withActiveSession": "{title} (aktiv session)"
             },
             "densityCompact": "Kompakte rækker",
             "densityComfortable": "Komfortable rækker",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt krypteret overlay (indbygget): navne og indhold er krypteret på denne server.",
-                "rcloneTitle": "rclone crypt-overlay (interop): navne og indhold er krypteret på denne server."
+                "rcloneTitle": "rclone crypt-overlay (interop): navne og indhold er krypteret på denne server.",
+                "keyBits": "{bits}-bit"
             },
             "sidebar": {
                 "filters": "Filtre",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Vi kunne ikke læse krypteringsindstillingen for denne bucket, fordi applikationsnøglen ikke har rettigheden readBucketEncryption. En værdi, vi ikke har lov til at se, betyder ikke, at kryptering er slået fra.",
                 "unknownShapeTitle": "Vi kunne ikke læse krypteringsindstillingen for denne bucket, fordi svaret ikke havde en dokumenteret form. Nøglen havde lov til at læse den, så det handler om svaret og ikke om rettigheder."
             },
-            "exportProfile": "Eksportér..."
+            "exportProfile": "Eksportér...",
+            "quotaLabel": "Kvote",
+            "storageNoCapReported": "{used} (ingen kvotegrænse oplyst)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Registreret fra Filen auth/info ved vellykket tilslutning",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nu",
+                "minutes": "{count} min",
+                "hours": "{count} t",
+                "days": "{count} d",
+                "months": "{count} md."
+            }
         },
         "gitlab": {
             "projectPath": "Projektsti",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Tilstanden vælges, når forbindelsen oprettes, og forbliver fast, mens du redigerer en gemt profil. Opret en ny forbindelse for at bruge en anden tilstand."
+                "lockedInEdit": "Tilstanden vælges, når forbindelsen oprettes, og forbliver fast, mens du redigerer en gemt profil. Opret en ny forbindelse for at bruge en anden tilstand.",
+                "notInBuild": "Ikke inkluderet i denne build af AeroFTP."
             }
         },
         "flatpak": {

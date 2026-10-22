@@ -337,7 +337,37 @@
             "protonSignOut": "Դուրս գալ",
             "protonSignOutHelp": "Ավարտում է նիստը Proton-ում և հեռացնում այն այս պրոֆիլից։",
             "protonSignInExpired": "Մուտքի էջի ժամկետը սպառվել է։ Կրկին մուտք գործեք։",
-            "protonNativeUnavailable": "Այս կառուցումը չի ներառում Proton Drive-ի բնիկ հաճախորդը։"
+            "protonNativeUnavailable": "Այս կառուցումը չի ներառում Proton Drive-ի բնիկ հաճախորդը։",
+            "forms": {
+                "publicApiKey": "Հանրային API բանալի",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Հանրային բանալի։",
+                "secretApiKey": "Գաղտնի API բանալի",
+                "uploadcareSecretHint": "Օգտագործվում է միայն REST ֆայլերի կառավարման համար՝ {scheme} նույնականացմամբ։",
+                "flatMediaLibrary": "Հարթ մեդիագրադարան",
+                "uploadcareNoFolders": "Uploadcare-ը չունի բնիկ թղթապանակներ. նախագծի ֆայլերը ցուցադրվում են արմատում՝ ըստ UUID-ի։",
+                "urlEndpointId": "URL վերջնակետի ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL վերջնակետ։",
+                "privateApiKey": "Մասնավոր API բանալի",
+                "storedVaultBasicAuth": "Պահվում է տեղային պահոցում և ուղարկվում է միայն {provider}-ին Basic Auth-ի միջոցով։",
+                "cloudName": "Ամպի անուն",
+                "cloudinaryCloudNameHint": "Գտնվում է ձեր Cloudinary Dashboard - Account Details բաժնում։",
+                "apiKeyPlaceholder": "API բանալի",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API բանալի։",
+                "apiSecret": "API գաղտնիք",
+                "apiSecretPlaceholder": "API գաղտնիք",
+                "openProviderLink": "Բացել {provider} հղումը",
+                "githubPatHint": "Մանրամասն թույլտվություններով PAT՝ Contents (կարդալ և գրել)։",
+                "generateToken": "Ստեղծել թոքեն",
+                "applicationKeyId": "Հավելվածի բանալու ID",
+                "backblazeKeyIdHint": "B2 հավելվածի բանալու ID, սկսվում է 003-ով։ Ստեղծեք այն Backblaze-ի App Keys էջից։",
+                "applicationKey": "Հավելվածի բանալի",
+                "backblazeKeyHint": "Ցուցադրվում է միայն մեկ անգամ՝ ստեղծելիս։ Վերաբերվեք դրան որպես գաղտնաբառի։",
+                "bucketNameExactHint": "Bucket-ի ճշգրիտ անունը, մեծատառերը և փոքրատառերը տարբերվում են։",
+                "megacmdSetupFirst": "Նախ կարգավորեք MEGAcmd-ը",
+                "megacmdFetchUrlTitle": "Գործարկել {cmd}-ը և ինքնաշխատ լրացնել URL-ը",
+                "fetchUrl": "Ստանալ URL-ը",
+                "megacmdWebdavHint": "Օգտանունը և գաղտնաբառը միտումնավոր բաց են թողնված։ Միանալիս AeroFTP-ն ինքն է գործարկում «{cmd}»-ը՝ կամուրջը սկսելու և այս հասցեն կարդալու համար. դաշտը կարելի է դատարկ թողնել։ «Ստանալ URL-ը» կամընտիր ձեռքով թարմացում է. փոխեք պորտն այստեղ, եթե MEGAcmd-ն օգտագործում է այլ պորտ։"
+            }
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -1040,7 +1070,13 @@
                 "title": "Բնիկ rsync (բետա)",
                 "description": "Ընտրեք, թե ինչպես է SFTP դելտա համաժամեցումը կատարում rsync փոխանցումները։",
                 "enableToggle": "Միացնել բնիկ rsync-ը SFTP-ի դելտա համաժամեցման համար",
-                "experimental": "Ավտոմատը նախընտրում է AeroRsync-ը՝ դասականին հետդարձով. Դասականն օգտագործում է համակարգի rsync երկուական ֆայլը, որտեղ այն հասանելի է. Բնիկը բաց է թողնում դասական երկուականին հետդարձը։"
+                "experimental": "Ավտոմատը նախընտրում է AeroRsync-ը՝ դասականին հետդարձով. Դասականն օգտագործում է համակարգի rsync երկուական ֆայլը, որտեղ այն հասանելի է. Բնիկը բաց է թողնում դասական երկուականին հետդարձը։",
+                "modeAuto": "Ավտոմատ",
+                "modeClassic": "Դասական",
+                "modeNative": "Ներկառուցված",
+                "classicNotFoundTooltip": "Դասական rsync երկուական ֆայլը չի գտնվել PATH-ում։ Այս ռեժիմը միացնելու համար տեղադրեք rsync (Linux/macOS փաթեթ, Windows՝ WSL/cygwin/scoop միջոցով)։",
+                "classicAt": "Դասական rsync՝ {path}",
+                "classicNotDetected": "Դասական rsync երկուական ֆայլը չի հայտնաբերվել PATH-ում։ Այս համակարգչում հասանելի միակ շարժիչը Ներկառուցվածն է։"
             },
             "startMinimizedOnAutostart": "Գործարկել նվազագույնացված՝ համակարգային սկուտեղում",
             "startMinimizedOnAutostartDesc": "Թաքցնել գլխավոր պատուհանը ավտոմատ գործարկման ժամանակ։ AeroFTP-ն շարունակում է աշխատել համակարգային սկուտեղում - բացեք այն սկուտեղի պատկերակից, երբ անհրաժեշտ է։",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Չկոդավորված պահոցում գտնվել է {count} OAuth հավատարմագիր",
             "fontSystemInstall": "համակարգային տեղադրում",
             "fontSizeMin": "նվազ",
-            "fontSizeMax": "առավ"
+            "fontSizeMax": "առավ",
+            "migrationCleanupHint": "Խորհուրդ է տրվում առավելագույն անվտանգության համար",
+            "fontCustomOption": "Հատուկ...",
+            "fontSystemInstallHint": "Պահանջում է համակարգային տեղադրում։ Անհասանելի լինելու դեպքում AeroFTP-ն ինքնաշխատ անցնում է այլընտրանքի։"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Եթե թոքենը չեղարկվել է, նորից թույլատրեք ձեռքով"
             },
             "profilesLoadFailed": "Ձեր պահված սերվերները չհաջողվեց կարդալ: {error}",
-            "cleanupSummary": "{count} ֆայլ, ազատվել է {size}"
+            "cleanupSummary": "{count} ֆայլ, ազատվել է {size}",
+            "maturity": {
+                "alpha": "Ալֆա"
+            }
         },
         "statusBar": {
             "connected": "Միացված է",
@@ -1624,7 +1666,8 @@
                 "apRole": "Հիմնադիր, մշակող, սպասարկող, համադիզայներ",
                 "ekRole": "Հետազոտող, որակի ապահովման ինժեներ, համադիզայներ"
             },
-            "madeBy": "{author} ընկերության կողմից"
+            "madeBy": "{author} ընկերության կողմից",
+            "statsLine": "{protocols} արձանագրություն · {languages} լեզու · AES-256 արխիվներ"
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",
@@ -2049,7 +2092,15 @@
             "sourceforgeProject": "Նախագիծ (Unixname)",
             "opendriveNotApiKey": "(ոչ ձեր OpenDrive API բանալին)",
             "endpoint": "Վերջնակետ",
-            "accountId": "Հաշվի ID"
+            "accountId": "Հաշվի ID",
+            "servicesHeading": "Ծառայություններ",
+            "sourceforgeSshKeyHelp": "SourceForge-ը պահանջում է SSH բանալիով նույնականացում։ Ստեղծեք բանալի {cmd}-ով և վերբեռնեք այն {link}-ում։",
+            "sourceforgeSshSettings": "SSH կարգավորումներ",
+            "fullGuide": "Ամբողջական ուղեցույց",
+            "endpointTemplateExample": "օր.՝ {template}",
+            "jurisdiction": "Իրավասություն",
+            "insecureCertDialogLabel": "Անապահով վկայականի զգուշացում",
+            "betaBadge": "ԲԵՏԱ"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Անվճար փաթեթ",
             "freeCardTier": "Անվճար + քարտ",
-            "paidTier": "Վճարովի"
+            "paidTier": "Վճարովի",
+            "extraFeatures": "Լրացուցիչ",
+            "coreOpsList": "Վերբեռնում, Ներբեռնում, Ջնջում, Վերանվանում, Տեղափոխում, Թղթապանակի ստեղծում, Որոնում",
+            "coreOpsLegend": "Հիմնական = Վերբեռնում, Ներբեռնում, Ջնջում, Վերանվանում, Տեղափոխում, Թղթապանակի ստեղծում, Որոնում"
         },
         "healthCheck": {
             "title": "Սերվերի առողջության ստուգում",
@@ -5214,7 +5268,8 @@
                 "down": "անհասանելի",
                 "pending": "ստուգում...",
                 "unknown": "չստուգված",
-                "clickToRetry": "սեղմեք՝ կրկին ստուգելու համար"
+                "clickToRetry": "սեղմեք՝ կրկին ստուգելու համար",
+                "withActiveSession": "{title} (ակտիվ նստաշրջան)"
             },
             "densityCompact": "Կոմպակտ տողեր",
             "densityComfortable": "Հարմարավետ տողեր",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt գաղտնագրված շերտ (բնիկ)․ անունները և բովանդակությունը գաղտնագրված են այս սերվերում։",
-                "rcloneTitle": "rclone crypt շերտ (փոխգործելի)․ անունները և բովանդակությունը գաղտնագրված են այս սերվերում։"
+                "rcloneTitle": "rclone crypt շերտ (փոխգործելի)․ անունները և բովանդակությունը գաղտնագրված են այս սերվերում։",
+                "keyBits": "{bits}-բիթ"
             },
             "sidebar": {
                 "filters": "Զտիչներ",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Մենք չկարողացանք կարդալ այս զամբյուղի գաղտնագրման կարգավորումը, քանի որ հավելվածի բանալին չունի readBucketEncryption հնարավորությունը։ Այն արժեքը, որը մեզ թույլատրված չէ տեսնել, չի նշանակում, որ գաղտնագրումն անջատված է։",
                 "unknownShapeTitle": "Մենք չկարողացանք կարդալ այս զամբյուղի գաղտնագրման կարգավորումը, քանի որ պատասխանը փաստաթղթավորված ձև չուներ։ Բանալին թույլտվություն ուներ այն կարդալու, ուստի խնդիրը պատասխանի մեջ է, ոչ թե թույլտվությունների։"
             },
-            "exportProfile": "Արտահանել..."
+            "exportProfile": "Արտահանել...",
+            "quotaLabel": "Քվոտա",
+            "storageNoCapReported": "{used} (քվոտայի սահմանաչափ չի հաղորդվել)",
+            "e2eBitsBadge": "E2E {bits}-բիթ",
+            "filenAuthVersionTitle": "Հայտնաբերվել է Filen auth/info-ից հաջող միացման ժամանակ",
+            "demoBadge": "ԴԵՄՈ",
+            "timeAgo": {
+                "now": "հիմա",
+                "minutes": "{count} ր",
+                "hours": "{count} ժ",
+                "days": "{count} օր",
+                "months": "{count} ամս"
+            }
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Ռեժիմն ընտրվում է կապը ստեղծելիս և մնում է անփոփոխ պահպանված պրոֆիլը խմբագրելիս։ Այլ ռեժիմ օգտագործելու համար ստեղծեք նոր կապ։"
+                "lockedInEdit": "Ռեժիմն ընտրվում է կապը ստեղծելիս և մնում է անփոփոխ պահպանված պրոֆիլը խմբագրելիս։ Այլ ռեժիմ օգտագործելու համար ստեղծեք նոր կապ։",
+                "notInBuild": "Ներառված չէ AeroFTP-ի այս տարբերակում։"
             }
         },
         "flatpak": {

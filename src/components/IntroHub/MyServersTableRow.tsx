@@ -133,7 +133,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         ? t('introHub.deviceAttached')
         : t('introHub.deviceNotAttached');
     const quotaSupported = profileHasQuota(server);
-    const timeAgo = getTimeAgo(server.lastConnected);
+    const timeAgo = getTimeAgo(t, server.lastConnected);
     const subtitle = React.useMemo(() => getServerSubtitle(server, {
         credentialsMasked,
         showUsername: !hideUsername,
@@ -173,7 +173,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     const connectError = server.lastConnectionError;
     const connectErrorTitle = React.useMemo(() => {
         if (!connectError) return undefined;
-        const when = getTimeAgo(connectError.timestamp);
+        const when = getTimeAgo(t, connectError.timestamp);
         const head = t('introHub.connectError.failed');
         const ago = when ? t('introHub.connectError.lastFailedAt', { time: when }) : '';
         const reason = connectError.message || '';
@@ -488,7 +488,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                                     status={healthStatus || 'unknown'}
                                     latencyMs={healthLatencyMs}
                                     size={16}
-                                    title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
+                                    title={hasActiveSession ? t('introHub.health.withActiveSession', { title: radialTitle ?? '' }) : radialTitle}
                                     onRetry={handleRetry}
                                     pulsing={hasActiveSession}
                                 />

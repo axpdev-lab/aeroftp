@@ -11,6 +11,7 @@ import { getGitHubConnectionBadge, getMegaConnectionBadge, getProtonConnectionBa
 import { getFilenAuthVersion } from '../../utils/filenAuthVersion';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { useTranslation } from '../../i18n';
+import type { TranslationFunction } from '../../i18n';
 import { useCardLayout } from '../../hooks/useCardLayout';
 import { useFavoriteMarker } from '../../hooks/useFavoriteMarker';
 import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
@@ -62,7 +63,7 @@ function StorageUsageBar({
         return (
             <div className="leading-tight opacity-60" title={title} aria-label={title}>
                 <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
-                    <span className="truncate">Quota</span>
+                    <span className="truncate">{t('introHub.quotaLabel')}</span>
                 </div>
                 <div className="h-1 mt-1 rounded-full bg-gray-200/70 dark:bg-gray-700/70 overflow-hidden" />
             </div>
@@ -86,7 +87,7 @@ function StorageUsageBar({
     // indicator with a filled emerald bar, "X / ∞". Hiding the slot would
     // look like a fetch failure on providers that just don't have a cap.
     if (eff.total <= 0) {
-        const title = `${formatBytes(eff.used)} (no quota cap reported)${filesSuffix}`;
+        const title = `${t('introHub.storageNoCapReported', { used: formatBytes(eff.used) })}${filesSuffix}`;
         return (
             <div className="leading-tight" title={title} aria-label={title}>
                 <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
@@ -232,7 +233,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
     const filenAuthVersion = getFilenAuthVersion(server);
     const protocolClass = getProtocolClass(proto as ProviderType);
     const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto as ProviderType) : null;
-    const protocolClassLabel = e2eBits ? `E2E ${e2eBits}-bit` : protocolClass;
+    const protocolClassLabel = e2eBits ? t('introHub.e2eBitsBadge', { bits: e2eBits }) : protocolClass;
     // What the bucket said about its own default encryption, cached at connect.
     // The three-from-four mapping lives in `bucketEncryptionBadge`, where it is
     // tested: an unknown must never render like a No, and which tooltip a
@@ -328,7 +329,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
                         title={cryptCipher}
                     >
                         <Lock size={10} />
-                        256-bit
+                        {t('introHub.cryptBadge.keyBits', { bits: 256 })}
                     </span>
                 )}
             </div>
@@ -395,7 +396,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
             {filenAuthVersion && (
                 <span
                     className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
-                    title="Detected from Filen auth/info on successful connect"
+                    title={t('introHub.filenAuthVersionTitle')}
                 >
                     v{filenAuthVersion}
                 </span>
@@ -407,7 +408,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
             )}
             {server.host === 'test.rebex.net' && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                    DEMO
+                    {t('introHub.demoBadge')}
                 </span>
             )}
         </div>
@@ -558,19 +559,19 @@ export function getServerIcon(server: ServerProfile, size = 20): React.ReactNode
     return <ProtocolIcon protocol={proto} size={size} />;
 }
 
-export function getTimeAgo(dateStr?: string): string {
+export function getTimeAgo(t: TranslationFunction, dateStr?: string): string {
     if (!dateStr) return '';
     const date = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'now';
-    if (diffMin < 60) return `${diffMin}m`;
+    if (diffMin < 1) return t('introHub.timeAgo.now');
+    if (diffMin < 60) return t('introHub.timeAgo.minutes', { count: diffMin });
     const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `${diffH}h`;
+    if (diffH < 24) return t('introHub.timeAgo.hours', { count: diffH });
     const diffD = Math.floor(diffH / 24);
-    if (diffD < 30) return `${diffD}d`;
-    return `${Math.floor(diffD / 30)}mo`;
+    if (diffD < 30) return t('introHub.timeAgo.days', { count: diffD });
+    return t('introHub.timeAgo.months', { count: Math.floor(diffD / 30) });
 }
 
 export const ServerCard = React.memo(function ServerCard({
@@ -629,14 +630,14 @@ export const ServerCard = React.memo(function ServerCard({
         : undefined;
     const handleRetry = onRetryHealth ? () => onRetryHealth(server) : undefined;
     const quotaSupported = profileHasQuota(server);
-    const timeAgo = getTimeAgo(server.lastConnected);
+    const timeAgo = getTimeAgo(t, server.lastConnected);
     // #180 / 4486730822: standalone connect-failure marker. Separate signal
     // from health (which is a reachability probe); never share the glyph
     // or the status enum with `useProviderHealth`.
     const connectError = server.lastConnectionError;
     const connectErrorTitle = React.useMemo(() => {
         if (!connectError) return undefined;
-        const when = getTimeAgo(connectError.timestamp);
+        const when = getTimeAgo(t, connectError.timestamp);
         const head = t('introHub.connectError.failed');
         const ago = when ? t('introHub.connectError.lastFailedAt', { time: when }) : '';
         const reason = connectError.message || '';
@@ -774,8 +775,8 @@ export const ServerCard = React.memo(function ServerCard({
                                 : healthStatus === 'down' ? 'bg-red-500'
                                 : 'bg-gray-400 animate-pulse'
                             } ${hasActiveSession ? 'animate-pulse' : ''}`}
-                            title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
-                            aria-label={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
+                            title={hasActiveSession ? t('introHub.health.withActiveSession', { title: radialTitle ?? '' }) : radialTitle}
+                            aria-label={hasActiveSession ? t('introHub.health.withActiveSession', { title: radialTitle ?? '' }) : radialTitle}
                         />
                     )}
                     {/* AeroShare drive-state: presence dot on the avatar top-right.
@@ -860,7 +861,7 @@ export const ServerCard = React.memo(function ServerCard({
                                 status={healthStatus || 'unknown'}
                                 latencyMs={healthLatencyMs}
                                 size={16}
-                                title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
+                                title={hasActiveSession ? t('introHub.health.withActiveSession', { title: radialTitle ?? '' }) : radialTitle}
                                 onRetry={handleRetry}
                                 pulsing={hasActiveSession}
                             />

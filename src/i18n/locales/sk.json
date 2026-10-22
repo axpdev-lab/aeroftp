@@ -337,7 +337,37 @@
             "protonSignOut": "Odhlásiť sa",
             "protonSignOutHelp": "Ukončí reláciu v Proton a odstráni ju z tohto profilu.",
             "protonSignInExpired": "Platnosť prihlasovacej stránky vypršala. Prihláste sa znova.",
-            "protonNativeUnavailable": "Táto zostava neobsahuje natívneho klienta Proton Drive."
+            "protonNativeUnavailable": "Táto zostava neobsahuje natívneho klienta Proton Drive.",
+            "forms": {
+                "publicApiKey": "Verejný kľúč API",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Verejný kľúč.",
+                "secretApiKey": "Tajný kľúč API",
+                "uploadcareSecretHint": "Používa sa iba na správu súborov cez REST s overením {scheme}.",
+                "flatMediaLibrary": "Plochá knižnica médií",
+                "uploadcareNoFolders": "Uploadcare neposkytuje natívne priečinky; súbory projektu sú uvedené v koreni podľa UUID.",
+                "urlEndpointId": "ID koncového bodu URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Koncový bod URL.",
+                "privateApiKey": "Súkromný kľúč API",
+                "storedVaultBasicAuth": "Uložené v miestnom trezore a odosielané iba do {provider} cez Basic Auth.",
+                "cloudName": "Názov cloudu",
+                "cloudinaryCloudNameHint": "Nájdete v Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Kľúč API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Kľúč API.",
+                "apiSecret": "Tajomstvo API",
+                "apiSecretPlaceholder": "Tajomstvo API",
+                "openProviderLink": "Otvoriť odkaz {provider}",
+                "githubPatHint": "Podrobný PAT s oprávnením Contents (čítanie a zápis).",
+                "generateToken": "Vygenerovať token",
+                "applicationKeyId": "ID kľúča aplikácie",
+                "backblazeKeyIdHint": "ID aplikačného kľúča B2, začína na 003. Vygenerujte ho na stránke App Keys v Backblaze.",
+                "applicationKey": "Aplikačný kľúč",
+                "backblazeKeyHint": "Zobrazí sa iba raz pri vytvorení. Zaobchádzajte s ním ako s heslom.",
+                "bucketNameExactHint": "Presný názov bucketu, rozlišujú sa veľké a malé písmená.",
+                "megacmdSetupFirst": "Najprv nastavte MEGAcmd",
+                "megacmdFetchUrlTitle": "Spustiť {cmd} a automaticky vyplniť URL",
+                "fetchUrl": "Načítať URL",
+                "megacmdWebdavHint": "Používateľské meno a heslo sú zámerne vynechané. AeroFTP pri pripojení sám spustí „{cmd}“, aby naštartoval most a načítal túto adresu: pole môže zostať prázdne. „Načítať URL“ je voliteľné ručné obnovenie; ak MEGAcmd používa vlastný port, zmeňte ho tu."
+            }
         },
         "browser": {
             "remote": "Vzdialený",
@@ -1040,7 +1070,13 @@
                 "title": "Natívny rsync (beta)",
                 "description": "Použite zabudovanú implementáciu protokolu rsync v AeroFTP namiesto spúšťania systémového binárneho rsync. Znižuje réžiu procesov; môže byť menej overená v hraničných prípadoch.",
                 "enableToggle": "Povoliť natívny rsync pre delta synchronizáciu cez SFTP",
-                "experimental": "Experimentálne: pri chybe sa automaticky vráti na klasický rsync. Nezhody host kľúča sa objavia ako kritické chyby bez tichej zálohy."
+                "experimental": "Experimentálne: pri chybe sa automaticky vráti na klasický rsync. Nezhody host kľúča sa objavia ako kritické chyby bez tichej zálohy.",
+                "modeAuto": "Automaticky",
+                "modeClassic": "Klasický",
+                "modeNative": "Natívny",
+                "classicNotFoundTooltip": "Klasický program rsync sa v PATH nenašiel. Na povolenie tohto režimu nainštalujte rsync (balík pre Linux/macOS, Windows cez WSL/cygwin/scoop).",
+                "classicAt": "Klasický rsync v {path}",
+                "classicNotDetected": "Klasický program rsync sa v PATH nezistil. Natívny je jediný dostupný engine na tomto počítači."
             },
             "startMinimizedOnAutostart": "Spustiť minimalizované do oznamovacej oblasti",
             "startMinimizedOnAutostartDesc": "Skryť hlavné okno pri automatickom spustení. AeroFTP beží ďalej v oznamovacej oblasti, otvor ho cez ikonu v lište, keď ho budeš potrebovať.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "V nešifrovanom úložisku nájdené overovacie údaje OAuth: {count}",
             "fontSystemInstall": "inštalácia do systému",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Odporúča sa pre maximálne zabezpečenie",
+            "fontCustomOption": "Vlastné...",
+            "fontSystemInstallHint": "Vyžaduje inštaláciu do systému. Ak nie je k dispozícii, AeroFTP automaticky použije náhradu."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Ak je token zrušený, autorizujte znova ručne"
             },
             "profilesLoadFailed": "Uložené servery sa nepodarilo načítať: {error}",
-            "cleanupSummary": "{count} súborov, uvoľnené {size}"
+            "cleanupSummary": "{count} súborov, uvoľnené {size}",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Pripojený",
@@ -1631,7 +1673,8 @@
                 "apRole": "Zakladateľ, vývojár, správca, spoluautor dizajnu",
                 "ekRole": "Výskumník, inžinier zabezpečenia kvality, spoluautor dizajnu"
             },
-            "madeBy": "spoločnosťou {author}"
+            "madeBy": "spoločnosťou {author}",
+            "statsLine": "{protocols} protokolov · {languages} jazykov · archívy AES-256"
         },
         "support": {
             "title": "Podporte AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projekt (Unixname)",
             "opendriveNotApiKey": "(nie je to váš API kľúč OpenDrive)",
             "endpoint": "Koncový bod",
-            "accountId": "ID účtu"
+            "accountId": "ID účtu",
+            "servicesHeading": "Služby",
+            "sourceforgeSshKeyHelp": "SourceForge vyžaduje overenie kľúčom SSH. Vygenerujte kľúč pomocou {cmd} a nahrajte ho na {link}.",
+            "sourceforgeSshSettings": "Nastavenia SSH",
+            "fullGuide": "Úplná príručka",
+            "endpointTemplateExample": "napr. {template}",
+            "jurisdiction": "Jurisdikcia",
+            "insecureCertDialogLabel": "Upozornenie na nezabezpečený certifikát",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Bezplatný plán",
             "freeCardTier": "Zadarmo + karta",
-            "paidTier": "Platené"
+            "paidTier": "Platené",
+            "extraFeatures": "Navyše",
+            "coreOpsList": "Nahratie, Stiahnutie, Odstránenie, Premenovanie, Presun, Vytvorenie priečinka, Hľadanie",
+            "coreOpsLegend": "Základ = Nahratie, Stiahnutie, Odstránenie, Premenovanie, Presun, Vytvorenie priečinka, Hľadanie"
         },
         "healthCheck": {
             "title": "Kontrola stavu servera",
@@ -5214,7 +5268,8 @@
                 "down": "Nedostupný",
                 "pending": "Kontroluje sa...",
                 "unknown": "Neoverené",
-                "clickToRetry": "kliknite pre opätovnú kontrolu"
+                "clickToRetry": "kliknite pre opätovnú kontrolu",
+                "withActiveSession": "{title} (aktívna relácia)"
             },
             "densityCompact": "Kompaktné riadky",
             "densityComfortable": "Pohodlné riadky",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Šifrovaná vrstva AeroCrypt (natívna): názvy a obsah sú na tomto serveri šifrované.",
-                "rcloneTitle": "Vrstva rclone crypt (interop): názvy a obsah sú na tomto serveri šifrované."
+                "rcloneTitle": "Vrstva rclone crypt (interop): názvy a obsah sú na tomto serveri šifrované.",
+                "keyBits": "{bits}-bitový"
             },
             "sidebar": {
                 "filters": "Filtre",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože aplikačný kľúč nemá oprávnenie readBucketEncryption. Hodnota, ktorú nesmieme vidieť, neznamená, že je šifrovanie vypnuté.",
                 "unknownShapeTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože odpoveď nemala dokumentovaný tvar. Kľúč ju čítať smel, takže ide o odpoveď, nie o oprávnenia."
             },
-            "exportProfile": "Exportovať..."
+            "exportProfile": "Exportovať...",
+            "quotaLabel": "Kvóta",
+            "storageNoCapReported": "{used} (limit kvóty nebol nahlásený)",
+            "e2eBitsBadge": "E2E {bits}-bitový",
+            "filenAuthVersionTitle": "Zistené z Filen auth/info pri úspešnom pripojení",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "teraz",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} d",
+                "months": "{count} mes."
+            }
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Režim sa vyberá pri vytváraní pripojenia a zostáva nezmenený počas úpravy uloženého profilu. Ak chcete použiť iný režim, vytvorte nové pripojenie."
+                "lockedInEdit": "Režim sa vyberá pri vytváraní pripojenia a zostáva nezmenený počas úpravy uloženého profilu. Ak chcete použiť iný režim, vytvorte nové pripojenie.",
+                "notInBuild": "Nie je súčasťou tohto zostavenia AeroFTP."
             }
         },
         "flatpak": {

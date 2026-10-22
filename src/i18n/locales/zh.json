@@ -337,7 +337,37 @@
             "protonSignOut": "退出登录",
             "protonSignOutHelp": "结束 Proton 上的会话，并将其从此配置文件中移除。",
             "protonSignInExpired": "登录页面已过期。请重新登录。",
-            "protonNativeUnavailable": "此版本不包含原生 Proton Drive 客户端。"
+            "protonNativeUnavailable": "此版本不包含原生 Proton Drive 客户端。",
+            "forms": {
+                "publicApiKey": "公共 API 密钥",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - 公钥。",
+                "secretApiKey": "秘密 API 密钥",
+                "uploadcareSecretHint": "仅用于通过 {scheme} 认证进行 REST 文件管理。",
+                "flatMediaLibrary": "扁平媒体库",
+                "uploadcareNoFolders": "Uploadcare 不提供原生文件夹；项目文件按 UUID 列在根目录。",
+                "urlEndpointId": "URL 端点 ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL 端点。",
+                "privateApiKey": "私有 API 密钥",
+                "storedVaultBasicAuth": "存储在本地保险库中，仅通过 Basic Auth 发送给 {provider}。",
+                "cloudName": "云名称",
+                "cloudinaryCloudNameHint": "可在您的 Cloudinary Dashboard - Account Details 中找到。",
+                "apiKeyPlaceholder": "API 密钥",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API 密钥。",
+                "apiSecret": "API 机密",
+                "apiSecretPlaceholder": "API 机密",
+                "openProviderLink": "打开 {provider} 链接",
+                "githubPatHint": "具有 Contents（读写）权限的细粒度 PAT。",
+                "generateToken": "生成令牌",
+                "applicationKeyId": "应用密钥 ID",
+                "backblazeKeyIdHint": "B2 应用程序密钥 ID,以 003 开头。可在 Backblaze 的 App Keys 页面生成。",
+                "applicationKey": "应用程序密钥",
+                "backblazeKeyHint": "仅在创建时显示一次。请像对待密码一样妥善保管。",
+                "bucketNameExactHint": "准确的存储桶名称,区分大小写。",
+                "megacmdSetupFirst": "请先设置 MEGAcmd",
+                "megacmdFetchUrlTitle": "运行 {cmd} 并自动填写 URL",
+                "fetchUrl": "获取 URL",
+                "megacmdWebdavHint": "有意省略了用户名和密码。AeroFTP 在连接时会自行运行“{cmd}”以启动桥接并读取此地址:留空即可。“获取 URL”是可选的手动刷新;如果 MEGAcmd 使用自定义端口,请在此处更改端口。"
+            }
         },
         "browser": {
             "remote": "远程",
@@ -1040,7 +1070,13 @@
                 "title": "原生 rsync（测试版）",
                 "description": "选择 SFTP Delta Sync 如何调度 rsync 传输。",
                 "enableToggle": "为 SFTP 增量同步启用原生 rsync",
-                "experimental": "Auto 优先使用 AeroRsync，并可回退到经典方式; Classic 在可用时使用系统的 rsync 二进制文件; Native 跳过向经典二进制文件的回退。"
+                "experimental": "Auto 优先使用 AeroRsync，并可回退到经典方式; Classic 在可用时使用系统的 rsync 二进制文件; Native 跳过向经典二进制文件的回退。",
+                "modeAuto": "自动",
+                "modeClassic": "经典",
+                "modeNative": "原生",
+                "classicNotFoundTooltip": "在 PATH 中未找到经典 rsync 程序。请安装 rsync (Linux/macOS 软件包，Windows 通过 WSL/cygwin/scoop) 以启用此模式。",
+                "classicAt": "经典 rsync 位于 {path}",
+                "classicNotDetected": "在 PATH 中未检测到经典 rsync 程序。原生是此计算机上唯一可用的引擎。"
             },
             "startMinimizedOnAutostart": "启动时最小化到托盘",
             "startMinimizedOnAutostartDesc": "在自动启动时隐藏主窗口。AeroFTP 会在系统托盘中持续运行,需要时可从托盘图标打开。",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "在未加密存储中发现 {count} 个 OAuth 凭据",
             "fontSystemInstall": "需系统安装",
             "fontSizeMin": "最小",
-            "fontSizeMax": "最大"
+            "fontSizeMax": "最大",
+            "migrationCleanupHint": "建议启用以获得最高安全性",
+            "fontCustomOption": "自定义...",
+            "fontSystemInstallHint": "需要在系统中安装。如不可用，AeroFTP 会自动回退。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "如果令牌被撤销，请手动重新授权"
             },
             "profilesLoadFailed": "无法读取已保存的服务器：{error}",
-            "cleanupSummary": "{count} 个文件，已释放 {size}"
+            "cleanupSummary": "{count} 个文件，已释放 {size}",
+            "maturity": {
+                "alpha": "内测版"
+            }
         },
         "statusBar": {
             "connected": "已连接",
@@ -1631,7 +1673,8 @@
                 "apRole": "创始人、开发者、维护者、联合设计者",
                 "ekRole": "研究员、质量保证工程师、联合设计者"
             },
-            "madeBy": "{author} 出品"
+            "madeBy": "{author} 出品",
+            "statsLine": "{protocols} 种协议 · {languages} 种语言 · AES-256 归档"
         },
         "support": {
             "title": "支持 AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "项目 (Unixname)",
             "opendriveNotApiKey": "(不是您的 OpenDrive API 密钥)",
             "endpoint": "端点",
-            "accountId": "账户 ID"
+            "accountId": "账户 ID",
+            "servicesHeading": "服务",
+            "sourceforgeSshKeyHelp": "SourceForge 需要 SSH 密钥认证。请使用 {cmd} 生成密钥并上传到 {link}。",
+            "sourceforgeSshSettings": "SSH 设置",
+            "fullGuide": "完整指南",
+            "endpointTemplateExample": "例如 {template}",
+            "jurisdiction": "司法管辖区",
+            "insecureCertDialogLabel": "不安全证书警告",
+            "betaBadge": "测试版"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "免费套餐",
             "freeCardTier": "免费 + 卡",
-            "paidTier": "付费"
+            "paidTier": "付费",
+            "extraFeatures": "扩展",
+            "coreOpsList": "上传、下载、删除、重命名、移动、新建文件夹、搜索",
+            "coreOpsLegend": "基础 = 上传、下载、删除、重命名、移动、新建文件夹、搜索"
         },
         "healthCheck": {
             "title": "服务器健康检查",
@@ -5214,7 +5268,8 @@
                 "down": "不可访问",
                 "pending": "正在检查...",
                 "unknown": "未探测",
-                "clickToRetry": "点击重新检查"
+                "clickToRetry": "点击重新检查",
+                "withActiveSession": "{title}(活动会话)"
             },
             "densityCompact": "紧凑行",
             "densityComfortable": "舒适行",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt 加密叠加层（原生）：此服务器上的名称和内容均已加密。",
-                "rcloneTitle": "rclone crypt 叠加层（互通）：此服务器上的名称和内容均已加密。"
+                "rcloneTitle": "rclone crypt 叠加层（互通）：此服务器上的名称和内容均已加密。",
+                "keyBits": "{bits} 位"
             },
             "sidebar": {
                 "filters": "筛选",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "我们无法读取此存储桶的加密设置，因为应用程序密钥不具备 readBucketEncryption 权限。我们无权查看的值并不意味着加密已关闭。",
                 "unknownShapeTitle": "我们无法读取此存储桶的加密设置，因为响应没有已记录的格式。密钥本身有读取权限，所以这与响应有关，而与权限无关。"
             },
-            "exportProfile": "导出..."
+            "exportProfile": "导出...",
+            "quotaLabel": "配额",
+            "storageNoCapReported": "{used}(未报告配额上限)",
+            "e2eBitsBadge": "E2E {bits} 位",
+            "filenAuthVersionTitle": "连接成功时从 Filen auth/info 检测到",
+            "demoBadge": "演示",
+            "timeAgo": {
+                "now": "刚刚",
+                "minutes": "{count}分钟",
+                "hours": "{count}小时",
+                "days": "{count}天",
+                "months": "{count}个月"
+            }
         },
         "gitlab": {
             "projectPath": "项目路径",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "模式在创建连接时选择，编辑已保存的配置文件时保持不变。要使用其他模式，请创建新连接。"
+                "lockedInEdit": "模式在创建连接时选择，编辑已保存的配置文件时保持不变。要使用其他模式，请创建新连接。",
+                "notInBuild": "此 AeroFTP 版本未包含该功能。"
             }
         },
         "flatpak": {

@@ -337,7 +337,37 @@
             "protonSignOut": "Amaitu saioa",
             "protonSignOutHelp": "Saioa amaitzen du Proton-en eta profil honetatik kentzen du.",
             "protonSignInExpired": "Saio-hasierako orria iraungi da. Hasi saioa berriro.",
-            "protonNativeUnavailable": "Konpilazio honek ez du Proton Drive bezero natiboa barne hartzen."
+            "protonNativeUnavailable": "Konpilazio honek ez du Proton Drive bezero natiboa barne hartzen.",
+            "forms": {
+                "publicApiKey": "API gako publikoa",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Gako publikoa.",
+                "secretApiKey": "API gako sekretua",
+                "uploadcareSecretHint": "{scheme} autentifikazioaren bidezko REST fitxategi-kudeaketarako soilik erabiltzen da.",
+                "flatMediaLibrary": "Multimedia-liburutegi laua",
+                "uploadcareNoFolders": "Uploadcare-k ez du karpeta natiborik eskaintzen; proiektuaren fitxategiak erroan zerrendatzen dira UUIDaren arabera.",
+                "urlEndpointId": "URL amaiera-puntuaren IDa",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL amaiera-puntua.",
+                "privateApiKey": "API gako pribatua",
+                "storedVaultBasicAuth": "Tokiko kutxa gotorrean gordeta eta {provider} hornitzaileari soilik bidalita Basic Auth bidez.",
+                "cloudName": "Hodeiaren izena",
+                "cloudinaryCloudNameHint": "Zure Cloudinary Dashboard - Account Details atalean aurkituko duzu.",
+                "apiKeyPlaceholder": "API gakoa",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API gakoa.",
+                "apiSecret": "API sekretua",
+                "apiSecretPlaceholder": "API sekretua",
+                "openProviderLink": "Ireki {provider} esteka",
+                "githubPatHint": "Baimen xeheko PATa, Contents baimenarekin (irakurri eta idatzi).",
+                "generateToken": "Sortu tokena",
+                "applicationKeyId": "Aplikazio-gakoaren IDa",
+                "backblazeKeyIdHint": "B2 aplikazio-gakoaren IDa, 003 zenbakiarekin hasten da. Sortu bat Backblaze-ren App Keys orritik.",
+                "applicationKey": "Aplikazio-gakoa",
+                "backblazeKeyHint": "Sortzean behin bakarrik erakusten da. Tratatu pasahitz bat bezala.",
+                "bucketNameExactHint": "Ontziaren izen zehatza, maiuskulak eta minuskulak bereizten ditu.",
+                "megacmdSetupFirst": "Konfiguratu MEGAcmd lehenik",
+                "megacmdFetchUrlTitle": "Exekutatu {cmd} eta bete URLa automatikoki",
+                "fetchUrl": "Eskuratu URLa",
+                "megacmdWebdavHint": "Erabiltzaile-izena eta pasahitza nahita kendu dira. AeroFTPk berak exekutatzen du \"{cmd}\" konektatzean, zubia abiarazteko eta helbide hau irakurtzeko: hutsik utz dezakezu. \"Eskuratu URLa\" aukerako eskuzko freskatze bat da; aldatu ataka hemen MEGAcmd-ek ataka pertsonalizatu bat erabiltzen badu."
+            }
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -1040,7 +1070,13 @@
                 "title": "Rsync natiboa (beta)",
                 "description": "Aukeratu nola bidaltzen dituen SFTP Delta Sync-ek rsync transferentziak.",
                 "enableToggle": "Gaitu rsync natiboa SFTP bidezko delta sinkronizaziorako",
-                "experimental": "Auto-k AeroRsync hobesten du ordezko klasikoarekin; Classic-ek sistemako rsync bitarra erabiltzen du eskuragarri dagoenean; Native-k ordezko bitar klasikoa saltatzen du."
+                "experimental": "Auto-k AeroRsync hobesten du ordezko klasikoarekin; Classic-ek sistemako rsync bitarra erabiltzen du eskuragarri dagoenean; Native-k ordezko bitar klasikoa saltatzen du.",
+                "modeAuto": "Automatikoa",
+                "modeClassic": "Klasikoa",
+                "modeNative": "Natiboa",
+                "classicNotFoundTooltip": "Ez da rsync binario klasikoa aurkitu PATH-ean. Instalatu rsync (Linux/macOS paketea, Windows WSL/cygwin/scoop bidez) modu hau gaitzeko.",
+                "classicAt": "rsync klasikoa: {path}",
+                "classicNotDetected": "Ez da rsync binario klasikoa detektatu PATH-ean. Natiboa da makina honetan dagoen motor bakarra."
             },
             "startMinimizedOnAutostart": "Hasi erretiluan minimizatuta",
             "startMinimizedOnAutostartDesc": "Ezkutatu leiho nagusia abio automatikoan. AeroFTP sistemaren erretiluan exekutatzen jarraitzen du, ireki erretiluko ikonotik behar duzunean.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "{count} OAuth kredentzial aurkitu dira enkriptatu gabeko biltegian",
             "fontSystemInstall": "sisteman instalatu",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Gomendatua segurtasun handienerako",
+            "fontCustomOption": "Pertsonalizatua...",
+            "fontSystemInstallHint": "Sisteman instalatu behar da. AeroFTP-k ordezko bat erabiltzen du automatikoki erabilgarri ez badago."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Berrezarri baimena eskuz tokena baliogabetzen bada"
             },
             "profilesLoadFailed": "Gordetako zerbitzariak ezin izan dira irakurri: {error}",
-            "cleanupSummary": "{count} fitxategi, {size} askatuta"
+            "cleanupSummary": "{count} fitxategi, {size} askatuta",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -1631,7 +1673,8 @@
                 "apRole": "Sortzailea, garatzailea, mantentzailea, diseinukidea",
                 "ekRole": "Ikertzailea, kalitatea bermatzeko ingeniaria, diseinukidea"
             },
-            "madeBy": "{author}-ek"
+            "madeBy": "{author}-ek",
+            "statsLine": "{protocols} protokolo · {languages} hizkuntza · AES-256 artxiboak"
         },
         "support": {
             "title": "Lagundu AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Proiektua (Unixname)",
             "opendriveNotApiKey": "(ez da zure OpenDrive API gakoa)",
             "endpoint": "Amaiera-puntua",
-            "accountId": "Kontuaren IDa"
+            "accountId": "Kontuaren IDa",
+            "servicesHeading": "Zerbitzuak",
+            "sourceforgeSshKeyHelp": "SourceForge-k SSH gako bidezko autentifikazioa eskatzen du. Sortu gako bat {cmd} erabiliz eta igo ezazu {link} helbidera.",
+            "sourceforgeSshSettings": "SSH ezarpenak",
+            "fullGuide": "Gida osoa",
+            "endpointTemplateExample": "adib. {template}",
+            "jurisdiction": "Jurisdikzioa",
+            "insecureCertDialogLabel": "Ziurtagiri ez-segurua: abisua",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -4835,7 +4886,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Doako plana",
             "freeCardTier": "Doan + txartela",
-            "paidTier": "Ordainpekoa"
+            "paidTier": "Ordainpekoa",
+            "extraFeatures": "Gehigarriak",
+            "coreOpsList": "Igo, Deskargatu, Ezabatu, Berrizendatu, Mugitu, Sortu karpeta, Bilatu",
+            "coreOpsLegend": "Oinarrizkoak = Igo, Deskargatu, Ezabatu, Berrizendatu, Mugitu, Sortu karpeta, Bilatu"
         },
         "healthCheck": {
             "title": "Zerbitzariaren osasun-egiaztapena",
@@ -5233,7 +5287,8 @@
                 "down": "Eskuraezina",
                 "pending": "Egiaztatzen...",
                 "unknown": "Ez egiaztatua",
-                "clickToRetry": "egin klik berriro egiaztatzeko"
+                "clickToRetry": "egin klik berriro egiaztatzeko",
+                "withActiveSession": "{title} (saio aktiboa)"
             },
             "densityCompact": "Lerro trinkoak",
             "densityComfortable": "Lerro erosoak",
@@ -5323,7 +5378,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt zifratutako gainjarpena (jatorrizkoa): izenak eta edukiak zifratuta daude zerbitzari honetan.",
-                "rcloneTitle": "rclone crypt gainjarpena (elkarreragingarria): izenak eta edukiak zifratuta daude zerbitzari honetan."
+                "rcloneTitle": "rclone crypt gainjarpena (elkarreragingarria): izenak eta edukiak zifratuta daude zerbitzari honetan.",
+                "keyBits": "{bits} bit"
             },
             "sidebar": {
                 "filters": "Iragazkiak",
@@ -5343,7 +5399,19 @@
                 "unknownKeyTitle": "Ezin izan dugu bucket honen enkriptatze ezarpena irakurri, aplikazioaren gakoak ez baitu readBucketEncryption gaitasuna. Ikusteko baimenik ez dugun balio batek ez du esan nahi enkriptatzea itzalita dagoenik.",
                 "unknownShapeTitle": "Ezin izan dugu bucket honen enkriptatze ezarpena irakurri, erantzunak ez baitzuen dokumentatutako formarik. Gakoak irakurtzeko baimena zuen, beraz, kontua erantzuna da eta ez baimenak."
             },
-            "exportProfile": "Esportatu..."
+            "exportProfile": "Esportatu...",
+            "quotaLabel": "Kuota",
+            "storageNoCapReported": "{used} (ez da kuota-mugarik jakinarazi)",
+            "e2eBitsBadge": "E2E {bits} bit",
+            "filenAuthVersionTitle": "Filen auth/info-tik detektatua konexio arrakastatsuan",
+            "demoBadge": "DEMOA",
+            "timeAgo": {
+                "now": "orain",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} e",
+                "months": "{count} hil."
+            }
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",
@@ -6385,7 +6453,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Modua konexioa sortzean aukeratzen da eta finko mantentzen da gordetako profil bat editatzean. Beste modu bat erabiltzeko, sortu konexio berri bat."
+                "lockedInEdit": "Modua konexioa sortzean aukeratzen da eta finko mantentzen da gordetako profil bat editatzean. Beste modu bat erabiltzeko, sortu konexio berri bat.",
+                "notInBuild": "Ez dago AeroFTP-ren konpilazio honetan."
             }
         },
         "flatpak": {

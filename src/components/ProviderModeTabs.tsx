@@ -128,14 +128,8 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
         return translated && translated !== key ? translated : fallback;
     };
 
-    // Locked-in-edit hint. Follows the same translate-or-fallback pattern
-    // as resolveWarning so it does not require an i18n key to exist yet.
-    const lockedKey = 'provider.modes.lockedInEdit';
-    const lockedTranslated = t(lockedKey);
-    const lockedHint =
-        lockedTranslated && lockedTranslated !== lockedKey
-            ? lockedTranslated
-            : 'Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection.';
+    // Locked-in-edit hint.
+    const lockedHint = t('provider.modes.lockedInEdit');
 
     return (
         <div
@@ -170,7 +164,7 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                             onClick={() => { if (!readOnly && !unavailable) onSwitchMode(mode.protocol, mode.providerId, mode.options); }}
                             title={
                                 missingFromBuild
-                                    ? 'Not included in this build of AeroFTP.'
+                                    ? t('provider.modes.notInBuild')
                                     : unavailable
                                     ? mode.description
                                     : readOnly && !isActive

@@ -337,7 +337,37 @@
             "protonSignOut": "サインアウト",
             "protonSignOutHelp": "Proton 上のセッションを終了し、このプロファイルから削除します。",
             "protonSignInExpired": "サインインページの有効期限が切れました。再度サインインしてください。",
-            "protonNativeUnavailable": "このビルドにはネイティブ Proton Drive クライアントが含まれていません。"
+            "protonNativeUnavailable": "このビルドにはネイティブ Proton Drive クライアントが含まれていません。",
+            "forms": {
+                "publicApiKey": "公開 API キー",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - 公開キー。",
+                "secretApiKey": "シークレット API キー",
+                "uploadcareSecretHint": "{scheme} 認証による REST ファイル管理にのみ使用されます。",
+                "flatMediaLibrary": "フラットなメディアライブラリ",
+                "uploadcareNoFolders": "Uploadcare にはネイティブのフォルダーがありません。プロジェクトのファイルはルートに UUID ごとに一覧表示されます。",
+                "urlEndpointId": "URL エンドポイント ID",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL エンドポイント。",
+                "privateApiKey": "プライベート API キー",
+                "storedVaultBasicAuth": "ローカル保管庫に保存され、Basic Auth 経由で {provider} にのみ送信されます。",
+                "cloudName": "クラウド名",
+                "cloudinaryCloudNameHint": "Cloudinary Dashboard - Account Details で確認できます。",
+                "apiKeyPlaceholder": "API キー",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API キー。",
+                "apiSecret": "API シークレット",
+                "apiSecretPlaceholder": "API シークレット",
+                "openProviderLink": "{provider} のリンクを開く",
+                "githubPatHint": "Contents (読み取りと書き込み) 権限付きの細粒度 PAT。",
+                "generateToken": "トークンを生成",
+                "applicationKeyId": "アプリケーションキー ID",
+                "backblazeKeyIdHint": "B2 アプリケーションキー ID。003 で始まります。Backblaze の App Keys ページで生成してください。",
+                "applicationKey": "アプリケーションキー",
+                "backblazeKeyHint": "作成時に一度だけ表示されます。パスワードと同様に扱ってください。",
+                "bucketNameExactHint": "正確なバケット名 (大文字と小文字を区別)。",
+                "megacmdSetupFirst": "先に MEGAcmd を設定してください",
+                "megacmdFetchUrlTitle": "{cmd} を実行して URL を自動入力",
+                "fetchUrl": "URL を取得",
+                "megacmdWebdavHint": "ユーザー名とパスワードは意図的に省略されています。AeroFTP は接続時に自ら「{cmd}」を実行してブリッジを起動し、このアドレスを読み取ります。空欄のままで問題ありません。「URL を取得」は任意の手動更新です。MEGAcmd がカスタムポートを使う場合は、ここでポートを変更してください。"
+            }
         },
         "browser": {
             "remote": "リモート",
@@ -1040,7 +1070,13 @@
                 "title": "ネイティブ rsync (ベータ)",
                 "description": "SFTP Delta Sync が rsync 転送をどのように送出するかを選択します。",
                 "enableToggle": "SFTP のデルタ同期にネイティブ rsync を有効化",
-                "experimental": "Auto は AeroRsync を優先しクラシックへフォールバックします; Classic は利用できる場合にシステムの rsync バイナリを使います; Native はクラシックのバイナリへのフォールバックを省略します。"
+                "experimental": "Auto は AeroRsync を優先しクラシックへフォールバックします; Classic は利用できる場合にシステムの rsync バイナリを使います; Native はクラシックのバイナリへのフォールバックを省略します。",
+                "modeAuto": "自動",
+                "modeClassic": "クラシック",
+                "modeNative": "ネイティブ",
+                "classicNotFoundTooltip": "PATH にクラシック rsync バイナリが見つかりません。このモードを有効にするには rsync をインストールしてください (Linux/macOS のパッケージ、Windows は WSL/cygwin/scoop 経由)。",
+                "classicAt": "クラシック rsync: {path}",
+                "classicNotDetected": "PATH にクラシック rsync バイナリが検出されません。このマシンで使用できるエンジンはネイティブのみです。"
             },
             "startMinimizedOnAutostart": "トレイに最小化して起動",
             "startMinimizedOnAutostartDesc": "自動起動時にメインウィンドウを非表示にします。AeroFTP はシステムトレイで動作を続けるので、必要なときにトレイアイコンから開いてください。",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "暗号化されていないストレージで {count} 件の OAuth 資格情報が見つかりました",
             "fontSystemInstall": "システムへのインストール",
             "fontSizeMin": "最小",
-            "fontSizeMax": "最大"
+            "fontSizeMax": "最大",
+            "migrationCleanupHint": "最大限のセキュリティのため推奨",
+            "fontCustomOption": "カスタム...",
+            "fontSystemInstallHint": "システムへのインストールが必要です。利用できない場合、AeroFTP は自動的に代替フォントを使用します。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "トークンが失効した場合は手動で再認可してください"
             },
             "profilesLoadFailed": "保存されたサーバーを読み取れませんでした: {error}",
-            "cleanupSummary": "{count} ファイル、{size} を解放"
+            "cleanupSummary": "{count} ファイル、{size} を解放",
+            "maturity": {
+                "alpha": "アルファ"
+            }
         },
         "statusBar": {
             "connected": "接続済み",
@@ -1631,7 +1673,8 @@
                 "apRole": "創設者、開発者、メンテナー、共同デザイナー",
                 "ekRole": "研究者、品質保証エンジニア、共同デザイナー"
             },
-            "madeBy": "制作：{author}"
+            "madeBy": "制作：{author}",
+            "statsLine": "{protocols} プロトコル · {languages} 言語 · AES-256 アーカイブ"
         },
         "support": {
             "title": "AeroFTPを支援",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "プロジェクト (Unixname)",
             "opendriveNotApiKey": "(OpenDrive の API キーではありません)",
             "endpoint": "エンドポイント",
-            "accountId": "アカウント ID"
+            "accountId": "アカウント ID",
+            "servicesHeading": "サービス",
+            "sourceforgeSshKeyHelp": "SourceForge では SSH 鍵認証が必要です。{cmd} で鍵を生成し、{link} にアップロードしてください。",
+            "sourceforgeSshSettings": "SSH 設定",
+            "fullGuide": "完全ガイド",
+            "endpointTemplateExample": "例: {template}",
+            "jurisdiction": "管轄区域",
+            "insecureCertDialogLabel": "安全でない証明書の警告",
+            "betaBadge": "ベータ"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "無料プラン",
             "freeCardTier": "無料＋カード",
-            "paidTier": "有料"
+            "paidTier": "有料",
+            "extraFeatures": "拡張",
+            "coreOpsList": "アップロード、ダウンロード、削除、名前変更、移動、フォルダー作成、検索",
+            "coreOpsLegend": "基本 = アップロード、ダウンロード、削除、名前変更、移動、フォルダー作成、検索"
         },
         "healthCheck": {
             "title": "サーバーヘルスチェック",
@@ -5214,7 +5268,8 @@
                 "down": "到達不可",
                 "pending": "確認中...",
                 "unknown": "未確認",
-                "clickToRetry": "クリックで再チェック"
+                "clickToRetry": "クリックで再チェック",
+                "withActiveSession": "{title} (アクティブなセッション)"
             },
             "densityCompact": "コンパクトな行",
             "densityComfortable": "快適な行",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt 暗号化オーバーレイ（ネイティブ）：このサーバー上では名前と内容が暗号化されています。",
-                "rcloneTitle": "rclone crypt オーバーレイ（相互運用）：このサーバー上では名前と内容が暗号化されています。"
+                "rcloneTitle": "rclone crypt オーバーレイ（相互運用）：このサーバー上では名前と内容が暗号化されています。",
+                "keyBits": "{bits} ビット"
             },
             "sidebar": {
                 "filters": "フィルター",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "このバケットの暗号化設定を読み取れませんでした。アプリケーションキーに readBucketEncryption 権限がないためです。閲覧を許可されていない値は、暗号化が無効であることを意味しません。",
                 "unknownShapeTitle": "このバケットの暗号化設定を読み取れませんでした。応答が文書化された形式ではなかったためです。キーには読み取りが許可されていたため、これは応答の問題であり、権限の問題ではありません。"
             },
-            "exportProfile": "エクスポート..."
+            "exportProfile": "エクスポート...",
+            "quotaLabel": "クォータ",
+            "storageNoCapReported": "{used} (クォータ上限の報告なし)",
+            "e2eBitsBadge": "E2E {bits} ビット",
+            "filenAuthVersionTitle": "接続成功時に Filen auth/info から検出",
+            "demoBadge": "デモ",
+            "timeAgo": {
+                "now": "たった今",
+                "minutes": "{count}分",
+                "hours": "{count}時間",
+                "days": "{count}日",
+                "months": "{count}か月"
+            }
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "モードは接続の作成時に選択され、保存済みプロファイルの編集中は固定されます。別のモードを使用するには、新しい接続を作成してください。"
+                "lockedInEdit": "モードは接続の作成時に選択され、保存済みプロファイルの編集中は固定されます。別のモードを使用するには、新しい接続を作成してください。",
+                "notInBuild": "この AeroFTP ビルドには含まれていません。"
             }
         },
         "flatpak": {

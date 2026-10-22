@@ -337,7 +337,37 @@
             "protonSignOut": "Kirjaudu ulos",
             "protonSignOutHelp": "Lopettaa istunnon Protonissa ja poistaa sen tästä profiilista.",
             "protonSignInExpired": "Kirjautumissivu vanheni. Kirjaudu sisään uudelleen.",
-            "protonNativeUnavailable": "Tämä versio ei sisällä natiivia Proton Drive -asiakasohjelmaa."
+            "protonNativeUnavailable": "Tämä versio ei sisällä natiivia Proton Drive -asiakasohjelmaa.",
+            "forms": {
+                "publicApiKey": "Julkinen API-avain",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Julkinen avain.",
+                "secretApiKey": "Salainen API-avain",
+                "uploadcareSecretHint": "Käytetään vain REST-tiedostonhallintaan {scheme}-todennuksella.",
+                "flatMediaLibrary": "Litteä mediakirjasto",
+                "uploadcareNoFolders": "Uploadcare ei tarjoa varsinaisia kansioita; projektin tiedostot luetellaan juuressa UUID:n mukaan.",
+                "urlEndpointId": "URL-päätepisteen tunnus",
+                "imagekitEndpointHint": "Dashboard - Developer Options - URL-päätepiste.",
+                "privateApiKey": "Yksityinen API-avain",
+                "storedVaultBasicAuth": "Tallennetaan paikalliseen holviin ja lähetetään vain palveluun {provider} Basic Authin kautta.",
+                "cloudName": "Pilven nimi",
+                "cloudinaryCloudNameHint": "Löytyy kohdasta Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "API-avain",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - API-avain.",
+                "apiSecret": "API-salaisuus",
+                "apiSecretPlaceholder": "API-salaisuus",
+                "openProviderLink": "Avaa {provider}-linkki",
+                "githubPatHint": "Hienojakoinen PAT, jossa Contents-oikeus (luku ja kirjoitus).",
+                "generateToken": "Luo tunnus",
+                "applicationKeyId": "Sovellusavaimen tunnus",
+                "backblazeKeyIdHint": "B2-sovellusavaimen tunnus, alkaa numeroilla 003. Luo sellainen Backblazen App Keys -sivulla.",
+                "applicationKey": "Sovellusavain",
+                "backblazeKeyHint": "Näytetään vain kerran luotaessa. Käsittele sitä kuin salasanaa.",
+                "bucketNameExactHint": "Bucketin tarkka nimi, kirjainkoolla on merkitystä.",
+                "megacmdSetupFirst": "Määritä ensin MEGAcmd",
+                "megacmdFetchUrlTitle": "Suorita {cmd} ja täytä URL automaattisesti",
+                "fetchUrl": "Hae URL",
+                "megacmdWebdavHint": "Käyttäjänimi ja salasana on jätetty pois tarkoituksella. AeroFTP suorittaa itse komennon \"{cmd}\" yhdistettäessä käynnistääkseen sillan ja lukeakseen tämän osoitteen: kentän voi jättää tyhjäksi. Hae URL on valinnainen manuaalinen päivitys; vaihda portti tässä, jos MEGAcmd käyttää mukautettua porttia."
+            }
         },
         "browser": {
             "remote": "Etä",
@@ -1040,7 +1070,13 @@
                 "title": "Natiivi rsync (beta)",
                 "description": "Valitse, miten SFTP Delta Sync lähettää rsync-siirrot.",
                 "enableToggle": "Ota natiivi rsync käyttöön SFTP-delta-synkronoinnissa",
-                "experimental": "Auto suosii AeroRsyncia klassisella varatoiminnolla; Classic käyttää järjestelmän rsync-binaaria, kun se on saatavilla; Native ohittaa klassisen binaarin varatoiminnon."
+                "experimental": "Auto suosii AeroRsyncia klassisella varatoiminnolla; Classic käyttää järjestelmän rsync-binaaria, kun se on saatavilla; Native ohittaa klassisen binaarin varatoiminnon.",
+                "modeAuto": "Automaattinen",
+                "modeClassic": "Perinteinen",
+                "modeNative": "Natiivi",
+                "classicNotFoundTooltip": "Perinteistä rsync-ohjelmaa ei löytynyt PATH-polusta. Asenna rsync (Linux/macOS-paketti, Windowsissa WSL/cygwin/scoop) ottaaksesi tämän tilan käyttöön.",
+                "classicAt": "Perinteinen rsync: {path}",
+                "classicNotDetected": "Perinteistä rsync-ohjelmaa ei havaittu PATH-polussa. Natiivi on ainoa käytettävissä oleva moottori tällä koneella."
             },
             "startMinimizedOnAutostart": "Käynnistä pienennettynä ilmaisinalueelle",
             "startMinimizedOnAutostartDesc": "Piilota pääikkuna automaattisen käynnistyksen yhteydessä. AeroFTP jatkaa toimintaansa ilmaisinalueella, avaa se ilmaisinalueen kuvakkeesta kun tarvitset sitä.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Salaamattomasta tallennustilasta löytyi {count} OAuth-tunnistetietoa",
             "fontSystemInstall": "järjestelmäasennus",
             "fontSizeMin": "min",
-            "fontSizeMax": "maks"
+            "fontSizeMax": "maks",
+            "migrationCleanupHint": "Suositellaan parhaan tietoturvan vuoksi",
+            "fontCustomOption": "Mukautettu...",
+            "fontSystemInstallHint": "Vaatii järjestelmäasennuksen. AeroFTP käyttää automaattisesti varavaihtoehtoa, jos se ei ole saatavilla."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Valtuuta uudelleen manuaalisesti, jos token peruutetaan"
             },
             "profilesLoadFailed": "Tallennettuja palvelimia ei voitu lukea: {error}",
-            "cleanupSummary": "{count} tiedostoa, {size} vapautettu"
+            "cleanupSummary": "{count} tiedostoa, {size} vapautettu",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -1631,7 +1673,8 @@
                 "apRole": "Perustaja, kehittäjä, ylläpitäjä, yhteissuunnittelija",
                 "ekRole": "Tutkija, laadunvarmistusinsinööri, yhteissuunnittelija"
             },
-            "madeBy": "{author}:n toimesta"
+            "madeBy": "{author}:n toimesta",
+            "statsLine": "{protocols} protokollaa · {languages} kieltä · AES-256-arkistot"
         },
         "support": {
             "title": "Tue AeroFTP:tä",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Projekti (Unixname)",
             "opendriveNotApiKey": "(ei OpenDrive API -avaimesi)",
             "endpoint": "Päätepiste",
-            "accountId": "Tilin ID"
+            "accountId": "Tilin ID",
+            "servicesHeading": "Palvelut",
+            "sourceforgeSshKeyHelp": "SourceForge vaatii SSH-avaintodennuksen. Luo avain komennolla {cmd} ja lataa se osoitteeseen {link}.",
+            "sourceforgeSshSettings": "SSH-asetukset",
+            "fullGuide": "Koko opas",
+            "endpointTemplateExample": "esim. {template}",
+            "jurisdiction": "Lainkäyttöalue",
+            "insecureCertDialogLabel": "Varoitus suojaamattomasta varmenteesta",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Ilmainen taso",
             "freeCardTier": "Ilmainen + kortti",
-            "paidTier": "Maksullinen"
+            "paidTier": "Maksullinen",
+            "extraFeatures": "Lisä",
+            "coreOpsList": "Lähetä, Lataa, Poista, Nimeä uudelleen, Siirrä, Luo kansio, Hae",
+            "coreOpsLegend": "Perus = Lähetä, Lataa, Poista, Nimeä uudelleen, Siirrä, Luo kansio, Hae"
         },
         "healthCheck": {
             "title": "Palvelimen kuntotarkistus",
@@ -5214,7 +5268,8 @@
                 "down": "Ei tavoitettavissa",
                 "pending": "Tarkistetaan...",
                 "unknown": "Ei tarkistettu",
-                "clickToRetry": "napsauta tarkistaaksesi uudelleen"
+                "clickToRetry": "napsauta tarkistaaksesi uudelleen",
+                "withActiveSession": "{title} (aktiivinen istunto)"
             },
             "densityCompact": "Tiiviit rivit",
             "densityComfortable": "Mukavat rivit",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "AeroCrypt-salattu peittokerros (natiivi): nimet ja sisältö on salattu tällä palvelimella.",
-                "rcloneTitle": "rclone crypt -peittokerros (yhteentoimiva): nimet ja sisältö on salattu tällä palvelimella."
+                "rcloneTitle": "rclone crypt -peittokerros (yhteentoimiva): nimet ja sisältö on salattu tällä palvelimella.",
+                "keyBits": "{bits}-bittinen"
             },
             "sidebar": {
                 "filters": "Suodattimet",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Emme voineet lukea tämän säilön salausasetusta, koska sovellusavaimella ei ole readBucketEncryption-oikeutta. Arvo, jota emme saa nähdä, ei tarkoita, että salaus olisi pois käytöstä.",
                 "unknownShapeTitle": "Emme voineet lukea tämän säilön salausasetusta, koska vastauksella ei ollut dokumentoitua muotoa. Avaimella oli oikeus lukea se, joten kyse on vastauksesta eikä käyttöoikeuksista."
             },
-            "exportProfile": "Vie..."
+            "exportProfile": "Vie...",
+            "quotaLabel": "Kiintiö",
+            "storageNoCapReported": "{used} (kiintiön ylärajaa ei ilmoitettu)",
+            "e2eBitsBadge": "E2E {bits}-bittinen",
+            "filenAuthVersionTitle": "Tunnistettu Filen auth/info -tiedoista onnistuneen yhteyden yhteydessä",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "nyt",
+                "minutes": "{count} min",
+                "hours": "{count} h",
+                "days": "{count} pv",
+                "months": "{count} kk"
+            }
         },
         "gitlab": {
             "projectPath": "Projektipolku",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Tila valitaan yhteyttä luotaessa ja pysyy muuttumattomana tallennettua profiilia muokattaessa. Käytä eri tilaa luomalla uusi yhteys."
+                "lockedInEdit": "Tila valitaan yhteyttä luotaessa ja pysyy muuttumattomana tallennettua profiilia muokattaessa. Käytä eri tilaa luomalla uusi yhteys.",
+                "notInBuild": "Ei sisälly tähän AeroFTP-koontiversioon."
             }
         },
         "flatpak": {

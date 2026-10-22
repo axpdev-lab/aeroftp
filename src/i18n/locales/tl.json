@@ -337,7 +337,37 @@
             "protonSignOut": "Mag-sign out",
             "protonSignOutHelp": "Tinatapos ang session sa Proton at inaalis ito sa profile na ito.",
             "protonSignInExpired": "Nag-expire na ang sign-in page. Mag-sign in ulit.",
-            "protonNativeUnavailable": "Hindi kasama sa build na ito ang native na Proton Drive client."
+            "protonNativeUnavailable": "Hindi kasama sa build na ito ang native na Proton Drive client.",
+            "forms": {
+                "publicApiKey": "Pampublikong Susi ng API",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Pampublikong susi.",
+                "secretApiKey": "Lihim na Susi ng API",
+                "uploadcareSecretHint": "Ginagamit lamang para sa pamamahala ng file sa REST sa pamamagitan ng {scheme} na pagpapatunay.",
+                "flatMediaLibrary": "Patag na aklatan ng media",
+                "uploadcareNoFolders": "Walang katutubong folder ang Uploadcare; nakalista ang mga file ng proyekto sa ugat ayon sa UUID.",
+                "urlEndpointId": "ID ng Dulong Punto ng URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Dulong punto ng URL.",
+                "privateApiKey": "Pribadong Susi ng API",
+                "storedVaultBasicAuth": "Nakaimbak sa lokal na imbakan at ipinapadala lamang sa {provider} sa pamamagitan ng Basic Auth.",
+                "cloudName": "Pangalan ng Ulap",
+                "cloudinaryCloudNameHint": "Makikita sa iyong Cloudinary Dashboard - Account Details.",
+                "apiKeyPlaceholder": "Susi ng API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Susi ng API.",
+                "apiSecret": "Lihim ng API",
+                "apiSecretPlaceholder": "Lihim ng API",
+                "openProviderLink": "Buksan ang link ng {provider}",
+                "githubPatHint": "Detalyadong PAT na may Contents (Basahin at Isulat).",
+                "generateToken": "Bumuo ng token",
+                "applicationKeyId": "ID ng Susi ng Aplikasyon",
+                "backblazeKeyIdHint": "ID ng Application Key ng B2, nagsisimula sa 003. Gumawa ng isa mula sa pahinang App Keys ng Backblaze.",
+                "applicationKey": "Susi ng Application",
+                "backblazeKeyHint": "Isang beses lang ipinapakita sa paggawa. Ituring itong parang password.",
+                "bucketNameExactHint": "Eksaktong pangalan ng bucket, sensitibo sa malaki at maliit na titik.",
+                "megacmdSetupFirst": "I-set up muna ang MEGAcmd",
+                "megacmdFetchUrlTitle": "Patakbuhin ang {cmd} at awtomatikong punan ang URL",
+                "fetchUrl": "Kunin ang URL",
+                "megacmdWebdavHint": "Sadyang hindi isinama ang Username at Password. Ang AeroFTP mismo ang nagpapatakbo ng \"{cmd}\" sa pagkonekta para simulan ang tulay at basahin ang address na ito: ayos lang na iwan itong blangko. Ang \"Kunin ang URL\" ay opsyonal na manwal na pag-refresh; palitan dito ang port kung custom ang gamit ng MEGAcmd."
+            }
         },
         "browser": {
             "remote": "Remote",
@@ -1040,7 +1070,13 @@
                 "title": "Katutubong rsync (beta)",
                 "description": "Piliin kung paano nagpapadala ang SFTP Delta Sync ng mga rsync transfer.",
                 "enableToggle": "Paganahin ang katutubong rsync para sa delta sync sa SFTP",
-                "experimental": "Mas pinipili ng Auto ang AeroRsync na may klasikong fallback; ginagamit ng Classic ang rsync binary ng sistema kung available; nilalaktawan ng Native ang klasikong binary fallback."
+                "experimental": "Mas pinipili ng Auto ang AeroRsync na may klasikong fallback; ginagamit ng Classic ang rsync binary ng sistema kung available; nilalaktawan ng Native ang klasikong binary fallback.",
+                "modeAuto": "Awtomatiko",
+                "modeClassic": "Klasiko",
+                "modeNative": "Katutubo",
+                "classicNotFoundTooltip": "Hindi nakita ang klasikong rsync binary sa PATH. Mag-install ng rsync (package ng Linux/macOS, Windows sa pamamagitan ng WSL/cygwin/scoop) para paganahin ang mode na ito.",
+                "classicAt": "Klasikong rsync sa {path}",
+                "classicNotDetected": "Hindi natukoy ang klasikong rsync binary sa PATH. Ang Katutubo lamang ang engine na available sa makinang ito."
             },
             "startMinimizedOnAutostart": "Magsimulang naka-minimize sa tray",
             "startMinimizedOnAutostartDesc": "Itago ang pangunahing window kapag autostart. Patuloy na tumatakbo ang AeroFTP sa system tray, buksan ito mula sa tray icon kapag kailangan mo.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "May natagpuang {count} kredensyal ng OAuth sa imbakang hindi naka-encrypt",
             "fontSystemInstall": "i-install sa system",
             "fontSizeMin": "min",
-            "fontSizeMax": "max"
+            "fontSizeMax": "max",
+            "migrationCleanupHint": "Inirerekomenda para sa pinakamataas na seguridad",
+            "fontCustomOption": "Pasadya...",
+            "fontSystemInstallHint": "Kailangang naka-install sa system. Awtomatikong gagamit ang AeroFTP ng kapalit kung hindi available."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Mag-authorize muli nang mano-mano kung binawi ang token"
             },
             "profilesLoadFailed": "Hindi nabasa ang iyong mga naka-save na server: {error}",
-            "cleanupSummary": "{count} talaksan, {size} ang napalaya"
+            "cleanupSummary": "{count} talaksan, {size} ang napalaya",
+            "maturity": {
+                "alpha": "Alpa"
+            }
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -1631,7 +1673,8 @@
                 "apRole": "Tagapagtatag, developer, maintainer, katuwang na taga-disenyo",
                 "ekRole": "Mananaliksik, quality assurance engineer, katuwang na taga-disenyo"
             },
-            "madeBy": "ng {author}"
+            "madeBy": "ng {author}",
+            "statsLine": "{protocols} protokol · {languages} wika · mga arkibong AES-256"
         },
         "support": {
             "title": "Suportahan ang AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Proyekto (Unixname)",
             "opendriveNotApiKey": "(hindi ang iyong susi ng OpenDrive API)",
             "endpoint": "Endpoint",
-            "accountId": "ID ng account"
+            "accountId": "ID ng account",
+            "servicesHeading": "Mga serbisyo",
+            "sourceforgeSshKeyHelp": "Kailangan ng SourceForge ang pagpapatotoo gamit ang SSH key. Gumawa ng key gamit ang {cmd} at i-upload ito sa {link}.",
+            "sourceforgeSshSettings": "Mga Setting ng SSH",
+            "fullGuide": "Buong gabay",
+            "endpointTemplateExample": "hal. {template}",
+            "jurisdiction": "Hurisdiksyon",
+            "insecureCertDialogLabel": "Babala sa Hindi Ligtas na Sertipiko",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -4835,7 +4886,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Libreng plan",
             "freeCardTier": "Libre + card",
-            "paidTier": "Bayad"
+            "paidTier": "Bayad",
+            "extraFeatures": "Dagdag",
+            "coreOpsList": "Pag-upload, Pag-download, Pagbura, Pagpalit ng pangalan, Paglipat, Paggawa ng folder, Paghahanap",
+            "coreOpsLegend": "Batayan = Pag-upload, Pag-download, Pagbura, Pagpalit ng pangalan, Paglipat, Paggawa ng folder, Paghahanap"
         },
         "healthCheck": {
             "title": "Pagsusuri ng kalagayan ng server",
@@ -5233,7 +5287,8 @@
                 "down": "Hindi naa-access",
                 "pending": "Sinusuri...",
                 "unknown": "Hindi pa nasuri",
-                "clickToRetry": "mag-click upang muling suriin"
+                "clickToRetry": "mag-click upang muling suriin",
+                "withActiveSession": "{title} (aktibong session)"
             },
             "densityCompact": "Maigsi na hanay",
             "densityComfortable": "Maginhawang hanay",
@@ -5323,7 +5378,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Naka-encrypt na overlay ng AeroCrypt (native): ang mga pangalan at nilalaman ay naka-encrypt sa server na ito.",
-                "rcloneTitle": "Overlay ng rclone crypt (interop): ang mga pangalan at nilalaman ay naka-encrypt sa server na ito."
+                "rcloneTitle": "Overlay ng rclone crypt (interop): ang mga pangalan at nilalaman ay naka-encrypt sa server na ito.",
+                "keyBits": "{bits}-bit"
             },
             "sidebar": {
                 "filters": "Mga filter",
@@ -5343,7 +5399,19 @@
                 "unknownKeyTitle": "Hindi namin nabasa ang setting ng pag-encrypt ng bucket na ito, dahil walang kakayahang readBucketEncryption ang application key. Ang halagang hindi kami pinapayagang makita ay hindi nangangahulugang naka-off ang pag-encrypt.",
                 "unknownShapeTitle": "Hindi namin nabasa ang setting ng pag-encrypt ng bucket na ito, dahil walang dokumentadong anyo ang sagot. Pinayagan ang key na basahin ito, kaya tungkol ito sa sagot at hindi sa mga pahintulot."
             },
-            "exportProfile": "I-export..."
+            "exportProfile": "I-export...",
+            "quotaLabel": "Quota",
+            "storageNoCapReported": "{used} (walang iniulat na limitasyon ng quota)",
+            "e2eBitsBadge": "E2E {bits}-bit",
+            "filenAuthVersionTitle": "Natukoy mula sa Filen auth/info sa matagumpay na pagkonekta",
+            "demoBadge": "DEMO",
+            "timeAgo": {
+                "now": "ngayon",
+                "minutes": "{count} min",
+                "hours": "{count} oras",
+                "days": "{count} araw",
+                "months": "{count} buwan"
+            }
         },
         "gitlab": {
             "projectPath": "Path ng Project",
@@ -6385,7 +6453,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Pinipili ang mode kapag ginawa ang koneksyon at nananatiling nakapirmi habang ine-edit ang naka-save na profile. Para gumamit ng ibang mode, gumawa ng bagong koneksyon."
+                "lockedInEdit": "Pinipili ang mode kapag ginawa ang koneksyon at nananatiling nakapirmi habang ine-edit ang naka-save na profile. Para gumamit ng ibang mode, gumawa ng bagong koneksyon.",
+                "notInBuild": "Hindi kasama sa build na ito ng AeroFTP."
             }
         },
         "flatpak": {

@@ -337,7 +337,37 @@
             "protonSignOut": "Ondoka",
             "protonSignOutHelp": "Humaliza kipindi kwenye Proton na kukiondoa kwenye wasifu huu.",
             "protonSignInExpired": "Muda wa ukurasa wa kuingia umeisha. Ingia tena.",
-            "protonNativeUnavailable": "Toleo hili halijumuishi kiteja asilia cha Proton Drive."
+            "protonNativeUnavailable": "Toleo hili halijumuishi kiteja asilia cha Proton Drive.",
+            "forms": {
+                "publicApiKey": "Ufunguo wa API wa Umma",
+                "uploadcarePublicKeyHint": "Dashboard - API Keys - Ufunguo wa umma.",
+                "secretApiKey": "Ufunguo wa Siri wa API",
+                "uploadcareSecretHint": "Hutumika tu kwa usimamizi wa faili wa REST kupitia uthibitishaji wa {scheme}.",
+                "flatMediaLibrary": "Maktaba ya midia bapa",
+                "uploadcareNoFolders": "Uploadcare haitoi folda asilia; faili za mradi zimeorodheshwa kwenye mzizi kwa UUID.",
+                "urlEndpointId": "Kitambulisho cha Kiishio cha URL",
+                "imagekitEndpointHint": "Dashboard - Developer Options - Kiishio cha URL.",
+                "privateApiKey": "Ufunguo wa Faragha wa API",
+                "storedVaultBasicAuth": "Huhifadhiwa kwenye hifadhi salama ya ndani na kutumwa kwa {provider} pekee kupitia Basic Auth.",
+                "cloudName": "Jina la Wingu",
+                "cloudinaryCloudNameHint": "Hupatikana katika Cloudinary Dashboard - Account Details yako.",
+                "apiKeyPlaceholder": "Ufunguo wa API",
+                "cloudinaryApiKeyHint": "Dashboard - API Keys - Ufunguo wa API.",
+                "apiSecret": "Siri ya API",
+                "apiSecretPlaceholder": "Siri ya API",
+                "openProviderLink": "Fungua kiungo cha {provider}",
+                "githubPatHint": "PAT ya ruhusa za kina yenye Contents (Kusoma na Kuandika).",
+                "generateToken": "Tengeneza tokeni",
+                "applicationKeyId": "Kitambulisho cha Ufunguo wa Programu",
+                "backblazeKeyIdHint": "Kitambulisho cha Ufunguo wa Programu wa B2, huanza na 003. Tengeneza kimoja kutoka ukurasa wa App Keys wa Backblaze.",
+                "applicationKey": "Ufunguo wa Programu",
+                "backblazeKeyHint": "Huonyeshwa mara moja tu wakati wa kuundwa. Ushughulikie kama nenosiri.",
+                "bucketNameExactHint": "Jina kamili la ndoo, huzingatia herufi kubwa na ndogo.",
+                "megacmdSetupFirst": "Sanidi MEGAcmd kwanza",
+                "megacmdFetchUrlTitle": "Endesha {cmd} na ujaze URL kiotomatiki",
+                "fetchUrl": "Leta URL",
+                "megacmdWebdavHint": "Jina la mtumiaji na nenosiri vimeachwa kwa makusudi. AeroFTP huendesha \"{cmd}\" yenyewe wakati wa kuunganisha ili kuanzisha daraja na kusoma anwani hii: ni sawa kuiacha tupu. \"Leta URL\" ni uonyeshaji upya wa mkono wa hiari; badilisha mlango hapa ikiwa MEGAcmd inatumia mlango maalum."
+            }
         },
         "browser": {
             "remote": "Mbali",
@@ -1040,7 +1070,13 @@
                 "title": "rsync asili (beta)",
                 "description": "Chagua jinsi SFTP Delta Sync inavyotuma uhamisho wa rsync.",
                 "enableToggle": "Washa rsync asili kwa usawazishaji wa delta kupitia SFTP",
-                "experimental": "Auto inapendelea AeroRsync na mbadala wa klasiki; Classic hutumia binari ya rsync ya mfumo inapopatikana; Native inaruka mbadala wa binari ya klasiki."
+                "experimental": "Auto inapendelea AeroRsync na mbadala wa klasiki; Classic hutumia binari ya rsync ya mfumo inapopatikana; Native inaruka mbadala wa binari ya klasiki.",
+                "modeAuto": "Otomatiki",
+                "modeClassic": "Kawaida",
+                "modeNative": "Iliyojengwa ndani",
+                "classicNotFoundTooltip": "Faili ya rsync ya kawaida haikupatikana kwenye PATH. Sakinisha rsync (kifurushi cha Linux/macOS, Windows kupitia WSL/cygwin/scoop) ili kuwezesha hali hii.",
+                "classicAt": "rsync ya kawaida katika {path}",
+                "classicNotDetected": "Faili ya rsync ya kawaida haikugunduliwa kwenye PATH. Iliyojengwa ndani ndiyo injini pekee inayopatikana kwenye mashine hii."
             },
             "startMinimizedOnAutostart": "Anzisha ukiwa umepunguzwa kwenye treya",
             "startMinimizedOnAutostartDesc": "Ficha dirisha kuu wakati wa uzinduzi wa kiotomatiki. AeroFTP huendelea kufanya kazi kwenye treya ya mfumo, ifungue kutoka kwa aikoni ya treya unapoihitaji.",
@@ -1231,7 +1267,10 @@
             "migrationOauthFound": "Vitambulisho vya OAuth {count} vimepatikana kwenye hifadhi isiyosimbwa",
             "fontSystemInstall": "usakinishaji wa mfumo",
             "fontSizeMin": "chini",
-            "fontSizeMax": "juu"
+            "fontSizeMax": "juu",
+            "migrationCleanupHint": "Inapendekezwa kwa usalama wa juu kabisa",
+            "fontCustomOption": "Maalum...",
+            "fontSystemInstallHint": "Inahitaji usakinishaji wa mfumo. AeroFTP hubadilisha kiotomatiki ikiwa haipatikani."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1429,7 +1468,10 @@
                 "fourshared": "Idhinisha tena kwa mkono ikiwa tokeni imebatilishwa"
             },
             "profilesLoadFailed": "Seva ulizohifadhi hazikuweza kusomwa: {error}",
-            "cleanupSummary": "faili {count}, nafasi ya {size} imeachiliwa"
+            "cleanupSummary": "faili {count}, nafasi ya {size} imeachiliwa",
+            "maturity": {
+                "alpha": "Alfa"
+            }
         },
         "statusBar": {
             "connected": "Imeunganishwa",
@@ -1631,7 +1673,8 @@
                 "apRole": "Mwanzilishi, msanidi programu, mtunzaji, mbunifu mwenza",
                 "ekRole": "Mtafiti, mhandisi wa uhakikisho wa ubora, mbunifu mwenza"
             },
-            "madeBy": "na {author}"
+            "madeBy": "na {author}",
+            "statsLine": "Itifaki {protocols} · lugha {languages} · kumbukumbu za AES-256"
         },
         "support": {
             "title": "Saidia AeroFTP",
@@ -2056,7 +2099,15 @@
             "sourceforgeProject": "Mradi (Unixname)",
             "opendriveNotApiKey": "(si ufunguo wako wa API wa OpenDrive)",
             "endpoint": "Sehemu ya mwisho",
-            "accountId": "ID ya akaunti"
+            "accountId": "ID ya akaunti",
+            "servicesHeading": "Huduma",
+            "sourceforgeSshKeyHelp": "SourceForge inahitaji uthibitishaji kwa ufunguo wa SSH. Tengeneza ufunguo kwa {cmd} na uupakie kwenye {link}.",
+            "sourceforgeSshSettings": "Mipangilio ya SSH",
+            "fullGuide": "Mwongozo kamili",
+            "endpointTemplateExample": "k.m. {template}",
+            "jurisdiction": "Mamlaka ya kisheria",
+            "insecureCertDialogLabel": "Onyo la Cheti Kisicho Salama",
+            "betaBadge": "BETA"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -4816,7 +4867,10 @@
             "devTools": "Dev Tools",
             "freeTier": "Mpango wa bure",
             "freeCardTier": "Bure + kadi",
-            "paidTier": "Ya malipo"
+            "paidTier": "Ya malipo",
+            "extraFeatures": "Ziada",
+            "coreOpsList": "Pakia, Pakua, Futa, Badilisha jina, Hamisha, Unda folda, Tafuta",
+            "coreOpsLegend": "Msingi = Pakia, Pakua, Futa, Badilisha jina, Hamisha, Unda folda, Tafuta"
         },
         "healthCheck": {
             "title": "Ukaguzi wa hali ya seva",
@@ -5214,7 +5268,8 @@
                 "down": "Haifikiki",
                 "pending": "Inakagua...",
                 "unknown": "Haijakaguliwa",
-                "clickToRetry": "bofya ili ukague tena"
+                "clickToRetry": "bofya ili ukague tena",
+                "withActiveSession": "{title} (kipindi amilifu)"
             },
             "densityCompact": "Safu mfupi",
             "densityComfortable": "Safu vizuri",
@@ -5304,7 +5359,8 @@
                 "aerocrypt": "AeroCrypt",
                 "rclone": "rclone crypt",
                 "aerocryptTitle": "Safu iliyosimbwa ya AeroCrypt (asili): majina na maudhui yamesimbwa kwenye seva hii.",
-                "rcloneTitle": "Safu ya rclone crypt (ushirikiano): majina na maudhui yamesimbwa kwenye seva hii."
+                "rcloneTitle": "Safu ya rclone crypt (ushirikiano): majina na maudhui yamesimbwa kwenye seva hii.",
+                "keyBits": "biti {bits}"
             },
             "sidebar": {
                 "filters": "Vichujio",
@@ -5324,7 +5380,19 @@
                 "unknownKeyTitle": "Hatukuweza kusoma mpangilio wa usimbaji wa ndoo hii, kwa sababu ufunguo wa programu hauna uwezo wa readBucketEncryption. Thamani ambayo haturuhusiwi kuiona haimaanishi kuwa usimbaji umezimwa.",
                 "unknownShapeTitle": "Hatukuweza kusoma mpangilio wa usimbaji wa ndoo hii, kwa sababu jibu halikuwa na muundo ulioandikwa kwenye nyaraka. Ufunguo uliruhusiwa kuusoma, kwa hivyo hili linahusu jibu na si ruhusa."
             },
-            "exportProfile": "Hamisha..."
+            "exportProfile": "Hamisha...",
+            "quotaLabel": "Kiwango",
+            "storageNoCapReported": "{used} (hakuna kikomo cha kiwango kilichoripotiwa)",
+            "e2eBitsBadge": "E2E biti {bits}",
+            "filenAuthVersionTitle": "Imegunduliwa kutoka Filen auth/info wakati wa muunganisho uliofaulu",
+            "demoBadge": "MAJARIBIO",
+            "timeAgo": {
+                "now": "sasa",
+                "minutes": "dk {count}",
+                "hours": "saa {count}",
+                "days": "siku {count}",
+                "months": "miezi {count}"
+            }
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
@@ -6366,7 +6434,8 @@
         },
         "provider": {
             "modes": {
-                "lockedInEdit": "Hali huchaguliwa wakati muunganisho unaundwa na hubaki bila kubadilika unapohariri wasifu uliohifadhiwa. Ili kutumia hali tofauti, unda muunganisho mpya."
+                "lockedInEdit": "Hali huchaguliwa wakati muunganisho unaundwa na hubaki bila kubadilika unapohariri wasifu uliohifadhiwa. Ili kutumia hali tofauti, unda muunganisho mpya.",
+                "notInBuild": "Haijajumuishwa katika toleo hili la AeroFTP."
             }
         },
         "flatpak": {
