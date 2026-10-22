@@ -2239,7 +2239,9 @@ impl StorageProvider for FtpProvider {
         // Retrieve from offset
         let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
             Ok(opened) => opened,
-            Err(err) => return Err(self.refused_data_open("resuming", remote_path, err)),
+            Err(err) => {
+                return Err(self.refused_restart_open("resuming", remote_path, offset, err))
+            }
         };
         let data_stream = match opened {
             Some(data_stream) => data_stream,
@@ -2633,7 +2635,9 @@ impl StorageProvider for FtpProvider {
 
         let opened = match Self::open_with_cap(stream.retr_as_stream(path)).await {
             Ok(opened) => opened,
-            Err(err) => return Err(self.refused_data_open("reading a range of", path, err)),
+            Err(err) => {
+                return Err(self.refused_restart_open("reading a range of", path, offset, err))
+            }
         };
         let data_stream = match opened {
             Some(data_stream) => data_stream,
@@ -3970,6 +3974,59 @@ impl FtpProvider {
         classified
     }
 
+    /// The same for an opening that carried a restart offset.
+    fn refused_restart_open(
+        &mut self,
+        operation: &'static str,
+        path: &str,
+        offset: u64,
+        err: FtpError,
+    ) -> ProviderError {
+        let classified = Self::classify_restart_failure(operation, path, offset, err);
+        self.stream = None;
+        classified
+    }
+
+    /// What a refused opening means when `REST` went out inside it.
+    ///
+    /// suppaftp 12.2 sends the queued offset as `REST` right before `RETR`, so
+    /// a refused offset and a refused file come back through the same error.
+    /// The status code tells them apart. RFC 959 lets `REST` answer 500, 501,
+    /// 502, 421 or 530, never 550 or 553: those are `RETR` talking about the
+    /// file, and keep the data-command classification. 502 and 504 say the
+    /// server has no restart at all, which no retry fixes, so they are
+    /// `NotSupported`: a caller with a whole-file fallback (the CLI hash of a
+    /// file read by ranges) takes it instead of failing. What remains is a
+    /// transfer failure that names the offset, because without it a refused
+    /// restart reads exactly like a refused download.
+    fn classify_restart_failure(
+        operation: &str,
+        path: &str,
+        offset: u64,
+        err: FtpError,
+    ) -> ProviderError {
+        let at_offset = format!("{path} from byte {offset}");
+        if let FtpError::UnexpectedResponse(ref response) = err {
+            if matches!(
+                response.status,
+                Status::NotImplemented | Status::NotImplementedParameter
+            ) {
+                return ProviderError::NotSupported(Self::doing(
+                    operation,
+                    &at_offset,
+                    format_args!("the server does not support restarting a transfer: {err}"),
+                ));
+            }
+        }
+        let reply = err.to_string();
+        match Self::classify_data_failure(operation, path, err) {
+            ProviderError::TransferFailed(_) => {
+                ProviderError::TransferFailed(Self::doing(operation, &at_offset, reply))
+            }
+            classified => classified,
+        }
+    }
+
     /// The same for a refused `STOR` or `APPE`, which keeps its own mapping.
     fn refused_store(&mut self, path: &str, err: FtpError) -> ProviderError {
         let classified = Self::map_store_error(path, err);
@@ -4562,7 +4619,12 @@ async fn ftp_download_one_range(
     let opened = match opened {
         Ok(opened) => opened,
         Err(err) => {
-            return Err(worker.refused_data_open("downloading a range of", &remote_path, err))
+            return Err(worker.refused_restart_open(
+                "downloading a range of",
+                &remote_path,
+                start,
+                err,
+            ))
         }
     };
     let mut data_stream = match opened {
@@ -4740,6 +4802,49 @@ mod restart_contract_tests {
         (config, log, server)
     }
 
+    /// A refused offset stays retryable and says that a restart was refused,
+    /// rather than reading like a refused download of the file.
+    fn assert_refused_restart(err: ProviderError) {
+        let message = err.to_string();
+        assert!(matches!(err, ProviderError::TransferFailed(_)), "{err:?}");
+        assert!(message.contains("restart refused"), "{message}");
+        assert!(message.contains("/f.bin from byte 4"), "{message}");
+    }
+
+    fn reply(status: Status, body: &str) -> FtpError {
+        FtpError::UnexpectedResponse(suppaftp::types::Response::new(
+            status,
+            body.as_bytes().to_vec(),
+        ))
+    }
+
+    /// One row per reply an opening with a queued offset can end with. REST
+    /// never answers 550 or 553 (RFC 959), so those stay about the file;
+    /// 502 and 504 mean no restart support, which no retry fixes.
+    #[test]
+    fn a_refused_restart_is_classified_by_who_refused_it() {
+        let classify = |err| FtpProvider::classify_restart_failure("resuming", "/f.bin", 4, err);
+
+        for status in [Status::NotImplemented, Status::NotImplementedParameter] {
+            let err = classify(reply(status, "REST not implemented"));
+            let message = err.to_string();
+            assert!(matches!(err, ProviderError::NotSupported(_)), "{err:?}");
+            assert!(message.contains("does not support restarting"), "{message}");
+            assert!(message.contains("/f.bin from byte 4"), "{message}");
+        }
+
+        assert_refused_restart(classify(reply(Status::BadArguments, "restart refused")));
+
+        let err = classify(reply(
+            Status::FileUnavailable,
+            "/f.bin: No such file or directory",
+        ));
+        assert!(matches!(err, ProviderError::NotFound(_)), "{err:?}");
+
+        let err = classify(reply(Status::FileUnavailable, "Permission denied"));
+        assert!(matches!(err, ProviderError::InvalidPath(_)), "{err:?}");
+    }
+
     fn assert_restart_commands(log: &CommandLog, rejected: bool) {
         let commands = log.lock().unwrap();
         let rest = commands.iter().position(|line| line == "REST 4").unwrap();
@@ -4805,7 +4910,7 @@ mod restart_contract_tests {
                 server.await.unwrap();
                 assert_restart_commands(&log, rejected);
                 if rejected {
-                    assert!(result.unwrap_err().to_string().contains("restart refused"));
+                    assert_refused_restart(result.unwrap_err());
                     assert_eq!(std::fs::read(&path).unwrap(), original);
                     assert_eq!(aggregate.load(Ordering::Relaxed), 0);
                     assert_eq!(mark.reached(), 4);
@@ -4870,7 +4975,7 @@ mod restart_contract_tests {
                     server.await.unwrap();
                     assert_restart_commands(&log, rejected);
                     if rejected {
-                        assert!(result.unwrap_err().to_string().contains("restart refused"));
+                        assert_refused_restart(result.unwrap_err());
                         assert_eq!(std::fs::read(&path).unwrap(), CONTENT[..4]);
                     } else {
                         result.unwrap();
