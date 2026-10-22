@@ -339,13 +339,13 @@ where
     let mut streaming_summary =
         crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
             let ctx = Arc::clone(&ctx);
-            let range = groups[item.index].clone();
+            let group = groups[item.index].clone();
             async move {
-                if range.len() > 1 {
-                    run_bulk_batch_group(range, admission, ctx).await
+                if group.len() > 1 {
+                    run_bulk_batch_group(group, admission, ctx).await
                 } else {
                     let mut item = item;
-                    item.index = range.start;
+                    item.index = group[0];
                     run_one_batch_file(item, admission, ctx).await
                 }
             }
@@ -459,7 +459,7 @@ impl WorkSource for BatchEntriesWorkSource {
 /// held for the native invocation. No future command can touch queued groups.
 struct BatchGroupsWorkSource {
     entries: Arc<Vec<TransferEntry>>,
-    groups: Arc<Vec<std::ops::Range<usize>>>,
+    groups: Arc<crate::transfer_bulk::BulkGroups>,
     direction: TransferDirection,
     next: usize,
 }
@@ -468,11 +468,11 @@ struct BatchGroupsWorkSource {
 impl WorkSource for BatchGroupsWorkSource {
     async fn next_item(&mut self) -> Option<TransferWorkItem> {
         let index = self.next;
-        let range = self.groups.get(index)?;
+        let group = self.groups.get(index)?;
         self.next += 1;
-        let size = self.entries[range.clone()].iter().map(|e| e.size).sum();
+        let size = group.iter().map(|&i| self.entries[i].size).sum();
         Some(TransferWorkItem::new(
-            self.entries[range.start].id.clone(),
+            self.entries[group[0]].id.clone(),
             index,
             size,
             self.direction,
@@ -484,7 +484,7 @@ impl WorkSource for BatchGroupsWorkSource {
 }
 
 async fn run_bulk_batch_group<E>(
-    range: std::ops::Range<usize>,
+    indices: Vec<usize>,
     mut admission: FileAdmission,
     ctx: Arc<BatchStreamContext<E>>,
 ) -> TransferDagMetrics
@@ -494,7 +494,12 @@ where
     if ctx.cancel.load(Ordering::Relaxed) || ctx.executor.is_transfer_cancelled() {
         return TransferDagMetrics::default();
     }
-    let group = Arc::new(ctx.entries[range].to_vec());
+    let group = Arc::new(
+        indices
+            .iter()
+            .map(|&i| ctx.entries[i].clone())
+            .collect::<Vec<_>>(),
+    );
     let shaped = TransferDagBuilder::single_file(ctx.dag_direction);
     admission.materialize_nodes(shaped.dag.nodes().len());
     let settled = Arc::new(std::sync::Mutex::new(vec![false; group.len()]));

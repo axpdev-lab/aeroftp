@@ -561,7 +561,7 @@ struct SyncTransfersWorkSource {
 
 struct GroupedSyncWorkSource {
     transfers: Arc<Vec<PlannedTransfer>>,
-    groups: Arc<Vec<std::ops::Range<usize>>>,
+    groups: Arc<crate::transfer_bulk::BulkGroups>,
     next: usize,
 }
 
@@ -570,8 +570,9 @@ impl WorkSource for GroupedSyncWorkSource {
     async fn next_item(&mut self) -> Option<TransferWorkItem> {
         let group = self.groups.get(self.next)?;
         self.next += 1;
-        let transfer = &self.transfers[group.start];
-        let size = self.transfers[group.clone()].iter().map(|t| t.total).sum();
+        // The driver finds a bulk by its first planned transfer.
+        let transfer = &self.transfers[group[0]];
+        let size = group.iter().map(|&i| self.transfers[i].total).sum();
         let direction = if transfer.op == "upload" {
             TransferDirection::Upload
         } else {
@@ -579,7 +580,7 @@ impl WorkSource for GroupedSyncWorkSource {
         };
         Some(TransferWorkItem::new(
             transfer.rel.clone(),
-            group.start,
+            group[0],
             size,
             direction,
         ))
@@ -596,7 +597,7 @@ fn sync_bulk_groups(
     remote_root: &str,
     policy: DeltaPolicy,
     ec: bool,
-) -> Vec<std::ops::Range<usize>> {
+) -> crate::transfer_bulk::BulkGroups {
     use crate::transfer_domain::TransferEntry;
     let entries: Vec<_> = transfers
         .iter()
@@ -643,21 +644,25 @@ fn sync_bulk_groups(
 /// Called only for an explicitly admitted group on the primary serial lane.
 /// EC/checksum/delta work retains the established per-file path. Dropping the
 /// enclosing sync drops the owned native process and its staging directory.
+/// `None` asks the driver to run that transfer on the per-file path: the item
+/// never reached the wire, or failed there for a transient reason.
 async fn perform_sync_bulk(
     provider: &mut Box<dyn StorageProvider>,
-    transfers: &[PlannedTransfer],
+    transfers: &[&PlannedTransfer],
     local_root: &str,
     remote_root: &str,
     sink: &mut dyn SyncProgressSink,
-) -> Vec<FileOutcome> {
-    use crate::providers::bulk::{BulkTransferItem, BulkTransferOutcome};
+) -> Vec<Option<FileOutcome>> {
+    use crate::transfer_bulk::{bulk_item, settle_bulk_outcome, BulkSettlement};
     let upload = transfers[0].op == "upload";
     let items: Vec<_> = transfers
         .iter()
-        .map(|t| BulkTransferItem {
-            local_path: crate::sync::join_clean(local_root, &t.rel),
-            remote_path: format!("{}/{}", remote_root.trim_end_matches('/'), t.rel),
-            size: t.total,
+        .map(|t| {
+            bulk_item(
+                &crate::sync::join_clean(local_root, &t.rel),
+                &format!("{}/{}", remote_root.trim_end_matches('/'), t.rel),
+                t.total,
+            )
         })
         .collect();
     for transfer in transfers {
@@ -700,38 +705,41 @@ async fn perform_sync_bulk(
         Err(error) => {
             return transfers
                 .iter()
-                .map(|_| FileOutcome::Failed {
-                    error: error.to_string(),
+                .map(|_| {
+                    Some(FileOutcome::Failed {
+                        error: error.to_string(),
+                    })
                 })
                 .collect()
         }
     };
     transfers
         .iter()
+        .zip(&items)
         .zip(results)
         .enumerate()
-        .map(|(index, (transfer, result))| {
+        .map(|(index, ((transfer, item), result))| {
             if let Some((sent, total)) = samples.lock().expect("bulk sync progress poisoned")[index]
             {
                 sink.on_file_progress(&transfer.rel, sent, total);
             }
-            match result {
-                BulkTransferOutcome::Completed if upload => FileOutcome::Uploaded {
+            match settle_bulk_outcome(result, &item.local_path) {
+                BulkSettlement::Done if upload => Some(FileOutcome::Uploaded {
                     bytes: transfer.total,
                     delta_stats: None,
                     fallback_reason: None,
                     ec_status: None,
-                },
-                BulkTransferOutcome::Completed => FileOutcome::Downloaded {
+                }),
+                BulkSettlement::Done => Some(FileOutcome::Downloaded {
                     bytes: transfer.total,
                     delta_stats: None,
                     fallback_reason: None,
                     ec_status: None,
-                },
-                BulkTransferOutcome::Failed(error) => FileOutcome::Failed {
-                    error: error.to_string(),
-                },
-                BulkTransferOutcome::Uncertain(error) => FileOutcome::Failed { error },
+                }),
+                BulkSettlement::SingleFile => None,
+                BulkSettlement::Failed(failure) => Some(FileOutcome::Failed {
+                    error: failure.message,
+                }),
             }
         })
         .collect()
@@ -1153,8 +1161,13 @@ async fn drive_sync_transfers_with_bulk(
     requested_policy: DeltaPolicy,
     error_correction: &crate::sync::SyncErrorCorrectionOptions,
     normal_workers: Vec<Box<dyn StorageProvider>>,
-    bulk_groups: &[std::ops::Range<usize>],
+    bulk_groups: &[Vec<usize>],
 ) -> u32 {
+    let bulk_by_first: std::collections::HashMap<usize, &Vec<usize>> = bulk_groups
+        .iter()
+        .filter(|group| group.len() > 1)
+        .map(|group| (group[0], group))
+        .collect();
     let mut workers = VecDeque::from(normal_workers);
     let mut normal_jobs = JoinSet::new();
     let mut pending_normals: VecDeque<TransferJob> = VecDeque::new();
@@ -1231,17 +1244,32 @@ async fn drive_sync_transfers_with_bulk(
                     Some(job) if matches!(job.lane, SyncTransferLane::NormalPool) && normal_jobs.is_empty() => {
                         // A native bulk consumes only the explicitly admitted
                         // range, with one primary session and one graph ack.
-                        if let Some(group) = bulk_groups.binary_search_by_key(&job.transfer_index, |g| g.start).ok().map(|index| &bulk_groups[index]).filter(|g| g.len() > 1) {
+                        if let Some(group) = bulk_by_first.get(&job.transfer_index) {
+                            let members: Vec<&PlannedTransfer> = group.iter().map(|&i| &transfers[i]).collect();
                             let primary_running = running.enter();
-                            let outcomes = perform_sync_bulk(provider, &transfers[group.clone()], local_root, remote_root, sink).await;
-                            drop(primary_running);
+                            let outcomes = perform_sync_bulk(provider, &members, local_root, remote_root, sink).await;
                             let mut attestation = SyncByteAttestation::default();
-                            for (transfer, outcome) in transfers[group.clone()].iter().zip(outcomes) {
+                            for (transfer, outcome) in members.into_iter().zip(outcomes) {
+                                let outcome = match outcome {
+                                    Some(outcome) => outcome,
+                                    None => perform_sync_transfer(
+                                        provider,
+                                        delta_batch,
+                                        transfer,
+                                        local_root,
+                                        remote_root,
+                                        download_segments,
+                                        requested_policy,
+                                        sink,
+                                        error_correction,
+                                    ).await,
+                                };
                                 let bytes = sync_outcome_bytes(&outcome);
                                 attestation.logical += bytes.logical;
                                 attestation.wire += bytes.wire;
                                 apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
                             }
+                            drop(primary_running);
                             let _ = job.ack.send(attestation);
                             continue;
                         }
@@ -2247,20 +2275,26 @@ mod tests {
         let plan = |caps: &TransferCapabilities, policy, ec| {
             sync_bulk_groups(&transfers, caps, "/tmp/local", "/remote", policy, ec)
         };
-        assert_eq!(plan(&caps, DeltaPolicy::SizeOnly, false), vec![0..2]);
-        assert_eq!(plan(&caps, DeltaPolicy::Delta, false), vec![0..1, 1..2]);
-        assert_eq!(plan(&caps, DeltaPolicy::SizeOnly, true), vec![0..1, 1..2]);
+        assert_eq!(plan(&caps, DeltaPolicy::SizeOnly, false), vec![vec![0, 1]]);
+        assert_eq!(
+            plan(&caps, DeltaPolicy::Delta, false),
+            vec![vec![0], vec![1]]
+        );
+        assert_eq!(
+            plan(&caps, DeltaPolicy::SizeOnly, true),
+            vec![vec![0], vec![1]]
+        );
         let mut safe_caps = caps.clone();
         safe_caps.resume_upload = Capability::Supported;
         assert_eq!(
             plan(&safe_caps, DeltaPolicy::SizeOnly, false),
-            vec![0..1, 1..2]
+            vec![vec![0], vec![1]]
         );
         safe_caps = caps.clone();
         safe_caps.session_pool = Capability::Supported;
         assert_eq!(
             plan(&safe_caps, DeltaPolicy::SizeOnly, false),
-            vec![0..1, 1..2]
+            vec![vec![0], vec![1]]
         );
         let mut checksummed = transfers;
         checksummed[1].expected_sha256_hex = Some("ab".repeat(32));
@@ -2273,7 +2307,7 @@ mod tests {
                 DeltaPolicy::SizeOnly,
                 false
             ),
-            vec![0..1, 1..2]
+            vec![vec![0], vec![1]]
         );
     }
 

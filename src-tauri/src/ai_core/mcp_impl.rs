@@ -279,6 +279,22 @@ impl RemoteBackend for McpRemoteBackend {
             .await
     }
 
+    async fn upload_bulk(
+        &self,
+        items: &[crate::providers::bulk::BulkTransferItem],
+    ) -> Option<Result<Vec<crate::providers::bulk::BulkTransferOutcome>, String>> {
+        // A refusal means no item reached the wire, so the single vault
+        // reload and retry stays as safe here as it is for `upload`.
+        let items = items.to_vec();
+        self.with_provider(move |p| {
+            Box::pin(async move {
+                super::remote_backend::provider_upload_bulk(p.as_mut(), &items).await
+            })
+        })
+        .await
+        .transpose()
+    }
+
     async fn delete(&self, path: &str) -> Result<(), String> {
         let path = path.to_string();
         self.with_provider(move |p| {

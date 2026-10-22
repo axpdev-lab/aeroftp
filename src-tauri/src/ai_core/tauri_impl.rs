@@ -489,6 +489,26 @@ impl RemoteBackend for TauriRemoteBackend {
         }
     }
 
+    async fn upload_bulk(
+        &self,
+        items: &[crate::providers::bulk::BulkTransferItem],
+    ) -> Option<Result<Vec<crate::providers::bulk::BulkTransferOutcome>, String>> {
+        let result = match self {
+            TauriRemoteBackend::Active { app } => {
+                // The legacy `ftp_manager` fallback has no native bulk.
+                let provider = Self::active_provider(app);
+                let mut guard = provider.lock().await;
+                let p = guard.as_mut()?;
+                super::remote_backend::provider_upload_bulk(p.as_mut(), items).await
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                let mut guard = provider.lock().await;
+                super::remote_backend::provider_upload_bulk(guard.as_mut(), items).await
+            }
+        };
+        result.map_err(|e| e.to_string()).transpose()
+    }
+
     async fn delete(&self, path: &str) -> Result<(), String> {
         // Without `recursive` a directory goes only when it is empty: a
         // provider's `delete` or `rmdir` of a folder takes its content along

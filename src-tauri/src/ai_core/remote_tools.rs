@@ -12,6 +12,13 @@ use serde_json::{json, Value};
 use crate::ai_core::remote_backend::RemoteBackend;
 use crate::ai_core::tools::{ToolCtx, ToolError};
 use crate::dedupe::{self, SimilarityMode};
+use crate::providers::bulk::{
+    remote_parent, uncertain_items, BulkTransferItem, BulkTransferOutcome,
+};
+use crate::transfer_bulk::{
+    bulk_item, group_key, plan_groups_by_key, settle_bulk_outcome, BulkSettlement,
+};
+use crate::transfer_domain::TransferEntry;
 
 const MAX_READ_PREVIEW_BYTES: usize = 1_048_576;
 const DEFAULT_PREVIEW_BYTES: usize = 5 * 1024;
@@ -771,14 +778,7 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     reject_restricted_leaf(backend.as_ref(), &remote_path).await?;
     if no_clobber && remote_path_exists(backend.as_ref(), &remote_path, "no_clobber").await? {
-        return Ok(json!({
-            "server": server,
-            "remote_path": remote_path,
-            "uploaded": false,
-            "skipped": true,
-            "reason": "exists",
-            "no_clobber": true,
-        }));
+        return Ok(no_clobber_skipped(&server, &remote_path));
     }
     if create_parents {
         ensure_remote_parents(ctx, &server, &remote_path).await?;
@@ -789,13 +789,7 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             .upload(&local_path, &remote_path)
             .await
             .map_err(ToolError::Exec)?;
-        let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
-        Ok(json!({
-            "server": server,
-            "remote_path": remote_path,
-            "uploaded": true,
-            "bytes": bytes,
-        }))
+        Ok(local_file_uploaded(&server, &local_path, &remote_path))
     } else if let Some(content) = get_str_opt(args, "content") {
         backend
             .upload_from_bytes(content.as_bytes(), &remote_path)
@@ -815,6 +809,29 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     }
 }
 
+/// The result `upload_file` reports when `no_clobber` kept a destination.
+fn no_clobber_skipped(server: &str, remote_path: &str) -> Value {
+    json!({
+        "server": server,
+        "remote_path": remote_path,
+        "uploaded": false,
+        "skipped": true,
+        "reason": "exists",
+        "no_clobber": true,
+    })
+}
+
+/// The result `upload_file` reports when a local file reached the server.
+fn local_file_uploaded(server: &str, local_path: &str, remote_path: &str) -> Value {
+    let bytes = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+    json!({
+        "server": server,
+        "remote_path": remote_path,
+        "uploaded": true,
+        "bytes": bytes,
+    })
+}
+
 async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let items = args
@@ -831,36 +848,42 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         });
     }
     let continue_on_error = get_bool_opt(args, "continue_on_error").unwrap_or(true);
-    let mut results = Vec::with_capacity(items.len());
-    let mut uploaded = 0u32;
-    let mut errors = 0u32;
+    let mut tally = UploadTally::new(items.len());
     let started = std::time::Instant::now();
-    for (idx, item) in items.iter().enumerate() {
-        // M9: Stop ends the batch after the file in flight.
-        crate::ai_core::tools::check_cancelled(ctx)?;
-        let mut item_args = item.clone();
-        let Some(obj) = item_args.as_object_mut() else {
-            return Err(ToolError::InvalidArgs {
-                tool: "aeroftp_upload_many".to_string(),
-                reason: format!("items[{idx}] must be an object"),
-            });
-        };
-        obj.insert("server".to_string(), json!(server));
-        match upload_file(ctx, &item_args).await {
-            Ok(v) => {
-                uploaded += u32::from(v.get("uploaded").and_then(|b| b.as_bool()).unwrap_or(false));
-                results.push(v);
-            }
-            Err(e) => {
-                errors += 1;
-                results.push(json!({"uploaded": false, "error": e.to_string()}));
-                if !continue_on_error {
-                    break;
-                }
+    // A native bulk sends a whole group at once, so a batch that must stop
+    // at its first failure keeps one upload per item.
+    let plan = if continue_on_error {
+        plan_bulk_uploads(ctx, &server, items).await
+    } else {
+        None
+    };
+    if let Some(plan) = plan {
+        run_bulk_uploads(ctx, &server, plan, &mut tally).await?;
+    } else {
+        for (idx, item) in items.iter().enumerate() {
+            // M9: Stop ends the batch after the file in flight.
+            crate::ai_core::tools::check_cancelled(ctx)?;
+            let mut item_args = item.clone();
+            let Some(obj) = item_args.as_object_mut() else {
+                return Err(ToolError::InvalidArgs {
+                    tool: "aeroftp_upload_many".to_string(),
+                    reason: format!("items[{idx}] must be an object"),
+                });
+            };
+            obj.insert("server".to_string(), json!(server));
+            if !tally.record(idx, upload_file(ctx, &item_args).await) && !continue_on_error {
+                break;
             }
         }
     }
     let elapsed_secs = started.elapsed().as_secs();
+    let UploadTally {
+        results,
+        uploaded,
+        errors,
+        bulk_groups,
+    } = tally;
+    let results: Vec<Value> = results.into_iter().flatten().collect();
     Ok(json!({
         "server": server,
         "results": results,
@@ -869,6 +892,7 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             "processed": results.len(),
             "uploaded": uploaded,
             "errors": errors,
+            "bulk_groups": bulk_groups,
             "totals": {
                 "requested": items.len(),
                 "succeeded": uploaded,
@@ -878,6 +902,417 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             },
         },
     }))
+}
+
+/// Per-item results of `upload_many`, in item order whatever order the
+/// uploads ran in. A slot stays empty only for an item never reached.
+struct UploadTally {
+    results: Vec<Option<Value>>,
+    uploaded: u32,
+    errors: u32,
+    /// Native bulk calls made.
+    bulk_groups: u32,
+}
+
+impl UploadTally {
+    fn new(items: usize) -> Self {
+        Self {
+            results: vec![None; items],
+            uploaded: 0,
+            errors: 0,
+            bulk_groups: 0,
+        }
+    }
+
+    /// Records one item as `upload_file` reports it; false when it failed.
+    fn record(&mut self, index: usize, outcome: Result<Value, ToolError>) -> bool {
+        match outcome {
+            Ok(v) => {
+                self.uploaded +=
+                    u32::from(v.get("uploaded").and_then(|b| b.as_bool()).unwrap_or(false));
+                self.results[index] = Some(v);
+                true
+            }
+            Err(e) => {
+                self.fail(index, e.to_string());
+                false
+            }
+        }
+    }
+
+    /// Records a failure whose message is already rendered.
+    fn fail(&mut self, index: usize, error: String) {
+        self.errors += 1;
+        self.results[index] = Some(json!({"uploaded": false, "error": error}));
+    }
+}
+
+/// One `upload_many` item that can travel in a native bulk: a regular local
+/// file that passed every check `upload_file` makes on it before it writes.
+struct BulkCandidate {
+    local_path: String,
+    remote_path: String,
+    size: u64,
+    no_clobber: bool,
+    create_parents: bool,
+}
+
+struct BulkUploadPlan {
+    backend: std::sync::Arc<dyn RemoteBackend>,
+    /// Every item with `server` set, as `upload_file` receives it.
+    item_args: Vec<Value>,
+    candidates: Vec<Option<BulkCandidate>>,
+    /// Item indices in the order they run (`plan_groups_by_key`).
+    groups: Vec<Vec<usize>>,
+}
+
+/// `None` keeps `upload_many` on one `upload_file` per item, exactly as
+/// before: fewer than two items, an item that is not an object (refused
+/// where the loop reaches it), a backend without a native bulk, or no
+/// provider to judge names against.
+async fn plan_bulk_uploads(
+    ctx: &dyn ToolCtx,
+    server: &str,
+    items: &[Value],
+) -> Option<BulkUploadPlan> {
+    if items.len() < 2 {
+        return None;
+    }
+    let item_args = items
+        .iter()
+        .map(|item| {
+            let mut item_args = item.clone();
+            item_args
+                .as_object_mut()?
+                .insert("server".to_string(), json!(server));
+            Some(item_args)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let backend = ctx.remote_backend(server).await.ok()?;
+    // An empty bulk only asks whether the provider has one.
+    if !matches!(backend.upload_bulk(&[]).await, Some(Ok(_))) {
+        return None;
+    }
+    let provider = backend.provider_type().await?;
+    let candidates: Vec<_> = item_args
+        .iter()
+        .map(|args| bulk_candidate(args, provider))
+        .collect();
+    let entries: Vec<_> = item_args
+        .iter()
+        .zip(&candidates)
+        .enumerate()
+        .map(|(index, (args, candidate))| TransferEntry {
+            id: index.to_string(),
+            display_name: String::new(),
+            local_path: get_str_opt(args, "local_path").unwrap_or_default(),
+            remote_path: get_str_opt(args, "remote_path").unwrap_or_default(),
+            size: candidate.as_ref().map_or(0, |c| c.size),
+            modified: None,
+        })
+        .collect();
+    // Every item enters the planner, so one that keeps `upload_file` still
+    // orders the writes around it.
+    let groups = plan_groups_by_key(&entries, |entry| {
+        let index: usize = entry.id.parse().ok()?;
+        candidates[index].as_ref()?;
+        group_key(entry, true)
+    });
+    Some(BulkUploadPlan {
+        backend,
+        item_args,
+        candidates,
+        groups,
+    })
+}
+
+fn bulk_candidate(args: &Value, provider: crate::providers::ProviderType) -> Option<BulkCandidate> {
+    let remote_path = get_str_opt(args, "remote_path")?;
+    let local_path = get_str_opt(args, "local_path")?;
+    validate_remote_path(&remote_path, "remote_path").ok()?;
+    crate::restricted_chars::validate_path(provider, &remote_path).ok()?;
+    validate_local_path(&local_path, "local_path").ok()?;
+    // A bulk carries files only: anything else keeps `upload_file`, and its
+    // error with it.
+    let size = std::fs::metadata(&local_path)
+        .ok()
+        .filter(|m| m.is_file())?
+        .len();
+    Some(BulkCandidate {
+        no_clobber: get_bool_opt(args, "no_clobber").unwrap_or(false),
+        create_parents: get_bool_opt(args, "create_parents").unwrap_or(false),
+        local_path,
+        remote_path,
+        size,
+    })
+}
+
+/// Runs the planned groups in order. A group of one keeps `upload_file`;
+/// a larger one settles `upload_file`'s checks once and makes one native
+/// call, and an item the bulk did not finish safely gets `upload_file` once.
+async fn run_bulk_uploads(
+    ctx: &dyn ToolCtx,
+    server: &str,
+    plan: BulkUploadPlan,
+    tally: &mut UploadTally,
+) -> Result<(), ToolError> {
+    let BulkUploadPlan {
+        backend,
+        item_args,
+        candidates,
+        groups,
+    } = plan;
+    let mut parents_ready = std::collections::HashMap::new();
+    let mut native = true;
+    for group in groups {
+        // M9: Stop ends the batch after the group in flight.
+        crate::ai_core::tools::check_cancelled(ctx)?;
+        let members = if native {
+            bulk_members(&group, &candidates)
+        } else {
+            None
+        };
+        let Some((parent, members)) = members else {
+            upload_each(ctx, &item_args, &group, tally).await?;
+            continue;
+        };
+        let pending = bulk_preconditions(
+            ctx,
+            backend.as_ref(),
+            server,
+            &parent,
+            members,
+            &mut parents_ready,
+            tally,
+        )
+        .await;
+        if pending.len() < 2 {
+            // Its checks are settled: only the write is left.
+            for (index, member) in pending {
+                crate::ai_core::tools::check_cancelled(ctx)?;
+                let outcome = backend
+                    .upload(&member.local_path, &member.remote_path)
+                    .await
+                    .map(|()| local_file_uploaded(server, &member.local_path, &member.remote_path))
+                    .map_err(ToolError::Exec);
+                tally.record(index, outcome);
+            }
+            continue;
+        }
+        let items: Vec<BulkTransferItem> = pending
+            .iter()
+            .map(|(_, m)| bulk_item(&m.local_path, &m.remote_path, m.size))
+            .collect();
+        // A bulk carries the whole group, so Stop does not wait for it: the
+        // provider stops its own wire work when the call is dropped, and
+        // what already landed stays.
+        let answer = match ctx.cancel_token() {
+            Some(token) => tokio::select! {
+                biased;
+                _ = token.cancelled() => return Err(ToolError::Cancelled),
+                answer = backend.upload_bulk(&items) => answer,
+            },
+            None => backend.upload_bulk(&items).await,
+        };
+        let Some(answer) = answer else {
+            // The backend stopped offering a bulk (the GUI's active
+            // connection can change under a batch): one `upload_file` per
+            // item from here on, each with its own checks again.
+            native = false;
+            let indices: Vec<usize> = pending.iter().map(|(index, _)| *index).collect();
+            upload_each(ctx, &item_args, &indices, tally).await?;
+            continue;
+        };
+        tally.bulk_groups += 1;
+        let outcomes = match answer {
+            Ok(outcomes) if outcomes.len() == items.len() => outcomes,
+            Ok(_) => uncertain_items(
+                items.len(),
+                "Bulk did not return complete outcomes; inspect the destination before retrying",
+            ),
+            Err(error) => {
+                for (index, _) in pending {
+                    tally.record(index, Err(ToolError::Exec(error.clone())));
+                }
+                continue;
+            }
+        };
+        let mut single_file = Vec::new();
+        for ((index, member), outcome) in pending.into_iter().zip(outcomes) {
+            // The settlement classifies a failure; the provider's own words
+            // say what it was. MCP sanitizes every provider error it hands an
+            // agent, and a bulk outcome arrives raw, so it is sanitized here.
+            let detail = match &outcome {
+                BulkTransferOutcome::Failed(error) => Some(error.to_string()),
+                _ => None,
+            };
+            match settle_bulk_outcome(outcome, &member.local_path) {
+                BulkSettlement::Done => {
+                    tally.record(
+                        index,
+                        Ok(local_file_uploaded(
+                            server,
+                            &member.local_path,
+                            &member.remote_path,
+                        )),
+                    );
+                }
+                BulkSettlement::SingleFile => single_file.push(index),
+                BulkSettlement::Failed(failure) => {
+                    let message = detail.unwrap_or(failure.message);
+                    tally.fail(
+                        index,
+                        ToolError::Exec(crate::providers::sanitize_api_error(&message)).to_string(),
+                    );
+                }
+            }
+        }
+        // Never reached the wire, or failed for a transient reason: neither
+        // can duplicate a committed write.
+        upload_each(ctx, &item_args, &single_file, tally).await?;
+    }
+    Ok(())
+}
+
+/// One `upload_file` per item: the established single-file path.
+async fn upload_each(
+    ctx: &dyn ToolCtx,
+    item_args: &[Value],
+    indices: &[usize],
+    tally: &mut UploadTally,
+) -> Result<(), ToolError> {
+    for &index in indices {
+        crate::ai_core::tools::check_cancelled(ctx)?;
+        tally.record(index, upload_file(ctx, &item_args[index]).await);
+    }
+    Ok(())
+}
+
+/// The members of a planned group that travels as one bulk, with the remote
+/// parent they share. `None` for a group of one, and for any group the
+/// planner should not have formed, which then keeps `upload_file`.
+fn bulk_members<'a>(
+    group: &[usize],
+    candidates: &'a [Option<BulkCandidate>],
+) -> Option<(String, Vec<(usize, &'a BulkCandidate)>)> {
+    if group.len() < 2 {
+        return None;
+    }
+    let members = group
+        .iter()
+        .map(|&index| Some((index, candidates.get(index)?.as_ref()?)))
+        .collect::<Option<Vec<_>>>()?;
+    let parent = remote_parent(&members[0].1.remote_path)?;
+    members
+        .iter()
+        .all(|(_, m)| remote_parent(&m.remote_path) == Some(parent))
+        .then(|| (parent.to_string(), members))
+}
+
+/// What `upload_file` checks before it writes, settled once for a group
+/// that shares `parent`: one listing answers every `no_clobber` member and
+/// one `ensure_remote_parents` serves every `create_parents` member, as it
+/// does for every later group under the same parent. Skipped and failed
+/// members are recorded; the rest come back in order.
+async fn bulk_preconditions<'a>(
+    ctx: &dyn ToolCtx,
+    backend: &dyn RemoteBackend,
+    server: &str,
+    parent: &str,
+    members: Vec<(usize, &'a BulkCandidate)>,
+    parents_ready: &mut std::collections::HashMap<String, Result<(), String>>,
+    tally: &mut UploadTally,
+) -> Vec<(usize, &'a BulkCandidate)> {
+    let listing = if members.iter().any(|(_, m)| m.no_clobber) {
+        Some(backend.list(parent).await)
+    } else {
+        None
+    };
+    let mut pending = Vec::with_capacity(members.len());
+    for (index, member) in members {
+        if member.no_clobber {
+            let name = member.remote_path.rsplit('/').next().unwrap_or("");
+            let listed = match &listing {
+                Some(Ok(entries)) => listed_name(entries, name),
+                // Nothing lives under a folder that is not there.
+                Some(Err(e))
+                    if crate::providers::types::message_names_a_missing_path_for(e, parent) =>
+                {
+                    Listed::Absent
+                }
+                _ => Listed::Unsure,
+            };
+            let exists = match listed {
+                Listed::Present => true,
+                Listed::Absent => false,
+                Listed::Unsure => {
+                    match remote_path_exists(backend, &member.remote_path, "no_clobber").await {
+                        Ok(exists) => exists,
+                        Err(e) => {
+                            tally.record(index, Err(e));
+                            continue;
+                        }
+                    }
+                }
+            };
+            if exists {
+                tally.record(index, Ok(no_clobber_skipped(server, &member.remote_path)));
+                continue;
+            }
+        }
+        pending.push((index, member));
+    }
+    let first = pending
+        .iter()
+        .find(|(_, m)| m.create_parents)
+        .map(|(_, m)| *m);
+    if let Some(first) = first {
+        let ready = match parents_ready.get(parent) {
+            Some(ready) => ready.clone(),
+            None => {
+                let ready = ensure_remote_parents(ctx, server, &first.remote_path)
+                    .await
+                    .map_err(|e| e.to_string());
+                parents_ready.insert(parent.to_string(), ready.clone());
+                ready
+            }
+        };
+        if let Err(error) = ready {
+            pending.retain(|(index, m)| {
+                if m.create_parents {
+                    tally.fail(*index, error.clone());
+                }
+                !m.create_parents
+            });
+        }
+    }
+    pending
+}
+
+/// What one listing of a folder says about a name in it.
+enum Listed {
+    Present,
+    Absent,
+    /// The listing cannot settle it: stat decides, as in `upload_file`.
+    Unsure,
+}
+
+fn listed_name(entries: &[crate::providers::RemoteEntry], name: &str) -> Listed {
+    use unicode_normalization::UnicodeNormalization;
+    let names = || entries.iter().map(|e| e.name.trim_end_matches('/'));
+    if names().any(|listed| listed == name) {
+        return Listed::Present;
+    }
+    // A listing can leave out what stat finds (FTP `LIST` hides dot names),
+    // and a provider can match a name across case or Unicode form: only a
+    // clear absence is taken from the listing.
+    let fold = |s: &str| s.nfc().collect::<String>().to_lowercase();
+    let folded = fold(name);
+    if name.starts_with('.') || names().any(|listed| fold(listed) == folded) {
+        Listed::Unsure
+    } else {
+        Listed::Absent
+    }
 }
 
 async fn download_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
@@ -4154,6 +4589,23 @@ mod tests {
         /// cancel token from here, the way Stop lands while a file is in
         /// flight.
         on_upload: Option<Arc<dyn Fn() + Send + Sync>>,
+        /// Every path `list` and `stat` were asked, so a test can count the
+        /// probes a batch made.
+        list_calls: Mutex<Vec<String>>,
+        stat_calls: Mutex<Vec<String>>,
+        /// When set, `upload` lands and records its remote path in
+        /// `local_uploads` instead of failing as unused.
+        upload_succeeds: bool,
+        local_uploads: Mutex<Vec<String>>,
+        /// The outcome a native bulk reports for each item. `None` is a
+        /// backend without one, as the trait default.
+        #[allow(clippy::type_complexity)]
+        bulk_outcome: Option<Arc<dyn Fn(&BulkTransferItem) -> BulkTransferOutcome + Send + Sync>>,
+        /// Remote paths of every bulk that carried items, in call order.
+        bulk_calls: Mutex<Vec<Vec<String>>>,
+        /// When set, a bulk never returns once it has drawn its outcomes,
+        /// so a test can stop the batch while the bulk is in flight.
+        bulk_hangs: bool,
     }
 
     impl FakeBackend {
@@ -4203,6 +4655,13 @@ mod tests {
                 chmod_supported: false,
                 chmod_fails_with: None,
                 on_upload: None,
+                list_calls: Mutex::new(Vec::new()),
+                stat_calls: Mutex::new(Vec::new()),
+                upload_succeeds: false,
+                local_uploads: Mutex::new(Vec::new()),
+                bulk_outcome: None,
+                bulk_calls: Mutex::new(Vec::new()),
+                bulk_hangs: false,
             }
         }
 
@@ -4226,12 +4685,14 @@ mod tests {
             self.provider_type
         }
         async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
+            self.list_calls.lock().unwrap().push(path.to_string());
             self.tree
                 .get(path)
                 .cloned()
                 .ok_or_else(|| format!("not found: {path}"))
         }
         async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
+            self.stat_calls.lock().unwrap().push(path.to_string());
             if let Some(msg) = &self.stat_fails_with {
                 return Err(msg.clone());
             }
@@ -4318,11 +4779,33 @@ mod tests {
         async fn download(&self, _remote: &str, _local: &str) -> Result<(), String> {
             Err("unused".into())
         }
-        async fn upload(&self, _local: &str, _remote: &str) -> Result<(), String> {
+        async fn upload(&self, _local: &str, remote: &str) -> Result<(), String> {
             if let Some(hook) = &self.on_upload {
                 hook();
             }
+            if self.upload_succeeds {
+                self.local_uploads.lock().unwrap().push(remote.to_string());
+                return Ok(());
+            }
             Err("unused".into())
+        }
+        async fn upload_bulk(
+            &self,
+            items: &[BulkTransferItem],
+        ) -> Option<Result<Vec<BulkTransferOutcome>, String>> {
+            let outcome = self.bulk_outcome.as_ref()?;
+            if items.is_empty() {
+                return Some(Ok(Vec::new()));
+            }
+            self.bulk_calls
+                .lock()
+                .unwrap()
+                .push(items.iter().map(|i| i.remote_path.clone()).collect());
+            let outcomes = items.iter().map(outcome.as_ref()).collect();
+            if self.bulk_hangs {
+                std::future::pending::<()>().await;
+            }
+            Some(Ok(outcomes))
         }
         async fn delete(&self, path: &str) -> Result<(), String> {
             if let Some(msg) = &self.delete_fails_with {
@@ -4500,6 +4983,262 @@ mod tests {
         let plain = test_ctx(Arc::clone(&backend));
         let report = upload_many(&plain, &args).await.unwrap();
         assert_eq!(report["summary"]["processed"], 2);
+    }
+
+    /// Local files named as their remote leaves under `/root`, the shape a
+    /// native bulk accepts, and the `upload_many` items that send them.
+    fn bulk_fixture(names: &[&str]) -> (tempfile::TempDir, Vec<Value>) {
+        let dir = tempfile::tempdir().unwrap();
+        let items = names
+            .iter()
+            .map(|name| {
+                let local = dir.path().join(name);
+                std::fs::write(&local, name.as_bytes()).unwrap();
+                json!({
+                    "local_path": local.to_string_lossy(),
+                    "remote_path": format!("/root/{name}"),
+                })
+            })
+            .collect();
+        (dir, items)
+    }
+
+    fn bulk_backend(
+        outcome: impl Fn(&BulkTransferItem) -> BulkTransferOutcome + Send + Sync + 'static,
+    ) -> FakeBackend {
+        FakeBackend {
+            upload_succeeds: true,
+            bulk_outcome: Some(Arc::new(outcome)),
+            ..FakeBackend::sample()
+        }
+    }
+
+    /// Proton Drive in CLI mode launched one `proton-drive` process per
+    /// `aeroftp_upload_many` item, 1 to 3 s each. Plain files under one
+    /// folder now make one native call, and every item keeps its own result,
+    /// in order, in the shape `upload_file` reports.
+    #[tokio::test]
+    async fn upload_many_sends_one_folder_as_one_native_bulk() {
+        let names = ["n0.txt", "n1.txt", "n2.txt", "n3.txt", "n4.txt"];
+        let (_dir, items) = bulk_fixture(&names);
+        let fake = Arc::new(bulk_backend(|_| BulkTransferOutcome::Completed));
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let report = upload_many(&ctx, &json!({"server": "srv", "items": items}))
+            .await
+            .unwrap();
+        let remote: Vec<String> = names.iter().map(|n| format!("/root/{n}")).collect();
+        assert_eq!(*fake.bulk_calls.lock().unwrap(), vec![remote.clone()]);
+        assert!(fake.local_uploads.lock().unwrap().is_empty());
+        let results = report["results"].as_array().unwrap();
+        assert_eq!(results.len(), names.len());
+        for (result, (path, name)) in results.iter().zip(remote.iter().zip(names)) {
+            assert_eq!(
+                *result,
+                json!({"server": "srv", "remote_path": path, "uploaded": true, "bytes": name.len()})
+            );
+        }
+        let summary = &report["summary"];
+        assert_eq!(summary["processed"], 5);
+        assert_eq!(summary["uploaded"], 5);
+        assert_eq!(summary["errors"], 0);
+        assert_eq!(summary["bulk_groups"], 1);
+    }
+
+    /// An item the bulk never handed to the wire, or one it lost to a
+    /// transient failure, gets one ordinary upload; a permanent failure is
+    /// reported with the provider's words and not retried.
+    #[tokio::test]
+    async fn upload_many_runs_the_single_file_path_once_for_unsent_and_transient_items() {
+        let names = ["done.txt", "unsent.txt", "timeout.txt", "denied.txt"];
+        let (_dir, items) = bulk_fixture(&names);
+        let fake = Arc::new(bulk_backend(|item| match item.remote_path.as_str() {
+            "/root/unsent.txt" => BulkTransferOutcome::NotAttempted("not launched".into()),
+            "/root/timeout.txt" => {
+                BulkTransferOutcome::Failed(crate::providers::ProviderError::Timeout)
+            }
+            "/root/denied.txt" => BulkTransferOutcome::Failed(
+                crate::providers::ProviderError::PermissionDenied("read-only share".into()),
+            ),
+            _ => BulkTransferOutcome::Completed,
+        }));
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let report = upload_many(&ctx, &json!({"server": "srv", "items": items}))
+            .await
+            .unwrap();
+        assert_eq!(fake.bulk_calls.lock().unwrap().len(), 1);
+        assert_eq!(
+            *fake.local_uploads.lock().unwrap(),
+            vec!["/root/unsent.txt", "/root/timeout.txt"]
+        );
+        let results = report["results"].as_array().unwrap();
+        for (result, name) in results.iter().zip(&names[..3]) {
+            assert_eq!(result["uploaded"], true, "{name}: {result}");
+            assert_eq!(result["remote_path"], format!("/root/{name}"));
+        }
+        assert_eq!(results[3]["uploaded"], false);
+        let error = results[3]["error"].as_str().unwrap();
+        assert!(error.contains("read-only share"), "{error}");
+        assert_eq!(report["summary"]["uploaded"], 3);
+        assert_eq!(report["summary"]["errors"], 1);
+    }
+
+    /// An uncertain item may already be on the server: it is reported and
+    /// never uploaded again, which could add a second revision.
+    #[tokio::test]
+    async fn upload_many_never_retries_an_uncertain_bulk_item() {
+        let names = ["u1.txt", "u2.txt", "u3.txt"];
+        let (_dir, items) = bulk_fixture(&names);
+        let fake = Arc::new(bulk_backend(|item| {
+            if item.remote_path == "/root/u2.txt" {
+                BulkTransferOutcome::Uncertain("process exited mid-transfer".into())
+            } else {
+                BulkTransferOutcome::Completed
+            }
+        }));
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let report = upload_many(&ctx, &json!({"server": "srv", "items": items}))
+            .await
+            .unwrap();
+        assert!(fake.local_uploads.lock().unwrap().is_empty());
+        assert_eq!(fake.bulk_calls.lock().unwrap().len(), 1);
+        let results = report["results"].as_array().unwrap();
+        assert_eq!(
+            results[1],
+            json!({"uploaded": false, "error": "execution failed: process exited mid-transfer"})
+        );
+        assert_eq!(results[0]["uploaded"], true);
+        assert_eq!(results[2]["uploaded"], true);
+        assert_eq!(report["summary"]["errors"], 1);
+    }
+
+    /// `no_clobber` across one folder: a single listing answers every item
+    /// instead of a stat each, and the existing file is skipped with exactly
+    /// the result `upload_file` gives it.
+    #[tokio::test]
+    async fn upload_many_no_clobber_lists_the_folder_once() {
+        // `/root/a.txt` exists in the sample tree.
+        let names = ["a.txt", "fresh1.txt", "fresh2.txt"];
+        let (_dir, mut items) = bulk_fixture(&names);
+        for item in &mut items {
+            item["no_clobber"] = json!(true);
+        }
+        let fake = Arc::new(bulk_backend(|_| BulkTransferOutcome::Completed));
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let report = upload_many(&ctx, &json!({"server": "srv", "items": items}))
+            .await
+            .unwrap();
+        assert_eq!(*fake.list_calls.lock().unwrap(), vec!["/root"]);
+        assert!(fake.stat_calls.lock().unwrap().is_empty());
+        assert_eq!(
+            *fake.bulk_calls.lock().unwrap(),
+            vec![vec!["/root/fresh1.txt", "/root/fresh2.txt"]]
+        );
+        let mut single = items[0].clone();
+        single["server"] = json!("srv");
+        let expected = upload_file(&test_ctx(Arc::new(FakeBackend::sample())), &single)
+            .await
+            .unwrap();
+        assert_eq!(expected["skipped"], true);
+        assert_eq!(report["results"][0], expected);
+        assert_eq!(report["results"][1]["uploaded"], true);
+        assert_eq!(report["results"][2]["uploaded"], true);
+        assert_eq!(report["summary"]["uploaded"], 2);
+        assert_eq!(report["summary"]["errors"], 0);
+    }
+
+    /// A backend without a native bulk keeps one `upload_file` per item,
+    /// probe for probe: a stat per `no_clobber` item and no listing.
+    #[tokio::test]
+    async fn upload_many_without_a_native_bulk_keeps_one_upload_per_item() {
+        let names = ["a.txt", "fresh1.txt", "fresh2.txt"];
+        let (_dir, mut items) = bulk_fixture(&names);
+        for item in &mut items {
+            item["no_clobber"] = json!(true);
+        }
+        let per_item = || FakeBackend {
+            upload_succeeds: true,
+            ..FakeBackend::sample()
+        };
+        let fake = Arc::new(per_item());
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let report = upload_many(&ctx, &json!({"server": "srv", "items": items}))
+            .await
+            .unwrap();
+        assert!(fake.list_calls.lock().unwrap().is_empty());
+        assert_eq!(
+            *fake.stat_calls.lock().unwrap(),
+            vec!["/root/a.txt", "/root/fresh1.txt", "/root/fresh2.txt"]
+        );
+        assert_eq!(
+            *fake.local_uploads.lock().unwrap(),
+            vec!["/root/fresh1.txt", "/root/fresh2.txt"]
+        );
+        assert_eq!(report["summary"]["bulk_groups"], 0);
+        for (index, item) in items.iter().enumerate() {
+            let mut single = item.clone();
+            single["server"] = json!("srv");
+            let alone = upload_file(&test_ctx(Arc::new(per_item())), &single)
+                .await
+                .unwrap();
+            assert_eq!(report["results"][index], alone);
+        }
+    }
+
+    /// A batch that must stop at its first failure cannot send a group at
+    /// once: it keeps one upload per item even where a bulk is offered.
+    #[tokio::test]
+    async fn upload_many_that_stops_at_the_first_failure_keeps_one_upload_per_item() {
+        let names = ["c1.txt", "c2.txt"];
+        let (_dir, items) = bulk_fixture(&names);
+        let fake = Arc::new(bulk_backend(|_| BulkTransferOutcome::Completed));
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let report = upload_many(
+            &ctx,
+            &json!({"server": "srv", "items": items, "continue_on_error": false}),
+        )
+        .await
+        .unwrap();
+        assert!(fake.bulk_calls.lock().unwrap().is_empty());
+        assert_eq!(
+            *fake.local_uploads.lock().unwrap(),
+            vec!["/root/c1.txt", "/root/c2.txt"]
+        );
+        assert_eq!(report["summary"]["uploaded"], 2);
+    }
+
+    /// M9 for a bulk: one call carries the whole group, so Stop pressed
+    /// while it is in flight ends the batch without waiting for the group.
+    #[tokio::test]
+    async fn stop_does_not_wait_for_a_bulk_in_flight() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let flip = token.clone();
+        let (_dir, items) = bulk_fixture(&["s1.txt", "s2.txt"]);
+        let fake = Arc::new(FakeBackend {
+            bulk_hangs: true,
+            ..bulk_backend(move |_| {
+                flip.cancel();
+                BulkTransferOutcome::Completed
+            })
+        });
+        let ctx = TestCtx {
+            cancel: Some(token),
+            ..test_ctx(Arc::clone(&fake))
+        };
+
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            upload_many(&ctx, &json!({"server": "srv", "items": items})),
+        )
+        .await
+        .expect("Stop must not wait for the bulk to return");
+        assert!(matches!(outcome, Err(ToolError::Cancelled)), "{outcome:?}");
+        assert_eq!(fake.bulk_calls.lock().unwrap().len(), 1);
     }
 
     fn test_ctx(backend: Arc<FakeBackend>) -> TestCtx {

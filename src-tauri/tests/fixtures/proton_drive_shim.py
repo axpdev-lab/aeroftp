@@ -91,6 +91,12 @@ if verb == "filesystem" and sub in ("upload", "download") and failing.exists():
     emit_transfer_failure(json.loads(failing.read_text()))
 bulk_summary_file = pathlib.Path(HERE, "bulk-summary.json")
 bulk_summary = json.loads(bulk_summary_file.read_text()) if bulk_summary_file.exists() else None
+# The same summary for the first transfer only: the item retried afterwards on
+# the single-file path then succeeds.
+bulk_summary_once = pathlib.Path(HERE, "bulk-summary-once.json")
+if verb == "filesystem" and sub in ("upload", "download") and bulk_summary_once.exists():
+    bulk_summary = json.loads(bulk_summary_once.read_text())
+    bulk_summary_once.unlink()
 if verb == "filesystem" and sub == "download":
     dest = pathlib.Path(args[-1])
     failed_names = {item["name"] for item in (bulk_summary or {}).get("failures", [])}
@@ -110,7 +116,10 @@ if verb == "filesystem" and sub == "download":
         target.write_text("REMOTE-CONTENT")
     if bulk_summary is not None:
         print(json.dumps(bulk_summary))
-        sys.exit(1 if bulk_summary.get("failedItems", 0) else 0)
+        # transfer-exit-1: a run that stopped resolving its sources, zero
+        # counters and exit 1 (commandFileSystemDownload.ts).
+        failed = bulk_summary.get("failedItems", 0) or pathlib.Path(HERE, "transfer-exit-1").exists()
+        sys.exit(1 if failed else 0)
     print(json.dumps({"transferredItems": len(positional) - 1, "transferredBytes": 0,
                       "skippedItems": 0, "failedItems": 0, "failures": []}))
     sys.exit(0)

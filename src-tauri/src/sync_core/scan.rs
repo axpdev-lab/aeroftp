@@ -847,7 +847,14 @@ pub fn scan_local_tree_checked(
         .max_depth(depth)
         .into_iter()
         // An excluded directory is not descended into: its subtree is excluded.
-        .filter_entry(|e| e.depth() == 0 || !excludes.is_excluded(&relative_of(e.path())))
+        // A download's private staging folder is never content.
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !(excludes.is_excluded(&relative_of(e.path()))
+                    || e.file_name()
+                        .to_str()
+                        .is_some_and(crate::providers::atomic_write::is_download_staging_dir_name))
+        })
     {
         let walk_entry = match result {
             Ok(e) => e,
@@ -2448,6 +2455,22 @@ pub(crate) mod tests {
         let entries = scan_local_tree(root.to_str().unwrap(), &opts);
         let paths: Vec<String> = entries.iter().map(|e| e.rel_path.clone()).collect();
         assert_eq!(paths, vec!["keep.log"]);
+    }
+
+    /// A bulk download stages its files in the destination folder; a scan
+    /// running beside it (AeroCloud, a second sync) must not upload them.
+    #[test]
+    fn scan_local_tree_never_reports_a_download_staging_folder() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("keep.bin"), b"x").unwrap();
+        for staging in [".aeroftp-proton-bulk-Ab12Cd", ".aeroftp-proton-dl-0f9e"] {
+            fs::create_dir(root.join(staging)).unwrap();
+            fs::write(root.join(staging).join("keep.bin"), b"partial").unwrap();
+        }
+        let entries = scan_local_tree(root.to_str().unwrap(), &ScanOptions::default());
+        let paths: Vec<String> = entries.iter().map(|e| e.rel_path.clone()).collect();
+        assert_eq!(paths, vec!["keep.bin"]);
     }
 
     #[test]

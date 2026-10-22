@@ -6,7 +6,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use crate::providers::{FileVersion, ProviderType, RemoteEntry, TrashEntry};
+use crate::providers::bulk::{BulkTransferItem, BulkTransferOutcome};
+use crate::providers::{
+    FileVersion, ProviderError, ProviderType, RemoteEntry, StorageProvider, TrashEntry,
+};
 use crate::transfer_dag::TransferCapabilities;
 use async_trait::async_trait;
 
@@ -67,6 +70,19 @@ pub trait RemoteBackend: Send + Sync {
 
     /// Upload a local file to remote path.
     async fn upload(&self, local: &str, remote: &str) -> Result<(), String>;
+
+    /// Upload several local files through the provider's native bulk.
+    /// `None` when this backend has no native bulk: the caller keeps its
+    /// per-file uploads. `Some(Err)` when the bulk was refused before any
+    /// item reached the wire. Otherwise one positional outcome per item; an
+    /// uncertain one may already be on the server and is never retried. An
+    /// empty `items` only asks the question and reaches no wire.
+    async fn upload_bulk(
+        &self,
+        _items: &[BulkTransferItem],
+    ) -> Option<Result<Vec<BulkTransferOutcome>, String>> {
+        None
+    }
 
     /// Delete a remote file, or an EMPTY directory. A non-empty directory
     /// must fail here: recursion is opt-in through `delete_recursive`.
@@ -177,4 +193,20 @@ pub trait RemoteBackend: Send + Sync {
     ) -> Result<(u64, u64), String> {
         Err("trash operations are not available on this backend".to_string())
     }
+}
+
+/// The provider side of [`RemoteBackend::upload_bulk`] for a backend that
+/// holds a `StorageProvider`: `Ok(None)` when the provider has no native
+/// bulk, and an empty probe answers without calling it.
+pub(crate) async fn provider_upload_bulk(
+    provider: &mut dyn StorageProvider,
+    items: &[BulkTransferItem],
+) -> Result<Option<Vec<BulkTransferOutcome>>, ProviderError> {
+    if !provider.supports_bulk_upload() {
+        return Ok(None);
+    }
+    if items.is_empty() {
+        return Ok(Some(Vec::new()));
+    }
+    provider.upload_bulk(items, None).await.map(Some)
 }
