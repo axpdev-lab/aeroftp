@@ -662,10 +662,19 @@ mod tests {
             })
             .collect();
         let groups = plan_groups(&files, &e);
-        // 293 command-line bytes each: all 256 fit 96 KiB; Windows keeps
-        // its 24 KiB line (80 per group). v4.2.4 made groups of 75.
-        let expected = if cfg!(windows) { 80 } else { 256 };
-        assert_eq!(groups[0].len(), expected);
+        // The budget rule written out: the longer of the absolute local path
+        // and the remote path (at least 64 bytes), plus 3. On Windows the
+        // absolute spelling gains the drive ("D:"), so it is measured, not
+        // assumed: 295 bytes there, 79 per 24 KiB group.
+        let absolute = absolute_local_path(&files[0].local_path).unwrap();
+        let per_file = absolute.len().max(files[0].remote_path.len().max(64)) + 3;
+        let fit = (MAX_BULK_PATH_BYTES - BULK_COMMAND_RESERVE_BYTES) / per_file;
+        assert_eq!(groups[0].len(), fit.min(MAX_BULK_FILES));
+        // Outside Windows all 256 fit one 96 KiB line; v4.2.4 made groups
+        // of 75.
+        if !cfg!(windows) {
+            assert_eq!(groups[0].len(), 256);
+        }
     }
 
     #[test]
