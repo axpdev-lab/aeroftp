@@ -29,12 +29,15 @@ runs:
       run: '"$GITHUB_ACTION_PATH/apt-install.sh" start "${{ inputs.cache-prefix }}"'
 
     # Keys are `<prefix>complete-<fp>` or `<prefix>partial-<fp>` (see finish),
-    # so there is never an exact hit and `key` is a placeholder. Each
-    # restore-keys line takes the newest entry it matches, in order: the
-    # newest complete set first, and a partial only when no complete one is
-    # visible to this ref. A slow cache service must not eat the apt budget:
-    # 2 minutes per segment.
-    - name: Restore apt archives
+    # so there is never an exact hit and `key` is a placeholder. Two lookups,
+    # not two restore-keys lines: GitHub tries every restore key on the
+    # current ref before it moves to the default branch, so with one lookup a
+    # PR's own partial set would win over a complete set saved on main. The
+    # second lookup runs only when no complete set is visible from either
+    # ref. A slow cache service must not eat the apt budget: 2 minutes per
+    # segment.
+    - name: Restore complete apt archives
+      id: restore-complete
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: '2'
@@ -43,9 +46,19 @@ runs:
           ~/apt-archives/*.deb
           ~/apt-archives/partial/*.deb
         key: ${{ steps.start.outputs.prefix }}restore
-        restore-keys: |
-          ${{ steps.start.outputs.prefix }}complete-
-          ${{ steps.start.outputs.prefix }}
+        restore-keys: ${{ steps.start.outputs.prefix }}complete-
+
+    - name: Restore partial apt archives
+      if: ${{ steps.restore-complete.outputs.cache-matched-key == '' }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: '2'
+      with:
+        path: |
+          ~/apt-archives/*.deb
+          ~/apt-archives/partial/*.deb
+        key: ${{ steps.start.outputs.prefix }}restore
+        restore-keys: ${{ steps.start.outputs.prefix }}partial-
 
     - name: Install apt packages
       shell: bash
