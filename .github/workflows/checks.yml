@@ -153,15 +153,18 @@ jobs:
       # masterPassword.tooShort stayed "Minimum 8 characters" in 39 locales.
       # The ledger of former English strings is committed because this job
       # checks out with fetch-depth 1: a git walk of en.json would see only the
-      # tip commit. Changing English without rebuilding the ledger changes its
-      # hash and fails the gate. A string that is correct even though it equals
+      # tip commit. It is also the only record of English that lived only in a
+      # squash-merged branch, so --write adds to it instead of replacing it.
+      # Changing English without rebuilding the ledger changes its hash and
+      # fails the gate. A string that is correct even though it equals
       # an older English is recorded, with the reason, in
       # scripts/i18n-stale-english-accepted.json. Never bulk-accept.
       - name: i18n former-English gate
         run: npm run i18n:stale-english
 
       # Fixtures pin a former-English hit, a real translation, a reviewed
-      # acceptance, a stale acceptance, and a ledger hash that does not match.
+      # acceptance, a stale acceptance, a ledger hash that does not match, and a
+      # --write that keeps a ledger entry the git history no longer has.
       - name: i18n former-English gate self-test
         run: node --test .github/scripts/test-i18n-stale-english.mjs
 

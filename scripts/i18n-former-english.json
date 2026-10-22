@@ -1,6 +1,7 @@
 {
     "_comment": [
         "Former English strings of each key, rebuilt by `node scripts/i18n-stale-english.mjs --write` on a full clone.",
+        "--write adds what git history holds to the values here instead of replacing them: a string from a squash-merged branch exists only in this file.",
         "CI reads this file. It does not walk git history: checks.yml checks out with fetch-depth 1.",
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."

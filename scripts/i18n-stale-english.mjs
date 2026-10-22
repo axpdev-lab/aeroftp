@@ -33,6 +33,17 @@
  * rebuilding the ledger changes the hash and fails the gate, so a new former
  * string cannot be forgotten while the check stays green.
  *
+ * The ledger is also the only record of some former strings. Pull requests are
+ * squash-merged, so an English value that lived only in a branch's
+ * intermediate commits is not in the history of main: the rebuild after #1280
+ * lost `vault.repairDryRunNoDamage` "Dry run: no damage; nothing to repair.",
+ * left by the squashed #1273. `--write` therefore adds what the history walk
+ * finds to the values already in the ledger and never replaces them. Two kinds
+ * of value are left out of the written file: one equal to the current English
+ * (it is in the history, at the commit that holds it, so it comes back if the
+ * English moves away again), and every value of a key en.json no longer has
+ * (i18n:sync removes that key from every locale, so there is nothing to catch).
+ *
  * What this does not see: a stale translation that was rewritten into the
  * language. "Minimum 8 characters" left verbatim fails. The Welsh sentence that
  * still says AeroFTP collects data does not, because it is not English. That
@@ -44,8 +55,9 @@
  *   node scripts/i18n-stale-english.mjs --all      # ignore the acceptance file
  *   node scripts/i18n-stale-english.mjs --json     # machine-readable
  *   node scripts/i18n-stale-english.mjs --write    # rebuild the ledger (full clone)
- *   --locales=<dir> --former=<file> --accepted=<file>
- *                                                  # fixtures, for the self-test
+ *   --locales=<dir> --former=<file> --accepted=<file> --repo=<dir>
+ *                                                  # fixtures, for the self-test; --repo is
+ *                                                  # the git repository --write walks
  */
 
 import { createHash } from 'node:crypto';
@@ -60,6 +72,7 @@ const pathArg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.
 const LOCALES_DIR = resolve(pathArg('locales') ?? join(ROOT, 'src', 'i18n', 'locales'));
 const FORMER_FILE = resolve(pathArg('former') ?? join(HERE, 'i18n-former-english.json'));
 const ACCEPTED_FILE = resolve(pathArg('accepted') ?? join(HERE, 'i18n-stale-english-accepted.json'));
+const REPO = resolve(pathArg('repo') ?? ROOT);
 const STRICT = process.argv.includes('--strict');
 const JSON_OUT = process.argv.includes('--json');
 const WRITE = process.argv.includes('--write');
@@ -92,7 +105,7 @@ function loadLocales() {
 }
 
 function git(args) {
-    const result = spawnSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', maxBuffer: 1 << 30 });
+    const result = spawnSync('git', ['-C', REPO, ...args], { encoding: 'utf8', maxBuffer: 1 << 30 });
     if (result.status !== 0) {
         const err = (result.stderr || result.stdout || '').trim();
         throw new Error(`git ${args[0]} failed: ${err}`);
@@ -109,7 +122,7 @@ function historyMaps() {
     const requests = revs.map((rev) => `${rev}:src/i18n/locales/en.json\n`).join('');
     // Byte length, not UTF-16 length: en.json contains arrows and the header
     // size is bytes. Slicing a string here drops the parser out of sync.
-    const child = spawnSync('git', ['-C', ROOT, 'cat-file', '--batch'], { input: requests, maxBuffer: 1 << 30 });
+    const child = spawnSync('git', ['-C', REPO, 'cat-file', '--batch'], { input: requests, maxBuffer: 1 << 30 });
     if (child.status !== 0) {
         throw new Error(`git cat-file failed: ${child.stderr.toString('utf8').trim()}`);
     }
@@ -133,14 +146,23 @@ function historyMaps() {
     return maps;
 }
 
+// The former values already committed. A missing ledger is empty; an unreadable
+// one stops --write, since rewriting it would lose what only it records.
+function committedFormer() {
+    if (!existsSync(FORMER_FILE)) return {};
+    const former = JSON.parse(readFileSync(FORMER_FILE, 'utf8')).former;
+    return former && typeof former === 'object' ? former : {};
+}
+
 function rebuildFormer(current) {
-    const history = historyMaps();
+    const sources = [committedFormer(), ...historyMaps().map((map) => Object.fromEntries(Object.entries(map).map(([k, v]) => [k, [v]])))];
     const former = {};
-    for (const map of history) {
-        for (const [k, v] of Object.entries(map)) {
-            if (typeof v !== 'string' || v === current[k]) continue;
-            if (!Object.prototype.hasOwnProperty.call(current, k)) continue;
-            (former[k] ??= new Set()).add(v);
+    for (const map of sources) {
+        for (const [k, values] of Object.entries(map)) {
+            if (!Object.prototype.hasOwnProperty.call(current, k) || !Array.isArray(values)) continue;
+            for (const v of values) {
+                if (typeof v === 'string' && v !== current[k]) (former[k] ??= new Set()).add(v);
+            }
         }
     }
     const out = {};
@@ -155,6 +177,7 @@ function writeLedger(current, former) {
     const doc = {
         _comment: [
             'Former English strings of each key, rebuilt by `node scripts/i18n-stale-english.mjs --write` on a full clone.',
+            '--write adds what git history holds to the values here instead of replacing them: a string from a squash-merged branch exists only in this file.',
             'CI reads this file. It does not walk git history: checks.yml checks out with fetch-depth 1.',
             'enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.',
             'A value listed here fails the gate when a locale still equals it and the current English does not.',
