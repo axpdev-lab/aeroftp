@@ -69,7 +69,7 @@ export const FolderOverwriteDialog: React.FC<FolderOverwriteDialogProps> = ({
                         </span>
                         {queueCount > 0 && (
                             <span className="text-xs text-gray-500 ml-2">
-                                +{queueCount} in queue
+                                {t('overwrite.moreInQueue', { count: queueCount })}
                             </span>
                         )}
                     </div>

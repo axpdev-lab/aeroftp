@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useRef, useState, useEffect } from 'react';
+import { useTranslation } from '../i18n';
 
 /**
  * Shared 6-box TOTP code input (#369 / Ehud): one single-digit box per digit,
@@ -84,6 +85,7 @@ export const TotpCodeInput: React.FC<TotpCodeInputProps> = ({
   autoFocus,
   length = 6,
 }) => {
+  const t = useTranslation();
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
   const [boxes, setBoxes] = useState<string[]>(() => splitCode(value, length));
 
@@ -151,7 +153,7 @@ export const TotpCodeInput: React.FC<TotpCodeInputProps> = ({
   };
 
   return (
-    <div className="flex gap-2" role="group" aria-label="6-digit code">
+    <div className="flex gap-2" role="group" aria-label={t('security.totp.codeGroupLabel', { count: length })}>
       {Array.from({ length }).map((_, i) => (
         <input
           key={i}
@@ -168,7 +170,7 @@ export const TotpCodeInput: React.FC<TotpCodeInputProps> = ({
           onPaste={(e) => handlePaste(i, e)}
           onFocus={(e) => e.target.select()}
           className="totp-box w-10 h-11 text-center font-mono text-lg bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
-          aria-label={`Digit ${i + 1}`}
+          aria-label={t('security.totp.digitLabel', { index: i + 1 })}
         />
       ))}
     </div>

@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Rulează {cmd} și completează URL-ul automat",
                 "fetchUrl": "Preia URL",
                 "megacmdWebdavHint": "Numele de utilizator și parola sunt omise intenționat. AeroFTP rulează singur „{cmd}” la conectare pentru a porni puntea și a citi această adresă: câmpul poate rămâne gol. „Preia URL” este o reîmprospătare manuală opțională; schimbați portul aici dacă MEGAcmd folosește unul personalizat."
-            }
+            },
+            "manualStorageUnitLabel": "Unitate {label}"
         },
         "browser": {
             "remote": "La distanță",
@@ -420,7 +421,19 @@
             "listingPath": "Se listează {path}...",
             "pleaseWait": "Vă rugăm să așteptați...",
             "sameNameLeakChip": "același nume",
-            "sameNameLeakTooltip": "Acest nume apare și pe altă cale în acest seif criptat. Deoarece numele sunt criptate determinist, un observator al stocării criptate poate constata că ambele au același nume."
+            "sameNameLeakTooltip": "Acest nume apare și pe altă cale în acest seif criptat. Deoarece numele sunt criptate determinist, un observator al stocării criptate poate constata că ambele au același nume.",
+            "endpointSelector": {
+                "localFolder": "Folder local",
+                "localFolderHint": "Alegeți o cale locală pentru acest panou",
+                "noSavedProfiles": "Niciun profil salvat",
+                "savedProfiles": "Profiluri la distanță salvate",
+                "title": "Punct final"
+            },
+            "leftPanelMarker": "Panoul din stânga",
+            "localFilesLabel": "Fișiere locale",
+            "localFilesRightLabel": "Fișiere locale (panoul din dreapta)",
+            "remoteFilesLabel": "Fișiere la distanță",
+            "rightPanelMarker": "Panoul din dreapta"
         },
         "contextMenu": {
             "askAeroAgent": "Întreabă AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Grafic viteză",
             "hideSpeedGraph": "Ascunde graficul vitezei",
             "speedAvg": "med. {speed}",
-            "speedPeak": "vârf {speed}"
+            "speedPeak": "vârf {speed}",
+            "badgeBatch": "LOT",
+            "badgeDownload": "DESCĂRCARE",
+            "badgeLive": "LIVE",
+            "badgeStream": "FLUX",
+            "badgeUpload": "ÎNCĂRCARE",
+            "earlierItemsHidden": "{count} elemente anterioare ascunse",
+            "folderFilesProgress": "{done}/{total} fișiere",
+            "laneDone": "gata",
+            "laneError": "eroare",
+            "unifiedPlan": {
+                "destination": "Destinație",
+                "dialogLabel": "Plan de transfer",
+                "engineAerovaultOverlay": "Suprapunere AeroVault",
+                "engineCompareOnly": "Doar comparare",
+                "engineCrossProfileSync": "Sincronizare între profiluri",
+                "engineCrossProfileTransfer": "Transfer între profiluri",
+                "engineLocalDelta": "Transport delta local",
+                "engineLocalFs": "Sistem de fișiere local",
+                "engineProviderDownload": "Descărcare de la furnizor",
+                "engineProviderUpload": "Încărcare la furnizor",
+                "engineUnsupported": "Neacceptat",
+                "execute": "Execută",
+                "items": "Elemente",
+                "modeBackup": "Copie de rezervă",
+                "modeBisync": "Sincronizare bidirecțională",
+                "modeCompare": "Comparare",
+                "modeCopy": "Copiere",
+                "modeMirror": "Oglindire",
+                "modeMove": "Mutare",
+                "modeSync": "Sincronizare",
+                "notExecutable": "Această pereche de puncte finale nu este încă executabilă.",
+                "parallel": "Paralel",
+                "reviewBeforeExecution": "Verificare înainte de execuție",
+                "route": "{pair} prin {engine}",
+                "size": "Dimensiune",
+                "source": "Sursă",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Setări",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "max",
             "migrationCleanupHint": "Recomandat pentru securitate maximă",
             "fontCustomOption": "Personalizat...",
-            "fontSystemInstallHint": "Necesită instalare în sistem. AeroFTP folosește automat o alternativă dacă nu este disponibil."
+            "fontSystemInstallHint": "Necesită instalare în sistem. AeroFTP folosește automat o alternativă dacă nu este disponibil.",
+            "fontSizeIndicatorLabel": "Font"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} fișiere, s-au eliberat {size}",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Tabloul de bord al sincronizării în cloud",
+            "dialogLoadingLabel": "Se încarcă sincronizarea în cloud",
+            "dialogSettingsLabel": "Setările sincronizării în cloud",
+            "dialogSetupLabel": "Configurarea sincronizării în cloud",
+            "onePerLineHint": "(câte unul pe linie)",
+            "pairsEditorLabel": "Editor de perechi AeroCloud",
+            "remoteSubfolderPlaceholder": "nor"
         },
         "statusBar": {
             "connected": "Conectat",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "parțial, dosare care nu au putut fi citite: {count}",
             "usedScanFailed": "Scanarea spațiului folosit a eșuat",
             "usedScanEmpty": "Scanarea căii {path} nu a găsit fișiere; valoarea din cache a fost păstrată. Verifică calea sau suportul serverului pentru listarea recursivă.",
-            "filenBridgeAccountTotal": "Filen Desktop nu raportează aici totalul contului tău: valoarea utilizată este suma fișierelor din această cale. Conexiunea nativă Filen afișează imediat totalul contului."
+            "filenBridgeAccountTotal": "Filen Desktop nu raportează aici totalul contului tău: valoarea utilizată este suma fișierelor din această cale. Conexiunea nativă Filen afișează imediat totalul contului.",
+            "ariaLabel": "Bara de stare",
+            "debugBadge": "DEPANARE",
+            "debugModeActive": "Modul de depanare activ"
         },
         "dialogs": {
             "confirmTitle": "Confirmă",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "ex. {template}",
             "jurisdiction": "Jurisdicție",
             "insecureCertDialogLabel": "Avertisment certificat nesigur",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Verificarea cheii gazdei"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -2173,7 +2236,10 @@
             "rename": "Redenumește",
             "resume": "Reia",
             "resumeHint": "Reia transferul întrerupt în loc să îl repornești",
-            "cancel": "Anulează"
+            "cancel": "Anulează",
+            "dialogLabel": "Confirmare suprascriere",
+            "moreInQueue": "+{count} în coadă",
+            "unknownDate": "Necunoscut"
         },
         "statusbar": {
             "queue": "Coadă",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Perechi de căi (locală/la distanță) utilizabile în acest șablon: {count}. O fereastră AeroSync lucrează cu exact o pereche, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou.",
             "templateNamePlaceholder": "de ex. Copie de rezervă nocturnă în S3",
             "templateDescPlaceholder": "La ce folosește acest șablon (opțional)",
-            "templateExportCliDesc": "Script de încapsulare pentru aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Script de încapsulare pentru aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Dezactivează",
+            "multiPathEditorLabel": "Editor cu căi multiple",
+            "multiPathEnablePair": "Activează",
+            "multiPathLocalPlaceholder": "Cale locală",
+            "multiPathRemotePlaceholder": "Cale la distanță",
+            "rollbackDialogLabel": "Instantaneu de restaurare",
+            "rollbackMoreFiles": "+încă {count}...",
+            "rollbackSnapshotSummaryMany": "{count} fișiere, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fișier, {size}",
+            "templateDialogLabel": "Șablon de sincronizare",
+            "templateExcludes": "Excluderi",
+            "templateLocal": "Local",
+            "templateRemote": "La distanță",
+            "templateRetries": "Reîncercări"
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Antetul sau manifestul vault-ului a fost reconstruit din paritate.",
             "repairMetadataSuccess": "Reparație finalizată: antetul sau manifestul vault-ului a fost reconstruit din paritate",
             "errorCorrectionBadge": "Corectarea erorilor",
-            "itemsInFolder": "{count} elemente în /{folder}"
+            "itemsInFolder": "{count} elemente în /{folder}",
+            "compressionProfileArchive": "Arhivă (zstd -15)",
+            "compressionProfileBalanced": "Echilibrat (zstd -9)",
+            "compressionProfileFast": "Rapid (zstd -3)",
+            "damagedChunkLocation": "{id} - decalaj {offset} (lungime {len})",
+            "fallbackName": "Seif",
+            "folderScanSummary": "{files} fișiere în {dirs} directoare ({size})",
+            "namePlaceholderVault": "Seiful meu securizat",
+            "namePlaceholderZip": "Arhiva mea",
+            "recentDaysAgo": "acum {count} z",
+            "recentFileCountMany": "{count} fișiere",
+            "recentFileCountOne": "{count} fișier",
+            "recentMonthsAgo": "acum {count} luni"
         },
         "cryptomator": {
             "title": "Seif Cryptomator",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Se criptează elementele selectate...",
             "ingestSkipped": "Seif creat, dar unele elemente nu au putut fi adăugate:",
             "selectionInfo": "{count} element(e) vor fi criptate în seif",
-            "decrypting": "Se decriptează…"
+            "decrypting": "Se decriptează…",
+            "compatibleWithApp": "Compatibil cu aplicația Cryptomator",
+            "createFormatBadge": "Cryptomator format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Conținut AES-GCM",
+            "featureNameCipher": "Nume AES-SIV",
+            "formatVersion": "Versiunea formatului {version}"
         },
         "compress": {
             "title": "Comprimare fișiere",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Unele fișiere ar avea același nume. Vă rugăm ajustați modelul.",
             "apply": "Aplică",
             "existingCollision": "Unele nume noi corespund unor fișiere aflate deja în acest folder; acele fișiere nu vor fi suprascrise, iar redenumirea lor este omisă.",
-            "existingCollisionHint": "(există deja)"
+            "existingCollisionHint": "(există deja)",
+            "baseNamePlaceholder": "fișier",
+            "invalidName": "{name} (nevalid)"
         },
         "lockScreen": {
             "locked": "Aplicație blocată",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Neînregistrat de desktop. Deconectați și reconectați cablul, apoi deschideți din nou.",
             "volumes_need_mount_observe": "În snap, volumele apar după ce permisiunea mount-observe este conectată. Rulați aceasta într-un terminal, apoi reveniți la AeroFTP:",
             "volumes_unavailable": "Nu s-au putut citi volumele montate.",
-            "portable_device": "Dispozitiv portabil"
+            "portable_device": "Dispozitiv portabil",
+            "drivesLeftPanel": "Unitățile panoului stâng",
+            "drivesRightPanel": "Unitățile panoului drept",
+            "modeGroupLabel": "Modul barei laterale",
+            "placesSidebarLabel": "Bara laterală cu locații"
         },
         "viewMode": {
             "list": "Listă",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Navighează în directoarele adiacente",
             "loading": "Se încarcă...",
             "noSubdirectories": "Niciun subdirector",
-            "browseChildren": "Răsfoiește subfolderele"
+            "browseChildren": "Răsfoiește subfolderele",
+            "ariaLabel": "Cale de navigare",
+            "syncBoundaryTitle": "{path} (limită de sincronizare)"
         },
         "bridge": {
             "checking": "Se verifică {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Previzualizare indisponibilă",
-            "title": "Previzualizare rapidă"
+            "title": "Previzualizare rapidă",
+            "closePreview": "Închide previzualizarea",
+            "dialogLabel": "Previzualizare rapidă: {name}",
+            "nextFile": "Fișierul următor",
+            "position": "{index} din {total}",
+            "previousFile": "Fișierul anterior"
         },
         "properties": {
             "general": "General",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Suma de control a elementului pe care Immich o înregistrează la încărcare.",
                 "crypt-overlay-ciphertext": "Hash-ul acoperă octeții criptați stocați pe server."
             },
-            "readOnlyIsLinkTarget": "Aceasta este o legătură simbolică: permisiunile aparțin fișierului către care indică. Deschideți proprietățile acelui fișier pentru a le modifica."
+            "readOnlyIsLinkTarget": "Aceasta este o legătură simbolică: permisiunile aparțin fișierului către care indică. Deschideți proprietățile acelui fișier pentru a le modifica.",
+            "exactBytes": "({bytes} octeți)"
         },
         "duplicates": {
             "sortWasted": "Spațiu irosit",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Identice octet cu octet",
             "modeNonIdenticalHint": "Similaritate perceptuală sau de text, fără ștergere automată",
             "potentialWasteSelected": "risipă potențială (selectate)",
-            "similarityDistance": "{similarity}, dist. {distance}"
+            "similarityDistance": "{similarity}, dist. {distance}",
+            "modeExact": "Exact",
+            "modeLabel": "Mod:",
+            "modeNonIdentical": "Neidentic"
         },
         "diskUsage": {
             "title": "Utilizarea discului",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Nicio activitate de rețea încă. Transferați fișiere pentru a vedea evenimentele.",
                 "time": "Timp",
                 "event": "Eveniment",
-                "detail": "Detaliu"
+                "detail": "Detaliu",
+                "command": "Comandă",
+                "ipcTransfersCount": "IPC + Transferuri ({count})",
+                "status": "Stare",
+                "type": "Tip"
             },
             "system": {
                 "appVersion": "Versiune AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Întunecat",
                 "light": "Luminos",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Chei LocalStorage"
+                "localStorageKeysTitle": "Chei LocalStorage",
+                "localStorageEntrySummary": "{size} octeți · {preview}"
             },
             "copyFileListToClipboard": "Copiază lista de fișiere în clipboard",
             "filesCopied": "{count} intrări de fișiere copiate în clipboard",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Faceți dublu clic pe selecție sau apăsați Enter pentru a aplica, Esc pentru a anula",
                     "cropRatio": "Proporții",
                     "cropRatioFree": "Liber",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° antiorar",
+                    "rotateCw90Short": "90° orar"
                 },
                 "toggleTransparencyBg": "Fundal de transparență (comută)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Se încarcă PDF...",
                 "open": "Deschide PDF",
                 "page": "Pagina",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "Document PDF"
             },
             "text": {
                 "auto": "Auto",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tableta (768px)",
                 "wordWrap": "Impachetare text",
                 "zoomIn": "Mărește",
-                "zoomOut": "Micsoreaza"
+                "zoomOut": "Micsoreaza",
+                "htmlPreviewFrameTitle": "Previzualizare HTML"
             },
             "video": {
                 "exitFullscreen": "Ieșire din ecranul complet (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Suprapunere Rclone Crypt detectată",
             "aerocryptImportDesc": "Profil importat din rclone.conf pentru {name}: deschizi suprapunerea acum?",
             "aerocryptImportOpen": "Deschide suprapunerea",
-            "aerovaultOverlayExpired": "AeroVault Overlay blocat din cauza inactivității. Redeschideți seiful pentru a continua."
+            "aerovaultOverlayExpired": "AeroVault Overlay blocat din cauza inactivității. Redeschideți seiful pentru a continua.",
+            "aerovaultOverlaySource": "Suprapunere AeroVault activă ({source})",
+            "fileOperationsLabel": "Operații cu fișiere",
+            "overlayBadge": "SUPRAPUNERE"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Autentificare cu doi factori",
                 "verify": "Verifică și activează",
                 "active": "2FA activă",
-                "inactive": "2FA inactivă"
+                "inactive": "2FA inactivă",
+                "codeGroupLabel": "Cod din {count} cifre",
+                "digitLabel": "Cifra {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Fișierele restaurate vor reapărea în folderul lor original",
             "connectionNamePlaceholder": "Numele conexiunii (ex.: FileLu Cloud-ul meu)",
             "trashAutoExpiry": "Fișierele din coșul de gunoi sunt șterse automat de FileLu după 7 zile",
-            "rsyncTransferOnly": "Endpoint doar pentru transfer: navigarea nu este disponibilă pe Rsync. Folosește Native API, WebDAV, S3 sau FTP pentru a naviga; comută la Rsync pentru transferuri delta cu lățime de bandă mare."
+            "rsyncTransferOnly": "Endpoint doar pentru transfer: navigarea nu este disponibilă pe Rsync. Folosește Native API, WebDAV, S3 sau FTP pentru a naviga; comută la Rsync pentru transferuri delta cu lățime de bandă mare.",
+            "badgePasswordProtected": "Protejat prin parolă",
+            "badgeWatermarked": "Cu filigran"
         },
         "box": {
             "addComment": "Adaugă comentariu",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} resursă",
             "releaseAssetMany": "{count} resurse",
             "repoPrivate": "Privat",
-            "repoPublic": "Public"
+            "repoPublic": "Public",
+            "actionsLiveBadge": "În direct",
+            "actionsRunningTitle": "GitHub Actions (în execuție)",
+            "coAuthors": "Coautori",
+            "pagesPathPlaceholder": "/ sau /docs",
+            "pagesStatusBuilding": "în construire",
+            "pagesStatusBuilt": "construit",
+            "pagesStatusErrored": "eroare",
+            "refreshBranches": "Reîmprospătează ramurile",
+            "repoPrivateTitle": "Depozit privat",
+            "repoPublicTitle": "Depozit public",
+            "unpushedCommitsOnBranchMany": "{count} commituri netrimise pe {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit netrimis pe {branch}"
         },
         "filenNotes": {
             "title": "Note criptate",
@@ -5158,7 +5300,8 @@
             "tagName": "Numele etichetei",
             "removeTag": "Elimină eticheta",
             "manageTags": "Gestionează etichetele",
-            "deleteTagConfirm": "Ștergi eticheta „{name}”? Notițele își păstrează textul."
+            "deleteTagConfirm": "Ștergi eticheta „{name}”? Notițele își păstrează textul.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Link de partajare",
@@ -5426,7 +5569,8 @@
             "linkType": "Tip",
             "createMergeRequest": "Creează Merge Request",
             "mrTitle": "Titlul MR",
-            "mrBody": "Descriere (opțional)"
+            "mrBody": "Descriere (opțional)",
+            "sourceCode": "Cod sursă"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Duplică utilizatorul (doar servere, fără parole)",
             "copyLockedHint": "Comută mai întâi la acest cont pentru a-i duplica serverele",
             "crossUserDedupTitle": "Deja salvat de un alt cont",
-            "crossUserDedupMessage": "\"{name}\" folosește un cont de server care este salvat pe acest dispozitiv și de: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" folosește un cont de server care este salvat pe acest dispozitiv și de: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Închide dialogul de resetare a parolei",
+                "confirmPassword": "Confirmă parola nouă",
+                "errMismatch": "Parolele noi ale contului nu se potrivesc.",
+                "errNewRequired": "Introdu o parolă nouă pentru cont.",
+                "errNotAuthorized": "Trebuie să fii administrator pentru a reseta parola altui cont.",
+                "errNotForSelf": "Folosește Schimbă parola pentru propriul cont.",
+                "errStoreNotReady": "Deblochează mai întâi seiful, apoi încearcă din nou.",
+                "errTypeReset": "Tastează RESET pentru a confirma această operațiune distructivă.",
+                "errUserNotFound": "Acest utilizator nu mai există.",
+                "newPassword": "Parola nouă a contului",
+                "statEncryptedBytes": "octeți criptați",
+                "statProfiles": "profiluri",
+                "statSettings": "setări",
+                "title": "Resetarea parolei = distrugerea datelor",
+                "typeReset": "Tastează RESET",
+                "wipeDetail": "Parola actuală nu poate fi recuperată. AeroFTP va șterge serverele salvate, setările de utilizator și starea de blocare ale contului țintă, apoi va emite o nouă cheie de criptare protejată de parola nouă.",
+                "wipeWarning": "Această operațiune va șterge definitiv partiția criptată a contului țintă."
+            },
+            "dropdown": {
+                "accountPassword": "Parola contului",
+                "lock": "Blochează",
+                "newUser": "Utilizator nou",
+                "noUsers": "Încă nu există utilizatori. Folosește „Utilizator nou” de mai jos pentru a-l adăuga pe primul.",
+                "protectionNote": "Contul tău este protejat cu criptare Argon2id + AES-KW + AES-256-GCM",
+                "users": "Utilizatori"
+            }
         },
         "aerocryptNative": {
             "title": "Strat AeroCrypt",

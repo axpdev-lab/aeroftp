@@ -282,7 +282,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                         <span className="font-medium">
                             {vaultInfo ? vaultInfo.name : t('cryptomator.title')}
                         </span>
-                        {vaultInfo && <span className="text-xs text-gray-500 dark:text-gray-400">Format {vaultInfo.format}</span>}
+                        {vaultInfo && <span className="text-xs text-gray-500 dark:text-gray-400">{t('cryptomator.formatVersion', { version: vaultInfo.format })}</span>}
                     </div>
                     <div className="flex items-center gap-1">
                         {vaultInfo && (
@@ -348,7 +348,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                         <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400 max-w-sm">
                             <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800/50 rounded px-2 py-1.5">
                                 <Lock size={12} className="text-emerald-500 dark:text-emerald-400" />
-                                <span>AES-GCM content</span>
+                                <span>{t('cryptomator.featureContentCipher')}</span>
                             </div>
                             <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800/50 rounded px-2 py-1.5">
                                 <Shield size={12} className="text-emerald-500 dark:text-emerald-400" />
@@ -356,7 +356,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                             </div>
                             <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800/50 rounded px-2 py-1.5">
                                 <File size={12} className="text-emerald-500 dark:text-emerald-400" />
-                                <span>AES-SIV names</span>
+                                <span>{t('cryptomator.featureNameCipher')}</span>
                             </div>
                             <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800/50 rounded px-2 py-1.5">
                                 <Key size={12} className="text-emerald-500 dark:text-emerald-400" />
@@ -365,7 +365,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                         </div>
 
                         <p className="text-emerald-600 dark:text-emerald-400/70 text-xs flex items-center gap-1">
-                            <Shield size={10} /> Compatible with Cryptomator app
+                            <Shield size={10} /> {t('cryptomator.compatibleWithApp')}
                         </p>
 
                         <button onClick={handleSelectVault} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-sm">

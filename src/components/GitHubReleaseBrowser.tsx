@@ -378,7 +378,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
               <button
                 onClick={fetchReleases}
                 className="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-gray-200 hover:bg-gray-700/50"
-                title="Refresh"
+                title={t('common.refresh')}
               >
                 <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               </button>

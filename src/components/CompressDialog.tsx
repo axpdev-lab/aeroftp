@@ -406,7 +406,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => {
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label={t('compress.title')} onClick={(e) => {
             // Once a password has been typed (encrypted archive) the backdrop is
             // inert, so a stray click outside cannot discard it and force retyping.
             // The X is the only way out then. Other states still close on click.

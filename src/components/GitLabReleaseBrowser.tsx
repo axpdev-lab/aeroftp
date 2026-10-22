@@ -284,7 +284,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
           </div>
           <div className="flex items-center gap-2">
             {view === 'list' && (
-              <button onClick={fetchReleases} className="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-gray-200 hover:bg-gray-700/50" title="Refresh">
+              <button onClick={fetchReleases} className="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-gray-200 hover:bg-gray-700/50" title={t('common.refresh')}>
                 <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               </button>
             )}
@@ -375,7 +375,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
                       {/* Source archives */}
                       {release.sources.length > 0 && (
                         <div className="mb-2">
-                          <div className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-secondary)' }}>Source code</div>
+                          <div className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('gitlab.sourceCode')}</div>
                           <div className="flex gap-2">
                             {release.sources.map(src => (
                               <button key={src.format} onClick={() => shellOpen(src.url)} className="flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors hover:opacity-80" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>

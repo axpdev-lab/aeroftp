@@ -466,6 +466,34 @@
       "folded": "lapa",
       "twin": "lapā",
       "reason": "Lapa is the nominative label for a PDF page; lapā is the locative case, which this label does not use."
+    },
+    "da\u001fsyncPanel.multiPathEnablePair\u001fAktiver": {
+      "locale": "da",
+      "key": "syncPanel.multiPathEnablePair",
+      "folded": "aktiver",
+      "twin": "aktivér",
+      "reason": "Aktiver and Deaktiver are the imperative of aktivere and deaktivere on a button; Danish writes the stress accent (aktivér) only optionally."
+    },
+    "da\u001fsyncPanel.multiPathDisablePair\u001fDeaktiver": {
+      "locale": "da",
+      "key": "syncPanel.multiPathDisablePair",
+      "folded": "deaktiver",
+      "twin": "deaktivér",
+      "reason": "Aktiver and Deaktiver are the imperative of aktivere and deaktivere on a button; Danish writes the stress accent (aktivér) only optionally."
+    },
+    "fr\u001fsecurity.totp.digitLabel\u001fChiffre {index}": {
+      "locale": "fr",
+      "key": "security.totp.digitLabel",
+      "folded": "chiffre",
+      "twin": "chiffré",
+      "reason": "Chiffre is the noun digit of a TOTP code; chiffré means encrypted."
+    },
+    "lv\u001fstatusBar.ariaLabel\u001fStatusa josla": {
+      "locale": "lv",
+      "key": "statusBar.ariaLabel",
+      "folded": "josla",
+      "twin": "joslā",
+      "reason": "Statusa josla is the nominative name of the status bar; joslā is the locative case, which this label does not use."
     }
   }
 }

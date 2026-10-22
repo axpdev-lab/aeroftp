@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Patakbuhin ang {cmd} at awtomatikong punan ang URL",
                 "fetchUrl": "Kunin ang URL",
                 "megacmdWebdavHint": "Sadyang hindi isinama ang Username at Password. Ang AeroFTP mismo ang nagpapatakbo ng \"{cmd}\" sa pagkonekta para simulan ang tulay at basahin ang address na ito: ayos lang na iwan itong blangko. Ang \"Kunin ang URL\" ay opsyonal na manwal na pag-refresh; palitan dito ang port kung custom ang gamit ng MEGAcmd."
-            }
+            },
+            "manualStorageUnitLabel": "Yunit ng {label}"
         },
         "browser": {
             "remote": "Remote",
@@ -420,7 +421,19 @@
             "listingPath": "Nililista ang {path}...",
             "pleaseWait": "Mangyaring maghintay...",
             "sameNameLeakChip": "parehong pangalan",
-            "sameNameLeakTooltip": "Lumalabas din ang pangalang ito sa ibang landas sa naka-encrypt na vault na ito. Dahil deterministikong naka-encrypt ang mga pangalan, malalaman ng isang tagamasid ng naka-encrypt na imbakan na parehong may isang pangalan ang dalawa."
+            "sameNameLeakTooltip": "Lumalabas din ang pangalang ito sa ibang landas sa naka-encrypt na vault na ito. Dahil deterministikong naka-encrypt ang mga pangalan, malalaman ng isang tagamasid ng naka-encrypt na imbakan na parehong may isang pangalan ang dalawa.",
+            "endpointSelector": {
+                "localFolder": "Lokal na folder",
+                "localFolderHint": "Pumili ng lokal na landas para sa panel na ito",
+                "noSavedProfiles": "Walang naka-save na profile",
+                "savedProfiles": "Mga naka-save na remote na profile",
+                "title": "Dulong punto"
+            },
+            "leftPanelMarker": "Kaliwang panel",
+            "localFilesLabel": "Mga lokal na talaksan",
+            "localFilesRightLabel": "Mga lokal na talaksan (kanang panel)",
+            "remoteFilesLabel": "Mga remote na talaksan",
+            "rightPanelMarker": "Kanang panel"
         },
         "contextMenu": {
             "askAeroAgent": "Itanong sa AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Graph ng bilis",
             "hideSpeedGraph": "Itago ang graph ng bilis",
             "speedAvg": "avg {speed}",
-            "speedPeak": "pinakamataas {speed}"
+            "speedPeak": "pinakamataas {speed}",
+            "badgeBatch": "PANGKAT",
+            "badgeDownload": "PAG-DOWNLOAD",
+            "badgeLive": "DIREKTA",
+            "badgeStream": "DALOY",
+            "badgeUpload": "PAG-UPLOAD",
+            "earlierItemsHidden": "{count} naunang item ang nakatago",
+            "folderFilesProgress": "{done}/{total} na file",
+            "laneDone": "tapos na",
+            "laneError": "mali",
+            "unifiedPlan": {
+                "destination": "Destinasyon",
+                "dialogLabel": "Plano ng paglilipat",
+                "engineAerovaultOverlay": "Overlay ng AeroVault",
+                "engineCompareOnly": "Paghahambing lamang",
+                "engineCrossProfileSync": "Pag-sync sa pagitan ng mga profile",
+                "engineCrossProfileTransfer": "Paglilipat sa pagitan ng mga profile",
+                "engineLocalDelta": "Lokal na delta na transportasyon",
+                "engineLocalFs": "Lokal na file system",
+                "engineProviderDownload": "Pag-download mula sa provider",
+                "engineProviderUpload": "Pag-upload sa provider",
+                "engineUnsupported": "Hindi suportado",
+                "execute": "Isagawa",
+                "items": "Mga item",
+                "modeBackup": "Backup",
+                "modeBisync": "Dalawahang pag-sync",
+                "modeCompare": "Ihambing",
+                "modeCopy": "Kopyahin",
+                "modeMirror": "Salamin",
+                "modeMove": "Ilipat",
+                "modeSync": "I-sync",
+                "notExecutable": "Hindi pa maisasagawa ang pares ng mga dulo na ito.",
+                "parallel": "Sabay-sabay",
+                "reviewBeforeExecution": "Suriin bago isagawa",
+                "route": "{pair} sa pamamagitan ng {engine}",
+                "size": "Laki",
+                "source": "Pinagmulan",
+                "title": "Plano: {mode}"
+            }
         },
         "settings": {
             "title": "Mga Setting",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "max",
             "migrationCleanupHint": "Inirerekomenda para sa pinakamataas na seguridad",
             "fontCustomOption": "Pasadya...",
-            "fontSystemInstallHint": "Kailangang naka-install sa system. Awtomatikong gagamit ang AeroFTP ng kapalit kung hindi available."
+            "fontSystemInstallHint": "Kailangang naka-install sa system. Awtomatikong gagamit ang AeroFTP ng kapalit kung hindi available.",
+            "fontSizeIndicatorLabel": "Font"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} talaksan, {size} ang napalaya",
             "maturity": {
                 "alpha": "Alpa"
-            }
+            },
+            "dialogDashboardLabel": "Panel ng Pag-sync sa Ulap",
+            "dialogLoadingLabel": "Nilo-load ang Pag-sync sa Ulap",
+            "dialogSettingsLabel": "Mga Setting ng Pag-sync sa Ulap",
+            "dialogSetupLabel": "Pag-setup ng Pag-sync sa Ulap",
+            "onePerLineHint": "(isa bawat linya)",
+            "pairsEditorLabel": "Editor ng mga Pares ng AeroCloud",
+            "remoteSubfolderPlaceholder": "ulap"
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "bahagya, mga folder na hindi mabasa: {count}",
             "usedScanFailed": "Nabigo ang pag-scan ng nagamit na storage",
             "usedScanEmpty": "Walang nakitang file ang pag-scan ng {path}; pinanatili ang naka-cache na halaga. Suriin ang path o ang suporta ng server sa recursive listing.",
-            "filenBridgeAccountTotal": "Hindi iniuulat ng Filen Desktop dito ang kabuuan ng iyong account: ang ipinapakitang nagamit ay ang kabuuan ng mga file sa ilalim ng path na ito. Agad na ipinapakita ng native na koneksyon ng Filen ang kabuuan ng account."
+            "filenBridgeAccountTotal": "Hindi iniuulat ng Filen Desktop dito ang kabuuan ng iyong account: ang ipinapakitang nagamit ay ang kabuuan ng mga file sa ilalim ng path na ito. Agad na ipinapakita ng native na koneksyon ng Filen ang kabuuan ng account.",
+            "ariaLabel": "Status bar",
+            "debugBadge": "PAG-DEBUG",
+            "debugModeActive": "Aktibo ang Debug Mode"
         },
         "dialogs": {
             "confirmTitle": "Kumpirmahin",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "hal. {template}",
             "jurisdiction": "Hurisdiksyon",
             "insecureCertDialogLabel": "Babala sa Hindi Ligtas na Sertipiko",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Pag-verify ng susi ng host"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -2173,7 +2236,10 @@
             "rename": "Palitan ang pangalan",
             "resume": "Ipagpatuloy",
             "resumeHint": "Ipagpatuloy ang naantalang paglipat sa halip na simulan itong muli",
-            "cancel": "Kanselahin"
+            "cancel": "Kanselahin",
+            "dialogLabel": "Kumpirmasyon ng pag-overwrite",
+            "moreInQueue": "+{count} sa pila",
+            "unknownDate": "Hindi alam"
         },
         "statusbar": {
             "queue": "Queue",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Mga magagamit na lokal/remote na path pair sa template na ito: {count}. Gumagana ang isang AeroSync window sa eksaktong isang pares, kaya walang na-import. I-edit ang template para iisang pares na lang ang matira, pagkatapos ay i-import itong muli.",
             "templateNamePlaceholder": "hal. Backup tuwing gabi sa S3",
             "templateDescPlaceholder": "Para saan ang template na ito (opsyonal)",
-            "templateExportCliDesc": "Pambalot na script ng aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Pambalot na script ng aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "I-disable",
+            "multiPathEditorLabel": "Editor ng Maramihang Path",
+            "multiPathEnablePair": "I-enable",
+            "multiPathLocalPlaceholder": "Lokal na path",
+            "multiPathRemotePlaceholder": "Remote na path",
+            "rollbackDialogLabel": "Snapshot ng Pagbabalik",
+            "rollbackMoreFiles": "+{count} pa...",
+            "rollbackSnapshotSummaryMany": "{count} file, {size}",
+            "rollbackSnapshotSummaryOne": "{count} file, {size}",
+            "templateDialogLabel": "Template ng Pag-sync",
+            "templateExcludes": "Mga hindi isasama",
+            "templateLocal": "Lokal",
+            "templateRemote": "Remote",
+            "templateRetries": "Mga muling pagsubok"
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Muling itinayo mula sa parity ang header o manifest ng vault.",
             "repairMetadataSuccess": "Tapos na ang pag-aayos: muling itinayo mula sa parity ang header o manifest ng vault",
             "errorCorrectionBadge": "Pagwawasto ng Error",
-            "itemsInFolder": "{count} aytem sa /{folder}"
+            "itemsInFolder": "{count} aytem sa /{folder}",
+            "compressionProfileArchive": "Arkibo (zstd -15)",
+            "compressionProfileBalanced": "Balanse (zstd -9)",
+            "compressionProfileFast": "Mabilis (zstd -3)",
+            "damagedChunkLocation": "{id} - usog {offset} (haba {len})",
+            "fallbackName": "Vault",
+            "folderScanSummary": "{files} file sa {dirs} direktoryo ({size})",
+            "namePlaceholderVault": "Aking ligtas na vault",
+            "namePlaceholderZip": "Aking arkibo",
+            "recentDaysAgo": "{count} araw nakalipas",
+            "recentFileCountMany": "{count} file",
+            "recentFileCountOne": "{count} file",
+            "recentMonthsAgo": "{count} buwan nakalipas"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Ine-encrypt ang mga napiling item...",
             "ingestSkipped": "Nalikha ang vault, ngunit may ilang item na hindi naidagdag:",
             "selectionInfo": "{count} item ang ie-encrypt sa vault",
-            "decrypting": "Dini-decrypt…"
+            "decrypting": "Dini-decrypt…",
+            "compatibleWithApp": "Tugma sa Cryptomator app",
+            "createFormatBadge": "Cryptomator Pormat 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Nilalaman na AES-GCM",
+            "featureNameCipher": "Mga pangalan na AES-SIV",
+            "formatVersion": "Pormat {version}"
         },
         "compress": {
             "title": "I-compress ang mga File",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Ang ilang file ay magkakaroon ng parehong pangalan. Pakiayos ang pattern.",
             "apply": "Ilapat",
             "existingCollision": "May ilang bagong pangalan na tumutugma sa mga file na nasa folder na ito; hindi mao-overwrite ang mga file na iyon at laktawan ang pagpapalit ng pangalan ng mga ito.",
-            "existingCollisionHint": "(mayroon na)"
+            "existingCollisionHint": "(mayroon na)",
+            "baseNamePlaceholder": "talaksan",
+            "invalidName": "{name} (hindi wasto)"
         },
         "lockScreen": {
             "locked": "Naka-lock ang App",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Hindi naka-mount ng desktop. I-unplug at i-plug muli ang cable, tapos buksan ulit.",
             "volumes_need_mount_observe": "Sa snap, lumalabas ang mga volume kapag nakakonekta na ang pahintulot na mount-observe. Patakbuhin ito sa terminal, pagkatapos ay bumalik sa AeroFTP:",
             "volumes_unavailable": "Hindi mabasa ang mga naka-mount na volume.",
-            "portable_device": "Portable na device"
+            "portable_device": "Portable na device",
+            "drivesLeftPanel": "Mga drive sa kaliwang panel",
+            "drivesRightPanel": "Mga drive sa kanang panel",
+            "modeGroupLabel": "Mode ng sidebar",
+            "placesSidebarLabel": "Sidebar ng mga lugar"
         },
         "viewMode": {
             "list": "Listahan",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Mag-browse ng mga kapatid na direktoryo",
             "loading": "Naglo-load...",
             "noSubdirectories": "Walang mga subdirectory",
-            "browseChildren": "Mag-browse ng mga subdirectory"
+            "browseChildren": "Mag-browse ng mga subdirectory",
+            "ariaLabel": "Landas ng nabigasyon",
+            "syncBoundaryTitle": "{path} (hangganan ng pag-sync)"
         },
         "bridge": {
             "checking": "Sinusuri ang {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Walang available na preview",
-            "title": "Quick Look"
+            "title": "Quick Look",
+            "closePreview": "Isara ang preview",
+            "dialogLabel": "Mabilisang Tingin: {name}",
+            "nextFile": "Susunod na file",
+            "position": "{index} sa {total}",
+            "previousFile": "Nakaraang file"
         },
         "properties": {
             "general": "Pangkalahatan",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Ang checksum ng asset na itinatala ng Immich sa oras ng pag-upload.",
                 "crypt-overlay-ciphertext": "Sumasaklaw ang digest sa mga naka-encrypt na byte na nakaimbak sa server."
             },
-            "readOnlyIsLinkTarget": "Ito ay isang symbolic link: ang mga pahintulot ay pagmamay-ari ng file na itinuturo nito. Buksan ang mga katangian ng file na iyon upang baguhin ang mga ito."
+            "readOnlyIsLinkTarget": "Ito ay isang symbolic link: ang mga pahintulot ay pagmamay-ari ng file na itinuturo nito. Buksan ang mga katangian ng file na iyon upang baguhin ang mga ito.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Nasayang na espasyo",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Magkapareho bawat byte",
             "modeNonIdenticalHint": "Pagkakatulad sa paningin o teksto, walang awtomatikong pagbura",
             "potentialWasteSelected": "posibleng nasayang (napili)",
-            "similarityDistance": "{similarity}, layo {distance}"
+            "similarityDistance": "{similarity}, layo {distance}",
+            "modeExact": "Eksakto",
+            "modeLabel": "Mode:",
+            "modeNonIdentical": "Hindi magkapareho"
         },
         "diskUsage": {
             "title": "Paggamit ng Disk",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Wala pang network activity. Mag-transfer ng mga file para makita ang mga event.",
                 "time": "Oras",
                 "event": "Event",
-                "detail": "Detalye"
+                "detail": "Detalye",
+                "command": "Utos",
+                "ipcTransfersCount": "IPC + Mga paglilipat ({count})",
+                "status": "Katayuan",
+                "type": "Uri"
             },
             "system": {
                 "appVersion": "Bersyon ng AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Madilim",
                 "light": "Maliwanag",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Mga LocalStorage Key"
+                "localStorageKeysTitle": "Mga LocalStorage Key",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Kopyahin ang listahan ng file sa clipboard",
             "filesCopied": "{count} na mga entry ng file ang nakopya sa clipboard",
@@ -4386,7 +4505,9 @@
                     "cropHint": "I-double-click ang napili o pindutin ang Enter para ilapat, Esc para kanselahin",
                     "cropRatio": "Mga proporsyon",
                     "cropRatioFree": "Malaya",
-                    "cropRatioOriginal": "Orihinal"
+                    "cropRatioOriginal": "Orihinal",
+                    "rotateCcw90Short": "90° pakaliwa",
+                    "rotateCw90Short": "90° pakanan"
                 },
                 "toggleTransparencyBg": "Background ng transparency (i-cycle)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Nilo-load ang PDF...",
                 "open": "Buksan ang PDF",
                 "page": "Pahina",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "Dokumentong PDF"
             },
             "text": {
                 "auto": "Auto",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Word Wrap",
                 "zoomIn": "Mag-zoom In",
-                "zoomOut": "Mag-zoom Out"
+                "zoomOut": "Mag-zoom Out",
+                "htmlPreviewFrameTitle": "Preview ng HTML"
             },
             "video": {
                 "exitFullscreen": "Lumabas sa Fullscreen (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Natukoy ang overlay ng Rclone Crypt",
             "aerocryptImportDesc": "Na-import ang profile mula sa rclone.conf para sa {name}: buksan ang overlay ngayon?",
             "aerocryptImportOpen": "Buksan ang overlay",
-            "aerovaultOverlayExpired": "Naka-lock ang AeroVault Overlay dahil sa kawalan ng aktibidad. Buksan muli ang vault upang magpatuloy."
+            "aerovaultOverlayExpired": "Naka-lock ang AeroVault Overlay dahil sa kawalan ng aktibidad. Buksan muli ang vault upang magpatuloy.",
+            "aerovaultOverlaySource": "Aktibo ang overlay ng AeroVault ({source})",
+            "fileOperationsLabel": "Mga operasyon sa file",
+            "overlayBadge": "OVERLAY"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Two-Factor Authentication",
                 "verify": "I-verify at I-enable",
                 "active": "Aktibo ang 2FA",
-                "inactive": "Hindi aktibo ang 2FA"
+                "inactive": "Hindi aktibo ang 2FA",
+                "codeGroupLabel": "Code na may {count} digit",
+                "digitLabel": "Digit {index}"
             }
         },
         "vaultSync": {
@@ -4804,7 +4932,9 @@
             "trashFooter": "Ang mga na-restore na file ay muling lilitaw sa kanilang orihinal na folder",
             "connectionNamePlaceholder": "Pangalan ng koneksyon (hal. Aking FileLu Cloud)",
             "trashAutoExpiry": "Awtomatikong binubura ng FileLu ang mga file sa basurahan pagkatapos ng 7 araw",
-            "rsyncTransferOnly": "Endpoint para sa paglilipat lamang: hindi available ang pag-browse sa Rsync. Gamitin ang Native API, WebDAV, S3 o FTP para mag-navigate; lumipat sa Rsync para sa mataas na bandwidth na delta transfer."
+            "rsyncTransferOnly": "Endpoint para sa paglilipat lamang: hindi available ang pag-browse sa Rsync. Gamitin ang Native API, WebDAV, S3 o FTP para mag-navigate; lumipat sa Rsync para sa mataas na bandwidth na delta transfer.",
+            "badgePasswordProtected": "Protektado ng password",
+            "badgeWatermarked": "May watermark"
         },
         "box": {
             "addComment": "Magdagdag ng komento",
@@ -5139,7 +5269,19 @@
             "releaseAssetOne": "{count} talaksan",
             "releaseAssetMany": "{count} talaksan",
             "repoPrivate": "Pribado",
-            "repoPublic": "Publiko"
+            "repoPublic": "Publiko",
+            "actionsLiveBadge": "Kasalukuyan",
+            "actionsRunningTitle": "GitHub Actions (tumatakbo)",
+            "coAuthors": "Mga kapwa may-akda",
+            "pagesPathPlaceholder": "/ o /docs",
+            "pagesStatusBuilding": "binubuo",
+            "pagesStatusBuilt": "nabuo",
+            "pagesStatusErrored": "nagka-error",
+            "refreshBranches": "I-refresh ang mga branch",
+            "repoPrivateTitle": "Pribadong repository",
+            "repoPublicTitle": "Pampublikong repository",
+            "unpushedCommitsOnBranchMany": "{count} commit na hindi pa na-push sa {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit na hindi pa na-push sa {branch}"
         },
         "filenNotes": {
             "title": "Naka-encrypt na Mga Tala",
@@ -5177,7 +5319,8 @@
             "tagName": "Pangalan ng tag",
             "removeTag": "Alisin ang tag",
             "manageTags": "Pamahalaan ang mga tag",
-            "deleteTagConfirm": "Burahin ang tag na “{name}”? Mananatili ang teksto ng mga tala."
+            "deleteTagConfirm": "Burahin ang tag na “{name}”? Mananatili ang teksto ng mga tala.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Link ng pagbabahagi",
@@ -5445,7 +5588,8 @@
             "linkType": "Uri",
             "createMergeRequest": "Gumawa ng Merge Request",
             "mrTitle": "Titulo ng MR",
-            "mrBody": "Paglalarawan (optional)"
+            "mrBody": "Paglalarawan (optional)",
+            "sourceCode": "Pinagmulang code"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6027,7 +6171,34 @@
             "copy": "Kopyahin ang user (mga server lang, walang password)",
             "copyLockedHint": "Lumipat muna sa account na ito para kopyahin ang mga server nito",
             "crossUserDedupTitle": "Naka-save na ng ibang account",
-            "crossUserDedupMessage": "Ang \"{name}\" ay gumagamit ng server account na naka-save rin sa device na ito ng: {accounts}"
+            "crossUserDedupMessage": "Ang \"{name}\" ay gumagamit ng server account na naka-save rin sa device na ito ng: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Isara ang dialog ng pag-reset ng password",
+                "confirmPassword": "Kumpirmahin ang bagong password",
+                "errMismatch": "Hindi tugma ang mga bagong password ng account.",
+                "errNewRequired": "Maglagay ng bagong password ng account.",
+                "errNotAuthorized": "Kailangan mong maging admin upang i-reset ang password ng ibang account.",
+                "errNotForSelf": "Gamitin ang Baguhin ang Password sa sarili mong account.",
+                "errStoreNotReady": "I-unlock muna ang vault, pagkatapos ay subukang muli.",
+                "errTypeReset": "I-type ang RESET para kumpirmahin ang mapanirang operasyong ito.",
+                "errUserNotFound": "Hindi na umiiral ang gumagamit na ito.",
+                "newPassword": "Bagong password ng account",
+                "statEncryptedBytes": "naka-encrypt na byte",
+                "statProfiles": "profile",
+                "statSettings": "setting",
+                "title": "I-reset ang password = pagsira ng data",
+                "typeReset": "I-type ang RESET",
+                "wipeDetail": "Hindi na mababawi ang kasalukuyang password. Buburahin ng AeroFTP ang mga naka-save na server, mga setting ng gumagamit at estado ng pagka-lock ng target na account, pagkatapos ay maglalabas ng bagong susi sa pag-encrypt na protektado ng bagong password.",
+                "wipeWarning": "Permanenteng buburahin nito ang naka-encrypt na partisyon ng target na account."
+            },
+            "dropdown": {
+                "accountPassword": "Password ng account",
+                "lock": "I-lock",
+                "newUser": "Bagong gumagamit",
+                "noUsers": "Wala pang gumagamit. Gamitin ang \"Bagong gumagamit\" sa ibaba para idagdag ang una.",
+                "protectionNote": "Protektado ang iyong account ng pag-encrypt na Argon2id + AES-KW + AES-256-GCM",
+                "users": "Mga gumagamit"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt overlay",

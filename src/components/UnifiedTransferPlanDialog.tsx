@@ -7,6 +7,8 @@ import type { UnifiedTransferPlan } from '../utils/unifiedTransferPlanner';
 import { getEndpointLabel } from '../utils/panelEndpoints';
 import { formatBytes } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useTranslation } from '../i18n';
+import type { TranslationFunction } from '../i18n';
 
 interface UnifiedTransferPlanDialogProps {
     plan: UnifiedTransferPlan;
@@ -15,27 +17,31 @@ interface UnifiedTransferPlanDialogProps {
     onClose: () => void;
 }
 
-const ENGINE_LABEL: Record<UnifiedTransferPlan['engine'], string> = {
-    'local-fs': 'Local filesystem',
-    'local-delta': 'Local delta transport',
-    'provider-upload': 'Provider upload',
-    'provider-download': 'Provider download',
-    'aerosync': 'AeroSync / AeroRsync',
-    'cross-profile-transfer': 'Cross-Profile Transfer',
-    'cross-profile-sync': 'Cross-Profile Sync',
-    'aerovault-overlay': 'AeroVault overlay',
-    'compare-only': 'Compare only',
-    unsupported: 'Unsupported',
+const engineLabel = (engine: UnifiedTransferPlan['engine'], t: TranslationFunction): string => {
+    switch (engine) {
+        case 'local-fs': return t('transfer.unifiedPlan.engineLocalFs');
+        case 'local-delta': return t('transfer.unifiedPlan.engineLocalDelta');
+        case 'provider-upload': return t('transfer.unifiedPlan.engineProviderUpload');
+        case 'provider-download': return t('transfer.unifiedPlan.engineProviderDownload');
+        case 'cross-profile-transfer': return t('transfer.unifiedPlan.engineCrossProfileTransfer');
+        case 'cross-profile-sync': return t('transfer.unifiedPlan.engineCrossProfileSync');
+        case 'aerovault-overlay': return t('transfer.unifiedPlan.engineAerovaultOverlay');
+        case 'compare-only': return t('transfer.unifiedPlan.engineCompareOnly');
+        case 'unsupported': return t('transfer.unifiedPlan.engineUnsupported');
+        case 'aerosync': return 'AeroSync / AeroRsync';
+    }
 };
 
-const MODE_LABEL: Record<UnifiedTransferPlan['mode'], string> = {
-    copy: 'Copy',
-    move: 'Move',
-    sync: 'Sync',
-    compare: 'Compare',
-    mirror: 'Mirror',
-    backup: 'Backup',
-    bisync: 'Bisync',
+const modeLabel = (mode: UnifiedTransferPlan['mode'], t: TranslationFunction): string => {
+    switch (mode) {
+        case 'copy': return t('transfer.unifiedPlan.modeCopy');
+        case 'move': return t('transfer.unifiedPlan.modeMove');
+        case 'sync': return t('transfer.unifiedPlan.modeSync');
+        case 'compare': return t('transfer.unifiedPlan.modeCompare');
+        case 'mirror': return t('transfer.unifiedPlan.modeMirror');
+        case 'backup': return t('transfer.unifiedPlan.modeBackup');
+        case 'bisync': return t('transfer.unifiedPlan.modeBisync');
+    }
 };
 
 export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps> = ({
@@ -44,6 +50,7 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
     onExecute,
     onClose,
 }) => {
+    const t = useTranslation();
     const modalDrag = useDraggableModal();
     const sourceLabel = getEndpointLabel(plan.source);
     const destinationLabel = getEndpointLabel(plan.destination);
@@ -54,7 +61,7 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
             className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
             role="dialog"
             aria-modal="true"
-            aria-label="Transfer plan"
+            aria-label={t('transfer.unifiedPlan.dialogLabel')}
             onClick={(event) => {
                 if (event.target === event.currentTarget && !executing) onClose();
             }}
@@ -69,10 +76,10 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
                         )}
                         <div>
                             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-                                {MODE_LABEL[plan.mode]} plan
+                                {t('transfer.unifiedPlan.title', { mode: modeLabel(plan.mode, t) })}
                             </h2>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {plan.pairKind} via {ENGINE_LABEL[plan.engine]}
+                                {t('transfer.unifiedPlan.route', { pair: plan.pairKind, engine: engineLabel(plan.engine, t) })}
                             </p>
                         </div>
                     </div>
@@ -89,13 +96,13 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
                 <div className="space-y-4 p-4">
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                         <div className="min-w-0 rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
-                            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Source</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{t('transfer.unifiedPlan.source')}</div>
                             <div className="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white" title={sourceLabel}>{sourceLabel}</div>
                             <div className="truncate text-xs text-gray-500 dark:text-gray-400" title={plan.source.path}>{plan.source.path}</div>
                         </div>
                         <ArrowRight size={16} className="text-gray-400" />
                         <div className="min-w-0 rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
-                            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Destination</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{t('transfer.unifiedPlan.destination')}</div>
                             <div className="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white" title={destinationLabel}>{destinationLabel}</div>
                             <div className="truncate text-xs text-gray-500 dark:text-gray-400" title={plan.destination.path}>{plan.destination.path}</div>
                         </div>
@@ -103,15 +110,15 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
 
                     <div className="grid grid-cols-3 gap-2 text-sm">
                         <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Items</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('transfer.unifiedPlan.items')}</div>
                             <div className="font-semibold text-gray-900 dark:text-white">{plan.entryCount}</div>
                         </div>
                         <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Size</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('transfer.unifiedPlan.size')}</div>
                             <div className="font-semibold text-gray-900 dark:text-white">{formatBytes(plan.totalBytes)}</div>
                         </div>
                         <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Parallel</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('transfer.unifiedPlan.parallel')}</div>
                             <div className="font-semibold text-gray-900 dark:text-white">{plan.maxParallel}</div>
                         </div>
                     </div>
@@ -124,7 +131,7 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
                         }`}>
                             <div className="mb-1 flex items-center gap-2 font-medium">
                                 <AlertTriangle size={15} />
-                                Review before execution
+                                {t('transfer.unifiedPlan.reviewBeforeExecution')}
                             </div>
                             <ul className="list-disc space-y-1 pl-5 text-xs">
                                 {plan.warnings.map(warning => <li key={warning}>{warning}</li>)}
@@ -134,7 +141,7 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
 
                     {!plan.canExecute && (
                         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">
-                            This endpoint pair is not executable yet.
+                            {t('transfer.unifiedPlan.notExecutable')}
                         </div>
                     )}
                 </div>
@@ -146,7 +153,7 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
                         disabled={executing}
                         className="rounded-lg px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-700"
                     >
-                        Cancel
+                        {t('common.cancel')}
                     </button>
                     <button
                         type="button"
@@ -157,7 +164,7 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
                         }`}
                     >
                         {executing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-                        Execute
+                        {t('transfer.unifiedPlan.execute')}
                     </button>
                 </div>
             </div>

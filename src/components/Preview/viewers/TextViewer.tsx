@@ -630,7 +630,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                             src={htmlBlobUrl || undefined}
                             srcDoc={!htmlBlobUrl ? withPreviewCsp(processedHtml || content) : undefined}
                             className="w-full h-full bg-white border border-gray-700 rounded"
-                            title="HTML Preview"
+                            title={t('preview.text.htmlPreviewFrameTitle')}
                         />
                     </div>
                 </div>

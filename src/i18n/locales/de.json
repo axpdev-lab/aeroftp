@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "{cmd} ausführen und die URL automatisch eintragen",
                 "fetchUrl": "URL abrufen",
                 "megacmdWebdavHint": "Benutzername und Passwort werden absichtlich weggelassen. AeroFTP führt beim Verbinden selbst „{cmd}“ aus, um die Brücke zu starten und diese Adresse zu lesen: Das Feld darf leer bleiben. „URL abrufen“ ist eine optionale manuelle Aktualisierung; ändern Sie hier den Port, falls MEGAcmd einen eigenen verwendet."
-            }
+            },
+            "manualStorageUnitLabel": "{label}-Einheit"
         },
         "browser": {
             "remote": "Remote",
@@ -420,7 +421,19 @@
             "listingPath": "{path} wird aufgelistet...",
             "pleaseWait": "Bitte warten...",
             "sameNameLeakChip": "gleicher Name",
-            "sameNameLeakTooltip": "Dieser Name erscheint auch an einem anderen Pfad in diesem verschlüsselten Tresor. Da Namen deterministisch verschlüsselt werden, kann ein Beobachter des verschlüsselten Speichers erkennen, dass beide denselben Namen teilen."
+            "sameNameLeakTooltip": "Dieser Name erscheint auch an einem anderen Pfad in diesem verschlüsselten Tresor. Da Namen deterministisch verschlüsselt werden, kann ein Beobachter des verschlüsselten Speichers erkennen, dass beide denselben Namen teilen.",
+            "endpointSelector": {
+                "localFolder": "Lokaler Ordner",
+                "localFolderHint": "Wählen Sie einen lokalen Pfad für diesen Bereich",
+                "noSavedProfiles": "Keine gespeicherten Profile",
+                "savedProfiles": "Gespeicherte Remote-Profile",
+                "title": "Endpunkt"
+            },
+            "leftPanelMarker": "Linker Bereich",
+            "localFilesLabel": "Lokale Dateien",
+            "localFilesRightLabel": "Lokale Dateien (rechter Bereich)",
+            "remoteFilesLabel": "Remote-Dateien",
+            "rightPanelMarker": "Rechter Bereich"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent fragen...",
@@ -680,7 +693,45 @@
             "speedGraph": "Geschwindigkeitsdiagramm",
             "hideSpeedGraph": "Geschwindigkeitsdiagramm ausblenden",
             "speedAvg": "Mittel {speed}",
-            "speedPeak": "Spitze {speed}"
+            "speedPeak": "Spitze {speed}",
+            "badgeBatch": "STAPEL",
+            "badgeDownload": "DOWNLOAD",
+            "badgeLive": "LIVE",
+            "badgeStream": "STREAM",
+            "badgeUpload": "UPLOAD",
+            "earlierItemsHidden": "{count} frühere Einträge ausgeblendet",
+            "folderFilesProgress": "{done}/{total} Dateien",
+            "laneDone": "fertig",
+            "laneError": "Fehler",
+            "unifiedPlan": {
+                "destination": "Ziel",
+                "dialogLabel": "Übertragungsplan",
+                "engineAerovaultOverlay": "AeroVault-Overlay",
+                "engineCompareOnly": "Nur vergleichen",
+                "engineCrossProfileSync": "Profilübergreifende Synchronisierung",
+                "engineCrossProfileTransfer": "Profilübergreifende Übertragung",
+                "engineLocalDelta": "Lokaler Delta-Transport",
+                "engineLocalFs": "Lokales Dateisystem",
+                "engineProviderDownload": "Anbieter-Download",
+                "engineProviderUpload": "Anbieter-Upload",
+                "engineUnsupported": "Nicht unterstützt",
+                "execute": "Ausführen",
+                "items": "Elemente",
+                "modeBackup": "Sicherung",
+                "modeBisync": "Zwei-Wege-Sync",
+                "modeCompare": "Vergleichen",
+                "modeCopy": "Kopieren",
+                "modeMirror": "Spiegeln",
+                "modeMove": "Verschieben",
+                "modeSync": "Synchronisieren",
+                "notExecutable": "Dieses Endpunktpaar ist noch nicht ausführbar.",
+                "parallel": "Parallel",
+                "reviewBeforeExecution": "Vor der Ausführung prüfen",
+                "route": "{pair} über {engine}",
+                "size": "Größe",
+                "source": "Quelle",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Einstellungen",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "max",
             "migrationCleanupHint": "Empfohlen für maximale Sicherheit",
             "fontCustomOption": "Benutzerdefiniert...",
-            "fontSystemInstallHint": "Erfordert eine Systeminstallation. AeroFTP weicht automatisch aus, wenn nicht verfügbar."
+            "fontSystemInstallHint": "Erfordert eine Systeminstallation. AeroFTP weicht automatisch aus, wenn nicht verfügbar.",
+            "fontSizeIndicatorLabel": "Schrift"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} Dateien, {size} freigegeben",
             "maturity": {
                 "alpha": "Alpha"
-            }
+            },
+            "dialogDashboardLabel": "Cloud-Sync-Übersicht",
+            "dialogLoadingLabel": "Cloud-Sync wird geladen",
+            "dialogSettingsLabel": "Cloud-Sync-Einstellungen",
+            "dialogSetupLabel": "Cloud-Sync-Einrichtung",
+            "onePerLineHint": "(eine pro Zeile)",
+            "pairsEditorLabel": "AeroCloud-Paareditor",
+            "remoteSubfolderPlaceholder": "wolke"
         },
         "statusBar": {
             "connected": "Verbunden",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "teilweise, nicht lesbare Ordner: {count}",
             "usedScanFailed": "Scan des belegten Speichers fehlgeschlagen",
             "usedScanEmpty": "Der Scan von {path} fand keine Dateien; der zwischengespeicherte Wert wurde beibehalten. Prüfen Sie den Pfad oder die Unterstützung rekursiver Auflistung durch den Server.",
-            "filenBridgeAccountTotal": "Filen Desktop meldet hier nicht den Gesamtwert Ihres Kontos: Der angezeigte belegte Speicher ist die Summe der Dateien unter diesem Pfad. Die native Filen-Verbindung zeigt den Kontogesamtwert sofort an."
+            "filenBridgeAccountTotal": "Filen Desktop meldet hier nicht den Gesamtwert Ihres Kontos: Der angezeigte belegte Speicher ist die Summe der Dateien unter diesem Pfad. Die native Filen-Verbindung zeigt den Kontogesamtwert sofort an.",
+            "ariaLabel": "Statusleiste",
+            "debugBadge": "FEHLERSUCHE",
+            "debugModeActive": "Debug-Modus aktiv"
         },
         "dialogs": {
             "confirmTitle": "Bestätigen",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "z. B. {template}",
             "jurisdiction": "Gerichtsstand",
             "insecureCertDialogLabel": "Warnung: unsicheres Zertifikat",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Host-Schlüssel-Überprüfung"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",
@@ -2173,7 +2236,10 @@
             "rename": "Umbenennen",
             "resume": "Fortsetzen",
             "resumeHint": "Den unterbrochenen Transfer fortsetzen, statt ihn neu zu starten",
-            "cancel": "Abbrechen"
+            "cancel": "Abbrechen",
+            "dialogLabel": "Überschreiben bestätigen",
+            "moreInQueue": "+{count} in der Warteschlange",
+            "unknownDate": "Unbekannt"
         },
         "statusbar": {
             "queue": "Warteschlange",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Verwendbare Pfadpaare (lokal/Remote) in dieser Vorlage: {count}. Ein AeroSync-Fenster arbeitet mit genau einem Paar, daher wurde nichts importiert. Bearbeiten Sie die Vorlage so, dass nur ein Paar übrig bleibt, und importieren Sie sie dann erneut.",
             "templateNamePlaceholder": "z. B. Nächtliches Backup nach S3",
             "templateDescPlaceholder": "Wofür diese Vorlage gedacht ist (optional)",
-            "templateExportCliDesc": "Wrapper-Skript für aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Wrapper-Skript für aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Deaktivieren",
+            "multiPathEditorLabel": "Mehrpfad-Editor",
+            "multiPathEnablePair": "Aktivieren",
+            "multiPathLocalPlaceholder": "Lokaler Pfad",
+            "multiPathRemotePlaceholder": "Entfernter Pfad",
+            "rollbackDialogLabel": "Wiederherstellungs-Snapshot",
+            "rollbackMoreFiles": "+{count} weitere...",
+            "rollbackSnapshotSummaryMany": "{count} Dateien, {size}",
+            "rollbackSnapshotSummaryOne": "{count} Datei, {size}",
+            "templateDialogLabel": "Sync-Vorlage",
+            "templateExcludes": "Ausschlüsse",
+            "templateLocal": "Lokal",
+            "templateRemote": "Entfernt",
+            "templateRetries": "Wiederholungen"
         },
         "ui": {
             "syncing": "Synchronisiere...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Vault-Header oder Manifest aus der Parität wiederhergestellt.",
             "repairMetadataSuccess": "Reparatur abgeschlossen: Vault-Header oder Manifest aus der Parität wiederhergestellt",
             "errorCorrectionBadge": "Fehlerkorrektur",
-            "itemsInFolder": "{count} Elemente in /{folder}"
+            "itemsInFolder": "{count} Elemente in /{folder}",
+            "compressionProfileArchive": "Archiv (zstd -15)",
+            "compressionProfileBalanced": "Ausgewogen (zstd -9)",
+            "compressionProfileFast": "Schnell (zstd -3)",
+            "damagedChunkLocation": "{id} - Offset {offset} (Länge {len})",
+            "fallbackName": "Tresor",
+            "folderScanSummary": "{files} Dateien in {dirs} Verzeichnissen ({size})",
+            "namePlaceholderVault": "Mein sicherer Tresor",
+            "namePlaceholderZip": "Mein Archiv",
+            "recentDaysAgo": "vor {count} T.",
+            "recentFileCountMany": "{count} Dateien",
+            "recentFileCountOne": "{count} Datei",
+            "recentMonthsAgo": "vor {count} Mon."
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Ausgewählte Elemente werden verschlüsselt...",
             "ingestSkipped": "Tresor erstellt, aber einige Elemente konnten nicht hinzugefügt werden:",
             "selectionInfo": "{count} Element(e) werden in den Tresor verschlüsselt",
-            "decrypting": "Entschlüsseln…"
+            "decrypting": "Entschlüsseln…",
+            "compatibleWithApp": "Kompatibel mit der Cryptomator-App",
+            "createFormatBadge": "Cryptomator-Format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM-Inhalte",
+            "featureNameCipher": "AES-SIV-Namen",
+            "formatVersion": "Formatversion {version}"
         },
         "compress": {
             "title": "Dateien komprimieren",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Einige Dateien hätten denselben Namen. Bitte passen Sie das Muster an.",
             "apply": "Anwenden",
             "existingCollision": "Einige neue Namen stimmen mit Dateien überein, die bereits in diesem Ordner vorhanden sind; diese Dateien werden nicht überschrieben und ihre Umbenennung wird übersprungen.",
-            "existingCollisionHint": "(existiert bereits)"
+            "existingCollisionHint": "(existiert bereits)",
+            "baseNamePlaceholder": "datei",
+            "invalidName": "{name} (ungültig)"
         },
         "lockScreen": {
             "locked": "App gesperrt",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Vom Desktop nicht eingehängt. Kabel abziehen und wieder einstecken, dann erneut öffnen.",
             "volumes_need_mount_observe": "Im Snap erscheinen Laufwerke, sobald die Berechtigung mount-observe verbunden ist. Führen Sie dies in einem Terminal aus und kehren Sie dann zu AeroFTP zurück:",
             "volumes_unavailable": "Die eingehängten Laufwerke konnten nicht gelesen werden.",
-            "portable_device": "Tragbares Gerät"
+            "portable_device": "Tragbares Gerät",
+            "drivesLeftPanel": "Laufwerke linkes Fenster",
+            "drivesRightPanel": "Laufwerke rechtes Fenster",
+            "modeGroupLabel": "Seitenleistenmodus",
+            "placesSidebarLabel": "Seitenleiste Orte"
         },
         "viewMode": {
             "list": "Liste",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Geschwisterverzeichnisse durchsuchen",
             "loading": "Lade...",
             "noSubdirectories": "Keine Unterverzeichnisse",
-            "browseChildren": "Unterordner durchsuchen"
+            "browseChildren": "Unterordner durchsuchen",
+            "ariaLabel": "Pfadnavigation",
+            "syncBoundaryTitle": "{path} (Synchronisierungsgrenze)"
         },
         "bridge": {
             "checking": "{app} wird geprüft…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Keine Vorschau verfügbar",
-            "title": "Schnellansicht"
+            "title": "Schnellansicht",
+            "closePreview": "Vorschau schließen",
+            "dialogLabel": "Schnellansicht: {name}",
+            "nextFile": "Nächste Datei",
+            "position": "{index} von {total}",
+            "previousFile": "Vorherige Datei"
         },
         "properties": {
             "general": "Allgemein",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Die Prüfsumme des Assets, die Immich beim Hochladen festhält.",
                 "crypt-overlay-ciphertext": "Die Prüfsumme deckt die verschlüsselten Bytes ab, die auf dem Server liegen."
             },
-            "readOnlyIsLinkTarget": "Dies ist eine symbolische Verknüpfung: Die Berechtigungen gehören zu der Datei, auf die sie verweist. Öffnen Sie die Eigenschaften dieser Datei, um sie zu ändern."
+            "readOnlyIsLinkTarget": "Dies ist eine symbolische Verknüpfung: Die Berechtigungen gehören zu der Datei, auf die sie verweist. Öffnen Sie die Eigenschaften dieser Datei, um sie zu ändern.",
+            "exactBytes": "({bytes} Bytes)"
         },
         "duplicates": {
             "sortWasted": "Verschwendeter Speicher",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Byte für Byte identisch",
             "modeNonIdenticalHint": "Wahrnehmungs- oder Textähnlichkeit, kein automatisches Löschen",
             "potentialWasteSelected": "potenziell verschwendet (ausgewählt)",
-            "similarityDistance": "{similarity}, Abst. {distance}"
+            "similarityDistance": "{similarity}, Abst. {distance}",
+            "modeExact": "Exakt",
+            "modeLabel": "Modus:",
+            "modeNonIdentical": "Nicht identisch"
         },
         "diskUsage": {
             "title": "Speicherplatznutzung",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Noch keine Netzwerkaktivität. Übertragen Sie Dateien, um Ereignisse zu sehen.",
                 "time": "Zeit",
                 "event": "Ereignis",
-                "detail": "Detail"
+                "detail": "Detail",
+                "command": "Befehl",
+                "ipcTransfersCount": "IPC + Übertragungen ({count})",
+                "status": "Status",
+                "type": "Typ"
             },
             "system": {
                 "appVersion": "AeroFTP-Version",
@@ -4140,7 +4258,8 @@
                 "dark": "Dunkel",
                 "light": "Hell",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "LocalStorage-Schlüssel"
+                "localStorageKeysTitle": "LocalStorage-Schlüssel",
+                "localStorageEntrySummary": "{size} Bytes · {preview}"
             },
             "copyFileListToClipboard": "Dateiliste in Zwischenablage kopieren",
             "filesCopied": "{count} Dateieinträge in die Zwischenablage kopiert",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Auswahl doppelklicken oder Eingabetaste zum Anwenden drücken, Esc zum Abbrechen",
                     "cropRatio": "Seitenverhältnis",
                     "cropRatioFree": "Frei",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° gegen UZS",
+                    "rotateCw90Short": "90° im UZS"
                 },
                 "toggleTransparencyBg": "Transparenz-Hintergrund (wechseln)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "PDF wird geladen...",
                 "open": "PDF öffnen",
                 "page": "Seite",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "PDF-Dokument"
             },
             "text": {
                 "auto": "Auto",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Zeilenumbruch",
                 "zoomIn": "Vergrößern",
-                "zoomOut": "Verkleinern"
+                "zoomOut": "Verkleinern",
+                "htmlPreviewFrameTitle": "HTML-Vorschau"
             },
             "video": {
                 "exitFullscreen": "Vollbild beenden (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone-Crypt-Overlay erkannt",
             "aerocryptImportDesc": "Profil aus rclone.conf für {name} importiert: Overlay jetzt öffnen?",
             "aerocryptImportOpen": "Overlay öffnen",
-            "aerovaultOverlayExpired": "AeroVault Overlay wurde wegen Inaktivität gesperrt. Öffnen Sie den Tresor erneut, um fortzufahren."
+            "aerovaultOverlayExpired": "AeroVault Overlay wurde wegen Inaktivität gesperrt. Öffnen Sie den Tresor erneut, um fortzufahren.",
+            "aerovaultOverlaySource": "AeroVault-Overlay aktiv ({source})",
+            "fileOperationsLabel": "Dateioperationen",
+            "overlayBadge": "OVERLAY"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Zwei-Faktor-Authentifizierung",
                 "verify": "Verifizieren und aktivieren",
                 "active": "2FA aktiv",
-                "inactive": "2FA inaktiv"
+                "inactive": "2FA inaktiv",
+                "codeGroupLabel": "{count}-stelliger Code",
+                "digitLabel": "Ziffer {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Wiederhergestellte Dateien erscheinen wieder in ihrem ursprünglichen Ordner",
             "connectionNamePlaceholder": "Verbindungsname (z. B. Mein FileLu Cloud)",
             "trashAutoExpiry": "Dateien im Papierkorb werden von FileLu nach 7 Tagen automatisch gelöscht",
-            "rsyncTransferOnly": "Nur-Übertragungs-Endpunkt: Durchsuchen ist auf Rsync nicht verfügbar. Verwende Native API, WebDAV, S3 oder FTP zur Navigation; wechsle zu Rsync für Delta-Übertragungen mit hoher Bandbreite."
+            "rsyncTransferOnly": "Nur-Übertragungs-Endpunkt: Durchsuchen ist auf Rsync nicht verfügbar. Verwende Native API, WebDAV, S3 oder FTP zur Navigation; wechsle zu Rsync für Delta-Übertragungen mit hoher Bandbreite.",
+            "badgePasswordProtected": "Passwortgeschützt",
+            "badgeWatermarked": "Mit Wasserzeichen"
         },
         "box": {
             "addComment": "Kommentar hinzufügen",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} Datei",
             "releaseAssetMany": "{count} Dateien",
             "repoPrivate": "Privat",
-            "repoPublic": "Öffentlich"
+            "repoPublic": "Öffentlich",
+            "actionsLiveBadge": "Aktiv",
+            "actionsRunningTitle": "GitHub Actions (läuft)",
+            "coAuthors": "Co-Autoren",
+            "pagesPathPlaceholder": "/ oder /docs",
+            "pagesStatusBuilding": "wird erstellt",
+            "pagesStatusBuilt": "erstellt",
+            "pagesStatusErrored": "fehlerhaft",
+            "refreshBranches": "Branches aktualisieren",
+            "repoPrivateTitle": "Privates Repository",
+            "repoPublicTitle": "Öffentliches Repository",
+            "unpushedCommitsOnBranchMany": "{count} nicht gepushte Commits auf {branch}",
+            "unpushedCommitsOnBranchOne": "{count} nicht gepushter Commit auf {branch}"
         },
         "filenNotes": {
             "title": "Verschlüsselte Notizen",
@@ -5158,7 +5300,8 @@
             "tagName": "Tag-Name",
             "removeTag": "Tag entfernen",
             "manageTags": "Tags verwalten",
-            "deleteTagConfirm": "Den Tag „{name}“ löschen? Notizen behalten ihren Text."
+            "deleteTagConfirm": "Den Tag „{name}“ löschen? Notizen behalten ihren Text.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Freigabelink",
@@ -5426,7 +5569,8 @@
             "linkType": "Typ",
             "createMergeRequest": "Merge Request erstellen",
             "mrTitle": "MR-Titel",
-            "mrBody": "Beschreibung (optional)"
+            "mrBody": "Beschreibung (optional)",
+            "sourceCode": "Quellcode"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Benutzer duplizieren (nur Server, keine Passwörter)",
             "copyLockedHint": "Wechsle zuerst zu diesem Konto, um dessen Server zu duplizieren",
             "crossUserDedupTitle": "Bereits von einem anderen Konto gespeichert",
-            "crossUserDedupMessage": "\"{name}\" verwendet ein Serverkonto, das auf diesem Gerät auch gespeichert ist von: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" verwendet ein Serverkonto, das auf diesem Gerät auch gespeichert ist von: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Dialog zum Zurücksetzen des Passworts schließen",
+                "confirmPassword": "Neues Passwort bestätigen",
+                "errMismatch": "Die neuen Kontopasswörter stimmen nicht überein.",
+                "errNewRequired": "Geben Sie ein neues Kontopasswort ein.",
+                "errNotAuthorized": "Sie müssen Administrator sein, um das Passwort eines anderen Kontos zurückzusetzen.",
+                "errNotForSelf": "Verwende Passwort ändern für dein eigenes Konto.",
+                "errStoreNotReady": "Entsperre zuerst den Tresor und versuche es erneut.",
+                "errTypeReset": "Geben Sie RESET ein, um diesen destruktiven Vorgang zu bestätigen.",
+                "errUserNotFound": "Dieser Benutzer existiert nicht mehr.",
+                "newPassword": "Neues Kontopasswort",
+                "statEncryptedBytes": "verschlüsselte Bytes",
+                "statProfiles": "Profile",
+                "statSettings": "Einstellungen",
+                "title": "Passwort zurücksetzen = Datenvernichtung",
+                "typeReset": "RESET eingeben",
+                "wipeDetail": "Das aktuelle Passwort kann nicht wiederhergestellt werden. AeroFTP löscht die gespeicherten Server, Benutzereinstellungen und den Sperrstatus des Zielkontos und stellt anschließend einen neuen Verschlüsselungsschlüssel aus, der durch das neue Passwort geschützt ist.",
+                "wipeWarning": "Dadurch wird die verschlüsselte Partition des Zielkontos dauerhaft gelöscht."
+            },
+            "dropdown": {
+                "accountPassword": "Kontopasswort",
+                "lock": "Sperren",
+                "newUser": "Neuer Benutzer",
+                "noUsers": "Noch keine Benutzer. Verwenden Sie unten „Neuer Benutzer“, um den ersten hinzuzufügen.",
+                "protectionNote": "Ihr Konto ist durch Argon2id + AES-KW + AES-256-GCM-Verschlüsselung geschützt",
+                "users": "Benutzer"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt-Overlay",

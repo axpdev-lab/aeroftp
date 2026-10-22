@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Εκτέλεση {cmd} και αυτόματη συμπλήρωση του URL",
                 "fetchUrl": "Λήψη URL",
                 "megacmdWebdavHint": "Το όνομα χρήστη και ο κωδικός πρόσβασης παραλείπονται σκόπιμα. Το AeroFTP εκτελεί το ίδιο το «{cmd}» κατά τη σύνδεση για να ξεκινήσει τη γέφυρα και να διαβάσει αυτή τη διεύθυνση: μπορείτε να το αφήσετε κενό. Η «Λήψη URL» είναι μια προαιρετική χειροκίνητη ανανέωση· αλλάξτε τη θύρα εδώ αν το MEGAcmd χρησιμοποιεί προσαρμοσμένη."
-            }
+            },
+            "manualStorageUnitLabel": "Μονάδα {label}"
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -420,7 +421,19 @@
             "listingPath": "Ανάγνωση του {path}...",
             "pleaseWait": "Παρακαλώ περιμένετε...",
             "sameNameLeakChip": "ίδιο όνομα",
-            "sameNameLeakTooltip": "Αυτό το όνομα εμφανίζεται επίσης σε άλλη διαδρομή σε αυτό το κρυπτογραφημένο θησαυροφυλάκιο. Επειδή τα ονόματα κρυπτογραφούνται ντετερμινιστικά, ένας παρατηρητής του κρυπτογραφημένου χώρου αποθήκευσης μπορεί να διαπιστώσει ότι τα δύο μοιράζονται ένα όνομα."
+            "sameNameLeakTooltip": "Αυτό το όνομα εμφανίζεται επίσης σε άλλη διαδρομή σε αυτό το κρυπτογραφημένο θησαυροφυλάκιο. Επειδή τα ονόματα κρυπτογραφούνται ντετερμινιστικά, ένας παρατηρητής του κρυπτογραφημένου χώρου αποθήκευσης μπορεί να διαπιστώσει ότι τα δύο μοιράζονται ένα όνομα.",
+            "endpointSelector": {
+                "localFolder": "Τοπικός φάκελος",
+                "localFolderHint": "Επιλέξτε μια τοπική διαδρομή για αυτό το πλαίσιο",
+                "noSavedProfiles": "Δεν υπάρχουν αποθηκευμένα προφίλ",
+                "savedProfiles": "Αποθηκευμένα απομακρυσμένα προφίλ",
+                "title": "Τελικό σημείο"
+            },
+            "leftPanelMarker": "Αριστερό πλαίσιο",
+            "localFilesLabel": "Τοπικά αρχεία",
+            "localFilesRightLabel": "Τοπικά αρχεία (δεξί πλαίσιο)",
+            "remoteFilesLabel": "Απομακρυσμένα αρχεία",
+            "rightPanelMarker": "Δεξί πλαίσιο"
         },
         "contextMenu": {
             "askAeroAgent": "Ρωτήστε το AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Γράφημα ταχύτητας",
             "hideSpeedGraph": "Απόκρυψη γραφήματος ταχύτητας",
             "speedAvg": "μέσ. {speed}",
-            "speedPeak": "μέγ. {speed}"
+            "speedPeak": "μέγ. {speed}",
+            "badgeBatch": "ΔΕΣΜΗ",
+            "badgeDownload": "ΛΗΨΗ",
+            "badgeLive": "ΖΩΝΤΑΝΑ",
+            "badgeStream": "ΡΟΗ",
+            "badgeUpload": "ΜΕΤΑΦΟΡΤΩΣΗ",
+            "earlierItemsHidden": "{count} παλαιότερα στοιχεία κρυμμένα",
+            "folderFilesProgress": "{done}/{total} αρχεία",
+            "laneDone": "ολοκληρώθηκε",
+            "laneError": "σφάλμα",
+            "unifiedPlan": {
+                "destination": "Προορισμός",
+                "dialogLabel": "Σχέδιο μεταφοράς",
+                "engineAerovaultOverlay": "Επικάλυψη AeroVault",
+                "engineCompareOnly": "Μόνο σύγκριση",
+                "engineCrossProfileSync": "Συγχρονισμός μεταξύ προφίλ",
+                "engineCrossProfileTransfer": "Μεταφορά μεταξύ προφίλ",
+                "engineLocalDelta": "Τοπική μεταφορά delta",
+                "engineLocalFs": "Τοπικό σύστημα αρχείων",
+                "engineProviderDownload": "Λήψη από πάροχο",
+                "engineProviderUpload": "Μεταφόρτωση σε πάροχο",
+                "engineUnsupported": "Δεν υποστηρίζεται",
+                "execute": "Εκτέλεση",
+                "items": "Στοιχεία",
+                "modeBackup": "Αντίγραφο ασφαλείας",
+                "modeBisync": "Αμφίδρομος συγχρονισμός",
+                "modeCompare": "Σύγκριση",
+                "modeCopy": "Αντιγραφή",
+                "modeMirror": "Κατοπτρισμός",
+                "modeMove": "Μετακίνηση",
+                "modeSync": "Συγχρονισμός",
+                "notExecutable": "Αυτό το ζεύγος τελικών σημείων δεν είναι ακόμη εκτελέσιμο.",
+                "parallel": "Παράλληλα",
+                "reviewBeforeExecution": "Έλεγχος πριν από την εκτέλεση",
+                "route": "{pair} μέσω {engine}",
+                "size": "Μέγεθος",
+                "source": "Προέλευση",
+                "title": "Σχέδιο: {mode}"
+            }
         },
         "settings": {
             "title": "Ρυθμίσεις",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "μέγ",
             "migrationCleanupHint": "Συνιστάται για μέγιστη ασφάλεια",
             "fontCustomOption": "Προσαρμοσμένη...",
-            "fontSystemInstallHint": "Απαιτεί εγκατάσταση στο σύστημα. Το AeroFTP χρησιμοποιεί αυτόματα εναλλακτική αν δεν είναι διαθέσιμη."
+            "fontSystemInstallHint": "Απαιτεί εγκατάσταση στο σύστημα. Το AeroFTP χρησιμοποιεί αυτόματα εναλλακτική αν δεν είναι διαθέσιμη.",
+            "fontSizeIndicatorLabel": "Γραμματοσειρά"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} αρχεία, ελευθερώθηκαν {size}",
             "maturity": {
                 "alpha": "Άλφα"
-            }
+            },
+            "dialogDashboardLabel": "Πίνακας ελέγχου συγχρονισμού νέφους",
+            "dialogLoadingLabel": "Φόρτωση συγχρονισμού νέφους",
+            "dialogSettingsLabel": "Ρυθμίσεις συγχρονισμού νέφους",
+            "dialogSetupLabel": "Διαμόρφωση συγχρονισμού νέφους",
+            "onePerLineHint": "(ένα ανά γραμμή)",
+            "pairsEditorLabel": "Επεξεργαστής ζευγών AeroCloud",
+            "remoteSubfolderPlaceholder": "νέφος"
         },
         "statusBar": {
             "connected": "Συνδεδεμένο",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "μερικό, μη αναγνώσιμοι φάκελοι: {count}",
             "usedScanFailed": "Η σάρωση χρησιμοποιημένου χώρου απέτυχε",
             "usedScanEmpty": "Η σάρωση του {path} δεν βρήκε αρχεία· η αποθηκευμένη τιμή διατηρήθηκε. Ελέγξτε τη διαδρομή ή την υποστήριξη αναδρομικής παράθεσης του διακομιστή.",
-            "filenBridgeAccountTotal": "Το Filen Desktop δεν αναφέρει εδώ το συνολικό χώρο του λογαριασμού σας: η τιμή χρήσης είναι το άθροισμα των αρχείων κάτω από αυτή τη διαδρομή. Η εγγενής σύνδεση Filen εμφανίζει αμέσως το σύνολο του λογαριασμού."
+            "filenBridgeAccountTotal": "Το Filen Desktop δεν αναφέρει εδώ το συνολικό χώρο του λογαριασμού σας: η τιμή χρήσης είναι το άθροισμα των αρχείων κάτω από αυτή τη διαδρομή. Η εγγενής σύνδεση Filen εμφανίζει αμέσως το σύνολο του λογαριασμού.",
+            "ariaLabel": "Γραμμή κατάστασης",
+            "debugBadge": "ΑΠΟΣΦΑΛΜΑΤΩΣΗ",
+            "debugModeActive": "Η λειτουργία αποσφαλμάτωσης είναι ενεργή"
         },
         "dialogs": {
             "confirmTitle": "Επιβεβαίωση",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "π.χ. {template}",
             "jurisdiction": "Δικαιοδοσία",
             "insecureCertDialogLabel": "Προειδοποίηση μη ασφαλούς πιστοποιητικού",
-            "betaBadge": "ΒΗΤΑ"
+            "betaBadge": "ΒΗΤΑ",
+            "hostKeyDialogLabel": "Επαλήθευση κλειδιού κεντρικού υπολογιστή"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -2173,7 +2236,10 @@
             "rename": "Μετονομασία",
             "resume": "Συνέχιση",
             "resumeHint": "Συνέχιση της διακοπείσας μεταφοράς αντί για επανεκκίνηση",
-            "cancel": "Ακύρωση"
+            "cancel": "Ακύρωση",
+            "dialogLabel": "Επιβεβαίωση αντικατάστασης",
+            "moreInQueue": "+{count} στην ουρά",
+            "unknownDate": "Άγνωστο"
         },
         "statusbar": {
             "queue": "Ουρά",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Χρησιμοποιήσιμα ζεύγη διαδρομών (τοπική/απομακρυσμένη) σε αυτό το πρότυπο: {count}. Ένα παράθυρο του AeroSync λειτουργεί με ακριβώς ένα ζεύγος, οπότε δεν εισήχθη τίποτα. Επεξεργαστείτε το πρότυπο ώστε να μείνει ένα μόνο ζεύγος και έπειτα εισαγάγετέ το ξανά.",
             "templateNamePlaceholder": "π.χ. Νυχτερινό αντίγραφο ασφαλείας στο S3",
             "templateDescPlaceholder": "Σε τι χρησιμεύει αυτό το πρότυπο (προαιρετικό)",
-            "templateExportCliDesc": "Σενάριο περιτύλιξης για το aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Σενάριο περιτύλιξης για το aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Απενεργοποίηση",
+            "multiPathEditorLabel": "Επεξεργαστής πολλαπλών διαδρομών",
+            "multiPathEnablePair": "Ενεργοποίηση",
+            "multiPathLocalPlaceholder": "Τοπική διαδρομή",
+            "multiPathRemotePlaceholder": "Απομακρυσμένη διαδρομή",
+            "rollbackDialogLabel": "Στιγμιότυπο επαναφοράς",
+            "rollbackMoreFiles": "+{count} ακόμη...",
+            "rollbackSnapshotSummaryMany": "{count} αρχεία, {size}",
+            "rollbackSnapshotSummaryOne": "{count} αρχείο, {size}",
+            "templateDialogLabel": "Πρότυπο συγχρονισμού",
+            "templateExcludes": "Εξαιρέσεις",
+            "templateLocal": "Τοπικό",
+            "templateRemote": "Απομακρυσμένο",
+            "templateRetries": "Επαναλήψεις"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Η κεφαλίδα ή το manifest του vault ανακατασκευάστηκε από την ισοτιμία.",
             "repairMetadataSuccess": "Η επιδιόρθωση ολοκληρώθηκε: η κεφαλίδα ή το manifest του vault ανακατασκευάστηκε από την ισοτιμία",
             "errorCorrectionBadge": "Διόρθωση σφαλμάτων",
-            "itemsInFolder": "{count} στοιχεία στο /{folder}"
+            "itemsInFolder": "{count} στοιχεία στο /{folder}",
+            "compressionProfileArchive": "Αρχειοθέτηση (zstd -15)",
+            "compressionProfileBalanced": "Ισορροπημένο (zstd -9)",
+            "compressionProfileFast": "Γρήγορο (zstd -3)",
+            "damagedChunkLocation": "{id} - μετατόπιση {offset} (μήκος {len})",
+            "fallbackName": "Θησαυροφυλάκιο",
+            "folderScanSummary": "{files} αρχεία σε {dirs} καταλόγους ({size})",
+            "namePlaceholderVault": "Το ασφαλές θησαυροφυλάκιό μου",
+            "namePlaceholderZip": "Η αρχειοθήκη μου",
+            "recentDaysAgo": "πριν από {count} ημ.",
+            "recentFileCountMany": "{count} αρχεία",
+            "recentFileCountOne": "{count} αρχείο",
+            "recentMonthsAgo": "πριν από {count} μήν."
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Κρυπτογράφηση επιλεγμένων στοιχείων...",
             "ingestSkipped": "Η θυρίδα δημιουργήθηκε, αλλά ορισμένα στοιχεία δεν ήταν δυνατό να προστεθούν:",
             "selectionInfo": "{count} στοιχείο(α) θα κρυπτογραφηθούν στη θυρίδα",
-            "decrypting": "Αποκρυπτογράφηση…"
+            "decrypting": "Αποκρυπτογράφηση…",
+            "compatibleWithApp": "Συμβατό με την εφαρμογή Cryptomator",
+            "createFormatBadge": "Cryptomator μορφή 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Περιεχόμενο AES-GCM",
+            "featureNameCipher": "Ονόματα AES-SIV",
+            "formatVersion": "Μορφή {version}"
         },
         "compress": {
             "title": "Συμπίεση Αρχείων",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Ορισμένα αρχεία θα έχουν το ίδιο όνομα. Παρακαλώ προσαρμόστε το μοτίβο.",
             "apply": "Εφαρμογή",
             "existingCollision": "Ορισμένα νέα ονόματα ταιριάζουν με αρχεία που υπάρχουν ήδη σε αυτόν τον φάκελο· αυτά τα αρχεία δεν θα αντικατασταθούν και η μετονομασία τους παραλείπεται.",
-            "existingCollisionHint": "(υπάρχει ήδη)"
+            "existingCollisionHint": "(υπάρχει ήδη)",
+            "baseNamePlaceholder": "αρχείο",
+            "invalidName": "{name} (μη έγκυρο)"
         },
         "lockScreen": {
             "locked": "Η Εφαρμογή Κλειδώθηκε",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Δεν έχει προσαρτηθεί από την επιφάνεια εργασίας. Αποσυνδέστε και επανασυνδέστε το καλώδιο, μετά ανοίξτε το ξανά.",
             "volumes_need_mount_observe": "Στο snap, οι τόμοι εμφανίζονται μόλις συνδεθεί το δικαίωμα mount-observe. Εκτελέστε αυτό σε ένα τερματικό και μετά επιστρέψτε στο AeroFTP:",
             "volumes_unavailable": "Δεν ήταν δυνατή η ανάγνωση των προσαρτημένων τόμων.",
-            "portable_device": "Φορητή συσκευή"
+            "portable_device": "Φορητή συσκευή",
+            "drivesLeftPanel": "Μονάδες αριστερού πλαισίου",
+            "drivesRightPanel": "Μονάδες δεξιού πλαισίου",
+            "modeGroupLabel": "Λειτουργία πλευρικής στήλης",
+            "placesSidebarLabel": "Πλευρική στήλη τοποθεσιών"
         },
         "viewMode": {
             "list": "Λίστα",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Περιήγηση αδελφών καταλόγων",
             "loading": "Φόρτωση...",
             "noSubdirectories": "Δεν υπάρχουν υποκατάλογοι",
-            "browseChildren": "Περιήγηση σε υποφακέλους"
+            "browseChildren": "Περιήγηση σε υποφακέλους",
+            "ariaLabel": "Διαδρομή πλοήγησης",
+            "syncBoundaryTitle": "{path} (όριο συγχρονισμού)"
         },
         "bridge": {
             "checking": "Έλεγχος {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Δεν υπάρχει διαθέσιμη προεπισκόπηση",
-            "title": "Γρήγορη Προβολή"
+            "title": "Γρήγορη Προβολή",
+            "closePreview": "Κλείσιμο προεπισκόπησης",
+            "dialogLabel": "Γρήγορη Προβολή: {name}",
+            "nextFile": "Επόμενο αρχείο",
+            "position": "{index} από {total}",
+            "previousFile": "Προηγούμενο αρχείο"
         },
         "properties": {
             "general": "Γενικά",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Το άθροισμα ελέγχου του στοιχείου που καταγράφει το Immich κατά τη μεταφόρτωση.",
                 "crypt-overlay-ciphertext": "Το hash καλύπτει τα κρυπτογραφημένα byte που είναι αποθηκευμένα στον διακομιστή."
             },
-            "readOnlyIsLinkTarget": "Αυτός είναι συμβολικός σύνδεσμος: τα δικαιώματα ανήκουν στο αρχείο στο οποίο δείχνει. Ανοίξτε τις ιδιότητες εκείνου του αρχείου για να τα αλλάξετε."
+            "readOnlyIsLinkTarget": "Αυτός είναι συμβολικός σύνδεσμος: τα δικαιώματα ανήκουν στο αρχείο στο οποίο δείχνει. Ανοίξτε τις ιδιότητες εκείνου του αρχείου για να τα αλλάξετε.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Χαμένος χώρος",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Πανομοιότυπα byte προς byte",
             "modeNonIdenticalHint": "Αντιληπτική ή κειμενική ομοιότητα, χωρίς αυτόματη διαγραφή",
             "potentialWasteSelected": "πιθανή σπατάλη (επιλεγμένα)",
-            "similarityDistance": "{similarity}, απόστ. {distance}"
+            "similarityDistance": "{similarity}, απόστ. {distance}",
+            "modeExact": "Ακριβής",
+            "modeLabel": "Λειτουργία:",
+            "modeNonIdentical": "Μη πανομοιότυπα"
         },
         "diskUsage": {
             "title": "Χρήση Δίσκου",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Δεν υπάρχει ακόμα δικτυακή δραστηριότητα. Μεταφέρετε αρχεία για να δείτε συμβάντα.",
                 "time": "Ώρα",
                 "event": "Συμβάν",
-                "detail": "Λεπτομέρεια"
+                "detail": "Λεπτομέρεια",
+                "command": "Εντολή",
+                "ipcTransfersCount": "IPC + Μεταφορές ({count})",
+                "status": "Κατάσταση",
+                "type": "Τύπος"
             },
             "system": {
                 "appVersion": "Έκδοση AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Σκούρο",
                 "light": "Φωτεινό",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Κλειδιά LocalStorage"
+                "localStorageKeysTitle": "Κλειδιά LocalStorage",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Αντιγραφή λίστας αρχείων στο πρόχειρο",
             "filesCopied": "{count} εγγραφές αρχείων αντιγράφηκαν στο πρόχειρο",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Κάντε διπλό κλικ στην επιλογή ή πατήστε Enter για εφαρμογή, Esc για ακύρωση",
                     "cropRatio": "Αναλογίες",
                     "cropRatioFree": "Ελεύθερο",
-                    "cropRatioOriginal": "Αρχικό"
+                    "cropRatioOriginal": "Αρχικό",
+                    "rotateCcw90Short": "90° αριστερόστροφα",
+                    "rotateCw90Short": "90° δεξιόστροφα"
                 },
                 "toggleTransparencyBg": "Φόντο διαφάνειας (εναλλαγή)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Φόρτωση PDF...",
                 "open": "Άνοιγμα PDF",
                 "page": "Σελίδα",
-                "zoom": "Ζουμ"
+                "zoom": "Ζουμ",
+                "documentTitle": "Έγγραφο PDF"
             },
             "text": {
                 "auto": "Αυτόματο",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Αναδίπλωση λέξεων",
                 "zoomIn": "Μεγέθυνση",
-                "zoomOut": "Σμίκρυνση"
+                "zoomOut": "Σμίκρυνση",
+                "htmlPreviewFrameTitle": "Προεπισκόπηση HTML"
             },
             "video": {
                 "exitFullscreen": "Έξοδος πλήρους οθόνης (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Εντοπίστηκε επικάλυψη Rclone Crypt",
             "aerocryptImportDesc": "Εισήχθη προφίλ από το rclone.conf για το {name}: άνοιγμα της επικάλυψης τώρα;",
             "aerocryptImportOpen": "Άνοιγμα επικάλυψης",
-            "aerovaultOverlayExpired": "Το AeroVault Overlay κλειδώθηκε λόγω αδράνειας. Ανοίξτε ξανά το θησαυροφυλάκιο για να συνεχίσετε."
+            "aerovaultOverlayExpired": "Το AeroVault Overlay κλειδώθηκε λόγω αδράνειας. Ανοίξτε ξανά το θησαυροφυλάκιο για να συνεχίσετε.",
+            "aerovaultOverlaySource": "Επικάλυψη AeroVault ενεργή ({source})",
+            "fileOperationsLabel": "Λειτουργίες αρχείων",
+            "overlayBadge": "ΕΠΙΚΑΛΥΨΗ"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Έλεγχος ταυτότητας δύο παραγόντων",
                 "verify": "Επαλήθευση & Ενεργοποίηση",
                 "active": "2FA ενεργό",
-                "inactive": "2FA ανενεργό"
+                "inactive": "2FA ανενεργό",
+                "codeGroupLabel": "Κωδικός {count} ψηφίων",
+                "digitLabel": "Ψηφίο {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Τα επαναφερθέντα αρχεία θα επανεμφανιστούν στον αρχικό τους φάκελο",
             "connectionNamePlaceholder": "Όνομα σύνδεσης (π.χ. Το FileLu Cloud μου)",
             "trashAutoExpiry": "Τα αρχεία στον κάδο διαγράφονται αυτόματα από το FileLu μετά από 7 ημέρες",
-            "rsyncTransferOnly": "Σημείο μόνο μεταφοράς: η περιήγηση δεν είναι διαθέσιμη στο Rsync. Χρησιμοποίησε Native API, WebDAV, S3 ή FTP για πλοήγηση και άλλαξε σε Rsync για delta μεταφορές υψηλού εύρους ζώνης."
+            "rsyncTransferOnly": "Σημείο μόνο μεταφοράς: η περιήγηση δεν είναι διαθέσιμη στο Rsync. Χρησιμοποίησε Native API, WebDAV, S3 ή FTP για πλοήγηση και άλλαξε σε Rsync για delta μεταφορές υψηλού εύρους ζώνης.",
+            "badgePasswordProtected": "Με κωδικό πρόσβασης",
+            "badgeWatermarked": "Με υδατογράφημα"
         },
         "box": {
             "addComment": "Προσθήκη σχολίου",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} αρχείο",
             "releaseAssetMany": "{count} αρχεία",
             "repoPrivate": "Ιδιωτικό",
-            "repoPublic": "Δημόσιο"
+            "repoPublic": "Δημόσιο",
+            "actionsLiveBadge": "Ζωντανά",
+            "actionsRunningTitle": "GitHub Actions (σε εκτέλεση)",
+            "coAuthors": "Συν-συγγραφείς",
+            "pagesPathPlaceholder": "/ ή /docs",
+            "pagesStatusBuilding": "δημιουργείται",
+            "pagesStatusBuilt": "δημιουργήθηκε",
+            "pagesStatusErrored": "σφάλμα",
+            "refreshBranches": "Ανανέωση κλάδων",
+            "repoPrivateTitle": "Ιδιωτικό αποθετήριο",
+            "repoPublicTitle": "Δημόσιο αποθετήριο",
+            "unpushedCommitsOnBranchMany": "{count} μη απεσταλμένα commit στο {branch}",
+            "unpushedCommitsOnBranchOne": "{count} μη απεσταλμένο commit στο {branch}"
         },
         "filenNotes": {
             "title": "Κρυπτογραφημένες σημειώσεις",
@@ -5158,7 +5300,8 @@
             "tagName": "Όνομα ετικέτας",
             "removeTag": "Κατάργηση ετικέτας",
             "manageTags": "Διαχείριση ετικετών",
-            "deleteTagConfirm": "Διαγραφή της ετικέτας «{name}»; Οι σημειώσεις διατηρούν το κείμενό τους."
+            "deleteTagConfirm": "Διαγραφή της ετικέτας «{name}»; Οι σημειώσεις διατηρούν το κείμενό τους.",
+            "betaBadge": "ΔΟΚΙΜΑΣΤΙΚΟ"
         },
         "shareLinkModal": {
             "title": "Σύνδεσμος Κοινοποίησης",
@@ -5426,7 +5569,8 @@
             "linkType": "Τύπος",
             "createMergeRequest": "Δημιουργία Merge Request",
             "mrTitle": "Τίτλος MR",
-            "mrBody": "Περιγραφή (προαιρετική)"
+            "mrBody": "Περιγραφή (προαιρετική)",
+            "sourceCode": "Πηγαίος κώδικας"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Αντιγραφή χρήστη (μόνο διακομιστές, χωρίς κωδικούς)",
             "copyLockedHint": "Μεταβείτε πρώτα σε αυτόν τον λογαριασμό για να αντιγράψετε τους διακομιστές του",
             "crossUserDedupTitle": "Ήδη αποθηκευμένο από άλλο λογαριασμό",
-            "crossUserDedupMessage": "Το \"{name}\" χρησιμοποιεί λογαριασμό διακομιστή που είναι επίσης αποθηκευμένος σε αυτή τη συσκευή από: {accounts}"
+            "crossUserDedupMessage": "Το \"{name}\" χρησιμοποιεί λογαριασμό διακομιστή που είναι επίσης αποθηκευμένος σε αυτή τη συσκευή από: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Κλείσιμο διαλόγου επαναφοράς κωδικού πρόσβασης",
+                "confirmPassword": "Επιβεβαίωση νέου κωδικού πρόσβασης",
+                "errMismatch": "Οι νέοι κωδικοί πρόσβασης του λογαριασμού δεν ταιριάζουν.",
+                "errNewRequired": "Εισαγάγετε νέο κωδικό πρόσβασης λογαριασμού.",
+                "errNotAuthorized": "Πρέπει να είστε διαχειριστής για να επαναφέρετε τον κωδικό πρόσβασης άλλου λογαριασμού.",
+                "errNotForSelf": "Χρησιμοποιήστε την Αλλαγή κωδικού στον δικό σας λογαριασμό.",
+                "errStoreNotReady": "Ξεκλειδώστε πρώτα το θησαυροφυλάκιο και δοκιμάστε ξανά.",
+                "errTypeReset": "Πληκτρολογήστε RESET για να επιβεβαιώσετε αυτήν την καταστροφική ενέργεια.",
+                "errUserNotFound": "Αυτός ο χρήστης δεν υπάρχει πλέον.",
+                "newPassword": "Νέος κωδικός λογαριασμού",
+                "statEncryptedBytes": "κρυπτογραφημένα byte",
+                "statProfiles": "προφίλ",
+                "statSettings": "ρυθμίσεις",
+                "title": "Επαναφορά κωδικού = καταστροφή δεδομένων",
+                "typeReset": "Πληκτρολογήστε RESET",
+                "wipeDetail": "Ο τρέχων κωδικός δεν μπορεί να ανακτηθεί. Το AeroFTP θα διαγράψει τους αποθηκευμένους διακομιστές, τις ρυθμίσεις χρήστη και την κατάσταση κλειδώματος του λογαριασμού-στόχου και στη συνέχεια θα εκδώσει ένα νέο κλειδί κρυπτογράφησης που προστατεύεται από τον νέο κωδικό.",
+                "wipeWarning": "Αυτό θα διαγράψει οριστικά το κρυπτογραφημένο διαμέρισμα του λογαριασμού-στόχου."
+            },
+            "dropdown": {
+                "accountPassword": "Κωδικός λογαριασμού",
+                "lock": "Κλείδωμα",
+                "newUser": "Νέος χρήστης",
+                "noUsers": "Δεν υπάρχουν ακόμη χρήστες. Χρησιμοποιήστε το «Νέος χρήστης» παρακάτω για να προσθέσετε τον πρώτο.",
+                "protectionNote": "Ο λογαριασμός σας προστατεύεται με κρυπτογράφηση Argon2id + AES-KW + AES-256-GCM",
+                "users": "Χρήστες"
+            }
         },
         "aerocryptNative": {
             "title": "Επικάλυψη AeroCrypt",

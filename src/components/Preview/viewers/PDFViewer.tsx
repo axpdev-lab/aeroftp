@@ -79,7 +79,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
             <div className="flex-1 flex flex-col items-center justify-center p-8">
                 <div className="text-center mb-8">
                     <FileText size={80} className="mx-auto mb-4 text-red-400/50" />
-                    <h3 className="text-xl font-medium text-gray-200 mb-2">PDF Document</h3>
+                    <h3 className="text-xl font-medium text-gray-200 mb-2">{t('preview.pdf.documentTitle')}</h3>
                     <p className="text-gray-400 text-sm max-w-md">
                         {t('preview.pdf.downloadMessage')}
                     </p>

@@ -40,7 +40,7 @@ interface BreadcrumbBarProps {
    * Omitted by the remote pane, where those actions are local-only.
    */
   onSegmentContextMenu?: (e: React.MouseEvent, path: string) => void;
-  t: (key: string) => string;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }
 
 interface PathSegment {
@@ -358,7 +358,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
         data-panel={panel}
       className="flex items-center h-8 bg-white border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 rounded-lg border px-2 gap-0.5 overflow-hidden w-full relative"
       role="navigation"
-      aria-label="Breadcrumb"
+      aria-label={t('breadcrumb.ariaLabel')}
     >
       {/* Coherence warning icon */}
       {!isCoherent && (
@@ -517,7 +517,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                         ? 'text-gray-900 font-medium dark:text-white cursor-default'
                         : 'text-gray-600 hover:text-blue-500 hover:underline hover:bg-gray-100 dark:text-gray-300 dark:hover:text-blue-400 dark:hover:bg-gray-700/50'
                   }`}
-                  title={locked ? `${seg.fullPath} (sync boundary)` : seg.fullPath}
+                  title={locked ? t('breadcrumb.syncBoundaryTitle', { path: seg.fullPath }) : seg.fullPath}
                   disabled={locked}
                   {...(isLast ? { 'aria-current': 'page' as const } : {})}
                 >

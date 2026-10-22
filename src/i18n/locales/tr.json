@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "{cmd} komutunu çalıştır ve URL'yi otomatik doldur",
                 "fetchUrl": "URL'yi Getir",
                 "megacmdWebdavHint": "Kullanıcı adı ve parola bilerek atlanmıştır. AeroFTP bağlanırken köprüyü başlatmak ve bu adresi okumak için \"{cmd}\" komutunu kendisi çalıştırır: alanı boş bırakabilirsiniz. \"URL'yi Getir\" isteğe bağlı bir elle yenilemedir; MEGAcmd özel bir bağlantı noktası kullanıyorsa bağlantı noktasını burada değiştirin."
-            }
+            },
+            "manualStorageUnitLabel": "{label} birimi"
         },
         "browser": {
             "remote": "Uzak",
@@ -420,7 +421,19 @@
             "listingPath": "{path} listeleniyor...",
             "pleaseWait": "Lütfen bekleyin...",
             "sameNameLeakChip": "aynı ad",
-            "sameNameLeakTooltip": "Bu ad, bu şifreli kasadaki başka bir yolda da görünüyor. Adlar deterministik olarak şifrelendiğinden, şifreli deponun bir gözlemcisi ikisinin aynı adı paylaştığını anlayabilir."
+            "sameNameLeakTooltip": "Bu ad, bu şifreli kasadaki başka bir yolda da görünüyor. Adlar deterministik olarak şifrelendiğinden, şifreli deponun bir gözlemcisi ikisinin aynı adı paylaştığını anlayabilir.",
+            "endpointSelector": {
+                "localFolder": "Yerel klasör",
+                "localFolderHint": "Bu panel için yerel bir yol seçin",
+                "noSavedProfiles": "Kayıtlı profil yok",
+                "savedProfiles": "Kayıtlı uzak profiller",
+                "title": "Uç nokta"
+            },
+            "leftPanelMarker": "Sol panel",
+            "localFilesLabel": "Yerel dosyalar",
+            "localFilesRightLabel": "Yerel dosyalar (sağ panel)",
+            "remoteFilesLabel": "Uzak dosyalar",
+            "rightPanelMarker": "Sağ panel"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent'a sor...",
@@ -680,7 +693,45 @@
             "speedGraph": "Hız grafiği",
             "hideSpeedGraph": "Hız grafiğini gizle",
             "speedAvg": "ort. {speed}",
-            "speedPeak": "maks. {speed}"
+            "speedPeak": "maks. {speed}",
+            "badgeBatch": "TOPLU",
+            "badgeDownload": "İNDİRME",
+            "badgeLive": "CANLI",
+            "badgeStream": "AKIŞ",
+            "badgeUpload": "YÜKLEME",
+            "earlierItemsHidden": "{count} önceki öğe gizlendi",
+            "folderFilesProgress": "{done}/{total} dosya",
+            "laneDone": "tamam",
+            "laneError": "hata",
+            "unifiedPlan": {
+                "destination": "Hedef",
+                "dialogLabel": "Aktarım planı",
+                "engineAerovaultOverlay": "AeroVault katmanı",
+                "engineCompareOnly": "Yalnızca karşılaştır",
+                "engineCrossProfileSync": "Profiller arası eşitleme",
+                "engineCrossProfileTransfer": "Profiller arası aktarım",
+                "engineLocalDelta": "Yerel delta aktarımı",
+                "engineLocalFs": "Yerel dosya sistemi",
+                "engineProviderDownload": "Sağlayıcıdan indirme",
+                "engineProviderUpload": "Sağlayıcıya yükleme",
+                "engineUnsupported": "Desteklenmiyor",
+                "execute": "Yürüt",
+                "items": "Öğeler",
+                "modeBackup": "Yedekleme",
+                "modeBisync": "İki yönlü eşitleme",
+                "modeCompare": "Karşılaştır",
+                "modeCopy": "Kopyala",
+                "modeMirror": "Yansıt",
+                "modeMove": "Taşı",
+                "modeSync": "Eşitle",
+                "notExecutable": "Bu uç nokta çifti henüz yürütülemez.",
+                "parallel": "Paralel",
+                "reviewBeforeExecution": "Yürütmeden önce gözden geçir",
+                "route": "{pair}, {engine} üzerinden",
+                "size": "Boyut",
+                "source": "Kaynak",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Ayarlar",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "maks",
             "migrationCleanupHint": "En yüksek güvenlik için önerilir",
             "fontCustomOption": "Özel...",
-            "fontSystemInstallHint": "Sistem kurulumu gerektirir. Kullanılamıyorsa AeroFTP otomatik olarak yedeğe geçer."
+            "fontSystemInstallHint": "Sistem kurulumu gerektirir. Kullanılamıyorsa AeroFTP otomatik olarak yedeğe geçer.",
+            "fontSizeIndicatorLabel": "Yazı tipi"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} dosya, {size} boşaltıldı",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Bulut Eşitleme Panosu",
+            "dialogLoadingLabel": "Bulut Eşitleme Yükleniyor",
+            "dialogSettingsLabel": "Bulut Eşitleme Ayarları",
+            "dialogSetupLabel": "Bulut Eşitleme Kurulumu",
+            "onePerLineHint": "(her satıra bir tane)",
+            "pairsEditorLabel": "AeroCloud Çift Düzenleyicisi",
+            "remoteSubfolderPlaceholder": "bulut"
         },
         "statusBar": {
             "connected": "Bağlı",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "kısmi, okunamayan klasörler: {count}",
             "usedScanFailed": "Kullanılan depolama taraması başarısız oldu",
             "usedScanEmpty": "{path} yolunun taraması hiç dosya bulamadı; önbellekteki değer korundu. Yolu veya sunucunun özyinelemeli listeleme desteğini kontrol edin.",
-            "filenBridgeAccountTotal": "Filen Desktop burada hesabınızın toplamını bildirmez: gösterilen kullanım, bu yol altındaki dosyaların toplamıdır. Yerel Filen bağlantısı hesap toplamını hemen gösterir."
+            "filenBridgeAccountTotal": "Filen Desktop burada hesabınızın toplamını bildirmez: gösterilen kullanım, bu yol altındaki dosyaların toplamıdır. Yerel Filen bağlantısı hesap toplamını hemen gösterir.",
+            "ariaLabel": "Durum çubuğu",
+            "debugBadge": "HATA AYIKLAMA",
+            "debugModeActive": "Hata Ayıklama Modu Etkin"
         },
         "dialogs": {
             "confirmTitle": "Onayla",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "örn. {template}",
             "jurisdiction": "Yargı yetkisi",
             "insecureCertDialogLabel": "Güvensiz Sertifika Uyarısı",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Ana bilgisayar anahtarı doğrulaması"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -2173,7 +2236,10 @@
             "rename": "Yeniden Adlandır",
             "resume": "Sürdür",
             "resumeHint": "Aktarımı yeniden başlatmak yerine kaldığı yerden sürdür",
-            "cancel": "İptal"
+            "cancel": "İptal",
+            "dialogLabel": "Üzerine yazma onayı",
+            "moreInQueue": "Kuyrukta +{count}",
+            "unknownDate": "Bilinmiyor"
         },
         "statusbar": {
             "queue": "Kuyruk",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Bu şablondaki kullanılabilir yerel/uzak yol çiftleri: {count}. Bir AeroSync penceresi tam olarak bir çiftle çalışır, bu yüzden hiçbir şey içe aktarılmadı. Şablonu tek bir çift kalacak şekilde düzenleyin, ardından yeniden içe aktarın.",
             "templateNamePlaceholder": "ör. S3'e gecelik yedekleme",
             "templateDescPlaceholder": "Bu şablonun ne için olduğu (isteğe bağlı)",
-            "templateExportCliDesc": "aeroftp-cli sync sarmalayıcısı ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync sarmalayıcısı ({shell})",
+            "multiPathDisablePair": "Devre dışı bırak",
+            "multiPathEditorLabel": "Çoklu Yol Düzenleyici",
+            "multiPathEnablePair": "Etkinleştir",
+            "multiPathLocalPlaceholder": "Yerel yol",
+            "multiPathRemotePlaceholder": "Uzak yol",
+            "rollbackDialogLabel": "Geri Alma Anlık Görüntüsü",
+            "rollbackMoreFiles": "+{count} tane daha...",
+            "rollbackSnapshotSummaryMany": "{count} dosya, {size}",
+            "rollbackSnapshotSummaryOne": "{count} dosya, {size}",
+            "templateDialogLabel": "Eşitleme Şablonu",
+            "templateExcludes": "Hariç tutulanlar",
+            "templateLocal": "Yerel",
+            "templateRemote": "Uzak",
+            "templateRetries": "Yeniden denemeler"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Kasa başlığı veya manifestosu pariteden yeniden oluşturuldu.",
             "repairMetadataSuccess": "Onarım tamamlandı: kasa başlığı veya manifestosu pariteden yeniden oluşturuldu",
             "errorCorrectionBadge": "Hata Düzeltme",
-            "itemsInFolder": "/{folder} içinde {count} öğe"
+            "itemsInFolder": "/{folder} içinde {count} öğe",
+            "compressionProfileArchive": "Arşiv (zstd -15)",
+            "compressionProfileBalanced": "Dengeli (zstd -9)",
+            "compressionProfileFast": "Hızlı (zstd -3)",
+            "damagedChunkLocation": "{id} - konum {offset} (uzunluk {len})",
+            "fallbackName": "Kasa",
+            "folderScanSummary": "{dirs} dizinde {files} dosya ({size})",
+            "namePlaceholderVault": "Güvenli kasam",
+            "namePlaceholderZip": "Arşivim",
+            "recentDaysAgo": "{count} g önce",
+            "recentFileCountMany": "{count} dosya",
+            "recentFileCountOne": "{count} dosya",
+            "recentMonthsAgo": "{count} ay önce"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Seçili öğeler şifreleniyor...",
             "ingestSkipped": "Kasa oluşturuldu, ancak bazı öğeler eklenemedi:",
             "selectionInfo": "{count} öğe kasaya şifrelenecek",
-            "decrypting": "Şifre çözülüyor…"
+            "decrypting": "Şifre çözülüyor…",
+            "compatibleWithApp": "Cryptomator uygulamasıyla uyumlu",
+            "createFormatBadge": "Cryptomator Biçim 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM içerik",
+            "featureNameCipher": "AES-SIV adlar",
+            "formatVersion": "Biçim {version}"
         },
         "compress": {
             "title": "Dosyaları Sıkıştır",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Bazı dosyalar aynı ada sahip olacak. Lütfen deseni düzeltin.",
             "apply": "Uygula",
             "existingCollision": "Bazı yeni adlar bu klasörde zaten bulunan dosyalarla eşleşiyor; bu dosyaların üzerine yazılmayacak ve yeniden adlandırılmaları atlanacak.",
-            "existingCollisionHint": "(zaten var)"
+            "existingCollisionHint": "(zaten var)",
+            "baseNamePlaceholder": "dosya",
+            "invalidName": "{name} (geçersiz)"
         },
         "lockScreen": {
             "locked": "Uygulama Kilitli",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Masaüstü tarafından bağlanmadı. Kabloyu çıkarıp yeniden takın, sonra tekrar açın.",
             "volumes_need_mount_observe": "Snap içinde birimler, mount-observe izni bağlandığında görünür. Bunu bir terminalde çalıştırın, ardından AeroFTP'ye dönün:",
             "volumes_unavailable": "Bağlı birimler okunamadı.",
-            "portable_device": "Taşınabilir cihaz"
+            "portable_device": "Taşınabilir cihaz",
+            "drivesLeftPanel": "Sol panel sürücüleri",
+            "drivesRightPanel": "Sağ panel sürücüleri",
+            "modeGroupLabel": "Kenar çubuğu modu",
+            "placesSidebarLabel": "Konumlar kenar çubuğu"
         },
         "viewMode": {
             "list": "Liste",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Kardeş dizinlere gözat",
             "loading": "Yükleniyor...",
             "noSubdirectories": "Alt dizin yok",
-            "browseChildren": "Alt klasörlere göz at"
+            "browseChildren": "Alt klasörlere göz at",
+            "ariaLabel": "İçerik haritası",
+            "syncBoundaryTitle": "{path} (eşitleme sınırı)"
         },
         "bridge": {
             "checking": "{app} denetleniyor…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Önizleme mevcut değil",
-            "title": "Hızlı Bakış"
+            "title": "Hızlı Bakış",
+            "closePreview": "Önizlemeyi kapat",
+            "dialogLabel": "Hızlı Bakış: {name}",
+            "nextFile": "Sonraki dosya",
+            "position": "{index} / {total}",
+            "previousFile": "Önceki dosya"
         },
         "properties": {
             "general": "Genel",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Immich'in yükleme sırasında kaydettiği öğe sağlama toplamı.",
                 "crypt-overlay-ciphertext": "Karma, sunucuda saklanan şifreli baytları kapsar."
             },
-            "readOnlyIsLinkTarget": "Bu bir sembolik bağlantıdır: izinler, bağlantının işaret ettiği dosyaya aittir. Bunları değiştirmek için o dosyanın özelliklerini açın."
+            "readOnlyIsLinkTarget": "Bu bir sembolik bağlantıdır: izinler, bağlantının işaret ettiği dosyaya aittir. Bunları değiştirmek için o dosyanın özelliklerini açın.",
+            "exactBytes": "({bytes} bayt)"
         },
         "duplicates": {
             "sortWasted": "Boşa giden alan",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Bayt bayt aynı",
             "modeNonIdenticalHint": "Algısal veya metin benzerliği, otomatik silme yok",
             "potentialWasteSelected": "olası boşa harcanan (seçili)",
-            "similarityDistance": "{similarity}, mes. {distance}"
+            "similarityDistance": "{similarity}, mes. {distance}",
+            "modeExact": "Tam",
+            "modeLabel": "Mod:",
+            "modeNonIdentical": "Özdeş olmayan"
         },
         "diskUsage": {
             "title": "Disk Kullanımı",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Henüz ağ etkinliği yok. Olayları görmek için dosya aktarın.",
                 "time": "Zaman",
                 "event": "Olay",
-                "detail": "Ayrıntı"
+                "detail": "Ayrıntı",
+                "command": "Komut",
+                "ipcTransfersCount": "IPC + Aktarımlar ({count})",
+                "status": "Durum",
+                "type": "Tür"
             },
             "system": {
                 "appVersion": "AeroFTP Sürümü",
@@ -4140,7 +4258,8 @@
                 "dark": "Koyu",
                 "light": "Açık",
                 "userAgent": "Kullanıcı Ajanı",
-                "localStorageKeysTitle": "LocalStorage Anahtarları"
+                "localStorageKeysTitle": "LocalStorage Anahtarları",
+                "localStorageEntrySummary": "{size} bayt · {preview}"
             },
             "copyFileListToClipboard": "Dosya listesini panoya kopyala",
             "filesCopied": "{count} dosya girdisi panoya kopyalandı",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Uygulamak için seçime çift tıklayın veya Enter tuşuna basın, iptal etmek için Esc tuşuna basın",
                     "cropRatio": "Oranlar",
                     "cropRatioFree": "Serbest",
-                    "cropRatioOriginal": "Orijinal"
+                    "cropRatioOriginal": "Orijinal",
+                    "rotateCcw90Short": "90° saat yönü tersine",
+                    "rotateCw90Short": "90° saat yönünde"
                 },
                 "toggleTransparencyBg": "Saydamlık arka planı (değiştir)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "PDF yükleniyor...",
                 "open": "PDF Aç",
                 "page": "Sayfa",
-                "zoom": "Yakınlaştırma"
+                "zoom": "Yakınlaştırma",
+                "documentTitle": "PDF belgesi"
             },
             "text": {
                 "auto": "Otomatik",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Sözcük Kaydırma",
                 "zoomIn": "Yakınlaştır",
-                "zoomOut": "Uzaklaştır"
+                "zoomOut": "Uzaklaştır",
+                "htmlPreviewFrameTitle": "HTML önizlemesi"
             },
             "video": {
                 "exitFullscreen": "Tam Ekrandan Çık (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt katmanı algılandı",
             "aerocryptImportDesc": "{name} için rclone.conf dosyasından profil içe aktarıldı: katmanı şimdi açmak ister misiniz?",
             "aerocryptImportOpen": "Katmanı aç",
-            "aerovaultOverlayExpired": "AeroVault Overlay hareketsizlik nedeniyle kilitlendi. Devam etmek için kasayı yeniden açın."
+            "aerovaultOverlayExpired": "AeroVault Overlay hareketsizlik nedeniyle kilitlendi. Devam etmek için kasayı yeniden açın.",
+            "aerovaultOverlaySource": "AeroVault katmanı etkin ({source})",
+            "fileOperationsLabel": "Dosya işlemleri",
+            "overlayBadge": "KATMAN"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "İki faktörlü kimlik doğrulama",
                 "verify": "Doğrula ve etkinleştir",
                 "active": "2FA Etkin",
-                "inactive": "2FA Devre Dışı"
+                "inactive": "2FA Devre Dışı",
+                "codeGroupLabel": "{count} haneli kod",
+                "digitLabel": "{index}. hane"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Geri yüklenen dosyalar orijinal klasörlerinde yeniden görünecektir",
             "connectionNamePlaceholder": "Bağlantı adı (ör. FileLu Cloud'um)",
             "trashAutoExpiry": "Çöp kutusundaki dosyalar 7 gün sonra FileLu tarafından otomatik olarak silinir",
-            "rsyncTransferOnly": "Yalnızca aktarım uç noktası: Rsync'te göz atma kullanılamaz. Gezinmek için Native API, WebDAV, S3 veya FTP kullan; yüksek bant genişlikli delta aktarımları için Rsync'e geç."
+            "rsyncTransferOnly": "Yalnızca aktarım uç noktası: Rsync'te göz atma kullanılamaz. Gezinmek için Native API, WebDAV, S3 veya FTP kullan; yüksek bant genişlikli delta aktarımları için Rsync'e geç.",
+            "badgePasswordProtected": "Parola korumalı",
+            "badgeWatermarked": "Filigranlı"
         },
         "box": {
             "addComment": "Yorum ekle",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} dosya",
             "releaseAssetMany": "{count} dosya",
             "repoPrivate": "Özel",
-            "repoPublic": "Herkese açık"
+            "repoPublic": "Herkese açık",
+            "actionsLiveBadge": "Canlı",
+            "actionsRunningTitle": "GitHub Actions (çalışıyor)",
+            "coAuthors": "Ortak yazarlar",
+            "pagesPathPlaceholder": "/ veya /docs",
+            "pagesStatusBuilding": "derleniyor",
+            "pagesStatusBuilt": "derlendi",
+            "pagesStatusErrored": "hatalı",
+            "refreshBranches": "Dalları yenile",
+            "repoPrivateTitle": "Özel depo",
+            "repoPublicTitle": "Herkese açık depo",
+            "unpushedCommitsOnBranchMany": "{branch} üzerinde gönderilmemiş {count} commit",
+            "unpushedCommitsOnBranchOne": "{branch} üzerinde gönderilmemiş {count} commit"
         },
         "filenNotes": {
             "title": "Şifreli Notlar",
@@ -5158,7 +5300,8 @@
             "tagName": "Etiket adı",
             "removeTag": "Etiketi kaldır",
             "manageTags": "Etiketleri yönet",
-            "deleteTagConfirm": "“{name}” etiketi silinsin mi? Notlar metinlerini korur."
+            "deleteTagConfirm": "“{name}” etiketi silinsin mi? Notlar metinlerini korur.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Paylaşım bağlantısı",
@@ -5426,7 +5569,8 @@
             "linkType": "Tür",
             "createMergeRequest": "Merge Request Oluştur",
             "mrTitle": "MR başlığı",
-            "mrBody": "Açıklama (isteğe bağlı)"
+            "mrBody": "Açıklama (isteğe bağlı)",
+            "sourceCode": "Kaynak kodu"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Kullanıcıyı çoğalt (yalnızca sunucular, parola yok)",
             "copyLockedHint": "Sunucularını çoğaltmak için önce bu hesaba geçin",
             "crossUserDedupTitle": "Başka bir hesap tarafından zaten kaydedilmiş",
-            "crossUserDedupMessage": "\"{name}\", bu cihazda şu hesaplar tarafından da kaydedilmiş bir sunucu hesabını kullanıyor: {accounts}"
+            "crossUserDedupMessage": "\"{name}\", bu cihazda şu hesaplar tarafından da kaydedilmiş bir sunucu hesabını kullanıyor: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Parola sıfırlama iletişim kutusunu kapat",
+                "confirmPassword": "Yeni parolayı onaylayın",
+                "errMismatch": "Yeni hesap parolaları eşleşmiyor.",
+                "errNewRequired": "Yeni bir hesap parolası girin.",
+                "errNotAuthorized": "Başka bir hesabın parolasını sıfırlamak için yönetici olmalısınız.",
+                "errNotForSelf": "Kendi hesabınızda Parolayı Değiştir'i kullanın.",
+                "errStoreNotReady": "Önce kasanın kilidini açın, sonra tekrar deneyin.",
+                "errTypeReset": "Bu yıkıcı işlemi onaylamak için RESET yazın.",
+                "errUserNotFound": "Bu kullanıcı artık mevcut değil.",
+                "newPassword": "Yeni hesap parolası",
+                "statEncryptedBytes": "şifrelenmiş bayt",
+                "statProfiles": "profil",
+                "statSettings": "ayar",
+                "title": "Parola sıfırlama = veri imhası",
+                "typeReset": "RESET yazın",
+                "wipeDetail": "Mevcut parola kurtarılamaz. AeroFTP hedef hesabın kayıtlı sunucularını, kullanıcı ayarlarını ve kilitleme durumunu silecek, ardından yeni parolayla korunan yeni bir şifreleme anahtarı oluşturacak.",
+                "wipeWarning": "Bu işlem hedef hesabın şifreli bölümünü kalıcı olarak silecek."
+            },
+            "dropdown": {
+                "accountPassword": "Hesap parolası",
+                "lock": "Kilitle",
+                "newUser": "Yeni kullanıcı",
+                "noUsers": "Henüz kullanıcı yok. İlkini eklemek için aşağıdaki \"Yeni kullanıcı\" seçeneğini kullanın.",
+                "protectionNote": "Hesabınız Argon2id + AES-KW + AES-256-GCM şifrelemesiyle korunuyor",
+                "users": "Kullanıcılar"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt katmanı",

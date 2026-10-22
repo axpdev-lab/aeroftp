@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { Lock, Droplets } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 interface FeatureBadgeProps {
   value: string | null | undefined;
@@ -22,6 +23,7 @@ const BADGE_COLORS: Record<string, string> = {
 };
 
 export function FeatureBadge({ value, emptyLabel = '-', locked = false, watermarked = false }: FeatureBadgeProps) {
+  const t = useTranslation();
   const text = (value || '').trim();
   if (!text) {
     const badges: React.ReactNode[] = [];
@@ -30,7 +32,7 @@ export function FeatureBadge({ value, emptyLabel = '-', locked = false, watermar
         <span
           key="lock"
           className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-          title="Password protected"
+          title={t('filelu.badgePasswordProtected')}
         >
           <Lock size={10} />
         </span>
@@ -41,7 +43,7 @@ export function FeatureBadge({ value, emptyLabel = '-', locked = false, watermar
         <span
           key="wm"
           className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-          title="Watermarked"
+          title={t('filelu.badgeWatermarked')}
         >
           <Droplets size={10} />
         </span>

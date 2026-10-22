@@ -152,6 +152,7 @@ interface ProgressLaneProps {
 }
 
 const ProgressLane: React.FC<ProgressLaneProps> = ({ lane, styles, barTheme }) => {
+    const t = useTranslation();
     const laneActive = lane.state === 'active' || !lane.state;
     // The lane's speed falls while its frames stop (a stalled file sends none).
     const live = useLiveSpeed(lane.speed_bps, `${lane.transferred}|${lane.speed_bps}`, laneActive);
@@ -162,9 +163,9 @@ const ProgressLane: React.FC<ProgressLaneProps> = ({ lane, styles, barTheme }) =
         ? liveEta(Math.round((lane.total - lane.transferred) / lane.speed_bps), live.factor)
         : 0;
     const right = lane.state === 'error'
-        ? 'error'
+        ? t('transfer.laneError')
         : lane.state === 'completed'
-            ? 'done'
+            ? t('transfer.laneDone')
             : lane.speed_bps > 0
                 ? `${formatSpeed(live.bps)}${laneEta > 0 ? ` · ${formatETA(laneEta)}` : ''}`
                 : `${lane.percentage}%`;
@@ -237,8 +238,8 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     // transfer onto a close button that calls `onCancel`.
     const isComplete = isTransferComplete(summary.percentage, lanes);
     const displayName = summary.path ? truncatePath(summary.path) : summary.filename;
-    const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
-    const transferStateLabel = isFolderTransfer ? 'BATCH' : (isIndeterminate ? 'STREAM' : 'LIVE');
+    const transferModeLabel = isUpload ? t('transfer.badgeUpload') : t('transfer.badgeDownload');
+    const transferStateLabel = isFolderTransfer ? t('transfer.badgeBatch') : (isIndeterminate ? t('transfer.badgeStream') : t('transfer.badgeLive'));
     const hasGraph = !!transfer.speedProfile && hasSpeedData(transfer.speedProfile);
 
     // Auto-dismiss safety: once the summary is complete AND no lane is still
@@ -314,7 +315,7 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                                 <span className={`rounded-md px-1.5 py-0.5 font-medium ${styles.badge}`}>{transferModeLabel}</span>
                                 <span className={`rounded-md px-1.5 py-0.5 font-medium ${styles.badge}`}>{transferStateLabel}</span>
                                 {isFolderTransfer && (
-                                    <span className={`rounded-md px-1.5 py-0.5 ${styles.badgeMuted}`}>{summary.transferred}/{summary.total} files</span>
+                                    <span className={`rounded-md px-1.5 py-0.5 ${styles.badgeMuted}`}>{t('transfer.folderFilesProgress', { done: summary.transferred, total: summary.total })}</span>
                                 )}
                             </div>
                         </div>

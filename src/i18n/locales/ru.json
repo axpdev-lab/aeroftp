@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Выполнить {cmd} и заполнить URL автоматически",
                 "fetchUrl": "Получить URL",
                 "megacmdWebdavHint": "Имя пользователя и пароль намеренно не указываются. При подключении AeroFTP сам выполняет «{cmd}», чтобы запустить мост и прочитать этот адрес: поле можно оставить пустым. «Получить URL» означает необязательное ручное обновление; измените здесь порт, если MEGAcmd использует нестандартный."
-            }
+            },
+            "manualStorageUnitLabel": "Единица {label}"
         },
         "browser": {
             "remote": "Удалённый",
@@ -420,7 +421,19 @@
             "listingPath": "Получение списка {path}...",
             "pleaseWait": "Пожалуйста, подождите...",
             "sameNameLeakChip": "то же имя",
-            "sameNameLeakTooltip": "Это имя также встречается по другому пути в этом зашифрованном хранилище. Поскольку имена шифруются детерминированно, наблюдатель зашифрованного хранилища может определить, что оба имеют одинаковое имя."
+            "sameNameLeakTooltip": "Это имя также встречается по другому пути в этом зашифрованном хранилище. Поскольку имена шифруются детерминированно, наблюдатель зашифрованного хранилища может определить, что оба имеют одинаковое имя.",
+            "endpointSelector": {
+                "localFolder": "Локальная папка",
+                "localFolderHint": "Выберите локальный путь для этой панели",
+                "noSavedProfiles": "Нет сохранённых профилей",
+                "savedProfiles": "Сохранённые удалённые профили",
+                "title": "Конечная точка"
+            },
+            "leftPanelMarker": "Левая панель",
+            "localFilesLabel": "Локальные файлы",
+            "localFilesRightLabel": "Локальные файлы (правая панель)",
+            "remoteFilesLabel": "Удалённые файлы",
+            "rightPanelMarker": "Правая панель"
         },
         "contextMenu": {
             "askAeroAgent": "Спросить AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "График скорости",
             "hideSpeedGraph": "Скрыть график скорости",
             "speedAvg": "сред. {speed}",
-            "speedPeak": "макс. {speed}"
+            "speedPeak": "макс. {speed}",
+            "badgeBatch": "ПАКЕТ",
+            "badgeDownload": "ЗАГРУЗКА",
+            "badgeLive": "ОНЛАЙН",
+            "badgeStream": "ПОТОК",
+            "badgeUpload": "ВЫГРУЗКА",
+            "earlierItemsHidden": "Скрыто более ранних элементов: {count}",
+            "folderFilesProgress": "{done}/{total} файлов",
+            "laneDone": "готово",
+            "laneError": "ошибка",
+            "unifiedPlan": {
+                "destination": "Назначение",
+                "dialogLabel": "План передачи",
+                "engineAerovaultOverlay": "Оверлей AeroVault",
+                "engineCompareOnly": "Только сравнение",
+                "engineCrossProfileSync": "Синхронизация между профилями",
+                "engineCrossProfileTransfer": "Передача между профилями",
+                "engineLocalDelta": "Локальный дельта-транспорт",
+                "engineLocalFs": "Локальная файловая система",
+                "engineProviderDownload": "Загрузка от провайдера",
+                "engineProviderUpload": "Выгрузка провайдеру",
+                "engineUnsupported": "Не поддерживается",
+                "execute": "Выполнить",
+                "items": "Элементы",
+                "modeBackup": "Резервная копия",
+                "modeBisync": "Двусторонняя синхронизация",
+                "modeCompare": "Сравнение",
+                "modeCopy": "Копирование",
+                "modeMirror": "Зеркало",
+                "modeMove": "Перемещение",
+                "modeSync": "Синхронизация",
+                "notExecutable": "Эта пара конечных точек пока не может быть выполнена.",
+                "parallel": "Параллельно",
+                "reviewBeforeExecution": "Проверить перед выполнением",
+                "route": "{pair} через {engine}",
+                "size": "Размер",
+                "source": "Источник",
+                "title": "План: {mode}"
+            }
         },
         "settings": {
             "title": "Настройки",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "макс",
             "migrationCleanupHint": "Рекомендуется для максимальной безопасности",
             "fontCustomOption": "Другой...",
-            "fontSystemInstallHint": "Требуется установка в систему. Если шрифт недоступен, AeroFTP автоматически использует замену."
+            "fontSystemInstallHint": "Требуется установка в систему. Если шрифт недоступен, AeroFTP автоматически использует замену.",
+            "fontSizeIndicatorLabel": "Шрифт"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} файлов, освобождено {size}",
             "maturity": {
                 "alpha": "Альфа"
-            }
+            },
+            "dialogDashboardLabel": "Панель облачной синхронизации",
+            "dialogLoadingLabel": "Загрузка облачной синхронизации",
+            "dialogSettingsLabel": "Параметры облачной синхронизации",
+            "dialogSetupLabel": "Настройка облачной синхронизации",
+            "onePerLineHint": "(по одному в строке)",
+            "pairsEditorLabel": "Редактор пар AeroCloud",
+            "remoteSubfolderPlaceholder": "облако"
         },
         "statusBar": {
             "connected": "Подключено",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "частично, нечитаемые папки: {count}",
             "usedScanFailed": "Не удалось просканировать занятое место",
             "usedScanEmpty": "Сканирование пути {path} не нашло файлов; сохранено кэшированное значение. Проверьте путь или поддержку рекурсивного листинга на сервере.",
-            "filenBridgeAccountTotal": "Filen Desktop не сообщает здесь общий объем вашего аккаунта: показанное значение является суммой файлов по этому пути. Нативное подключение Filen сразу показывает общий объем аккаунта."
+            "filenBridgeAccountTotal": "Filen Desktop не сообщает здесь общий объем вашего аккаунта: показанное значение является суммой файлов по этому пути. Нативное подключение Filen сразу показывает общий объем аккаунта.",
+            "ariaLabel": "Строка состояния",
+            "debugBadge": "ОТЛАДКА",
+            "debugModeActive": "Режим отладки активен"
         },
         "dialogs": {
             "confirmTitle": "Подтверждение",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "напр. {template}",
             "jurisdiction": "Юрисдикция",
             "insecureCertDialogLabel": "Предупреждение о небезопасном сертификате",
-            "betaBadge": "БЕТА"
+            "betaBadge": "БЕТА",
+            "hostKeyDialogLabel": "Проверка ключа хоста"
         },
         "shortcuts": {
             "title": "Горячие клавиши",
@@ -2173,7 +2236,10 @@
             "rename": "Переименовать",
             "resume": "Возобновить",
             "resumeHint": "Продолжить прерванную передачу вместо повторного запуска",
-            "cancel": "Отмена"
+            "cancel": "Отмена",
+            "dialogLabel": "Подтверждение перезаписи",
+            "moreInQueue": "+{count} в очереди",
+            "unknownDate": "Неизвестно"
         },
         "statusbar": {
             "queue": "Очередь",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Пригодные пары путей (локальный/удалённый) в этом шаблоне: {count}. Окно AeroSync работает ровно с одной парой, поэтому ничего не импортировано. Отредактируйте шаблон, оставив в нём только одну пару, а затем импортируйте его снова.",
             "templateNamePlaceholder": "напр. Ночное резервное копирование в S3",
             "templateDescPlaceholder": "Для чего нужен этот шаблон (необязательно)",
-            "templateExportCliDesc": "Обёртка для aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Обёртка для aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Отключить",
+            "multiPathEditorLabel": "Редактор нескольких путей",
+            "multiPathEnablePair": "Включить",
+            "multiPathLocalPlaceholder": "Локальный путь",
+            "multiPathRemotePlaceholder": "Удалённый путь",
+            "rollbackDialogLabel": "Снимок для отката",
+            "rollbackMoreFiles": "+ещё {count}...",
+            "rollbackSnapshotSummaryMany": "Файлов: {count}, {size}",
+            "rollbackSnapshotSummaryOne": "{count} файл, {size}",
+            "templateDialogLabel": "Шаблон синхронизации",
+            "templateExcludes": "Исключения",
+            "templateLocal": "Локально",
+            "templateRemote": "Удалённо",
+            "templateRetries": "Повторы"
         },
         "ui": {
             "syncing": "Синхронизация...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Заголовок или манифест хранилища восстановлен из четности.",
             "repairMetadataSuccess": "Восстановление завершено: заголовок или манифест хранилища восстановлен из четности",
             "errorCorrectionBadge": "Коррекция ошибок",
-            "itemsInFolder": "{count} элементов в /{folder}"
+            "itemsInFolder": "{count} элементов в /{folder}",
+            "compressionProfileArchive": "Архив (zstd -15)",
+            "compressionProfileBalanced": "Сбалансированный (zstd -9)",
+            "compressionProfileFast": "Быстрый (zstd -3)",
+            "damagedChunkLocation": "{id} - смещение {offset} (длина {len})",
+            "fallbackName": "Хранилище",
+            "folderScanSummary": "Файлов: {files}, папок: {dirs} ({size})",
+            "namePlaceholderVault": "Моё защищённое хранилище",
+            "namePlaceholderZip": "Мой архив",
+            "recentDaysAgo": "{count} д. назад",
+            "recentFileCountMany": "Файлов: {count}",
+            "recentFileCountOne": "{count} файл",
+            "recentMonthsAgo": "{count} мес. назад"
         },
         "cryptomator": {
             "title": "Хранилище Cryptomator",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Шифрование выбранных элементов...",
             "ingestSkipped": "Хранилище создано, но некоторые элементы не удалось добавить:",
             "selectionInfo": "{count} элемент(ов) будет зашифровано в хранилище",
-            "decrypting": "Расшифровка…"
+            "decrypting": "Расшифровка…",
+            "compatibleWithApp": "Совместимо с приложением Cryptomator",
+            "createFormatBadge": "Cryptomator формат 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Содержимое AES-GCM",
+            "featureNameCipher": "Имена AES-SIV",
+            "formatVersion": "Формат {version}"
         },
         "compress": {
             "title": "Сжать файлы",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Некоторые файлы получат одинаковые имена. Измените шаблон.",
             "apply": "Применить",
             "existingCollision": "Некоторые новые имена совпадают с файлами, уже находящимися в этой папке; эти файлы не будут перезаписаны, а их переименование пропускается.",
-            "existingCollisionHint": "(уже существует)"
+            "existingCollisionHint": "(уже существует)",
+            "baseNamePlaceholder": "файл",
+            "invalidName": "{name} (недопустимо)"
         },
         "lockScreen": {
             "locked": "Приложение заблокировано",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Не смонтировано рабочим столом. Отключите и снова подключите кабель, затем откройте снова.",
             "volumes_need_mount_observe": "В snap тома появляются после подключения разрешения mount-observe. Выполните это в терминале, затем вернитесь в AeroFTP:",
             "volumes_unavailable": "Не удалось прочитать смонтированные тома.",
-            "portable_device": "Переносное устройство"
+            "portable_device": "Переносное устройство",
+            "drivesLeftPanel": "Диски левой панели",
+            "drivesRightPanel": "Диски правой панели",
+            "modeGroupLabel": "Режим боковой панели",
+            "placesSidebarLabel": "Боковая панель мест"
         },
         "viewMode": {
             "list": "Список",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Просмотреть соседние каталоги",
             "loading": "Загрузка...",
             "noSubdirectories": "Нет подкаталогов",
-            "browseChildren": "Просмотр подкаталогов"
+            "browseChildren": "Просмотр подкаталогов",
+            "ariaLabel": "Навигационная цепочка",
+            "syncBoundaryTitle": "{path} (граница синхронизации)"
         },
         "bridge": {
             "checking": "Проверка {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Предпросмотр недоступен",
-            "title": "Быстрый просмотр"
+            "title": "Быстрый просмотр",
+            "closePreview": "Закрыть предпросмотр",
+            "dialogLabel": "Быстрый просмотр: {name}",
+            "nextFile": "Следующий файл",
+            "position": "{index} из {total}",
+            "previousFile": "Предыдущий файл"
         },
         "properties": {
             "general": "Общие",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Контрольная сумма объекта, которую Immich записывает при загрузке.",
                 "crypt-overlay-ciphertext": "Хеш покрывает зашифрованные байты, хранящиеся на сервере."
             },
-            "readOnlyIsLinkTarget": "Это символическая ссылка: права принадлежат файлу, на который она указывает. Чтобы изменить их, откройте свойства этого файла."
+            "readOnlyIsLinkTarget": "Это символическая ссылка: права принадлежат файлу, на который она указывает. Чтобы изменить их, откройте свойства этого файла.",
+            "exactBytes": "({bytes} байт)"
         },
         "duplicates": {
             "sortWasted": "Потраченное место",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Побайтово идентичны",
             "modeNonIdenticalHint": "Перцептивная или текстовая схожесть, без автоудаления",
             "potentialWasteSelected": "потенциально впустую (выбранные)",
-            "similarityDistance": "{similarity}, расст. {distance}"
+            "similarityDistance": "{similarity}, расст. {distance}",
+            "modeExact": "Точное",
+            "modeLabel": "Режим:",
+            "modeNonIdentical": "Неидентичные"
         },
         "diskUsage": {
             "title": "Использование диска",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Нет сетевой активности. Передайте файлы для отображения событий.",
                 "time": "Время",
                 "event": "Событие",
-                "detail": "Детали"
+                "detail": "Детали",
+                "command": "Команда",
+                "ipcTransfersCount": "IPC + Передачи ({count})",
+                "status": "Статус",
+                "type": "Тип"
             },
             "system": {
                 "appVersion": "Версия AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Тёмная",
                 "light": "Светлая",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Ключи LocalStorage"
+                "localStorageKeysTitle": "Ключи LocalStorage",
+                "localStorageEntrySummary": "{size} байт · {preview}"
             },
             "copyFileListToClipboard": "Скопировать список файлов в буфер обмена",
             "filesCopied": "{count} записей файлов скопировано в буфер обмена",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Дважды щёлкните выделение или нажмите Enter, чтобы применить, Esc, чтобы отменить",
                     "cropRatio": "Пропорции",
                     "cropRatioFree": "Произвольно",
-                    "cropRatioOriginal": "Оригинал"
+                    "cropRatioOriginal": "Оригинал",
+                    "rotateCcw90Short": "90° влево",
+                    "rotateCw90Short": "90° вправо"
                 },
                 "toggleTransparencyBg": "Фон прозрачности (переключить)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Загрузка PDF...",
                 "open": "Открыть PDF",
                 "page": "Страница",
-                "zoom": "Масштаб"
+                "zoom": "Масштаб",
+                "documentTitle": "PDF-документ"
             },
             "text": {
                 "auto": "Авто",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Планшет (768px)",
                 "wordWrap": "Перенос строк",
                 "zoomIn": "Увеличить",
-                "zoomOut": "Уменьшить"
+                "zoomOut": "Уменьшить",
+                "htmlPreviewFrameTitle": "Предпросмотр HTML"
             },
             "video": {
                 "exitFullscreen": "Выйти из полноэкранного режима (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Обнаружено наложение Rclone Crypt",
             "aerocryptImportDesc": "Профиль импортирован из rclone.conf для {name}: открыть наложение сейчас?",
             "aerocryptImportOpen": "Открыть наложение",
-            "aerovaultOverlayExpired": "AeroVault Overlay заблокирован из-за неактивности. Откройте хранилище заново, чтобы продолжить."
+            "aerovaultOverlayExpired": "AeroVault Overlay заблокирован из-за неактивности. Откройте хранилище заново, чтобы продолжить.",
+            "aerovaultOverlaySource": "Оверлей AeroVault активен ({source})",
+            "fileOperationsLabel": "Операции с файлами",
+            "overlayBadge": "ОВЕРЛЕЙ"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Двухфакторная аутентификация",
                 "verify": "Проверить и включить",
                 "active": "2FA активна",
-                "inactive": "2FA неактивна"
+                "inactive": "2FA неактивна",
+                "codeGroupLabel": "Код из {count} цифр",
+                "digitLabel": "Цифра {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Восстановленные файлы снова появятся в исходной папке",
             "connectionNamePlaceholder": "Имя подключения (напр. Мой FileLu Cloud)",
             "trashAutoExpiry": "Файлы в корзине автоматически удаляются FileLu через 7 дней",
-            "rsyncTransferOnly": "Конечная точка только для передачи: просмотр недоступен в Rsync. Используй Native API, WebDAV, S3 или FTP для навигации; переключись на Rsync для высокоскоростных delta-передач."
+            "rsyncTransferOnly": "Конечная точка только для передачи: просмотр недоступен в Rsync. Используй Native API, WebDAV, S3 или FTP для навигации; переключись на Rsync для высокоскоростных delta-передач.",
+            "badgePasswordProtected": "Защищено паролем",
+            "badgeWatermarked": "С водяным знаком"
         },
         "box": {
             "addComment": "Добавить комментарий",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} файл",
             "releaseAssetMany": "Файлов: {count}",
             "repoPrivate": "Приватный",
-            "repoPublic": "Публичный"
+            "repoPublic": "Публичный",
+            "actionsLiveBadge": "В эфире",
+            "actionsRunningTitle": "GitHub Actions (выполняется)",
+            "coAuthors": "Соавторы",
+            "pagesPathPlaceholder": "/ или /docs",
+            "pagesStatusBuilding": "сборка",
+            "pagesStatusBuilt": "собрано",
+            "pagesStatusErrored": "ошибка",
+            "refreshBranches": "Обновить ветки",
+            "repoPrivateTitle": "Частный репозиторий",
+            "repoPublicTitle": "Публичный репозиторий",
+            "unpushedCommitsOnBranchMany": "{count} неотправленных коммитов в {branch}",
+            "unpushedCommitsOnBranchOne": "{count} неотправленный коммит в {branch}"
         },
         "filenNotes": {
             "title": "Зашифрованные заметки",
@@ -5158,7 +5300,8 @@
             "tagName": "Название тега",
             "removeTag": "Убрать тег",
             "manageTags": "Управление тегами",
-            "deleteTagConfirm": "Удалить тег «{name}»? Заметки сохранят свой текст."
+            "deleteTagConfirm": "Удалить тег «{name}»? Заметки сохранят свой текст.",
+            "betaBadge": "БЕТА"
         },
         "shareLinkModal": {
             "title": "Ссылка для общего доступа",
@@ -5426,7 +5569,8 @@
             "linkType": "Тип",
             "createMergeRequest": "Создать Merge Request",
             "mrTitle": "Заголовок MR",
-            "mrBody": "Описание (необязательно)"
+            "mrBody": "Описание (необязательно)",
+            "sourceCode": "Исходный код"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Дублировать пользователя (только серверы, без паролей)",
             "copyLockedHint": "Сначала переключитесь на эту учётную запись, чтобы дублировать её серверы",
             "crossUserDedupTitle": "Уже сохранено другой учётной записью",
-            "crossUserDedupMessage": "\"{name}\" использует серверную учётную запись, которая также сохранена на этом устройстве у: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" использует серверную учётную запись, которая также сохранена на этом устройстве у: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Закрыть диалог сброса пароля",
+                "confirmPassword": "Подтвердите новый пароль",
+                "errMismatch": "Новые пароли учётной записи не совпадают.",
+                "errNewRequired": "Введите новый пароль учётной записи.",
+                "errNotAuthorized": "Чтобы сбросить пароль другой учётной записи, нужно быть администратором.",
+                "errNotForSelf": "В своей учётной записи используйте «Сменить пароль».",
+                "errStoreNotReady": "Сначала разблокируйте хранилище и повторите попытку.",
+                "errTypeReset": "Введите RESET, чтобы подтвердить эту разрушительную операцию.",
+                "errUserNotFound": "Этот пользователь больше не существует.",
+                "newPassword": "Новый пароль учётной записи",
+                "statEncryptedBytes": "зашифрованных байт",
+                "statProfiles": "профилей",
+                "statSettings": "настроек",
+                "title": "Сброс пароля = уничтожение данных",
+                "typeReset": "Введите RESET",
+                "wipeDetail": "Текущий пароль невозможно восстановить. AeroFTP удалит сохранённые серверы, пользовательские настройки и состояние блокировки целевой учётной записи, а затем выпустит новый ключ шифрования, защищённый новым паролем.",
+                "wipeWarning": "Это безвозвратно сотрёт зашифрованный раздел целевой учётной записи."
+            },
+            "dropdown": {
+                "accountPassword": "Пароль учётной записи",
+                "lock": "Заблокировать",
+                "newUser": "Новый пользователь",
+                "noUsers": "Пользователей пока нет. Нажмите «Новый пользователь» ниже, чтобы добавить первого.",
+                "protectionNote": "Ваша учётная запись защищена шифрованием Argon2id + AES-KW + AES-256-GCM",
+                "users": "Пользователи"
+            }
         },
         "aerocryptNative": {
             "title": "Слой AeroCrypt",

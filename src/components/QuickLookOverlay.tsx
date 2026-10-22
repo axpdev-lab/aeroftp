@@ -212,7 +212,7 @@ export const QuickLookOverlay: React.FC<QuickLookOverlayProps> = ({
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
-      aria-label={`Quick Look: ${file.name}`}
+      aria-label={t('quickLook.dialogLabel', { name: file.name })}
       aria-modal="true"
     >
       <div
@@ -224,7 +224,7 @@ export const QuickLookOverlay: React.FC<QuickLookOverlayProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-medium text-gray-200 truncate">{file.name}</span>
             {!file.is_dir && (
-              <span className="text-xs text-gray-500">{fileIndex} of {totalFiles}</span>
+              <span className="text-xs text-gray-500">{t('quickLook.position', { index: fileIndex, total: totalFiles })}</span>
             )}
           </div>
           <div className="flex items-center gap-1">
@@ -237,7 +237,7 @@ export const QuickLookOverlay: React.FC<QuickLookOverlayProps> = ({
               }}
               disabled={(() => { let p = currentIndex - 1; while (p >= 0 && allFiles[p].is_dir) p--; return p < 0; })()}
               className="p-1.5 rounded hover:bg-gray-700 disabled:opacity-30 text-gray-400 hover:text-gray-200 transition-colors"
-              aria-label="Previous file"
+              aria-label={t('quickLook.previousFile')}
             >
               <ChevronLeft size={16} />
             </button>
@@ -250,7 +250,7 @@ export const QuickLookOverlay: React.FC<QuickLookOverlayProps> = ({
               }}
               disabled={(() => { let n = currentIndex + 1; while (n < allFiles.length && allFiles[n].is_dir) n++; return n >= allFiles.length; })()}
               className="p-1.5 rounded hover:bg-gray-700 disabled:opacity-30 text-gray-400 hover:text-gray-200 transition-colors"
-              aria-label="Next file"
+              aria-label={t('quickLook.nextFile')}
             >
               <ChevronRight size={16} />
             </button>
@@ -269,7 +269,7 @@ export const QuickLookOverlay: React.FC<QuickLookOverlayProps> = ({
             <button
               onClick={onClose}
               className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
-              aria-label="Close preview"
+              aria-label={t('quickLook.closePreview')}
             >
               <X size={16} />
             </button>

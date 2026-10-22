@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "{cmd} を実行して URL を自動入力",
                 "fetchUrl": "URL を取得",
                 "megacmdWebdavHint": "ユーザー名とパスワードは意図的に省略されています。AeroFTP は接続時に自ら「{cmd}」を実行してブリッジを起動し、このアドレスを読み取ります。空欄のままで問題ありません。「URL を取得」は任意の手動更新です。MEGAcmd がカスタムポートを使う場合は、ここでポートを変更してください。"
-            }
+            },
+            "manualStorageUnitLabel": "{label} の単位"
         },
         "browser": {
             "remote": "リモート",
@@ -420,7 +421,19 @@
             "listingPath": "{path} を一覧表示しています...",
             "pleaseWait": "しばらくお待ちください...",
             "sameNameLeakChip": "同名",
-            "sameNameLeakTooltip": "この名前は、この暗号化ボールト内の別のパスにも表示されています。名前は決定論的に暗号化されるため、暗号化ストアの観察者は両者が同じ名前を共有していることを判別できます。"
+            "sameNameLeakTooltip": "この名前は、この暗号化ボールト内の別のパスにも表示されています。名前は決定論的に暗号化されるため、暗号化ストアの観察者は両者が同じ名前を共有していることを判別できます。",
+            "endpointSelector": {
+                "localFolder": "ローカルフォルダー",
+                "localFolderHint": "このパネルのローカルパスを選択",
+                "noSavedProfiles": "保存済みプロファイルはありません",
+                "savedProfiles": "保存済みリモートプロファイル",
+                "title": "エンドポイント"
+            },
+            "leftPanelMarker": "左パネル",
+            "localFilesLabel": "ローカルファイル",
+            "localFilesRightLabel": "ローカルファイル (右パネル)",
+            "remoteFilesLabel": "リモートファイル",
+            "rightPanelMarker": "右パネル"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgentに質問...",
@@ -680,7 +693,45 @@
             "speedGraph": "速度グラフ",
             "hideSpeedGraph": "速度グラフを非表示",
             "speedAvg": "平均 {speed}",
-            "speedPeak": "最大 {speed}"
+            "speedPeak": "最大 {speed}",
+            "badgeBatch": "一括",
+            "badgeDownload": "ダウンロード",
+            "badgeLive": "ライブ",
+            "badgeStream": "ストリーム",
+            "badgeUpload": "アップロード",
+            "earlierItemsHidden": "以前の {count} 件を非表示",
+            "folderFilesProgress": "{done}/{total} ファイル",
+            "laneDone": "完了",
+            "laneError": "エラー",
+            "unifiedPlan": {
+                "destination": "宛先",
+                "dialogLabel": "転送プラン",
+                "engineAerovaultOverlay": "AeroVault オーバーレイ",
+                "engineCompareOnly": "比較のみ",
+                "engineCrossProfileSync": "プロファイル間同期",
+                "engineCrossProfileTransfer": "プロファイル間転送",
+                "engineLocalDelta": "ローカル差分転送",
+                "engineLocalFs": "ローカルファイルシステム",
+                "engineProviderDownload": "プロバイダーからのダウンロード",
+                "engineProviderUpload": "プロバイダーへのアップロード",
+                "engineUnsupported": "非対応",
+                "execute": "実行",
+                "items": "項目",
+                "modeBackup": "バックアップ",
+                "modeBisync": "双方向同期",
+                "modeCompare": "比較",
+                "modeCopy": "コピー",
+                "modeMirror": "ミラー",
+                "modeMove": "移動",
+                "modeSync": "同期",
+                "notExecutable": "このエンドポイントの組み合わせはまだ実行できません。",
+                "parallel": "並列",
+                "reviewBeforeExecution": "実行前に確認",
+                "route": "{pair}（{engine} 経由）",
+                "size": "サイズ",
+                "source": "転送元",
+                "title": "{mode}プラン"
+            }
         },
         "settings": {
             "title": "設定",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "最大",
             "migrationCleanupHint": "最大限のセキュリティのため推奨",
             "fontCustomOption": "カスタム...",
-            "fontSystemInstallHint": "システムへのインストールが必要です。利用できない場合、AeroFTP は自動的に代替フォントを使用します。"
+            "fontSystemInstallHint": "システムへのインストールが必要です。利用できない場合、AeroFTP は自動的に代替フォントを使用します。",
+            "fontSizeIndicatorLabel": "フォント"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} ファイル、{size} を解放",
             "maturity": {
                 "alpha": "アルファ"
-            }
+            },
+            "dialogDashboardLabel": "クラウド同期ダッシュボード",
+            "dialogLoadingLabel": "クラウド同期を読み込み中",
+            "dialogSettingsLabel": "クラウド同期の設定",
+            "dialogSetupLabel": "クラウド同期のセットアップ",
+            "onePerLineHint": "(1 行に 1 つ)",
+            "pairsEditorLabel": "AeroCloud ペアエディター",
+            "remoteSubfolderPlaceholder": "クラウド"
         },
         "statusBar": {
             "connected": "接続済み",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "一部のみ、読み取れないフォルダー: {count}",
             "usedScanFailed": "使用ストレージのスキャンに失敗しました",
             "usedScanEmpty": "{path} のスキャンでファイルが見つかりませんでした。キャッシュされた値が保持されました。パス、またはサーバーの再帰的リスト表示のサポートを確認してください。",
-            "filenBridgeAccountTotal": "Filen Desktop ではここでアカウント全体の使用量が報告されません。表示される使用量は、このパス配下のファイルの合計です。ネイティブの Filen 接続なら、アカウント全体の使用量をすぐに確認できます。"
+            "filenBridgeAccountTotal": "Filen Desktop ではここでアカウント全体の使用量が報告されません。表示される使用量は、このパス配下のファイルの合計です。ネイティブの Filen 接続なら、アカウント全体の使用量をすぐに確認できます。",
+            "ariaLabel": "ステータスバー",
+            "debugBadge": "デバッグ",
+            "debugModeActive": "デバッグモード有効"
         },
         "dialogs": {
             "confirmTitle": "確認",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "例: {template}",
             "jurisdiction": "管轄区域",
             "insecureCertDialogLabel": "安全でない証明書の警告",
-            "betaBadge": "ベータ"
+            "betaBadge": "ベータ",
+            "hostKeyDialogLabel": "ホストキーの検証"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -2173,7 +2236,10 @@
             "rename": "名前変更",
             "resume": "再開",
             "resumeHint": "中断した転送を最初からではなく途中から再開します",
-            "cancel": "キャンセル"
+            "cancel": "キャンセル",
+            "dialogLabel": "上書きの確認",
+            "moreInQueue": "キューに +{count}",
+            "unknownDate": "不明"
         },
         "statusbar": {
             "queue": "キュー",
@@ -2365,7 +2431,21 @@
             "templateImportPathPairs": "このテンプレート内の使用可能なローカル/リモートのパスペア: {count}。AeroSync のウィンドウはちょうど 1 つのペアで動作するため、何もインポートされませんでした。ペアが 1 つだけになるようにテンプレートを編集してから、もう一度インポートしてください。",
             "templateNamePlaceholder": "例: S3 への夜間バックアップ",
             "templateDescPlaceholder": "このテンプレートの用途 (任意)",
-            "templateExportCliDesc": "aeroftp-cli sync のラッパー ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync のラッパー ({shell})",
+            "multiPathDisablePair": "無効化",
+            "multiPathEditorLabel": "マルチパスエディター",
+            "multiPathEnablePair": "有効化",
+            "multiPathLocalPlaceholder": "ローカルパス",
+            "multiPathRemotePlaceholder": "リモートパス",
+            "rollbackDialogLabel": "ロールバックスナップショット",
+            "rollbackMoreFiles": "他 {count} 件...",
+            "rollbackSnapshotSummaryMany": "{count} ファイル、{size}",
+            "rollbackSnapshotSummaryOne": "{count} ファイル、{size}",
+            "templateDialogLabel": "同期テンプレート",
+            "templateExcludes": "除外",
+            "templateLocal": "ローカル",
+            "templateRemote": "リモート",
+            "templateRetries": "再試行"
         },
         "ui": {
             "syncing": "同期中...",
@@ -3633,7 +3713,19 @@
             "metadataRepaired": "パリティからボールトのヘッダーまたはマニフェストを再構築しました。",
             "repairMetadataSuccess": "修復完了: パリティからボールトのヘッダーまたはマニフェストを再構築しました",
             "errorCorrectionBadge": "誤り訂正",
-            "itemsInFolder": "/{folder} 内の {count} 項目"
+            "itemsInFolder": "/{folder} 内の {count} 項目",
+            "compressionProfileArchive": "アーカイブ (zstd -15)",
+            "compressionProfileBalanced": "バランス (zstd -9)",
+            "compressionProfileFast": "高速 (zstd -3)",
+            "damagedChunkLocation": "{id} - オフセット {offset}（長さ {len}）",
+            "fallbackName": "ヴォルト",
+            "folderScanSummary": "{dirs} 個のディレクトリに {files} 個のファイル ({size})",
+            "namePlaceholderVault": "安全なヴォルト",
+            "namePlaceholderZip": "マイアーカイブ",
+            "recentDaysAgo": "{count}日前",
+            "recentFileCountMany": "{count} ファイル",
+            "recentFileCountOne": "{count} ファイル",
+            "recentMonthsAgo": "{count}か月前"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",
@@ -3663,7 +3755,12 @@
             "encryptingSelection": "選択した項目を暗号化しています...",
             "ingestSkipped": "ボルトを作成しましたが、一部の項目を追加できませんでした:",
             "selectionInfo": "{count} 個の項目がボルトに暗号化されます",
-            "decrypting": "復号しています…"
+            "decrypting": "復号しています…",
+            "compatibleWithApp": "Cryptomator アプリと互換",
+            "createFormatBadge": "Cryptomator フォーマット 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM コンテンツ",
+            "featureNameCipher": "AES-SIV 名前",
+            "formatVersion": "フォーマット {version}"
         },
         "compress": {
             "title": "ファイルを圧縮",
@@ -3733,7 +3830,9 @@
             "conflictWarning": "同じ名前になるファイルがあります。パターンを調整してください。",
             "apply": "適用",
             "existingCollision": "一部の新しい名前がこのフォルダー内の既存ファイルと一致します。それらのファイルは上書きされず、名前の変更はスキップされます。",
-            "existingCollisionHint": "(既に存在します)"
+            "existingCollisionHint": "(既に存在します)",
+            "baseNamePlaceholder": "ファイル",
+            "invalidName": "{name} (無効)"
         },
         "lockScreen": {
             "locked": "アプリがロックされました",
@@ -3829,7 +3928,11 @@
             "portable_needs_replug": "デスクトップにマウントされていません。ケーブルを抜き差ししてから、もう一度開いてください。",
             "volumes_need_mount_observe": "snap では、mount-observe 権限を接続するとボリュームが表示されます。ターミナルで次を実行し、AeroFTP に戻ってください：",
             "volumes_unavailable": "マウントされているボリュームを読み取れませんでした。",
-            "portable_device": "ポータブルデバイス"
+            "portable_device": "ポータブルデバイス",
+            "drivesLeftPanel": "左パネルのドライブ",
+            "drivesRightPanel": "右パネルのドライブ",
+            "modeGroupLabel": "サイドバーモード",
+            "placesSidebarLabel": "場所のサイドバー"
         },
         "viewMode": {
             "list": "リスト",
@@ -3844,7 +3947,9 @@
             "browseSiblings": "同階層のディレクトリを参照",
             "loading": "読み込み中...",
             "noSubdirectories": "サブディレクトリはありません",
-            "browseChildren": "サブディレクトリを参照"
+            "browseChildren": "サブディレクトリを参照",
+            "ariaLabel": "パンくずリスト",
+            "syncBoundaryTitle": "{path} (同期の境界)"
         },
         "bridge": {
             "checking": "{app} を確認中…",
@@ -3877,7 +3982,12 @@
         },
         "quickLook": {
             "noPreview": "プレビューはありません",
-            "title": "クイックルック"
+            "title": "クイックルック",
+            "closePreview": "プレビューを閉じる",
+            "dialogLabel": "クイックルック: {name}",
+            "nextFile": "次のファイル",
+            "position": "{index} / {total}",
+            "previousFile": "前のファイル"
         },
         "properties": {
             "general": "一般",
@@ -3954,7 +4064,8 @@
                 "immich-asset-checksum": "Immich がアップロード時に記録するアセットのチェックサムです。",
                 "crypt-overlay-ciphertext": "ダイジェストはサーバーに保存された暗号化済みのバイト列を対象とします。"
             },
-            "readOnlyIsLinkTarget": "これはシンボリックリンクです。アクセス権はリンク先のファイルに属します。変更するには、そのファイルのプロパティを開いてください。"
+            "readOnlyIsLinkTarget": "これはシンボリックリンクです。アクセス権はリンク先のファイルに属します。変更するには、そのファイルのプロパティを開いてください。",
+            "exactBytes": "({bytes} バイト)"
         },
         "duplicates": {
             "sortWasted": "無駄な容量",
@@ -3995,7 +4106,10 @@
             "modeExactHint": "バイト単位で同一",
             "modeNonIdenticalHint": "知覚的またはテキストの類似度、自動削除なし",
             "potentialWasteSelected": "潜在的な無駄（選択済み）",
-            "similarityDistance": "{similarity}、距離 {distance}"
+            "similarityDistance": "{similarity}、距離 {distance}",
+            "modeExact": "完全一致",
+            "modeLabel": "モード:",
+            "modeNonIdentical": "非同一"
         },
         "diskUsage": {
             "title": "ディスク使用量",
@@ -4057,7 +4171,11 @@
                 "noActivity": "まだネットワーク活動がありません。ファイルを転送するとイベントが表示されます。",
                 "time": "時間",
                 "event": "イベント",
-                "detail": "詳細"
+                "detail": "詳細",
+                "command": "コマンド",
+                "ipcTransfersCount": "IPC + 転送 ({count})",
+                "status": "ステータス",
+                "type": "種類"
             },
             "system": {
                 "appVersion": "AeroFTPバージョン",
@@ -4104,7 +4222,8 @@
                 "dark": "ダーク",
                 "light": "ライト",
                 "userAgent": "ユーザーエージェント",
-                "localStorageKeysTitle": "LocalStorageキー"
+                "localStorageKeysTitle": "LocalStorageキー",
+                "localStorageEntrySummary": "{size} バイト · {preview}"
             },
             "copyFileListToClipboard": "ファイル一覧をクリップボードにコピー",
             "filesCopied": "{count} 件のファイルエントリをクリップボードにコピーしました",
@@ -4350,7 +4469,9 @@
                     "cropHint": "選択範囲をダブルクリックするか Enter キーで適用、Esc キーでキャンセル",
                     "cropRatio": "縦横比",
                     "cropRatioFree": "フリー",
-                    "cropRatioOriginal": "オリジナル"
+                    "cropRatioOriginal": "オリジナル",
+                    "rotateCcw90Short": "左に 90°",
+                    "rotateCw90Short": "右に 90°"
                 },
                 "toggleTransparencyBg": "透過の背景（切り替え）"
             },
@@ -4370,7 +4491,8 @@
                 "loading": "PDF 読み込み中...",
                 "open": "PDFを開く",
                 "page": "ページ",
-                "zoom": "ズーム"
+                "zoom": "ズーム",
+                "documentTitle": "PDF ドキュメント"
             },
             "text": {
                 "auto": "自動",
@@ -4401,7 +4523,8 @@
                 "viewportTablet": "タブレット (768px)",
                 "wordWrap": "折り返し",
                 "zoomIn": "拡大",
-                "zoomOut": "縮小"
+                "zoomOut": "縮小",
+                "htmlPreviewFrameTitle": "HTML プレビュー"
             },
             "video": {
                 "exitFullscreen": "フルスクリーン終了 (F)",
@@ -4600,7 +4723,10 @@
             "aerocryptImportTitle": "Rclone Crypt オーバーレイが検出されました",
             "aerocryptImportDesc": "{name} 用のプロファイルが rclone.conf からインポートされました: オーバーレイを今開きますか？",
             "aerocryptImportOpen": "オーバーレイを開く",
-            "aerovaultOverlayExpired": "非アクティブのため AeroVault Overlay がロックされました。続行するにはボルトを再度開いてください。"
+            "aerovaultOverlayExpired": "非アクティブのため AeroVault Overlay がロックされました。続行するにはボルトを再度開いてください。",
+            "aerovaultOverlaySource": "AeroVault オーバーレイ有効 ({source})",
+            "fileOperationsLabel": "ファイル操作",
+            "overlayBadge": "オーバーレイ"
         },
         "masterPassword": {
             "autoLockTimeout": "自動ロックタイムアウト",
@@ -4652,7 +4778,9 @@
                 "setup": "二要素認証",
                 "verify": "確認して有効化",
                 "active": "2FA 有効",
-                "inactive": "2FA 無効"
+                "inactive": "2FA 無効",
+                "codeGroupLabel": "{count} 桁のコード",
+                "digitLabel": "{index} 桁目"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "復元されたファイルは元のフォルダーに再表示されます",
             "connectionNamePlaceholder": "接続名（例: マイ FileLu Cloud）",
             "trashAutoExpiry": "ゴミ箱内のファイルは 7 日後に FileLu によって自動的に削除されます",
-            "rsyncTransferOnly": "転送専用エンドポイント: Rsync では参照できません。ナビゲートには Native API、WebDAV、S3 または FTP を使用してください。高帯域幅の delta 転送には Rsync に切り替えてください。"
+            "rsyncTransferOnly": "転送専用エンドポイント: Rsync では参照できません。ナビゲートには Native API、WebDAV、S3 または FTP を使用してください。高帯域幅の delta 転送には Rsync に切り替えてください。",
+            "badgePasswordProtected": "パスワード保護",
+            "badgeWatermarked": "透かし入り"
         },
         "box": {
             "addComment": "コメントを追加",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} 個のアセット",
             "releaseAssetMany": "{count} 個のアセット",
             "repoPrivate": "プライベート",
-            "repoPublic": "パブリック"
+            "repoPublic": "パブリック",
+            "actionsLiveBadge": "ライブ",
+            "actionsRunningTitle": "GitHub Actions (実行中)",
+            "coAuthors": "共同作成者",
+            "pagesPathPlaceholder": "/ または /docs",
+            "pagesStatusBuilding": "ビルド中",
+            "pagesStatusBuilt": "ビルド済み",
+            "pagesStatusErrored": "エラー",
+            "refreshBranches": "ブランチを更新",
+            "repoPrivateTitle": "プライベートリポジトリ",
+            "repoPublicTitle": "パブリックリポジトリ",
+            "unpushedCommitsOnBranchMany": "{branch} に未プッシュのコミットが {count} 件",
+            "unpushedCommitsOnBranchOne": "{branch} に未プッシュのコミットが {count} 件"
         },
         "filenNotes": {
             "title": "暗号化ノート",
@@ -5158,7 +5300,8 @@
             "tagName": "タグ名",
             "removeTag": "タグを外す",
             "manageTags": "タグを管理",
-            "deleteTagConfirm": "タグ「{name}」を削除しますか？ノートの本文は残ります。"
+            "deleteTagConfirm": "タグ「{name}」を削除しますか？ノートの本文は残ります。",
+            "betaBadge": "ベータ"
         },
         "shareLinkModal": {
             "title": "共有リンク",
@@ -5426,7 +5569,8 @@
             "linkType": "タイプ",
             "createMergeRequest": "Merge Request を作成",
             "mrTitle": "MR タイトル",
-            "mrBody": "説明 (任意)"
+            "mrBody": "説明 (任意)",
+            "sourceCode": "ソースコード"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "ユーザーを複製（サーバーのみ、パスワードなし）",
             "copyLockedHint": "サーバーを複製するには、先にこのアカウントに切り替えてください",
             "crossUserDedupTitle": "別のアカウントがすでに保存しています",
-            "crossUserDedupMessage": "「{name}」が使用するサーバーアカウントは、このデバイスで次のアカウントも保存しています: {accounts}"
+            "crossUserDedupMessage": "「{name}」が使用するサーバーアカウントは、このデバイスで次のアカウントも保存しています: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "パスワードリセットダイアログを閉じる",
+                "confirmPassword": "新しいパスワードを確認",
+                "errMismatch": "新しいアカウントパスワードが一致しません。",
+                "errNewRequired": "新しいアカウントパスワードを入力してください。",
+                "errNotAuthorized": "別のアカウントのパスワードをリセットするには管理者である必要があります。",
+                "errNotForSelf": "ご自身のアカウントでは「パスワードを変更」を使用してください。",
+                "errStoreNotReady": "先に保管庫のロックを解除してから、もう一度お試しください。",
+                "errTypeReset": "この破壊的な操作を確認するには RESET と入力してください。",
+                "errUserNotFound": "このユーザーはもう存在しません。",
+                "newPassword": "新しいアカウントパスワード",
+                "statEncryptedBytes": "暗号化バイト",
+                "statProfiles": "プロファイル",
+                "statSettings": "設定",
+                "title": "パスワードのリセット = データの破棄",
+                "typeReset": "RESET と入力",
+                "wipeDetail": "現在のパスワードは復元できません。AeroFTP は対象アカウントの保存済みサーバー、ユーザー設定、ロックアウト状態を削除し、その後、新しいパスワードで保護された新しい暗号化キーを発行します。",
+                "wipeWarning": "対象アカウントの暗号化パーティションが完全に消去されます。"
+            },
+            "dropdown": {
+                "accountPassword": "アカウントパスワード",
+                "lock": "ロック",
+                "newUser": "新しいユーザー",
+                "noUsers": "まだユーザーがいません。下の「新しいユーザー」から最初のユーザーを追加してください。",
+                "protectionNote": "お使いのアカウントは Argon2id + AES-KW + AES-256-GCM 暗号化で保護されています",
+                "users": "ユーザー"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt オーバーレイ",

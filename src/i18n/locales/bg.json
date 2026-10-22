@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Изпълнете {cmd} и попълнете URL адреса автоматично",
                 "fetchUrl": "Извличане на URL",
                 "megacmdWebdavHint": "Потребителското име и паролата са пропуснати умишлено. AeroFTP сам изпълнява „{cmd}“ при свързване, за да стартира моста и да прочете този адрес: полето може да остане празно. „Извличане на URL“ е незадължително ръчно опресняване; променете порта тук, ако MEGAcmd използва различен."
-            }
+            },
+            "manualStorageUnitLabel": "Единица за {label}"
         },
         "browser": {
             "remote": "Отдалечен",
@@ -420,7 +421,19 @@
             "listingPath": "Изброяване на {path}...",
             "pleaseWait": "Моля, изчакайте...",
             "sameNameLeakChip": "същото име",
-            "sameNameLeakTooltip": "Това име се появява и на друг път в това криптирано хранилище. Тъй като имената се криптират детерминистично, наблюдател на криптираното хранилище може да разбере, че двете споделят едно име."
+            "sameNameLeakTooltip": "Това име се появява и на друг път в това криптирано хранилище. Тъй като имената се криптират детерминистично, наблюдател на криптираното хранилище може да разбере, че двете споделят едно име.",
+            "endpointSelector": {
+                "localFolder": "Локална папка",
+                "localFolderHint": "Изберете локален път за този панел",
+                "noSavedProfiles": "Няма запазени профили",
+                "savedProfiles": "Запазени отдалечени профили",
+                "title": "Крайна точка"
+            },
+            "leftPanelMarker": "Ляв панел",
+            "localFilesLabel": "Локални файлове",
+            "localFilesRightLabel": "Локални файлове (десен панел)",
+            "remoteFilesLabel": "Отдалечени файлове",
+            "rightPanelMarker": "Десен панел"
         },
         "contextMenu": {
             "askAeroAgent": "Питай AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Графика на скоростта",
             "hideSpeedGraph": "Скриване на графиката на скоростта",
             "speedAvg": "ср. {speed}",
-            "speedPeak": "макс. {speed}"
+            "speedPeak": "макс. {speed}",
+            "badgeBatch": "ПАКЕТ",
+            "badgeDownload": "ИЗТЕГЛЯНЕ",
+            "badgeLive": "НА ЖИВО",
+            "badgeStream": "ПОТОК",
+            "badgeUpload": "КАЧВАНЕ",
+            "earlierItemsHidden": "Скрити по-ранни елементи: {count}",
+            "folderFilesProgress": "{done}/{total} файла",
+            "laneDone": "готово",
+            "laneError": "грешка",
+            "unifiedPlan": {
+                "destination": "Местоназначение",
+                "dialogLabel": "План за прехвърляне",
+                "engineAerovaultOverlay": "Слой AeroVault",
+                "engineCompareOnly": "Само сравнение",
+                "engineCrossProfileSync": "Синхронизация между профили",
+                "engineCrossProfileTransfer": "Прехвърляне между профили",
+                "engineLocalDelta": "Локален делта транспорт",
+                "engineLocalFs": "Локална файлова система",
+                "engineProviderDownload": "Изтегляне от доставчика",
+                "engineProviderUpload": "Качване към доставчика",
+                "engineUnsupported": "Не се поддържа",
+                "execute": "Изпълни",
+                "items": "Елементи",
+                "modeBackup": "Резервно копие",
+                "modeBisync": "Двупосочна синхронизация",
+                "modeCompare": "Сравнение",
+                "modeCopy": "Копиране",
+                "modeMirror": "Огледало",
+                "modeMove": "Преместване",
+                "modeSync": "Синхронизиране",
+                "notExecutable": "Тази двойка крайни точки все още не може да се изпълни.",
+                "parallel": "Паралелно",
+                "reviewBeforeExecution": "Преглед преди изпълнение",
+                "route": "{pair} чрез {engine}",
+                "size": "Размер",
+                "source": "Източник",
+                "title": "План: {mode}"
+            }
         },
         "settings": {
             "title": "Настройки",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "макс",
             "migrationCleanupHint": "Препоръчва се за максимална сигурност",
             "fontCustomOption": "Персонализиран...",
-            "fontSystemInstallHint": "Изисква системна инсталация. AeroFTP автоматично използва резервен вариант, ако не е наличен."
+            "fontSystemInstallHint": "Изисква системна инсталация. AeroFTP автоматично използва резервен вариант, ако не е наличен.",
+            "fontSizeIndicatorLabel": "Шрифт"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} файла, освободени {size}",
             "maturity": {
                 "alpha": "Алфа"
-            }
+            },
+            "dialogDashboardLabel": "Табло на облачната синхронизация",
+            "dialogLoadingLabel": "Зареждане на облачната синхронизация",
+            "dialogSettingsLabel": "Настройки на облачната синхронизация",
+            "dialogSetupLabel": "Настройване на облачната синхронизация",
+            "onePerLineHint": "(по един на ред)",
+            "pairsEditorLabel": "Редактор на двойки AeroCloud",
+            "remoteSubfolderPlaceholder": "облак"
         },
         "statusBar": {
             "connected": "Свързан",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "частично, непрочетени папки: {count}",
             "usedScanFailed": "Сканирането на използваното хранилище е неуспешно",
             "usedScanEmpty": "Сканирането на {path} не намери файлове; кешираната стойност беше запазена. Проверете пътя или поддръжката на рекурсивно листване от сървъра.",
-            "filenBridgeAccountTotal": "Filen Desktop не съобщава тук общия обем на акаунта ви: показаната използвана стойност е сумата от файловете в този път. Родната връзка с Filen показва общия обем на акаунта веднага."
+            "filenBridgeAccountTotal": "Filen Desktop не съобщава тук общия обем на акаунта ви: показаната използвана стойност е сумата от файловете в този път. Родната връзка с Filen показва общия обем на акаунта веднага.",
+            "ariaLabel": "Лента на състоянието",
+            "debugBadge": "ОТСТРАНЯВАНЕ",
+            "debugModeActive": "Режимът за отстраняване на грешки е активен"
         },
         "dialogs": {
             "confirmTitle": "Потвърждение",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "напр. {template}",
             "jurisdiction": "Юрисдикция",
             "insecureCertDialogLabel": "Предупреждение за несигурен сертификат",
-            "betaBadge": "БЕТА"
+            "betaBadge": "БЕТА",
+            "hostKeyDialogLabel": "Проверка на ключа на хоста"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",
@@ -2173,7 +2236,10 @@
             "rename": "Преименувай",
             "resume": "Възобнови",
             "resumeHint": "Продължи прекъснатия трансфер вместо да го започваш отначало",
-            "cancel": "Отказ"
+            "cancel": "Отказ",
+            "dialogLabel": "Потвърждение за презаписване",
+            "moreInQueue": "+{count} на опашката",
+            "unknownDate": "Неизвестно"
         },
         "statusbar": {
             "queue": "Опашка",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Използваеми двойки пътища (локален/отдалечен) в този шаблон: {count}. Прозорецът на AeroSync работи с точно една двойка, затова нищо не беше импортирано. Редактирайте шаблона така, че да остане само една двойка, и след това го импортирайте отново.",
             "templateNamePlaceholder": "напр. Нощно резервно копие в S3",
             "templateDescPlaceholder": "За какво служи този шаблон (по избор)",
-            "templateExportCliDesc": "Обвивка за aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Обвивка за aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Изключи",
+            "multiPathEditorLabel": "Редактор на множество пътища",
+            "multiPathEnablePair": "Включи",
+            "multiPathLocalPlaceholder": "Локален път",
+            "multiPathRemotePlaceholder": "Отдалечен път",
+            "rollbackDialogLabel": "Моментна снимка за възстановяване",
+            "rollbackMoreFiles": "+{count} още...",
+            "rollbackSnapshotSummaryMany": "{count} файла, {size}",
+            "rollbackSnapshotSummaryOne": "{count} файл, {size}",
+            "templateDialogLabel": "Шаблон за синхронизация",
+            "templateExcludes": "Изключения",
+            "templateLocal": "Локално",
+            "templateRemote": "Отдалечено",
+            "templateRetries": "Повторни опити"
         },
         "ui": {
             "syncing": "Синхронизиране...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Заглавката или манифестът на трезора бяха възстановени от четността.",
             "repairMetadataSuccess": "Поправката завърши: заглавката или манифестът на трезора бяха възстановени от четността",
             "errorCorrectionBadge": "Корекция на грешки",
-            "itemsInFolder": "{count} елемента в /{folder}"
+            "itemsInFolder": "{count} елемента в /{folder}",
+            "compressionProfileArchive": "Архив (zstd -15)",
+            "compressionProfileBalanced": "Балансиран (zstd -9)",
+            "compressionProfileFast": "Бърз (zstd -3)",
+            "damagedChunkLocation": "{id} - отместване {offset} (дължина {len})",
+            "fallbackName": "Трезор",
+            "folderScanSummary": "{files} файла в {dirs} директории ({size})",
+            "namePlaceholderVault": "Моят защитен трезор",
+            "namePlaceholderZip": "Моят архив",
+            "recentDaysAgo": "преди {count} д.",
+            "recentFileCountMany": "{count} файла",
+            "recentFileCountOne": "{count} файл",
+            "recentMonthsAgo": "преди {count} мес."
         },
         "cryptomator": {
             "title": "Cryptomator трезор",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Шифроване на избраните елементи...",
             "ingestSkipped": "Трезорът е създаден, но някои елементи не можаха да бъдат добавени:",
             "selectionInfo": "{count} елемент(а) ще бъдат шифровани в трезора",
-            "decrypting": "Дешифриране…"
+            "decrypting": "Дешифриране…",
+            "compatibleWithApp": "Съвместимо с приложението Cryptomator",
+            "createFormatBadge": "Cryptomator формат 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Съдържание AES-GCM",
+            "featureNameCipher": "Имена AES-SIV",
+            "formatVersion": "Формат {version}"
         },
         "compress": {
             "title": "Компресиране на файлове",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Някои файлове ще имат еднакви имена. Моля, коригирайте шаблона.",
             "apply": "Прилагане",
             "existingCollision": "Някои нови имена съвпадат с файлове, които вече са в тази папка; тези файлове няма да бъдат презаписани и преименуването им се пропуска.",
-            "existingCollisionHint": "(вече съществува)"
+            "existingCollisionHint": "(вече съществува)",
+            "baseNamePlaceholder": "файл",
+            "invalidName": "{name} (невалидно)"
         },
         "lockScreen": {
             "locked": "Приложението е заключено",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Не е монтирано от работния плот. Извадете и отново поставете кабела, след което го отворете отново.",
             "volumes_need_mount_observe": "В snap пакета томовете се показват, след като е свързано разрешението mount-observe. Изпълнете това в терминал и се върнете в AeroFTP:",
             "volumes_unavailable": "Монтираните томове не могат да бъдат прочетени.",
-            "portable_device": "Преносимо устройство"
+            "portable_device": "Преносимо устройство",
+            "drivesLeftPanel": "Дискове, ляв панел",
+            "drivesRightPanel": "Дискове, десен панел",
+            "modeGroupLabel": "Режим на страничната лента",
+            "placesSidebarLabel": "Странична лента с места"
         },
         "viewMode": {
             "list": "Списък",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Преглед на съседни директории",
             "loading": "Зареждане...",
             "noSubdirectories": "Няма поддиректории",
-            "browseChildren": "Преглед на подпапки"
+            "browseChildren": "Преглед на подпапки",
+            "ariaLabel": "Навигационен път",
+            "syncBoundaryTitle": "{path} (граница на синхронизация)"
         },
         "bridge": {
             "checking": "Проверка на {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Няма наличен преглед",
-            "title": "Бърз преглед"
+            "title": "Бърз преглед",
+            "closePreview": "Затваряне на прегледа",
+            "dialogLabel": "Бърз преглед: {name}",
+            "nextFile": "Следващ файл",
+            "position": "{index} от {total}",
+            "previousFile": "Предишен файл"
         },
         "properties": {
             "general": "Общи",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Контролната сума на ресурса, която Immich записва при качването.",
                 "crypt-overlay-ciphertext": "Контролната сума покрива шифрованите байтове, съхранени на сървъра."
             },
-            "readOnlyIsLinkTarget": "Това е символна връзка: правата принадлежат на файла, към който сочи. Отворете свойствата на този файл, за да ги промените."
+            "readOnlyIsLinkTarget": "Това е символна връзка: правата принадлежат на файла, към който сочи. Отворете свойствата на този файл, за да ги промените.",
+            "exactBytes": "({bytes} байта)"
         },
         "duplicates": {
             "sortWasted": "Изгубено място",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Идентични байт по байт",
             "modeNonIdenticalHint": "Перцептивна или текстова прилика, без автоматично изтриване",
             "potentialWasteSelected": "потенциално загубено (избрани)",
-            "similarityDistance": "{similarity}, разст. {distance}"
+            "similarityDistance": "{similarity}, разст. {distance}",
+            "modeExact": "Точно",
+            "modeLabel": "Режим:",
+            "modeNonIdentical": "Неидентични"
         },
         "diskUsage": {
             "title": "Използване на диска",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Все още няма мрежова активност. Прехвърлете файлове, за да видите събития.",
                 "time": "Време",
                 "event": "Събитие",
-                "detail": "Детайл"
+                "detail": "Детайл",
+                "command": "Команда",
+                "ipcTransfersCount": "IPC + Прехвърляния ({count})",
+                "status": "Състояние",
+                "type": "Тип"
             },
             "system": {
                 "appVersion": "Версия на AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Тъмна",
                 "light": "Светла",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Ключове в LocalStorage"
+                "localStorageKeysTitle": "Ключове в LocalStorage",
+                "localStorageEntrySummary": "{size} байта · {preview}"
             },
             "copyFileListToClipboard": "Копирай списък с файлове в клипборда",
             "filesCopied": "{count} записа на файлове са копирани в клипборда",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Щракнете двукратно върху селекцията или натиснете Enter за прилагане, Esc за отказ",
                     "cropRatio": "Пропорции",
                     "cropRatioFree": "Свободно",
-                    "cropRatioOriginal": "Оригинал"
+                    "cropRatioOriginal": "Оригинал",
+                    "rotateCcw90Short": "90° наляво",
+                    "rotateCw90Short": "90° надясно"
                 },
                 "toggleTransparencyBg": "Фон за прозрачност (превключване)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Зареждане на PDF...",
                 "open": "Отвори PDF",
                 "page": "Страница",
-                "zoom": "Мащаб"
+                "zoom": "Мащаб",
+                "documentTitle": "PDF документ"
             },
             "text": {
                 "auto": "Автоматично",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Таблет (768px)",
                 "wordWrap": "Пренасяне на редове",
                 "zoomIn": "Увеличаване",
-                "zoomOut": "Намаляване"
+                "zoomOut": "Намаляване",
+                "htmlPreviewFrameTitle": "HTML преглед"
             },
             "video": {
                 "exitFullscreen": "Изход от цял екран (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Открито е наслагване Rclone Crypt",
             "aerocryptImportDesc": "Профил, импортиран от rclone.conf за {name}: да се отвори ли наслагването сега?",
             "aerocryptImportOpen": "Отвори наслагването",
-            "aerovaultOverlayExpired": "AeroVault Overlay е заключен поради неактивност. Отворете отново трезора, за да продължите."
+            "aerovaultOverlayExpired": "AeroVault Overlay е заключен поради неактивност. Отворете отново трезора, за да продължите.",
+            "aerovaultOverlaySource": "Слой AeroVault е активен ({source})",
+            "fileOperationsLabel": "Файлови операции",
+            "overlayBadge": "СЛОЙ"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Двуфакторно удостоверяване",
                 "verify": "Потвърди и активирай",
                 "active": "2FA активна",
-                "inactive": "2FA неактивна"
+                "inactive": "2FA неактивна",
+                "codeGroupLabel": "{count}-цифрен код",
+                "digitLabel": "Цифра {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Възстановените файлове ще се появят отново в оригиналната си папка",
             "connectionNamePlaceholder": "Име на връзката (напр. Моят FileLu Cloud)",
             "trashAutoExpiry": "Файловете в кошчето се изтриват автоматично от FileLu след 7 дни",
-            "rsyncTransferOnly": "Крайна точка само за прехвърляне: разглеждането не е налично в Rsync. Използвай Native API, WebDAV, S3 или FTP, за да навигираш; превключи към Rsync за високоскоростни delta трансфери."
+            "rsyncTransferOnly": "Крайна точка само за прехвърляне: разглеждането не е налично в Rsync. Използвай Native API, WebDAV, S3 или FTP, за да навигираш; превключи към Rsync за високоскоростни delta трансфери.",
+            "badgePasswordProtected": "Защитено с парола",
+            "badgeWatermarked": "С воден знак"
         },
         "box": {
             "addComment": "Добавяне на коментар",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} файл",
             "releaseAssetMany": "{count} файла",
             "repoPrivate": "Частно",
-            "repoPublic": "Публично"
+            "repoPublic": "Публично",
+            "actionsLiveBadge": "На живо",
+            "actionsRunningTitle": "GitHub Actions (изпълнява се)",
+            "coAuthors": "Съавтори",
+            "pagesPathPlaceholder": "/ или /docs",
+            "pagesStatusBuilding": "изгражда се",
+            "pagesStatusBuilt": "изградено",
+            "pagesStatusErrored": "грешка",
+            "refreshBranches": "Опресни клоновете",
+            "repoPrivateTitle": "Частно хранилище",
+            "repoPublicTitle": "Публично хранилище",
+            "unpushedCommitsOnBranchMany": "{count} неизпратени къмита в {branch}",
+            "unpushedCommitsOnBranchOne": "{count} неизпратен къмит в {branch}"
         },
         "filenNotes": {
             "title": "Криптирани бележки",
@@ -5158,7 +5300,8 @@
             "tagName": "Име на етикета",
             "removeTag": "Премахни етикета",
             "manageTags": "Управление на етикети",
-            "deleteTagConfirm": "Да се изтрие ли етикетът „{name}“? Бележките запазват текста си."
+            "deleteTagConfirm": "Да се изтрие ли етикетът „{name}“? Бележките запазват текста си.",
+            "betaBadge": "БЕТА"
         },
         "shareLinkModal": {
             "title": "Връзка за споделяне",
@@ -5426,7 +5569,8 @@
             "linkType": "Тип",
             "createMergeRequest": "Създай Merge Request",
             "mrTitle": "Заглавие на MR",
-            "mrBody": "Описание (по избор)"
+            "mrBody": "Описание (по избор)",
+            "sourceCode": "Изходен код"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Дублиране на потребител (само сървъри, без пароли)",
             "copyLockedHint": "Първо превключете към този акаунт, за да дублирате сървърите му",
             "crossUserDedupTitle": "Вече е запазено от друг акаунт",
-            "crossUserDedupMessage": "\"{name}\" използва сървърен акаунт, който е запазен и на това устройство от: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" използва сървърен акаунт, който е запазен и на това устройство от: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Затвори диалога за нулиране на паролата",
+                "confirmPassword": "Потвърдете новата парола",
+                "errMismatch": "Новите пароли на акаунта не съвпадат.",
+                "errNewRequired": "Въведете нова парола за акаунта.",
+                "errNotAuthorized": "Трябва да сте администратор, за да нулирате паролата на друг акаунт.",
+                "errNotForSelf": "Използвайте Смяна на паролата за собствения си акаунт.",
+                "errStoreNotReady": "Първо отключете трезора, после опитайте отново.",
+                "errTypeReset": "Въведете RESET, за да потвърдите тази разрушителна операция.",
+                "errUserNotFound": "Този потребител вече не съществува.",
+                "newPassword": "Нова парола за акаунта",
+                "statEncryptedBytes": "шифровани байта",
+                "statProfiles": "профила",
+                "statSettings": "настройки",
+                "title": "Нулиране на паролата = унищожаване на данните",
+                "typeReset": "Въведете RESET",
+                "wipeDetail": "Текущата парола не може да бъде възстановена. AeroFTP ще изтрие запазените сървъри, потребителските настройки и състоянието на заключване на целевия акаунт, след което ще издаде нов ключ за шифроване, защитен с новата парола.",
+                "wipeWarning": "Това ще изтрие необратимо шифрования дял на целевия акаунт."
+            },
+            "dropdown": {
+                "accountPassword": "Парола за акаунта",
+                "lock": "Заключи",
+                "newUser": "Нов потребител",
+                "noUsers": "Все още няма потребители. Използвайте „Нов потребител“ по-долу, за да добавите първия.",
+                "protectionNote": "Акаунтът ви е защитен с шифроване Argon2id + AES-KW + AES-256-GCM",
+                "users": "Потребители"
+            }
         },
         "aerocryptNative": {
             "title": "Слой AeroCrypt",

@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "{cmd} uitvoeren en de URL automatisch invullen",
                 "fetchUrl": "URL ophalen",
                 "megacmdWebdavHint": "Gebruikersnaam en wachtwoord zijn bewust weggelaten. AeroFTP voert bij het verbinden zelf \"{cmd}\" uit om de brug te starten en dit adres te lezen: leeg laten is prima. URL ophalen is een optionele handmatige vernieuwing; wijzig hier de poort als MEGAcmd een aangepaste poort gebruikt."
-            }
+            },
+            "manualStorageUnitLabel": "{label}-eenheid"
         },
         "browser": {
             "remote": "Extern",
@@ -420,7 +421,19 @@
             "listingPath": "{path} wordt weergegeven...",
             "pleaseWait": "Even geduld...",
             "sameNameLeakChip": "zelfde naam",
-            "sameNameLeakTooltip": "Deze naam komt ook voor op een ander pad in deze versleutelde kluis. Omdat namen deterministisch worden versleuteld, kan een waarnemer van de versleutelde opslag zien dat beide een naam delen."
+            "sameNameLeakTooltip": "Deze naam komt ook voor op een ander pad in deze versleutelde kluis. Omdat namen deterministisch worden versleuteld, kan een waarnemer van de versleutelde opslag zien dat beide een naam delen.",
+            "endpointSelector": {
+                "localFolder": "Lokale map",
+                "localFolderHint": "Kies een lokaal pad voor dit paneel",
+                "noSavedProfiles": "Geen opgeslagen profielen",
+                "savedProfiles": "Opgeslagen externe profielen",
+                "title": "Eindpunt"
+            },
+            "leftPanelMarker": "Linkerpaneel",
+            "localFilesLabel": "Lokale bestanden",
+            "localFilesRightLabel": "Lokale bestanden (rechterpaneel)",
+            "remoteFilesLabel": "Externe bestanden",
+            "rightPanelMarker": "Rechterpaneel"
         },
         "contextMenu": {
             "askAeroAgent": "Vraag AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Snelheidsgrafiek",
             "hideSpeedGraph": "Snelheidsgrafiek verbergen",
             "speedAvg": "gem. {speed}",
-            "speedPeak": "piek {speed}"
+            "speedPeak": "piek {speed}",
+            "badgeBatch": "REEKS",
+            "badgeDownload": "DOWNLOAD",
+            "badgeLive": "LIVE",
+            "badgeStream": "STREAM",
+            "badgeUpload": "UPLOAD",
+            "earlierItemsHidden": "{count} eerdere items verborgen",
+            "folderFilesProgress": "{done}/{total} bestanden",
+            "laneDone": "klaar",
+            "laneError": "fout",
+            "unifiedPlan": {
+                "destination": "Bestemming",
+                "dialogLabel": "Overdrachtsplan",
+                "engineAerovaultOverlay": "AeroVault-overlay",
+                "engineCompareOnly": "Alleen vergelijken",
+                "engineCrossProfileSync": "Profieloverschrijdende synchronisatie",
+                "engineCrossProfileTransfer": "Profieloverschrijdende overdracht",
+                "engineLocalDelta": "Lokaal delta-transport",
+                "engineLocalFs": "Lokaal bestandssysteem",
+                "engineProviderDownload": "Provider-download",
+                "engineProviderUpload": "Provider-upload",
+                "engineUnsupported": "Niet ondersteund",
+                "execute": "Uitvoeren",
+                "items": "Items",
+                "modeBackup": "Back-up",
+                "modeBisync": "Tweerichtingssync",
+                "modeCompare": "Vergelijken",
+                "modeCopy": "Kopiëren",
+                "modeMirror": "Spiegelen",
+                "modeMove": "Verplaatsen",
+                "modeSync": "Synchroniseren",
+                "notExecutable": "Dit eindpuntpaar is nog niet uitvoerbaar.",
+                "parallel": "Parallel",
+                "reviewBeforeExecution": "Controleren vóór uitvoering",
+                "route": "{pair} via {engine}",
+                "size": "Grootte",
+                "source": "Bron",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Instellingen",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "max",
             "migrationCleanupHint": "Aanbevolen voor maximale beveiliging",
             "fontCustomOption": "Aangepast...",
-            "fontSystemInstallHint": "Vereist systeeminstallatie. AeroFTP valt automatisch terug als het niet beschikbaar is."
+            "fontSystemInstallHint": "Vereist systeeminstallatie. AeroFTP valt automatisch terug als het niet beschikbaar is.",
+            "fontSizeIndicatorLabel": "Lettertype"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} bestanden, {size} vrijgemaakt",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Overzicht cloudsynchronisatie",
+            "dialogLoadingLabel": "Cloudsynchronisatie laden",
+            "dialogSettingsLabel": "Instellingen cloudsynchronisatie",
+            "dialogSetupLabel": "Cloudsynchronisatie instellen",
+            "onePerLineHint": "(één per regel)",
+            "pairsEditorLabel": "AeroCloud-paareneditor",
+            "remoteSubfolderPlaceholder": "wolk"
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "gedeeltelijk, onleesbare mappen: {count}",
             "usedScanFailed": "Scan van gebruikte opslag mislukt",
             "usedScanEmpty": "Scan van {path} vond geen bestanden; de gecachte waarde is behouden. Controleer het pad of de ondersteuning van de server voor recursieve weergave.",
-            "filenBridgeAccountTotal": "Filen Desktop meldt hier niet het totaal van je account: het weergegeven gebruik is de som van de bestanden onder dit pad. De native Filen-verbinding toont het accounttotaal direct."
+            "filenBridgeAccountTotal": "Filen Desktop meldt hier niet het totaal van je account: het weergegeven gebruik is de som van de bestanden onder dit pad. De native Filen-verbinding toont het accounttotaal direct.",
+            "ariaLabel": "Statusbalk",
+            "debugBadge": "FOUTOPSPORING",
+            "debugModeActive": "Foutopsporingsmodus actief"
         },
         "dialogs": {
             "confirmTitle": "Bevestigen",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "bijv. {template}",
             "jurisdiction": "Jurisdictie",
             "insecureCertDialogLabel": "Waarschuwing onveilig certificaat",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Verificatie van hostsleutel"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -2173,7 +2236,10 @@
             "rename": "Hernoemen",
             "resume": "Hervatten",
             "resumeHint": "Hervat de onderbroken overdracht in plaats van opnieuw te beginnen",
-            "cancel": "Annuleren"
+            "cancel": "Annuleren",
+            "dialogLabel": "Overschrijven bevestigen",
+            "moreInQueue": "+{count} in wachtrij",
+            "unknownDate": "Onbekend"
         },
         "statusbar": {
             "queue": "Wachtrij",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Bruikbare padparen (lokaal/extern) in deze sjabloon: {count}. Een AeroSync-venster werkt met precies één paar, dus er is niets geïmporteerd. Bewerk de sjabloon zodat er maar één paar overblijft en importeer hem daarna opnieuw.",
             "templateNamePlaceholder": "bijv. Nachtelijke back-up naar S3",
             "templateDescPlaceholder": "Waarvoor dit sjabloon dient (optioneel)",
-            "templateExportCliDesc": "Wrapperscript voor aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Wrapperscript voor aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Uitschakelen",
+            "multiPathEditorLabel": "Editor voor meerdere paden",
+            "multiPathEnablePair": "Inschakelen",
+            "multiPathLocalPlaceholder": "Lokaal pad",
+            "multiPathRemotePlaceholder": "Extern pad",
+            "rollbackDialogLabel": "Herstelmomentopname",
+            "rollbackMoreFiles": "+{count} meer...",
+            "rollbackSnapshotSummaryMany": "{count} bestanden, {size}",
+            "rollbackSnapshotSummaryOne": "{count} bestand, {size}",
+            "templateDialogLabel": "Synchronisatiesjabloon",
+            "templateExcludes": "Uitsluitingen",
+            "templateLocal": "Lokaal",
+            "templateRemote": "Extern",
+            "templateRetries": "Nieuwe pogingen"
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Vault-header of manifest uit de pariteit herbouwd.",
             "repairMetadataSuccess": "Reparatie voltooid: vault-header of manifest uit de pariteit herbouwd",
             "errorCorrectionBadge": "Foutcorrectie",
-            "itemsInFolder": "{count} items in de map /{folder}"
+            "itemsInFolder": "{count} items in de map /{folder}",
+            "compressionProfileArchive": "Archief (zstd -15)",
+            "compressionProfileBalanced": "Gebalanceerd (zstd -9)",
+            "compressionProfileFast": "Snel (zstd -3)",
+            "damagedChunkLocation": "{id} - offset {offset} (lengte {len})",
+            "fallbackName": "Kluis",
+            "folderScanSummary": "{files} bestanden in {dirs} mappen ({size})",
+            "namePlaceholderVault": "Mijn beveiligde kluis",
+            "namePlaceholderZip": "Mijn archief",
+            "recentDaysAgo": "{count} d geleden",
+            "recentFileCountMany": "{count} bestanden",
+            "recentFileCountOne": "{count} bestand",
+            "recentMonthsAgo": "{count} mnd geleden"
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Geselecteerde items worden versleuteld...",
             "ingestSkipped": "Kluis aangemaakt, maar sommige items konden niet worden toegevoegd:",
             "selectionInfo": "{count} item(s) worden versleuteld in de kluis",
-            "decrypting": "Ontsleutelen…"
+            "decrypting": "Ontsleutelen…",
+            "compatibleWithApp": "Compatibel met de Cryptomator-app",
+            "createFormatBadge": "Cryptomator-formaat 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM-inhoud",
+            "featureNameCipher": "AES-SIV-namen",
+            "formatVersion": "Formaat {version}"
         },
         "compress": {
             "title": "Bestanden comprimeren",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Sommige bestanden zouden dezelfde naam krijgen. Pas het patroon aan.",
             "apply": "Toepassen",
             "existingCollision": "Sommige nieuwe namen komen overeen met bestanden die al in deze map staan; die bestanden worden niet overschreven en hun naamswijziging wordt overgeslagen.",
-            "existingCollisionHint": "(bestaat al)"
+            "existingCollisionHint": "(bestaat al)",
+            "baseNamePlaceholder": "bestand",
+            "invalidName": "{name} (ongeldig)"
         },
         "lockScreen": {
             "locked": "App vergrendeld",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Niet gekoppeld door het bureaublad. Haal de kabel eruit en steek hem weer in, en open het daarna opnieuw.",
             "volumes_need_mount_observe": "In de snap verschijnen volumes zodra de mount-observe-machtiging is gekoppeld. Voer dit uit in een terminal en keer dan terug naar AeroFTP:",
             "volumes_unavailable": "De gemounte volumes konden niet worden gelezen.",
-            "portable_device": "Draagbaar apparaat"
+            "portable_device": "Draagbaar apparaat",
+            "drivesLeftPanel": "Stations linkerpaneel",
+            "drivesRightPanel": "Stations rechterpaneel",
+            "modeGroupLabel": "Zijbalkmodus",
+            "placesSidebarLabel": "Zijbalk met locaties"
         },
         "viewMode": {
             "list": "Lijst",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Gelijkwaardige mappen verkennen",
             "loading": "Laden...",
             "noSubdirectories": "Geen submappen",
-            "browseChildren": "Subdirectories doorbladeren"
+            "browseChildren": "Subdirectories doorbladeren",
+            "ariaLabel": "Kruimelpad",
+            "syncBoundaryTitle": "{path} (synchronisatiegrens)"
         },
         "bridge": {
             "checking": "{app} controleren…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Geen voorbeeld beschikbaar",
-            "title": "Snelle weergave"
+            "title": "Snelle weergave",
+            "closePreview": "Voorbeeld sluiten",
+            "dialogLabel": "Snelle weergave: {name}",
+            "nextFile": "Volgend bestand",
+            "position": "{index} van {total}",
+            "previousFile": "Vorig bestand"
         },
         "properties": {
             "general": "Algemeen",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "De controlesom van het item die Immich bij het uploaden vastlegt.",
                 "crypt-overlay-ciphertext": "De hash dekt de versleutelde bytes die op de server staan."
             },
-            "readOnlyIsLinkTarget": "Dit is een symbolische koppeling: de rechten horen bij het bestand waarnaar deze verwijst. Open de eigenschappen van dat bestand om ze te wijzigen."
+            "readOnlyIsLinkTarget": "Dit is een symbolische koppeling: de rechten horen bij het bestand waarnaar deze verwijst. Open de eigenschappen van dat bestand om ze te wijzigen.",
+            "exactBytes": "({bytes} bytes)"
         },
         "duplicates": {
             "sortWasted": "Verspilde ruimte",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Byte voor byte identiek",
             "modeNonIdenticalHint": "Perceptuele of tekstuele gelijkenis, geen automatisch verwijderen",
             "potentialWasteSelected": "mogelijk verspild (geselecteerd)",
-            "similarityDistance": "{similarity}, afst. {distance}"
+            "similarityDistance": "{similarity}, afst. {distance}",
+            "modeExact": "Exact",
+            "modeLabel": "Modus:",
+            "modeNonIdentical": "Niet identiek"
         },
         "diskUsage": {
             "title": "Schijfgebruik",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Nog geen netwerkactiviteit. Draag bestanden over om gebeurtenissen te zien.",
                 "time": "Tijd",
                 "event": "Gebeurtenis",
-                "detail": "Detail"
+                "detail": "Detail",
+                "command": "Opdracht",
+                "ipcTransfersCount": "IPC + Overdrachten ({count})",
+                "status": "Status",
+                "type": "Type"
             },
             "system": {
                 "appVersion": "AeroFTP-versie",
@@ -4140,7 +4258,8 @@
                 "dark": "Donker",
                 "light": "Licht",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "LocalStorage-sleutels"
+                "localStorageKeysTitle": "LocalStorage-sleutels",
+                "localStorageEntrySummary": "{size} bytes · {preview}"
             },
             "copyFileListToClipboard": "Bestandslijst kopiëren naar klembord",
             "filesCopied": "{count} bestandsvermeldingen gekopieerd naar klembord",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Dubbelklik op de selectie of druk op Enter om toe te passen, Esc om te annuleren",
                     "cropRatio": "Verhoudingen",
                     "cropRatioFree": "Vrij",
-                    "cropRatioOriginal": "Origineel"
+                    "cropRatioOriginal": "Origineel",
+                    "rotateCcw90Short": "90° linksom",
+                    "rotateCw90Short": "90° rechtsom"
                 },
                 "toggleTransparencyBg": "Transparantieachtergrond (wisselen)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "PDF laden...",
                 "open": "PDF openen",
                 "page": "Pagina",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "PDF-document"
             },
             "text": {
                 "auto": "Auto",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Woordterugloop",
                 "zoomIn": "Inzoomen",
-                "zoomOut": "Uitzoomen"
+                "zoomOut": "Uitzoomen",
+                "htmlPreviewFrameTitle": "HTML-voorbeeld"
             },
             "video": {
                 "exitFullscreen": "Volledig scherm verlaten (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt-laag gedetecteerd",
             "aerocryptImportDesc": "Profiel geïmporteerd uit rclone.conf voor {name}: nu de laag openen?",
             "aerocryptImportOpen": "Laag openen",
-            "aerovaultOverlayExpired": "AeroVault Overlay vergrendeld wegens inactiviteit. Open de kluis opnieuw om door te gaan."
+            "aerovaultOverlayExpired": "AeroVault Overlay vergrendeld wegens inactiviteit. Open de kluis opnieuw om door te gaan.",
+            "aerovaultOverlaySource": "AeroVault-overlay actief ({source})",
+            "fileOperationsLabel": "Bestandsbewerkingen",
+            "overlayBadge": "OVERLAY"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Tweefactorauthenticatie",
                 "verify": "Verifiëren en inschakelen",
                 "active": "2FA actief",
-                "inactive": "2FA inactief"
+                "inactive": "2FA inactief",
+                "codeGroupLabel": "Code van {count} cijfers",
+                "digitLabel": "Cijfer {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Herstelde bestanden verschijnen opnieuw in hun oorspronkelijke map",
             "connectionNamePlaceholder": "Verbindingsnaam (bijv. Mijn FileLu Cloud)",
             "trashAutoExpiry": "Bestanden in de prullenbak worden door FileLu na 7 dagen automatisch verwijderd",
-            "rsyncTransferOnly": "Alleen-overdracht endpoint: bladeren is niet beschikbaar op Rsync. Gebruik Native API, WebDAV, S3 of FTP om te navigeren; schakel over naar Rsync voor delta-overdrachten met hoge bandbreedte."
+            "rsyncTransferOnly": "Alleen-overdracht endpoint: bladeren is niet beschikbaar op Rsync. Gebruik Native API, WebDAV, S3 of FTP om te navigeren; schakel over naar Rsync voor delta-overdrachten met hoge bandbreedte.",
+            "badgePasswordProtected": "Met wachtwoord beveiligd",
+            "badgeWatermarked": "Met watermerk"
         },
         "box": {
             "addComment": "Opmerking toevoegen",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} bestand",
             "releaseAssetMany": "{count} bestanden",
             "repoPrivate": "Privé",
-            "repoPublic": "Openbaar"
+            "repoPublic": "Openbaar",
+            "actionsLiveBadge": "Actief",
+            "actionsRunningTitle": "GitHub Actions (bezig)",
+            "coAuthors": "Co-auteurs",
+            "pagesPathPlaceholder": "/ of /docs",
+            "pagesStatusBuilding": "wordt gebouwd",
+            "pagesStatusBuilt": "gebouwd",
+            "pagesStatusErrored": "mislukt",
+            "refreshBranches": "Branches vernieuwen",
+            "repoPrivateTitle": "Privérepository",
+            "repoPublicTitle": "Openbare repository",
+            "unpushedCommitsOnBranchMany": "{count} niet-gepushte commits op {branch}",
+            "unpushedCommitsOnBranchOne": "{count} niet-gepushte commit op {branch}"
         },
         "filenNotes": {
             "title": "Versleutelde notities",
@@ -5158,7 +5300,8 @@
             "tagName": "Tagnaam",
             "removeTag": "Tag verwijderen",
             "manageTags": "Tags beheren",
-            "deleteTagConfirm": "De tag “{name}” verwijderen? Notities behouden hun tekst."
+            "deleteTagConfirm": "De tag “{name}” verwijderen? Notities behouden hun tekst.",
+            "betaBadge": "BÈTA"
         },
         "shareLinkModal": {
             "title": "Deellink",
@@ -5426,7 +5569,8 @@
             "linkType": "Type",
             "createMergeRequest": "Merge Request aanmaken",
             "mrTitle": "MR-titel",
-            "mrBody": "Beschrijving (optioneel)"
+            "mrBody": "Beschrijving (optioneel)",
+            "sourceCode": "Broncode"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Gebruiker dupliceren (alleen servers, geen wachtwoorden)",
             "copyLockedHint": "Schakel eerst over naar dit account om de servers te dupliceren",
             "crossUserDedupTitle": "Al opgeslagen door een ander account",
-            "crossUserDedupMessage": "\"{name}\" gebruikt een serveraccount dat ook op dit apparaat is opgeslagen door: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" gebruikt een serveraccount dat ook op dit apparaat is opgeslagen door: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Dialoogvenster voor wachtwoordherstel sluiten",
+                "confirmPassword": "Nieuw wachtwoord bevestigen",
+                "errMismatch": "De nieuwe accountwachtwoorden komen niet overeen.",
+                "errNewRequired": "Voer een nieuw accountwachtwoord in.",
+                "errNotAuthorized": "U moet beheerder zijn om het wachtwoord van een ander account opnieuw in te stellen.",
+                "errNotForSelf": "Gebruik Wachtwoord wijzigen op je eigen account.",
+                "errStoreNotReady": "Ontgrendel eerst de kluis en probeer het opnieuw.",
+                "errTypeReset": "Typ RESET om deze destructieve bewerking te bevestigen.",
+                "errUserNotFound": "Deze gebruiker bestaat niet meer.",
+                "newPassword": "Nieuw accountwachtwoord",
+                "statEncryptedBytes": "versleutelde bytes",
+                "statProfiles": "profielen",
+                "statSettings": "instellingen",
+                "title": "Wachtwoord opnieuw instellen = gegevensvernietiging",
+                "typeReset": "Typ RESET",
+                "wipeDetail": "Het huidige wachtwoord kan niet worden hersteld. AeroFTP verwijdert de opgeslagen servers, gebruikersinstellingen en vergrendelingsstatus van het doelaccount en geeft daarna een nieuwe versleutelingssleutel uit, beschermd door het nieuwe wachtwoord.",
+                "wipeWarning": "Hiermee wordt de versleutelde partitie van het doelaccount permanent gewist."
+            },
+            "dropdown": {
+                "accountPassword": "Accountwachtwoord",
+                "lock": "Vergrendelen",
+                "newUser": "Nieuwe gebruiker",
+                "noUsers": "Nog geen gebruikers. Gebruik hieronder \"Nieuwe gebruiker\" om de eerste toe te voegen.",
+                "protectionNote": "Je account is beveiligd met Argon2id + AES-KW + AES-256-GCM-versleuteling",
+                "users": "Gebruikers"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt-overlay",

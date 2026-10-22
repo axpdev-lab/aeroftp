@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Изврши {cmd} и автоматски пополни го URL-то",
                 "fetchUrl": "Преземи URL",
                 "megacmdWebdavHint": "Корисничкото име и лозинката се намерно изоставени. AeroFTP сам извршува „{cmd}“ при поврзување за да го стартува мостот и да ја прочита оваа адреса: полето може да остане празно. „Преземи URL“ е изборно рачно освежување; сменете ја портата тука ако MEGAcmd користи сопствена."
-            }
+            },
+            "manualStorageUnitLabel": "Единица за {label}"
         },
         "browser": {
             "remote": "Далечински",
@@ -420,7 +421,19 @@
             "listingPath": "Се прикажува {path}...",
             "pleaseWait": "Ве молиме почекајте...",
             "sameNameLeakChip": "исто име",
-            "sameNameLeakTooltip": "Ова име се појавува и на друга патека во овој шифриран трезор. Бидејќи имињата се шифрираат детерминистички, набљудувач на шифрираното складиште може да утврди дека двете делат исто име."
+            "sameNameLeakTooltip": "Ова име се појавува и на друга патека во овој шифриран трезор. Бидејќи имињата се шифрираат детерминистички, набљудувач на шифрираното складиште може да утврди дека двете делат исто име.",
+            "endpointSelector": {
+                "localFolder": "Локална папка",
+                "localFolderHint": "Изберете локална патека за овој панел",
+                "noSavedProfiles": "Нема зачувани профили",
+                "savedProfiles": "Зачувани оддалечени профили",
+                "title": "Крајна точка"
+            },
+            "leftPanelMarker": "Лев панел",
+            "localFilesLabel": "Локални датотеки",
+            "localFilesRightLabel": "Локални датотеки (десен панел)",
+            "remoteFilesLabel": "Оддалечени датотеки",
+            "rightPanelMarker": "Десен панел"
         },
         "contextMenu": {
             "askAeroAgent": "Прашај AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "График на брзината",
             "hideSpeedGraph": "Сокриј го графикот на брзината",
             "speedAvg": "просек {speed}",
-            "speedPeak": "врв {speed}"
+            "speedPeak": "врв {speed}",
+            "badgeBatch": "ПАКЕТ",
+            "badgeDownload": "ПРЕЗЕМАЊЕ",
+            "badgeLive": "ВО ЖИВО",
+            "badgeStream": "ТЕК",
+            "badgeUpload": "ПОДИГНУВАЊЕ",
+            "earlierItemsHidden": "Скриени претходни ставки: {count}",
+            "folderFilesProgress": "{done}/{total} датотеки",
+            "laneDone": "готово",
+            "laneError": "грешка",
+            "unifiedPlan": {
+                "destination": "Одредиште",
+                "dialogLabel": "План за пренос",
+                "engineAerovaultOverlay": "AeroVault слој",
+                "engineCompareOnly": "Само споредба",
+                "engineCrossProfileSync": "Синхронизација меѓу профили",
+                "engineCrossProfileTransfer": "Пренос меѓу профили",
+                "engineLocalDelta": "Локален делта пренос",
+                "engineLocalFs": "Локален датотечен систем",
+                "engineProviderDownload": "Преземање од давателот",
+                "engineProviderUpload": "Подигнување кај давателот",
+                "engineUnsupported": "Не е поддржано",
+                "execute": "Изврши",
+                "items": "Ставки",
+                "modeBackup": "Резервна копија",
+                "modeBisync": "Двонасочна синхронизација",
+                "modeCompare": "Спореди",
+                "modeCopy": "Копирај",
+                "modeMirror": "Огледало",
+                "modeMove": "Премести",
+                "modeSync": "Синхронизирај",
+                "notExecutable": "Овој пар крајни точки сѐ уште не може да се изврши.",
+                "parallel": "Паралелно",
+                "reviewBeforeExecution": "Прегледај пред извршување",
+                "route": "{pair} преку {engine}",
+                "size": "Големина",
+                "source": "Извор",
+                "title": "План: {mode}"
+            }
         },
         "settings": {
             "title": "Поставки",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "макс",
             "migrationCleanupHint": "Препорачано за максимална безбедност",
             "fontCustomOption": "Прилагодено...",
-            "fontSystemInstallHint": "Бара инсталација во системот. AeroFTP автоматски користи замена ако не е достапно."
+            "fontSystemInstallHint": "Бара инсталација во системот. AeroFTP автоматски користи замена ако не е достапно.",
+            "fontSizeIndicatorLabel": "Фонт"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} датотеки, ослободени {size}",
             "maturity": {
                 "alpha": "Алфа"
-            }
+            },
+            "dialogDashboardLabel": "Контролна табла за синхронизација во облак",
+            "dialogLoadingLabel": "Вчитување на синхронизацијата во облак",
+            "dialogSettingsLabel": "Поставки за синхронизација во облак",
+            "dialogSetupLabel": "Поставување на синхронизација во облак",
+            "onePerLineHint": "(по еден во ред)",
+            "pairsEditorLabel": "Уредувач на парови AeroCloud",
+            "remoteSubfolderPlaceholder": "облак"
         },
         "statusBar": {
             "connected": "Поврзано",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "делумно, нечитливи папки: {count}",
             "usedScanFailed": "Скенирањето на искористениот простор не успеа",
             "usedScanEmpty": "Скенирањето на {path} не најде датотеки; кешираната вредност беше задржана. Проверете ја патеката или поддршката на серверот за рекурзивно прикажување.",
-            "filenBridgeAccountTotal": "Filen Desktop овде не го пријавува вкупното користење на вашата сметка: прикажаната вредност е збир на датотеките под оваа патека. Природната врска со Filen веднаш го прикажува вкупното користење на сметката."
+            "filenBridgeAccountTotal": "Filen Desktop овде не го пријавува вкупното користење на вашата сметка: прикажаната вредност е збир на датотеките под оваа патека. Природната врска со Filen веднаш го прикажува вкупното користење на сметката.",
+            "ariaLabel": "Лента за статус",
+            "debugBadge": "ДЕБАГИРАЊЕ",
+            "debugModeActive": "Режимот за дебагирање е активен"
         },
         "dialogs": {
             "confirmTitle": "Потврди",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "на пр. {template}",
             "jurisdiction": "Надлежност",
             "insecureCertDialogLabel": "Предупредување за небезбеден сертификат",
-            "betaBadge": "БЕТА"
+            "betaBadge": "БЕТА",
+            "hostKeyDialogLabel": "Проверка на клучот на хостот"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",
@@ -2173,7 +2236,10 @@
             "rename": "Преименувај",
             "resume": "Продолжи",
             "resumeHint": "Продолжи го прекинатиот пренос наместо да го рестартираш",
-            "cancel": "Откажи"
+            "cancel": "Откажи",
+            "dialogLabel": "Потврда за препишување",
+            "moreInQueue": "+{count} во редица",
+            "unknownDate": "Непознато"
         },
         "statusbar": {
             "queue": "Queue",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Употребливи парови патеки (локална/далечинска) во овој шаблон: {count}. Прозорецот на AeroSync работи со точно еден пар, па ништо не е увезено. Уредете го шаблонот така што ќе остане само еден пар, а потоа увезете го повторно.",
             "templateNamePlaceholder": "на пр. Ноќна резервна копија на S3",
             "templateDescPlaceholder": "За што служи овој шаблон (изборно)",
-            "templateExportCliDesc": "Обвивка за aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Обвивка за aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Оневозможи",
+            "multiPathEditorLabel": "Уредувач на повеќе патеки",
+            "multiPathEnablePair": "Овозможи",
+            "multiPathLocalPlaceholder": "Локална патека",
+            "multiPathRemotePlaceholder": "Далечинска патека",
+            "rollbackDialogLabel": "Снимка за враќање",
+            "rollbackMoreFiles": "+уште {count}...",
+            "rollbackSnapshotSummaryMany": "{count} датотеки, {size}",
+            "rollbackSnapshotSummaryOne": "{count} датотека, {size}",
+            "templateDialogLabel": "Шаблон за синхронизација",
+            "templateExcludes": "Исклучувања",
+            "templateLocal": "Локално",
+            "templateRemote": "Далечинско",
+            "templateRetries": "Повторни обиди"
         },
         "ui": {
             "syncing": "Синхронизирање...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Од паритетот е обновено заглавието или манифестот на трезорот.",
             "repairMetadataSuccess": "Поправката е завршена: од паритетот е обновено заглавието или манифестот на трезорот",
             "errorCorrectionBadge": "Корекција на грешки",
-            "itemsInFolder": "{count} елементи во /{folder}"
+            "itemsInFolder": "{count} елементи во /{folder}",
+            "compressionProfileArchive": "Архива (zstd -15)",
+            "compressionProfileBalanced": "Балансирано (zstd -9)",
+            "compressionProfileFast": "Брзо (zstd -3)",
+            "damagedChunkLocation": "{id} - поместување {offset} (должина {len})",
+            "fallbackName": "Сеф",
+            "folderScanSummary": "{files} датотеки во {dirs} директориуми ({size})",
+            "namePlaceholderVault": "Мојот безбеден сеф",
+            "namePlaceholderZip": "Мојата архива",
+            "recentDaysAgo": "пред {count} д.",
+            "recentFileCountMany": "{count} датотеки",
+            "recentFileCountOne": "{count} датотека",
+            "recentMonthsAgo": "пред {count} мес."
         },
         "cryptomator": {
             "title": "Cryptomator трезор",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Шифрирање на избраните ставки...",
             "ingestSkipped": "Сефот е создаден, но некои ставки не можеа да се додадат:",
             "selectionInfo": "{count} ставка(и) ќе бидат шифрирани во сефот",
-            "decrypting": "Дешифрирање…"
+            "decrypting": "Дешифрирање…",
+            "compatibleWithApp": "Компатибилно со апликацијата Cryptomator",
+            "createFormatBadge": "Cryptomator формат 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Содржина AES-GCM",
+            "featureNameCipher": "Имиња AES-SIV",
+            "formatVersion": "Формат {version}"
         },
         "compress": {
             "title": "Компресирај датотеки",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Некои датотеки би имале исто име. Ве молиме прилагодете го шаблонот.",
             "apply": "Примени",
             "existingCollision": "Некои нови имиња се совпаѓаат со датотеки што веќе се во оваа папка; тие датотеки нема да бидат презапишани и нивното преименување се прескокнува.",
-            "existingCollisionHint": "(веќе постои)"
+            "existingCollisionHint": "(веќе постои)",
+            "baseNamePlaceholder": "датотека",
+            "invalidName": "{name} (невалидно)"
         },
         "lockScreen": {
             "locked": "Апликацијата е заклучена",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Не е монтирано од работната површина. Исклучете го и повторно вклучете го кабелот, па отворете го повторно.",
             "volumes_need_mount_observe": "Во snap, волумените се појавуваат откако ќе се поврзе дозволата mount-observe. Извршете го ова во терминал, а потоа вратете се во AeroFTP:",
             "volumes_unavailable": "Не можеа да се прочитаат монтираните волумени.",
-            "portable_device": "Преносен уред"
+            "portable_device": "Преносен уред",
+            "drivesLeftPanel": "Дискови на левиот панел",
+            "drivesRightPanel": "Дискови на десниот панел",
+            "modeGroupLabel": "Режим на страничната лента",
+            "placesSidebarLabel": "Странична лента со места"
         },
         "viewMode": {
             "list": "Список",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Прелистај соседни директориуми",
             "loading": "Вчитување...",
             "noSubdirectories": "Нема поддиректориуми",
-            "browseChildren": "Прелистај подфасцикли"
+            "browseChildren": "Прелистај подфасцикли",
+            "ariaLabel": "Навигациска патека",
+            "syncBoundaryTitle": "{path} (граница на синхронизација)"
         },
         "bridge": {
             "checking": "Се проверува {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Прегледот не е достапен",
-            "title": "Брз преглед"
+            "title": "Брз преглед",
+            "closePreview": "Затвори преглед",
+            "dialogLabel": "Брз преглед: {name}",
+            "nextFile": "Следна датотека",
+            "position": "{index} од {total}",
+            "previousFile": "Претходна датотека"
         },
         "properties": {
             "general": "Општо",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Контролната сума на ставката што Immich ја запишува при прикачувањето.",
                 "crypt-overlay-ciphertext": "Хешот ги покрива шифрираните бајти зачувани на серверот."
             },
-            "readOnlyIsLinkTarget": "Ова е симболичка врска: дозволите ѝ припаѓаат на датотеката кон која укажува. За да ги промените, отворете ги својствата на таа датотека."
+            "readOnlyIsLinkTarget": "Ова е симболичка врска: дозволите ѝ припаѓаат на датотеката кон која укажува. За да ги промените, отворете ги својствата на таа датотека.",
+            "exactBytes": "({bytes} бајти)"
         },
         "duplicates": {
             "sortWasted": "Потрошен простор",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Идентични бајт по бајт",
             "modeNonIdenticalHint": "Перцептивна или текстуална сличност, без автоматско бришење",
             "potentialWasteSelected": "потенцијално потрошено (избрани)",
-            "similarityDistance": "{similarity}, раст. {distance}"
+            "similarityDistance": "{similarity}, раст. {distance}",
+            "modeExact": "Точно",
+            "modeLabel": "Режим:",
+            "modeNonIdentical": "Неидентично"
         },
         "diskUsage": {
             "title": "Користење на диск",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Сѐ уште нема мрежна активност. Пренесете датотеки за да видите настани.",
                 "time": "Време",
                 "event": "Настан",
-                "detail": "Детали"
+                "detail": "Детали",
+                "command": "Команда",
+                "ipcTransfersCount": "IPC + Пренесувања ({count})",
+                "status": "Статус",
+                "type": "Тип"
             },
             "system": {
                 "appVersion": "Верзија на AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Темна",
                 "light": "Светла",
                 "userAgent": "Кориснички агент",
-                "localStorageKeysTitle": "LocalStorage клучеви"
+                "localStorageKeysTitle": "LocalStorage клучеви",
+                "localStorageEntrySummary": "{size} бајти · {preview}"
             },
             "copyFileListToClipboard": "Копирај листа на датотеки во клипборд",
             "filesCopied": "{count} записи на датотеки копирани во меморија",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Кликнете двапати на изборот или притиснете Enter за примена, Esc за откажување",
                     "cropRatio": "Пропорции",
                     "cropRatioFree": "Слободно",
-                    "cropRatioOriginal": "Оригинал"
+                    "cropRatioOriginal": "Оригинал",
+                    "rotateCcw90Short": "90° налево",
+                    "rotateCw90Short": "90° надесно"
                 },
                 "toggleTransparencyBg": "Позадина на проѕирност (менувај)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Вчитување PDF...",
                 "open": "Отвори PDF",
                 "page": "Страница",
-                "zoom": "Зум"
+                "zoom": "Зум",
+                "documentTitle": "PDF документ"
             },
             "text": {
                 "auto": "Авто",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Таблет (768px)",
                 "wordWrap": "Прелом на зборови",
                 "zoomIn": "Зголеми",
-                "zoomOut": "Намали"
+                "zoomOut": "Намали",
+                "htmlPreviewFrameTitle": "HTML преглед"
             },
             "video": {
                 "exitFullscreen": "Излези од цел екран (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Откриен Rclone Crypt преклоп",
             "aerocryptImportDesc": "Профилот е увезен од rclone.conf за {name}: да го отворам преклопот сега?",
             "aerocryptImportOpen": "Отвори преклоп",
-            "aerovaultOverlayExpired": "AeroVault Overlay е заклучен поради неактивност. Повторно отворете го трезорот за да продолжите."
+            "aerovaultOverlayExpired": "AeroVault Overlay е заклучен поради неактивност. Повторно отворете го трезорот за да продолжите.",
+            "aerovaultOverlaySource": "AeroVault слој активен ({source})",
+            "fileOperationsLabel": "Операции со датотеки",
+            "overlayBadge": "СЛОЈ"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Двофакторска автентикација",
                 "verify": "Верификувај и овозможи",
                 "active": "2FA активна",
-                "inactive": "2FA неактивна"
+                "inactive": "2FA неактивна",
+                "codeGroupLabel": "{count}-цифрен код",
+                "digitLabel": "Цифра {index}"
             }
         },
         "vaultSync": {
@@ -4804,7 +4932,9 @@
             "trashFooter": "Вратените датотеки ќе се повторно прикажат во нивната оригинална папка",
             "connectionNamePlaceholder": "Име на конекција (пр. Мој FileLu Cloud)",
             "trashAutoExpiry": "Датотеките во корпата FileLu ги брише автоматски по 7 дена",
-            "rsyncTransferOnly": "Крајна точка само за пренос: прегледувањето не е достапно на Rsync. Користи Native API, WebDAV, S3 или FTP за навигација; префрли се на Rsync за delta преноси со висока пропусност."
+            "rsyncTransferOnly": "Крајна точка само за пренос: прегледувањето не е достапно на Rsync. Користи Native API, WebDAV, S3 или FTP за навигација; префрли се на Rsync за delta преноси со висока пропусност.",
+            "badgePasswordProtected": "Заштитено со лозинка",
+            "badgeWatermarked": "Со воден жиг"
         },
         "box": {
             "addComment": "Додај коментар",
@@ -5139,7 +5269,19 @@
             "releaseAssetOne": "{count} датотека",
             "releaseAssetMany": "{count} датотеки",
             "repoPrivate": "Приватен",
-            "repoPublic": "Јавен"
+            "repoPublic": "Јавен",
+            "actionsLiveBadge": "Во живо",
+            "actionsRunningTitle": "GitHub Actions (се извршува)",
+            "coAuthors": "Коавтори",
+            "pagesPathPlaceholder": "/ или /docs",
+            "pagesStatusBuilding": "се гради",
+            "pagesStatusBuilt": "изградено",
+            "pagesStatusErrored": "грешка",
+            "refreshBranches": "Освежи гранки",
+            "repoPrivateTitle": "Приватно складиште",
+            "repoPublicTitle": "Јавно складиште",
+            "unpushedCommitsOnBranchMany": "{count} неиспратени commit-и на {branch}",
+            "unpushedCommitsOnBranchOne": "{count} неиспратен commit на {branch}"
         },
         "filenNotes": {
             "title": "Шифрирани белешки",
@@ -5177,7 +5319,8 @@
             "tagName": "Име на ознаката",
             "removeTag": "Отстрани ја ознаката",
             "manageTags": "Управувај со ознаки",
-            "deleteTagConfirm": "Да се избрише ознаката „{name}“? Белешките го задржуваат текстот."
+            "deleteTagConfirm": "Да се избрише ознаката „{name}“? Белешките го задржуваат текстот.",
+            "betaBadge": "БЕТА"
         },
         "shareLinkModal": {
             "title": "Линк за споделување",
@@ -5445,7 +5588,8 @@
             "linkType": "Тип",
             "createMergeRequest": "Креирај барање за спојување",
             "mrTitle": "MR наслов",
-            "mrBody": "Опис (опционо)"
+            "mrBody": "Опис (опционо)",
+            "sourceCode": "Изворен код"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6027,7 +6171,34 @@
             "copy": "Дуплирај корисник (само сервери, без лозинки)",
             "copyLockedHint": "Прво префрлете се на оваа сметка за да ги дуплирате нејзините сервери",
             "crossUserDedupTitle": "Веќе зачувано од друга сметка",
-            "crossUserDedupMessage": "\"{name}\" користи серверска сметка што на овој уред ја има зачувано и: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" користи серверска сметка што на овој уред ја има зачувано и: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Затвори го дијалогот за ресетирање лозинка",
+                "confirmPassword": "Потврдете ја новата лозинка",
+                "errMismatch": "Новите лозинки на сметката не се совпаѓаат.",
+                "errNewRequired": "Внесете нова лозинка за сметката.",
+                "errNotAuthorized": "Мора да бидете администратор за да ја ресетирате лозинката на друга сметка.",
+                "errNotForSelf": "Користете Промена на лозинка на сопствената сметка.",
+                "errStoreNotReady": "Прво отклучете го трезорот, па обидете се повторно.",
+                "errTypeReset": "Внесете RESET за да ја потврдите оваа деструктивна операција.",
+                "errUserNotFound": "Овој корисник повеќе не постои.",
+                "newPassword": "Нова лозинка на сметката",
+                "statEncryptedBytes": "шифрирани бајти",
+                "statProfiles": "профили",
+                "statSettings": "поставки",
+                "title": "Ресетирање лозинка = уништување на податоците",
+                "typeReset": "Внесете RESET",
+                "wipeDetail": "Тековната лозинка не може да се поврати. AeroFTP ќе ги избрише зачуваните сервери, корисничките поставки и состојбата на заклучување на целната сметка, а потоа ќе издаде нов клуч за шифрирање заштитен со новата лозинка.",
+                "wipeWarning": "Ова трајно ќе ја избрише шифрираната партиција на целната сметка."
+            },
+            "dropdown": {
+                "accountPassword": "Лозинка на сметката",
+                "lock": "Заклучи",
+                "newUser": "Нов корисник",
+                "noUsers": "Сѐ уште нема корисници. Користете „Нов корисник“ подолу за да го додадете првиот.",
+                "protectionNote": "Вашата сметка е заштитена со шифрирање Argon2id + AES-KW + AES-256-GCM",
+                "users": "Корисници"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt прекривка",

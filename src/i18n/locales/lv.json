@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Palaist {cmd} un automātiski aizpildīt URL",
                 "fetchUrl": "Iegūt URL",
                 "megacmdWebdavHint": "Lietotājvārds un parole ir apzināti izlaisti. Savienojoties AeroFTP pats palaiž \"{cmd}\", lai startētu tiltu un nolasītu šo adresi: lauku drīkst atstāt tukšu. \"Iegūt URL\" ir neobligāta manuāla atsvaidzināšana; mainiet portu šeit, ja MEGAcmd izmanto pielāgotu portu."
-            }
+            },
+            "manualStorageUnitLabel": "{label} vienība"
         },
         "browser": {
             "remote": "Attālināts",
@@ -420,7 +421,19 @@
             "listingPath": "Tiek uzskaitīts {path}...",
             "pleaseWait": "Lūdzu, uzgaidiet...",
             "sameNameLeakChip": "tāds pats nosaukums",
-            "sameNameLeakTooltip": "Šis nosaukums parādās arī citā ceļā šajā šifrētajā glabātavā. Tā kā nosaukumi tiek šifrēti deterministiski, šifrētās krātuves novērotājs var noteikt, ka abi dala vienu nosaukumu."
+            "sameNameLeakTooltip": "Šis nosaukums parādās arī citā ceļā šajā šifrētajā glabātavā. Tā kā nosaukumi tiek šifrēti deterministiski, šifrētās krātuves novērotājs var noteikt, ka abi dala vienu nosaukumu.",
+            "endpointSelector": {
+                "localFolder": "Lokālā mape",
+                "localFolderHint": "Izvēlieties lokālu ceļu šim panelim",
+                "noSavedProfiles": "Nav saglabātu profilu",
+                "savedProfiles": "Saglabātie attālie profili",
+                "title": "Galapunkts"
+            },
+            "leftPanelMarker": "Kreisais panelis",
+            "localFilesLabel": "Lokālie faili",
+            "localFilesRightLabel": "Lokālie faili (labais panelis)",
+            "remoteFilesLabel": "Attālie faili",
+            "rightPanelMarker": "Labais panelis"
         },
         "contextMenu": {
             "askAeroAgent": "Jautāt AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Ātruma grafiks",
             "hideSpeedGraph": "Slēpt ātruma grafiku",
             "speedAvg": "vid. {speed}",
-            "speedPeak": "maks. {speed}"
+            "speedPeak": "maks. {speed}",
+            "badgeBatch": "PAKETE",
+            "badgeDownload": "LEJUPIELĀDE",
+            "badgeLive": "TIEŠRAIDE",
+            "badgeStream": "STRAUME",
+            "badgeUpload": "AUGŠUPIELĀDE",
+            "earlierItemsHidden": "{count} agrāki vienumi paslēpti",
+            "folderFilesProgress": "{done}/{total} faili",
+            "laneDone": "gatavs",
+            "laneError": "kļūda",
+            "unifiedPlan": {
+                "destination": "Galamērķis",
+                "dialogLabel": "Pārsūtīšanas plāns",
+                "engineAerovaultOverlay": "AeroVault pārklājums",
+                "engineCompareOnly": "Tikai salīdzināt",
+                "engineCrossProfileSync": "Starpprofilu sinhronizācija",
+                "engineCrossProfileTransfer": "Starpprofilu pārsūtīšana",
+                "engineLocalDelta": "Lokālais delta transports",
+                "engineLocalFs": "Lokālā failu sistēma",
+                "engineProviderDownload": "Pakalpojuma sniedzēja lejupielāde",
+                "engineProviderUpload": "Pakalpojuma sniedzēja augšupielāde",
+                "engineUnsupported": "Netiek atbalstīts",
+                "execute": "Izpildīt",
+                "items": "Vienumi",
+                "modeBackup": "Dublējums",
+                "modeBisync": "Divvirzienu sinhronizācija",
+                "modeCompare": "Salīdzināt",
+                "modeCopy": "Kopēt",
+                "modeMirror": "Spoguļot",
+                "modeMove": "Pārvietot",
+                "modeSync": "Sinhronizēt",
+                "notExecutable": "Šo galapunktu pāri vēl nevar izpildīt.",
+                "parallel": "Paralēli",
+                "reviewBeforeExecution": "Pārskatīt pirms izpildes",
+                "route": "{pair} ar {engine}",
+                "size": "Izmērs",
+                "source": "Avots",
+                "title": "Plāns: {mode}"
+            }
         },
         "settings": {
             "title": "Iestatījumi",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "maks",
             "migrationCleanupHint": "Ieteicams maksimālai drošībai",
             "fontCustomOption": "Pielāgots...",
-            "fontSystemInstallHint": "Nepieciešama instalēšana sistēmā. Ja nav pieejams, AeroFTP automātiski izmanto rezerves variantu."
+            "fontSystemInstallHint": "Nepieciešama instalēšana sistēmā. Ja nav pieejams, AeroFTP automātiski izmanto rezerves variantu.",
+            "fontSizeIndicatorLabel": "Fonts"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} faili, atbrīvoti {size}",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Mākoņa sinhronizācijas pārskats",
+            "dialogLoadingLabel": "Ielādē mākoņa sinhronizāciju",
+            "dialogSettingsLabel": "Mākoņa sinhronizācijas iestatījumi",
+            "dialogSetupLabel": "Mākoņa sinhronizācijas uzstādīšana",
+            "onePerLineHint": "(pa vienam katrā rindā)",
+            "pairsEditorLabel": "AeroCloud pāru redaktors",
+            "remoteSubfolderPlaceholder": "mākonis"
         },
         "statusBar": {
             "connected": "Savienots",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "daļēji, nenolasāmas mapes: {count}",
             "usedScanFailed": "Izmantotās krātuves skenēšana neizdevās",
             "usedScanEmpty": "{path} skenēšanā netika atrasts neviens fails; kešatmiņā saglabātais skaitlis tika paturēts. Pārbaudiet ceļu vai servera rekursīvā saraksta atbalstu.",
-            "filenBridgeAccountTotal": "Filen Desktop šeit nesniedz jūsu konta kopējo apjomu: rādītais izmantotais apjoms ir šajā ceļā esošo failu summa. Dzimtais Filen savienojums uzreiz parāda konta kopējo apjomu."
+            "filenBridgeAccountTotal": "Filen Desktop šeit nesniedz jūsu konta kopējo apjomu: rādītais izmantotais apjoms ir šajā ceļā esošo failu summa. Dzimtais Filen savienojums uzreiz parāda konta kopējo apjomu.",
+            "ariaLabel": "Statusa josla",
+            "debugBadge": "ATKĻŪDOŠANA",
+            "debugModeActive": "Atkļūdošanas režīms aktīvs"
         },
         "dialogs": {
             "confirmTitle": "Apstiprināt",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "piem., {template}",
             "jurisdiction": "Jurisdikcija",
             "insecureCertDialogLabel": "Brīdinājums par nedrošu sertifikātu",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Resursdatora atslēgas pārbaude"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -2173,7 +2236,10 @@
             "rename": "Pārdēvēt",
             "resume": "Atsākt",
             "resumeHint": "Turpināt pārtraukto pārsūtīšanu, nevis sākt to no jauna",
-            "cancel": "Atcelt"
+            "cancel": "Atcelt",
+            "dialogLabel": "Pārrakstīšanas apstiprinājums",
+            "moreInQueue": "+{count} rindā",
+            "unknownDate": "Nezināms"
         },
         "statusbar": {
             "queue": "Rinda",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Izmantojamie ceļu pāri (lokāls/attāls) šajā veidnē: {count}. AeroSync logs strādā ar tieši vienu pāri, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu tikai viens pāris, un pēc tam importējiet to vēlreiz.",
             "templateNamePlaceholder": "piem. Nakts dublējums uz S3",
             "templateDescPlaceholder": "Kam paredzēta šī veidne (neobligāti)",
-            "templateExportCliDesc": "Aptinējskripts komandai aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Aptinējskripts komandai aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Atspējot",
+            "multiPathEditorLabel": "Vairāku ceļu redaktors",
+            "multiPathEnablePair": "Iespējot",
+            "multiPathLocalPlaceholder": "Lokālais ceļš",
+            "multiPathRemotePlaceholder": "Attālais ceļš",
+            "rollbackDialogLabel": "Atjaunošanas momentuzņēmums",
+            "rollbackMoreFiles": "+vēl {count}...",
+            "rollbackSnapshotSummaryMany": "{count} faili, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fails, {size}",
+            "templateDialogLabel": "Sinhronizācijas veidne",
+            "templateExcludes": "Izņēmumi",
+            "templateLocal": "Lokālais",
+            "templateRemote": "Attālais",
+            "templateRetries": "Atkārtojumi"
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "No paritātes tika atjaunota glabātavas galvene vai manifests.",
             "repairMetadataSuccess": "Labošana pabeigta: no paritātes atjaunota glabātavas galvene vai manifests",
             "errorCorrectionBadge": "Kļūdu labošana",
-            "itemsInFolder": "{count} vienību mapē /{folder}"
+            "itemsInFolder": "{count} vienību mapē /{folder}",
+            "compressionProfileArchive": "Arhīvs (zstd -15)",
+            "compressionProfileBalanced": "Līdzsvarots (zstd -9)",
+            "compressionProfileFast": "Ātrs (zstd -3)",
+            "damagedChunkLocation": "{id} - nobīde {offset} (garums {len})",
+            "fallbackName": "Glabātava",
+            "folderScanSummary": "{files} faili {dirs} direktorijos ({size})",
+            "namePlaceholderVault": "Mana drošā glabātava",
+            "namePlaceholderZip": "Mans arhīvs",
+            "recentDaysAgo": "pirms {count} d.",
+            "recentFileCountMany": "{count} faili",
+            "recentFileCountOne": "{count} fails",
+            "recentMonthsAgo": "pirms {count} mēn."
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Notiek atlasīto vienumu šifrēšana...",
             "ingestSkipped": "Glabātava izveidota, taču dažus vienumus neizdevās pievienot:",
             "selectionInfo": "{count} vienums tiks šifrēts glabātavā",
-            "decrypting": "Atšifrē…"
+            "decrypting": "Atšifrē…",
+            "compatibleWithApp": "Saderīgs ar Cryptomator lietotni",
+            "createFormatBadge": "Cryptomator formāts 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM saturs",
+            "featureNameCipher": "AES-SIV nosaukumi",
+            "formatVersion": "Formāts {version}"
         },
         "compress": {
             "title": "Saspiest failus",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Dažiem failiem būtu vienāds nosaukums. Lūdzu pielāgojiet paraugu.",
             "apply": "Lietot",
             "existingCollision": "Daži jaunie nosaukumi sakrīt ar failiem, kas jau ir šajā mapē; šie faili netiks pārrakstīti, un to pārdēvēšana tiks izlaista.",
-            "existingCollisionHint": "(jau pastāv)"
+            "existingCollisionHint": "(jau pastāv)",
+            "baseNamePlaceholder": "fails",
+            "invalidName": "{name} (nederīgs)"
         },
         "lockScreen": {
             "locked": "Lietotne bloķēta",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Darbvirsma nav pievienojusi. Atvienojiet un atkal pievienojiet kabeli, pēc tam atveriet vēlreiz.",
             "volumes_need_mount_observe": "Snap pakotnē sējumi parādās pēc mount-observe atļaujas pievienošanas. Palaidiet to terminālī un pēc tam atgriezieties AeroFTP:",
             "volumes_unavailable": "Neizdevās nolasīt pievienotos sējumus.",
-            "portable_device": "Pārnēsājamā ierīce"
+            "portable_device": "Pārnēsājamā ierīce",
+            "drivesLeftPanel": "Kreisā paneļa diski",
+            "drivesRightPanel": "Labā paneļa diski",
+            "modeGroupLabel": "Sānjoslas režīms",
+            "placesSidebarLabel": "Vietu sānjosla"
         },
         "viewMode": {
             "list": "Saraksts",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Pārlūkot līdzāsēs direktorijas",
             "loading": "Ielādē...",
             "noSubdirectories": "Nav apakšdirektoriju",
-            "browseChildren": "Pārlūkot apakšmapes"
+            "browseChildren": "Pārlūkot apakšmapes",
+            "ariaLabel": "Navigācijas ceļš",
+            "syncBoundaryTitle": "{path} (sinhronizācijas robeža)"
         },
         "bridge": {
             "checking": "Pārbauda {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Priekšskatījums nav pieejams",
-            "title": "Ātrskats"
+            "title": "Ātrskats",
+            "closePreview": "Aizvērt priekšskatījumu",
+            "dialogLabel": "Ātrskats: {name}",
+            "nextFile": "Nākamais fails",
+            "position": "{index} no {total}",
+            "previousFile": "Iepriekšējais fails"
         },
         "properties": {
             "general": "Vispārēji",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Vienuma kontrolsumma, ko Immich reģistrē augšupielādes brīdī.",
                 "crypt-overlay-ciphertext": "Jaucējsumma aptver serverī glabātos šifrētos baitus."
             },
-            "readOnlyIsLinkTarget": "Šī ir simboliskā saite: atļaujas pieder failam, uz kuru tā norāda. Lai tās mainītu, atveriet šī faila īpašības."
+            "readOnlyIsLinkTarget": "Šī ir simboliskā saite: atļaujas pieder failam, uz kuru tā norāda. Lai tās mainītu, atveriet šī faila īpašības.",
+            "exactBytes": "({bytes} baiti)"
         },
         "duplicates": {
             "sortWasted": "Izšķiestā vieta",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Identiski baitu pa baitam",
             "modeNonIdenticalHint": "Uztveres vai teksta līdzība, bez automātiskas dzēšanas",
             "potentialWasteSelected": "iespējamais izšķērdējums (atlasīts)",
-            "similarityDistance": "{similarity}, att. {distance}"
+            "similarityDistance": "{similarity}, att. {distance}",
+            "modeExact": "Precīzs",
+            "modeLabel": "Režīms:",
+            "modeNonIdentical": "Neidentisks"
         },
         "diskUsage": {
             "title": "Diska izmantošana",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Tīkla aktivitātes vēl nav. Pārsūtiet failus, lai redzētu notikumus.",
                 "time": "Laiks",
                 "event": "Notikums",
-                "detail": "Detaļas"
+                "detail": "Detaļas",
+                "command": "Komanda",
+                "ipcTransfersCount": "IPC + Pārsūtīšanas ({count})",
+                "status": "Statuss",
+                "type": "Tips"
             },
             "system": {
                 "appVersion": "AeroFTP versija",
@@ -4140,7 +4258,8 @@
                 "dark": "Tumšs",
                 "light": "Gaišs",
                 "userAgent": "Lietotāja aģents",
-                "localStorageKeysTitle": "LocalStorage atslēgas"
+                "localStorageKeysTitle": "LocalStorage atslēgas",
+                "localStorageEntrySummary": "{size} baiti · {preview}"
             },
             "copyFileListToClipboard": "Kopēt failu sarakstu starpliktuvē",
             "filesCopied": "{count} failu ieraksti nokopēti starpliktuvē",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Veiciet dubultklikšķi uz atlases vai nospiediet Enter, lai lietotu, Esc, lai atceltu",
                     "cropRatio": "Proporcijas",
                     "cropRatioFree": "Brīvs",
-                    "cropRatioOriginal": "Oriģināls"
+                    "cropRatioOriginal": "Oriģināls",
+                    "rotateCcw90Short": "90° pretēji pulksteņrādītājam",
+                    "rotateCw90Short": "90° pulksteņrādītāja virzienā"
                 },
                 "toggleTransparencyBg": "Caurspīdīguma fons (pārslēgt)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Ielādē PDF...",
                 "open": "Atvērt PDF",
                 "page": "Lapa",
-                "zoom": "Tālummaiņa"
+                "zoom": "Tālummaiņa",
+                "documentTitle": "PDF dokuments"
             },
             "text": {
                 "auto": "Auto",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Planšete (768px)",
                 "wordWrap": "Vārdu aplaušana",
                 "zoomIn": "Pietuvināt",
-                "zoomOut": "Attālināt"
+                "zoomOut": "Attālināt",
+                "htmlPreviewFrameTitle": "HTML priekšskatījums"
             },
             "video": {
                 "exitFullscreen": "Iziet no pilnekrāna (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Atklāts Rclone Crypt slānis",
             "aerocryptImportDesc": "Profils importēts no rclone.conf priekš {name}: atvērt slāni tagad?",
             "aerocryptImportOpen": "Atvērt slāni",
-            "aerovaultOverlayExpired": "AeroVault Overlay ir bloķēts neaktivitātes dēļ. Lai turpinātu, atveriet seifu vēlreiz."
+            "aerovaultOverlayExpired": "AeroVault Overlay ir bloķēts neaktivitātes dēļ. Lai turpinātu, atveriet seifu vēlreiz.",
+            "aerovaultOverlaySource": "AeroVault pārklājums aktīvs ({source})",
+            "fileOperationsLabel": "Failu darbības",
+            "overlayBadge": "PĀRKLĀJUMS"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Divfaktoru autentifikācija",
                 "verify": "Pārbaudīt un ieslēgt",
                 "active": "2FA aktīva",
-                "inactive": "2FA neaktīva"
+                "inactive": "2FA neaktīva",
+                "codeGroupLabel": "{count} ciparu kods",
+                "digitLabel": "Cipars {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Atjaunotie faili atkal parādīsies savā sākotnējā mapē",
             "connectionNamePlaceholder": "Savienojuma nosaukums (piem., Mans FileLu Cloud)",
             "trashAutoExpiry": "Atkritnē ievietotos failus FileLu automātiski dzēš pēc 7 dienām",
-            "rsyncTransferOnly": "Tikai pārsūtīšanas galapunkts: pārlūkošana Rsync nav pieejama. Navigācijai izmantojiet Native API, WebDAV, S3 vai FTP; pārslēdzieties uz Rsync ātrgaitas delta pārsūtīšanai."
+            "rsyncTransferOnly": "Tikai pārsūtīšanas galapunkts: pārlūkošana Rsync nav pieejama. Navigācijai izmantojiet Native API, WebDAV, S3 vai FTP; pārslēdzieties uz Rsync ātrgaitas delta pārsūtīšanai.",
+            "badgePasswordProtected": "Aizsargāts ar paroli",
+            "badgeWatermarked": "Ar ūdenszīmi"
         },
         "box": {
             "addComment": "Pievienot komentāru",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} fails",
             "releaseAssetMany": "{count} faili",
             "repoPrivate": "Privāts",
-            "repoPublic": "Publisks"
+            "repoPublic": "Publisks",
+            "actionsLiveBadge": "Tiešraidē",
+            "actionsRunningTitle": "GitHub Actions (darbojas)",
+            "coAuthors": "Līdzautori",
+            "pagesPathPlaceholder": "/ vai /docs",
+            "pagesStatusBuilding": "būvē",
+            "pagesStatusBuilt": "uzbūvēts",
+            "pagesStatusErrored": "kļūda",
+            "refreshBranches": "Atsvaidzināt zarus",
+            "repoPrivateTitle": "Privāts repozitorijs",
+            "repoPublicTitle": "Publisks repozitorijs",
+            "unpushedCommitsOnBranchMany": "{count} neaizsūtīti commit zarā {branch}",
+            "unpushedCommitsOnBranchOne": "{count} neaizsūtīts commit zarā {branch}"
         },
         "filenNotes": {
             "title": "Šifrētas piezīmes",
@@ -5158,7 +5300,8 @@
             "tagName": "Atzīmes nosaukums",
             "removeTag": "Noņemt atzīmi",
             "manageTags": "Pārvaldīt atzīmes",
-            "deleteTagConfirm": "Dzēst atzīmi “{name}”? Piezīmes saglabā savu tekstu."
+            "deleteTagConfirm": "Dzēst atzīmi “{name}”? Piezīmes saglabā savu tekstu.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Koplietošanas saite",
@@ -5426,7 +5569,8 @@
             "linkType": "Tips",
             "createMergeRequest": "Izveidot sapludināšanas pieprasījumu",
             "mrTitle": "MR virsraksts",
-            "mrBody": "Apraksts (neobligāts)"
+            "mrBody": "Apraksts (neobligāts)",
+            "sourceCode": "Pirmkods"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Dublēt lietotāju (tikai serveri, bez parolēm)",
             "copyLockedHint": "Vispirms pārslēdzieties uz šo kontu, lai dublētu tā serverus",
             "crossUserDedupTitle": "Jau saglabājis cits konts",
-            "crossUserDedupMessage": "\"{name}\" izmanto servera kontu, ko šajā ierīcē ir saglabājis arī: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" izmanto servera kontu, ko šajā ierīcē ir saglabājis arī: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Aizvērt paroles atiestatīšanas dialogu",
+                "confirmPassword": "Apstiprināt jauno paroli",
+                "errMismatch": "Jaunās konta paroles nesakrīt.",
+                "errNewRequired": "Ievadiet jaunu konta paroli.",
+                "errNotAuthorized": "Lai atiestatītu cita konta paroli, jums jābūt administratoram.",
+                "errNotForSelf": "Savā kontā izmantojiet Mainīt paroli.",
+                "errStoreNotReady": "Vispirms atbloķējiet glabātavu un mēģiniet vēlreiz.",
+                "errTypeReset": "Ierakstiet RESET, lai apstiprinātu šo destruktīvo darbību.",
+                "errUserNotFound": "Šis lietotājs vairs nepastāv.",
+                "newPassword": "Jaunā konta parole",
+                "statEncryptedBytes": "šifrēti baiti",
+                "statProfiles": "profili",
+                "statSettings": "iestatījumi",
+                "title": "Paroles atiestatīšana = datu iznīcināšana",
+                "typeReset": "Ierakstiet RESET",
+                "wipeDetail": "Pašreizējo paroli nevar atgūt. AeroFTP dzēsīs mērķa konta saglabātos serverus, lietotāja iestatījumus un bloķēšanas stāvokli, pēc tam izsniegs jaunu šifrēšanas atslēgu, ko aizsargā jaunā parole.",
+                "wipeWarning": "Tas neatgriezeniski izdzēsīs mērķa konta šifrēto nodalījumu."
+            },
+            "dropdown": {
+                "accountPassword": "Konta parole",
+                "lock": "Bloķēt",
+                "newUser": "Jauns lietotājs",
+                "noUsers": "Vēl nav lietotāju. Izmantojiet zemāk esošo pogu “Jauns lietotājs”, lai pievienotu pirmo.",
+                "protectionNote": "Jūsu konts ir aizsargāts ar Argon2id + AES-KW + AES-256-GCM šifrēšanu",
+                "users": "Lietotāji"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt pārklājums",

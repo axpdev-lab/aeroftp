@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Paleisti {cmd} ir automatiškai užpildyti URL",
                 "fetchUrl": "Gauti URL",
                 "megacmdWebdavHint": "Naudotojo vardas ir slaptažodis praleisti tyčia. Jungiantis AeroFTP pats paleidžia „{cmd}“, kad paleistų tiltą ir nuskaitytų šį adresą: lauką galima palikti tuščią. „Gauti URL“ yra pasirenkamas rankinis atnaujinimas; pakeiskite prievadą čia, jei MEGAcmd naudoja pasirinktinį."
-            }
+            },
+            "manualStorageUnitLabel": "{label} vienetas"
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -420,7 +421,19 @@
             "listingPath": "Sudaromas {path} sąrašas...",
             "pleaseWait": "Palaukite...",
             "sameNameLeakChip": "tas pats vardas",
-            "sameNameLeakTooltip": "Šis pavadinimas taip pat pasirodo kitame šio šifruoto saugyklos kelyje. Kadangi pavadinimai šifruojami deterministiškai, šifruotos saugyklos stebėtojas gali nustatyti, kad abu dalijasi tuo pačiu pavadinimu."
+            "sameNameLeakTooltip": "Šis pavadinimas taip pat pasirodo kitame šio šifruoto saugyklos kelyje. Kadangi pavadinimai šifruojami deterministiškai, šifruotos saugyklos stebėtojas gali nustatyti, kad abu dalijasi tuo pačiu pavadinimu.",
+            "endpointSelector": {
+                "localFolder": "Vietinis aplankas",
+                "localFolderHint": "Pasirinkite vietinį kelią šiam skydeliui",
+                "noSavedProfiles": "Nėra išsaugotų profilių",
+                "savedProfiles": "Išsaugoti nuotoliniai profiliai",
+                "title": "Galinis taškas"
+            },
+            "leftPanelMarker": "Kairysis skydelis",
+            "localFilesLabel": "Vietiniai failai",
+            "localFilesRightLabel": "Vietiniai failai (dešinysis skydelis)",
+            "remoteFilesLabel": "Nuotoliniai failai",
+            "rightPanelMarker": "Dešinysis skydelis"
         },
         "contextMenu": {
             "askAeroAgent": "Klausti AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Greičio grafikas",
             "hideSpeedGraph": "Slėpti greičio grafiką",
             "speedAvg": "vid. {speed}",
-            "speedPeak": "maks. {speed}"
+            "speedPeak": "maks. {speed}",
+            "badgeBatch": "PAKETAS",
+            "badgeDownload": "ATSISIUNTIMAS",
+            "badgeLive": "TIESIOGIAI",
+            "badgeStream": "SRAUTAS",
+            "badgeUpload": "ĮKĖLIMAS",
+            "earlierItemsHidden": "Paslėpta ankstesnių elementų: {count}",
+            "folderFilesProgress": "{done}/{total} failų",
+            "laneDone": "atlikta",
+            "laneError": "klaida",
+            "unifiedPlan": {
+                "destination": "Paskirtis",
+                "dialogLabel": "Perdavimo planas",
+                "engineAerovaultOverlay": "AeroVault perdanga",
+                "engineCompareOnly": "Tik palyginti",
+                "engineCrossProfileSync": "Tarpprofilinis sinchronizavimas",
+                "engineCrossProfileTransfer": "Tarpprofilinis perdavimas",
+                "engineLocalDelta": "Vietinis delta transportas",
+                "engineLocalFs": "Vietinė failų sistema",
+                "engineProviderDownload": "Teikėjo atsisiuntimas",
+                "engineProviderUpload": "Teikėjo įkėlimas",
+                "engineUnsupported": "Nepalaikoma",
+                "execute": "Vykdyti",
+                "items": "Elementai",
+                "modeBackup": "Atsarginė kopija",
+                "modeBisync": "Dvipusė sinchronizacija",
+                "modeCompare": "Palyginti",
+                "modeCopy": "Kopijuoti",
+                "modeMirror": "Veidrodis",
+                "modeMove": "Perkelti",
+                "modeSync": "Sinchronizuoti",
+                "notExecutable": "Šios galinių taškų poros dar negalima vykdyti.",
+                "parallel": "Lygiagrečiai",
+                "reviewBeforeExecution": "Peržiūrėti prieš vykdant",
+                "route": "{pair} per {engine}",
+                "size": "Dydis",
+                "source": "Šaltinis",
+                "title": "Planas: {mode}"
+            }
         },
         "settings": {
             "title": "Nustatymai",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "maks",
             "migrationCleanupHint": "Rekomenduojama didžiausiam saugumui",
             "fontCustomOption": "Pasirinktinis...",
-            "fontSystemInstallHint": "Reikia įdiegti sistemoje. Jei nepasiekiamas, AeroFTP automatiškai naudoja atsarginį variantą."
+            "fontSystemInstallHint": "Reikia įdiegti sistemoje. Jei nepasiekiamas, AeroFTP automatiškai naudoja atsarginį variantą.",
+            "fontSizeIndicatorLabel": "Šriftas"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} failų, atlaisvinta {size}",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Debesies sinchronizavimo suvestinė",
+            "dialogLoadingLabel": "Įkeliamas debesies sinchronizavimas",
+            "dialogSettingsLabel": "Debesies sinchronizavimo nustatymai",
+            "dialogSetupLabel": "Debesies sinchronizavimo sąranka",
+            "onePerLineHint": "(po vieną eilutėje)",
+            "pairsEditorLabel": "AeroCloud porų redaktorius",
+            "remoteSubfolderPlaceholder": "debesis"
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "dalinis, neperskaitomi aplankai: {count}",
             "usedScanFailed": "Naudojamos saugyklos nuskaitymas nepavyko",
             "usedScanEmpty": "Nuskaitant {path} failų nerasta; talpykloje saugotas skaičius išliko. Patikrinkite kelią arba serverio rekursyvaus sąrašo palaikymą.",
-            "filenBridgeAccountTotal": "Filen Desktop čia nepateikia visos paskyros bendros apimties: rodomas panaudotas kiekis yra šio kelio failų suma. Gimtasis Filen ryšys iškart parodo bendrą paskyros apimtį."
+            "filenBridgeAccountTotal": "Filen Desktop čia nepateikia visos paskyros bendros apimties: rodomas panaudotas kiekis yra šio kelio failų suma. Gimtasis Filen ryšys iškart parodo bendrą paskyros apimtį.",
+            "ariaLabel": "Būsenos juosta",
+            "debugBadge": "DERINIMAS",
+            "debugModeActive": "Derinimo režimas įjungtas"
         },
         "dialogs": {
             "confirmTitle": "Patvirtinti",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "pvz., {template}",
             "jurisdiction": "Jurisdikcija",
             "insecureCertDialogLabel": "Nesaugaus sertifikato įspėjimas",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Serverio rakto patikra"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -2173,7 +2236,10 @@
             "rename": "Pervadinti",
             "resume": "Tęsti",
             "resumeHint": "Tęsti nutrauktą perdavimą, o ne pradėti iš naujo",
-            "cancel": "Atšaukti"
+            "cancel": "Atšaukti",
+            "dialogLabel": "Perrašymo patvirtinimas",
+            "moreInQueue": "+{count} eilėje",
+            "unknownDate": "Nežinoma"
         },
         "statusbar": {
             "queue": "Eilė",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Naudotinos kelių poros (vietinis/nuotolinis) šiame šablone: {count}. AeroSync langas dirba su lygiai viena pora, todėl nieko neimportuota. Redaguokite šabloną taip, kad liktų tik viena pora, tada importuokite jį dar kartą.",
             "templateNamePlaceholder": "pvz. Naktinė atsarginė kopija į S3",
             "templateDescPlaceholder": "Kam skirtas šis šablonas (nebūtina)",
-            "templateExportCliDesc": "aeroftp-cli sync apvalkalas ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync apvalkalas ({shell})",
+            "multiPathDisablePair": "Išjungti",
+            "multiPathEditorLabel": "Kelių kelių redaktorius",
+            "multiPathEnablePair": "Įjungti",
+            "multiPathLocalPlaceholder": "Vietinis kelias",
+            "multiPathRemotePlaceholder": "Nuotolinis kelias",
+            "rollbackDialogLabel": "Atkūrimo momentinė kopija",
+            "rollbackMoreFiles": "+dar {count}...",
+            "rollbackSnapshotSummaryMany": "{count} failai, {size}",
+            "rollbackSnapshotSummaryOne": "{count} failas, {size}",
+            "templateDialogLabel": "Sinchronizavimo šablonas",
+            "templateExcludes": "Išimtys",
+            "templateLocal": "Vietinis",
+            "templateRemote": "Nuotolinis",
+            "templateRetries": "Pakartojimai"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Iš lyginumo atkurta saugyklos antraštė arba manifestas.",
             "repairMetadataSuccess": "Taisymas baigtas: iš lyginumo atkurta saugyklos antraštė arba manifestas",
             "errorCorrectionBadge": "Klaidų taisymas",
-            "itemsInFolder": "{count} elementų aplanke /{folder}"
+            "itemsInFolder": "{count} elementų aplanke /{folder}",
+            "compressionProfileArchive": "Archyvas (zstd -15)",
+            "compressionProfileBalanced": "Subalansuotas (zstd -9)",
+            "compressionProfileFast": "Greitas (zstd -3)",
+            "damagedChunkLocation": "{id} - poslinkis {offset} (ilgis {len})",
+            "fallbackName": "Saugykla",
+            "folderScanSummary": "{files} failų {dirs} kataloguose ({size})",
+            "namePlaceholderVault": "Mano saugi saugykla",
+            "namePlaceholderZip": "Mano archyvas",
+            "recentDaysAgo": "prieš {count} d.",
+            "recentFileCountMany": "{count} failų",
+            "recentFileCountOne": "{count} failas",
+            "recentMonthsAgo": "prieš {count} mėn."
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Šifruojami pasirinkti elementai...",
             "ingestSkipped": "Saugykla sukurta, bet kai kurių elementų nepavyko pridėti:",
             "selectionInfo": "{count} element(ai) bus užšifruoti į saugyklą",
-            "decrypting": "Iššifruojama…"
+            "decrypting": "Iššifruojama…",
+            "compatibleWithApp": "Suderinama su Cryptomator programa",
+            "createFormatBadge": "Cryptomator 8 formatas: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM turinys",
+            "featureNameCipher": "AES-SIV pavadinimai",
+            "formatVersion": "Formatas {version}"
         },
         "compress": {
             "title": "Suspausti failus",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Kai kurie failai turėtų tą patį pavadinimą. Prašome pakoreguoti šabloną.",
             "apply": "Taikyti",
             "existingCollision": "Kai kurie nauji pavadinimai sutampa su failais, kurie jau yra šiame aplanke; tie failai nebus perrašyti, o jų pervadinimas praleidžiamas.",
-            "existingCollisionHint": "(jau yra)"
+            "existingCollisionHint": "(jau yra)",
+            "baseNamePlaceholder": "failas",
+            "invalidName": "{name} (netinkamas)"
         },
         "lockScreen": {
             "locked": "Programa užrakinta",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Darbalaukis neprijungė. Atjunkite ir vėl įjunkite kabelį, tada atidarykite iš naujo.",
             "volumes_need_mount_observe": "Snap pakete tomai rodomi, kai prijungiamas mount-observe leidimas. Paleiskite tai terminale, tada grįžkite į AeroFTP:",
             "volumes_unavailable": "Nepavyko nuskaityti prijungtų tomų.",
-            "portable_device": "Nešiojamasis įrenginys"
+            "portable_device": "Nešiojamasis įrenginys",
+            "drivesLeftPanel": "Kairiojo skydelio diskai",
+            "drivesRightPanel": "Dešiniojo skydelio diskai",
+            "modeGroupLabel": "Šoninės juostos režimas",
+            "placesSidebarLabel": "Vietų šoninė juosta"
         },
         "viewMode": {
             "list": "Sąrašas",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Naršyti gretimuosius katalogus",
             "loading": "Įkeliama...",
             "noSubdirectories": "Nėra pakatalogų",
-            "browseChildren": "Naršyti pakatalogiuose"
+            "browseChildren": "Naršyti pakatalogiuose",
+            "ariaLabel": "Naršymo kelias",
+            "syncBoundaryTitle": "{path} (sinchronizavimo riba)"
         },
         "bridge": {
             "checking": "Tikrinama {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Peržiūra nepasiekiama",
-            "title": "Greitoji peržiūra"
+            "title": "Greitoji peržiūra",
+            "closePreview": "Uždaryti peržiūrą",
+            "dialogLabel": "Greitoji peržiūra: {name}",
+            "nextFile": "Kitas failas",
+            "position": "{index} iš {total}",
+            "previousFile": "Ankstesnis failas"
         },
         "properties": {
             "general": "Bendras",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Elemento kontrolinė suma, kurią Immich užfiksuoja įkėlimo metu.",
                 "crypt-overlay-ciphertext": "Maiša apima serveryje saugomus užšifruotus baitus."
             },
-            "readOnlyIsLinkTarget": "Tai simbolinė nuoroda: leidimai priklauso failui, į kurį ji rodo. Norėdami juos pakeisti, atverkite to failo savybes."
+            "readOnlyIsLinkTarget": "Tai simbolinė nuoroda: leidimai priklauso failui, į kurį ji rodo. Norėdami juos pakeisti, atverkite to failo savybes.",
+            "exactBytes": "({bytes} baitai)"
         },
         "duplicates": {
             "sortWasted": "Iššvaistyta vieta",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Identiški baitas į baitą",
             "modeNonIdenticalHint": "Suvokimo arba teksto panašumas, be automatinio trynimo",
             "potentialWasteSelected": "galimai švaistoma (pasirinkta)",
-            "similarityDistance": "{similarity}, atst. {distance}"
+            "similarityDistance": "{similarity}, atst. {distance}",
+            "modeExact": "Tikslus",
+            "modeLabel": "Režimas:",
+            "modeNonIdentical": "Neidentiški"
         },
         "diskUsage": {
             "title": "Disko naudojimas",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Tinklo veiklos dar nėra. Perkelkite failus norėdami pamatyti įvykius.",
                 "time": "Laikas",
                 "event": "Įvykis",
-                "detail": "Detaliai"
+                "detail": "Detaliai",
+                "command": "Komanda",
+                "ipcTransfersCount": "IPC + Perdavimai ({count})",
+                "status": "Būsena",
+                "type": "Tipas"
             },
             "system": {
                 "appVersion": "AeroFTP versija",
@@ -4140,7 +4258,8 @@
                 "dark": "Tamsi",
                 "light": "Šviesi",
                 "userAgent": "Naudotojo agentas",
-                "localStorageKeysTitle": "LocalStorage raktai"
+                "localStorageKeysTitle": "LocalStorage raktai",
+                "localStorageEntrySummary": "{size} baitų · {preview}"
             },
             "copyFileListToClipboard": "Kopijuoti failų sąrašą į iškarpinę",
             "filesCopied": "{count} failų įrašų nukopijuota į iškarpinę",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Dukart spustelėkite pasirinkimą arba paspauskite Enter, kad pritaikytumėte, Esc, kad atšauktumėte",
                     "cropRatio": "Proporcijos",
                     "cropRatioFree": "Laisvas",
-                    "cropRatioOriginal": "Originalas"
+                    "cropRatioOriginal": "Originalas",
+                    "rotateCcw90Short": "90° prieš laikrodžio rodyklę",
+                    "rotateCw90Short": "90° pagal laikrodžio rodyklę"
                 },
                 "toggleTransparencyBg": "Skaidrumo fonas (perjungti)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Kraunamas PDF...",
                 "open": "Atidaryti PDF",
                 "page": "Puslapis",
-                "zoom": "Mastelis"
+                "zoom": "Mastelis",
+                "documentTitle": "PDF dokumentas"
             },
             "text": {
                 "auto": "Automatinis",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Planšetė (768px)",
                 "wordWrap": "Žodžių kėlimas",
                 "zoomIn": "Priartinti",
-                "zoomOut": "Nutolinti"
+                "zoomOut": "Nutolinti",
+                "htmlPreviewFrameTitle": "HTML peržiūra"
             },
             "video": {
                 "exitFullscreen": "Išeiti iš viso ekrano (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Aptiktas Rclone Crypt sluoksnis",
             "aerocryptImportDesc": "Profilis importuotas iš rclone.conf: {name}: atidaryti sluoksnį dabar?",
             "aerocryptImportOpen": "Atidaryti sluoksnį",
-            "aerovaultOverlayExpired": "AeroVault Overlay užrakintas dėl neveiklumo. Norėdami tęsti, atidarykite seifą iš naujo."
+            "aerovaultOverlayExpired": "AeroVault Overlay užrakintas dėl neveiklumo. Norėdami tęsti, atidarykite seifą iš naujo.",
+            "aerovaultOverlaySource": "AeroVault perdanga aktyvi ({source})",
+            "fileOperationsLabel": "Failų operacijos",
+            "overlayBadge": "PERDANGA"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Dviejų veiksnių autentifikavimas",
                 "verify": "Patikrinti ir įjungti",
                 "active": "2FA aktyvus",
-                "inactive": "2FA neaktyvus"
+                "inactive": "2FA neaktyvus",
+                "codeGroupLabel": "{count} skaitmenų kodas",
+                "digitLabel": "Skaitmuo {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Atkurti failai vėl pasirodys pradiniame aplanke",
             "connectionNamePlaceholder": "Ryšio pavadinimas (pvz., Mano FileLu Cloud)",
             "trashAutoExpiry": "Šiukšlinėje esančius failus FileLu automatiškai ištrina po 7 dienų",
-            "rsyncTransferOnly": "Tik perdavimo galinis taškas: naršymas Rsync nepasiekiamas. Naršymui naudok Native API, WebDAV, S3 arba FTP; perjunk į Rsync didelės pralaidumo delta perdavimams."
+            "rsyncTransferOnly": "Tik perdavimo galinis taškas: naršymas Rsync nepasiekiamas. Naršymui naudok Native API, WebDAV, S3 arba FTP; perjunk į Rsync didelės pralaidumo delta perdavimams.",
+            "badgePasswordProtected": "Apsaugota slaptažodžiu",
+            "badgeWatermarked": "Su vandens ženklu"
         },
         "box": {
             "addComment": "Pridėti komentarą",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} failas",
             "releaseAssetMany": "Failų: {count}",
             "repoPrivate": "Privati",
-            "repoPublic": "Vieša"
+            "repoPublic": "Vieša",
+            "actionsLiveBadge": "Tiesiogiai",
+            "actionsRunningTitle": "GitHub Actions (vykdoma)",
+            "coAuthors": "Bendraautoriai",
+            "pagesPathPlaceholder": "/ arba /docs",
+            "pagesStatusBuilding": "kuriama",
+            "pagesStatusBuilt": "sukurta",
+            "pagesStatusErrored": "klaida",
+            "refreshBranches": "Atnaujinti šakas",
+            "repoPrivateTitle": "Privati saugykla",
+            "repoPublicTitle": "Vieša saugykla",
+            "unpushedCommitsOnBranchMany": "{count} neišsiųsti commit šakoje {branch}",
+            "unpushedCommitsOnBranchOne": "{count} neišsiųstas commit šakoje {branch}"
         },
         "filenNotes": {
             "title": "Šifruotos užrašai",
@@ -5158,7 +5300,8 @@
             "tagName": "Žymos pavadinimas",
             "removeTag": "Pašalinti žymą",
             "manageTags": "Tvarkyti žymas",
-            "deleteTagConfirm": "Ištrinti žymą „{name}“? Užrašai išsaugo savo tekstą."
+            "deleteTagConfirm": "Ištrinti žymą „{name}“? Užrašai išsaugo savo tekstą.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Bendrinimo nuoroda",
@@ -5426,7 +5569,8 @@
             "linkType": "Tipas",
             "createMergeRequest": "Sukurti sujungimo užklausą",
             "mrTitle": "MR antraštė",
-            "mrBody": "Aprašymas (neprivaloma)"
+            "mrBody": "Aprašymas (neprivaloma)",
+            "sourceCode": "Šaltinio kodas"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Dubliuoti naudotoją (tik serveriai, be slaptažodžių)",
             "copyLockedHint": "Pirma perjunkite į šią paskyrą, kad galėtumėte dubliuoti jos serverius",
             "crossUserDedupTitle": "Jau išsaugota kitos paskyros",
-            "crossUserDedupMessage": "„{name}“ naudoja serverio paskyrą, kurią šiame įrenginyje taip pat išsaugojo: {accounts}"
+            "crossUserDedupMessage": "„{name}“ naudoja serverio paskyrą, kurią šiame įrenginyje taip pat išsaugojo: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Uždaryti slaptažodžio atkūrimo dialogą",
+                "confirmPassword": "Patvirtinkite naują slaptažodį",
+                "errMismatch": "Nauji paskyros slaptažodžiai nesutampa.",
+                "errNewRequired": "Įveskite naują paskyros slaptažodį.",
+                "errNotAuthorized": "Norėdami atkurti kitos paskyros slaptažodį, turite būti administratorius.",
+                "errNotForSelf": "Savo paskyroje naudokite Keisti slaptažodį.",
+                "errStoreNotReady": "Pirma atrakinkite saugyklą ir bandykite dar kartą.",
+                "errTypeReset": "Įveskite RESET, kad patvirtintumėte šią naikinančią operaciją.",
+                "errUserNotFound": "Šio naudotojo nebėra.",
+                "newPassword": "Naujas paskyros slaptažodis",
+                "statEncryptedBytes": "šifruoti baitai",
+                "statProfiles": "profiliai",
+                "statSettings": "nustatymai",
+                "title": "Slaptažodžio nustatymas iš naujo = duomenų sunaikinimas",
+                "typeReset": "Įveskite RESET",
+                "wipeDetail": "Dabartinio slaptažodžio atkurti neįmanoma. AeroFTP ištrins tikslinės paskyros išsaugotus serverius, naudotojo nustatymus ir užrakinimo būseną, tada išduos naują šifravimo raktą, apsaugotą nauju slaptažodžiu.",
+                "wipeWarning": "Tai visam laikui išvalys tikslinės paskyros šifruotą skaidinį."
+            },
+            "dropdown": {
+                "accountPassword": "Paskyros slaptažodis",
+                "lock": "Užrakinti",
+                "newUser": "Naujas naudotojas",
+                "noUsers": "Naudotojų dar nėra. Pirmą pridėkite naudodami toliau esantį mygtuką „Naujas naudotojas“.",
+                "protectionNote": "Jūsų paskyra apsaugota Argon2id + AES-KW + AES-256-GCM šifravimu",
+                "users": "Naudotojai"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt perdanga",

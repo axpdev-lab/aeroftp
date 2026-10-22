@@ -272,7 +272,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         t('cloud.directionReceiveOnly') || 'Receive only';
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="AeroCloud Pairs Editor">
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.pairsEditorLabel')}>
             <div
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
@@ -479,7 +479,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                                         </div>
 
                                         <div className="md:col-span-2">
-                                            <label className="block text-[10px] text-gray-500 mb-0.5">{t('cloud.excludePatterns') || 'Exclude patterns'} <span className="text-gray-400">(one per line)</span></label>
+                                            <label className="block text-[10px] text-gray-500 mb-0.5">{t('cloud.excludePatterns') || 'Exclude patterns'} <span className="text-gray-400">{t('cloud.onePerLineHint')}</span></label>
                                             <textarea
                                                 className="w-full text-xs font-mono bg-gray-100 dark:bg-gray-700 rounded px-2 py-1 h-16"
                                                 value={excludeText}

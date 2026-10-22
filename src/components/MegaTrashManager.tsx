@@ -154,7 +154,7 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
               onClick={loadTrash}
               disabled={loading}
               className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-              title="Refresh"
+              title={t('common.refresh')}
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>

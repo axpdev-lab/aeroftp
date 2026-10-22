@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Kör {cmd} och fyll i URL:en automatiskt",
                 "fetchUrl": "Hämta URL",
                 "megacmdWebdavHint": "Användarnamn och lösenord är avsiktligt utelämnade. AeroFTP kör själv \"{cmd}\" vid anslutning för att starta bryggan och läsa den här adressen: fältet kan lämnas tomt. Hämta URL är en valfri manuell uppdatering; ändra porten här om MEGAcmd använder en anpassad port."
-            }
+            },
+            "manualStorageUnitLabel": "{label}-enhet"
         },
         "browser": {
             "remote": "Fjärr",
@@ -420,7 +421,19 @@
             "listingPath": "Listar {path}...",
             "pleaseWait": "Vänta...",
             "sameNameLeakChip": "samma namn",
-            "sameNameLeakTooltip": "Det här namnet visas även på en annan sökväg i det här krypterade valvet. Eftersom namn krypteras deterministiskt kan en observatör av det krypterade lagret se att de två delar ett namn."
+            "sameNameLeakTooltip": "Det här namnet visas även på en annan sökväg i det här krypterade valvet. Eftersom namn krypteras deterministiskt kan en observatör av det krypterade lagret se att de två delar ett namn.",
+            "endpointSelector": {
+                "localFolder": "Lokal mapp",
+                "localFolderHint": "Välj en lokal sökväg för den här panelen",
+                "noSavedProfiles": "Inga sparade profiler",
+                "savedProfiles": "Sparade fjärrprofiler",
+                "title": "Slutpunkt"
+            },
+            "leftPanelMarker": "Vänster panel",
+            "localFilesLabel": "Lokala filer",
+            "localFilesRightLabel": "Lokala filer (höger panel)",
+            "remoteFilesLabel": "Fjärrfiler",
+            "rightPanelMarker": "Höger panel"
         },
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Hastighetsgraf",
             "hideSpeedGraph": "Dölj hastighetsgraf",
             "speedAvg": "snitt {speed}",
-            "speedPeak": "topp {speed}"
+            "speedPeak": "topp {speed}",
+            "badgeBatch": "BATCH",
+            "badgeDownload": "NEDLADDNING",
+            "badgeLive": "LIVE",
+            "badgeStream": "STRÖM",
+            "badgeUpload": "UPPLADDNING",
+            "earlierItemsHidden": "{count} tidigare objekt dolda",
+            "folderFilesProgress": "{done}/{total} filer",
+            "laneDone": "klar",
+            "laneError": "fel",
+            "unifiedPlan": {
+                "destination": "Mål",
+                "dialogLabel": "Överföringsplan",
+                "engineAerovaultOverlay": "AeroVault-överlägg",
+                "engineCompareOnly": "Endast jämförelse",
+                "engineCrossProfileSync": "Synkronisering mellan profiler",
+                "engineCrossProfileTransfer": "Överföring mellan profiler",
+                "engineLocalDelta": "Lokal deltatransport",
+                "engineLocalFs": "Lokalt filsystem",
+                "engineProviderDownload": "Nedladdning från leverantör",
+                "engineProviderUpload": "Uppladdning till leverantör",
+                "engineUnsupported": "Stöds inte",
+                "execute": "Kör",
+                "items": "Objekt",
+                "modeBackup": "Säkerhetskopia",
+                "modeBisync": "Tvåvägssynk",
+                "modeCompare": "Jämför",
+                "modeCopy": "Kopiera",
+                "modeMirror": "Spegla",
+                "modeMove": "Flytta",
+                "modeSync": "Synkronisera",
+                "notExecutable": "Det här slutpunktsparet kan inte köras än.",
+                "parallel": "Parallell",
+                "reviewBeforeExecution": "Granska före körning",
+                "route": "{pair} via {engine}",
+                "size": "Storlek",
+                "source": "Källa",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Inställningar",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "max",
             "migrationCleanupHint": "Rekommenderas för maximal säkerhet",
             "fontCustomOption": "Anpassat...",
-            "fontSystemInstallHint": "Kräver systeminstallation. AeroFTP faller tillbaka automatiskt om det inte är tillgängligt."
+            "fontSystemInstallHint": "Kräver systeminstallation. AeroFTP faller tillbaka automatiskt om det inte är tillgängligt.",
+            "fontSizeIndicatorLabel": "Teckensnitt"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} filer, {size} frigjort",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Översikt för molnsynkronisering",
+            "dialogLoadingLabel": "Molnsynkronisering läses in",
+            "dialogSettingsLabel": "Inställningar för molnsynkronisering",
+            "dialogSetupLabel": "Konfiguration av molnsynkronisering",
+            "onePerLineHint": "(en per rad)",
+            "pairsEditorLabel": "Redigerare för AeroCloud-par",
+            "remoteSubfolderPlaceholder": "moln"
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "delvis, oläsbara mappar: {count}",
             "usedScanFailed": "Skanning av använd lagring misslyckades",
             "usedScanEmpty": "Skanning av {path} hittade inga filer; det cachade värdet behölls. Kontrollera sökvägen eller serverns stöd för rekursiv listning.",
-            "filenBridgeAccountTotal": "Filen Desktop rapporterar inte kontots totala användning här: det visade värdet är summan av filerna under den här sökvägen. Den inbyggda Filen-anslutningen visar kontots totala användning direkt."
+            "filenBridgeAccountTotal": "Filen Desktop rapporterar inte kontots totala användning här: det visade värdet är summan av filerna under den här sökvägen. Den inbyggda Filen-anslutningen visar kontots totala användning direkt.",
+            "ariaLabel": "Statusfält",
+            "debugBadge": "FELSÖKNING",
+            "debugModeActive": "Felsökningsläge aktivt"
         },
         "dialogs": {
             "confirmTitle": "Bekräfta",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "t.ex. {template}",
             "jurisdiction": "Jurisdiktion",
             "insecureCertDialogLabel": "Varning för osäkert certifikat",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Verifiering av värdnyckel"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -2173,7 +2236,10 @@
             "rename": "Byt namn",
             "resume": "Återuppta",
             "resumeHint": "Återuppta den avbrutna överföringen i stället för att börja om",
-            "cancel": "Avbryt"
+            "cancel": "Avbryt",
+            "dialogLabel": "Bekräfta överskrivning",
+            "moreInQueue": "+{count} i kö",
+            "unknownDate": "Okänt"
         },
         "statusbar": {
             "queue": "Kö",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Användbara sökvägspar (lokal/fjärr) i den här mallen: {count}. Ett AeroSync-fönster arbetar med exakt ett par, så ingenting importerades. Redigera mallen så att bara ett par återstår och importera den sedan igen.",
             "templateNamePlaceholder": "t.ex. Nattlig säkerhetskopia till S3",
             "templateDescPlaceholder": "Vad den här mallen används till (valfritt)",
-            "templateExportCliDesc": "Omslutningsskript för aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Omslutningsskript för aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Inaktivera",
+            "multiPathEditorLabel": "Redigerare för flera sökvägar",
+            "multiPathEnablePair": "Aktivera",
+            "multiPathLocalPlaceholder": "Lokal sökväg",
+            "multiPathRemotePlaceholder": "Fjärrsökväg",
+            "rollbackDialogLabel": "Återställningsögonblicksbild",
+            "rollbackMoreFiles": "+{count} till...",
+            "rollbackSnapshotSummaryMany": "{count} filer, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fil, {size}",
+            "templateDialogLabel": "Synkroniseringsmall",
+            "templateExcludes": "Undantag",
+            "templateLocal": "Lokal",
+            "templateRemote": "Fjärr",
+            "templateRetries": "Nya försök"
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Valvets header eller manifest byggdes upp igen från paritet.",
             "repairMetadataSuccess": "Reparation klar: valvets header eller manifest byggdes upp igen från paritet",
             "errorCorrectionBadge": "Felkorrigering",
-            "itemsInFolder": "{count} objekt i /{folder}"
+            "itemsInFolder": "{count} objekt i /{folder}",
+            "compressionProfileArchive": "Arkiv (zstd -15)",
+            "compressionProfileBalanced": "Balanserad (zstd -9)",
+            "compressionProfileFast": "Snabb (zstd -3)",
+            "damagedChunkLocation": "{id} - förskjutning {offset} (längd {len})",
+            "fallbackName": "Valv",
+            "folderScanSummary": "{files} filer i {dirs} mappar ({size})",
+            "namePlaceholderVault": "Mitt säkra valv",
+            "namePlaceholderZip": "Mitt arkiv",
+            "recentDaysAgo": "för {count} d sedan",
+            "recentFileCountMany": "{count} filer",
+            "recentFileCountOne": "{count} fil",
+            "recentMonthsAgo": "för {count} mån sedan"
         },
         "cryptomator": {
             "title": "Cryptomator-valv",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Krypterar valda objekt...",
             "ingestSkipped": "Valvet skapades, men vissa objekt kunde inte läggas till:",
             "selectionInfo": "{count} objekt kommer att krypteras till valvet",
-            "decrypting": "Dekrypterar…"
+            "decrypting": "Dekrypterar…",
+            "compatibleWithApp": "Kompatibel med Cryptomator-appen",
+            "createFormatBadge": "Cryptomator-format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM-innehåll",
+            "featureNameCipher": "AES-SIV-namn",
+            "formatVersion": "Formatversion {version}"
         },
         "compress": {
             "title": "Komprimera filer",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Vissa filer skulle få samma namn. Justera mönstret.",
             "apply": "Tillämpa",
             "existingCollision": "Vissa nya namn matchar filer som redan finns i den här mappen; dessa filer skrivs inte över och deras namnbyte hoppas över.",
-            "existingCollisionHint": "(finns redan)"
+            "existingCollisionHint": "(finns redan)",
+            "baseNamePlaceholder": "fil",
+            "invalidName": "{name} (ogiltigt)"
         },
         "lockScreen": {
             "locked": "Appen är låst",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Inte monterat av skrivbordet. Dra ur och sätt i kabeln igen, öppna sedan igen.",
             "volumes_need_mount_observe": "I snap visas volymer när behörigheten mount-observe är ansluten. Kör detta i en terminal och gå sedan tillbaka till AeroFTP:",
             "volumes_unavailable": "Det gick inte att läsa de monterade volymerna.",
-            "portable_device": "Bärbar enhet"
+            "portable_device": "Bärbar enhet",
+            "drivesLeftPanel": "Enheter i vänster panel",
+            "drivesRightPanel": "Enheter i höger panel",
+            "modeGroupLabel": "Sidofältsläge",
+            "placesSidebarLabel": "Sidofält med platser"
         },
         "viewMode": {
             "list": "Lista",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Bläddra bland syskonkataloger",
             "loading": "Laddar...",
             "noSubdirectories": "Inga underkataloger",
-            "browseChildren": "Bläddra i underkataloger"
+            "browseChildren": "Bläddra i underkataloger",
+            "ariaLabel": "Sökvägsnavigering",
+            "syncBoundaryTitle": "{path} (synkroniseringsgräns)"
         },
         "bridge": {
             "checking": "Kontrollerar {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Ingen förhandsgranskning tillgänglig",
-            "title": "Snabbvisning"
+            "title": "Snabbvisning",
+            "closePreview": "Stäng förhandsvisning",
+            "dialogLabel": "Snabbvisning: {name}",
+            "nextFile": "Nästa fil",
+            "position": "{index} av {total}",
+            "previousFile": "Föregående fil"
         },
         "properties": {
             "general": "Allmänt",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Kontrollsumman för objektet som Immich registrerar vid uppladdning.",
                 "crypt-overlay-ciphertext": "Kontrollsumman täcker de krypterade bytena som lagras på servern."
             },
-            "readOnlyIsLinkTarget": "Det här är en symbolisk länk: behörigheterna tillhör filen som den pekar på. Öppna egenskaperna för den filen för att ändra dem."
+            "readOnlyIsLinkTarget": "Det här är en symbolisk länk: behörigheterna tillhör filen som den pekar på. Öppna egenskaperna för den filen för att ändra dem.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Bortkastat utrymme",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Identiska byte för byte",
             "modeNonIdenticalHint": "Perceptuell eller textuell likhet, ingen automatisk borttagning",
             "potentialWasteSelected": "potentiellt slöseri (markerade)",
-            "similarityDistance": "{similarity}, avst. {distance}"
+            "similarityDistance": "{similarity}, avst. {distance}",
+            "modeExact": "Exakt",
+            "modeLabel": "Läge:",
+            "modeNonIdentical": "Ej identisk"
         },
         "diskUsage": {
             "title": "Diskanvändning",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Ingen nätverksaktivitet ännu. Överför filer för att se händelser.",
                 "time": "Tid",
                 "event": "Händelse",
-                "detail": "Detalj"
+                "detail": "Detalj",
+                "command": "Kommando",
+                "ipcTransfersCount": "IPC + Överföringar ({count})",
+                "status": "Status",
+                "type": "Typ"
             },
             "system": {
                 "appVersion": "AeroFTP-version",
@@ -4140,7 +4258,8 @@
                 "dark": "Mörkt",
                 "light": "Ljust",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "LocalStorage-nycklar"
+                "localStorageKeysTitle": "LocalStorage-nycklar",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Kopiera fillista till urklipp",
             "filesCopied": "{count} filposter kopierade till urklipp",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Dubbelklicka på markeringen eller tryck på Enter för att tillämpa, Esc för att avbryta",
                     "cropRatio": "Proportioner",
                     "cropRatioFree": "Fri",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° moturs",
+                    "rotateCw90Short": "90° medurs"
                 },
                 "toggleTransparencyBg": "Genomskinlighetsbakgrund (växla)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Laddar PDF...",
                 "open": "Öppna PDF",
                 "page": "Sida",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "PDF-dokument"
             },
             "text": {
                 "auto": "Auto",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Surfplatta (768px)",
                 "wordWrap": "Radbrytning",
                 "zoomIn": "Zooma in",
-                "zoomOut": "Zooma ut"
+                "zoomOut": "Zooma ut",
+                "htmlPreviewFrameTitle": "HTML-förhandsvisning"
             },
             "video": {
                 "exitFullscreen": "Avsluta helskärmsläge (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt-överlägg upptäckt",
             "aerocryptImportDesc": "Profil importerad från rclone.conf för {name}: öppna överlägget nu?",
             "aerocryptImportOpen": "Öppna överlägg",
-            "aerovaultOverlayExpired": "AeroVault Overlay låst på grund av inaktivitet. Öppna valvet igen för att fortsätta."
+            "aerovaultOverlayExpired": "AeroVault Overlay låst på grund av inaktivitet. Öppna valvet igen för att fortsätta.",
+            "aerovaultOverlaySource": "AeroVault-överlägg aktivt ({source})",
+            "fileOperationsLabel": "Filåtgärder",
+            "overlayBadge": "ÖVERLÄGG"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Tvåfaktorsautentisering",
                 "verify": "Verifiera & Aktivera",
                 "active": "2FA aktiv",
-                "inactive": "2FA inaktiv"
+                "inactive": "2FA inaktiv",
+                "codeGroupLabel": "{count}-siffrig kod",
+                "digitLabel": "Siffra {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Återställda filer kommer att återvisas i sin ursprungliga mapp",
             "connectionNamePlaceholder": "Anslutningsnamn (t.ex. Mitt FileLu Cloud)",
             "trashAutoExpiry": "Filer i papperskorgen raderas automatiskt av FileLu efter 7 dagar",
-            "rsyncTransferOnly": "Endpoint endast för överföring: bläddring är inte tillgänglig på Rsync. Använd Native API, WebDAV, S3 eller FTP för att navigera; byt till Rsync för delta-överföringar med hög bandbredd."
+            "rsyncTransferOnly": "Endpoint endast för överföring: bläddring är inte tillgänglig på Rsync. Använd Native API, WebDAV, S3 eller FTP för att navigera; byt till Rsync för delta-överföringar med hög bandbredd.",
+            "badgePasswordProtected": "Lösenordsskyddad",
+            "badgeWatermarked": "Vattenmärkt"
         },
         "box": {
             "addComment": "Lägg till kommentar",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} fil",
             "releaseAssetMany": "{count} filer",
             "repoPrivate": "Privat",
-            "repoPublic": "Offentligt"
+            "repoPublic": "Offentligt",
+            "actionsLiveBadge": "Aktiv",
+            "actionsRunningTitle": "GitHub Actions (körs)",
+            "coAuthors": "Medförfattare",
+            "pagesPathPlaceholder": "/ eller /docs",
+            "pagesStatusBuilding": "byggs",
+            "pagesStatusBuilt": "byggd",
+            "pagesStatusErrored": "fel",
+            "refreshBranches": "Uppdatera grenar",
+            "repoPrivateTitle": "Privat arkiv",
+            "repoPublicTitle": "Offentligt arkiv",
+            "unpushedCommitsOnBranchMany": "{count} ej pushade commits på {branch}",
+            "unpushedCommitsOnBranchOne": "{count} ej pushad commit på {branch}"
         },
         "filenNotes": {
             "title": "Krypterade anteckningar",
@@ -5158,7 +5300,8 @@
             "tagName": "Taggnamn",
             "removeTag": "Ta bort tagg",
             "manageTags": "Hantera taggar",
-            "deleteTagConfirm": "Ta bort taggen ”{name}”? Anteckningarna behåller sin text."
+            "deleteTagConfirm": "Ta bort taggen ”{name}”? Anteckningarna behåller sin text.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Delningslänk",
@@ -5426,7 +5569,8 @@
             "linkType": "Typ",
             "createMergeRequest": "Skapa Merge Request",
             "mrTitle": "MR-titel",
-            "mrBody": "Beskrivning (valfri)"
+            "mrBody": "Beskrivning (valfri)",
+            "sourceCode": "Källkod"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Duplicera användare (endast servrar, inga lösenord)",
             "copyLockedHint": "Byt till det här kontot först för att duplicera dess servrar",
             "crossUserDedupTitle": "Redan sparat av ett annat konto",
-            "crossUserDedupMessage": "\"{name}\" använder ett serverkonto som även är sparat på den här enheten av: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" använder ett serverkonto som även är sparat på den här enheten av: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Stäng dialogrutan för lösenordsåterställning",
+                "confirmPassword": "Bekräfta nytt lösenord",
+                "errMismatch": "De nya kontolösenorden matchar inte.",
+                "errNewRequired": "Ange ett nytt kontolösenord.",
+                "errNotAuthorized": "Du måste vara administratör för att återställa ett annat kontos lösenord.",
+                "errNotForSelf": "Använd Ändra lösenord på ditt eget konto.",
+                "errStoreNotReady": "Lås upp valvet först och försök igen.",
+                "errTypeReset": "Skriv RESET för att bekräfta denna destruktiva åtgärd.",
+                "errUserNotFound": "Den här användaren finns inte längre.",
+                "newPassword": "Nytt kontolösenord",
+                "statEncryptedBytes": "krypterade byte",
+                "statProfiles": "profiler",
+                "statSettings": "inställningar",
+                "title": "Återställ lösenord = dataförstöring",
+                "typeReset": "Skriv RESET",
+                "wipeDetail": "Det nuvarande lösenordet kan inte återställas. AeroFTP raderar målkontots sparade servrar, användarinställningar och låsningsstatus och utfärdar sedan en ny krypteringsnyckel som skyddas av det nya lösenordet.",
+                "wipeWarning": "Detta raderar målkontots krypterade partition permanent."
+            },
+            "dropdown": {
+                "accountPassword": "Kontolösenord",
+                "lock": "Lås",
+                "newUser": "Ny användare",
+                "noUsers": "Inga användare än. Använd ”Ny användare” nedan för att lägga till den första.",
+                "protectionNote": "Ditt konto skyddas med Argon2id + AES-KW + AES-256-GCM-kryptering",
+                "users": "Användare"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt-överlägg",

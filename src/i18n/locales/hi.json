@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "{cmd} चलाएँ और URL अपने आप भरें",
                 "fetchUrl": "URL प्राप्त करें",
                 "megacmdWebdavHint": "उपयोगकर्ता नाम और पासवर्ड जान-बूझकर छोड़े गए हैं। कनेक्ट करते समय AeroFTP स्वयं \"{cmd}\" चलाकर ब्रिज शुरू करता है और यह पता पढ़ लेता है: इसे खाली छोड़ना ठीक है। \"URL प्राप्त करें\" एक वैकल्पिक मैन्युअल रीफ़्रेश है; यदि MEGAcmd कस्टम पोर्ट उपयोग करता है तो यहाँ पोर्ट बदलें।"
-            }
+            },
+            "manualStorageUnitLabel": "{label} इकाई"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -420,7 +421,19 @@
             "listingPath": "{path} सूचीबद्ध किया जा रहा है...",
             "pleaseWait": "कृपया प्रतीक्षा करें...",
             "sameNameLeakChip": "समान नाम",
-            "sameNameLeakTooltip": "यह नाम इस एन्क्रिप्टेड वॉल्ट में किसी अन्य पथ पर भी दिखाई देता है। चूँकि नाम नियतात्मक रूप से एन्क्रिप्ट किए जाते हैं, एन्क्रिप्टेड स्टोर का एक पर्यवेक्षक बता सकता है कि दोनों एक नाम साझा करते हैं।"
+            "sameNameLeakTooltip": "यह नाम इस एन्क्रिप्टेड वॉल्ट में किसी अन्य पथ पर भी दिखाई देता है। चूँकि नाम नियतात्मक रूप से एन्क्रिप्ट किए जाते हैं, एन्क्रिप्टेड स्टोर का एक पर्यवेक्षक बता सकता है कि दोनों एक नाम साझा करते हैं।",
+            "endpointSelector": {
+                "localFolder": "स्थानीय फ़ोल्डर",
+                "localFolderHint": "इस पैनल के लिए एक स्थानीय पथ चुनें",
+                "noSavedProfiles": "कोई सहेजी गई प्रोफ़ाइल नहीं",
+                "savedProfiles": "सहेजी गई रिमोट प्रोफ़ाइलें",
+                "title": "एंडपॉइंट"
+            },
+            "leftPanelMarker": "बायाँ पैनल",
+            "localFilesLabel": "स्थानीय फ़ाइलें",
+            "localFilesRightLabel": "स्थानीय फ़ाइलें (दायाँ पैनल)",
+            "remoteFilesLabel": "रिमोट फ़ाइलें",
+            "rightPanelMarker": "दायाँ पैनल"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent से पूछें...",
@@ -680,7 +693,45 @@
             "speedGraph": "गति ग्राफ़",
             "hideSpeedGraph": "गति ग्राफ़ छिपाएँ",
             "speedAvg": "औसत {speed}",
-            "speedPeak": "अधिकतम {speed}"
+            "speedPeak": "अधिकतम {speed}",
+            "badgeBatch": "बैच",
+            "badgeDownload": "डाउनलोड",
+            "badgeLive": "लाइव",
+            "badgeStream": "स्ट्रीम",
+            "badgeUpload": "अपलोड",
+            "earlierItemsHidden": "{count} पिछले आइटम छिपे हुए",
+            "folderFilesProgress": "{done}/{total} फ़ाइलें",
+            "laneDone": "पूर्ण",
+            "laneError": "त्रुटि",
+            "unifiedPlan": {
+                "destination": "गंतव्य",
+                "dialogLabel": "स्थानांतरण योजना",
+                "engineAerovaultOverlay": "AeroVault ओवरले",
+                "engineCompareOnly": "केवल तुलना",
+                "engineCrossProfileSync": "प्रोफ़ाइल-पार सिंक",
+                "engineCrossProfileTransfer": "प्रोफ़ाइल-पार स्थानांतरण",
+                "engineLocalDelta": "स्थानीय डेल्टा परिवहन",
+                "engineLocalFs": "स्थानीय फ़ाइल सिस्टम",
+                "engineProviderDownload": "प्रदाता से डाउनलोड",
+                "engineProviderUpload": "प्रदाता पर अपलोड",
+                "engineUnsupported": "असमर्थित",
+                "execute": "निष्पादित करें",
+                "items": "आइटम",
+                "modeBackup": "बैकअप",
+                "modeBisync": "दो-तरफ़ा सिंक",
+                "modeCompare": "तुलना",
+                "modeCopy": "कॉपी करें",
+                "modeMirror": "मिरर करें",
+                "modeMove": "स्थानांतरित करें",
+                "modeSync": "सिंक करें",
+                "notExecutable": "यह एंडपॉइंट जोड़ी अभी निष्पादन योग्य नहीं है।",
+                "parallel": "समानांतर",
+                "reviewBeforeExecution": "निष्पादन से पहले समीक्षा करें",
+                "route": "{engine} के माध्यम से {pair}",
+                "size": "आकार",
+                "source": "स्रोत",
+                "title": "{mode} योजना"
+            }
         },
         "settings": {
             "title": "सेटिंग्स",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "अधिकतम",
             "migrationCleanupHint": "अधिकतम सुरक्षा के लिए अनुशंसित",
             "fontCustomOption": "कस्टम...",
-            "fontSystemInstallHint": "सिस्टम इंस्टॉलेशन आवश्यक है। उपलब्ध न होने पर AeroFTP स्वचालित रूप से विकल्प का उपयोग करता है।"
+            "fontSystemInstallHint": "सिस्टम इंस्टॉलेशन आवश्यक है। उपलब्ध न होने पर AeroFTP स्वचालित रूप से विकल्प का उपयोग करता है।",
+            "fontSizeIndicatorLabel": "फ़ॉन्ट"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} फ़ाइलें, {size} खाली किया गया",
             "maturity": {
                 "alpha": "अल्फ़ा"
-            }
+            },
+            "dialogDashboardLabel": "क्लाउड सिंक डैशबोर्ड",
+            "dialogLoadingLabel": "क्लाउड सिंक लोड हो रहा है",
+            "dialogSettingsLabel": "क्लाउड सिंक सेटिंग्स",
+            "dialogSetupLabel": "क्लाउड सिंक सेटअप",
+            "onePerLineHint": "(प्रति पंक्ति एक)",
+            "pairsEditorLabel": "AeroCloud जोड़ी संपादक",
+            "remoteSubfolderPlaceholder": "क्लाउड"
         },
         "statusBar": {
             "connected": "कनेक्ट हो गया",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "आंशिक, न पढ़े जा सके फ़ोल्डर: {count}",
             "usedScanFailed": "उपयोग-भंडारण स्कैन विफल रहा",
             "usedScanEmpty": "{path} के स्कैन में कोई फ़ाइल नहीं मिली; कैश किया गया मान बनाए रखा गया। पथ या सर्वर के पुनरावर्ती-सूचीकरण समर्थन की जाँच करें।",
-            "filenBridgeAccountTotal": "Filen Desktop यहाँ आपके खाते का कुल उपयोग नहीं बताता: दिखाया गया उपयोग इस पथ के अंतर्गत फ़ाइलों का योग है। नेटिव Filen कनेक्शन खाते का कुल उपयोग तुरंत दिखाता है।"
+            "filenBridgeAccountTotal": "Filen Desktop यहाँ आपके खाते का कुल उपयोग नहीं बताता: दिखाया गया उपयोग इस पथ के अंतर्गत फ़ाइलों का योग है। नेटिव Filen कनेक्शन खाते का कुल उपयोग तुरंत दिखाता है।",
+            "ariaLabel": "स्थिति पट्टी",
+            "debugBadge": "डीबग",
+            "debugModeActive": "डीबग मोड सक्रिय"
         },
         "dialogs": {
             "confirmTitle": "पुष्टिी करें",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "जैसे {template}",
             "jurisdiction": "क्षेत्राधिकार",
             "insecureCertDialogLabel": "असुरक्षित प्रमाणपत्र चेतावनी",
-            "betaBadge": "बीटा"
+            "betaBadge": "बीटा",
+            "hostKeyDialogLabel": "होस्ट कुंजी सत्यापन"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",
@@ -2173,7 +2236,10 @@
             "rename": "नाम बदलें",
             "resume": "फिर से शुरू करें",
             "resumeHint": "बाधित स्थानांतरण को फिर से शुरू करने के बजाय जारी रखें",
-            "cancel": "रद्द करें"
+            "cancel": "रद्द करें",
+            "dialogLabel": "अधिलेखन पुष्टि",
+            "moreInQueue": "कतार में +{count}",
+            "unknownDate": "अज्ञात"
         },
         "statusbar": {
             "queue": "कतार",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "इस टेम्पलेट में उपयोग योग्य स्थानीय/रिमोट पथ जोड़ियाँ: {count}। एक AeroSync विंडो ठीक एक जोड़ी पर काम करती है, इसलिए कुछ भी आयात नहीं किया गया। टेम्पलेट संपादित करके केवल एक जोड़ी रखें, फिर उसे दोबारा आयात करें।",
             "templateNamePlaceholder": "उदा. S3 पर रात्रिकालीन बैकअप",
             "templateDescPlaceholder": "यह टेम्पलेट किस लिए है (वैकल्पिक)",
-            "templateExportCliDesc": "aeroftp-cli sync रैपर ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync रैपर ({shell})",
+            "multiPathDisablePair": "अक्षम करें",
+            "multiPathEditorLabel": "बहु-पथ संपादक",
+            "multiPathEnablePair": "सक्षम करें",
+            "multiPathLocalPlaceholder": "स्थानीय पथ",
+            "multiPathRemotePlaceholder": "रिमोट पथ",
+            "rollbackDialogLabel": "रोलबैक स्नैपशॉट",
+            "rollbackMoreFiles": "+{count} और...",
+            "rollbackSnapshotSummaryMany": "{count} फ़ाइलें, {size}",
+            "rollbackSnapshotSummaryOne": "{count} फ़ाइल, {size}",
+            "templateDialogLabel": "सिंक टेम्पलेट",
+            "templateExcludes": "बहिष्करण",
+            "templateLocal": "स्थानीय",
+            "templateRemote": "रिमोट",
+            "templateRetries": "पुनः प्रयास"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "वॉल्ट हेडर या मेनिफ़ेस्ट को पैरिटी से फिर से बनाया गया।",
             "repairMetadataSuccess": "मरम्मत पूर्ण: वॉल्ट हेडर या मेनिफ़ेस्ट को पैरिटी से फिर से बनाया गया",
             "errorCorrectionBadge": "त्रुटि सुधार",
-            "itemsInFolder": "/{folder} में {count} आइटम"
+            "itemsInFolder": "/{folder} में {count} आइटम",
+            "compressionProfileArchive": "संग्रह (zstd -15)",
+            "compressionProfileBalanced": "संतुलित (zstd -9)",
+            "compressionProfileFast": "तेज़ (zstd -3)",
+            "damagedChunkLocation": "{id} - ऑफ़सेट {offset} (लंबाई {len})",
+            "fallbackName": "वॉल्ट",
+            "folderScanSummary": "{dirs} निर्देशिकाओं में {files} फ़ाइलें ({size})",
+            "namePlaceholderVault": "मेरा सुरक्षित वॉल्ट",
+            "namePlaceholderZip": "मेरा संग्रह",
+            "recentDaysAgo": "{count} दिन पहले",
+            "recentFileCountMany": "{count} फ़ाइलें",
+            "recentFileCountOne": "{count} फ़ाइल",
+            "recentMonthsAgo": "{count} महीने पहले"
         },
         "cryptomator": {
             "title": "Cryptomator वॉल्ट",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "चयनित आइटम एन्क्रिप्ट किए जा रहे हैं...",
             "ingestSkipped": "वॉल्ट बन गया, लेकिन कुछ आइटम जोड़े नहीं जा सके:",
             "selectionInfo": "{count} आइटम वॉल्ट में एन्क्रिप्ट किए जाएंगे",
-            "decrypting": "डिक्रिप्ट किया जा रहा है…"
+            "decrypting": "डिक्रिप्ट किया जा रहा है…",
+            "compatibleWithApp": "Cryptomator ऐप के साथ संगत",
+            "createFormatBadge": "Cryptomator फ़ॉर्मेट 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM सामग्री",
+            "featureNameCipher": "AES-SIV नाम",
+            "formatVersion": "फ़ॉर्मेट {version}"
         },
         "compress": {
             "title": "फ़ाइलें सम्पीडित करें",
@@ -3769,7 +3866,9 @@
             "noChange": "(कोई बदलाव नहीं)",
             "conflictWarning": "कुछ फ़ाइलों का नाम समान होगा। कृपया पैटर्न समायोजित करें।",
             "existingCollision": "कुछ नए नाम इस फ़ोल्डर में पहले से मौजूद फ़ाइलों से मेल खाते हैं; उन फ़ाइलों को अधिलेखित नहीं किया जाएगा और उनका नाम बदलना छोड़ दिया जाएगा।",
-            "existingCollisionHint": "(पहले से मौजूद है)"
+            "existingCollisionHint": "(पहले से मौजूद है)",
+            "baseNamePlaceholder": "फ़ाइल",
+            "invalidName": "{name} (अमान्य)"
         },
         "lockScreen": {
             "locked": "ऐप लॉक हो गया",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "डेस्कटॉप द्वारा माउंट नहीं किया गया। केबल निकालकर फिर से लगाएँ, फिर इसे फिर से खोलें।",
             "volumes_need_mount_observe": "snap में वॉल्यूम तब दिखते हैं जब mount-observe अनुमति जुड़ जाती है। इसे टर्मिनल में चलाएँ, फिर AeroFTP पर लौटें:",
             "volumes_unavailable": "माउंट किए गए वॉल्यूम पढ़े नहीं जा सके।",
-            "portable_device": "पोर्टेबल डिवाइस"
+            "portable_device": "पोर्टेबल डिवाइस",
+            "drivesLeftPanel": "ड्राइव, बायाँ पैनल",
+            "drivesRightPanel": "ड्राइव, दायाँ पैनल",
+            "modeGroupLabel": "साइडबार मोड",
+            "placesSidebarLabel": "स्थान साइडबार"
         },
         "viewMode": {
             "list": "सूची",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "सिबलिंग निर्देशिकाएं ब्राउज़ करें",
             "noSubdirectories": "कोई उप-निर्देशिका नहीं",
             "loading": "लोड हो रहा है...",
-            "browseChildren": "उप-निर्देशिकाएँ ब्राउज़ करें"
+            "browseChildren": "उप-निर्देशिकाएँ ब्राउज़ करें",
+            "ariaLabel": "नेविगेशन पथ",
+            "syncBoundaryTitle": "{path} (सिंक सीमा)"
         },
         "bridge": {
             "checking": "{app} की जाँच की जा रही है…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "कोई पूर्वावलोकन उपलब्ध नहीं",
-            "title": "त्वरित दृश्य"
+            "title": "त्वरित दृश्य",
+            "closePreview": "पूर्वावलोकन बंद करें",
+            "dialogLabel": "त्वरित दृश्य: {name}",
+            "nextFile": "अगली फ़ाइल",
+            "position": "{total} में से {index}",
+            "previousFile": "पिछली फ़ाइल"
         },
         "properties": {
             "general": "सामान्य",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "वह एसेट चेकसम जिसे Immich अपलोड के समय दर्ज करता है।",
                 "crypt-overlay-ciphertext": "डाइजेस्ट सर्वर पर रखे एन्क्रिप्टेड बाइट्स पर बना है।"
             },
-            "readOnlyIsLinkTarget": "यह एक सिंबॉलिक लिंक है: अनुमतियाँ उस फ़ाइल की हैं जिसकी ओर यह इशारा करता है। उन्हें बदलने के लिए उस फ़ाइल के गुण खोलें।"
+            "readOnlyIsLinkTarget": "यह एक सिंबॉलिक लिंक है: अनुमतियाँ उस फ़ाइल की हैं जिसकी ओर यह इशारा करता है। उन्हें बदलने के लिए उस फ़ाइल के गुण खोलें।",
+            "exactBytes": "({bytes} बाइट)"
         },
         "duplicates": {
             "sortWasted": "बर्बाद जगह",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "बाइट दर बाइट समान",
             "modeNonIdenticalHint": "दृश्य या टेक्स्ट समानता, स्वतः हटाना नहीं",
             "potentialWasteSelected": "संभावित बर्बादी (चयनित)",
-            "similarityDistance": "{similarity}, दूरी {distance}"
+            "similarityDistance": "{similarity}, दूरी {distance}",
+            "modeExact": "सटीक",
+            "modeLabel": "मोड:",
+            "modeNonIdentical": "गैर-समान"
         },
         "diskUsage": {
             "title": "डिस्क उपयोग",
@@ -4093,7 +4207,11 @@
                 "noActivity": "अभी तक कोई नेटवर्क गतिविधि नहीं। ईवेंट देखने के लिए फ़ाइलें ट्रांसफर करें।",
                 "time": "समय",
                 "event": "ईवेंट",
-                "detail": "विवरण"
+                "detail": "विवरण",
+                "command": "कमांड",
+                "ipcTransfersCount": "IPC + स्थानांतरण ({count})",
+                "status": "स्थिति",
+                "type": "प्रकार"
             },
             "system": {
                 "appVersion": "AeroFTP संस्करण",
@@ -4140,7 +4258,8 @@
                 "dark": "गहरा",
                 "light": "हल्का",
                 "userAgent": "उपयोगकर्ता एजेंट",
-                "localStorageKeysTitle": "LocalStorage कुंजियाँ"
+                "localStorageKeysTitle": "LocalStorage कुंजियाँ",
+                "localStorageEntrySummary": "{size} बाइट · {preview}"
             },
             "copyFileListToClipboard": "फ़ाइल सूची क्लिपबोर्ड पर कॉपी करें",
             "filesCopied": "{count} फ़ाइल प्रविष्टियाँ क्लिपबोर्ड पर कॉपी की गईं",
@@ -4386,7 +4505,9 @@
                     "cropHint": "लागू करने के लिए चयन पर डबल-क्लिक करें या Enter दबाएँ, रद्द करने के लिए Esc दबाएँ",
                     "cropRatio": "अनुपात",
                     "cropRatioFree": "मुक्त",
-                    "cropRatioOriginal": "मूल"
+                    "cropRatioOriginal": "मूल",
+                    "rotateCcw90Short": "90° वामावर्त",
+                    "rotateCw90Short": "90° दक्षिणावर्त"
                 },
                 "toggleTransparencyBg": "पारदर्शिता पृष्ठभूमि (चक्र)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "PDF लोड हो रहा है...",
                 "open": "PDF खोलें",
                 "page": "पृष्ठ",
-                "zoom": "ज़ूम"
+                "zoom": "ज़ूम",
+                "documentTitle": "PDF दस्तावेज़"
             },
             "text": {
                 "auto": "ऑटो",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "टैबलेट (768px)",
                 "wordWrap": "वर्ड रैप",
                 "zoomIn": "ज़ूम इन",
-                "zoomOut": "ज़ूम आउट"
+                "zoomOut": "ज़ूम आउट",
+                "htmlPreviewFrameTitle": "HTML पूर्वावलोकन"
             },
             "video": {
                 "exitFullscreen": "फ़ुलस्क्रीन से बाहर निकलें (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt ओवरले का पता चला",
             "aerocryptImportDesc": "{name} के लिए rclone.conf से प्रोफ़ाइल आयात किया गया: अभी ओवरले खोलें?",
             "aerocryptImportOpen": "ओवरले खोलें",
-            "aerovaultOverlayExpired": "निष्क्रियता के कारण AeroVault Overlay लॉक हो गया है। जारी रखने के लिए वॉल्ट को फिर से खोलें।"
+            "aerovaultOverlayExpired": "निष्क्रियता के कारण AeroVault Overlay लॉक हो गया है। जारी रखने के लिए वॉल्ट को फिर से खोलें।",
+            "aerovaultOverlaySource": "AeroVault ओवरले सक्रिय ({source})",
+            "fileOperationsLabel": "फ़ाइल संचालन",
+            "overlayBadge": "ओवरले"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "दो-कारक प्रमाणीकरण",
                 "verify": "सत्यापित करें और सक्षम करें",
                 "active": "2FA सक्रिय",
-                "inactive": "2FA निष्क्रिय"
+                "inactive": "2FA निष्क्रिय",
+                "codeGroupLabel": "{count}-अंकीय कोड",
+                "digitLabel": "अंक {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "पुनर्स्थापित फ़ाइलें अपने मूल फ़ोल्डर में फिर से दिखाई देंगी",
             "connectionNamePlaceholder": "कनेक्शन का नाम (जैसे मेरा FileLu Cloud)",
             "trashAutoExpiry": "ट्रैश में भेजी गई फ़ाइलें 7 दिन बाद FileLu द्वारा स्वतः हटा दी जाती हैं",
-            "rsyncTransferOnly": "केवल-ट्रांसफर एंडपॉइंट: Rsync पर ब्राउज़िंग उपलब्ध नहीं है। नेविगेट करने के लिए Native API, WebDAV, S3 या FTP का उपयोग करें; उच्च-बैंडविड्थ delta ट्रांसफर के लिए Rsync पर स्विच करें।"
+            "rsyncTransferOnly": "केवल-ट्रांसफर एंडपॉइंट: Rsync पर ब्राउज़िंग उपलब्ध नहीं है। नेविगेट करने के लिए Native API, WebDAV, S3 या FTP का उपयोग करें; उच्च-बैंडविड्थ delta ट्रांसफर के लिए Rsync पर स्विच करें।",
+            "badgePasswordProtected": "पासवर्ड से सुरक्षित",
+            "badgeWatermarked": "वॉटरमार्क युक्त"
         },
         "box": {
             "addComment": "टिप्पणी जोड़ें",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} एसेट",
             "releaseAssetMany": "{count} एसेट",
             "repoPrivate": "निजी",
-            "repoPublic": "सार्वजनिक"
+            "repoPublic": "सार्वजनिक",
+            "actionsLiveBadge": "लाइव",
+            "actionsRunningTitle": "GitHub Actions (चल रहा है)",
+            "coAuthors": "सह-लेखक",
+            "pagesPathPlaceholder": "/ या /docs",
+            "pagesStatusBuilding": "बन रहा है",
+            "pagesStatusBuilt": "बन गया",
+            "pagesStatusErrored": "त्रुटि",
+            "refreshBranches": "शाखाएँ रीफ़्रेश करें",
+            "repoPrivateTitle": "निजी रिपॉज़िटरी",
+            "repoPublicTitle": "सार्वजनिक रिपॉज़िटरी",
+            "unpushedCommitsOnBranchMany": "{branch} पर {count} बिना पुश किए गए कमिट",
+            "unpushedCommitsOnBranchOne": "{branch} पर {count} बिना पुश किया गया कमिट"
         },
         "filenNotes": {
             "title": "एन्क्रिप्टेड नोट्स",
@@ -5158,7 +5300,8 @@
             "tagName": "टैग का नाम",
             "removeTag": "टैग हटाएँ",
             "manageTags": "टैग प्रबंधित करें",
-            "deleteTagConfirm": "टैग “{name}” हटाएँ? नोट्स का टेक्स्ट बना रहेगा।"
+            "deleteTagConfirm": "टैग “{name}” हटाएँ? नोट्स का टेक्स्ट बना रहेगा।",
+            "betaBadge": "बीटा"
         },
         "shareLinkModal": {
             "title": "शेयर लिंक",
@@ -5426,7 +5569,8 @@
             "linkType": "प्रकार",
             "createMergeRequest": "Merge Request बनाएं",
             "mrTitle": "MR शीर्षक",
-            "mrBody": "विवरण (वैकल्पिक)"
+            "mrBody": "विवरण (वैकल्पिक)",
+            "sourceCode": "स्रोत कोड"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "उपयोगकर्ता डुप्लिकेट करें (केवल सर्वर, पासवर्ड नहीं)",
             "copyLockedHint": "इसके सर्वर डुप्लिकेट करने के लिए पहले इस खाते पर स्विच करें",
             "crossUserDedupTitle": "किसी अन्य खाते द्वारा पहले से सहेजा गया",
-            "crossUserDedupMessage": "\"{name}\" जिस सर्वर खाते का उपयोग करता है, वह इस डिवाइस पर इन्होंने भी सहेजा है: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" जिस सर्वर खाते का उपयोग करता है, वह इस डिवाइस पर इन्होंने भी सहेजा है: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "पासवर्ड रीसेट संवाद बंद करें",
+                "confirmPassword": "नए पासवर्ड की पुष्टि करें",
+                "errMismatch": "नए खाता पासवर्ड मेल नहीं खाते।",
+                "errNewRequired": "नया खाता पासवर्ड दर्ज करें।",
+                "errNotAuthorized": "किसी अन्य खाते का पासवर्ड रीसेट करने के लिए आपको व्यवस्थापक होना चाहिए।",
+                "errNotForSelf": "अपने खाते पर पासवर्ड बदलें का उपयोग करें।",
+                "errStoreNotReady": "पहले वॉल्ट अनलॉक करें, फिर पुनः प्रयास करें।",
+                "errTypeReset": "इस विनाशकारी कार्रवाई की पुष्टि करने के लिए RESET टाइप करें।",
+                "errUserNotFound": "यह उपयोगकर्ता अब मौजूद नहीं है।",
+                "newPassword": "नया खाता पासवर्ड",
+                "statEncryptedBytes": "एन्क्रिप्टेड बाइट",
+                "statProfiles": "प्रोफ़ाइल",
+                "statSettings": "सेटिंग्स",
+                "title": "पासवर्ड रीसेट = डेटा विनाश",
+                "typeReset": "RESET टाइप करें",
+                "wipeDetail": "वर्तमान पासवर्ड पुनर्प्राप्त नहीं किया जा सकता। AeroFTP लक्ष्य खाते के सहेजे गए सर्वर, उपयोगकर्ता सेटिंग्स और लॉकआउट स्थिति हटा देगा, फिर नए पासवर्ड से सुरक्षित एक नई एन्क्रिप्शन कुंजी जारी करेगा।",
+                "wipeWarning": "यह लक्ष्य खाते के एन्क्रिप्टेड विभाजन को स्थायी रूप से मिटा देगा।"
+            },
+            "dropdown": {
+                "accountPassword": "खाता पासवर्ड",
+                "lock": "लॉक करें",
+                "newUser": "नया उपयोगकर्ता",
+                "noUsers": "अभी कोई उपयोगकर्ता नहीं है। पहला जोड़ने के लिए नीचे \"नया उपयोगकर्ता\" का उपयोग करें।",
+                "protectionNote": "आपका खाता Argon2id + AES-KW + AES-256-GCM एन्क्रिप्शन से सुरक्षित है",
+                "users": "उपयोगकर्ता"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt ओवरले",

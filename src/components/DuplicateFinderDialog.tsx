@@ -586,7 +586,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
 
         {/* Mode toggle: Exact (byte-identical, default, auto-selects dupes) vs Non-identical (uses shared engine, no auto-select) */}
         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-          <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Mode:</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">{t('duplicates.modeLabel')}</span>
           <button
             disabled={isScanning || isDeleting}
             onClick={() => setMode('exact')}
@@ -596,7 +596,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                 : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
             }`}
           >
-            Exact
+            {t('duplicates.modeExact')}
           </button>
           <button
             disabled={isScanning || isDeleting}
@@ -607,7 +607,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                 : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
             }`}
           >
-            Non-identical
+            {t('duplicates.modeNonIdentical')}
           </button>
           <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
             {mode === 'non-identical' ? t('duplicates.modeNonIdenticalHint') : t('duplicates.modeExactHint')}

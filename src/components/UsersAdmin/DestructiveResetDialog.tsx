@@ -11,6 +11,7 @@ import {
 } from '../../utils/userPartitions';
 import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
 import { useTranslation } from '../../i18n';
+import type { TranslationFunction } from '../../i18n';
 
 interface DestructiveResetDialogProps {
     target: UserMetadata;
@@ -26,13 +27,13 @@ const formatBytes = (bytes: number): string => {
     return `${(kib / 1024).toFixed(1)} MiB`;
 };
 
-const mapResetError = (err: unknown): string => {
+const mapResetError = (err: unknown, t: TranslationFunction): string => {
     const message = typeof err === 'string' ? err : String(err);
-    if (message.includes('NOT_AUTHORIZED')) return 'You must be an admin to reset another account password.';
-    if (message.includes('ADMIN_RESET_NOT_FOR_SELF')) return 'Use Change Password on your own account.';
-    if (message.includes('STORE_NOT_READY')) return 'Unlock the vault first, then try again.';
-    if (message.includes('VAULT_LOCKED')) return 'Unlock your account first, then try again.';
-    if (message.includes('USER_NOT_FOUND')) return 'This user no longer exists.';
+    if (message.includes('NOT_AUTHORIZED')) return t('manageUsers.destructiveReset.errNotAuthorized');
+    if (message.includes('ADMIN_RESET_NOT_FOR_SELF')) return t('manageUsers.destructiveReset.errNotForSelf');
+    if (message.includes('STORE_NOT_READY')) return t('manageUsers.destructiveReset.errStoreNotReady');
+    if (message.includes('VAULT_LOCKED')) return t('accountLock.vaultLocked');
+    if (message.includes('USER_NOT_FOUND')) return t('manageUsers.destructiveReset.errUserNotFound');
     return message;
 };
 
@@ -81,15 +82,15 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
         event.preventDefault();
         setError('');
         if (confirmText !== 'RESET') {
-            setError('Type RESET to confirm this destructive operation.');
+            setError(t('manageUsers.destructiveReset.errTypeReset'));
             return;
         }
         if (!newPassphrase) {
-            setError('Enter a new account password.');
+            setError(t('manageUsers.destructiveReset.errNewRequired'));
             return;
         }
         if (newPassphrase !== confirmPassphrase) {
-            setError('New account passwords do not match.');
+            setError(t('manageUsers.destructiveReset.errMismatch'));
             return;
         }
         setSubmitting(true);
@@ -97,7 +98,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
             await adminResetUserPassphrase(target.id, newPassphrase);
             onComplete();
         } catch (err) {
-            setError(mapResetError(err));
+            setError(mapResetError(err, t));
         } finally {
             setSubmitting(false);
         }
@@ -107,7 +108,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
         <div className="fixed inset-0 z-[95] flex items-start justify-center pt-[9vh]">
             <button
                 type="button"
-                aria-label="Close reset password dialog"
+                aria-label={t('manageUsers.destructiveReset.closeDialog')}
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 onClick={submitting ? undefined : onClose}
             />
@@ -119,7 +120,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                     <div className="flex min-w-0 items-center gap-2">
                         <RotateCcw size={18} className="shrink-0" />
                         <div className="min-w-0">
-                            <h3 className="truncate text-sm font-semibold">Reset password = data destruction</h3>
+                            <h3 className="truncate text-sm font-semibold">{t('manageUsers.destructiveReset.title')}</h3>
                             <p className="truncate text-xs opacity-80">{target.name}</p>
                         </div>
                     </div>
@@ -128,7 +129,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                         onClick={onClose}
                         disabled={submitting}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50 dark:text-red-200 dark:hover:bg-red-900/40"
-                        aria-label="Close"
+                        aria-label={t('manageUsers.close')}
                     >
                         <X size={16} />
                     </button>
@@ -138,27 +139,27 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                     <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
                         <div className="mb-2 flex items-start gap-2 font-semibold">
                             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                            <span>This will permanently wipe the target account's encrypted partition.</span>
+                            <span>{t('manageUsers.destructiveReset.wipeWarning')}</span>
                         </div>
                         <p className="text-xs leading-relaxed opacity-90">
-                            The current password cannot be recovered. AeroFTP will delete the target account's saved servers, user settings, and lockout state, then issue a new encryption key protected by the new password.
+                            {t('manageUsers.destructiveReset.wipeDetail')}
                         </p>
                     </div>
 
                     <div className="grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300 sm:grid-cols-3">
                         <div>
                             <div className="font-medium text-gray-900 dark:text-gray-100">{profileCount}</div>
-                            <div>profiles</div>
+                            <div>{t('manageUsers.destructiveReset.statProfiles')}</div>
                         </div>
                         <div>
                             <div className="font-medium text-gray-900 dark:text-gray-100">{settingsCount}</div>
-                            <div>settings</div>
+                            <div>{t('manageUsers.destructiveReset.statSettings')}</div>
                         </div>
                         <div>
                             <div className="font-medium text-gray-900 dark:text-gray-100">
                                 {loadingStats ? t('common.loading') : formatBytes(encryptedBytes)}
                             </div>
-                            <div>encrypted bytes</div>
+                            <div>{t('manageUsers.destructiveReset.statEncryptedBytes')}</div>
                         </div>
                     </div>
 
@@ -170,7 +171,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
 
                     <div>
                         <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
-                            Type RESET
+                            {t('manageUsers.destructiveReset.typeReset')}
                         </label>
                         <input
                             value={confirmText}
@@ -184,7 +185,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                     <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                             <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
-                                New account password
+                                {t('manageUsers.destructiveReset.newPassword')}
                             </label>
                             <div className="relative">
                                 <input
@@ -199,7 +200,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                                     type="button"
                                     onClick={() => setShowPassphrase((value) => !value)}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                                    aria-label={showPassphrase ? 'Hide password' : 'Show password'}
+                                    aria-label={showPassphrase ? t('accountLock.hidePassword') : t('accountLock.showPassword')}
                                 >
                                     {showPassphrase ? <EyeOff size={15} /> : <Eye size={15} />}
                                 </button>
@@ -210,7 +211,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                         </div>
                         <div>
                             <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
-                                Confirm new password
+                                {t('manageUsers.destructiveReset.confirmPassword')}
                             </label>
                             <input
                                 type={showPassphrase ? 'text' : 'password'}
@@ -231,7 +232,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                         disabled={submitting}
                         className="inline-flex h-9 items-center justify-center rounded-lg bg-gray-100 px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                     >
-                        Cancel
+                        {t('manageUsers.cancel')}
                     </button>
                     <button
                         type="submit"
@@ -239,7 +240,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                         className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300 dark:disabled:bg-red-900/50"
                     >
                         {submitting ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
-                        Reset password
+                        {t('manageUsers.resetPassword')}
                     </button>
                 </div>
             </form>

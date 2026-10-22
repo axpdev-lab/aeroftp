@@ -21,6 +21,10 @@ export function GitHubLocalSyncWarning({
   onCancel,
 }: GitHubLocalSyncWarningProps) {
   const t = useTranslation();
+  const [unpushedBefore, unpushedAfter] = t(
+    unpushedCount === 1 ? 'github.unpushedCommitsOnBranchOne' : 'github.unpushedCommitsOnBranchMany',
+    { count: unpushedCount, branch: '{branch}' },
+  ).split('{branch}');
 
   React.useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -47,7 +51,7 @@ export function GitHubLocalSyncWarning({
               {t('github.unpushedCommitsTitle')}
             </h2>
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-              {unpushedCount} unpushed commit{unpushedCount > 1 ? 's' : ''} on <code className="bg-amber-100 dark:bg-amber-800/50 px-1 rounded">{branch}</code>
+              {unpushedBefore}<code className="bg-amber-100 dark:bg-amber-800/50 px-1 rounded">{branch}</code>{unpushedAfter}
             </p>
           </div>
           <button onClick={onCancel} className="p-1 rounded hover:bg-amber-200 dark:hover:bg-amber-700 text-amber-500">

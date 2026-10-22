@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Suorita {cmd} ja täytä URL automaattisesti",
                 "fetchUrl": "Hae URL",
                 "megacmdWebdavHint": "Käyttäjänimi ja salasana on jätetty pois tarkoituksella. AeroFTP suorittaa itse komennon \"{cmd}\" yhdistettäessä käynnistääkseen sillan ja lukeakseen tämän osoitteen: kentän voi jättää tyhjäksi. Hae URL on valinnainen manuaalinen päivitys; vaihda portti tässä, jos MEGAcmd käyttää mukautettua porttia."
-            }
+            },
+            "manualStorageUnitLabel": "{label}-yksikkö"
         },
         "browser": {
             "remote": "Etä",
@@ -420,7 +421,19 @@
             "listingPath": "Luetellaan {path}...",
             "pleaseWait": "Odota...",
             "sameNameLeakChip": "sama nimi",
-            "sameNameLeakTooltip": "Tämä nimi esiintyy myös toisessa polussa tässä salatussa holvissa. Koska nimet salataan deterministisesti, salatun tallennustilan tarkkailija voi havaita, että molemmat jakavat saman nimen."
+            "sameNameLeakTooltip": "Tämä nimi esiintyy myös toisessa polussa tässä salatussa holvissa. Koska nimet salataan deterministisesti, salatun tallennustilan tarkkailija voi havaita, että molemmat jakavat saman nimen.",
+            "endpointSelector": {
+                "localFolder": "Paikallinen kansio",
+                "localFolderHint": "Valitse paikallinen polku tälle paneelille",
+                "noSavedProfiles": "Ei tallennettuja profiileja",
+                "savedProfiles": "Tallennetut etäprofiilit",
+                "title": "Päätepiste"
+            },
+            "leftPanelMarker": "Vasen paneeli",
+            "localFilesLabel": "Paikalliset tiedostot",
+            "localFilesRightLabel": "Paikalliset tiedostot (oikea paneeli)",
+            "remoteFilesLabel": "Etätiedostot",
+            "rightPanelMarker": "Oikea paneeli"
         },
         "contextMenu": {
             "askAeroAgent": "Kysy AeroAgent-ilta...",
@@ -618,7 +631,7 @@
             "modeMax": "Maksimi",
             "modeUnavailable": "Siirtotilan esiasetukset ovat käytettävissä vain yhteyksille FTP, FTPS ja SFTP",
             "crossProfile": {
-                "title": "Profiilien valinen siirto",
+                "title": "Profiilien välinen siirto",
                 "subtitle": "Kopioi tiedostot suoraan kahden tallennetun palvelimen välillä.",
                 "closeAria": "Sulje profiilien valisen siirron paneeli",
                 "source": "Lähde",
@@ -680,7 +693,45 @@
             "speedGraph": "Nopeuskäyrä",
             "hideSpeedGraph": "Piilota nopeuskäyrä",
             "speedAvg": "keski {speed}",
-            "speedPeak": "huippu {speed}"
+            "speedPeak": "huippu {speed}",
+            "badgeBatch": "ERÄ",
+            "badgeDownload": "LATAUS",
+            "badgeLive": "LIVE",
+            "badgeStream": "VIRTA",
+            "badgeUpload": "LÄHETYS",
+            "earlierItemsHidden": "{count} aiempaa kohdetta piilotettu",
+            "folderFilesProgress": "{done}/{total} tiedostoa",
+            "laneDone": "valmis",
+            "laneError": "virhe",
+            "unifiedPlan": {
+                "destination": "Kohde",
+                "dialogLabel": "Siirtosuunnitelma",
+                "engineAerovaultOverlay": "AeroVault-peite",
+                "engineCompareOnly": "Vain vertailu",
+                "engineCrossProfileSync": "Profiilien välinen synkronointi",
+                "engineCrossProfileTransfer": "Profiilien välinen siirto",
+                "engineLocalDelta": "Paikallinen delta-siirto",
+                "engineLocalFs": "Paikallinen tiedostojärjestelmä",
+                "engineProviderDownload": "Palveluntarjoajan lataus",
+                "engineProviderUpload": "Palveluntarjoajan lähetys",
+                "engineUnsupported": "Ei tuettu",
+                "execute": "Suorita",
+                "items": "Kohteet",
+                "modeBackup": "Varmuuskopio",
+                "modeBisync": "Kaksisuuntainen synkronointi",
+                "modeCompare": "Vertaa",
+                "modeCopy": "Kopioi",
+                "modeMirror": "Peilaa",
+                "modeMove": "Siirrä",
+                "modeSync": "Synkronoi",
+                "notExecutable": "Tätä päätepisteparia ei voi vielä suorittaa.",
+                "parallel": "Rinnakkain",
+                "reviewBeforeExecution": "Tarkista ennen suoritusta",
+                "route": "{pair} (moottori {engine})",
+                "size": "Koko",
+                "source": "Lähde",
+                "title": "Suunnitelma: {mode}"
+            }
         },
         "settings": {
             "title": "Asetukset",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "maks",
             "migrationCleanupHint": "Suositellaan parhaan tietoturvan vuoksi",
             "fontCustomOption": "Mukautettu...",
-            "fontSystemInstallHint": "Vaatii järjestelmäasennuksen. AeroFTP käyttää automaattisesti varavaihtoehtoa, jos se ei ole saatavilla."
+            "fontSystemInstallHint": "Vaatii järjestelmäasennuksen. AeroFTP käyttää automaattisesti varavaihtoehtoa, jos se ei ole saatavilla.",
+            "fontSizeIndicatorLabel": "Fontti"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} tiedostoa, {size} vapautettu",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Pilvisynkronoinnin hallintanäkymä",
+            "dialogLoadingLabel": "Pilvisynkronointia ladataan",
+            "dialogSettingsLabel": "Pilvisynkronoinnin asetukset",
+            "dialogSetupLabel": "Pilvisynkronoinnin käyttöönotto",
+            "onePerLineHint": "(yksi riviä kohden)",
+            "pairsEditorLabel": "AeroCloud-parien muokkain",
+            "remoteSubfolderPlaceholder": "pilvi"
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "osittainen, lukukelvottomat kansiot: {count}",
             "usedScanFailed": "Käytetyn tallennustilan skannaus epäonnistui",
             "usedScanEmpty": "Polun {path} skannaus ei löytänyt tiedostoja; välimuistissa ollut arvo säilytettiin. Tarkista polku tai palvelimen rekursiivisen listauksen tuki.",
-            "filenBridgeAccountTotal": "Filen Desktop ei ilmoita tässä tilisi kokonaiskäyttöä: näytetty käyttö on tämän polun tiedostojen summa. Natiivi Filen-yhteys näyttää tilin kokonaiskäytön heti."
+            "filenBridgeAccountTotal": "Filen Desktop ei ilmoita tässä tilisi kokonaiskäyttöä: näytetty käyttö on tämän polun tiedostojen summa. Natiivi Filen-yhteys näyttää tilin kokonaiskäytön heti.",
+            "ariaLabel": "Tilarivi",
+            "debugBadge": "VIANETSINTÄ",
+            "debugModeActive": "Vianetsintätila käytössä"
         },
         "dialogs": {
             "confirmTitle": "Vahvista",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "esim. {template}",
             "jurisdiction": "Lainkäyttöalue",
             "insecureCertDialogLabel": "Varoitus suojaamattomasta varmenteesta",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Isäntäavaimen vahvistus"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -2173,7 +2236,10 @@
             "rename": "Nimeä uudelleen",
             "resume": "Jatka",
             "resumeHint": "Jatka keskeytynyttä siirtoa sen sijaan, että aloittaisit alusta",
-            "cancel": "Peruuta"
+            "cancel": "Peruuta",
+            "dialogLabel": "Korvauksen vahvistus",
+            "moreInQueue": "+{count} jonossa",
+            "unknownDate": "Tuntematon"
         },
         "statusbar": {
             "queue": "Jono",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Käyttökelpoiset polkuparit (paikallinen/etä) tässä mallissa: {count}. AeroSync-ikkuna käsittelee tasan yhtä paria, joten mitään ei tuotu. Muokkaa mallia niin, että siihen jää vain yksi pari, ja tuo se sitten uudelleen.",
             "templateNamePlaceholder": "esim. Yöllinen varmuuskopio S3:een",
             "templateDescPlaceholder": "Mihin tätä mallia käytetään (valinnainen)",
-            "templateExportCliDesc": "aeroftp-cli sync -kääreskripti ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync -kääreskripti ({shell})",
+            "multiPathDisablePair": "Poista käytöstä",
+            "multiPathEditorLabel": "Monipolkueditori",
+            "multiPathEnablePair": "Ota käyttöön",
+            "multiPathLocalPlaceholder": "Paikallinen polku",
+            "multiPathRemotePlaceholder": "Etäpolku",
+            "rollbackDialogLabel": "Palautuksen tilannevedos",
+            "rollbackMoreFiles": "+{count} lisää...",
+            "rollbackSnapshotSummaryMany": "{count} tiedostoa, {size}",
+            "rollbackSnapshotSummaryOne": "{count} tiedosto, {size}",
+            "templateDialogLabel": "Synkronointimalli",
+            "templateExcludes": "Poissulkemiset",
+            "templateLocal": "Paikallinen",
+            "templateRemote": "Etä",
+            "templateRetries": "Uusintayritykset"
         },
         "ui": {
             "syncing": "Synkronoidaan...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Holvin otsikko tai manifesti rakennettiin uudelleen pariteetista.",
             "repairMetadataSuccess": "Korjaus valmis: holvin otsikko tai manifesti rakennettiin uudelleen pariteetista",
             "errorCorrectionBadge": "Virheenkorjaus",
-            "itemsInFolder": "{count} kohdetta kansiossa /{folder}"
+            "itemsInFolder": "{count} kohdetta kansiossa /{folder}",
+            "compressionProfileArchive": "Arkisto (zstd -15)",
+            "compressionProfileBalanced": "Tasapainoinen (zstd -9)",
+            "compressionProfileFast": "Nopea (zstd -3)",
+            "damagedChunkLocation": "{id} - siirtymä {offset} (pituus {len})",
+            "fallbackName": "Holvi",
+            "folderScanSummary": "{files} tiedostoa {dirs} hakemistossa ({size})",
+            "namePlaceholderVault": "Oma suojattu holvi",
+            "namePlaceholderZip": "Oma arkisto",
+            "recentDaysAgo": "{count} pv sitten",
+            "recentFileCountMany": "{count} tiedostoa",
+            "recentFileCountOne": "{count} tiedosto",
+            "recentMonthsAgo": "{count} kk sitten"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Salataan valittuja kohteita...",
             "ingestSkipped": "Holvi luotiin, mutta joitakin kohteita ei voitu lisätä:",
             "selectionInfo": "{count} kohdetta salataan holviin",
-            "decrypting": "Puretaan salausta…"
+            "decrypting": "Puretaan salausta…",
+            "compatibleWithApp": "Yhteensopiva Cryptomator-sovelluksen kanssa",
+            "createFormatBadge": "Cryptomator-muoto 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM-sisältö",
+            "featureNameCipher": "AES-SIV-nimet",
+            "formatVersion": "Muoto {version}"
         },
         "compress": {
             "title": "Pakkaa tiedostot",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Joillakin tiedostoilla olisi sama nimi. Muokkaa kaavaa.",
             "apply": "Käytä",
             "existingCollision": "Jotkin uudet nimet vastaavat tiedostoja, jotka ovat jo tässä kansiossa; näitä tiedostoja ei korvata ja niiden uudelleennimeäminen ohitetaan.",
-            "existingCollisionHint": "(on jo olemassa)"
+            "existingCollisionHint": "(on jo olemassa)",
+            "baseNamePlaceholder": "tiedosto",
+            "invalidName": "{name} (virheellinen)"
         },
         "lockScreen": {
             "locked": "Sovellus lukittu",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Ei työpöydän liittämä. Irrota ja kytke kaapeli uudelleen, ja avaa sitten uudelleen.",
             "volumes_need_mount_observe": "Snapissa taltiot näkyvät, kun mount-observe-oikeus on yhdistetty. Suorita tämä päätteessä ja palaa sitten AeroFTP:hen:",
             "volumes_unavailable": "Liitettyjä taltioita ei voitu lukea.",
-            "portable_device": "Kannettava laite"
+            "portable_device": "Kannettava laite",
+            "drivesLeftPanel": "Vasemman paneelin asemat",
+            "drivesRightPanel": "Oikean paneelin asemat",
+            "modeGroupLabel": "Sivupalkin tila",
+            "placesSidebarLabel": "Sijaintien sivupalkki"
         },
         "viewMode": {
             "list": "Lista",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Selaa sisarhakemistoja",
             "loading": "Ladataan...",
             "noSubdirectories": "Ei alihakemistoja",
-            "browseChildren": "Selaa alihakemistoja"
+            "browseChildren": "Selaa alihakemistoja",
+            "ariaLabel": "Murupolku",
+            "syncBoundaryTitle": "{path} (synkronoinnin raja)"
         },
         "bridge": {
             "checking": "Tarkistetaan {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Esikatselua ei saatavilla",
-            "title": "Pikaesikatselu"
+            "title": "Pikaesikatselu",
+            "closePreview": "Sulje esikatselu",
+            "dialogLabel": "Pikaesikatselu: {name}",
+            "nextFile": "Seuraava tiedosto",
+            "position": "{index}/{total}",
+            "previousFile": "Edellinen tiedosto"
         },
         "properties": {
             "general": "Yleinen",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Kohteen tarkistussumma, jonka Immich kirjaa lähetyshetkellä.",
                 "crypt-overlay-ciphertext": "Tiiviste kattaa palvelimelle tallennetut salatut tavut."
             },
-            "readOnlyIsLinkTarget": "Tämä on symbolinen linkki: käyttöoikeudet kuuluvat tiedostolle, johon se osoittaa. Muuta niitä avaamalla kyseisen tiedoston ominaisuudet."
+            "readOnlyIsLinkTarget": "Tämä on symbolinen linkki: käyttöoikeudet kuuluvat tiedostolle, johon se osoittaa. Muuta niitä avaamalla kyseisen tiedoston ominaisuudet.",
+            "exactBytes": "({bytes} tavua)"
         },
         "duplicates": {
             "sortWasted": "Hukattu tila",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Tavu tavulta identtinen",
             "modeNonIdenticalHint": "Havaintoon perustuva tai tekstin samankaltaisuus, ei automaattista poistoa",
             "potentialWasteSelected": "mahdollinen hukka (valitut)",
-            "similarityDistance": "{similarity}, etäis. {distance}"
+            "similarityDistance": "{similarity}, etäis. {distance}",
+            "modeExact": "Tarkka",
+            "modeLabel": "Tila:",
+            "modeNonIdentical": "Ei identtinen"
         },
         "diskUsage": {
             "title": "Levyn käyttö",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Ei vielä verkkoaktiviteettia. Siirrä tiedostoja nähdäksesi tapahtumat.",
                 "time": "Aika",
                 "event": "Tapahtuma",
-                "detail": "Yksityiskohta"
+                "detail": "Yksityiskohta",
+                "command": "Komento",
+                "ipcTransfersCount": "IPC + Siirrot ({count})",
+                "status": "Tila",
+                "type": "Tyyppi"
             },
             "system": {
                 "appVersion": "AeroFTP-versio",
@@ -4140,7 +4258,8 @@
                 "dark": "Tumma",
                 "light": "Vaalea",
                 "userAgent": "Selaintunniste",
-                "localStorageKeysTitle": "LocalStorage-avaimet"
+                "localStorageKeysTitle": "LocalStorage-avaimet",
+                "localStorageEntrySummary": "{size} tavua · {preview}"
             },
             "copyFileListToClipboard": "Kopioi tiedostoluettelo leikepöydälle",
             "filesCopied": "{count} tiedostomerkintää kopioitu leikepöydälle",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Ota käyttöön kaksoisnapsauttamalla valintaa tai painamalla Enter, peruuta painamalla Esc",
                     "cropRatio": "Mittasuhteet",
                     "cropRatioFree": "Vapaa",
-                    "cropRatioOriginal": "Alkuperäinen"
+                    "cropRatioOriginal": "Alkuperäinen",
+                    "rotateCcw90Short": "90° vastapäivään",
+                    "rotateCw90Short": "90° myötäpäivään"
                 },
                 "toggleTransparencyBg": "Läpinäkyvyyden tausta (vaihda)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Ladataan PDF:ää...",
                 "open": "Avaa PDF",
                 "page": "Sivu",
-                "zoom": "Zoomaus"
+                "zoom": "Zoomaus",
+                "documentTitle": "PDF-asiakirja"
             },
             "text": {
                 "auto": "Automaattinen",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tabletti (768px)",
                 "wordWrap": "Rivitys",
                 "zoomIn": "Lähennä",
-                "zoomOut": "Loitonna"
+                "zoomOut": "Loitonna",
+                "htmlPreviewFrameTitle": "HTML-esikatselu"
             },
             "video": {
                 "exitFullscreen": "Poistu kokoruudusta (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt -peittokerros havaittu",
             "aerocryptImportDesc": "Profiili tuotu rclone.conf-tiedostosta nimelle {name}: avataanko peittokerros nyt?",
             "aerocryptImportOpen": "Avaa peittokerros",
-            "aerovaultOverlayExpired": "AeroVault Overlay on lukittu käyttämättömyyden vuoksi. Avaa holvi uudelleen jatkaaksesi."
+            "aerovaultOverlayExpired": "AeroVault Overlay on lukittu käyttämättömyyden vuoksi. Avaa holvi uudelleen jatkaaksesi.",
+            "aerovaultOverlaySource": "AeroVault-peite käytössä ({source})",
+            "fileOperationsLabel": "Tiedostotoiminnot",
+            "overlayBadge": "PEITE"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Kaksivaiheinen todennus",
                 "verify": "Vahvista & Ota käyttöön",
                 "active": "2FA käytössä",
-                "inactive": "2FA ei käytössä"
+                "inactive": "2FA ei käytössä",
+                "codeGroupLabel": "{count}-numeroinen koodi",
+                "digitLabel": "Numero {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Palautetut tiedostot näkyvät uudelleen alkuperäisessä kansiossaan",
             "connectionNamePlaceholder": "Yhteyden nimi (esim. Oma FileLu Cloud)",
             "trashAutoExpiry": "FileLu poistaa roskakorin tiedostot automaattisesti 7 päivän kuluttua",
-            "rsyncTransferOnly": "Vain siirtoon tarkoitettu päätepiste: selaaminen ei ole käytettävissä Rsyncissa. Käytä Native API, WebDAV, S3 tai FTP navigointiin; vaihda Rsynciin suuren kaistanleveyden delta-siirtoja varten."
+            "rsyncTransferOnly": "Vain siirtoon tarkoitettu päätepiste: selaaminen ei ole käytettävissä Rsyncissa. Käytä Native API, WebDAV, S3 tai FTP navigointiin; vaihda Rsynciin suuren kaistanleveyden delta-siirtoja varten.",
+            "badgePasswordProtected": "Salasanasuojattu",
+            "badgeWatermarked": "Vesileimattu"
         },
         "box": {
             "addComment": "Lisää kommentti",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} tiedosto",
             "releaseAssetMany": "{count} tiedostoa",
             "repoPrivate": "Yksityinen",
-            "repoPublic": "Julkinen"
+            "repoPublic": "Julkinen",
+            "actionsLiveBadge": "Käynnissä",
+            "actionsRunningTitle": "GitHub Actions (käynnissä)",
+            "coAuthors": "Muut tekijät",
+            "pagesPathPlaceholder": "/ tai /docs",
+            "pagesStatusBuilding": "rakennetaan",
+            "pagesStatusBuilt": "rakennettu",
+            "pagesStatusErrored": "virhe",
+            "refreshBranches": "Päivitä haarat",
+            "repoPrivateTitle": "Yksityinen tietovarasto",
+            "repoPublicTitle": "Julkinen tietovarasto",
+            "unpushedCommitsOnBranchMany": "{count} puskematonta committia haarassa {branch}",
+            "unpushedCommitsOnBranchOne": "{count} puskematon commit haarassa {branch}"
         },
         "filenNotes": {
             "title": "Salatut muistiinpanot",
@@ -5158,7 +5300,8 @@
             "tagName": "Tunnisteen nimi",
             "removeTag": "Poista tunniste",
             "manageTags": "Hallitse tunnisteita",
-            "deleteTagConfirm": "Poistetaanko tunniste ”{name}”? Muistiinpanot säilyttävät tekstinsä."
+            "deleteTagConfirm": "Poistetaanko tunniste ”{name}”? Muistiinpanot säilyttävät tekstinsä.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Jakolinkki",
@@ -5426,7 +5569,8 @@
             "linkType": "Tyyppi",
             "createMergeRequest": "Luo Merge Request",
             "mrTitle": "MR-otsikko",
-            "mrBody": "Kuvaus (valinnainen)"
+            "mrBody": "Kuvaus (valinnainen)",
+            "sourceCode": "Lähdekoodi"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Monista käyttäjä (vain palvelimet, ei salasanoja)",
             "copyLockedHint": "Vaihda ensin tähän tiliin monistaaksesi sen palvelimet",
             "crossUserDedupTitle": "Toinen tili on jo tallentanut tämän",
-            "crossUserDedupMessage": "\"{name}\" käyttää palvelintiliä, jonka on tallentanut tälle laitteelle myös: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" käyttää palvelintiliä, jonka on tallentanut tälle laitteelle myös: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Sulje salasanan nollausikkuna",
+                "confirmPassword": "Vahvista uusi salasana",
+                "errMismatch": "Tilin uudet salasanat eivät täsmää.",
+                "errNewRequired": "Anna tilille uusi salasana.",
+                "errNotAuthorized": "Sinun on oltava järjestelmänvalvoja, jotta voit nollata toisen tilin salasanan.",
+                "errNotForSelf": "Käytä Vaihda salasana omalla tililläsi.",
+                "errStoreNotReady": "Avaa ensin holvi ja yritä uudelleen.",
+                "errTypeReset": "Vahvista tämä tuhoava toiminto kirjoittamalla RESET.",
+                "errUserNotFound": "Tätä käyttäjää ei ole enää olemassa.",
+                "newPassword": "Tilin uusi salasana",
+                "statEncryptedBytes": "salattua tavua",
+                "statProfiles": "profiilia",
+                "statSettings": "asetusta",
+                "title": "Salasanan nollaus = tietojen tuhoaminen",
+                "typeReset": "Kirjoita RESET",
+                "wipeDetail": "Nykyistä salasanaa ei voi palauttaa. AeroFTP poistaa kohdetilin tallennetut palvelimet, käyttäjäasetukset ja lukitustilan ja luo sitten uuden salausavaimen, jota uusi salasana suojaa.",
+                "wipeWarning": "Tämä tyhjentää kohdetilin salatun osion pysyvästi."
+            },
+            "dropdown": {
+                "accountPassword": "Tilin salasana",
+                "lock": "Lukitse",
+                "newUser": "Uusi käyttäjä",
+                "noUsers": "Ei vielä käyttäjiä. Lisää ensimmäinen alla olevalla ”Uusi käyttäjä” -painikkeella.",
+                "protectionNote": "Tilisi on suojattu Argon2id + AES-KW + AES-256-GCM -salauksella",
+                "users": "Käyttäjät"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt-peittokerros",

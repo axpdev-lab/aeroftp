@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "เรียกใช้ {cmd} และกรอก URL อัตโนมัติ",
                 "fetchUrl": "ดึง URL",
                 "megacmdWebdavHint": "ชื่อผู้ใช้และรหัสผ่านถูกละไว้โดยตั้งใจ AeroFTP จะเรียกใช้ \"{cmd}\" เองเมื่อเชื่อมต่อเพื่อเริ่มบริดจ์และอ่านที่อยู่นี้: เว้นว่างไว้ได้ \"ดึง URL\" เป็นการรีเฟรชด้วยตนเองที่ไม่บังคับ; เปลี่ยนพอร์ตที่นี่หาก MEGAcmd ใช้พอร์ตที่กำหนดเอง"
-            }
+            },
+            "manualStorageUnitLabel": "หน่วย {label}"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -420,7 +421,19 @@
             "listingPath": "กำลังแสดงรายการ {path}...",
             "pleaseWait": "โปรดรอสักครู่...",
             "sameNameLeakChip": "ชื่อซ้ำ",
-            "sameNameLeakTooltip": "ชื่อนี้ยังปรากฏในอีกเส้นทางหนึ่งภายในห้องนิรภัยที่เข้ารหัสนี้ด้วย เนื่องจากชื่อถูกเข้ารหัสแบบกำหนดค่าตายตัว ผู้สังเกตการณ์ที่เข้าถึงที่จัดเก็บที่เข้ารหัสจึงสามารถบอกได้ว่าทั้งสองมีชื่อเดียวกัน"
+            "sameNameLeakTooltip": "ชื่อนี้ยังปรากฏในอีกเส้นทางหนึ่งภายในห้องนิรภัยที่เข้ารหัสนี้ด้วย เนื่องจากชื่อถูกเข้ารหัสแบบกำหนดค่าตายตัว ผู้สังเกตการณ์ที่เข้าถึงที่จัดเก็บที่เข้ารหัสจึงสามารถบอกได้ว่าทั้งสองมีชื่อเดียวกัน",
+            "endpointSelector": {
+                "localFolder": "โฟลเดอร์ในเครื่อง",
+                "localFolderHint": "เลือกพาธในเครื่องสำหรับแผงนี้",
+                "noSavedProfiles": "ไม่มีโปรไฟล์ที่บันทึกไว้",
+                "savedProfiles": "โปรไฟล์ระยะไกลที่บันทึกไว้",
+                "title": "ปลายทางการเชื่อมต่อ"
+            },
+            "leftPanelMarker": "แผงด้านซ้าย",
+            "localFilesLabel": "ไฟล์ในเครื่อง",
+            "localFilesRightLabel": "ไฟล์ในเครื่อง (แผงด้านขวา)",
+            "remoteFilesLabel": "ไฟล์ระยะไกล",
+            "rightPanelMarker": "แผงด้านขวา"
         },
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "กราฟความเร็ว",
             "hideSpeedGraph": "ซ่อนกราฟความเร็ว",
             "speedAvg": "เฉลี่ย {speed}",
-            "speedPeak": "สูงสุด {speed}"
+            "speedPeak": "สูงสุด {speed}",
+            "badgeBatch": "ชุดงาน",
+            "badgeDownload": "ดาวน์โหลด",
+            "badgeLive": "สด",
+            "badgeStream": "สตรีม",
+            "badgeUpload": "อัปโหลด",
+            "earlierItemsHidden": "ซ่อนรายการก่อนหน้า {count} รายการ",
+            "folderFilesProgress": "{done}/{total} ไฟล์",
+            "laneDone": "เสร็จ",
+            "laneError": "ข้อผิดพลาด",
+            "unifiedPlan": {
+                "destination": "ปลายทาง",
+                "dialogLabel": "แผนการถ่ายโอน",
+                "engineAerovaultOverlay": "โอเวอร์เลย์ AeroVault",
+                "engineCompareOnly": "เปรียบเทียบเท่านั้น",
+                "engineCrossProfileSync": "ซิงค์ข้ามโปรไฟล์",
+                "engineCrossProfileTransfer": "ถ่ายโอนข้ามโปรไฟล์",
+                "engineLocalDelta": "การส่งเดลต้าภายในเครื่อง",
+                "engineLocalFs": "ระบบไฟล์ภายในเครื่อง",
+                "engineProviderDownload": "ดาวน์โหลดจากผู้ให้บริการ",
+                "engineProviderUpload": "อัปโหลดไปยังผู้ให้บริการ",
+                "engineUnsupported": "ไม่รองรับ",
+                "execute": "ดำเนินการ",
+                "items": "รายการ",
+                "modeBackup": "สำรองข้อมูล",
+                "modeBisync": "ซิงค์สองทาง",
+                "modeCompare": "เปรียบเทียบ",
+                "modeCopy": "คัดลอก",
+                "modeMirror": "มิเรอร์",
+                "modeMove": "ย้าย",
+                "modeSync": "ซิงค์",
+                "notExecutable": "คู่ปลายทางนี้ยังไม่สามารถดำเนินการได้",
+                "parallel": "ขนาน",
+                "reviewBeforeExecution": "ตรวจสอบก่อนดำเนินการ",
+                "route": "{pair} ผ่าน {engine}",
+                "size": "ขนาด",
+                "source": "ต้นทาง",
+                "title": "แผน: {mode}"
+            }
         },
         "settings": {
             "title": "การตั้งค่า",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "สูงสุด",
             "migrationCleanupHint": "แนะนำเพื่อความปลอดภัยสูงสุด",
             "fontCustomOption": "กำหนดเอง...",
-            "fontSystemInstallHint": "ต้องติดตั้งในระบบ AeroFTP จะใช้ตัวเลือกสำรองโดยอัตโนมัติหากไม่พร้อมใช้งาน"
+            "fontSystemInstallHint": "ต้องติดตั้งในระบบ AeroFTP จะใช้ตัวเลือกสำรองโดยอัตโนมัติหากไม่พร้อมใช้งาน",
+            "fontSizeIndicatorLabel": "แบบอักษร"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} ไฟล์, คืนพื้นที่ {size}",
             "maturity": {
                 "alpha": "อัลฟา"
-            }
+            },
+            "dialogDashboardLabel": "แดชบอร์ดการซิงค์คลาวด์",
+            "dialogLoadingLabel": "กำลังโหลดการซิงค์คลาวด์",
+            "dialogSettingsLabel": "การตั้งค่าการซิงค์คลาวด์",
+            "dialogSetupLabel": "การตั้งค่าเริ่มต้นการซิงค์คลาวด์",
+            "onePerLineHint": "(หนึ่งรายการต่อบรรทัด)",
+            "pairsEditorLabel": "ตัวแก้ไขคู่ AeroCloud",
+            "remoteSubfolderPlaceholder": "คลาวด์"
         },
         "statusBar": {
             "connected": "เชื่อมต่อแล้ว",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "บางส่วน, โฟลเดอร์ที่อ่านไม่ได้: {count}",
             "usedScanFailed": "การสแกนพื้นที่ที่ใช้ล้มเหลว",
             "usedScanEmpty": "การสแกนพาธ {path} ไม่พบไฟล์ จึงคงค่าที่แคชไว้ ตรวจสอบพาธหรือการรองรับการแสดงรายการแบบเรียกซ้ำของเซิร์ฟเวอร์",
-            "filenBridgeAccountTotal": "Filen Desktop ไม่รายงานยอดรวมของบัญชีของคุณที่นี่: ค่าที่ใช้ไปคือผลรวมของไฟล์ภายใต้พาธนี้ การเชื่อมต่อ Filen แบบเนทีฟจะแสดงยอดรวมของบัญชีได้ทันที"
+            "filenBridgeAccountTotal": "Filen Desktop ไม่รายงานยอดรวมของบัญชีของคุณที่นี่: ค่าที่ใช้ไปคือผลรวมของไฟล์ภายใต้พาธนี้ การเชื่อมต่อ Filen แบบเนทีฟจะแสดงยอดรวมของบัญชีได้ทันที",
+            "ariaLabel": "แถบสถานะ",
+            "debugBadge": "ดีบัก",
+            "debugModeActive": "โหมดดีบักทำงานอยู่"
         },
         "dialogs": {
             "confirmTitle": "ยืนยัน",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "เช่น {template}",
             "jurisdiction": "เขตอำนาจศาล",
             "insecureCertDialogLabel": "คำเตือนใบรับรองที่ไม่ปลอดภัย",
-            "betaBadge": "เบต้า"
+            "betaBadge": "เบต้า",
+            "hostKeyDialogLabel": "การตรวจสอบคีย์โฮสต์"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -2173,7 +2236,10 @@
             "rename": "เปลี่ยนชื่อ",
             "resume": "ทำต่อ",
             "resumeHint": "ทำการถ่ายโอนที่หยุดชะงักต่อ แทนที่จะเริ่มใหม่",
-            "cancel": "ยกเลิก"
+            "cancel": "ยกเลิก",
+            "dialogLabel": "ยืนยันการเขียนทับ",
+            "moreInQueue": "+{count} ในคิว",
+            "unknownDate": "ไม่ทราบ"
         },
         "statusbar": {
             "queue": "คิว",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "คู่เส้นทางภายในเครื่อง/ระยะไกลที่ใช้ได้ในเทมเพลตนี้: {count} หน้าต่าง AeroSync ทำงานกับคู่เส้นทางเพียงคู่เดียวพอดี จึงไม่มีการนำเข้าใด ๆ แก้ไขเทมเพลตให้เหลือเพียงคู่เดียว แล้วนำเข้าอีกครั้ง",
             "templateNamePlaceholder": "เช่น สำรองข้อมูลกลางคืนไปยัง S3",
             "templateDescPlaceholder": "เทมเพลตนี้ใช้ทำอะไร (ไม่บังคับ)",
-            "templateExportCliDesc": "สคริปต์ครอบ aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "สคริปต์ครอบ aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "ปิดใช้งาน",
+            "multiPathEditorLabel": "ตัวแก้ไขหลายเส้นทาง",
+            "multiPathEnablePair": "เปิดใช้งาน",
+            "multiPathLocalPlaceholder": "เส้นทางในเครื่อง",
+            "multiPathRemotePlaceholder": "เส้นทางระยะไกล",
+            "rollbackDialogLabel": "สแนปช็อตสำหรับย้อนกลับ",
+            "rollbackMoreFiles": "+อีก {count}...",
+            "rollbackSnapshotSummaryMany": "{count} ไฟล์, {size}",
+            "rollbackSnapshotSummaryOne": "{count} ไฟล์, {size}",
+            "templateDialogLabel": "เทมเพลตการซิงค์",
+            "templateExcludes": "รายการยกเว้น",
+            "templateLocal": "ในเครื่อง",
+            "templateRemote": "ระยะไกล",
+            "templateRetries": "การลองใหม่"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว",
             "repairMetadataSuccess": "ซ่อมเสร็จสมบูรณ์: สร้างส่วนหัวหรือมานิเฟสต์ของวอลต์ใหม่จากพาริตีแล้ว",
             "errorCorrectionBadge": "การแก้ไขข้อผิดพลาด",
-            "itemsInFolder": "{count} รายการใน /{folder}"
+            "itemsInFolder": "{count} รายการใน /{folder}",
+            "compressionProfileArchive": "เก็บถาวร (zstd -15)",
+            "compressionProfileBalanced": "สมดุล (zstd -9)",
+            "compressionProfileFast": "เร็ว (zstd -3)",
+            "damagedChunkLocation": "{id} - ออฟเซ็ต {offset} (ความยาว {len})",
+            "fallbackName": "ห้องนิรภัย",
+            "folderScanSummary": "{files} ไฟล์ใน {dirs} ไดเรกทอรี ({size})",
+            "namePlaceholderVault": "ห้องนิรภัยที่ปลอดภัยของฉัน",
+            "namePlaceholderZip": "ไฟล์เก็บถาวรของฉัน",
+            "recentDaysAgo": "{count} วันที่แล้ว",
+            "recentFileCountMany": "{count} ไฟล์",
+            "recentFileCountOne": "{count} ไฟล์",
+            "recentMonthsAgo": "{count} เดือนที่แล้ว"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "กำลังเข้ารหัสรายการที่เลือก...",
             "ingestSkipped": "สร้างวอลต์แล้ว แต่ไม่สามารถเพิ่มบางรายการได้:",
             "selectionInfo": "{count} รายการจะถูกเข้ารหัสลงในวอลต์",
-            "decrypting": "กำลังถอดรหัส…"
+            "decrypting": "กำลังถอดรหัส…",
+            "compatibleWithApp": "เข้ากันได้กับแอป Cryptomator",
+            "createFormatBadge": "Cryptomator รูปแบบ 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "เนื้อหา AES-GCM",
+            "featureNameCipher": "ชื่อ AES-SIV",
+            "formatVersion": "รูปแบบ {version}"
         },
         "compress": {
             "title": "บีบอัดไฟล์",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "บางไฟล์จะมีชื่อซ้ำกัน กรุณาปรับรูปแบบ",
             "apply": "นำไปใช้",
             "existingCollision": "ชื่อใหม่บางชื่อตรงกับไฟล์ที่มีอยู่แล้วในโฟลเดอร์นี้ ไฟล์เหล่านั้นจะไม่ถูกเขียนทับและจะข้ามการเปลี่ยนชื่อ",
-            "existingCollisionHint": "(มีอยู่แล้ว)"
+            "existingCollisionHint": "(มีอยู่แล้ว)",
+            "baseNamePlaceholder": "ไฟล์",
+            "invalidName": "{name} (ไม่ถูกต้อง)"
         },
         "lockScreen": {
             "locked": "แอปถูกล็อก",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "เดสก์ท็อปยังไม่ได้เมานต์ ถอดสายแล้วเสียบใหม่ จากนั้นเปิดอีกครั้ง",
             "volumes_need_mount_observe": "ใน snap ไดรฟ์จะปรากฏหลังจากเชื่อมต่อสิทธิ์ mount-observe แล้ว เรียกใช้คำสั่งนี้ในเทอร์มินัล จากนั้นกลับมาที่ AeroFTP:",
             "volumes_unavailable": "ไม่สามารถอ่านไดรฟ์ที่เมานต์ไว้ได้",
-            "portable_device": "อุปกรณ์พกพา"
+            "portable_device": "อุปกรณ์พกพา",
+            "drivesLeftPanel": "ไดรฟ์แผงซ้าย",
+            "drivesRightPanel": "ไดรฟ์แผงขวา",
+            "modeGroupLabel": "โหมดแถบด้านข้าง",
+            "placesSidebarLabel": "แถบด้านข้างตำแหน่ง"
         },
         "viewMode": {
             "list": "รายการ",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "เรียกดูไดเรกทอรีข้างเคียง",
             "loading": "กำลังโหลด...",
             "noSubdirectories": "ไม่มีไดเรกทอรีย่อย",
-            "browseChildren": "เรียกดูไดเรกทอรีย่อย"
+            "browseChildren": "เรียกดูไดเรกทอรีย่อย",
+            "ariaLabel": "เส้นทางการนำทาง",
+            "syncBoundaryTitle": "{path} (ขอบเขตการซิงค์)"
         },
         "bridge": {
             "checking": "กำลังตรวจสอบ {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "ไม่มีตัวอย่าง",
-            "title": "ดูเร็ว"
+            "title": "ดูเร็ว",
+            "closePreview": "ปิดตัวอย่าง",
+            "dialogLabel": "ดูเร็ว: {name}",
+            "nextFile": "ไฟล์ถัดไป",
+            "position": "{index} จาก {total}",
+            "previousFile": "ไฟล์ก่อนหน้า"
         },
         "properties": {
             "general": "ทั่วไป",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "ค่าตรวจสอบของสินทรัพย์ที่ Immich บันทึกไว้ตอนอัปโหลด",
                 "crypt-overlay-ciphertext": "แฮชครอบคลุมไบต์ที่เข้ารหัสซึ่งเก็บอยู่บนเซิร์ฟเวอร์"
             },
-            "readOnlyIsLinkTarget": "นี่คือลิงก์สัญลักษณ์: สิทธิ์เป็นของไฟล์ที่ลิงก์นี้ชี้ไป เปิดคุณสมบัติของไฟล์นั้นเพื่อเปลี่ยนสิทธิ์"
+            "readOnlyIsLinkTarget": "นี่คือลิงก์สัญลักษณ์: สิทธิ์เป็นของไฟล์ที่ลิงก์นี้ชี้ไป เปิดคุณสมบัติของไฟล์นั้นเพื่อเปลี่ยนสิทธิ์",
+            "exactBytes": "({bytes} ไบต์)"
         },
         "duplicates": {
             "sortWasted": "พื้นที่ที่สูญเปล่า",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "เหมือนกันทุกไบต์",
             "modeNonIdenticalHint": "ความคล้ายคลึงทางการรับรู้หรือข้อความ ไม่ลบอัตโนมัติ",
             "potentialWasteSelected": "อาจสูญเปล่า (ที่เลือก)",
-            "similarityDistance": "{similarity}, ระยะ {distance}"
+            "similarityDistance": "{similarity}, ระยะ {distance}",
+            "modeExact": "ตรงกันทุกประการ",
+            "modeLabel": "โหมด:",
+            "modeNonIdentical": "ไม่เหมือนกันทุกประการ"
         },
         "diskUsage": {
             "title": "การใช้พื้นที่ดิสก์",
@@ -4093,7 +4207,11 @@
                 "noActivity": "ยังไม่มีกิจกรรมเครือข่าย ถ่ายโอนไฟล์เพื่อดูเหตุการณ์",
                 "time": "เวลา",
                 "event": "เหตุการณ์",
-                "detail": "รายละเอียด"
+                "detail": "รายละเอียด",
+                "command": "คำสั่ง",
+                "ipcTransfersCount": "IPC + การถ่ายโอน ({count})",
+                "status": "สถานะ",
+                "type": "ประเภท"
             },
             "system": {
                 "appVersion": "เวอร์ชัน AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "มืด",
                 "light": "สว่าง",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "คีย์ LocalStorage"
+                "localStorageKeysTitle": "คีย์ LocalStorage",
+                "localStorageEntrySummary": "{size} ไบต์ · {preview}"
             },
             "copyFileListToClipboard": "คัดลอกรายการไฟล์ไปยังคลิปบอร์ด",
             "filesCopied": "คัดลอก {count} รายการไฟล์ไปยังคลิปบอร์ดแล้ว",
@@ -4386,7 +4505,9 @@
                     "cropHint": "ดับเบิลคลิกที่ส่วนที่เลือกหรือกด Enter เพื่อใช้ กด Esc เพื่อยกเลิก",
                     "cropRatio": "สัดส่วน",
                     "cropRatioFree": "อิสระ",
-                    "cropRatioOriginal": "ต้นฉบับ"
+                    "cropRatioOriginal": "ต้นฉบับ",
+                    "rotateCcw90Short": "90° ทวนเข็ม",
+                    "rotateCw90Short": "90° ตามเข็ม"
                 },
                 "toggleTransparencyBg": "พื้นหลังความโปร่งใส (วนสลับ)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "กำลังโหลด PDF...",
                 "open": "เปิด PDF",
                 "page": "หน้า",
-                "zoom": "ซูม"
+                "zoom": "ซูม",
+                "documentTitle": "เอกสาร PDF"
             },
             "text": {
                 "auto": "อัตโนมัติ",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "แท็บเล็ต (768px)",
                 "wordWrap": "การตัดคำ",
                 "zoomIn": "ซูมเข้า",
-                "zoomOut": "ซูมออก"
+                "zoomOut": "ซูมออก",
+                "htmlPreviewFrameTitle": "ตัวอย่าง HTML"
             },
             "video": {
                 "exitFullscreen": "ออกจากเต็มหน้าจอ (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "ตรวจพบเลเยอร์ Rclone Crypt",
             "aerocryptImportDesc": "นำเข้าโปรไฟล์จาก rclone.conf สำหรับ {name}: เปิดเลเยอร์ตอนนี้หรือไม่?",
             "aerocryptImportOpen": "เปิดเลเยอร์",
-            "aerovaultOverlayExpired": "AeroVault Overlay ถูกล็อกเนื่องจากไม่มีการใช้งาน เปิดห้องนิรภัยอีกครั้งเพื่อดำเนินการต่อ"
+            "aerovaultOverlayExpired": "AeroVault Overlay ถูกล็อกเนื่องจากไม่มีการใช้งาน เปิดห้องนิรภัยอีกครั้งเพื่อดำเนินการต่อ",
+            "aerovaultOverlaySource": "โอเวอร์เลย์ AeroVault ทำงานอยู่ ({source})",
+            "fileOperationsLabel": "การดำเนินการไฟล์",
+            "overlayBadge": "โอเวอร์เลย์"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "การยืนยันตัวตนสองขั้นตอน",
                 "verify": "ยืนยัน & เปิดใช้งาน",
                 "active": "2FA ใช้งานอยู่",
-                "inactive": "2FA ไม่ได้ใช้งาน"
+                "inactive": "2FA ไม่ได้ใช้งาน",
+                "codeGroupLabel": "รหัส {count} หลัก",
+                "digitLabel": "หลักที่ {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "ไฟล์ที่กู้คืนจะปรากฏขึ้นอีกครั้งในโฟลเดอร์เดิม",
             "connectionNamePlaceholder": "ชื่อการเชื่อมต่อ (เช่น FileLu Cloud ของฉัน)",
             "trashAutoExpiry": "ไฟล์ในถังขยะจะถูกลบโดยอัตโนมัติโดย FileLu หลังจาก 7 วัน",
-            "rsyncTransferOnly": "จุดสิ้นสุดสำหรับการถ่ายโอนเท่านั้น: ไม่สามารถเรียกดูบน Rsync ได้ ใช้ Native API, WebDAV, S3 หรือ FTP เพื่อนำทาง; สลับเป็น Rsync สำหรับการถ่ายโอน delta แบนด์วิดท์สูง"
+            "rsyncTransferOnly": "จุดสิ้นสุดสำหรับการถ่ายโอนเท่านั้น: ไม่สามารถเรียกดูบน Rsync ได้ ใช้ Native API, WebDAV, S3 หรือ FTP เพื่อนำทาง; สลับเป็น Rsync สำหรับการถ่ายโอน delta แบนด์วิดท์สูง",
+            "badgePasswordProtected": "ป้องกันด้วยรหัสผ่าน",
+            "badgeWatermarked": "มีลายน้ำ"
         },
         "box": {
             "addComment": "เพิ่มความคิดเห็น",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} ไฟล์",
             "releaseAssetMany": "{count} ไฟล์",
             "repoPrivate": "ส่วนตัว",
-            "repoPublic": "สาธารณะ"
+            "repoPublic": "สาธารณะ",
+            "actionsLiveBadge": "สด",
+            "actionsRunningTitle": "GitHub Actions (กำลังทำงาน)",
+            "coAuthors": "ผู้ร่วมเขียน",
+            "pagesPathPlaceholder": "/ หรือ /docs",
+            "pagesStatusBuilding": "กำลังสร้าง",
+            "pagesStatusBuilt": "สร้างแล้ว",
+            "pagesStatusErrored": "ผิดพลาด",
+            "refreshBranches": "รีเฟรชสาขา",
+            "repoPrivateTitle": "คลังส่วนตัว",
+            "repoPublicTitle": "คลังสาธารณะ",
+            "unpushedCommitsOnBranchMany": "{count} คอมมิตที่ยังไม่ได้พุชบน {branch}",
+            "unpushedCommitsOnBranchOne": "{count} คอมมิตที่ยังไม่ได้พุชบน {branch}"
         },
         "filenNotes": {
             "title": "บันทึกเข้ารหัส",
@@ -5158,7 +5300,8 @@
             "tagName": "ชื่อแท็ก",
             "removeTag": "นำแท็กออก",
             "manageTags": "จัดการแท็ก",
-            "deleteTagConfirm": "ลบแท็ก “{name}” หรือไม่ โน้ตจะยังคงข้อความไว้"
+            "deleteTagConfirm": "ลบแท็ก “{name}” หรือไม่ โน้ตจะยังคงข้อความไว้",
+            "betaBadge": "เบต้า"
         },
         "shareLinkModal": {
             "title": "ลิงก์แชร์",
@@ -5426,7 +5569,8 @@
             "linkType": "ประเภท",
             "createMergeRequest": "สร้าง Merge Request",
             "mrTitle": "หัวข้อ MR",
-            "mrBody": "คำอธิบาย (ไม่บังคับ)"
+            "mrBody": "คำอธิบาย (ไม่บังคับ)",
+            "sourceCode": "ซอร์สโค้ด"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "ทำซ้ำผู้ใช้ (เฉพาะเซิร์ฟเวอร์ ไม่รวมรหัสผ่าน)",
             "copyLockedHint": "สลับไปยังบัญชีนี้ก่อนเพื่อทำซ้ำเซิร์ฟเวอร์ของบัญชี",
             "crossUserDedupTitle": "มีบัญชีอื่นบันทึกไว้แล้ว",
-            "crossUserDedupMessage": "\"{name}\" ใช้บัญชีเซิร์ฟเวอร์ที่บันทึกไว้ในอุปกรณ์นี้โดยบัญชีต่อไปนี้ด้วย: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" ใช้บัญชีเซิร์ฟเวอร์ที่บันทึกไว้ในอุปกรณ์นี้โดยบัญชีต่อไปนี้ด้วย: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "ปิดกล่องโต้ตอบรีเซ็ตรหัสผ่าน",
+                "confirmPassword": "ยืนยันรหัสผ่านใหม่",
+                "errMismatch": "รหัสผ่านบัญชีใหม่ไม่ตรงกัน",
+                "errNewRequired": "ป้อนรหัสผ่านบัญชีใหม่",
+                "errNotAuthorized": "คุณต้องเป็นผู้ดูแลระบบจึงจะรีเซ็ตรหัสผ่านของบัญชีอื่นได้",
+                "errNotForSelf": "ใช้ เปลี่ยนรหัสผ่าน กับบัญชีของคุณเอง",
+                "errStoreNotReady": "โปรดปลดล็อกห้องนิรภัยก่อน แล้วลองอีกครั้ง",
+                "errTypeReset": "พิมพ์ RESET เพื่อยืนยันการดำเนินการที่ทำลายข้อมูลนี้",
+                "errUserNotFound": "ผู้ใช้นี้ไม่มีอยู่แล้ว",
+                "newPassword": "รหัสผ่านบัญชีใหม่",
+                "statEncryptedBytes": "ไบต์ที่เข้ารหัส",
+                "statProfiles": "โปรไฟล์",
+                "statSettings": "การตั้งค่า",
+                "title": "รีเซ็ตรหัสผ่าน = ทำลายข้อมูล",
+                "typeReset": "พิมพ์ RESET",
+                "wipeDetail": "ไม่สามารถกู้คืนรหัสผ่านปัจจุบันได้ AeroFTP จะลบเซิร์ฟเวอร์ที่บันทึกไว้ การตั้งค่าผู้ใช้ และสถานะการล็อกของบัญชีเป้าหมาย จากนั้นจะออกคีย์เข้ารหัสใหม่ที่ได้รับการปกป้องด้วยรหัสผ่านใหม่",
+                "wipeWarning": "การดำเนินการนี้จะล้างพาร์ติชันที่เข้ารหัสของบัญชีเป้าหมายอย่างถาวร"
+            },
+            "dropdown": {
+                "accountPassword": "รหัสผ่านบัญชี",
+                "lock": "ล็อก",
+                "newUser": "ผู้ใช้ใหม่",
+                "noUsers": "ยังไม่มีผู้ใช้ ใช้ \"ผู้ใช้ใหม่\" ด้านล่างเพื่อเพิ่มผู้ใช้คนแรก",
+                "protectionNote": "บัญชีของคุณได้รับการปกป้องด้วยการเข้ารหัส Argon2id + AES-KW + AES-256-GCM",
+                "users": "ผู้ใช้"
+            }
         },
         "aerocryptNative": {
             "title": "เลเยอร์ซ้อน AeroCrypt",

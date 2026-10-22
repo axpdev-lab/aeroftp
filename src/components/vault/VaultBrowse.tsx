@@ -379,9 +379,9 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                 <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('vault.compressionProfile')}</label>
                                 <select value={state.newModeProfile} onChange={e => state.setNewModeProfile(e.target.value as typeof state.newModeProfile)}
                                     className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs">
-                                    <option value="fast">Fast (zstd -3)</option>
-                                    <option value="balanced">Balanced (zstd -9)</option>
-                                    <option value="archive">Archive (zstd -15)</option>
+                                    <option value="fast">{t('vault.compressionProfileFast')}</option>
+                                    <option value="balanced">{t('vault.compressionProfileBalanced')}</option>
+                                    <option value="archive">{t('vault.compressionProfileArchive')}</option>
                                 </select>
                             </div>
                         )}
@@ -553,7 +553,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                     <ul className="space-y-1 text-xs">
                                         {(state.scrubResult.damaged || []).map((d: any, i: number) => (
                                             <li key={i} className="p-2 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                                                {d.id} — offset {d.on_disk_start} (len {d.on_disk_len})
+                                                {t('vault.damagedChunkLocation', { id: String(d.id), offset: String(d.on_disk_start), len: String(d.on_disk_len) })}
                                             </li>
                                         ))}
                                     </ul>

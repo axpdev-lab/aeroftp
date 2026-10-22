@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Pokreni {cmd} i automatski ispuni URL",
                 "fetchUrl": "Dohvati URL",
                 "megacmdWebdavHint": "Korisničko ime i lozinka namjerno su izostavljeni. AeroFTP pri povezivanju sam pokreće \"{cmd}\" kako bi pokrenuo most i pročitao ovu adresu: polje možete ostaviti prazno. \"Dohvati URL\" je neobavezno ručno osvježavanje; ovdje promijenite port ako MEGAcmd koristi prilagođeni."
-            }
+            },
+            "manualStorageUnitLabel": "Jedinica {label}"
         },
         "browser": {
             "remote": "Udaljeno",
@@ -420,7 +421,19 @@
             "listingPath": "Popisivanje {path}...",
             "pleaseWait": "Pričekajte...",
             "sameNameLeakChip": "isti naziv",
-            "sameNameLeakTooltip": "Ovaj se naziv pojavljuje i na drugoj putanji u ovom šifriranom trezoru. Budući da se nazivi šifriraju deterministički, promatrač šifrirane pohrane može utvrditi da oba dijele isti naziv."
+            "sameNameLeakTooltip": "Ovaj se naziv pojavljuje i na drugoj putanji u ovom šifriranom trezoru. Budući da se nazivi šifriraju deterministički, promatrač šifrirane pohrane može utvrditi da oba dijele isti naziv.",
+            "endpointSelector": {
+                "localFolder": "Lokalna mapa",
+                "localFolderHint": "Odaberite lokalni put za ovu ploču",
+                "noSavedProfiles": "Nema spremljenih profila",
+                "savedProfiles": "Spremljeni udaljeni profili",
+                "title": "Krajnja točka"
+            },
+            "leftPanelMarker": "Lijeva ploča",
+            "localFilesLabel": "Lokalne datoteke",
+            "localFilesRightLabel": "Lokalne datoteke (desna ploča)",
+            "remoteFilesLabel": "Udaljene datoteke",
+            "rightPanelMarker": "Desna ploča"
         },
         "contextMenu": {
             "askAeroAgent": "Pitaj AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Graf brzine",
             "hideSpeedGraph": "Sakrij graf brzine",
             "speedAvg": "prosj. {speed}",
-            "speedPeak": "maks. {speed}"
+            "speedPeak": "maks. {speed}",
+            "badgeBatch": "SKUPNO",
+            "badgeDownload": "PREUZIMANJE",
+            "badgeLive": "UŽIVO",
+            "badgeStream": "TOK",
+            "badgeUpload": "PRIJENOS",
+            "earlierItemsHidden": "Skriveno ranijih stavki: {count}",
+            "folderFilesProgress": "{done}/{total} datoteka",
+            "laneDone": "gotovo",
+            "laneError": "pogreška",
+            "unifiedPlan": {
+                "destination": "Odredište",
+                "dialogLabel": "Plan prijenosa",
+                "engineAerovaultOverlay": "AeroVault sloj",
+                "engineCompareOnly": "Samo usporedba",
+                "engineCrossProfileSync": "Sinkronizacija među profilima",
+                "engineCrossProfileTransfer": "Prijenos među profilima",
+                "engineLocalDelta": "Lokalni delta prijenos",
+                "engineLocalFs": "Lokalni datotečni sustav",
+                "engineProviderDownload": "Preuzimanje od pružatelja",
+                "engineProviderUpload": "Prijenos k pružatelju",
+                "engineUnsupported": "Nije podržano",
+                "execute": "Izvrši",
+                "items": "Stavke",
+                "modeBackup": "Sigurnosna kopija",
+                "modeBisync": "Dvosmjerna sinkronizacija",
+                "modeCompare": "Usporedi",
+                "modeCopy": "Kopiraj",
+                "modeMirror": "Zrcali",
+                "modeMove": "Premjesti",
+                "modeSync": "Sinkroniziraj",
+                "notExecutable": "Ovaj par krajnjih točaka još nije izvršiv.",
+                "parallel": "Paralelno",
+                "reviewBeforeExecution": "Pregledaj prije izvršavanja",
+                "route": "{pair} putem {engine}",
+                "size": "Veličina",
+                "source": "Izvor",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Postavke",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "maks",
             "migrationCleanupHint": "Preporučeno za najveću sigurnost",
             "fontCustomOption": "Prilagođeno...",
-            "fontSystemInstallHint": "Zahtijeva instalaciju u sustav. AeroFTP automatski koristi zamjenu ako nije dostupno."
+            "fontSystemInstallHint": "Zahtijeva instalaciju u sustav. AeroFTP automatski koristi zamjenu ako nije dostupno.",
+            "fontSizeIndicatorLabel": "Font"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} datoteka, oslobođeno {size}",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Nadzorna ploča sinkronizacije u oblaku",
+            "dialogLoadingLabel": "Učitavanje sinkronizacije u oblaku",
+            "dialogSettingsLabel": "Postavke sinkronizacije u oblaku",
+            "dialogSetupLabel": "Postavljanje sinkronizacije u oblaku",
+            "onePerLineHint": "(jedan po retku)",
+            "pairsEditorLabel": "Uređivač parova AeroCloud",
+            "remoteSubfolderPlaceholder": "oblak"
         },
         "statusBar": {
             "connected": "Povezano",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "djelomično, nečitljive mape: {count}",
             "usedScanFailed": "Skeniranje iskorištene pohrane nije uspjelo",
             "usedScanEmpty": "Skeniranje putanje {path} nije pronašlo datoteke; zadržana je predmemorirana vrijednost. Provjerite putanju ili podršku poslužitelja za rekurzivno izlistavanje.",
-            "filenBridgeAccountTotal": "Filen Desktop ovdje ne prijavljuje ukupnu zauzetost vašeg računa: prikazana vrijednost zbroj je datoteka na ovoj putanji. Izvorna Filen veza odmah prikazuje ukupnu zauzetost računa."
+            "filenBridgeAccountTotal": "Filen Desktop ovdje ne prijavljuje ukupnu zauzetost vašeg računa: prikazana vrijednost zbroj je datoteka na ovoj putanji. Izvorna Filen veza odmah prikazuje ukupnu zauzetost računa.",
+            "ariaLabel": "Traka stanja",
+            "debugBadge": "OTKLANJANJE",
+            "debugModeActive": "Način otklanjanja pogrešaka aktivan"
         },
         "dialogs": {
             "confirmTitle": "Potvrdi",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "npr. {template}",
             "jurisdiction": "Nadležnost",
             "insecureCertDialogLabel": "Upozorenje o nesigurnom certifikatu",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Provjera ključa poslužitelja"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -2173,7 +2236,10 @@
             "rename": "Preimenuj",
             "resume": "Nastavi",
             "resumeHint": "Nastavi prekinuti prijenos umjesto ponovnog pokretanja",
-            "cancel": "Odustani"
+            "cancel": "Odustani",
+            "dialogLabel": "Potvrda prepisivanja",
+            "moreInQueue": "+{count} u redu čekanja",
+            "unknownDate": "Nepoznato"
         },
         "statusbar": {
             "queue": "Red",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Upotrebljivi parovi putanja (lokalna/udaljena) u ovom predlošku: {count}. Prozor AeroSync radi s točno jednim parom, pa ništa nije uvezeno. Uredite predložak tako da ostane samo jedan par, a zatim ga ponovno uvezite.",
             "templateNamePlaceholder": "npr. Noćna sigurnosna kopija na S3",
             "templateDescPlaceholder": "Čemu služi ovaj predložak (neobavezno)",
-            "templateExportCliDesc": "Omotač za aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Omotač za aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Onemogući",
+            "multiPathEditorLabel": "Uređivač više putanja",
+            "multiPathEnablePair": "Omogući",
+            "multiPathLocalPlaceholder": "Lokalna putanja",
+            "multiPathRemotePlaceholder": "Udaljena putanja",
+            "rollbackDialogLabel": "Snimka za vraćanje",
+            "rollbackMoreFiles": "+još {count}...",
+            "rollbackSnapshotSummaryMany": "{count} datoteka, {size}",
+            "rollbackSnapshotSummaryOne": "{count} datoteka, {size}",
+            "templateDialogLabel": "Predložak sinkronizacije",
+            "templateExcludes": "Izuzeća",
+            "templateLocal": "Lokalno",
+            "templateRemote": "Udaljeno",
+            "templateRetries": "Ponovni pokušaji"
         },
         "ui": {
             "syncing": "Sinkronizacija...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Iz pariteta je obnovljeno zaglavlje ili manifest trezora.",
             "repairMetadataSuccess": "Popravak dovršen: iz pariteta je obnovljeno zaglavlje ili manifest trezora",
             "errorCorrectionBadge": "Ispravak pogrešaka",
-            "itemsInFolder": "{count} stavki u /{folder}"
+            "itemsInFolder": "{count} stavki u /{folder}",
+            "compressionProfileArchive": "Arhiva (zstd -15)",
+            "compressionProfileBalanced": "Uravnoteženo (zstd -9)",
+            "compressionProfileFast": "Brzo (zstd -3)",
+            "damagedChunkLocation": "{id} - pomak {offset} (duljina {len})",
+            "fallbackName": "Trezor",
+            "folderScanSummary": "{files} datoteka u {dirs} direktorija ({size})",
+            "namePlaceholderVault": "Moj sigurni trezor",
+            "namePlaceholderZip": "Moja arhiva",
+            "recentDaysAgo": "prije {count} d",
+            "recentFileCountMany": "{count} datoteka",
+            "recentFileCountOne": "{count} datoteka",
+            "recentMonthsAgo": "prije {count} mj."
         },
         "cryptomator": {
             "title": "Cryptomator Trezor",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Šifriranje odabranih stavki...",
             "ingestSkipped": "Trezor je stvoren, ali neke stavke nije bilo moguće dodati:",
             "selectionInfo": "{count} stavki bit će šifrirano u trezor",
-            "decrypting": "Dešifriranje…"
+            "decrypting": "Dešifriranje…",
+            "compatibleWithApp": "Kompatibilno s aplikacijom Cryptomator",
+            "createFormatBadge": "Cryptomator format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Sadržaj AES-GCM",
+            "featureNameCipher": "Nazivi AES-SIV",
+            "formatVersion": "Verzija formata {version}"
         },
         "compress": {
             "title": "Sažmi datoteke",
@@ -3769,7 +3866,9 @@
             "noChange": "(bez promjene)",
             "conflictWarning": "Neke datoteke bi imale isti naziv. Molimo prilagodite obrazac.",
             "existingCollision": "Neki novi nazivi podudaraju se s datotekama koje već postoje u ovoj mapi; te datoteke neće biti prepisane, a njihovo preimenovanje se preskače.",
-            "existingCollisionHint": "(već postoji)"
+            "existingCollisionHint": "(već postoji)",
+            "baseNamePlaceholder": "datoteka",
+            "invalidName": "{name} (nevažeće)"
         },
         "lockScreen": {
             "locked": "Aplikacija zaključana",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Nije montirano od strane radne površine. Iskopčajte i ponovno utaknite kabel, zatim ga ponovno otvorite.",
             "volumes_need_mount_observe": "U snapu se volumeni prikazuju nakon povezivanja dopuštenja mount-observe. Pokrenite ovo u terminalu, a zatim se vratite u AeroFTP:",
             "volumes_unavailable": "Nije moguće pročitati montirane volumene.",
-            "portable_device": "Prijenosni uređaj"
+            "portable_device": "Prijenosni uređaj",
+            "drivesLeftPanel": "Pogoni lijeve ploče",
+            "drivesRightPanel": "Pogoni desne ploče",
+            "modeGroupLabel": "Način bočne trake",
+            "placesSidebarLabel": "Bočna traka mjesta"
         },
         "viewMode": {
             "list": "Popis",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Pregledaj susjedne direktorije",
             "noSubdirectories": "Nema poddirektorija",
             "loading": "Učitavanje...",
-            "browseChildren": "Pregledaj podmape"
+            "browseChildren": "Pregledaj podmape",
+            "ariaLabel": "Navigacijski put",
+            "syncBoundaryTitle": "{path} (granica sinkronizacije)"
         },
         "bridge": {
             "checking": "Provjera {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Nema dostupnog pregleda",
-            "title": "Brzi pregled"
+            "title": "Brzi pregled",
+            "closePreview": "Zatvori pretpregled",
+            "dialogLabel": "Brzi pregled: {name}",
+            "nextFile": "Sljedeća datoteka",
+            "position": "{index} od {total}",
+            "previousFile": "Prethodna datoteka"
         },
         "properties": {
             "general": "Općenito",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Kontrolni zbroj stavke koji Immich bilježi pri prijenosu.",
                 "crypt-overlay-ciphertext": "Otisak pokriva šifrirane bajtove pohranjene na poslužitelju."
             },
-            "readOnlyIsLinkTarget": "Ovo je simbolička poveznica: dopuštenja pripadaju datoteci na koju pokazuje. Otvorite svojstva te datoteke da biste ih promijenili."
+            "readOnlyIsLinkTarget": "Ovo je simbolička poveznica: dopuštenja pripadaju datoteci na koju pokazuje. Otvorite svojstva te datoteke da biste ih promijenili.",
+            "exactBytes": "({bytes} bajtova)"
         },
         "duplicates": {
             "sortWasted": "Potrošen prostor",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Identično bajt po bajt",
             "modeNonIdenticalHint": "Perceptivna ili tekstualna sličnost, bez automatskog brisanja",
             "potentialWasteSelected": "potencijalno uzalud potrošeno (odabrano)",
-            "similarityDistance": "{similarity}, udalj. {distance}"
+            "similarityDistance": "{similarity}, udalj. {distance}",
+            "modeExact": "Točno",
+            "modeLabel": "Način:",
+            "modeNonIdentical": "Neidentično"
         },
         "diskUsage": {
             "title": "Korištenje diska",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Još nema mrežne aktivnosti. Prenesite datoteke da biste vidjeli događaje.",
                 "time": "Vrijeme",
                 "event": "Događaj",
-                "detail": "Detalj"
+                "detail": "Detalj",
+                "command": "Naredba",
+                "ipcTransfersCount": "IPC + Prijenosi ({count})",
+                "status": "Stanje",
+                "type": "Vrsta"
             },
             "system": {
                 "appVersion": "Verzija AeroFTP-a",
@@ -4140,7 +4258,8 @@
                 "dark": "Tamno",
                 "light": "Svijetlo",
                 "userAgent": "Korisnički agent",
-                "localStorageKeysTitle": "Ključevi LocalStoragea"
+                "localStorageKeysTitle": "Ključevi LocalStoragea",
+                "localStorageEntrySummary": "{size} bajtova · {preview}"
             },
             "copyFileListToClipboard": "Kopiraj popis datoteka u međuspremnik",
             "filesCopied": "{count} unosa datoteka kopirano u međuspremnik",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Dvaput kliknite odabir ili pritisnite Enter za primjenu, Esc za odustajanje",
                     "cropRatio": "Proporcije",
                     "cropRatioFree": "Slobodno",
-                    "cropRatioOriginal": "Izvorno"
+                    "cropRatioOriginal": "Izvorno",
+                    "rotateCcw90Short": "90° ulijevo",
+                    "rotateCw90Short": "90° udesno"
                 },
                 "toggleTransparencyBg": "Pozadina prozirnosti (kruži)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Učitavanje PDF-a...",
                 "open": "Otvori PDF",
                 "page": "Stranica",
-                "zoom": "Zumiranje"
+                "zoom": "Zumiranje",
+                "documentTitle": "PDF dokument"
             },
             "text": {
                 "auto": "Automatski",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Prelamanje teksta",
                 "zoomIn": "Povećaj",
-                "zoomOut": "Smanji"
+                "zoomOut": "Smanji",
+                "htmlPreviewFrameTitle": "HTML pretpregled"
             },
             "video": {
                 "exitFullscreen": "Izađi iz punog zaslona (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Otkriven Rclone Crypt sloj",
             "aerocryptImportDesc": "Profil uvezen iz rclone.conf za {name}: otvoriti sloj sada?",
             "aerocryptImportOpen": "Otvori sloj",
-            "aerovaultOverlayExpired": "AeroVault Overlay zaključan zbog neaktivnosti. Ponovno otvorite trezor za nastavak."
+            "aerovaultOverlayExpired": "AeroVault Overlay zaključan zbog neaktivnosti. Ponovno otvorite trezor za nastavak.",
+            "aerovaultOverlaySource": "AeroVault sloj aktivan ({source})",
+            "fileOperationsLabel": "Operacije s datotekama",
+            "overlayBadge": "SLOJ"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Dvofaktorska autentifikacija",
                 "verify": "Provjeri i omogući",
                 "active": "2FA aktivna",
-                "inactive": "2FA neaktivna"
+                "inactive": "2FA neaktivna",
+                "codeGroupLabel": "{count}-znamenkasti kod",
+                "digitLabel": "Znamenka {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Vraćene datoteke pojavit će se u izvornoj mapi",
             "connectionNamePlaceholder": "Naziv veze (npr. Moj FileLu Cloud)",
             "trashAutoExpiry": "FileLu automatski briše datoteke iz smeća nakon 7 dana",
-            "rsyncTransferOnly": "Krajnja točka samo za prijenos: pregledavanje nije dostupno na Rsyncu. Koristi Native API, WebDAV, S3 ili FTP za navigaciju; prebaci na Rsync za delta prijenose visoke propusnosti."
+            "rsyncTransferOnly": "Krajnja točka samo za prijenos: pregledavanje nije dostupno na Rsyncu. Koristi Native API, WebDAV, S3 ili FTP za navigaciju; prebaci na Rsync za delta prijenose visoke propusnosti.",
+            "badgePasswordProtected": "Zaštićeno lozinkom",
+            "badgeWatermarked": "S vodenim žigom"
         },
         "box": {
             "addComment": "Dodaj komentar",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} datoteka",
             "releaseAssetMany": "Datoteke: {count}",
             "repoPrivate": "Privatni",
-            "repoPublic": "Javni"
+            "repoPublic": "Javni",
+            "actionsLiveBadge": "Uživo",
+            "actionsRunningTitle": "GitHub Actions (u tijeku)",
+            "coAuthors": "Suautori",
+            "pagesPathPlaceholder": "/ ili /docs",
+            "pagesStatusBuilding": "gradi se",
+            "pagesStatusBuilt": "izgrađeno",
+            "pagesStatusErrored": "pogreška",
+            "refreshBranches": "Osvježi grane",
+            "repoPrivateTitle": "Privatni repozitorij",
+            "repoPublicTitle": "Javni repozitorij",
+            "unpushedCommitsOnBranchMany": "{count} neposlanih commitova na {branch}",
+            "unpushedCommitsOnBranchOne": "{count} neposlan commit na {branch}"
         },
         "filenNotes": {
             "title": "Šifrirane bilješke",
@@ -5158,7 +5300,8 @@
             "tagName": "Naziv oznake",
             "removeTag": "Ukloni oznaku",
             "manageTags": "Upravljaj oznakama",
-            "deleteTagConfirm": "Izbrisati oznaku „{name}“? Bilješke zadržavaju svoj tekst."
+            "deleteTagConfirm": "Izbrisati oznaku „{name}“? Bilješke zadržavaju svoj tekst.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Veza za dijeljenje",
@@ -5426,7 +5569,8 @@
             "linkType": "Vrsta",
             "createMergeRequest": "Stvori Merge Request",
             "mrTitle": "Naslov MR-a",
-            "mrBody": "Opis (neobavezno)"
+            "mrBody": "Opis (neobavezno)",
+            "sourceCode": "Izvorni kod"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Dupliciraj korisnika (samo poslužitelji, bez lozinki)",
             "copyLockedHint": "Prvo se prebacite na ovaj račun da biste duplicirali njegove poslužitelje",
             "crossUserDedupTitle": "Već spremljeno s drugog računa",
-            "crossUserDedupMessage": "\"{name}\" koristi poslužiteljski račun koji je na ovom uređaju spremio i: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" koristi poslužiteljski račun koji je na ovom uređaju spremio i: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Zatvori dijalog za ponovno postavljanje lozinke",
+                "confirmPassword": "Potvrdite novu lozinku",
+                "errMismatch": "Nove lozinke računa se ne podudaraju.",
+                "errNewRequired": "Unesite novu lozinku računa.",
+                "errNotAuthorized": "Morate biti administrator za ponovno postavljanje lozinke drugog računa.",
+                "errNotForSelf": "Koristite Promjena lozinke na vlastitom računu.",
+                "errStoreNotReady": "Prvo otključajte trezor pa pokušajte ponovno.",
+                "errTypeReset": "Upišite RESET za potvrdu ove destruktivne operacije.",
+                "errUserNotFound": "Ovaj korisnik više ne postoji.",
+                "newPassword": "Nova lozinka računa",
+                "statEncryptedBytes": "šifriranih bajtova",
+                "statProfiles": "profila",
+                "statSettings": "postavki",
+                "title": "Ponovno postavljanje lozinke = uništavanje podataka",
+                "typeReset": "Upišite RESET",
+                "wipeDetail": "Trenutnu lozinku nije moguće oporaviti. AeroFTP će izbrisati spremljene poslužitelje, korisničke postavke i stanje zaključavanja ciljnog računa, a zatim izdati novi ključ za šifriranje zaštićen novom lozinkom.",
+                "wipeWarning": "Time će se trajno izbrisati šifrirana particija ciljnog računa."
+            },
+            "dropdown": {
+                "accountPassword": "Lozinka računa",
+                "lock": "Zaključaj",
+                "newUser": "Novi korisnik",
+                "noUsers": "Još nema korisnika. Upotrijebite „Novi korisnik” u nastavku da biste dodali prvog.",
+                "protectionNote": "Vaš je račun zaštićen šifriranjem Argon2id + AES-KW + AES-256-GCM",
+                "users": "Korisnici"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt sloj",

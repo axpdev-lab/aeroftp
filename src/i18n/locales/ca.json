@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Executa {cmd} i omple l'URL automàticament",
                 "fetchUrl": "Obtén l'URL",
                 "megacmdWebdavHint": "El nom d'usuari i la contrasenya s'ometen expressament. AeroFTP executa ell mateix «{cmd}» en connectar per iniciar el pont i llegir aquesta adreça: podeu deixar-la en blanc. «Obtén l'URL» és una actualització manual opcional; canvieu aquí el port si MEGAcmd en fa servir un de personalitzat."
-            }
+            },
+            "manualStorageUnitLabel": "Unitat de {label}"
         },
         "browser": {
             "remote": "Remot",
@@ -420,7 +421,19 @@
             "listingPath": "S'està llistant {path}...",
             "pleaseWait": "Espereu...",
             "sameNameLeakChip": "mateix nom",
-            "sameNameLeakTooltip": "Aquest nom també apareix en una altra ruta d'aquesta bústia xifrada. Com que els noms es xifren de manera determinista, un observador del magatzem xifrat pot saber que tots dos comparteixen un nom."
+            "sameNameLeakTooltip": "Aquest nom també apareix en una altra ruta d'aquesta bústia xifrada. Com que els noms es xifren de manera determinista, un observador del magatzem xifrat pot saber que tots dos comparteixen un nom.",
+            "endpointSelector": {
+                "localFolder": "Carpeta local",
+                "localFolderHint": "Tria un camí local per a aquest tauler",
+                "noSavedProfiles": "No hi ha perfils desats",
+                "savedProfiles": "Perfils remots desats",
+                "title": "Punt de connexió"
+            },
+            "leftPanelMarker": "Tauler esquerre",
+            "localFilesLabel": "Fitxers locals",
+            "localFilesRightLabel": "Fitxers locals (tauler dret)",
+            "remoteFilesLabel": "Fitxers remots",
+            "rightPanelMarker": "Tauler dret"
         },
         "contextMenu": {
             "askAeroAgent": "Pregunta a AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Gràfic de velocitat",
             "hideSpeedGraph": "Amaga el gràfic de velocitat",
             "speedAvg": "mitj. {speed}",
-            "speedPeak": "pic {speed}"
+            "speedPeak": "pic {speed}",
+            "badgeBatch": "LOT",
+            "badgeDownload": "BAIXADA",
+            "badgeLive": "EN DIRECTE",
+            "badgeStream": "FLUX",
+            "badgeUpload": "PUJADA",
+            "earlierItemsHidden": "{count} elements anteriors amagats",
+            "folderFilesProgress": "{done}/{total} fitxers",
+            "laneDone": "fet",
+            "laneError": "error",
+            "unifiedPlan": {
+                "destination": "Destinació",
+                "dialogLabel": "Pla de transferència",
+                "engineAerovaultOverlay": "Superposició AeroVault",
+                "engineCompareOnly": "Només comparar",
+                "engineCrossProfileSync": "Sincronització entre perfils",
+                "engineCrossProfileTransfer": "Transferència entre perfils",
+                "engineLocalDelta": "Transport delta local",
+                "engineLocalFs": "Sistema de fitxers local",
+                "engineProviderDownload": "Baixada del proveïdor",
+                "engineProviderUpload": "Pujada al proveïdor",
+                "engineUnsupported": "No compatible",
+                "execute": "Executa",
+                "items": "Elements",
+                "modeBackup": "Còpia de seguretat",
+                "modeBisync": "Sincronització bidireccional",
+                "modeCompare": "Compara",
+                "modeCopy": "Copia",
+                "modeMirror": "Mirall",
+                "modeMove": "Mou",
+                "modeSync": "Sincronitza",
+                "notExecutable": "Aquest parell de punts finals encara no es pot executar.",
+                "parallel": "Paral·lel",
+                "reviewBeforeExecution": "Revisa abans d'executar",
+                "route": "{pair} mitjançant {engine}",
+                "size": "Mida",
+                "source": "Origen",
+                "title": "Pla: {mode}"
+            }
         },
         "settings": {
             "title": "Configuració",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "màx",
             "migrationCleanupHint": "Recomanat per a la màxima seguretat",
             "fontCustomOption": "Personalitzada...",
-            "fontSystemInstallHint": "Requereix instal·lació al sistema. AeroFTP recorre automàticament a una alternativa si no està disponible."
+            "fontSystemInstallHint": "Requereix instal·lació al sistema. AeroFTP recorre automàticament a una alternativa si no està disponible.",
+            "fontSizeIndicatorLabel": "Lletra"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} fitxers, {size} alliberats",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Tauler de sincronització al núvol",
+            "dialogLoadingLabel": "Carregant la sincronització al núvol",
+            "dialogSettingsLabel": "Configuració de la sincronització al núvol",
+            "dialogSetupLabel": "Preparació de la sincronització al núvol",
+            "onePerLineHint": "(un per línia)",
+            "pairsEditorLabel": "Editor de parelles d'AeroCloud",
+            "remoteSubfolderPlaceholder": "núvol"
         },
         "statusBar": {
             "connected": "Connectat",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "parcial, carpetes no llegibles: {count}",
             "usedScanFailed": "L'escaneig de l'emmagatzematge utilitzat ha fallat",
             "usedScanEmpty": "L'escaneig de {path} no ha trobat cap fitxer; s'ha mantingut el valor de la memòria cau. Comproveu el camí o el suport de llistat recursiu del servidor.",
-            "filenBridgeAccountTotal": "Filen Desktop no informa aquí del total del teu compte: la xifra d'espai usat és la suma dels fitxers d'aquesta ruta. La connexió nativa de Filen mostra el total del compte directament."
+            "filenBridgeAccountTotal": "Filen Desktop no informa aquí del total del teu compte: la xifra d'espai usat és la suma dels fitxers d'aquesta ruta. La connexió nativa de Filen mostra el total del compte directament.",
+            "ariaLabel": "Barra d'estat",
+            "debugBadge": "DEPURACIÓ",
+            "debugModeActive": "Mode de depuració actiu"
         },
         "dialogs": {
             "confirmTitle": "Confirmar",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "p. ex. {template}",
             "jurisdiction": "Jurisdicció",
             "insecureCertDialogLabel": "Avís de certificat insegur",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Verificació de la clau de l'amfitrió"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -2173,7 +2236,10 @@
             "rename": "Canvia el nom",
             "resume": "Reprèn",
             "resumeHint": "Continua la transferència interrompuda en lloc de reiniciar-la",
-            "cancel": "Cancel·la"
+            "cancel": "Cancel·la",
+            "dialogLabel": "Confirmació de sobreescriptura",
+            "moreInQueue": "+{count} a la cua",
+            "unknownDate": "Desconegut"
         },
         "statusbar": {
             "queue": "Cua",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Parelles de rutes (local/remota) utilitzables en aquesta plantilla: {count}. Una finestra d'AeroSync treballa amb exactament una parella, així que no s'ha importat res. Edita la plantilla perquè només hi quedi una parella i torna-la a importar.",
             "templateNamePlaceholder": "p. ex. Còpia de seguretat nocturna a S3",
             "templateDescPlaceholder": "Per a què serveix aquesta plantilla (opcional)",
-            "templateExportCliDesc": "Embolcall d'aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Embolcall d'aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Desactiva",
+            "multiPathEditorLabel": "Editor de camins múltiples",
+            "multiPathEnablePair": "Activa",
+            "multiPathLocalPlaceholder": "Camí local",
+            "multiPathRemotePlaceholder": "Camí remot",
+            "rollbackDialogLabel": "Instantània de restauració",
+            "rollbackMoreFiles": "+{count} més...",
+            "rollbackSnapshotSummaryMany": "{count} fitxers, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fitxer, {size}",
+            "templateDialogLabel": "Plantilla de sincronització",
+            "templateExcludes": "Exclusions",
+            "templateLocal": "Local",
+            "templateRemote": "Remot",
+            "templateRetries": "Reintents"
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "S'ha reconstruït la capçalera o el manifest del vault a partir de la paritat.",
             "repairMetadataSuccess": "Reparació completa: s'ha reconstruït la capçalera o el manifest del vault a partir de la paritat",
             "errorCorrectionBadge": "Correcció d'errors",
-            "itemsInFolder": "{count} elements a /{folder}"
+            "itemsInFolder": "{count} elements a /{folder}",
+            "compressionProfileArchive": "Arxiu (zstd -15)",
+            "compressionProfileBalanced": "Equilibrat (zstd -9)",
+            "compressionProfileFast": "Ràpid (zstd -3)",
+            "damagedChunkLocation": "{id} - desplaçament {offset} (longitud {len})",
+            "fallbackName": "Caixa forta",
+            "folderScanSummary": "{files} fitxers en {dirs} directoris ({size})",
+            "namePlaceholderVault": "La meva caixa forta segura",
+            "namePlaceholderZip": "El meu arxiu",
+            "recentDaysAgo": "fa {count} d",
+            "recentFileCountMany": "{count} fitxers",
+            "recentFileCountOne": "{count} fitxer",
+            "recentMonthsAgo": "fa {count} mesos"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "S'estan xifrant els elements seleccionats...",
             "ingestSkipped": "S'ha creat la caixa forta, però alguns elements no s'han pogut afegir:",
             "selectionInfo": "{count} element(s) es xifraran a la caixa forta",
-            "decrypting": "S'està desxifrant…"
+            "decrypting": "S'està desxifrant…",
+            "compatibleWithApp": "Compatible amb l'aplicació Cryptomator",
+            "createFormatBadge": "Cryptomator format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Contingut AES-GCM",
+            "featureNameCipher": "Noms AES-SIV",
+            "formatVersion": "Versió del format {version}"
         },
         "compress": {
             "title": "Comprimir fitxers",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Alguns fitxers tindrien el mateix nom. Si us plau, ajusteu el patró.",
             "apply": "Aplicar",
             "existingCollision": "Alguns noms nous coincideixen amb fitxers que ja hi ha en aquesta carpeta; aquests fitxers no se sobreescriuran i se n'ometrà el canvi de nom.",
-            "existingCollisionHint": "(ja existeix)"
+            "existingCollisionHint": "(ja existeix)",
+            "baseNamePlaceholder": "fitxer",
+            "invalidName": "{name} (no vàlid)"
         },
         "lockScreen": {
             "locked": "Aplicació bloquejada",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "No està muntat per l'escriptori. Desconnecteu i torneu a connectar el cable i obriu-lo de nou.",
             "volumes_need_mount_observe": "Al snap, els volums apareixen quan es connecta el permís mount-observe. Executa això en un terminal i torna a AeroFTP:",
             "volumes_unavailable": "No s'han pogut llegir els volums muntats.",
-            "portable_device": "Dispositiu portàtil"
+            "portable_device": "Dispositiu portàtil",
+            "drivesLeftPanel": "Unitats del panell esquerre",
+            "drivesRightPanel": "Unitats del panell dret",
+            "modeGroupLabel": "Mode de la barra lateral",
+            "placesSidebarLabel": "Barra lateral de llocs"
         },
         "viewMode": {
             "list": "Llista",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Explorar directoris germans",
             "loading": "Carregant...",
             "noSubdirectories": "No hi ha subdirectoris",
-            "browseChildren": "Explora subcarpetes"
+            "browseChildren": "Explora subcarpetes",
+            "ariaLabel": "Ruta de navegació",
+            "syncBoundaryTitle": "{path} (límit de sincronització)"
         },
         "bridge": {
             "checking": "Comprovant {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "No hi ha previsualització disponible",
-            "title": "Vista ràpida"
+            "title": "Vista ràpida",
+            "closePreview": "Tanca la previsualització",
+            "dialogLabel": "Vista ràpida: {name}",
+            "nextFile": "Fitxer següent",
+            "position": "{index} de {total}",
+            "previousFile": "Fitxer anterior"
         },
         "properties": {
             "general": "General",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "La suma de verificació de l'element que Immich registra en pujar-lo.",
                 "crypt-overlay-ciphertext": "El hash cobreix els bytes xifrats desats al servidor."
             },
-            "readOnlyIsLinkTarget": "Això és un enllaç simbòlic: els permisos pertanyen al fitxer al qual apunta. Obriu les propietats d'aquest fitxer per canviar-los."
+            "readOnlyIsLinkTarget": "Això és un enllaç simbòlic: els permisos pertanyen al fitxer al qual apunta. Obriu les propietats d'aquest fitxer per canviar-los.",
+            "exactBytes": "({bytes} bytes)"
         },
         "duplicates": {
             "sortWasted": "Espai malgastat",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Idèntic byte a byte",
             "modeNonIdenticalHint": "Semblança perceptiva o de text, sense supressió automàtica",
             "potentialWasteSelected": "desaprofitament potencial (seleccionats)",
-            "similarityDistance": "{similarity}, dist. {distance}"
+            "similarityDistance": "{similarity}, dist. {distance}",
+            "modeExact": "Exacte",
+            "modeLabel": "Mode:",
+            "modeNonIdentical": "No idèntic"
         },
         "diskUsage": {
             "title": "Ús del disc",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Encara no hi ha activitat de xarxa. Transferiu fitxers per veure els esdeveniments.",
                 "time": "Hora",
                 "event": "Esdeveniment",
-                "detail": "Detall"
+                "detail": "Detall",
+                "command": "Ordre",
+                "ipcTransfersCount": "IPC + Transferències ({count})",
+                "status": "Estat",
+                "type": "Tipus"
             },
             "system": {
                 "appVersion": "Versió d'AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Fosc",
                 "light": "Clar",
                 "userAgent": "Agent d'usuari",
-                "localStorageKeysTitle": "Claus de LocalStorage"
+                "localStorageKeysTitle": "Claus de LocalStorage",
+                "localStorageEntrySummary": "{size} bytes · {preview}"
             },
             "copyFileListToClipboard": "Copiar llista de fitxers al porta-retalls",
             "filesCopied": "{count} entrades de fitxers copiades al porta-retalls",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Fes doble clic a la selecció o prem Enter per aplicar, Esc per cancel·lar",
                     "cropRatio": "Proporcions",
                     "cropRatioFree": "Lliure",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° antihorari",
+                    "rotateCw90Short": "90° horari"
                 },
                 "toggleTransparencyBg": "Fons de transparència (alterna)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Carregant PDF...",
                 "open": "Obrir PDF",
                 "page": "Pàgina",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "Document PDF"
             },
             "text": {
                 "auto": "Automàtic",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tauleta (768px)",
                 "wordWrap": "Ajust de línia",
                 "zoomIn": "Ampliar",
-                "zoomOut": "Reduir"
+                "zoomOut": "Reduir",
+                "htmlPreviewFrameTitle": "Previsualització HTML"
             },
             "video": {
                 "exitFullscreen": "Sortir de pantalla completa (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Capa Rclone Crypt detectada",
             "aerocryptImportDesc": "Perfil importat des de rclone.conf per a {name}: vols obrir la capa ara?",
             "aerocryptImportOpen": "Obre la capa",
-            "aerovaultOverlayExpired": "AeroVault Overlay s'ha bloquejat per inactivitat. Torna a obrir la caixa forta per continuar."
+            "aerovaultOverlayExpired": "AeroVault Overlay s'ha bloquejat per inactivitat. Torna a obrir la caixa forta per continuar.",
+            "aerovaultOverlaySource": "Superposició AeroVault activa ({source})",
+            "fileOperationsLabel": "Operacions de fitxers",
+            "overlayBadge": "SUPERPOSICIÓ"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Autenticació de dos factors",
                 "verify": "Verificar i activar",
                 "active": "2FA activa",
-                "inactive": "2FA inactiva"
+                "inactive": "2FA inactiva",
+                "codeGroupLabel": "Codi de {count} dígits",
+                "digitLabel": "Dígit {index}"
             }
         },
         "vaultSync": {
@@ -4804,7 +4932,9 @@
             "trashFooter": "Els fitxers restaurats reapareixeran a la seva carpeta original",
             "connectionNamePlaceholder": "Nom de la connexió (p. ex. El meu FileLu Cloud)",
             "trashAutoExpiry": "FileLu elimina automàticament els fitxers de la paperera al cap de 7 dies",
-            "rsyncTransferOnly": "Endpoint només de transferència: la navegació no està disponible a Rsync. Utilitza Native API, WebDAV, S3 o FTP per navegar; canvia a Rsync per a transferències delta d'alta velocitat."
+            "rsyncTransferOnly": "Endpoint només de transferència: la navegació no està disponible a Rsync. Utilitza Native API, WebDAV, S3 o FTP per navegar; canvia a Rsync per a transferències delta d'alta velocitat.",
+            "badgePasswordProtected": "Protegit amb contrasenya",
+            "badgeWatermarked": "Amb marca d'aigua"
         },
         "box": {
             "addComment": "Afegir comentari",
@@ -5139,7 +5269,19 @@
             "releaseAssetOne": "{count} recurs",
             "releaseAssetMany": "{count} recursos",
             "repoPrivate": "Privat",
-            "repoPublic": "Públic"
+            "repoPublic": "Públic",
+            "actionsLiveBadge": "En directe",
+            "actionsRunningTitle": "GitHub Actions (en execució)",
+            "coAuthors": "Coautors",
+            "pagesPathPlaceholder": "/ o /docs",
+            "pagesStatusBuilding": "compilant",
+            "pagesStatusBuilt": "compilat",
+            "pagesStatusErrored": "amb errors",
+            "refreshBranches": "Actualitza les branques",
+            "repoPrivateTitle": "Repositori privat",
+            "repoPublicTitle": "Repositori públic",
+            "unpushedCommitsOnBranchMany": "{count} commits sense enviar a {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit sense enviar a {branch}"
         },
         "filenNotes": {
             "title": "Notes xifrades",
@@ -5177,7 +5319,8 @@
             "tagName": "Nom de l'etiqueta",
             "removeTag": "Elimina l'etiqueta",
             "manageTags": "Gestiona les etiquetes",
-            "deleteTagConfirm": "Vols eliminar l'etiqueta «{name}»? Les notes conserven el text."
+            "deleteTagConfirm": "Vols eliminar l'etiqueta «{name}»? Les notes conserven el text.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Enllaç per compartir",
@@ -5445,7 +5588,8 @@
             "linkType": "Tipus",
             "createMergeRequest": "Crear sol·licitud de fusió",
             "mrTitle": "Títol MR",
-            "mrBody": "Descripció (opcional)"
+            "mrBody": "Descripció (opcional)",
+            "sourceCode": "Codi font"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6027,7 +6171,34 @@
             "copy": "Duplica l'usuari (només servidors, sense contrasenyes)",
             "copyLockedHint": "Canvia primer a aquest compte per duplicar-ne els servidors",
             "crossUserDedupTitle": "Ja desat per un altre compte",
-            "crossUserDedupMessage": "\"{name}\" utilitza un compte de servidor que també està desat en aquest dispositiu per: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" utilitza un compte de servidor que també està desat en aquest dispositiu per: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Tanca el diàleg de restabliment de contrasenya",
+                "confirmPassword": "Confirmeu la nova contrasenya",
+                "errMismatch": "Les noves contrasenyes del compte no coincideixen.",
+                "errNewRequired": "Introduïu una nova contrasenya del compte.",
+                "errNotAuthorized": "Heu de ser administrador per restablir la contrasenya d'un altre compte.",
+                "errNotForSelf": "Fes servir Canvia la contrasenya al teu propi compte.",
+                "errStoreNotReady": "Desbloqueja primer la caixa forta i torna-ho a provar.",
+                "errTypeReset": "Escriu RESET per confirmar aquesta operació destructiva.",
+                "errUserNotFound": "Aquest usuari ja no existeix.",
+                "newPassword": "Contrasenya nova del compte",
+                "statEncryptedBytes": "bytes xifrats",
+                "statProfiles": "perfils",
+                "statSettings": "configuracions",
+                "title": "Restablir la contrasenya = destrucció de dades",
+                "typeReset": "Escriu RESET",
+                "wipeDetail": "La contrasenya actual no es pot recuperar. AeroFTP suprimirà els servidors desats, la configuració d'usuari i l'estat de bloqueig del compte de destinació i, després, emetrà una clau de xifratge nova protegida per la contrasenya nova.",
+                "wipeWarning": "Això esborrarà permanentment la partició xifrada del compte de destinació."
+            },
+            "dropdown": {
+                "accountPassword": "Contrasenya del compte",
+                "lock": "Bloqueja",
+                "newUser": "Usuari nou",
+                "noUsers": "Encara no hi ha usuaris. Fes servir «Usuari nou» a sota per afegir el primer.",
+                "protectionNote": "El teu compte està protegit amb xifratge Argon2id + AES-KW + AES-256-GCM",
+                "users": "Usuaris"
+            }
         },
         "aerocryptNative": {
             "title": "Superposició AeroCrypt",

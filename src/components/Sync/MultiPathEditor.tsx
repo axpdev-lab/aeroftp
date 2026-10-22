@@ -117,7 +117,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Multi-Path Editor">
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('syncPanel.multiPathEditorLabel')}>
             <div
                 {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"
@@ -159,7 +159,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                                         <button
                                             onClick={() => handleToggle(pair.id)}
                                             className="text-gray-400 hover:text-gray-200"
-                                            title={pair.enabled ? 'Disable' : 'Enable'}
+                                            title={pair.enabled ? t('syncPanel.multiPathDisablePair') : t('syncPanel.multiPathEnablePair')}
                                         >
                                             {pair.enabled
                                                 ? <ToggleRight size={18} className="text-green-500" />
@@ -180,7 +180,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                                             className="flex-1 text-xs bg-gray-100 dark:bg-gray-700 rounded px-2 py-1"
                                             value={pair.local_path}
                                             onChange={e => handlePathChange(pair.id, 'local_path', e.target.value)}
-                                            placeholder="Local path"
+                                            placeholder={t('syncPanel.multiPathLocalPlaceholder')}
                                             spellCheck={false}
                                         />
                                     </div>
@@ -190,7 +190,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                                             className="flex-1 text-xs bg-gray-100 dark:bg-gray-700 rounded px-2 py-1"
                                             value={pair.remote_path}
                                             onChange={e => handlePathChange(pair.id, 'remote_path', e.target.value)}
-                                            placeholder="Remote path"
+                                            placeholder={t('syncPanel.multiPathRemotePlaceholder')}
                                             spellCheck={false}
                                         />
                                     </div>

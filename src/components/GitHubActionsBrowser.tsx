@@ -177,7 +177,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
             {hasActiveRuns && (
               <span className="flex items-center gap-1 text-xs text-amber-400">
                 <Loader2 size={12} className="animate-spin" />
-                Live
+                {t('github.actionsLiveBadge')}
               </span>
             )}
           </div>

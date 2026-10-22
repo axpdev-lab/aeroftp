@@ -76,7 +76,7 @@ export const PanelEndpointSelector: React.FC<PanelEndpointSelectorProps> = ({
                 >
                     <div className="border-b border-gray-200 px-3 py-2 dark:border-gray-700">
                         <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Endpoint
+                            {t('browser.endpointSelector.title')}
                         </div>
                         <div className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400" title={endpointLabel}>
                             {endpointLabel}
@@ -96,18 +96,18 @@ export const PanelEndpointSelector: React.FC<PanelEndpointSelectorProps> = ({
                             <FolderOpen size={16} />
                         </span>
                         <span className="min-w-0">
-                            <span className="block font-medium">Local folder</span>
-                            <span className="block truncate text-xs text-gray-500 dark:text-gray-400">Choose a local path for this panel</span>
+                            <span className="block font-medium">{t('browser.endpointSelector.localFolder')}</span>
+                            <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{t('browser.endpointSelector.localFolderHint')}</span>
                         </span>
                     </button>
 
                     <div className="border-t border-gray-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                        Saved remote profiles
+                        {t('browser.endpointSelector.savedProfiles')}
                     </div>
                     <div className="max-h-72 overflow-y-auto py-1">
                         {savedProfiles.length === 0 ? (
                             <div className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">
-                                No saved profiles
+                                {t('browser.endpointSelector.noSavedProfiles')}
                             </div>
                         ) : (
                             savedProfiles.map(profile => (

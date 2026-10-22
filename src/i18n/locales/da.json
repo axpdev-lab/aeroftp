@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Kør {cmd} og udfyld URL'en automatisk",
                 "fetchUrl": "Hent URL",
                 "megacmdWebdavHint": "Brugernavn og adgangskode er udeladt med vilje. AeroFTP kører selv \"{cmd}\" ved tilslutning for at starte broen og læse denne adresse: feltet må gerne være tomt. Hent URL er en valgfri manuel opdatering; skift porten her, hvis MEGAcmd bruger en brugerdefineret port."
-            }
+            },
+            "manualStorageUnitLabel": "{label}-enhed"
         },
         "browser": {
             "remote": "Ekstern",
@@ -420,7 +421,19 @@
             "listingPath": "Viser {path}...",
             "pleaseWait": "Vent venligst...",
             "sameNameLeakChip": "samme navn",
-            "sameNameLeakTooltip": "Dette navn vises også på en anden sti i dette krypterede boks. Fordi navne krypteres deterministisk, kan en observatør af det krypterede lager se, at de to deler et navn."
+            "sameNameLeakTooltip": "Dette navn vises også på en anden sti i dette krypterede boks. Fordi navne krypteres deterministisk, kan en observatør af det krypterede lager se, at de to deler et navn.",
+            "endpointSelector": {
+                "localFolder": "Lokal mappe",
+                "localFolderHint": "Vælg en lokal sti til dette panel",
+                "noSavedProfiles": "Ingen gemte profiler",
+                "savedProfiles": "Gemte fjernprofiler",
+                "title": "Slutpunkt"
+            },
+            "leftPanelMarker": "Venstre panel",
+            "localFilesLabel": "Lokale filer",
+            "localFilesRightLabel": "Lokale filer (højre panel)",
+            "remoteFilesLabel": "Fjernfiler",
+            "rightPanelMarker": "Højre panel"
         },
         "contextMenu": {
             "askAeroAgent": "Spørg AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Hastighedsgraf",
             "hideSpeedGraph": "Skjul hastighedsgraf",
             "speedAvg": "gns. {speed}",
-            "speedPeak": "maks. {speed}"
+            "speedPeak": "maks. {speed}",
+            "badgeBatch": "PARTI",
+            "badgeDownload": "DOWNLOAD",
+            "badgeLive": "DIREKTE",
+            "badgeStream": "STRØM",
+            "badgeUpload": "UPLOAD",
+            "earlierItemsHidden": "{count} tidligere elementer skjult",
+            "folderFilesProgress": "{done}/{total} filer",
+            "laneDone": "færdig",
+            "laneError": "fejl",
+            "unifiedPlan": {
+                "destination": "Destination",
+                "dialogLabel": "Overførselsplan",
+                "engineAerovaultOverlay": "AeroVault-overlay",
+                "engineCompareOnly": "Kun sammenligning",
+                "engineCrossProfileSync": "Synkronisering mellem profiler",
+                "engineCrossProfileTransfer": "Overførsel mellem profiler",
+                "engineLocalDelta": "Lokal delta-transport",
+                "engineLocalFs": "Lokalt filsystem",
+                "engineProviderDownload": "Udbyder-download",
+                "engineProviderUpload": "Udbyder-upload",
+                "engineUnsupported": "Ikke understøttet",
+                "execute": "Udfør",
+                "items": "Elementer",
+                "modeBackup": "Sikkerhedskopi",
+                "modeBisync": "Tovejssynk",
+                "modeCompare": "Sammenlign",
+                "modeCopy": "Kopiér",
+                "modeMirror": "Spejl",
+                "modeMove": "Flyt",
+                "modeSync": "Synkronisér",
+                "notExecutable": "Dette endepunktspar kan endnu ikke udføres.",
+                "parallel": "Parallel",
+                "reviewBeforeExecution": "Gennemse før udførelse",
+                "route": "{pair} via {engine}",
+                "size": "Størrelse",
+                "source": "Kilde",
+                "title": "Plan: {mode}"
+            }
         },
         "settings": {
             "title": "Indstillinger",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "maks",
             "migrationCleanupHint": "Anbefales for maksimal sikkerhed",
             "fontCustomOption": "Tilpasset...",
-            "fontSystemInstallHint": "Kræver systeminstallation. AeroFTP falder automatisk tilbage, hvis den ikke er tilgængelig."
+            "fontSystemInstallHint": "Kræver systeminstallation. AeroFTP falder automatisk tilbage, hvis den ikke er tilgængelig.",
+            "fontSizeIndicatorLabel": "Skrift"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} filer, {size} frigjort",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Oversigt over skysynkronisering",
+            "dialogLoadingLabel": "Skysynkronisering indlæses",
+            "dialogSettingsLabel": "Indstillinger for skysynkronisering",
+            "dialogSetupLabel": "Opsætning af skysynkronisering",
+            "onePerLineHint": "(én pr. linje)",
+            "pairsEditorLabel": "Editor til AeroCloud-par",
+            "remoteSubfolderPlaceholder": "sky"
         },
         "statusBar": {
             "connected": "Forbundet",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "delvist, ulæselige mapper: {count}",
             "usedScanFailed": "Scanning af brugt lagerplads mislykkedes",
             "usedScanEmpty": "Scanningen af {path} fandt ingen filer; det cachelagrede tal blev bevaret. Tjek stien eller serverens understøttelse af rekursiv visning.",
-            "filenBridgeAccountTotal": "Filen Desktop rapporterer ikke din kontos samlede forbrug her: det viste forbrug er summen af filerne under denne sti. Den native Filen-forbindelse viser kontoens samlede forbrug med det samme."
+            "filenBridgeAccountTotal": "Filen Desktop rapporterer ikke din kontos samlede forbrug her: det viste forbrug er summen af filerne under denne sti. Den native Filen-forbindelse viser kontoens samlede forbrug med det samme.",
+            "ariaLabel": "Statuslinje",
+            "debugBadge": "FEJLFINDING",
+            "debugModeActive": "Fejlfindingstilstand aktiv"
         },
         "dialogs": {
             "confirmTitle": "Bekræft",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "f.eks. {template}",
             "jurisdiction": "Jurisdiktion",
             "insecureCertDialogLabel": "Advarsel om usikkert certifikat",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Bekræftelse af værtsnøgle"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -2173,7 +2236,10 @@
             "rename": "Omdøb",
             "resume": "Genoptag",
             "resumeHint": "Fortsæt den afbrudte overførsel i stedet for at genstarte den",
-            "cancel": "Annullér"
+            "cancel": "Annullér",
+            "dialogLabel": "Bekræft overskrivning",
+            "moreInQueue": "+{count} i kø",
+            "unknownDate": "Ukendt"
         },
         "statusbar": {
             "queue": "Kø",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Brugbare stipar (lokal/fjern) i denne skabelon: {count}. Et AeroSync-vindue arbejder med præcis ét par, så intet blev importeret. Redigér skabelonen, så den kun indeholder ét par, og importér den derefter igen.",
             "templateNamePlaceholder": "f.eks. Natlig sikkerhedskopi til S3",
             "templateDescPlaceholder": "Hvad denne skabelon bruges til (valgfrit)",
-            "templateExportCliDesc": "Indpakningsscript til aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Indpakningsscript til aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Deaktiver",
+            "multiPathEditorLabel": "Editor til flere stier",
+            "multiPathEnablePair": "Aktiver",
+            "multiPathLocalPlaceholder": "Lokal sti",
+            "multiPathRemotePlaceholder": "Fjernsti",
+            "rollbackDialogLabel": "Gendannelsesøjebliksbillede",
+            "rollbackMoreFiles": "+{count} mere...",
+            "rollbackSnapshotSummaryMany": "{count} filer, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fil, {size}",
+            "templateDialogLabel": "Synkroniseringsskabelon",
+            "templateExcludes": "Udeladelser",
+            "templateLocal": "Lokal",
+            "templateRemote": "Fjern",
+            "templateRetries": "Genforsøg"
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Vault-headeren eller manifestet blev genopbygget ud fra paritet.",
             "repairMetadataSuccess": "Reparation fuldført: vault-headeren eller manifestet blev genopbygget ud fra paritet",
             "errorCorrectionBadge": "Fejlkorrektion",
-            "itemsInFolder": "{count} elementer i /{folder}"
+            "itemsInFolder": "{count} elementer i /{folder}",
+            "compressionProfileArchive": "Arkiv (zstd -15)",
+            "compressionProfileBalanced": "Balanceret (zstd -9)",
+            "compressionProfileFast": "Hurtig (zstd -3)",
+            "damagedChunkLocation": "{id} - forskydning {offset} (længde {len})",
+            "fallbackName": "Boks",
+            "folderScanSummary": "{files} filer i {dirs} mapper ({size})",
+            "namePlaceholderVault": "Min sikre boks",
+            "namePlaceholderZip": "Mit arkiv",
+            "recentDaysAgo": "for {count} d. siden",
+            "recentFileCountMany": "{count} filer",
+            "recentFileCountOne": "{count} fil",
+            "recentMonthsAgo": "for {count} md. siden"
         },
         "cryptomator": {
             "title": "Cryptomator-boks",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Krypterer valgte elementer...",
             "ingestSkipped": "Boksen blev oprettet, men nogle elementer kunne ikke tilføjes:",
             "selectionInfo": "{count} element(er) vil blive krypteret i boksen",
-            "decrypting": "Dekrypterer…"
+            "decrypting": "Dekrypterer…",
+            "compatibleWithApp": "Kompatibel med Cryptomator-appen",
+            "createFormatBadge": "Cryptomator-format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM-indhold",
+            "featureNameCipher": "AES-SIV-navne",
+            "formatVersion": "Formatversion {version}"
         },
         "compress": {
             "title": "Komprimer filer",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Nogle filer ville få det samme navn. Juster venligst mønsteret.",
             "apply": "Anvend",
             "existingCollision": "Nogle nye navne matcher filer, der allerede er i denne mappe; disse filer overskrives ikke, og deres omdøbning springes over.",
-            "existingCollisionHint": "(findes allerede)"
+            "existingCollisionHint": "(findes allerede)",
+            "baseNamePlaceholder": "fil",
+            "invalidName": "{name} (ugyldigt)"
         },
         "lockScreen": {
             "locked": "App låst",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Ikke monteret af skrivebordet. Træk kablet ud og sæt det i igen, og åbn det derefter igen.",
             "volumes_need_mount_observe": "I snap'en vises drev, når tilladelsen mount-observe er tilsluttet. Kør dette i en terminal, og vend derefter tilbage til AeroFTP:",
             "volumes_unavailable": "Kunne ikke læse de monterede drev.",
-            "portable_device": "Bærbar enhed"
+            "portable_device": "Bærbar enhed",
+            "drivesLeftPanel": "Drev i venstre panel",
+            "drivesRightPanel": "Drev i højre panel",
+            "modeGroupLabel": "Sidepanelets tilstand",
+            "placesSidebarLabel": "Sidepanel med steder"
         },
         "viewMode": {
             "list": "Liste",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Gennemse søskendemapper",
             "loading": "Indlæser...",
             "noSubdirectories": "Ingen undermapper",
-            "browseChildren": "Gennemse undermapper"
+            "browseChildren": "Gennemse undermapper",
+            "ariaLabel": "Stinavigation",
+            "syncBoundaryTitle": "{path} (synkroniseringsgrænse)"
         },
         "bridge": {
             "checking": "Kontrollerer {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Ingen forhåndsvisning tilgængelig",
-            "title": "Hurtig visning"
+            "title": "Hurtig visning",
+            "closePreview": "Luk forhåndsvisning",
+            "dialogLabel": "Hurtig visning: {name}",
+            "nextFile": "Næste fil",
+            "position": "{index} af {total}",
+            "previousFile": "Forrige fil"
         },
         "properties": {
             "general": "Generelt",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Den kontrolsum, som Immich registrerer for elementet ved upload.",
                 "crypt-overlay-ciphertext": "Kontrolsummen dækker de krypterede bytes, der ligger på serveren."
             },
-            "readOnlyIsLinkTarget": "Dette er et symbolsk link: rettighederne tilhører den fil, det peger på. Åbn den fils egenskaber for at ændre dem."
+            "readOnlyIsLinkTarget": "Dette er et symbolsk link: rettighederne tilhører den fil, det peger på. Åbn den fils egenskaber for at ændre dem.",
+            "exactBytes": "({bytes} bytes)"
         },
         "duplicates": {
             "sortWasted": "Spildt plads",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Byte for byte identisk",
             "modeNonIdenticalHint": "Perceptuel eller tekstlig lighed, ingen automatisk sletning",
             "potentialWasteSelected": "potentielt spild (valgte)",
-            "similarityDistance": "{similarity}, afst. {distance}"
+            "similarityDistance": "{similarity}, afst. {distance}",
+            "modeExact": "Nøjagtig",
+            "modeLabel": "Tilstand:",
+            "modeNonIdentical": "Ikke identisk"
         },
         "diskUsage": {
             "title": "Diskforbrug",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Ingen netværksaktivitet endnu. Overfør filer for at se hændelser.",
                 "time": "Tid",
                 "event": "Hændelse",
-                "detail": "Detalje"
+                "detail": "Detalje",
+                "command": "Kommando",
+                "ipcTransfersCount": "IPC + Overførsler ({count})",
+                "status": "Status",
+                "type": "Type"
             },
             "system": {
                 "appVersion": "AeroFTP-version",
@@ -4140,7 +4258,8 @@
                 "dark": "Mørk",
                 "light": "Lys",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "LocalStorage-nøgler"
+                "localStorageKeysTitle": "LocalStorage-nøgler",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Kopiér filliste til udklipsholder",
             "filesCopied": "{count} filposter kopieret til udklipsholder",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Dobbeltklik på markeringen eller tryk på Enter for at anvende, Esc for at annullere",
                     "cropRatio": "Proportioner",
                     "cropRatioFree": "Fri",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° mod uret",
+                    "rotateCw90Short": "90° med uret"
                 },
                 "toggleTransparencyBg": "Gennemsigtighedsbaggrund (skift)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Indlæser PDF...",
                 "open": "Åbn PDF",
                 "page": "Side",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "PDF-dokument"
             },
             "text": {
                 "auto": "Auto",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Tekstombrydning",
                 "zoomIn": "Zoom ind",
-                "zoomOut": "Zoom ud"
+                "zoomOut": "Zoom ud",
+                "htmlPreviewFrameTitle": "HTML-forhåndsvisning"
             },
             "video": {
                 "exitFullscreen": "Afslut fuldskærm (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt-overlay registreret",
             "aerocryptImportDesc": "Profil importeret fra rclone.conf for {name}: åbn overlayen nu?",
             "aerocryptImportOpen": "Åbn overlay",
-            "aerovaultOverlayExpired": "AeroVault Overlay er låst på grund af inaktivitet. Åbn boksen igen for at fortsætte."
+            "aerovaultOverlayExpired": "AeroVault Overlay er låst på grund af inaktivitet. Åbn boksen igen for at fortsætte.",
+            "aerovaultOverlaySource": "AeroVault-overlay aktiv ({source})",
+            "fileOperationsLabel": "Filhandlinger",
+            "overlayBadge": "OVERLAY"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Tofaktorgodkendelse",
                 "verify": "Bekræft & Aktivér",
                 "active": "2FA aktiv",
-                "inactive": "2FA inaktiv"
+                "inactive": "2FA inaktiv",
+                "codeGroupLabel": "{count}-cifret kode",
+                "digitLabel": "Ciffer {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Gendannede filer vises igen i deres originale mappe",
             "connectionNamePlaceholder": "Forbindelsesnavn (f.eks. Min FileLu Cloud)",
             "trashAutoExpiry": "Filer i papirkurven slettes automatisk af FileLu efter 7 dage",
-            "rsyncTransferOnly": "Endpoint kun til overførsel: gennemsyn er ikke tilgængelig på Rsync. Brug Native API, WebDAV, S3 eller FTP til at navigere; skift til Rsync for delta-overførsler med høj båndbredde."
+            "rsyncTransferOnly": "Endpoint kun til overførsel: gennemsyn er ikke tilgængelig på Rsync. Brug Native API, WebDAV, S3 eller FTP til at navigere; skift til Rsync for delta-overførsler med høj båndbredde.",
+            "badgePasswordProtected": "Adgangskodebeskyttet",
+            "badgeWatermarked": "Med vandmærke"
         },
         "box": {
             "addComment": "Tilføj kommentar",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} fil",
             "releaseAssetMany": "{count} filer",
             "repoPrivate": "Privat",
-            "repoPublic": "Offentligt"
+            "repoPublic": "Offentligt",
+            "actionsLiveBadge": "Aktiv",
+            "actionsRunningTitle": "GitHub Actions (kører)",
+            "coAuthors": "Medforfattere",
+            "pagesPathPlaceholder": "/ eller /docs",
+            "pagesStatusBuilding": "bygger",
+            "pagesStatusBuilt": "bygget",
+            "pagesStatusErrored": "fejlet",
+            "refreshBranches": "Opdater branches",
+            "repoPrivateTitle": "Privat repository",
+            "repoPublicTitle": "Offentligt repository",
+            "unpushedCommitsOnBranchMany": "{count} commits, der ikke er pushet, på {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit, der ikke er pushet, på {branch}"
         },
         "filenNotes": {
             "title": "Krypterede noter",
@@ -5158,7 +5300,8 @@
             "tagName": "Tagnavn",
             "removeTag": "Fjern tag",
             "manageTags": "Administrer tags",
-            "deleteTagConfirm": "Slet tagget »{name}«? Noter beholder deres tekst."
+            "deleteTagConfirm": "Slet tagget »{name}«? Noter beholder deres tekst.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Delingslink",
@@ -5426,7 +5569,8 @@
             "linkType": "Type",
             "createMergeRequest": "Opret Merge Request",
             "mrTitle": "MR-titel",
-            "mrBody": "Beskrivelse (valgfri)"
+            "mrBody": "Beskrivelse (valgfri)",
+            "sourceCode": "Kildekode"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Dubler bruger (kun servere, ingen adgangskoder)",
             "copyLockedHint": "Skift til denne konto først for at dublere dens servere",
             "crossUserDedupTitle": "Allerede gemt af en anden konto",
-            "crossUserDedupMessage": "\"{name}\" bruger en serverkonto, som også er gemt på denne enhed af: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" bruger en serverkonto, som også er gemt på denne enhed af: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Luk dialogen til nulstilling af adgangskode",
+                "confirmPassword": "Bekræft ny adgangskode",
+                "errMismatch": "De nye kontoadgangskoder stemmer ikke overens.",
+                "errNewRequired": "Angiv en ny kontoadgangskode.",
+                "errNotAuthorized": "Du skal være administrator for at nulstille en anden kontos adgangskode.",
+                "errNotForSelf": "Brug Skift adgangskode på din egen konto.",
+                "errStoreNotReady": "Lås boksen op først, og prøv igen.",
+                "errTypeReset": "Skriv RESET for at bekræfte denne destruktive handling.",
+                "errUserNotFound": "Denne bruger findes ikke længere.",
+                "newPassword": "Ny adgangskode til kontoen",
+                "statEncryptedBytes": "krypterede bytes",
+                "statProfiles": "profiler",
+                "statSettings": "indstillinger",
+                "title": "Nulstilling af adgangskode = sletning af data",
+                "typeReset": "Skriv RESET",
+                "wipeDetail": "Den nuværende adgangskode kan ikke gendannes. AeroFTP sletter målkontoens gemte servere, brugerindstillinger og låsestatus og udsteder derefter en ny krypteringsnøgle, der er beskyttet af den nye adgangskode.",
+                "wipeWarning": "Dette sletter permanent målkontoens krypterede partition."
+            },
+            "dropdown": {
+                "accountPassword": "Kontoens adgangskode",
+                "lock": "Lås",
+                "newUser": "Ny bruger",
+                "noUsers": "Ingen brugere endnu. Brug \"Ny bruger\" nedenfor til at tilføje den første.",
+                "protectionNote": "Din konto er beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering",
+                "users": "Brugere"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt-overlay",

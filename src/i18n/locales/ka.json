@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "{cmd}-ის გაშვება და URL-ის ავტომატურად შევსება",
                 "fetchUrl": "URL-ის მიღება",
                 "megacmdWebdavHint": "მომხმარებლის სახელი და პაროლი განზრახ არის გამოტოვებული. დაკავშირებისას AeroFTP თავად უშვებს „{cmd}“-ს, რათა ჩართოს ხიდი და წაიკითხოს ეს მისამართი: ველი შეიძლება ცარიელი დატოვოთ. „URL-ის მიღება“ არასავალდებულო ხელით განახლებაა; შეცვალეთ პორტი აქ, თუ MEGAcmd საკუთარ პორტს იყენებს."
-            }
+            },
+            "manualStorageUnitLabel": "{label} ერთეული"
         },
         "browser": {
             "remote": "დისტანციური",
@@ -420,7 +421,19 @@
             "listingPath": "{path}-ის ჩამონათვალი...",
             "pleaseWait": "გთხოვთ, დაელოდოთ...",
             "sameNameLeakChip": "იგივე სახელი",
-            "sameNameLeakTooltip": "ეს სახელი ასევე ჩნდება ამ დაშიფრულ საცავში სხვა გზაზე. რადგან სახელები დაშიფრულია დეტერმინისტულად, დაშიფრული საცავის დამკვირვებელს შეუძლია დაადგინოს, რომ ორივე ერთსა და იმავე სახელს იზიარებს."
+            "sameNameLeakTooltip": "ეს სახელი ასევე ჩნდება ამ დაშიფრულ საცავში სხვა გზაზე. რადგან სახელები დაშიფრულია დეტერმინისტულად, დაშიფრული საცავის დამკვირვებელს შეუძლია დაადგინოს, რომ ორივე ერთსა და იმავე სახელს იზიარებს.",
+            "endpointSelector": {
+                "localFolder": "ლოკალური საქაღალდე",
+                "localFolderHint": "აირჩიეთ ლოკალური გზა ამ პანელისთვის",
+                "noSavedProfiles": "შენახული პროფილები არ არის",
+                "savedProfiles": "შენახული დისტანციური პროფილები",
+                "title": "საბოლოო წერტილი"
+            },
+            "leftPanelMarker": "მარცხენა პანელი",
+            "localFilesLabel": "ლოკალური ფაილები",
+            "localFilesRightLabel": "ლოკალური ფაილები (მარჯვენა პანელი)",
+            "remoteFilesLabel": "დისტანციური ფაილები",
+            "rightPanelMarker": "მარჯვენა პანელი"
         },
         "contextMenu": {
             "askAeroAgent": "ჰკითხე AeroAgent-ს...",
@@ -680,7 +693,45 @@
             "speedGraph": "სიჩქარის გრაფიკი",
             "hideSpeedGraph": "სიჩქარის გრაფიკის დამალვა",
             "speedAvg": "საშ. {speed}",
-            "speedPeak": "მაქს. {speed}"
+            "speedPeak": "მაქს. {speed}",
+            "badgeBatch": "პაკეტი",
+            "badgeDownload": "ჩამოტვირთვა",
+            "badgeLive": "პირდაპირი",
+            "badgeStream": "ნაკადი",
+            "badgeUpload": "ატვირთვა",
+            "earlierItemsHidden": "დამალულია {count} წინა ელემენტი",
+            "folderFilesProgress": "{done}/{total} ფაილი",
+            "laneDone": "დასრულდა",
+            "laneError": "შეცდომა",
+            "unifiedPlan": {
+                "destination": "დანიშნულება",
+                "dialogLabel": "გადაცემის გეგმა",
+                "engineAerovaultOverlay": "AeroVault ფენა",
+                "engineCompareOnly": "მხოლოდ შედარება",
+                "engineCrossProfileSync": "პროფილებს შორის სინქრონიზაცია",
+                "engineCrossProfileTransfer": "პროფილებს შორის გადაცემა",
+                "engineLocalDelta": "ლოკალური დელტა ტრანსპორტი",
+                "engineLocalFs": "ლოკალური ფაილური სისტემა",
+                "engineProviderDownload": "პროვაიდერიდან ჩამოტვირთვა",
+                "engineProviderUpload": "პროვაიდერზე ატვირთვა",
+                "engineUnsupported": "მხარდაუჭერელი",
+                "execute": "შესრულება",
+                "items": "ელემენტები",
+                "modeBackup": "სარეზერვო ასლი",
+                "modeBisync": "ორმხრივი სინქრონიზაცია",
+                "modeCompare": "შედარება",
+                "modeCopy": "კოპირება",
+                "modeMirror": "სარკე",
+                "modeMove": "გადატანა",
+                "modeSync": "სინქრონიზაცია",
+                "notExecutable": "საბოლოო წერტილების ეს წყვილი ჯერ ვერ შესრულდება.",
+                "parallel": "პარალელური",
+                "reviewBeforeExecution": "გადახედვა შესრულებამდე",
+                "route": "{pair} (ძრავა: {engine})",
+                "size": "ზომა",
+                "source": "წყარო",
+                "title": "გეგმა: {mode}"
+            }
         },
         "settings": {
             "title": "პარამეტრები",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "მაქს",
             "migrationCleanupHint": "რეკომენდებულია მაქსიმალური უსაფრთხოებისთვის",
             "fontCustomOption": "მორგებული...",
-            "fontSystemInstallHint": "საჭიროებს სისტემაში ინსტალაციას. თუ მიუწვდომელია, AeroFTP ავტომატურად გადადის სარეზერვო ვარიანტზე."
+            "fontSystemInstallHint": "საჭიროებს სისტემაში ინსტალაციას. თუ მიუწვდომელია, AeroFTP ავტომატურად გადადის სარეზერვო ვარიანტზე.",
+            "fontSizeIndicatorLabel": "შრიფტი"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} ფაილი, გათავისუფლდა {size}",
             "maturity": {
                 "alpha": "ალფა"
-            }
+            },
+            "dialogDashboardLabel": "ღრუბლოვანი სინქრონიზაციის დაფა",
+            "dialogLoadingLabel": "ღრუბლოვანი სინქრონიზაციის ჩატვირთვა",
+            "dialogSettingsLabel": "ღრუბლოვანი სინქრონიზაციის პარამეტრები",
+            "dialogSetupLabel": "ღრუბლოვანი სინქრონიზაციის დაყენება",
+            "onePerLineHint": "(თითო ხაზზე ერთი)",
+            "pairsEditorLabel": "AeroCloud წყვილების რედაქტორი",
+            "remoteSubfolderPlaceholder": "ღრუბელი"
         },
         "statusBar": {
             "connected": "დაკავშირებული",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "ნაწილობრივი, წაუკითხავი საქაღალდეები: {count}",
             "usedScanFailed": "გამოყენებული მეხსიერების სკანირება ვერ მოხერხდა",
             "usedScanEmpty": "{path}-ის სკანირებამ ფაილი ვერ იპოვა; ქეშირებული მნიშვნელობა შენარჩუნდა. შეამოწმეთ ბილიკი ან სერვერის რეკურსიული ჩამონათვლის მხარდაჭერა.",
-            "filenBridgeAccountTotal": "Filen Desktop აქ არ აჩვენებს თქვენი ანგარიშის მთლიან მოცულობას: გამოყენებული მაჩვენებელი ამ გზის ქვეშ არსებული ფაილების ჯამია. Filen-ის ნატიური კავშირი ანგარიშის მთლიან მოცულობას მაშინვე აჩვენებს."
+            "filenBridgeAccountTotal": "Filen Desktop აქ არ აჩვენებს თქვენი ანგარიშის მთლიან მოცულობას: გამოყენებული მაჩვენებელი ამ გზის ქვეშ არსებული ფაილების ჯამია. Filen-ის ნატიური კავშირი ანგარიშის მთლიან მოცულობას მაშინვე აჩვენებს.",
+            "ariaLabel": "სტატუსის ზოლი",
+            "debugBadge": "გამართვა",
+            "debugModeActive": "გამართვის რეჟიმი აქტიურია"
         },
         "dialogs": {
             "confirmTitle": "დადასტურება",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "მაგ. {template}",
             "jurisdiction": "იურისდიქცია",
             "insecureCertDialogLabel": "დაუცველი სერტიფიკატის გაფრთხილება",
-            "betaBadge": "ბეტა"
+            "betaBadge": "ბეტა",
+            "hostKeyDialogLabel": "ჰოსტის გასაღების შემოწმება"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -2173,7 +2236,10 @@
             "rename": "სახელის შეცვლა",
             "resume": "გაგრძელება",
             "resumeHint": "გააგრძელეთ შეწყვეტილი გადაცემა თავიდან დაწყების ნაცვლად",
-            "cancel": "გაუქმება"
+            "cancel": "გაუქმება",
+            "dialogLabel": "გადაწერის დადასტურება",
+            "moreInQueue": "+{count} რიგში",
+            "unknownDate": "უცნობი"
         },
         "statusbar": {
             "queue": "Queue",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "გამოსადეგი ბილიკის წყვილები (ლოკალური/დისტანციური) ამ შაბლონში: {count}. AeroSync-ის ფანჯარა მუშაობს ზუსტად ერთ წყვილთან, ამიტომ არაფერი დაიმპორტებულა. დაარედაქტირეთ შაბლონი ისე, რომ მხოლოდ ერთი წყვილი დარჩეს, შემდეგ კი ხელახლა დააიმპორტეთ.",
             "templateNamePlaceholder": "მაგ. ღამის სარეზერვო ასლი S3-ზე",
             "templateDescPlaceholder": "რისთვის არის ეს შაბლონი (არასავალდებულო)",
-            "templateExportCliDesc": "aeroftp-cli sync ბრძანების გარსი ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync ბრძანების გარსი ({shell})",
+            "multiPathDisablePair": "გამორთვა",
+            "multiPathEditorLabel": "მრავალი ბილიკის რედაქტორი",
+            "multiPathEnablePair": "ჩართვა",
+            "multiPathLocalPlaceholder": "ლოკალური ბილიკი",
+            "multiPathRemotePlaceholder": "დისტანციური ბილიკი",
+            "rollbackDialogLabel": "აღდგენის სნეპშოტი",
+            "rollbackMoreFiles": "+კიდევ {count}...",
+            "rollbackSnapshotSummaryMany": "{count} ფაილი, {size}",
+            "rollbackSnapshotSummaryOne": "{count} ფაილი, {size}",
+            "templateDialogLabel": "სინქრონიზაციის შაბლონი",
+            "templateExcludes": "გამორიცხვები",
+            "templateLocal": "ლოკალური",
+            "templateRemote": "დისტანციური",
+            "templateRetries": "ხელახალი ცდები"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "საცავის სათაური ან მანიფესტი აღდგა პარიტეტიდან.",
             "repairMetadataSuccess": "აღდგენა დასრულდა: საცავის სათაური ან მანიფესტი აღდგა პარიტეტიდან",
             "errorCorrectionBadge": "შეცდომების შესწორება",
-            "itemsInFolder": "{count} ელემენტი საქაღალდეში /{folder}"
+            "itemsInFolder": "{count} ელემენტი საქაღალდეში /{folder}",
+            "compressionProfileArchive": "არქივი (zstd -15)",
+            "compressionProfileBalanced": "დაბალანსებული (zstd -9)",
+            "compressionProfileFast": "სწრაფი (zstd -3)",
+            "damagedChunkLocation": "{id} - წანაცვლება {offset} (სიგრძე {len})",
+            "fallbackName": "საცავი",
+            "folderScanSummary": "{files} ფაილი {dirs} საქაღალდეში ({size})",
+            "namePlaceholderVault": "ჩემი დაცული საცავი",
+            "namePlaceholderZip": "ჩემი არქივი",
+            "recentDaysAgo": "{count} დღის წინ",
+            "recentFileCountMany": "{count} ფაილი",
+            "recentFileCountOne": "{count} ფაილი",
+            "recentMonthsAgo": "{count} თვის წინ"
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "არჩეული ელემენტების დაშიფვრა...",
             "ingestSkipped": "სეიფი შეიქმნა, თუმცა ზოგიერთი ელემენტის დამატება ვერ მოხერხდა:",
             "selectionInfo": "{count} ელემენტი დაიშიფრება სეიფში",
-            "decrypting": "იშიფრება…"
+            "decrypting": "იშიფრება…",
+            "compatibleWithApp": "თავსებადია Cryptomator აპთან",
+            "createFormatBadge": "Cryptomator ფორმატი 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM შიგთავსი",
+            "featureNameCipher": "AES-SIV სახელები",
+            "formatVersion": "ფორმატი {version}"
         },
         "compress": {
             "title": "ფაილების შეკუმშვა",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "ზოგი ფაილი ერთსა და იმავე სახელს მიიღებს. გთხოვთ შეცვალოთ შაბლონი.",
             "apply": "გამოყენება",
             "existingCollision": "ზოგიერთი ახალი სახელი ემთხვევა ამ საქაღალდეში უკვე არსებულ ფაილებს; ეს ფაილები არ გადაიწერება და მათი გადარქმევა გამოტოვდება.",
-            "existingCollisionHint": "(უკვე არსებობს)"
+            "existingCollisionHint": "(უკვე არსებობს)",
+            "baseNamePlaceholder": "ფაილი",
+            "invalidName": "{name} (არასწორი)"
         },
         "lockScreen": {
             "locked": "აპი ჩაკეტილია",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "სამუშაო მაგიდის მიერ არ არის მიმაგრებული. ამოაძრეთ და ხელახლა შეაერთეთ კაბელი, შემდეგ კვლავ გახსენით.",
             "volumes_need_mount_observe": "Snap-ში ტომები ჩნდება mount-observe ნებართვის დაკავშირების შემდეგ. გაუშვით ეს ტერმინალში და დაბრუნდით AeroFTP-ში:",
             "volumes_unavailable": "მიმაგრებული ტომების წაკითხვა ვერ მოხერხდა.",
-            "portable_device": "პორტატული მოწყობილობა"
+            "portable_device": "პორტატული მოწყობილობა",
+            "drivesLeftPanel": "მარცხენა პანელის დისკები",
+            "drivesRightPanel": "მარჯვენა პანელის დისკები",
+            "modeGroupLabel": "გვერდითი ზოლის რეჟიმი",
+            "placesSidebarLabel": "ადგილების გვერდითი ზოლი"
         },
         "viewMode": {
             "list": "სია",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "მეზობელი დირექტორიების დათვალიერება",
             "loading": "ჩატვირთვა...",
             "noSubdirectories": "ქვესაქაღალდეები არ არის",
-            "browseChildren": "ქვედირექტორიების დათვალიერება"
+            "browseChildren": "ქვედირექტორიების დათვალიერება",
+            "ariaLabel": "ნავიგაციის ბილიკი",
+            "syncBoundaryTitle": "{path} (სინქრონიზაციის საზღვარი)"
         },
         "bridge": {
             "checking": "{app}-ის შემოწმება…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "პრევიუ მიუწვდომელია",
-            "title": "სწრაფი დათვალიერება"
+            "title": "სწრაფი დათვალიერება",
+            "closePreview": "გადახედვის დახურვა",
+            "dialogLabel": "სწრაფი დათვალიერება: {name}",
+            "nextFile": "შემდეგი ფაილი",
+            "position": "{index} / {total}",
+            "previousFile": "წინა ფაილი"
         },
         "properties": {
             "general": "ზოგადი",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "მედიაფაილის საკონტროლო ჯამი, რომელსაც Immich ატვირთვისას იწერს.",
                 "crypt-overlay-ciphertext": "ჰეში სერვერზე შენახულ დაშიფრულ ბაიტებს ეხება."
             },
-            "readOnlyIsLinkTarget": "ეს არის სიმბოლური ბმული: ნებართვები ეკუთვნის ფაილს, რომელზეც ის მიუთითებს. მათ შესაცვლელად გახსენით იმ ფაილის თვისებები."
+            "readOnlyIsLinkTarget": "ეს არის სიმბოლური ბმული: ნებართვები ეკუთვნის ფაილს, რომელზეც ის მიუთითებს. მათ შესაცვლელად გახსენით იმ ფაილის თვისებები.",
+            "exactBytes": "({bytes} ბაიტი)"
         },
         "duplicates": {
             "sortWasted": "დაკარგული სივრცე",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "ბაიტ ბაიტ იდენტური",
             "modeNonIdenticalHint": "აღქმითი ან ტექსტური მსგავსება, ავტომატური წაშლის გარეშე",
             "potentialWasteSelected": "პოტენციურად გაფლანგული (არჩეული)",
-            "similarityDistance": "{similarity}, მანძ. {distance}"
+            "similarityDistance": "{similarity}, მანძ. {distance}",
+            "modeExact": "ზუსტი",
+            "modeLabel": "რეჟიმი:",
+            "modeNonIdentical": "არაიდენტური"
         },
         "diskUsage": {
             "title": "დისკის გამოყენება",
@@ -4093,7 +4207,11 @@
                 "noActivity": "ჯერ არ არის ქსელური აქტივობა. გადაიტანეთ ფაილები მოვლენების სანახავად.",
                 "time": "დრო",
                 "event": "მოვლენა",
-                "detail": "დეტალი"
+                "detail": "დეტალი",
+                "command": "ბრძანება",
+                "ipcTransfersCount": "IPC + გადაცემები ({count})",
+                "status": "სტატუსი",
+                "type": "ტიპი"
             },
             "system": {
                 "appVersion": "AeroFTP ვერსია",
@@ -4140,7 +4258,8 @@
                 "dark": "მუქი",
                 "light": "ღია",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "LocalStorage გასაღებები"
+                "localStorageKeysTitle": "LocalStorage გასაღებები",
+                "localStorageEntrySummary": "{size} ბაიტი · {preview}"
             },
             "copyFileListToClipboard": "ფაილების სიის clipboard-ში კოპირება",
             "filesCopied": "{count} ფაილის ჩანაწერი დაკოპირდა ბუფერში",
@@ -4386,7 +4505,9 @@
                     "cropHint": "გამოსაყენებლად ორჯერ დააწკაპუნეთ არჩევანზე ან დააჭირეთ Enter-ს, გასაუქმებლად Esc-ს",
                     "cropRatio": "პროპორციები",
                     "cropRatioFree": "თავისუფალი",
-                    "cropRatioOriginal": "ორიგინალი"
+                    "cropRatioOriginal": "ორიგინალი",
+                    "rotateCcw90Short": "90° საათის ისრის საწინააღმდეგოდ",
+                    "rotateCw90Short": "90° საათის ისრის მიმართულებით"
                 },
                 "toggleTransparencyBg": "გამჭვირვალობის ფონი (გადართვა)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "PDF-ის ჩატვირთვა...",
                 "open": "PDF-ის გახსნა",
                 "page": "გვერდი",
-                "zoom": "მასშტაბი"
+                "zoom": "მასშტაბი",
+                "documentTitle": "PDF დოკუმენტი"
             },
             "text": {
                 "auto": "ავტო",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "ტაბლეტი (768px)",
                 "wordWrap": "სიტყვების გადატანა",
                 "zoomIn": "გადიდება",
-                "zoomOut": "შემცირება"
+                "zoomOut": "შემცირება",
+                "htmlPreviewFrameTitle": "HTML გადახედვა"
             },
             "video": {
                 "exitFullscreen": "სრული ეკრანიდან გასვლა (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "აღმოჩენილია Rclone Crypt გადაფარვა",
             "aerocryptImportDesc": "პროფილი იმპორტირებულია rclone.conf-დან {name}-სთვის: გავხსნათ გადაფარვა ახლა?",
             "aerocryptImportOpen": "გადაფარვის გახსნა",
-            "aerovaultOverlayExpired": "AeroVault Overlay დაბლოკილია უმოქმედობის გამო. გასაგრძელებლად ხელახლა გახსენით სეიფი."
+            "aerovaultOverlayExpired": "AeroVault Overlay დაბლოკილია უმოქმედობის გამო. გასაგრძელებლად ხელახლა გახსენით სეიფი.",
+            "aerovaultOverlaySource": "AeroVault ფენა აქტიურია ({source})",
+            "fileOperationsLabel": "ფაილური ოპერაციები",
+            "overlayBadge": "ფენა"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "ორფაქტორიანი აუთენტიფიკაცია",
                 "verify": "დაადასტურე და ჩართე",
                 "active": "2FA აქტიურია",
-                "inactive": "2FA არააქტიურია"
+                "inactive": "2FA არააქტიურია",
+                "codeGroupLabel": "{count}-ნიშნა კოდი",
+                "digitLabel": "ციფრი {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "აღდგენილი ფაილები კვლავ გამოჩნდება მათ პირვანდელ საქაღალდეში",
             "connectionNamePlaceholder": "კავშირის სახელი (მაგ. ჩემი FileLu Cloud)",
             "trashAutoExpiry": "სანაგვეში მოთავსებულ ფაილებს FileLu 7 დღის შემდეგ ავტომატურად შლის",
-            "rsyncTransferOnly": "მხოლოდ ტრანსფერის ენდპოინტი: დათვალიერება Rsync-ში არ არის ხელმისაწვდომი. ნავიგაციისთვის გამოიყენე Native API, WebDAV, S3 ან FTP; მაღალი ჯაჭვის სიგანის delta ტრანსფერებისთვის გადადი Rsync-ზე."
+            "rsyncTransferOnly": "მხოლოდ ტრანსფერის ენდპოინტი: დათვალიერება Rsync-ში არ არის ხელმისაწვდომი. ნავიგაციისთვის გამოიყენე Native API, WebDAV, S3 ან FTP; მაღალი ჯაჭვის სიგანის delta ტრანსფერებისთვის გადადი Rsync-ზე.",
+            "badgePasswordProtected": "დაცულია პაროლით",
+            "badgeWatermarked": "ჭვირნიშნით"
         },
         "box": {
             "addComment": "კომენტარის დამატება",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} ფაილი",
             "releaseAssetMany": "{count} ფაილი",
             "repoPrivate": "პირადი",
-            "repoPublic": "საჯარო"
+            "repoPublic": "საჯარო",
+            "actionsLiveBadge": "პირდაპირ",
+            "actionsRunningTitle": "GitHub Actions (მიმდინარეობს)",
+            "coAuthors": "თანაავტორები",
+            "pagesPathPlaceholder": "/ ან /docs",
+            "pagesStatusBuilding": "იგება",
+            "pagesStatusBuilt": "აგებულია",
+            "pagesStatusErrored": "შეცდომა",
+            "refreshBranches": "ტოტების განახლება",
+            "repoPrivateTitle": "პირადი საცავი",
+            "repoPublicTitle": "საჯარო საცავი",
+            "unpushedCommitsOnBranchMany": "{count} გაუგზავნელი commit {branch}-ზე",
+            "unpushedCommitsOnBranchOne": "{count} გაუგზავნელი commit {branch}-ზე"
         },
         "filenNotes": {
             "title": "დაშიფრული ჩანაწერები",
@@ -5158,7 +5300,8 @@
             "tagName": "ტეგის სახელი",
             "removeTag": "ტეგის მოშორება",
             "manageTags": "ტეგების მართვა",
-            "deleteTagConfirm": "წაიშალოს ტეგი „{name}“? ჩანაწერები ტექსტს შეინარჩუნებენ."
+            "deleteTagConfirm": "წაიშალოს ტეგი „{name}“? ჩანაწერები ტექსტს შეინარჩუნებენ.",
+            "betaBadge": "ბეტა"
         },
         "shareLinkModal": {
             "title": "გაზიარების ბმული",
@@ -5426,7 +5569,8 @@
             "linkType": "ტიპი",
             "createMergeRequest": "შერწყმის მოთხოვნის შექმნა",
             "mrTitle": "MR სათაური",
-            "mrBody": "აღწერა (არასავალდებულო)"
+            "mrBody": "აღწერა (არასავალდებულო)",
+            "sourceCode": "წყაროს კოდი"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "მომხმარებლის დუბლირება (მხოლოდ სერვერები, პაროლების გარეშე)",
             "copyLockedHint": "სერვერების დუბლირებისთვის ჯერ გადართეთ ამ ანგარიშზე",
             "crossUserDedupTitle": "უკვე შენახულია სხვა ანგარიშის მიერ",
-            "crossUserDedupMessage": "\"{name}\" იყენებს სერვერის ანგარიშს, რომელიც ამ მოწყობილობაზე ასევე შენახულია შემდეგის მიერ: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" იყენებს სერვერის ანგარიშს, რომელიც ამ მოწყობილობაზე ასევე შენახულია შემდეგის მიერ: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "პაროლის აღდგენის ფანჯრის დახურვა",
+                "confirmPassword": "დაადასტურეთ ახალი პაროლი",
+                "errMismatch": "ანგარიშის ახალი პაროლები არ ემთხვევა.",
+                "errNewRequired": "შეიყვანეთ ანგარიშის ახალი პაროლი.",
+                "errNotAuthorized": "სხვა ანგარიშის პაროლის აღსადგენად ადმინისტრატორი უნდა იყოთ.",
+                "errNotForSelf": "თქვენს ანგარიშზე გამოიყენეთ პაროლის შეცვლა.",
+                "errStoreNotReady": "ჯერ განბლოკეთ სეიფი, შემდეგ კი სცადეთ ხელახლა.",
+                "errTypeReset": "ამ დესტრუქციული ოპერაციის დასადასტურებლად აკრიფეთ RESET.",
+                "errUserNotFound": "ეს მომხმარებელი აღარ არსებობს.",
+                "newPassword": "ანგარიშის ახალი პაროლი",
+                "statEncryptedBytes": "დაშიფრული ბაიტი",
+                "statProfiles": "პროფილი",
+                "statSettings": "პარამეტრი",
+                "title": "პაროლის გადატვირთვა = მონაცემების განადგურება",
+                "typeReset": "აკრიფეთ RESET",
+                "wipeDetail": "მიმდინარე პაროლის აღდგენა შეუძლებელია. AeroFTP წაშლის სამიზნე ანგარიშის შენახულ სერვერებს, მომხმარებლის პარამეტრებსა და დაბლოკვის მდგომარეობას, შემდეგ კი გასცემს ახალ დაშიფვრის გასაღებს, რომელსაც ახალი პაროლი იცავს.",
+                "wipeWarning": "ეს სამუდამოდ წაშლის სამიზნე ანგარიშის დაშიფრულ დანაყოფს."
+            },
+            "dropdown": {
+                "accountPassword": "ანგარიშის პაროლი",
+                "lock": "ჩაკეტვა",
+                "newUser": "ახალი მომხმარებელი",
+                "noUsers": "მომხმარებლები ჯერ არ არის. პირველის დასამატებლად გამოიყენეთ ქვემოთ „ახალი მომხმარებელი“.",
+                "protectionNote": "თქვენი ანგარიში დაცულია Argon2id + AES-KW + AES-256-GCM დაშიფვრით",
+                "users": "მომხმარებლები"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt გადაფარვა",

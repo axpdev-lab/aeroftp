@@ -829,7 +829,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           title={t('filenNotes.createNote')}
         >
           <Plus size={14} />
-          <span className="text-[9px] font-bold opacity-70">BETA</span>
+          <span className="text-[9px] font-bold opacity-70">{t('filenNotes.betaBadge')}</span>
         </button>
       </div>
 

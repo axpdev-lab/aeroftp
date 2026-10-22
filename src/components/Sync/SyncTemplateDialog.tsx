@@ -506,7 +506,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Sync Template">
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('syncPanel.templateDialogLabel')}>
             <div
                 {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg flex flex-col animate-scale-in"
@@ -707,7 +707,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             <div><strong>{t('syncPanel.templateName')}:</strong> {importPreview.name?.slice(0, 100)}</div>
                             <div><strong>{t('syncPanel.direction')}:</strong> {templateSummary(importPreview.profile.direction, importPreview.profile.delete_orphans)}</div>
                             {importPreview.exclude_patterns.length > 0 && (
-                                <div><strong>Excludes:</strong> {importPreview.exclude_patterns.join(', ')}</div>
+                                <div><strong>{t('syncPanel.templateExcludes')}:</strong> {importPreview.exclude_patterns.join(', ')}</div>
                             )}
                             <div className="pt-2">
                                 <button
@@ -760,11 +760,11 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                 )}
                             </div>
                             <div>
-                                <strong>Local:</strong>{' '}
+                                <strong>{t('syncPanel.templateLocal')}:</strong>{' '}
                                 {importedAerosyncScript.profile.local_path}
                             </div>
                             <div>
-                                <strong>Remote:</strong>{' '}
+                                <strong>{t('syncPanel.templateRemote')}:</strong>{' '}
                                 {importedAerosyncScript.profile.remote_path}
                             </div>
                             {importedAerosyncScript.profile.profile.delete_orphans && (
@@ -773,7 +773,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             {importedAerosyncScript.profile.profile.exclude_patterns
                                 .length > 0 && (
                                 <div>
-                                    <strong>Excludes:</strong>{' '}
+                                    <strong>{t('syncPanel.templateExcludes')}:</strong>{' '}
                                     {importedAerosyncScript.profile.profile.exclude_patterns.join(
                                         ', ',
                                     )}
@@ -822,16 +822,16 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                 <strong>{importedScript.profile_name}</strong>
                             </div>
                             <div><strong>{t('syncPanel.direction')}:</strong> {templateSummary(importedScript.direction, importedScript.delete_orphans)}</div>
-                            <div><strong>Local:</strong> {importedScript.local_path}</div>
-                            <div><strong>Remote:</strong> {importedScript.remote_path}</div>
+                            <div><strong>{t('syncPanel.templateLocal')}:</strong> {importedScript.local_path}</div>
+                            <div><strong>{t('syncPanel.templateRemote')}:</strong> {importedScript.remote_path}</div>
                             {importedScript.delete_orphans && (
                                 <div className="text-amber-500">--delete</div>
                             )}
                             {importedScript.exclude_patterns.length > 0 && (
-                                <div><strong>Excludes:</strong> {importedScript.exclude_patterns.join(', ')}</div>
+                                <div><strong>{t('syncPanel.templateExcludes')}:</strong> {importedScript.exclude_patterns.join(', ')}</div>
                             )}
                             {importedScript.retries != null && (
-                                <div><strong>Retries:</strong> {importedScript.retries}{importedScript.retries_sleep ? ` × ${importedScript.retries_sleep}` : ''}</div>
+                                <div><strong>{t('syncPanel.templateRetries')}:</strong> {importedScript.retries}{importedScript.retries_sleep ? ` × ${importedScript.retries_sleep}` : ''}</div>
                             )}
                             <div className="pt-2">
                                 <button

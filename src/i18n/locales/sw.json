@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Endesha {cmd} na ujaze URL kiotomatiki",
                 "fetchUrl": "Leta URL",
                 "megacmdWebdavHint": "Jina la mtumiaji na nenosiri vimeachwa kwa makusudi. AeroFTP huendesha \"{cmd}\" yenyewe wakati wa kuunganisha ili kuanzisha daraja na kusoma anwani hii: ni sawa kuiacha tupu. \"Leta URL\" ni uonyeshaji upya wa mkono wa hiari; badilisha mlango hapa ikiwa MEGAcmd inatumia mlango maalum."
-            }
+            },
+            "manualStorageUnitLabel": "Kipimo cha {label}"
         },
         "browser": {
             "remote": "Mbali",
@@ -420,7 +421,19 @@
             "listingPath": "Inaorodhesha {path}...",
             "pleaseWait": "Tafadhali subiri...",
             "sameNameLeakChip": "jina moja",
-            "sameNameLeakTooltip": "Jina hili pia linaonekana kwenye njia nyingine katika hifadhi hii iliyosimbwa. Kwa kuwa majina yanasimbwa kwa njia ya kubainika, mtazamaji wa hifadhi iliyosimbwa anaweza kubaini kuwa vyote viwili vinashiriki jina."
+            "sameNameLeakTooltip": "Jina hili pia linaonekana kwenye njia nyingine katika hifadhi hii iliyosimbwa. Kwa kuwa majina yanasimbwa kwa njia ya kubainika, mtazamaji wa hifadhi iliyosimbwa anaweza kubaini kuwa vyote viwili vinashiriki jina.",
+            "endpointSelector": {
+                "localFolder": "Folda ya ndani",
+                "localFolderHint": "Chagua njia ya ndani kwa paneli hii",
+                "noSavedProfiles": "Hakuna wasifu uliohifadhiwa",
+                "savedProfiles": "Wasifu wa mbali uliohifadhiwa",
+                "title": "Sehemu ya mwisho"
+            },
+            "leftPanelMarker": "Paneli ya kushoto",
+            "localFilesLabel": "Faili za ndani",
+            "localFilesRightLabel": "Faili za ndani (paneli ya kulia)",
+            "remoteFilesLabel": "Faili za mbali",
+            "rightPanelMarker": "Paneli ya kulia"
         },
         "contextMenu": {
             "askAeroAgent": "Uliza AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Grafu ya kasi",
             "hideSpeedGraph": "Ficha grafu ya kasi",
             "speedAvg": "wastani {speed}",
-            "speedPeak": "kilele {speed}"
+            "speedPeak": "kilele {speed}",
+            "badgeBatch": "KUNDI",
+            "badgeDownload": "PAKUA",
+            "badgeLive": "MOJA KWA MOJA",
+            "badgeStream": "MTIRIRIKO",
+            "badgeUpload": "PAKIA",
+            "earlierItemsHidden": "Vipengee {count} vya awali vimefichwa",
+            "folderFilesProgress": "Faili {done}/{total}",
+            "laneDone": "imekamilika",
+            "laneError": "hitilafu",
+            "unifiedPlan": {
+                "destination": "Mahali pa kwenda",
+                "dialogLabel": "Mpango wa uhamisho",
+                "engineAerovaultOverlay": "Tabaka la AeroVault",
+                "engineCompareOnly": "Linganisha tu",
+                "engineCrossProfileSync": "Usawazishaji kati ya wasifu",
+                "engineCrossProfileTransfer": "Uhamisho kati ya wasifu",
+                "engineLocalDelta": "Usafirishaji wa delta wa ndani",
+                "engineLocalFs": "Mfumo wa faili wa ndani",
+                "engineProviderDownload": "Upakuaji wa mtoa huduma",
+                "engineProviderUpload": "Upakiaji wa mtoa huduma",
+                "engineUnsupported": "Haitumiki",
+                "execute": "Tekeleza",
+                "items": "Vipengee",
+                "modeBackup": "Nakala rudufu",
+                "modeBisync": "Usawazishaji wa pande mbili",
+                "modeCompare": "Linganisha",
+                "modeCopy": "Nakili",
+                "modeMirror": "Kioo",
+                "modeMove": "Hamisha",
+                "modeSync": "Sawazisha",
+                "notExecutable": "Jozi hii ya ncha bado haiwezi kutekelezwa.",
+                "parallel": "Sambamba",
+                "reviewBeforeExecution": "Kagua kabla ya utekelezaji",
+                "route": "{pair} kupitia {engine}",
+                "size": "Ukubwa",
+                "source": "Chanzo",
+                "title": "Mpango: {mode}"
+            }
         },
         "settings": {
             "title": "Mipangilio",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "juu",
             "migrationCleanupHint": "Inapendekezwa kwa usalama wa juu kabisa",
             "fontCustomOption": "Maalum...",
-            "fontSystemInstallHint": "Inahitaji usakinishaji wa mfumo. AeroFTP hubadilisha kiotomatiki ikiwa haipatikani."
+            "fontSystemInstallHint": "Inahitaji usakinishaji wa mfumo. AeroFTP hubadilisha kiotomatiki ikiwa haipatikani.",
+            "fontSizeIndicatorLabel": "Fonti"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "faili {count}, nafasi ya {size} imeachiliwa",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Dashibodi ya Usawazishaji wa Wingu",
+            "dialogLoadingLabel": "Inapakia Usawazishaji wa Wingu",
+            "dialogSettingsLabel": "Mipangilio ya Usawazishaji wa Wingu",
+            "dialogSetupLabel": "Usanidi wa Usawazishaji wa Wingu",
+            "onePerLineHint": "(moja kwa kila mstari)",
+            "pairsEditorLabel": "Kihariri cha Jozi za AeroCloud",
+            "remoteSubfolderPlaceholder": "wingu"
         },
         "statusBar": {
             "connected": "Imeunganishwa",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "kwa sehemu, folda zisizosomeka: {count}",
             "usedScanFailed": "Uchanganuzi wa hifadhi iliyotumika umeshindwa",
             "usedScanEmpty": "Uchanganuzi wa njia {path} haukupata faili; thamani iliyohifadhiwa kwenye akiba ilihifadhiwa. Angalia njia au usaidizi wa seva kwa orodha ya kujirudia.",
-            "filenBridgeAccountTotal": "Filen Desktop haitoi hapa jumla ya akaunti yako: kiasi kilichotumika ni jumla ya faili zilizo chini ya njia hii. Muunganisho asilia wa Filen huonyesha jumla ya akaunti papo hapo."
+            "filenBridgeAccountTotal": "Filen Desktop haitoi hapa jumla ya akaunti yako: kiasi kilichotumika ni jumla ya faili zilizo chini ya njia hii. Muunganisho asilia wa Filen huonyesha jumla ya akaunti papo hapo.",
+            "ariaLabel": "Upau wa hali",
+            "debugBadge": "UTATUZI",
+            "debugModeActive": "Hali ya Utatuzi Imewashwa"
         },
         "dialogs": {
             "confirmTitle": "Thibitisha",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "k.m. {template}",
             "jurisdiction": "Mamlaka ya kisheria",
             "insecureCertDialogLabel": "Onyo la Cheti Kisicho Salama",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Uthibitishaji wa ufunguo wa seva pangishi"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -2173,7 +2236,10 @@
             "rename": "Badilisha jina",
             "resume": "Endelea",
             "resumeHint": "Endelea uhamishaji uliokatizwa badala ya kuuanza upya",
-            "cancel": "Ghairi"
+            "cancel": "Ghairi",
+            "dialogLabel": "Uthibitisho wa kuandika juu",
+            "moreInQueue": "+{count} kwenye foleni",
+            "unknownDate": "Haijulikani"
         },
         "statusbar": {
             "queue": "Foleni",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Jozi za njia (ndani/mbali) zinazoweza kutumika katika kiolezo hiki: {count}. Dirisha la AeroSync hufanya kazi na jozi moja tu, kwa hivyo hakuna kilichoingizwa. Hariri kiolezo ili ibaki jozi moja tu, kisha ukilete tena.",
             "templateNamePlaceholder": "k.m. Nakala rudufu ya usiku hadi S3",
             "templateDescPlaceholder": "Kiolezo hiki ni cha nini (hiari)",
-            "templateExportCliDesc": "Kifungashio cha aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Kifungashio cha aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Zima",
+            "multiPathEditorLabel": "Kihariri cha Njia Nyingi",
+            "multiPathEnablePair": "Washa",
+            "multiPathLocalPlaceholder": "Njia ya ndani",
+            "multiPathRemotePlaceholder": "Njia ya mbali",
+            "rollbackDialogLabel": "Picha ya Kurejesha",
+            "rollbackMoreFiles": "+{count} zaidi...",
+            "rollbackSnapshotSummaryMany": "Faili {count}, {size}",
+            "rollbackSnapshotSummaryOne": "Faili {count}, {size}",
+            "templateDialogLabel": "Kiolezo cha Usawazishaji",
+            "templateExcludes": "Vizuizi",
+            "templateLocal": "Ndani",
+            "templateRemote": "Mbali",
+            "templateRetries": "Majaribio upya"
         },
         "ui": {
             "syncing": "Inasawazisha...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Kichwa cha vault au manifesti yake kimejengwa upya kutoka kwa usawa.",
             "repairMetadataSuccess": "Marekebisho yamekamilika: kichwa cha vault au manifesti yake kimejengwa upya kutoka kwa usawa",
             "errorCorrectionBadge": "Usahihishaji wa hitilafu",
-            "itemsInFolder": "vipengele {count} katika /{folder}"
+            "itemsInFolder": "vipengele {count} katika /{folder}",
+            "compressionProfileArchive": "Kumbukumbu (zstd -15)",
+            "compressionProfileBalanced": "Wastani (zstd -9)",
+            "compressionProfileFast": "Haraka (zstd -3)",
+            "damagedChunkLocation": "{id} - mkengeuko {offset} (urefu {len})",
+            "fallbackName": "Hazina",
+            "folderScanSummary": "Faili {files} katika saraka {dirs} ({size})",
+            "namePlaceholderVault": "Hazina yangu salama",
+            "namePlaceholderZip": "Kumbukumbu yangu",
+            "recentDaysAgo": "siku {count} zilizopita",
+            "recentFileCountMany": "Faili {count}",
+            "recentFileCountOne": "Faili {count}",
+            "recentMonthsAgo": "miezi {count} iliyopita"
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Inasimba vipengele vilivyochaguliwa...",
             "ingestSkipped": "Hazina imeundwa, lakini baadhi ya vipengele havikuweza kuongezwa:",
             "selectionInfo": "Vipengele {count} vitasimbwa kwenye hazina",
-            "decrypting": "Inasimbua…"
+            "decrypting": "Inasimbua…",
+            "compatibleWithApp": "Inaoana na programu ya Cryptomator",
+            "createFormatBadge": "Cryptomator Muundo 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Maudhui ya AES-GCM",
+            "featureNameCipher": "Majina ya AES-SIV",
+            "formatVersion": "Muundo {version}"
         },
         "compress": {
             "title": "Bana Faili",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Baadhi ya faili zitakuwa na jina moja. Tafadhali rekebisha muundo.",
             "apply": "Tumia",
             "existingCollision": "Baadhi ya majina mapya yanalingana na faili ambazo tayari zipo katika folda hii; faili hizo hazitaandikwa juu na kubadilishwa jina kwazo kutarukwa.",
-            "existingCollisionHint": "(tayari ipo)"
+            "existingCollisionHint": "(tayari ipo)",
+            "baseNamePlaceholder": "faili",
+            "invalidName": "{name} (si sahihi)"
         },
         "lockScreen": {
             "locked": "Programu Imefungwa",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Haijawekwa na eneo-kazi. Ondoa kebo na uiunganishe tena, kisha fungua tena.",
             "volumes_need_mount_observe": "Katika snap, diski huonekana ruhusa ya mount-observe ikishaunganishwa. Endesha hii kwenye terminal, kisha rudi kwenye AeroFTP:",
             "volumes_unavailable": "Imeshindwa kusoma diski zilizopachikwa.",
-            "portable_device": "Kifaa kinachobebeka"
+            "portable_device": "Kifaa kinachobebeka",
+            "drivesLeftPanel": "Hifadhi za paneli ya kushoto",
+            "drivesRightPanel": "Hifadhi za paneli ya kulia",
+            "modeGroupLabel": "Hali ya utepe wa kando",
+            "placesSidebarLabel": "Utepe wa kando wa maeneo"
         },
         "viewMode": {
             "list": "Orodha",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Vinjari saraka ndugu",
             "loading": "Inapakia...",
             "noSubdirectories": "Hakuna saraka ndogo",
-            "browseChildren": "Vinjari direktori ndogo"
+            "browseChildren": "Vinjari direktori ndogo",
+            "ariaLabel": "Njia ya urambazaji",
+            "syncBoundaryTitle": "{path} (mpaka wa usawazishaji)"
         },
         "bridge": {
             "checking": "Inakagua {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Hakuna onyesho linalopatikana",
-            "title": "Angalia Haraka"
+            "title": "Angalia Haraka",
+            "closePreview": "Funga onyesho la kukagua",
+            "dialogLabel": "Angalia Haraka: {name}",
+            "nextFile": "Faili inayofuata",
+            "position": "{index} kati ya {total}",
+            "previousFile": "Faili iliyotangulia"
         },
         "properties": {
             "general": "Jumla",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Checksum ya rasilimali ambayo Immich huirekodi wakati wa kupakia.",
                 "crypt-overlay-ciphertext": "Muhtasari unahusu baiti zilizosimbwa zilizohifadhiwa kwenye seva."
             },
-            "readOnlyIsLinkTarget": "Hiki ni kiungo ishara: ruhusa ni za faili ambalo kinaelekeza kwake. Fungua sifa za faili hilo ili kuzibadilisha."
+            "readOnlyIsLinkTarget": "Hiki ni kiungo ishara: ruhusa ni za faili ambalo kinaelekeza kwake. Fungua sifa za faili hilo ili kuzibadilisha.",
+            "exactBytes": "(baiti {bytes})"
         },
         "duplicates": {
             "sortWasted": "Nafasi iliyopotea",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Sawa baiti kwa baiti",
             "modeNonIdenticalHint": "Ufanano wa kimtazamo au wa maandishi, hakuna kufuta kiotomatiki",
             "potentialWasteSelected": "upotevu unaowezekana (zilizochaguliwa)",
-            "similarityDistance": "{similarity}, umbali {distance}"
+            "similarityDistance": "{similarity}, umbali {distance}",
+            "modeExact": "Kamili",
+            "modeLabel": "Hali ya utendaji:",
+            "modeNonIdentical": "Zisizofanana"
         },
         "diskUsage": {
             "title": "Matumizi ya Diski",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Hakuna shughuli ya mtandao bado. Hamisha faili kuona matukio.",
                 "time": "Muda",
                 "event": "Tukio",
-                "detail": "Maelezo"
+                "detail": "Maelezo",
+                "command": "Amri",
+                "ipcTransfersCount": "IPC + Uhamishaji ({count})",
+                "status": "Hali",
+                "type": "Aina"
             },
             "system": {
                 "appVersion": "Toleo la AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Giza",
                 "light": "Mwangaza",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Funguo za LocalStorage"
+                "localStorageKeysTitle": "Funguo za LocalStorage",
+                "localStorageEntrySummary": "baiti {size} · {preview}"
             },
             "copyFileListToClipboard": "Nakili orodha ya faili kwenye ubao wa kunakili",
             "filesCopied": "Maingizo {count} ya faili yamenakiliwa kwenye ubao wa kunakili",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Bofya mara mbili uteuzi au bonyeza Enter ili kutumia, Esc ili kughairi",
                     "cropRatio": "Uwiano",
                     "cropRatioFree": "Huru",
-                    "cropRatioOriginal": "Asili"
+                    "cropRatioOriginal": "Asili",
+                    "rotateCcw90Short": "90° kinyume saa",
+                    "rotateCw90Short": "90° mwelekeo wa saa"
                 },
                 "toggleTransparencyBg": "Mandharinyuma ya uwazi (zungusha)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Inapakia PDF...",
                 "open": "Fungua PDF",
                 "page": "Ukurasa",
-                "zoom": "Kuza"
+                "zoom": "Kuza",
+                "documentTitle": "Hati ya PDF"
             },
             "text": {
                 "auto": "Kiotomatiki",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Kompyuta Kibao (768px)",
                 "wordWrap": "Kuvunja Maneno",
                 "zoomIn": "Kuza Ndani",
-                "zoomOut": "Kuza Nje"
+                "zoomOut": "Kuza Nje",
+                "htmlPreviewFrameTitle": "Onyesho la kukagua HTML"
             },
             "video": {
                 "exitFullscreen": "Ondoka Skrini Kamili (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Tabaka ya Rclone Crypt imegunduliwa",
             "aerocryptImportDesc": "Wasifu umeingizwa kutoka rclone.conf kwa {name}: fungua tabaka sasa?",
             "aerocryptImportOpen": "Fungua tabaka",
-            "aerovaultOverlayExpired": "AeroVault Overlay imefungwa kutokana na kutotumika. Fungua tena hifadhi ili kuendelea."
+            "aerovaultOverlayExpired": "AeroVault Overlay imefungwa kutokana na kutotumika. Fungua tena hifadhi ili kuendelea.",
+            "aerovaultOverlaySource": "Tabaka la AeroVault linatumika ({source})",
+            "fileOperationsLabel": "Shughuli za faili",
+            "overlayBadge": "TABAKA"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Uthibitishaji wa hatua mbili",
                 "verify": "Thibitisha na uwashe",
                 "active": "2FA Inatumika",
-                "inactive": "2FA Haitumiki"
+                "inactive": "2FA Haitumiki",
+                "codeGroupLabel": "Msimbo wa tarakimu {count}",
+                "digitLabel": "Tarakimu {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Faili zilizorejeshwa zitaonekana tena katika folda yake ya asili",
             "connectionNamePlaceholder": "Jina la muunganisho (mf. FileLu Cloud Yangu)",
             "trashAutoExpiry": "Faili zilizo kwenye tupio hufutwa kiotomatiki na FileLu baada ya siku 7",
-            "rsyncTransferOnly": "Mwisho wa kuhamisha pekee: kuvinjari hakupatikani kwenye Rsync. Tumia Native API, WebDAV, S3 au FTP kuvinjari; badilisha kwenda Rsync kwa uhamishaji wa delta wa kipimo data cha juu."
+            "rsyncTransferOnly": "Mwisho wa kuhamisha pekee: kuvinjari hakupatikani kwenye Rsync. Tumia Native API, WebDAV, S3 au FTP kuvinjari; badilisha kwenda Rsync kwa uhamishaji wa delta wa kipimo data cha juu.",
+            "badgePasswordProtected": "Imelindwa kwa nenosiri",
+            "badgeWatermarked": "Ina alama maji"
         },
         "box": {
             "addComment": "Ongeza maoni",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "faili {count}",
             "releaseAssetMany": "faili {count}",
             "repoPrivate": "Ya faragha",
-            "repoPublic": "Ya umma"
+            "repoPublic": "Ya umma",
+            "actionsLiveBadge": "Moja kwa moja",
+            "actionsRunningTitle": "GitHub Actions (inaendeshwa)",
+            "coAuthors": "Waandishi wenza",
+            "pagesPathPlaceholder": "/ au /docs",
+            "pagesStatusBuilding": "inajengwa",
+            "pagesStatusBuilt": "imejengwa",
+            "pagesStatusErrored": "hitilafu",
+            "refreshBranches": "Onyesha upya matawi",
+            "repoPrivateTitle": "Hazina ya faragha",
+            "repoPublicTitle": "Hazina ya umma",
+            "unpushedCommitsOnBranchMany": "Commit {count} hazijatumwa kwenye {branch}",
+            "unpushedCommitsOnBranchOne": "Commit {count} haijatumwa kwenye {branch}"
         },
         "filenNotes": {
             "title": "Maelezo Yaliyofichwa",
@@ -5158,7 +5300,8 @@
             "tagName": "Jina la lebo",
             "removeTag": "Ondoa lebo",
             "manageTags": "Dhibiti lebo",
-            "deleteTagConfirm": "Futa lebo “{name}”? Noti zinabaki na maandishi yake."
+            "deleteTagConfirm": "Futa lebo “{name}”? Noti zinabaki na maandishi yake.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Kiungo cha kushiriki",
@@ -5426,7 +5569,8 @@
             "linkType": "Aina",
             "createMergeRequest": "Unda ombi la kuunganisha",
             "mrTitle": "Kichwa cha MR",
-            "mrBody": "Maelezo (hiari)"
+            "mrBody": "Maelezo (hiari)",
+            "sourceCode": "Msimbo chanzo"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Nakili mtumiaji (seva tu, bila nywila)",
             "copyLockedHint": "Badili kwa akaunti hii kwanza ili kunakili seva zake",
             "crossUserDedupTitle": "Tayari imehifadhiwa na akaunti nyingine",
-            "crossUserDedupMessage": "\"{name}\" inatumia akaunti ya seva ambayo pia imehifadhiwa kwenye kifaa hiki na: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" inatumia akaunti ya seva ambayo pia imehifadhiwa kwenye kifaa hiki na: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Funga kidirisha cha kuweka upya nenosiri",
+                "confirmPassword": "Thibitisha nenosiri jipya",
+                "errMismatch": "Manenosiri mapya ya akaunti hayalingani.",
+                "errNewRequired": "Weka nenosiri jipya la akaunti.",
+                "errNotAuthorized": "Lazima uwe msimamizi ili kuweka upya nenosiri la akaunti nyingine.",
+                "errNotForSelf": "Tumia Badilisha Nenosiri kwenye akaunti yako mwenyewe.",
+                "errStoreNotReady": "Fungua kasha la siri kwanza, kisha ujaribu tena.",
+                "errTypeReset": "Andika RESET ili kuthibitisha operesheni hii haribifu.",
+                "errUserNotFound": "Mtumiaji huyu hayupo tena.",
+                "newPassword": "Nenosiri jipya la akaunti",
+                "statEncryptedBytes": "baiti zilizosimbwa",
+                "statProfiles": "wasifu",
+                "statSettings": "mipangilio",
+                "title": "Kuweka upya nenosiri = kuharibu data",
+                "typeReset": "Andika RESET",
+                "wipeDetail": "Nenosiri la sasa haliwezi kurejeshwa. AeroFTP itafuta seva zilizohifadhiwa, mipangilio ya mtumiaji na hali ya kufungiwa ya akaunti lengwa, kisha itatoa ufunguo mpya wa usimbaji unaolindwa na nenosiri jipya.",
+                "wipeWarning": "Hii itafuta kabisa kizigeu kilichosimbwa cha akaunti lengwa."
+            },
+            "dropdown": {
+                "accountPassword": "Nenosiri la akaunti",
+                "lock": "Funga",
+                "newUser": "Mtumiaji mpya",
+                "noUsers": "Bado hakuna watumiaji. Tumia \"Mtumiaji mpya\" hapa chini kuongeza wa kwanza.",
+                "protectionNote": "Akaunti yako inalindwa kwa usimbaji wa Argon2id + AES-KW + AES-256-GCM",
+                "users": "Watumiaji"
+            }
         },
         "aerocryptNative": {
             "title": "Tabaka la AeroCrypt",

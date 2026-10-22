@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "A(z) {cmd} futtatása és az URL automatikus kitöltése",
                 "fetchUrl": "URL lekérése",
                 "megacmdWebdavHint": "A felhasználónév és a jelszó szándékosan maradt ki. Az AeroFTP csatlakozáskor maga futtatja a(z) „{cmd}” parancsot, hogy elindítsa a hidat és kiolvassa ezt a címet: a mező üresen is maradhat. Az „URL lekérése” egy opcionális kézi frissítés; itt módosítsa a portot, ha a MEGAcmd egyéni portot használ."
-            }
+            },
+            "manualStorageUnitLabel": "{label} mértékegysége"
         },
         "browser": {
             "remote": "Távoli",
@@ -420,7 +421,19 @@
             "listingPath": "{path} listázása...",
             "pleaseWait": "Kérjük, várjon...",
             "sameNameLeakChip": "azonos név",
-            "sameNameLeakTooltip": "Ez a név egy másik útvonalon is megjelenik ebben a titkosított széfben. Mivel a nevek determinisztikusan vannak titkosítva, a titkosított tároló megfigyelője megállapíthatja, hogy a kettő azonos nevet oszt meg."
+            "sameNameLeakTooltip": "Ez a név egy másik útvonalon is megjelenik ebben a titkosított széfben. Mivel a nevek determinisztikusan vannak titkosítva, a titkosított tároló megfigyelője megállapíthatja, hogy a kettő azonos nevet oszt meg.",
+            "endpointSelector": {
+                "localFolder": "Helyi mappa",
+                "localFolderHint": "Válasszon helyi elérési utat ehhez a panelhez",
+                "noSavedProfiles": "Nincsenek mentett profilok",
+                "savedProfiles": "Mentett távoli profilok",
+                "title": "Végpont"
+            },
+            "leftPanelMarker": "Bal panel",
+            "localFilesLabel": "Helyi fájlok",
+            "localFilesRightLabel": "Helyi fájlok (jobb panel)",
+            "remoteFilesLabel": "Távoli fájlok",
+            "rightPanelMarker": "Jobb panel"
         },
         "contextMenu": {
             "askAeroAgent": "Kérdezd meg AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Sebességgrafikon",
             "hideSpeedGraph": "Sebességgrafikon elrejtése",
             "speedAvg": "átl. {speed}",
-            "speedPeak": "csúcs {speed}"
+            "speedPeak": "csúcs {speed}",
+            "badgeBatch": "KÖTEG",
+            "badgeDownload": "LETÖLTÉS",
+            "badgeLive": "ÉLŐ",
+            "badgeStream": "FOLYAM",
+            "badgeUpload": "FELTÖLTÉS",
+            "earlierItemsHidden": "{count} korábbi elem elrejtve",
+            "folderFilesProgress": "{done}/{total} fájl",
+            "laneDone": "kész",
+            "laneError": "hiba",
+            "unifiedPlan": {
+                "destination": "Cél",
+                "dialogLabel": "Átviteli terv",
+                "engineAerovaultOverlay": "AeroVault réteg",
+                "engineCompareOnly": "Csak összehasonlítás",
+                "engineCrossProfileSync": "Profilok közötti szinkronizálás",
+                "engineCrossProfileTransfer": "Profilok közötti átvitel",
+                "engineLocalDelta": "Helyi delta átvitel",
+                "engineLocalFs": "Helyi fájlrendszer",
+                "engineProviderDownload": "Letöltés a szolgáltatótól",
+                "engineProviderUpload": "Feltöltés a szolgáltatóhoz",
+                "engineUnsupported": "Nem támogatott",
+                "execute": "Végrehajtás",
+                "items": "Elemek",
+                "modeBackup": "Biztonsági mentés",
+                "modeBisync": "Kétirányú szinkronizálás",
+                "modeCompare": "Összehasonlítás",
+                "modeCopy": "Másolás",
+                "modeMirror": "Tükrözés",
+                "modeMove": "Áthelyezés",
+                "modeSync": "Szinkronizálás",
+                "notExecutable": "Ez a végpontpár még nem futtatható.",
+                "parallel": "Párhuzamos",
+                "reviewBeforeExecution": "Ellenőrzés futtatás előtt",
+                "route": "{pair}, motor: {engine}",
+                "size": "Méret",
+                "source": "Forrás",
+                "title": "Terv: {mode}"
+            }
         },
         "settings": {
             "title": "Beállítások",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "max",
             "migrationCleanupHint": "A legnagyobb biztonság érdekében ajánlott",
             "fontCustomOption": "Egyéni...",
-            "fontSystemInstallHint": "Rendszerszintű telepítést igényel. Ha nem érhető el, az AeroFTP automatikusan tartalékra vált."
+            "fontSystemInstallHint": "Rendszerszintű telepítést igényel. Ha nem érhető el, az AeroFTP automatikusan tartalékra vált.",
+            "fontSizeIndicatorLabel": "Betűtípus"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} fájl, {size} felszabadítva",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Felhőszinkronizálás irányítópultja",
+            "dialogLoadingLabel": "Felhőszinkronizálás betöltése",
+            "dialogSettingsLabel": "Felhőszinkronizálás beállításai",
+            "dialogSetupLabel": "Felhőszinkronizálás beállítása",
+            "onePerLineHint": "(soronként egy)",
+            "pairsEditorLabel": "AeroCloud párszerkesztő",
+            "remoteSubfolderPlaceholder": "felhő"
         },
         "statusBar": {
             "connected": "Csatlakozva",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "részleges, nem olvasható mappák: {count}",
             "usedScanFailed": "A használt tárhely vizsgálata sikertelen",
             "usedScanEmpty": "A(z) {path} vizsgálata nem talált fájlt; a gyorsítótárazott érték megmaradt. Ellenőrizd az útvonalat vagy a szerver rekurzív listázási támogatását.",
-            "filenBridgeAccountTotal": "A Filen Desktop itt nem jelzi a fiókod teljes felhasználását: a megjelenített érték az ezen az útvonalon lévő fájlok összege. A natív Filen-kapcsolat azonnal megmutatja a fiók teljes felhasználását."
+            "filenBridgeAccountTotal": "A Filen Desktop itt nem jelzi a fiókod teljes felhasználását: a megjelenített érték az ezen az útvonalon lévő fájlok összege. A natív Filen-kapcsolat azonnal megmutatja a fiók teljes felhasználását.",
+            "ariaLabel": "Állapotsor",
+            "debugBadge": "HIBAKERESÉS",
+            "debugModeActive": "Hibakeresési mód aktív"
         },
         "dialogs": {
             "confirmTitle": "Megerősítés",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "pl. {template}",
             "jurisdiction": "Joghatóság",
             "insecureCertDialogLabel": "Figyelmeztetés nem biztonságos tanúsítványra",
-            "betaBadge": "BÉTA"
+            "betaBadge": "BÉTA",
+            "hostKeyDialogLabel": "Gazdagépkulcs ellenőrzése"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -2173,7 +2236,10 @@
             "rename": "Átnevezés",
             "resume": "Folytatás",
             "resumeHint": "A megszakadt átvitel folytatása újraindítás helyett",
-            "cancel": "Mégse"
+            "cancel": "Mégse",
+            "dialogLabel": "Felülírás megerősítése",
+            "moreInQueue": "+{count} a sorban",
+            "unknownDate": "Ismeretlen"
         },
         "statusbar": {
             "queue": "Sor",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Használható helyi/távoli útvonalpárok ebben a sablonban: {count}. Egy AeroSync-ablak pontosan egy párral dolgozik, ezért semmi sem lett importálva. Szerkessze a sablont úgy, hogy csak egy pár maradjon, majd importálja újra.",
             "templateNamePlaceholder": "pl. Éjszakai mentés S3-ra",
             "templateDescPlaceholder": "Mire szolgál ez a sablon (nem kötelező)",
-            "templateExportCliDesc": "aeroftp-cli sync burkolószkript ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync burkolószkript ({shell})",
+            "multiPathDisablePair": "Letiltás",
+            "multiPathEditorLabel": "Többútvonalas szerkesztő",
+            "multiPathEnablePair": "Engedélyezés",
+            "multiPathLocalPlaceholder": "Helyi útvonal",
+            "multiPathRemotePlaceholder": "Távoli útvonal",
+            "rollbackDialogLabel": "Visszaállítási pillanatkép",
+            "rollbackMoreFiles": "+{count} további...",
+            "rollbackSnapshotSummaryMany": "{count} fájl, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fájl, {size}",
+            "templateDialogLabel": "Szinkronizálási sablon",
+            "templateExcludes": "Kizárások",
+            "templateLocal": "Helyi",
+            "templateRemote": "Távoli",
+            "templateRetries": "Újrapróbálkozások"
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "A széf fejléce vagy manifesztje a paritásból újraépült.",
             "repairMetadataSuccess": "Javítás kész: a széf fejléce vagy manifesztje a paritásból újraépült",
             "errorCorrectionBadge": "Hibajavítás",
-            "itemsInFolder": "{count} elem itt: /{folder}"
+            "itemsInFolder": "{count} elem itt: /{folder}",
+            "compressionProfileArchive": "Archív (zstd -15)",
+            "compressionProfileBalanced": "Kiegyensúlyozott (zstd -9)",
+            "compressionProfileFast": "Gyors (zstd -3)",
+            "damagedChunkLocation": "{id} - eltolás {offset} (hossz {len})",
+            "fallbackName": "Széf",
+            "folderScanSummary": "{files} fájl {dirs} könyvtárban ({size})",
+            "namePlaceholderVault": "Biztonságos széfem",
+            "namePlaceholderZip": "Archívumom",
+            "recentDaysAgo": "{count} napja",
+            "recentFileCountMany": "{count} fájl",
+            "recentFileCountOne": "{count} fájl",
+            "recentMonthsAgo": "{count} hónapja"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Kijelölt elemek titkosítása...",
             "ingestSkipped": "A széf létrejött, de néhány elemet nem sikerült hozzáadni:",
             "selectionInfo": "{count} elem titkosítva lesz a széfbe",
-            "decrypting": "Visszafejtés…"
+            "decrypting": "Visszafejtés…",
+            "compatibleWithApp": "Kompatibilis a Cryptomator alkalmazással",
+            "createFormatBadge": "Cryptomator 8-as formátum: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM tartalom",
+            "featureNameCipher": "AES-SIV nevek",
+            "formatVersion": "{version}. formátum"
         },
         "compress": {
             "title": "Fájlok tömörítése",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Néhány fájlnak azonos neve lenne. Módosítsa a mintát.",
             "apply": "Alkalmazás",
             "existingCollision": "Néhány új név megegyezik a mappában már meglévő fájlokkal; ezek a fájlok nem lesznek felülírva, és átnevezésük kimarad.",
-            "existingCollisionHint": "(már létezik)"
+            "existingCollisionHint": "(már létezik)",
+            "baseNamePlaceholder": "fájl",
+            "invalidName": "{name} (érvénytelen)"
         },
         "lockScreen": {
             "locked": "Alkalmazás zárolva",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Az asztal nem csatolta fel. Húzza ki, majd dugja vissza a kábelt, és nyissa meg újra.",
             "volumes_need_mount_observe": "A snapben a kötetek akkor jelennek meg, ha a mount-observe engedély csatlakoztatva van. Futtassa ezt egy terminálban, majd térjen vissza az AeroFTP-be:",
             "volumes_unavailable": "Nem sikerült beolvasni a csatolt köteteket.",
-            "portable_device": "Hordozható eszköz"
+            "portable_device": "Hordozható eszköz",
+            "drivesLeftPanel": "Bal panel meghajtói",
+            "drivesRightPanel": "Jobb panel meghajtói",
+            "modeGroupLabel": "Oldalsáv módja",
+            "placesSidebarLabel": "Helyek oldalsáv"
         },
         "viewMode": {
             "list": "Lista",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Testvér könyvtárak böngészése",
             "loading": "Betöltés...",
             "noSubdirectories": "Nincsenek alkönyvtárak",
-            "browseChildren": "Almappák böngészése"
+            "browseChildren": "Almappák böngészése",
+            "ariaLabel": "Navigációs útvonal",
+            "syncBoundaryTitle": "{path} (szinkronizálási határ)"
         },
         "bridge": {
             "checking": "{app} ellenőrzése…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Nincs elérhető előnézet",
-            "title": "Gyorsnézet"
+            "title": "Gyorsnézet",
+            "closePreview": "Előnézet bezárása",
+            "dialogLabel": "Gyorsnézet: {name}",
+            "nextFile": "Következő fájl",
+            "position": "{index} / {total}",
+            "previousFile": "Előző fájl"
         },
         "properties": {
             "general": "Általános",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Az elem ellenőrzőösszege, amelyet az Immich a feltöltéskor rögzít.",
                 "crypt-overlay-ciphertext": "A lenyomat a kiszolgálón tárolt titkosított bájtokra vonatkozik."
             },
-            "readOnlyIsLinkTarget": "Ez egy szimbolikus link: a jogosultságok ahhoz a fájlhoz tartoznak, amelyre mutat. A módosításhoz nyissa meg az adott fájl tulajdonságait."
+            "readOnlyIsLinkTarget": "Ez egy szimbolikus link: a jogosultságok ahhoz a fájlhoz tartoznak, amelyre mutat. A módosításhoz nyissa meg az adott fájl tulajdonságait.",
+            "exactBytes": "({bytes} bájt)"
         },
         "duplicates": {
             "sortWasted": "Elpazarolt hely",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Bájtra azonos",
             "modeNonIdenticalHint": "Észlelési vagy szöveges hasonlóság, nincs automatikus törlés",
             "potentialWasteSelected": "lehetséges pazarlás (kijelölt)",
-            "similarityDistance": "{similarity}, táv. {distance}"
+            "similarityDistance": "{similarity}, táv. {distance}",
+            "modeExact": "Pontos",
+            "modeLabel": "Mód:",
+            "modeNonIdentical": "Nem azonos"
         },
         "diskUsage": {
             "title": "Lemezfoglalás",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Még nincs hálózati tevékenység. Vigyen át fájlokat az események megtekintéséhez.",
                 "time": "Idő",
                 "event": "Esemény",
-                "detail": "Részlet"
+                "detail": "Részlet",
+                "command": "Parancs",
+                "ipcTransfersCount": "IPC + Átvitelek ({count})",
+                "status": "Állapot",
+                "type": "Típus"
             },
             "system": {
                 "appVersion": "AeroFTP verzió",
@@ -4140,7 +4258,8 @@
                 "dark": "Sötét",
                 "light": "Világos",
                 "userAgent": "Böngésző azonosító",
-                "localStorageKeysTitle": "LocalStorage kulcsok"
+                "localStorageKeysTitle": "LocalStorage kulcsok",
+                "localStorageEntrySummary": "{size} bájt · {preview}"
             },
             "copyFileListToClipboard": "Fájllista másolása vágólapra",
             "filesCopied": "{count} fájlbejegyzés másolva a vágólapra",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Kattintson duplán a kijelölésre, vagy nyomja meg az Enter billentyűt az alkalmazáshoz, az Esc billentyűt a megszakításhoz",
                     "cropRatio": "Arányok",
                     "cropRatioFree": "Szabad",
-                    "cropRatioOriginal": "Eredeti"
+                    "cropRatioOriginal": "Eredeti",
+                    "rotateCcw90Short": "90° balra",
+                    "rotateCw90Short": "90° jobbra"
                 },
                 "toggleTransparencyBg": "Átlátszósági háttér (váltás)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "PDF betöltése...",
                 "open": "PDF megnyitása",
                 "page": "Oldal",
-                "zoom": "Nagyítás"
+                "zoom": "Nagyítás",
+                "documentTitle": "PDF-dokumentum"
             },
             "text": {
                 "auto": "Automatikus",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Sortörés",
                 "zoomIn": "Nagyítás",
-                "zoomOut": "Kicsinyítés"
+                "zoomOut": "Kicsinyítés",
+                "htmlPreviewFrameTitle": "HTML-előnézet"
             },
             "video": {
                 "exitFullscreen": "Kilépés a teljes képernyőből (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt réteg észlelve",
             "aerocryptImportDesc": "Profil importálva a rclone.conf fájlból ehhez: {name}: megnyitja most a réteget?",
             "aerocryptImportOpen": "Réteg megnyitása",
-            "aerovaultOverlayExpired": "Az AeroVault Overlay inaktivitás miatt zárolva. A folytatáshoz nyissa meg újra a széfet."
+            "aerovaultOverlayExpired": "Az AeroVault Overlay inaktivitás miatt zárolva. A folytatáshoz nyissa meg újra a széfet.",
+            "aerovaultOverlaySource": "AeroVault réteg aktív ({source})",
+            "fileOperationsLabel": "Fájlműveletek",
+            "overlayBadge": "RÉTEG"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Kétlépcsős hitelesítés",
                 "verify": "Ellenőrzés és bekapcsolás",
                 "active": "2FA aktív",
-                "inactive": "2FA inaktív"
+                "inactive": "2FA inaktív",
+                "codeGroupLabel": "{count} jegyű kód",
+                "digitLabel": "{index}. számjegy"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "A visszaállított fájlok az eredeti mappájukban jelennek meg újra",
             "connectionNamePlaceholder": "Kapcsolat neve (pl. FileLu Felhőm)",
             "trashAutoExpiry": "A kukába helyezett fájlokat a FileLu 7 nap után automatikusan törli",
-            "rsyncTransferOnly": "Csak átvitelt végző végpont: a böngészés nem érhető el Rsyncon. Használj Native API-t, WebDAV-ot, S3-at vagy FTP-t a navigációhoz; válts Rsyncre nagy sávszélességű delta átvitelhez."
+            "rsyncTransferOnly": "Csak átvitelt végző végpont: a böngészés nem érhető el Rsyncon. Használj Native API-t, WebDAV-ot, S3-at vagy FTP-t a navigációhoz; válts Rsyncre nagy sávszélességű delta átvitelhez.",
+            "badgePasswordProtected": "Jelszóval védett",
+            "badgeWatermarked": "Vízjeles"
         },
         "box": {
             "addComment": "Hozzászólás hozzáadása",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} fájl",
             "releaseAssetMany": "{count} fájl",
             "repoPrivate": "Privát",
-            "repoPublic": "Nyilvános"
+            "repoPublic": "Nyilvános",
+            "actionsLiveBadge": "Élő",
+            "actionsRunningTitle": "GitHub Actions (fut)",
+            "coAuthors": "Társszerzők",
+            "pagesPathPlaceholder": "/ vagy /docs",
+            "pagesStatusBuilding": "készül",
+            "pagesStatusBuilt": "elkészült",
+            "pagesStatusErrored": "hibás",
+            "refreshBranches": "Ágak frissítése",
+            "repoPrivateTitle": "Privát tároló",
+            "repoPublicTitle": "Nyilvános tároló",
+            "unpushedCommitsOnBranchMany": "{count} nem küldött commit itt: {branch}",
+            "unpushedCommitsOnBranchOne": "{count} nem küldött commit itt: {branch}"
         },
         "filenNotes": {
             "title": "Titkosított jegyzetek",
@@ -5158,7 +5300,8 @@
             "tagName": "Címke neve",
             "removeTag": "Címke eltávolítása",
             "manageTags": "Címkék kezelése",
-            "deleteTagConfirm": "Törlöd a(z) „{name}” címkét? A jegyzetek megőrzik a szövegüket."
+            "deleteTagConfirm": "Törlöd a(z) „{name}” címkét? A jegyzetek megőrzik a szövegüket.",
+            "betaBadge": "BÉTA"
         },
         "shareLinkModal": {
             "title": "Megosztási hivatkozás",
@@ -5426,7 +5569,8 @@
             "linkType": "Típus",
             "createMergeRequest": "Merge Request létrehozása",
             "mrTitle": "MR címe",
-            "mrBody": "Leírás (opcionális)"
+            "mrBody": "Leírás (opcionális)",
+            "sourceCode": "Forráskód"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Felhasználó másolása (csak szerverek, jelszavak nélkül)",
             "copyLockedHint": "Először váltson erre a fiókra a szervereinek másolásához",
             "crossUserDedupTitle": "Már mentette egy másik fiók",
-            "crossUserDedupMessage": "A(z) \"{name}\" olyan szerverfiókot használ, amelyet ezen az eszközön más is mentett: {accounts}"
+            "crossUserDedupMessage": "A(z) \"{name}\" olyan szerverfiókot használ, amelyet ezen az eszközön más is mentett: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Jelszó-visszaállítási párbeszédablak bezárása",
+                "confirmPassword": "Új jelszó megerősítése",
+                "errMismatch": "Az új fiókjelszavak nem egyeznek.",
+                "errNewRequired": "Adjon meg egy új fiókjelszót.",
+                "errNotAuthorized": "Egy másik fiók jelszavának visszaállításához rendszergazdának kell lennie.",
+                "errNotForSelf": "Használja a Jelszó módosítása lehetőséget a saját fiókján.",
+                "errStoreNotReady": "Először oldja fel a széfet, majd próbálja újra.",
+                "errTypeReset": "A romboló művelet megerősítéséhez írja be: RESET.",
+                "errUserNotFound": "Ez a felhasználó már nem létezik.",
+                "newPassword": "Új fiókjelszó",
+                "statEncryptedBytes": "titkosított bájt",
+                "statProfiles": "profil",
+                "statSettings": "beállítás",
+                "title": "Jelszó visszaállítása = adatok megsemmisítése",
+                "typeReset": "Írja be: RESET",
+                "wipeDetail": "A jelenlegi jelszó nem állítható helyre. Az AeroFTP törli a célfiók mentett szervereit, felhasználói beállításait és zárolási állapotát, majd új titkosítási kulcsot ad ki, amelyet az új jelszó véd.",
+                "wipeWarning": "Ez véglegesen törli a célfiók titkosított partícióját."
+            },
+            "dropdown": {
+                "accountPassword": "Fiókjelszó",
+                "lock": "Zárolás",
+                "newUser": "Új felhasználó",
+                "noUsers": "Még nincsenek felhasználók. Az első hozzáadásához használja lent az „Új felhasználó” lehetőséget.",
+                "protectionNote": "Fiókját Argon2id + AES-KW + AES-256-GCM titkosítás védi",
+                "users": "Felhasználók"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt réteg",

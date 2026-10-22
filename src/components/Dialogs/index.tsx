@@ -770,7 +770,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                 <button
                     onClick={() => copyToClipboard(value, label)}
                     className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                    title="Copy"
+                    title={t('common.copy')}
                 >
                     {copiedField === label ? (
                         <span className="text-green-500 text-xs">{t('common.copied')}</span>
@@ -1475,7 +1475,7 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
                             ) : (
                                 <>
                                     {formatBytes(totalSize)}
-                                    <span className="text-gray-500"> ({totalSize.toLocaleString()} bytes)</span>
+                                    <span className="text-gray-500"> {t('properties.exactBytes', { bytes: totalSize.toLocaleString() })}</span>
                                     {sizesUnknown && (
                                         <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">
                                             {t('properties.sizesPartial')}

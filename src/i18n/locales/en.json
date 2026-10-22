@@ -1251,7 +1251,9 @@
             "startNumber": "Start at",
             "suffix": "Suffix (before extension)",
             "suffixPlaceholder": "e.g., _v2",
-            "title": "Batch Rename"
+            "title": "Batch Rename",
+            "baseNamePlaceholder": "file",
+            "invalidName": "{name} (invalid)"
         },
         "breadcrumb": {
             "browseChildren": "Browse subdirectories",
@@ -1261,7 +1263,9 @@
             "loading": "Loading...",
             "noSubdirectories": "No subdirectories",
             "pathMismatch": "Path mismatch",
-            "showAll": "Show collapsed segments"
+            "showAll": "Show collapsed segments",
+            "ariaLabel": "Breadcrumb",
+            "syncBoundaryTitle": "{path} (sync boundary)"
         },
         "bridge": {
             "checking": "Checking {app}…",
@@ -1324,7 +1328,19 @@
             "sameNameLeakChip": "same name",
             "sameNameLeakTooltip": "This name also appears at another path in this encrypted vault. Because names are encrypted deterministically, an observer of the encrypted store can tell the two share a name.",
             "uploadFiles": "Upload Files",
-            "uploadFolder": "Upload Folder"
+            "uploadFolder": "Upload Folder",
+            "endpointSelector": {
+                "localFolder": "Local folder",
+                "localFolderHint": "Choose a local path for this panel",
+                "noSavedProfiles": "No saved profiles",
+                "savedProfiles": "Saved remote profiles",
+                "title": "Endpoint"
+            },
+            "leftPanelMarker": "Left panel",
+            "localFilesLabel": "Local files",
+            "localFilesRightLabel": "Local files (right panel)",
+            "remoteFilesLabel": "Remote files",
+            "rightPanelMarker": "Right panel"
         },
         "cloud": {
             "cloudName": "Cloud Name",
@@ -1461,7 +1477,14 @@
             "cleanupSummary": "{count} files, {size} freed",
             "maturity": {
                 "alpha": "Alpha"
-            }
+            },
+            "dialogDashboardLabel": "Cloud Sync Dashboard",
+            "dialogLoadingLabel": "Cloud Sync Loading",
+            "dialogSettingsLabel": "Cloud Sync Settings",
+            "dialogSetupLabel": "Cloud Sync Setup",
+            "onePerLineHint": "(one per line)",
+            "pairsEditorLabel": "AeroCloud Pairs Editor",
+            "remoteSubfolderPlaceholder": "cloud"
         },
         "common": {
             "about": "About",
@@ -1869,7 +1892,8 @@
                 "megacmdFetchUrlTitle": "Run {cmd} and fill the URL automatically",
                 "fetchUrl": "Fetch URL",
                 "megacmdWebdavHint": "Username and Password are intentionally omitted. AeroFTP runs \"{cmd}\" itself on connect to start the bridge and read this address: leaving it blank is fine. Fetch URL is an optional manual refresh; change the port here if MEGAcmd uses a custom one."
-            }
+            },
+            "manualStorageUnitLabel": "{label} unit"
         },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",
@@ -2230,7 +2254,12 @@
             "encryptingSelection": "Encrypting selected items...",
             "ingestSkipped": "Vault created, but some items could not be added:",
             "selectionInfo": "{count} item(s) will be encrypted into the vault",
-            "decrypting": "Decrypting…"
+            "decrypting": "Decrypting…",
+            "compatibleWithApp": "Compatible with Cryptomator app",
+            "createFormatBadge": "Cryptomator Format 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM content",
+            "featureNameCipher": "AES-SIV names",
+            "formatVersion": "Format {version}"
         },
         "debug": {
             "copyFileListToClipboard": "Copy file list to clipboard",
@@ -2263,7 +2292,8 @@
                 "localStorageSize": "LocalStorage Size",
                 "reactMode": "React Mode",
                 "userAgent": "User Agent",
-                "windowSize": "Window Size"
+                "windowSize": "Window Size",
+                "localStorageEntrySummary": "{size} bytes · {preview}"
             },
             "bundle": {
                 "title": "Export diagnostic bundle (ZIP)"
@@ -2315,7 +2345,11 @@
                 "event": "Event",
                 "noActivity": "No network activity yet. Transfer files to see events.",
                 "time": "Time",
-                "transferEvents": "Transfer events"
+                "transferEvents": "Transfer events",
+                "command": "Command",
+                "ipcTransfersCount": "IPC + Transfers ({count})",
+                "status": "Status",
+                "type": "Type"
             },
             "system": {
                 "appVersion": "AeroFTP Version",
@@ -2493,7 +2527,10 @@
             "modeExactHint": "Byte-identical",
             "modeNonIdenticalHint": "Perceptual or text similarity, no auto-delete",
             "potentialWasteSelected": "potential waste (selected)",
-            "similarityDistance": "{similarity}, dist {distance}"
+            "similarityDistance": "{similarity}, dist {distance}",
+            "modeExact": "Exact",
+            "modeLabel": "Mode:",
+            "modeNonIdentical": "Non-identical"
         },
         "error": {
             "description": "AeroFTP encountered an unexpected error. You can try to recover or reload the application.",
@@ -2710,7 +2747,34 @@
             "confirmRemovePassword": "Remove the account password for \"{name}\"?",
             "confirmDelete": "Delete account \"{name}\"?\n\nEncrypted payloads to remove: {profiles} profiles, {settings} settings scopes.",
             "crossUserDedupTitle": "Already saved by another account",
-            "crossUserDedupMessage": "\"{name}\" uses a server account that is also saved on this device by: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" uses a server account that is also saved on this device by: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Close reset password dialog",
+                "confirmPassword": "Confirm new password",
+                "errMismatch": "New account passwords do not match.",
+                "errNewRequired": "Enter a new account password.",
+                "errNotAuthorized": "You must be an admin to reset another account password.",
+                "errNotForSelf": "Use Change Password on your own account.",
+                "errStoreNotReady": "Unlock the vault first, then try again.",
+                "errTypeReset": "Type RESET to confirm this destructive operation.",
+                "errUserNotFound": "This user no longer exists.",
+                "newPassword": "New account password",
+                "statEncryptedBytes": "encrypted bytes",
+                "statProfiles": "profiles",
+                "statSettings": "settings",
+                "title": "Reset password = data destruction",
+                "typeReset": "Type RESET",
+                "wipeDetail": "The current password cannot be recovered. AeroFTP will delete the target account's saved servers, user settings, and lockout state, then issue a new encryption key protected by the new password.",
+                "wipeWarning": "This will permanently wipe the target account's encrypted partition."
+            },
+            "dropdown": {
+                "accountPassword": "Account Password",
+                "lock": "Lock",
+                "newUser": "New User",
+                "noUsers": "No users yet. Use \"New User\" below to add the first one.",
+                "protectionNote": "Your account is protected with Argon2id + AES-KW + AES-256-GCM encryption",
+                "users": "Users"
+            }
         },
         "lockScreen": {
             "enterPassword": "Enter your master password",
@@ -2874,7 +2938,10 @@
             "skip": "Skip",
             "sourceNewer": "Source is newer",
             "sourceOlder": "Source is older",
-            "title": "File Already Exists"
+            "title": "File Already Exists",
+            "dialogLabel": "Overwrite Confirmation",
+            "moreInQueue": "+{count} in queue",
+            "unknownDate": "Unknown"
         },
         "permissions": {
             "apply": "Apply",
@@ -3016,7 +3083,9 @@
                     "cropHint": "Double-click the selection or press Enter to apply, Esc to cancel",
                     "cropRatio": "Proportions",
                     "cropRatioFree": "Free",
-                    "cropRatioOriginal": "Original"
+                    "cropRatioOriginal": "Original",
+                    "rotateCcw90Short": "90° CCW",
+                    "rotateCw90Short": "90° CW"
                 }
             },
             "mixer": {
@@ -3035,7 +3104,8 @@
                 "loading": "Loading PDF...",
                 "open": "Open PDF",
                 "page": "Page",
-                "zoom": "Zoom"
+                "zoom": "Zoom",
+                "documentTitle": "PDF Document"
             },
             "text": {
                 "auto": "Auto",
@@ -3066,7 +3136,8 @@
                 "viewportTablet": "Tablet (768px)",
                 "wordWrap": "Word Wrap",
                 "zoomIn": "Zoom In",
-                "zoomOut": "Zoom Out"
+                "zoomOut": "Zoom Out",
+                "htmlPreviewFrameTitle": "HTML Preview"
             },
             "video": {
                 "exitFullscreen": "Exit Fullscreen (F)",
@@ -3198,7 +3269,8 @@
             "type": "Type",
             "visibility": "Visibility",
             "applyPrivacy": "Apply",
-            "applyPrivacyAll": "Apply to {count} items"
+            "applyPrivacyAll": "Apply to {count} items",
+            "exactBytes": "({bytes} bytes)"
         },
         "protocol": {
             "acceptInvalidCerts": "Accept invalid or self-signed certificates",
@@ -3476,11 +3548,17 @@
             "endpointTemplateExample": "e.g. {template}",
             "jurisdiction": "Jurisdiction",
             "insecureCertDialogLabel": "Insecure Certificate Warning",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Host Key Verification"
         },
         "quickLook": {
             "noPreview": "No preview available",
-            "title": "Quick Look"
+            "title": "Quick Look",
+            "closePreview": "Close preview",
+            "dialogLabel": "Quick Look: {name}",
+            "nextFile": "Next file",
+            "position": "{index} of {total}",
+            "previousFile": "Previous file"
         },
         "reconnect": {
             "toastTitle": "Connection",
@@ -3546,7 +3624,9 @@
                 "setup": "Two-Factor Authentication",
                 "verify": "Verify & Enable",
                 "active": "2FA Active",
-                "inactive": "2FA Inactive"
+                "inactive": "2FA Inactive",
+                "codeGroupLabel": "{count}-digit code",
+                "digitLabel": "Digit {index}"
             }
         },
         "settings": {
@@ -4137,7 +4217,8 @@
             "fontSizeMax": "max",
             "migrationCleanupHint": "Recommended for maximum security",
             "fontCustomOption": "Custom...",
-            "fontSystemInstallHint": "Requires system install. AeroFTP falls back automatically if unavailable."
+            "fontSystemInstallHint": "Requires system install. AeroFTP falls back automatically if unavailable.",
+            "fontSizeIndicatorLabel": "Font"
         },
         "sharing": {
             "add": "Add",
@@ -4238,7 +4319,11 @@
             "trash": "Trash",
             "videos": "Videos",
             "volumes_need_mount_observe": "In the snap, volumes appear once its mount-observe permission is connected. Run this in a terminal, then return to AeroFTP:",
-            "volumes_unavailable": "Could not read the mounted volumes."
+            "volumes_unavailable": "Could not read the mounted volumes.",
+            "drivesLeftPanel": "Drives left panel",
+            "drivesRightPanel": "Drives right panel",
+            "modeGroupLabel": "Sidebar mode",
+            "placesSidebarLabel": "Places sidebar"
         },
         "statusbar": {
             "activityLog": "Activity Log",
@@ -4298,7 +4383,10 @@
             "usedScanTruncated": "partial: scan limit reached",
             "usedScanUnreadable": "partial, unreadable folders: {count}",
             "usedScanFailed": "Used-storage scan failed",
-            "usedScanEmpty": "Scan of {path} found no files; the cached figure was kept. Check the path or the server's recursive-listing support."
+            "usedScanEmpty": "Scan of {path} found no files; the cached figure was kept. Check the path or the server's recursive-listing support.",
+            "ariaLabel": "Status bar",
+            "debugBadge": "DEBUG",
+            "debugModeActive": "Debug Mode Active"
         },
         "support": {
             "buyMeACoffee": "Buy Me a Coffee",
@@ -4490,7 +4578,21 @@
             "canaryNoResults": "No sampled files",
             "canaryProjection": "Based on {percent}% sample, full sync would transfer ~{files} files ({size})",
             "canaryApproveFullSync": "Approve Full Sync",
-            "templateExportCliDesc": "aeroftp-cli sync wrapper ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync wrapper ({shell})",
+            "multiPathDisablePair": "Disable",
+            "multiPathEditorLabel": "Multi-Path Editor",
+            "multiPathEnablePair": "Enable",
+            "multiPathLocalPlaceholder": "Local path",
+            "multiPathRemotePlaceholder": "Remote path",
+            "rollbackDialogLabel": "Rollback Snapshot",
+            "rollbackMoreFiles": "+{count} more...",
+            "rollbackSnapshotSummaryMany": "{count} files, {size}",
+            "rollbackSnapshotSummaryOne": "{count} file, {size}",
+            "templateDialogLabel": "Sync Template",
+            "templateExcludes": "Excludes",
+            "templateLocal": "Local",
+            "templateRemote": "Remote",
+            "templateRetries": "Retries"
         },
         "toast": {
             "batchRenamePartial": "Batch rename completed with errors",
@@ -4612,7 +4714,10 @@
             "hideSystemMenu": "Hide system menu bar",
             "localOnly": "Local only",
             "showRemote": "Show remote",
-            "showSystemMenu": "Show system menu bar"
+            "showSystemMenu": "Show system menu bar",
+            "aerovaultOverlaySource": "AeroVault overlay active ({source})",
+            "fileOperationsLabel": "File operations",
+            "overlayBadge": "OVERLAY"
         },
         "transfer": {
             "activityLog": "Activity Log",
@@ -4738,7 +4843,45 @@
             "resumeProfileMissing": "The saved server for this transfer was not found (it may have been deleted).",
             "connectingToResume": "Connecting to {name} to resume transfers…",
             "resumeConnectFailed": "Could not connect to {name}. Transfers were not started.",
-            "moreActions": "More actions"
+            "moreActions": "More actions",
+            "badgeBatch": "BATCH",
+            "badgeDownload": "DOWNLOAD",
+            "badgeLive": "LIVE",
+            "badgeStream": "STREAM",
+            "badgeUpload": "UPLOAD",
+            "earlierItemsHidden": "{count} earlier items hidden",
+            "folderFilesProgress": "{done}/{total} files",
+            "laneDone": "done",
+            "laneError": "error",
+            "unifiedPlan": {
+                "destination": "Destination",
+                "dialogLabel": "Transfer plan",
+                "engineAerovaultOverlay": "AeroVault overlay",
+                "engineCompareOnly": "Compare only",
+                "engineCrossProfileSync": "Cross-Profile Sync",
+                "engineCrossProfileTransfer": "Cross-Profile Transfer",
+                "engineLocalDelta": "Local delta transport",
+                "engineLocalFs": "Local filesystem",
+                "engineProviderDownload": "Provider download",
+                "engineProviderUpload": "Provider upload",
+                "engineUnsupported": "Unsupported",
+                "execute": "Execute",
+                "items": "Items",
+                "modeBackup": "Backup",
+                "modeBisync": "Bisync",
+                "modeCompare": "Compare",
+                "modeCopy": "Copy",
+                "modeMirror": "Mirror",
+                "modeMove": "Move",
+                "modeSync": "Sync",
+                "notExecutable": "This endpoint pair is not executable yet.",
+                "parallel": "Parallel",
+                "reviewBeforeExecution": "Review before execution",
+                "route": "{pair} via {engine}",
+                "size": "Size",
+                "source": "Source",
+                "title": "{mode} plan"
+            }
         },
         "scanning": {
             "deleting": "Deleting",
@@ -5169,7 +5312,19 @@
             "encryptedTooltip": "Encrypted with AES-256. Contents and filenames are confidential; the password is required to open.",
             "resetDefaults": "Reset to default",
             "errorCorrectionBadge": "Error Correction",
-            "itemsInFolder": "{count} items in /{folder}"
+            "itemsInFolder": "{count} items in /{folder}",
+            "compressionProfileArchive": "Archive (zstd -15)",
+            "compressionProfileBalanced": "Balanced (zstd -9)",
+            "compressionProfileFast": "Fast (zstd -3)",
+            "damagedChunkLocation": "{id} - offset {offset} (len {len})",
+            "fallbackName": "Vault",
+            "folderScanSummary": "{files} files in {dirs} directories ({size})",
+            "namePlaceholderVault": "My secure vault",
+            "namePlaceholderZip": "My archive",
+            "recentDaysAgo": "{count}d ago",
+            "recentFileCountMany": "{count} files",
+            "recentFileCountOne": "{count} file",
+            "recentMonthsAgo": "{count}mo ago"
         },
         "vaultSync": {
             "title": "Vault Sync",
@@ -5357,7 +5512,19 @@
             "releaseAssetOne": "{count} asset",
             "releaseAssetMany": "{count} assets",
             "repoPrivate": "Private",
-            "repoPublic": "Public"
+            "repoPublic": "Public",
+            "actionsLiveBadge": "Live",
+            "actionsRunningTitle": "GitHub Actions (running)",
+            "coAuthors": "Co-Authors",
+            "pagesPathPlaceholder": "/ or /docs",
+            "pagesStatusBuilding": "building",
+            "pagesStatusBuilt": "built",
+            "pagesStatusErrored": "errored",
+            "refreshBranches": "Refresh branches",
+            "repoPrivateTitle": "Private repository",
+            "repoPublicTitle": "Public repository",
+            "unpushedCommitsOnBranchMany": "{count} unpushed commits on {branch}",
+            "unpushedCommitsOnBranchOne": "{count} unpushed commit on {branch}"
         },
         "gitlab": {
             "projectPath": "Project Path",
@@ -5391,7 +5558,8 @@
             "linkType": "Type",
             "createMergeRequest": "Create Merge Request",
             "mrTitle": "MR title",
-            "mrBody": "Description (optional)"
+            "mrBody": "Description (optional)",
+            "sourceCode": "Source code"
         },
         "shareLinkModal": {
             "title": "Share Link",
@@ -5486,7 +5654,9 @@
             "restore": "Restore",
             "trashFooter": "Restored files will reappear in their original folder",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "connectionNamePlaceholder": "Connection Name (e.g. My FileLu Cloud)"
+            "connectionNamePlaceholder": "Connection Name (e.g. My FileLu Cloud)",
+            "badgePasswordProtected": "Password protected",
+            "badgeWatermarked": "Watermarked"
         },
         "box": {
             "addComment": "Add Comment",
@@ -5850,7 +6020,8 @@
                 "pinned": "Pinned",
                 "archived": "Archived",
                 "trash": "Trash"
-            }
+            },
+            "betaBadge": "BETA"
         },
         "table": {
             "manageColumns": "Manage columns",

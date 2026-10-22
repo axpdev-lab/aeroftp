@@ -1186,7 +1186,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   return (
     <div
       role="navigation"
-      aria-label="Places sidebar"
+      aria-label={t('sidebar.placesSidebarLabel')}
       className="w-[200px] h-full bg-white/80 border-r border-gray-200 dark:bg-gray-900/50 dark:border-gray-700 flex flex-col overflow-hidden select-none"
       // The sidebar lives inside the left LocalFilePanel, whose root has
       // onMouseDown={onPanelFocus}. In dual-panel mode that would re-focus
@@ -1209,8 +1209,8 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
               the three indicators visually agree at a glance. */}
           {activePanelMarker && (
             <span
-              aria-label={activePanelMarker === 'R' ? 'Drives right panel' : 'Drives left panel'}
-              title={activePanelMarker === 'R' ? 'Drives right panel' : 'Drives left panel'}
+              aria-label={activePanelMarker === 'R' ? t('sidebar.drivesRightPanel') : t('sidebar.drivesLeftPanel')}
+              title={activePanelMarker === 'R' ? t('sidebar.drivesRightPanel') : t('sidebar.drivesLeftPanel')}
               className={`flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold tracking-wider ${
                 activePanelMarker === 'R'
                   ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
@@ -1221,7 +1221,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-0.5" role="group" aria-label="Sidebar mode">
+        <div className="flex items-center gap-0.5" role="group" aria-label={t('sidebar.modeGroupLabel')}>
           <button
             aria-pressed={sidebarMode === 'places'}
             className={`p-1 rounded transition-colors ${

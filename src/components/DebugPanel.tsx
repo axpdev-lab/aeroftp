@@ -977,7 +977,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                     <div className="p-2">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-xs text-gray-500">
-                                IPC + Transfers ({networkEvents.length})
+                                {t('debug.network.ipcTransfersCount', { count: networkEvents.length })}
                             </span>
                             <button
                                 onClick={() => { clearGlobalNetwork(); setNetworkEvents([]); }}
@@ -994,9 +994,9 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                     <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800">
                                         <tr className="text-[10px] text-gray-500 border-b border-gray-200 dark:border-gray-700">
                                             <th className="text-left py-1 px-2 w-16">{t('debug.network.time')}</th>
-                                            <th className="text-left py-1 px-2 w-16">Type</th>
-                                            <th className="text-left py-1 px-2 w-16">Status</th>
-                                            <th className="text-left py-1 px-2 w-48">Command</th>
+                                            <th className="text-left py-1 px-2 w-16">{t('debug.network.type')}</th>
+                                            <th className="text-left py-1 px-2 w-16">{t('debug.network.status')}</th>
+                                            <th className="text-left py-1 px-2 w-48">{t('debug.network.command')}</th>
                                             <th className="text-left py-1 px-2">{t('debug.network.detail')}</th>
                                         </tr>
                                     </thead>
@@ -1162,7 +1162,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                 return (
                                     <div key={key} className="flex items-center py-1 px-3 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
                                         <span className="text-xs font-mono text-gray-700 dark:text-gray-300 w-48 shrink-0 truncate">{key}</span>
-                                        <span className="text-[10px] text-gray-400 truncate">{val.length} bytes · {localStoragePreview(val)}</span>
+                                        <span className="text-[10px] text-gray-400 truncate">{t('debug.frontend.localStorageEntrySummary', { size: val.length, preview: localStoragePreview(val) })}</span>
                                     </div>
                                 );
                             })}

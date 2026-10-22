@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Exekutatu {cmd} eta bete URLa automatikoki",
                 "fetchUrl": "Eskuratu URLa",
                 "megacmdWebdavHint": "Erabiltzaile-izena eta pasahitza nahita kendu dira. AeroFTPk berak exekutatzen du \"{cmd}\" konektatzean, zubia abiarazteko eta helbide hau irakurtzeko: hutsik utz dezakezu. \"Eskuratu URLa\" aukerako eskuzko freskatze bat da; aldatu ataka hemen MEGAcmd-ek ataka pertsonalizatu bat erabiltzen badu."
-            }
+            },
+            "manualStorageUnitLabel": "{label} unitatea"
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -420,7 +421,19 @@
             "listingPath": "{path} zerrendatzen...",
             "pleaseWait": "Itxaron mesedez...",
             "sameNameLeakChip": "izen bera",
-            "sameNameLeakTooltip": "Izen hau enkriptatutako gordailu honetako beste bide batean ere agertzen da. Izenak modu deterministikoan enkriptatzen direnez, enkriptatutako biltegiaren behatzaile batek jakin dezake biek izen bat partekatzen dutela."
+            "sameNameLeakTooltip": "Izen hau enkriptatutako gordailu honetako beste bide batean ere agertzen da. Izenak modu deterministikoan enkriptatzen direnez, enkriptatutako biltegiaren behatzaile batek jakin dezake biek izen bat partekatzen dutela.",
+            "endpointSelector": {
+                "localFolder": "Karpeta lokala",
+                "localFolderHint": "Aukeratu bide lokal bat panel honetarako",
+                "noSavedProfiles": "Ez dago gordetako profilik",
+                "savedProfiles": "Gordetako urruneko profilak",
+                "title": "Konexio-puntua"
+            },
+            "leftPanelMarker": "Ezkerreko panela",
+            "localFilesLabel": "Fitxategi lokalak",
+            "localFilesRightLabel": "Fitxategi lokalak (eskuineko panela)",
+            "remoteFilesLabel": "Urruneko fitxategiak",
+            "rightPanelMarker": "Eskuineko panela"
         },
         "contextMenu": {
             "askAeroAgent": "Galdetu AeroAgent-i...",
@@ -680,7 +693,45 @@
             "speedGraph": "Abiaduraren grafikoa",
             "hideSpeedGraph": "Ezkutatu abiaduraren grafikoa",
             "speedAvg": "batez best. {speed}",
-            "speedPeak": "gailurra {speed}"
+            "speedPeak": "gailurra {speed}",
+            "badgeBatch": "SORTA",
+            "badgeDownload": "DESKARGA",
+            "badgeLive": "ZUZENEAN",
+            "badgeStream": "JARIOA",
+            "badgeUpload": "IGOERA",
+            "earlierItemsHidden": "Aurreko {count} elementu ezkutatuta",
+            "folderFilesProgress": "{done}/{total} fitxategi",
+            "laneDone": "eginda",
+            "laneError": "errorea",
+            "unifiedPlan": {
+                "destination": "Helmuga",
+                "dialogLabel": "Transferentzia-plana",
+                "engineAerovaultOverlay": "AeroVault geruza",
+                "engineCompareOnly": "Konparatu soilik",
+                "engineCrossProfileSync": "Profilen arteko sinkronizazioa",
+                "engineCrossProfileTransfer": "Profilen arteko transferentzia",
+                "engineLocalDelta": "Delta garraio lokala",
+                "engineLocalFs": "Fitxategi-sistema lokala",
+                "engineProviderDownload": "Hornitzailearen deskarga",
+                "engineProviderUpload": "Hornitzailerako igoera",
+                "engineUnsupported": "Ez da onartzen",
+                "execute": "Exekutatu",
+                "items": "Elementuak",
+                "modeBackup": "Babeskopia",
+                "modeBisync": "Bi norabideko sinkronizazioa",
+                "modeCompare": "Konparatu",
+                "modeCopy": "Kopiatu",
+                "modeMirror": "Ispilua",
+                "modeMove": "Mugitu",
+                "modeSync": "Sinkronizatu",
+                "notExecutable": "Amaiera-puntu bikote hau ezin da oraindik exekutatu.",
+                "parallel": "Paraleloa",
+                "reviewBeforeExecution": "Berrikusi exekutatu aurretik",
+                "route": "{pair} {engine} bidez",
+                "size": "Tamaina",
+                "source": "Iturburua",
+                "title": "Plana: {mode}"
+            }
         },
         "settings": {
             "title": "Ezarpenak",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "max",
             "migrationCleanupHint": "Gomendatua segurtasun handienerako",
             "fontCustomOption": "Pertsonalizatua...",
-            "fontSystemInstallHint": "Sisteman instalatu behar da. AeroFTP-k ordezko bat erabiltzen du automatikoki erabilgarri ez badago."
+            "fontSystemInstallHint": "Sisteman instalatu behar da. AeroFTP-k ordezko bat erabiltzen du automatikoki erabilgarri ez badago.",
+            "fontSizeIndicatorLabel": "Letra-tipoa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} fitxategi, {size} askatuta",
             "maturity": {
                 "alpha": "Alfa"
-            }
+            },
+            "dialogDashboardLabel": "Hodeiko sinkronizazioaren panela",
+            "dialogLoadingLabel": "Hodeiko sinkronizazioa kargatzen",
+            "dialogSettingsLabel": "Hodeiko sinkronizazioaren ezarpenak",
+            "dialogSetupLabel": "Hodeiko sinkronizazioaren konfigurazioa",
+            "onePerLineHint": "(bat lerro bakoitzeko)",
+            "pairsEditorLabel": "AeroCloud bikoteen editorea",
+            "remoteSubfolderPlaceholder": "hodeia"
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "partziala, irakurri ezin diren karpetak: {count}",
             "usedScanFailed": "Erabilitako biltegiratzearen eskaneatzeak huts egin du",
             "usedScanEmpty": "{path} eskaneatzeak ez du fitxategirik aurkitu; cacheko balioa mantendu da. Egiaztatu bidea edo zerbitzariaren zerrendatze errekurtsiboaren euskarria.",
-            "filenBridgeAccountTotal": "Filen Desktop-ek ez du hemen zure kontuaren guztizkoa jakinarazten: erabilitako zifra bide honetako fitxategien batura da. Filen konexio natiboak kontuaren guztizkoa berehala erakusten du."
+            "filenBridgeAccountTotal": "Filen Desktop-ek ez du hemen zure kontuaren guztizkoa jakinarazten: erabilitako zifra bide honetako fitxategien batura da. Filen konexio natiboak kontuaren guztizkoa berehala erakusten du.",
+            "ariaLabel": "Egoera-barra",
+            "debugBadge": "ARAZKETA",
+            "debugModeActive": "Arazketa modua aktibo"
         },
         "dialogs": {
             "confirmTitle": "Berretsi",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "adib. {template}",
             "jurisdiction": "Jurisdikzioa",
             "insecureCertDialogLabel": "Ziurtagiri ez-segurua: abisua",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Ostalari-gakoaren egiaztapena"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -2173,7 +2236,10 @@
             "rename": "Berrizendatu",
             "resume": "Berrekin",
             "resumeHint": "Jarraitu eten den transferentzia, berriro hasi beharrean",
-            "cancel": "Utzi"
+            "cancel": "Utzi",
+            "dialogLabel": "Gainidazte-berrespena",
+            "moreInQueue": "+{count} ilaran",
+            "unknownDate": "Ezezaguna"
         },
         "statusbar": {
             "queue": "Queue",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Txantiloi honetako bide-bikote erabilgarriak (lokala/urrunekoa): {count}. AeroSync leiho batek zehazki bikote batekin egiten du lan, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra gera dadin, eta inportatu berriro.",
             "templateNamePlaceholder": "adib. Gaueko babeskopia S3-ra",
             "templateDescPlaceholder": "Zertarako den txantiloi hau (aukerakoa)",
-            "templateExportCliDesc": "aeroftp-cli sync komandoaren bilgarria ({shell})"
+            "templateExportCliDesc": "aeroftp-cli sync komandoaren bilgarria ({shell})",
+            "multiPathDisablePair": "Desgaitu",
+            "multiPathEditorLabel": "Bide anitzeko editorea",
+            "multiPathEnablePair": "Gaitu",
+            "multiPathLocalPlaceholder": "Bide lokala",
+            "multiPathRemotePlaceholder": "Urruneko bidea",
+            "rollbackDialogLabel": "Leheneratzeko argazkia",
+            "rollbackMoreFiles": "+{count} gehiago...",
+            "rollbackSnapshotSummaryMany": "{count} fitxategi, {size}",
+            "rollbackSnapshotSummaryOne": "{count} fitxategi, {size}",
+            "templateDialogLabel": "Sinkronizazio-txantiloia",
+            "templateExcludes": "Baztertzeak",
+            "templateLocal": "Lokala",
+            "templateRemote": "Urrunekoa",
+            "templateRetries": "Saiakerak"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Vault-aren goiburua edo manifestua paritatetik berreraiki da.",
             "repairMetadataSuccess": "Konponketa osatuta: vault-aren goiburua edo manifestua paritatetik berreraikita",
             "errorCorrectionBadge": "Erroreak zuzentzea",
-            "itemsInFolder": "{count} elementu /{folder} karpetan"
+            "itemsInFolder": "{count} elementu /{folder} karpetan",
+            "compressionProfileArchive": "Artxiboa (zstd -15)",
+            "compressionProfileBalanced": "Orekatua (zstd -9)",
+            "compressionProfileFast": "Azkarra (zstd -3)",
+            "damagedChunkLocation": "{id} - desplazamendua {offset} (luzera {len})",
+            "fallbackName": "Kutxa gotorra",
+            "folderScanSummary": "{files} fitxategi {dirs} direktoriotan ({size})",
+            "namePlaceholderVault": "Nire kutxa gotor segurua",
+            "namePlaceholderZip": "Nire artxiboa",
+            "recentDaysAgo": "duela {count} egun",
+            "recentFileCountMany": "{count} fitxategi",
+            "recentFileCountOne": "{count} fitxategi",
+            "recentMonthsAgo": "duela {count} hil."
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Hautatutako elementuak enkriptatzen...",
             "ingestSkipped": "Kutxa gotorra sortu da, baina elementu batzuk ezin izan dira gehitu:",
             "selectionInfo": "{count} elementu enkriptatuko dira kutxa gotorrean",
-            "decrypting": "Deszifratzen…"
+            "decrypting": "Deszifratzen…",
+            "compatibleWithApp": "Cryptomator aplikazioarekin bateragarria",
+            "createFormatBadge": "Cryptomator 8. formatua: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "AES-GCM edukia",
+            "featureNameCipher": "AES-SIV izenak",
+            "formatVersion": "{version}. formatua"
         },
         "compress": {
             "title": "Konprimitu fitxategiak",
@@ -3769,7 +3866,9 @@
             "noChange": "(aldaketarik ez)",
             "conflictWarning": "Fitxategi batzuek izen bera izango lukete. Mesedez, doitu eredua.",
             "existingCollision": "Izen berri batzuk karpeta honetan dauden fitxategiekin bat datoz; fitxategi horiek ez dira gainidatziko eta haien izena aldatzea saihestuko da.",
-            "existingCollisionHint": "(jada badago)"
+            "existingCollisionHint": "(jada badago)",
+            "baseNamePlaceholder": "fitxategia",
+            "invalidName": "{name} (baliogabea)"
         },
         "lockScreen": {
             "locked": "Aplikazioa blokeatuta",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Mahaigainak ez du muntatu. Deskonektatu eta konektatu berriro kablea, eta ireki berriro.",
             "volumes_need_mount_observe": "Snap-ean, bolumenak mount-observe baimena konektatzen denean agertzen dira. Exekutatu hau terminal batean eta itzuli AeroFTP-ra:",
             "volumes_unavailable": "Ezin izan dira muntatutako bolumenak irakurri.",
-            "portable_device": "Gailu eramangarria"
+            "portable_device": "Gailu eramangarria",
+            "drivesLeftPanel": "Ezkerreko paneleko unitateak",
+            "drivesRightPanel": "Eskuineko paneleko unitateak",
+            "modeGroupLabel": "Alboko barraren modua",
+            "placesSidebarLabel": "Lekuen alboko barra"
         },
         "viewMode": {
             "list": "Zerrenda",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Arakatu senide direktorioak",
             "noSubdirectories": "Azpidirektoriorik ez",
             "loading": "Kargatzen...",
-            "browseChildren": "Azpikarpetak arakatu"
+            "browseChildren": "Azpikarpetak arakatu",
+            "ariaLabel": "Nabigazio-bidea",
+            "syncBoundaryTitle": "{path} (sinkronizazio-muga)"
         },
         "bridge": {
             "checking": "{app} egiaztatzen…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Ez dago aurrebistarik",
-            "title": "Aurrebista azkarra"
+            "title": "Aurrebista azkarra",
+            "closePreview": "Itxi aurrebista",
+            "dialogLabel": "Aurrebista azkarra: {name}",
+            "nextFile": "Hurrengo fitxategia",
+            "position": "{index}/{total}",
+            "previousFile": "Aurreko fitxategia"
         },
         "properties": {
             "general": "Orokorra",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Immichek igotzean erregistratzen duen elementuaren kontrol-batura.",
                 "crypt-overlay-ciphertext": "Laburpenak zerbitzarian gordetako byte zifratuak hartzen ditu."
             },
-            "readOnlyIsLinkTarget": "Hau esteka sinbolikoa da: baimenak seinalatzen duen fitxategiarenak dira. Aldatzeko, ireki fitxategi horren propietateak."
+            "readOnlyIsLinkTarget": "Hau esteka sinbolikoa da: baimenak seinalatzen duen fitxategiarenak dira. Aldatzeko, ireki fitxategi horren propietateak.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Alferrik galdutako lekua",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Byte mailan berdinak",
             "modeNonIdenticalHint": "Pertzepziozko edo testu antzekotasuna, ezabatze automatikorik gabe",
             "potentialWasteSelected": "balizko xahutzea (hautatuak)",
-            "similarityDistance": "{similarity}, dist. {distance}"
+            "similarityDistance": "{similarity}, dist. {distance}",
+            "modeExact": "Zehatza",
+            "modeLabel": "Modua:",
+            "modeNonIdentical": "Ez berdina"
         },
         "diskUsage": {
             "title": "Diskoaren erabilera",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Ez dago sare-jarduerarik oraindik. Transferitu fitxategiak gertaerak ikusteko.",
                 "time": "Denbora",
                 "event": "Gertaera",
-                "detail": "Xehetasuna"
+                "detail": "Xehetasuna",
+                "command": "Komandoa",
+                "ipcTransfersCount": "IPC + Transferentziak ({count})",
+                "status": "Egoera",
+                "type": "Mota"
             },
             "system": {
                 "appVersion": "AeroFTP Bertsioa",
@@ -4140,7 +4258,8 @@
                 "dark": "Iluna",
                 "light": "Argia",
                 "userAgent": "Erabiltzaile Agentea",
-                "localStorageKeysTitle": "LocalStorage Gakoak"
+                "localStorageKeysTitle": "LocalStorage Gakoak",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Kopiatu fitxategi-zerrenda arbelera",
             "filesCopied": "{count} fitxategi sarrera arbelera kopiatuak",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Egin klik bikoitza hautapenean edo sakatu Enter aplikatzeko, Esc ezeztatzeko",
                     "cropRatio": "Proportzioak",
                     "cropRatioFree": "Librea",
-                    "cropRatioOriginal": "Jatorrizkoa"
+                    "cropRatioOriginal": "Jatorrizkoa",
+                    "rotateCcw90Short": "90° erlojuaren aurka",
+                    "rotateCw90Short": "90° erlojuaren norabidean"
                 },
                 "toggleTransparencyBg": "Gardentasun atzeko planoa (txandakatu)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "PDF kargatzen...",
                 "open": "Ireki PDF",
                 "page": "Orrialdea",
-                "zoom": "Zooma"
+                "zoom": "Zooma",
+                "documentTitle": "PDF dokumentua"
             },
             "text": {
                 "auto": "Automatikoa",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Tableta (768px)",
                 "wordWrap": "Hitz-bilketa",
                 "zoomIn": "Handitu",
-                "zoomOut": "Txikitu"
+                "zoomOut": "Txikitu",
+                "htmlPreviewFrameTitle": "HTML aurrebista"
             },
             "video": {
                 "exitFullscreen": "Irten pantaila osotik (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Rclone Crypt geruza detektatu da",
             "aerocryptImportDesc": "{name}(r)entzat rclone.conf-etik inportatutako profila: orain ireki geruza?",
             "aerocryptImportOpen": "Ireki geruza",
-            "aerovaultOverlayExpired": "AeroVault Overlay jardunik ezagatik blokeatu da. Ireki berriro kutxa gotorra jarraitzeko."
+            "aerovaultOverlayExpired": "AeroVault Overlay jardunik ezagatik blokeatu da. Ireki berriro kutxa gotorra jarraitzeko.",
+            "aerovaultOverlaySource": "AeroVault geruza aktibo ({source})",
+            "fileOperationsLabel": "Fitxategi-eragiketak",
+            "overlayBadge": "GERUZA"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Bi faktoreko autentifikazioa",
                 "verify": "Egiaztatu eta gaitu",
                 "active": "2FA aktibatuta",
-                "inactive": "2FA desaktibatuta"
+                "inactive": "2FA desaktibatuta",
+                "codeGroupLabel": "{count} digituko kodea",
+                "digitLabel": "{index}. digitua"
             }
         },
         "vaultSync": {
@@ -4804,7 +4932,9 @@
             "trashFooter": "Leheneratutako fitxategiak jatorrizko karpetan berriro agertuko dira",
             "connectionNamePlaceholder": "Konexioaren izena (adib. Nire FileLu Cloud)",
             "trashAutoExpiry": "FileLu-k automatikoki ezabatzen ditu zakarrontziko fitxategiak 7 egun igarotakoan",
-            "rsyncTransferOnly": "Transferentzia bakarrik egiten duen amaiera-puntua: nabigazioa ez dago erabilgarri Rsync-en. Erabili Native API, WebDAV, S3 edo FTP nabigatzeko; aldatu Rsync-era banda-zabalera handiko delta transferentzietarako."
+            "rsyncTransferOnly": "Transferentzia bakarrik egiten duen amaiera-puntua: nabigazioa ez dago erabilgarri Rsync-en. Erabili Native API, WebDAV, S3 edo FTP nabigatzeko; aldatu Rsync-era banda-zabalera handiko delta transferentzietarako.",
+            "badgePasswordProtected": "Pasahitzez babestua",
+            "badgeWatermarked": "Ur-markaduna"
         },
         "box": {
             "addComment": "Gehitu iruzkina",
@@ -5139,7 +5269,19 @@
             "releaseAssetOne": "{count} baliabide",
             "releaseAssetMany": "{count} baliabide",
             "repoPrivate": "Pribatua",
-            "repoPublic": "Publikoa"
+            "repoPublic": "Publikoa",
+            "actionsLiveBadge": "Zuzenean",
+            "actionsRunningTitle": "GitHub Actions (exekutatzen)",
+            "coAuthors": "Egilekideak",
+            "pagesPathPlaceholder": "/ edo /docs",
+            "pagesStatusBuilding": "eraikitzen",
+            "pagesStatusBuilt": "eraikita",
+            "pagesStatusErrored": "errorea",
+            "refreshBranches": "Freskatu adarrak",
+            "repoPrivateTitle": "Biltegi pribatua",
+            "repoPublicTitle": "Biltegi publikoa",
+            "unpushedCommitsOnBranchMany": "{count} commit bidali gabe {branch} adarrean",
+            "unpushedCommitsOnBranchOne": "{count} commit bidali gabe {branch} adarrean"
         },
         "filenNotes": {
             "title": "Enkriptatutako oharrak",
@@ -5177,7 +5319,8 @@
             "tagName": "Etiketaren izena",
             "removeTag": "Kendu etiketa",
             "manageTags": "Kudeatu etiketak",
-            "deleteTagConfirm": "«{name}» etiketa ezabatu? Oharrek testua mantentzen dute."
+            "deleteTagConfirm": "«{name}» etiketa ezabatu? Oharrek testua mantentzen dute.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Partekatzeko esteka",
@@ -5445,7 +5588,8 @@
             "linkType": "Mota",
             "createMergeRequest": "Sortu bateratze-eskaera",
             "mrTitle": "MR izenburua",
-            "mrBody": "Deskribapena (aukerakoa)"
+            "mrBody": "Deskribapena (aukerakoa)",
+            "sourceCode": "Iturburu-kodea"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6027,7 +6171,34 @@
             "copy": "Bikoiztu erabiltzailea (zerbitzariak soilik, pasahitzik gabe)",
             "copyLockedHint": "Aldatu lehenik kontu honetara haren zerbitzariak bikoizteko",
             "crossUserDedupTitle": "Beste kontu batek gordeta dauka dagoeneko",
-            "crossUserDedupMessage": "\"{name}\" zerbitzari-kontu bat erabiltzen du, eta gailu honetan honek ere gordeta dauka: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" zerbitzari-kontu bat erabiltzen du, eta gailu honetan honek ere gordeta dauka: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Itxi pasahitza berrezartzeko elkarrizketa-koadroa",
+                "confirmPassword": "Berretsi pasahitz berria",
+                "errMismatch": "Kontuaren pasahitz berriak ez datoz bat.",
+                "errNewRequired": "Idatzi kontuaren pasahitz berri bat.",
+                "errNotAuthorized": "Administratzailea izan behar duzu beste kontu baten pasahitza berrezartzeko.",
+                "errNotForSelf": "Erabili Aldatu pasahitza zure kontuan.",
+                "errStoreNotReady": "Desblokeatu lehenik kutxa gotorra eta saiatu berriro.",
+                "errTypeReset": "Idatzi RESET eragiketa suntsitzaile hau berresteko.",
+                "errUserNotFound": "Erabiltzaile hau ez da existitzen jada.",
+                "newPassword": "Kontuaren pasahitz berria",
+                "statEncryptedBytes": "byte zifratu",
+                "statProfiles": "profil",
+                "statSettings": "ezarpen",
+                "title": "Pasahitza berrezarri = datuak suntsitu",
+                "typeReset": "Idatzi RESET",
+                "wipeDetail": "Uneko pasahitza ezin da berreskuratu. AeroFTP-k helburuko kontuaren gordetako zerbitzariak, erabiltzaile-ezarpenak eta blokeo-egoera ezabatuko ditu, eta ondoren pasahitz berriak babestutako zifratze-gako berri bat emango du.",
+                "wipeWarning": "Honek betiko ezabatuko du helburuko kontuaren partizio zifratua."
+            },
+            "dropdown": {
+                "accountPassword": "Kontuaren pasahitza",
+                "lock": "Blokeatu",
+                "newUser": "Erabiltzaile berria",
+                "noUsers": "Oraindik ez dago erabiltzailerik. Erabili beheko \"Erabiltzaile berria\" lehena gehitzeko.",
+                "protectionNote": "Zure kontua Argon2id + AES-KW + AES-256-GCM zifratzearekin babestuta dago",
+                "users": "Erabiltzaileak"
+            }
         },
         "aerocryptNative": {
             "title": "AeroCrypt gainjartzea",

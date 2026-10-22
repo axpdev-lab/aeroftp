@@ -770,7 +770,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     {/* Render only last 200 items for performance: older completed items are hidden */}
                     {items.length > 200 && (
                         <div className="text-center text-gray-400 dark:text-gray-600 text-[10px] py-1">
-                            {items.length - 200} earlier items hidden
+                            {t('transfer.earlierItemsHidden', { count: items.length - 200 })}
                         </div>
                     )}
                     {(items.length > 200 ? items.slice(-200) : items).map((item, index) => {

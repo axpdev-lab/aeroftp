@@ -367,7 +367,8 @@
                 "megacmdFetchUrlTitle": "Chạy {cmd} và tự động điền URL",
                 "fetchUrl": "Lấy URL",
                 "megacmdWebdavHint": "Tên người dùng và mật khẩu được cố ý bỏ qua. AeroFTP tự chạy \"{cmd}\" khi kết nối để khởi động cầu nối và đọc địa chỉ này: có thể để trống. \"Lấy URL\" là thao tác làm mới thủ công tùy chọn; hãy đổi cổng tại đây nếu MEGAcmd dùng cổng tùy chỉnh."
-            }
+            },
+            "manualStorageUnitLabel": "Đơn vị {label}"
         },
         "browser": {
             "remote": "Từ xa",
@@ -420,7 +421,19 @@
             "listingPath": "Đang liệt kê {path}...",
             "pleaseWait": "Vui lòng đợi...",
             "sameNameLeakChip": "trùng tên",
-            "sameNameLeakTooltip": "Tên này cũng xuất hiện ở một đường dẫn khác trong kho mã hóa này. Vì tên được mã hóa theo cách xác định, người quan sát kho lưu trữ đã mã hóa có thể nhận ra rằng cả hai cùng chia sẻ một tên."
+            "sameNameLeakTooltip": "Tên này cũng xuất hiện ở một đường dẫn khác trong kho mã hóa này. Vì tên được mã hóa theo cách xác định, người quan sát kho lưu trữ đã mã hóa có thể nhận ra rằng cả hai cùng chia sẻ một tên.",
+            "endpointSelector": {
+                "localFolder": "Thư mục cục bộ",
+                "localFolderHint": "Chọn đường dẫn cục bộ cho bảng này",
+                "noSavedProfiles": "Không có hồ sơ đã lưu",
+                "savedProfiles": "Hồ sơ từ xa đã lưu",
+                "title": "Điểm cuối"
+            },
+            "leftPanelMarker": "Bảng bên trái",
+            "localFilesLabel": "Tệp cục bộ",
+            "localFilesRightLabel": "Tệp cục bộ (bảng bên phải)",
+            "remoteFilesLabel": "Tệp từ xa",
+            "rightPanelMarker": "Bảng bên phải"
         },
         "contextMenu": {
             "askAeroAgent": "Hỏi AeroAgent...",
@@ -680,7 +693,45 @@
             "speedGraph": "Biểu đồ tốc độ",
             "hideSpeedGraph": "Ẩn biểu đồ tốc độ",
             "speedAvg": "TB {speed}",
-            "speedPeak": "đỉnh {speed}"
+            "speedPeak": "đỉnh {speed}",
+            "badgeBatch": "LÔ",
+            "badgeDownload": "TẢI XUỐNG",
+            "badgeLive": "TRỰC TIẾP",
+            "badgeStream": "LUỒNG",
+            "badgeUpload": "TẢI LÊN",
+            "earlierItemsHidden": "Đã ẩn {count} mục trước đó",
+            "folderFilesProgress": "{done}/{total} tệp",
+            "laneDone": "xong",
+            "laneError": "lỗi",
+            "unifiedPlan": {
+                "destination": "Đích",
+                "dialogLabel": "Kế hoạch truyền",
+                "engineAerovaultOverlay": "Lớp phủ AeroVault",
+                "engineCompareOnly": "Chỉ so sánh",
+                "engineCrossProfileSync": "Đồng bộ giữa các hồ sơ",
+                "engineCrossProfileTransfer": "Truyền giữa các hồ sơ",
+                "engineLocalDelta": "Truyền delta cục bộ",
+                "engineLocalFs": "Hệ thống tệp cục bộ",
+                "engineProviderDownload": "Tải xuống từ nhà cung cấp",
+                "engineProviderUpload": "Tải lên nhà cung cấp",
+                "engineUnsupported": "Không được hỗ trợ",
+                "execute": "Thực thi",
+                "items": "Mục",
+                "modeBackup": "Sao lưu",
+                "modeBisync": "Đồng bộ hai chiều",
+                "modeCompare": "So sánh",
+                "modeCopy": "Sao chép",
+                "modeMirror": "Phản chiếu",
+                "modeMove": "Di chuyển",
+                "modeSync": "Đồng bộ",
+                "notExecutable": "Cặp điểm cuối này chưa thể thực thi.",
+                "parallel": "Song song",
+                "reviewBeforeExecution": "Xem lại trước khi thực thi",
+                "route": "{pair} qua {engine}",
+                "size": "Kích thước",
+                "source": "Nguồn",
+                "title": "Kế hoạch {mode}"
+            }
         },
         "settings": {
             "title": "Cài đặt",
@@ -1270,7 +1321,8 @@
             "fontSizeMax": "tối đa",
             "migrationCleanupHint": "Khuyến nghị để bảo mật tối đa",
             "fontCustomOption": "Tùy chỉnh...",
-            "fontSystemInstallHint": "Cần cài đặt vào hệ thống. AeroFTP tự động dùng phương án dự phòng nếu không khả dụng."
+            "fontSystemInstallHint": "Cần cài đặt vào hệ thống. AeroFTP tự động dùng phương án dự phòng nếu không khả dụng.",
+            "fontSizeIndicatorLabel": "Phông chữ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1471,7 +1523,14 @@
             "cleanupSummary": "{count} tệp, đã giải phóng {size}",
             "maturity": {
                 "alpha": "Bản alpha"
-            }
+            },
+            "dialogDashboardLabel": "Bảng điều khiển đồng bộ đám mây",
+            "dialogLoadingLabel": "Đang tải đồng bộ đám mây",
+            "dialogSettingsLabel": "Cài đặt đồng bộ đám mây",
+            "dialogSetupLabel": "Thiết lập đồng bộ đám mây",
+            "onePerLineHint": "(mỗi dòng một mục)",
+            "pairsEditorLabel": "Trình chỉnh sửa cặp AeroCloud",
+            "remoteSubfolderPlaceholder": "đám mây"
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -1505,7 +1564,10 @@
             "usedScanUnreadable": "một phần, thư mục không đọc được: {count}",
             "usedScanFailed": "Quét dung lượng đã dùng thất bại",
             "usedScanEmpty": "Quét đường dẫn {path} không tìm thấy tệp nào; đã giữ giá trị trong bộ nhớ đệm. Hãy kiểm tra đường dẫn hoặc khả năng liệt kê đệ quy của máy chủ.",
-            "filenBridgeAccountTotal": "Filen Desktop không báo cáo tổng dung lượng tài khoản của bạn ở đây: số liệu đã dùng là tổng các tệp dưới đường dẫn này. Kết nối Filen gốc hiển thị tổng dung lượng tài khoản ngay lập tức."
+            "filenBridgeAccountTotal": "Filen Desktop không báo cáo tổng dung lượng tài khoản của bạn ở đây: số liệu đã dùng là tổng các tệp dưới đường dẫn này. Kết nối Filen gốc hiển thị tổng dung lượng tài khoản ngay lập tức.",
+            "ariaLabel": "Thanh trạng thái",
+            "debugBadge": "GỠ LỖI",
+            "debugModeActive": "Chế độ gỡ lỗi đang bật"
         },
         "dialogs": {
             "confirmTitle": "Xác nhận",
@@ -2107,7 +2169,8 @@
             "endpointTemplateExample": "vd: {template}",
             "jurisdiction": "Quyền tài phán",
             "insecureCertDialogLabel": "Cảnh báo chứng chỉ không an toàn",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "hostKeyDialogLabel": "Xác minh khóa máy chủ"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -2173,7 +2236,10 @@
             "rename": "Đổi tên",
             "resume": "Tiếp tục",
             "resumeHint": "Tiếp tục truyền tải bị gián đoạn thay vì bắt đầu lại",
-            "cancel": "Hủy"
+            "cancel": "Hủy",
+            "dialogLabel": "Xác nhận ghi đè",
+            "moreInQueue": "+{count} trong hàng đợi",
+            "unknownDate": "Không xác định"
         },
         "statusbar": {
             "queue": "Hàng đợi",
@@ -2401,7 +2467,21 @@
             "templateImportPathPairs": "Các cặp đường dẫn cục bộ/từ xa dùng được trong mẫu này: {count}. Một cửa sổ AeroSync làm việc với đúng một cặp, nên không có gì được nhập. Hãy sửa mẫu để chỉ giữ lại một cặp, rồi nhập lại.",
             "templateNamePlaceholder": "ví dụ: Sao lưu hằng đêm lên S3",
             "templateDescPlaceholder": "Mẫu này dùng để làm gì (tùy chọn)",
-            "templateExportCliDesc": "Trình bao bọc aeroftp-cli sync ({shell})"
+            "templateExportCliDesc": "Trình bao bọc aeroftp-cli sync ({shell})",
+            "multiPathDisablePair": "Tắt",
+            "multiPathEditorLabel": "Trình chỉnh sửa nhiều đường dẫn",
+            "multiPathEnablePair": "Bật",
+            "multiPathLocalPlaceholder": "Đường dẫn cục bộ",
+            "multiPathRemotePlaceholder": "Đường dẫn từ xa",
+            "rollbackDialogLabel": "Ảnh chụp khôi phục",
+            "rollbackMoreFiles": "+{count} nữa...",
+            "rollbackSnapshotSummaryMany": "{count} tệp, {size}",
+            "rollbackSnapshotSummaryOne": "{count} tệp, {size}",
+            "templateDialogLabel": "Mẫu đồng bộ",
+            "templateExcludes": "Loại trừ",
+            "templateLocal": "Cục bộ",
+            "templateRemote": "Từ xa",
+            "templateRetries": "Thử lại"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -3669,7 +3749,19 @@
             "metadataRepaired": "Đã dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ.",
             "repairMetadataSuccess": "Đã sửa xong: đã dựng lại tiêu đề hoặc manifest của vault từ tính chẵn lẻ",
             "errorCorrectionBadge": "Sửa lỗi",
-            "itemsInFolder": "{count} mục trong /{folder}"
+            "itemsInFolder": "{count} mục trong /{folder}",
+            "compressionProfileArchive": "Lưu trữ (zstd -15)",
+            "compressionProfileBalanced": "Cân bằng (zstd -9)",
+            "compressionProfileFast": "Nhanh (zstd -3)",
+            "damagedChunkLocation": "{id} - độ lệch {offset} (độ dài {len})",
+            "fallbackName": "Kho",
+            "folderScanSummary": "{files} tệp trong {dirs} thư mục ({size})",
+            "namePlaceholderVault": "Kho bảo mật của tôi",
+            "namePlaceholderZip": "Kho lưu trữ của tôi",
+            "recentDaysAgo": "{count} ngày trước",
+            "recentFileCountMany": "{count} tệp",
+            "recentFileCountOne": "{count} tệp",
+            "recentMonthsAgo": "{count} tháng trước"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",
@@ -3699,7 +3791,12 @@
             "encryptingSelection": "Đang mã hóa các mục đã chọn...",
             "ingestSkipped": "Đã tạo kho, nhưng không thể thêm một số mục:",
             "selectionInfo": "{count} mục sẽ được mã hóa vào kho",
-            "decrypting": "Đang giải mã…"
+            "decrypting": "Đang giải mã…",
+            "compatibleWithApp": "Tương thích với ứng dụng Cryptomator",
+            "createFormatBadge": "Cryptomator định dạng 8: AES-256-GCM + AES-SIV",
+            "featureContentCipher": "Nội dung AES-GCM",
+            "featureNameCipher": "Tên AES-SIV",
+            "formatVersion": "Định dạng {version}"
         },
         "compress": {
             "title": "Nén tệp",
@@ -3769,7 +3866,9 @@
             "conflictWarning": "Một số tệp sẽ có cùng tên. Vui lòng điều chỉnh mẫu.",
             "apply": "Áp dụng",
             "existingCollision": "Một số tên mới trùng với các tệp đã có trong thư mục này; những tệp đó sẽ không bị ghi đè và việc đổi tên chúng sẽ bị bỏ qua.",
-            "existingCollisionHint": "(đã tồn tại)"
+            "existingCollisionHint": "(đã tồn tại)",
+            "baseNamePlaceholder": "tệp",
+            "invalidName": "{name} (không hợp lệ)"
         },
         "lockScreen": {
             "locked": "Ứng dụng đã khóa",
@@ -3865,7 +3964,11 @@
             "portable_needs_replug": "Chưa được máy tính gắn kết. Rút rồi cắm lại cáp, sau đó mở lại.",
             "volumes_need_mount_observe": "Trong snap, các ổ đĩa sẽ xuất hiện sau khi kết nối quyền mount-observe. Chạy lệnh này trong terminal, rồi quay lại AeroFTP:",
             "volumes_unavailable": "Không thể đọc các ổ đĩa đã gắn.",
-            "portable_device": "Thiết bị di động"
+            "portable_device": "Thiết bị di động",
+            "drivesLeftPanel": "Ổ đĩa bảng trái",
+            "drivesRightPanel": "Ổ đĩa bảng phải",
+            "modeGroupLabel": "Chế độ thanh bên",
+            "placesSidebarLabel": "Thanh bên vị trí"
         },
         "viewMode": {
             "list": "Danh sách",
@@ -3880,7 +3983,9 @@
             "browseSiblings": "Duyệt thư mục cùng cấp",
             "loading": "Đang tải...",
             "noSubdirectories": "Không có thư mục con",
-            "browseChildren": "Duyệt thư mục con"
+            "browseChildren": "Duyệt thư mục con",
+            "ariaLabel": "Đường dẫn điều hướng",
+            "syncBoundaryTitle": "{path} (ranh giới đồng bộ)"
         },
         "bridge": {
             "checking": "Đang kiểm tra {app}…",
@@ -3913,7 +4018,12 @@
         },
         "quickLook": {
             "noPreview": "Không có bản xem trước",
-            "title": "Xem nhanh"
+            "title": "Xem nhanh",
+            "closePreview": "Đóng xem trước",
+            "dialogLabel": "Xem nhanh: {name}",
+            "nextFile": "Tệp tiếp theo",
+            "position": "{index} / {total}",
+            "previousFile": "Tệp trước"
         },
         "properties": {
             "general": "Chung",
@@ -3990,7 +4100,8 @@
                 "immich-asset-checksum": "Tổng kiểm tra của tài nguyên mà Immich ghi lại lúc tải lên.",
                 "crypt-overlay-ciphertext": "Mã băm bao trùm các byte đã mã hoá được lưu trên máy chủ."
             },
-            "readOnlyIsLinkTarget": "Đây là liên kết tượng trưng: quyền thuộc về tệp mà nó trỏ tới. Mở thuộc tính của tệp đó để thay đổi."
+            "readOnlyIsLinkTarget": "Đây là liên kết tượng trưng: quyền thuộc về tệp mà nó trỏ tới. Mở thuộc tính của tệp đó để thay đổi.",
+            "exactBytes": "({bytes} byte)"
         },
         "duplicates": {
             "sortWasted": "Dung lượng lãng phí",
@@ -4031,7 +4142,10 @@
             "modeExactHint": "Giống hệt từng byte",
             "modeNonIdenticalHint": "Tương đồng cảm quan hoặc văn bản, không tự động xóa",
             "potentialWasteSelected": "lãng phí tiềm năng (đã chọn)",
-            "similarityDistance": "{similarity}, khoảng cách {distance}"
+            "similarityDistance": "{similarity}, khoảng cách {distance}",
+            "modeExact": "Chính xác",
+            "modeLabel": "Chế độ:",
+            "modeNonIdentical": "Không giống hệt"
         },
         "diskUsage": {
             "title": "Sử dụng đĩa",
@@ -4093,7 +4207,11 @@
                 "noActivity": "Chưa có hoạt động mạng. Truyền tệp để xem sự kiện.",
                 "time": "Thời gian",
                 "event": "Sự kiện",
-                "detail": "Chi tiết"
+                "detail": "Chi tiết",
+                "command": "Lệnh",
+                "ipcTransfersCount": "IPC + Truyền tải ({count})",
+                "status": "Trạng thái",
+                "type": "Loại"
             },
             "system": {
                 "appVersion": "Phiên bản AeroFTP",
@@ -4140,7 +4258,8 @@
                 "dark": "Tối",
                 "light": "Sáng",
                 "userAgent": "User Agent",
-                "localStorageKeysTitle": "Khóa LocalStorage"
+                "localStorageKeysTitle": "Khóa LocalStorage",
+                "localStorageEntrySummary": "{size} byte · {preview}"
             },
             "copyFileListToClipboard": "Sao chép danh sách tệp vào clipboard",
             "filesCopied": "Đã sao chép {count} mục tệp vào bộ nhớ tạm",
@@ -4386,7 +4505,9 @@
                     "cropHint": "Nhấp đúp vào vùng chọn hoặc nhấn Enter để áp dụng, Esc để hủy",
                     "cropRatio": "Tỷ lệ",
                     "cropRatioFree": "Tự do",
-                    "cropRatioOriginal": "Bản gốc"
+                    "cropRatioOriginal": "Bản gốc",
+                    "rotateCcw90Short": "90° sang trái",
+                    "rotateCw90Short": "90° sang phải"
                 },
                 "toggleTransparencyBg": "Nền trong suốt (xoay vòng)"
             },
@@ -4406,7 +4527,8 @@
                 "loading": "Đang tải PDF...",
                 "open": "Mở PDF",
                 "page": "Trang",
-                "zoom": "Thu phóng"
+                "zoom": "Thu phóng",
+                "documentTitle": "Tài liệu PDF"
             },
             "text": {
                 "auto": "Tự động",
@@ -4437,7 +4559,8 @@
                 "viewportTablet": "Máy tính bảng (768px)",
                 "wordWrap": "Ngắt dòng",
                 "zoomIn": "Phóng to",
-                "zoomOut": "Thu nhỏ"
+                "zoomOut": "Thu nhỏ",
+                "htmlPreviewFrameTitle": "Xem trước HTML"
             },
             "video": {
                 "exitFullscreen": "Thoát toàn màn hình (F)",
@@ -4636,7 +4759,10 @@
             "aerocryptImportTitle": "Đã phát hiện lớp phủ Rclone Crypt",
             "aerocryptImportDesc": "Đã nhập hồ sơ từ rclone.conf cho {name}: mở lớp phủ ngay bây giờ?",
             "aerocryptImportOpen": "Mở lớp phủ",
-            "aerovaultOverlayExpired": "AeroVault Overlay đã bị khóa do không hoạt động. Mở lại kho để tiếp tục."
+            "aerovaultOverlayExpired": "AeroVault Overlay đã bị khóa do không hoạt động. Mở lại kho để tiếp tục.",
+            "aerovaultOverlaySource": "Lớp phủ AeroVault đang hoạt động ({source})",
+            "fileOperationsLabel": "Thao tác tệp",
+            "overlayBadge": "LỚP PHỦ"
         },
         "security": {
             "totp": {
@@ -4652,7 +4778,9 @@
                 "setup": "Xác thực hai yếu tố",
                 "verify": "Xác minh & Bật",
                 "active": "2FA đang bật",
-                "inactive": "2FA đang tắt"
+                "inactive": "2FA đang tắt",
+                "codeGroupLabel": "Mã {count} chữ số",
+                "digitLabel": "Chữ số {index}"
             }
         },
         "vaultSync": {
@@ -4785,7 +4913,9 @@
             "trashFooter": "Các tệp đã khôi phục sẽ xuất hiện lại trong thư mục gốc của chúng",
             "connectionNamePlaceholder": "Tên kết nối (VD: FileLu Cloud của tôi)",
             "trashAutoExpiry": "Các tệp trong thùng rác sẽ được FileLu tự động xóa sau 7 ngày",
-            "rsyncTransferOnly": "Điểm cuối chỉ truyền: không thể duyệt trên Rsync. Sử dụng Native API, WebDAV, S3 hoặc FTP để điều hướng; chuyển sang Rsync cho việc truyền delta băng thông cao."
+            "rsyncTransferOnly": "Điểm cuối chỉ truyền: không thể duyệt trên Rsync. Sử dụng Native API, WebDAV, S3 hoặc FTP để điều hướng; chuyển sang Rsync cho việc truyền delta băng thông cao.",
+            "badgePasswordProtected": "Được bảo vệ bằng mật khẩu",
+            "badgeWatermarked": "Có hình mờ"
         },
         "box": {
             "addComment": "Thêm bình luận",
@@ -5120,7 +5250,19 @@
             "releaseAssetOne": "{count} tệp",
             "releaseAssetMany": "{count} tệp",
             "repoPrivate": "Riêng tư",
-            "repoPublic": "Công khai"
+            "repoPublic": "Công khai",
+            "actionsLiveBadge": "Trực tiếp",
+            "actionsRunningTitle": "GitHub Actions (đang chạy)",
+            "coAuthors": "Đồng tác giả",
+            "pagesPathPlaceholder": "/ hoặc /docs",
+            "pagesStatusBuilding": "đang xây dựng",
+            "pagesStatusBuilt": "đã xây dựng",
+            "pagesStatusErrored": "lỗi",
+            "refreshBranches": "Làm mới nhánh",
+            "repoPrivateTitle": "Kho lưu trữ riêng tư",
+            "repoPublicTitle": "Kho lưu trữ công khai",
+            "unpushedCommitsOnBranchMany": "{count} commit chưa đẩy trên {branch}",
+            "unpushedCommitsOnBranchOne": "{count} commit chưa đẩy trên {branch}"
         },
         "filenNotes": {
             "title": "Ghi chú mã hóa",
@@ -5158,7 +5300,8 @@
             "tagName": "Tên thẻ",
             "removeTag": "Gỡ thẻ",
             "manageTags": "Quản lý thẻ",
-            "deleteTagConfirm": "Xóa thẻ “{name}”? Ghi chú vẫn giữ nội dung."
+            "deleteTagConfirm": "Xóa thẻ “{name}”? Ghi chú vẫn giữ nội dung.",
+            "betaBadge": "BETA"
         },
         "shareLinkModal": {
             "title": "Liên kết chia sẻ",
@@ -5426,7 +5569,8 @@
             "linkType": "Loại",
             "createMergeRequest": "Tạo Merge Request",
             "mrTitle": "Tiêu đề MR",
-            "mrBody": "Mô tả (tùy chọn)"
+            "mrBody": "Mô tả (tùy chọn)",
+            "sourceCode": "Mã nguồn"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6008,7 +6152,34 @@
             "copy": "Nhân bản người dùng (chỉ máy chủ, không mật khẩu)",
             "copyLockedHint": "Hãy chuyển sang tài khoản này trước để nhân bản máy chủ của nó",
             "crossUserDedupTitle": "Đã được tài khoản khác lưu",
-            "crossUserDedupMessage": "\"{name}\" dùng một tài khoản máy chủ cũng đã được lưu trên thiết bị này bởi: {accounts}"
+            "crossUserDedupMessage": "\"{name}\" dùng một tài khoản máy chủ cũng đã được lưu trên thiết bị này bởi: {accounts}",
+            "destructiveReset": {
+                "closeDialog": "Đóng hộp thoại đặt lại mật khẩu",
+                "confirmPassword": "Xác nhận mật khẩu mới",
+                "errMismatch": "Mật khẩu tài khoản mới không khớp.",
+                "errNewRequired": "Nhập mật khẩu tài khoản mới.",
+                "errNotAuthorized": "Bạn phải là quản trị viên để đặt lại mật khẩu của tài khoản khác.",
+                "errNotForSelf": "Dùng Đổi mật khẩu trên tài khoản của chính bạn.",
+                "errStoreNotReady": "Hãy mở khóa kho lưu trữ trước rồi thử lại.",
+                "errTypeReset": "Nhập RESET để xác nhận thao tác phá hủy này.",
+                "errUserNotFound": "Người dùng này không còn tồn tại.",
+                "newPassword": "Mật khẩu tài khoản mới",
+                "statEncryptedBytes": "byte đã mã hóa",
+                "statProfiles": "hồ sơ",
+                "statSettings": "cài đặt",
+                "title": "Đặt lại mật khẩu = hủy dữ liệu",
+                "typeReset": "Nhập RESET",
+                "wipeDetail": "Không thể khôi phục mật khẩu hiện tại. AeroFTP sẽ xóa các máy chủ đã lưu, cài đặt người dùng và trạng thái khóa của tài khoản đích, sau đó cấp một khóa mã hóa mới được bảo vệ bằng mật khẩu mới.",
+                "wipeWarning": "Thao tác này sẽ xóa vĩnh viễn phân vùng đã mã hóa của tài khoản đích."
+            },
+            "dropdown": {
+                "accountPassword": "Mật khẩu tài khoản",
+                "lock": "Khóa",
+                "newUser": "Người dùng mới",
+                "noUsers": "Chưa có người dùng nào. Dùng \"Người dùng mới\" bên dưới để thêm người đầu tiên.",
+                "protectionNote": "Tài khoản của bạn được bảo vệ bằng mã hóa Argon2id + AES-KW + AES-256-GCM",
+                "users": "Người dùng"
+            }
         },
         "aerocryptNative": {
             "title": "Lớp phủ AeroCrypt",
