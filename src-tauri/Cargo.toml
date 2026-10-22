@@ -571,20 +571,17 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # stream. Pinned by `rev` on purpose, for the same reason as n0-mainline
 # above.
 #
-# UPSTREAM: NOTHING FILED as of 2026-10-22, and the branch being ready is not
-# the same as the contribution being ready. suppaftp asks for an issue first
-# (CONTRIBUTING.md), and its PR checklist wants tests and a local
+# UPSTREAM: feature request https://github.com/veeso/suppaftp/issues/206,
+# filed 2026-10-22. No upstream API PR has been opened; wait for maintainer
+# feedback as CONTRIBUTING.md requests. A future PR requires tests and a local
 # `just check_code`. The tests exist now (two tokio tests in `control.rs`,
 # seen red under a mutation of the method); `just check_code` has not been
 # run, because its tools (just, dprint, cargo-deny) are not installed where
 # the branch was built. It also has a binding AI_POLICY.md: disclosure is
 # mandatory and must go through their PR template, and the contributor has to
 # be a person who understands the change and answers review in their own
-# words. The issue draft, disclosure agreement and validation evidence are in
+# words. The issue text, disclosure agreement and validation evidence are in
 # the local suppaftp strategy/handoff under `docs/dev`, outside the public tree.
-# Filing it is an action on somebody else's repository under somebody's name,
-# so it belongs to the account owner rather
-# than to whoever edits this file.
 #
 # COST OF STAYING FORKED, stated because it is easy to forget once it builds:
 # `cargo audit` matches advisories by crate name and version against the
