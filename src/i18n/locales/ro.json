@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Copiați acest URL și lipiți-l ca URI de redirectare în setările aplicației de dezvoltator.",
                 "redirectUriNoteGoogle": "Recomandare: creați un ID de client OAuth de tip „Aplicație desktop” în Google Cloud Console; nu este necesară înregistrarea unui URI de redirecționare. Pentru un client de tip „Aplicație web”, înregistrați exact URI-ul de redirecționare afișat mai sus, inclusiv portul și calea /callback.",
                 "enablePhotosApi": "Asigură-te că Photos Library API este activat în Google Cloud Console.",
-                "enableDriveApi": "Asigură-te că Google Drive API este activat în Google Cloud Console."
+                "enableDriveApi": "Asigură-te că Google Drive API este activat în Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "SUA",
+                "zohoRegionEu": "UE",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Australia",
+                "zohoRegionJp": "Japonia",
+                "zohoRegionUk": "Regatul Unit",
+                "zohoRegionCa": "Canada",
+                "zohoRegionSa": "Arabia Saudită"
             },
             "activeSessions": "Sesiuni active",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Recomandat pentru securitate maximă",
             "fontCustomOption": "Personalizat...",
             "fontSystemInstallHint": "Necesită instalare în sistem. AeroFTP folosește automat o alternativă dacă nu este disponibil.",
-            "fontSizeIndicatorLabel": "Font"
+            "fontSizeIndicatorLabel": "Font",
+            "fontPresetDefault": "{font} (Implicit)",
+            "fontPresetSystemDefault": "Implicit al sistemului"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Mărește fontul (Ctrl+=)",
                 "newTab": "Filă nouă de terminal",
                 "sshShellTo": "Shell SSH către {host}",
-                "theme": "Tema terminalului"
+                "theme": "Tema terminalului",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "Negru pur",
+                "themeGreen": "Verde",
+                "themeIce": "Gheață",
+                "themeRedLava": "Lavă roșie"
             },
             "editorPanel": {
                 "emptyState": "Faceți clic dreapta pe un fișier și alegeți \"Vizualizare sursă\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(câte unul pe linie)",
             "pairsEditorLabel": "Editor de perechi AeroCloud",
             "remoteSubfolderPlaceholder": "nor",
-            "countdownSoon": "În curând..."
+            "countdownSoon": "În curând...",
+            "aerocloudEnabled": "AeroCloud activat",
+            "selectPairLocalFolder": "Selectați folderul local pentru pereche",
+            "secondsAgo": "acum {count}s"
         },
         "statusBar": {
             "connected": "Conectat",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Cercetător, inginer de asigurare a calității, co-designer"
             },
             "madeBy": "de {author}",
-            "statsLine": "{protocols} protocoale · {languages} limbi · arhive AES-256"
+            "statsLine": "{protocols} protocoale · {languages} limbi · arhive AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Operațiuni SFTP",
+                "osKeyring": "Breloc de chei al sistemului",
+                "vaultFormat": "Format seif",
+                "zipArchives": "Arhive ZIP"
+            }
         },
         "support": {
             "title": "Susține AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Restaurate {files} fișier(e) din coș, {present} deja prezente",
             "trash_restore_detail_folders_present_success": "[{provider}] Restaurate {files} fișier(e), {folders} dosar(e) din coș, {present} deja prezente",
             "filelu_file_password_removed": "[{provider}] Parola fișierului a fost eliminată",
-            "filelu_folder_password_removed": "[{provider}] Parola dosarului a fost eliminată"
+            "filelu_folder_password_removed": "[{provider}] Parola dosarului a fost eliminată",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} a eșuat",
+            "batch_rename_start": "[{location}] Se redenumesc {count} elemente...",
+            "batch_rename_success": "[{location}] Au fost redenumite {count} elemente",
+            "batch_rename_error": "[{location}] Au fost redenumite {count} elemente, {failed} au eșuat",
+            "compress_details_saved": "{input} → {output} (economisit {percent}%)",
+            "compress_details_grew": "{input} → {output} (crescut cu {percent}%)",
+            "extract_details": "{input} → {output} (extins)",
+            "download_details": "({size} în {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdicție",
             "insecureCertDialogLabel": "Avertisment certificat nesigur",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Verificarea cheii gazdei"
+            "hostKeyDialogLabel": "Verificarea cheii gazdei",
+            "mtpName": "Dispozitiv portabil (MTP)",
+            "mtpDesc": "Telefon sau cameră prin MTP/WPD",
+            "immichDesc": "Gestionare foto auto-găzduită",
+            "imagekitDesc": "CDN media + stocare (20 GB gratuit)",
+            "uploadcareDesc": "CDN media în UE (3 GB gratuit)",
+            "cloudinaryDesc": "CDN media (25 de credite/lună gratuit)",
+            "backblazeDesc": "API nativ Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -2416,7 +2458,10 @@
             "add": "Adaugă",
             "remove": "Elimină",
             "none": "Nicio permisiune setată",
-            "anyoneWithLink": "Oricine are linkul"
+            "anyoneWithLink": "Oricine are linkul",
+            "roleViewer": "Cititor",
+            "roleEditor": "Editor",
+            "roleCommenter": "Comentator"
         },
         "locking": {
             "lock": "Blochează fișierul",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "eșuate {count}",
             "rollbackRestoreCompleted": "Restaurare finalizată: {summary}",
             "rollbackRestoreNothing": "Nimic de restaurat",
-            "rollbackRestoreFailed": "Restaurarea a eșuat: {error}"
+            "rollbackRestoreFailed": "Restaurarea a eșuat: {error}",
+            "intervalHoursOne": "{count} oră",
+            "intervalHoursMany": "{count} ore"
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Acceptă viziune",
                 "thinkingReasoning": "Gândire/Raționament",
                 "toolQuality": "Calitatea instrumentelor: {quality}/5",
-                "ollamaNotReachable": "Ollama nu este accesibil"
+                "ollamaNotReachable": "Ollama nu este accesibil",
+                "macroSafeEditName": "Editare sigură",
+                "macroSafeEditDescription": "Citește un fișier, afișează conținutul, apoi îl editează (model de siguranță citire înainte de scriere)",
+                "macroFindReadName": "Găsește și citește",
+                "macroFindReadDescription": "Caută fișiere care corespund unui model într-un director local",
+                "familyHintLlama3": "Instrucțiunile directe și concise funcționează cel mai bine. Folosiți formatarea markdown. Suportă nativ utilizarea instrumentelor.",
+                "familyHintCodellama": "Concentrați-vă pe generarea și analiza codului. Oferiți exemple de cod. Folosiți limbaj tehnic.",
+                "familyHintDeepseekCoder": "Puternic în raționamentul despre cod și rezolvarea problemelor în mai mulți pași. Se preferă un rezultat structurat. Pentru deepseek-r1, modul de gândire funcționează automat.",
+                "familyHintQwen": "Suportă rezultate structurate. Bun la sarcini multilingve. Folosiți titluri de secțiune clare.",
+                "familyHintMistral": "Orientat spre respectarea instrucțiunilor. Păstrați prompturile structurate, cu descrieri clare ale sarcinii.",
+                "familyHintPhi": "Model compact: păstrați instrucțiunile concise. Potrivit pentru sarcini precise, nu pentru texte lungi.",
+                "familyHintGemma": "Format de instrucțiuni în stil Google. Bun la rezumare și analiză.",
+                "familyHintStarcoder": "Axat pe completarea codului. Oferiți contextul fișierului și importurile pentru rezultate optime."
             },
             "copy": "Copiază",
             "attachImage": "Atașează imagine",
@@ -3033,7 +3092,8 @@
                 "general": "General",
                 "typeSlash": "Tastați / pentru a folosi șabloane",
                 "analyzeUi": "Analizează captura de ecran UI pentru probleme de aspect, accesibilitate și UX",
-                "performance": "Analizează codul pentru blocaje de performanță și optimizare"
+                "performance": "Analizează codul pentru blocaje de performanță și optimizare",
+                "analysis": "Analiză"
             },
             "costBudget": {
                 "conversationCost": "Costul conversației",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "acum {count} z",
             "recentFileCountMany": "{count} fișiere",
             "recentFileCountOne": "{count} fișier",
-            "recentMonthsAgo": "acum {count} luni"
+            "recentMonthsAgo": "acum {count} luni",
+            "securityArchive": "Arhivă",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Rapid",
+            "securityAdvancedDescription": "Rezistent la nonce · Nume de fișiere criptate · KDF 128 MB",
+            "securityParanoidDescription": "Cascadă AES + ChaCha20 · Criptare dublă",
+            "securityArchiveDescription": "Arhivă deduplicată · fragmente zstd · v3"
         },
         "cryptomator": {
             "title": "Seif Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Conținut AES-GCM",
             "featureNameCipher": "Nume AES-SIV",
             "formatVersion": "Versiunea formatului {version}",
-            "invalidVaultName": "Caractere nevalide în numele seifului"
+            "invalidVaultName": "Caractere nevalide în numele seifului",
+            "defaultVaultName": "SeifNou"
         },
         "compress": {
             "title": "Comprimare fișiere",
@@ -3952,7 +4018,10 @@
             "threads": "Fire",
             "auto": "Auto",
             "solid": "Bloc solid",
-            "solidHint": "Raport mai bun pentru multe fișiere mici, extragere aleatorie mai lentă."
+            "solidHint": "Raport mai bun pentru multe fișiere mici, extragere aleatorie mai lentă.",
+            "formatArchiveOnly": "Doar arhivare",
+            "formatBestRatio": "Cel mai bun raport",
+            "formatSingleFile": "fișier unic"
         },
         "batchRename": {
             "title": "Redenumire în masă",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtrează operațiunile",
                 "selected": "selectate"
-            }
+            },
+            "save": "Salvează"
         },
         "error": {
             "description": "AeroFTP a întâmpinat o eroare neașteptată. Poți încerca să recuperezi sau să reîncarci aplicația.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radial",
                     "spectrum": "Spectru",
                     "vortex": "Vortex",
-                    "waveform": "Forma de undă"
+                    "waveform": "Forma de undă",
+                    "glWaveGlitch": "Distorsiune de undă",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunel",
+                    "glMetaball": "Metasfere",
+                    "glParticles": "Particule"
                 },
                 "volume": "Volum"
             },
@@ -4635,7 +4711,18 @@
                 "off": "OPRIT",
                 "on": "PORNIT",
                 "presets": "Presetări",
-                "reset": "Resetează la plat"
+                "reset": "Resetează la plat",
+                "presetFlat": "Plat",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Clasică",
+                "presetBassBoost": "Amplificare bas",
+                "presetTrebleBoost": "Amplificare înalte",
+                "presetVocal": "Voce",
+                "presetElectronic": "Electronică",
+                "presetAcoustic": "Acustică",
+                "presetCustom": "Personalizat"
             },
             "pdf": {
                 "download": "Descarcă PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Cu plată",
             "extraFeatures": "Extra",
             "coreOpsList": "Încărcare, Descărcare, Ștergere, Redenumire, Mutare, Creare dosar, Căutare",
-            "coreOpsLegend": "De bază = Încărcare, Descărcare, Ștergere, Redenumire, Mutare, Creare dosar, Căutare"
+            "coreOpsLegend": "De bază = Încărcare, Descărcare, Ștergere, Redenumire, Mutare, Creare dosar, Căutare",
+            "notes": "Note",
+            "storageClass": "Clasă de stocare",
+            "objectTagging": "Etichetarea obiectelor",
+            "sse": "Criptare pe partea serverului",
+            "checksum": "Sumă de control",
+            "tierManagement": "Gestionarea nivelurilor",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Multimedia",
+            "sectionOther": "Altele",
+            "trashDetails": {
+                "onedrive": "Unități Business și SharePoint. Microsoft Graph nu expune coșul de reciclare al unei unități OneDrive Personal; folosește site-ul OneDrive pentru acesta"
+            },
+            "shareLinkDetails": {
+                "permissions": "Permisiuni: vizualizare, comentare, editare",
+                "passwordExpiryPlan": "Parolă + expirare (necesită planul {plan})",
+                "passwordExpiryPaid": "Parolă + expirare (necesită un plan plătit)",
+                "passwordPersonalExpiryPermissions": "Parolă (doar Personal), expirare, permisiuni",
+                "passwordArgon2ExpiryPresets": "Parolă (Argon2id) + presetări de expirare",
+                "passwordExpiryPermissions": "Parolă, expirare, permisiuni",
+                "basicOnly": "Doar link de partajare de bază",
+                "publicToggle": "Link public (comutare confidențialitate)",
+                "basic": "Link de partajare de bază",
+                "expiringDefaultYear": "Linkuri cu expirare (implicit 1 an)",
+                "publishUnpublish": "Publicare/anulare publicare",
+                "permanentUrl": "URL permanent",
+                "sharedAlbum": "Link către album partajat",
+                "megaPresignedS4": "Link de partajare / URL presemnat (max. 7 zile pentru S4)",
+                "autoPasswordExpiry": "Parolă (generată automat) + expirare",
+                "presigned": "URL presemnat (max. 7 zile)"
+            }
         },
         "healthCheck": {
             "title": "Verificare stare server",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Depozit privat",
             "repoPublicTitle": "Depozit public",
             "unpushedCommitsOnBranchMany": "{count} commituri netrimise pe {branch}",
-            "unpushedCommitsOnBranchOne": "{count} commit netrimis pe {branch}"
+            "unpushedCommitsOnBranchOne": "{count} commit netrimis pe {branch}",
+            "cancelWorkflow": "Anulează fluxul de lucru",
+            "rerunWorkflow": "Rulează din nou fluxul de lucru",
+            "downloadAssetTitle": "Descarcă {name}"
         },
         "filenNotes": {
             "title": "Note criptate",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Creat",
             "manageExpires": "Expiră",
             "manageNeverExpires": "Niciodată",
-            "managePasswordProtected": "Protejat cu parolă"
+            "managePasswordProtected": "Protejat cu parolă",
+            "expirationHoursOne": "{count} oră",
+            "expirationHoursMany": "{count} ore",
+            "expirationDaysMany": "{count} zile"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} h",
                 "days": "{count} z",
                 "months": "{count} luni"
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Nou: {name}"
         },
         "gitlab": {
             "projectPath": "Calea proiectului",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Creează Merge Request",
             "mrTitle": "Titlul MR",
             "mrBody": "Descriere (opțional)",
-            "sourceCode": "Cod sursă"
+            "sourceCode": "Cod sursă",
+            "downloadAssetTitle": "Descarcă {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Utilizator nou",
                 "noUsers": "Încă nu există utilizatori. Folosește „Utilizator nou” de mai jos pentru a-l adăuga pe primul.",
                 "protectionNote": "Contul tău este protejat cu criptare Argon2id + AES-KW + AES-256-GCM",
-                "users": "Utilizatori"
+                "users": "Utilizatori",
+                "setup": "Configurare"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Modul este ales la crearea conexiunii și rămâne fix în timpul editării unui profil salvat. Pentru a folosi un alt mod, creați o conexiune nouă.",
-                "notInBuild": "Nu este inclus în această versiune AeroFTP."
+                "notInBuild": "Nu este inclus în această versiune AeroFTP.",
+                "header": "Moduri {name}",
+                "nativeApi": "API nativ",
+                "filelu": {
+                    "apiDescription": "API REST cu cheie API. Set complet de funcții (coș de gunoi, linkuri de partajare, fișiere protejate prin parolă).",
+                    "webdavDescription": "Acces WebDAV pe portul 443. Compatibilitate largă cu clienții, se montează ca unitate de rețea.",
+                    "s3Description": "API compatibil S3 pe portul 443. Folosiți rclone, AWS CLI sau orice SDK S3.",
+                    "ftpDescription": "FTP clasic pe portul 21. Necriptat, util pentru înregistratoare NVR de supraveghere video și clienți mai vechi."
+                },
+                "filen": {
+                    "apiDescription": "Criptare E2E cu cunoaștere zero (Argon2id v3 / PBKDF2 v2). Set complet de funcții: cotă de stocare, coș de gunoi, parole pentru linkurile de partajare, versiuni, TOTP.",
+                    "webdavDescription": "Punte WebDAV expusă de Filen Desktop pe 127.0.0.1:1900. Necesită Filen Desktop pornit și autentificat.",
+                    "s3Description": "Punte compatibilă S3 expusă de Filen Desktop pe 127.0.0.1:1800 prin local.s3.filen.io. Adresare după cale, fiecare dosar Filen de nivel superior este un bucket."
+                },
+                "proton": {
+                    "headerDescription": "Stocare în cloud Proton cu criptare integrală",
+                    "apiDescription": "Clientul Proton Drive propriu al AeroFTP: vă autentificați pe pagina Proton în browser, fișierele sunt criptate și decriptate pe acest computer și nu este nevoie de nicio altă aplicație.",
+                    "cliDescription": "Controlează CLI-ul oficial Proton Drive instalat și autentificat pe acest computer. Vă autentificați în browser; AeroFTP nu vede niciodată parola dvs. Proton."
+                },
+                "opendrive": {
+                    "headerDescription": "Stocare în cloud OpenDrive (5 GB gratuit)",
+                    "apiDescription": "API REST cu nume de utilizator + parolă. Set complet de funcții: coș de gunoi, cotă de stocare, linkuri de partajare, utilizare recursivă a discului.",
+                    "webdavDescription": "Acces WebDAV prin webdav.opendrive.com pe portul 443. Pentru clienți mai vechi sau pentru montare ca unitate de rețea."
+                },
+                "koofr": {
+                    "apiDescription": "API REST cu sediul în UE, cu e-mail + parolă de aplicație. Set complet de funcții: cotă de stocare, coș de gunoi (listare/restaurare/golire), linkuri de partajare.",
+                    "webdavDescription": "Acces WebDAV prin app.koofr.net/dav/Koofr pe portul 443. Cota de stocare este citită în continuare din API-ul REST Koofr. Pentru clienți mai vechi sau pentru montare ca unitate de rețea."
+                },
+                "mega": {
+                    "headerDescription": "Stocare în cloud MEGA cu criptare pe partea clientului",
+                    "apiDescription": "API MEGA nativ cu e-mail + parolă (+ TOTP opțional). Set complet de funcții: criptare pe partea clientului, cotă de stocare, linkuri de partajare, miniaturi.",
+                    "webdavDescription": "Punte WebDAV locală servită de CLI-ul oficial MEGAcmd, anonimă pe 127.0.0.1. AeroFTP rulează \"mega-webdav /\" în locul dvs. la conectare, deci nu există niciun pas manual.",
+                    "s4Description": "Stocare de obiecte MEGA S4, compatibilă S3 (regiunile EU/CA). Cheie de acces + cheie secretă + bucket. Necesită un plan Pro."
+                }
             }
         },
         "flatpak": {

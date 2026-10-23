@@ -423,7 +423,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                                     <Icon size={14} className={config.color} />
                                                     <span className="text-sm font-semibold">{config.label}</span>
                                                 </div>
-                                                <div className="text-[10px] mt-0.5" style={{ color: 'var(--compress-text-muted)' }}>{config.description}</div>
+                                                <div className="text-[10px] mt-0.5" style={{ color: 'var(--compress-text-muted)' }}>{t(config.descriptionKey)}</div>
                                             </button>
                                         );
                                     })}

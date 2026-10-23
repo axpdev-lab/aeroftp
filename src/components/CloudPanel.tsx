@@ -410,7 +410,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setConfig(newConfig);
         setStatus({ type: 'idle' });
         // Notify parent that cloud is now active
-        emit('cloud-sync-status', { status: 'active', message: 'AeroCloud enabled' });
+        emit('cloud-sync-status', { status: 'active', message: t('cloud.aerocloudEnabled') });
         logger.debug('AeroCloud enabled successfully!');
     };
 

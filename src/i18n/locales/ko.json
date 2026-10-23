@@ -202,7 +202,16 @@
                 "redirectUriHelp": "이 URL을 복사하여 개발자 앱 설정에서 리디렉트 URI로 붙여넣으세요.",
                 "redirectUriNoteGoogle": "권장: Google Cloud Console에서 \"데스크톱 앱\" 유형의 OAuth 클라이언트 ID를 만드세요. 리디렉션 URI를 등록할 필요가 없습니다. \"웹 애플리케이션\" 유형의 클라이언트는 위에 표시된 리디렉션 URI를 포트와 /callback 경로를 포함하여 정확히 등록하세요.",
                 "enablePhotosApi": "Google Cloud Console에서 Photos Library API가 활성화되어 있는지 확인하세요.",
-                "enableDriveApi": "Google Cloud Console에서 Google Drive API가 활성화되어 있는지 확인하세요."
+                "enableDriveApi": "Google Cloud Console에서 Google Drive API가 활성화되어 있는지 확인하세요.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "미국",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "인도",
+                "zohoRegionAu": "호주",
+                "zohoRegionJp": "일본",
+                "zohoRegionUk": "영국",
+                "zohoRegionCa": "캐나다",
+                "zohoRegionSa": "사우디아라비아"
             },
             "activeSessions": "활성 세션",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "최대 보안을 위해 권장",
             "fontCustomOption": "사용자 지정...",
             "fontSystemInstallHint": "시스템 설치가 필요합니다. 사용할 수 없으면 AeroFTP가 자동으로 대체합니다.",
-            "fontSizeIndicatorLabel": "글꼴"
+            "fontSizeIndicatorLabel": "글꼴",
+            "fontPresetDefault": "{font} (기본값)",
+            "fontPresetSystemDefault": "시스템 기본값"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "글꼴 크기 키우기 (Ctrl+=)",
                 "newTab": "새 터미널 탭",
                 "sshShellTo": "{host}에 대한 SSH 셸",
-                "theme": "터미널 테마"
+                "theme": "터미널 테마",
+                "tabLabel": "터미널 {num}",
+                "themeCyber": "사이버",
+                "themeTrueDark": "트루 다크",
+                "themeGreen": "그린",
+                "themeIce": "아이스",
+                "themeRedLava": "레드 라바"
             },
             "editorPanel": {
                 "emptyState": "파일을 우클릭하고 \"소스 보기\"를 선택하세요",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(한 줄에 하나씩)",
             "pairsEditorLabel": "AeroCloud 페어 편집기",
             "remoteSubfolderPlaceholder": "클라우드",
-            "countdownSoon": "곧..."
+            "countdownSoon": "곧...",
+            "aerocloudEnabled": "AeroCloud 활성화됨",
+            "selectPairLocalFolder": "페어의 로컬 폴더 선택",
+            "secondsAgo": "{count}초 전"
         },
         "statusBar": {
             "connected": "연결됨",
@@ -1742,7 +1762,13 @@
                 "ekRole": "연구원, 품질 보증 엔지니어, 공동 디자이너"
             },
             "madeBy": "{author} 제작",
-            "statsLine": "{protocols}개 프로토콜 · {languages}개 언어 · AES-256 아카이브"
+            "statsLine": "{protocols}개 프로토콜 · {languages}개 언어 · AES-256 아카이브",
+            "dependencyRoles": {
+                "sftpOps": "SFTP 작업",
+                "osKeyring": "OS 키링",
+                "vaultFormat": "볼트 형식",
+                "zipArchives": "ZIP 아카이브"
+            }
         },
         "support": {
             "title": "AeroFTP 지원",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] 휴지통에서 파일 {files}개 복원됨, {present}개는 이미 있음",
             "trash_restore_detail_folders_present_success": "[{provider}] 휴지통에서 파일 {files}개, 폴더 {folders}개 복원됨, {present}개는 이미 있음",
             "filelu_file_password_removed": "[{provider}] 파일 비밀번호를 제거했습니다",
-            "filelu_folder_password_removed": "[{provider}] 폴더 비밀번호를 제거했습니다"
+            "filelu_folder_password_removed": "[{provider}] 폴더 비밀번호를 제거했습니다",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} 실패",
+            "batch_rename_start": "[{location}] 항목 {count}개 이름 바꾸는 중...",
+            "batch_rename_success": "[{location}] 항목 {count}개 이름 바꿈",
+            "batch_rename_error": "[{location}] 항목 {count}개 이름 바꿈, {failed}개 실패",
+            "compress_details_saved": "{input} → {output} ({percent}% 절약)",
+            "compress_details_grew": "{input} → {output} ({percent}% 증가)",
+            "extract_details": "{input} → {output} (압축 해제됨)",
+            "download_details": "({size}, {seconds}초)"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "관할권",
             "insecureCertDialogLabel": "안전하지 않은 인증서 경고",
             "betaBadge": "베타",
-            "hostKeyDialogLabel": "호스트 키 확인"
+            "hostKeyDialogLabel": "호스트 키 확인",
+            "mtpName": "휴대용 장치 (MTP)",
+            "mtpDesc": "MTP/WPD를 통한 휴대폰 또는 카메라",
+            "immichDesc": "셀프 호스팅 사진 관리",
+            "imagekitDesc": "미디어 CDN + 스토리지 (20 GB 무료)",
+            "uploadcareDesc": "EU 미디어 CDN (3 GB 무료)",
+            "cloudinaryDesc": "미디어 CDN (월 25 크레딧 무료)",
+            "backblazeDesc": "Backblaze B2 네이티브 API v4"
         },
         "shortcuts": {
             "title": "단축키",
@@ -2416,7 +2458,10 @@
             "add": "추가",
             "remove": "제거",
             "none": "설정된 권한이 없습니다",
-            "anyoneWithLink": "링크가 있는 모든 사용자"
+            "anyoneWithLink": "링크가 있는 모든 사용자",
+            "roleViewer": "뷰어",
+            "roleEditor": "편집자",
+            "roleCommenter": "댓글 작성자"
         },
         "locking": {
             "lock": "파일 잠금",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "실패 {count}",
             "rollbackRestoreCompleted": "복원 완료: {summary}",
             "rollbackRestoreNothing": "복원할 항목이 없습니다",
-            "rollbackRestoreFailed": "복원 실패: {error}"
+            "rollbackRestoreFailed": "복원 실패: {error}",
+            "intervalHoursOne": "{count}시간",
+            "intervalHoursMany": "{count}시간"
         },
         "ui": {
             "syncing": "동기화 중...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "비전 지원",
                 "thinkingReasoning": "사고/추론",
                 "toolQuality": "도구 품질: {quality}/5",
-                "ollamaNotReachable": "Ollama에 연결할 수 없음"
+                "ollamaNotReachable": "Ollama에 연결할 수 없음",
+                "macroSafeEditName": "안전한 편집",
+                "macroSafeEditDescription": "파일을 읽고 내용을 표시한 후 편집합니다 (쓰기 전 읽기 안전 패턴)",
+                "macroFindReadName": "찾기 및 읽기",
+                "macroFindReadDescription": "로컬 디렉터리에서 패턴과 일치하는 파일을 검색합니다",
+                "familyHintLlama3": "직접적이고 간결한 지시가 가장 효과적입니다. markdown 서식을 사용하세요. 도구 사용을 기본적으로 지원합니다.",
+                "familyHintCodellama": "코드 생성과 분석에 집중합니다. 코드 예시를 제공하세요. 기술적인 표현을 사용하세요.",
+                "familyHintDeepseekCoder": "코드 추론과 다단계 문제 해결에 강합니다. 구조화된 출력이 권장됩니다. deepseek-r1에서는 사고 모드가 자동으로 작동합니다.",
+                "familyHintQwen": "구조화된 출력을 지원합니다. 다국어 작업에 능숙합니다. 명확한 섹션 제목을 사용하세요.",
+                "familyHintMistral": "지시 따르기에 최적화되어 있습니다. 명확한 작업 설명과 함께 프롬프트를 구조화하세요.",
+                "familyHintPhi": "소형 모델: 지시를 간결하게 유지하세요. 긴 글보다는 집중된 작업에 가장 적합합니다.",
+                "familyHintGemma": "Google 스타일 지시 형식입니다. 요약과 분석에 능숙합니다.",
+                "familyHintStarcoder": "코드 완성에 특화되어 있습니다. 최상의 결과를 위해 파일 컨텍스트와 import를 제공하세요."
             },
             "copy": "복사",
             "attachImage": "이미지 첨부",
@@ -3033,7 +3092,8 @@
                 "general": "일반",
                 "typeSlash": "/를 입력하여 템플릿 사용",
                 "analyzeUi": "레이아웃, 접근성, UX 문제에 대해 UI 스크린샷 분석",
-                "performance": "성능 병목 현상 및 최적화를 위한 코드 분석"
+                "performance": "성능 병목 현상 및 최적화를 위한 코드 분석",
+                "analysis": "분석"
             },
             "costBudget": {
                 "conversationCost": "대화 비용",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count}일 전",
             "recentFileCountMany": "파일 {count}개",
             "recentFileCountOne": "파일 {count}개",
-            "recentMonthsAgo": "{count}개월 전"
+            "recentMonthsAgo": "{count}개월 전",
+            "securityArchive": "아카이브",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · 빠름",
+            "securityAdvancedDescription": "nonce 내성 · 암호화된 파일 이름 · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 캐스케이드 · 이중 암호화",
+            "securityArchiveDescription": "중복 제거 아카이브 · zstd 청크 · v3"
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM 콘텐츠",
             "featureNameCipher": "AES-SIV 이름",
             "formatVersion": "형식 {version}",
-            "invalidVaultName": "보관소 이름에 잘못된 문자가 있습니다"
+            "invalidVaultName": "보관소 이름에 잘못된 문자가 있습니다",
+            "defaultVaultName": "새보관함"
         },
         "compress": {
             "title": "파일 압축",
@@ -3952,7 +4018,10 @@
             "threads": "스레드",
             "auto": "자동",
             "solid": "솔리드 블록",
-            "solidHint": "작은 파일이 많을 때 압축률이 좋아지지만 임의 추출은 느려집니다."
+            "solidHint": "작은 파일이 많을 때 압축률이 좋아지지만 임의 추출은 느려집니다.",
+            "formatArchiveOnly": "아카이브만",
+            "formatBestRatio": "최고 압축률",
+            "formatSingleFile": "단일 파일"
         },
         "batchRename": {
             "title": "일괄 이름 변경",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "작업 필터링",
                 "selected": "선택됨"
-            }
+            },
+            "save": "저장"
         },
         "error": {
             "description": "AeroFTP에서 예기치 않은 오류가 발생했습니다. 복구를 시도하거나 애플리케이션을 다시 로드할 수 있습니다.",
@@ -4529,7 +4599,13 @@
                     "radial": "방사형",
                     "spectrum": "스펙트럼",
                     "vortex": "소용돌이",
-                    "waveform": "파형"
+                    "waveform": "파형",
+                    "glWaveGlitch": "웨이브 글리치",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "망델브로",
+                    "glTunnel": "터널",
+                    "glMetaball": "메타볼",
+                    "glParticles": "파티클"
                 },
                 "volume": "볼륨"
             },
@@ -4635,7 +4711,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "프리셋",
-                "reset": "플랫으로 초기화"
+                "reset": "플랫으로 초기화",
+                "presetFlat": "플랫",
+                "presetRock": "록",
+                "presetPop": "팝",
+                "presetJazz": "재즈",
+                "presetClassical": "클래식",
+                "presetBassBoost": "저음 강조",
+                "presetTrebleBoost": "고음 강조",
+                "presetVocal": "보컬",
+                "presetElectronic": "일렉트로닉",
+                "presetAcoustic": "어쿠스틱",
+                "presetCustom": "사용자 지정"
             },
             "pdf": {
                 "download": "PDF 다운로드",
@@ -5118,7 +5205,37 @@
             "paidTier": "유료",
             "extraFeatures": "추가",
             "coreOpsList": "업로드, 다운로드, 삭제, 이름 변경, 이동, 폴더 만들기, 검색",
-            "coreOpsLegend": "기본 = 업로드, 다운로드, 삭제, 이름 변경, 이동, 폴더 만들기, 검색"
+            "coreOpsLegend": "기본 = 업로드, 다운로드, 삭제, 이름 변경, 이동, 폴더 만들기, 검색",
+            "notes": "참고",
+            "storageClass": "스토리지 클래스",
+            "objectTagging": "객체 태그 지정",
+            "sse": "서버 측 암호화",
+            "checksum": "체크섬",
+            "tierManagement": "계층 관리",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "미디어",
+            "sectionOther": "기타",
+            "trashDetails": {
+                "onedrive": "Business 및 SharePoint 드라이브. Microsoft Graph는 OneDrive Personal 드라이브의 휴지통을 제공하지 않으므로 OneDrive 웹사이트를 사용하세요"
+            },
+            "shareLinkDetails": {
+                "permissions": "권한: 보기, 댓글, 편집",
+                "passwordExpiryPlan": "비밀번호 + 만료 ({plan} 요금제 필요)",
+                "passwordExpiryPaid": "비밀번호 + 만료 (유료 요금제 필요)",
+                "passwordPersonalExpiryPermissions": "비밀번호 (Personal 전용), 만료, 권한",
+                "passwordArgon2ExpiryPresets": "비밀번호 (Argon2id) + 만료 프리셋",
+                "passwordExpiryPermissions": "비밀번호, 만료, 권한",
+                "basicOnly": "기본 공유 링크만",
+                "publicToggle": "공개 링크 (개인정보 보호 전환)",
+                "basic": "기본 공유 링크",
+                "expiringDefaultYear": "만료 링크 (기본 1년)",
+                "publishUnpublish": "게시/게시 취소",
+                "permanentUrl": "영구 URL",
+                "sharedAlbum": "공유 앨범 링크",
+                "megaPresignedS4": "공유 링크 / 사전 서명된 URL (S4는 최대 7일)",
+                "autoPasswordExpiry": "비밀번호 (자동 생성) + 만료",
+                "presigned": "사전 서명된 URL (최대 7일)"
+            }
         },
         "healthCheck": {
             "title": "서버 상태 점검",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "비공개 저장소",
             "repoPublicTitle": "공개 저장소",
             "unpushedCommitsOnBranchMany": "{branch}에 푸시되지 않은 커밋 {count}개",
-            "unpushedCommitsOnBranchOne": "{branch}에 푸시되지 않은 커밋 {count}개"
+            "unpushedCommitsOnBranchOne": "{branch}에 푸시되지 않은 커밋 {count}개",
+            "cancelWorkflow": "워크플로 취소",
+            "rerunWorkflow": "워크플로 다시 실행",
+            "downloadAssetTitle": "{name} 다운로드"
         },
         "filenNotes": {
             "title": "암호화된 노트",
@@ -5469,7 +5589,10 @@
             "manageCreated": "생성일",
             "manageExpires": "만료일",
             "manageNeverExpires": "무기한",
-            "managePasswordProtected": "비밀번호 보호"
+            "managePasswordProtected": "비밀번호 보호",
+            "expirationHoursOne": "{count}시간",
+            "expirationHoursMany": "{count}시간",
+            "expirationDaysMany": "{count}일"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count}시간",
                 "days": "{count}일",
                 "months": "{count}개월"
-            }
+            },
+            "demoTabLabel": "데모: {protocol}",
+            "newTabLabel": "신규: {name}"
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Merge Request 생성",
             "mrTitle": "MR 제목",
             "mrBody": "설명 (선택 사항)",
-            "sourceCode": "소스 코드"
+            "sourceCode": "소스 코드",
+            "downloadAssetTitle": "{name} 다운로드"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "새 사용자",
                 "noUsers": "아직 사용자가 없습니다. 아래의 \"새 사용자\"를 사용해 첫 사용자를 추가하세요.",
                 "protectionNote": "계정이 Argon2id + AES-KW + AES-256-GCM 암호화로 보호됩니다",
-                "users": "사용자"
+                "users": "사용자",
+                "setup": "설정"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "모드는 연결을 만들 때 선택되며 저장된 프로필을 편집하는 동안 고정됩니다. 다른 모드를 사용하려면 새 연결을 만드세요.",
-                "notInBuild": "이 AeroFTP 빌드에는 포함되지 않았습니다."
+                "notInBuild": "이 AeroFTP 빌드에는 포함되지 않았습니다.",
+                "header": "{name} 모드",
+                "nativeApi": "네이티브 API",
+                "filelu": {
+                    "apiDescription": "API 키를 사용하는 REST API. 전체 기능 제공 (휴지통, 공유 링크, 비밀번호 보호 파일).",
+                    "webdavDescription": "포트 443을 통한 WebDAV 액세스. 폭넓은 클라이언트 호환성, 네트워크 드라이브로 마운트됩니다.",
+                    "s3Description": "포트 443의 S3 호환 API. rclone, AWS CLI 또는 모든 S3 SDK를 사용하세요.",
+                    "ftpDescription": "포트 21의 기본 FTP. 평문 통신이며 CCTV NVR 및 레거시 클라이언트에 유용합니다."
+                },
+                "filen": {
+                    "apiDescription": "영지식 E2E 암호화 (Argon2id v3 / PBKDF2 v2). 전체 기능: 저장 공간 할당량, 휴지통, 공유 링크 비밀번호, 버전 관리, TOTP.",
+                    "webdavDescription": "Filen Desktop이 127.0.0.1:1900에서 제공하는 WebDAV 브리지. Filen Desktop이 실행 중이고 로그인되어 있어야 합니다.",
+                    "s3Description": "Filen Desktop이 local.s3.filen.io를 통해 127.0.0.1:1800에서 제공하는 S3 호환 브리지. 경로 방식 주소 지정이며, 최상위 Filen 폴더 각각이 버킷입니다."
+                },
+                "proton": {
+                    "headerDescription": "종단 간 암호화를 지원하는 Proton 클라우드 스토리지",
+                    "apiDescription": "AeroFTP 자체 Proton Drive 클라이언트: 브라우저의 Proton 페이지에서 로그인하고, 파일은 이 컴퓨터에서 암호화 및 복호화되며, 다른 앱이 필요하지 않습니다.",
+                    "cliDescription": "이 컴퓨터에 설치되고 로그인된 공식 Proton Drive CLI를 구동합니다. 로그인은 브라우저에서 하며, AeroFTP는 Proton 비밀번호를 절대 볼 수 없습니다."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive 클라우드 스토리지 (5 GB 무료)",
+                    "apiDescription": "사용자 이름 + 비밀번호를 사용하는 REST API. 전체 기능: 휴지통, 저장 공간 할당량, 공유 링크, 재귀적 디스크 사용량.",
+                    "webdavDescription": "포트 443에서 webdav.opendrive.com을 통한 WebDAV 접근. 레거시 클라이언트용이거나 네트워크 드라이브로 마운트할 때 사용합니다."
+                },
+                "koofr": {
+                    "apiDescription": "EU 기반 REST API, 이메일 + 앱 비밀번호 사용. 전체 기능: 저장 공간 할당량, 휴지통 (목록/복원/비우기), 공유 링크.",
+                    "webdavDescription": "포트 443에서 app.koofr.net/dav/Koofr를 통한 WebDAV 접근. 저장 공간 할당량은 여전히 Koofr REST API에서 읽습니다. 레거시 클라이언트용이거나 네트워크 드라이브로 마운트할 때 사용합니다."
+                },
+                "mega": {
+                    "headerDescription": "클라이언트 측 암호화를 지원하는 MEGA 클라우드 스토리지",
+                    "apiDescription": "이메일 + 비밀번호 (+ 선택적 TOTP)를 사용하는 기본 MEGA API. 전체 기능: 클라이언트 측 암호화, 저장 공간 할당량, 공유 링크, 썸네일.",
+                    "webdavDescription": "공식 MEGAcmd CLI가 제공하는 로컬 WebDAV 브리지로, 127.0.0.1에서 익명으로 동작합니다. 연결 시 AeroFTP가 \"mega-webdav /\"를 대신 실행하므로 수동 단계가 없습니다.",
+                    "s4Description": "MEGA S4 객체 스토리지, S3 호환 (EU/CA 리전). 액세스 키 + 비밀 키 + 버킷. Pro 요금제가 필요합니다."
+                }
             }
         },
         "flatpak": {

@@ -301,7 +301,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         // accumulating across remounts.
         const askAction = editor.addAction({
             id: 'ask-aeroagent',
-            label: 'Ask AeroAgent',
+            label: t('ai.askAgent'),
             contextMenuGroupId: '9_aeroagent',
             contextMenuOrder: 1,
             keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyA],
@@ -325,7 +325,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         // always sees the latest props (onSave, originalContent).
         const saveAction = editor.addAction({
             id: 'aeroftp-save',
-            label: 'Save',
+            label: t('devtools.editorPanel.save'),
             keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
             run: () => {
                 void handleSaveRef.current();

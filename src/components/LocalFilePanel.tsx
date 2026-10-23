@@ -937,7 +937,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   if (meta?.status === 'loading') {
                     content = <Loader2 size={12} className="animate-spin text-gray-400" />;
                   } else if (meta?.status === 'done' && meta.encrypted && meta.cipher) {
-                    const c = formatArchiveCipher(meta.cipher);
+                    const c = formatArchiveCipher(meta.cipher, t);
                     content = <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${c.strong ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`} title={c.strong ? undefined : t('contextMenu.zipCryptoLegacy')}>{c.label}</span>;
                   }
                   return <td key="encryption" className="px-4 py-2 text-xs">{content}</td>;

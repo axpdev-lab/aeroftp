@@ -8,6 +8,26 @@ import { Checkbox } from '../ui/Checkbox';
 import { X, Plus, Trash2, Edit2, Check, AlertCircle, ShieldAlert, ShieldCheck, Shield, Zap, Server, Key, Globe, Cpu, ChevronDown, ChevronRight, Sliders, MessageSquare, Puzzle, Layers, Eye, EyeOff, List } from 'lucide-react';
 import type { PluginManifest } from '../../types/plugins';
 import { DEFAULT_MACROS } from '../DevTools/aiChatToolMacros';
+
+// The built-in macros keep their English name and description: both go to
+// the model in the tool registry. The settings list shows them translated.
+// The Ollama family hints guide the model in English; the settings list shows
+// them translated, by family id.
+const FAMILY_HINT_KEYS: Record<string, string> = {
+    'llama3': 'ai.settings.familyHintLlama3',
+    'codellama': 'ai.settings.familyHintCodellama',
+    'deepseek-coder': 'ai.settings.familyHintDeepseekCoder',
+    'qwen': 'ai.settings.familyHintQwen',
+    'mistral': 'ai.settings.familyHintMistral',
+    'phi': 'ai.settings.familyHintPhi',
+    'gemma': 'ai.settings.familyHintGemma',
+    'starcoder': 'ai.settings.familyHintStarcoder',
+};
+
+const BUILTIN_MACRO_TEXT: Record<string, { name: string; description: string }> = {
+    'builtin-backup-edit': { name: 'ai.settings.macroSafeEditName', description: 'ai.settings.macroSafeEditDescription' },
+    'builtin-search-read': { name: 'ai.settings.macroFindReadName', description: 'ai.settings.macroFindReadDescription' },
+};
 import { detectOllamaModelFamily } from '../DevTools/aiProviderProfiles';
 import { OllamaGpuMonitor } from '../DevTools/OllamaGpuMonitor';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, AlibabaModelStudioIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon, NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon, KiloIcon, BedrockIcon } from '../DevTools/AIIcons';
@@ -1300,7 +1320,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                         const family = detectOllamaModelFamily(model.name);
                                                                         if (!family) return null;
                                                                         return (
-                                                                            <span className="text-[9px] px-1.5 py-0.5 bg-cyan-900/30 text-cyan-400 rounded border border-cyan-800/50" title={family.promptStyle}>
+                                                                            <span className="text-[9px] px-1.5 py-0.5 bg-cyan-900/30 text-cyan-400 rounded border border-cyan-800/50" title={FAMILY_HINT_KEYS[family.family] ? t(FAMILY_HINT_KEYS[family.family]) : undefined}>
                                                                                 {family.family}
                                                                             </span>
                                                                         );
@@ -2048,16 +2068,18 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         <div className="space-y-4">
                             <div className="text-sm text-gray-400 mb-4">{t('ai.settings.macrosDescription')}</div>
 
-                            {DEFAULT_MACROS.map((macro) => (
+                            {DEFAULT_MACROS.map((macro) => {
+                                const text = BUILTIN_MACRO_TEXT[macro.id];
+                                return (
                                 <div key={macro.id} className="bg-gray-800 rounded-lg p-4">
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center gap-2">
                                             <Layers size={16} className="text-purple-400" />
-                                            <h3 className="font-medium text-white">{macro.displayName}</h3>
+                                            <h3 className="font-medium text-white">{text ? t(text.name) : macro.name}</h3>
                                             <span className="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-400 font-mono">macro_{macro.name}</span>
                                         </div>
                                     </div>
-                                    <p className="text-sm text-gray-400 mb-3">{macro.description}</p>
+                                    {text && <p className="text-sm text-gray-400 mb-3">{t(text.description)}</p>}
 
                                     <div className="space-y-1.5">
                                         <span className="text-xs text-gray-500 font-medium">{t('ai.settings.macroSteps')}:</span>
@@ -2088,7 +2110,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                                );
+                            })}
 
                             <div className="text-xs text-gray-600 mt-4 p-3 bg-gray-800/50 rounded-lg">{t('ai.settings.macrosCustomNote')}</div>
                         </div>

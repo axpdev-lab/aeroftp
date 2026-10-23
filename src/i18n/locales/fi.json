@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Kopioi tämä URL ja liitä se uudelleenohjaus-URI:ksi kehittäjäsovelluksesi asetuksiin.",
                 "redirectUriNoteGoogle": "Suositus: luo Google Cloud Console -palvelussa OAuth-asiakastunnus, jonka tyyppi on ”Työpöytäsovellus”; uudelleenohjauksen URI-osoitetta ei tarvitse rekisteröidä. Jos asiakkaan tyyppi on ”Verkkosovellus”, rekisteröi täsmälleen yllä näkyvä uudelleenohjauksen URI-osoite, mukaan lukien portti ja polku /callback.",
                 "enablePhotosApi": "Varmista, että Photos Library API on käytössä Google Cloud Consolessa.",
-                "enableDriveApi": "Varmista, että Google Drive API on käytössä Google Cloud Consolessa."
+                "enableDriveApi": "Varmista, että Google Drive API on käytössä Google Cloud Consolessa.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "Yhdysvallat",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "Intia",
+                "zohoRegionAu": "Australia",
+                "zohoRegionJp": "Japani",
+                "zohoRegionUk": "Iso-Britannia",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Saudi-Arabia"
             },
             "activeSessions": "Aktiiviset istunnot",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Suositellaan parhaan tietoturvan vuoksi",
             "fontCustomOption": "Mukautettu...",
             "fontSystemInstallHint": "Vaatii järjestelmäasennuksen. AeroFTP käyttää automaattisesti varavaihtoehtoa, jos se ei ole saatavilla.",
-            "fontSizeIndicatorLabel": "Fontti"
+            "fontSizeIndicatorLabel": "Fontti",
+            "fontPresetDefault": "{font} (oletus)",
+            "fontPresetSystemDefault": "Järjestelmän oletus"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Suurenna fonttikokoa (Ctrl+=)",
                 "newTab": "Uusi päätevälilehti",
                 "sshShellTo": "SSH-kuori kohteeseen {host}",
-                "theme": "Päätteen teema"
+                "theme": "Päätteen teema",
+                "tabLabel": "Pääte {num}",
+                "themeCyber": "Kyber",
+                "themeTrueDark": "Aito tumma",
+                "themeGreen": "Vihreä",
+                "themeIce": "Jää",
+                "themeRedLava": "Punainen laava"
             },
             "editorPanel": {
                 "emptyState": "Napsauta tiedostoa hiiren oikealla painikkeella ja valitse \"Näytä lähde\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(yksi riviä kohden)",
             "pairsEditorLabel": "AeroCloud-parien muokkain",
             "remoteSubfolderPlaceholder": "pilvi",
-            "countdownSoon": "Pian..."
+            "countdownSoon": "Pian...",
+            "aerocloudEnabled": "AeroCloud käytössä",
+            "selectPairLocalFolder": "Valitse paikallinen kansio parille",
+            "secondsAgo": "{count}s sitten"
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Tutkija, laadunvarmistusinsinööri, yhteissuunnittelija"
             },
             "madeBy": "{author}:n toimesta",
-            "statsLine": "{protocols} protokollaa · {languages} kieltä · AES-256-arkistot"
+            "statsLine": "{protocols} protokollaa · {languages} kieltä · AES-256-arkistot",
+            "dependencyRoles": {
+                "sftpOps": "SFTP-toiminnot",
+                "osKeyring": "Käyttöjärjestelmän avainnippu",
+                "vaultFormat": "Holvin muoto",
+                "zipArchives": "ZIP-arkistot"
+            }
         },
         "support": {
             "title": "Tue AeroFTP:tä",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {present} oli jo olemassa",
             "trash_restore_detail_folders_present_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {folders} kansio(ta), {present} oli jo olemassa",
             "filelu_file_password_removed": "[{provider}] Tiedoston salasana poistettiin",
-            "filelu_folder_password_removed": "[{provider}] Kansion salasana poistettu"
+            "filelu_folder_password_removed": "[{provider}] Kansion salasana poistettu",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} epäonnistui",
+            "batch_rename_start": "[{location}] Nimetään uudelleen {count} kohdetta...",
+            "batch_rename_success": "[{location}] Nimettiin uudelleen {count} kohdetta",
+            "batch_rename_error": "[{location}] Nimettiin uudelleen {count} kohdetta, {failed} epäonnistui",
+            "compress_details_saved": "{input} → {output} (säästö {percent}%)",
+            "compress_details_grew": "{input} → {output} (kasvoi {percent}%)",
+            "extract_details": "{input} → {output} (purettu)",
+            "download_details": "({size}, {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Lainkäyttöalue",
             "insecureCertDialogLabel": "Varoitus suojaamattomasta varmenteesta",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Isäntäavaimen vahvistus"
+            "hostKeyDialogLabel": "Isäntäavaimen vahvistus",
+            "mtpName": "Kannettava laite (MTP)",
+            "mtpDesc": "Puhelin tai kamera MTP/WPD:n kautta",
+            "immichDesc": "Itse ylläpidetty kuvienhallinta",
+            "imagekitDesc": "Media-CDN + tallennustila (20 Gt ilmaiseksi)",
+            "uploadcareDesc": "EU:n media-CDN (3 Gt ilmaiseksi)",
+            "cloudinaryDesc": "Media-CDN (25 krediittiä/kk ilmaiseksi)",
+            "backblazeDesc": "Backblaze B2:n natiivi API v4"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -2416,7 +2458,10 @@
             "add": "Lisää",
             "remove": "Poista",
             "none": "Ei käyttöoikeuksia asetettu",
-            "anyoneWithLink": "Kuka tahansa, jolla on linkki"
+            "anyoneWithLink": "Kuka tahansa, jolla on linkki",
+            "roleViewer": "Katselija",
+            "roleEditor": "Muokkaaja",
+            "roleCommenter": "Kommentoija"
         },
         "locking": {
             "lock": "Lukitse tiedosto",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "epäonnistui {count}",
             "rollbackRestoreCompleted": "Palautus valmis: {summary}",
             "rollbackRestoreNothing": "Ei palautettavaa",
-            "rollbackRestoreFailed": "Palautus epäonnistui: {error}"
+            "rollbackRestoreFailed": "Palautus epäonnistui: {error}",
+            "intervalHoursOne": "{count} tunti",
+            "intervalHoursMany": "{count} tuntia"
         },
         "ui": {
             "syncing": "Synkronoidaan...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Tukee näkökykyä",
                 "thinkingReasoning": "Ajattelu/Päättely",
                 "toolQuality": "Työkalujen laatu: {quality}/5",
-                "ollamaNotReachable": "Ollamaan ei saada yhteyttä"
+                "ollamaNotReachable": "Ollamaan ei saada yhteyttä",
+                "macroSafeEditName": "Turvallinen muokkaus",
+                "macroSafeEditDescription": "Lue tiedosto, näytä sen sisältö ja muokkaa sitä sitten (turvamalli: lue ennen kirjoittamista)",
+                "macroFindReadName": "Etsi ja lue",
+                "macroFindReadDescription": "Etsi kuviota vastaavia tiedostoja paikallisesta hakemistosta",
+                "familyHintLlama3": "Suorat ja tiiviit ohjeet toimivat parhaiten. Käytä markdown-muotoilua. Tukee työkalujen käyttöä natiivisti.",
+                "familyHintCodellama": "Keskity koodin tuottamiseen ja analysointiin. Anna koodiesimerkkejä. Käytä teknistä kieltä.",
+                "familyHintDeepseekCoder": "Vahva koodin päättelyssä ja monivaiheisten ongelmien ratkaisussa. Jäsennelty tuloste on suositeltava. deepseek-r1:ssä ajattelutila toimii automaattisesti.",
+                "familyHintQwen": "Tukee jäsenneltyä tulostetta. Hyvä monikielisissä tehtävissä. Käytä selkeitä osioiden otsikoita.",
+                "familyHintMistral": "Suuntautunut ohjeiden noudattamiseen. Pidä kehotteet jäsenneltyinä ja tehtävänkuvaukset selkeinä.",
+                "familyHintPhi": "Kompakti malli: pidä ohjeet tiiviinä. Paras rajattuihin tehtäviin, ei pitkiin teksteihin.",
+                "familyHintGemma": "Google-tyylinen ohjemuoto. Hyvä tiivistämisessä ja analyysissä.",
+                "familyHintStarcoder": "Keskittyy koodin täydentämiseen. Anna tiedoston konteksti ja tuonnit parhaiden tulosten saamiseksi."
             },
             "copy": "Kopioi",
             "attachImage": "Liitä kuva",
@@ -3033,7 +3092,8 @@
                 "general": "Yleinen",
                 "typeSlash": "Kirjoita / käyttääksesi malleja",
                 "analyzeUi": "Analysoi käyttöliittymän kuvakaappaus asettelun, saavutettavuuden ja käytettävyyden osalta",
-                "performance": "Analysoi koodin suorituskyvyn pullonkaulat ja optimoinnit"
+                "performance": "Analysoi koodin suorituskyvyn pullonkaulat ja optimoinnit",
+                "analysis": "Analyysi"
             },
             "costBudget": {
                 "conversationCost": "Keskustelun kustannus",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} pv sitten",
             "recentFileCountMany": "{count} tiedostoa",
             "recentFileCountOne": "{count} tiedosto",
-            "recentMonthsAgo": "{count} kk sitten"
+            "recentMonthsAgo": "{count} kk sitten",
+            "securityArchive": "Arkisto",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Nopea",
+            "securityAdvancedDescription": "Nonce-kestävä · Salatut tiedostonimet · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 -kaskadi · Kaksinkertainen salaus",
+            "securityArchiveDescription": "Deduplikoitu arkisto · zstd-lohkot · v3"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM-sisältö",
             "featureNameCipher": "AES-SIV-nimet",
             "formatVersion": "Muoto {version}",
-            "invalidVaultName": "Virheellisiä merkkejä holvin nimessä"
+            "invalidVaultName": "Virheellisiä merkkejä holvin nimessä",
+            "defaultVaultName": "UusiHolvi"
         },
         "compress": {
             "title": "Pakkaa tiedostot",
@@ -3952,7 +4018,10 @@
             "threads": "Säikeet",
             "auto": "Automaattinen",
             "solid": "Kiinteä lohko",
-            "solidHint": "Parempi suhde monille pienille tiedostoille, hitaampi satunnainen purku."
+            "solidHint": "Parempi suhde monille pienille tiedostoille, hitaampi satunnainen purku.",
+            "formatArchiveOnly": "Vain arkisto",
+            "formatBestRatio": "Paras suhde",
+            "formatSingleFile": "yksittäinen tiedosto"
         },
         "batchRename": {
             "title": "Joukkouudelleennimeäminen",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Suodata toimintoja",
                 "selected": "valittu"
-            }
+            },
+            "save": "Tallenna"
         },
         "error": {
             "description": "AeroFTP kohtasi odottamattoman virheen. Voit yrittää palautusta tai ladata sovelluksen uudelleen.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radiaalinen",
                     "spectrum": "Spektri",
                     "vortex": "Pyörre",
-                    "waveform": "Aaltomuoto"
+                    "waveform": "Aaltomuoto",
+                    "glWaveGlitch": "Aaltohäiriö",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunneli",
+                    "glMetaball": "Metapallot",
+                    "glParticles": "Hiukkaset"
                 },
                 "volume": "Äänenvoimakkuus"
             },
@@ -4635,7 +4711,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "Esiasetukset",
-                "reset": "Palauta tasaiseksi"
+                "reset": "Palauta tasaiseksi",
+                "presetFlat": "Tasainen",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klassinen",
+                "presetBassBoost": "Bassokorostus",
+                "presetTrebleBoost": "Diskanttikorostus",
+                "presetVocal": "Laulu",
+                "presetElectronic": "Elektroninen",
+                "presetAcoustic": "Akustinen",
+                "presetCustom": "Mukautettu"
             },
             "pdf": {
                 "download": "Lataa PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Maksullinen",
             "extraFeatures": "Lisä",
             "coreOpsList": "Lähetä, Lataa, Poista, Nimeä uudelleen, Siirrä, Luo kansio, Hae",
-            "coreOpsLegend": "Perus = Lähetä, Lataa, Poista, Nimeä uudelleen, Siirrä, Luo kansio, Hae"
+            "coreOpsLegend": "Perus = Lähetä, Lataa, Poista, Nimeä uudelleen, Siirrä, Luo kansio, Hae",
+            "notes": "Huomautukset",
+            "storageClass": "Tallennusluokka",
+            "objectTagging": "Objektien tunnisteet",
+            "sse": "Palvelinpään salaus",
+            "checksum": "Tarkistussumma",
+            "tierManagement": "Tallennustasojen hallinta",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Mediatiedostot",
+            "sectionOther": "Muut",
+            "trashDetails": {
+                "onedrive": "Business- ja SharePoint-asemat. Microsoft Graph ei tarjoa OneDrive Personal -aseman roskakoria; käytä sitä varten OneDrive-verkkosivustoa"
+            },
+            "shareLinkDetails": {
+                "permissions": "Oikeudet: katselu, kommentointi, muokkaus",
+                "passwordExpiryPlan": "Salasana + vanheneminen ({plan}-tilaus vaaditaan)",
+                "passwordExpiryPaid": "Salasana + vanheneminen (maksullinen tilaus vaaditaan)",
+                "passwordPersonalExpiryPermissions": "Salasana (vain Personal), vanheneminen, oikeudet",
+                "passwordArgon2ExpiryPresets": "Salasana (Argon2id) + vanhenemisen esiasetukset",
+                "passwordExpiryPermissions": "Salasana, vanheneminen, oikeudet",
+                "basicOnly": "Vain perusjakolinkki",
+                "publicToggle": "Julkinen linkki (yksityisyyden vaihto)",
+                "basic": "Perusjakolinkki",
+                "expiringDefaultYear": "Vanhenevat linkit (oletus 1 vuosi)",
+                "publishUnpublish": "Julkaise/peru julkaisu",
+                "permanentUrl": "Pysyvä URL",
+                "sharedAlbum": "Jaetun albumin linkki",
+                "megaPresignedS4": "Jakolinkki / ennalta allekirjoitettu URL (enint. 7 päivää S4:lle)",
+                "autoPasswordExpiry": "Salasana (automaattisesti luotu) + vanheneminen",
+                "presigned": "Ennalta allekirjoitettu URL (enint. 7 päivää)"
+            }
         },
         "healthCheck": {
             "title": "Palvelimen kuntotarkistus",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Yksityinen tietovarasto",
             "repoPublicTitle": "Julkinen tietovarasto",
             "unpushedCommitsOnBranchMany": "{count} puskematonta committia haarassa {branch}",
-            "unpushedCommitsOnBranchOne": "{count} puskematon commit haarassa {branch}"
+            "unpushedCommitsOnBranchOne": "{count} puskematon commit haarassa {branch}",
+            "cancelWorkflow": "Peruuta työnkulku",
+            "rerunWorkflow": "Suorita työnkulku uudelleen",
+            "downloadAssetTitle": "Lataa {name}"
         },
         "filenNotes": {
             "title": "Salatut muistiinpanot",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Luotu",
             "manageExpires": "Vanhenee",
             "manageNeverExpires": "Ei koskaan",
-            "managePasswordProtected": "Salasanasuojattu"
+            "managePasswordProtected": "Salasanasuojattu",
+            "expirationHoursOne": "{count} tunti",
+            "expirationHoursMany": "{count} tuntia",
+            "expirationDaysMany": "{count} päivää"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} h",
                 "days": "{count} pv",
                 "months": "{count} kk"
-            }
+            },
+            "demoTabLabel": "Esittely: {protocol}",
+            "newTabLabel": "Uusi: {name}"
         },
         "gitlab": {
             "projectPath": "Projektipolku",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Luo Merge Request",
             "mrTitle": "MR-otsikko",
             "mrBody": "Kuvaus (valinnainen)",
-            "sourceCode": "Lähdekoodi"
+            "sourceCode": "Lähdekoodi",
+            "downloadAssetTitle": "Lataa {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Uusi käyttäjä",
                 "noUsers": "Ei vielä käyttäjiä. Lisää ensimmäinen alla olevalla ”Uusi käyttäjä” -painikkeella.",
                 "protectionNote": "Tilisi on suojattu Argon2id + AES-KW + AES-256-GCM -salauksella",
-                "users": "Käyttäjät"
+                "users": "Käyttäjät",
+                "setup": "Asetukset"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Tila valitaan yhteyttä luotaessa ja pysyy muuttumattomana tallennettua profiilia muokattaessa. Käytä eri tilaa luomalla uusi yhteys.",
-                "notInBuild": "Ei sisälly tähän AeroFTP-koontiversioon."
+                "notInBuild": "Ei sisälly tähän AeroFTP-koontiversioon.",
+                "header": "{name}-tilat",
+                "nativeApi": "Natiivi API",
+                "filelu": {
+                    "apiDescription": "REST API API-avaimella. Kaikki ominaisuudet (roskakori, jakolinkit, salasanasuojatut tiedostot).",
+                    "webdavDescription": "WebDAV-käyttö portissa 443. Laaja yhteensopivuus asiakasohjelmien kanssa, liitettävissä verkkoasemaksi.",
+                    "s3Description": "S3-yhteensopiva API portissa 443. Käytä rclonea, AWS CLI:tä tai mitä tahansa S3-SDK:ta.",
+                    "ftpDescription": "Perinteinen FTP portissa 21. Salaamaton, hyödyllinen valvontakameroiden NVR-tallentimille ja vanhemmille asiakasohjelmille."
+                },
+                "filen": {
+                    "apiDescription": "Nollatietoon perustuva E2E-salaus (Argon2id v3 / PBKDF2 v2). Kaikki ominaisuudet: tallennuskiintiö, roskakori, jakolinkkien salasanat, versiointi, TOTP.",
+                    "webdavDescription": "WebDAV-silta, jonka Filen Desktop tarjoaa osoitteessa 127.0.0.1:1900. Vaatii, että Filen Desktop on käynnissä ja kirjautuneena.",
+                    "s3Description": "S3-yhteensopiva silta, jonka Filen Desktop tarjoaa osoitteessa 127.0.0.1:1800 osoitteen local.s3.filen.io kautta. Polkupohjainen osoitus, jokainen ylimmän tason Filen-kansio on bucket."
+                },
+                "proton": {
+                    "headerDescription": "Protonin pilvitallennus päästä päähän -salauksella",
+                    "apiDescription": "AeroFTP:n oma Proton Drive -asiakasohjelma: kirjaudut Protonin sivulla selaimessa, tiedostot salataan ja puretaan tällä tietokoneella, eikä muuta sovellusta tarvita.",
+                    "cliDescription": "Ohjaa virallista Proton Drive -CLI:tä, joka on asennettu ja kirjautuneena tällä koneella. Kirjaudut selaimessa; AeroFTP ei koskaan näe Proton-salasanaasi."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDriven pilvitallennus (5 Gt ilmaiseksi)",
+                    "apiDescription": "REST API käyttäjätunnuksella + salasanalla. Kaikki ominaisuudet: roskakori, tallennuskiintiö, jakolinkit, rekursiivinen levynkäyttö.",
+                    "webdavDescription": "WebDAV-yhteys osoitteen webdav.opendrive.com kautta portissa 443. Vanhemmille asiakasohjelmille tai verkkoasemaksi liittämiseen."
+                },
+                "koofr": {
+                    "apiDescription": "EU:ssa toimiva REST API sähköpostilla + sovellussalasanalla. Kaikki ominaisuudet: tallennuskiintiö, roskakori (luettelo/palautus/tyhjennys), jakolinkit.",
+                    "webdavDescription": "WebDAV-yhteys osoitteen app.koofr.net/dav/Koofr kautta portissa 443. Tallennuskiintiö luetaan edelleen Koofrin REST API:sta. Vanhemmille asiakasohjelmille tai verkkoasemaksi liittämiseen."
+                },
+                "mega": {
+                    "headerDescription": "MEGAn pilvitallennus asiakaspään salauksella",
+                    "apiDescription": "MEGAn natiivi API sähköpostilla + salasanalla (+ valinnainen TOTP). Kaikki ominaisuudet: asiakaspään salaus, tallennuskiintiö, jakolinkit, pikkukuvat.",
+                    "webdavDescription": "Paikallinen WebDAV-silta, jonka virallinen MEGAcmd-CLI tarjoaa, anonyymi osoitteessa 127.0.0.1. AeroFTP suorittaa \"mega-webdav /\" puolestasi yhdistettäessä, joten käsin tehtävää vaihetta ei ole.",
+                    "s4Description": "MEGA S4 -objektitallennus, S3-yhteensopiva (alueet EU/CA). Käyttöavain + salainen avain + bucket. Vaatii Pro-tilauksen."
+                }
             }
         },
         "flatpak": {

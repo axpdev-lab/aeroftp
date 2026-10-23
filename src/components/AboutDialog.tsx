@@ -20,7 +20,7 @@ const SourceForge = ({ size = 24 }: { size?: number }) => (
 );
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
-import { useTranslation } from '../i18n';
+import { useTranslation, type TranslationFunction } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { copyText } from '../utils/clipboard';
@@ -46,21 +46,26 @@ interface SystemInfo {
 
 type TabId = 'info' | 'technical' | 'support';
 
-// Key dependencies to display in technical tab (versions come from backend)
-const KEY_DEPENDENCY_LABELS: { name: string; description: string }[] = [
+// Key dependencies to display in technical tab (versions come from backend).
+// A role that is a protocol, cipher or format name is written as it is; one in
+// words is translated.
+const KEY_DEPENDENCY_LABELS: { name: string; description: string | ((t: TranslationFunction) => string) }[] = [
     { name: 'russh', description: 'SSH/SFTP' },
-    { name: 'russh-sftp', description: 'SFTP ops' },
+    { name: 'russh-sftp', description: (t) => t('about.dependencyRoles.sftpOps') },
     { name: 'suppaftp', description: 'FTP/FTPS' },
     { name: 'reqwest', description: 'HTTP' },
-    { name: 'keyring', description: 'OS Keyring' },
-    { name: 'aerovault', description: 'Vault format' },
+    { name: 'keyring', description: (t) => t('about.dependencyRoles.osKeyring') },
+    { name: 'aerovault', description: (t) => t('about.dependencyRoles.vaultFormat') },
     { name: 'aes-gcm', description: 'AES-256-GCM' },
     { name: 'argon2', description: 'KDF' },
-    { name: 'zip', description: 'ZIP archives' },
+    { name: 'zip', description: (t) => t('about.dependencyRoles.zipArchives') },
     { name: 'sevenz-rust2', description: '7z AES-256' },
     { name: 'quick-xml', description: 'WebDAV' },
     { name: 'oauth2', description: 'OAuth2' },
 ];
+
+const dependencyRole = (dep: (typeof KEY_DEPENDENCY_LABELS)[number], t: TranslationFunction): string =>
+    typeof dep.description === 'string' ? dep.description : dep.description(t);
 
 // Classified by the backend (check_dependency_updates), which applies Cargo's semver rules.
 type UpdateStatus = 'up_to_date' | 'compatible_update' | 'incompatible_update' | 'pinned' | 'error';
@@ -199,7 +204,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
             `${t('about.knownHosts')}: ${systemInfo.known_hosts_exists ? t('about.found') : t('about.notFound')}`,
             '',
             `--- ${t('about.linkedLibraries')} ---`,
-            ...KEY_DEPENDENCY_LABELS.map(d => `${d.name}: ${systemInfo.dep_versions?.[d.name] ?? '?'} (${d.description})`),
+            ...KEY_DEPENDENCY_LABELS.map(d => `${d.name}: ${systemInfo.dep_versions?.[d.name] ?? '?'} (${dependencyRole(d, t)})`),
         ];
         return lines.join('\n');
     }, [systemInfo, appVersion, t]);
@@ -414,7 +419,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                                         </span>
                                                     )}
                                                     <StatusIcon status={status} />
-                                                    <span className="text-gray-400 dark:text-gray-600">({dep.description})</span>
+                                                    <span className="text-gray-400 dark:text-gray-600">({dependencyRole(dep, t)})</span>
                                                 </span>
                                             } />
                                         );

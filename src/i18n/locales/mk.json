@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Копирајте го овој URL и залепете го како URI за пренасочување во поставките на вашата развојна апликација.",
                 "redirectUriNoteGoogle": "Препорачано: создајте ID на OAuth клиент од типот „Десктоп апликација“ во Google Cloud Console; не е потребно регистрирање URI за пренасочување. За клиент од типот „Веб-апликација“, регистрирајте го точно URI за пренасочување прикажан погоре, вклучувајќи ги портата и патеката /callback.",
                 "enablePhotosApi": "Осигурајте се дека Photos Library API е овозможен во вашата Google Cloud Console.",
-                "enableDriveApi": "Осигурајте се дека Google Drive API е овозможен во вашата Google Cloud Console."
+                "enableDriveApi": "Осигурајте се дека Google Drive API е овозможен во вашата Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "САД",
+                "zohoRegionEu": "ЕУ",
+                "zohoRegionIn": "Индија",
+                "zohoRegionAu": "Австралија",
+                "zohoRegionJp": "Јапонија",
+                "zohoRegionUk": "Обединето Кралство",
+                "zohoRegionCa": "Канада",
+                "zohoRegionSa": "Саудиска Арабија"
             },
             "activeSessions": "Активни сесии",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Препорачано за максимална безбедност",
             "fontCustomOption": "Прилагодено...",
             "fontSystemInstallHint": "Бара инсталација во системот. AeroFTP автоматски користи замена ако не е достапно.",
-            "fontSizeIndicatorLabel": "Фонт"
+            "fontSizeIndicatorLabel": "Фонт",
+            "fontPresetDefault": "{font} (стандардно)",
+            "fontPresetSystemDefault": "Системско стандардно"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Зголеми фонт (Ctrl+=)",
                 "newTab": "Ново јазиче на терминал",
                 "sshShellTo": "SSH школка до {host}",
-                "theme": "Тема на терминалот"
+                "theme": "Тема на терминалот",
+                "tabLabel": "Терминал {num}",
+                "themeCyber": "Сајбер",
+                "themeTrueDark": "Вистинска темна",
+                "themeGreen": "Зелена",
+                "themeIce": "Мраз",
+                "themeRedLava": "Црвена лава"
             },
             "editorPanel": {
                 "emptyState": "Кликнете со десното копче на датотека и изберете \"Преглед на изворниот код\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(по еден во ред)",
             "pairsEditorLabel": "Уредувач на парови AeroCloud",
             "remoteSubfolderPlaceholder": "облак",
-            "countdownSoon": "Наскоро..."
+            "countdownSoon": "Наскоро...",
+            "aerocloudEnabled": "AeroCloud е овозможен",
+            "selectPairLocalFolder": "Изберете локална папка за парот",
+            "secondsAgo": "пред {count}с"
         },
         "statusBar": {
             "connected": "Поврзано",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Истражувач, инженер за обезбедување квалитет, кодизајнер"
             },
             "madeBy": "од {author}",
-            "statsLine": "{protocols} протоколи · {languages} јазици · AES-256 архиви"
+            "statsLine": "{protocols} протоколи · {languages} јазици · AES-256 архиви",
+            "dependencyRoles": {
+                "sftpOps": "SFTP операции",
+                "osKeyring": "Привезок за клучеви на ОС",
+                "vaultFormat": "Формат на трезорот",
+                "zipArchives": "ZIP архиви"
+            }
         },
         "support": {
             "title": "Поддржи AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Вратени {files} датотеки од корпата, {present} веќе постојат",
             "trash_restore_detail_folders_present_success": "[{provider}] Вратени {files} датотеки, {folders} папки од корпата, {present} веќе постојат",
             "filelu_file_password_removed": "[{provider}] Отстранета е лозинката за датотеката",
-            "filelu_folder_password_removed": "[{provider}] Лозинката на папката е отстранета"
+            "filelu_folder_password_removed": "[{provider}] Лозинката на папката е отстранета",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} не успеа",
+            "batch_rename_start": "[{location}] Се преименуваат {count} ставки...",
+            "batch_rename_success": "[{location}] Преименувани {count} ставки",
+            "batch_rename_error": "[{location}] Преименувани {count} ставки, {failed} неуспешни",
+            "compress_details_saved": "{input} → {output} (заштедено {percent}%)",
+            "compress_details_grew": "{input} → {output} (зголемено {percent}%)",
+            "extract_details": "{input} → {output} (распакувано)",
+            "download_details": "({size} за {seconds} с)"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Надлежност",
             "insecureCertDialogLabel": "Предупредување за небезбеден сертификат",
             "betaBadge": "БЕТА",
-            "hostKeyDialogLabel": "Проверка на клучот на хостот"
+            "hostKeyDialogLabel": "Проверка на клучот на хостот",
+            "mtpName": "Пренослив уред (MTP)",
+            "mtpDesc": "Телефон или камера преку MTP/WPD",
+            "immichDesc": "Самостојно хостирано управување со фотографии",
+            "imagekitDesc": "Медиумски CDN + складиште (20 GB бесплатно)",
+            "uploadcareDesc": "Медиумски CDN во ЕУ (3 GB бесплатно)",
+            "cloudinaryDesc": "Медиумски CDN (25 кредити/месец бесплатно)",
+            "backblazeDesc": "Изворен API на Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",
@@ -2416,7 +2458,10 @@
             "add": "Додај",
             "remove": "Отстрани",
             "none": "Нема поставени дозволи",
-            "anyoneWithLink": "Секој што ја има врската"
+            "anyoneWithLink": "Секој што ја има врската",
+            "roleViewer": "Прегледувач",
+            "roleEditor": "Уредник",
+            "roleCommenter": "Коментатор"
         },
         "locking": {
             "lock": "Заклучи датотека",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "неуспешни {count}",
             "rollbackRestoreCompleted": "Враќањето е завршено: {summary}",
             "rollbackRestoreNothing": "Нема ништо за враќање",
-            "rollbackRestoreFailed": "Враќањето не успеа: {error}"
+            "rollbackRestoreFailed": "Враќањето не успеа: {error}",
+            "intervalHoursOne": "{count} час",
+            "intervalHoursMany": "{count} часа"
         },
         "ui": {
             "syncing": "Синхронизирање...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Поддржува вид",
                 "thinkingReasoning": "Размислување/Расудување",
                 "toolQuality": "Квалитет на алатките: {quality}/5",
-                "ollamaNotReachable": "Ollama не е достапна"
+                "ollamaNotReachable": "Ollama не е достапна",
+                "macroSafeEditName": "Безбедно уредување",
+                "macroSafeEditDescription": "Прочитај датотека, прикажи ја содржината, потоа уреди ја (безбедносен образец читање пред запишување)",
+                "macroFindReadName": "Најди и прочитај",
+                "macroFindReadDescription": "Барај датотеки што одговараат на шаблон во локален директориум",
+                "familyHintLlama3": "Најдобро функционираат директни и концизни упатства. Користете markdown форматирање. Природно поддржува користење алатки.",
+                "familyHintCodellama": "Фокусирајте се на генерирање и анализа на код. Дајте примери на код. Користете технички јазик.",
+                "familyHintDeepseekCoder": "Силен во расудување за код и решавање проблеми во повеќе чекори. Се претпочита структуриран излез. За deepseek-r1 режимот на размислување работи автоматски.",
+                "familyHintQwen": "Поддржува структуриран излез. Добар во повеќејазични задачи. Користете јасни наслови на делови.",
+                "familyHintMistral": "Ориентиран кон следење упатства. Одржувајте ги промптовите структурирани со јасни описи на задачите.",
+                "familyHintPhi": "Компактен модел: упатствата нека бидат концизни. Најдобар за фокусирани задачи, не за долги текстови.",
+                "familyHintGemma": "Формат на упатства во стилот на Google. Добар во сумирање и анализа.",
+                "familyHintStarcoder": "Насочен кон довршување код. За најдобри резултати дајте контекст на датотеката и увозите."
             },
             "copy": "Копирај",
             "attachImage": "Прикачи слика",
@@ -3033,7 +3092,8 @@
                 "general": "Општо",
                 "typeSlash": "Напишете / за користење шаблони",
                 "analyzeUi": "Анализирај UI скриншот за распоред, достапност и UX проблеми",
-                "performance": "Анализирај код за тесни грла во перформансите и оптимизација"
+                "performance": "Анализирај код за тесни грла во перформансите и оптимизација",
+                "analysis": "Анализа"
             },
             "costBudget": {
                 "conversationCost": "Цена на разговор",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "пред {count} д.",
             "recentFileCountMany": "{count} датотеки",
             "recentFileCountOne": "{count} датотека",
-            "recentMonthsAgo": "пред {count} мес."
+            "recentMonthsAgo": "пред {count} мес.",
+            "securityArchive": "Архива",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Брзо",
+            "securityAdvancedDescription": "Отпорно на nonce · Шифрирани имиња на датотеки · 128 MB KDF",
+            "securityParanoidDescription": "Каскада AES + ChaCha20 · Двојно шифрирање",
+            "securityArchiveDescription": "Дедуплицирана архива · zstd блокови · v3"
         },
         "cryptomator": {
             "title": "Cryptomator трезор",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Содржина AES-GCM",
             "featureNameCipher": "Имиња AES-SIV",
             "formatVersion": "Формат {version}",
-            "invalidVaultName": "Невалидни знаци во името на трезорот"
+            "invalidVaultName": "Невалидни знаци во името на трезорот",
+            "defaultVaultName": "НовСеф"
         },
         "compress": {
             "title": "Компресирај датотеки",
@@ -3952,7 +4018,10 @@
             "threads": "Нишки",
             "auto": "Авто",
             "solid": "Цврст блок",
-            "solidHint": "Подобар однос за многу мали датотеки, побавно случајно извлекување."
+            "solidHint": "Подобар однос за многу мали датотеки, побавно случајно извлекување.",
+            "formatArchiveOnly": "Само архива",
+            "formatBestRatio": "Најдобар сооднос",
+            "formatSingleFile": "единечна датотека"
         },
         "batchRename": {
             "title": "Групно преименување",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Филтрирај операции",
                 "selected": "избрани"
-            }
+            },
+            "save": "Зачувај"
         },
         "error": {
             "description": "AeroFTP наиде на неочекувана грешка. Може да се обидете да ја обновите или повторно да ја вчитате апликацијата.",
@@ -4529,7 +4599,13 @@
                     "radial": "Радијален",
                     "spectrum": "Спектар",
                     "vortex": "Вртлог",
-                    "waveform": "Бранова форма"
+                    "waveform": "Бранова форма",
+                    "glWaveGlitch": "Бранова пречка",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Манделброт",
+                    "glTunnel": "Тунел",
+                    "glMetaball": "Метатопки",
+                    "glParticles": "Честички"
                 },
                 "volume": "Јачина"
             },
@@ -4635,7 +4711,18 @@
                 "off": "ИСКЛ",
                 "on": "ВКЛ",
                 "presets": "Предефинирани",
-                "reset": "Ресетирај на рамно"
+                "reset": "Ресетирај на рамно",
+                "presetFlat": "Рамно",
+                "presetRock": "Рок",
+                "presetPop": "Поп",
+                "presetJazz": "Џез",
+                "presetClassical": "Класична",
+                "presetBassBoost": "Засилување на басот",
+                "presetTrebleBoost": "Засилување на високите",
+                "presetVocal": "Вокал",
+                "presetElectronic": "Електронска",
+                "presetAcoustic": "Акустична",
+                "presetCustom": "Прилагодено"
             },
             "pdf": {
                 "download": "Преземи PDF",
@@ -5137,7 +5224,37 @@
             "paidTier": "Платено",
             "extraFeatures": "Дополнително",
             "coreOpsList": "Прикачување, Преземање, Бришење, Преименување, Преместување, Создавање папка, Пребарување",
-            "coreOpsLegend": "Основно = Прикачување, Преземање, Бришење, Преименување, Преместување, Создавање папка, Пребарување"
+            "coreOpsLegend": "Основно = Прикачување, Преземање, Бришење, Преименување, Преместување, Создавање папка, Пребарување",
+            "notes": "Белешки",
+            "storageClass": "Класа на складирање",
+            "objectTagging": "Означување објекти",
+            "sse": "Шифрирање на страната на серверот",
+            "checksum": "Контролен збир",
+            "tierManagement": "Управување со нивоа",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Медиуми",
+            "sectionOther": "Друго",
+            "trashDetails": {
+                "onedrive": "Дискови Business и SharePoint. Microsoft Graph не овозможува пристап до корпата на диск OneDrive Personal; за тоа користете ја веб-страницата на OneDrive"
+            },
+            "shareLinkDetails": {
+                "permissions": "Дозволи: преглед, коментирање, уредување",
+                "passwordExpiryPlan": "Лозинка + истекување (потребен е план {plan})",
+                "passwordExpiryPaid": "Лозинка + истекување (потребен е платен план)",
+                "passwordPersonalExpiryPermissions": "Лозинка (само Personal), истекување, дозволи",
+                "passwordArgon2ExpiryPresets": "Лозинка (Argon2id) + предефинирани рокови на истекување",
+                "passwordExpiryPermissions": "Лозинка, истекување, дозволи",
+                "basicOnly": "Само основна врска за споделување",
+                "publicToggle": "Јавна врска (вклучи/исклучи приватност)",
+                "basic": "Основна врска за споделување",
+                "expiringDefaultYear": "Врски со истекување (стандардно 1 година)",
+                "publishUnpublish": "Објави/повлечи објава",
+                "permanentUrl": "Траен URL",
+                "sharedAlbum": "Врска до споделен албум",
+                "megaPresignedS4": "Врска за споделување / претходно потпишан URL (најмногу 7 дена за S4)",
+                "autoPasswordExpiry": "Лозинка (автоматски генерирана) + истекување",
+                "presigned": "Претходно потпишан URL (најмногу 7 дена)"
+            }
         },
         "healthCheck": {
             "title": "Проверка на состојба на серверот",
@@ -5399,7 +5516,10 @@
             "repoPrivateTitle": "Приватно складиште",
             "repoPublicTitle": "Јавно складиште",
             "unpushedCommitsOnBranchMany": "{count} неиспратени commit-и на {branch}",
-            "unpushedCommitsOnBranchOne": "{count} неиспратен commit на {branch}"
+            "unpushedCommitsOnBranchOne": "{count} неиспратен commit на {branch}",
+            "cancelWorkflow": "Откажи работен тек",
+            "rerunWorkflow": "Повторно изврши работен тек",
+            "downloadAssetTitle": "Преземи {name}"
         },
         "filenNotes": {
             "title": "Шифрирани белешки",
@@ -5488,7 +5608,10 @@
             "manageCreated": "Креирано",
             "manageExpires": "Истекува",
             "manageNeverExpires": "Никогаш",
-            "managePasswordProtected": "Заштитено со лозинка"
+            "managePasswordProtected": "Заштитено со лозинка",
+            "expirationHoursOne": "{count} час",
+            "expirationHoursMany": "{count} часа",
+            "expirationDaysMany": "{count} дена"
         },
         "introHub": {
             "tab": {
@@ -5679,7 +5802,9 @@
                 "hours": "{count} ч",
                 "days": "{count} д",
                 "months": "{count} мес"
-            }
+            },
+            "demoTabLabel": "Демо: {protocol}",
+            "newTabLabel": "Ново: {name}"
         },
         "gitlab": {
             "projectPath": "Патека на проект",
@@ -5714,7 +5839,8 @@
             "createMergeRequest": "Креирај барање за спојување",
             "mrTitle": "MR наслов",
             "mrBody": "Опис (опционо)",
-            "sourceCode": "Изворен код"
+            "sourceCode": "Изворен код",
+            "downloadAssetTitle": "Преземи {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6322,7 +6448,8 @@
                 "newUser": "Нов корисник",
                 "noUsers": "Сѐ уште нема корисници. Користете „Нов корисник“ подолу за да го додадете првиот.",
                 "protectionNote": "Вашата сметка е заштитена со шифрирање Argon2id + AES-KW + AES-256-GCM",
-                "users": "Корисници"
+                "users": "Корисници",
+                "setup": "Поставување"
             }
         },
         "aerocryptNative": {
@@ -6751,7 +6878,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Режимот се избира при создавање на врската и останува непроменет при уредување на зачуван профил. За да користите друг режим, создајте нова врска.",
-                "notInBuild": "Не е вклучено во оваа верзија на AeroFTP."
+                "notInBuild": "Не е вклучено во оваа верзија на AeroFTP.",
+                "header": "Режими на {name}",
+                "nativeApi": "Изворен API",
+                "filelu": {
+                    "apiDescription": "REST API со API клуч. Целосен сет функции (корпа, врски за споделување, датотеки заштитени со лозинка).",
+                    "webdavDescription": "WebDAV пристап на порта 443. Широка компатибилност со клиенти, се монтира како мрежен диск.",
+                    "s3Description": "API компатибилен со S3 на порта 443. Користете rclone, AWS CLI или кој било S3 SDK.",
+                    "ftpDescription": "Класичен FTP на порта 21. Нешифриран, корисен за NVR снимачи за видеонадзор и постари клиенти."
+                },
+                "filen": {
+                    "apiDescription": "E2E шифрирање со нулто знаење (Argon2id v3 / PBKDF2 v2). Целосен сет функции: квота за складирање, корпа, лозинки за врски за споделување, верзии, TOTP.",
+                    "webdavDescription": "WebDAV мост што го нуди Filen Desktop на 127.0.0.1:1900. Бара Filen Desktop да работи и да е најавен.",
+                    "s3Description": "Мост компатибилен со S3 што го нуди Filen Desktop на 127.0.0.1:1800 преку local.s3.filen.io. Адресирање според патека, секоја Filen папка од највисоко ниво е бакет."
+                },
+                "proton": {
+                    "headerDescription": "Proton складирање во облак со шифрирање од крај до крај",
+                    "apiDescription": "Сопствениот Proton Drive клиент на AeroFTP: се најавувате на страницата на Proton во прелистувачот, датотеките се шифрираат и дешифрираат на овој компјутер и не е потребна друга апликација.",
+                    "cliDescription": "Управува со официјалниот Proton Drive CLI инсталиран и најавен на оваа машина. Се најавувате во прелистувачот; AeroFTP никогаш не ја гледа вашата Proton лозинка."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive складирање во облак (5 GB бесплатно)",
+                    "apiDescription": "REST API со корисничко име + лозинка. Целосен сет функции: корпа, квота за складирање, врски за споделување, рекурзивна искористеност на дискот.",
+                    "webdavDescription": "WebDAV пристап преку webdav.opendrive.com на порта 443. За постари клиенти или за монтирање како мрежен диск."
+                },
+                "koofr": {
+                    "apiDescription": "REST API со седиште во ЕУ, со е-пошта + лозинка за апликација. Целосен сет функции: квота за складирање, корпа (листање/враќање/празнење), врски за споделување.",
+                    "webdavDescription": "WebDAV пристап преку app.koofr.net/dav/Koofr на порта 443. Квотата за складирање сѐ уште се чита од REST API на Koofr. За постари клиенти или за монтирање како мрежен диск."
+                },
+                "mega": {
+                    "headerDescription": "MEGA складирање во облак со шифрирање на страната на клиентот",
+                    "apiDescription": "Изворен MEGA API со е-пошта + лозинка (+ опционален TOTP). Целосен сет функции: шифрирање на страната на клиентот, квота за складирање, врски за споделување, сликички.",
+                    "webdavDescription": "Локален WebDAV мост што го опслужува официјалниот MEGAcmd CLI, анонимен на 127.0.0.1. AeroFTP при поврзување го извршува \"mega-webdav /\" наместо вас, па нема рачен чекор.",
+                    "s4Description": "MEGA S4 објектно складирање, компатибилно со S3 (региони EU/CA). Клуч за пристап + таен клуч + бакет. Бара Pro план."
+                }
             }
         },
         "flatpak": {

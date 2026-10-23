@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
+import en from '../i18n/locales/en.json';
 
 const sources = import.meta.glob('./ProvidersDialog.tsx', {
     query: '?raw',
@@ -27,8 +28,10 @@ describe('Help > Providers OneDrive trash', () => {
         const details = src.indexOf('const FEATURE_DETAILS');
         expect(details).toBeGreaterThan(-1);
         const trash = src.slice(src.indexOf('trash: {', details), src.indexOf('},', src.indexOf('trash: {', details)));
-        expect(trash).toMatch(/onedrive:/);
-        expect(trash).toMatch(/Personal/);
+        const key = /onedrive: \(t\) => t\('([\w.]+)'\)/.exec(trash)?.[1];
+        expect(key).toBeDefined();
+        const text = key!.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], en.translations);
+        expect(text).toMatch(/Personal/);
     });
 
     it('renders per-feature details on the capability tick, not only on share links', () => {

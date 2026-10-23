@@ -698,7 +698,7 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                                       const defaultName = asset.name.replace(/[()]/g, '').replace(/\s+/g, '-');
                                       const savePath = await pickSave({
                                         defaultPath: defaultName,
-                                        title: `Download ${asset.name}`,
+                                        title: t('github.downloadAssetTitle', { name: asset.name }),
                                       });
                                       if (savePath) {
                                         const logId = humanLog.logRaw('activity.release_asset_download_start', 'DOWNLOAD', { provider: 'GitHub', filename: asset.name }, 'running');

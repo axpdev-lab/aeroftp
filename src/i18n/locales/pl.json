@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Skopiuj ten URL i wklej go jako URI przekierowania w ustawieniach aplikacji deweloperskiej.",
                 "redirectUriNoteGoogle": "Zalecenie: utwórz identyfikator klienta OAuth typu „Aplikacja komputerowa” w Google Cloud Console; rejestrowanie identyfikatora URI przekierowania nie jest wymagane. Dla klienta typu „Aplikacja internetowa” zarejestruj dokładnie taki identyfikator URI przekierowania, jaki jest wyświetlony powyżej, wraz z portem i ścieżką /callback.",
                 "enablePhotosApi": "Upewnij się, że Photos Library API jest włączone w Google Cloud Console.",
-                "enableDriveApi": "Upewnij się, że Google Drive API jest włączone w Google Cloud Console."
+                "enableDriveApi": "Upewnij się, że Google Drive API jest włączone w Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "USA",
+                "zohoRegionEu": "UE",
+                "zohoRegionIn": "Indie",
+                "zohoRegionAu": "Australia",
+                "zohoRegionJp": "Japonia",
+                "zohoRegionUk": "Wielka Brytania",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Arabia Saudyjska"
             },
             "activeSessions": "Aktywne sesje",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Zalecane dla maksymalnego bezpieczeństwa",
             "fontCustomOption": "Niestandardowa...",
             "fontSystemInstallHint": "Wymaga instalacji w systemie. AeroFTP automatycznie użyje zamiennika, jeśli jest niedostępna.",
-            "fontSizeIndicatorLabel": "Czcionka"
+            "fontSizeIndicatorLabel": "Czcionka",
+            "fontPresetDefault": "{font} (domyślna)",
+            "fontPresetSystemDefault": "Domyślna systemowa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Zwiększ rozmiar czcionki (Ctrl+=)",
                 "newTab": "Nowa karta terminala",
                 "sshShellTo": "Powłoka SSH na {host}",
-                "theme": "Motyw terminala"
+                "theme": "Motyw terminala",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "Prawdziwa czerń",
+                "themeGreen": "Zielony",
+                "themeIce": "Lód",
+                "themeRedLava": "Czerwona lawa"
             },
             "editorPanel": {
                 "emptyState": "Kliknij prawym przyciskiem na plik i wybierz \"Pokaż źródło\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(jeden w wierszu)",
             "pairsEditorLabel": "Edytor par AeroCloud",
             "remoteSubfolderPlaceholder": "chmura",
-            "countdownSoon": "Wkrótce..."
+            "countdownSoon": "Wkrótce...",
+            "aerocloudEnabled": "AeroCloud włączony",
+            "selectPairLocalFolder": "Wybierz folder lokalny dla pary",
+            "secondsAgo": "{count}s temu"
         },
         "statusBar": {
             "connected": "Połączono",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Badacz, inżynier ds. zapewnienia jakości, współprojektant"
             },
             "madeBy": "przez {author}",
-            "statsLine": "{protocols} protokołów · {languages} języków · archiwa AES-256"
+            "statsLine": "{protocols} protokołów · {languages} języków · archiwa AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Operacje SFTP",
+                "osKeyring": "Pęk kluczy systemu",
+                "vaultFormat": "Format sejfu",
+                "zipArchives": "Archiwa ZIP"
+            }
         },
         "support": {
             "title": "Wesprzyj AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Przywrócono z kosza: pliki {files}, już istniejące {present}",
             "trash_restore_detail_folders_present_success": "[{provider}] Przywrócono z kosza: pliki {files}, foldery {folders}, już istniejące {present}",
             "filelu_file_password_removed": "[{provider}] Usunięto hasło pliku",
-            "filelu_folder_password_removed": "[{provider}] Usunięto hasło folderu"
+            "filelu_folder_password_removed": "[{provider}] Usunięto hasło folderu",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} nie powiodło się",
+            "batch_rename_start": "[{location}] Zmiana nazwy {count} elementów...",
+            "batch_rename_success": "[{location}] Zmieniono nazwę {count} elementów",
+            "batch_rename_error": "[{location}] Zmieniono nazwę {count} elementów, {failed} nie powiodło się",
+            "compress_details_saved": "{input} → {output} (zaoszczędzono {percent}%)",
+            "compress_details_grew": "{input} → {output} (wzrost o {percent}%)",
+            "extract_details": "{input} → {output} (rozpakowano)",
+            "download_details": "({size} w {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurysdykcja",
             "insecureCertDialogLabel": "Ostrzeżenie o niezabezpieczonym certyfikacie",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Weryfikacja klucza hosta"
+            "hostKeyDialogLabel": "Weryfikacja klucza hosta",
+            "mtpName": "Urządzenie przenośne (MTP)",
+            "mtpDesc": "Telefon lub aparat przez MTP/WPD",
+            "immichDesc": "Samodzielnie hostowane zarządzanie zdjęciami",
+            "imagekitDesc": "CDN multimediów + przestrzeń (20 GB za darmo)",
+            "uploadcareDesc": "CDN multimediów w UE (3 GB za darmo)",
+            "cloudinaryDesc": "CDN multimediów (25 kredytów/miesiąc za darmo)",
+            "backblazeDesc": "Natywne API Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",
@@ -2416,7 +2458,10 @@
             "add": "Dodaj",
             "remove": "Usuń",
             "none": "Brak ustawionych uprawnień",
-            "anyoneWithLink": "Każdy, kto ma link"
+            "anyoneWithLink": "Każdy, kto ma link",
+            "roleViewer": "Przeglądający",
+            "roleEditor": "Edytujący",
+            "roleCommenter": "Komentujący"
         },
         "locking": {
             "lock": "Zablokuj plik",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "nieudane {count}",
             "rollbackRestoreCompleted": "Przywracanie zakończone: {summary}",
             "rollbackRestoreNothing": "Nic do przywrócenia",
-            "rollbackRestoreFailed": "Przywracanie nie powiodło się: {error}"
+            "rollbackRestoreFailed": "Przywracanie nie powiodło się: {error}",
+            "intervalHoursOne": "{count} godzina",
+            "intervalHoursMany": "{count} godzin"
         },
         "ui": {
             "syncing": "Synchronizacja...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Obsługuje obraz",
                 "thinkingReasoning": "Myślenie/Rozumowanie",
                 "toolQuality": "Jakość narzędzi: {quality}/5",
-                "ollamaNotReachable": "Ollama jest nieosiągalna"
+                "ollamaNotReachable": "Ollama jest nieosiągalna",
+                "macroSafeEditName": "Bezpieczna edycja",
+                "macroSafeEditDescription": "Odczytuje plik, pokazuje jego zawartość, a następnie go edytuje (wzorzec bezpieczeństwa: odczyt przed zapisem)",
+                "macroFindReadName": "Znajdź i odczytaj",
+                "macroFindReadDescription": "Wyszukuje pliki pasujące do wzorca w katalogu lokalnym",
+                "familyHintLlama3": "Najlepiej działają bezpośrednie i zwięzłe instrukcje. Używaj formatowania markdown. Natywnie obsługuje korzystanie z narzędzi.",
+                "familyHintCodellama": "Skup się na generowaniu i analizie kodu. Podawaj przykłady kodu. Używaj języka technicznego.",
+                "familyHintDeepseekCoder": "Mocny w rozumowaniu o kodzie i rozwiązywaniu problemów wieloetapowych. Zalecane są ustrukturyzowane odpowiedzi. W deepseek-r1 tryb myślenia działa automatycznie.",
+                "familyHintQwen": "Obsługuje ustrukturyzowane odpowiedzi. Dobry w zadaniach wielojęzycznych. Używaj wyraźnych nagłówków sekcji.",
+                "familyHintMistral": "Nastawiony na wykonywanie instrukcji. Utrzymuj prompty w uporządkowanej formie z jasnym opisem zadania.",
+                "familyHintPhi": "Kompaktowy model: utrzymuj instrukcje zwięzłe. Najlepszy do konkretnych zadań, nie do długich tekstów.",
+                "familyHintGemma": "Format instrukcji w stylu Google. Dobry w streszczaniu i analizie.",
+                "familyHintStarcoder": "Skupiony na uzupełnianiu kodu. Aby uzyskać najlepsze wyniki, podaj kontekst pliku i importy."
             },
             "copy": "Kopiuj",
             "attachImage": "Załącz obraz",
@@ -3033,7 +3092,8 @@
                 "general": "Ogólne",
                 "typeSlash": "Wpisz / aby użyć szablonów",
                 "analyzeUi": "Analiza zrzutu ekranu UI pod kątem układu, dostępności i UX",
-                "performance": "Analiza kodu pod kątem wąskich gardeł wydajności i optymalizacji"
+                "performance": "Analiza kodu pod kątem wąskich gardeł wydajności i optymalizacji",
+                "analysis": "Analiza"
             },
             "costBudget": {
                 "conversationCost": "Koszt rozmowy",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} d. temu",
             "recentFileCountMany": "{count} plików",
             "recentFileCountOne": "{count} plik",
-            "recentMonthsAgo": "{count} mies. temu"
+            "recentMonthsAgo": "{count} mies. temu",
+            "securityArchive": "Archiwum",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Szybki",
+            "securityAdvancedDescription": "Odporny na nonce · Szyfrowane nazwy plików · 128 MB KDF",
+            "securityParanoidDescription": "Kaskada AES + ChaCha20 · Podwójne szyfrowanie",
+            "securityArchiveDescription": "Archiwum z deduplikacją · bloki zstd · v3"
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Treść AES-GCM",
             "featureNameCipher": "Nazwy AES-SIV",
             "formatVersion": "Wersja formatu {version}",
-            "invalidVaultName": "Nieprawidłowe znaki w nazwie sejfu"
+            "invalidVaultName": "Nieprawidłowe znaki w nazwie sejfu",
+            "defaultVaultName": "NowySejf"
         },
         "compress": {
             "title": "Kompresuj pliki",
@@ -3952,7 +4018,10 @@
             "threads": "Wątki",
             "auto": "Auto",
             "solid": "Blok lity",
-            "solidHint": "Lepszy współczynnik przy wielu małych plikach, wolniejsze wyodrębnianie losowe."
+            "solidHint": "Lepszy współczynnik przy wielu małych plikach, wolniejsze wyodrębnianie losowe.",
+            "formatArchiveOnly": "Tylko archiwum",
+            "formatBestRatio": "Najlepszy współczynnik",
+            "formatSingleFile": "pojedynczy plik"
         },
         "batchRename": {
             "title": "Zbiorcza zmiana nazw",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtruj operacje",
                 "selected": "wybrano"
-            }
+            },
+            "save": "Zapisz"
         },
         "error": {
             "description": "AeroFTP napotkało nieoczekiwany błąd. Możesz spróbować odzyskać dane lub przeładować aplikację.",
@@ -4529,7 +4599,13 @@
                     "radial": "Promienisty",
                     "spectrum": "Widmo",
                     "vortex": "Wir",
-                    "waveform": "Fala"
+                    "waveform": "Fala",
+                    "glWaveGlitch": "Zakłócenie fali",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunel",
+                    "glMetaball": "Metakule",
+                    "glParticles": "Cząsteczki"
                 },
                 "volume": "Glosnosc"
             },
@@ -4635,7 +4711,18 @@
                 "off": "WYL",
                 "on": "WL",
                 "presets": "Presety",
-                "reset": "Resetuj do plaskiego"
+                "reset": "Resetuj do plaskiego",
+                "presetFlat": "Płaski",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klasyczna",
+                "presetBassBoost": "Wzmocnienie basów",
+                "presetTrebleBoost": "Wzmocnienie sopranów",
+                "presetVocal": "Wokal",
+                "presetElectronic": "Elektroniczna",
+                "presetAcoustic": "Akustyczna",
+                "presetCustom": "Własny"
             },
             "pdf": {
                 "download": "Pobierz PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Płatny",
             "extraFeatures": "Dodatkowe",
             "coreOpsList": "Wysyłanie, Pobieranie, Usuwanie, Zmiana nazwy, Przenoszenie, Tworzenie folderu, Wyszukiwanie",
-            "coreOpsLegend": "Podstawowe = Wysyłanie, Pobieranie, Usuwanie, Zmiana nazwy, Przenoszenie, Tworzenie folderu, Wyszukiwanie"
+            "coreOpsLegend": "Podstawowe = Wysyłanie, Pobieranie, Usuwanie, Zmiana nazwy, Przenoszenie, Tworzenie folderu, Wyszukiwanie",
+            "notes": "Uwagi",
+            "storageClass": "Klasa pamięci",
+            "objectTagging": "Tagowanie obiektów",
+            "sse": "Szyfrowanie po stronie serwera",
+            "checksum": "Suma kontrolna",
+            "tierManagement": "Zarządzanie warstwami",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Multimedia",
+            "sectionOther": "Inne",
+            "trashDetails": {
+                "onedrive": "Dyski Business i SharePoint. Microsoft Graph nie udostępnia kosza dysku OneDrive Personal; użyj do tego witryny OneDrive"
+            },
+            "shareLinkDetails": {
+                "permissions": "Uprawnienia: wyświetlanie, komentowanie, edycja",
+                "passwordExpiryPlan": "Hasło + wygaśnięcie (wymagany plan {plan})",
+                "passwordExpiryPaid": "Hasło + wygaśnięcie (wymagany płatny plan)",
+                "passwordPersonalExpiryPermissions": "Hasło (tylko Personal), wygaśnięcie, uprawnienia",
+                "passwordArgon2ExpiryPresets": "Hasło (Argon2id) + predefiniowane okresy ważności",
+                "passwordExpiryPermissions": "Hasło, wygaśnięcie, uprawnienia",
+                "basicOnly": "Tylko podstawowy link udostępniania",
+                "publicToggle": "Link publiczny (przełączanie prywatności)",
+                "basic": "Podstawowy link udostępniania",
+                "expiringDefaultYear": "Linki wygasające (domyślnie 1 rok)",
+                "publishUnpublish": "Publikuj/cofnij publikację",
+                "permanentUrl": "Stały URL",
+                "sharedAlbum": "Link do udostępnionego albumu",
+                "megaPresignedS4": "Link udostępniania / wstępnie podpisany URL (maks. 7 dni dla S4)",
+                "autoPasswordExpiry": "Hasło (generowane automatycznie) + wygaśnięcie",
+                "presigned": "Wstępnie podpisany URL (maks. 7 dni)"
+            }
         },
         "healthCheck": {
             "title": "Kontrola stanu serwera",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Prywatne repozytorium",
             "repoPublicTitle": "Publiczne repozytorium",
             "unpushedCommitsOnBranchMany": "{count} niewypchniętych commitów w {branch}",
-            "unpushedCommitsOnBranchOne": "{count} niewypchnięty commit w {branch}"
+            "unpushedCommitsOnBranchOne": "{count} niewypchnięty commit w {branch}",
+            "cancelWorkflow": "Anuluj przepływ pracy",
+            "rerunWorkflow": "Uruchom ponownie przepływ pracy",
+            "downloadAssetTitle": "Pobierz {name}"
         },
         "filenNotes": {
             "title": "Zaszyfrowane notatki",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Utworzono",
             "manageExpires": "Wygaśnie",
             "manageNeverExpires": "Nigdy",
-            "managePasswordProtected": "Chroniony hasłem"
+            "managePasswordProtected": "Chroniony hasłem",
+            "expirationHoursOne": "{count} godzina",
+            "expirationHoursMany": "{count} godzin",
+            "expirationDaysMany": "{count} dni"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} godz.",
                 "days": "{count} d.",
                 "months": "{count} mies."
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Nowy: {name}"
         },
         "gitlab": {
             "projectPath": "Ścieżka projektu",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Utwórz Merge Request",
             "mrTitle": "Tytul MR",
             "mrBody": "Opis (opcjonalnie)",
-            "sourceCode": "Kod źródłowy"
+            "sourceCode": "Kod źródłowy",
+            "downloadAssetTitle": "Pobierz {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Nowy użytkownik",
                 "noUsers": "Brak użytkowników. Użyj poniżej opcji „Nowy użytkownik”, aby dodać pierwszego.",
                 "protectionNote": "Twoje konto jest chronione szyfrowaniem Argon2id + AES-KW + AES-256-GCM",
-                "users": "Użytkownicy"
+                "users": "Użytkownicy",
+                "setup": "Konfiguracja"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Tryb jest wybierany podczas tworzenia połączenia i pozostaje niezmienny podczas edycji zapisanego profilu. Aby użyć innego trybu, utwórz nowe połączenie.",
-                "notInBuild": "Nie zawarto w tej kompilacji AeroFTP."
+                "notInBuild": "Nie zawarto w tej kompilacji AeroFTP.",
+                "header": "Tryby {name}",
+                "nativeApi": "Natywne API",
+                "filelu": {
+                    "apiDescription": "REST API z kluczem API. Pełen zestaw funkcji (kosz, linki udostępniania, pliki chronione hasłem).",
+                    "webdavDescription": "Dostęp WebDAV na porcie 443. Szeroka zgodność z klientami, montowanie jako dysk sieciowy.",
+                    "s3Description": "API zgodne z S3 na porcie 443. Użyj rclone, AWS CLI lub dowolnego SDK S3.",
+                    "ftpDescription": "Klasyczny FTP na porcie 21. Bez szyfrowania, przydatny dla rejestratorów NVR monitoringu i starszych klientów."
+                },
+                "filen": {
+                    "apiDescription": "Szyfrowanie E2E z zerową wiedzą (Argon2id v3 / PBKDF2 v2). Pełny zestaw funkcji: limit miejsca, kosz, hasła linków udostępniania, wersjonowanie, TOTP.",
+                    "webdavDescription": "Most WebDAV udostępniany przez Filen Desktop pod adresem 127.0.0.1:1900. Wymaga uruchomionego i zalogowanego Filen Desktop.",
+                    "s3Description": "Most zgodny z S3 udostępniany przez Filen Desktop pod adresem 127.0.0.1:1800 przez local.s3.filen.io. Adresowanie oparte na ścieżce, każdy folder Filen najwyższego poziomu jest zasobnikiem."
+                },
+                "proton": {
+                    "headerDescription": "Pamięć w chmurze Proton z szyfrowaniem end-to-end",
+                    "apiDescription": "Własny klient Proton Drive w AeroFTP: logujesz się na stronie Proton w przeglądarce, pliki są szyfrowane i odszyfrowywane na tym komputerze i nie potrzeba żadnej innej aplikacji.",
+                    "cliDescription": "Steruje oficjalnym CLI Proton Drive zainstalowanym i zalogowanym na tym komputerze. Logujesz się w przeglądarce; AeroFTP nigdy nie widzi Twojego hasła Proton."
+                },
+                "opendrive": {
+                    "headerDescription": "Pamięć w chmurze OpenDrive (5 GB za darmo)",
+                    "apiDescription": "API REST z nazwą użytkownika + hasłem. Pełny zestaw funkcji: kosz, limit miejsca, linki udostępniania, rekursywne użycie dysku.",
+                    "webdavDescription": "Dostęp WebDAV przez webdav.opendrive.com na porcie 443. Dla starszych klientów lub do zamontowania jako dysk sieciowy."
+                },
+                "koofr": {
+                    "apiDescription": "API REST z siedzibą w UE, z adresem e-mail + hasłem aplikacji. Pełny zestaw funkcji: limit miejsca, kosz (lista/przywracanie/opróżnianie), linki udostępniania.",
+                    "webdavDescription": "Dostęp WebDAV przez app.koofr.net/dav/Koofr na porcie 443. Limit miejsca jest nadal odczytywany z API REST Koofr. Dla starszych klientów lub do zamontowania jako dysk sieciowy."
+                },
+                "mega": {
+                    "headerDescription": "Pamięć w chmurze MEGA z szyfrowaniem po stronie klienta",
+                    "apiDescription": "Natywne API MEGA z adresem e-mail + hasłem (+ opcjonalny TOTP). Pełny zestaw funkcji: szyfrowanie po stronie klienta, limit miejsca, linki udostępniania, miniatury.",
+                    "webdavDescription": "Lokalny most WebDAV obsługiwany przez oficjalne CLI MEGAcmd, anonimowy pod adresem 127.0.0.1. AeroFTP uruchamia \"mega-webdav /\" za Ciebie przy połączeniu, więc nie ma żadnego ręcznego kroku.",
+                    "s4Description": "Pamięć obiektowa MEGA S4, zgodna z S3 (regiony EU/CA). Klucz dostępu + klucz tajny + zasobnik. Wymaga planu Pro."
+                }
             }
         },
         "flatpak": {

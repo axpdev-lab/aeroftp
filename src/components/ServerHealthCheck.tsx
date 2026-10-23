@@ -52,10 +52,10 @@ const CHECK_LABELS: Record<string, string> = {
 };
 
 const STATUS_CONFIG = {
-    healthy: { color: 'text-green-500', bg: 'bg-green-500', ring: 'ring-green-400/30', label: 'Healthy' },
-    degraded: { color: 'text-yellow-500', bg: 'bg-yellow-500', ring: 'ring-yellow-400/30', label: 'Degraded' },
-    unreachable: { color: 'text-red-500', bg: 'bg-red-500', ring: 'ring-red-400/30', label: 'Unreachable' },
-    error: { color: 'text-gray-500', bg: 'bg-gray-500', ring: 'ring-gray-400/30', label: 'Error' },
+    healthy: { color: 'text-green-500', bg: 'bg-green-500', ring: 'ring-green-400/30' },
+    degraded: { color: 'text-yellow-500', bg: 'bg-yellow-500', ring: 'ring-yellow-400/30' },
+    unreachable: { color: 'text-red-500', bg: 'bg-red-500', ring: 'ring-red-400/30' },
+    error: { color: 'text-gray-500', bg: 'bg-gray-500', ring: 'ring-gray-400/30' },
 };
 
 /** Animated radial score gauge */

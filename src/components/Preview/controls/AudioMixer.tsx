@@ -30,17 +30,23 @@ export const EQ_BANDS = [
 ];
 
 // EQ Presets
+const CUSTOM_PRESET_ID = 'custom';
+
+/** i18n key of the name shown for a preset id ('custom' after a manual band change). */
+const presetLabelKey = (presetId: string): string =>
+    EQ_PRESETS.find(p => p.id === presetId)?.labelKey ?? 'preview.mixer.presetCustom';
+
 export const EQ_PRESETS: EQPreset[] = [
-    { name: 'Flat', bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-    { name: 'Rock', bands: [4, 3, 0, -2, -3, 0, 2, 3, 4, 4] },
-    { name: 'Pop', bands: [-1, 1, 3, 4, 3, 0, -1, -1, 1, 2] },
-    { name: 'Jazz', bands: [3, 2, 0, 2, -2, -2, 0, 2, 3, 4] },
-    { name: 'Classical', bands: [4, 3, 2, 1, -1, -1, 0, 2, 3, 4] },
-    { name: 'Bass Boost', bands: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
-    { name: 'Treble Boost', bands: [0, 0, 0, 0, 0, 1, 2, 4, 5, 6] },
-    { name: 'Vocal', bands: [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1] },
-    { name: 'Electronic', bands: [4, 3, 0, -2, -1, 1, 0, 2, 4, 5] },
-    { name: 'Acoustic', bands: [3, 2, 0, 1, 2, 1, 2, 2, 3, 2] },
+    { id: 'flat', labelKey: 'preview.mixer.presetFlat', bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    { id: 'rock', labelKey: 'preview.mixer.presetRock', bands: [4, 3, 0, -2, -3, 0, 2, 3, 4, 4] },
+    { id: 'pop', labelKey: 'preview.mixer.presetPop', bands: [-1, 1, 3, 4, 3, 0, -1, -1, 1, 2] },
+    { id: 'jazz', labelKey: 'preview.mixer.presetJazz', bands: [3, 2, 0, 2, -2, -2, 0, 2, 3, 4] },
+    { id: 'classical', labelKey: 'preview.mixer.presetClassical', bands: [4, 3, 2, 1, -1, -1, 0, 2, 3, 4] },
+    { id: 'bass-boost', labelKey: 'preview.mixer.presetBassBoost', bands: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
+    { id: 'treble-boost', labelKey: 'preview.mixer.presetTrebleBoost', bands: [0, 0, 0, 0, 0, 1, 2, 4, 5, 6] },
+    { id: 'vocal', labelKey: 'preview.mixer.presetVocal', bands: [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1] },
+    { id: 'electronic', labelKey: 'preview.mixer.presetElectronic', bands: [4, 3, 0, -2, -1, 1, 0, 2, 4, 5] },
+    { id: 'acoustic', labelKey: 'preview.mixer.presetAcoustic', bands: [3, 2, 0, 1, 2, 1, 2, 2, 3, 2] },
 ];
 
 interface AudioMixerProps {
@@ -94,7 +100,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
         onStateChange({
             ...state,
             bands: newBands,
-            presetName: 'Custom',
+            presetId: CUSTOM_PRESET_ID,
         });
     }, [state, onStateChange, eqNodes]);
 
@@ -120,7 +126,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
         onStateChange({
             ...state,
             bands: [...preset.bands],
-            presetName: preset.name,
+            presetId: preset.id,
         });
         setShowPresetMenu(false);
     }, [state, onStateChange, eqNodes]);
@@ -175,7 +181,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
                             onClick={() => setShowPresetMenu(!showPresetMenu)}
                             className="flex items-center gap-1 px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300 transition-colors"
                         >
-                            {state.presetName}
+                            {t(presetLabelKey(state.presetId))}
                             <ChevronDown size={12} />
                         </button>
 
@@ -183,12 +189,12 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
                             <div className="absolute top-full right-0 mt-1 w-36 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-10 py-1">
                                 {EQ_PRESETS.map((preset) => (
                                     <button
-                                        key={preset.name}
+                                        key={preset.id}
                                         onClick={() => applyPreset(preset)}
-                                        className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-700 transition-colors ${state.presetName === preset.name ? 'text-blue-400' : 'text-gray-300'
+                                        className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-700 transition-colors ${state.presetId === preset.id ? 'text-blue-400' : 'text-gray-300'
                                             }`}
                                     >
-                                        {preset.name}
+                                        {t(preset.labelKey)}
                                     </button>
                                 ))}
                             </div>

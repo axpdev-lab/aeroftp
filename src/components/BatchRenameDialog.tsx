@@ -73,7 +73,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
   const [replaceText, setReplaceText] = useState('');
   const [prefix, setPrefix] = useState('');
   const [suffix, setSuffix] = useState('');
-  const [baseName, setBaseName] = useState('file');
+  const [baseName, setBaseName] = useState(() => t('batchRename.baseNamePlaceholder'));
   const [startNumber, setStartNumber] = useState(1);
   const [padding, setPadding] = useState(2);
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -87,7 +87,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
       setReplaceText('');
       setPrefix('');
       setSuffix('');
-      setBaseName('file');
+      setBaseName(t('batchRename.baseNamePlaceholder'));
       setStartNumber(1);
       setPadding(2);
       setCaseSensitive(false);

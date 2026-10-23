@@ -223,10 +223,10 @@ export function IntroHub(props: IntroHubProps) {
         const provider = providerId ? getProviderById(providerId) : undefined;
         const PROVIDER_NAMES: Record<string, string> = {
             pixelunion: 'PixelUnion',
-            'mtp-portable': 'Portable device (MTP)',
+            'mtp-portable': t('protocol.mtpName'),
         };
-        const label = demo ? `Demo: ${protocol.toUpperCase()}` : (provider?.name || PROVIDER_NAMES[providerId || ''] || providerId || protocol.toUpperCase());
-        const defaultLabel = `New: ${label}`;
+        const label = demo ? t('introHub.demoTabLabel', { protocol: protocol.toUpperCase() }) : (provider?.name || PROVIDER_NAMES[providerId || ''] || providerId || protocol.toUpperCase());
+        const defaultLabel = t('introHub.newTabLabel', { name: label });
         const newTab: FormTabState = {
             id,
             label: defaultLabel,
@@ -262,7 +262,7 @@ export function IntroHub(props: IntroHubProps) {
         // keep focus on Discover, like a browser's middle-click-opens-background.
         // A left-click still switches to the new tab as before.
         if (!openInBackground) setActiveTab(id);
-    }, [activeTab]);
+    }, [activeTab, t]);
 
     // Create a form tab for editing a saved server
     const handleEdit = useCallback((profile: ServerProfile) => {
@@ -276,7 +276,7 @@ export function IntroHub(props: IntroHubProps) {
         }
 
         const id = generateTabId();
-        const editLabel = profile.name || profile.host || 'Edit';
+        const editLabel = profile.name || profile.host || t('common.edit');
         const newTab: FormTabState = {
             id,
             label: editLabel,
@@ -301,7 +301,7 @@ export function IntroHub(props: IntroHubProps) {
         };
         setFormTabs(prev => [...prev, newTab]);
         setActiveTab(id);
-    }, [formTabs, activeTab]);
+    }, [formTabs, activeTab, t]);
 
     // Close a form tab: return to the tab that opened it
     const handleCloseFormTab = useCallback((tabId: string) => {

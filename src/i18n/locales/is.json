@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Afritaðu þessa slóð og límiðu hana sem tilvísunar-URI í stillingum forritarans þíns.",
                 "redirectUriNoteGoogle": "Mælt er með að búa til OAuth-biðlaraauðkenni af gerðinni „Skjáborðsforrit“ í Google Cloud Console; ekki þarf að skrá URI fyrir tilvísun. Fyrir biðlara af gerðinni „Vefforrit“ skal skrá nákvæmlega það URI fyrir tilvísun sem birtist hér að ofan, ásamt gáttinni og slóðinni /callback.",
                 "enablePhotosApi": "Gangið úr skugga um að Photos Library API sé virkt í Google Cloud Console.",
-                "enableDriveApi": "Gangið úr skugga um að Google Drive API sé virkt í Google Cloud Console."
+                "enableDriveApi": "Gangið úr skugga um að Google Drive API sé virkt í Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "Bandaríkin",
+                "zohoRegionEu": "ESB",
+                "zohoRegionIn": "Indland",
+                "zohoRegionAu": "Ástralía",
+                "zohoRegionJp": "Japan",
+                "zohoRegionUk": "Bretland",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Sádi-Arabía"
             },
             "activeSessions": "Virkar lotur",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Mælt með fyrir hámarksöryggi",
             "fontCustomOption": "Sérsniðið...",
             "fontSystemInstallHint": "Krefst uppsetningar í kerfinu. AeroFTP notar sjálfkrafa varaleið ef það er ekki tiltækt.",
-            "fontSizeIndicatorLabel": "Letur"
+            "fontSizeIndicatorLabel": "Letur",
+            "fontPresetDefault": "{font} (Sjálfgefið)",
+            "fontPresetSystemDefault": "Sjálfgefið kerfisins"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Stækka leturstærð (Ctrl+=)",
                 "newTab": "Nýr útstöðvarflipi",
                 "sshShellTo": "SSH-skel á {host}",
-                "theme": "Þema útstöðvar"
+                "theme": "Þema útstöðvar",
+                "tabLabel": "Útstöð {num}",
+                "themeCyber": "Netheimar",
+                "themeTrueDark": "Ekta dökkt",
+                "themeGreen": "Grænt",
+                "themeIce": "Ís",
+                "themeRedLava": "Rautt hraun"
             },
             "editorPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Skoða frumkóða\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(eitt í hverri línu)",
             "pairsEditorLabel": "Ritill fyrir AeroCloud-pör",
             "remoteSubfolderPlaceholder": "ský",
-            "countdownSoon": "Bráðum..."
+            "countdownSoon": "Bráðum...",
+            "aerocloudEnabled": "AeroCloud virkt",
+            "selectPairLocalFolder": "Veldu staðbundna möppu fyrir parið",
+            "secondsAgo": "fyrir {count}sek"
         },
         "statusBar": {
             "connected": "Tengt",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Rannsakandi, gæðatryggingarverkfræðingur, meðhönnuður"
             },
             "madeBy": "af {author}",
-            "statsLine": "{protocols} samskiptareglur · {languages} tungumál · AES-256 safnskrár"
+            "statsLine": "{protocols} samskiptareglur · {languages} tungumál · AES-256 safnskrár",
+            "dependencyRoles": {
+                "sftpOps": "SFTP-aðgerðir",
+                "osKeyring": "Lyklakippa stýrikerfis",
+                "vaultFormat": "Hvelfingarsnið",
+                "zipArchives": "ZIP-safnskrár"
+            }
         },
         "support": {
             "title": "Styðja AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Endurheimti {files} skrá(r) úr ruslinu, {present} þegar til staðar",
             "trash_restore_detail_folders_present_success": "[{provider}] Endurheimti {files} skrá(r), {folders} möppu(r) úr ruslinu, {present} þegar til staðar",
             "filelu_file_password_removed": "[{provider}] Lykilorð skrár fjarlægt",
-            "filelu_folder_password_removed": "[{provider}] Lykilorð möppu fjarlægt"
+            "filelu_folder_password_removed": "[{provider}] Lykilorð möppu fjarlægt",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} mistókst",
+            "batch_rename_start": "[{location}] Endurnefni {count} atriði...",
+            "batch_rename_success": "[{location}] Endurnefndi {count} atriði",
+            "batch_rename_error": "[{location}] Endurnefndi {count} atriði, {failed} mistókust",
+            "compress_details_saved": "{input} → {output} ({percent}% sparað)",
+            "compress_details_grew": "{input} → {output} (stækkaði um {percent}%)",
+            "extract_details": "{input} → {output} (afþjappað)",
+            "download_details": "({size} á {seconds} sek.)"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Lögsaga",
             "insecureCertDialogLabel": "Viðvörun um óöruggt skilríki",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Staðfesting hýsillykils"
+            "hostKeyDialogLabel": "Staðfesting hýsillykils",
+            "mtpName": "Færanlegt tæki (MTP)",
+            "mtpDesc": "Sími eða myndavél um MTP/WPD",
+            "immichDesc": "Sjálfhýst myndastjórnun",
+            "imagekitDesc": "Miðlunar-CDN + geymsla (20 GB ókeypis)",
+            "uploadcareDesc": "Miðlunar-CDN í ESB (3 GB ókeypis)",
+            "cloudinaryDesc": "Miðlunar-CDN (25 inneignir á mánuði ókeypis)",
+            "backblazeDesc": "Innbyggt API Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -2416,7 +2458,10 @@
             "add": "Bæta við",
             "remove": "Fjarlægja",
             "none": "Engar heimildir stilltar",
-            "anyoneWithLink": "Allir með tengilinn"
+            "anyoneWithLink": "Allir með tengilinn",
+            "roleViewer": "Áhorfandi",
+            "roleEditor": "Ritstjóri",
+            "roleCommenter": "Álitsgjafi"
         },
         "locking": {
             "lock": "Læsa skrá",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "mistókst {count}",
             "rollbackRestoreCompleted": "Endurheimt lokið: {summary}",
             "rollbackRestoreNothing": "Ekkert að endurheimta",
-            "rollbackRestoreFailed": "Endurheimt mistókst: {error}"
+            "rollbackRestoreFailed": "Endurheimt mistókst: {error}",
+            "intervalHoursOne": "{count} klukkustund",
+            "intervalHoursMany": "{count} klukkustundir"
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Styður myndgreiningu",
                 "thinkingReasoning": "Hugsun/Röksemdafærsla",
                 "toolQuality": "Gæði verkfæra: {quality}/5",
-                "ollamaNotReachable": "Ekki næst í Ollama"
+                "ollamaNotReachable": "Ekki næst í Ollama",
+                "macroSafeEditName": "Örugg breyting",
+                "macroSafeEditDescription": "Lesa skrá, sýna innihald hennar og breyta henni síðan (öryggismynstur: lesa áður en skrifað er)",
+                "macroFindReadName": "Finna og lesa",
+                "macroFindReadDescription": "Leita að skrám sem passa við mynstur í staðbundinni möppu",
+                "familyHintLlama3": "Beinar og hnitmiðaðar leiðbeiningar virka best. Notaðu markdown-sniðmótun. Styður notkun verkfæra innbyggt.",
+                "familyHintCodellama": "Einbeittu þér að kóðagerð og kóðagreiningu. Gefðu kóðadæmi. Notaðu tæknilegt mál.",
+                "familyHintDeepseekCoder": "Sterkt í röksemdafærslu um kóða og lausn fjölþrepa vandamála. Skipulegt úttak er æskilegt. Fyrir deepseek-r1 virkar hugsunarhamur sjálfkrafa.",
+                "familyHintQwen": "Styður skipulegt úttak. Gott í fjöltyngdum verkefnum. Notaðu skýrar kaflafyrirsagnir.",
+                "familyHintMistral": "Miðað að því að fylgja leiðbeiningum. Hafðu kvaðningar skipulegar með skýrum verklýsingum.",
+                "familyHintPhi": "Nett líkan: hafðu leiðbeiningar hnitmiðaðar. Best í afmörkuð verkefni, ekki langa texta.",
+                "familyHintGemma": "Leiðbeiningasnið í Google-stíl. Gott í samantektum og greiningu.",
+                "familyHintStarcoder": "Miðað að kóðaútfyllingu. Gefðu samhengi skrárinnar og innflutning til að ná bestum árangri."
             },
             "copy": "Afrita",
             "attachImage": "Hengja mynd við",
@@ -3033,7 +3092,8 @@
                 "general": "Almennt",
                 "typeSlash": "Sláðu inn / til að nota sniðmát",
                 "analyzeUi": "Greina UI skjáskot fyrir skipulag, aðgengi og UX vandamál",
-                "performance": "Greina kóða fyrir afkastavandamál og bestun"
+                "performance": "Greina kóða fyrir afkastavandamál og bestun",
+                "analysis": "Greining"
             },
             "costBudget": {
                 "conversationCost": "Spjallkostnaður",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "fyrir {count} d.",
             "recentFileCountMany": "{count} skrár",
             "recentFileCountOne": "{count} skrá",
-            "recentMonthsAgo": "fyrir {count} mán."
+            "recentMonthsAgo": "fyrir {count} mán.",
+            "securityArchive": "Safn",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Hratt",
+            "securityAdvancedDescription": "Nonce-þolið · Dulkóðuð skráarheiti · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 keðja · Tvöföld dulkóðun",
+            "securityArchiveDescription": "Afritunarlaust safn · zstd bútar · v3"
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM efni",
             "featureNameCipher": "AES-SIV nöfn",
             "formatVersion": "Snið {version}",
-            "invalidVaultName": "Ógildir stafir í nafni hvelfingar"
+            "invalidVaultName": "Ógildir stafir í nafni hvelfingar",
+            "defaultVaultName": "NýHvelfing"
         },
         "compress": {
             "title": "Þjappa Skrár",
@@ -3952,7 +4018,10 @@
             "threads": "Þræðir",
             "auto": "Sjálfvirkt",
             "solid": "Heildstæð blokk",
-            "solidHint": "Betra hlutfall fyrir margar litlar skrár, hægari handahófskennd útdráttur."
+            "solidHint": "Betra hlutfall fyrir margar litlar skrár, hægari handahófskennd útdráttur.",
+            "formatArchiveOnly": "Aðeins safnskrá",
+            "formatBestRatio": "Besta hlutfall",
+            "formatSingleFile": "stök skrá"
         },
         "batchRename": {
             "title": "Hópendurnefning",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Sía aðgerðir",
                 "selected": "valið"
-            }
+            },
+            "save": "Vista"
         },
         "error": {
             "description": "AeroFTP lenti í óvæntri villu. Þú getur reynt að endurheimta eða endurhlaða forritinu.",
@@ -4529,7 +4599,13 @@
                     "radial": "Geislamiðja",
                     "spectrum": "Litróf",
                     "vortex": "Hvirfilbylur",
-                    "waveform": "Bylgjuform"
+                    "waveform": "Bylgjuform",
+                    "glWaveGlitch": "Bylgjutruflun",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Göng",
+                    "glMetaball": "Metakúlur",
+                    "glParticles": "Agnir"
                 },
                 "volume": "Hljóðstyrkur"
             },
@@ -4635,7 +4711,18 @@
                 "off": "SLÖKKT",
                 "on": "KVEIKT",
                 "presets": "Forstillingar",
-                "reset": "Endurstilla á flatt"
+                "reset": "Endurstilla á flatt",
+                "presetFlat": "Flatt",
+                "presetRock": "Rokk",
+                "presetPop": "Popp",
+                "presetJazz": "Djass",
+                "presetClassical": "Klassískt",
+                "presetBassBoost": "Bassaukning",
+                "presetTrebleBoost": "Diskantaukning",
+                "presetVocal": "Söngur",
+                "presetElectronic": "Raftónlist",
+                "presetAcoustic": "Órafmagnað",
+                "presetCustom": "Sérsniðið"
             },
             "pdf": {
                 "download": "Niðurhala PDF",
@@ -5137,7 +5224,37 @@
             "paidTier": "Gjaldskylt",
             "extraFeatures": "Auka",
             "coreOpsList": "Hlaða upp, Sækja, Eyða, Endurnefna, Færa, Búa til möppu, Leita",
-            "coreOpsLegend": "Grunnur = Hlaða upp, Sækja, Eyða, Endurnefna, Færa, Búa til möppu, Leita"
+            "coreOpsLegend": "Grunnur = Hlaða upp, Sækja, Eyða, Endurnefna, Færa, Búa til möppu, Leita",
+            "notes": "Athugasemdir",
+            "storageClass": "Geymsluflokkur",
+            "objectTagging": "Merking hluta",
+            "sse": "Dulkóðun á netþjóni",
+            "checksum": "Gátsumma",
+            "tierManagement": "Stjórnun geymslustiga",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Miðlar",
+            "sectionOther": "Annað",
+            "trashDetails": {
+                "onedrive": "Business- og SharePoint-drif. Microsoft Graph birtir ekki ruslafötu OneDrive Personal-drifs; notaðu vefsvæði OneDrive til þess"
+            },
+            "shareLinkDetails": {
+                "permissions": "Heimildir: skoða, athugasemdir, breyta",
+                "passwordExpiryPlan": "Lykilorð + gildistími ({plan} áskrift krafist)",
+                "passwordExpiryPaid": "Lykilorð + gildistími (greiddrar áskriftar krafist)",
+                "passwordPersonalExpiryPermissions": "Lykilorð (aðeins Personal), gildistími, heimildir",
+                "passwordArgon2ExpiryPresets": "Lykilorð (Argon2id) + forstilltir gildistímar",
+                "passwordExpiryPermissions": "Lykilorð, gildistími, heimildir",
+                "basicOnly": "Aðeins einfaldur deilitengill",
+                "publicToggle": "Opinber tengill (víxla persónuvernd)",
+                "basic": "Einfaldur deilitengill",
+                "expiringDefaultYear": "Tenglar sem renna út (sjálfgefið 1 ár)",
+                "publishUnpublish": "Birta/taka úr birtingu",
+                "permanentUrl": "Varanleg vefslóð",
+                "sharedAlbum": "Tengill á deilt albúm",
+                "megaPresignedS4": "Deilitengill / forundirrituð vefslóð (hám. 7 dagar fyrir S4)",
+                "autoPasswordExpiry": "Lykilorð (sjálfvirkt búið til) + gildistími",
+                "presigned": "Forundirrituð vefslóð (hám. 7 dagar)"
+            }
         },
         "healthCheck": {
             "title": "Heilsufarsskoðun netþjóns",
@@ -5399,7 +5516,10 @@
             "repoPrivateTitle": "Einkageymsla",
             "repoPublicTitle": "Opinber geymsla",
             "unpushedCommitsOnBranchMany": "{count} commit ekki ýtt á {branch}",
-            "unpushedCommitsOnBranchOne": "{count} commit ekki ýtt á {branch}"
+            "unpushedCommitsOnBranchOne": "{count} commit ekki ýtt á {branch}",
+            "cancelWorkflow": "Hætta við verkflæði",
+            "rerunWorkflow": "Keyra verkflæði aftur",
+            "downloadAssetTitle": "Sækja {name}"
         },
         "filenNotes": {
             "title": "Dulkóðaðar minnispunktar",
@@ -5488,7 +5608,10 @@
             "manageCreated": "Búið til",
             "manageExpires": "Rennur út",
             "manageNeverExpires": "Aldrei",
-            "managePasswordProtected": "Lykilordavarinn"
+            "managePasswordProtected": "Lykilordavarinn",
+            "expirationHoursOne": "{count} klukkustund",
+            "expirationHoursMany": "{count} klukkustundir",
+            "expirationDaysMany": "{count} dagar"
         },
         "introHub": {
             "tab": {
@@ -5679,7 +5802,9 @@
                 "hours": "{count} klst",
                 "days": "{count} d",
                 "months": "{count} mán"
-            }
+            },
+            "demoTabLabel": "Sýnishorn: {protocol}",
+            "newTabLabel": "Nýtt: {name}"
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",
@@ -5714,7 +5839,8 @@
             "createMergeRequest": "Búa til samrunabeðni",
             "mrTitle": "MR titill",
             "mrBody": "Lýsing (valfrjálst)",
-            "sourceCode": "Frumkóði"
+            "sourceCode": "Frumkóði",
+            "downloadAssetTitle": "Sækja {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6322,7 +6448,8 @@
                 "newUser": "Nýr notandi",
                 "noUsers": "Engir notendur enn. Notaðu „Nýr notandi“ hér fyrir neðan til að bæta þeim fyrsta við.",
                 "protectionNote": "Reikningurinn þinn er varinn með Argon2id + AES-KW + AES-256-GCM dulkóðun",
-                "users": "Notendur"
+                "users": "Notendur",
+                "setup": "Uppsetning"
             }
         },
         "aerocryptNative": {
@@ -6751,7 +6878,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Hamurinn er valinn þegar tengingin er stofnuð og helst óbreyttur meðan vistuðu sniði er breytt. Til að nota annan ham skaltu stofna nýja tengingu.",
-                "notInBuild": "Ekki innifalið í þessari útgáfu af AeroFTP."
+                "notInBuild": "Ekki innifalið í þessari útgáfu af AeroFTP.",
+                "header": "{name}-hamir",
+                "nativeApi": "Innbyggt API",
+                "filelu": {
+                    "apiDescription": "REST API með API-lykli. Allir eiginleikar (ruslafata, deilitenglar, lykilorðsvarðar skrár).",
+                    "webdavDescription": "WebDAV-aðgangur á gátt 443. Víðtæk samhæfni við biðlara, tengist sem netdrif.",
+                    "s3Description": "S3-samhæft API á gátt 443. Notaðu rclone, AWS CLI eða hvaða S3 SDK sem er.",
+                    "ftpDescription": "Hefðbundið FTP á gátt 21. Ódulkóðað, gagnlegt fyrir NVR-upptökutæki eftirlitsmyndavéla og eldri biðlara."
+                },
+                "filen": {
+                    "apiDescription": "E2E-dulkóðun án þekkingar (Argon2id v3 / PBKDF2 v2). Allir eiginleikar: geymslukvóti, ruslafata, lykilorð deilitengla, útgáfustýring, TOTP.",
+                    "webdavDescription": "WebDAV-brú sem Filen Desktop býður upp á á 127.0.0.1:1900. Krefst þess að Filen Desktop sé í gangi og innskráð.",
+                    "s3Description": "S3-samhæfð brú sem Filen Desktop býður upp á á 127.0.0.1:1800 í gegnum local.s3.filen.io. Slóðatengd vistfangagerð, hver Filen-mappa á efsta stigi er fata."
+                },
+                "proton": {
+                    "headerDescription": "Skýjageymsla Proton með enda-til-enda dulkóðun",
+                    "apiDescription": "Eigin Proton Drive biðlari AeroFTP: þú skráir þig inn á síðu Proton í vafranum, skrár eru dulkóðaðar og afkóðaðar á þessari tölvu og ekkert annað forrit þarf.",
+                    "cliDescription": "Stýrir opinberu Proton Drive CLI sem er uppsett og innskráð á þessari vél. Þú skráir þig inn í vafranum; AeroFTP sér aldrei Proton-lykilorðið þitt."
+                },
+                "opendrive": {
+                    "headerDescription": "Skýjageymsla OpenDrive (5 GB ókeypis)",
+                    "apiDescription": "REST API með notandanafni + lykilorði. Allir eiginleikar: ruslafata, geymslukvóti, deilitenglar, endurkvæm disknotkun.",
+                    "webdavDescription": "WebDAV-aðgangur í gegnum webdav.opendrive.com á gátt 443. Fyrir eldri biðlara eða til að tengja sem netdrif."
+                },
+                "koofr": {
+                    "apiDescription": "REST API með aðsetur í ESB, með netfangi + forritalykilorði. Allir eiginleikar: geymslukvóti, ruslafata (lista/endurheimta/tæma), deilitenglar.",
+                    "webdavDescription": "WebDAV-aðgangur í gegnum app.koofr.net/dav/Koofr á gátt 443. Geymslukvótinn er enn lesinn úr REST API Koofr. Fyrir eldri biðlara eða til að tengja sem netdrif."
+                },
+                "mega": {
+                    "headerDescription": "Skýjageymsla MEGA með dulkóðun á biðlara",
+                    "apiDescription": "Innbyggt MEGA API með netfangi + lykilorði (+ valfrjálst TOTP). Allir eiginleikar: dulkóðun á biðlara, geymslukvóti, deilitenglar, smámyndir.",
+                    "webdavDescription": "Staðbundin WebDAV-brú sem opinbera MEGAcmd CLI veitir, nafnlaus á 127.0.0.1. AeroFTP keyrir \"mega-webdav /\" fyrir þig við tengingu, svo það er ekkert handvirkt skref.",
+                    "s4Description": "MEGA S4 hlutageymsla, S3-samhæfð (svæðin EU/CA). Aðgangslykill + leynilykill + fata. Krefst Pro-áskriftar."
+                }
             }
         },
         "flatpak": {

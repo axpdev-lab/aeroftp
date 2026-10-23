@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Nakili URL hii na uibandike kama URI ya kuelekeza upya katika mipangilio ya programu yako ya msanidi.",
                 "redirectUriNoteGoogle": "Pendekezo: unda kitambulisho cha mteja wa OAuth cha aina ya \"Programu ya kompyuta\" katika Google Cloud Console; hakuna haja ya kusajili URI ya kuelekeza kwingine. Kwa mteja wa aina ya \"Programu ya wavuti\", sajili URI ya kuelekeza kwingine iliyoonyeshwa hapo juu kama ilivyo, ikijumuisha lango lake na njia ya /callback.",
                 "enablePhotosApi": "Hakikisha Photos Library API imewezeshwa katika Google Cloud Console yako.",
-                "enableDriveApi": "Hakikisha Google Drive API imewezeshwa katika Google Cloud Console yako."
+                "enableDriveApi": "Hakikisha Google Drive API imewezeshwa katika Google Cloud Console yako.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "Marekani",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Australia",
+                "zohoRegionJp": "Japani",
+                "zohoRegionUk": "Uingereza",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Saudi Arabia"
             },
             "activeSessions": "Vikurasa vya kufa",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Inapendekezwa kwa usalama wa juu kabisa",
             "fontCustomOption": "Maalum...",
             "fontSystemInstallHint": "Inahitaji usakinishaji wa mfumo. AeroFTP hubadilisha kiotomatiki ikiwa haipatikani.",
-            "fontSizeIndicatorLabel": "Fonti"
+            "fontSizeIndicatorLabel": "Fonti",
+            "fontPresetDefault": "{font} (Chaguomsingi)",
+            "fontPresetSystemDefault": "Chaguomsingi la mfumo"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Ongeza ukubwa wa fonti (Ctrl+=)",
                 "newTab": "Kichupo kipya cha terminali",
                 "sshShellTo": "Shell ya SSH kwenda {host}",
-                "theme": "Mandhari ya terminali"
+                "theme": "Mandhari ya terminali",
+                "tabLabel": "Terminali {num}",
+                "themeCyber": "Saiba",
+                "themeTrueDark": "Giza halisi",
+                "themeGreen": "Kijani",
+                "themeIce": "Barafu",
+                "themeRedLava": "Lava nyekundu"
             },
             "editorPanel": {
                 "emptyState": "Bofya kulia kwenye faili na uchague \"Angalia chanzo\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(moja kwa kila mstari)",
             "pairsEditorLabel": "Kihariri cha Jozi za AeroCloud",
             "remoteSubfolderPlaceholder": "wingu",
-            "countdownSoon": "Hivi karibuni..."
+            "countdownSoon": "Hivi karibuni...",
+            "aerocloudEnabled": "AeroCloud imewashwa",
+            "selectPairLocalFolder": "Chagua folda ya ndani kwa jozi",
+            "secondsAgo": "sekunde {count} zilizopita"
         },
         "statusBar": {
             "connected": "Imeunganishwa",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Mtafiti, mhandisi wa uhakikisho wa ubora, mbunifu mwenza"
             },
             "madeBy": "na {author}",
-            "statsLine": "Itifaki {protocols} · lugha {languages} · kumbukumbu za AES-256"
+            "statsLine": "Itifaki {protocols} · lugha {languages} · kumbukumbu za AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Shughuli za SFTP",
+                "osKeyring": "Kishika funguo cha OS",
+                "vaultFormat": "Muundo wa hifadhi salama",
+                "zipArchives": "Kumbukumbu za ZIP"
+            }
         },
         "support": {
             "title": "Saidia AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Imerejesha faili {files} kutoka kwenye tupio, {present} tayari zipo",
             "trash_restore_detail_folders_present_success": "[{provider}] Imerejesha faili {files}, folda {folders} kutoka kwenye tupio, {present} tayari zipo",
             "filelu_file_password_removed": "[{provider}] Nenosiri la faili limeondolewa",
-            "filelu_folder_password_removed": "[{provider}] Nenosiri la folda limeondolewa"
+            "filelu_folder_password_removed": "[{provider}] Nenosiri la folda limeondolewa",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} imeshindwa",
+            "batch_rename_start": "[{location}] Inabadilisha jina la vipengee {count}...",
+            "batch_rename_success": "[{location}] Imebadilisha jina la vipengee {count}",
+            "batch_rename_error": "[{location}] Imebadilisha jina la vipengee {count}, {failed} vimeshindwa",
+            "compress_details_saved": "{input} → {output} (imeokoa {percent}%)",
+            "compress_details_grew": "{input} → {output} (imeongezeka {percent}%)",
+            "extract_details": "{input} → {output} (imefunguliwa)",
+            "download_details": "({size} kwa sekunde {seconds})"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Mamlaka ya kisheria",
             "insecureCertDialogLabel": "Onyo la Cheti Kisicho Salama",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Uthibitishaji wa ufunguo wa seva pangishi"
+            "hostKeyDialogLabel": "Uthibitishaji wa ufunguo wa seva pangishi",
+            "mtpName": "Kifaa kinachobebeka (MTP)",
+            "mtpDesc": "Simu au kamera kupitia MTP/WPD",
+            "immichDesc": "Usimamizi wa picha unaopangishwa binafsi",
+            "imagekitDesc": "CDN ya media + hifadhi (20 GB bure)",
+            "uploadcareDesc": "CDN ya media ya EU (3 GB bure)",
+            "cloudinaryDesc": "CDN ya media (mikopo 25 kwa mwezi bure)",
+            "backblazeDesc": "API asili ya Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -2416,7 +2458,10 @@
             "add": "Ongeza",
             "remove": "Ondoa",
             "none": "Hakuna ruhusa zilizowekwa",
-            "anyoneWithLink": "Mtu yeyote mwenye kiungo"
+            "anyoneWithLink": "Mtu yeyote mwenye kiungo",
+            "roleViewer": "Mtazamaji",
+            "roleEditor": "Mhariri",
+            "roleCommenter": "Mtoa maoni"
         },
         "locking": {
             "lock": "Funga Faili",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "zilizoshindwa {count}",
             "rollbackRestoreCompleted": "Urejeshaji umekamilika: {summary}",
             "rollbackRestoreNothing": "Hakuna cha kurejesha",
-            "rollbackRestoreFailed": "Kurejesha kumeshindwa: {error}"
+            "rollbackRestoreFailed": "Kurejesha kumeshindwa: {error}",
+            "intervalHoursOne": "Saa {count}",
+            "intervalHoursMany": "Saa {count}"
         },
         "ui": {
             "syncing": "Inasawazisha...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Inaauni maono",
                 "thinkingReasoning": "Kufikiri/Kutoa hoja",
                 "toolQuality": "Ubora wa zana: {quality}/5",
-                "ollamaNotReachable": "Ollama haifikiki"
+                "ollamaNotReachable": "Ollama haifikiki",
+                "macroSafeEditName": "Uhariri Salama",
+                "macroSafeEditDescription": "Soma faili, onyesha maudhui yake, kisha uihariri (mtindo wa usalama wa kusoma kabla ya kuandika)",
+                "macroFindReadName": "Tafuta na Usome",
+                "macroFindReadDescription": "Tafuta faili zinazolingana na muundo katika saraka ya ndani",
+                "familyHintLlama3": "Maelekezo ya moja kwa moja na mafupi hufanya kazi vizuri zaidi. Tumia uumbizaji wa markdown. Inatumia zana kiasili.",
+                "familyHintCodellama": "Lenga uundaji na uchambuzi wa msimbo. Toa mifano ya msimbo. Tumia lugha ya kiufundi.",
+                "familyHintDeepseekCoder": "Imara katika kufikiri kuhusu msimbo na kutatua matatizo ya hatua nyingi. Matokeo yenye muundo yanapendekezwa. Kwa deepseek-r1, hali ya kufikiri hufanya kazi kiotomatiki.",
+                "familyHintQwen": "Inatumia matokeo yenye muundo. Nzuri kwa kazi za lugha nyingi. Tumia vichwa vya sehemu vilivyo wazi.",
+                "familyHintMistral": "Imelenga kufuata maelekezo. Weka vidokezo vyenye muundo pamoja na maelezo wazi ya kazi.",
+                "familyHintPhi": "Modeli ndogo: weka maelekezo mafupi. Bora kwa kazi mahususi, si maandishi marefu.",
+                "familyHintGemma": "Muundo wa maelekezo wa mtindo wa Google. Nzuri katika muhtasari na uchambuzi.",
+                "familyHintStarcoder": "Imelenga ukamilishaji wa msimbo. Toa muktadha wa faili na uingizaji kwa matokeo bora."
             },
             "copy": "Nakili",
             "attachImage": "Ambatanisha picha",
@@ -3033,7 +3092,8 @@
                 "general": "Jumla",
                 "typeSlash": "Andika / kutumia violezo",
                 "analyzeUi": "Changanua picha ya skrini ya UI kwa mpangilio, ufikiaji, na matatizo ya UX",
-                "performance": "Changanua msimbo kwa vikwazo vya utendaji na uboreshaji"
+                "performance": "Changanua msimbo kwa vikwazo vya utendaji na uboreshaji",
+                "analysis": "Uchambuzi"
             },
             "costBudget": {
                 "conversationCost": "Gharama ya mazungumzo",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "siku {count} zilizopita",
             "recentFileCountMany": "Faili {count}",
             "recentFileCountOne": "Faili {count}",
-            "recentMonthsAgo": "miezi {count} iliyopita"
+            "recentMonthsAgo": "miezi {count} iliyopita",
+            "securityArchive": "Kumbukumbu",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Haraka",
+            "securityAdvancedDescription": "Inastahimili nonce · Majina ya faili yaliyosimbwa · KDF ya 128 MB",
+            "securityParanoidDescription": "Mfululizo wa AES + ChaCha20 · Usimbaji maradufu",
+            "securityArchiveDescription": "Kumbukumbu isiyo na nakala rudufu · vipande vya zstd · v3"
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Maudhui ya AES-GCM",
             "featureNameCipher": "Majina ya AES-SIV",
             "formatVersion": "Muundo {version}",
-            "invalidVaultName": "Herufi batili katika jina la hifadhi"
+            "invalidVaultName": "Herufi batili katika jina la hifadhi",
+            "defaultVaultName": "SefuMpya"
         },
         "compress": {
             "title": "Bana Faili",
@@ -3952,7 +4018,10 @@
             "threads": "Nyuzi",
             "auto": "Otomatiki",
             "solid": "Kizuizi imara",
-            "solidHint": "Uwiano bora kwa faili nyingi ndogo, uchambuzi nasibu wa polepole zaidi."
+            "solidHint": "Uwiano bora kwa faili nyingi ndogo, uchambuzi nasibu wa polepole zaidi.",
+            "formatArchiveOnly": "Kuhifadhi kumbukumbu pekee",
+            "formatBestRatio": "Uwiano bora",
+            "formatSingleFile": "faili moja"
         },
         "batchRename": {
             "title": "Badilisha Majina kwa Kundi",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Chuja shughuli",
                 "selected": "zimechaguliwa"
-            }
+            },
+            "save": "Hifadhi"
         },
         "error": {
             "description": "AeroFTP imekutana na hitilafu isiyotarajiwa. Unaweza kujaribu kurejesha au kupakia upya programu.",
@@ -4529,7 +4599,13 @@
                     "radial": "Mraba",
                     "spectrum": "Spektra",
                     "vortex": "Kimbunga",
-                    "waveform": "Umbo la Wimbi"
+                    "waveform": "Umbo la Wimbi",
+                    "glWaveGlitch": "Hitilafu ya Mawimbi",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Handaki",
+                    "glMetaball": "Metabolu",
+                    "glParticles": "Chembe"
                 },
                 "volume": "Sauti"
             },
@@ -4635,7 +4711,18 @@
                 "off": "ZIMA",
                 "on": "WASHA",
                 "presets": "Mipangilio",
-                "reset": "Rejesha Sawa"
+                "reset": "Rejesha Sawa",
+                "presetFlat": "Bapa",
+                "presetRock": "Roki",
+                "presetPop": "Popu",
+                "presetJazz": "Jazi",
+                "presetClassical": "Kiklasiki",
+                "presetBassBoost": "Kuongeza Besi",
+                "presetTrebleBoost": "Kuongeza Sauti za Juu",
+                "presetVocal": "Sauti ya Kuimba",
+                "presetElectronic": "Kielektroniki",
+                "presetAcoustic": "Akustika",
+                "presetCustom": "Maalum"
             },
             "pdf": {
                 "download": "Pakua PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Ya malipo",
             "extraFeatures": "Ziada",
             "coreOpsList": "Pakia, Pakua, Futa, Badilisha jina, Hamisha, Unda folda, Tafuta",
-            "coreOpsLegend": "Msingi = Pakia, Pakua, Futa, Badilisha jina, Hamisha, Unda folda, Tafuta"
+            "coreOpsLegend": "Msingi = Pakia, Pakua, Futa, Badilisha jina, Hamisha, Unda folda, Tafuta",
+            "notes": "Maelezo",
+            "storageClass": "Daraja la hifadhi",
+            "objectTagging": "Kuweka lebo kwenye vitu",
+            "sse": "Usimbaji fiche upande wa seva",
+            "checksum": "Jumla ya ukaguzi",
+            "tierManagement": "Usimamizi wa ngazi",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Vyombo vya habari",
+            "sectionOther": "Nyingine",
+            "trashDetails": {
+                "onedrive": "Hifadhi za Business na SharePoint. Microsoft Graph haionyeshi pipa la taka la hifadhi ya OneDrive Personal; tumia tovuti ya OneDrive kwa hilo"
+            },
+            "shareLinkDetails": {
+                "permissions": "Ruhusa: kutazama, kutoa maoni, kuhariri",
+                "passwordExpiryPlan": "Nenosiri + muda wa kuisha (mpango wa {plan} unahitajika)",
+                "passwordExpiryPaid": "Nenosiri + muda wa kuisha (mpango wa kulipia unahitajika)",
+                "passwordPersonalExpiryPermissions": "Nenosiri (Personal pekee), muda wa kuisha, ruhusa",
+                "passwordArgon2ExpiryPresets": "Nenosiri (Argon2id) + mipangilio ya awali ya muda wa kuisha",
+                "passwordExpiryPermissions": "Nenosiri, muda wa kuisha, ruhusa",
+                "basicOnly": "Kiungo cha msingi cha kushiriki pekee",
+                "publicToggle": "Kiungo cha umma (washa/zima faragha)",
+                "basic": "Kiungo cha msingi cha kushiriki",
+                "expiringDefaultYear": "Viungo vinavyoisha muda (chaguomsingi mwaka 1)",
+                "publishUnpublish": "Chapisha/ondoa uchapishaji",
+                "permanentUrl": "URL ya kudumu",
+                "sharedAlbum": "Kiungo cha albamu iliyoshirikiwa",
+                "megaPresignedS4": "Kiungo cha kushiriki / URL iliyotiwa sahihi awali (hadi siku 7 kwa S4)",
+                "autoPasswordExpiry": "Nenosiri (lililotengenezwa kiotomatiki) + muda wa kuisha",
+                "presigned": "URL iliyotiwa sahihi awali (hadi siku 7)"
+            }
         },
         "healthCheck": {
             "title": "Ukaguzi wa hali ya seva",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Hazina ya faragha",
             "repoPublicTitle": "Hazina ya umma",
             "unpushedCommitsOnBranchMany": "Commit {count} hazijatumwa kwenye {branch}",
-            "unpushedCommitsOnBranchOne": "Commit {count} haijatumwa kwenye {branch}"
+            "unpushedCommitsOnBranchOne": "Commit {count} haijatumwa kwenye {branch}",
+            "cancelWorkflow": "Ghairi mtiririko wa kazi",
+            "rerunWorkflow": "Endesha tena mtiririko wa kazi",
+            "downloadAssetTitle": "Pakua {name}"
         },
         "filenNotes": {
             "title": "Maelezo Yaliyofichwa",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Imeundwa",
             "manageExpires": "Inaisha",
             "manageNeverExpires": "Kamwe",
-            "managePasswordProtected": "Inalindwa na nenosiri"
+            "managePasswordProtected": "Inalindwa na nenosiri",
+            "expirationHoursOne": "Saa {count}",
+            "expirationHoursMany": "Saa {count}",
+            "expirationDaysMany": "Siku {count}"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "saa {count}",
                 "days": "siku {count}",
                 "months": "miezi {count}"
-            }
+            },
+            "demoTabLabel": "Onyesho: {protocol}",
+            "newTabLabel": "Mpya: {name}"
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Unda ombi la kuunganisha",
             "mrTitle": "Kichwa cha MR",
             "mrBody": "Maelezo (hiari)",
-            "sourceCode": "Msimbo chanzo"
+            "sourceCode": "Msimbo chanzo",
+            "downloadAssetTitle": "Pakua {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Mtumiaji mpya",
                 "noUsers": "Bado hakuna watumiaji. Tumia \"Mtumiaji mpya\" hapa chini kuongeza wa kwanza.",
                 "protectionNote": "Akaunti yako inalindwa kwa usimbaji wa Argon2id + AES-KW + AES-256-GCM",
-                "users": "Watumiaji"
+                "users": "Watumiaji",
+                "setup": "Usanidi"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Hali huchaguliwa wakati muunganisho unaundwa na hubaki bila kubadilika unapohariri wasifu uliohifadhiwa. Ili kutumia hali tofauti, unda muunganisho mpya.",
-                "notInBuild": "Haijajumuishwa katika toleo hili la AeroFTP."
+                "notInBuild": "Haijajumuishwa katika toleo hili la AeroFTP.",
+                "header": "Hali za {name}",
+                "nativeApi": "API asili",
+                "filelu": {
+                    "apiDescription": "REST API yenye ufunguo wa API. Vipengele vyote (tupio, viungo vya kushiriki, faili zilizolindwa kwa nenosiri).",
+                    "webdavDescription": "Ufikiaji wa WebDAV kwenye mlango 443. Upatanifu mpana na wateja, huwekwa kama hifadhi ya mtandao.",
+                    "s3Description": "API inayooana na S3 kwenye mlango 443. Tumia rclone, AWS CLI au SDK yoyote ya S3.",
+                    "ftpDescription": "FTP ya kawaida kwenye mlango 21. Bila usimbaji fiche, inafaa kwa virekodi vya NVR vya kamera za ulinzi na wateja wa zamani."
+                },
+                "filen": {
+                    "apiDescription": "Usimbaji fiche wa E2E usio na ufahamu (Argon2id v3 / PBKDF2 v2). Vipengele kamili: kiwango cha hifadhi, tupio, nenosiri za viungo vya kushiriki, matoleo, TOTP.",
+                    "webdavDescription": "Daraja la WebDAV linalotolewa na Filen Desktop kwenye 127.0.0.1:1900. Inahitaji Filen Desktop iwe inaendeshwa na umeingia.",
+                    "s3Description": "Daraja linalooana na S3 linalotolewa na Filen Desktop kwenye 127.0.0.1:1800 kupitia local.s3.filen.io. Uelekezaji kwa njia, kila folda ya Filen ya ngazi ya juu ni ndoo."
+                },
+                "proton": {
+                    "headerDescription": "Hifadhi ya wingu ya Proton yenye usimbaji fiche wa mwisho hadi mwisho",
+                    "apiDescription": "Mteja wa Proton Drive wa AeroFTP mwenyewe: unaingia kwenye ukurasa wa Proton katika kivinjari, faili zinasimbwa na kufumbuliwa kwenye kompyuta hii, na hakuna programu nyingine inayohitajika.",
+                    "cliDescription": "Huendesha CLI rasmi ya Proton Drive iliyosakinishwa na kuingiwa kwenye mashine hii. Unaingia kwenye kivinjari; AeroFTP haioni kamwe nenosiri lako la Proton."
+                },
+                "opendrive": {
+                    "headerDescription": "Hifadhi ya wingu ya OpenDrive (GB 5 bila malipo)",
+                    "apiDescription": "REST API yenye jina la mtumiaji + nenosiri. Vipengele kamili: tupio, kiwango cha hifadhi, viungo vya kushiriki, matumizi ya diski kwa kujirudia.",
+                    "webdavDescription": "Ufikiaji wa WebDAV kupitia webdav.opendrive.com kwenye mlango 443. Kwa wateja wa zamani au kupachika kama hifadhi ya mtandao."
+                },
+                "koofr": {
+                    "apiDescription": "REST API iliyoko EU yenye barua pepe + nenosiri la programu. Vipengele kamili: kiwango cha hifadhi, tupio (orodhesha/rejesha/futa yote), viungo vya kushiriki.",
+                    "webdavDescription": "Ufikiaji wa WebDAV kupitia app.koofr.net/dav/Koofr kwenye mlango 443. Kiwango cha hifadhi bado kinasomwa kutoka REST API ya Koofr. Kwa wateja wa zamani au kupachika kama hifadhi ya mtandao."
+                },
+                "mega": {
+                    "headerDescription": "Hifadhi ya wingu ya MEGA yenye usimbaji fiche upande wa mteja",
+                    "apiDescription": "API asilia ya MEGA yenye barua pepe + nenosiri (+ TOTP ya hiari). Vipengele kamili: usimbaji fiche upande wa mteja, kiwango cha hifadhi, viungo vya kushiriki, picha ndogo.",
+                    "webdavDescription": "Daraja la WebDAV la ndani linalohudumiwa na CLI rasmi ya MEGAcmd, bila jina kwenye 127.0.0.1. AeroFTP huendesha \"mega-webdav /\" kwa niaba yako unapounganisha, kwa hivyo hakuna hatua ya mkono.",
+                    "s4Description": "Hifadhi ya vitu ya MEGA S4, inayooana na S3 (maeneo EU/CA). Ufunguo wa ufikiaji + ufunguo wa siri + ndoo. Inahitaji mpango wa Pro."
+                }
             }
         },
         "flatpak": {

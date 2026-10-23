@@ -71,21 +71,24 @@ interface FormatOption {
     label: string;
     supportsPassword: boolean;
     algorithm: string;
+    /** Codec names shown on the card (format names, not translated). */
     description: string;
+    /** i18n key of the prose appended to the codec names, if any. */
+    noteKey?: string;
 }
 
 const FORMAT_OPTIONS: FormatOption[] = [
     { value: 'zip', label: 'ZIP', supportsPassword: true, algorithm: 'Deflate', description: 'AES-256 · Deflate' },
     { value: '7z', label: '7z', supportsPassword: true, algorithm: 'LZMA2', description: 'AES-256 · LZMA2' },
-    { value: 'tar', label: 'TAR', supportsPassword: false, algorithm: 'None', description: 'Archive only' },
+    { value: 'tar', label: 'TAR', supportsPassword: false, algorithm: 'None', description: '', noteKey: 'compress.formatArchiveOnly' },
     { value: 'tar.gz', label: 'TAR.GZ', supportsPassword: false, algorithm: 'Gzip', description: 'Gzip' },
-    { value: 'tar.xz', label: 'TAR.XZ', supportsPassword: false, algorithm: 'XZ/LZMA2', description: 'XZ · Best ratio' },
+    { value: 'tar.xz', label: 'TAR.XZ', supportsPassword: false, algorithm: 'XZ/LZMA2', description: 'XZ', noteKey: 'compress.formatBestRatio' },
     { value: 'tar.bz2', label: 'TAR.BZ2', supportsPassword: false, algorithm: 'Bzip2', description: 'Bzip2' },
     // Standalone single-stream codecs: one file, no tar wrapper (disabled unless
     // exactly one non-folder file is selected, enforced in the card render).
-    { value: 'gz', label: 'GZ', supportsPassword: false, algorithm: 'Gzip', description: 'Gzip · single file' },
-    { value: 'xz', label: 'XZ', supportsPassword: false, algorithm: 'XZ/LZMA2', description: 'XZ · single file' },
-    { value: 'bz2', label: 'BZ2', supportsPassword: false, algorithm: 'Bzip2', description: 'Bzip2 · single file' },
+    { value: 'gz', label: 'GZ', supportsPassword: false, algorithm: 'Gzip', description: 'Gzip', noteKey: 'compress.formatSingleFile' },
+    { value: 'xz', label: 'XZ', supportsPassword: false, algorithm: 'XZ/LZMA2', description: 'XZ', noteKey: 'compress.formatSingleFile' },
+    { value: 'bz2', label: 'BZ2', supportsPassword: false, algorithm: 'Bzip2', description: 'Bzip2', noteKey: 'compress.formatSingleFile' },
 ];
 
 /** Standalone single-stream codecs: valid only for exactly one non-folder file. */
@@ -512,7 +515,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                         {opt.supportsPassword && <Lock size={10} style={{ color: 'var(--compress-accent)' }} />}
                                     </div>
                                     <div className="text-[10px] mt-0.5" style={{ color: 'var(--compress-text-muted)' }}>
-                                        {opt.description}
+                                        {[opt.description, opt.noteKey ? t(opt.noteKey) : ''].filter(Boolean).join(' · ')}
                                     </div>
                                 </button>
                                 );

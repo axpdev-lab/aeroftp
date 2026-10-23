@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Պատճենեք այս URL-ը և տեղադրեք այն որպես Redirect URI ձեր մշակողի հավելվածի կարգավորումներում։",
                 "redirectUriNoteGoogle": "Խորհուրդ է տրվում․ Google Cloud Console-ում ստեղծեք «Սեղանադիր հավելված» տեսակի OAuth հաճախորդի ID․ վերահղման URI գրանցելու կարիք չկա։ «Վեբ հավելված» տեսակի հաճախորդի համար գրանցեք վերևում ցուցադրված վերահղման URI-ն՝ ճշգրիտ ներառելով պորտը և /callback ուղին։",
                 "enablePhotosApi": "Համոզվեք, որ Photos Library API-ն միացված է ձեր Google Cloud Console-ում։",
-                "enableDriveApi": "Համոզվեք, որ Google Drive API-ն միացված է ձեր Google Cloud Console-ում։"
+                "enableDriveApi": "Համոզվեք, որ Google Drive API-ն միացված է ձեր Google Cloud Console-ում։",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "ԱՄՆ",
+                "zohoRegionEu": "ԵՄ",
+                "zohoRegionIn": "Հնդկաստան",
+                "zohoRegionAu": "Ավստրալիա",
+                "zohoRegionJp": "Ճապոնիա",
+                "zohoRegionUk": "Միացյալ Թագավորություն",
+                "zohoRegionCa": "Կանադա",
+                "zohoRegionSa": "Սաուդյան Արաբիա"
             },
             "activeSessions": "Ակտիվ սեսիաներ",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Խորհուրդ է տրվում առավելագույն անվտանգության համար",
             "fontCustomOption": "Հատուկ...",
             "fontSystemInstallHint": "Պահանջում է համակարգային տեղադրում։ Անհասանելի լինելու դեպքում AeroFTP-ն ինքնաշխատ անցնում է այլընտրանքի։",
-            "fontSizeIndicatorLabel": "Տառատեսակ"
+            "fontSizeIndicatorLabel": "Տառատեսակ",
+            "fontPresetDefault": "{font} (Լռելյայն)",
+            "fontPresetSystemDefault": "Համակարգի լռելյայն"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Մեծացնել տառաչափը (Ctrl+=)",
                 "newTab": "Տերմինալի նոր ներդիր",
                 "sshShellTo": "SSH հրամանային վահանակ {host}-ում",
-                "theme": "Տերմինալի թեմա"
+                "theme": "Տերմինալի թեմա",
+                "tabLabel": "Տերմինալ {num}",
+                "themeCyber": "Կիբեր",
+                "themeTrueDark": "Իսկական մուգ",
+                "themeGreen": "Կանաչ",
+                "themeIce": "Սառույց",
+                "themeRedLava": "Կարմիր լավա"
             },
             "editorPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Դիտել կոդը»",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(մեկական յուրաքանչյուր տողում)",
             "pairsEditorLabel": "AeroCloud զույգերի խմբագիր",
             "remoteSubfolderPlaceholder": "ամպ",
-            "countdownSoon": "Շուտով..."
+            "countdownSoon": "Շուտով...",
+            "aerocloudEnabled": "AeroCloud-ը միացված է",
+            "selectPairLocalFolder": "Ընտրեք տեղային թղթապանակ զույգի համար",
+            "secondsAgo": "{count}վ առաջ"
         },
         "statusBar": {
             "connected": "Միացված է",
@@ -1735,7 +1755,13 @@
                 "ekRole": "Հետազոտող, որակի ապահովման ինժեներ, համադիզայներ"
             },
             "madeBy": "{author} ընկերության կողմից",
-            "statsLine": "{protocols} արձանագրություն · {languages} լեզու · AES-256 արխիվներ"
+            "statsLine": "{protocols} արձանագրություն · {languages} լեզու · AES-256 արխիվներ",
+            "dependencyRoles": {
+                "sftpOps": "SFTP գործողություններ",
+                "osKeyring": "ՕՀ-ի բանալիների կապոց",
+                "vaultFormat": "Պահոցի ձևաչափ",
+                "zipArchives": "ZIP արխիվներ"
+            }
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",
@@ -1980,7 +2006,16 @@
             "trash_restore_detail_present_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {present} արդեն առկա է",
             "trash_restore_detail_folders_present_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {folders} թղթապանակ, {present} արդեն առկա է",
             "filelu_file_password_removed": "[{provider}] Ֆայլի գաղտնաբառը հեռացվեց",
-            "filelu_folder_password_removed": "[{provider}] Թղթապանակի գաղտնաբառը հեռացվեց"
+            "filelu_folder_password_removed": "[{provider}] Թղթապանակի գաղտնաբառը հեռացվեց",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} ձախողվեց",
+            "batch_rename_start": "[{location}] Վերանվանվում է {count} տարր...",
+            "batch_rename_success": "[{location}] Վերանվանվեց {count} տարր",
+            "batch_rename_error": "[{location}] Վերանվանվեց {count} տարր, ձախողվեց՝ {failed}",
+            "compress_details_saved": "{input} → {output} (խնայվել է {percent}%)",
+            "compress_details_grew": "{input} → {output} (աճել է {percent}%)",
+            "extract_details": "{input} → {output} (ընդլայնված)",
+            "download_details": "({size}՝ {seconds} վրկ-ում)"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -2259,7 +2294,14 @@
             "jurisdiction": "Իրավասություն",
             "insecureCertDialogLabel": "Անապահով վկայականի զգուշացում",
             "betaBadge": "ԲԵՏԱ",
-            "hostKeyDialogLabel": "Հոսթի բանալու ստուգում"
+            "hostKeyDialogLabel": "Հոսթի բանալու ստուգում",
+            "mtpName": "Շարժական սարք (MTP)",
+            "mtpDesc": "Հեռախոս կամ տեսախցիկ MTP/WPD-ով",
+            "immichDesc": "Ինքնահոսթինգով լուսանկարների կառավարում",
+            "imagekitDesc": "Մեդիա CDN + պահեստ (20 GB անվճար)",
+            "uploadcareDesc": "ԵՄ մեդիա CDN (3 GB անվճար)",
+            "cloudinaryDesc": "Մեդիա CDN (ամսական 25 կրեդիտ անվճար)",
+            "backblazeDesc": "Backblaze B2 բնիկ API v4"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -2409,7 +2451,10 @@
             "add": "Ավելացնել",
             "remove": "Հեռացնել",
             "none": "Թույլտվություններ սահմանված չեն",
-            "anyoneWithLink": "Հղում ունեցող ցանկացած ոք"
+            "anyoneWithLink": "Հղում ունեցող ցանկացած ոք",
+            "roleViewer": "Դիտող",
+            "roleEditor": "Խմբագիր",
+            "roleCommenter": "Մեկնաբանող"
         },
         "locking": {
             "lock": "Կողպել ֆայլը",
@@ -2577,7 +2622,9 @@
             "rollbackRestoreFailedCount": "ձախողված {count}",
             "rollbackRestoreCompleted": "Վերականգնումն ավարտվեց: {summary}",
             "rollbackRestoreNothing": "Վերականգնելու ոչինչ չկա",
-            "rollbackRestoreFailed": "Վերականգնումը ձախողվեց: {error}"
+            "rollbackRestoreFailed": "Վերականգնումը ձախողվեց: {error}",
+            "intervalHoursOne": "{count} ժամ",
+            "intervalHoursMany": "{count} ժամ"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",
@@ -2933,7 +2980,19 @@
                 "supportsVision": "Աջակցում է տեսողություն",
                 "thinkingReasoning": "Մտածում/Դատողություն",
                 "toolQuality": "Գործիքների որակ: {quality}/5",
-                "ollamaNotReachable": "Ollama-ն հասանելի չէ"
+                "ollamaNotReachable": "Ollama-ն հասանելի չէ",
+                "macroSafeEditName": "Անվտանգ խմբագրում",
+                "macroSafeEditDescription": "Կարդալ ֆայլը, ցույց տալ դրա բովանդակությունը, ապա խմբագրել այն (գրելուց առաջ կարդալու անվտանգության օրինաչափություն)",
+                "macroFindReadName": "Գտնել և կարդալ",
+                "macroFindReadDescription": "Որոնել տեղային պանակում օրինաչափությանը համապատասխանող ֆայլեր",
+                "familyHintLlama3": "Լավագույնս աշխատում են ուղիղ և հակիրճ հրահանգները: Օգտագործեք markdown ձևաչափում: Բնիկ աջակցում է գործիքների օգտագործմանը:",
+                "familyHintCodellama": "Կենտրոնացեք կոդի ստեղծման և վերլուծության վրա: Տրամադրեք կոդի օրինակներ: Օգտագործեք տեխնիկական լեզու:",
+                "familyHintDeepseekCoder": "Ուժեղ է կոդի վերաբերյալ դատողություններում և բազմաքայլ խնդիրների լուծման մեջ: Նախընտրելի է կառուցվածքային ելք: deepseek-r1-ի համար մտածողության ռեժիմն աշխատում է ավտոմատ:",
+                "familyHintQwen": "Աջակցում է կառուցվածքային ելքին: Լավ է բազմալեզու առաջադրանքներում: Օգտագործեք բաժինների հստակ վերնագրեր:",
+                "familyHintMistral": "Կողմնորոշված է հրահանգների կատարմանը: Պահեք հուշումները կառուցվածքային՝ առաջադրանքների հստակ նկարագրություններով:",
+                "familyHintPhi": "Կոմպակտ մոդել. պահեք հրահանգները հակիրճ: Լավագույնն է նեղ առաջադրանքների համար, ոչ թե երկար տեքստերի:",
+                "familyHintGemma": "Google ոճի հրահանգների ձևաչափ: Լավ է ամփոփման և վերլուծության մեջ:",
+                "familyHintStarcoder": "Կենտրոնացած է կոդի լրացման վրա: Լավագույն արդյունքի համար տրամադրեք ֆայլի համատեքստը և ներմուծումները:"
             },
             "rag": {
                 "indexing": "Ֆայլերի ինդեքսավորում...",
@@ -3026,7 +3085,8 @@
                 "general": "Ընդհանուր",
                 "typeSlash": "Մուտքագրեք / կաղապարներն օգտագործելու համար",
                 "analyzeUi": "Վերլուծել UI-ի սկրինշոթը դասավորության՝ մատչելիության և UX խնդիրների համար",
-                "performance": "Վերլուծել կոդը արտադրողականության խոչընդոտների և օպտիմալացման համար"
+                "performance": "Վերլուծել կոդը արտադրողականության խոչընդոտների և օպտիմալացման համար",
+                "analysis": "Վերլուծություն"
             },
             "costBudget": {
                 "conversationCost": "Զրույցի արժեքը",
@@ -3868,7 +3928,12 @@
             "recentDaysAgo": "{count} օր առաջ",
             "recentFileCountMany": "{count} ֆայլ",
             "recentFileCountOne": "{count} ֆայլ",
-            "recentMonthsAgo": "{count} ամիս առաջ"
+            "recentMonthsAgo": "{count} ամիս առաջ",
+            "securityArchive": "Արխիվ",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Արագ",
+            "securityAdvancedDescription": "Nonce-կայուն · Գաղտնագրված ֆայլերի անուններ · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 կասկադ · Կրկնակի գաղտնագրում",
+            "securityArchiveDescription": "Կրկնօրինակազերծված արխիվ · zstd բլոկներ · v3"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",
@@ -3904,7 +3969,8 @@
             "featureContentCipher": "AES-GCM բովանդակություն",
             "featureNameCipher": "AES-SIV անուններ",
             "formatVersion": "Ձևաչափ {version}",
-            "invalidVaultName": "Անվավեր նիշեր պահոցի անվանման մեջ"
+            "invalidVaultName": "Անվավեր նիշեր պահոցի անվանման մեջ",
+            "defaultVaultName": "ՆորՊահոց"
         },
         "compress": {
             "title": "Սեղմել ֆայլերը",
@@ -3945,7 +4011,10 @@
             "threads": "Հոսքեր",
             "auto": "Ավտո",
             "solid": "Ամբողջական բլոկ",
-            "solidHint": "Ավելի լավ հարաբերակցություն շատ փոքր ֆայլերի համար, ավելի դանդաղ պատահական արդյունահանում։"
+            "solidHint": "Ավելի լավ հարաբերակցություն շատ փոքր ֆայլերի համար, ավելի դանդաղ պատահական արդյունահանում։",
+            "formatArchiveOnly": "Միայն արխիվ",
+            "formatBestRatio": "Լավագույն հարաբերակցություն",
+            "formatSingleFile": "մեկ ֆայլ"
         },
         "batchRename": {
             "title": "Խմբային անվանափոխում",
@@ -4470,7 +4539,8 @@
             "filterMenu": {
                 "title": "Ֆիլտրել գործողությունները",
                 "selected": "ընտրված"
-            }
+            },
+            "save": "Պահպանել"
         },
         "error": {
             "description": "AeroFTP-ը հանդիպեց անսպասելի սխալի: Կարող եք փորձել վերականգնել կամ վերաբեռնել հավելվածը:",
@@ -4522,7 +4592,13 @@
                     "radial": "Շառավղային",
                     "spectrum": "Սպեկտր",
                     "vortex": "Հորձանուտ",
-                    "waveform": "Ալիքի ձև"
+                    "waveform": "Ալիքի ձև",
+                    "glWaveGlitch": "Ալիքային խափանում",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Մանդելբրոտ",
+                    "glTunnel": "Թունել",
+                    "glMetaball": "Մետագնդեր",
+                    "glParticles": "Մասնիկներ"
                 },
                 "volume": "Ձայն"
             },
@@ -4628,7 +4704,18 @@
                 "off": "ԱՆՋ",
                 "on": "ՄԻԱՑ",
                 "presets": "Նախադրվածներ",
-                "reset": "Վերականգնել հարթ"
+                "reset": "Վերականգնել հարթ",
+                "presetFlat": "Հարթ",
+                "presetRock": "Ռոք",
+                "presetPop": "Փոփ",
+                "presetJazz": "Ջազ",
+                "presetClassical": "Դասական",
+                "presetBassBoost": "Բասերի ուժեղացում",
+                "presetTrebleBoost": "Բարձր տոնների ուժեղացում",
+                "presetVocal": "Վոկալ",
+                "presetElectronic": "Էլեկտրոնային",
+                "presetAcoustic": "Ակուստիկ",
+                "presetCustom": "Անհատական"
             },
             "pdf": {
                 "download": "Ներբեռնել PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Վճարովի",
             "extraFeatures": "Լրացուցիչ",
             "coreOpsList": "Վերբեռնում, Ներբեռնում, Ջնջում, Վերանվանում, Տեղափոխում, Թղթապանակի ստեղծում, Որոնում",
-            "coreOpsLegend": "Հիմնական = Վերբեռնում, Ներբեռնում, Ջնջում, Վերանվանում, Տեղափոխում, Թղթապանակի ստեղծում, Որոնում"
+            "coreOpsLegend": "Հիմնական = Վերբեռնում, Ներբեռնում, Ջնջում, Վերանվանում, Տեղափոխում, Թղթապանակի ստեղծում, Որոնում",
+            "notes": "Նշումներ",
+            "storageClass": "Պահոցի դաս",
+            "objectTagging": "Օբյեկտների պիտակավորում",
+            "sse": "Սերվերի կողմի գաղտնագրում",
+            "checksum": "Ստուգիչ գումար",
+            "tierManagement": "Մակարդակների կառավարում",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Մեդիա",
+            "sectionOther": "Այլ",
+            "trashDetails": {
+                "onedrive": "Business և SharePoint սկավառակներ։ Microsoft Graph-ը չի տրամադրում OneDrive Personal սկավառակի աղբարկղը։ Դրա համար օգտագործեք OneDrive կայքը"
+            },
+            "shareLinkDetails": {
+                "permissions": "Թույլտվություններ: դիտում, մեկնաբանում, խմբագրում",
+                "passwordExpiryPlan": "Գաղտնաբառ + ժամկետ (պահանջվում է {plan} պլան)",
+                "passwordExpiryPaid": "Գաղտնաբառ + ժամկետ (պահանջվում է վճարովի պլան)",
+                "passwordPersonalExpiryPermissions": "Գաղտնաբառ (միայն Personal), ժամկետ, թույլտվություններ",
+                "passwordArgon2ExpiryPresets": "Գաղտնաբառ (Argon2id) + ժամկետի նախադրվածքներ",
+                "passwordExpiryPermissions": "Գաղտնաբառ, ժամկետ, թույլտվություններ",
+                "basicOnly": "Միայն հիմնական կիսման հղում",
+                "publicToggle": "Հանրային հղում (գաղտնիության փոխարկում)",
+                "basic": "Հիմնական կիսման հղում",
+                "expiringDefaultYear": "Ժամկետով հղումներ (լռելյայն 1 տարի)",
+                "publishUnpublish": "Հրապարակել/չեղարկել հրապարակումը",
+                "permanentUrl": "Մշտական URL",
+                "sharedAlbum": "Համօգտագործվող ալբոմի հղում",
+                "megaPresignedS4": "Կիսման հղում / նախապես ստորագրված URL (առավելագույնը 7 օր S4-ի համար)",
+                "autoPasswordExpiry": "Գաղտնաբառ (ավտոմատ ստեղծված) + ժամկետ",
+                "presigned": "Նախապես ստորագրված URL (առավելագույնը 7 օր)"
+            }
         },
         "healthCheck": {
             "title": "Սերվերի առողջության ստուգում",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Մասնավոր պահոց",
             "repoPublicTitle": "Հանրային պահոց",
             "unpushedCommitsOnBranchMany": "{count} չուղարկված commit {branch}-ում",
-            "unpushedCommitsOnBranchOne": "{count} չուղարկված commit {branch}-ում"
+            "unpushedCommitsOnBranchOne": "{count} չուղարկված commit {branch}-ում",
+            "cancelWorkflow": "Չեղարկել աշխատահոսքը",
+            "rerunWorkflow": "Կրկին գործարկել աշխատահոսքը",
+            "downloadAssetTitle": "Ներբեռնել {name}"
         },
         "filenNotes": {
             "title": "Գաղտնագրված գրառումներ",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Ստեղծված է",
             "manageExpires": "Լրանում է",
             "manageNeverExpires": "Երբեք",
-            "managePasswordProtected": "Գաղտնաբառով պաշտպանված"
+            "managePasswordProtected": "Գաղտնաբառով պաշտպանված",
+            "expirationHoursOne": "{count} ժամ",
+            "expirationHoursMany": "{count} ժամ",
+            "expirationDaysMany": "{count} օր"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} ժ",
                 "days": "{count} օր",
                 "months": "{count} ամս"
-            }
+            },
+            "demoTabLabel": "Ցուցադրություն: {protocol}",
+            "newTabLabel": "Նոր: {name}"
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Ստեղծել միաձուլման հարցում",
             "mrTitle": "MR վերնագիր",
             "mrBody": "Նկարագրություն (կամընտիր)",
-            "sourceCode": "Սկզբնական կոդ"
+            "sourceCode": "Սկզբնական կոդ",
+            "downloadAssetTitle": "Ներբեռնել {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Նոր օգտատեր",
                 "noUsers": "Դեռ օգտատերեր չկան։ Առաջինն ավելացնելու համար օգտագործեք ստորև «Նոր օգտատեր» կոճակը։",
                 "protectionNote": "Ձեր հաշիվը պաշտպանված է Argon2id + AES-KW + AES-256-GCM գաղտնագրմամբ",
-                "users": "Օգտատերեր"
+                "users": "Օգտատերեր",
+                "setup": "Կարգավորում"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Ռեժիմն ընտրվում է կապը ստեղծելիս և մնում է անփոփոխ պահպանված պրոֆիլը խմբագրելիս։ Այլ ռեժիմ օգտագործելու համար ստեղծեք նոր կապ։",
-                "notInBuild": "Ներառված չէ AeroFTP-ի այս տարբերակում։"
+                "notInBuild": "Ներառված չէ AeroFTP-ի այս տարբերակում։",
+                "header": "{name} ռեժիմներ",
+                "nativeApi": "Բնիկ API",
+                "filelu": {
+                    "apiDescription": "REST API՝ API բանալիով։ Ամբողջական գործառույթներ (աղբարկղ, համօգտագործման հղումներ, գաղտնաբառով պաշտպանված ֆայլեր)։",
+                    "webdavDescription": "WebDAV մուտք 443 պորտով։ Լայն համատեղելիություն հաճախորդների հետ, միացվում է որպես ցանցային սկավառակ։",
+                    "s3Description": "S3-համատեղելի API 443 պորտում։ Օգտագործեք rclone, AWS CLI կամ ցանկացած S3 SDK։",
+                    "ftpDescription": "Դասական FTP 21 պորտում։ Առանց գաղտնագրման, օգտակար է տեսահսկման NVR ձայնագրիչների և հին հաճախորդների համար։"
+                },
+                "filen": {
+                    "apiDescription": "Զրոյական գիտելիքով E2E գաղտնագրում (Argon2id v3 / PBKDF2 v2)։ Գործառույթների ամբողջական հավաքածու՝ պահոցի քվոտա, աղբարկղ, համօգտագործման հղումների գաղտնաբառեր, տարբերակներ, TOTP։",
+                    "webdavDescription": "WebDAV կամուրջ, որը Filen Desktop-ը տրամադրում է 127.0.0.1:1900 հասցեում։ Պահանջում է, որ Filen Desktop-ը աշխատի և մուտք գործած լինի։",
+                    "s3Description": "S3-համատեղելի կամուրջ, որը Filen Desktop-ը տրամադրում է 127.0.0.1:1800 հասցեում local.s3.filen.io-ի միջոցով։ Ուղու վրա հիմնված հասցեավորում, Filen-ի յուրաքանչյուր վերին մակարդակի թղթապանակ մեկ bucket է։"
+                },
+                "proton": {
+                    "headerDescription": "Proton ամպային պահոց՝ ծայրից ծայր գաղտնագրմամբ",
+                    "apiDescription": "AeroFTP-ի սեփական Proton Drive հաճախորդը՝ դուք մուտք եք գործում Proton-ի էջում դիտարկիչում, ֆայլերը գաղտնագրվում և վերծանվում են այս համակարգչում, և այլ հավելված պետք չէ։",
+                    "cliDescription": "Կառավարում է այս մեքենայում տեղադրված և մուտք գործած պաշտոնական Proton Drive CLI-ը։ Դուք մուտք եք գործում դիտարկիչում. AeroFTP-ը երբեք չի տեսնում ձեր Proton գաղտնաբառը։"
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive ամպային պահոց (5 ԳԲ անվճար)",
+                    "apiDescription": "REST API՝ օգտանունով + գաղտնաբառով։ Գործառույթների ամբողջական հավաքածու՝ աղբարկղ, պահոցի քվոտա, համօգտագործման հղումներ, սկավառակի ռեկուրսիվ օգտագործում։",
+                    "webdavDescription": "WebDAV մուտք webdav.opendrive.com-ի միջոցով 443 պորտում։ Հին հաճախորդների համար կամ որպես ցանցային սկավառակ միացնելու համար։"
+                },
+                "koofr": {
+                    "apiDescription": "ԵՄ-ում տեղակայված REST API՝ էլ. փոստով + հավելվածի գաղտնաբառով։ Գործառույթների ամբողջական հավաքածու՝ պահոցի քվոտա, աղբարկղ (ցուցակ/վերականգնում/դատարկում), համօգտագործման հղումներ։",
+                    "webdavDescription": "WebDAV մուտք app.koofr.net/dav/Koofr-ի միջոցով 443 պորտում։ Պահոցի քվոտան դեռ կարդացվում է Koofr-ի REST API-ից։ Հին հաճախորդների համար կամ որպես ցանցային սկավառակ միացնելու համար։"
+                },
+                "mega": {
+                    "headerDescription": "MEGA ամպային պահոց՝ հաճախորդի կողմի գաղտնագրմամբ",
+                    "apiDescription": "MEGA-ի բնիկ API՝ էլ. փոստով + գաղտնաբառով (+ ըստ ցանկության TOTP)։ Գործառույթների ամբողջական հավաքածու՝ հաճախորդի կողմի գաղտնագրում, պահոցի քվոտա, համօգտագործման հղումներ, մանրապատկերներ։",
+                    "webdavDescription": "Տեղային WebDAV կամուրջ, որը սպասարկում է պաշտոնական MEGAcmd CLI-ը, անանուն 127.0.0.1 հասցեում։ AeroFTP-ը միանալիս ձեր փոխարեն գործարկում է \"mega-webdav /\", ուստի ձեռքով քայլ չկա։",
+                    "s4Description": "MEGA S4 օբյեկտային պահոց, S3-համատեղելի (EU/CA տարածաշրջաններ)։ Մուտքի բանալի + գաղտնի բանալի + bucket։ Պահանջում է Pro պլան։"
+                }
             }
         },
         "flatpak": {

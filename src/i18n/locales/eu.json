@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Kopiatu URL hau eta itsatsi Birbideratze URI gisa zure garatzaile aplikazioaren ezarpenetan.",
                 "redirectUriNoteGoogle": "Gomendioa: sortu \"Mahaigaineko aplikazioa\" motako OAuth bezero-ID bat Google Cloud Console-n; ez da birbideratze-URIrik erregistratu behar. \"Web-aplikazioa\" motako bezero baterako, erregistratu goian erakutsitako birbideratze-URI zehatza, ataka eta /callback bidea barne.",
                 "enablePhotosApi": "Ziurtatu Photos Library API gaituta dagoela zure Google Cloud Console-n.",
-                "enableDriveApi": "Ziurtatu Google Drive API gaituta dagoela zure Google Cloud Console-n."
+                "enableDriveApi": "Ziurtatu Google Drive API gaituta dagoela zure Google Cloud Console-n.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "AEB",
+                "zohoRegionEu": "EB",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Australia",
+                "zohoRegionJp": "Japonia",
+                "zohoRegionUk": "Erresuma Batua",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Saudi Arabia"
             },
             "activeSessions": "Saio aktiboak",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Gomendatua segurtasun handienerako",
             "fontCustomOption": "Pertsonalizatua...",
             "fontSystemInstallHint": "Sisteman instalatu behar da. AeroFTP-k ordezko bat erabiltzen du automatikoki erabilgarri ez badago.",
-            "fontSizeIndicatorLabel": "Letra-tipoa"
+            "fontSizeIndicatorLabel": "Letra-tipoa",
+            "fontPresetDefault": "{font} (Lehenetsia)",
+            "fontPresetSystemDefault": "Sistemaren lehenetsia"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Handitu letra-tamaina (Ctrl+=)",
                 "newTab": "Terminal-fitxa berria",
                 "sshShellTo": "SSH shella {host} ostalarira",
-                "theme": "Terminalaren gaia"
+                "theme": "Terminalaren gaia",
+                "tabLabel": "Terminala {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "Benetako beltza",
+                "themeGreen": "Berdea",
+                "themeIce": "Izotza",
+                "themeRedLava": "Laba gorria"
             },
             "editorPanel": {
                 "emptyState": "Egin eskuin-klika fitxategi batean eta aukeratu \"Ikusi iturburua\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(bat lerro bakoitzeko)",
             "pairsEditorLabel": "AeroCloud bikoteen editorea",
             "remoteSubfolderPlaceholder": "hodeia",
-            "countdownSoon": "Laster..."
+            "countdownSoon": "Laster...",
+            "aerocloudEnabled": "AeroCloud gaituta",
+            "selectPairLocalFolder": "Hautatu bikoterako karpeta lokala",
+            "secondsAgo": "{count}s duela"
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Ikertzailea, kalitatea bermatzeko ingeniaria, diseinukidea"
             },
             "madeBy": "{author}-ek",
-            "statsLine": "{protocols} protokolo · {languages} hizkuntza · AES-256 artxiboak"
+            "statsLine": "{protocols} protokolo · {languages} hizkuntza · AES-256 artxiboak",
+            "dependencyRoles": {
+                "sftpOps": "SFTP eragiketak",
+                "osKeyring": "Sistemaren giltzatakoa",
+                "vaultFormat": "Kutxa gotorraren formatua",
+                "zipArchives": "ZIP artxiboak"
+            }
         },
         "support": {
             "title": "Lagundu AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] {files} fitxategi leheneratu dira zakarrontzitik, {present} lehendik zeuden",
             "trash_restore_detail_folders_present_success": "[{provider}] {files} fitxategi, {folders} karpeta leheneratu dira zakarrontzitik, {present} lehendik zeuden",
             "filelu_file_password_removed": "[{provider}] Fitxategiaren pasahitza kendu da",
-            "filelu_folder_password_removed": "[{provider}] Karpetaren pasahitza kendu da"
+            "filelu_folder_password_removed": "[{provider}] Karpetaren pasahitza kendu da",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} huts egin du",
+            "batch_rename_start": "[{location}] {count} elementuri izena aldatzen...",
+            "batch_rename_success": "[{location}] {count} elementuri izena aldatu zaie",
+            "batch_rename_error": "[{location}] {count} elementuri izena aldatu zaie, {failed} huts egin dute",
+            "compress_details_saved": "{input} → {output} (%{percent} aurreztuta)",
+            "compress_details_grew": "{input} → {output} (%{percent} handitu da)",
+            "extract_details": "{input} → {output} (zabalduta)",
+            "download_details": "({size} {seconds} s-tan)"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdikzioa",
             "insecureCertDialogLabel": "Ziurtagiri ez-segurua: abisua",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Ostalari-gakoaren egiaztapena"
+            "hostKeyDialogLabel": "Ostalari-gakoaren egiaztapena",
+            "mtpName": "Gailu eramangarria (MTP)",
+            "mtpDesc": "Telefonoa edo kamera MTP/WPD bidez",
+            "immichDesc": "Norberak ostatatutako argazki kudeaketa",
+            "imagekitDesc": "Multimedia CDN + biltegia (20 GB doan)",
+            "uploadcareDesc": "EBko multimedia CDN (3 GB doan)",
+            "cloudinaryDesc": "Multimedia CDN (25 kreditu hilean doan)",
+            "backblazeDesc": "Backblaze B2 API natiboa v4"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -2416,7 +2458,10 @@
             "add": "Gehitu",
             "remove": "Kendu",
             "none": "Ez da baimenik ezarri",
-            "anyoneWithLink": "Esteka duen edonor"
+            "anyoneWithLink": "Esteka duen edonor",
+            "roleViewer": "Ikuslea",
+            "roleEditor": "Editorea",
+            "roleCommenter": "Iruzkintzailea"
         },
         "locking": {
             "lock": "Blokeatu fitxategia",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "huts eginak {count}",
             "rollbackRestoreCompleted": "Leheneratzea osatuta: {summary}",
             "rollbackRestoreNothing": "Ez dago ezer leheneratzeko",
-            "rollbackRestoreFailed": "Leheneratzeak huts egin du: {error}"
+            "rollbackRestoreFailed": "Leheneratzeak huts egin du: {error}",
+            "intervalHoursOne": "{count} ordu",
+            "intervalHoursMany": "{count} ordu"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -2940,7 +2987,19 @@
                 "supportsVision": "Ikusmena onartzen du",
                 "thinkingReasoning": "Pentsamendua/Arrazoiketa",
                 "toolQuality": "Tresnen kalitatea: {quality}/5",
-                "ollamaNotReachable": "Ollama ez dago eskuragarri"
+                "ollamaNotReachable": "Ollama ez dago eskuragarri",
+                "macroSafeEditName": "Edizio segurua",
+                "macroSafeEditDescription": "Irakurri fitxategi bat, erakutsi haren edukia eta editatu gero (idatzi aurretik irakurtzeko segurtasun-eredua)",
+                "macroFindReadName": "Bilatu eta irakurri",
+                "macroFindReadDescription": "Bilatu eredu batekin bat datozen fitxategiak direktorio lokal batean",
+                "familyHintLlama3": "Jarraibide zuzen eta laburrek funtzionatzen dute onen. Erabili markdown formatua. Tresnen erabilera natiboki onartzen du.",
+                "familyHintCodellama": "Kode-sorkuntzan eta -analisian zentratu. Eman kode-adibideak. Erabili hizkera teknikoa.",
+                "familyHintDeepseekCoder": "Indartsua kodeari buruzko arrazoiketan eta urrats anitzeko arazoen ebazpenean. Irteera egituratua hobesten da. deepseek-r1-ekin, pentsamendu modua automatikoki dabil.",
+                "familyHintQwen": "Irteera egituratua onartzen du. Ona zeregin eleaniztunetan. Erabili atal-goiburu argiak.",
+                "familyHintMistral": "Jarraibideak betetzera bideratua. Mantendu promptak egituratuta, zereginen deskribapen argiekin.",
+                "familyHintPhi": "Eredu trinkoa: mantendu jarraibideak laburrak. Egokiena zeregin zehatzetarako, ez testu luzeetarako.",
+                "familyHintGemma": "Google estiloko jarraibide-formatua. Ona laburpenetan eta analisian.",
+                "familyHintStarcoder": "Kodea osatzera bideratua. Emaitza onenak lortzeko, eman fitxategiaren testuingurua eta inportazioak."
             },
             "rag": {
                 "indexing": "Fitxategiak indexatzen...",
@@ -3033,7 +3092,8 @@
                 "general": "Orokorra",
                 "typeSlash": "Idatzi / txantiloiak erabiltzeko",
                 "analyzeUi": "UI pantaila-argazkia aztertu diseinua, irisgarritasuna eta UX arazoak ikusteko",
-                "performance": "Kodea aztertu errendimendu-botila-lepoak eta optimizazioa bilatzeko"
+                "performance": "Kodea aztertu errendimendu-botila-lepoak eta optimizazioa bilatzeko",
+                "analysis": "Analisia"
             },
             "costBudget": {
                 "conversationCost": "Elkarrizketaren kostua",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "duela {count} egun",
             "recentFileCountMany": "{count} fitxategi",
             "recentFileCountOne": "{count} fitxategi",
-            "recentMonthsAgo": "duela {count} hil."
+            "recentMonthsAgo": "duela {count} hil.",
+            "securityArchive": "Artxiboa",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Azkarra",
+            "securityAdvancedDescription": "Nonce-erresistentea · Fitxategi-izen enkriptatuak · 128 MB-ko KDF",
+            "securityParanoidDescription": "AES + ChaCha20 kaskada · Enkriptatze bikoitza",
+            "securityArchiveDescription": "Artxibo desduplikatua · zstd zatiak · v3"
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM edukia",
             "featureNameCipher": "AES-SIV izenak",
             "formatVersion": "{version}. formatua",
-            "invalidVaultName": "Karaktere baliogabeak gordailuaren izenean"
+            "invalidVaultName": "Karaktere baliogabeak gordailuaren izenean",
+            "defaultVaultName": "KutxaGotorBerria"
         },
         "compress": {
             "title": "Konprimitu fitxategiak",
@@ -3952,7 +4018,10 @@
             "threads": "Hariak",
             "auto": "Auto",
             "solid": "Bloke trinkoa",
-            "solidHint": "Ratio hobea fitxategi txiki askorekin, ausazko erauzketa motelagoa."
+            "solidHint": "Ratio hobea fitxategi txiki askorekin, ausazko erauzketa motelagoa.",
+            "formatArchiveOnly": "Artxibatu soilik",
+            "formatBestRatio": "Erlazio onena",
+            "formatSingleFile": "fitxategi bakarra"
         },
         "batchRename": {
             "title": "Lote berrizendatzea",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Iragazi eragiketak",
                 "selected": "hautatuta"
-            }
+            },
+            "save": "Gorde"
         },
         "error": {
             "description": "AeroFTP-k ustekabeko errore bat aurkitu du. Berreskuratzen saia zaitezke edo aplikazioa birkargatu.",
@@ -4529,7 +4599,13 @@
                     "radial": "Erradiala",
                     "spectrum": "Espektroa",
                     "vortex": "Bortizea",
-                    "waveform": "Uhin-forma"
+                    "waveform": "Uhin-forma",
+                    "glWaveGlitch": "Uhin-distortsioa",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunela",
+                    "glMetaball": "Metabolak",
+                    "glParticles": "Partikulak"
                 },
                 "volume": "Bolumena"
             },
@@ -4635,7 +4711,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "Aurrezarpenak",
-                "reset": "Berrezarri laua"
+                "reset": "Berrezarri laua",
+                "presetFlat": "Laua",
+                "presetRock": "Rocka",
+                "presetPop": "Popa",
+                "presetJazz": "Jazza",
+                "presetClassical": "Klasikoa",
+                "presetBassBoost": "Baxuen indartzea",
+                "presetTrebleBoost": "Altuen indartzea",
+                "presetVocal": "Ahotsa",
+                "presetElectronic": "Elektronikoa",
+                "presetAcoustic": "Akustikoa",
+                "presetCustom": "Pertsonalizatua"
             },
             "pdf": {
                 "download": "Deskargatu PDF",
@@ -5137,7 +5224,37 @@
             "paidTier": "Ordainpekoa",
             "extraFeatures": "Gehigarriak",
             "coreOpsList": "Igo, Deskargatu, Ezabatu, Berrizendatu, Mugitu, Sortu karpeta, Bilatu",
-            "coreOpsLegend": "Oinarrizkoak = Igo, Deskargatu, Ezabatu, Berrizendatu, Mugitu, Sortu karpeta, Bilatu"
+            "coreOpsLegend": "Oinarrizkoak = Igo, Deskargatu, Ezabatu, Berrizendatu, Mugitu, Sortu karpeta, Bilatu",
+            "notes": "Oharrak",
+            "storageClass": "Biltegiratze-klasea",
+            "objectTagging": "Objektuen etiketatzea",
+            "sse": "Zerbitzari aldeko zifratzea",
+            "checksum": "Egiaztapen-batura",
+            "tierManagement": "Mailen kudeaketa",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Multimedia",
+            "sectionOther": "Bestelakoak",
+            "trashDetails": {
+                "onedrive": "Business eta SharePoint unitateak. Microsoft Graph-ek ez du OneDrive Personal unitate baten zakarrontzia erakusten; erabili OneDrive webgunea horretarako"
+            },
+            "shareLinkDetails": {
+                "permissions": "Baimenak: ikusi, iruzkindu, editatu",
+                "passwordExpiryPlan": "Pasahitza + iraungitzea ({plan} plana behar da)",
+                "passwordExpiryPaid": "Pasahitza + iraungitzea (ordainpeko plana behar da)",
+                "passwordPersonalExpiryPermissions": "Pasahitza (Personal soilik), iraungitzea, baimenak",
+                "passwordArgon2ExpiryPresets": "Pasahitza (Argon2id) + iraungitze-aurrezarpenak",
+                "passwordExpiryPermissions": "Pasahitza, iraungitzea, baimenak",
+                "basicOnly": "Partekatze-esteka arrunta soilik",
+                "publicToggle": "Esteka publikoa (pribatutasuna aldatu)",
+                "basic": "Partekatze-esteka arrunta",
+                "expiringDefaultYear": "Iraungitzen diren estekak (lehenetsia 1 urte)",
+                "publishUnpublish": "Argitaratu/argitalpena kendu",
+                "permanentUrl": "URL iraunkorra",
+                "sharedAlbum": "Partekatutako albumaren esteka",
+                "megaPresignedS4": "Partekatze-esteka / aurrez sinatutako URLa (gehienez 7 egun S4rako)",
+                "autoPasswordExpiry": "Pasahitza (automatikoki sortua) + iraungitzea",
+                "presigned": "Aurrez sinatutako URLa (gehienez 7 egun)"
+            }
         },
         "healthCheck": {
             "title": "Zerbitzariaren osasun-egiaztapena",
@@ -5399,7 +5516,10 @@
             "repoPrivateTitle": "Biltegi pribatua",
             "repoPublicTitle": "Biltegi publikoa",
             "unpushedCommitsOnBranchMany": "{count} commit bidali gabe {branch} adarrean",
-            "unpushedCommitsOnBranchOne": "{count} commit bidali gabe {branch} adarrean"
+            "unpushedCommitsOnBranchOne": "{count} commit bidali gabe {branch} adarrean",
+            "cancelWorkflow": "Utzi lan-fluxua",
+            "rerunWorkflow": "Exekutatu berriro lan-fluxua",
+            "downloadAssetTitle": "Deskargatu {name}"
         },
         "filenNotes": {
             "title": "Enkriptatutako oharrak",
@@ -5488,7 +5608,10 @@
             "manageCreated": "Sortuta",
             "manageExpires": "Iraungitzen da",
             "manageNeverExpires": "Inoiz ez",
-            "managePasswordProtected": "Pasahitzez babestuta"
+            "managePasswordProtected": "Pasahitzez babestuta",
+            "expirationHoursOne": "{count} ordu",
+            "expirationHoursMany": "{count} ordu",
+            "expirationDaysMany": "{count} egun"
         },
         "introHub": {
             "tab": {
@@ -5679,7 +5802,9 @@
                 "hours": "{count} h",
                 "days": "{count} e",
                 "months": "{count} hil."
-            }
+            },
+            "demoTabLabel": "Demoa: {protocol}",
+            "newTabLabel": "Berria: {name}"
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",
@@ -5714,7 +5839,8 @@
             "createMergeRequest": "Sortu bateratze-eskaera",
             "mrTitle": "MR izenburua",
             "mrBody": "Deskribapena (aukerakoa)",
-            "sourceCode": "Iturburu-kodea"
+            "sourceCode": "Iturburu-kodea",
+            "downloadAssetTitle": "Deskargatu {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6322,7 +6448,8 @@
                 "newUser": "Erabiltzaile berria",
                 "noUsers": "Oraindik ez dago erabiltzailerik. Erabili beheko \"Erabiltzaile berria\" lehena gehitzeko.",
                 "protectionNote": "Zure kontua Argon2id + AES-KW + AES-256-GCM zifratzearekin babestuta dago",
-                "users": "Erabiltzaileak"
+                "users": "Erabiltzaileak",
+                "setup": "Konfigurazioa"
             }
         },
         "aerocryptNative": {
@@ -6751,7 +6878,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Modua konexioa sortzean aukeratzen da eta finko mantentzen da gordetako profil bat editatzean. Beste modu bat erabiltzeko, sortu konexio berri bat.",
-                "notInBuild": "Ez dago AeroFTP-ren konpilazio honetan."
+                "notInBuild": "Ez dago AeroFTP-ren konpilazio honetan.",
+                "header": "{name} moduak",
+                "nativeApi": "API natiboa",
+                "filelu": {
+                    "apiDescription": "REST APIa API gakoarekin. Funtzio guztiak (zakarrontzia, partekatzeko estekak, pasahitzez babestutako fitxategiak).",
+                    "webdavDescription": "WebDAV sarbidea 443 atakan. Bezeroekin bateragarritasun zabala, sare-unitate gisa muntatzen da.",
+                    "s3Description": "S3rekin bateragarria den APIa 443 atakan. Erabili rclone, AWS CLI edo edozein S3 SDK.",
+                    "ftpDescription": "FTP klasikoa 21 atakan. Zifratu gabea, bideozaintzako NVR grabagailuetarako eta bezero zaharretarako erabilgarria."
+                },
+                "filen": {
+                    "apiDescription": "Ezagutza zeroko E2E zifratzea (Argon2id v3 / PBKDF2 v2). Funtzio guztiak: biltegiratze-kuota, zakarrontzia, partekatze-esteken pasahitzak, bertsioak, TOTP.",
+                    "webdavDescription": "Filen Desktop-ek 127.0.0.1:1900 helbidean eskaintzen duen WebDAV zubia. Filen Desktop martxan eta saioa hasita egon behar du.",
+                    "s3Description": "Filen Desktop-ek 127.0.0.1:1800 helbidean local.s3.filen.io bidez eskaintzen duen S3rekin bateragarria den zubia. Bide-estiloko helbideratzea, goi-mailako Filen karpeta bakoitza bucket bat da."
+                },
+                "proton": {
+                    "headerDescription": "Proton hodeiko biltegiratzea muturretik muturrerako zifratzearekin",
+                    "apiDescription": "AeroFTPren Proton Drive bezero propioa: saioa nabigatzailean hasten duzu Protonen orrian, fitxategiak ordenagailu honetan zifratu eta deszifratzen dira, eta ez da beste aplikaziorik behar.",
+                    "cliDescription": "Makina honetan instalatuta eta saioa hasita dagoen Proton Drive CLI ofiziala gidatzen du. Saioa nabigatzailean hasten duzu; AeroFTPk ez du inoiz zure Proton pasahitza ikusten."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive hodeiko biltegiratzea (5 GB doan)",
+                    "apiDescription": "REST APIa erabiltzaile-izena + pasahitzarekin. Funtzio guztiak: zakarrontzia, biltegiratze-kuota, partekatze-estekak, disko-erabilera errekurtsiboa.",
+                    "webdavDescription": "WebDAV sarbidea webdav.opendrive.com bidez 443 atakan. Bezero zaharretarako edo sareko unitate gisa muntatzeko."
+                },
+                "koofr": {
+                    "apiDescription": "EBn kokatutako REST APIa, posta elektronikoa + aplikazio-pasahitzarekin. Funtzio guztiak: biltegiratze-kuota, zakarrontzia (zerrendatu/leheneratu/hustu), partekatze-estekak.",
+                    "webdavDescription": "WebDAV sarbidea app.koofr.net/dav/Koofr bidez 443 atakan. Biltegiratze-kuota Koofr-en REST APItik irakurtzen da oraindik. Bezero zaharretarako edo sareko unitate gisa muntatzeko."
+                },
+                "mega": {
+                    "headerDescription": "MEGA hodeiko biltegiratzea bezero aldeko zifratzearekin",
+                    "apiDescription": "MEGA API natiboa posta elektronikoa + pasahitzarekin (+ aukerako TOTP). Funtzio guztiak: bezero aldeko zifratzea, biltegiratze-kuota, partekatze-estekak, miniaturak.",
+                    "webdavDescription": "MEGAcmd CLI ofizialak zerbitzatzen duen tokiko WebDAV zubia, anonimoa 127.0.0.1 helbidean. AeroFTPk \"mega-webdav /\" exekutatzen du zure partez konektatzean, beraz ez dago urrats manualik.",
+                    "s4Description": "MEGA S4 objektu-biltegiratzea, S3rekin bateragarria (EU/CA eskualdeak). Sarbide-gakoa + gako sekretua + bucketa. Pro plana behar da."
+                }
             }
         },
         "flatpak": {

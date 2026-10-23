@@ -123,9 +123,9 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
         isDir: false,
         size: null,
         deletedAt: item.deleted,
-        deletedAtLabel: fileLuDeletedAtLabel(item.deleted, item.deleted_ago_sec),
+        deletedAtLabel: fileLuDeletedAtLabel(item.deleted, item.deleted_ago_sec, t),
       })),
-    [items],
+    [items, t],
   );
 
   // Per-row restore/delete, in the same shape as restoreSelected/deleteSelected

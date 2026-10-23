@@ -6,6 +6,9 @@
  * list-view Encryption column so they format a detected cipher identically.
  */
 
+import { translate } from '../i18n';
+import type { TranslationFunction } from '../i18n/types';
+
 /** Backend archive kind accepted by the detect_archive_cipher / detect_archive_meta
  *  commands. Only these formats support proactive encryption detection. */
 export type ArchiveKind = 'zip' | 'sevenz' | 'rar';
@@ -22,10 +25,15 @@ export function archiveKindForName(name: string): ArchiveKind | null {
 
 /** Format a detected cipher token for a badge, adding "-bit" where it applies
  *  (AES variants) and flagging legacy ZipCrypto as weak so it reads amber, not
- *  green. Keeps the house "256-bit" wording consistent with the provider badges. */
-export function formatArchiveCipher(cipher: string): { label: string; strong: boolean } {
+ *  green. Keeps the house "256-bit" wording consistent with the provider badges.
+ *  Callers inside a component pass their `t`; the global translator is the
+ *  fallback for callers that do not. */
+export function formatArchiveCipher(
+    cipher: string,
+    t: TranslationFunction = translate,
+): { label: string; strong: boolean } {
     const aes = /^AES-(\d+)$/.exec(cipher);
-    if (aes) return { label: `AES ${aes[1]}-bit`, strong: true };
+    if (aes) return { label: `AES ${t('introHub.cryptBadge.keyBits', { bits: aes[1] })}`, strong: true };
     if (cipher === 'AES') return { label: 'AES', strong: true };
     if (cipher.toLowerCase() === 'zipcrypto') return { label: 'ZipCrypto', strong: false };
     return { label: cipher, strong: true };

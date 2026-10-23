@@ -202,7 +202,16 @@
                 "redirectUriHelp": "この URL をコピーし、開発者アプリの設定でリダイレクト URI として貼り付けてください。",
                 "redirectUriNoteGoogle": "推奨: Google Cloud Console で「デスクトップ アプリ」タイプの OAuth クライアント ID を作成してください。リダイレクト URI の登録は不要です。「ウェブ アプリケーション」タイプのクライアントの場合は、上に表示されたリダイレクト URI を、ポートと /callback パスを含めて正確に登録してください。",
                 "enablePhotosApi": "Google Cloud ConsoleでPhotos Library APIが有効になっていることを確認してください。",
-                "enableDriveApi": "Google Cloud ConsoleでGoogle Drive APIが有効になっていることを確認してください。"
+                "enableDriveApi": "Google Cloud ConsoleでGoogle Drive APIが有効になっていることを確認してください。",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "米国",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "インド",
+                "zohoRegionAu": "オーストラリア",
+                "zohoRegionJp": "日本",
+                "zohoRegionUk": "英国",
+                "zohoRegionCa": "カナダ",
+                "zohoRegionSa": "サウジアラビア"
             },
             "activeSessions": "アクティブなセッション",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "最大限のセキュリティのため推奨",
             "fontCustomOption": "カスタム...",
             "fontSystemInstallHint": "システムへのインストールが必要です。利用できない場合、AeroFTP は自動的に代替フォントを使用します。",
-            "fontSizeIndicatorLabel": "フォント"
+            "fontSizeIndicatorLabel": "フォント",
+            "fontPresetDefault": "{font} (デフォルト)",
+            "fontPresetSystemDefault": "システムのデフォルト"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "フォントサイズを大きく (Ctrl+=)",
                 "newTab": "新しいターミナルタブ",
                 "sshShellTo": "{host} への SSH シェル",
-                "theme": "ターミナルテーマ"
+                "theme": "ターミナルテーマ",
+                "tabLabel": "ターミナル {num}",
+                "themeCyber": "サイバー",
+                "themeTrueDark": "トゥルーダーク",
+                "themeGreen": "グリーン",
+                "themeIce": "アイス",
+                "themeRedLava": "レッドラバ"
             },
             "editorPanel": {
                 "emptyState": "ファイルを右クリックして「ソースを表示」を選択してください",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(1 行に 1 つ)",
             "pairsEditorLabel": "AeroCloud ペアエディター",
             "remoteSubfolderPlaceholder": "クラウド",
-            "countdownSoon": "まもなく..."
+            "countdownSoon": "まもなく...",
+            "aerocloudEnabled": "AeroCloud 有効",
+            "selectPairLocalFolder": "ペアのローカルフォルダーを選択",
+            "secondsAgo": "{count}秒前"
         },
         "statusBar": {
             "connected": "接続済み",
@@ -1742,7 +1762,13 @@
                 "ekRole": "研究者、品質保証エンジニア、共同デザイナー"
             },
             "madeBy": "制作：{author}",
-            "statsLine": "{protocols} プロトコル · {languages} 言語 · AES-256 アーカイブ"
+            "statsLine": "{protocols} プロトコル · {languages} 言語 · AES-256 アーカイブ",
+            "dependencyRoles": {
+                "sftpOps": "SFTP 操作",
+                "osKeyring": "OS キーリング",
+                "vaultFormat": "ボールト形式",
+                "zipArchives": "ZIP アーカイブ"
+            }
         },
         "support": {
             "title": "AeroFTPを支援",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] ゴミ箱から {files} 個のファイルを復元しました ({present} 個は既に存在)",
             "trash_restore_detail_folders_present_success": "[{provider}] ゴミ箱から {files} 個のファイル、{folders} 個のフォルダーを復元しました ({present} 個は既に存在)",
             "filelu_file_password_removed": "[{provider}] ファイルのパスワードを削除しました",
-            "filelu_folder_password_removed": "[{provider}] フォルダーのパスワードを削除しました"
+            "filelu_folder_password_removed": "[{provider}] フォルダーのパスワードを削除しました",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} に失敗しました",
+            "batch_rename_start": "[{location}] {count} 件の項目の名前を変更中...",
+            "batch_rename_success": "[{location}] {count} 件の項目の名前を変更しました",
+            "batch_rename_error": "[{location}] {count} 件の項目の名前を変更しました、{failed} 件失敗",
+            "compress_details_saved": "{input} → {output} ({percent}% 削減)",
+            "compress_details_grew": "{input} → {output} ({percent}% 増加)",
+            "extract_details": "{input} → {output} (展開済み)",
+            "download_details": "({size}、{seconds}秒)"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "管轄区域",
             "insecureCertDialogLabel": "安全でない証明書の警告",
             "betaBadge": "ベータ",
-            "hostKeyDialogLabel": "ホストキーの検証"
+            "hostKeyDialogLabel": "ホストキーの検証",
+            "mtpName": "ポータブルデバイス (MTP)",
+            "mtpDesc": "MTP/WPD 経由のスマートフォンまたはカメラ",
+            "immichDesc": "セルフホスト型の写真管理",
+            "imagekitDesc": "メディア CDN + ストレージ (20 GB 無料)",
+            "uploadcareDesc": "EU のメディア CDN (3 GB 無料)",
+            "cloudinaryDesc": "メディア CDN (月 25 クレジット無料)",
+            "backblazeDesc": "Backblaze B2 ネイティブ API v4"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -2380,7 +2422,10 @@
             "add": "追加",
             "remove": "削除",
             "none": "権限が設定されていません",
-            "anyoneWithLink": "リンクを知っている全員"
+            "anyoneWithLink": "リンクを知っている全員",
+            "roleViewer": "閲覧者",
+            "roleEditor": "編集者",
+            "roleCommenter": "コメント投稿者"
         },
         "locking": {
             "lock": "ファイルをロック",
@@ -2548,7 +2593,9 @@
             "rollbackRestoreFailedCount": "失敗 {count}",
             "rollbackRestoreCompleted": "復元が完了しました: {summary}",
             "rollbackRestoreNothing": "復元するものはありません",
-            "rollbackRestoreFailed": "復元に失敗しました: {error}"
+            "rollbackRestoreFailed": "復元に失敗しました: {error}",
+            "intervalHoursOne": "{count} 時間",
+            "intervalHoursMany": "{count} 時間"
         },
         "ui": {
             "syncing": "同期中...",
@@ -2885,7 +2932,19 @@
                 "supportsVision": "ビジョン対応",
                 "thinkingReasoning": "思考/推論",
                 "toolQuality": "ツール品質: {quality}/5",
-                "ollamaNotReachable": "Ollama に接続できません"
+                "ollamaNotReachable": "Ollama に接続できません",
+                "macroSafeEditName": "安全な編集",
+                "macroSafeEditDescription": "ファイルを読み取り、内容を表示してから編集します (書き込み前に読み取る安全パターン)",
+                "macroFindReadName": "検索して読む",
+                "macroFindReadDescription": "ローカルディレクトリでパターンに一致するファイルを検索します",
+                "familyHintLlama3": "直接的で簡潔な指示が最も効果的です。markdown 形式を使用してください。ツール使用をネイティブにサポートします。",
+                "familyHintCodellama": "コードの生成と分析に集中します。コード例を示してください。技術的な表現を使用してください。",
+                "familyHintDeepseekCoder": "コードの推論と複数ステップの問題解決に強みがあります。構造化された出力が推奨されます。deepseek-r1 では思考モードが自動的に機能します。",
+                "familyHintQwen": "構造化出力をサポートします。多言語タスクが得意です。明確なセクション見出しを使用してください。",
+                "familyHintMistral": "指示への追従を重視しています。明確なタスク説明を含む構造化されたプロンプトにしてください。",
+                "familyHintPhi": "コンパクトなモデル: 指示は簡潔にしてください。長文ではなく、焦点を絞ったタスクに最適です。",
+                "familyHintGemma": "Google スタイルの指示形式。要約と分析が得意です。",
+                "familyHintStarcoder": "コード補完に特化しています。最良の結果を得るには、ファイルのコンテキストとインポートを提供してください。"
             },
             "copy": "コピー",
             "attachImage": "画像を添付",
@@ -2997,7 +3056,8 @@
                 "general": "一般",
                 "typeSlash": "/ を入力してテンプレートを使用",
                 "analyzeUi": "UIスクリーンショットを分析してレイアウト、アクセシビリティ、UXの問題を確認",
-                "performance": "コードのパフォーマンスボトルネックと最適化を分析"
+                "performance": "コードのパフォーマンスボトルネックと最適化を分析",
+                "analysis": "分析"
             },
             "costBudget": {
                 "conversationCost": "会話コスト",
@@ -3839,7 +3899,12 @@
             "recentDaysAgo": "{count}日前",
             "recentFileCountMany": "{count} ファイル",
             "recentFileCountOne": "{count} ファイル",
-            "recentMonthsAgo": "{count}か月前"
+            "recentMonthsAgo": "{count}か月前",
+            "securityArchive": "アーカイブ",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · 高速",
+            "securityAdvancedDescription": "nonce 耐性 · ファイル名を暗号化 · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 カスケード · 二重暗号化",
+            "securityArchiveDescription": "重複排除アーカイブ · zstd チャンク · v3"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",
@@ -3875,7 +3940,8 @@
             "featureContentCipher": "AES-GCM コンテンツ",
             "featureNameCipher": "AES-SIV 名前",
             "formatVersion": "フォーマット {version}",
-            "invalidVaultName": "保管庫名に無効な文字が含まれています"
+            "invalidVaultName": "保管庫名に無効な文字が含まれています",
+            "defaultVaultName": "新規保管庫"
         },
         "compress": {
             "title": "ファイルを圧縮",
@@ -3916,7 +3982,10 @@
             "threads": "スレッド",
             "auto": "自動",
             "solid": "ソリッドブロック",
-            "solidHint": "多数の小さなファイルで圧縮率が向上しますが、ランダム展開は遅くなります。"
+            "solidHint": "多数の小さなファイルで圧縮率が向上しますが、ランダム展開は遅くなります。",
+            "formatArchiveOnly": "アーカイブのみ",
+            "formatBestRatio": "最高圧縮率",
+            "formatSingleFile": "単一ファイル"
         },
         "batchRename": {
             "title": "一括リネーム",
@@ -4441,7 +4510,8 @@
             "filterMenu": {
                 "title": "操作をフィルター",
                 "selected": "選択中"
-            }
+            },
+            "save": "保存"
         },
         "error": {
             "description": "AeroFTP で予期しないエラーが発生しました。復旧を試みるか、アプリケーションを再読み込みしてください。",
@@ -4493,7 +4563,13 @@
                     "radial": "ラジアル",
                     "spectrum": "スペクトラム",
                     "vortex": "ボルテックス",
-                    "waveform": "波形"
+                    "waveform": "波形",
+                    "glWaveGlitch": "ウェーブグリッチ",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "マンデルブロ",
+                    "glTunnel": "トンネル",
+                    "glMetaball": "メタボール",
+                    "glParticles": "パーティクル"
                 },
                 "volume": "音量"
             },
@@ -4599,7 +4675,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "プリセット",
-                "reset": "フラットにリセット"
+                "reset": "フラットにリセット",
+                "presetFlat": "フラット",
+                "presetRock": "ロック",
+                "presetPop": "ポップ",
+                "presetJazz": "ジャズ",
+                "presetClassical": "クラシック",
+                "presetBassBoost": "低音強調",
+                "presetTrebleBoost": "高音強調",
+                "presetVocal": "ボーカル",
+                "presetElectronic": "エレクトロニック",
+                "presetAcoustic": "アコースティック",
+                "presetCustom": "カスタム"
             },
             "pdf": {
                 "download": "PDFをダウンロード",
@@ -5118,7 +5205,37 @@
             "paidTier": "有料",
             "extraFeatures": "拡張",
             "coreOpsList": "アップロード、ダウンロード、削除、名前変更、移動、フォルダー作成、検索",
-            "coreOpsLegend": "基本 = アップロード、ダウンロード、削除、名前変更、移動、フォルダー作成、検索"
+            "coreOpsLegend": "基本 = アップロード、ダウンロード、削除、名前変更、移動、フォルダー作成、検索",
+            "notes": "備考",
+            "storageClass": "ストレージクラス",
+            "objectTagging": "オブジェクトのタグ付け",
+            "sse": "サーバー側暗号化",
+            "checksum": "チェックサム",
+            "tierManagement": "階層管理",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "メディア",
+            "sectionOther": "その他",
+            "trashDetails": {
+                "onedrive": "Business および SharePoint ドライブ。Microsoft Graph は OneDrive Personal ドライブのごみ箱を公開していません。その場合は OneDrive の Web サイトを使用してください"
+            },
+            "shareLinkDetails": {
+                "permissions": "権限: 表示、コメント、編集",
+                "passwordExpiryPlan": "パスワード + 有効期限 ({plan} プランが必要)",
+                "passwordExpiryPaid": "パスワード + 有効期限 (有料プランが必要)",
+                "passwordPersonalExpiryPermissions": "パスワード (Personal のみ)、有効期限、権限",
+                "passwordArgon2ExpiryPresets": "パスワード (Argon2id) + 有効期限プリセット",
+                "passwordExpiryPermissions": "パスワード、有効期限、権限",
+                "basicOnly": "基本的な共有リンクのみ",
+                "publicToggle": "公開リンク (プライバシー切り替え)",
+                "basic": "基本的な共有リンク",
+                "expiringDefaultYear": "有効期限付きリンク (既定 1 年)",
+                "publishUnpublish": "公開/非公開",
+                "permanentUrl": "永続 URL",
+                "sharedAlbum": "共有アルバムのリンク",
+                "megaPresignedS4": "共有リンク / 署名付き URL (S4 は最大 7 日)",
+                "autoPasswordExpiry": "パスワード (自動生成) + 有効期限",
+                "presigned": "署名付き URL (最大 7 日)"
+            }
         },
         "healthCheck": {
             "title": "サーバーヘルスチェック",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "プライベートリポジトリ",
             "repoPublicTitle": "パブリックリポジトリ",
             "unpushedCommitsOnBranchMany": "{branch} に未プッシュのコミットが {count} 件",
-            "unpushedCommitsOnBranchOne": "{branch} に未プッシュのコミットが {count} 件"
+            "unpushedCommitsOnBranchOne": "{branch} に未プッシュのコミットが {count} 件",
+            "cancelWorkflow": "ワークフローをキャンセル",
+            "rerunWorkflow": "ワークフローを再実行",
+            "downloadAssetTitle": "{name} をダウンロード"
         },
         "filenNotes": {
             "title": "暗号化ノート",
@@ -5469,7 +5589,10 @@
             "manageCreated": "作成日",
             "manageExpires": "有効期限",
             "manageNeverExpires": "無期限",
-            "managePasswordProtected": "パスワード保護"
+            "managePasswordProtected": "パスワード保護",
+            "expirationHoursOne": "{count} 時間",
+            "expirationHoursMany": "{count} 時間",
+            "expirationDaysMany": "{count} 日"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count}時間",
                 "days": "{count}日",
                 "months": "{count}か月"
-            }
+            },
+            "demoTabLabel": "デモ: {protocol}",
+            "newTabLabel": "新規: {name}"
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Merge Request を作成",
             "mrTitle": "MR タイトル",
             "mrBody": "説明 (任意)",
-            "sourceCode": "ソースコード"
+            "sourceCode": "ソースコード",
+            "downloadAssetTitle": "{name} をダウンロード"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "新しいユーザー",
                 "noUsers": "まだユーザーがいません。下の「新しいユーザー」から最初のユーザーを追加してください。",
                 "protectionNote": "お使いのアカウントは Argon2id + AES-KW + AES-256-GCM 暗号化で保護されています",
-                "users": "ユーザー"
+                "users": "ユーザー",
+                "setup": "セットアップ"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "モードは接続の作成時に選択され、保存済みプロファイルの編集中は固定されます。別のモードを使用するには、新しい接続を作成してください。",
-                "notInBuild": "この AeroFTP ビルドには含まれていません。"
+                "notInBuild": "この AeroFTP ビルドには含まれていません。",
+                "header": "{name} のモード",
+                "nativeApi": "ネイティブ API",
+                "filelu": {
+                    "apiDescription": "API キーを使う REST API。全機能に対応 (ゴミ箱、共有リンク、パスワード保護ファイル)。",
+                    "webdavDescription": "ポート 443 での WebDAV アクセス。幅広いクライアントと互換性があり、ネットワークドライブとしてマウントできます。",
+                    "s3Description": "ポート 443 の S3 互換 API。rclone、AWS CLI、または任意の S3 SDK を使用できます。",
+                    "ftpDescription": "ポート 21 の従来型 FTP。平文通信のため、防犯カメラの NVR やレガシークライアント向けです。"
+                },
+                "filen": {
+                    "apiDescription": "ゼロ知識の E2E 暗号化 (Argon2id v3 / PBKDF2 v2)。全機能: ストレージ容量、ゴミ箱、共有リンクのパスワード、バージョン管理、TOTP。",
+                    "webdavDescription": "Filen Desktop が 127.0.0.1:1900 で公開する WebDAV ブリッジ。Filen Desktop が起動してサインインしている必要があります。",
+                    "s3Description": "Filen Desktop が local.s3.filen.io 経由で 127.0.0.1:1800 に公開する S3 互換ブリッジ。パス形式のアドレス指定で、Filen の最上位フォルダーがそれぞれバケットになります。"
+                },
+                "proton": {
+                    "headerDescription": "エンドツーエンド暗号化付きの Proton クラウドストレージ",
+                    "apiDescription": "AeroFTP 独自の Proton Drive クライアント: ブラウザーで Proton のページからサインインし、ファイルはこのコンピューター上で暗号化・復号され、他のアプリは不要です。",
+                    "cliDescription": "このマシンにインストールされサインイン済みの公式 Proton Drive CLI を操作します。サインインはブラウザーで行うため、AeroFTP が Proton のパスワードを見ることはありません。"
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive クラウドストレージ (5 GB 無料)",
+                    "apiDescription": "ユーザー名 + パスワードによる REST API。全機能: ゴミ箱、ストレージ容量、共有リンク、再帰的なディスク使用量。",
+                    "webdavDescription": "ポート 443 で webdav.opendrive.com 経由の WebDAV アクセス。レガシークライアントやネットワークドライブとしてのマウントに使用します。"
+                },
+                "koofr": {
+                    "apiDescription": "EU 拠点の REST API、メール + アプリパスワードで認証。全機能: ストレージ容量、ゴミ箱 (一覧/復元/空にする)、共有リンク。",
+                    "webdavDescription": "ポート 443 で app.koofr.net/dav/Koofr 経由の WebDAV アクセス。ストレージ容量は引き続き Koofr の REST API から読み取ります。レガシークライアントやネットワークドライブとしてのマウントに使用します。"
+                },
+                "mega": {
+                    "headerDescription": "クライアント側暗号化付きの MEGA クラウドストレージ",
+                    "apiDescription": "メール + パスワード (+ 任意の TOTP) によるネイティブ MEGA API。全機能: クライアント側暗号化、ストレージ容量、共有リンク、サムネイル。",
+                    "webdavDescription": "公式 MEGAcmd CLI が提供するローカル WebDAV ブリッジで、127.0.0.1 上で匿名接続します。接続時に AeroFTP が \"mega-webdav /\" を代わりに実行するため、手動の手順はありません。",
+                    "s4Description": "MEGA S4 オブジェクトストレージ、S3 互換 (EU/CA リージョン)。アクセスキー + シークレットキー + バケット。Pro プランが必要です。"
+                }
             }
         },
         "flatpak": {

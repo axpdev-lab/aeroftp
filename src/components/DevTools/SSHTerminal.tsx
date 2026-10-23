@@ -15,7 +15,10 @@ import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureSt
 // ============ Terminal Themes ============
 
 interface TerminalTheme {
-    name: string;
+    /** Proper name of a published theme (not translated). */
+    name?: string;
+    /** i18n key for a theme whose name is a description. */
+    nameKey?: string;
     colors: Record<string, string>;
 }
 
@@ -237,7 +240,7 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
         },
     },
     'cyber': {
-        name: 'Cyber',
+        nameKey: 'devtools.terminalPanel.themeCyber',
         colors: {
             background: '#0a0e17',
             foreground: '#e0ffe0',
@@ -264,7 +267,7 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
         },
     },
     'true-dark': {
-        name: 'True Dark',
+        nameKey: 'devtools.terminalPanel.themeTrueDark',
         colors: {
             background: '#0d1117',
             foreground: '#e6edf3',
@@ -291,7 +294,7 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
         },
     },
     'green': {
-        name: 'Green',
+        nameKey: 'devtools.terminalPanel.themeGreen',
         colors: {
             background: '#0f1f17',
             foreground: '#e8f5ec',
@@ -318,7 +321,7 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
         },
     },
     'ice': {
-        name: 'Ice',
+        nameKey: 'devtools.terminalPanel.themeIce',
         colors: {
             background: '#f4f9ff',
             foreground: '#0b2942',
@@ -345,7 +348,7 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
         },
     },
     'redhorse': {
-        name: 'Red Lava',
+        nameKey: 'devtools.terminalPanel.themeRedLava',
         colors: {
             background: '#120406',
             foreground: '#ffffff',
@@ -1035,9 +1038,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     const addTab = useCallback(() => {
         const id = nextTabId();
         const num = tabs.length + 1;
-        setTabs(prev => [...prev, { id, label: `Terminal ${num}`, isConnected: false, isConnecting: false, type: 'local' }]);
+        setTabs(prev => [...prev, { id, label: t('devtools.terminalPanel.tabLabel', { num }), isConnected: false, isConnecting: false, type: 'local' }]);
         setActiveTabId(id);
-    }, [tabs.length]);
+    }, [tabs.length, t]);
 
     // Add SSH shell tab
     const addSshTab = useCallback(() => {
@@ -1239,7 +1242,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                         {showThemeMenu && (
                             <div className="absolute right-0 top-full mt-1 bg-[#1e1e2e] border border-gray-600 rounded shadow-xl z-50 min-w-[160px]">
                                 {THEME_ORDER.map(key => {
-                                    const t = TERMINAL_THEMES[key];
+                                    const theme = TERMINAL_THEMES[key];
                                     return (
                                         <button
                                             key={key}
@@ -1250,9 +1253,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                                         >
                                             <span
                                                 className="w-3 h-3 rounded-sm border border-gray-600 flex-shrink-0"
-                                                style={{ backgroundColor: t.colors.background }}
+                                                style={{ backgroundColor: theme.colors.background }}
                                             />
-                                            {t.name}
+                                            {theme.nameKey ? t(theme.nameKey) : theme.name}
                                             {settings.themeName === key && <span className="ml-auto text-green-400">●</span>}
                                         </button>
                                     );

@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Nokopējiet šo URL un ielīmējiet to kā pāradresācijas URI savas izstrādātāja lietotnes iestatījumos.",
                 "redirectUriNoteGoogle": "Ieteikums: pakalpojumā Google Cloud Console izveidojiet OAuth klienta ID ar tipu „Darbvirsmas lietotne”; novirzīšanas URI nav jāreģistrē. Klientam ar tipu „Tīmekļa lietotne” reģistrējiet precīzi to novirzīšanas URI, kas redzams iepriekš, ieskaitot portu un ceļu /callback.",
                 "enablePhotosApi": "Pārliecinieties, ka Photos Library API ir iespējots jūsu Google Cloud Console.",
-                "enableDriveApi": "Pārliecinieties, ka Google Drive API ir iespējots jūsu Google Cloud Console."
+                "enableDriveApi": "Pārliecinieties, ka Google Drive API ir iespējots jūsu Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "ASV",
+                "zohoRegionEu": "ES",
+                "zohoRegionIn": "Indija",
+                "zohoRegionAu": "Austrālija",
+                "zohoRegionJp": "Japāna",
+                "zohoRegionUk": "Apvienotā Karaliste",
+                "zohoRegionCa": "Kanāda",
+                "zohoRegionSa": "Saūda Arābija"
             },
             "activeSessions": "Aktīvās sesijas",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Ieteicams maksimālai drošībai",
             "fontCustomOption": "Pielāgots...",
             "fontSystemInstallHint": "Nepieciešama instalēšana sistēmā. Ja nav pieejams, AeroFTP automātiski izmanto rezerves variantu.",
-            "fontSizeIndicatorLabel": "Fonts"
+            "fontSizeIndicatorLabel": "Fonts",
+            "fontPresetDefault": "{font} (noklusējums)",
+            "fontPresetSystemDefault": "Sistēmas noklusējums"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Palielināt fonta lielumu (Ctrl+=)",
                 "newTab": "Jauna termināļa cilne",
                 "sshShellTo": "SSH čaula uz {host}",
-                "theme": "Termināļa motīvs"
+                "theme": "Termināļa motīvs",
+                "tabLabel": "Terminālis {num}",
+                "themeCyber": "Kiber",
+                "themeTrueDark": "Īsti tumšs",
+                "themeGreen": "Zaļš",
+                "themeIce": "Ledus",
+                "themeRedLava": "Sarkanā lava"
             },
             "editorPanel": {
                 "emptyState": "Ar peles labo pogu noklikšķiniet uz faila un izvēlieties \"Skatīt pirmkodu\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(pa vienam katrā rindā)",
             "pairsEditorLabel": "AeroCloud pāru redaktors",
             "remoteSubfolderPlaceholder": "mākonis",
-            "countdownSoon": "Drīzumā..."
+            "countdownSoon": "Drīzumā...",
+            "aerocloudEnabled": "AeroCloud iespējots",
+            "selectPairLocalFolder": "Atlasiet lokālo mapi pārim",
+            "secondsAgo": "pirms {count}s"
         },
         "statusBar": {
             "connected": "Savienots",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Pētnieks, kvalitātes nodrošināšanas inženieris, līdzdizainers"
             },
             "madeBy": "uzņēmumā {author}",
-            "statsLine": "{protocols} protokoli · {languages} valodas · AES-256 arhīvi"
+            "statsLine": "{protocols} protokoli · {languages} valodas · AES-256 arhīvi",
+            "dependencyRoles": {
+                "sftpOps": "SFTP darbības",
+                "osKeyring": "OS atslēgu saišķis",
+                "vaultFormat": "Glabātuves formāts",
+                "zipArchives": "ZIP arhīvi"
+            }
         },
         "support": {
             "title": "Atbalstīt AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] No atkritnes atjaunoti faili: {files}, jau esoši: {present}",
             "trash_restore_detail_folders_present_success": "[{provider}] No atkritnes atjaunoti faili: {files}, mapes: {folders}, jau esoši: {present}",
             "filelu_file_password_removed": "[{provider}] Faila parole noņemta",
-            "filelu_folder_password_removed": "[{provider}] Mapes parole noņemta"
+            "filelu_folder_password_removed": "[{provider}] Mapes parole noņemta",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} neizdevās",
+            "batch_rename_start": "[{location}] Pārdēvē {count} vienumus...",
+            "batch_rename_success": "[{location}] Pārdēvēti {count} vienumi",
+            "batch_rename_error": "[{location}] Pārdēvēti {count} vienumi, {failed} neizdevās",
+            "compress_details_saved": "{input} → {output} (ietaupīti {percent}%)",
+            "compress_details_grew": "{input} → {output} (pieauga par {percent}%)",
+            "extract_details": "{input} → {output} (izvērsts)",
+            "download_details": "({size} {seconds} s laikā)"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdikcija",
             "insecureCertDialogLabel": "Brīdinājums par nedrošu sertifikātu",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Resursdatora atslēgas pārbaude"
+            "hostKeyDialogLabel": "Resursdatora atslēgas pārbaude",
+            "mtpName": "Pārnēsājama ierīce (MTP)",
+            "mtpDesc": "Tālrunis vai kamera caur MTP/WPD",
+            "immichDesc": "Pašmitināta fotoattēlu pārvaldība",
+            "imagekitDesc": "Multivides CDN + krātuve (20 GB bez maksas)",
+            "uploadcareDesc": "ES multivides CDN (3 GB bez maksas)",
+            "cloudinaryDesc": "Multivides CDN (25 kredīti mēnesī bez maksas)",
+            "backblazeDesc": "Backblaze B2 vietējā API v4"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -2416,7 +2458,10 @@
             "add": "Pievienot",
             "remove": "Noņemt",
             "none": "Atļaujas nav iestatītas",
-            "anyoneWithLink": "Ikviens, kam ir saite"
+            "anyoneWithLink": "Ikviens, kam ir saite",
+            "roleViewer": "Skatītājs",
+            "roleEditor": "Redaktors",
+            "roleCommenter": "Komentētājs"
         },
         "locking": {
             "lock": "Bloķēt failu",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "neizdevās {count}",
             "rollbackRestoreCompleted": "Atjaunošana pabeigta: {summary}",
             "rollbackRestoreNothing": "Nav ko atjaunot",
-            "rollbackRestoreFailed": "Atjaunošana neizdevās: {error}"
+            "rollbackRestoreFailed": "Atjaunošana neizdevās: {error}",
+            "intervalHoursOne": "{count} stunda",
+            "intervalHoursMany": "{count} stundas"
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Atbalsta redzi",
                 "thinkingReasoning": "Domāšana/Spriešana",
                 "toolQuality": "Rīku kvalitāte: {quality}/5",
-                "ollamaNotReachable": "Ollama nav sasniedzama"
+                "ollamaNotReachable": "Ollama nav sasniedzama",
+                "macroSafeEditName": "Droša rediģēšana",
+                "macroSafeEditDescription": "Nolasīt failu, parādīt tā saturu, pēc tam to rediģēt (drošības modelis: lasīt pirms rakstīšanas)",
+                "macroFindReadName": "Atrast un lasīt",
+                "macroFindReadDescription": "Meklēt lokālā direktorijā failus, kas atbilst šablonam",
+                "familyHintLlama3": "Vislabāk darbojas tieši un kodolīgi norādījumi. Izmantojiet markdown formatējumu. Iebūvēti atbalsta rīku izmantošanu.",
+                "familyHintCodellama": "Koncentrējieties uz koda ģenerēšanu un analīzi. Sniedziet koda piemērus. Lietojiet tehnisku valodu.",
+                "familyHintDeepseekCoder": "Spēcīgs spriešanā par kodu un vairāku soļu problēmu risināšanā. Vēlama strukturēta izvade. Ar deepseek-r1 domāšanas režīms darbojas automātiski.",
+                "familyHintQwen": "Atbalsta strukturētu izvadi. Labs daudzvalodu uzdevumos. Izmantojiet skaidrus sadaļu virsrakstus.",
+                "familyHintMistral": "Orientēts uz norādījumu izpildi. Uzvednes veidojiet strukturētas, ar skaidriem uzdevumu aprakstiem.",
+                "familyHintPhi": "Kompakts modelis: norādījumiem jābūt kodolīgiem. Vislabākais mērķtiecīgiem uzdevumiem, nevis gariem tekstiem.",
+                "familyHintGemma": "Google stila norādījumu formāts. Labs kopsavilkumu veidošanā un analīzē.",
+                "familyHintStarcoder": "Vērsts uz koda pabeigšanu. Labākiem rezultātiem sniedziet faila kontekstu un importus."
             },
             "copy": "Kopēt",
             "attachImage": "Pievienot attēlu",
@@ -3033,7 +3092,8 @@
                 "general": "Vispārēji",
                 "typeSlash": "Ievadiet / veidnēm izmantot",
                 "analyzeUi": "Analizēt UI ekrānuzņēmumu izkārtojuma, pieejamības un UX problēmu noteikšanai",
-                "performance": "Analizēt kodu veiktspējas sašaurinājumu un optimizācijas noteikšanai"
+                "performance": "Analizēt kodu veiktspējas sašaurinājumu un optimizācijas noteikšanai",
+                "analysis": "Analīze"
             },
             "costBudget": {
                 "conversationCost": "Sarunas izmaksas",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "pirms {count} d.",
             "recentFileCountMany": "{count} faili",
             "recentFileCountOne": "{count} fails",
-            "recentMonthsAgo": "pirms {count} mēn."
+            "recentMonthsAgo": "pirms {count} mēn.",
+            "securityArchive": "Arhīvs",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Ātri",
+            "securityAdvancedDescription": "Noturīgs pret nonce · Šifrēti failu nosaukumi · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 kaskāde · Divkārša šifrēšana",
+            "securityArchiveDescription": "Deduplicēts arhīvs · zstd bloki · v3"
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM saturs",
             "featureNameCipher": "AES-SIV nosaukumi",
             "formatVersion": "Formāts {version}",
-            "invalidVaultName": "Nederīgas rakstzīmes glabātuves nosaukumā"
+            "invalidVaultName": "Nederīgas rakstzīmes glabātuves nosaukumā",
+            "defaultVaultName": "JaunsSeifs"
         },
         "compress": {
             "title": "Saspiest failus",
@@ -3952,7 +4018,10 @@
             "threads": "Pavedieni",
             "auto": "Automātiski",
             "solid": "Ciets bloks",
-            "solidHint": "Labāka attiecība daudziem maziem failiem, lēnāka nejauša izvilkšana."
+            "solidHint": "Labāka attiecība daudziem maziem failiem, lēnāka nejauša izvilkšana.",
+            "formatArchiveOnly": "Tikai arhīvs",
+            "formatBestRatio": "Labākā attiecība",
+            "formatSingleFile": "viens fails"
         },
         "batchRename": {
             "title": "Masveida pārdēvēšana",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtrēt darbības",
                 "selected": "atlasīts"
-            }
+            },
+            "save": "Saglabāt"
         },
         "error": {
             "description": "AeroFTP saskārās ar neparedzētu kļūdu. Varat mēģināt atkopt vai pārlādēt lietotni.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radiālais",
                     "spectrum": "Spektrs",
                     "vortex": "Virpulis",
-                    "waveform": "Viļņu forma"
+                    "waveform": "Viļņu forma",
+                    "glWaveGlitch": "Viļņu traucējums",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrots",
+                    "glTunnel": "Tunelis",
+                    "glMetaball": "Metabumbas",
+                    "glParticles": "Daļiņas"
                 },
                 "volume": "Skaļums"
             },
@@ -4635,7 +4711,18 @@
                 "off": "IZSL",
                 "on": "IESL",
                 "presets": "Iepriekšiestatījumi",
-                "reset": "Atiestatīt uz vienmērīgu"
+                "reset": "Atiestatīt uz vienmērīgu",
+                "presetFlat": "Plakans",
+                "presetRock": "Roks",
+                "presetPop": "Pops",
+                "presetJazz": "Džezs",
+                "presetClassical": "Klasiskā",
+                "presetBassBoost": "Basu pastiprinājums",
+                "presetTrebleBoost": "Augsto toņu pastiprinājums",
+                "presetVocal": "Vokāls",
+                "presetElectronic": "Elektroniskā",
+                "presetAcoustic": "Akustiskā",
+                "presetCustom": "Pielāgots"
             },
             "pdf": {
                 "download": "Lejupielādēt PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Maksas",
             "extraFeatures": "Papildu",
             "coreOpsList": "Augšupielāde, Lejupielāde, Dzēšana, Pārdēvēšana, Pārvietošana, Mapes izveide, Meklēšana",
-            "coreOpsLegend": "Pamata = Augšupielāde, Lejupielāde, Dzēšana, Pārdēvēšana, Pārvietošana, Mapes izveide, Meklēšana"
+            "coreOpsLegend": "Pamata = Augšupielāde, Lejupielāde, Dzēšana, Pārdēvēšana, Pārvietošana, Mapes izveide, Meklēšana",
+            "notes": "Piezīmes",
+            "storageClass": "Krātuves klase",
+            "objectTagging": "Objektu marķēšana",
+            "sse": "Servera puses šifrēšana",
+            "checksum": "Kontrolsumma",
+            "tierManagement": "Krātuves līmeņu pārvaldība",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Multivide",
+            "sectionOther": "Cits",
+            "trashDetails": {
+                "onedrive": "Business un SharePoint diski. Microsoft Graph nenodrošina piekļuvi OneDrive Personal diska atkritnei; tam izmantojiet OneDrive vietni"
+            },
+            "shareLinkDetails": {
+                "permissions": "Atļaujas: skatīt, komentēt, rediģēt",
+                "passwordExpiryPlan": "Parole + derīguma termiņš (nepieciešams {plan} plāns)",
+                "passwordExpiryPaid": "Parole + derīguma termiņš (nepieciešams maksas plāns)",
+                "passwordPersonalExpiryPermissions": "Parole (tikai Personal), derīguma termiņš, atļaujas",
+                "passwordArgon2ExpiryPresets": "Parole (Argon2id) + derīguma termiņa sagataves",
+                "passwordExpiryPermissions": "Parole, derīguma termiņš, atļaujas",
+                "basicOnly": "Tikai vienkārša koplietošanas saite",
+                "publicToggle": "Publiska saite (pārslēgt privātumu)",
+                "basic": "Vienkārša koplietošanas saite",
+                "expiringDefaultYear": "Saites ar derīguma termiņu (noklusējums 1 gads)",
+                "publishUnpublish": "Publicēt/atcelt publicēšanu",
+                "permanentUrl": "Pastāvīgs URL",
+                "sharedAlbum": "Koplietota albuma saite",
+                "megaPresignedS4": "Koplietošanas saite / iepriekš parakstīts URL (maks. 7 dienas S4)",
+                "autoPasswordExpiry": "Parole (automātiski ģenerēta) + derīguma termiņš",
+                "presigned": "Iepriekš parakstīts URL (maks. 7 dienas)"
+            }
         },
         "healthCheck": {
             "title": "Servera veselības pārbaude",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Privāts repozitorijs",
             "repoPublicTitle": "Publisks repozitorijs",
             "unpushedCommitsOnBranchMany": "{count} neaizsūtīti commit zarā {branch}",
-            "unpushedCommitsOnBranchOne": "{count} neaizsūtīts commit zarā {branch}"
+            "unpushedCommitsOnBranchOne": "{count} neaizsūtīts commit zarā {branch}",
+            "cancelWorkflow": "Atcelt darbplūsmu",
+            "rerunWorkflow": "Atkārtoti palaist darbplūsmu",
+            "downloadAssetTitle": "Lejupielādēt {name}"
         },
         "filenNotes": {
             "title": "Šifrētas piezīmes",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Izveidots",
             "manageExpires": "Derīga līdz",
             "manageNeverExpires": "Nekad",
-            "managePasswordProtected": "Aizsargāts ar paroli"
+            "managePasswordProtected": "Aizsargāts ar paroli",
+            "expirationHoursOne": "{count} stunda",
+            "expirationHoursMany": "{count} stundas",
+            "expirationDaysMany": "{count} dienas"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} h",
                 "days": "{count} d",
                 "months": "{count} mēn."
-            }
+            },
+            "demoTabLabel": "Demonstrācija: {protocol}",
+            "newTabLabel": "Jauns: {name}"
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Izveidot sapludināšanas pieprasījumu",
             "mrTitle": "MR virsraksts",
             "mrBody": "Apraksts (neobligāts)",
-            "sourceCode": "Pirmkods"
+            "sourceCode": "Pirmkods",
+            "downloadAssetTitle": "Lejupielādēt {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Jauns lietotājs",
                 "noUsers": "Vēl nav lietotāju. Izmantojiet zemāk esošo pogu “Jauns lietotājs”, lai pievienotu pirmo.",
                 "protectionNote": "Jūsu konts ir aizsargāts ar Argon2id + AES-KW + AES-256-GCM šifrēšanu",
-                "users": "Lietotāji"
+                "users": "Lietotāji",
+                "setup": "Iestatīšana"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Režīms tiek izvēlēts, veidojot savienojumu, un paliek nemainīgs, rediģējot saglabātu profilu. Lai izmantotu citu režīmu, izveidojiet jaunu savienojumu.",
-                "notInBuild": "Nav iekļauts šajā AeroFTP būvējumā."
+                "notInBuild": "Nav iekļauts šajā AeroFTP būvējumā.",
+                "header": "{name} režīmi",
+                "nativeApi": "Vietējā API",
+                "filelu": {
+                    "apiDescription": "REST API ar API atslēgu. Pilns funkciju kopums (miskaste, koplietošanas saites, ar paroli aizsargāti faili).",
+                    "webdavDescription": "WebDAV piekļuve caur portu 443. Plaša klientu saderība, pievienojams kā tīkla disks.",
+                    "s3Description": "Ar S3 saderīgs API portā 443. Izmantojiet rclone, AWS CLI vai jebkuru S3 SDK.",
+                    "ftpDescription": "Klasisks FTP portā 21. Nešifrēts, noderīgs videonovērošanas NVR ierakstītājiem un vecākiem klientiem."
+                },
+                "filen": {
+                    "apiDescription": "E2E šifrēšana bez zināšanām (Argon2id v3 / PBKDF2 v2). Visas funkcijas: krātuves kvota, miskaste, koplietošanas saišu paroles, versiju pārvaldība, TOTP.",
+                    "webdavDescription": "WebDAV tilts, ko Filen Desktop nodrošina adresē 127.0.0.1:1900. Nepieciešams, lai Filen Desktop darbotos un būtu pierakstījies.",
+                    "s3Description": "Ar S3 saderīgs tilts, ko Filen Desktop nodrošina adresē 127.0.0.1:1800, izmantojot local.s3.filen.io. Uz ceļu balstīta adresācija, katra augstākā līmeņa Filen mape ir spainis."
+                },
+                "proton": {
+                    "headerDescription": "Proton mākoņkrātuve ar pilnīgu šifrēšanu",
+                    "apiDescription": "AeroFTP paša Proton Drive klients: jūs pierakstāties Proton lapā pārlūkā, faili tiek šifrēti un atšifrēti šajā datorā, un nav vajadzīga neviena cita lietotne.",
+                    "cliDescription": "Vada oficiālo Proton Drive CLI, kas ir instalēts un pierakstījies šajā datorā. Jūs pierakstāties pārlūkā; AeroFTP nekad neredz jūsu Proton paroli."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive mākoņkrātuve (5 GB bez maksas)",
+                    "apiDescription": "REST API ar lietotājvārdu + paroli. Visas funkcijas: miskaste, krātuves kvota, koplietošanas saites, rekursīvs diska lietojums.",
+                    "webdavDescription": "WebDAV piekļuve caur webdav.opendrive.com portā 443. Vecākiem klientiem vai pievienošanai kā tīkla diskam."
+                },
+                "koofr": {
+                    "apiDescription": "ES bāzēts REST API ar e-pastu + lietotnes paroli. Visas funkcijas: krātuves kvota, miskaste (saraksts/atjaunošana/iztukšošana), koplietošanas saites.",
+                    "webdavDescription": "WebDAV piekļuve caur app.koofr.net/dav/Koofr portā 443. Krātuves kvota joprojām tiek nolasīta no Koofr REST API. Vecākiem klientiem vai pievienošanai kā tīkla diskam."
+                },
+                "mega": {
+                    "headerDescription": "MEGA mākoņkrātuve ar klienta puses šifrēšanu",
+                    "apiDescription": "MEGA vietējais API ar e-pastu + paroli (+ neobligāts TOTP). Visas funkcijas: klienta puses šifrēšana, krātuves kvota, koplietošanas saites, sīktēli.",
+                    "webdavDescription": "Lokāls WebDAV tilts, ko apkalpo oficiālais MEGAcmd CLI, anonīms adresē 127.0.0.1. AeroFTP savienojoties jūsu vietā palaiž \"mega-webdav /\", tāpēc nav neviena manuāla soļa.",
+                    "s4Description": "MEGA S4 objektu krātuve, saderīga ar S3 (reģioni EU/CA). Piekļuves atslēga + slepenā atslēga + spainis. Nepieciešams Pro plāns."
+                }
             }
         },
         "flatpak": {

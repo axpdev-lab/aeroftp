@@ -26,6 +26,7 @@ export interface HumanizedLogParams {
     path?: string;
     destination?: string; // for move operations
     count?: number;
+    failed?: number;
     folders?: number;
     files?: number;
     percent?: number;
@@ -44,7 +45,7 @@ export type HumanizedOperationType =
     | 'UPLOAD' | 'DOWNLOAD'
     | 'DELETE' | 'RENAME' | 'MKDIR' | 'MOVE' | 'COPY'
     | 'NAVIGATE'
-    | 'DELETE_MULTIPLE' | 'UPLOAD_MULTIPLE' | 'DOWNLOAD_MULTIPLE'
+    | 'DELETE_MULTIPLE' | 'UPLOAD_MULTIPLE' | 'DOWNLOAD_MULTIPLE' | 'BATCH_RENAME'
     | 'SYNC' | 'RECONNECT';
 
 // ============================================================================
@@ -128,6 +129,7 @@ export function useHumanizedLog() {
         const opType = operation === 'DISCONNECT' ? 'DISCONNECT' :
             operation === 'CONNECT' || operation === 'RECONNECT' ? 'CONNECT' :
                 operation.includes('DELETE') ? 'DELETE' :
+                    operation === 'BATCH_RENAME' ? 'RENAME' :
                     operation.includes('UPLOAD') ? 'UPLOAD' :
                         operation.includes('DOWNLOAD') ? 'DOWNLOAD' :
                             operation.includes('SYNC') ? 'INFO' :
@@ -150,6 +152,7 @@ export function useHumanizedLog() {
         const opType = operation === 'DISCONNECT' ? 'DISCONNECT' :
             operation === 'CONNECT' || operation === 'RECONNECT' ? 'CONNECT' :
                 operation.includes('DELETE') ? 'DELETE' :
+                    operation === 'BATCH_RENAME' ? 'RENAME' :
                     operation.includes('UPLOAD') ? 'UPLOAD' :
                         operation.includes('DOWNLOAD') ? 'DOWNLOAD' :
                             operation.includes('SYNC') ? 'INFO' :

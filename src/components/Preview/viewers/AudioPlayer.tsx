@@ -37,7 +37,7 @@ const defaultEQState: EqualizerState = {
     enabled: true,
     bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     balance: 0,
-    presetName: 'Flat',
+    presetId: 'flat',
 };
 
 // Visualizer mode options - will be translated inline in component
@@ -53,13 +53,13 @@ const getVisualizerModes = (t: (key: string) => string): { value: VisualizerMode
 ];
 
 // WebGL shader visualizer modes
-const GL_MODES: { name: string; shader: WebGLShaderName }[] = [
-    { name: 'GL: Wave Glitch', shader: 'wave_glitch' },
-    { name: 'GL: VHS', shader: 'glitch_vhs' },
-    { name: 'GL: Mandelbrot', shader: 'fractal_mandelbrot' },
-    { name: 'GL: Tunnel', shader: 'raymarch_tunnel' },
-    { name: 'GL: Metaball', shader: 'metaball_pulse' },
-    { name: 'GL: Particles', shader: 'particles_explosion' },
+const GL_MODES: { labelKey: string; shader: WebGLShaderName }[] = [
+    { labelKey: 'preview.audio.visualizer.glWaveGlitch', shader: 'wave_glitch' },
+    { labelKey: 'preview.audio.visualizer.glVhs', shader: 'glitch_vhs' },
+    { labelKey: 'preview.audio.visualizer.glMandelbrot', shader: 'fractal_mandelbrot' },
+    { labelKey: 'preview.audio.visualizer.glTunnel', shader: 'raymarch_tunnel' },
+    { labelKey: 'preview.audio.visualizer.glMetaball', shader: 'metaball_pulse' },
+    { labelKey: 'preview.audio.visualizer.glParticles', shader: 'particles_explosion' },
 ];
 
 // EQ frequency values matching AudioMixer bands
@@ -695,6 +695,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         );
     }
 
+    // Every shader the player can select is listed in GL_MODES.
+    const activeGlMode = glShader ? GL_MODES.find(m => m.shader === glShader) : undefined;
+
     return (
         <div
             ref={containerRef}
@@ -871,7 +874,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                                                 }`}
                                         >
                                             <span className="text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-1 rounded">GL</span>
-                                            {mode.name.replace('GL: ', '')}
+                                            {t(mode.labelKey)}
                                         </button>
                                     ))}
                                 </div>
@@ -882,7 +885,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                     {/* AeroPlayer branding */}
                     <div className={`absolute bottom-2 right-2 text-xs font-mono transition-all ${cyberMode ? 'text-cyan-400/70 animate-pulse' : 'text-gray-600 opacity-50'
                         }`}>
-                        AeroPlayer{cyberMode ? ' // CYBER' : ''}{glShader ? ` // ${GL_MODES.find(m => m.shader === glShader)?.name || 'GL'}` : ''}
+                        AeroPlayer{cyberMode ? ' // CYBER' : ''}{activeGlMode ? ` // GL: ${t(activeGlMode.labelKey)}` : ''}
                     </div>
                 </div>
             </div>

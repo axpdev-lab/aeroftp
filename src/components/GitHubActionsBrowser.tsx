@@ -141,15 +141,15 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
 
   const runAction = async (command: string, runId: number) => {
     setActionInProgress(runId);
-    const actionLabel = command === 'github_cancel_workflow' ? 'Cancel workflow' :
-      command === 'github_rerun_failed_jobs' ? 'Re-run failed jobs' : 'Re-run workflow';
+    const actionLabel = command === 'github_cancel_workflow' ? t('github.cancelWorkflow') :
+      command === 'github_rerun_failed_jobs' ? t('github.rerunFailedJobs') : t('github.rerunWorkflow');
     const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'GitHub' }, 'running');
     try {
       await invoke(command, { runId });
-      humanLog.updateEntry(logId, { status: 'success', message: `[GitHub] ${actionLabel} #${runId}` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.github_run_action_success', { provider: 'GitHub', action: actionLabel, runId }) });
       setTimeout(fetchRuns, 2000);
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[GitHub] ${actionLabel} failed` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.github_run_action_error', { provider: 'GitHub', action: actionLabel }) });
       setError(String(err));
     } finally {
       setActionInProgress(null);

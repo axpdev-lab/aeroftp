@@ -20,9 +20,9 @@ interface Props {
 }
 
 const ROLES = [
-  { value: 'reader', label: 'Viewer' },
-  { value: 'writer', label: 'Editor' },
-  { value: 'commenter', label: 'Commenter' },
+  { value: 'reader', labelKey: 'sharing.roleViewer' },
+  { value: 'writer', labelKey: 'sharing.roleEditor' },
+  { value: 'commenter', labelKey: 'sharing.roleCommenter' },
 ];
 
 export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
@@ -92,7 +92,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
 
   const roleLabel = (role: string) => {
     const found = ROLES.find(r => r.value === role);
-    return found ? found.label : role;
+    return found ? t(found.labelKey) : role;
   };
 
   return (
@@ -134,7 +134,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
             className="text-sm px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 outline-none"
           >
             {ROLES.map(r => (
-              <option key={r.value} value={r.value}>{r.label}</option>
+              <option key={r.value} value={r.value}>{t(r.labelKey)}</option>
             ))}
           </select>
           <button

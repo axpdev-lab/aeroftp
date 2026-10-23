@@ -211,7 +211,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const selectLocalFolder = async (pairId: string) => {
-        const selected = await pickFile({ directory: true, multiple: false, title: 'Select local folder for pair' });
+        const selected = await pickFile({ directory: true, multiple: false, title: t('cloud.selectPairLocalFolder') });
         if (selected) {
             updatePairField(pairId, 'local_path', selected as string);
         }

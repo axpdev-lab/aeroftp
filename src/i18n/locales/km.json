@@ -202,7 +202,16 @@
                 "redirectUriHelp": "ចម្លង URL នេះ ហើយបិទភ្ជាប់វាជា URI បញ្ជូនបន្ត នៅក្នុងការកំណត់កម្មវិធីអ្នកអភិវឌ្ឍន៍របស់អ្នក។",
                 "redirectUriNoteGoogle": "ការណែនាំ៖ បង្កើតលេខសម្គាល់កម្មវិធីអតិថិជន OAuth ប្រភេទ «កម្មវិធីលើកុំព្យូទ័រ» នៅក្នុង Google Cloud Console; មិនចាំបាច់ចុះឈ្មោះ URI បញ្ជូនបន្តទេ។ សម្រាប់កម្មវិធីអតិថិជនប្រភេទ «កម្មវិធីបណ្ដាញ» សូមចុះឈ្មោះ URI បញ្ជូនបន្តឱ្យត្រូវគ្នាទាំងស្រុងនឹង URI ដែលបង្ហាញខាងលើ រួមទាំងច្រក និងផ្លូវ /callback។",
                 "enablePhotosApi": "សូមប្រាកដថា Photos Library API ត្រូវបានបើកនៅក្នុង Google Cloud Console របស់អ្នក។",
-                "enableDriveApi": "សូមប្រាកដថា Google Drive API ត្រូវបានបើកនៅក្នុង Google Cloud Console របស់អ្នក។"
+                "enableDriveApi": "សូមប្រាកដថា Google Drive API ត្រូវបានបើកនៅក្នុង Google Cloud Console របស់អ្នក។",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "សហរដ្ឋអាមេរិក",
+                "zohoRegionEu": "សហភាពអឺរ៉ុប",
+                "zohoRegionIn": "ឥណ្ឌា",
+                "zohoRegionAu": "អូស្ត្រាលី",
+                "zohoRegionJp": "ជប៉ុន",
+                "zohoRegionUk": "ចក្រភពអង់គ្លេស",
+                "zohoRegionCa": "កាណាដា",
+                "zohoRegionSa": "អារ៉ាប៊ីសាអូឌីត"
             },
             "activeSessions": "វគ្គសកម្ម",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "ណែនាំសម្រាប់សុវត្ថិភាពអតិបរមា",
             "fontCustomOption": "ផ្ទាល់ខ្លួន...",
             "fontSystemInstallHint": "ត្រូវការការដំឡើងក្នុងប្រព័ន្ធ។ AeroFTP នឹងប្ដូរទៅជម្រើសបម្រុងដោយស្វ័យប្រវត្តិ ប្រសិនបើមិនមាន។",
-            "fontSizeIndicatorLabel": "ពុម្ពអក្សរ"
+            "fontSizeIndicatorLabel": "ពុម្ពអក្សរ",
+            "fontPresetDefault": "{font} (លំនាំដើម)",
+            "fontPresetSystemDefault": "លំនាំដើមប្រព័ន្ធ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "បង្កើនទំហំពុម្ពអក្សរ (Ctrl+=)",
                 "newTab": "ផ្ទាំងស្ថានីយថ្មី",
                 "sshShellTo": "សែល SSH ទៅ {host}",
-                "theme": "រចនាប័ទ្មស្ថានីយ"
+                "theme": "រចនាប័ទ្មស្ថានីយ",
+                "tabLabel": "ស្ថានីយ {num}",
+                "themeCyber": "សាយប័រ",
+                "themeTrueDark": "ងងឹតពិត",
+                "themeGreen": "បៃតង",
+                "themeIce": "ទឹកកក",
+                "themeRedLava": "កម្អែលក្រហម"
             },
             "editorPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារ ហើយជ្រើសរើស \"មើលកូដប្រភព\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(មួយក្នុងមួយបន្ទាត់)",
             "pairsEditorLabel": "កម្មវិធីកែគូ AeroCloud",
             "remoteSubfolderPlaceholder": "ពពក",
-            "countdownSoon": "ឆាប់ៗនេះ..."
+            "countdownSoon": "ឆាប់ៗនេះ...",
+            "aerocloudEnabled": "AeroCloud បានបើក",
+            "selectPairLocalFolder": "ជ្រើសថតមូលដ្ឋានសម្រាប់គូ",
+            "secondsAgo": "{count}វិនាទីមុន"
         },
         "statusBar": {
             "connected": "បានតភ្ជាប់",
@@ -1742,7 +1762,13 @@
                 "ekRole": "អ្នកស្រាវជ្រាវ វិស្វករធានាគុណភាព សហអ្នករចនា"
             },
             "madeBy": "ដោយ {author}",
-            "statsLine": "{protocols} ពិធីការ · {languages} ភាសា · បណ្ណសារ AES-256"
+            "statsLine": "{protocols} ពិធីការ · {languages} ភាសា · បណ្ណសារ AES-256",
+            "dependencyRoles": {
+                "sftpOps": "ប្រតិបត្តិការ SFTP",
+                "osKeyring": "បណ្តុំសោរបស់ប្រព័ន្ធប្រតិបត្តិការ",
+                "vaultFormat": "ទម្រង់ឃ្លាំងសុវត្ថិភាព",
+                "zipArchives": "បណ្ណសារ ZIP"
+            }
         },
         "support": {
             "title": "គាំទ្រ AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] បានស្ដារឯកសារ {files} ពីធុងសំរាម, {present} មានរួចហើយ",
             "trash_restore_detail_folders_present_success": "[{provider}] បានស្ដារឯកសារ {files}, ថត {folders} ពីធុងសំរាម, {present} មានរួចហើយ",
             "filelu_file_password_removed": "[{provider}] បានដកពាក្យសម្ងាត់ឯកសារចេញ",
-            "filelu_folder_password_removed": "[{provider}] បានដកពាក្យសម្ងាត់ថតចេញ"
+            "filelu_folder_password_removed": "[{provider}] បានដកពាក្យសម្ងាត់ថតចេញ",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} បរាជ័យ",
+            "batch_rename_start": "[{location}] កំពុងប្ដូរឈ្មោះធាតុ {count}...",
+            "batch_rename_success": "[{location}] បានប្ដូរឈ្មោះធាតុ {count}",
+            "batch_rename_error": "[{location}] បានប្ដូរឈ្មោះធាតុ {count}, បរាជ័យ {failed}",
+            "compress_details_saved": "{input} → {output} (សន្សំ {percent}%)",
+            "compress_details_grew": "{input} → {output} (កើនឡើង {percent}%)",
+            "extract_details": "{input} → {output} (បានពង្រីក)",
+            "download_details": "({size} ក្នុងរយៈ {seconds} វិនាទី)"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "យុត្តាធិការ",
             "insecureCertDialogLabel": "ការព្រមានវិញ្ញាបនបត្រមិនមានសុវត្ថិភាព",
             "betaBadge": "បេតា",
-            "hostKeyDialogLabel": "ការផ្ទៀងផ្ទាត់សោម៉ាស៊ីន"
+            "hostKeyDialogLabel": "ការផ្ទៀងផ្ទាត់សោម៉ាស៊ីន",
+            "mtpName": "ឧបករណ៍ចល័ត (MTP)",
+            "mtpDesc": "ទូរសព្ទ ឬកាមេរ៉ាតាម MTP/WPD",
+            "immichDesc": "ការគ្រប់គ្រងរូបថតដែលបង្ហោះដោយខ្លួនឯង",
+            "imagekitDesc": "CDN មេឌៀ + ទំហំផ្ទុក (ឥតគិតថ្លៃ 20 GB)",
+            "uploadcareDesc": "CDN មេឌៀនៅសហភាពអឺរ៉ុប (ឥតគិតថ្លៃ 3 GB)",
+            "cloudinaryDesc": "CDN មេឌៀ (ឥតគិតថ្លៃ 25 ក្រេឌីត/ខែ)",
+            "backblazeDesc": "API ដើមរបស់ Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -2416,7 +2458,10 @@
             "add": "បន្ថែម",
             "remove": "ដកចេញ",
             "none": "គ្មានការអនុញ្ញាតត្រូវបានកំណត់",
-            "anyoneWithLink": "អ្នកណាដែលមានតំណ"
+            "anyoneWithLink": "អ្នកណាដែលមានតំណ",
+            "roleViewer": "អ្នកមើល",
+            "roleEditor": "អ្នកកែសម្រួល",
+            "roleCommenter": "អ្នកផ្ដល់មតិ"
         },
         "locking": {
             "lock": "ចាក់សោឯកសារ",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "បរាជ័យ {count}",
             "rollbackRestoreCompleted": "ការស្ដារបានបញ្ចប់: {summary}",
             "rollbackRestoreNothing": "គ្មានអ្វីត្រូវស្ដារទេ",
-            "rollbackRestoreFailed": "ការស្ដារបានបរាជ័យ៖ {error}"
+            "rollbackRestoreFailed": "ការស្ដារបានបរាជ័យ៖ {error}",
+            "intervalHoursOne": "{count} ម៉ោង",
+            "intervalHoursMany": "{count} ម៉ោង"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "គាំទ្រការមើលឃើញ",
                 "thinkingReasoning": "ការគិត/ការវែកញែក",
                 "toolQuality": "គុណភាពឧបករណ៍៖ {quality}/5",
-                "ollamaNotReachable": "មិនអាចភ្ជាប់ទៅ Ollama បានទេ"
+                "ollamaNotReachable": "មិនអាចភ្ជាប់ទៅ Ollama បានទេ",
+                "macroSafeEditName": "ការកែសម្រួលដោយសុវត្ថិភាព",
+                "macroSafeEditDescription": "អានឯកសារ បង្ហាញខ្លឹមសាររបស់វា រួចកែសម្រួលវា (លំនាំសុវត្ថិភាពអានមុនសរសេរ)",
+                "macroFindReadName": "ស្វែងរក និងអាន",
+                "macroFindReadDescription": "ស្វែងរកឯកសារដែលត្រូវនឹងលំនាំក្នុងថតមូលដ្ឋាន",
+                "familyHintLlama3": "ការណែនាំផ្ទាល់ និងខ្លីខ្លឹម ដំណើរការល្អបំផុត។ ប្រើទម្រង់ markdown។ គាំទ្រការប្រើឧបករណ៍ដោយផ្ទាល់។",
+                "familyHintCodellama": "ផ្តោតលើការបង្កើត និងការវិភាគកូដ។ ផ្តល់ឧទាហរណ៍កូដ។ ប្រើភាសាបច្ចេកទេស។",
+                "familyHintDeepseekCoder": "ខ្លាំងក្នុងការវែកញែកលើកូដ និងការដោះស្រាយបញ្ហាច្រើនជំហាន។ លទ្ធផលមានរចនាសម្ព័ន្ធត្រូវបានគេចូលចិត្ត។ សម្រាប់ deepseek-r1 របៀបគិតដំណើរការដោយស្វ័យប្រវត្តិ។",
+                "familyHintQwen": "គាំទ្រលទ្ធផលមានរចនាសម្ព័ន្ធ។ ល្អសម្រាប់កិច្ចការពហុភាសា។ ប្រើចំណងជើងផ្នែកច្បាស់លាស់។",
+                "familyHintMistral": "តម្រង់ទិសទៅការធ្វើតាមការណែនាំ។ រក្សាប្រអប់បញ្ចូលឱ្យមានរចនាសម្ព័ន្ធ ជាមួយការពិពណ៌នាកិច្ចការច្បាស់លាស់។",
+                "familyHintPhi": "ម៉ូដែលតូចចង្អៀត៖ រក្សាការណែនាំឱ្យខ្លីខ្លឹម។ ល្អបំផុតសម្រាប់កិច្ចការផ្តោតជាក់លាក់ មិនមែនអត្ថបទវែងទេ។",
+                "familyHintGemma": "ទម្រង់ការណែនាំតាមរចនាប័ទ្ម Google។ ល្អក្នុងការសង្ខេប និងការវិភាគ។",
+                "familyHintStarcoder": "ផ្តោតលើការបំពេញកូដ។ ផ្តល់បរិបទឯកសារ និងការនាំចូល ដើម្បីទទួលបានលទ្ធផលល្អបំផុត។"
             },
             "copy": "ចម្លង",
             "attachImage": "ភ្ជាប់រូបភាព",
@@ -3033,7 +3092,8 @@
                 "general": "ទូទៅ",
                 "typeSlash": "វាយ / ដើម្បីប្រើគំរូ",
                 "analyzeUi": "វិភាគរូបថតអេក្រង់ UI សម្រាប់ប្លង់ ការចូលប្រើ និងបញ្ហា UX",
-                "performance": "វិភាគកូដសម្រាប់បញ្ហាដំណើរការ និងការបង្កើនប្រសិទ្ធភាព"
+                "performance": "វិភាគកូដសម្រាប់បញ្ហាដំណើរការ និងការបង្កើនប្រសិទ្ធភាព",
+                "analysis": "ការវិភាគ"
             },
             "costBudget": {
                 "conversationCost": "តម្លៃការសន្ទនា",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} ថ្ងៃមុន",
             "recentFileCountMany": "ឯកសារ {count}",
             "recentFileCountOne": "ឯកសារ {count}",
-            "recentMonthsAgo": "{count} ខែមុន"
+            "recentMonthsAgo": "{count} ខែមុន",
+            "securityArchive": "បណ្ណសារ",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · លឿន",
+            "securityAdvancedDescription": "ធន់នឹង nonce · ឈ្មោះឯកសារដែលបានអ៊ិនគ្រីប · 128 MB KDF",
+            "securityParanoidDescription": "កាស្កាដ AES + ChaCha20 · ការអ៊ិនគ្រីបទ្វេ",
+            "securityArchiveDescription": "បណ្ណសារដែលលុបការស្ទួន · ដុំ zstd · v3"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "ខ្លឹមសារ AES-GCM",
             "featureNameCipher": "ឈ្មោះ AES-SIV",
             "formatVersion": "ទម្រង់ {version}",
-            "invalidVaultName": "តួអក្សរមិនត្រឹមត្រូវក្នុងឈ្មោះឃ្លាំង"
+            "invalidVaultName": "តួអក្សរមិនត្រឹមត្រូវក្នុងឈ្មោះឃ្លាំង",
+            "defaultVaultName": "ឃ្លាំងថ្មី"
         },
         "compress": {
             "title": "បង្ហាប់ឯកសារ",
@@ -3952,7 +4018,10 @@
             "threads": "ខ្សែស្រឡាយ",
             "auto": "ស្វ័យប្រវត្តិ",
             "solid": "ប្លុករឹង",
-            "solidHint": "សមាមាត្រល្អសម្រាប់ឯកសារតូចៗច្រើន ការស្រង់ចេញចៃដន្យយឺតជាង។"
+            "solidHint": "សមាមាត្រល្អសម្រាប់ឯកសារតូចៗច្រើន ការស្រង់ចេញចៃដន្យយឺតជាង។",
+            "formatArchiveOnly": "តែបណ្ណសារ",
+            "formatBestRatio": "សមាមាត្រល្អបំផុត",
+            "formatSingleFile": "ឯកសារតែមួយ"
         },
         "batchRename": {
             "title": "ប្តូរឈ្មោះជាក្រុម",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "ច្រោះប្រតិបត្តិការ",
                 "selected": "បានជ្រើសរើស"
-            }
+            },
+            "save": "រក្សាទុក"
         },
         "error": {
             "description": "AeroFTP បានជួបកំហុសដែលមិនរំពឹងទុក។ អ្នកអាចព្យាយាមស្ដារ ឬផ្ទុកកម្មវិធីឡើងវិញ។",
@@ -4529,7 +4599,13 @@
                     "radial": "រ៉ាឌីអាល",
                     "spectrum": "វិសាលគម",
                     "vortex": "វរទិច",
-                    "waveform": "រូបរាងរលក"
+                    "waveform": "រូបរាងរលក",
+                    "glWaveGlitch": "រលកខូចទ្រង់ទ្រាយ",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "ម៉ង់ដែលប្រូត",
+                    "glTunnel": "ផ្លូវរូងក្រោមដី",
+                    "glMetaball": "មេតាបាល់",
+                    "glParticles": "ភាគល្អិត"
                 },
                 "volume": "កម្រិតសម្លេង"
             },
@@ -4635,7 +4711,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "ការកំណត់ជាមុន",
-                "reset": "កំណត់ទៅរាបស្មើ"
+                "reset": "កំណត់ទៅរាបស្មើ",
+                "presetFlat": "រាបស្មើ",
+                "presetRock": "រ៉ុក",
+                "presetPop": "ប៉ុប",
+                "presetJazz": "ជែស",
+                "presetClassical": "បុរាណ",
+                "presetBassBoost": "បង្កើនបាស",
+                "presetTrebleBoost": "បង្កើនសំឡេងខ្ពស់",
+                "presetVocal": "សំឡេងច្រៀង",
+                "presetElectronic": "អេឡិចត្រូនិក",
+                "presetAcoustic": "អាកូស្ទិក",
+                "presetCustom": "ផ្ទាល់ខ្លួន"
             },
             "pdf": {
                 "download": "ទាញយក PDF",
@@ -5137,7 +5224,37 @@
             "paidTier": "បង់ប្រាក់",
             "extraFeatures": "បន្ថែម",
             "coreOpsList": "ផ្ទុកឡើង, ទាញយក, លុប, ប្ដូរឈ្មោះ, ផ្លាស់ទី, បង្កើតថត, ស្វែងរក",
-            "coreOpsLegend": "មូលដ្ឋាន = ផ្ទុកឡើង, ទាញយក, លុប, ប្ដូរឈ្មោះ, ផ្លាស់ទី, បង្កើតថត, ស្វែងរក"
+            "coreOpsLegend": "មូលដ្ឋាន = ផ្ទុកឡើង, ទាញយក, លុប, ប្ដូរឈ្មោះ, ផ្លាស់ទី, បង្កើតថត, ស្វែងរក",
+            "notes": "កំណត់ចំណាំ",
+            "storageClass": "ថ្នាក់ផ្ទុក",
+            "objectTagging": "ការដាក់ស្លាកវត្ថុ",
+            "sse": "ការអ៊ិនគ្រីបនៅខាងម៉ាស៊ីនមេ",
+            "checksum": "ផលបូកត្រួតពិនិត្យ",
+            "tierManagement": "ការគ្រប់គ្រងកម្រិត",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "មេឌៀ",
+            "sectionOther": "ផ្សេងៗ",
+            "trashDetails": {
+                "onedrive": "ដ្រាយ Business និង SharePoint។ Microsoft Graph មិនផ្តល់ធុងសំរាមរបស់ដ្រាយ OneDrive Personal ទេ សូមប្រើគេហទំព័រ OneDrive សម្រាប់វា"
+            },
+            "shareLinkDetails": {
+                "permissions": "សិទ្ធិ: មើល, មតិយោបល់, កែសម្រួល",
+                "passwordExpiryPlan": "ពាក្យសម្ងាត់ + ផុតកំណត់ (ត្រូវការគម្រោង {plan})",
+                "passwordExpiryPaid": "ពាក្យសម្ងាត់ + ផុតកំណត់ (ត្រូវការគម្រោងបង់ប្រាក់)",
+                "passwordPersonalExpiryPermissions": "ពាក្យសម្ងាត់ (តែ Personal), ផុតកំណត់, សិទ្ធិ",
+                "passwordArgon2ExpiryPresets": "ពាក្យសម្ងាត់ (Argon2id) + ការកំណត់ជាមុននៃការផុតកំណត់",
+                "passwordExpiryPermissions": "ពាក្យសម្ងាត់, ផុតកំណត់, សិទ្ធិ",
+                "basicOnly": "តែតំណចែករំលែកមូលដ្ឋានប៉ុណ្ណោះ",
+                "publicToggle": "តំណសាធារណៈ (បិទ/បើកឯកជនភាព)",
+                "basic": "តំណចែករំលែកមូលដ្ឋាន",
+                "expiringDefaultYear": "តំណមានកាលកំណត់ (លំនាំដើម 1 ឆ្នាំ)",
+                "publishUnpublish": "ផ្សាយ/ឈប់ផ្សាយ",
+                "permanentUrl": "URL អចិន្ត្រៃយ៍",
+                "sharedAlbum": "តំណអាល់ប៊ុមដែលបានចែករំលែក",
+                "megaPresignedS4": "តំណចែករំលែក / URL ដែលបានចុះហត្ថលេខាជាមុន (អតិបរមា 7 ថ្ងៃសម្រាប់ S4)",
+                "autoPasswordExpiry": "ពាក្យសម្ងាត់ (បង្កើតដោយស្វ័យប្រវត្តិ) + ផុតកំណត់",
+                "presigned": "URL ដែលបានចុះហត្ថលេខាជាមុន (អតិបរមា 7 ថ្ងៃ)"
+            }
         },
         "healthCheck": {
             "title": "ការពិនិត្យសុខភាពម៉ាស៊ីន​មែ",
@@ -5399,7 +5516,10 @@
             "repoPrivateTitle": "ឃ្លាំងឯកជន",
             "repoPublicTitle": "ឃ្លាំងសាធារណៈ",
             "unpushedCommitsOnBranchMany": "commit {count} មិនទាន់បានរុញនៅលើ {branch}",
-            "unpushedCommitsOnBranchOne": "commit {count} មិនទាន់បានរុញនៅលើ {branch}"
+            "unpushedCommitsOnBranchOne": "commit {count} មិនទាន់បានរុញនៅលើ {branch}",
+            "cancelWorkflow": "បោះបង់លំហូរការងារ",
+            "rerunWorkflow": "ដំណើរការលំហូរការងារម្តងទៀត",
+            "downloadAssetTitle": "ទាញយក {name}"
         },
         "filenNotes": {
             "title": "កំណត់ត្រាដែលបានអ៊ិនគ្រីប",
@@ -5488,7 +5608,10 @@
             "manageCreated": "បានបង្កើត",
             "manageExpires": "ផុតកំណត់",
             "manageNeverExpires": "មិនកំណត់",
-            "managePasswordProtected": "បានការពារដោយពាក្យសម្ងាត់"
+            "managePasswordProtected": "បានការពារដោយពាក្យសម្ងាត់",
+            "expirationHoursOne": "{count} ម៉ោង",
+            "expirationHoursMany": "{count} ម៉ោង",
+            "expirationDaysMany": "{count} ថ្ងៃ"
         },
         "introHub": {
             "tab": {
@@ -5679,7 +5802,9 @@
                 "hours": "{count} ម៉ោង",
                 "days": "{count} ថ្ងៃ",
                 "months": "{count} ខែ"
-            }
+            },
+            "demoTabLabel": "សាកល្បង: {protocol}",
+            "newTabLabel": "ថ្មី: {name}"
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",
@@ -5714,7 +5839,8 @@
             "createMergeRequest": "បង្កើត Merge Request",
             "mrTitle": "ចំណងជើង MR",
             "mrBody": "ការពិពណ៌នា (optional)",
-            "sourceCode": "កូដប្រភព"
+            "sourceCode": "កូដប្រភព",
+            "downloadAssetTitle": "ទាញយក {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6322,7 +6448,8 @@
                 "newUser": "អ្នកប្រើថ្មី",
                 "noUsers": "មិនទាន់មានអ្នកប្រើនៅឡើយទេ។ ប្រើ \"អ្នកប្រើថ្មី\" ខាងក្រោម ដើម្បីបន្ថែមអ្នកប្រើដំបូង។",
                 "protectionNote": "គណនីរបស់អ្នកត្រូវបានការពារដោយការអ៊ិនគ្រីប Argon2id + AES-KW + AES-256-GCM",
-                "users": "អ្នកប្រើ"
+                "users": "អ្នកប្រើ",
+                "setup": "ការរៀបចំ"
             }
         },
         "aerocryptNative": {
@@ -6751,7 +6878,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "របៀបត្រូវបានជ្រើសរើសនៅពេលបង្កើតការតភ្ជាប់ ហើយនៅតែថេរនៅពេលកែសម្រួលប្រវត្តិរូបដែលបានរក្សាទុក។ ដើម្បីប្រើរបៀបផ្សេង សូមបង្កើតការតភ្ជាប់ថ្មី។",
-                "notInBuild": "មិនមាននៅក្នុងកំណែបង្កើតនេះរបស់ AeroFTP ទេ។"
+                "notInBuild": "មិនមាននៅក្នុងកំណែបង្កើតនេះរបស់ AeroFTP ទេ។",
+                "header": "របៀបរបស់ {name}",
+                "nativeApi": "API ដើម",
+                "filelu": {
+                    "apiDescription": "REST API ជាមួយសោ API។ មុខងារពេញលេញ (ធុងសំរាម តំណចែករំលែក ឯកសារការពារដោយពាក្យសម្ងាត់)។",
+                    "webdavDescription": "ការចូលប្រើ WebDAV តាមច្រក 443។ ត្រូវគ្នាជាមួយកម្មវិធីភ្ញៀវយ៉ាងទូលំទូលាយ អាចភ្ជាប់ជាដ្រាយបណ្តាញបាន។",
+                    "s3Description": "API ដែលត្រូវគ្នានឹង S3 នៅលើច្រក 443។ ប្រើ rclone, AWS CLI ឬ S3 SDK ណាមួយ។",
+                    "ftpDescription": "FTP បុរាណនៅលើច្រក 21។ មិនបានអ៊ិនគ្រីប មានប្រយោជន៍សម្រាប់ឧបករណ៍ថត NVR នៃកាមេរ៉ាសុវត្ថិភាព និងកម្មវិធីភ្ញៀវចាស់ៗ។"
+                },
+                "filen": {
+                    "apiDescription": "ការអ៊ិនគ្រីប E2E ដោយគ្មានចំណេះដឹង (Argon2id v3 / PBKDF2 v2)។ មុខងារពេញលេញ៖ កូតាផ្ទុក ធុងសំរាម ពាក្យសម្ងាត់តំណចែករំលែក ការគ្រប់គ្រងកំណែ TOTP។",
+                    "webdavDescription": "ស្ពាន WebDAV ដែល Filen Desktop ផ្តល់ជូននៅ 127.0.0.1:1900។ តម្រូវឱ្យ Filen Desktop កំពុងដំណើរការ និងបានចូលគណនី។",
+                    "s3Description": "ស្ពានដែលត្រូវគ្នានឹង S3 ដែល Filen Desktop ផ្តល់ជូននៅ 127.0.0.1:1800 តាមរយៈ local.s3.filen.io។ ការកំណត់អាសយដ្ឋានតាមផ្លូវ ថតឯកសារ Filen កម្រិតកំពូលនីមួយៗគឺជា bucket មួយ។"
+                },
+                "proton": {
+                    "headerDescription": "ទំហំផ្ទុកលើពពក Proton ជាមួយការអ៊ិនគ្រីបពីចុងដល់ចុង",
+                    "apiDescription": "កម្មវិធីភ្ញៀវ Proton Drive ផ្ទាល់របស់ AeroFTP៖ អ្នកចូលគណនីនៅលើទំព័ររបស់ Proton ក្នុងកម្មវិធីរុករក ឯកសារត្រូវបានអ៊ិនគ្រីប និងឌិគ្រីបនៅលើកុំព្យូទ័រនេះ ហើយមិនត្រូវការកម្មវិធីផ្សេងទៀតទេ។",
+                    "cliDescription": "បញ្ជា Proton Drive CLI ផ្លូវការដែលបានដំឡើង និងចូលគណនីនៅលើម៉ាស៊ីននេះ។ អ្នកចូលគណនីក្នុងកម្មវិធីរុករក; AeroFTP មិនដែលឃើញពាក្យសម្ងាត់ Proton របស់អ្នកទេ។"
+                },
+                "opendrive": {
+                    "headerDescription": "ទំហំផ្ទុកលើពពក OpenDrive (ឥតគិតថ្លៃ 5 GB)",
+                    "apiDescription": "REST API ជាមួយឈ្មោះអ្នកប្រើ + ពាក្យសម្ងាត់។ មុខងារពេញលេញ៖ ធុងសំរាម កូតាផ្ទុក តំណចែករំលែក ការប្រើប្រាស់ថាសជាលក្ខណៈរៀបរាប់បន្ត។",
+                    "webdavDescription": "ការចូលប្រើ WebDAV តាមរយៈ webdav.opendrive.com នៅលើច្រក 443។ សម្រាប់កម្មវិធីភ្ញៀវចាស់ៗ ឬដើម្បីភ្ជាប់ជាដ្រាយបណ្តាញ។"
+                },
+                "koofr": {
+                    "apiDescription": "REST API ដែលមានមូលដ្ឋាននៅ EU ជាមួយអ៊ីមែល + ពាក្យសម្ងាត់កម្មវិធី។ មុខងារពេញលេញ៖ កូតាផ្ទុក ធុងសំរាម (បង្ហាញបញ្ជី/ស្ដារ/សម្អាត) តំណចែករំលែក។",
+                    "webdavDescription": "ការចូលប្រើ WebDAV តាមរយៈ app.koofr.net/dav/Koofr នៅលើច្រក 443។ កូតាផ្ទុកនៅតែត្រូវបានអានពី REST API របស់ Koofr។ សម្រាប់កម្មវិធីភ្ញៀវចាស់ៗ ឬដើម្បីភ្ជាប់ជាដ្រាយបណ្តាញ។"
+                },
+                "mega": {
+                    "headerDescription": "ទំហំផ្ទុកលើពពក MEGA ជាមួយការអ៊ិនគ្រីបនៅខាងកម្មវិធីភ្ញៀវ",
+                    "apiDescription": "MEGA API ដើមជាមួយអ៊ីមែល + ពាក្យសម្ងាត់ (+ TOTP ជាជម្រើស)។ មុខងារពេញលេញ៖ ការអ៊ិនគ្រីបនៅខាងកម្មវិធីភ្ញៀវ កូតាផ្ទុក តំណចែករំលែក រូបភាពតូចៗ។",
+                    "webdavDescription": "ស្ពាន WebDAV មូលដ្ឋានដែលផ្តល់សេវាដោយ MEGAcmd CLI ផ្លូវការ អនាមិកនៅលើ 127.0.0.1។ AeroFTP ដំណើរការ \"mega-webdav /\" ជំនួសអ្នកពេលភ្ជាប់ ដូច្នេះគ្មានជំហានដោយដៃទេ។",
+                    "s4Description": "ទំហំផ្ទុកវត្ថុ MEGA S4 ដែលត្រូវគ្នានឹង S3 (តំបន់ EU/CA)។ សោចូលប្រើ + សោសម្ងាត់ + bucket។ តម្រូវឱ្យមានគម្រោង Pro។"
+                }
             }
         },
         "flatpak": {

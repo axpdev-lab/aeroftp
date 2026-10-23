@@ -2,6 +2,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { formatBytes } from './formatters';
+import { translate } from '../i18n';
+import type { TranslationFunction } from '../i18n/types';
 
 /**
  * Size accounting for a compression operation. `savedBytes` is positive when the
@@ -29,12 +31,12 @@ export function computeCompressionRatio(inputBytes: number, outputBytes: number)
  * the post-success stat failed) only the input size is reported, never a fake
  * ratio.
  */
-export function formatCompressDetails(inputBytes: number, outputBytes: number): string {
+export function formatCompressDetails(inputBytes: number, outputBytes: number, t: TranslationFunction = translate): string {
     if (outputBytes <= 0) return formatBytes(inputBytes);
     const { savedPercent } = computeCompressionRatio(inputBytes, outputBytes);
     const pct = Math.round(savedPercent);
-    const verb = pct >= 0 ? 'saved' : 'grew';
-    return `${formatBytes(inputBytes)} → ${formatBytes(outputBytes)} (${verb} ${Math.abs(pct)}%)`;
+    const sizes = { input: formatBytes(inputBytes), output: formatBytes(outputBytes), percent: Math.abs(pct) };
+    return pct >= 0 ? t('activity.compress_details_saved', sizes) : t('activity.compress_details_grew', sizes);
 }
 
 /**
@@ -43,7 +45,7 @@ export function formatCompressDetails(inputBytes: number, outputBytes: number): 
  * backend emitted a determinate progress total (`outputBytes > 0`), otherwise
  * just the archive (input) size is reported.
  */
-export function formatExtractDetails(inputBytes: number, outputBytes: number): string {
+export function formatExtractDetails(inputBytes: number, outputBytes: number, t: TranslationFunction = translate): string {
     if (outputBytes <= 0) return formatBytes(inputBytes);
-    return `${formatBytes(inputBytes)} → ${formatBytes(outputBytes)} (expanded)`;
+    return t('activity.extract_details', { input: formatBytes(inputBytes), output: formatBytes(outputBytes) });
 }

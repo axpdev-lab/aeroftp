@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Másolja ki ezt az URL-t, és illessze be átirányítási URI-ként a fejlesztői alkalmazás beállításaiban.",
                 "redirectUriNoteGoogle": "Javaslat: hozzon létre egy „Asztali alkalmazás” típusú OAuth-ügyfélazonosítót a Google Cloud Console felületén; nincs szükség átirányítási URI regisztrálására. „Webalkalmazás” típusú ügyfél esetén pontosan a fent látható átirányítási URI-t regisztrálja, a porttal és a /callback útvonallal együtt.",
                 "enablePhotosApi": "Győződjön meg róla, hogy a Photos Library API engedélyezve van a Google Cloud Console-ban.",
-                "enableDriveApi": "Győződjön meg róla, hogy a Google Drive API engedélyezve van a Google Cloud Console-ban."
+                "enableDriveApi": "Győződjön meg róla, hogy a Google Drive API engedélyezve van a Google Cloud Console-ban.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "USA",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Ausztrália",
+                "zohoRegionJp": "Japán",
+                "zohoRegionUk": "Egyesült Királyság",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Szaúd-Arábia"
             },
             "activeSessions": "Aktív munkamenetek",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "A legnagyobb biztonság érdekében ajánlott",
             "fontCustomOption": "Egyéni...",
             "fontSystemInstallHint": "Rendszerszintű telepítést igényel. Ha nem érhető el, az AeroFTP automatikusan tartalékra vált.",
-            "fontSizeIndicatorLabel": "Betűtípus"
+            "fontSizeIndicatorLabel": "Betűtípus",
+            "fontPresetDefault": "{font} (Alapértelmezett)",
+            "fontPresetSystemDefault": "Rendszer alapértelmezett"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Betűméret növelése (Ctrl+=)",
                 "newTab": "Új terminállap",
                 "sshShellTo": "SSH-héj ide: {host}",
-                "theme": "Terminál témája"
+                "theme": "Terminál témája",
+                "tabLabel": "Terminál {num}",
+                "themeCyber": "Kiber",
+                "themeTrueDark": "Valódi sötét",
+                "themeGreen": "Zöld",
+                "themeIce": "Jég",
+                "themeRedLava": "Vörös láva"
             },
             "editorPanel": {
                 "emptyState": "Kattintson jobb gombbal egy fájlra, és válassza a \"Forrás megtekintése\" lehetőséget",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(soronként egy)",
             "pairsEditorLabel": "AeroCloud párszerkesztő",
             "remoteSubfolderPlaceholder": "felhő",
-            "countdownSoon": "Hamarosan..."
+            "countdownSoon": "Hamarosan...",
+            "aerocloudEnabled": "AeroCloud engedélyezve",
+            "selectPairLocalFolder": "Helyi mappa kiválasztása a párhoz",
+            "secondsAgo": "{count} mp-e"
         },
         "statusBar": {
             "connected": "Csatlakozva",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Kutató, minőségbiztosítási mérnök, társtervező"
             },
             "madeBy": "{author} által",
-            "statsLine": "{protocols} protokoll · {languages} nyelv · AES-256 archívumok"
+            "statsLine": "{protocols} protokoll · {languages} nyelv · AES-256 archívumok",
+            "dependencyRoles": {
+                "sftpOps": "SFTP-műveletek",
+                "osKeyring": "Rendszer-kulcstartó",
+                "vaultFormat": "Széfformátum",
+                "zipArchives": "ZIP-archívumok"
+            }
         },
         "support": {
             "title": "Támogasd az AeroFTP-t",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] {files} fájl visszaállítva a kukából, {present} már létezett",
             "trash_restore_detail_folders_present_success": "[{provider}] {files} fájl, {folders} mappa visszaállítva a kukából, {present} már létezett",
             "filelu_file_password_removed": "[{provider}] Fájljelszó eltávolítva",
-            "filelu_folder_password_removed": "[{provider}] Mappajelszó eltávolítva"
+            "filelu_folder_password_removed": "[{provider}] Mappajelszó eltávolítva",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} sikertelen",
+            "batch_rename_start": "[{location}] {count} elem átnevezése...",
+            "batch_rename_success": "[{location}] {count} elem átnevezve",
+            "batch_rename_error": "[{location}] {count} elem átnevezve, {failed} sikertelen",
+            "compress_details_saved": "{input} → {output} ({percent}% megtakarítás)",
+            "compress_details_grew": "{input} → {output} ({percent}% növekedés)",
+            "extract_details": "{input} → {output} (kibontva)",
+            "download_details": "({size}, {seconds} mp alatt)"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Joghatóság",
             "insecureCertDialogLabel": "Figyelmeztetés nem biztonságos tanúsítványra",
             "betaBadge": "BÉTA",
-            "hostKeyDialogLabel": "Gazdagépkulcs ellenőrzése"
+            "hostKeyDialogLabel": "Gazdagépkulcs ellenőrzése",
+            "mtpName": "Hordozható eszköz (MTP)",
+            "mtpDesc": "Telefon vagy fényképezőgép MTP/WPD-n keresztül",
+            "immichDesc": "Saját üzemeltetésű fotókezelés",
+            "imagekitDesc": "Média-CDN + tárhely (20 GB ingyen)",
+            "uploadcareDesc": "EU-s média-CDN (3 GB ingyen)",
+            "cloudinaryDesc": "Média-CDN (havi 25 kredit ingyen)",
+            "backblazeDesc": "Backblaze B2 natív API v4"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -2416,7 +2458,10 @@
             "add": "Hozzáadás",
             "remove": "Eltávolítás",
             "none": "Nincsenek beállított jogosultságok",
-            "anyoneWithLink": "Bárki, akinek megvan a hivatkozás"
+            "anyoneWithLink": "Bárki, akinek megvan a hivatkozás",
+            "roleViewer": "Megtekintő",
+            "roleEditor": "Szerkesztő",
+            "roleCommenter": "Hozzászóló"
         },
         "locking": {
             "lock": "Fájl zárolása",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "sikertelen {count}",
             "rollbackRestoreCompleted": "Visszaállítás kész: {summary}",
             "rollbackRestoreNothing": "Nincs mit visszaállítani",
-            "rollbackRestoreFailed": "A visszaállítás sikertelen: {error}"
+            "rollbackRestoreFailed": "A visszaállítás sikertelen: {error}",
+            "intervalHoursOne": "{count} óra",
+            "intervalHoursMany": "{count} óra"
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Támogatja a látást",
                 "thinkingReasoning": "Gondolkodás/Érvelés",
                 "toolQuality": "Eszközminőség: {quality}/5",
-                "ollamaNotReachable": "Az Ollama nem érhető el"
+                "ollamaNotReachable": "Az Ollama nem érhető el",
+                "macroSafeEditName": "Biztonságos szerkesztés",
+                "macroSafeEditDescription": "Fájl beolvasása, tartalmának megjelenítése, majd szerkesztése (írás előtti olvasás biztonsági minta)",
+                "macroFindReadName": "Keresés és olvasás",
+                "macroFindReadDescription": "Mintának megfelelő fájlok keresése egy helyi könyvtárban",
+                "familyHintLlama3": "A közvetlen és tömör utasítások működnek a legjobban. Használj markdown formázást. Natívan támogatja az eszközhasználatot.",
+                "familyHintCodellama": "Összpontosíts a kódgenerálásra és -elemzésre. Adj kódpéldákat. Használj szakmai nyelvezetet.",
+                "familyHintDeepseekCoder": "Erős a kóddal kapcsolatos érvelésben és a többlépéses problémamegoldásban. A strukturált kimenet ajánlott. A deepseek-r1 esetén a gondolkodási mód automatikusan működik.",
+                "familyHintQwen": "Támogatja a strukturált kimenetet. Jó többnyelvű feladatokban. Használj egyértelmű szakaszcímeket.",
+                "familyHintMistral": "Az utasítások követésére orientált. A promptok legyenek strukturáltak, egyértelmű feladatleírással.",
+                "familyHintPhi": "Kompakt modell: az utasítások legyenek tömörek. Célzott feladatokra a legjobb, hosszú szövegekre nem.",
+                "familyHintGemma": "Google-stílusú utasításformátum. Jó az összefoglalásban és az elemzésben.",
+                "familyHintStarcoder": "Kódkiegészítésre összpontosít. A legjobb eredményért add meg a fájl kontextusát és az importokat."
             },
             "copy": "Másolás",
             "attachImage": "Kép csatolása",
@@ -3033,7 +3092,8 @@
                 "general": "Általános",
                 "typeSlash": "Írjon / jelet a sablonok használatához",
                 "analyzeUi": "Felhasználói felület képernyőkép elemzése elrendezés, akadálymentesítés és UX szempontjából",
-                "performance": "Kód teljesítményszűk keresztmetszetek és optimalizálások elemzése"
+                "performance": "Kód teljesítményszűk keresztmetszetek és optimalizálások elemzése",
+                "analysis": "Elemzés"
             },
             "costBudget": {
                 "conversationCost": "Beszélgetés költsége",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} napja",
             "recentFileCountMany": "{count} fájl",
             "recentFileCountOne": "{count} fájl",
-            "recentMonthsAgo": "{count} hónapja"
+            "recentMonthsAgo": "{count} hónapja",
+            "securityArchive": "Archívum",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Gyors",
+            "securityAdvancedDescription": "Nonce-ellenálló · Titkosított fájlnevek · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 kaszkád · Kettős titkosítás",
+            "securityArchiveDescription": "Deduplikált archívum · zstd darabok · v3"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM tartalom",
             "featureNameCipher": "AES-SIV nevek",
             "formatVersion": "{version}. formátum",
-            "invalidVaultName": "Érvénytelen karakterek a széf nevében"
+            "invalidVaultName": "Érvénytelen karakterek a széf nevében",
+            "defaultVaultName": "ÚjSzéf"
         },
         "compress": {
             "title": "Fájlok tömörítése",
@@ -3952,7 +4018,10 @@
             "threads": "Szálak",
             "auto": "Automatikus",
             "solid": "Tömör blokk",
-            "solidHint": "Jobb arány sok kis fájlnál, lassabb véletlenszerű kibontás."
+            "solidHint": "Jobb arány sok kis fájlnál, lassabb véletlenszerű kibontás.",
+            "formatArchiveOnly": "Csak archiválás",
+            "formatBestRatio": "Legjobb arány",
+            "formatSingleFile": "egyetlen fájl"
         },
         "batchRename": {
             "title": "Csoportos átnevezés",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Műveletek szűrése",
                 "selected": "kiválasztva"
-            }
+            },
+            "save": "Mentés"
         },
         "error": {
             "description": "Az AeroFTP váratlan hibát észlelt. Megpróbálhatja a helyreállítást, vagy újratöltheti az alkalmazást.",
@@ -4529,7 +4599,13 @@
                     "radial": "Sugárirányú",
                     "spectrum": "Spektrum",
                     "vortex": "Örvény",
-                    "waveform": "Hullámforma"
+                    "waveform": "Hullámforma",
+                    "glWaveGlitch": "Hullámzavar",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Alagút",
+                    "glMetaball": "Metagolyók",
+                    "glParticles": "Részecskék"
                 },
                 "volume": "Hangerő"
             },
@@ -4635,7 +4711,18 @@
                 "off": "KI",
                 "on": "BE",
                 "presets": "Előbeállítások",
-                "reset": "Visszaállítás laposra"
+                "reset": "Visszaállítás laposra",
+                "presetFlat": "Lapos",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klasszikus",
+                "presetBassBoost": "Basszuskiemelés",
+                "presetTrebleBoost": "Magaskiemelés",
+                "presetVocal": "Ének",
+                "presetElectronic": "Elektronikus",
+                "presetAcoustic": "Akusztikus",
+                "presetCustom": "Egyéni"
             },
             "pdf": {
                 "download": "PDF letöltése",
@@ -5118,7 +5205,37 @@
             "paidTier": "Fizetős",
             "extraFeatures": "Extra",
             "coreOpsList": "Feltöltés, Letöltés, Törlés, Átnevezés, Áthelyezés, Mappa létrehozása, Keresés",
-            "coreOpsLegend": "Alap = Feltöltés, Letöltés, Törlés, Átnevezés, Áthelyezés, Mappa létrehozása, Keresés"
+            "coreOpsLegend": "Alap = Feltöltés, Letöltés, Törlés, Átnevezés, Áthelyezés, Mappa létrehozása, Keresés",
+            "notes": "Megjegyzések",
+            "storageClass": "Tárolási osztály",
+            "objectTagging": "Objektumcímkézés",
+            "sse": "Kiszolgálóoldali titkosítás",
+            "checksum": "Ellenőrzőösszeg",
+            "tierManagement": "Tárolási szintek kezelése",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Média",
+            "sectionOther": "Egyéb",
+            "trashDetails": {
+                "onedrive": "Business és SharePoint meghajtók. A Microsoft Graph nem teszi elérhetővé egy OneDrive Personal meghajtó lomtárát; ehhez használd a OneDrive webhelyét"
+            },
+            "shareLinkDetails": {
+                "permissions": "Engedélyek: megtekintés, megjegyzés, szerkesztés",
+                "passwordExpiryPlan": "Jelszó + lejárat ({plan} csomag szükséges)",
+                "passwordExpiryPaid": "Jelszó + lejárat (fizetős csomag szükséges)",
+                "passwordPersonalExpiryPermissions": "Jelszó (csak Personal), lejárat, engedélyek",
+                "passwordArgon2ExpiryPresets": "Jelszó (Argon2id) + lejárati előbeállítások",
+                "passwordExpiryPermissions": "Jelszó, lejárat, engedélyek",
+                "basicOnly": "Csak alap megosztási hivatkozás",
+                "publicToggle": "Nyilvános hivatkozás (adatvédelem váltása)",
+                "basic": "Alap megosztási hivatkozás",
+                "expiringDefaultYear": "Lejáró hivatkozások (alapértelmezés 1 év)",
+                "publishUnpublish": "Közzététel/visszavonás",
+                "permanentUrl": "Állandó URL",
+                "sharedAlbum": "Megosztott album hivatkozása",
+                "megaPresignedS4": "Megosztási hivatkozás / előre aláírt URL (S4 esetén max. 7 nap)",
+                "autoPasswordExpiry": "Jelszó (automatikusan generált) + lejárat",
+                "presigned": "Előre aláírt URL (max. 7 nap)"
+            }
         },
         "healthCheck": {
             "title": "Szerver állapotfelmérés",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Privát tároló",
             "repoPublicTitle": "Nyilvános tároló",
             "unpushedCommitsOnBranchMany": "{count} nem küldött commit itt: {branch}",
-            "unpushedCommitsOnBranchOne": "{count} nem küldött commit itt: {branch}"
+            "unpushedCommitsOnBranchOne": "{count} nem küldött commit itt: {branch}",
+            "cancelWorkflow": "Munkafolyamat megszakítása",
+            "rerunWorkflow": "Munkafolyamat újrafuttatása",
+            "downloadAssetTitle": "{name} letöltése"
         },
         "filenNotes": {
             "title": "Titkosított jegyzetek",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Létrehozva",
             "manageExpires": "Lejár",
             "manageNeverExpires": "Soha",
-            "managePasswordProtected": "Jelszóval védett"
+            "managePasswordProtected": "Jelszóval védett",
+            "expirationHoursOne": "{count} óra",
+            "expirationHoursMany": "{count} óra",
+            "expirationDaysMany": "{count} nap"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} ó",
                 "days": "{count} n",
                 "months": "{count} hó"
-            }
+            },
+            "demoTabLabel": "Bemutató: {protocol}",
+            "newTabLabel": "Új: {name}"
         },
         "gitlab": {
             "projectPath": "Projekt útvonal",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Merge Request létrehozása",
             "mrTitle": "MR címe",
             "mrBody": "Leírás (opcionális)",
-            "sourceCode": "Forráskód"
+            "sourceCode": "Forráskód",
+            "downloadAssetTitle": "{name} letöltése"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Új felhasználó",
                 "noUsers": "Még nincsenek felhasználók. Az első hozzáadásához használja lent az „Új felhasználó” lehetőséget.",
                 "protectionNote": "Fiókját Argon2id + AES-KW + AES-256-GCM titkosítás védi",
-                "users": "Felhasználók"
+                "users": "Felhasználók",
+                "setup": "Beállítás"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "A mód a kapcsolat létrehozásakor kerül kiválasztásra, és mentett profil szerkesztése közben változatlan marad. Másik mód használatához hozzon létre új kapcsolatot.",
-                "notInBuild": "Nem része az AeroFTP ezen buildjének."
+                "notInBuild": "Nem része az AeroFTP ezen buildjének.",
+                "header": "{name} módok",
+                "nativeApi": "Natív API",
+                "filelu": {
+                    "apiDescription": "REST API API-kulccsal. Teljes funkciókészlet (kuka, megosztási linkek, jelszóval védett fájlok).",
+                    "webdavDescription": "WebDAV-hozzáférés a 443-as porton. Széles körű kliens-kompatibilitás, hálózati meghajtóként csatolható.",
+                    "s3Description": "S3-kompatibilis API a 443-as porton. Használja az rclone-t, az AWS CLI-t vagy bármely S3 SDK-t.",
+                    "ftpDescription": "Klasszikus FTP a 21-es porton. Titkosítatlan, hasznos megfigyelőkamerás NVR-rögzítőkhöz és régebbi kliensekhez."
+                },
+                "filen": {
+                    "apiDescription": "Zéró tudású E2E titkosítás (Argon2id v3 / PBKDF2 v2). Teljes funkciókészlet: tárhelykvóta, kuka, megosztási hivatkozások jelszavai, verziókezelés, TOTP.",
+                    "webdavDescription": "A Filen Desktop által a 127.0.0.1:1900 címen elérhetővé tett WebDAV-híd. A Filen Desktopnak futnia kell, és bejelentkezve kell lennie.",
+                    "s3Description": "A Filen Desktop által a 127.0.0.1:1800 címen a local.s3.filen.io révén elérhetővé tett S3-kompatibilis híd. Útvonal alapú címzés, minden legfelső szintű Filen-mappa egy bucket."
+                },
+                "proton": {
+                    "headerDescription": "Proton felhőtárhely végponttól végpontig tartó titkosítással",
+                    "apiDescription": "Az AeroFTP saját Proton Drive-kliense: a böngészőben a Proton oldalán jelentkezik be, a fájlok ezen a számítógépen titkosítódnak és fejtődnek vissza, és nincs szükség más alkalmazásra.",
+                    "cliDescription": "Az ezen a gépen telepített és bejelentkezett hivatalos Proton Drive CLI-t vezérli. A böngészőben jelentkezik be; az AeroFTP soha nem látja a Proton-jelszavát."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive felhőtárhely (5 GB ingyenes)",
+                    "apiDescription": "REST API felhasználónévvel + jelszóval. Teljes funkciókészlet: kuka, tárhelykvóta, megosztási hivatkozások, rekurzív lemezhasználat.",
+                    "webdavDescription": "WebDAV-hozzáférés a webdav.opendrive.com címen keresztül a 443-as porton. Régebbi kliensekhez vagy hálózati meghajtóként való csatoláshoz."
+                },
+                "koofr": {
+                    "apiDescription": "EU-s székhelyű REST API e-mail-címmel + alkalmazásjelszóval. Teljes funkciókészlet: tárhelykvóta, kuka (listázás/visszaállítás/ürítés), megosztási hivatkozások.",
+                    "webdavDescription": "WebDAV-hozzáférés az app.koofr.net/dav/Koofr címen keresztül a 443-as porton. A tárhelykvótát továbbra is a Koofr REST API-jából olvassa. Régebbi kliensekhez vagy hálózati meghajtóként való csatoláshoz."
+                },
+                "mega": {
+                    "headerDescription": "MEGA felhőtárhely kliensoldali titkosítással",
+                    "apiDescription": "Natív MEGA API e-mail-címmel + jelszóval (+ opcionális TOTP). Teljes funkciókészlet: kliensoldali titkosítás, tárhelykvóta, megosztási hivatkozások, bélyegképek.",
+                    "webdavDescription": "A hivatalos MEGAcmd CLI által kiszolgált helyi WebDAV-híd, névtelen a 127.0.0.1 címen. Az AeroFTP csatlakozáskor Ön helyett futtatja a \"mega-webdav /\" parancsot, így nincs kézi lépés.",
+                    "s4Description": "MEGA S4 objektumtárhely, S3-kompatibilis (EU/CA régiók). Hozzáférési kulcs + titkos kulcs + bucket. Pro előfizetés szükséges."
+                }
             }
         },
         "flatpak": {

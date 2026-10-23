@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Copieu aquest URL i enganxeu-lo com a URI de redirecció a la configuració de la vostra aplicació de desenvolupador.",
                 "redirectUriNoteGoogle": "Recomanat: crea un ID de client OAuth de tipus \"Aplicació d’escriptori\" a Google Cloud Console; no cal registrar cap URI de redirecció. Per a un client de tipus \"Aplicació web\", registra exactament l’URI de redirecció que es mostra més amunt, incloent-hi el port i el camí /callback.",
                 "enablePhotosApi": "Assegureu-vos que Photos Library API està habilitat a Google Cloud Console.",
-                "enableDriveApi": "Assegureu-vos que Google Drive API està habilitat a Google Cloud Console."
+                "enableDriveApi": "Assegureu-vos que Google Drive API està habilitat a Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "EUA",
+                "zohoRegionEu": "UE",
+                "zohoRegionIn": "Índia",
+                "zohoRegionAu": "Austràlia",
+                "zohoRegionJp": "Japó",
+                "zohoRegionUk": "Regne Unit",
+                "zohoRegionCa": "Canadà",
+                "zohoRegionSa": "Aràbia Saudita"
             },
             "activeSessions": "Sessions Actives",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Recomanat per a la màxima seguretat",
             "fontCustomOption": "Personalitzada...",
             "fontSystemInstallHint": "Requereix instal·lació al sistema. AeroFTP recorre automàticament a una alternativa si no està disponible.",
-            "fontSizeIndicatorLabel": "Lletra"
+            "fontSizeIndicatorLabel": "Lletra",
+            "fontPresetDefault": "{font} (Predeterminat)",
+            "fontPresetSystemDefault": "Predeterminat del sistema"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Augmenta la mida de la lletra (Ctrl+=)",
                 "newTab": "Pestanya de terminal nova",
                 "sshShellTo": "Intèrpret SSH a {host}",
-                "theme": "Tema del terminal"
+                "theme": "Tema del terminal",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "Negre pur",
+                "themeGreen": "Verd",
+                "themeIce": "Gel",
+                "themeRedLava": "Lava vermella"
             },
             "editorPanel": {
                 "emptyState": "Fes clic dret en un fitxer i tria \"Veure el codi font\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(un per línia)",
             "pairsEditorLabel": "Editor de parelles d'AeroCloud",
             "remoteSubfolderPlaceholder": "núvol",
-            "countdownSoon": "Aviat..."
+            "countdownSoon": "Aviat...",
+            "aerocloudEnabled": "AeroCloud activat",
+            "selectPairLocalFolder": "Selecciona la carpeta local per a la parella",
+            "secondsAgo": "fa {count}s"
         },
         "statusBar": {
             "connected": "Connectat",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Investigador, enginyer de garantia de qualitat, codissenyador"
             },
             "madeBy": "per {author}",
-            "statsLine": "{protocols} protocols · {languages} idiomes · arxius AES-256"
+            "statsLine": "{protocols} protocols · {languages} idiomes · arxius AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Operacions SFTP",
+                "osKeyring": "Clauer del sistema",
+                "vaultFormat": "Format de la caixa forta",
+                "zipArchives": "Arxius ZIP"
+            }
         },
         "support": {
             "title": "Donar Suport a AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] S'han restaurat {files} fitxer(s) de la paperera, {present} ja presents",
             "trash_restore_detail_folders_present_success": "[{provider}] S'han restaurat {files} fitxer(s), {folders} carpeta(es) de la paperera, {present} ja presents",
             "filelu_file_password_removed": "[{provider}] S'ha eliminat la contrasenya del fitxer",
-            "filelu_folder_password_removed": "[{provider}] Contrasenya de la carpeta eliminada"
+            "filelu_folder_password_removed": "[{provider}] Contrasenya de la carpeta eliminada",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} ha fallat",
+            "batch_rename_start": "[{location}] S'està canviant el nom de {count} elements...",
+            "batch_rename_success": "[{location}] S'ha canviat el nom de {count} elements",
+            "batch_rename_error": "[{location}] S'ha canviat el nom de {count} elements, {failed} han fallat",
+            "compress_details_saved": "{input} → {output} (estalviat {percent}%)",
+            "compress_details_grew": "{input} → {output} (ha crescut {percent}%)",
+            "extract_details": "{input} → {output} (expandit)",
+            "download_details": "({size} en {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdicció",
             "insecureCertDialogLabel": "Avís de certificat insegur",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Verificació de la clau de l'amfitrió"
+            "hostKeyDialogLabel": "Verificació de la clau de l'amfitrió",
+            "mtpName": "Dispositiu portàtil (MTP)",
+            "mtpDesc": "Telèfon o càmera mitjançant MTP/WPD",
+            "immichDesc": "Gestió de fotos autoallotjada",
+            "imagekitDesc": "CDN multimèdia + emmagatzematge (20 GB gratuïts)",
+            "uploadcareDesc": "CDN multimèdia de la UE (3 GB gratuïts)",
+            "cloudinaryDesc": "CDN multimèdia (25 crèdits/mes gratuïts)",
+            "backblazeDesc": "API nativa de Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -2416,7 +2458,10 @@
             "add": "Afegir",
             "remove": "Eliminar",
             "none": "No hi ha permisos establerts",
-            "anyoneWithLink": "Qualsevol persona amb l'enllaç"
+            "anyoneWithLink": "Qualsevol persona amb l'enllaç",
+            "roleViewer": "Lector",
+            "roleEditor": "Editor",
+            "roleCommenter": "Comentarista"
         },
         "locking": {
             "lock": "Bloquejar fitxer",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "fallits {count}",
             "rollbackRestoreCompleted": "Restauració completada: {summary}",
             "rollbackRestoreNothing": "No hi ha res a restaurar",
-            "rollbackRestoreFailed": "Ha fallat la restauració: {error}"
+            "rollbackRestoreFailed": "Ha fallat la restauració: {error}",
+            "intervalHoursOne": "{count} hora",
+            "intervalHoursMany": "{count} hores"
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Admet visió",
                 "thinkingReasoning": "Pensament/Raonament",
                 "toolQuality": "Qualitat de les eines: {quality}/5",
-                "ollamaNotReachable": "Ollama no és accessible"
+                "ollamaNotReachable": "Ollama no és accessible",
+                "macroSafeEditName": "Edició segura",
+                "macroSafeEditDescription": "Llegeix un fitxer, mostra'n el contingut i després l'edita (patró de seguretat de lectura abans d'escriptura)",
+                "macroFindReadName": "Cerca i llegeix",
+                "macroFindReadDescription": "Cerca fitxers que coincideixin amb un patró en un directori local",
+                "familyHintLlama3": "Les instruccions directes i concises funcionen millor. Feu servir format markdown. Admet l'ús d'eines de manera nativa.",
+                "familyHintCodellama": "Centreu-vos en la generació i l'anàlisi de codi. Proporcioneu exemples de codi. Feu servir llenguatge tècnic.",
+                "familyHintDeepseekCoder": "Fort en el raonament sobre codi i la resolució de problemes en diversos passos. Es prefereix una sortida estructurada. Amb deepseek-r1, el mode de pensament funciona automàticament.",
+                "familyHintQwen": "Admet sortida estructurada. Bo en tasques multilingües. Feu servir encapçalaments de secció clars.",
+                "familyHintMistral": "Orientat a seguir instruccions. Mantingueu els prompts estructurats amb descripcions clares de la tasca.",
+                "familyHintPhi": "Model compacte: mantingueu les instruccions concises. Ideal per a tasques concretes, no per a textos llargs.",
+                "familyHintGemma": "Format d'instruccions a l'estil de Google. Bo en resums i anàlisi.",
+                "familyHintStarcoder": "Centrat en la compleció de codi. Proporcioneu el context del fitxer i les importacions per obtenir els millors resultats."
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imatge",
@@ -3033,7 +3092,8 @@
                 "general": "General",
                 "typeSlash": "Escriviu / per utilitzar plantilles",
                 "analyzeUi": "Analitzar captura de pantalla de la interfície per a problemes de disseny, accessibilitat i UX",
-                "performance": "Analitzar codi per a colls d'ampolla de rendiment i optimització"
+                "performance": "Analitzar codi per a colls d'ampolla de rendiment i optimització",
+                "analysis": "Anàlisi"
             },
             "costBudget": {
                 "conversationCost": "Cost de la conversa",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "fa {count} d",
             "recentFileCountMany": "{count} fitxers",
             "recentFileCountOne": "{count} fitxer",
-            "recentMonthsAgo": "fa {count} mesos"
+            "recentMonthsAgo": "fa {count} mesos",
+            "securityArchive": "Arxiu",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Ràpid",
+            "securityAdvancedDescription": "Resistent al nonce · Noms de fitxer xifrats · KDF de 128 MB",
+            "securityParanoidDescription": "Cascada AES + ChaCha20 · Doble xifratge",
+            "securityArchiveDescription": "Arxiu deduplicat · fragments zstd · v3"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Contingut AES-GCM",
             "featureNameCipher": "Noms AES-SIV",
             "formatVersion": "Versió del format {version}",
-            "invalidVaultName": "Caràcters no vàlids al nom de la caixa forta"
+            "invalidVaultName": "Caràcters no vàlids al nom de la caixa forta",
+            "defaultVaultName": "NovaCaixaForta"
         },
         "compress": {
             "title": "Comprimir fitxers",
@@ -3952,7 +4018,10 @@
             "threads": "Fils",
             "auto": "Automàtic",
             "solid": "Bloc sòlid",
-            "solidHint": "Millor ràtio amb molts fitxers petits, extracció aleatòria més lenta."
+            "solidHint": "Millor ràtio amb molts fitxers petits, extracció aleatòria més lenta.",
+            "formatArchiveOnly": "Només arxivament",
+            "formatBestRatio": "Millor ràtio",
+            "formatSingleFile": "fitxer únic"
         },
         "batchRename": {
             "title": "Reanomenament massiu",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtra les operacions",
                 "selected": "seleccionats"
-            }
+            },
+            "save": "Desa"
         },
         "error": {
             "description": "AeroFTP ha trobat un error inesperat. Podeu intentar recuperar o tornar a carregar l'aplicació.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radial",
                     "spectrum": "Espectre",
                     "vortex": "Vòrtex",
-                    "waveform": "Forma d'ona"
+                    "waveform": "Forma d'ona",
+                    "glWaveGlitch": "Distorsió d'ona",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Túnel",
+                    "glMetaball": "Metaboles",
+                    "glParticles": "Partícules"
                 },
                 "volume": "Volum"
             },
@@ -4635,7 +4711,18 @@
                 "off": "DESACTIVAT",
                 "on": "ACTIVAT",
                 "presets": "Preajustos",
-                "reset": "Restablir a pla"
+                "reset": "Restablir a pla",
+                "presetFlat": "Pla",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Clàssica",
+                "presetBassBoost": "Potenciació de greus",
+                "presetTrebleBoost": "Potenciació d'aguts",
+                "presetVocal": "Veu",
+                "presetElectronic": "Electrònica",
+                "presetAcoustic": "Acústica",
+                "presetCustom": "Personalitzat"
             },
             "pdf": {
                 "download": "Descarregar PDF",
@@ -5137,7 +5224,37 @@
             "paidTier": "De pagament",
             "extraFeatures": "Extra",
             "coreOpsList": "Pujar, Baixar, Suprimir, Canviar el nom, Moure, Crear carpeta, Cercar",
-            "coreOpsLegend": "Base = Pujar, Baixar, Suprimir, Canviar el nom, Moure, Crear carpeta, Cercar"
+            "coreOpsLegend": "Base = Pujar, Baixar, Suprimir, Canviar el nom, Moure, Crear carpeta, Cercar",
+            "notes": "Observacions",
+            "storageClass": "Classe d'emmagatzematge",
+            "objectTagging": "Etiquetatge d'objectes",
+            "sse": "Xifratge al servidor",
+            "checksum": "Suma de verificació",
+            "tierManagement": "Gestió de nivells",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Multimèdia",
+            "sectionOther": "Altres",
+            "trashDetails": {
+                "onedrive": "Unitats Business i SharePoint. Microsoft Graph no exposa la paperera d'una unitat OneDrive Personal; utilitzeu el lloc web de OneDrive per a això"
+            },
+            "shareLinkDetails": {
+                "permissions": "Permisos: visualitzar, comentar, editar",
+                "passwordExpiryPlan": "Contrasenya + caducitat (cal el pla {plan})",
+                "passwordExpiryPaid": "Contrasenya + caducitat (cal un pla de pagament)",
+                "passwordPersonalExpiryPermissions": "Contrasenya (només Personal), caducitat, permisos",
+                "passwordArgon2ExpiryPresets": "Contrasenya (Argon2id) + caducitats predefinides",
+                "passwordExpiryPermissions": "Contrasenya, caducitat, permisos",
+                "basicOnly": "Només enllaç de compartició bàsic",
+                "publicToggle": "Enllaç públic (commuta la privadesa)",
+                "basic": "Enllaç de compartició bàsic",
+                "expiringDefaultYear": "Enllaços amb caducitat (1 any per defecte)",
+                "publishUnpublish": "Publica/despublica",
+                "permanentUrl": "URL permanent",
+                "sharedAlbum": "Enllaç d'àlbum compartit",
+                "megaPresignedS4": "Enllaç de compartició / URL presignat (màx. 7 dies per a S4)",
+                "autoPasswordExpiry": "Contrasenya (generada automàticament) + caducitat",
+                "presigned": "URL presignat (màx. 7 dies)"
+            }
         },
         "healthCheck": {
             "title": "Comprovació del servidor",
@@ -5399,7 +5516,10 @@
             "repoPrivateTitle": "Repositori privat",
             "repoPublicTitle": "Repositori públic",
             "unpushedCommitsOnBranchMany": "{count} commits sense enviar a {branch}",
-            "unpushedCommitsOnBranchOne": "{count} commit sense enviar a {branch}"
+            "unpushedCommitsOnBranchOne": "{count} commit sense enviar a {branch}",
+            "cancelWorkflow": "Cancel·la el flux de treball",
+            "rerunWorkflow": "Torna a executar el flux de treball",
+            "downloadAssetTitle": "Baixa {name}"
         },
         "filenNotes": {
             "title": "Notes xifrades",
@@ -5488,7 +5608,10 @@
             "manageCreated": "Creat",
             "manageExpires": "Expira",
             "manageNeverExpires": "Mai",
-            "managePasswordProtected": "Protegit amb contrasenya"
+            "managePasswordProtected": "Protegit amb contrasenya",
+            "expirationHoursOne": "{count} hora",
+            "expirationHoursMany": "{count} hores",
+            "expirationDaysMany": "{count} dies"
         },
         "introHub": {
             "tab": {
@@ -5679,7 +5802,9 @@
                 "hours": "{count} h",
                 "days": "{count} d",
                 "months": "{count} mes."
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Nou: {name}"
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",
@@ -5714,7 +5839,8 @@
             "createMergeRequest": "Crear sol·licitud de fusió",
             "mrTitle": "Títol MR",
             "mrBody": "Descripció (opcional)",
-            "sourceCode": "Codi font"
+            "sourceCode": "Codi font",
+            "downloadAssetTitle": "Baixa {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6322,7 +6448,8 @@
                 "newUser": "Usuari nou",
                 "noUsers": "Encara no hi ha usuaris. Fes servir «Usuari nou» a sota per afegir el primer.",
                 "protectionNote": "El teu compte està protegit amb xifratge Argon2id + AES-KW + AES-256-GCM",
-                "users": "Usuaris"
+                "users": "Usuaris",
+                "setup": "Configuració"
             }
         },
         "aerocryptNative": {
@@ -6751,7 +6878,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "El mode es tria en crear la connexió i es manté fix mentre s'edita un perfil desat. Per utilitzar un mode diferent, crea una connexió nova.",
-                "notInBuild": "No inclòs en aquesta compilació d'AeroFTP."
+                "notInBuild": "No inclòs en aquesta compilació d'AeroFTP.",
+                "header": "Modes de {name}",
+                "nativeApi": "API nativa",
+                "filelu": {
+                    "apiDescription": "API REST amb clau d'API. Totes les funcions (paperera, enllaços per compartir, fitxers protegits amb contrasenya).",
+                    "webdavDescription": "Accés WebDAV pel port 443. Àmplia compatibilitat amb clients, es munta com a unitat de xarxa.",
+                    "s3Description": "API compatible amb S3 al port 443. Feu servir rclone, AWS CLI o qualsevol SDK d'S3.",
+                    "ftpDescription": "FTP clàssic al port 21. Sense xifrar, útil per a enregistradors NVR de videovigilància i clients antics."
+                },
+                "filen": {
+                    "apiDescription": "Xifratge E2E de coneixement zero (Argon2id v3 / PBKDF2 v2). Funcions completes: quota d'emmagatzematge, paperera, contrasenyes d'enllaços compartits, versions, TOTP.",
+                    "webdavDescription": "Pont WebDAV exposat per Filen Desktop a 127.0.0.1:1900. Cal que Filen Desktop estigui en execució i amb la sessió iniciada.",
+                    "s3Description": "Pont compatible amb S3 exposat per Filen Desktop a 127.0.0.1:1800 mitjançant local.s3.filen.io. Adreçament per camí, cada carpeta de Filen de primer nivell és un bucket."
+                },
+                "proton": {
+                    "headerDescription": "Emmagatzematge al núvol de Proton amb xifratge d'extrem a extrem",
+                    "apiDescription": "El client propi de Proton Drive d'AeroFTP: inicieu la sessió a la pàgina de Proton al navegador, els fitxers es xifren i desxifren en aquest ordinador i no cal cap altra aplicació.",
+                    "cliDescription": "Controla la CLI oficial de Proton Drive instal·lada i amb la sessió iniciada en aquest equip. Inicieu la sessió al navegador; AeroFTP no veu mai la vostra contrasenya de Proton."
+                },
+                "opendrive": {
+                    "headerDescription": "Emmagatzematge al núvol d'OpenDrive (5 GB gratuïts)",
+                    "apiDescription": "API REST amb nom d'usuari + contrasenya. Funcions completes: paperera, quota d'emmagatzematge, enllaços compartits, ús del disc recursiu.",
+                    "webdavDescription": "Accés WebDAV mitjançant webdav.opendrive.com al port 443. Per a clients antics o per muntar-lo com a unitat de xarxa."
+                },
+                "koofr": {
+                    "apiDescription": "API REST amb seu a la UE, amb correu electrònic + contrasenya d'aplicació. Funcions completes: quota d'emmagatzematge, paperera (llistar/restaurar/buidar), enllaços compartits.",
+                    "webdavDescription": "Accés WebDAV mitjançant app.koofr.net/dav/Koofr al port 443. La quota d'emmagatzematge es continua llegint de l'API REST de Koofr. Per a clients antics o per muntar-lo com a unitat de xarxa."
+                },
+                "mega": {
+                    "headerDescription": "Emmagatzematge al núvol de MEGA amb xifratge al client",
+                    "apiDescription": "API nativa de MEGA amb correu electrònic + contrasenya (+ TOTP opcional). Funcions completes: xifratge al client, quota d'emmagatzematge, enllaços compartits, miniatures.",
+                    "webdavDescription": "Pont WebDAV local servit per la CLI oficial MEGAcmd, anònim a 127.0.0.1. AeroFTP executa \"mega-webdav /\" per vós en connectar, així que no hi ha cap pas manual.",
+                    "s4Description": "Emmagatzematge d'objectes MEGA S4, compatible amb S3 (regions EU/CA). Clau d'accés + clau secreta + bucket. Cal un pla Pro."
+                }
             }
         },
         "flatpak": {

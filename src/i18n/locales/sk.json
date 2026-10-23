@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Skopírujte túto URL adresu a vložte ju ako URI presmerovania v nastaveniach vašej vývojárskej aplikácie.",
                 "redirectUriNoteGoogle": "Odporúčanie: v Google Cloud Console vytvorte ID klienta OAuth typu „Počítačová aplikácia“; URI presmerovania nie je potrebné registrovať. Pre klienta typu „Webová aplikácia“ zaregistrujte presne URI presmerovania zobrazené vyššie, vrátane portu a cesty /callback.",
                 "enablePhotosApi": "Uistite sa, že Photos Library API je povolené vo vašej Google Cloud Console.",
-                "enableDriveApi": "Uistite sa, že Google Drive API je povolené vo vašej Google Cloud Console."
+                "enableDriveApi": "Uistite sa, že Google Drive API je povolené vo vašej Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "USA",
+                "zohoRegionEu": "EÚ",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Austrália",
+                "zohoRegionJp": "Japonsko",
+                "zohoRegionUk": "Spojené kráľovstvo",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Saudská Arábia"
             },
             "activeSessions": "Aktívne relácie",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Odporúča sa pre maximálne zabezpečenie",
             "fontCustomOption": "Vlastné...",
             "fontSystemInstallHint": "Vyžaduje inštaláciu do systému. Ak nie je k dispozícii, AeroFTP automaticky použije náhradu.",
-            "fontSizeIndicatorLabel": "Písmo"
+            "fontSizeIndicatorLabel": "Písmo",
+            "fontPresetDefault": "{font} (predvolené)",
+            "fontPresetSystemDefault": "Systémové predvolené"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Zväčšiť písmo (Ctrl+=)",
                 "newTab": "Nová karta terminálu",
                 "sshShellTo": "SSH shell na {host}",
-                "theme": "Motív terminálu"
+                "theme": "Motív terminálu",
+                "tabLabel": "Terminál {num}",
+                "themeCyber": "Kyber",
+                "themeTrueDark": "Pravá tmavá",
+                "themeGreen": "Zelená",
+                "themeIce": "Ľad",
+                "themeRedLava": "Červená láva"
             },
             "editorPanel": {
                 "emptyState": "Kliknite pravým tlačidlom na súbor a zvoľte \"Zobraziť zdroj\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(jeden na riadok)",
             "pairsEditorLabel": "Editor párov AeroCloud",
             "remoteSubfolderPlaceholder": "oblak",
-            "countdownSoon": "Čoskoro..."
+            "countdownSoon": "Čoskoro...",
+            "aerocloudEnabled": "AeroCloud povolené",
+            "selectPairLocalFolder": "Vyberte miestny priečinok pre pár",
+            "secondsAgo": "pred {count}s"
         },
         "statusBar": {
             "connected": "Pripojený",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Výskumník, inžinier zabezpečenia kvality, spoluautor dizajnu"
             },
             "madeBy": "spoločnosťou {author}",
-            "statsLine": "{protocols} protokolov · {languages} jazykov · archívy AES-256"
+            "statsLine": "{protocols} protokolov · {languages} jazykov · archívy AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Operácie SFTP",
+                "osKeyring": "Kľúčenka systému",
+                "vaultFormat": "Formát trezoru",
+                "zipArchives": "Archívy ZIP"
+            }
         },
         "support": {
             "title": "Podporte AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Obnovené z koša: súbory {files}, už existujúce {present}",
             "trash_restore_detail_folders_present_success": "[{provider}] Obnovené z koša: súbory {files}, priečinky {folders}, už existujúce {present}",
             "filelu_file_password_removed": "[{provider}] Heslo súboru odstránené",
-            "filelu_folder_password_removed": "[{provider}] Heslo priečinka odstránené"
+            "filelu_folder_password_removed": "[{provider}] Heslo priečinka odstránené",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} zlyhalo",
+            "batch_rename_start": "[{location}] Premenovanie {count} položiek...",
+            "batch_rename_success": "[{location}] Premenovaných {count} položiek",
+            "batch_rename_error": "[{location}] Premenovaných {count} položiek, {failed} zlyhalo",
+            "compress_details_saved": "{input} → {output} (ušetrené {percent}%)",
+            "compress_details_grew": "{input} → {output} (zväčšené o {percent}%)",
+            "extract_details": "{input} → {output} (rozbalené)",
+            "download_details": "({size} za {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdikcia",
             "insecureCertDialogLabel": "Upozornenie na nezabezpečený certifikát",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Overenie kľúča hostiteľa"
+            "hostKeyDialogLabel": "Overenie kľúča hostiteľa",
+            "mtpName": "Prenosné zariadenie (MTP)",
+            "mtpDesc": "Telefón alebo fotoaparát cez MTP/WPD",
+            "immichDesc": "Vlastne hosťovaná správa fotografií",
+            "imagekitDesc": "Mediálna CDN + úložisko (20 GB zadarmo)",
+            "uploadcareDesc": "Mediálna CDN v EÚ (3 GB zadarmo)",
+            "cloudinaryDesc": "Mediálna CDN (25 kreditov/mesiac zadarmo)",
+            "backblazeDesc": "Natívne API Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -2416,7 +2458,10 @@
             "add": "Pridať",
             "remove": "Odobrať",
             "none": "Žiadne nastavené oprávnenia",
-            "anyoneWithLink": "Ktokoľvek s odkazom"
+            "anyoneWithLink": "Ktokoľvek s odkazom",
+            "roleViewer": "Čitateľ",
+            "roleEditor": "Editor",
+            "roleCommenter": "Komentátor"
         },
         "locking": {
             "lock": "Zamknúť súbor",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "zlyhané {count}",
             "rollbackRestoreCompleted": "Obnovenie dokončené: {summary}",
             "rollbackRestoreNothing": "Nie je čo obnoviť",
-            "rollbackRestoreFailed": "Obnovenie zlyhalo: {error}"
+            "rollbackRestoreFailed": "Obnovenie zlyhalo: {error}",
+            "intervalHoursOne": "{count} hodina",
+            "intervalHoursMany": "{count} hodín"
         },
         "ui": {
             "syncing": "Synchronizácia...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Podporuje videnie",
                 "thinkingReasoning": "Premýšľanie/Uvažovanie",
                 "toolQuality": "Kvalita nástrojov: {quality}/5",
-                "ollamaNotReachable": "Ollama nie je dostupná"
+                "ollamaNotReachable": "Ollama nie je dostupná",
+                "macroSafeEditName": "Bezpečná úprava",
+                "macroSafeEditDescription": "Prečíta súbor, zobrazí jeho obsah a potom ho upraví (bezpečnostný vzor čítanie pred zápisom)",
+                "macroFindReadName": "Nájsť a prečítať",
+                "macroFindReadDescription": "Vyhľadá súbory zodpovedajúce vzoru v lokálnom adresári",
+                "familyHintLlama3": "Najlepšie fungujú priame a stručné pokyny. Používajte formátovanie markdown. Natívne podporuje používanie nástrojov.",
+                "familyHintCodellama": "Zamerajte sa na generovanie a analýzu kódu. Uveďte príklady kódu. Používajte technický jazyk.",
+                "familyHintDeepseekCoder": "Silný v uvažovaní o kóde a riešení viackrokových problémov. Preferovaný je štruktúrovaný výstup. Pri deepseek-r1 funguje režim premýšľania automaticky.",
+                "familyHintQwen": "Podporuje štruktúrovaný výstup. Dobrý vo viacjazyčných úlohách. Používajte jasné nadpisy sekcií.",
+                "familyHintMistral": "Zameraný na dodržiavanie pokynov. Udržujte prompty štruktúrované s jasným opisom úlohy.",
+                "familyHintPhi": "Kompaktný model: udržujte pokyny stručné. Najlepší pre cielené úlohy, nie pre dlhé texty.",
+                "familyHintGemma": "Formát pokynov v štýle Google. Dobrý v sumarizácii a analýze.",
+                "familyHintStarcoder": "Zameraný na dopĺňanie kódu. Pre najlepšie výsledky uveďte kontext súboru a importy."
             },
             "copy": "Kopírovať",
             "attachImage": "Priložiť obrázok",
@@ -3033,7 +3092,8 @@
                 "general": "Všeobecné",
                 "typeSlash": "Zadajte / pre použitie šablón",
                 "analyzeUi": "Analýza snímky UI na problémy rozloženia, prístupnosti a UX",
-                "performance": "Analýza kódu na úzke miesta výkonu a optimalizáciu"
+                "performance": "Analýza kódu na úzke miesta výkonu a optimalizáciu",
+                "analysis": "Analýza"
             },
             "costBudget": {
                 "conversationCost": "Náklady konverzácie",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "pred {count} d",
             "recentFileCountMany": "{count} súborov",
             "recentFileCountOne": "{count} súbor",
-            "recentMonthsAgo": "pred {count} mes."
+            "recentMonthsAgo": "pred {count} mes.",
+            "securityArchive": "Archív",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Rýchle",
+            "securityAdvancedDescription": "Odolné voči nonce · Šifrované názvy súborov · 128 MB KDF",
+            "securityParanoidDescription": "Kaskáda AES + ChaCha20 · Dvojité šifrovanie",
+            "securityArchiveDescription": "Deduplikovaný archív · bloky zstd · v3"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Obsah AES-GCM",
             "featureNameCipher": "Názvy AES-SIV",
             "formatVersion": "Formát {version}",
-            "invalidVaultName": "Neplatné znaky v názve trezoru"
+            "invalidVaultName": "Neplatné znaky v názve trezoru",
+            "defaultVaultName": "NovýTrezor"
         },
         "compress": {
             "title": "Komprimovať súbory",
@@ -3952,7 +4018,10 @@
             "threads": "Vlákna",
             "auto": "Auto",
             "solid": "Plný blok",
-            "solidHint": "Lepší pomer pri mnohých malých súboroch, pomalšia náhodná extrakcia."
+            "solidHint": "Lepší pomer pri mnohých malých súboroch, pomalšia náhodná extrakcia.",
+            "formatArchiveOnly": "Iba archív",
+            "formatBestRatio": "Najlepší pomer",
+            "formatSingleFile": "jeden súbor"
         },
         "batchRename": {
             "title": "Hromadné premenovanie",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtrovať operácie",
                 "selected": "vybraté"
-            }
+            },
+            "save": "Uložiť"
         },
         "error": {
             "description": "AeroFTP narazilo na neočakávanú chybu. Môžete sa pokúsiť o obnovu alebo znova načítať aplikáciu.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radialny",
                     "spectrum": "Spektrum",
                     "vortex": "Vir",
-                    "waveform": "Vlna"
+                    "waveform": "Vlna",
+                    "glWaveGlitch": "Vlnové skreslenie",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunel",
+                    "glMetaball": "Metagule",
+                    "glParticles": "Častice"
                 },
                 "volume": "Hlasitost"
             },
@@ -4635,7 +4711,18 @@
                 "off": "VYP",
                 "on": "ZAP",
                 "presets": "Predvoľby",
-                "reset": "Obnoviť na ploche"
+                "reset": "Obnoviť na ploche",
+                "presetFlat": "Ploché",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klasická",
+                "presetBassBoost": "Zosilnenie basov",
+                "presetTrebleBoost": "Zosilnenie výšok",
+                "presetVocal": "Vokály",
+                "presetElectronic": "Elektronická",
+                "presetAcoustic": "Akustická",
+                "presetCustom": "Vlastné"
             },
             "pdf": {
                 "download": "Stiahnit PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Platené",
             "extraFeatures": "Navyše",
             "coreOpsList": "Nahratie, Stiahnutie, Odstránenie, Premenovanie, Presun, Vytvorenie priečinka, Hľadanie",
-            "coreOpsLegend": "Základ = Nahratie, Stiahnutie, Odstránenie, Premenovanie, Presun, Vytvorenie priečinka, Hľadanie"
+            "coreOpsLegend": "Základ = Nahratie, Stiahnutie, Odstránenie, Premenovanie, Presun, Vytvorenie priečinka, Hľadanie",
+            "notes": "Poznámky",
+            "storageClass": "Trieda úložiska",
+            "objectTagging": "Označovanie objektov",
+            "sse": "Šifrovanie na strane servera",
+            "checksum": "Kontrolný súčet",
+            "tierManagement": "Správa úrovní úložiska",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Médiá",
+            "sectionOther": "Ostatné",
+            "trashDetails": {
+                "onedrive": "Disky Business a SharePoint. Microsoft Graph nesprístupňuje kôš disku OneDrive Personal; použite na to web OneDrive"
+            },
+            "shareLinkDetails": {
+                "permissions": "Povolenia: zobrazenie, komentovanie, úpravy",
+                "passwordExpiryPlan": "Heslo + platnosť (vyžaduje sa plán {plan})",
+                "passwordExpiryPaid": "Heslo + platnosť (vyžaduje sa platený plán)",
+                "passwordPersonalExpiryPermissions": "Heslo (iba Personal), platnosť, povolenia",
+                "passwordArgon2ExpiryPresets": "Heslo (Argon2id) + prednastavené platnosti",
+                "passwordExpiryPermissions": "Heslo, platnosť, povolenia",
+                "basicOnly": "Iba základný odkaz na zdieľanie",
+                "publicToggle": "Verejný odkaz (prepnutie súkromia)",
+                "basic": "Základný odkaz na zdieľanie",
+                "expiringDefaultYear": "Odkazy s vypršaním (predvolene 1 rok)",
+                "publishUnpublish": "Publikovať/zrušiť publikovanie",
+                "permanentUrl": "Trvalá URL",
+                "sharedAlbum": "Odkaz na zdieľaný album",
+                "megaPresignedS4": "Odkaz na zdieľanie / vopred podpísaná URL (max. 7 dní pre S4)",
+                "autoPasswordExpiry": "Heslo (automaticky generované) + platnosť",
+                "presigned": "Vopred podpísaná URL (max. 7 dní)"
+            }
         },
         "healthCheck": {
             "title": "Kontrola stavu servera",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Súkromný repozitár",
             "repoPublicTitle": "Verejný repozitár",
             "unpushedCommitsOnBranchMany": "{count} neodoslaných commitov vo vetve {branch}",
-            "unpushedCommitsOnBranchOne": "{count} neodoslaný commit vo vetve {branch}"
+            "unpushedCommitsOnBranchOne": "{count} neodoslaný commit vo vetve {branch}",
+            "cancelWorkflow": "Zrušiť pracovný postup",
+            "rerunWorkflow": "Znova spustiť pracovný postup",
+            "downloadAssetTitle": "Stiahnuť {name}"
         },
         "filenNotes": {
             "title": "Šifrované poznámky",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Vytvorené",
             "manageExpires": "Vyprší",
             "manageNeverExpires": "Nikdy",
-            "managePasswordProtected": "Chránené heslom"
+            "managePasswordProtected": "Chránené heslom",
+            "expirationHoursOne": "{count} hodina",
+            "expirationHoursMany": "{count} hodín",
+            "expirationDaysMany": "{count} dní"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} h",
                 "days": "{count} d",
                 "months": "{count} mes."
-            }
+            },
+            "demoTabLabel": "Ukážka: {protocol}",
+            "newTabLabel": "Nový: {name}"
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Vytvoriť Merge Request",
             "mrTitle": "Názov MR",
             "mrBody": "Popis (voliteľné)",
-            "sourceCode": "Zdrojový kód"
+            "sourceCode": "Zdrojový kód",
+            "downloadAssetTitle": "Stiahnuť {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Nový používateľ",
                 "noUsers": "Zatiaľ žiadni používatelia. Prvého pridáte pomocou tlačidla „Nový používateľ“ nižšie.",
                 "protectionNote": "Váš účet je chránený šifrovaním Argon2id + AES-KW + AES-256-GCM",
-                "users": "Používatelia"
+                "users": "Používatelia",
+                "setup": "Nastavenie"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Režim sa vyberá pri vytváraní pripojenia a zostáva nezmenený počas úpravy uloženého profilu. Ak chcete použiť iný režim, vytvorte nové pripojenie.",
-                "notInBuild": "Nie je súčasťou tohto zostavenia AeroFTP."
+                "notInBuild": "Nie je súčasťou tohto zostavenia AeroFTP.",
+                "header": "Režimy {name}",
+                "nativeApi": "Natívne API",
+                "filelu": {
+                    "apiDescription": "REST API s kľúčom API. Úplná sada funkcií (kôš, odkazy na zdieľanie, súbory chránené heslom).",
+                    "webdavDescription": "Prístup WebDAV na porte 443. Široká kompatibilita s klientmi, dá sa pripojiť ako sieťová jednotka.",
+                    "s3Description": "API kompatibilné s S3 na porte 443. Použite rclone, AWS CLI alebo ľubovoľné S3 SDK.",
+                    "ftpDescription": "Klasické FTP na porte 21. Nešifrované, užitočné pre záznamníky NVR kamerových systémov a staršie klienty."
+                },
+                "filen": {
+                    "apiDescription": "Šifrovanie E2E s nulovou znalosťou (Argon2id v3 / PBKDF2 v2). Kompletné funkcie: kvóta úložiska, kôš, heslá odkazov na zdieľanie, verziovanie, TOTP.",
+                    "webdavDescription": "Most WebDAV sprístupnený aplikáciou Filen Desktop na 127.0.0.1:1900. Vyžaduje spustenú a prihlásenú aplikáciu Filen Desktop.",
+                    "s3Description": "Most kompatibilný s S3 sprístupnený aplikáciou Filen Desktop na 127.0.0.1:1800 cez local.s3.filen.io. Adresovanie podľa cesty, každý priečinok Filen najvyššej úrovne je bucket."
+                },
+                "proton": {
+                    "headerDescription": "Cloudové úložisko Proton s end-to-end šifrovaním",
+                    "apiDescription": "Vlastný klient Proton Drive v AeroFTP: prihlásite sa na stránke Proton v prehliadači, súbory sa šifrujú a dešifrujú na tomto počítači a žiadna iná aplikácia nie je potrebná.",
+                    "cliDescription": "Ovláda oficiálne CLI Proton Drive nainštalované a prihlásené na tomto počítači. Prihlásite sa v prehliadači; AeroFTP nikdy neuvidí vaše heslo k Protonu."
+                },
+                "opendrive": {
+                    "headerDescription": "Cloudové úložisko OpenDrive (5 GB zadarmo)",
+                    "apiDescription": "REST API s používateľským menom + heslom. Kompletné funkcie: kôš, kvóta úložiska, odkazy na zdieľanie, rekurzívne využitie disku.",
+                    "webdavDescription": "Prístup WebDAV cez webdav.opendrive.com na porte 443. Pre staršie klienty alebo na pripojenie ako sieťová jednotka."
+                },
+                "koofr": {
+                    "apiDescription": "REST API so sídlom v EÚ, s e-mailom + heslom aplikácie. Kompletné funkcie: kvóta úložiska, kôš (výpis/obnovenie/vyprázdnenie), odkazy na zdieľanie.",
+                    "webdavDescription": "Prístup WebDAV cez app.koofr.net/dav/Koofr na porte 443. Kvóta úložiska sa stále načítava z REST API Koofr. Pre staršie klienty alebo na pripojenie ako sieťová jednotka."
+                },
+                "mega": {
+                    "headerDescription": "Cloudové úložisko MEGA so šifrovaním na strane klienta",
+                    "apiDescription": "Natívne API MEGA s e-mailom + heslom (+ voliteľne TOTP). Kompletné funkcie: šifrovanie na strane klienta, kvóta úložiska, odkazy na zdieľanie, miniatúry.",
+                    "webdavDescription": "Lokálny most WebDAV poskytovaný oficiálnym CLI MEGAcmd, anonymný na 127.0.0.1. AeroFTP pri pripojení spustí \"mega-webdav /\" za vás, takže nie je potrebný žiadny ručný krok.",
+                    "s4Description": "Objektové úložisko MEGA S4, kompatibilné s S3 (regióny EU/CA). Prístupový kľúč + tajný kľúč + bucket. Vyžaduje plán Pro."
+                }
             }
         },
         "flatpak": {

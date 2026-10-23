@@ -17,15 +17,16 @@ interface SyncSchedulerProps {
 
 const ALL_DAYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
-const INTERVAL_OPTIONS = [
+/** Minute intervals carry a unit label; hour intervals are worded through i18n. */
+const INTERVAL_OPTIONS: { value: number; label?: string; hours?: number }[] = [
     { value: 60, label: '1 min' },
     { value: 300, label: '5 min' },
     { value: 600, label: '10 min' },
     { value: 1800, label: '30 min' },
-    { value: 3600, label: '1 hour' },
-    { value: 7200, label: '2 hours' },
-    { value: 14400, label: '4 hours' },
-    { value: 86400, label: '24 hours' },
+    { value: 3600, hours: 1 },
+    { value: 7200, hours: 2 },
+    { value: 14400, hours: 4 },
+    { value: 86400, hours: 24 },
 ];
 
 function formatCountdown(secs: number): string {
@@ -163,7 +164,7 @@ export const SyncScheduler: React.FC<SyncSchedulerProps> = ({ disabled }) => {
                             disabled={disabled}
                         >
                             {INTERVAL_OPTIONS.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                <option key={opt.value} value={opt.value}>{opt.hours !== undefined ? t(opt.hours === 1 ? 'syncPanel.intervalHoursOne' : 'syncPanel.intervalHoursMany', { count: opt.hours }) : opt.label}</option>
                             ))}
                         </select>
                         <button

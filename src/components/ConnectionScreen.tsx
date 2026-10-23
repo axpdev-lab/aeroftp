@@ -33,7 +33,7 @@ import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
 import { ManualStorageField } from './common/ManualStorageField';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { discoveryRequestParams, discoveryRequestResetKey, type DiscoveryProtocol } from './common/discoveryRequest';
-import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
+import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, modeLabel, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
@@ -1189,8 +1189,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const group = findActiveModeGroup(currentProviderId, protocol);
         if (!group) return protocol;
         const mode = findActiveMode(group, currentProviderId, protocol, connectionParams.options);
-        return mode?.label || protocol;
-    }, [modeChanged, protocol, selectedProviderId, connectionParams.providerId, connectionParams.options]);
+        return mode ? modeLabel(mode, t) : protocol;
+    }, [modeChanged, protocol, selectedProviderId, connectionParams.providerId, connectionParams.options, t]);
 
     const normalizeEndpointForDuplicate = (value?: string) => {
         const raw = (value || '').trim();
@@ -3635,7 +3635,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     // with the canonical group header so it
                                     // does not vanish on the preset-less
                                     // native tab.
-                                    const mh = resolveModeHeader(connectionParams.providerId, connectionParams.protocol);
+                                    const mh = resolveModeHeader(connectionParams.providerId, connectionParams.protocol, t);
                                     const name = mh?.name
                                         || (mh?.providerId ? getProviderById(mh.providerId)?.name : undefined)
                                         || selectedProvider?.name;
@@ -3662,7 +3662,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
                                     imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary', twake: 'Twake Drive',
                                     filelu: 'FileLu', github: 'GitHub', gitlab: 'GitLab',
-                                    mtp: 'Portable device (MTP)',
+                                    mtp: t('protocol.mtpName'),
                                 };
                                 const pid = connectionParams.providerId || '';
                                 // When the active config belongs to a mode
@@ -3673,7 +3673,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 // preset header and a linkless native
                                 // fallback. selectedProvider still drives the
                                 // form fields / connection config.
-                                const modeHeader = resolveModeHeader(connectionParams.providerId, connectionParams.protocol);
+                                const modeHeader = resolveModeHeader(connectionParams.providerId, connectionParams.protocol, t);
                                 const headerProv = modeHeader?.providerId
                                     ? (getProviderById(modeHeader.providerId) || selectedProvider)
                                     : selectedProvider;

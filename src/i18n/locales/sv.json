@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Kopiera denna URL och klistra in den som omdirigerings-URI i inställningarna för din utvecklarapp.",
                 "redirectUriNoteGoogle": "Rekommenderat: Skapa ett OAuth-klient-ID av typen ”Skrivbordsapp” i Google Cloud Console; ingen omdirigerings-URI behöver registreras. För en klient av typen ”Webbapplikation” registrerar du exakt den omdirigerings-URI som visas ovan, inklusive porten och sökvägen /callback.",
                 "enablePhotosApi": "Se till att Photos Library API är aktiverat i din Google Cloud Console.",
-                "enableDriveApi": "Se till att Google Drive API är aktiverat i din Google Cloud Console."
+                "enableDriveApi": "Se till att Google Drive API är aktiverat i din Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "USA",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "Indien",
+                "zohoRegionAu": "Australien",
+                "zohoRegionJp": "Japan",
+                "zohoRegionUk": "Storbritannien",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Saudiarabien"
             },
             "activeSessions": "Aktiva sessioner",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Rekommenderas för maximal säkerhet",
             "fontCustomOption": "Anpassat...",
             "fontSystemInstallHint": "Kräver systeminstallation. AeroFTP faller tillbaka automatiskt om det inte är tillgängligt.",
-            "fontSizeIndicatorLabel": "Teckensnitt"
+            "fontSizeIndicatorLabel": "Teckensnitt",
+            "fontPresetDefault": "{font} (standard)",
+            "fontPresetSystemDefault": "Systemstandard"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Öka teckenstorlek (Ctrl+=)",
                 "newTab": "Ny terminalflik",
                 "sshShellTo": "SSH-skal till {host}",
-                "theme": "Terminaltema"
+                "theme": "Terminaltema",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "Äkta mörk",
+                "themeGreen": "Grön",
+                "themeIce": "Is",
+                "themeRedLava": "Röd lava"
             },
             "editorPanel": {
                 "emptyState": "Högerklicka på en fil och välj \"Visa källa\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(en per rad)",
             "pairsEditorLabel": "Redigerare för AeroCloud-par",
             "remoteSubfolderPlaceholder": "moln",
-            "countdownSoon": "Snart..."
+            "countdownSoon": "Snart...",
+            "aerocloudEnabled": "AeroCloud aktiverat",
+            "selectPairLocalFolder": "Välj lokal mapp för paret",
+            "secondsAgo": "{count}s sedan"
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Forskare, kvalitetssäkringsingenjör, meddesigner"
             },
             "madeBy": "av {author}",
-            "statsLine": "{protocols} protokoll · {languages} språk · AES-256-arkiv"
+            "statsLine": "{protocols} protokoll · {languages} språk · AES-256-arkiv",
+            "dependencyRoles": {
+                "sftpOps": "SFTP-åtgärder",
+                "osKeyring": "OS-nyckelring",
+                "vaultFormat": "Valvformat",
+                "zipArchives": "ZIP-arkiv"
+            }
         },
         "support": {
             "title": "Stöd AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Återställde {files} fil(er) från papperskorgen, {present} fanns redan",
             "trash_restore_detail_folders_present_success": "[{provider}] Återställde {files} fil(er), {folders} mapp(ar) från papperskorgen, {present} fanns redan",
             "filelu_file_password_removed": "[{provider}] Tog bort lösenord för filen",
-            "filelu_folder_password_removed": "[{provider}] Mapplösenord borttaget"
+            "filelu_folder_password_removed": "[{provider}] Mapplösenord borttaget",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} misslyckades",
+            "batch_rename_start": "[{location}] Byter namn på {count} objekt...",
+            "batch_rename_success": "[{location}] Bytte namn på {count} objekt",
+            "batch_rename_error": "[{location}] Bytte namn på {count} objekt, {failed} misslyckades",
+            "compress_details_saved": "{input} → {output} ({percent} % sparat)",
+            "compress_details_grew": "{input} → {output} (växte {percent} %)",
+            "extract_details": "{input} → {output} (uppackad)",
+            "download_details": "({size} på {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdiktion",
             "insecureCertDialogLabel": "Varning för osäkert certifikat",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Verifiering av värdnyckel"
+            "hostKeyDialogLabel": "Verifiering av värdnyckel",
+            "mtpName": "Bärbar enhet (MTP)",
+            "mtpDesc": "Telefon eller kamera via MTP/WPD",
+            "immichDesc": "Självhostad fotohantering",
+            "imagekitDesc": "Medie-CDN + lagring (20 GB gratis)",
+            "uploadcareDesc": "EU-medie-CDN (3 GB gratis)",
+            "cloudinaryDesc": "Medie-CDN (25 krediter/månad gratis)",
+            "backblazeDesc": "Inbyggt Backblaze B2-API v4"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -2416,7 +2458,10 @@
             "add": "Lägg till",
             "remove": "Ta bort",
             "none": "Inga behörigheter angivna",
-            "anyoneWithLink": "Alla med länken"
+            "anyoneWithLink": "Alla med länken",
+            "roleViewer": "Läsare",
+            "roleEditor": "Redigerare",
+            "roleCommenter": "Kommentator"
         },
         "locking": {
             "lock": "Lås fil",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "misslyckade {count}",
             "rollbackRestoreCompleted": "Återställning slutförd: {summary}",
             "rollbackRestoreNothing": "Inget att återställa",
-            "rollbackRestoreFailed": "Återställningen misslyckades: {error}"
+            "rollbackRestoreFailed": "Återställningen misslyckades: {error}",
+            "intervalHoursOne": "{count} timme",
+            "intervalHoursMany": "{count} timmar"
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Stöder bildförståelse",
                 "thinkingReasoning": "Tänkande/Resonemang",
                 "toolQuality": "Verktygskvalitet: {quality}/5",
-                "ollamaNotReachable": "Ollama kan inte nås"
+                "ollamaNotReachable": "Ollama kan inte nås",
+                "macroSafeEditName": "Säker redigering",
+                "macroSafeEditDescription": "Läs en fil, visa dess innehåll och redigera den sedan (säkerhetsmönster: läs före skrivning)",
+                "macroFindReadName": "Hitta och läs",
+                "macroFindReadDescription": "Sök efter filer som matchar ett mönster i en lokal katalog",
+                "familyHintLlama3": "Direkta och koncisa instruktioner fungerar bäst. Använd markdown-formatering. Stöder verktygsanvändning inbyggt.",
+                "familyHintCodellama": "Fokusera på kodgenerering och kodanalys. Ge kodexempel. Använd tekniskt språk.",
+                "familyHintDeepseekCoder": "Stark på resonemang kring kod och problemlösning i flera steg. Strukturerad utdata föredras. För deepseek-r1 fungerar tänkläget automatiskt.",
+                "familyHintQwen": "Stöder strukturerad utdata. Bra på flerspråkiga uppgifter. Använd tydliga avsnittsrubriker.",
+                "familyHintMistral": "Inriktad på att följa instruktioner. Håll prompterna strukturerade med tydliga uppgiftsbeskrivningar.",
+                "familyHintPhi": "Kompakt modell: håll instruktionerna koncisa. Bäst för fokuserade uppgifter, inte långa texter.",
+                "familyHintGemma": "Instruktionsformat i Google-stil. Bra på sammanfattning och analys.",
+                "familyHintStarcoder": "Inriktad på kodkomplettering. Ange filkontext och importer för bästa resultat."
             },
             "copy": "Kopiera",
             "attachImage": "Bifoga bild",
@@ -3033,7 +3092,8 @@
                 "general": "Allmänt",
                 "typeSlash": "Skriv / för att använda mallar",
                 "analyzeUi": "Analysera UI-skärmdump för layout, tillgänglighet och UX-problem",
-                "performance": "Analysera kod för prestandaflaskhalsar och optimering"
+                "performance": "Analysera kod för prestandaflaskhalsar och optimering",
+                "analysis": "Analys"
             },
             "costBudget": {
                 "conversationCost": "Konversationskostnad",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "för {count} d sedan",
             "recentFileCountMany": "{count} filer",
             "recentFileCountOne": "{count} fil",
-            "recentMonthsAgo": "för {count} mån sedan"
+            "recentMonthsAgo": "för {count} mån sedan",
+            "securityArchive": "Arkiv",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Snabb",
+            "securityAdvancedDescription": "Nonce-resistent · Krypterade filnamn · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20-kaskad · Dubbel kryptering",
+            "securityArchiveDescription": "Deduplicerat arkiv · zstd-block · v3"
         },
         "cryptomator": {
             "title": "Cryptomator-valv",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM-innehåll",
             "featureNameCipher": "AES-SIV-namn",
             "formatVersion": "Formatversion {version}",
-            "invalidVaultName": "Ogiltiga tecken i valvets namn"
+            "invalidVaultName": "Ogiltiga tecken i valvets namn",
+            "defaultVaultName": "NyttValv"
         },
         "compress": {
             "title": "Komprimera filer",
@@ -3952,7 +4018,10 @@
             "threads": "Trådar",
             "auto": "Auto",
             "solid": "Solitt block",
-            "solidHint": "Bättre förhållande för många små filer, långsammare slumpvis extrahering."
+            "solidHint": "Bättre förhållande för många små filer, långsammare slumpvis extrahering.",
+            "formatArchiveOnly": "Endast arkiv",
+            "formatBestRatio": "Bästa förhållande",
+            "formatSingleFile": "enskild fil"
         },
         "batchRename": {
             "title": "Massnamnsändring",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtrera åtgärder",
                 "selected": "valda"
-            }
+            },
+            "save": "Spara"
         },
         "error": {
             "description": "AeroFTP stötte på ett oväntat fel. Du kan försöka återhämma eller ladda om programmet.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radiell",
                     "spectrum": "Spektrum",
                     "vortex": "Virvel",
-                    "waveform": "Vågform"
+                    "waveform": "Vågform",
+                    "glWaveGlitch": "Vågstörning",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunnel",
+                    "glMetaball": "Metabollar",
+                    "glParticles": "Partiklar"
                 },
                 "volume": "Volym"
             },
@@ -4635,7 +4711,18 @@
                 "off": "AV",
                 "on": "PÅ",
                 "presets": "Förinställningar",
-                "reset": "Återställ till platt"
+                "reset": "Återställ till platt",
+                "presetFlat": "Platt",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klassisk",
+                "presetBassBoost": "Basförstärkning",
+                "presetTrebleBoost": "Diskantförstärkning",
+                "presetVocal": "Sång",
+                "presetElectronic": "Elektronisk",
+                "presetAcoustic": "Akustisk",
+                "presetCustom": "Anpassad"
             },
             "pdf": {
                 "download": "Ladda ner PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Betald",
             "extraFeatures": "Extra",
             "coreOpsList": "Ladda upp, Ladda ned, Ta bort, Byt namn, Flytta, Skapa mapp, Sök",
-            "coreOpsLegend": "Bas = Ladda upp, Ladda ned, Ta bort, Byt namn, Flytta, Skapa mapp, Sök"
+            "coreOpsLegend": "Bas = Ladda upp, Ladda ned, Ta bort, Byt namn, Flytta, Skapa mapp, Sök",
+            "notes": "Anteckningar",
+            "storageClass": "Lagringsklass",
+            "objectTagging": "Objekttaggning",
+            "sse": "Kryptering på serversidan",
+            "checksum": "Kontrollsumma",
+            "tierManagement": "Hantering av lagringsnivåer",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Medier",
+            "sectionOther": "Övrigt",
+            "trashDetails": {
+                "onedrive": "Business- och SharePoint-enheter. Microsoft Graph exponerar inte papperskorgen för en OneDrive Personal-enhet; använd OneDrive-webbplatsen för den"
+            },
+            "shareLinkDetails": {
+                "permissions": "Behörigheter: visa, kommentera, redigera",
+                "passwordExpiryPlan": "Lösenord + utgångsdatum ({plan}-abonnemang krävs)",
+                "passwordExpiryPaid": "Lösenord + utgångsdatum (betalabonnemang krävs)",
+                "passwordPersonalExpiryPermissions": "Lösenord (endast Personal), utgångsdatum, behörigheter",
+                "passwordArgon2ExpiryPresets": "Lösenord (Argon2id) + förinställda giltighetstider",
+                "passwordExpiryPermissions": "Lösenord, utgångsdatum, behörigheter",
+                "basicOnly": "Endast enkel delningslänk",
+                "publicToggle": "Offentlig länk (växla sekretess)",
+                "basic": "Enkel delningslänk",
+                "expiringDefaultYear": "Länkar som upphör (standard 1 år)",
+                "publishUnpublish": "Publicera/avpublicera",
+                "permanentUrl": "Permanent URL",
+                "sharedAlbum": "Länk till delat album",
+                "megaPresignedS4": "Delningslänk / försignerad URL (max 7 dagar för S4)",
+                "autoPasswordExpiry": "Lösenord (autogenererat) + utgångsdatum",
+                "presigned": "Försignerad URL (max 7 dagar)"
+            }
         },
         "healthCheck": {
             "title": "Serverhälsokontroll",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Privat arkiv",
             "repoPublicTitle": "Offentligt arkiv",
             "unpushedCommitsOnBranchMany": "{count} ej pushade commits på {branch}",
-            "unpushedCommitsOnBranchOne": "{count} ej pushad commit på {branch}"
+            "unpushedCommitsOnBranchOne": "{count} ej pushad commit på {branch}",
+            "cancelWorkflow": "Avbryt arbetsflöde",
+            "rerunWorkflow": "Kör arbetsflöde igen",
+            "downloadAssetTitle": "Ladda ner {name}"
         },
         "filenNotes": {
             "title": "Krypterade anteckningar",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Skapad",
             "manageExpires": "Går ut",
             "manageNeverExpires": "Aldrig",
-            "managePasswordProtected": "Lösenordsskyddad"
+            "managePasswordProtected": "Lösenordsskyddad",
+            "expirationHoursOne": "{count} timme",
+            "expirationHoursMany": "{count} timmar",
+            "expirationDaysMany": "{count} dagar"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} tim",
                 "days": "{count} d",
                 "months": "{count} mån"
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Ny: {name}"
         },
         "gitlab": {
             "projectPath": "Projektsökväg",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Skapa Merge Request",
             "mrTitle": "MR-titel",
             "mrBody": "Beskrivning (valfri)",
-            "sourceCode": "Källkod"
+            "sourceCode": "Källkod",
+            "downloadAssetTitle": "Ladda ner {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Ny användare",
                 "noUsers": "Inga användare än. Använd ”Ny användare” nedan för att lägga till den första.",
                 "protectionNote": "Ditt konto skyddas med Argon2id + AES-KW + AES-256-GCM-kryptering",
-                "users": "Användare"
+                "users": "Användare",
+                "setup": "Konfiguration"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Läget väljs när anslutningen skapas och förblir oförändrat när en sparad profil redigeras. Skapa en ny anslutning för att använda ett annat läge.",
-                "notInBuild": "Ingår inte i den här versionen av AeroFTP."
+                "notInBuild": "Ingår inte i den här versionen av AeroFTP.",
+                "header": "{name}-lägen",
+                "nativeApi": "Inbyggt API",
+                "filelu": {
+                    "apiDescription": "REST-API med API-nyckel. Alla funktioner (papperskorg, delningslänkar, lösenordsskyddade filer).",
+                    "webdavDescription": "WebDAV-åtkomst på port 443. Bred klientkompatibilitet, kan monteras som nätverksenhet.",
+                    "s3Description": "S3-kompatibelt API på port 443. Använd rclone, AWS CLI eller valfritt S3-SDK.",
+                    "ftpDescription": "Klassisk FTP på port 21. Okrypterad, användbar för NVR:er för kameraövervakning och äldre klienter."
+                },
+                "filen": {
+                    "apiDescription": "Zero-knowledge E2E-kryptering (Argon2id v3 / PBKDF2 v2). Alla funktioner: lagringskvot, papperskorg, lösenord för delningslänkar, versionshantering, TOTP.",
+                    "webdavDescription": "WebDAV-brygga som Filen Desktop tillhandahåller på 127.0.0.1:1900. Kräver att Filen Desktop körs och är inloggat.",
+                    "s3Description": "S3-kompatibel brygga som Filen Desktop tillhandahåller på 127.0.0.1:1800 via local.s3.filen.io. Sökvägsbaserad adressering, varje Filen-mapp på översta nivån är en bucket."
+                },
+                "proton": {
+                    "headerDescription": "Proton-molnlagring med end-to-end-kryptering",
+                    "apiDescription": "AeroFTP:s egen Proton Drive-klient: du loggar in på Protons sida i webbläsaren, filer krypteras och dekrypteras på den här datorn och ingen annan app behövs.",
+                    "cliDescription": "Styr den officiella Proton Drive-CLI:n som är installerad och inloggad på den här datorn. Du loggar in i webbläsaren; AeroFTP ser aldrig ditt Proton-lösenord."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive-molnlagring (5 GB gratis)",
+                    "apiDescription": "REST-API med användarnamn + lösenord. Alla funktioner: papperskorg, lagringskvot, delningslänkar, rekursiv diskanvändning.",
+                    "webdavDescription": "WebDAV-åtkomst via webdav.opendrive.com på port 443. För äldre klienter eller för att montera som nätverksenhet."
+                },
+                "koofr": {
+                    "apiDescription": "EU-baserat REST-API med e-post + applösenord. Alla funktioner: lagringskvot, papperskorg (lista/återställ/töm), delningslänkar.",
+                    "webdavDescription": "WebDAV-åtkomst via app.koofr.net/dav/Koofr på port 443. Lagringskvoten läses fortfarande från Koofrs REST-API. För äldre klienter eller för att montera som nätverksenhet."
+                },
+                "mega": {
+                    "headerDescription": "MEGA-molnlagring med kryptering på klientsidan",
+                    "apiDescription": "Inbyggt MEGA-API med e-post + lösenord (+ valfri TOTP). Alla funktioner: kryptering på klientsidan, lagringskvot, delningslänkar, miniatyrer.",
+                    "webdavDescription": "Lokal WebDAV-brygga från den officiella MEGAcmd-CLI:n, anonym på 127.0.0.1. AeroFTP kör \"mega-webdav /\" åt dig vid anslutning, så det finns inget manuellt steg.",
+                    "s4Description": "MEGA S4-objektlagring, S3-kompatibel (regionerna EU/CA). Åtkomstnyckel + hemlig nyckel + bucket. Kräver en Pro-plan."
+                }
             }
         },
         "flatpak": {

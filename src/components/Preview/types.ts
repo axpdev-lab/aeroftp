@@ -79,7 +79,10 @@ export interface PlaybackState {
 
 // Equalizer preset
 export interface EQPreset {
-    name: string;
+    /** Stable id kept in EqualizerState.presetId. */
+    id: string;
+    /** i18n key of the name shown in the preset menu. */
+    labelKey: string;
     bands: number[]; // 10 bands: 32Hz to 16kHz
 }
 
@@ -88,7 +91,8 @@ export interface EqualizerState {
     enabled: boolean;
     bands: number[]; // -12 to +12 dB for each band
     balance: number; // -1 (left) to +1 (right)
-    presetName: string;
+    /** Id of the applied EQPreset, or 'custom' after a manual band change. */
+    presetId: string;
 }
 
 // Stream progress for remote files

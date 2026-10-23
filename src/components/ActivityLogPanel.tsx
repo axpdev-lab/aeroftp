@@ -111,9 +111,9 @@ const FILTER_FALLBACK_LABELS: Record<OperationType, string> = {
 // column and overlapped the message text. Shorten those to fit; anything not
 // listed falls back to the raw type (already short), and `truncate` + a `title`
 // on the badge guarantee no overlap for any future long type.
-const OPERATION_BADGE_LABELS: Record<string, string> = {
-    PROFILE_DUPLICATE: 'Duplicate',
-    PROFILE_SAVE: 'Save',
+const OPERATION_BADGE_LABEL_KEYS: Record<string, string> = {
+    PROFILE_DUPLICATE: 'activityPanel.duplicate',
+    PROFILE_SAVE: 'activityPanel.save',
 };
 
 /**
@@ -505,7 +505,7 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
                 className={`shrink-0 w-20 truncate text-[10px] font-semibold uppercase tracking-wider ${opClass} ${opGlow}`}
                 title={entry.operation}
             >
-                {OPERATION_BADGE_LABELS[entry.operation] ?? entry.operation}
+                {OPERATION_BADGE_LABEL_KEYS[entry.operation] ? t(OPERATION_BADGE_LABEL_KEYS[entry.operation]) : entry.operation}
             </span>
 
             {/* Message with typewriter effect + inline copy button */}

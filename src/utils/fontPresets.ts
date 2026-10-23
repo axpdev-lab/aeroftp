@@ -6,11 +6,19 @@
 // stays a human-only edit.
 
 import { DEFAULT_APP_FONT_FAMILY } from '../hooks/useSettings';
+import { translate } from '../i18n';
 
-export const FONT_PRESETS = [
-    { label: 'Inter (Default)', value: DEFAULT_APP_FONT_FAMILY, bundled: true },
+// Font names are product names and stay as written; the two worded labels are
+// read through the global translator at access time, because Settings indexes
+// this table directly.
+export const FONT_PRESETS: { readonly label: string; value: string; bundled: boolean }[] = [
     {
-        label: 'System Default',
+        get label(): string { return translate('settings.fontPresetDefault', { font: 'Inter' }); },
+        value: DEFAULT_APP_FONT_FAMILY,
+        bundled: true,
+    },
+    {
+        get label(): string { return translate('settings.fontPresetSystemDefault'); },
         value: 'system-ui, -apple-system, sans-serif',
         bundled: true,
     },
