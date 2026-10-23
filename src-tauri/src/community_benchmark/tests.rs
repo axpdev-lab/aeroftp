@@ -71,7 +71,7 @@ fn benchmark_resolve_config_quick_defaults() {
     assert_eq!(cfg.sizes_bytes, vec![10 * 1024 * 1024]);
     assert_eq!(cfg.runs_per_size, 1);
     assert_eq!(cfg.warmup_runs, 0);
-    assert_eq!(cfg.operations, vec!["upload", "download"]);
+    assert_eq!(cfg.operations, vec!["upload", "download", "latency"]);
 }
 
 #[test]
@@ -416,6 +416,8 @@ fn benchmark_report_serializes_to_schema_v1() {
             errors: vec![],
         },
         notes: vec![],
+        signal: None,
+        private_paths: vec![],
     };
     let v: serde_json::Value = serde_json::to_value(&report).unwrap();
     assert!(
@@ -514,6 +516,8 @@ fn test_report(errors: Vec<String>) -> BenchmarkReport {
             errors,
         },
         notes: vec![],
+        signal: None,
+        private_paths: vec![],
     }
 }
 
@@ -532,6 +536,10 @@ mod engine_runs {
         files: BTreeMap<String, Vec<u8>>,
         dirs: BTreeSet<String>,
         uploads: u32,
+        /// Every upload is refused, as by a server out of quota.
+        refuse_uploads: bool,
+        /// Every download waits forever, as from an unreachable server.
+        hang_downloads: bool,
     }
 
     struct MemRemote(Arc<Mutex<Remote>>);
@@ -592,6 +600,9 @@ mod engine_runs {
             l: &str,
             _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            if self.0.lock().unwrap().hang_downloads {
+                std::future::pending::<()>().await;
+            }
             let bytes = self
                 .0
                 .lock()
@@ -617,6 +628,9 @@ mod engine_runs {
             r: &str,
             _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            if self.0.lock().unwrap().refuse_uploads {
+                return Err(ProviderError::Other("quota exceeded".into()));
+            }
             let bytes = std::fs::read(l).map_err(|e| ProviderError::Other(e.to_string()))?;
             let mut remote = self.0.lock().unwrap();
             remote.uploads += 1;
@@ -699,6 +713,8 @@ mod engine_runs {
             engine_override: crate::transfer_router::Override::None,
             check_public_ip: false,
             service: "Custom".into(),
+            connect_ms: None,
+            local_endpoint: false,
             cancel,
         }
     }
@@ -740,7 +756,7 @@ mod engine_runs {
             .iter()
             .map(|r| r.operation.as_str())
             .collect();
-        assert_eq!(ops, vec!["upload", "download"]);
+        assert_eq!(ops, vec!["upload", "download", "latency"]);
         assert!(!outcome.early_abort && !outcome.cancelled);
         assert!(
             outcome.report.summary.errors.is_empty(),
@@ -812,6 +828,131 @@ mod engine_runs {
         assert!(r.files.is_empty(), "{:?}", r.files.keys());
         assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
     }
+
+    #[tokio::test]
+    async fn a_run_probes_latency_and_reports_a_signal() {
+        let (_state, provider) = remote();
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.connect_ms = Some(42.0);
+        let outcome = run(provider, "/data", opts, &Silent).await.unwrap();
+        let report = &outcome.report;
+        assert_eq!(report.results[0].operation, "connect");
+        assert_eq!(report.results[0].latency_ms.p50, 42.0);
+        let latency = report
+            .results
+            .iter()
+            .find(|r| r.operation == "latency")
+            .expect("a latency row");
+        assert_eq!(
+            latency.runs,
+            crate::community_benchmark::engine::BENCHMARK_LATENCY_SAMPLES
+        );
+        let signal = report.signal.as_ref().expect("a signal");
+        // An in-memory round trip is well under 80 ms: four bars.
+        assert_eq!(signal.bars, Some(4));
+        assert!(!signal.local_bridge);
+        assert_eq!(signal.samples, latency.runs);
+    }
+
+    #[tokio::test]
+    async fn a_local_endpoint_gets_no_bars() {
+        let (_state, provider) = remote();
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.local_endpoint = true;
+        let outcome = run(provider, "/data", opts, &Silent).await.unwrap();
+        let signal = outcome.report.signal.expect("a signal");
+        assert!(signal.local_bridge && !signal.metadata_cached);
+        assert_eq!(signal.bars, None);
+    }
+
+    #[tokio::test]
+    async fn a_prefix_folder_the_run_created_is_removed_and_one_it_found_is_kept() {
+        let (state, provider) = remote();
+        state.lock().unwrap().dirs.insert("/keep".into());
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.test_root_prefix = Some("/keep/new/deeper".into());
+        let outcome = run(provider, "/data", opts, &Silent).await.unwrap();
+        assert!(
+            outcome.report.summary.errors.is_empty(),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+        let r = state.lock().unwrap();
+        assert_eq!(
+            r.dirs,
+            BTreeSet::from(["/data".to_string(), "/keep".to_string()])
+        );
+        assert!(r.files.is_empty(), "{:?}", r.files.keys());
+    }
+
+    #[tokio::test]
+    async fn a_refused_upload_is_a_failed_row_and_a_failed_run() {
+        let (state, provider) = remote();
+        state.lock().unwrap().refuse_uploads = true;
+        let outcome = run(
+            provider,
+            "/data",
+            options(BenchmarkLevel::Quick, "1K", None),
+            &Silent,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.failed && outcome.early_abort);
+        let upload = outcome
+            .report
+            .results
+            .iter()
+            .find(|r| r.operation == "upload")
+            .expect("the failed upload is reported");
+        assert_eq!(upload.runs, 0);
+        assert_eq!(upload.errors.fatal, 1);
+        assert!(outcome.report.signal.is_none());
+        let r = state.lock().unwrap();
+        assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn a_server_that_stops_answering_ends_at_the_profile_timeout_and_cleans_up() {
+        let (state, provider) = remote();
+        state.lock().unwrap().hang_downloads = true;
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.profile_timeout_secs = 1;
+        let started = std::time::Instant::now();
+        let outcome = run(provider, "/data", opts, &Silent).await.unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(30));
+        assert!(outcome.timed_out && !outcome.cancelled && !outcome.failed);
+        assert!(outcome
+            .report
+            .summary
+            .errors
+            .iter()
+            .any(|e| e.contains("profile-timeout")));
+        // The upload measured before the hang is kept.
+        assert!(outcome
+            .report
+            .results
+            .iter()
+            .any(|r| r.operation == "upload" && r.runs == 1));
+        let r = state.lock().unwrap();
+        assert!(r.files.is_empty(), "{:?}", r.files.keys());
+        assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn the_json_of_a_run_names_none_of_its_remote_paths() {
+        let (_state, provider) = remote();
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.test_root_prefix = Some("/Private Stuff/bench".into());
+        let outcome = run(provider, "/data", opts, &Silent).await.unwrap();
+        let mut report = outcome.report;
+        report
+            .summary
+            .errors
+            .push("delete of /Private Stuff/bench failed".into());
+        let json = sanitized_reports_json(&report, &[&report]).unwrap();
+        assert!(!json.contains("Private Stuff"), "{json}");
+        assert!(json.contains("<bench-folder>"), "{json}");
+    }
 }
 
 #[test]
@@ -835,4 +976,82 @@ fn a_file_count_alone_replaces_the_size_sweep_and_with_sizes_runs_both() {
         resolve_benchmark_plan(BenchmarkLevel::Quick, None, None, None, None, "64K").unwrap();
     assert_eq!(config.sizes_bytes, vec![10 * 1024 * 1024]);
     assert!(many.is_none());
+}
+
+#[test]
+fn signal_bars_follow_the_thresholds_and_lose_one_when_unsteady() {
+    assert_eq!(benchmark_signal_bars(40.0, 50.0), 4);
+    assert_eq!(benchmark_signal_bars(80.0, 90.0), 4);
+    assert_eq!(benchmark_signal_bars(150.0, 160.0), 3);
+    assert_eq!(benchmark_signal_bars(400.0, 450.0), 2);
+    assert_eq!(benchmark_signal_bars(1200.0, 1300.0), 1);
+    assert_eq!(benchmark_signal_bars(2000.0, 2100.0), 0);
+    // p95 more than twice the median: one bar less.
+    assert_eq!(benchmark_signal_bars(40.0, 120.0), 3);
+    assert_eq!(benchmark_signal_bars(2000.0, 9000.0), 0);
+}
+
+#[test]
+fn loopback_hosts_are_local_bridges_and_others_are_not() {
+    for host in [
+        "127.0.0.1",
+        "http://127.0.0.1:4443/",
+        "localhost",
+        "http://localhost:8080/dav",
+        "[::1]:4443",
+        "::1",
+        "127.0.0.2",
+        "bridge.localhost",
+    ] {
+        assert!(benchmark_is_loopback_host(host), "{host}");
+    }
+    for host in [
+        "jfs.jottacloud.com",
+        "https://webdav.yandex.ru",
+        "192.168.1.10",
+        "10.0.0.1:22",
+        "localhost.example.com",
+    ] {
+        assert!(!benchmark_is_loopback_host(host), "{host}");
+    }
+}
+
+#[test]
+fn urls_ipv6_and_spaced_user_folders_leave_no_trace_and_clock_times_stay() {
+    let report = test_report(vec![
+        "upload failed: error sending request for url (https://nas.example.org:8443/remote.php/dav/files/alice/x)".into(),
+        "connect to 2001:db8:85a3::8a2e:370:7334 refused".into(),
+        "connect to fe80:0:0:0:200:f8ff:fe21:67cf refused".into(),
+        "local temp C:\\Users\\John Smith\\AppData failed".into(),
+        "local temp /home/John Smith/tmp failed".into(),
+        "retry at 12:00:00".into(),
+    ]);
+    let json = sanitized_report_json(&report).unwrap();
+    for gone in [
+        "nas.example.org",
+        "alice",
+        "2001:db8",
+        "fe80:0",
+        "John",
+        "Smith",
+    ] {
+        assert!(!json.contains(gone), "{gone} in {json}");
+    }
+    assert!(json.contains("<redacted-url>"), "{json}");
+    assert!(json.contains("12:00:00"), "{json}");
+    assert!(json.contains("2026-10-08T15:00:00Z"), "{json}");
+}
+
+#[test]
+fn private_paths_are_replaced_longest_first_and_the_root_is_left_alone() {
+    let paths = vec![
+        ("/Work/bench".to_string(), "<bench-folder>"),
+        ("/Work/bench/run-1".to_string(), "<run-folder>"),
+        ("/".to_string(), "<start-path>"),
+    ];
+    let out = scrub_private_paths(
+        "cleanup of /Work/bench/run-1 and /Work/bench at /".to_string(),
+        &paths,
+    );
+    assert_eq!(out, "cleanup of <run-folder> and <bench-folder> at /");
 }

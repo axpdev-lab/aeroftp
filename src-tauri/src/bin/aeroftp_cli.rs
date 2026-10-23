@@ -73,10 +73,11 @@ use axum::{
 use base64::Engine as _;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::community_benchmark::{
-    self, benchmark_mkdir_ladder, benchmark_public_ip, benchmark_service_label,
-    resolve_benchmark_plan, results_have_fatal, sanitized_report_json, BenchmarkEvent,
+    self, benchmark_is_loopback_host, benchmark_mkdir_ladder, benchmark_public_ip,
+    benchmark_service_label, resolve_benchmark_plan, sanitized_reports_json, BenchmarkEvent,
     BenchmarkLevel, BenchmarkObserver, BenchmarkOptions, BenchmarkReport, BenchmarkResult,
-    BENCHMARK_IP_CHANGED_WARNING, BENCHMARK_TOTAL_TIMEOUT_SECS,
+    BenchmarkSignal, BENCHMARK_IP_CHANGED_WARNING, BENCHMARK_SIGNAL_THRESHOLDS_MS,
+    BENCHMARK_TOTAL_TIMEOUT_SECS,
 };
 use ftp_client_gui_lib::dedupe::{self, Modality, SimilarityMode};
 use ftp_client_gui_lib::local_bridge::{
@@ -2508,7 +2509,7 @@ enum Commands {
         /// Override timed runs per (operation, size) tuple
         #[arg(long)]
         runs: Option<u32>,
-        /// Comma-separated operations: upload,download,list,stat,delete
+        /// Comma-separated operations: upload,download,latency,list,stat,delete
         #[arg(long)]
         operations: Option<String>,
         /// Append anonymized environment metadata and print a paste-ready Issue block
@@ -47576,6 +47577,11 @@ impl BenchmarkObserver for CliBenchmarkObserver {
                     );
                 }
             }
+            BenchmarkEvent::LatencyProbe { samples } => {
+                if self.show {
+                    eprintln!("  latency  {} round trips", samples);
+                }
+            }
             BenchmarkEvent::ManyFiles {
                 file_count,
                 file_size,
@@ -47693,12 +47699,23 @@ async fn cmd_benchmark(
     // The saved profile this row is running, when the caller already resolved
     // it. Only the "Server" column reads it; the connect path is unchanged.
     source_profile: Option<&serde_json::Value>,
+    // Ctrl+C: the first press stops the run after its current step and still
+    // cleans the scratch folder up, instead of leaving it on the server.
+    cancelled: &Arc<AtomicBool>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
     let profile_timeout_secs = profile_timeout_override
         .map(|v| v.clamp(60, 86_400))
         .unwrap_or(BENCHMARK_TOTAL_TIMEOUT_SECS);
+    if let Some(asked) = profile_timeout_override {
+        if asked != profile_timeout_secs && !cli.quiet && compare_label.is_none() {
+            eprintln!(
+                "note: --profile-timeout {} is outside 60..86400, using {} s",
+                asked, profile_timeout_secs
+            );
+        }
+    }
     if cli.profile.is_none() && compare_label.is_none() {
         print_error(
             format,
@@ -47748,6 +47765,10 @@ async fn cmd_benchmark(
     // In compare mode the profile to connect comes from `compare_label`, not
     // the global --profile (which stays unset across the whole compare run).
     let profile_for_connect = compare_label.or(cli.profile.as_deref());
+    // The connect is timed: DNS, TCP, TLS and the login, which for some
+    // services (MEGA, an OAuth refresh) is most of what opening a session
+    // costs.
+    let connect_start = std::time::Instant::now();
     let (provider, initial_path, _metadata) =
         match create_and_connect_with("_", cli, profile_for_connect, format, true, synth_profile)
             .await
@@ -47755,6 +47776,15 @@ async fn cmd_benchmark(
             Ok(v) => v,
             Err(code) => return code,
         };
+    let connect_ms = connect_start.elapsed().as_secs_f64() * 1000.0;
+    let local_endpoint = benchmark_profile_str(
+        cli,
+        profile_for_connect,
+        synth_profile,
+        source_profile,
+        "host",
+    )
+    .is_some_and(|host| benchmark_is_loopback_host(&host));
     // Service identity for the "Server" column (issue #277, Ehud): the preset's
     // company when the profile is preconfigured, the provider for a native API,
     // `Custom` for a plain transport aimed at the user's own host. Resolved
@@ -47765,6 +47795,20 @@ async fn cmd_benchmark(
             .as_deref(),
     );
     let protocol = provider.provider_type().to_string();
+
+    // Bridge the Ctrl+C flag to the engine's stop token, as the transfer
+    // commands do: the engine then ends after its current step and cleans up.
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let ctrl_c_watcher = {
+        let token = cancel_token.clone();
+        let flag = cancelled.clone();
+        tokio::spawn(async move {
+            while !flag.load(Ordering::Relaxed) {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+            token.cancel();
+        })
+    };
 
     let options = BenchmarkOptions {
         level,
@@ -47782,37 +47826,34 @@ async fn cmd_benchmark(
         // per-profile probe is skipped.
         check_public_ip: out.is_none(),
         service,
-        cancel: None,
+        connect_ms: Some(connect_ms),
+        local_endpoint,
+        cancel: Some(cancel_token.clone()),
     };
     let observer = CliBenchmarkObserver::new(show);
-    let outcome = match community_benchmark::run(provider, &initial_path, options, &observer).await
-    {
+    let outcome = community_benchmark::run(provider, &initial_path, options, &observer).await;
+    ctrl_c_watcher.abort();
+    let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(msg) => {
             print_error(format, &msg, 4);
             return 4;
         }
     };
+    // 130 for a run the user stopped, 4 when a measured operation failed, 8
+    // when the profile timeout ended it with nothing failed, 0 otherwise.
+    let exit_code = benchmark_exit_code(&outcome);
     let report = outcome.report;
 
-    // The report leaves the process only in its sanitized form: PII patterns
-    // substituted, then swept, and refused if anything still matches.
-    let serialized = match sanitized_report_json(&report) {
+    // The report leaves the process only in its sanitized form: the run's
+    // remote paths replaced, PII patterns substituted, then swept, and
+    // refused if anything still matches.
+    let serialized = match sanitized_reports_json(&report, &[&report]) {
         Ok(s) => s,
         Err(e) => {
             print_error(format, &e, 99);
             return 99;
         }
-    };
-
-    let exit_code = if outcome.early_abort || !report.summary.errors.is_empty() {
-        if results_have_fatal(&report.results) {
-            4
-        } else {
-            0
-        }
-    } else {
-        0
     };
 
     // Multi-profile compare: hand the report to the caller's sink instead of
@@ -47848,6 +47889,21 @@ async fn cmd_benchmark(
     }
 
     exit_code
+}
+
+/// The exit code of one benchmark run: 130 when the user stopped it, 4 when a
+/// measured operation failed, 8 when the profile timeout ended it and nothing
+/// failed, 0 otherwise.
+fn benchmark_exit_code(outcome: &community_benchmark::BenchmarkOutcome) -> i32 {
+    if outcome.cancelled {
+        130
+    } else if outcome.failed {
+        4
+    } else if outcome.timed_out {
+        8
+    } else {
+        0
+    }
 }
 
 /// Transport/protocol label for a report (issue #368 #5): the `provider_type`
@@ -47925,6 +47981,9 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
     for note in &report.notes {
         println!("Note: {}", note);
     }
+    if let Some(signal) = &report.signal {
+        println!("{}", benchmark_signal_line(signal));
+    }
 
     let size_cell = |r: &BenchmarkResult| {
         if r.payload_size_bytes == 0 {
@@ -47933,9 +47992,19 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
             format_size(r.payload_size_bytes)
         }
     };
+    // An operation with no successful run is shown as failed, never as a
+    // 0.0 ms success.
     let mbps_cell = |r: &BenchmarkResult| match &r.throughput_mbps {
+        _ if r.runs == 0 => "failed".to_string(),
         Some(t) => format!("{:.2} / {:.2}", t.p50, t.p95),
         None => "-".to_string(),
+    };
+    let ms_cell = |r: &BenchmarkResult, ms: f64| {
+        if r.runs == 0 {
+            "failed".to_string()
+        } else {
+            format!("{:.1}ms", ms)
+        }
     };
 
     // Single-file ops report throughput (Mbps); many-small-files ops report
@@ -47960,8 +48029,8 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
                     r.operation.clone(),
                     size_cell(r),
                     r.runs.to_string(),
-                    format!("{:.1}ms", r.latency_ms.p50),
-                    format!("{:.1}ms", r.latency_ms.p95),
+                    ms_cell(r, r.latency_ms.p50),
+                    ms_cell(r, r.latency_ms.p95),
                     mbps_cell(r),
                 ]
             })
@@ -47984,9 +48053,13 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
                     r.operation.clone(),
                     size_cell(r),
                     r.runs.to_string(),
-                    format!("{:.1}ms", r.latency_ms.p50),
-                    format!("{:.1}ms", r.latency_ms.p95),
-                    format!("{:.1}", r.files_per_second.unwrap_or(0.0)),
+                    ms_cell(r, r.latency_ms.p50),
+                    ms_cell(r, r.latency_ms.p95),
+                    if r.runs == 0 {
+                        "failed".to_string()
+                    } else {
+                        format!("{:.1}", r.files_per_second.unwrap_or(0.0))
+                    },
                     mbps_cell(r),
                 ]
             })
@@ -48006,6 +48079,53 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
         for e in &report.summary.errors {
             println!("  - {}", e);
         }
+    }
+}
+
+/// Signal bars as text, like a phone's: `▂▄▆█` for four, `▂▄··` for two.
+fn benchmark_bars(bars: u8) -> String {
+    const LEVELS: [char; 4] = ['\u{2582}', '\u{2584}', '\u{2586}', '\u{2588}'];
+    LEVELS
+        .iter()
+        .enumerate()
+        .map(|(i, c)| if (i as u8) < bars { *c } else { '\u{00b7}' })
+        .collect()
+}
+
+/// The comparison cell of a signal: bars and median round trip, or `local`
+/// for a bridge on this machine, whose round trip says nothing about the
+/// service.
+fn benchmark_signal_cell(signal: Option<&BenchmarkSignal>) -> String {
+    match signal {
+        None => "-".to_string(),
+        Some(s) => match s.bars {
+            Some(bars) => format!("{} {:.0} ms", benchmark_bars(bars), s.latency_ms),
+            None if s.metadata_cached => "cache".to_string(),
+            None => format!("local {:.0} ms", s.latency_ms),
+        },
+    }
+}
+
+/// The one-line signal of a run in the text report.
+fn benchmark_signal_line(signal: &BenchmarkSignal) -> String {
+    match signal.bars {
+        Some(bars) => format!(
+            "Signal: {} {:.0} ms (median of {} round trips, jitter {:.0} ms; 4 bars up to {:.0} ms, 1 bar up to {:.0} ms)",
+            benchmark_bars(bars),
+            signal.latency_ms,
+            signal.samples,
+            signal.jitter_ms,
+            BENCHMARK_SIGNAL_THRESHOLDS_MS[0],
+            BENCHMARK_SIGNAL_THRESHOLDS_MS[3],
+        ),
+        None if signal.metadata_cached => format!(
+            "Signal: not measured, this client answers metadata from its own cache ({:.2} ms), so a round trip never reaches the service",
+            signal.latency_ms
+        ),
+        None => format!(
+            "Signal: local bridge, {:.0} ms round trip (it ends on this machine, so it measures the bridge, not the service)",
+            signal.latency_ms
+        ),
     }
 }
 
@@ -48216,11 +48336,13 @@ async fn cmd_benchmark_compare(
     operations_override: Option<&str>,
     consent_publish: bool,
     anonymize_extra: bool,
+    report_path: Option<&str>,
     profile_timeout_override: Option<u64>,
     test_root_prefix_override: Option<&str>,
     pre_delete: bool,
     file_count: Option<u32>,
     file_size: &str,
+    cancelled: &Arc<AtomicBool>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -48374,8 +48496,9 @@ async fn cmd_benchmark_compare(
     // id, e.g. pcloud / mega / s3) disambiguates multi-protocol profiles.
     let sink: std::cell::RefCell<Vec<(String, BenchmarkReport)>> =
         std::cell::RefCell::new(Vec::new());
-    let mut failed: Vec<String> = Vec::new();
-    let mut worst = 0i32;
+    // Profiles that produced no report, with the reason their exit code gives.
+    let mut failed: Vec<(String, &'static str)> = Vec::new();
+    let mut codes: Vec<i32> = Vec::new();
 
     // IP fairness check (issue #368 #1). The reporter's VPN switched country
     // mid-run, silently invalidating every profile measured after the change.
@@ -48406,6 +48529,10 @@ async fn cmd_benchmark_compare(
     let total_profiles = resolved.iter().filter(|result| result.is_ok()).count();
     let mut run_number = 0;
     for (entry, resolved_profile) in plan.iter().zip(resolved) {
+        // Ctrl+C stops the sweep too, not only the profile it lands on.
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
         let i = entry.source_idx;
         let name = profiles[i]
             .get("name")
@@ -48478,12 +48605,19 @@ async fn cmd_benchmark_compare(
             },
             // Already resolved by index above: no second vault open per row.
             Some(&profiles[i]),
+            cancelled,
             cli,
             format,
         )
         .await;
         if sink.borrow().len() == before {
-            failed.push(label);
+            let reason = benchmark_skip_reason(code);
+            // The same `skipped <label>: <reason>` line a skipped mode gets,
+            // which the MCP tool lifts into its result.
+            if !cli.quiet || matches!(format, OutputFormat::Json) {
+                eprintln!("skipped {}: {}", label, reason);
+            }
+            failed.push((label, reason));
         } else {
             // Relabel the report the run just pushed: cmd_benchmark labels it
             // with the profile name it connected by, which is the same for
@@ -48496,7 +48630,10 @@ async fn cmd_benchmark_compare(
                 sink_mut[before].1.mode = Some(entry.mode_label.to_string());
             }
         }
-        worst = worst.max(code);
+        codes.push(code);
+        if code == 130 {
+            break;
+        }
         // Per-profile IP snapshot (issue #277 #16): catch a mid-run change even
         // when it reverts before the sweep ends.
         if let (Some(start), Some(cur)) = (&sweep_start_ip, benchmark_public_ip().await) {
@@ -48514,20 +48651,42 @@ async fn cmd_benchmark_compare(
             _ => false,
         };
 
-    let entries = sink.into_inner();
+    let mut entries = sink.into_inner();
+    // The IP change goes into every report, so a JSON reader (the MCP tool, a
+    // script) learns it too, not only the text table.
+    if ip_changed {
+        for (_, report) in entries.iter_mut() {
+            if !report
+                .summary
+                .errors
+                .iter()
+                .any(|e| e == BENCHMARK_IP_CHANGED_WARNING)
+            {
+                report
+                    .summary
+                    .errors
+                    .push(BENCHMARK_IP_CHANGED_WARNING.to_string());
+            }
+        }
+    }
+    let reports: Vec<&BenchmarkReport> = entries.iter().map(|(_, r)| r).collect();
+    let combined = match sanitized_reports_json(&reports, &reports) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("comparison {}", e), 99);
+            return 99;
+        }
+    };
+    if let Some(path) = report_path {
+        if let Err(e) = std::fs::write(path, &combined) {
+            eprintln!("warning: could not write report to {}: {}", path, e);
+        } else if !cli.quiet {
+            eprintln!("report written to {}", path);
+        }
+    }
 
     match format {
-        OutputFormat::Json => {
-            let reports: Vec<&BenchmarkReport> = entries.iter().map(|(_, r)| r).collect();
-            let combined = match sanitized_report_json(&reports) {
-                Ok(s) => s,
-                Err(e) => {
-                    print_error(format, &format!("comparison {}", e), 99);
-                    return 99;
-                }
-            };
-            println!("{}", combined);
-        }
+        OutputFormat::Json => println!("{}", combined),
         OutputFormat::Text => {
             if !cli.quiet {
                 for (label, report) in &entries {
@@ -48541,7 +48700,10 @@ async fn cmd_benchmark_compare(
                 print_benchmark_comparison(&entries, use_color());
                 if !failed.is_empty() {
                     println!();
-                    println!("Skipped (failed to benchmark): {}", failed.join(", "));
+                    println!("Skipped (failed to benchmark) ({}):", failed.len());
+                    for (label, reason) in &failed {
+                        println!("  {}: {}", label, reason);
+                    }
                 }
                 // --all-protocols: modes that could not be measured are listed
                 // with their reason, so a short table is never mistaken for
@@ -48563,11 +48725,51 @@ async fn cmd_benchmark_compare(
                         )
                     );
                 }
+                if consent_publish && !entries.is_empty() {
+                    print_benchmark_publish_block(&combined);
+                }
             }
         }
     }
 
-    worst
+    benchmark_sweep_exit_code(&codes, entries.len(), failed.len())
+}
+
+/// The exit code of a comparison: 130 when the user stopped it; when nothing
+/// was measured, the worst code of the profiles that failed; 4 when some
+/// profiles were measured and others failed (a partial result); otherwise 8
+/// if a profile stopped at its timeout, else 0.
+fn benchmark_sweep_exit_code(codes: &[i32], measured: usize, failed: usize) -> i32 {
+    if codes.contains(&130) {
+        130
+    } else if measured == 0 {
+        codes.iter().copied().max().unwrap_or(0)
+    } else if failed > 0 || codes.contains(&4) {
+        4
+    } else if codes.contains(&8) {
+        8
+    } else {
+        0
+    }
+}
+
+/// Why a profile produced no report, from the exit code its run ended with.
+/// The full error was printed when it happened; this is the summary line.
+fn benchmark_skip_reason(code: i32) -> &'static str {
+    match code {
+        1 => "connection failed",
+        2 => "path not found",
+        3 => "permission denied",
+        4 => "could not create its scratch folder (see the error above)",
+        5 => "invalid usage or profile/vault error",
+        6 => "authentication failed: re-authorize the profile",
+        7 => "not supported by this provider",
+        8 => "timed out",
+        10 => "server error",
+        11 => "local I/O error (disk space?)",
+        130 => "stopped (Ctrl+C)",
+        _ => "failed (see the error above)",
+    }
 }
 
 /// Render the cross-profile comparison: one row per profile, columns per
@@ -48634,46 +48836,208 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
         );
     }
 
-    let single_ops = ["upload", "download"];
     let has_single = entries.iter().any(|(_, r)| {
         r.results
             .iter()
-            .any(|x| x.files_per_second.is_none() && x.throughput_mbps.is_some())
+            .any(|x| x.files_per_second.is_none() && x.payload_size_bytes > 0)
     });
-    if has_single {
-        let headers = [
-            "profile",
-            "server",
-            "protocol",
-            "upload Mbps",
-            "download Mbps",
-        ];
-        let aligns = [true, true, true, false, false];
+    let has_signal = entries.iter().any(|(_, r)| r.signal.is_some());
+    if has_single || has_signal {
+        // The largest payload measured: on a multi-size level the smallest
+        // one is mostly round-trip time, not throughput.
+        let size = benchmark_comparison_size(entries);
+        let mut headers = vec!["profile", "server", "protocol", "latency"];
+        let mut aligns = vec![true, true, true, true];
+        if has_single {
+            headers.extend(["upload Mbps", "download Mbps"]);
+            aligns.extend([false, false]);
+        }
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|(name, r)| {
-                let cell = |op: &str| {
-                    r.results
-                        .iter()
-                        .find(|x| x.operation == op && x.files_per_second.is_none())
-                        .and_then(|x| x.throughput_mbps.as_ref())
-                        .map(|t| format!("{:.2}", t.p50))
-                        .unwrap_or_else(|| "-".to_string())
-                };
-                vec![
+                let mut row = vec![
                     name.clone(),
                     server_of(r),
                     benchmark_report_access(r),
-                    cell(single_ops[0]),
-                    cell(single_ops[1]),
-                ]
+                    benchmark_signal_cell(r.signal.as_ref()),
+                ];
+                if has_single {
+                    for op in ["upload", "download"] {
+                        row.push(match benchmark_throughput_at(r, op, size) {
+                            Some(Some(mbps)) => format!("{:.2}", mbps),
+                            Some(None) => "failed".to_string(),
+                            None => "-".to_string(),
+                        });
+                    }
+                }
+                row
             })
             .collect();
+        let title = if has_single && size > 0 {
+            format!(
+                "Comparison: latency and single-file throughput at {} (Mbps p50, higher is better)",
+                format_size(size)
+            )
+        } else {
+            "Comparison: latency".to_string()
+        };
+        println!();
+        print_benchmark_table(&title, &headers, &aligns, &rows, color_on);
+        print_benchmark_recommendations(entries, size, color_on);
+    }
+}
+
+/// The payload size the comparison reports throughput at: the largest one
+/// any profile measured.
+fn benchmark_comparison_size(entries: &[(String, BenchmarkReport)]) -> u64 {
+    entries
+        .iter()
+        .flat_map(|(_, r)| r.results.iter())
+        .filter(|x| x.files_per_second.is_none())
+        .map(|x| x.payload_size_bytes)
+        .max()
+        .unwrap_or(0)
+}
+
+/// The median throughput of `operation` at `size` in a report: `None` when it
+/// was not measured, `Some(None)` when it was attempted and failed.
+fn benchmark_throughput_at(
+    report: &BenchmarkReport,
+    operation: &str,
+    size: u64,
+) -> Option<Option<f64>> {
+    report
+        .results
+        .iter()
+        .find(|x| {
+            x.operation == operation && x.files_per_second.is_none() && x.payload_size_bytes == size
+        })
+        .map(|x| {
+            if x.runs == 0 {
+                None
+            } else {
+                x.throughput_mbps.as_ref().map(|t| t.p50)
+            }
+        })
+}
+
+/// What the comparison says for this network, from the measured figures
+/// only: the most responsive service for frequent syncs of small changes,
+/// the fastest for backups (upload) and for restores (download), and for a
+/// service measured over several protocols, which one did best at each.
+/// There is no single "recommended" protocol: it depends on where the run
+/// stands, so the answer comes from the run.
+fn print_benchmark_recommendations(
+    entries: &[(String, BenchmarkReport)],
+    size: u64,
+    color_on: bool,
+) {
+    if entries.len() < 2 {
+        return;
+    }
+    let label =
+        |name: &str, r: &BenchmarkReport| format!("{} ({})", name, benchmark_report_access(r));
+    // Lowest latency, among services reached over the network: a local
+    // bridge or a metadata cache answers from this machine, so only a
+    // signal with bars counts.
+    let latency = |r: &BenchmarkReport| {
+        r.signal
+            .as_ref()
+            .filter(|s| s.bars.is_some())
+            .map(|s| s.latency_ms)
+    };
+    let throughput = |r: &BenchmarkReport, op: &str| benchmark_throughput_at(r, op, size).flatten();
+    let best_low = entries
+        .iter()
+        .filter_map(|(n, r)| latency(r).map(|v| (n, r, v)))
+        .min_by(|a, b| a.2.total_cmp(&b.2));
+    let best_high = |op: &str| {
+        entries
+            .iter()
+            .filter_map(|(n, r)| throughput(r, op).map(|v| (n, r, v)))
+            .max_by(|a, b| a.2.total_cmp(&b.2))
+    };
+    let mut lines: Vec<Vec<String>> = Vec::new();
+    if let Some((n, r, v)) = best_low {
+        lines.push(vec![
+            "frequent sync (lowest latency)".into(),
+            label(n, r),
+            format!("{:.0} ms", v),
+        ]);
+    }
+    if let Some((n, r, v)) = best_high("upload") {
+        lines.push(vec![
+            "backup (fastest upload)".into(),
+            label(n, r),
+            format!("{:.2} Mbps", v),
+        ]);
+    }
+    if let Some((n, r, v)) = best_high("download") {
+        lines.push(vec![
+            "restore (fastest download)".into(),
+            label(n, r),
+            format!("{:.2} Mbps", v),
+        ]);
+    }
+    if !lines.is_empty() {
         println!();
         print_benchmark_table(
-            "Comparison: single-file throughput (Mbps p50, higher is better)",
-            &headers,
-            &aligns,
+            "From this network",
+            &["use", "best here", "measured"],
+            &[true, true, false],
+            &lines,
+            color_on,
+        );
+    }
+
+    // A service measured over two or more protocols: which protocol won each
+    // figure. This is the recommended protocol, for this network.
+    let mut services: Vec<String> = Vec::new();
+    for (_, r) in entries {
+        let service = benchmark_report_service(r);
+        if service != "Custom" && !services.contains(&service) {
+            services.push(service);
+        }
+    }
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    for service in services {
+        let members: Vec<&BenchmarkReport> = entries
+            .iter()
+            .map(|(_, r)| r)
+            .filter(|r| benchmark_report_service(r) == service)
+            .collect();
+        let mut protocols: Vec<String> =
+            members.iter().map(|r| benchmark_report_access(r)).collect();
+        protocols.dedup();
+        if protocols.len() < 2 {
+            continue;
+        }
+        let pick_low = members
+            .iter()
+            .filter_map(|r| latency(r).map(|v| (benchmark_report_access(r), v)))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(p, _)| p);
+        let pick_high = |op: &str| {
+            members
+                .iter()
+                .filter_map(|r| throughput(r, op).map(|v| (benchmark_report_access(r), v)))
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(p, _)| p)
+        };
+        let dash = || "-".to_string();
+        rows.push(vec![
+            service,
+            pick_low.unwrap_or_else(dash),
+            pick_high("upload").unwrap_or_else(dash),
+            pick_high("download").unwrap_or_else(dash),
+        ]);
+    }
+    if !rows.is_empty() {
+        println!();
+        print_benchmark_table(
+            "Best protocol per service, from this network",
+            &["server", "latency", "upload", "download"],
+            &[true, true, true, true],
             &rows,
             color_on,
         );
@@ -48760,8 +49124,27 @@ fn benchmark_profile_provider_id(
     synth_profile: Option<&serde_json::Value>,
     source_profile: Option<&serde_json::Value>,
 ) -> Option<String> {
+    benchmark_profile_str(
+        cli,
+        profile_name,
+        synth_profile,
+        source_profile,
+        "providerId",
+    )
+}
+
+/// One string field of the profile a benchmark row runs: the synthesized
+/// fan-out profile, else the saved one the caller resolved, else the saved
+/// profile looked up by name. `None` when absent or blank.
+fn benchmark_profile_str(
+    cli: &Cli,
+    profile_name: Option<&str>,
+    synth_profile: Option<&serde_json::Value>,
+    source_profile: Option<&serde_json::Value>,
+    key: &str,
+) -> Option<String> {
     let owned = |p: &serde_json::Value| -> Option<String> {
-        p.get("providerId")
+        p.get(key)
             .and_then(|v| v.as_str())
             .map(str::trim)
             .filter(|s| !s.is_empty())
@@ -73633,11 +74016,13 @@ async fn main() {
                     operations.as_deref(),
                     *consent_publish,
                     *anonymize_extra,
+                    report.as_deref(),
                     *profile_timeout,
                     test_root_prefix.as_deref(),
                     *pre_delete,
                     *file_count,
                     file_size,
+                    &cancelled,
                     &cli,
                     format,
                 )
@@ -73660,6 +74045,7 @@ async fn main() {
                     None,
                     None,
                     None,
+                    &cancelled,
                     &cli,
                     format,
                 )
@@ -77075,6 +77461,33 @@ mod tests {
             benchmark_profile_identity(&custom),
             ("Custom".to_string(), "WebDAV".to_string())
         );
+    }
+
+    #[test]
+    fn benchmark_sweep_exit_code_reports_partial_and_stopped_runs() {
+        // Everything measured, nothing failed.
+        assert_eq!(benchmark_sweep_exit_code(&[0, 0], 2, 0), 0);
+        // One profile hit its timeout, nothing failed.
+        assert_eq!(benchmark_sweep_exit_code(&[0, 8], 2, 0), 8);
+        // Some measured, one skipped on auth: partial, not "auth failed".
+        assert_eq!(benchmark_sweep_exit_code(&[0, 6, 0], 2, 1), 4);
+        // A measured profile with a failed transfer.
+        assert_eq!(benchmark_sweep_exit_code(&[4, 0], 2, 0), 4);
+        // Nothing measured: the worst code says why.
+        assert_eq!(benchmark_sweep_exit_code(&[6, 1], 0, 2), 6);
+        // Ctrl+C wins over everything.
+        assert_eq!(benchmark_sweep_exit_code(&[0, 130], 1, 0), 130);
+        assert_eq!(
+            benchmark_skip_reason(6),
+            "authentication failed: re-authorize the profile"
+        );
+    }
+
+    #[test]
+    fn benchmark_bars_render_like_a_phone_signal() {
+        assert_eq!(benchmark_bars(4), "\u{2582}\u{2584}\u{2586}\u{2588}");
+        assert_eq!(benchmark_bars(2), "\u{2582}\u{2584}\u{00b7}\u{00b7}");
+        assert_eq!(benchmark_bars(0), "\u{00b7}\u{00b7}\u{00b7}\u{00b7}");
     }
 
     #[test]

@@ -19,7 +19,10 @@
 
 mod engine;
 
-pub use engine::{run, BenchmarkEvent, BenchmarkObserver, BenchmarkOptions, BenchmarkOutcome};
+pub use engine::{
+    run, BenchmarkEvent, BenchmarkObserver, BenchmarkOptions, BenchmarkOutcome,
+    BENCHMARK_LATENCY_SAMPLES,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -102,6 +105,114 @@ pub struct BenchmarkReport {
     // never user text. Absent when empty. Additive to schema v1.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+    // How responsive the service is from where the run stands (#368): the
+    // round trip of a metadata request, as signal bars. Absent when the run
+    // measured no round trip. Additive to schema v1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal: Option<BenchmarkSignal>,
+    // Remote paths of this run (start path, scratch folders). Shown in the
+    // local text report, replaced by placeholders in every JSON that leaves
+    // the process: a start path can carry an account name
+    // (`/remote.php/dav/files/<user>`).
+    #[serde(skip)]
+    pub private_paths: Vec<(String, &'static str)>,
+}
+
+/// The responsiveness of a service, from the round trip of a metadata request
+/// (`stat` of the file the run just uploaded).
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct BenchmarkSignal {
+    /// 0 to 4 bars, see [`benchmark_signal_bars`]. Absent for a local bridge,
+    /// whose round trip ends on this machine and says nothing about the
+    /// service behind it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bars: Option<u8>,
+    /// Median round trip.
+    pub latency_ms: f64,
+    /// p95 minus median: how much one request can stray from the usual one.
+    pub jitter_ms: f64,
+    /// Timed round trips the figures come from.
+    pub samples: u32,
+    /// The endpoint is a bridge on this machine (MEGAcmd, Filen Desktop, a
+    /// loopback WebDAV or S3 server).
+    pub local_bridge: bool,
+    /// The client answers metadata from a tree it keeps in memory (the
+    /// native MEGA client), so its round trip never reaches the service.
+    /// No bars either. Absent when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub metadata_cached: bool,
+}
+
+/// Median round trip at or under which a service gets N bars, best first.
+pub const BENCHMARK_SIGNAL_THRESHOLDS_MS: [f64; 4] = [80.0, 200.0, 500.0, 1500.0];
+
+/// Signal bars for a metadata round trip: 4 at or under 80 ms, 3 under
+/// 200 ms, 2 under 500 ms, 1 under 1.5 s, 0 above. A service whose slow
+/// requests stray further from its median than the median itself (p95 more
+/// than twice p50) loses one bar: an unsteady service feels slower than its
+/// median says.
+pub fn benchmark_signal_bars(p50_ms: f64, p95_ms: f64) -> u8 {
+    let mut bars = BENCHMARK_SIGNAL_THRESHOLDS_MS
+        .iter()
+        .position(|&limit| p50_ms <= limit)
+        .map_or(0, |i| 4 - i as u8);
+    if bars > 0 && p95_ms - p50_ms > p50_ms.max(1.0) {
+        bars -= 1;
+    }
+    bars
+}
+
+/// The signal of a run, from its latency probe, or from the per-file `stat`
+/// of the many-small-files workload when the run had no size sweep.
+pub fn benchmark_signal_from(
+    results: &[BenchmarkResult],
+    local_bridge: bool,
+    metadata_cached: bool,
+) -> Option<BenchmarkSignal> {
+    let source = results
+        .iter()
+        .find(|r| r.operation == "latency" && r.runs > 0)
+        .or_else(|| {
+            results
+                .iter()
+                .find(|r| r.operation == "stat-all" && r.runs > 0)
+        })?;
+    let stats = &source.latency_ms;
+    Some(BenchmarkSignal {
+        bars: (!local_bridge && !metadata_cached)
+            .then(|| benchmark_signal_bars(stats.p50, stats.p95)),
+        latency_ms: stats.p50,
+        jitter_ms: (stats.p95 - stats.p50).max(0.0),
+        samples: source.runs,
+        local_bridge,
+        metadata_cached,
+    })
+}
+
+/// Whether a profile's host is this machine: a local bridge (MEGAcmd WebDAV,
+/// Filen Desktop, a test server) rather than the service it fronts.
+pub fn benchmark_is_loopback_host(host: &str) -> bool {
+    let h = host.trim();
+    let h = h
+        .split_once("://")
+        .map_or(h, |(_, rest)| rest)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    // Strip the port: `[::1]:4443`, `127.0.0.1:4443`, `localhost:8080`.
+    let h = if let Some(rest) = h.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else if h.matches(':').count() == 1 {
+        h.split(':').next().unwrap_or("")
+    } else {
+        h
+    };
+    let h = h.to_ascii_lowercase();
+    h == "localhost"
+        || h.ends_with(".localhost")
+        || h == "::1"
+        || h.parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 #[derive(Serialize)]
@@ -219,24 +330,24 @@ pub fn resolve_benchmark_config(
         u32,
         Vec<&'static str>,
     ) = match level {
-        BenchmarkLevel::Quick => (vec![10 * mib], 1, 0, vec!["upload", "download"]),
+        BenchmarkLevel::Quick => (vec![10 * mib], 1, 0, vec!["upload", "download", "latency"]),
         BenchmarkLevel::Standard => (
             vec![mib, 100 * mib, gib],
             3,
             1,
-            vec!["upload", "download", "list", "stat", "delete"],
+            vec!["upload", "download", "latency", "list", "stat", "delete"],
         ),
         BenchmarkLevel::Deep => (
             vec![mib, 10 * mib, 100 * mib, gib, 5 * gib],
             5,
             1,
-            vec!["upload", "download", "list", "stat", "delete"],
+            vec!["upload", "download", "latency", "list", "stat", "delete"],
         ),
         BenchmarkLevel::Custom => (
             vec![100 * mib],
             3,
             1,
-            vec!["upload", "download", "list", "stat", "delete"],
+            vec!["upload", "download", "latency", "list", "stat", "delete"],
         ),
     };
 
@@ -279,6 +390,7 @@ pub fn resolve_benchmark_config(
             match trimmed {
                 "upload" => out.push("upload"),
                 "download" => out.push("download"),
+                "latency" => out.push("latency"),
                 "list" => out.push("list"),
                 "stat" => out.push("stat"),
                 "delete" => out.push("delete"),
@@ -717,18 +829,36 @@ fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static s
             "<redacted-ip>",
             "IPv4 address",
         ),
+        // Any URL: a provider error quotes the request it failed on
+        // (`for url (https://host/path)`), which names the host of a
+        // self-hosted server and the remote path.
         (
-            r"/home/[a-zA-Z0-9._-]+/",
-            "/home/<redacted>/",
-            "Linux home path",
+            r#"\b[A-Za-z][A-Za-z0-9+.-]{1,15}://[^\s"'<>\\]+"#,
+            "<redacted-url>",
+            "URL",
+        ),
+        // IPv6: the full eight groups, or a compressed form with a group on
+        // each side of `::`. A clock time (`12:00:00`) has neither.
+        (
+            r"\b(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}\b",
+            "<redacted-ip>",
+            "IPv6 address",
         ),
         (
-            r"C:\\\\Users\\\\[a-zA-Z0-9._-]+",
+            r"\b(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}\b",
+            "<redacted-ip>",
+            "IPv6 address",
+        ),
+        // OS user folders. The name runs to the next separator, so a name
+        // with a space (`/home/John Smith/`) is redacted whole.
+        (r#"/home/[^/"<]+/"#, "/home/<redacted>/", "Linux home path"),
+        (
+            r#"[A-Za-z]:\\\\Users\\\\[^\\"<]+"#,
             r"C:\\Users\\<redacted>",
             "Windows user path",
         ),
         (
-            r"/Users/[a-zA-Z0-9._-]+/",
+            r#"/Users/[^/"<]+/"#,
             "/Users/<redacted>/",
             "macOS user path",
         ),
@@ -784,8 +914,54 @@ pub fn benchmark_sanitization_sweep(serialized: &str) -> Result<(), String> {
 /// every PII pattern substituted, then swept. The error is the reason the
 /// payload was refused, and nothing is returned with it.
 pub fn sanitized_report_json<T: Serialize + ?Sized>(value: &T) -> Result<String, String> {
+    sanitized_report_json_scrubbing(value, &[])
+}
+
+/// [`sanitized_report_json`] for the reports of one or more runs: the remote
+/// paths those runs used (see [`BenchmarkReport::private_paths`]) are replaced
+/// by their placeholders first, wherever they appear, error text included.
+pub fn sanitized_reports_json<T: Serialize + ?Sized>(
+    value: &T,
+    reports: &[&BenchmarkReport],
+) -> Result<String, String> {
+    let paths: Vec<(String, &'static str)> = reports
+        .iter()
+        .flat_map(|r| r.private_paths.iter().cloned())
+        .collect();
+    sanitized_report_json_scrubbing(value, &paths)
+}
+
+/// Replace each remote path in `serialized` by its placeholder, longest path
+/// first so a run folder is not half-replaced by the base folder that
+/// prefixes it. A path is matched in its JSON-escaped form, the form it has
+/// in `serialized`. The root and one-character paths are left alone: they
+/// would match everywhere and identify nothing.
+pub fn scrub_private_paths(serialized: String, paths: &[(String, &'static str)]) -> String {
+    let mut ordered: Vec<(String, &'static str)> = paths
+        .iter()
+        .map(|(path, placeholder)| (path.trim().trim_end_matches('/').to_string(), *placeholder))
+        .filter(|(path, _)| path.trim_start_matches('/').chars().count() > 1)
+        .collect();
+    ordered.sort_by_key(|(path, _)| std::cmp::Reverse(path.len()));
+    ordered.dedup_by(|a, b| a.0 == b.0);
+    let mut out = serialized;
+    for (path, placeholder) in ordered {
+        let escaped = serde_json::to_string(&path).unwrap_or_default();
+        let escaped = escaped.trim_matches('"');
+        if !escaped.is_empty() {
+            out = out.replace(escaped, placeholder);
+        }
+    }
+    out
+}
+
+fn sanitized_report_json_scrubbing<T: Serialize + ?Sized>(
+    value: &T,
+    private_paths: &[(String, &'static str)],
+) -> Result<String, String> {
     let serialized = serde_json::to_string_pretty(value)
         .map_err(|e| format!("could not serialize report: {}", e))?;
+    let serialized = scrub_private_paths(serialized, private_paths);
     // First pass: substitute any PII (emails, IPs, OS path prefixes, cloud
     // tokens) with placeholders. Provider error strings frequently embed the
     // account email or a server IP that has no place in a public benchmark

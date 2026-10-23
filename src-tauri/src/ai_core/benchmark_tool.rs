@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use crate::ai_core::local_tools::{get_str, get_str_opt};
 use crate::ai_core::tools::{ToolCtx, ToolError};
 use crate::community_benchmark::{
-    self, benchmark_service_label, resolve_benchmark_plan, sanitized_report_json, BenchmarkEvent,
-    BenchmarkLevel, BenchmarkObserver, BenchmarkOptions, BENCHMARK_TOTAL_TIMEOUT_SECS,
+    self, benchmark_service_label, resolve_benchmark_plan, BenchmarkEvent, BenchmarkLevel,
+    BenchmarkObserver, BenchmarkOptions, BENCHMARK_TOTAL_TIMEOUT_SECS,
 };
 use crate::util::size::format_size;
 
@@ -154,9 +154,11 @@ pub async fn aeroftp_benchmark(ctx: &dyn ToolCtx, args: &Value) -> Result<Value,
 
     let servers = crate::ai_tools::load_saved_servers().map_err(ToolError::Exec)?;
     let server = crate::ai_tools::find_server_by_name_or_id(&servers, &profile).map_err(invalid)?;
+    let connect_start = std::time::Instant::now();
     let provider = crate::ai_tools::create_temp_provider(&server)
         .await
         .map_err(ToolError::Exec)?;
+    let connect_ms = connect_start.elapsed().as_secs_f64() * 1000.0;
     let service = benchmark_service_label(provider.provider_type(), server.provider_id.as_deref());
     let initial_path = server.initial_path.clone().unwrap_or_default();
 
@@ -178,6 +180,8 @@ pub async fn aeroftp_benchmark(ctx: &dyn ToolCtx, args: &Value) -> Result<Value,
         engine_override: crate::transfer_router::Override::None,
         check_public_ip: true,
         service,
+        connect_ms: Some(connect_ms),
+        local_endpoint: crate::community_benchmark::benchmark_is_loopback_host(&server.host),
         cancel: ctx.cancel_token().cloned(),
     };
     let run = tokio::spawn(async move {
@@ -187,7 +191,9 @@ pub async fn aeroftp_benchmark(ctx: &dyn ToolCtx, args: &Value) -> Result<Value,
         .await
         .map_err(|e| ToolError::Exec(format!("benchmark task ended abnormally: {e}")))?
         .map_err(ToolError::Exec)?;
-    let json = sanitized_report_json(&outcome.report).map_err(ToolError::Exec)?;
+    let json =
+        crate::community_benchmark::sanitized_reports_json(&outcome.report, &[&outcome.report])
+            .map_err(ToolError::Exec)?;
     serde_json::from_str(&json).map_err(|e| ToolError::Exec(e.to_string()))
 }
 
