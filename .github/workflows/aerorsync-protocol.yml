@@ -76,10 +76,14 @@ jobs:
           components: clippy
       - name: Rust cache
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
-        # Blank only for rust-cache: these two change no artefact but would put
-        # this job's key outside the `linux-dev` family (see delta-sync-integration.yml).
+        # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
+        # put this job's key outside the `linux-dev` family (see
+        # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
+        # has it as `always` from dtolnay/rust-toolchain, and cargo refuses an
+        # empty value, which fails rust-cache's `cargo metadata` and drops
+        # Cargo.toml from the key (seen on #1336: 3de865b5-545dcdc9 against
+        # 906c399b-837f71fc).
         env:
-          CARGO_TERM_COLOR: ''
           RUST_BACKTRACE: ''
         with:
           workspaces: './src-tauri -> target'
@@ -157,10 +161,14 @@ jobs:
           toolchain: 1.97.1
       - name: Rust cache
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
-        # Blank only for rust-cache: these two change no artefact but would put
-        # this job's key outside the `linux-dev` family (see delta-sync-integration.yml).
+        # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
+        # put this job's key outside the `linux-dev` family (see
+        # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
+        # has it as `always` from dtolnay/rust-toolchain, and cargo refuses an
+        # empty value, which fails rust-cache's `cargo metadata` and drops
+        # Cargo.toml from the key (seen on #1336: 3de865b5-545dcdc9 against
+        # 906c399b-837f71fc).
         env:
-          CARGO_TERM_COLOR: ''
           RUST_BACKTRACE: ''
         with:
           workspaces: './src-tauri -> target'
@@ -285,10 +293,14 @@ jobs:
       # one the restored dependencies serve.
       - name: Rust cache
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
-        # Blank only for rust-cache: these two change no artefact but would put
-        # this job's key outside the `linux-dev` family (see delta-sync-integration.yml).
+        # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
+        # put this job's key outside the `linux-dev` family (see
+        # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
+        # has it as `always` from dtolnay/rust-toolchain, and cargo refuses an
+        # empty value, which fails rust-cache's `cargo metadata` and drops
+        # Cargo.toml from the key (seen on #1336: 3de865b5-545dcdc9 against
+        # 906c399b-837f71fc).
         env:
-          CARGO_TERM_COLOR: ''
           RUST_BACKTRACE: ''
         with:
           workspaces: './src-tauri -> target'

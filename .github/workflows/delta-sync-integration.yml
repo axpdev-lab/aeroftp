@@ -119,8 +119,11 @@ jobs:
           # same shape joins as a restore-only member (save-if false). Members
           # must hash the same environment: rust-cache puts every non-empty
           # CARGO*/RUST*/CC*/CFLAGS*/CXX*/CMAKE* variable into the key, so a
-          # workflow-level one (CARGO_TERM_COLOR, RUST_BACKTRACE) is blanked on
-          # this step and nowhere else.
+          # workflow-level one that changes no artefact (RUST_BACKTRACE) is
+          # blanked on the rust-cache step and nowhere else. Never blank a CARGO*
+          # one: cargo refuses an empty value and rust-cache's `cargo metadata`
+          # fails, which changes the key too. Check a new member by its
+          # "Cache Key" line, which must match this job's.
           shared-key: linux-dev
           # Saver of the family; PRs restore, only main saves.
           save-if: ${{ github.ref == 'refs/heads/main' }}
