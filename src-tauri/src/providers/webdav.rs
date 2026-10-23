@@ -598,6 +598,11 @@ pub struct WebDavProvider {
     /// cap. Unlike a refusal this may pass, so it is remembered for
     /// [`INFINITY_TIMEOUT_MEMORY`] only, then asked again.
     infinity_timed_out_at: Option<std::time::Instant>,
+    /// The URL the profile was saved with. A MEGAcmd session may connect to
+    /// the path the bridge serves instead (`config.url`), and a reconnect of
+    /// the same session chooses again from this one, so a bridge that moved
+    /// meanwhile is followed rather than the path it served before.
+    profile_url: String,
 }
 
 /// How long a `Depth: infinity` that sent no headers keeps the next scans on
@@ -699,6 +704,7 @@ impl WebDavProvider {
         })?;
 
         let infinity_refused = infinity_refused_from_the_start(config.provider_id.as_deref());
+        let profile_url = config.url.clone();
         Ok(Self {
             config,
             client,
@@ -712,6 +718,7 @@ impl WebDavProvider {
             infinity_headers_timeout: INFINITY_HEADERS_TIMEOUT,
             infinity_refused,
             infinity_timed_out_at: None,
+            profile_url,
         })
     }
 
@@ -3347,15 +3354,18 @@ impl StorageProvider for WebDavProvider {
                             // cannot create folders (MKCOL 404). Connect to the
                             // served path for this session; the saved profile
                             // is left as it is.
-                            if let Some(base) = served.as_deref().and_then(|served| {
-                                super::mega_df::megacmd_served_base(&self.config.url, served)
-                            }) {
+                            let url = super::mega_df::megacmd_session_url(
+                                &self.profile_url,
+                                &self.config.url,
+                                served.as_deref(),
+                            );
+                            if url != self.config.url {
                                 tracing::info!(
                                     "[MEGAcmd] bridge serves the account at {}; connecting there instead of {}",
-                                    base,
+                                    url,
                                     self.config.url
                                 );
-                                self.config.url = base;
+                                self.config.url = url;
                             }
                         }
                         Err(e) => tracing::warn!(

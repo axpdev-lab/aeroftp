@@ -365,6 +365,26 @@ pub(crate) fn megacmd_served_base(profile_url: &str, served_url: &str) -> Option
         .then(|| served_url.trim().trim_end_matches('/').to_string())
 }
 
+/// The URL a MEGAcmd WebDAV session connects to, chosen on every connect from
+/// the profile's own URL, the one the session used so far, and the URL the
+/// bridge reports serving now (`None` when `mega-webdav /` printed none).
+/// Pure, for testing.
+pub(crate) fn megacmd_session_url(
+    profile_url: &str,
+    current_url: &str,
+    served: Option<&str>,
+) -> String {
+    match served {
+        // Always from the profile's URL: after a first move the session's own
+        // URL is a served path, which would make every later move look like a
+        // profile with a path of its own.
+        Some(served) => {
+            megacmd_served_base(profile_url, served).unwrap_or_else(|| profile_url.to_string())
+        }
+        None => current_url.to_string(),
+    }
+}
+
 /// Extract the served WebDAV URL from `mega-webdav /` output. Pure, for testing.
 ///
 /// MEGAcmd prints the address whether the location is freshly served
@@ -728,6 +748,24 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
             None
         );
         assert_eq!(megacmd_served_base("not a url", served), None);
+    }
+
+    #[test]
+    fn a_reconnect_follows_the_path_the_bridge_serves_now() {
+        let root = "http://127.0.0.1:4443/";
+        let first = "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive";
+        let second = "http://127.0.0.1:4443/eFgH5678/Cloud%20Drive";
+        // First connect of a profile saved at the root.
+        assert_eq!(megacmd_session_url(root, root, Some(first)), first);
+        // A reconnect of the same session after the bridge moved (another
+        // account logged in to MEGAcmd): the new path, not the old one.
+        assert_eq!(megacmd_session_url(root, first, Some(second)), second);
+        // A bridge that serves the root again: back to the profile's URL.
+        assert_eq!(megacmd_session_url(root, first, Some(root)), root);
+        // Nothing learned from the bridge: the session keeps its URL.
+        assert_eq!(megacmd_session_url(root, first, None), first);
+        // A profile with a path of its own is never moved.
+        assert_eq!(megacmd_session_url(first, first, Some(second)), first);
     }
 
     #[test]
