@@ -3362,7 +3362,11 @@ async fn scan_remote_files(
             scope.learn_root_listing(&entries);
         }
         for e in entries {
-            if scope.is_root(&e.path) {
+            // Only the root's own entry, in the root listing and under its
+            // own name, is the root itself. The root's path met deeper (a
+            // loop back) or under another name (an alias) is a defective
+            // listing and counts as a scan error below.
+            if depth == 0 && scope.is_root_entry(&e) {
                 continue;
             }
             let Some(rel) = scope.relative_path(&e.path) else {
@@ -7052,6 +7056,37 @@ mod tests {
         }
     }
 
+    /// The root seen again in a listing: its own entry in the root listing
+    /// (`self_entry`), a subfolder that lists the root (a loop back), or a
+    /// root-listing folder with another name and the root's path (an alias).
+    fn root_reference_backend(reference: &str) -> FakeBackend {
+        let mut root_listing = vec![entry("/root/a.txt", false, 4), entry("/root/d1", true, 0)];
+        let mut d1_listing = vec![entry("/root/d1/b.txt", false, 4)];
+        match reference {
+            "self_entry" => root_listing.push(entry("/root", true, 0)),
+            "loop_back" => d1_listing.push(entry("/root", true, 0)),
+            "alias" => {
+                let mut alias = entry("/root", true, 0);
+                alias.name = "d2".to_string();
+                root_listing.push(alias);
+            }
+            other => panic!("unknown reference {other}"),
+        }
+        let tree = std::collections::HashMap::from([
+            ("/root".to_string(), root_listing),
+            ("/root/d1".to_string(), d1_listing),
+        ]);
+        let downloads = std::collections::HashMap::from([
+            ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+            ("/root/d1/b.txt".to_string(), b"bbbb".to_vec()),
+        ]);
+        FakeBackend {
+            tree,
+            downloads,
+            ..FakeBackend::sample()
+        }
+    }
+
     /// A folder whose listing names files of its parent again: the walk has
     /// no reason to refuse the folder, so only the tool itself can keep a file
     /// from being grouped with itself (dedupe) or deleted twice (cleanup).
@@ -7318,7 +7353,8 @@ mod tests {
     /// What a walk of the root holds in each defective listing:
     /// (case, backend, root, files, bytes, folders listed with the root,
     /// entries refused, diagnostic scan errors). Diagnostics silently skip
-    /// the root itself; other walks still count it as refused. A folder that
+    /// only the root's own entry; a folder named otherwise but listed with
+    /// the root's path is an error for them too. A folder that
     /// loops back or sits outside the root
     /// is refused, and so is a file outside it; one named twice is listed
     /// once, which loses nothing.
@@ -7352,7 +7388,7 @@ mod tests {
                 8,
                 1,
                 1,
-                0,
+                1,
             ),
             (
                 "a folder named twice",
@@ -7523,6 +7559,55 @@ mod tests {
                 .iter()
                 .any(|risk| risk.as_str().unwrap().contains("partial"));
             assert_eq!(partial, refused > 0, "{case}: {report}");
+        }
+    }
+
+    /// The diagnostic scans skip only the root's own entry in the root
+    /// listing. The root's path listed by a subfolder (a loop back) or under
+    /// another name in the root listing (an alias) is a defective listing:
+    /// `sync_doctor` asks for attention and `reconcile` is partial, instead
+    /// of reporting a complete scan.
+    #[tokio::test]
+    async fn diagnostics_skip_only_the_roots_own_entry() {
+        for (reference, errors) in [("self_entry", 0), ("loop_back", 1), ("alias", 1)] {
+            let local = tempfile::tempdir().expect("tempdir");
+            let args = json!({
+                "server": "srv",
+                "local_dir": local.path().to_string_lossy(),
+                "remote_dir": "/root",
+            });
+            let doctor = sync_doctor(
+                &test_ctx(Arc::new(root_reference_backend(reference))),
+                &args,
+            )
+            .await
+            .expect("the doctor runs");
+            assert_eq!(
+                doctor["summary"]["remote_files"], 2,
+                "{reference}: {doctor}"
+            );
+            assert_eq!(
+                doctor["summary"]["remote_scan_errors"], errors,
+                "{reference}: {doctor}"
+            );
+            let expected = if errors > 0 { "attention" } else { "ok" };
+            assert_eq!(doctor["status"], expected, "{reference}: {doctor}");
+            let report = reconcile(
+                &test_ctx(Arc::new(root_reference_backend(reference))),
+                &args,
+            )
+            .await
+            .expect("reconcile runs");
+            assert_eq!(
+                report["summary"]["remote_scan_errors"], errors,
+                "{reference}: {report}"
+            );
+            let expected = if errors > 0 {
+                "partial"
+            } else {
+                "differences_found"
+            };
+            assert_eq!(report["status"], expected, "{reference}: {report}");
         }
     }
 

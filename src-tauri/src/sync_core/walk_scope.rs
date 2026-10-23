@@ -230,10 +230,12 @@ impl WalkScope {
     /// A well-formed self entry or object marker for this scope's root.
     /// An alias with another name still reaches the walk's refusal guards.
     pub fn is_root_entry(&self, entry: &RemoteEntry) -> bool {
+        if !self.is_root(&entry.path) {
+            return false;
+        }
         let identity = walk_path_key(&entry.path);
         let name = entry.name.trim_end_matches('/');
-        self.identities.contains(&identity)
-            && (name.is_empty() || name == "." || identity.rsplit('/').next() == Some(name))
+        name.is_empty() || name == "." || identity.rsplit('/').next() == Some(name)
     }
 
     /// Map a strict descendant to the local name under this walk's root.

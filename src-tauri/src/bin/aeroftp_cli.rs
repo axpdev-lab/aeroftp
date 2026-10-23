@@ -63800,7 +63800,11 @@ async fn scan_doctor_remote_tree(
             scope.learn_root_listing(&listed);
         }
         for e in listed {
-            if scope.is_root(&e.path) {
+            // Only the root's own entry, in the root listing and under its
+            // own name, is the root itself. The root's path met deeper (a
+            // loop back) or under another name (an alias) is a defective
+            // listing and counts as a scan error below.
+            if depth == 0 && scope.is_root_entry(&e) {
                 continue;
             }
             let Some(relative) = scope.relative_path(&e.path) else {
@@ -93212,10 +93216,19 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             for outside in [false, true] {
                 let marker = format!("{spelled}/");
                 let file = format!("{spelled}/a.txt");
+                // The root's own entries, each under its own name: the
+                // provider's spelling, an object marker with no name, and the
+                // root as the caller spelled it.
+                let own_name = |path: &'static str| {
+                    path.trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(path)
+                };
                 let mut entries = vec![
-                    ("root", spelled, None),
-                    ("marker", marker.as_str(), Some(0)),
-                    ("root", root, None),
+                    (own_name(spelled), spelled, None),
+                    ("", marker.as_str(), Some(0)),
+                    (own_name(root), root, None),
                     ("a.txt", file.as_str(), Some(4)),
                 ];
                 if outside {
@@ -93233,6 +93246,33 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 );
                 assert_eq!(scan.is_complete(), !outside);
             }
+        }
+    }
+
+    /// The CLI doctor scan skips only the root's own entry in the root
+    /// listing: the root's path listed by a subfolder (a loop back) or under
+    /// another name in the root listing (an alias) counts as a listing error.
+    #[tokio::test]
+    async fn requested54_cli_scan_counts_a_root_loop_or_alias_as_an_error() {
+        for (reference, errors) in [("self", 0usize), ("loop", 1), ("alias", 1)] {
+            let mut root_entries =
+                vec![("a.txt", "/root/a.txt", Some(4)), ("d1", "/root/d1", None)];
+            let mut d1_entries = vec![("b.txt", "/root/d1/b.txt", Some(4))];
+            match reference {
+                "self" => root_entries.push(("root", "/root", None)),
+                "loop" => d1_entries.push(("root", "/root", None)),
+                _ => root_entries.push(("d2", "/root", None)),
+            }
+            let mut remote =
+                listed_remote(&[("/root", &root_entries), ("/root/d1", &d1_entries)], &[]);
+            let (files, scan) =
+                scan_doctor_remote_tree(&mut remote, "/root", &SyncExcludes::default(), 100, 100)
+                    .await;
+            let mut keys = files.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            assert_eq!(keys, ["a.txt", "d1/b.txt"], "{reference}");
+            assert_eq!(scan.list_errors, errors, "{reference}");
+            assert_eq!(scan.is_complete(), errors == 0, "{reference}");
         }
     }
 
