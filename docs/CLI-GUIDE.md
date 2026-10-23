@@ -1662,6 +1662,8 @@ aeroftp-cli benchmark --profile "Koofr" --all-protocols
 
 The comparison tables and the profile pickers show a **Server** column (who and where: `Koofr`, `TAB.DIGITAL`, `MEGA`, or `Custom` for a plain transport aimed at a host of your own) next to a **Protocol** column (how: `WebDAV`, `SFTP`, `S3`, `OAuth 2.0`, `REST API`). A preconfigured Koofr profile connected over WebDAV reads `Koofr / WebDAV`; a custom WebDAV server reads `Custom / WebDAV`.
 
+On Proton Drive in CLI mode, whose root lists the account's sections where nothing can be written, the scratch folder of a run without `--test-root-prefix`, a relative or empty prefix, and the file `speed` generates all go under My Files, where the session starts; an absolute prefix such as `/my-files/bench` is taken as given.
+
 #### v4.1.0 improvements (#368)
 
 - The scratch base directory is removed after a run (guarded), honouring `--test-root-prefix`.

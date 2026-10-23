@@ -47567,6 +47567,43 @@ async fn wait_until_upload_readable(
     }
 }
 
+/// Where `speed` writes its scratch file. The generated name sits at the root
+/// of every provider but Proton Drive, whose session starts in My Files while
+/// its root lists the account's sections, where no file can go (Requested 79):
+/// there it goes under the start folder. A `--remote-path` is used as given.
+fn speed_scratch_path(base: &CliBase, generated: &str, caller_named: bool) -> String {
+    match base.start_folder() {
+        Some(start) if !caller_named => format!(
+            "{}/{}",
+            start.trim_end_matches('/'),
+            generated.trim_start_matches('/')
+        ),
+        _ => generated.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod speed_scratch_tests {
+    use super::{speed_scratch_path, CliBase};
+
+    #[test]
+    fn the_generated_speed_file_goes_under_the_proton_start_folder() {
+        let proton = CliBase::with_start_folder("/", Some("/my-files".to_string()));
+        let other = CliBase::with_start_folder("/", None);
+        let generated = "/.aeroftp-speedtest-x.dat";
+        assert_eq!(
+            speed_scratch_path(&proton, generated, false),
+            "/my-files/.aeroftp-speedtest-x.dat"
+        );
+        // Native mode starts at its root, My Files.
+        let native = CliBase::with_start_folder("/", Some("/".to_string()));
+        assert_eq!(speed_scratch_path(&native, generated, false), generated);
+        // A path the caller named, and any other provider: as given.
+        assert_eq!(speed_scratch_path(&proton, "/x/y.dat", true), "/x/y.dat");
+        assert_eq!(speed_scratch_path(&other, generated, false), generated);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_single_speed_test(
     url: &str,
@@ -47596,7 +47633,7 @@ async fn run_single_speed_test(
         NamedTempFile::new().map_err(|e| (format!("Cannot create download temp: {}", e), 5))?;
     let download_path = local_download.path().to_path_buf();
 
-    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+    let (mut provider, base) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => {
             return Err((
@@ -47605,6 +47642,7 @@ async fn run_single_speed_test(
             ))
         }
     };
+    let remote_test_path = &speed_scratch_path(&base, remote_test_path, path_is_caller_named);
 
     // Overwrite guard: the test uploads to remote_test_path and then deletes
     // it, so a path that already exists is a real user file about to be
