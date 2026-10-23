@@ -243,10 +243,12 @@ impl GitLabProvider {
     /// Resolve a path relative to current_path.
     fn resolve_path(&self, path: &str) -> String {
         let p = normalise_path(path);
-        if p.is_empty() || p == "/" {
+        // Normalization removes leading slashes, so decide whether the
+        // caller supplied an absolute path before using the normalized form.
+        if path.starts_with('/') {
+            p
+        } else if p.is_empty() {
             self.current_path.clone()
-        } else if p.starts_with('/') {
-            normalise_path(&p)
         } else if self.current_path.is_empty() {
             p
         } else {
@@ -1342,6 +1344,30 @@ mod tests {
         assert_eq!(encode_file_path("src/main.rs"), "src%2Fmain.rs");
         assert_eq!(encode_file_path("a/b/c"), "a%2Fb%2Fc");
         assert_eq!(encode_file_path("Cargo.toml"), "Cargo.toml");
+    }
+
+    #[test]
+    fn absolute_paths_resolve_from_repository_root() {
+        let provider = GitLabProvider::new(GitLabConfig {
+            token: "t".to_string(),
+            api_base: "https://gitlab.com/api/v4".to_string(),
+            project_path: "group/project".to_string(),
+            branch: "main".to_string(),
+            initial_path: Some("nested/current".to_string()),
+            accept_invalid_certs: false,
+        })
+        .unwrap();
+        for (input, expected) in [
+            ("/", ""),
+            ("//", ""),
+            ("/./", ""),
+            ("/other/file.txt", "other/file.txt"),
+            ("other/file.txt", "nested/current/other/file.txt"),
+            ("", "nested/current"),
+            (".", "nested/current"),
+        ] {
+            assert_eq!(provider.resolve_path(input), expected, "{input:?}");
+        }
     }
 
     #[test]

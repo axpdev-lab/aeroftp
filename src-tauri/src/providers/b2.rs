@@ -3420,7 +3420,15 @@ impl StorageProvider for B2Provider {
         }
         let abs = self.resolved_path(path);
         let mut prefix = self.b2_key(&abs);
-        if !prefix.is_empty() && !prefix.ends_with('/') {
+        // Resolve first: empty and dot name the current folder, which may be
+        // the bucket root. Never send an unbounded listing to the delete loop.
+        if prefix.is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "Refusing to recursively delete root '/'. This would erase the entire bucket."
+                    .into(),
+            ));
+        }
+        if !prefix.ends_with('/') {
             prefix.push('/');
         }
         let mut start: Option<String> = None;
@@ -6791,6 +6799,38 @@ mod tests {
         provider.bucket_id = "bucket".into();
         provider.connected = true;
         (provider, changes)
+    }
+
+    /// Root aliases must be refused before listing or hiding any bucket key.
+    #[tokio::test]
+    async fn recursive_delete_refuses_bucket_root_aliases() {
+        for path in ["/", "", ".", "//", "///"] {
+            let (mut provider, changes) = provider_on_a_listing_that_leaks_a_name().await;
+            let outcome = provider.rmdir_recursive(path).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::InvalidPath(_))),
+                "{path:?}: {outcome:?}"
+            );
+            assert!(changes.lock().unwrap().is_empty(), "{path:?}");
+        }
+    }
+
+    /// Empty and dot keep their normal cwd meaning below the bucket root.
+    #[tokio::test]
+    async fn recursive_delete_allows_current_subfolder_but_not_absolute_root() {
+        for path in ["", "."] {
+            let (mut provider, changes) = provider_on_a_listing_that_leaks_a_name().await;
+            provider.current_path = "/other".to_string();
+            provider.rmdir_recursive(path).await.unwrap();
+            assert_eq!(*changes.lock().unwrap(), ["b2_hide_file other/keep.txt"]);
+        }
+        let (mut provider, changes) = provider_on_a_listing_that_leaks_a_name().await;
+        provider.current_path = "/other".to_string();
+        assert!(matches!(
+            provider.rmdir_recursive("/").await,
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert!(changes.lock().unwrap().is_empty());
     }
 
     /// A recursive delete and a folder move act only on names under the
