@@ -1405,7 +1405,9 @@ async fn scan_remote_tree_inventory_internal(
                         cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                     );
                 }
-                eprintln!("[scan_remote_tree] warning: {}", failure.message);
+                if let Some(line) = listing_failure_line(&failure) {
+                    eprintln!("{line}");
+                }
             }
             Some(Err(error)) => {
                 in_flight = in_flight.saturating_sub(1);
@@ -1628,7 +1630,9 @@ async fn scan_remote_tree_locked(
                         cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                     );
                 }
-                eprintln!("[scan_remote_tree] warning: {}", failure.message);
+                if let Some(line) = listing_failure_line(&failure) {
+                    eprintln!("{line}");
+                }
             }
         }
 
@@ -1797,6 +1801,15 @@ struct RemoteScanFailure {
     message: String,
     /// It is the scan root and it does not exist (see [`root_is_absent`]).
     root_absent: bool,
+}
+
+/// The stderr line for a directory that did not list. A scan root that does
+/// not exist is not reported here: whether it is a destination the run is
+/// about to create or a missing source it refuses is the caller's to say,
+/// with its path. "Failed to list" read as an error on a first sync into a
+/// new folder, which is a clean run.
+fn listing_failure_line(failure: &RemoteScanFailure) -> Option<String> {
+    (!failure.root_absent).then(|| format!("[scan_remote_tree] warning: {}", failure.message))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4004,6 +4017,23 @@ pub(crate) mod tests {
                 "the root stays a gap with no name (pool={pool})"
             );
         }
+    }
+
+    /// A root that does not exist prints no "failed to list" warning: the
+    /// caller names it as a new destination or a missing source. Any other
+    /// directory that did not list still warns.
+    #[test]
+    fn a_missing_scan_root_prints_no_listing_warning() {
+        let failure = |root_absent| RemoteScanFailure {
+            rel_prefix: String::new(),
+            message: "failed to list /root/: Path not found: /root".to_string(),
+            root_absent,
+        };
+        assert_eq!(listing_failure_line(&failure(true)), None);
+        assert_eq!(
+            listing_failure_line(&failure(false)).as_deref(),
+            Some("[scan_remote_tree] warning: failed to list /root/: Path not found: /root")
+        );
     }
 
     /// The other side of that refusal: a root that does not exist is the empty

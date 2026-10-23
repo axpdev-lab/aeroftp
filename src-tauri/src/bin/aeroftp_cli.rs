@@ -52214,6 +52214,29 @@ async fn cmd_sync(
         "download" => local_boundaries.root_missing,
         _ => false,
     };
+    // The scan no longer warns about a root that does not exist; the run
+    // says what it means here, with the path.
+    if !quiet {
+        for (side, path, missing) in [
+            ("local", local, local_boundaries.root_missing),
+            ("remote", remote, remote_boundaries.root_missing),
+        ] {
+            if !missing {
+                continue;
+            }
+            let is_destination = matches!(
+                (direction, side),
+                ("upload", "remote") | ("download", "local")
+            );
+            if is_destination {
+                eprintln!(
+                    "Note: the {side} folder {path} does not exist yet; this run creates it."
+                );
+            } else {
+                eprintln!("Note: the {side} folder {path} does not exist.");
+            }
+        }
+    }
     let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
         local,
         local_scan.entries.iter().map(|(path, _, _)| path.as_str()),
