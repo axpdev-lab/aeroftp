@@ -493,12 +493,17 @@ pub(crate) fn apply_in(
         .filter(|h| belongs(h, &id, &keys))
         .collect();
     let mut writes: Vec<(PathBuf, Vec<u8>)> = Vec::new();
-    // The old files of the histories that move; one without an equivalent
-    // stays where it is.
-    let mut moved: Vec<&Path> = Vec::new();
+    // The old files of the histories that move, with a journal's signature;
+    // one without an equivalent stays where it is.
+    let mut moved: Vec<PathBuf> = Vec::new();
+    let mut originals: HashMap<PathBuf, Vec<u8>> = histories
+        .iter()
+        .map(|h| (h.path.clone(), h.bytes.clone()))
+        .collect();
     for history in &histories {
         let local = history.text("local_path").to_string();
-        let Some(target) = translate_path(history.text("remote_path"), from, to) else {
+        let remote = history.text("remote_path");
+        let Some(target) = translate_path(remote, from, to) else {
             continue;
         };
         let mut rewritten = history.raw.clone();
@@ -508,13 +513,27 @@ pub(crate) fn apply_in(
             history
                 .path
                 .with_file_name(HistoryFile::file_name(history.kind, &local, &target));
+        if history.kind == HistoryKind::Journal {
+            // A journal is signed for its path pair: the signature moves too,
+            // made again for the new pair when it held (see
+            // `moved_journal_signature_in`).
+            let dir = history.path.parent().unwrap_or(Path::new(""));
+            let old_sig = dir.join(crate::sync::journal_sig_filename(&local, remote));
+            if let Ok(old) = std::fs::read(&old_sig) {
+                originals.insert(old_sig.clone(), old);
+                moved.push(old_sig);
+            }
+            let signature = serde_json::from_value::<crate::sync::SyncJournal>(rewritten.clone())
+                .ok()
+                .and_then(|journal| crate::sync::moved_journal_signature_in(dir, &journal, remote));
+            if let Some(signature) = signature {
+                let new_sig = dir.join(crate::sync::journal_sig_filename(&local, &target));
+                writes.push((new_sig, signature));
+            }
+        }
         writes.push((new_path, bytes));
-        moved.push(history.path.as_path());
+        moved.push(history.path.clone());
     }
-    let originals: HashMap<PathBuf, Vec<u8>> = histories
-        .iter()
-        .map(|h| (h.path.clone(), h.bytes.clone()))
-        .collect();
     let new_paths: HashSet<PathBuf> = writes.iter().map(|(path, _)| path.clone()).collect();
 
     let roll_back = |written: &[PathBuf]| {
@@ -579,7 +598,7 @@ pub(crate) fn apply_in(
         return Err(format!("profile not saved, nothing was changed: {e}"));
     }
 
-    for old in moved {
+    for old in &moved {
         if !new_paths.contains(old) {
             if let Err(e) = std::fs::remove_file(old) {
                 tracing::warn!(
@@ -1059,6 +1078,64 @@ mod tests {
         // Never touched: a history that records no profile, and another profile's.
         assert_eq!(read(&legacy)["remote_path"], "/my-files/old");
         assert_eq!(read(&other)["remote_path"], "/my-files/x");
+    }
+
+    /// A journal is signed for its path pair, and Verify reads the signature
+    /// of the pair. A moved journal is signed again for its new pair when its
+    /// signature held, keeps its old bytes (still a mismatch) when it did
+    /// not, and stays unsigned when it was; no old signature is left behind.
+    #[test]
+    fn a_moved_journal_keeps_what_verify_says_of_it() {
+        let f = fixture();
+        let dir = f.dirs.journal.as_path();
+        let save = |local: &str| {
+            let mut journal = crate::sync::SyncJournal::new(
+                local.to_string(),
+                format!("/my-files{}", &local["/home/u".len()..]),
+                crate::sync::CompareDirection::Bidirectional,
+                crate::sync::RetryPolicy::default(),
+                crate::sync::VerifyPolicy::default(),
+            );
+            journal.profile_id = Some("p1".to_string());
+            journal.completed = true;
+            crate::sync::save_sync_journal_in(dir, &journal).unwrap();
+        };
+        let sig =
+            |local: &str, remote: &str| dir.join(crate::sync::journal_sig_filename(local, remote));
+        let verify = |local: &str, remote: &str| {
+            let key = crate::sync::journal_signing_key_in(dir, local, remote).unwrap();
+            crate::sync::verify_journal_signature_in(dir, local, remote, &key)
+        };
+        save("/home/u/a");
+        save("/home/u/b");
+        save("/home/u/c");
+        // b is edited on disk after its last save, c was never signed.
+        let edited = dir.join(crate::sync::journal_filename("/home/u/b", "/my-files/b"));
+        let mut raw = read(&edited);
+        raw["id"] = json!("edited");
+        std::fs::write(&edited, serde_json::to_vec(&raw).unwrap()).unwrap();
+        std::fs::remove_file(sig("/home/u/c", "/my-files/c")).unwrap();
+        assert_eq!(verify("/home/u/a", "/my-files/a"), Ok(true));
+        assert_eq!(verify("/home/u/b", "/my-files/b"), Ok(false));
+
+        apply_in(
+            &f.dirs,
+            &profile(ProtonMode::Cli, "/my-files/a"),
+            ProtonMode::Native,
+            &CloudConfig::default(),
+            &CloudPairsConfig::default(),
+            None,
+            &mut Memory::default(),
+        )
+        .unwrap();
+
+        assert_eq!(verify("/home/u/a", "/a"), Ok(true));
+        assert_eq!(verify("/home/u/b", "/b"), Ok(false));
+        assert!(verify("/home/u/c", "/c").is_err(), "still no signature");
+        for local in ["/home/u/a", "/home/u/b", "/home/u/c"] {
+            let old = format!("/my-files{}", &local["/home/u".len()..]);
+            assert!(!sig(local, &old).exists(), "old signature of {local} left");
+        }
     }
 
     /// A history of the profile in a section with no native equivalent is

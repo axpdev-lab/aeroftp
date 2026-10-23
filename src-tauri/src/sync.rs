@@ -4913,7 +4913,7 @@ pub fn save_sync_journal(journal: &SyncJournal) -> Result<(), String> {
     save_sync_journal_in(&sync_journal_dir()?, journal)
 }
 
-fn save_sync_journal_in(dir: &Path, journal: &SyncJournal) -> Result<(), String> {
+pub(crate) fn save_sync_journal_in(dir: &Path, journal: &SyncJournal) -> Result<(), String> {
     let _lock = JOURNAL_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -4944,6 +4944,29 @@ fn sign_journal_file(dir: &Path, journal: &SyncJournal, sig_path: &Path) -> Resu
     let key = hex::decode(key).map_err(|e| format!("Invalid signing key: {e}"))?;
     let signature = sign_journal(journal, &key)?;
     atomic_write(sig_path, signature.as_bytes())
+}
+
+/// The signature a journal moved to another remote path (a Proton Drive mode
+/// switch) carries for its new path pair in `dir`, so Verify answers after
+/// the move what it answered before: a new signature when the old one held,
+/// the old bytes when they did not (still a mismatch), none when the journal
+/// had none. `moved` is the journal with its new remote path.
+pub(crate) fn moved_journal_signature_in(
+    dir: &Path,
+    moved: &SyncJournal,
+    old_remote: &str,
+) -> Option<Vec<u8>> {
+    let local = moved.local_path.as_str();
+    let old = std::fs::read(dir.join(journal_sig_filename(local, old_remote))).ok()?;
+    let held = journal_signing_key_in(dir, local, old_remote)
+        .and_then(|key| verify_journal_signature_in(dir, local, old_remote, &key))
+        .unwrap_or(false);
+    if !held {
+        return Some(old);
+    }
+    let key = journal_signing_key_in(dir, local, &moved.remote_path).ok()?;
+    let key = hex::decode(key).ok()?;
+    sign_journal(moved, &key).ok().map(String::into_bytes)
 }
 
 /// Delete a journal for a path pair, with its signature.
@@ -6261,7 +6284,7 @@ pub fn journal_signing_key(local_path: &str, remote_path: &str) -> Result<String
     journal_signing_key_in(&sync_journal_dir()?, local_path, remote_path)
 }
 
-fn journal_signing_key_in(
+pub(crate) fn journal_signing_key_in(
     dir: &Path,
     local_path: &str,
     remote_path: &str,
@@ -6291,7 +6314,7 @@ pub fn verify_journal_signature(
     verify_journal_signature_in(&sync_journal_dir()?, local_path, remote_path, signing_key)
 }
 
-fn verify_journal_signature_in(
+pub(crate) fn verify_journal_signature_in(
     dir: &Path,
     local_path: &str,
     remote_path: &str,
