@@ -65,6 +65,12 @@ struct Wire {
     no_volume: bool,
     /// When each route was asked, from the server's start.
     arrivals: Vec<(&'static str, std::time::Duration)>,
+    /// Block indices of every storage request, in arrival order.
+    storage_asked: Vec<usize>,
+    /// `(held, awaited)`: block `held` is answered only once block `awaited`
+    /// was asked (or after 30 s), and whether that happened.
+    hold: Option<(usize, usize)>,
+    hold_released_by_request: Option<bool>,
     started: Option<std::time::Instant>,
     links: HashMap<String, Value>,
     children: HashMap<String, Vec<String>>,
@@ -226,6 +232,26 @@ async fn storage(
     Path((link, revision, index)): Path<(String, String, usize)>,
 ) -> Vec<u8> {
     count(&wire, "storage", &link);
+    let hold = {
+        let mut wire = wire.lock().unwrap();
+        wire.storage_asked.push(index);
+        wire.hold
+    };
+    if let Some((held, awaited)) = hold.filter(|(held, _)| *held == index) {
+        let mut released = false;
+        // The limit only ends a red run: a green one is released by the
+        // request long before it. The double serves real sockets, so the
+        // limit is wall time, kept far above any runner's delay.
+        for _ in 0..3000 {
+            if wire.lock().unwrap().storage_asked.contains(&awaited) {
+                released = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let _ = held;
+        wire.lock().unwrap().hold_released_by_request = Some(released);
+    }
     let wire = wire.lock().unwrap();
     wire.revisions
         .get(&(link, revision))
@@ -560,6 +586,18 @@ impl<P: PGPProviderSync> TestDrive<P> {
             .iter()
             .find(|(asked, _)| *asked == route)
             .map(|(_, at)| *at)
+    }
+
+    /// Answers block `held` only after block `awaited` was asked, waiting at
+    /// most 30 s; [`Self::hold_released_by_request`] then says which came first.
+    pub fn hold_block_until_asked(&self, held: usize, awaited: usize) {
+        self.wire.lock().unwrap().hold = Some((held, awaited));
+    }
+
+    /// Whether the held block was released by the awaited request (`true`) or
+    /// by the time limit (`false`); `None` when it was never asked.
+    pub fn hold_released_by_request(&self) -> Option<bool> {
+        self.wire.lock().unwrap().hold_released_by_request
     }
 
     /// Requests made so far on `route` (`links`, `children`, `revision`,
