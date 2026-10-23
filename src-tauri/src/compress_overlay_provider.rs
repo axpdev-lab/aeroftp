@@ -508,6 +508,20 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.measurement_note()
     }
 
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        self.inner.trash_left_unpurged()
+    }
+
+    fn purges_live_path(&self) -> bool {
+        self.inner.purges_live_path()
+    }
+
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // Without it every purge behind compression was the trait's no-op:
+        // a benchmark or a cleanup left its items in the provider's trash.
+        self.inner.delete_permanent(path).await
+    }
+
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         self.inner.keep_alive().await
     }
@@ -820,17 +834,50 @@ mod tests {
         assert_on_disk_scratch(wire.path());
     }
 
+    /// The benchmark's cleanup goes through the overlay: the trash hooks and
+    /// the purge itself must reach the provider underneath.
+    #[tokio::test]
+    async fn the_overlay_forwards_the_trash_hooks_and_the_purge() {
+        let purged: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let inner = RecordingProvider {
+            content: Vec::new(),
+            download_targets: std::sync::Mutex::new(Vec::new()),
+            trash_note: Some("kept in the trash"),
+            purge_live: true,
+            purged: purged.clone(),
+        };
+        let mut provider = CompressOverlayProvider::new(Box::new(inner), 3);
+        assert_eq!(provider.trash_left_unpurged(), Some("kept in the trash"));
+        assert!(provider.purges_live_path());
+        assert!(provider.delete_permanent("/run/f.txt").await.unwrap());
+        assert_eq!(*purged.lock().unwrap(), vec!["/run/f.txt".to_string()]);
+    }
+
     /// A minimal inner provider whose `download` writes its canned content to
     /// the path it was handed and records that path.
     struct RecordingProvider {
         content: Vec<u8>,
         download_targets: std::sync::Mutex<Vec<String>>,
+        /// Trash hooks, and the paths `delete_permanent` was asked to purge.
+        trash_note: Option<&'static str>,
+        purge_live: bool,
+        purged: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     #[async_trait]
     impl StorageProvider for RecordingProvider {
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
+        }
+        fn trash_left_unpurged(&self) -> Option<&'static str> {
+            self.trash_note
+        }
+        fn purges_live_path(&self) -> bool {
+            self.purge_live
+        }
+        async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+            self.purged.lock().unwrap().push(path.to_string());
+            Ok(true)
         }
         fn provider_type(&self) -> ProviderType {
             ProviderType::Ftp
@@ -938,6 +985,9 @@ mod tests {
         let inner = RecordingProvider {
             content: wire,
             download_targets: std::sync::Mutex::new(Vec::new()),
+            trash_note: None,
+            purge_live: false,
+            purged: Default::default(),
         };
         let mut provider = CompressOverlayProvider::new(Box::new(inner), 3);
 

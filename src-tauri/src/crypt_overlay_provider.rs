@@ -1352,6 +1352,14 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.measurement_note()
     }
 
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        self.inner.trash_left_unpurged()
+    }
+
+    fn purges_live_path(&self) -> bool {
+        self.inner.purges_live_path()
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;
@@ -4215,6 +4223,26 @@ pub(crate) mod tests {
     /// bound scope is encrypted in full by the mapper, so it must classify as
     /// encrypted; absolutizing it first compared a fake `/name` against the
     /// anchor and made download/stat skip the decrypt step.
+    /// The benchmark's cleanup reads these two hooks from the provider it
+    /// holds, which is the overlay: a Proton CLI behind encryption must still
+    /// purge a live path, and a Koofr behind it must still say its trash was
+    /// left.
+    #[test]
+    fn the_overlay_forwards_the_trash_hooks_of_the_inner_provider() {
+        for (label, keys) in both_kinds() {
+            let mut inner = MemProvider::new();
+            inner.trash_note = Some("kept in the trash");
+            inner.purge_live = true;
+            let provider = CryptOverlayProvider::new(Box::new(inner), keys, "/Vault");
+            assert_eq!(
+                provider.trash_left_unpurged(),
+                Some("kept in the trash"),
+                "{label}"
+            );
+            assert!(provider.purges_live_path(), "{label}");
+        }
+    }
+
     #[test]
     fn target_is_encrypted_mirrors_mapper_for_relative_targets() {
         for (label, keys) in both_kinds() {
@@ -4931,6 +4959,9 @@ pub(crate) mod tests {
         before_upload_read: Option<fn(&str)>,
         /// Isolated account-switch regression hook at the first remote await.
         switch_user_on_probe: Option<i64>,
+        /// Trash hooks of the inner provider, to check the overlay forwards them.
+        trash_note: Option<&'static str>,
+        purge_live: bool,
     }
 
     impl MemProvider {
@@ -4947,6 +4978,8 @@ pub(crate) mod tests {
                 download_targets: Mutex::new(Vec::new()),
                 before_upload_read: None,
                 switch_user_on_probe: None,
+                trash_note: None,
+                purge_live: false,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -4996,6 +5029,12 @@ pub(crate) mod tests {
     impl StorageProvider for MemProvider {
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
+        }
+        fn trash_left_unpurged(&self) -> Option<&'static str> {
+            self.trash_note
+        }
+        fn purges_live_path(&self) -> bool {
+            self.purge_live
         }
         fn provider_type(&self) -> ProviderType {
             ProviderType::Ftp

@@ -837,6 +837,9 @@ mod engine_runs {
     enum TrashKind {
         Unpurgeable,
         LivePath,
+        /// Deletes go to the trash and the purge finds an item there by the
+        /// path it had (Google Drive, Dropbox, MEGA and most consumer clouds).
+        OriginalPath,
     }
 
     struct TrashKeepingRemote {
@@ -900,7 +903,9 @@ mod engine_runs {
             self.inner.mkdir(p).await
         }
         async fn delete(&mut self, p: &str) -> Result<(), ProviderError> {
-            self.inner.delete(p).await
+            self.inner.delete(p).await?;
+            self.trash.lock().unwrap().push(p.to_string());
+            Ok(())
         }
         async fn rmdir(&mut self, p: &str) -> Result<(), ProviderError> {
             self.inner.rmdir(p).await
@@ -935,6 +940,12 @@ mod engine_runs {
             self.kind == TrashKind::LivePath
         }
         async fn delete_permanent(&mut self, p: &str) -> Result<bool, ProviderError> {
+            if self.kind == TrashKind::OriginalPath {
+                let mut trash = self.trash.lock().unwrap();
+                let before = trash.len();
+                trash.retain(|t| t != p);
+                return Ok(trash.len() < before);
+            }
             if self.kind != TrashKind::LivePath || !self.inner.exists(p).await? {
                 // Gone already, as after a recursive delete: nothing found.
                 return Ok(false);
@@ -1006,6 +1017,64 @@ mod engine_runs {
         );
         let r = state.lock().unwrap();
         assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
+    }
+
+    fn many_files_options() -> BenchmarkOptions {
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.config.sizes_bytes.clear();
+        opts.many_files = resolve_many_files_config(Some(3), "1K").unwrap();
+        opts
+    }
+
+    #[tokio::test]
+    async fn the_many_files_workload_purges_every_file_it_deleted() {
+        let (state, trash, provider) = trash_remote(TrashKind::OriginalPath);
+        let outcome = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        let ops: Vec<&str> = outcome
+            .report
+            .results
+            .iter()
+            .map(|r| r.operation.as_str())
+            .collect();
+        assert!(ops.contains(&"delete-all"), "{ops:?}");
+        // Each file delete-all sent to the trash is purged after it, and so is
+        // the run folder: nothing of the run is left in the trash.
+        assert!(
+            trash.lock().unwrap().is_empty(),
+            "{:?}",
+            trash.lock().unwrap()
+        );
+        assert!(
+            outcome.report.summary.errors.is_empty(),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+        assert_eq!(
+            state.lock().unwrap().dirs,
+            BTreeSet::from(["/data".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn the_many_files_workload_says_when_its_files_stay_in_the_trash() {
+        for kind in [TrashKind::LivePath, TrashKind::Unpurgeable] {
+            let (_state, _trash, provider) = trash_remote(kind);
+            let outcome = run(provider, "/data", many_files_options(), &Silent)
+                .await
+                .unwrap();
+            assert!(
+                outcome
+                    .report
+                    .summary
+                    .errors
+                    .iter()
+                    .any(|e| e.contains("3 files the many-files workload deleted")),
+                "{:?}",
+                outcome.report.summary.errors
+            );
+        }
     }
 
     #[tokio::test]

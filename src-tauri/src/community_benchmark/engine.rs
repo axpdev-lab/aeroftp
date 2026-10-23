@@ -1552,10 +1552,14 @@ async fn run_many_files_workload(
     // landed, and the final recursive removal is the fallback.
     let mut del_ms: Vec<f64> = Vec::new();
     let mut del_fatal = 0u32;
+    let mut deleted: Vec<u32> = Vec::new();
     for i in 0..uploaded {
         let start = Instant::now();
         match bounded(provider.delete(&remote_name(i))).await {
-            Some(Ok(())) => del_ms.push(start.elapsed().as_secs_f64() * 1000.0),
+            Some(Ok(())) => {
+                del_ms.push(start.elapsed().as_secs_f64() * 1000.0);
+                deleted.push(i);
+            }
             Some(Err(e)) => {
                 del_fatal += 1;
                 out.errors
@@ -1587,5 +1591,62 @@ async fn run_many_files_workload(
         out.runs += del_ms.len() as u32;
     }
 
+    purge_deleted_files(provider, &deleted, &remote_name, &mut out.errors).await;
+
     out
+}
+
+/// After the measured delete-all pass, purge from the trash each file it
+/// deleted: on a soft-delete provider every one is a separate trash item, up
+/// to 5 GiB per run, and purging the run folder later does not take them.
+/// The purge stays outside the timing, so delete-all keeps measuring plain
+/// deletes. A client that purges only a live path (Proton's CLI) or cannot
+/// purge (Koofr) leaves them there, and the report says so.
+async fn purge_deleted_files(
+    provider: &mut Box<dyn StorageProvider>,
+    deleted: &[u32],
+    remote_name: &(dyn Fn(u32) -> String + Sync),
+    errors: &mut Vec<String>,
+) {
+    if deleted.is_empty() {
+        return;
+    }
+    let reason = if provider.purges_live_path() {
+        Some("this client purges an item only before it is deleted")
+    } else {
+        provider.trash_left_unpurged()
+    };
+    if let Some(reason) = reason {
+        errors.push(format!(
+            "{} files the many-files workload deleted stay in the provider's trash: {}",
+            deleted.len(),
+            reason
+        ));
+        return;
+    }
+    let mut failed = 0usize;
+    let mut first_error: Option<String> = None;
+    for &i in deleted {
+        match bounded(provider.delete_permanent(&remote_name(i))).await {
+            Some(Ok(_)) => {}
+            Some(Err(e)) => {
+                failed += 1;
+                first_error.get_or_insert_with(|| e.to_string());
+            }
+            None => {
+                failed += 1;
+                first_error.get_or_insert_with(|| {
+                    format!("no answer within {} s", CLEANUP_STEP_TIMEOUT.as_secs())
+                });
+            }
+        }
+    }
+    if let Some(first) = first_error {
+        errors.push(format!(
+            "trash purge of {} of the {} files the many-files workload deleted failed, check the provider's trash: {}",
+            failed,
+            deleted.len(),
+            first
+        ));
+    }
 }
