@@ -34,6 +34,16 @@ const PATH_CACHE_MAX: usize = 10_000;
 /// Maximum pages to retrieve per listing (100 items/page → 10 000 items max)
 const MAX_LIST_PAGES: u32 = 100;
 
+fn require_another_listing_page(page: u32) -> Result<(), ProviderError> {
+    if page >= MAX_LIST_PAGES {
+        Err(ProviderError::ParseError(
+            "FileLu listing page limit reached before completion".into(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn filelu_log(msg: &str) {
     info!("[FILELU] {}", msg);
 }
@@ -648,6 +658,7 @@ impl FileLuProvider {
             if file_count < 100 && folder_count < 100 {
                 break;
             }
+            require_another_listing_page(page)?;
         }
 
         Ok(FolderListResult {
@@ -695,6 +706,7 @@ impl FileLuProvider {
                 if count < 100 {
                     break;
                 }
+                require_another_listing_page(page)?;
             }
             Ok::<_, ProviderError>(all_files)
         };
@@ -718,6 +730,7 @@ impl FileLuProvider {
                 if count < 100 {
                     break;
                 }
+                require_another_listing_page(page)?;
             }
             Ok::<_, ProviderError>(all_folders)
         };
@@ -760,6 +773,7 @@ impl FileLuProvider {
             if count < 100 {
                 break;
             }
+            require_another_listing_page(page)?;
         }
 
         for page in 1..=MAX_LIST_PAGES {
@@ -779,6 +793,7 @@ impl FileLuProvider {
             if count < 100 {
                 break;
             }
+            require_another_listing_page(page)?;
         }
 
         Ok(FolderListResult {
@@ -2402,6 +2417,34 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_filelu_capped_listing_cannot_prove_absence() {
+        let app = axum::Router::new().fallback(axum::routing::get(|| async {
+            let files: Vec<_> = (0..100).map(|i| serde_json::json!({"name":format!("file-{i}"), "file_code":format!("code-{i}")})).collect();
+            axum::Json(serde_json::json!({"status":200,"msg":"OK","result":{"files":files,"folders":[]}}))
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        assert!(matches!(
+            provider.list_folder_v2("/").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        // The fallback must not turn the same capped listing into absence.
+        let outcome = provider.exists("/beyond-cap").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+    }
+
     use super::*;
 
     /// A connected provider whose cache knows the folders `/src` (fld 11)

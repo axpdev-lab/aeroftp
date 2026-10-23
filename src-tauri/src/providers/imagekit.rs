@@ -316,36 +316,51 @@ impl ImageKitProvider {
 
     async fn list_raw(&self, path: &str) -> Result<Vec<IkFile>, ProviderError> {
         validate_path(path)?;
-        // ImageKit `/files` accepts only `file | file-version | folder | all`
-        // for the `type` query parameter. Sending `file-and-folder` (an
-        // earlier guess from the API docs) gets rejected at runtime with
-        // `Invalid configuration: Your request contains invalid value for
-        // type parameter ...`. `all` returns folders + files in one call,
-        // which is what the rest of this provider already expects.
-        let url = format!(
-            "{}/files?path={}&type=all&limit=1000&skip=0",
-            self.api_base(),
-            urlencoding::encode(path)
-        );
-        let resp = self
-            .auth(self.client.get(url))
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            return Err(self.parse_error(resp).await);
-        }
-
-        let mut items = resp
-            .json::<Vec<IkFile>>()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         let dir = normalize_path(path);
-        for item in &mut items {
-            item.file_path = listed_entry_path(item, &dir)?;
+        let mut skip = 0usize;
+        let mut all = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            // `all` includes files and folders. A full page cannot prove
+            // absence; continue with the documented skip offset.
+            let url = format!(
+                "{}/files?path={}&type=all&limit=1000&skip={skip}",
+                self.api_base(),
+                urlencoding::encode(path)
+            );
+            let response = self
+                .auth(self.client.get(url))
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            if !response.status().is_success() {
+                return Err(self.parse_error(response).await);
+            }
+            let mut page = response
+                .json::<Vec<IkFile>>()
+                .await
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let count = page.len();
+            for item in &mut page {
+                item.file_path = listed_entry_path(item, &dir)?;
+                if !seen.insert((
+                    item.file_id.clone(),
+                    item.file_path.clone(),
+                    item.entry_type.clone(),
+                )) {
+                    return Err(ProviderError::ParseError(
+                        "ImageKit lookup listing repeated an entry".into(),
+                    ));
+                }
+            }
+            all.extend(page);
+            if count < 1000 {
+                return Ok(all);
+            }
+            skip = skip.checked_add(count).ok_or_else(|| {
+                ProviderError::ParseError("ImageKit listing offset overflow".into())
+            })?;
         }
-        Ok(items)
     }
 
     async fn find_entry(&self, path: &str) -> Result<IkFile, ProviderError> {
@@ -1644,6 +1659,42 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_imagekit_searches_beyond_the_first_page() {
+        let app =
+            axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+                let second = uri
+                    .query()
+                    .unwrap_or("")
+                    .split('&')
+                    .any(|q| q == "skip=1000");
+                let names: Vec<_> = if second {
+                    vec!["target".to_string()]
+                } else {
+                    (0..1000).map(|i| format!("first-{i}")).collect()
+                };
+                axum::Json(names.into_iter().map(|name| serde_json::json!({
+                    "fileId":name, "filePath":format!("/{name}"), "name":name,"type":"file"
+                })).collect::<Vec<_>>())
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ImageKitProvider::new(ImageKitConfig {
+            imagekit_id: "test".into(),
+            private_key: SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        p.api_base_override = Some(format!("http://{addr}"));
+        p.connected = true;
+        let outcome = p.exists("/target").await;
+        server.abort();
+        assert!(
+            outcome.unwrap(),
+            "the first page is not the whole directory"
+        );
+    }
+
     use super::*;
 
     #[test]

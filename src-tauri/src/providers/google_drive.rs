@@ -143,6 +143,20 @@ struct DriveFile {
 struct DriveFileList {
     files: Vec<DriveFile>,
     next_page_token: Option<String>,
+    #[serde(default)]
+    incomplete_search: bool,
+}
+
+impl DriveFileList {
+    fn require_complete(&self) -> Result<(), ProviderError> {
+        if self.incomplete_search {
+            Err(ProviderError::ParseError(
+                "Google Drive returned an incomplete search; absence cannot be determined".into(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 /// T-DEBT-05 S1-T02b: Drive returns 429 Too Many Requests, plus 403 with a
@@ -404,7 +418,7 @@ impl GoogleDriveProvider {
 
         loop {
             let mut url = format!(
-                "{}/files?q='{}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,parents,starred,description,properties,md5Checksum,sha1Checksum,sha256Checksum),nextPageToken&pageSize=1000",
+                "{}/files?q='{}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,parents,starred,description,properties,md5Checksum,sha1Checksum,sha256Checksum),nextPageToken,incompleteSearch&pageSize=1000",
                 self.drive_api(), folder_id
             );
 
@@ -428,6 +442,7 @@ impl GoogleDriveProvider {
                 .json()
                 .await
                 .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            list.require_complete()?;
 
             all_files.extend(list.files);
 
@@ -438,32 +453,6 @@ impl GoogleDriveProvider {
         }
 
         Ok(all_files)
-    }
-
-    /// Get file by ID (for future stat implementation)
-    #[allow(dead_code)]
-    async fn get_file(&self, file_id: &str) -> Result<DriveFile, ProviderError> {
-        let url = format!(
-            "{}/files/{}?fields=id,name,mimeType,size,modifiedTime,parents,md5Checksum,sha1Checksum,sha256Checksum",
-            self.drive_api(), file_id
-        );
-
-        let response = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            return Err(ProviderError::NotFound(file_id.to_string()));
-        }
-
-        response
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
     }
 
     /// The file or folder named exactly `name` in `parent_id`. Drive's
@@ -483,31 +472,47 @@ impl GoogleDriveProvider {
             escaped_name, parent_id
         );
 
-        let url = format!(
-            "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents,md5Checksum,sha1Checksum,sha256Checksum)",
+        let base_url = format!(
+            "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents,md5Checksum,sha1Checksum,sha256Checksum),nextPageToken,incompleteSearch&pageSize=1000",
             self.drive_api(),
             urlencoding::encode(&query)
         );
-
-        let response = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-        // A refusal (429, 403 rate limit, 5xx) carries its status and
-        // Retry-After instead of surfacing as a body that does not parse.
-        if !response.status().is_success() {
-            return Err(drive_error_from_response(response, "Lookup failed").await);
+        let mut token: Option<String> = None;
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            let mut url = base_url.clone();
+            if let Some(token) = &token {
+                url.push_str("&pageToken=");
+                url.push_str(&urlencoding::encode(token));
+            }
+            let response = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            if !response.status().is_success() {
+                return Err(drive_error_from_response(response, "Lookup failed").await);
+            }
+            let page: DriveFileList = response
+                .json()
+                .await
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            page.require_complete()?;
+            if let Some(file) = page.files.into_iter().find(|file| file.name == name) {
+                return Ok(Some(file));
+            }
+            match page.next_page_token {
+                Some(next) if !next.is_empty() && seen.insert(next.clone()) => token = Some(next),
+                Some(_) => {
+                    return Err(ProviderError::ParseError(
+                        "Google Drive lookup pagination did not advance".into(),
+                    ))
+                }
+                None => return Ok(None),
+            }
         }
-
-        let list: DriveFileList = response
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-        Ok(list.files.into_iter().find(|file| file.name == name))
     }
 
     /// P2-6: LRU eviction: remove least-recently-accessed half when cache exceeds max
@@ -822,7 +827,7 @@ impl GoogleDriveProvider {
 
         loop {
             let mut url = format!(
-                "{}/files?q=trashed=true&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken&pageSize=1000",
+                "{}/files?q=trashed=true&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken,incompleteSearch&pageSize=1000",
                 self.drive_api()
             );
 
@@ -846,6 +851,7 @@ impl GoogleDriveProvider {
                 .json()
                 .await
                 .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            list.require_complete()?;
 
             for file in &list.files {
                 all_files.push(self.to_remote_entry(file, "/Trash"));
@@ -1179,7 +1185,7 @@ impl GoogleDriveProvider {
         let mut page_token: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let mut url = format!(
-                "{}/files?q={}&fields=files(id,name),nextPageToken&pageSize=100",
+                "{}/files?q={}&fields=files(id,name),nextPageToken,incompleteSearch&pageSize=100",
                 self.drive_api(),
                 urlencoding::encode(&q)
             );
@@ -1200,6 +1206,7 @@ impl GoogleDriveProvider {
             let list: DriveFileList = response.json().await.map_http_err(|e| {
                 ProviderError::Other(format!("Trash search parse error: {}", e))
             })?;
+            list.require_complete()?;
             ids.extend(
                 list.files
                     .into_iter()
@@ -2363,7 +2370,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         loop {
             let mut url = format!(
-                "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken&pageSize=200",
+                "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken,incompleteSearch&pageSize=200",
                 self.drive_api(), urlencoding::encode(&query)
             );
 
@@ -2391,6 +2398,7 @@ impl StorageProvider for GoogleDriveProvider {
                 .json()
                 .await
                 .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            list.require_complete()?;
 
             for file in &list.files {
                 if !super::matches_find_pattern(&file.name, pattern) {
@@ -3207,6 +3215,39 @@ impl StorageProvider for GoogleDriveProvider {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_drive_lookup_follows_later_exact_name_pages() {
+        let (mut provider, _) =
+            provider_on_drive_paged(&[("upper", "A.txt", "root"), ("exact", "a.txt", "root")], 1)
+                .await;
+        let found = provider.stat("/a.txt").await.unwrap();
+        assert_eq!(found.name, "a.txt");
+        assert!(provider.exists("/a.txt").await.unwrap());
+        assert!(!provider.exists("/missing").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn probe_contract_drive_refuses_incomplete_or_stalled_searches() {
+        for incomplete in [false, true] {
+            let app = axum::Router::new().fallback(axum::routing::get(move || async move {
+                axum::Json(serde_json::json!({"files":[], "nextPageToken":"same", "incompleteSearch":incomplete}))
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut provider = test_provider();
+            provider.connected = true;
+            provider.api_origin_override = Some(format!("http://{addr}"));
+            provider.test_access_token = Some("t".into());
+            let outcome = provider.exists("/missing").await;
+            server.abort();
+            assert!(
+                matches!(outcome, Err(ProviderError::ParseError(_))),
+                "{outcome:?}"
+            );
+        }
+    }
+
     use super::*;
 
     /// A replace uploads the new content as a revision of the file already

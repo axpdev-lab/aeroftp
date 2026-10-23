@@ -1442,10 +1442,10 @@ impl FtpProvider {
 
     async fn size_inner(&mut self, path: &str) -> Result<u64, ProviderError> {
         let stream = self.stream_mut()?;
-        let size = stream
-            .size(path)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        let size = stream.size(path).await.map_err(|e| {
+            Self::classify_missing_path("reading size of", path, &e)
+                .unwrap_or_else(|| ProviderError::ServerError(e.to_string()))
+        })?;
         Ok(size as u64)
     }
 }
@@ -7221,6 +7221,28 @@ mod late_reply_guard_tests {
 
 #[cfg(test)]
 mod rename_contract_tests {
+    #[tokio::test]
+    async fn probe_contract_ftp_size_proves_a_missing_path() {
+        let (mut p, _) = provider_on_scripted_server().await;
+        assert_eq!(p.size("/a.txt").await.unwrap(), 3);
+        let outcome = p.size("/missing").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        let quirks = Quirks {
+            size_refused: true,
+            listing_denied: true,
+            ..Quirks::default()
+        };
+        let (mut p, _) = provider_on_server_with(&["/a.txt"], quirks).await;
+        let outcome = p.size("/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ref e) if !matches!(e, ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+    }
+
     use super::*;
     use std::sync::{Arc, Mutex};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

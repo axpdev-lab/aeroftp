@@ -1916,11 +1916,24 @@ impl StorageProvider for JottacloudProvider {
 
         let resp = self.get_with_retry(&url).await?;
 
-        if !resp.status().is_success() {
-            return Ok(vec![]);
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            let detail = format!(
+                "Find {resolved} failed ({status}): {}",
+                sanitize_api_error(&body)
+            );
+            return Err(match status.as_u16() {
+                401 => ProviderError::AuthenticationFailed(detail),
+                403 => ProviderError::PermissionDenied(detail),
+                404 => ProviderError::NotFound(resolved),
+                _ => ProviderError::ServerError(detail),
+            });
         }
 
-        let xml = resp.text().await.unwrap_or_default();
+        let xml = resp.text().await.map_http_err(|e| {
+            ProviderError::ParseError(format!("Could not read Jottacloud find response: {e}"))
+        })?;
         let all_entries = Self::parse_folder_xml(&xml, &resolved);
 
         Ok(all_entries
@@ -3352,6 +3365,35 @@ fn refresh_or_login_token(refresh: Result<bool, ProviderError>) -> Result<bool, 
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_jotta_does_not_report_a_failed_find_as_empty() {
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = hits.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move || {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async { (axum::http::StatusCode::FORBIDDEN, "access denied") }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        p.connected = true;
+        p.token_expiry = Instant::now() + std::time::Duration::from_secs(3600);
+        p.jfs_base_override = Some(format!("http://{addr}"));
+        assert!(p.stat("/target").await.is_err());
+        let outcome = p.find("/target", "*").await;
+        server.abort();
+        assert_eq!(
+            hits.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "both probes reached JFS"
+        );
+        assert!(
+            outcome.is_err(),
+            "a refused scan is not an empty result: {outcome:?}"
+        );
+    }
+
     use super::*;
 
     #[test]

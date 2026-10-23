@@ -37361,24 +37361,11 @@ enum DryRunOutcome {
     NeedsRecursive { children: usize },
 }
 
-/// Some providers (FTP, WebDAV) answer a missing path with `ServerError`
-/// instead of `NotFound`, so the message has to be sniffed too. Shared by the
-/// real delete and by `--dry-run`, which must agree on what "absent" means.
-/// The typed variant first, and the shared vocabulary for everything else.
-///
-/// The list that used to be inline here matched a bare `404`, three digits
-/// anywhere in the message. `message_names_a_missing_path` carries the record
-/// of why that is wrong and the note that the needle came FROM this file; the
-/// tightening was made there and never came back. Asking that function is what
-/// stops the two from drifting apart again.
-///
-/// The variant gate stays: only a `ServerError` or an `Other` has a message
-/// worth reading, and letting every variant's text be searched would find
-/// "not found" inside errors that are about something else entirely.
+/// Only the provider's typed absence permits force-delete to ignore a failure
+/// or a caller-named speed test to write. Error details can mention a missing
+/// service, credentials or metadata without saying this path is absent.
 fn is_not_found_error(e: &ProviderError) -> bool {
     matches!(e, ProviderError::NotFound(_))
-        || (matches!(e, ProviderError::ServerError(_) | ProviderError::Other(_))
-            && ftp_client_gui_lib::providers::types::message_names_a_missing_path(&e.to_string()))
 }
 
 /// The delete scope of `rm`/`purge`, assembled from the GLOBAL filter flags:
@@ -77298,6 +77285,21 @@ fn effective_max_attempts(cli: &Cli, format: OutputFormat) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn probe_contract_cli_requires_typed_absence() {
+        assert!(super::is_not_found_error(&super::ProviderError::NotFound(
+            "/file".into()
+        )));
+        for error in [
+            super::ProviderError::AuthenticationFailed("404 not found".into()),
+            super::ProviderError::PermissionDenied("no such file".into()),
+            super::ProviderError::ServerError("404 not found: metadata service".into()),
+            super::ProviderError::Other("cannot find credentials".into()),
+        ] {
+            assert!(!super::is_not_found_error(&error), "{error}");
+        }
+    }
+
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
 

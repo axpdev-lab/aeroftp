@@ -1437,29 +1437,33 @@ impl FilenProvider {
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !content.status {
-                return Err(ProviderError::NotFound(path.to_string()));
+                return Err(ProviderError::ServerError(
+                    content
+                        .message
+                        .unwrap_or_else(|| "Folder lookup failed".to_string()),
+                ));
             }
 
-            let data = content.data.unwrap_or(DirContentData {
-                folders: vec![],
-                uploads: vec![],
-            });
+            let data = content.data.ok_or_else(|| {
+                ProviderError::ParseError("Filen directory response has no data".to_string())
+            })?;
 
             let mut found = false;
             for folder in &data.folders {
-                if let Some(name) = self.decrypt_folder_name(&folder.name) {
-                    if name == part {
-                        current_uuid = folder.uuid.clone();
-                        self.dir_cache_insert(
-                            built_path.clone(),
-                            DirInfo {
-                                uuid: folder.uuid.clone(),
-                                name: name.clone(),
-                            },
-                        );
-                        found = true;
-                        break;
-                    }
+                let name = self.decrypt_folder_name(&folder.name).ok_or_else(|| {
+                    ProviderError::ParseError("Filen folder name could not be decrypted".into())
+                })?;
+                if name == part {
+                    current_uuid = folder.uuid.clone();
+                    self.dir_cache_insert(
+                        built_path.clone(),
+                        DirInfo {
+                            uuid: folder.uuid.clone(),
+                            name: name.clone(),
+                        },
+                    );
+                    found = true;
+                    break;
                 }
             }
 
@@ -1892,10 +1896,9 @@ impl StorageProvider for FilenProvider {
             ));
         }
 
-        let data = content.data.unwrap_or(DirContentData {
-            folders: vec![],
-            uploads: vec![],
-        });
+        let data = content.data.ok_or_else(|| {
+            ProviderError::ParseError("Filen directory response has no data".to_string())
+        })?;
         filen_log(&format!(
             "list '{}' uuid={}: {} folders, {} files",
             path,
@@ -1911,105 +1914,81 @@ impl StorageProvider for FilenProvider {
             Self::normalize_path(path)
         };
 
-        // Folders
+        // An unreadable name or metadata block may be the requested item.
+        // Omitting it would let an existence probe claim the name is free.
         for folder in data.folders {
-            if let Some(name) = self.decrypt_folder_name(&folder.name) {
-                let entry_path = if base_path == "/" {
-                    format!("/{}", name)
-                } else {
-                    format!("{}/{}", base_path, name)
-                };
-
-                self.dir_cache_insert(
-                    entry_path.clone(),
-                    DirInfo {
-                        uuid: folder.uuid.clone(),
-                        name: name.clone(),
-                    },
-                );
-
-                entries.push(RemoteEntry {
-                    name,
-                    path: entry_path,
-                    is_dir: true,
-                    size: 0,
-                    modified: Some(
-                        chrono::DateTime::from_timestamp(folder.timestamp as i64, 0)
-                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-                            .unwrap_or_default(),
-                    ),
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    mime_type: None,
-                    metadata: {
-                        let mut m = HashMap::new();
-                        m.insert("uuid".to_string(), folder.uuid);
-                        m
-                    },
-                });
+            let name = self.decrypt_folder_name(&folder.name).ok_or_else(|| {
+                ProviderError::ParseError("Filen folder name could not be decrypted".into())
+            })?;
+            let entry_path = if base_path == "/" {
+                format!("/{name}")
             } else {
-                filen_log(&format!(
-                    "FAILED decrypt folder: uuid={}, encrypted_len={}",
-                    folder.uuid,
-                    folder.name.len()
-                ));
-            }
+                format!("{base_path}/{name}")
+            };
+            self.dir_cache_insert(
+                entry_path.clone(),
+                DirInfo {
+                    uuid: folder.uuid.clone(),
+                    name: name.clone(),
+                },
+            );
+            entries.push(RemoteEntry {
+                name,
+                path: entry_path,
+                is_dir: true,
+                size: 0,
+                modified: chrono::DateTime::from_timestamp(folder.timestamp as i64, 0)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
+                metadata: HashMap::from([("uuid".to_string(), folder.uuid)]),
+            });
         }
-
-        // Files
         for file in data.uploads {
-            if let Some(meta_str) = self.decrypt_metadata(&file.metadata) {
-                if let Ok(meta) = serde_json::from_str::<FileMetadata>(&meta_str) {
-                    let entry_path = if base_path == "/" {
-                        format!("/{}", meta.name)
-                    } else {
-                        format!("{}/{}", base_path, meta.name)
-                    };
-
-                    let modified = meta.last_modified.and_then(|ts| {
-                        chrono::DateTime::from_timestamp(ts as i64 / 1000, 0)
-                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-                    });
-
-                    entries.push(RemoteEntry {
-                        name: meta.name,
-                        path: entry_path,
-                        is_dir: false,
-                        size: meta.size,
-                        modified,
-                        permissions: None,
-                        owner: None,
-                        group: None,
-                        is_symlink: false,
-                        link_target: None,
-                        mime_type: if meta.mime.is_empty() {
-                            None
-                        } else {
-                            Some(meta.mime)
-                        },
-                        metadata: {
-                            let file_uuid = file.uuid.clone();
-                            // Store encryption key in backend-only cache (never sent to frontend via IPC)
-                            self.file_key_cache_insert(file_uuid.clone(), meta.key);
-                            let mut m = HashMap::new();
-                            m.insert("uuid".to_string(), file_uuid);
-                            m.insert("bucket".to_string(), file.bucket);
-                            m.insert("region".to_string(), file.region);
-                            m.insert("chunks".to_string(), file.chunks.to_string());
-                            m
-                        },
-                    });
-                }
+            let plaintext = self.decrypt_metadata(&file.metadata).ok_or_else(|| {
+                ProviderError::ParseError("Filen file metadata could not be decrypted".into())
+            })?;
+            // Never include plaintext metadata or key material in an error.
+            let meta: FileMetadata = serde_json::from_str(&plaintext).map_err(|_| {
+                ProviderError::ParseError("Filen file metadata could not be parsed".into())
+            })?;
+            let entry_path = if base_path == "/" {
+                format!("/{}", meta.name)
             } else {
-                filen_log(&format!(
-                    "FAILED decrypt file: uuid={}, encrypted_len={}",
-                    file.uuid,
-                    file.metadata.len()
-                ));
-            }
+                format!("{}/{}", base_path, meta.name)
+            };
+            let modified = meta.last_modified.and_then(|ts| {
+                chrono::DateTime::from_timestamp(ts as i64 / 1000, 0)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+            });
+            self.file_key_cache_insert(file.uuid.clone(), meta.key);
+            entries.push(RemoteEntry {
+                name: meta.name,
+                path: entry_path,
+                is_dir: false,
+                size: meta.size,
+                modified,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: if meta.mime.is_empty() {
+                    None
+                } else {
+                    Some(meta.mime)
+                },
+                metadata: HashMap::from([
+                    ("uuid".to_string(), file.uuid),
+                    ("bucket".to_string(), file.bucket),
+                    ("region".to_string(), file.region),
+                    ("chunks".to_string(), file.chunks.to_string()),
+                ]),
+            });
         }
 
         Ok(entries)
@@ -3719,6 +3698,71 @@ impl ChunkError {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_filen_does_not_prove_absence_with_unreadable_names() {
+        let app = axum::Router::new().route("/v3/dir/content", axum::routing::post(|| async {
+            axum::Json(serde_json::json!({"status":true,"data":{
+                "folders":[{"uuid":"opaque","parent":"root","timestamp":0,"name":"unreadable-ciphertext"}],
+                "uploads":[]
+            }}))
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FilenProvider::new(demo_cfg());
+        p.gateway_base_override = Some(format!("http://{addr}"));
+        for path in ["/target", "/parent/target"] {
+            let outcome = p.exists(path).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::ParseError(_))),
+                "{path}: {outcome:?}"
+            );
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn probe_contract_filen_requires_a_complete_directory_response() {
+        let app = axum::Router::new().route(
+            "/v3/dir/content",
+            axum::routing::post(|| async {
+                axum::Json(serde_json::json!({"status":true,"data":null}))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FilenProvider::new(demo_cfg());
+        p.gateway_base_override = Some(format!("http://{addr}"));
+        let outcome = p.exists("/target").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_contract_filen_preserves_ancestor_errors() {
+        let app = axum::Router::new().route(
+            "/v3/dir/content",
+            axum::routing::post(|| async {
+                axum::Json(serde_json::json!({"status":false,"message":"access denied"}))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FilenProvider::new(demo_cfg());
+        p.gateway_base_override = Some(format!("http://{addr}"));
+        let outcome = p.exists("/parent/target").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ref e) if !matches!(e, ProviderError::NotFound(_))),
+            "an unsuccessful directory response was not an absence: {outcome:?}"
+        );
+    }
+
     use super::*;
 
     fn impatient_client() -> reqwest::Client {

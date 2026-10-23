@@ -2011,7 +2011,11 @@ impl StorageProvider for MegaNativeProvider {
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         self.ensure_nodes_loaded().await?;
-        Ok(self.resolve_path(path).is_ok())
+        match self.resolve_path(path) {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -2724,6 +2728,18 @@ fn normalize_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_mega_preserves_missing_root_state() {
+        use crate::providers::StorageProvider;
+        let (mut p, _) = provider_with_tree(vec![0; 32], false).await;
+        assert!(!p.exists("/missing").await.unwrap());
+        p.root_handle = None;
+        assert!(matches!(
+            p.exists("/target").await,
+            Err(ProviderError::NotConnected)
+        ));
+    }
+
     use super::{decode_command_response, map_mega_error_code, normalize_path};
     use crate::providers::ProviderError;
     use serde::Deserialize;

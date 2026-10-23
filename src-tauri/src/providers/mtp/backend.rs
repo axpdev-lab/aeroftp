@@ -16,6 +16,37 @@ use tokio::sync::Mutex as TokioMutex;
 
 use crate::providers::types::ProviderError;
 
+/// Finalize an enumeration only after checking the native API's error
+/// channel. Partial objects cannot prove that an unlisted name is absent.
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
+pub(super) fn checked_object_listing(
+    objects: Vec<MtpObject>,
+    operation_error: Option<ProviderError>,
+) -> Result<Vec<MtpObject>, ProviderError> {
+    match operation_error {
+        Some(error) => Err(error),
+        None => Ok(objects),
+    }
+}
+
+/// Native enumeration cannot silently invent an unreturned name.
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
+pub(super) fn checked_object_name(decoded: Option<String>) -> Result<String, ProviderError> {
+    decoded
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| ProviderError::ParseError("MTP object name could not be read".into()))
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(super) fn native_command_error(context: &str, message: &str) -> ProviderError {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("access") || lower.contains("denied") || lower.contains("busy") {
+        ProviderError::ConnectionFailed(format!("{context}: device busy or access denied ({message}). Close other apps using the phone and retry."))
+    } else {
+        ProviderError::ConnectionFailed(format!("{context}: {message}"))
+    }
+}
+
 /// How long a successful `list_mtp_devices` result stays reusable without
 /// touching libmtp / WPD again.
 ///
@@ -717,6 +748,40 @@ pub async fn list_mtp_devices() -> Result<Vec<MtpDeviceInfo>, ProviderError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn probe_contract_mtp_requires_a_real_object_name() {
+        assert!(matches!(
+            checked_object_name(None),
+            Err(ProviderError::ParseError(_))
+        ));
+        assert_eq!(
+            checked_object_name(Some("name.txt".into())).unwrap(),
+            "name.txt"
+        );
+    }
+
+    #[test]
+    fn probe_contract_mtp_native_failures_cannot_prove_absence() {
+        for message in ["device removed", "element not found", "access denied"] {
+            assert!(!matches!(
+                native_command_error("enumerating storage", message),
+                ProviderError::NotFound(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn probe_contract_mtp_enumeration_errors_are_not_empty() {
+        let error = checked_object_listing(
+            Vec::new(),
+            Some(ProviderError::ConnectionFailed(
+                "USB enumeration failed".into(),
+            )),
+        );
+        assert!(matches!(error, Err(ProviderError::ConnectionFailed(_))));
+        assert!(checked_object_listing(Vec::new(), None).unwrap().is_empty());
+    }
+
     use super::*;
 
     #[test]

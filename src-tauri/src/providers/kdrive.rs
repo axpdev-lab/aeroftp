@@ -1540,7 +1540,10 @@ impl StorageProvider for KDriveProvider {
         })?;
 
         let file = api_resp.data.ok_or_else(|| {
-            ProviderError::NotFound(format!("File info not found for '{}'", filename))
+            ProviderError::ParseError(format!(
+                "Missing metadata for '{}' after a successful lookup",
+                filename
+            ))
         })?;
 
         let is_dir = file.file_type.as_deref() == Some("dir");
@@ -2340,6 +2343,31 @@ mod api_failure_tests {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_kdrive_requires_metadata_after_a_successful_lookup() {
+        let app =
+            axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+                let data = if uri.path().ends_with("/files/1/files") {
+                    serde_json::json!([{"id":11,"name":"target","type":"file","size":3}])
+                } else {
+                    serde_json::Value::Null
+                };
+                axum::Json(serde_json::json!({"result":"success","data":data}))
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        p.api_base_override = Some(format!("http://{addr}"));
+        p.connected = true;
+        let outcome = p.exists("/target").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+    }
+
     use super::*;
 
     /// kDrive's move has no documented overwrite, so there is no one-step

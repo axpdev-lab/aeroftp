@@ -8112,6 +8112,30 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_s3_requires_an_explicit_missing_answer() {
+        for status in [403, 404] {
+            let app = axum::Router::new().fallback(axum::routing::head(move || async move {
+                axum::http::StatusCode::from_u16(status).unwrap()
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = make_provider(Some(&format!("http://{addr}")));
+            p.connected = true;
+            let outcome = p.exists("/target").await;
+            server.abort();
+            if status == 404 {
+                assert!(!outcome.unwrap());
+            } else {
+                assert!(
+                    outcome.is_err(),
+                    "403 cannot prove an absent key: {outcome:?}"
+                );
+            }
+        }
+    }
+
     use super::*;
 
     #[test]

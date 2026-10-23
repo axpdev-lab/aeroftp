@@ -31,6 +31,40 @@ fn parent_and_name(path: &str) -> (&str, &str) {
     }
 }
 
+impl FtpManagerProvider {
+    async fn list_probe(
+        &mut self,
+        path: &str,
+        include_hidden: bool,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let previous = self.0.current_path();
+        self.0.change_dir(path).await.map_err(failed)?;
+        let listed = self
+            .0
+            .list_files_for_probe(include_hidden)
+            .await
+            .map_err(failed);
+        self.0.change_dir(&previous).await.map_err(failed)?;
+        Ok(listed?
+            .into_iter()
+            .map(|file| RemoteEntry {
+                name: file.name,
+                path: file.path,
+                is_dir: file.is_dir,
+                size: file.size.unwrap_or(0),
+                modified: file.modified,
+                permissions: file.permissions,
+                owner: None,
+                group: None,
+                is_symlink: file.is_symlink,
+                link_target: file.link_target,
+                mime_type: None,
+                metadata: Default::default(),
+            })
+            .collect())
+    }
+}
+
 #[async_trait]
 impl StorageProvider for FtpManagerProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -64,27 +98,7 @@ impl StorageProvider for FtpManagerProvider {
     /// The manager lists only its current folder: it goes there, lists, and
     /// comes back to the folder it was in, whatever the listing answered.
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let previous = self.0.current_path();
-        self.0.change_dir(path).await.map_err(failed)?;
-        let listed = self.0.list_files().await.map_err(failed);
-        self.0.change_dir(&previous).await.map_err(failed)?;
-        Ok(listed?
-            .into_iter()
-            .map(|file| RemoteEntry {
-                name: file.name,
-                path: file.path,
-                is_dir: file.is_dir,
-                size: file.size.unwrap_or(0),
-                modified: file.modified,
-                permissions: file.permissions,
-                owner: None,
-                group: None,
-                is_symlink: file.is_symlink,
-                link_target: file.link_target,
-                mime_type: None,
-                metadata: Default::default(),
-            })
-            .collect())
+        self.list_probe(path, false).await
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -165,20 +179,51 @@ impl StorageProvider for FtpManagerProvider {
     /// The entry of `path` in the listing of its folder: the manager has no
     /// MLST, and the listing carries the mode and the link the edit needs.
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        if path == "/" || path == "." {
+            let previous = self.0.current_path();
+            self.0.change_dir(path).await.map_err(failed)?;
+            self.0.change_dir(&previous).await.map_err(failed)?;
+            return Ok(RemoteEntry::directory(path.to_string(), path.to_string()));
+        }
         let (parent, name) = parent_and_name(path);
-        self.list(parent)
-            .await?
-            .into_iter()
-            .find(|entry| entry.name == name)
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        let entries = match self.list_probe(parent, false).await {
+            Ok(entries) => entries,
+            Err(error) if parent != "/" && parent != "." => {
+                return match Box::pin(self.stat(parent)).await {
+                    Err(ProviderError::NotFound(_)) => {
+                        Err(ProviderError::NotFound(path.to_string()))
+                    }
+                    _ => Err(error),
+                };
+            }
+            Err(error) => return Err(error),
+        };
+        if let Some(entry) = entries.into_iter().find(|entry| entry.name == name) {
+            return Ok(entry);
+        }
+        if name.starts_with('.') {
+            if let Some(entry) = self
+                .list_probe(parent, true)
+                .await?
+                .into_iter()
+                .find(|entry| entry.name == name)
+            {
+                return Ok(entry);
+            }
+        }
+        Err(ProviderError::NotFound(path.to_string()))
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
-        self.0.get_file_size(path).await.map_err(failed)
+        Ok(self.stat(path).await?.size)
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        self.0.exists(path).await.map_err(failed)
+        match self.stat(path).await {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -210,5 +255,24 @@ mod tests {
         assert_eq!(parent_and_name("/t.txt"), ("/", "t.txt"));
         assert_eq!(parent_and_name("/a/b.txt"), ("/a", "b.txt"));
         assert_eq!(parent_and_name("b.txt"), (".", "b.txt"));
+    }
+}
+
+#[cfg(test)]
+mod probe_contract_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn probe_contract_ftp_manager_adapter_finds_hidden_entries() {
+        let addr = crate::ftp::exists_tests::vsftpd_like().await;
+        let mut manager = FtpManager::new();
+        manager.connect(&addr).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        let mut provider = FtpManagerProvider(manager);
+        let outcome = provider.stat("/.hidden").await;
+        assert!(
+            matches!(outcome, Ok(ref entry) if entry.name == ".hidden"),
+            "{outcome:?}"
+        );
     }
 }
