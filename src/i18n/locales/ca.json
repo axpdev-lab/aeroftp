@@ -1725,7 +1725,8 @@
             "navigationFailed": "Ha fallat la navegació: {error}",
             "transferComplete": "{count} fitxers copiats",
             "permissionsSessionChanged": "La connexió ha canviat des que es va obrir aquest diàleg, així que no s'ha canviat res. Torna a obrir Permisos a la connexió actual.",
-            "createFailed": "Ha fallat la creació"
+            "createFailed": "Ha fallat la creació",
+            "unknownServer": "Desconegut"
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (estalviat {percent}%)",
             "compress_details_grew": "{input} → {output} (ha crescut {percent}%)",
             "extract_details": "{input} → {output} (expandit)",
-            "download_details": "({size} en {seconds} s)"
+            "download_details": "({size} en {seconds} s)",
+            "transfer_details": "({size} en {time})"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fitxer bloquejat",
                 "disk_error": "Error de disc",
-                "unknown": "Desconegut"
+                "unknown": "Desconegut",
+                "fatal": "Error fatal"
             },
             "schedulerTitle": "Programador de sincronització",
             "schedulerEnabled": "Activa el programador",

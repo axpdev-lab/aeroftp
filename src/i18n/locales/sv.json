@@ -1725,7 +1725,8 @@
             "navigationFailed": "Navigeringen misslyckades: {error}",
             "transferComplete": "{count} fil(er) kopierade",
             "permissionsSessionChanged": "Anslutningen har ändrats sedan den här dialogrutan öppnades, så ingenting ändrades. Öppna Behörigheter igen på den aktuella anslutningen.",
-            "createFailed": "Skapandet misslyckades"
+            "createFailed": "Skapandet misslyckades",
+            "unknownServer": "Okänd"
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} ({percent} % sparat)",
             "compress_details_grew": "{input} → {output} (växte {percent} %)",
             "extract_details": "{input} → {output} (uppackad)",
-            "download_details": "({size} på {seconds} s)"
+            "download_details": "({size} på {seconds} s)",
+            "transfer_details": "({size} på {time})"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fil låst",
                 "disk_error": "Diskfel",
-                "unknown": "Okänt"
+                "unknown": "Okänt",
+                "fatal": "Allvarligt fel"
             },
             "schedulerTitle": "Synkroniseringsschema",
             "schedulerEnabled": "Aktivera schemaläggare",

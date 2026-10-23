@@ -2300,7 +2300,8 @@
             "navigationFailed": "Navigazione non riuscita: {error}",
             "transferComplete": "{count} file copiati",
             "permissionsSessionChanged": "La connessione è cambiata da quando questa finestra è stata aperta, quindi non è stato modificato nulla. Riapri Permessi sulla connessione corrente.",
-            "createFailed": "Creazione non riuscita"
+            "createFailed": "Creazione non riuscita",
+            "unknownServer": "Sconosciuto"
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -2614,7 +2615,8 @@
             "compress_details_saved": "{input} → {output} (risparmiato {percent}%)",
             "compress_details_grew": "{input} → {output} (cresciuto {percent}%)",
             "extract_details": "{input} → {output} (estratto)",
-            "download_details": "({size} in {seconds}s)"
+            "download_details": "({size} in {seconds}s)",
+            "transfer_details": "({size} in {time})"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",
@@ -2751,7 +2753,8 @@
                 "timeout": "Timeout",
                 "file_locked": "File bloccato",
                 "disk_error": "Errore disco",
-                "unknown": "Sconosciuto"
+                "unknown": "Sconosciuto",
+                "fatal": "Errore fatale"
             },
             "schedulerTitle": "Pianificazione sincronizzazione",
             "schedulerEnabled": "Abilita pianificazione",

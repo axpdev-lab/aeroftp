@@ -3249,11 +3249,15 @@ fn walk_takes(
     }
 }
 
-/// Files a sync scan found, by path relative to the folder scanned: size and
-/// modification time (seconds on the local side, the provider's text on the
-/// remote one).
+/// Local scan entries by relative name, with size and modification seconds.
 type LocalFiles = std::collections::HashMap<String, (u64, Option<i64>)>;
-type RemoteFiles = std::collections::HashMap<String, (u64, Option<String>)>;
+
+/// Remote identity is retained separately from the name used for local pairing.
+struct ScannedRemoteFile {
+    size: u64,
+    path: String,
+}
+type ScannedRemoteFiles = std::collections::HashMap<String, ScannedRemoteFile>;
 
 /// The files under `local_path` a sync would read, and whether the walk read
 /// all of it. `sync_doctor` and `reconcile` answer from this scan, so a
@@ -3330,8 +3334,8 @@ async fn scan_remote_files(
     remote_dir: &str,
     exclude: &crate::sync_exclude::ExcludeMatcher,
     tool: &str,
-) -> Result<(RemoteFiles, crate::sync_core::ScanCompleteness), ToolError> {
-    let mut files = RemoteFiles::new();
+) -> Result<(ScannedRemoteFiles, crate::sync_core::ScanCompleteness), ToolError> {
+    let mut files = ScannedRemoteFiles::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     let mut scope = crate::sync_core::WalkScope::new(remote_dir);
     let mut refused: u32 = 0;
@@ -3358,23 +3362,43 @@ async fn scan_remote_files(
             scope.learn_root_listing(&entries);
         }
         for e in entries {
-            let rel = e
-                .path
-                .strip_prefix(remote_dir)
-                .unwrap_or(&e.path)
-                .trim_start_matches('/');
+            // Only the root's own entry, in the root listing and under its
+            // own name, is the root itself. The root's path met deeper (a
+            // loop back) or under another name (an alias) is a defective
+            // listing and counts as a scan error below.
+            if depth == 0 && scope.is_root_entry(&e) {
+                continue;
+            }
+            let Some(rel) = scope.relative_path(&e.path) else {
+                completeness.list_errors += 1;
+                continue;
+            };
             if e.is_dir {
                 if e.is_walkable_dir()
-                    && !exclude.is_excluded_entry(rel, &e.name)
+                    && !exclude.is_excluded_entry(&rel, &e.name)
                     && walk_admits(&mut scope, &dir, &e.path, true, &mut refused, tool)
                 {
                     queue.push((e.path.clone(), depth + 1));
                 }
             } else if !rel.is_empty()
-                && !exclude.is_excluded_entry(rel, &e.name)
+                && !exclude.is_excluded_entry(&rel, &e.name)
                 && walk_admits(&mut scope, &dir, &e.path, false, &mut refused, tool)
             {
-                files.insert(rel.to_string(), (e.size, e.modified.clone()));
+                match files.entry(rel) {
+                    std::collections::hash_map::Entry::Vacant(slot) => {
+                        slot.insert(ScannedRemoteFile {
+                            size: e.size,
+                            path: e.path,
+                        });
+                    }
+                    std::collections::hash_map::Entry::Occupied(slot) => {
+                        if crate::sync_core::walk_path_key(&slot.get().path)
+                            != crate::sync_core::walk_path_key(&e.path)
+                        {
+                            completeness.list_errors += 1;
+                        }
+                    }
+                }
             }
         }
     }
@@ -3724,14 +3748,14 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         .await?
     } else {
         (
-            RemoteFiles::new(),
+            ScannedRemoteFiles::new(),
             crate::sync_core::ScanCompleteness::default(),
         )
     };
     let remote_files = remote_map.len();
     let remote_bytes = remote_map
         .values()
-        .fold(0u64, |sum, (size, _)| sum.saturating_add(*size));
+        .fold(0u64, |sum, file| sum.saturating_add(file.size));
     let scans = [("local", &local_scan), ("remote", &remote_scan)];
     let scans_complete = scans.iter().all(|(_, scan)| scan.is_complete());
 
@@ -4181,7 +4205,7 @@ enum PairChecksum {
 async fn checksum_pair(
     backend: &dyn RemoteBackend,
     local_root: &std::path::Path,
-    remote_root: &str,
+    remote_path: &str,
     rel: &str,
     size: u64,
 ) -> PairChecksum {
@@ -4196,9 +4220,8 @@ async fn checksum_pair(
         Ok(data) => blake3::hash(&data).to_hex().to_string(),
         Err(e) => return PairChecksum::Failed(format!("local read failed: {e}")),
     };
-    let remote_path = format!("{}/{}", remote_root.trim_end_matches('/'), rel);
     match backend
-        .download_to_bytes_capped(&remote_path, MAX_HASHSUM_BYTES)
+        .download_to_bytes_capped(remote_path, MAX_HASHSUM_BYTES)
         .await
     {
         Ok(data) => {
@@ -4277,14 +4300,15 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
 
     for (rel, (lsize, _lmtime)) in &local_map {
         match remote_map.get(rel) {
-            Some((rsize, _rmtime)) => {
+            Some(remote) => {
+                let rsize = &remote.size;
                 if lsize == rsize {
                     // With `checksum` the size verdict is not enough: equal
                     // length says nothing about equal content. Each pair is
                     // hashed; pairs that cannot be hashed keep their size
                     // verdict but say so on the entry and in the summary.
                     if checksum {
-                        match checksum_pair(backend.as_ref(), local_path, &remote_dir, rel, *lsize)
+                        match checksum_pair(backend.as_ref(), local_path, &remote.path, rel, *lsize)
                             .await
                         {
                             PairChecksum::Equal(hash) => {
@@ -4356,7 +4380,8 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         }
     }
     if !one_way {
-        for (rel, (rsize, _)) in &remote_map {
+        for (rel, remote) in &remote_map {
+            let rsize = remote.size;
             if !local_map.contains_key(rel) {
                 missing_local_g.push(json!({
                     "path": rel,
@@ -7031,6 +7056,37 @@ mod tests {
         }
     }
 
+    /// The root seen again in a listing: its own entry in the root listing
+    /// (`self_entry`), a subfolder that lists the root (a loop back), or a
+    /// root-listing folder with another name and the root's path (an alias).
+    fn root_reference_backend(reference: &str) -> FakeBackend {
+        let mut root_listing = vec![entry("/root/a.txt", false, 4), entry("/root/d1", true, 0)];
+        let mut d1_listing = vec![entry("/root/d1/b.txt", false, 4)];
+        match reference {
+            "self_entry" => root_listing.push(entry("/root", true, 0)),
+            "loop_back" => d1_listing.push(entry("/root", true, 0)),
+            "alias" => {
+                let mut alias = entry("/root", true, 0);
+                alias.name = "d2".to_string();
+                root_listing.push(alias);
+            }
+            other => panic!("unknown reference {other}"),
+        }
+        let tree = std::collections::HashMap::from([
+            ("/root".to_string(), root_listing),
+            ("/root/d1".to_string(), d1_listing),
+        ]);
+        let downloads = std::collections::HashMap::from([
+            ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+            ("/root/d1/b.txt".to_string(), b"bbbb".to_vec()),
+        ]);
+        FakeBackend {
+            tree,
+            downloads,
+            ..FakeBackend::sample()
+        }
+    }
+
     /// A folder whose listing names files of its parent again: the walk has
     /// no reason to refuse the folder, so only the tool itself can keep a file
     /// from being grouped with itself (dedupe) or deleted twice (cleanup).
@@ -7296,11 +7352,23 @@ mod tests {
 
     /// What a walk of the root holds in each defective listing:
     /// (case, backend, root, files, bytes, folders listed with the root,
-    /// entries refused). A folder that loops back or sits outside the root
+    /// entries refused, diagnostic scan errors). Diagnostics silently skip
+    /// only the root's own entry; a folder named otherwise but listed with
+    /// the root's path is an error for them too. A folder that
+    /// loops back or sits outside the root
     /// is refused, and so is a file outside it; one named twice is listed
     /// once, which loses nothing.
     #[allow(clippy::type_complexity)]
-    fn defective_listings() -> Vec<(&'static str, FakeBackend, &'static str, u64, u64, u64, u64)> {
+    fn defective_listings() -> Vec<(
+        &'static str,
+        FakeBackend,
+        &'static str,
+        u64,
+        u64,
+        u64,
+        u64,
+        u64,
+    )> {
         vec![
             (
                 "a folder listed inside itself",
@@ -7310,6 +7378,7 @@ mod tests {
                 12,
                 2,
                 1,
+                1,
             ),
             (
                 "every folder listed as /",
@@ -7317,6 +7386,7 @@ mod tests {
                 "/",
                 2,
                 8,
+                1,
                 1,
                 1,
             ),
@@ -7328,6 +7398,7 @@ mod tests {
                 8,
                 2,
                 0,
+                0,
             ),
             (
                 "a file named twice",
@@ -7336,6 +7407,7 @@ mod tests {
                 2,
                 8,
                 2,
+                0,
                 0,
             ),
             (
@@ -7346,6 +7418,7 @@ mod tests {
                 4,
                 1,
                 1,
+                1,
             ),
             (
                 "a file outside the root",
@@ -7354,6 +7427,7 @@ mod tests {
                 3,
                 12,
                 2,
+                1,
                 1,
             ),
         ]
@@ -7366,7 +7440,7 @@ mod tests {
     /// makes the totals `truncated`.
     #[tokio::test]
     async fn a_delete_preview_counts_each_path_under_the_folder_once() {
-        for (case, mut backend, root, files, bytes, dirs, refused) in defective_listings() {
+        for (case, mut backend, root, files, bytes, dirs, refused, _) in defective_listings() {
             backend.stats.insert(root.to_string(), (true, 0));
             let preview = preview_delete(&backend, root, true).await.unwrap();
             assert_eq!(
@@ -7387,7 +7461,7 @@ mod tests {
     /// the figure `scan_truncated`.
     #[tokio::test]
     async fn a_storage_scan_counts_each_path_under_the_root_once() {
-        for (case, backend, root, files, bytes, dirs, refused) in defective_listings() {
+        for (case, backend, root, files, bytes, dirs, refused, _) in defective_listings() {
             let ctx = test_ctx(Arc::new(backend));
             let args = json!({"server": "srv", "scan": true, "path": root});
             let report = storage_quota(&ctx, &args).await.expect("the scan runs");
@@ -7398,12 +7472,25 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn requested54_agent_tree_exposes_an_unlistable_root_error() {
+        let report = tree(
+            &test_ctx(Arc::new(FakeBackend::sample())),
+            &json!({"server": "srv", "path": "/unreadable"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report["count"], 0);
+        assert_eq!(report["errors"].as_array().unwrap().len(), 1);
+        assert_eq!(report["errors"][0]["path"], "/unreadable");
+    }
+
     /// A tree shows each path under the root once. A folder it does not
     /// follow gets no row (its path is not under the root, or names a folder
     /// already shown) and is named in `errors` with the reason.
     #[tokio::test]
     async fn a_tree_shows_each_path_under_the_root_once() {
-        for (case, backend, root, files, _, dirs, refused) in defective_listings() {
+        for (case, backend, root, files, _, dirs, refused, _) in defective_listings() {
             let ctx = test_ctx(Arc::new(backend));
             let args = json!({"server": "srv", "path": root, "max_depth": 5});
             let report = tree(&ctx, &args).await.expect("the tree runs");
@@ -7444,7 +7531,7 @@ mod tests {
     /// status asks for attention, and a risk says the counts are partial.
     #[tokio::test]
     async fn sync_doctor_counts_each_remote_path_once_and_says_when_it_did_not() {
-        for (case, backend, root, files, bytes, _, refused) in defective_listings() {
+        for (case, backend, root, files, bytes, _, _, refused) in defective_listings() {
             let local = tempfile::tempdir().expect("tempdir");
             let ctx = test_ctx(Arc::new(backend));
             let args = json!({
@@ -7475,12 +7562,61 @@ mod tests {
         }
     }
 
+    /// The diagnostic scans skip only the root's own entry in the root
+    /// listing. The root's path listed by a subfolder (a loop back) or under
+    /// another name in the root listing (an alias) is a defective listing:
+    /// `sync_doctor` asks for attention and `reconcile` is partial, instead
+    /// of reporting a complete scan.
+    #[tokio::test]
+    async fn diagnostics_skip_only_the_roots_own_entry() {
+        for (reference, errors) in [("self_entry", 0), ("loop_back", 1), ("alias", 1)] {
+            let local = tempfile::tempdir().expect("tempdir");
+            let args = json!({
+                "server": "srv",
+                "local_dir": local.path().to_string_lossy(),
+                "remote_dir": "/root",
+            });
+            let doctor = sync_doctor(
+                &test_ctx(Arc::new(root_reference_backend(reference))),
+                &args,
+            )
+            .await
+            .expect("the doctor runs");
+            assert_eq!(
+                doctor["summary"]["remote_files"], 2,
+                "{reference}: {doctor}"
+            );
+            assert_eq!(
+                doctor["summary"]["remote_scan_errors"], errors,
+                "{reference}: {doctor}"
+            );
+            let expected = if errors > 0 { "attention" } else { "ok" };
+            assert_eq!(doctor["status"], expected, "{reference}: {doctor}");
+            let report = reconcile(
+                &test_ctx(Arc::new(root_reference_backend(reference))),
+                &args,
+            )
+            .await
+            .expect("reconcile runs");
+            assert_eq!(
+                report["summary"]["remote_scan_errors"], errors,
+                "{reference}: {report}"
+            );
+            let expected = if errors > 0 {
+                "partial"
+            } else {
+                "differences_found"
+            };
+            assert_eq!(report["status"], expected, "{reference}: {report}");
+        }
+    }
+
     /// `reconcile` compares only what sits under the remote folder, and a
     /// comparison against a scan that missed part of the tree is `partial`,
     /// not a verdict: a file it never saw would read as missing.
     #[tokio::test]
     async fn reconcile_compares_each_remote_path_once_and_says_when_it_did_not() {
-        for (case, backend, root, files, _, _, refused) in defective_listings() {
+        for (case, backend, root, files, _, _, _, refused) in defective_listings() {
             let local = tempfile::tempdir().expect("tempdir");
             let ctx = test_ctx(Arc::new(backend));
             let args = json!({
@@ -7594,6 +7730,135 @@ mod tests {
             reconciled["summary"]["local_scan_errors"], 1,
             "{reconciled}"
         );
+    }
+
+    fn requested54_backend(root: &str, spelled: &str) -> Arc<FakeBackend> {
+        let mut backend = FakeBackend::sample();
+        backend.tree = std::collections::HashMap::from([
+            (
+                root.into(),
+                vec![
+                    entry(&format!("{spelled}/a.txt"), false, 4),
+                    entry(&format!("{spelled}/sub"), true, 0),
+                ],
+            ),
+            (
+                format!("{spelled}/sub"),
+                vec![entry(&format!("{spelled}/sub/b.txt"), false, 4)],
+            ),
+        ]);
+        backend.stats.insert(root.into(), (true, 0));
+        backend
+            .downloads
+            .insert(format!("{spelled}/a.txt"), b"data".to_vec());
+        backend
+            .downloads
+            .insert(format!("{spelled}/sub/b.txt"), b"data".to_vec());
+        Arc::new(backend)
+    }
+
+    #[tokio::test]
+    async fn requested54_agent_scan_skips_self_but_reports_outside_root() {
+        for (root, spelled) in [("/root", "/root"), ("docs", "/home/u/docs")] {
+            for outside in [false, true] {
+                let mut entries = vec![
+                    entry(spelled, true, 0),
+                    entry(&format!("{spelled}/"), false, 0),
+                    entry(root, true, 0),
+                    entry(&format!("{spelled}/a.txt"), false, 4),
+                ];
+                if outside {
+                    entries.push(entry("/elsewhere/off.txt", false, 8));
+                }
+                let mut backend = FakeBackend::sample();
+                backend.tree = std::collections::HashMap::from([(root.into(), entries)]);
+                let backend = Arc::new(backend);
+                let (files, scan) = scan_remote_files(
+                    &test_ctx(Arc::clone(&backend)),
+                    backend.as_ref(),
+                    root,
+                    &crate::sync_exclude::ExcludeMatcher::default(),
+                    "sync_doctor",
+                )
+                .await
+                .unwrap();
+                assert_eq!(files.keys().cloned().collect::<Vec<_>>(), ["a.txt"]);
+                assert_eq!(
+                    scan.list_errors,
+                    usize::from(outside),
+                    "{root}, outside={outside}"
+                );
+                assert_eq!(scan.is_complete(), !outside);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn requested54_agent_doctor_applies_excludes_to_relative_names() {
+        for (root, spelled) in [
+            ("docs", "/home/u/docs"),
+            ("/Docs", "/docs"),
+            ("disk:/docs", "/docs"),
+            ("/docs ", "/docs"),
+        ] {
+            let local = tempfile::tempdir().unwrap();
+            let report = sync_doctor(&test_ctx(requested54_backend(root, spelled)), &json!({
+                "server":"srv", "remote_dir":root, "local_dir":local.path(), "exclude":["/sub/b.txt"]
+            })).await.unwrap();
+            assert_eq!(report["summary"]["remote_files"], 1, "{root}: {report}");
+        }
+    }
+
+    #[tokio::test]
+    async fn requested54_agent_reconcile_matches_local_relative_names() {
+        for (root, spelled) in [
+            ("docs", "/home/u/docs"),
+            ("/Docs", "/docs"),
+            ("disk:/docs", "/docs"),
+            ("/docs ", "/docs"),
+        ] {
+            let local = tempfile::tempdir().unwrap();
+            std::fs::create_dir(local.path().join("sub")).unwrap();
+            std::fs::write(local.path().join("a.txt"), b"data").unwrap();
+            std::fs::write(local.path().join("sub/b.txt"), b"data").unwrap();
+            for checksum in [false, true] {
+                let ctx = test_ctx(requested54_backend(root, spelled));
+                let args = json!({
+                    "server": "srv", "remote_dir": root,
+                    "local_dir": local.path(), "checksum": checksum,
+                });
+                let report = reconcile(&ctx, &args).await.unwrap();
+                assert_eq!(report["status"], "ok", "{root}: {report}");
+                assert_eq!(report["summary"]["match_count"], 2, "{report}");
+                if checksum {
+                    assert_eq!(report["summary"]["checksum_hashed"], 2, "{report}");
+                    assert_eq!(report["summary"]["checksum_errors"], 0, "{report}");
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn requested54_agent_reconcile_reports_ambiguous_root_aliases() {
+        let mut backend = FakeBackend::sample();
+        backend.tree = std::collections::HashMap::from([(
+            "docs".to_string(),
+            vec![
+                entry("/home/u/docs/a.txt", false, 4),
+                entry("/docs/a.txt", false, 4),
+            ],
+        )]);
+        let local = tempfile::tempdir().unwrap();
+        let report = reconcile(
+            &test_ctx(Arc::new(backend)),
+            &json!({
+                "server":"srv", "remote_dir":"docs", "local_dir":local.path()
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report["status"], "partial", "{report}");
+        assert_eq!(report["summary"]["remote_scan_errors"], 1);
     }
 
     /// A provider may spell the root its own way: a relative root resolved

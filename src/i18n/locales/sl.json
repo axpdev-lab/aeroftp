@@ -1725,7 +1725,8 @@
             "navigationFailed": "Krmarjenje ni uspelo: {error}",
             "transferComplete": "Kopiranih {count} datotek",
             "permissionsSessionChanged": "Povezava se je spremenila, odkar je bilo to pogovorno okno odprto, zato ni bilo nič spremenjeno. Znova odprite Dovoljenja na trenutni povezavi.",
-            "createFailed": "Ustvarjanje ni uspelo"
+            "createFailed": "Ustvarjanje ni uspelo",
+            "unknownServer": "neznanim strežnikom"
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (prihranjeno {percent}%)",
             "compress_details_grew": "{input} → {output} (povečano za {percent}%)",
             "extract_details": "{input} → {output} (razširjeno)",
-            "download_details": "({size} v {seconds} s)"
+            "download_details": "({size} v {seconds} s)",
+            "transfer_details": "({size} v {time})"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Datoteka zaklenjena",
                 "disk_error": "Napaka diska",
-                "unknown": "Neznano"
+                "unknown": "Neznano",
+                "fatal": "Usodna napaka"
             },
             "schedulerTitle": "Razporejevalnik sinhronizacije",
             "schedulerEnabled": "Omogoči razporejevalnik",

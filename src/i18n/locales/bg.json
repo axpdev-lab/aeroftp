@@ -1725,7 +1725,8 @@
             "navigationFailed": "Навигацията е неуспешна: {error}",
             "transferComplete": "{count} копирани файла",
             "permissionsSessionChanged": "Връзката се е променила, откакто този диалог беше отворен, затова нищо не беше променено. Отворете отново Права на текущата връзка.",
-            "createFailed": "Създаването е неуспешно"
+            "createFailed": "Създаването е неуспешно",
+            "unknownServer": "неизвестен сървър"
         },
         "about": {
             "tagline": "Повече от FTP. Пълен набор инструменти за разработчици.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (спестени {percent}%)",
             "compress_details_grew": "{input} → {output} (увеличение {percent}%)",
             "extract_details": "{input} → {output} (разархивирано)",
-            "download_details": "({size} за {seconds} с)"
+            "download_details": "({size} за {seconds} с)",
+            "transfer_details": "({size} за {time})"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Файлът е заключен",
                 "disk_error": "Грешка на диска",
-                "unknown": "Неизвестно"
+                "unknown": "Неизвестно",
+                "fatal": "Фатална грешка"
             },
             "schedulerTitle": "Планировчик на синхронизация",
             "schedulerEnabled": "Активирай планировчик",

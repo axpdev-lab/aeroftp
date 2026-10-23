@@ -76,12 +76,19 @@ import { parseAst } from 'vite';
  * parameters and the declarations of its body (`const verb = pct >= 0 ?
  * 'saved' : 'grew'; return `${verb} ${pct}%``).
  *
+ * A value passed to `t()` as an interpolation parameter is part of the
+ * translated sentence and is checked the same way (`t('x', { reason: 'Fatal
+ * error' })`), also when the parameters are a record declared elsewhere or
+ * spread into the call, unless its parameter names an entity (`provider`,
+ * `server`, an address, `protocol`, a plan, a shell, a storage class, a
+ * command): such a value is a name. A value the code compares is still text
+ * there, since it reads as part of the sentence. A placeholder marker a sentence is split on (`{ link: '{link}' }`) is
+ * not text either.
+ *
  * Not covered: a value passed as a prop and rendered inside another component
  * under a name that is not a text name (`<Select options={OPTIONS} />` when
- * OPTIONS is not followed from a render site), a value passed to `t()` as an
- * interpolation parameter (`t('activity.x', { provider: 'Box' })`), a value
- * that crosses an `await` or a promise, and a string built at run time from
- * data.
+ * OPTIONS is not followed from a render site), a value that crosses an
+ * `await` or a promise, and a string built at run time from data.
  */
 
 const SOURCES = import.meta.glob<string>(
@@ -203,14 +210,14 @@ const isClassList = (text: string) => {
 /** A two-letter code (`IT`, `US`): a country, language or region, not a word. */
 const isCode = (text: string) => /^[A-Z]{2}$/.test(text.trim());
 
-const isJsxProse = (text: string) => !isClassList(text) && !isCode(text) && isProse(text.replace(JSX_TOKENS, ''));
+const isJsxProse = (text: string) => !isClassList(text) && !isCode(text) && !isMarker(text) && isProse(text.replace(JSX_TOKENS, ''));
 
 /** Text JSX renders as it is, by file. Each entry must still match a hit. */
 const JSX_NEUTRAL: Record<string, string[]> = {
     // S3 storage-class badges, the PRO tier badge and GitHub product names.
     'src/App.tsx': [
         'IA', '1Z-IA', 'Glacier', 'Glacier IR', 'Deep', 'IT', 'RR', 'PRO', 'GitHub Pages', 'GitHub Actions',
-        'Zoho Writer', 'Zoho Sheet', 'Zoho Show', '[mega-df]',
+        'Zoho Writer', 'Zoho Sheet', 'Zoho Show', '[mega-df]', 'Writer', 'Sheet', 'Show', '(AES-256)',
     ],
     // Log source and test runner tags.
     'src/components/DebugPanel.tsx': ['RUST', 'JS', 'js'],
@@ -259,6 +266,7 @@ const JSX_NEUTRAL: Record<string, string[]> = {
         'PixelUnion', 'Immich', 'Dropbox', 'Google Drive', 'OneDrive', 'Box', 'Google Photos', 'pCloud Drive',
         'Filen', 'Internxt', 'Jottacloud', 'Proton Drive', 'kDrive', 'Yandex Disk', 'Zoho WorkDrive', '4shared',
         'Backblaze B2', 'Drime', 'MEGA', 'Cloudinary', 'ImageKit', 'Twake Drive', 'Uploadcare', 'GitHub', 'GitLab',
+        'Proton',
     ],
     // Cipher names.
     'src/components/CryptoLabTab.tsx': ['AES-256-GCM', 'ChaCha20-Poly1305'],
@@ -347,7 +355,11 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     // The petabyte unit.
     'src/components/common/ManualStorageField.tsx': ['PB'],
     // Product, protocol and format names.
-    'src/components/providerModeGroups.tsx': ['API', 'WebDAV', 'FTP', 'CLI', 'WebDAV (MEGAcmd)'],
+    'src/components/providerModeGroups.tsx': [
+        'API', 'WebDAV', 'FTP', 'CLI', 'WebDAV (MEGAcmd)', 'FileLu', 'Filen', 'Proton Drive', 'OpenDrive', 'Koofr', 'MEGA',
+    ],
+    // The provider a new connection tab is named after.
+    'src/components/IntroHub/IntroHub.tsx': ['PixelUnion'],
     // Protocol class names.
     'src/types.ts': ['WebDAV', 'FTPS', 'FTP', 'SFTP', 'Azure', 'MTP', 'API', 'OAuth'],
     // Cipher names.
@@ -383,8 +395,11 @@ type Module = {
 /**
  * A node together with the module it is written in. `embedded` marks a value
  * interpolated into a template literal, which reads as part of a sentence.
+ * `scopes` is the scope an object or array literal is written in, so its values
+ * resolve there and not at the caller: a record a function returns keeps the
+ * function's declarations.
  */
-type Found = { node: Node; mod: Module; embedded?: boolean };
+type Found = { node: Node; mod: Module; embedded?: boolean; scopes?: Array<Map<string, Node | null>> };
 
 /** Several values one name can stand for: the elements a callback walks, a state's values. */
 const union = (values: Found[]): Node => ({ type: 'Union', start: 0, end: 0, values });
@@ -562,13 +577,14 @@ function bodyScope(fn: Found, ctx: Context): Array<Map<string, Node | null>> {
 }
 
 const within = (found: Found, ctx: Context): Context =>
-    found.mod === ctx.mod ? ctx : { ...ctx, mod: found.mod, scopes: [found.mod.top] };
+    found.scopes ? { ...ctx, mod: found.mod, scopes: found.scopes }
+        : found.mod === ctx.mod ? ctx : { ...ctx, mod: found.mod, scopes: [found.mod.top] };
 
 /** The object and array literals an expression can evaluate to. */
 function objects(node: Node, ctx: Context, depth = 0): Found[] {
     if (depth > 8) return [];
     const again = (next: Node, c = ctx) => objects(next, c, depth + 1);
-    if (node.type === 'ObjectExpression' || node.type === 'ArrayExpression') return [{ node, mod: ctx.mod }];
+    if (node.type === 'ObjectExpression' || node.type === 'ArrayExpression') return [{ node, mod: ctx.mod, scopes: [...ctx.scopes] }];
     if (WRAPPERS.includes(node.type)) return again(node.expression as Node);
     if (node.type === 'ConditionalExpression') return [...again(node.consequent as Node), ...again(node.alternate as Node)];
     if (node.type === 'LogicalExpression') return [...(node.operator === '&&' ? [] : again(node.left as Node)), ...again(node.right as Node)];
@@ -611,7 +627,7 @@ function properties(object: Found, member: Node | null, ctx: Context, depth = 0)
         if (property.type === 'SpreadElement') {
             objects(property.argument as Node, inner, depth + 1).forEach((spread) => out.push(...properties(spread, member, ctx, depth + 1)));
         } else if (key === undefined || nameOf(property.key as Node) === key) {
-            out.push({ node: property.value as Node, mod: object.mod });
+            out.push({ node: property.value as Node, mod: object.mod, scopes: object.scopes });
         }
     }
     return out;
@@ -623,7 +639,7 @@ function elements(arrays: Found[], ctx: Context, depth = 0): Found[] {
         (array.node.elements as Array<Node | null>).filter(isNode).flatMap((element) =>
             element.type === 'SpreadElement'
                 ? elements(objects(element.argument as Node, within(array, ctx), depth + 1), ctx, depth + 1)
-                : [{ node: element, mod: array.mod }]));
+                : [{ node: element, mod: array.mod, scopes: array.scopes }]));
 }
 
 /**
@@ -716,6 +732,17 @@ const isIdentifierValue = (node: Node) => {
     const text = literalText(node);
     return text !== null && /^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*$/.test(text);
 };
+
+/**
+ * Interpolation parameters whose value names an entity: a provider, a server,
+ * an address, a protocol, a plan, a storage class, a shell, a command. Such a
+ * value is a name or a code, not a sentence (`t('activity.x', { provider:
+ * 'Box' })`).
+ */
+const NAME_PARAM = /^(?:provider|server|host|ip|protocol|backend|author|plan|shell|storageClass|tier|cmd|command)$/;
+
+/** A placeholder marker a sentence is split on: `t('x', { cmd: '{cmd}' }).split('{cmd}')`. */
+const isMarker = (text: string) => /^\{\w+\}$/.test(text.trim());
 
 /**
  * Calls whose arguments never reach the interface: the console, the backend
@@ -880,9 +907,9 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
             // the expression; one reached through a name reports where it is
             // written, in whichever module. Every neutral() call runs, so each
             // allowance that matches is marked used.
-            const english = (expression: Node, atString = false) => {
+            const english = (expression: Node, atString = false, embedded = false, ctx = context()) => {
                 const strings: Found[] = [];
-                rendered(expression, strings, context());
+                rendered(expression, strings, ctx, embedded);
                 let direct = false;
                 for (const string of strings) {
                     if (!string.embedded && isIdentifierValue(string.node) && compared.has(literalText(string.node)!)) continue;
@@ -912,6 +939,25 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
                     const value = attribute.value as Node;
                     if (english(value.type === 'JSXExpressionContainer' ? value.expression as Node : value)) report(attribute);
                 }
+            }
+            // A value passed to t() is interpolated into the translated text,
+            // unless its parameter names an entity, whose value is a name. The
+            // parameters may be a record declared elsewhere or spread into the
+            // call; a value the code compares is still text here.
+            if (isT(node) && isNode((node.arguments as Node[])[1]) && !quiet) {
+                const ctx = context();
+                const check = (record: Found, depth: number) => {
+                    if (record.node.type !== 'ObjectExpression' || depth > 8) return;
+                    const inner = within(record, ctx);
+                    for (const property of record.node.properties as Node[]) {
+                        if (property.type === 'SpreadElement') {
+                            objects(property.argument as Node, inner).forEach((spread) => check(spread, depth + 1));
+                        } else if (!NAME_PARAM.test(nameOf(property.key as Node) ?? '')) {
+                            english(property.value as Node, true, true, inner);
+                        }
+                    }
+                };
+                objects((node.arguments as Node[])[1], ctx).forEach((record) => check(record, 0));
             }
             if (node.type === 'ObjectExpression' && isPayload(node)) {
                 quiet += 1;
@@ -1097,6 +1143,14 @@ describe('a translated string is not glued to English in the code', () => {
             "    if (mode === 'compact' || mode === 'expanded') log({ details: describeRatio(5) });",
             "    return <span>{mode} {'IT'}</span>;",
             "}",
+            "const params = t('activity.x', { provider: 'Box', reason: 'Fatal error', link: '{link}', count: 2 });",
+            "const record = { reason: 'Disk full' };",
+            "const fromRecord = t('activity.x', record);",
+            "const fromSpread = t('activity.x', { ...record, provider: 'Box' });",
+            "if (status === 'stopped') log(status);",
+            "const comparedWord = t('activity.x', { reason: 'stopped' });",
+            "function failure() { const reason = 'Quota exceeded'; return { reason }; }",
+            "const fromFunction = t('activity.x', failure());",
         ].join('\n');
         const result = scan({ 'labels.ts': labels, 'panel.tsx': sample }, { 'panel.tsx': ['AES'] });
         expect(result.unused).toEqual([]);
@@ -1116,6 +1170,10 @@ describe('a translated string is not glued to English in the code', () => {
             "panel.tsx:25 `Cipher ${t('introHub.cryptBadge.keyBits', { bits: 256 })}`",
             "labels.ts:4 'saved'",
             "labels.ts:4 'grew'",
+            "panel.tsx:31 'Fatal error'",
+            "panel.tsx:32 'Disk full'",
+            "panel.tsx:36 'stopped'",
+            "panel.tsx:37 'Quota exceeded'",
         ]);
     });
 

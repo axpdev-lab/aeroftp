@@ -95,6 +95,8 @@ export interface TrashItem {
 
 /** Aggregated size result for a folder */
 export interface FolderSizeResult {
+  /** The scan did not cover the whole folder; counts are lower bounds. */
+  partial?: boolean;
   total_bytes: number;
   file_count: number;
   dir_count: number;

@@ -1725,7 +1725,8 @@
             "navigationFailed": "Error de navegación: {error}",
             "transferComplete": "{count} archivos copiados",
             "permissionsSessionChanged": "La conexión cambió desde que se abrió este diálogo, por lo que no se cambió nada. Abre Permisos de nuevo en la conexión actual.",
-            "createFailed": "Error al crear"
+            "createFailed": "Error al crear",
+            "unknownServer": "Desconocido"
         },
         "about": {
             "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (ahorro del {percent}%)",
             "compress_details_grew": "{input} → {output} (creció un {percent}%)",
             "extract_details": "{input} → {output} (expandido)",
-            "download_details": "({size} en {seconds} s)"
+            "download_details": "({size} en {seconds} s)",
+            "transfer_details": "({size} en {time})"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Archivo bloqueado",
                 "disk_error": "Error de disco",
-                "unknown": "Desconocido"
+                "unknown": "Desconocido",
+                "fatal": "Error fatal"
             },
             "schedulerTitle": "Programador de sincronización",
             "schedulerEnabled": "Activar programador",

@@ -1725,7 +1725,8 @@
             "navigationFailed": "Flakk mistókst: {error}",
             "transferComplete": "{count} skrár afritaðar",
             "permissionsSessionChanged": "Tengingin breyttist eftir að þessi gluggi var opnaður, þannig að engu var breytt. Opnaðu Heimildir aftur á núverandi tengingu.",
-            "createFailed": "Stofnun mistókst"
+            "createFailed": "Stofnun mistókst",
+            "unknownServer": "Óþekkt"
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} ({percent}% sparað)",
             "compress_details_grew": "{input} → {output} (stækkaði um {percent}%)",
             "extract_details": "{input} → {output} (afþjappað)",
-            "download_details": "({size} á {seconds} sek.)"
+            "download_details": "({size} á {seconds} sek.)",
+            "transfer_details": "({size} á {time})"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Skrá læst",
                 "disk_error": "Diskavilla",
-                "unknown": "Óþekkt"
+                "unknown": "Óþekkt",
+                "fatal": "Alvarleg villa"
             },
             "schedulerTitle": "Samstillingaráætlun",
             "schedulerEnabled": "Virkja áætlun",

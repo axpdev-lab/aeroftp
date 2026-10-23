@@ -1725,7 +1725,8 @@
             "navigationFailed": "Urambazaji umeshindwa: {error}",
             "transferComplete": "Faili {count} zimenakiliwa",
             "permissionsSessionChanged": "Muunganisho umebadilika tangu kisanduku hiki cha mazungumzo kifunguliwe, kwa hivyo hakuna kilichobadilishwa. Fungua Ruhusa tena kwenye muunganisho wa sasa.",
-            "createFailed": "Kuunda kumeshindwa"
+            "createFailed": "Kuunda kumeshindwa",
+            "unknownServer": "Haijulikani"
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (imeokoa {percent}%)",
             "compress_details_grew": "{input} → {output} (imeongezeka {percent}%)",
             "extract_details": "{input} → {output} (imefunguliwa)",
-            "download_details": "({size} kwa sekunde {seconds})"
+            "download_details": "({size} kwa sekunde {seconds})",
+            "transfer_details": "({size} kwa {time})"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Faili imefungwa",
                 "disk_error": "Hitilafu ya diski",
-                "unknown": "Haijulikani"
+                "unknown": "Haijulikani",
+                "fatal": "Hitilafu mbaya"
             },
             "schedulerTitle": "Ratiba ya Usawazishaji",
             "schedulerEnabled": "Wezesha Ratiba",

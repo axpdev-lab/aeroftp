@@ -1725,7 +1725,8 @@
             "navigationFailed": "Điều hướng thất bại: {error}",
             "transferComplete": "Đã sao chép {count} tệp",
             "permissionsSessionChanged": "Kết nối đã thay đổi kể từ khi hộp thoại này được mở, nên không có gì được thay đổi. Hãy mở lại Quyền trên kết nối hiện tại.",
-            "createFailed": "Tạo thất bại"
+            "createFailed": "Tạo thất bại",
+            "unknownServer": "Không xác định"
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (tiết kiệm {percent}%)",
             "compress_details_grew": "{input} → {output} (tăng {percent}%)",
             "extract_details": "{input} → {output} (đã giải nén)",
-            "download_details": "({size} trong {seconds} giây)"
+            "download_details": "({size} trong {seconds} giây)",
+            "transfer_details": "({size} trong {time})"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Tệp bị khóa",
                 "disk_error": "Lỗi đĩa",
-                "unknown": "Không xác định"
+                "unknown": "Không xác định",
+                "fatal": "Lỗi nghiêm trọng"
             },
             "schedulerTitle": "Lập lịch đồng bộ",
             "schedulerEnabled": "Bật bộ lập lịch",

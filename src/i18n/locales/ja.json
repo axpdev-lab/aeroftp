@@ -1725,7 +1725,8 @@
             "navigationFailed": "移動に失敗しました: {error}",
             "transferComplete": "{count} 個のファイルをコピーしました",
             "permissionsSessionChanged": "このダイアログを開いてから接続が変更されたため、何も変更されませんでした。現在の接続で「権限」をもう一度開いてください。",
-            "createFailed": "作成に失敗しました"
+            "createFailed": "作成に失敗しました",
+            "unknownServer": "不明なサーバー"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} ({percent}% 削減)",
             "compress_details_grew": "{input} → {output} ({percent}% 増加)",
             "extract_details": "{input} → {output} (展開済み)",
-            "download_details": "({size}、{seconds}秒)"
+            "download_details": "({size}、{seconds}秒)",
+            "transfer_details": "({time}で{size})"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -2487,7 +2489,8 @@
                 "timeout": "タイムアウト",
                 "file_locked": "ファイルがロック中",
                 "disk_error": "ディスクエラー",
-                "unknown": "不明"
+                "unknown": "不明",
+                "fatal": "致命的なエラー"
             },
             "schedulerTitle": "同期スケジューラー",
             "schedulerEnabled": "スケジューラーを有効化",

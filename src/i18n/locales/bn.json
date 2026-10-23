@@ -1725,7 +1725,8 @@
             "navigationFailed": "নেভিগেশন ব্যর্থ হয়েছে: {error}",
             "transferComplete": "{count}টি ফাইল কপি করা হয়েছে",
             "permissionsSessionChanged": "এই ডায়ালগ খোলার পর সংযোগ পরিবর্তিত হয়েছে, তাই কিছুই পরিবর্তন করা হয়নি। বর্তমান সংযোগে আবার অনুমতি খুলুন।",
-            "createFailed": "তৈরি করা ব্যর্থ হয়েছে"
+            "createFailed": "তৈরি করা ব্যর্থ হয়েছে",
+            "unknownServer": "অজানা"
         },
         "about": {
             "tagline": "FTP এর চেয়েও বেশি। একটি সম্পূর্ণ ডেভেলপার টুলকিট।",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} ({percent}% সাশ্রয়)",
             "compress_details_grew": "{input} → {output} ({percent}% বৃদ্ধি)",
             "extract_details": "{input} → {output} (প্রসারিত)",
-            "download_details": "({seconds} সেকেন্ডে {size})"
+            "download_details": "({seconds} সেকেন্ডে {size})",
+            "transfer_details": "({time}-এ {size})"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "ফাইল লক করা",
                 "disk_error": "ডিস্ক ত্রুটি",
-                "unknown": "অজানা"
+                "unknown": "অজানা",
+                "fatal": "গুরুতর ত্রুটি"
             },
             "schedulerTitle": "সিঙ্ক শিডিউলার",
             "schedulerEnabled": "শিডিউলার সক্রিয় করুন",

@@ -1725,7 +1725,8 @@
             "navigationFailed": "Не вдалося перейти: {error}",
             "transferComplete": "Скопійовано файлів: {count}",
             "permissionsSessionChanged": "З'єднання змінилося з моменту відкриття цього діалогу, тому нічого не було змінено. Відкрийте Права доступу знову на поточному з'єднанні.",
-            "createFailed": "Не вдалося створити"
+            "createFailed": "Не вдалося створити",
+            "unknownServer": "невідомого сервера"
         },
         "about": {
             "tagline": "Більше ніж FTP. Повний набір інструментів розробника.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (заощаджено {percent}%)",
             "compress_details_grew": "{input} → {output} (збільшення на {percent}%)",
             "extract_details": "{input} → {output} (розпаковано)",
-            "download_details": "({size} за {seconds} с)"
+            "download_details": "({size} за {seconds} с)",
+            "transfer_details": "({size} за {time})"
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Файл заблоковано",
                 "disk_error": "Помилка диска",
-                "unknown": "Невідомо"
+                "unknown": "Невідомо",
+                "fatal": "Критична помилка"
             },
             "schedulerTitle": "Планувальник синхронізації",
             "schedulerEnabled": "Увімкнути планувальник",

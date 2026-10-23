@@ -1725,7 +1725,8 @@
             "navigationFailed": "A navigáció sikertelen: {error}",
             "transferComplete": "{count} fájl másolva",
             "permissionsSessionChanged": "A kapcsolat megváltozott a párbeszédablak megnyitása óta, ezért semmi sem változott. Nyissa meg újra a Jogosultságokat az aktuális kapcsolaton.",
-            "createFailed": "A létrehozás sikertelen"
+            "createFailed": "A létrehozás sikertelen",
+            "unknownServer": "Ismeretlen"
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} ({percent}% megtakarítás)",
             "compress_details_grew": "{input} → {output} ({percent}% növekedés)",
             "extract_details": "{input} → {output} (kibontva)",
-            "download_details": "({size}, {seconds} mp alatt)"
+            "download_details": "({size}, {seconds} mp alatt)",
+            "transfer_details": "({size}, {time} alatt)"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fájl zárolva",
                 "disk_error": "Lemezhiba",
-                "unknown": "Ismeretlen"
+                "unknown": "Ismeretlen",
+                "fatal": "Végzetes hiba"
             },
             "schedulerTitle": "Szinkronizálás ütemező",
             "schedulerEnabled": "Ütemező engedélyezése",

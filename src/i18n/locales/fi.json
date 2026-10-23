@@ -1725,7 +1725,8 @@
             "navigationFailed": "Siirtyminen epäonnistui: {error}",
             "transferComplete": "{count} tiedostoa kopioitu",
             "permissionsSessionChanged": "Yhteys on muuttunut tämän valintaikkunan avaamisen jälkeen, joten mitään ei muutettu. Avaa Oikeudet uudelleen nykyisellä yhteydellä.",
-            "createFailed": "Luonti epäonnistui"
+            "createFailed": "Luonti epäonnistui",
+            "unknownServer": "Tuntematon"
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (säästö {percent}%)",
             "compress_details_grew": "{input} → {output} (kasvoi {percent}%)",
             "extract_details": "{input} → {output} (purettu)",
-            "download_details": "({size}, {seconds} s)"
+            "download_details": "({size}, {seconds} s)",
+            "transfer_details": "({size} ajassa {time})"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Tiedosto lukittu",
                 "disk_error": "Levyvirhe",
-                "unknown": "Tuntematon"
+                "unknown": "Tuntematon",
+                "fatal": "Vakava virhe"
             },
             "schedulerTitle": "Synkronoinnin ajastin",
             "schedulerEnabled": "Ota ajastin käyttöön",

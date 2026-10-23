@@ -1725,7 +1725,8 @@
             "navigationFailed": "Navigācija neizdevās: {error}",
             "transferComplete": "Nokopēti {count} faili",
             "permissionsSessionChanged": "Savienojums ir mainījies kopš šī dialoga atvēršanas, tāpēc nekas netika mainīts. Atveriet Atļaujas vēlreiz pašreizējā savienojumā.",
-            "createFailed": "Izveide neizdevās"
+            "createFailed": "Izveide neizdevās",
+            "unknownServer": "nezināmu serveri"
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (ietaupīti {percent}%)",
             "compress_details_grew": "{input} → {output} (pieauga par {percent}%)",
             "extract_details": "{input} → {output} (izvērsts)",
-            "download_details": "({size} {seconds} s laikā)"
+            "download_details": "({size} {seconds} s laikā)",
+            "transfer_details": "({size} {time} laikā)"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fails bloķēts",
                 "disk_error": "Diska kļūda",
-                "unknown": "Nezināms"
+                "unknown": "Nezināms",
+                "fatal": "Fatāla kļūda"
             },
             "schedulerTitle": "Sinhronizācijas plānotājs",
             "schedulerEnabled": "Ieslēgt plānotāju",

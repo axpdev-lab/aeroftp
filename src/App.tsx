@@ -1236,7 +1236,7 @@ const App: React.FC = () => {
     setRcloneCryptImportBanner({
       serverName: typeof opts.rcloneCryptOverlayName === 'string'
         ? (opts.rcloneCryptOverlayName as string)
-        : (liveConnectionParams.server || 'remote'),
+        : (liveConnectionParams.server || ''),
       password,
       salt: typeof opts.rcloneCryptPassword2 === 'string' ? (opts.rcloneCryptPassword2 as string) : undefined,
       filenameEncryption: typeof opts.rcloneCryptFilenameEncryption === 'string'
@@ -5084,22 +5084,27 @@ const App: React.FC = () => {
     setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
 
     // Listen for progress events
-    const unlisten = await listen<{ total_bytes: number; file_count: number; dir_count: number; scanning: boolean }>(
+    const unlisten = await listen<FolderSizeResult & { scanning: boolean }>(
       'folder-size-progress',
       (event) => {
         const p = event.payload;
         // Update cache with partial results during scan
         setFolderSizeCache(prev => {
           const next = new Map(prev);
-          next.set(path, { total_bytes: p.total_bytes, file_count: p.file_count, dir_count: p.dir_count });
+          next.set(path, { total_bytes: p.total_bytes, file_count: p.file_count, dir_count: p.dir_count, partial: p.partial });
           return next;
         });
       }
     );
 
     try {
-      await invoke<{ total_bytes: number; file_count: number; dir_count: number }>('provider_calculate_folder_size', { path });
+      const result = await invoke<FolderSizeResult>('provider_calculate_folder_size', { path });
+      setFolderSizeCache(prev => new Map(prev).set(path, result));
     } catch (err) {
+      setFolderSizeCache(prev => {
+        const cached = prev.get(path);
+        return cached ? new Map(prev).set(path, { ...cached, partial: true }) : prev;
+      });
       notify.error(t('toast.sizeFailed'), String(err));
     } finally {
       unlisten();
@@ -12895,7 +12900,7 @@ const App: React.FC = () => {
             const errorKind = circuitBreaker.tripErrorKindRef.current;
 
             if (reason === 'fatal_error') {
-              const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+              const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : t('syncPanel.errorKind.fatal');
               for (let j = i; j < queueItems.length; j++) {
                 transferQueue.failTransfer(queueItems[j].id, label);
               }
@@ -13080,7 +13085,7 @@ const App: React.FC = () => {
           const errorKind = circuitBreaker.tripErrorKindRef.current;
 
           if (reason === 'fatal_error') {
-            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : t('syncPanel.errorKind.fatal');
             for (let j = i; j < queueItems.length; j++) {
               transferQueue.failTransfer(queueItems[j].id, label);
             }
@@ -13283,7 +13288,7 @@ const App: React.FC = () => {
           const errorKind = circuitBreaker.tripErrorKindRef.current;
 
           if (reason === 'fatal_error') {
-            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : t('syncPanel.errorKind.fatal');
             for (let j = i; j < queueItems.length; j++) {
               transferQueue.failTransfer(queueItems[j].id, label);
             }
@@ -17549,7 +17554,7 @@ const App: React.FC = () => {
               <div className="text-sm text-gray-800 dark:text-gray-100">
                 <div className="font-semibold mb-0.5">{t('toolbar.aerocryptImportTitle')}</div>
                 <div className="text-xs opacity-80">
-                  {t('toolbar.aerocryptImportDesc', { name: rcloneCryptImportBanner.serverName })}
+                  {t('toolbar.aerocryptImportDesc', { name: rcloneCryptImportBanner.serverName || t('browser.remote') })}
                 </div>
               </div>
             </div>
@@ -17982,7 +17987,7 @@ const App: React.FC = () => {
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                   setShowConnectionScreen(false);
                   const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', fourshared: '4shared' };
-                  const providerName = normalizedParams.displayName || (normalizedParams.protocol && providerNames[normalizedParams.protocol]) || normalizedParams.protocol || 'Unknown';
+                  const providerName = normalizedParams.displayName || (normalizedParams.protocol && providerNames[normalizedParams.protocol]) || normalizedParams.protocol || t('toast.unknownServer');
                   notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
                   // Load remote files for OAuth provider - pass protocol explicitly.
                   // When the saved OAuth profile carries a confirmed crypt overlay,

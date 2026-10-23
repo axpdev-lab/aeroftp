@@ -1725,7 +1725,8 @@
             "navigationFailed": "การนำทางล้มเหลว: {error}",
             "transferComplete": "คัดลอกไฟล์แล้ว {count} ไฟล์",
             "permissionsSessionChanged": "การเชื่อมต่อเปลี่ยนไปนับตั้งแต่เปิดกล่องโต้ตอบนี้ จึงไม่มีสิ่งใดถูกเปลี่ยนแปลง โปรดเปิดสิทธิ์อีกครั้งบนการเชื่อมต่อปัจจุบัน",
-            "createFailed": "สร้างไม่สำเร็จ"
+            "createFailed": "สร้างไม่สำเร็จ",
+            "unknownServer": "ไม่ทราบ"
         },
         "about": {
             "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (ประหยัด {percent}%)",
             "compress_details_grew": "{input} → {output} (เพิ่มขึ้น {percent}%)",
             "extract_details": "{input} → {output} (แตกไฟล์แล้ว)",
-            "download_details": "({size} ใน {seconds} วินาที)"
+            "download_details": "({size} ใน {seconds} วินาที)",
+            "transfer_details": "({size} ใน {time})"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "ไฟล์ถูกล็อก",
                 "disk_error": "ข้อผิดพลาดดิสก์",
-                "unknown": "ไม่ทราบ"
+                "unknown": "ไม่ทราบ",
+                "fatal": "ข้อผิดพลาดร้ายแรง"
             },
             "schedulerTitle": "ตัวกำหนดเวลาซิงค์",
             "schedulerEnabled": "เปิดใช้งานตัวกำหนดเวลา",

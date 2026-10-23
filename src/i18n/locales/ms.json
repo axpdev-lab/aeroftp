@@ -1725,7 +1725,8 @@
             "navigationFailed": "Navigasi gagal: {error}",
             "transferComplete": "{count} fail disalin",
             "permissionsSessionChanged": "Sambungan telah berubah sejak dialog ini dibuka, jadi tiada apa yang diubah. Buka Kebenaran semula pada sambungan semasa.",
-            "createFailed": "Gagal mencipta"
+            "createFailed": "Gagal mencipta",
+            "unknownServer": "Tidak diketahui"
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (jimat {percent}%)",
             "compress_details_grew": "{input} → {output} (bertambah {percent}%)",
             "extract_details": "{input} → {output} (diekstrak)",
-            "download_details": "({size} dalam {seconds} saat)"
+            "download_details": "({size} dalam {seconds} saat)",
+            "transfer_details": "({size} dalam {time})"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fail dikunci",
                 "disk_error": "Ralat cakera",
-                "unknown": "Tidak diketahui"
+                "unknown": "Tidak diketahui",
+                "fatal": "Ralat maut"
             },
             "schedulerTitle": "Penjadual Segerak",
             "schedulerEnabled": "Aktifkan Penjadual",

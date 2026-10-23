@@ -1725,7 +1725,8 @@
             "navigationFailed": "Η πλοήγηση απέτυχε: {error}",
             "transferComplete": "Αντιγράφηκαν {count} αρχεία",
             "permissionsSessionChanged": "Η σύνδεση άλλαξε από τότε που άνοιξε αυτό το παράθυρο διαλόγου, οπότε δεν άλλαξε τίποτα. Ανοίξτε ξανά τα Δικαιώματα στην τρέχουσα σύνδεση.",
-            "createFailed": "Η δημιουργία απέτυχε"
+            "createFailed": "Η δημιουργία απέτυχε",
+            "unknownServer": "Άγνωστο"
         },
         "about": {
             "tagline": "Περισσότερο από FTP. Πλήρης εργαλειοθήκη προγραμματιστή.",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (εξοικονόμηση {percent}%)",
             "compress_details_grew": "{input} → {output} (αύξηση {percent}%)",
             "extract_details": "{input} → {output} (αποσυμπιέστηκε)",
-            "download_details": "({size} σε {seconds} δευτ.)"
+            "download_details": "({size} σε {seconds} δευτ.)",
+            "transfer_details": "({size} σε {time})"
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Αρχείο κλειδωμένο",
                 "disk_error": "Σφάλμα δίσκου",
-                "unknown": "Άγνωστο"
+                "unknown": "Άγνωστο",
+                "fatal": "Κρίσιμο σφάλμα"
             },
             "schedulerTitle": "Προγραμματιστής συγχρονισμού",
             "schedulerEnabled": "Ενεργοποίηση προγραμματιστή",

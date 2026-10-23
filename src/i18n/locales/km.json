@@ -1725,7 +1725,8 @@
             "navigationFailed": "ការរុករកបានបរាជ័យ៖ {error}",
             "transferComplete": "បានចម្លងឯកសារ {count}",
             "permissionsSessionChanged": "ការតភ្ជាប់បានផ្លាស់ប្តូរចាប់តាំងពីបើកប្រអប់នេះ ដូច្នេះគ្មានអ្វីត្រូវបានផ្លាស់ប្តូរទេ។ សូមបើកការអនុញ្ញាតម្ដងទៀតលើការតភ្ជាប់បច្ចុប្បន្ន។",
-            "createFailed": "ការបង្កើតបានបរាជ័យ"
+            "createFailed": "ការបង្កើតបានបរាជ័យ",
+            "unknownServer": "មិនស្គាល់"
         },
         "about": {
             "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} (សន្សំ {percent}%)",
             "compress_details_grew": "{input} → {output} (កើនឡើង {percent}%)",
             "extract_details": "{input} → {output} (បានពង្រីក)",
-            "download_details": "({size} ក្នុងរយៈ {seconds} វិនាទី)"
+            "download_details": "({size} ក្នុងរយៈ {seconds} វិនាទី)",
+            "transfer_details": "({size} ក្នុងរយៈពេល {time})"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "ឯកសារត្រូវបានចាក់សោ",
                 "disk_error": "កំហុសថាស",
-                "unknown": "មិនស្គាល់"
+                "unknown": "មិនស្គាល់",
+                "fatal": "កំហុសធ្ងន់ធ្ងរ"
             },
             "schedulerTitle": "កម្មវិធីកាលវិភាគសមកាលកម្ម",
             "schedulerEnabled": "បើកកម្មវិធីកាលវិភាគ",

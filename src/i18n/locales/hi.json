@@ -1725,7 +1725,8 @@
             "navigationFailed": "नेविगेशन विफल: {error}",
             "transferComplete": "{count} फ़ाइलें कॉपी की गईं",
             "permissionsSessionChanged": "यह संवाद खुलने के बाद कनेक्शन बदल गया है, इसलिए कुछ भी नहीं बदला गया। वर्तमान कनेक्शन पर अनुमतियाँ फिर से खोलें।",
-            "createFailed": "बनाना विफल रहा"
+            "createFailed": "बनाना विफल रहा",
+            "unknownServer": "अज्ञात"
         },
         "about": {
             "tagline": "FTP से अधिक। एक पूर्ण डेवलपर टूलकिट।",
@@ -2039,7 +2040,8 @@
             "compress_details_saved": "{input} → {output} ({percent}% बचत)",
             "compress_details_grew": "{input} → {output} ({percent}% बढ़ा)",
             "extract_details": "{input} → {output} (विस्तारित)",
-            "download_details": "({seconds} सेकंड में {size})"
+            "download_details": "({seconds} सेकंड में {size})",
+            "transfer_details": "({time} में {size})"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
@@ -2523,7 +2525,8 @@
                 "timeout": "Timeout",
                 "file_locked": "फ़ाइल लॉक",
                 "disk_error": "डिस्क त्रुटि",
-                "unknown": "अज्ञात"
+                "unknown": "अज्ञात",
+                "fatal": "घातक त्रुटि"
             },
             "schedulerTitle": "सिंक शेड्यूलर",
             "schedulerEnabled": "शेड्यूलर सक्षम करें",
