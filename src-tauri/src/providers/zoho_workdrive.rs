@@ -1865,10 +1865,9 @@ impl ZohoWorkdriveProvider {
                 }
                 Err(e) => {
                     info!("Zoho WorkDrive privatespace list error: {}", e);
-                    // If no team folders either, propagate the error
-                    if entries.is_empty() {
-                        return Err(e);
-                    }
+                    // Cached team folders do not make a failed privatespace
+                    // listing complete. A missing private file is unverified.
+                    return Err(e);
                 }
             }
         } else {
@@ -2841,6 +2840,15 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        if path.starts_with('/') && path.trim_matches('/').is_empty() {
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            // The virtual root is not a child named "" in its own listing.
+            // Verify the listing so authentication/server failures stay errors.
+            self.list("/").await?;
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
         let path_str_is_absolute = path.starts_with('/');
         let path_str = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path_str.rfind('/') {
@@ -3538,6 +3546,54 @@ impl StorageProvider for ZohoWorkdriveProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn probe_contract_zoho_root_is_not_a_missing_child() {
+        let app = axum::Router::new().fallback(axum::routing::get(|| async { r#"{"data":[]}"# }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        provider.current_folder_id = "ROOT".into();
+        provider.folder_cache.insert("/".into(), "ROOT".into());
+        provider.team_folders.push(("T".into(), "Team".into()));
+        assert_eq!(provider.list("/").await.unwrap().len(), 1);
+        let outcome = provider.stat("/").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Ok(ref root) if root.is_dir),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_contract_zoho_cannot_hide_a_refused_privatespace() {
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = hits.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move || {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async { (axum::http::StatusCode::FORBIDDEN, "refused") }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        provider.team_folders.push(("T".into(), "Team".into()));
+        provider.privatespace_id = Some("PS".into());
+        let outcome = provider.list("/").await;
+        server.abort();
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(
+            outcome.is_err(),
+            "a partial root cannot prove absence: {outcome:?}"
+        );
+    }
 
     fn config(region: &str) -> ZohoWorkdriveConfig {
         ZohoWorkdriveConfig::new("cid", "csec", region)

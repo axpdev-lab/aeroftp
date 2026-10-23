@@ -35,6 +35,12 @@ pub trait RemoteBackend: Send + Sync {
     /// List entries at a remote path.
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String>;
 
+    /// Whether an unlisted child is definitely absent. Unknown backends must
+    /// use a per-path probe before a write rather than trust an incomplete list.
+    async fn listing_is_authoritative(&self) -> bool {
+        false
+    }
+
     /// Get metadata for a single entry.
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String>;
 

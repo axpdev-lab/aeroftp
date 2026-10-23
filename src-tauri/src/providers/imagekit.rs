@@ -271,6 +271,14 @@ impl ImageKitProvider {
         req.basic_auth(self.config.private_key.expose_secret(), Some(""))
     }
 
+    fn upload_url(&self) -> String {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return format!("{base}/upload");
+        }
+        UPLOAD_URL.to_string()
+    }
+
     fn resolve_path(&self, path: &str) -> String {
         if path.trim().is_empty() {
             return self.current_path.clone();
@@ -392,7 +400,9 @@ impl ImageKitProvider {
         items
             .into_iter()
             .find(|item| normalize_path(&item.file_path) == resolved || item.name == name)
-            .ok_or(ProviderError::NotFound(resolved))
+            .ok_or_else(|| ProviderError::NotSupported(format!(
+                "ImageKit cannot verify whether {resolved} exists: its listing can omit stored files; absence is not proven"
+            )))
     }
 
     async fn delete_file_by_path(&self, path: &str) -> Result<(), ProviderError> {
@@ -602,12 +612,10 @@ impl ImageKitProvider {
             return outcome;
         }
         let entry = self.stat(&source).await?;
-        // The look reads the listing (`GET /v1/files`), the one lookup by
-        // path the API has: there is no folder-details endpoint, and a
-        // folder created a moment earlier is not in that index yet, so for
-        // that window its name reads free and a file lands beside it (live,
-        // 2026-09-27: `mkdir` then `mv` onto the new folder). Declared, not
-        // closed: nothing in the API answers sooner.
+        // The listing can omit stored entries (including newly created
+        // folders). find_entry therefore refuses an unverified destination
+        // rather than treating an unlisted name as free. Positive matches
+        // still allow an explicitly requested compatible file replacement.
         let occupant = match self.find_entry(&target).await {
             Ok(found) => Some(file_to_entry(&found)),
             Err(ProviderError::NotFound(_)) => None,
@@ -991,11 +999,9 @@ impl StorageProvider for ImageKitProvider {
                 "Cannot download a directory as a file".to_string(),
             ));
         }
-        let url = entry
-            .metadata
-            .get("url")
-            .cloned()
-            .ok_or_else(|| ProviderError::NotFound("ImageKit URL missing".to_string()))?;
+        let url = entry.metadata.get("url").cloned().ok_or_else(|| {
+            ProviderError::ParseError("ImageKit file metadata has no download URL".to_string())
+        })?;
         validate_download_url(&url)?;
 
         let resp = self
@@ -1045,11 +1051,9 @@ impl StorageProvider for ImageKitProvider {
                 "Cannot download a directory as bytes".to_string(),
             ));
         }
-        let url = entry
-            .metadata
-            .get("url")
-            .cloned()
-            .ok_or_else(|| ProviderError::NotFound("ImageKit URL missing".to_string()))?;
+        let url = entry.metadata.get("url").cloned().ok_or_else(|| {
+            ProviderError::ParseError("ImageKit file metadata has no download URL".to_string())
+        })?;
         validate_download_url(&url)?;
         let resp = self
             .client
@@ -1087,11 +1091,9 @@ impl StorageProvider for ImageKitProvider {
                 "Cannot read a range from a directory".to_string(),
             ));
         }
-        let url = entry
-            .metadata
-            .get("url")
-            .cloned()
-            .ok_or_else(|| ProviderError::NotFound("ImageKit URL missing".to_string()))?;
+        let url = entry.metadata.get("url").cloned().ok_or_else(|| {
+            ProviderError::ParseError("ImageKit file metadata has no download URL".to_string())
+        })?;
         validate_download_url(&url)?;
         // offset + len - 1 must not wrap: a wrapped end makes an invalid Range
         // header that servers ignore, turning a bounded probe into a full-body
@@ -1199,7 +1201,7 @@ impl StorageProvider for ImageKitProvider {
             .text("overwriteFile", "true");
 
         let resp = self
-            .auth(self.client.post(UPLOAD_URL))
+            .auth(self.client.post(self.upload_url()))
             .multipart(form)
             .send()
             .await
@@ -1409,7 +1411,11 @@ impl StorageProvider for ImageKitProvider {
             .get("thumbnail_url")
             .or_else(|| entry.metadata.get("url"))
             .cloned()
-            .ok_or_else(|| ProviderError::NotFound("No ImageKit thumbnail URL".to_string()))
+            .ok_or_else(|| {
+                ProviderError::ParseError(
+                    "ImageKit file metadata has no thumbnail or download URL".to_string(),
+                )
+            })
     }
 
     fn supports_find(&self) -> bool {
@@ -1659,6 +1665,147 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_imagekit_empty_partial_list_cannot_authorize_rmdir() {
+        let (mut provider, deletes) = provider_on_listings(&[("/dir", "[]")]).await;
+        let outcome = provider.rmdir("/dir").await;
+        assert!(
+            deletes.lock().unwrap().is_empty(),
+            "an omitted child must not be deleted"
+        );
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_contract_imagekit_unlisted_name_is_not_proven_absent() {
+        let (mut provider, _) = provider_on_listings(&[("/", "[]")]).await;
+        assert!(!provider.listing_is_authoritative());
+        assert!(matches!(
+            provider.exists("/unlisted").await,
+            Err(ProviderError::NotSupported(_))
+        ));
+        assert!(matches!(
+            provider.stat("/unlisted").await,
+            Err(ProviderError::NotSupported(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn probe_contract_imagekit_missing_url_is_a_metadata_error() {
+        let (mut provider, _) = provider_on_listings(&[(
+            "/",
+            r#"[{"fileId":"f","name":"present","filePath":"/present","type":"file","size":3}]"#,
+        )])
+        .await;
+        assert!(provider.stat("/present").await.is_ok());
+        let outcome = provider.read_range("/present", 0, 1).await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_contract_imagekit_gui_upload_executor_sends_every_plain_folder_file() {
+        use crate::provider_transfer_executor::{
+            ProviderExecutorSessionModel, ProviderUploadExecutor,
+        };
+        use crate::transfer_orchestrator::TransferExecutor;
+        use std::sync::{Arc, Mutex};
+        type RequestLog = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+        let requests: RequestLog = Arc::default();
+        let seen = requests.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |request: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let path = request.uri().path().to_string();
+                    let body = axum::body::to_bytes(request.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    seen.lock().unwrap().push((path.clone(), body.to_vec()));
+                    if path == "/files" {
+                        axum::Json(serde_json::json!([]))
+                    } else {
+                        axum::Json(serde_json::json!({"fileId":"uploaded"}))
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.mkdir("/target").await.unwrap();
+        provider.mkdir("/target/sub").await.unwrap();
+        let capabilities = provider.transfer_capabilities();
+        let executor = ProviderUploadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(tokio::sync::Mutex::new(Some(
+                Box::new(provider) as Box<dyn StorageProvider>
+            ))),
+            crate::transfer_settings::ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 0,
+                timeout_seconds: 10,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+                sftp_download_preset: None,
+            },
+            None,
+            tokio_util::sync::CancellationToken::new(),
+            ProviderExecutorSessionModel::LockedSingle {
+                provider_type: Some(ProviderType::ImageKit),
+            },
+            capabilities,
+        );
+        let temp = tempfile::tempdir().unwrap();
+        for (index, remote, bytes) in [
+            (0, "/target/a.txt", b"first payload".as_slice()),
+            (1, "/target/sub/b.txt", b"second payload".as_slice()),
+        ] {
+            let local = temp.path().join(format!("file-{index}"));
+            std::fs::write(&local, bytes).unwrap();
+            let result = executor
+                .execute(crate::transfer_domain::TransferEntry {
+                    id: index.to_string(),
+                    display_name: format!("file-{index}"),
+                    local_path: local.to_string_lossy().into_owned(),
+                    remote_path: remote.into(),
+                    size: bytes.len() as u64,
+                    modified: None,
+                })
+                .await;
+            assert!(
+                matches!(result, crate::transfer_domain::TransferOutcome::Success),
+                "{result:?}"
+            );
+        }
+        server.abort();
+        let requests = requests.lock().unwrap();
+        let uploads: Vec<_> = requests
+            .iter()
+            .filter(|(path, _)| path == "/upload")
+            .collect();
+        assert_eq!(uploads.len(), 2);
+        assert!(uploads[0]
+            .1
+            .windows(b"first payload".len())
+            .any(|part| part == b"first payload"));
+        assert!(uploads[1]
+            .1
+            .windows(b"second payload".len())
+            .any(|part| part == b"second payload"));
+        assert!(
+            requests.iter().all(|(path, _)| path != "/files"),
+            "plain GUI upload must not require a missing-name proof"
+        );
+    }
     #[tokio::test]
     async fn probe_contract_imagekit_searches_beyond_the_first_page() {
         let app =
@@ -1929,45 +2076,45 @@ mod tests {
         (provider, posts)
     }
 
-    /// A folder rename was refused as not supported, while ImageKit renames a
-    /// folder with the `renameFolder` job. In one folder it is that job.
+    /// A native rename job is available, but a public rename must first
+    /// verify a free destination; ImageKit's index cannot prove one.
     #[tokio::test]
-    async fn a_folder_renames_in_place_with_the_rename_folder_job() {
-        let (mut provider, posts) = provider_recording_folder_jobs().await;
+    async fn native_folder_rename_job_uses_the_documented_request() {
+        let (provider, posts) = provider_recording_folder_jobs().await;
         provider
-            .rename("/src/photos", "/src/albums")
+            .rename_folder_job("/src/photos", "albums")
             .await
-            .expect("folder rename");
+            .unwrap();
         let posts = posts.lock().unwrap();
-        assert_eq!(posts.len(), 1, "{posts:?}");
+        assert_eq!(posts.len(), 1);
         assert_eq!(posts[0].0, "/bulkJobs/renameFolder");
         assert_eq!(
             posts[0].1,
-            serde_json::json!({
-                "folderPath": "/src/photos", "newFolderName": "albums", "purgeCache": false,
-            })
+            serde_json::json!({"folderPath":"/src/photos", "newFolderName":"albums", "purgeCache":false})
         );
     }
 
-    /// A new name and a new parent: renamed in place, then moved.
     #[tokio::test]
-    async fn a_folder_renamed_into_another_folder_is_renamed_then_moved() {
+    async fn a_folder_rename_refuses_an_unverified_new_name() {
         let (mut provider, posts) = provider_recording_folder_jobs().await;
-        provider
-            .rename("/src/photos", "/dst/albums")
-            .await
-            .expect("folder rename and move");
-        let jobs: Vec<String> = posts
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(job, _)| job.clone())
-            .collect();
-        assert_eq!(jobs, ["/bulkJobs/renameFolder", "/bulkJobs/moveFolder"]);
-        assert_eq!(
-            posts.lock().unwrap()[1].1["sourceFolderPath"],
-            "/src/albums/"
+        let outcome = provider.rename("/src/photos", "/src/albums").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(ref error)) if error.contains("cannot verify")),
+            "{outcome:?}"
         );
+        assert!(posts.lock().unwrap().is_empty());
+    }
+
+    /// An unknown final name must not start the first of two folder jobs.
+    #[tokio::test]
+    async fn a_cross_folder_rename_refuses_before_its_first_job() {
+        let (mut provider, posts) = provider_recording_folder_jobs().await;
+        let outcome = provider.rename("/src/photos", "/dst/albums").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(_))),
+            "{outcome:?}"
+        );
+        assert!(posts.lock().unwrap().is_empty());
     }
 
     /// ImageKit turns every character of a new folder name other than a
@@ -1978,21 +2125,25 @@ mod tests {
         let (mut provider, posts) = provider_recording_folder_jobs().await;
         let outcome = provider.rename("/src/photos", "/src/my albums").await;
         assert!(
-            matches!(outcome, Err(ProviderError::NotSupported(ref m)) if m.contains("my_albums")),
+            matches!(outcome, Err(ProviderError::NotSupported(_))),
             "{outcome:?}"
         );
         assert!(posts.lock().unwrap().is_empty());
+        assert!(refuse_rewritten_folder_name("my albums")
+            .unwrap_err()
+            .to_string()
+            .contains("my_albums"));
         assert!(refuse_rewritten_folder_name("albums_2026-10").is_ok());
         assert!(refuse_rewritten_folder_name("fotografía").is_ok());
     }
 
     #[tokio::test]
     async fn folder_move_returns_only_once_the_bulk_job_completed() {
-        let (mut provider, polls) = provider_with_folder_job(1).await;
+        let (provider, polls) = provider_with_folder_job(1).await;
         provider
-            .rename("/src/photos", "/dst/photos")
+            .start_folder_job("moveFolder", "/src/photos", "/dst", false)
             .await
-            .expect("move");
+            .expect("native move job completes");
         assert_eq!(
             polls.load(std::sync::atomic::Ordering::SeqCst),
             2,
@@ -2171,20 +2322,21 @@ mod tests {
     /// version) and then rename that file, with the other's history, to
     /// `b.jpg`: the rename goes first, in `/src`.
     #[tokio::test]
-    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+    async fn a_file_move_refuses_an_unverified_destination_before_renaming() {
         let (mut provider, calls) = provider_on_tree(&["/src/a.jpg", "/dst/a.jpg"], &[]).await;
-        provider
-            .rename("/src/a.jpg", "/dst/b.jpg")
-            .await
-            .expect("rename then move");
-        let calls = calls.lock().unwrap().clone();
-        assert_eq!(calls.len(), 2, "{calls:?}");
-        assert!(calls[0].starts_with("PUT /files/rename"), "{calls:?}");
-        assert!(calls[0].contains(r#""filePath":"/src/a.jpg""#), "{calls:?}");
-        assert!(calls[1].starts_with("PUT /files/move"), "{calls:?}");
+        let outcome = provider.rename("/src/a.jpg", "/dst/b.jpg").await;
         assert!(
-            calls[1].contains(r#""sourceFilePath":"/src/b.jpg""#),
-            "{calls:?}"
+            matches!(outcome, Err(ProviderError::NotSupported(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|call| !call.starts_with("PUT ") && !call.starts_with("POST ")),
+            "{:?}",
+            calls.lock().unwrap()
         );
     }
 
@@ -2244,7 +2396,10 @@ mod tests {
     #[tokio::test]
     async fn a_failed_poll_says_the_job_may_complete_and_a_retry_does_not_requeue() {
         let (mut provider, calls) = provider_on_tree(&["/src", "/src/photos"], &[500, 200]).await;
-        let first = provider.rename("/src/photos", "/dst/photos").await;
+        // A job already submitted before this probe-policy change may finish.
+        let first = provider
+            .start_folder_job("moveFolder", "/src/photos", "/dst", false)
+            .await;
         assert!(
             matches!(first, Err(ProviderError::Other(ref m)) if m.contains("may still complete")),
             "{first:?}"
@@ -2264,24 +2419,32 @@ mod tests {
 
     /// A job ImageKit no longer knows (404) is over: remembering it made
     /// every later move of that folder poll the dead job again, so the folder
-    /// could not be moved for the rest of the session. The next attempt
-    /// queues a job of its own.
+    /// could not be moved for the rest of the session. A later fresh attempt
+    /// runs the new destination checks and refuses an unverified target.
     #[tokio::test]
     async fn a_job_imagekit_does_not_know_is_forgotten() {
         let (mut provider, calls) = provider_on_tree(&["/src", "/src/photos"], &[404]).await;
-        let first = provider.rename("/src/photos", "/dst/photos").await;
+        // A job already submitted before this probe-policy change may finish.
+        let first = provider
+            .start_folder_job("moveFolder", "/src/photos", "/dst", false)
+            .await;
         assert!(first.is_err(), "{first:?}");
-        provider
-            .rename("/src/photos", "/dst/photos")
-            .await
-            .expect("a new job, which completes");
+        let retry = provider.rename("/src/photos", "/dst/photos").await;
+        assert!(
+            matches!(retry, Err(ProviderError::NotSupported(_))),
+            "a fresh unverified destination is refused: {retry:?}"
+        );
+        assert!(
+            provider.unfinished_folder_jobs.lock().unwrap().is_empty(),
+            "the forgotten job must be cleared"
+        );
         let posts = calls
             .lock()
             .unwrap()
             .iter()
             .filter(|c| c.starts_with("POST /bulkJobs/moveFolder"))
             .count();
-        assert_eq!(posts, 2, "{:?}", calls.lock().unwrap());
+        assert_eq!(posts, 1, "no fresh job: {:?}", calls.lock().unwrap());
     }
 
     /// Every caller that needs atomicity stages its temporary next to the

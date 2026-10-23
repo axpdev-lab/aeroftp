@@ -1171,6 +1171,7 @@ pub(crate) mod exists_tests {
             let (read, mut write) = socket.into_split();
             let mut lines = BufReader::new(read).lines();
             let mut binary = false;
+            let mut cwd = "/".to_string();
             let mut data_listener = None;
             write.write_all(b"220 ready\r\n").await.unwrap();
             while let Ok(Some(line)) = lines.next_line().await {
@@ -1178,7 +1179,7 @@ pub(crate) mod exists_tests {
                 let reply = match cmd {
                     "USER" => "331 password\r\n".to_string(),
                     "PASS" => "230 in\r\n".to_string(),
-                    "PWD" => "257 \"/\"\r\n".to_string(),
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
                     "TYPE" => {
                         binary = arg == "I";
                         "200 type set\r\n".to_string()
@@ -1206,13 +1207,16 @@ pub(crate) mod exists_tests {
                         } else if arg == "-a" {
                             "-rw-r--r-- 1 user group 5 Jan 20 10:00 .hidden\r\n"
                         } else {
-                            "-rw-r--r-- 1 user group 5 Jan 20 10:00 a.txt\r\n"
+                            "-rw-r--r-- 1 user group 5 Jan 20 10:00 a.txt\r\ndrwxr-xr-x 1 user group 0 Jan 20 10:00 denied\r\n"
                         };
                         data.write_all(listing.as_bytes()).await.unwrap();
                         data.shutdown().await.unwrap();
                         "226 done\r\n".to_string()
                     }
-                    "CWD" if arg == "/d" || arg == "/" => "250 ok\r\n".to_string(),
+                    "CWD" if arg == "/d" || arg == "/" => {
+                        cwd = arg.to_string();
+                        "250 ok\r\n".to_string()
+                    }
                     "CWD" => "550 Failed to change directory.\r\n".to_string(),
                     "QUIT" => {
                         let _ = write.write_all(b"221 bye\r\n").await;

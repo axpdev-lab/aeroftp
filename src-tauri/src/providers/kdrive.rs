@@ -1518,6 +1518,15 @@ impl StorageProvider for KDriveProvider {
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let resolved = self.resolve_path(path);
+        if resolved == "/" {
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            // The virtual root is not a child named "" in its own listing.
+            // Verify the listing so authentication/server failures stay errors.
+            self.list("/").await?;
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
@@ -2343,6 +2352,15 @@ mod api_failure_tests {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_kdrive_root_is_not_a_missing_child() {
+        let (mut provider, _) = provider_on_kdrive_root(false, None).await;
+        assert!(!provider.list("/").await.unwrap().is_empty());
+        let root = provider.stat("/").await.unwrap();
+        assert!(root.is_dir);
+        assert!(provider.exists("/").await.unwrap());
+    }
+
     #[tokio::test]
     async fn probe_contract_kdrive_requires_metadata_after_a_successful_lookup() {
         let app =

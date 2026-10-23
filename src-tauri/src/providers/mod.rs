@@ -1127,14 +1127,19 @@ pub trait StorageProvider: Send + Sync {
     /// takes a directory's content along: lists `path` and refuses it with
     /// [`ProviderError::DirectoryNotEmpty`] when the listing shows anything,
     /// dotfiles included. A listing that fails is that failure, with nothing
-    /// removed.
+    /// removed. A non-authoritative empty listing cannot prove emptiness and
+    /// is refused before the provider's recursive native delete.
     async fn refuse_non_empty_dir(&mut self, path: &str) -> Result<(), ProviderError> {
         let children = self.list(path).await?;
-        if children.is_empty() {
-            Ok(())
-        } else {
-            Err(directory_not_empty(path, children.len()))
+        if !children.is_empty() {
+            return Err(directory_not_empty(path, children.len()));
         }
+        if !self.listing_is_authoritative() {
+            return Err(ProviderError::NotSupported(format!(
+                "Cannot verify that {path} is empty: the listing can omit stored files; refusing non-recursive removal"
+            )));
+        }
+        Ok(())
     }
 
     /// Delete a directory recursively (with all contents)

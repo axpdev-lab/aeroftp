@@ -815,9 +815,14 @@ impl FtpProvider {
                 // Unreachable: the expiry returned above.
                 (Ok(None), _) => return Err(self.listing_timed_out(&base_path)),
                 (Err(list_err), Ok(())) => {
-                    return Err(ProviderError::ServerError(Self::doing(
-                        "listing", &base_path, list_err,
-                    )))
+                    return Err(
+                        Self::classify_missing_path("listing", &base_path, &list_err)
+                            .unwrap_or_else(|| {
+                                ProviderError::ServerError(Self::doing(
+                                    "listing", &base_path, list_err,
+                                ))
+                            }),
+                    )
                 }
                 (Ok(Some(_)), Err(restore_err)) => return Err(restore_err),
                 (Err(list_err), Err(restore_err)) => {
@@ -833,7 +838,10 @@ impl FtpProvider {
             match Self::list_with_cap(stream.list(list_path.as_deref())).await {
                 Ok(Some(lines)) => lines,
                 Ok(None) => return Err(self.listing_timed_out(&base_path)),
-                Err(e) => return Err(ProviderError::ServerError(e.to_string())),
+                Err(e) => {
+                    return Err(Self::classify_missing_path("listing", &base_path, &e)
+                        .unwrap_or_else(|| ProviderError::ServerError(e.to_string())))
+                }
             }
         };
 
@@ -7222,6 +7230,35 @@ mod late_reply_guard_tests {
 #[cfg(test)]
 mod rename_contract_tests {
     #[tokio::test]
+    async fn probe_contract_ftp_list_distinguishes_absence_from_denial() {
+        let (mut missing, _) = provider_on_server_with(
+            &["/a.txt"],
+            Quirks {
+                list_only: true,
+                ..Quirks::default()
+            },
+        )
+        .await;
+        let outcome = missing.list("/missing").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        let (mut denied, _) = provider_on_server_with(
+            &["/a.txt"],
+            Quirks {
+                listing_denied: true,
+                ..Quirks::default()
+            },
+        )
+        .await;
+        assert!(matches!(
+            denied.list("/private").await,
+            Err(ProviderError::ServerError(_))
+        ));
+    }
+
+    #[tokio::test]
     async fn probe_contract_ftp_size_proves_a_missing_path() {
         let (mut p, _) = provider_on_scripted_server().await;
         assert_eq!(p.size("/a.txt").await.unwrap(), 3);
@@ -7347,6 +7384,9 @@ mod rename_contract_tests {
                     log.lock().unwrap().push(format!("DELE {argument}"));
                     files.lock().unwrap().retain(|f| f != &argument);
                     "250 Deleted\r\n".to_string()
+                }
+                "LIST" if quirks.list_only && argument == "/missing" => {
+                    "550 No such file or directory\r\n".to_string()
                 }
                 "LIST" if quirks.list_all_refused && argument.starts_with("-a") => {
                     "550 Permission denied\r\n".to_string()

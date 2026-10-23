@@ -42,6 +42,8 @@ pub struct GitHubHttpClient {
     pub(super) client: Client,
     pub(super) token: SecretString,
     rate_limit: RateLimitState,
+    #[cfg(test)]
+    pub(super) api_origin_override: Option<String>,
 }
 
 /// An empty hint is not a path.
@@ -95,6 +97,8 @@ impl GitHubHttpClient {
             client,
             token,
             rate_limit: RateLimitState::new(),
+            #[cfg(test)]
+            api_origin_override: None,
         })
     }
 
@@ -499,6 +503,17 @@ impl GitHubHttpClient {
     /// SEC-GH-004/005: Only allowlisted GitHub domains accepted for absolute URLs.
     /// Rejects http:// entirely (TLS enforcement). Unknown URLs are errors.
     fn resolve_url(&self, url: &str) -> Result<String, GitHubError> {
+        #[cfg(test)]
+        if let Some(origin) = &self.api_origin_override {
+            if url.starts_with('/') {
+                return Ok(format!("{origin}{url}"));
+            }
+            if is_allowed_github_url(url) {
+                let parsed = reqwest::Url::parse(url).unwrap();
+                let query = parsed.query().map(|q| format!("?{q}")).unwrap_or_default();
+                return Ok(format!("{origin}{}{query}", parsed.path()));
+            }
+        }
         if is_allowed_github_url(url) {
             Ok(url.to_string())
         } else if url.starts_with('/') {

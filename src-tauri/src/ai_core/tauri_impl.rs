@@ -275,8 +275,40 @@ impl TauriRemoteBackend {
     }
 }
 
+async fn legacy_ftp_list(
+    manager: &mut crate::ftp::FtpManager,
+    path: &str,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut lease = super::ftp_manager_provider::FtpManagerProvider::borrow(manager);
+    lease.provider.list(path).await.map_err(|e| e.to_string())
+}
+
+async fn legacy_ftp_stat(
+    manager: &mut crate::ftp::FtpManager,
+    path: &str,
+) -> Result<RemoteEntry, String> {
+    let mut lease = super::ftp_manager_provider::FtpManagerProvider::borrow(manager);
+    lease.provider.stat(path).await.map_err(|e| e.to_string())
+}
+
 #[async_trait]
 impl RemoteBackend for TauriRemoteBackend {
+    async fn listing_is_authoritative(&self) -> bool {
+        match self {
+            Self::Active { app } => {
+                if let Some(provider) = Self::active_provider(app).lock().await.as_ref() {
+                    return provider.listing_is_authoritative();
+                }
+                // The legacy path below uses strict FtpManagerProvider probes.
+                app.state::<AppState>()
+                    .ftp_manager
+                    .lock()
+                    .await
+                    .is_connected()
+            }
+            Self::Temp { provider } => provider.lock().await.listing_is_authoritative(),
+        }
+    }
     async fn is_connected(&self) -> bool {
         match self {
             TauriRemoteBackend::Active { app } => {
@@ -315,26 +347,8 @@ impl RemoteBackend for TauriRemoteBackend {
                     return p.list(path).await.map_err(|e| e.to_string());
                 }
                 let app_state = app.state::<AppState>();
-                let mut mgr = app_state.ftp_manager.lock().await;
-                mgr.change_dir(path).await.map_err(|e| e.to_string())?;
-                let files = mgr.list_files().await.map_err(|e| e.to_string())?;
-                Ok(files
-                    .into_iter()
-                    .map(|f| RemoteEntry {
-                        name: f.name.clone(),
-                        path: format!("{}/{}", path.trim_end_matches('/'), f.name),
-                        is_dir: f.is_dir,
-                        size: f.size.unwrap_or(0),
-                        modified: f.modified.clone(),
-                        permissions: f.permissions.clone(),
-                        owner: None,
-                        group: None,
-                        is_symlink: false,
-                        link_target: None,
-                        mime_type: None,
-                        metadata: std::collections::HashMap::new(),
-                    })
-                    .collect())
+                let mut manager = app_state.ftp_manager.lock().await;
+                legacy_ftp_list(&mut manager, path).await
             }
             TauriRemoteBackend::Temp { provider } => provider
                 .lock()
@@ -351,7 +365,9 @@ impl RemoteBackend for TauriRemoteBackend {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
                     return p.stat(path).await.map_err(|e| e.to_string());
                 }
-                Err("stat not supported on FTP fallback".to_string())
+                let app_state = app.state::<AppState>();
+                let mut manager = app_state.ftp_manager.lock().await;
+                legacy_ftp_stat(&mut manager, path).await
             }
             TauriRemoteBackend::Temp { provider } => provider
                 .lock()
@@ -956,5 +972,50 @@ impl ToolCtx for TauriToolCtx {
     }
     fn surface(&self) -> Surfaces {
         Surfaces::GUI
+    }
+}
+
+#[cfg(test)]
+mod ftp_probe_tests {
+    use super::*;
+    use crate::providers::ProviderError;
+
+    #[tokio::test]
+    async fn probe_contract_gui_legacy_ftp_list_preserves_a_proven_missing_directory() {
+        let address = crate::ftp::exists_tests::vsftpd_like().await;
+        let mut manager = crate::ftp::FtpManager::new();
+        manager.connect(&address).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        assert!(matches!(
+            legacy_ftp_list(&mut manager, "/missing").await,
+            Err(ref error) if error == &ProviderError::NotFound("/missing".into()).to_string()
+        ));
+        assert!(matches!(
+            legacy_ftp_list(&mut manager, "/denied").await,
+            Err(ref error) if error.starts_with("Server error:")
+        ));
+        assert!(manager.is_connected());
+        assert_eq!(manager.current_path(), "/");
+    }
+
+    #[tokio::test]
+    async fn probe_contract_gui_legacy_ftp_uses_real_metadata_and_keeps_the_session() {
+        let address = crate::ftp::exists_tests::vsftpd_like().await;
+        let mut manager = crate::ftp::FtpManager::new();
+        manager.connect(&address).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        manager.change_dir("/d").await.unwrap();
+        assert_eq!(manager.current_path(), "/d", "fixture must track CWD");
+        let outcome = legacy_ftp_stat(&mut manager, "/.hidden").await;
+        assert!(
+            matches!(outcome, Ok(ref entry) if entry.name == ".hidden"),
+            "{outcome:?}"
+        );
+        assert!(manager.is_connected());
+        assert_eq!(manager.current_path(), "/d");
+        let entries = legacy_ftp_list(&mut manager, "/").await.unwrap();
+        assert!(entries.iter().any(|entry| entry.name == "a.txt"));
+        assert!(manager.is_connected());
+        assert_eq!(manager.current_path(), "/d");
     }
 }

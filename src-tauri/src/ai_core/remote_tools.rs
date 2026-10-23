@@ -1292,12 +1292,16 @@ async fn bulk_preconditions<'a>(
     } else {
         None
     };
+    let authoritative = backend.listing_is_authoritative().await;
     let mut pending = Vec::with_capacity(members.len());
     for (index, member) in members {
         if member.no_clobber {
             let name = member.remote_path.rsplit('/').next().unwrap_or("");
             let listed = match &listing {
-                Some(Ok(entries)) => listed_name(entries, name),
+                Some(Ok(entries)) => match listed_name(entries, name) {
+                    Listed::Absent if !authoritative => Listed::Unsure,
+                    answer => answer,
+                },
                 // Nothing lives under a folder that is not there.
                 Some(Err(e)) if backend_reported_not_found(e) => Listed::Absent,
                 _ => Listed::Unsure,
@@ -4616,6 +4620,7 @@ mod tests {
         /// provider fails on an expired token or a dropped connection.
         stat_fails_with: Option<String>,
         list_fails_with: Option<String>,
+        listing_authoritative: bool,
         /// When set, `mkdir` fails with this message instead of the default
         /// "unused", so a test can hand the walk the wording a real server
         /// uses when the path is already taken.
@@ -4704,6 +4709,7 @@ mod tests {
                 rename_fails_with: None,
                 stat_fails_with: None,
                 list_fails_with: None,
+                listing_authoritative: true,
                 mkdir_fails_with: None,
                 mkdir_calls: Mutex::new(Vec::new()),
                 symlinks: std::collections::HashSet::new(),
@@ -4737,6 +4743,9 @@ mod tests {
 
     #[async_trait::async_trait]
     impl RemoteBackend for FakeBackend {
+        async fn listing_is_authoritative(&self) -> bool {
+            self.listing_authoritative
+        }
         async fn is_connected(&self) -> bool {
             true
         }
@@ -5317,6 +5326,33 @@ mod tests {
         );
         assert_eq!(report["results"][0]["skipped"], true);
         assert_eq!(report["summary"]["totals"]["skipped"], 1);
+    }
+
+    #[tokio::test]
+    async fn probe_contract_mcp_bulk_probes_names_omitted_by_a_partial_listing() {
+        let (_directory, items) = bulk_fixture(&["a.txt", "fresh1.txt", "fresh2.txt"]);
+        let mut fake = bulk_backend(|_| BulkTransferOutcome::Completed);
+        fake.listing_authoritative = false;
+        fake.tree.insert("/root".into(), Vec::new());
+        // stat still finds a.txt, which the incomplete list omitted.
+        let fake = Arc::new(fake);
+        let report = upload_many(
+            &test_ctx(fake.clone()),
+            &json!({"server":"s", "items":items, "no_clobber":true}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report["summary"]["skipped"], 1);
+        assert_eq!(
+            *fake.bulk_calls.lock().unwrap(),
+            vec![vec!["/root/fresh1.txt", "/root/fresh2.txt"]]
+        );
+        assert!(fake
+            .stat_calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path == "/root/a.txt"));
     }
 
     /// `delay_ms` was advertised and ignored. It pauses before every upload

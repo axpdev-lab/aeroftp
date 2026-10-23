@@ -1883,6 +1883,15 @@ impl StorageProvider for DrimeCloudProvider {
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let resolved = self.resolve_path(path);
+        if resolved == "/" {
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            // The virtual root is not a child named "" in its own listing.
+            // Verify the listing so authentication/server failures stay errors.
+            self.list("/").await?;
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
@@ -2896,6 +2905,18 @@ impl StorageProvider for DrimeCloudProvider {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_drime_root_is_not_a_missing_child() {
+        let (mut provider, _) = provider_on_drime(false, 200).await;
+        assert!(!provider.list("/").await.unwrap().is_empty());
+        let outcome = provider.stat("/").await;
+        TEST_API_BASE.with(|base| *base.borrow_mut() = None);
+        assert!(
+            matches!(outcome, Ok(ref root) if root.is_dir),
+            "{outcome:?}"
+        );
+    }
+
     #[tokio::test]
     async fn probe_contract_drime_requires_listing_data_and_names() {
         for body in [

@@ -2076,6 +2076,15 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        if path.starts_with('/') && path.trim_matches('/').is_empty() {
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            // The virtual root is not a child named "" in its own listing.
+            // Verify the listing so authentication/server failures stay errors.
+            self.list("/").await?;
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
         let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -3215,6 +3224,15 @@ impl StorageProvider for GoogleDriveProvider {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_drive_root_is_not_a_missing_child() {
+        let (mut provider, _) = provider_on_drive(&[]).await;
+        assert!(provider.list("/").await.unwrap().is_empty());
+        let root = provider.stat("/").await.unwrap();
+        assert!(root.is_dir);
+        assert!(provider.exists("/").await.unwrap());
+    }
+
     #[tokio::test]
     async fn probe_contract_drive_lookup_follows_later_exact_name_pages() {
         let (mut provider, _) =

@@ -338,6 +338,14 @@ impl RemoteBackend for CliRemoteBackend {
         p.list(path).await.map_err(|e| e.to_string())
     }
 
+    async fn listing_is_authoritative(&self) -> bool {
+        self.provider
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|p| p.listing_is_authoritative())
+    }
+
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;

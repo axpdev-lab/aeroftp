@@ -4923,10 +4923,17 @@ async fn conflict_scan_listing(
     provider: &mut dyn StorageProvider,
     remote_dir: &str,
 ) -> Result<Vec<RemoteEntry>, ProviderError> {
-    match provider.list(remote_dir).await {
-        Err(ProviderError::NotFound(_)) => Ok(Vec::new()),
-        other => other,
+    let entries = match provider.list(remote_dir).await {
+        Err(ProviderError::NotFound(_)) => return Ok(Vec::new()),
+        other => other?,
+    };
+    // Native providers may discover unreadable entries during the listing.
+    if !provider.listing_is_authoritative() {
+        return Err(ProviderError::NotSupported(format!(
+            "Cannot verify upload conflicts in {remote_dir}: the listing can omit stored files"
+        )));
     }
+    Ok(entries)
 }
 
 /// The listing error of the folder that holds `remote_path`, when the
@@ -13871,6 +13878,19 @@ mod tests {
             .await
             .expect("a folder not created yet holds nothing to keep")
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn probe_contract_gui_conflict_scan_cannot_trust_a_partial_listing() {
+        let mut provider =
+            crate::providers::probe_fake::ProbeFake::new().with_file("/up/visible.txt", 3);
+        // Native providers may learn of an unreadable item while listing.
+        provider.lose_listing_authority = true;
+        let outcome = conflict_scan_listing(&mut provider, "/up").await;
+        assert!(
+            outcome.is_err(),
+            "the unlisted targets remain unverified: {outcome:?}"
+        );
     }
 
     /// The files of a folder the scan could not list are held back, the

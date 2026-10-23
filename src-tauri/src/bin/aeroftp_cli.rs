@@ -7768,7 +7768,9 @@ fn remote_size_is_exact(provider: &dyn StorageProvider, entry: &RemoteEntry) -> 
 /// proceeding, but not for a `stat` that lost the connection
 /// ([`connection_lost_reading`]): the write that would follow dials again by
 /// itself (SFTP's `ensure_connected`) and overwrites the file the flag
-/// protects, so it fails closed as `--immutable` does.
+/// protects, so it fails closed as `--immutable` does. A provider whose
+/// listing can omit stored files also fails closed: its inability to verify
+/// a name is a backend capability limit, not an intermittent stat failure.
 async fn skip_if_destination_exists(
     provider: &mut dyn StorageProvider,
     target: &str,
@@ -7792,7 +7794,11 @@ async fn skip_if_destination_exists(
             }
         }
         Err(ProviderError::NotFound(_)) => return None,
-        Err(e) if cli.immutable || connection_lost_reading(&*provider, &e, &[target]) => {
+        Err(e)
+            if cli.immutable
+                || !provider.listing_is_authoritative()
+                || connection_lost_reading(&*provider, &e, &[target]) =>
+        {
             let code = provider_error_to_exit_code(&e);
             print_error(
                 format,
@@ -11138,7 +11144,8 @@ async fn upload_transfer_on(
             Err(ProviderError::NotFound(_)) => {}
             // As a single `put` does: under `--immutable` a `stat` that fails
             // for another reason fails closed, and `--no-clobber` proceeds,
-            // unless the check lost the session. A worker's connection can end
+            // unless the check lost the session or the provider cannot prove
+            // absence from its listing. A worker's connection can end
             // between two jobs, and its `stat` then fails at once (SFTP's does
             // not dial again) while the upload dials again by itself and would
             // truncate the very file `--no-clobber` protects. Nothing is
@@ -11155,7 +11162,7 @@ async fn upload_transfer_on(
                     );
                     return Err(err);
                 }
-                if err.session_lost {
+                if err.session_lost || !provider.listing_is_authoritative() {
                     err.message = format!(
                         "--no-clobber: cannot verify that {} does not exist ({}); not written",
                         remote_path, err.message
@@ -12300,8 +12307,9 @@ fn put_screens_targets_by_listing(
     files: &[(String, String, u64)],
     cli: &Cli,
 ) -> bool {
-    provider.transfer_capabilities().bulk_upload
-        == ftp_client_gui_lib::transfer_dag::Capability::Supported
+    provider.listing_is_authoritative()
+        && provider.transfer_capabilities().bulk_upload
+            == ftp_client_gui_lib::transfer_dag::Capability::Supported
         && native_bulk_upload_pays(files, effective_parallel_workers(cli))
 }
 
@@ -12312,6 +12320,8 @@ enum PutParentListing {
     Listed(HashMap<String, RemoteEntry>),
     /// The folder does not exist, so none of its targets do.
     Missing,
+    /// The provider discovered that its listing can omit stored files.
+    Unverified,
     /// The listing failed another way, and verifies nothing in the folder.
     Failed {
         message: String,
@@ -12381,11 +12391,15 @@ fn filter_put_targets_by_listing(
                 // A folder absent from the map was never listed, which
                 // verifies no more than a listing that lost the session, and
                 // is held to the same rule.
-                let (message, session_lost) = match unread {
+                let (message, refuse_unverified) = match unread {
                     Some(PutParentListing::Failed {
                         message,
                         session_lost,
                     }) => (message.as_str(), *session_lost),
+                    Some(PutParentListing::Unverified) => (
+                        "the listing can omit stored files; absence is unverified",
+                        true,
+                    ),
                     _ => ("its folder was not listed", true),
                 };
                 if cli.immutable {
@@ -12395,7 +12409,7 @@ fn filter_put_targets_by_listing(
                     ));
                     continue;
                 }
-                if session_lost {
+                if refuse_unverified {
                     screen.errors.push(format!(
                         "--no-clobber: cannot verify that {} does not exist ({}); not written",
                         remote_path, message
@@ -12450,6 +12464,7 @@ async fn screen_put_targets_by_listing(
             return None;
         }
         let listing = match provider.list(parent).await {
+            Ok(_) if !provider.listing_is_authoritative() => PutParentListing::Unverified,
             Ok(entries) => {
                 let mut by_name = HashMap::with_capacity(entries.len());
                 for entry in entries {
@@ -88072,6 +88087,8 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         stat_errors: std::collections::HashSet<String>,
         /// The provider type the fake reports (SFTP when unset).
         kind: Option<ProviderType>,
+        /// A backend such as ImageKit cannot prove absence from its list.
+        refuse_unlisted_absence: bool,
         /// `reports_exact_size` says no, as the size-changing overlays do.
         inexact_sizes: bool,
         /// Paths whose `stat` loses the session, and how many times. The
@@ -88184,6 +88201,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
     #[async_trait::async_trait]
     impl StorageProvider for WorkerFake {
+        fn listing_is_authoritative(&self) -> bool {
+            !self.state.lock().unwrap().refuse_unlisted_absence
+        }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
         }
@@ -88349,10 +88369,15 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 let name = path.rsplit('/').next().unwrap_or(path).to_string();
                 return Ok(RemoteEntry::directory(name, path.to_string()));
             }
-            let bytes = st
-                .files
-                .get(path)
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            let bytes = st.files.get(path).ok_or_else(|| {
+                if st.refuse_unlisted_absence {
+                    ProviderError::NotSupported(
+                        "ImageKit cannot verify absence from its listing".into(),
+                    )
+                } else {
+                    ProviderError::NotFound(path.to_string())
+                }
+            })?;
             let name = path.rsplit('/').next().unwrap_or(path).to_string();
             let mut entry = RemoteEntry::file(name, path.to_string(), bytes.len() as u64);
             entry.modified = Some(FIXTURE_MTIME.to_string());
@@ -88368,6 +88393,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             Ok(self.stat(path).await?.size)
         }
         async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            if self.state.lock().unwrap().refuse_unlisted_absence {
+                return self.stat(path).await.map(|_| true);
+            }
             Ok(self.state.lock().unwrap().files.contains_key(path))
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -90184,6 +90212,73 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 // one and refused; a refusal ends the retries, so no third.
                 assert_eq!(st.dials, 1, "{case}: two attempts, not three");
             }
+        }
+    }
+
+    #[test]
+    fn probe_contract_cli_imagekit_plain_put_and_put_r_keep_uploading() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for recursive in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let (folder, cli) = local_batch(&directory, 1);
+            let single = format!("{folder}/f1.txt");
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.kind = Some(ProviderType::ImageKit);
+                st.refuse_unlisted_absence = true;
+            }
+            let code = run_on_fake(&state, || {
+                cmd_put(
+                    "memory://",
+                    if recursive { &folder } else { &single },
+                    Some(if recursive { "/root" } else { "/root/f1.txt" }),
+                    recursive,
+                    false,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            });
+            assert_eq!(code, 0, "recursive={recursive}");
+            let st = state.lock().unwrap();
+            assert_eq!(st.files.len(), if recursive { 5 } else { 1 });
+            assert_eq!(st.files["/root/f1.txt"], b"file 1");
+            assert_eq!(st.served.len(), if recursive { 5 } else { 1 });
+        }
+    }
+
+    #[test]
+    fn probe_contract_cli_imagekit_no_clobber_refuses_an_unknown_destination() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for recursive in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let (folder, cli) = local_batch(&directory, 1);
+            let single = format!("{folder}/f1.txt");
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.kind = Some(ProviderType::ImageKit);
+                st.refuse_unlisted_absence = true;
+            }
+            let code = run_on_fake(&state, || {
+                cmd_put(
+                    "memory://",
+                    if recursive { &folder } else { &single },
+                    Some("/root"),
+                    recursive,
+                    true,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            });
+            assert_ne!(code, 0, "recursive={recursive}");
+            assert!(state.lock().unwrap().served.is_empty());
         }
     }
 

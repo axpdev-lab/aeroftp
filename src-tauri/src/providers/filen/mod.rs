@@ -2604,6 +2604,15 @@ impl StorageProvider for FilenProvider {
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let normalized = Self::normalize_path(path);
+        if normalized == "/" {
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            // The virtual root is not a child named "" in its own listing.
+            // Verify the listing so authentication/server failures stay errors.
+            self.list("/").await?;
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
         let (parent_path, name) = match normalized.rfind('/') {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
             _ => ("/", normalized.trim_start_matches('/')),
@@ -3698,6 +3707,18 @@ impl ChunkError {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_filen_root_is_not_a_missing_child() {
+        let (mut provider, server) = listing_gateway(&[]).await;
+        assert!(provider.list("/").await.unwrap().is_empty());
+        let outcome = provider.stat("/").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Ok(ref root) if root.is_dir),
+            "{outcome:?}"
+        );
+    }
+
     #[tokio::test]
     async fn probe_contract_filen_does_not_prove_absence_with_unreadable_names() {
         let app = axum::Router::new().route("/v3/dir/content", axum::routing::post(|| async {

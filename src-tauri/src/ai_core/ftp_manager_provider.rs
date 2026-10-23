@@ -17,6 +17,18 @@ use async_trait::async_trait;
 
 pub(crate) struct FtpManagerProvider(pub(crate) FtpManager);
 
+/// Restore the GUI's session even when a borrowed operation is cancelled.
+pub(crate) struct FtpManagerLease<'a> {
+    slot: &'a mut FtpManager,
+    pub(crate) provider: FtpManagerProvider,
+}
+
+impl Drop for FtpManagerLease<'_> {
+    fn drop(&mut self) {
+        std::mem::swap(self.slot, &mut self.provider.0);
+    }
+}
+
 fn failed(error: anyhow::Error) -> ProviderError {
     ProviderError::ServerError(error.to_string())
 }
@@ -32,6 +44,14 @@ fn parent_and_name(path: &str) -> (&str, &str) {
 }
 
 impl FtpManagerProvider {
+    pub(crate) fn borrow(manager: &mut FtpManager) -> FtpManagerLease<'_> {
+        let session = std::mem::take(manager);
+        FtpManagerLease {
+            slot: manager,
+            provider: Self(session),
+        }
+    }
+
     async fn list_probe(
         &mut self,
         path: &str,
@@ -98,7 +118,18 @@ impl StorageProvider for FtpManagerProvider {
     /// The manager lists only its current folder: it goes there, lists, and
     /// comes back to the folder it was in, whatever the listing answered.
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        self.list_probe(path, false).await
+        match self.list_probe(path, false).await {
+            Ok(entries) => Ok(entries),
+            Err(error) => {
+                // stat uses list_probe directly, so this does not recurse
+                // into list. Only an independent exact parent lookup can
+                // turn an ambiguous refused CWD into a missing directory.
+                match self.stat(path).await {
+                    Err(ProviderError::NotFound(_)) => Err(ProviderError::NotFound(path.into())),
+                    _ => Err(error),
+                }
+            }
+        }
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {

@@ -225,6 +225,12 @@ impl RemoteBackend for McpRemoteBackend {
             .await
     }
 
+    async fn listing_is_authoritative(&self) -> bool {
+        self.with_provider(|p| Box::pin(async move { Ok(p.listing_is_authoritative()) }))
+            .await
+            .unwrap_or(false)
+    }
+
     async fn download_to_bytes(&self, path: &str) -> Result<Vec<u8>, String> {
         let path = path.to_string();
         self.with_provider(move |p| Box::pin(async move { p.download_to_bytes(&path).await }))
