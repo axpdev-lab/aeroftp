@@ -1235,7 +1235,7 @@ const App: React.FC = () => {
     setRcloneCryptImportBanner({
       serverName: typeof opts.rcloneCryptOverlayName === 'string'
         ? (opts.rcloneCryptOverlayName as string)
-        : (liveConnectionParams.server || 'remote'),
+        : (liveConnectionParams.server || ''),
       password,
       salt: typeof opts.rcloneCryptPassword2 === 'string' ? (opts.rcloneCryptPassword2 as string) : undefined,
       filenameEncryption: typeof opts.rcloneCryptFilenameEncryption === 'string'
@@ -17539,7 +17539,7 @@ const App: React.FC = () => {
               <div className="text-sm text-gray-800 dark:text-gray-100">
                 <div className="font-semibold mb-0.5">{t('toolbar.aerocryptImportTitle')}</div>
                 <div className="text-xs opacity-80">
-                  {t('toolbar.aerocryptImportDesc', { name: rcloneCryptImportBanner.serverName })}
+                  {t('toolbar.aerocryptImportDesc', { name: rcloneCryptImportBanner.serverName || t('browser.remote') })}
                 </div>
               </div>
             </div>

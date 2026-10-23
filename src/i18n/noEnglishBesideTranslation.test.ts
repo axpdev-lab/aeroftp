@@ -78,9 +78,11 @@ import { parseAst } from 'vite';
  *
  * A value passed to `t()` as an interpolation parameter is part of the
  * translated sentence and is checked the same way (`t('x', { reason: 'Fatal
- * error' })`), unless its parameter names an entity (`provider`, `server`,
- * `protocol`, a plan, a shell, a storage class, a command): such a value is a
- * name. A placeholder marker a sentence is split on (`{ link: '{link}' }`) is
+ * error' })`), also when the parameters are a record declared elsewhere or
+ * spread into the call, unless its parameter names an entity (`provider`,
+ * `server`, an address, `protocol`, a plan, a shell, a storage class, a
+ * command): such a value is a name. A value the code compares is still text
+ * there, since it reads as part of the sentence. A placeholder marker a sentence is split on (`{ link: '{link}' }`) is
  * not text either.
  *
  * Not covered: a value passed as a prop and rendered inside another component
@@ -729,10 +731,11 @@ const isIdentifierValue = (node: Node) => {
 
 /**
  * Interpolation parameters whose value names an entity: a provider, a server,
- * a protocol, a plan, a storage class, a shell, a command. Such a value is a
- * name or a code, not a sentence (`t('activity.x', { provider: 'Box' })`).
+ * an address, a protocol, a plan, a storage class, a shell, a command. Such a
+ * value is a name or a code, not a sentence (`t('activity.x', { provider:
+ * 'Box' })`).
  */
-const NAME_PARAM = /^(?:provider|server|protocol|backend|author|plan|shell|storageClass|tier|cmd|command)$/;
+const NAME_PARAM = /^(?:provider|server|host|ip|protocol|backend|author|plan|shell|storageClass|tier|cmd|command)$/;
 
 /** A placeholder marker a sentence is split on: `t('x', { cmd: '{cmd}' }).split('{cmd}')`. */
 const isMarker = (text: string) => /^\{\w+\}$/.test(text.trim());
@@ -900,9 +903,9 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
             // the expression; one reached through a name reports where it is
             // written, in whichever module. Every neutral() call runs, so each
             // allowance that matches is marked used.
-            const english = (expression: Node, atString = false) => {
+            const english = (expression: Node, atString = false, embedded = false, ctx = context()) => {
                 const strings: Found[] = [];
-                rendered(expression, strings, context());
+                rendered(expression, strings, ctx, embedded);
                 let direct = false;
                 for (const string of strings) {
                     if (!string.embedded && isIdentifierValue(string.node) && compared.has(literalText(string.node)!)) continue;
@@ -934,13 +937,23 @@ function scan(sources: Record<string, string>, allowed: Record<string, string[]>
                 }
             }
             // A value passed to t() is interpolated into the translated text,
-            // unless its parameter names an entity, whose value is a name.
-            if (isT(node) && isNode((node.arguments as Node[])[1]) && (node.arguments as Node[])[1].type === 'ObjectExpression' && !quiet) {
-                for (const property of (node.arguments as Node[])[1].properties as Node[]) {
-                    if (property.type === 'Property' && !NAME_PARAM.test(nameOf(property.key as Node) ?? '')) {
-                        english(property.value as Node, true);
+            // unless its parameter names an entity, whose value is a name. The
+            // parameters may be a record declared elsewhere or spread into the
+            // call; a value the code compares is still text here.
+            if (isT(node) && isNode((node.arguments as Node[])[1]) && !quiet) {
+                const ctx = context();
+                const check = (record: Found, depth: number) => {
+                    if (record.node.type !== 'ObjectExpression' || depth > 8) return;
+                    const inner = within(record, ctx);
+                    for (const property of record.node.properties as Node[]) {
+                        if (property.type === 'SpreadElement') {
+                            objects(property.argument as Node, inner).forEach((spread) => check(spread, depth + 1));
+                        } else if (!NAME_PARAM.test(nameOf(property.key as Node) ?? '')) {
+                            english(property.value as Node, true, true, inner);
+                        }
                     }
-                }
+                };
+                objects((node.arguments as Node[])[1], ctx).forEach((record) => check(record, 0));
             }
             if (node.type === 'ObjectExpression' && isPayload(node)) {
                 quiet += 1;
@@ -1127,6 +1140,11 @@ describe('a translated string is not glued to English in the code', () => {
             "    return <span>{mode} {'IT'}</span>;",
             "}",
             "const params = t('activity.x', { provider: 'Box', reason: 'Fatal error', link: '{link}', count: 2 });",
+            "const record = { reason: 'Disk full' };",
+            "const fromRecord = t('activity.x', record);",
+            "const fromSpread = t('activity.x', { ...record, provider: 'Box' });",
+            "if (status === 'stopped') log(status);",
+            "const comparedWord = t('activity.x', { reason: 'stopped' });",
         ].join('\n');
         const result = scan({ 'labels.ts': labels, 'panel.tsx': sample }, { 'panel.tsx': ['AES'] });
         expect(result.unused).toEqual([]);
@@ -1147,6 +1165,8 @@ describe('a translated string is not glued to English in the code', () => {
             "labels.ts:4 'saved'",
             "labels.ts:4 'grew'",
             "panel.tsx:31 'Fatal error'",
+            "panel.tsx:32 'Disk full'",
+            "panel.tsx:36 'stopped'",
         ]);
     });
 
