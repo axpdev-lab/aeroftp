@@ -837,18 +837,8 @@ fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static s
             "<redacted-url>",
             "URL",
         ),
-        // IPv6: the full eight groups, or a compressed form with a group on
-        // each side of `::`. A clock time (`12:00:00`) has neither.
-        (
-            r"\b(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}\b",
-            "<redacted-ip>",
-            "IPv6 address",
-        ),
-        (
-            r"\b(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}\b",
-            "<redacted-ip>",
-            "IPv6 address",
-        ),
+        // IPv6 has its own pass, see `redact_ipv6`: a pattern cannot tell
+        // every compressed form from a clock time or a Rust path.
         // OS user folders. The name runs to the next separator, so a name
         // with a space (`/home/John Smith/`) is redacted whole.
         (r#"/home/[^/"<]+/"#, "/home/<redacted>/", "Linux home path"),
@@ -870,6 +860,93 @@ fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static s
     ]
 }
 
+/// Runs of characters an IPv6 address is written with: hex digits, `:`, the
+/// dots of an IPv4 tail and a `%` zone. Letters beyond `f` are included so a
+/// word such as `std::fmt` is one run that does not parse, instead of a run
+/// `::f` cut out of it.
+fn ipv6_run_regex() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"[0-9A-Za-z:.%]+").expect("static regex"))
+}
+
+/// The first IPv6 address in a run, as a byte range inside it. A candidate
+/// starts at the run's start or right after a `:` or a `.` (`host:2001:db8::1`,
+/// `foo.2001:db8::1`), the earliest start first, and ends at the run's end or
+/// before one of its `:` or `.`, the longest first, so the colon of
+/// `"{addr}: {err}"` is left out (`2001:db8::1: Connection refused`), and so
+/// is a word glued to the address by a dot (`fe80::1.local`), while an IPv4
+/// tail stays whole because the longest end wins. A candidate is an address
+/// when the standard parser accepts it with its trailing dots and `%zone`
+/// removed, and it has two colons at least, so a clock time (`12:00:00`)
+/// never is one. Every compressed form counts: `::1`, `fe80::1`,
+/// `2001:db8::`, `::ffff:192.0.2.1`. So does a Rust path whose two segments
+/// are hex (`abc::def`), which is redacted too: in a public report a word too
+/// many is better than an address left in.
+///
+/// A candidate is at most [`IPV6_CANDIDATE_MAX`] bytes long, so the scan of a
+/// run costs its length times that bound: a provider error can carry a long
+/// hex dump, and an unbounded scan of every start and end was cubic in it.
+fn ipv6_in_run(run: &str) -> Option<std::ops::Range<usize>> {
+    let starts = std::iter::once(0).chain(
+        run.char_indices()
+            .filter(|(_, c)| *c == ':' || *c == '.')
+            .map(|(i, _)| i + 1)
+            .filter(|&i| i < run.len()),
+    );
+    for start in starts {
+        let tail = &run[start..];
+        // The run is ASCII (the regex class), so a byte bound is a char one.
+        let window = &tail[..tail.len().min(IPV6_CANDIDATE_MAX)];
+        let ends = (tail.len() <= IPV6_CANDIDATE_MAX)
+            .then_some(tail.len())
+            .into_iter()
+            .chain(
+                window
+                    .char_indices()
+                    .rev()
+                    .filter(|(_, c)| *c == ':' || *c == '.')
+                    .map(|(i, _)| i),
+            );
+        for end in ends {
+            let candidate = tail[..end].trim_end_matches('.');
+            let address = candidate.split('%').next().unwrap_or("");
+            if address.matches(':').count() >= 2 && address.parse::<std::net::Ipv6Addr>().is_ok() {
+                return Some(start..start + candidate.len());
+            }
+        }
+    }
+    None
+}
+
+/// Longest text an IPv6 candidate is tried at: a written address is 45
+/// bytes at most (`ffff:...:255.255.255.255`), plus room for a `%zone`.
+const IPV6_CANDIDATE_MAX: usize = 64;
+
+/// The byte range of the first IPv6 address in `text`, if any.
+fn first_ipv6_span(text: &str) -> Option<std::ops::Range<usize>> {
+    ipv6_run_regex()
+        .find_iter(text)
+        .find_map(|m| ipv6_in_run(m.as_str()).map(|r| m.start() + r.start..m.start() + r.end))
+}
+
+/// `text` with every IPv6 address replaced by `<redacted-ip>`, all of them
+/// in a run that holds several (a hex dump), not only the first.
+pub(crate) fn redact_ipv6(text: &str) -> String {
+    ipv6_run_regex()
+        .replace_all(text, |caps: &regex::Captures<'_>| {
+            let mut out = String::new();
+            let mut rest = &caps[0];
+            while let Some(r) = ipv6_in_run(rest) {
+                out.push_str(&rest[..r.start]);
+                out.push_str("<redacted-ip>");
+                rest = &rest[r.end..];
+            }
+            out.push_str(rest);
+            out
+        })
+        .into_owned()
+}
+
 /// Replacement pass: substitutes any PII match with a fixed placeholder so
 /// the rest of the report (provider hint, error strings, summary) stays
 /// usable. Errors emitted by remote providers often contain the username
@@ -877,7 +954,9 @@ fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static s
 /// this pass, those reports were silently rejected by the sweep on otherwise
 /// good runs (FeliCloud, Filen S3 in the 2026-05-07 community sweep).
 pub fn benchmark_sanitize(serialized: String) -> String {
-    let mut out = serialized;
+    // IPv6 first, so an address with an IPv4 tail (`::ffff:192.0.2.1`) goes
+    // whole rather than losing only its tail to the IPv4 pattern.
+    let mut out = redact_ipv6(&serialized);
     for (pat, replacement, _label) in benchmark_pii_patterns() {
         match regex::Regex::new(pat) {
             Ok(re) => {
@@ -900,6 +979,9 @@ pub fn benchmark_sanitize(serialized: String) -> String {
 /// case (e.g. a new pattern was added to the table without a placeholder)
 /// and we still refuse to write the report rather than risk leaking PII.
 pub fn benchmark_sanitization_sweep(serialized: &str) -> Result<(), String> {
+    if first_ipv6_span(serialized).is_some() {
+        return Err("sanitization sweep matched IPv6 address".to_string());
+    }
     for (pat, _repl, label) in benchmark_pii_patterns() {
         let re = regex::Regex::new(pat)
             .map_err(|e| format!("internal: bad sweep regex {}: {}", pat, e))?;

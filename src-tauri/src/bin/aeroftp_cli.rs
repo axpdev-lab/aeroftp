@@ -48732,15 +48732,27 @@ async fn cmd_benchmark_compare(
         }
     }
 
-    benchmark_sweep_exit_code(&codes, entries.len(), failed.len())
+    benchmark_sweep_exit_code(
+        &codes,
+        entries.len(),
+        failed.len(),
+        cancelled.load(Ordering::Relaxed),
+    )
 }
 
-/// The exit code of a comparison: 130 when the user stopped it; when nothing
-/// was measured, the worst code of the profiles that failed; 4 when some
-/// profiles were measured and others failed (a partial result); otherwise 8
-/// if a profile stopped at its timeout, else 0.
-fn benchmark_sweep_exit_code(codes: &[i32], measured: usize, failed: usize) -> i32 {
-    if codes.contains(&130) {
+/// The exit code of a comparison: 130 when the user stopped it, during a
+/// profile or between two; when nothing was measured, the worst code of the
+/// profiles that failed; 4 when some profiles were measured and others failed
+/// (a partial result); otherwise 8 if a profile stopped at its timeout, else 0.
+fn benchmark_sweep_exit_code(
+    codes: &[i32],
+    measured: usize,
+    failed: usize,
+    interrupted: bool,
+) -> i32 {
+    // A Ctrl+C between two profiles stops the sweep before a profile records
+    // anything, so the flag itself is read, not only the codes.
+    if interrupted || codes.contains(&130) {
         130
     } else if measured == 0 {
         codes.iter().copied().max().unwrap_or(0)
@@ -77466,17 +77478,22 @@ mod tests {
     #[test]
     fn benchmark_sweep_exit_code_reports_partial_and_stopped_runs() {
         // Everything measured, nothing failed.
-        assert_eq!(benchmark_sweep_exit_code(&[0, 0], 2, 0), 0);
+        assert_eq!(benchmark_sweep_exit_code(&[0, 0], 2, 0, false), 0);
         // One profile hit its timeout, nothing failed.
-        assert_eq!(benchmark_sweep_exit_code(&[0, 8], 2, 0), 8);
+        assert_eq!(benchmark_sweep_exit_code(&[0, 8], 2, 0, false), 8);
         // Some measured, one skipped on auth: partial, not "auth failed".
-        assert_eq!(benchmark_sweep_exit_code(&[0, 6, 0], 2, 1), 4);
+        assert_eq!(benchmark_sweep_exit_code(&[0, 6, 0], 2, 1, false), 4);
         // A measured profile with a failed transfer.
-        assert_eq!(benchmark_sweep_exit_code(&[4, 0], 2, 0), 4);
+        assert_eq!(benchmark_sweep_exit_code(&[4, 0], 2, 0, false), 4);
         // Nothing measured: the worst code says why.
-        assert_eq!(benchmark_sweep_exit_code(&[6, 1], 0, 2), 6);
+        assert_eq!(benchmark_sweep_exit_code(&[6, 1], 0, 2, false), 6);
         // Ctrl+C wins over everything.
-        assert_eq!(benchmark_sweep_exit_code(&[0, 130], 1, 0), 130);
+        assert_eq!(benchmark_sweep_exit_code(&[0, 130], 1, 0, false), 130);
+        // Ctrl+C before the first profile: nothing ran, no code was recorded.
+        assert_eq!(benchmark_sweep_exit_code(&[], 0, 0, true), 130);
+        // Ctrl+C between two profiles: the first finished cleanly.
+        assert_eq!(benchmark_sweep_exit_code(&[0], 1, 0, true), 130);
+        assert_eq!(benchmark_sweep_exit_code(&[4], 1, 0, true), 130);
         assert_eq!(
             benchmark_skip_reason(6),
             "authentication failed: re-authorize the profile"

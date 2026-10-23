@@ -1055,3 +1055,108 @@ fn private_paths_are_replaced_longest_first_and_the_root_is_left_alone() {
     );
     assert_eq!(out, "cleanup of <run-folder> and <bench-folder> at /");
 }
+
+#[test]
+fn compressed_ipv6_addresses_are_redacted_whole() {
+    let report = test_report(vec![
+        "connect to 2001:db8:85a3::8a2e:370:7334 refused".into(),
+        "link-local fe80::200:f8ff:fe21:67cf unreachable".into(),
+        "route 2001:db8:: has no gateway".into(),
+        "loopback ::1 and fe80::1 refused".into(),
+        "mapped ::ffff:192.0.2.1 refused".into(),
+        "failed to connect to 2001:db9::1: Connection refused".into(),
+        "2001:db9:85a3::8a2e:370:7335: timed out".into(),
+        "host foo.2001:dba::1 is down".into(),
+        "reset by 2001:dbb::1.Retrying".into(),
+        "resolved fe80::201:f8ff:fe21:67ce.local".into(),
+        "mapped ::ffff:192.0.2.9.extra".into(),
+        "retry at 12:00:00, see std::fmt and lib::providers".into(),
+    ]);
+    let json = sanitized_report_json(&report).unwrap();
+    for gone in [
+        "370:7334",
+        "8a2e",
+        "f8ff:fe21:67cf",
+        "fe21",
+        "2001:db8",
+        "::1",
+        "fe80",
+        "::ffff",
+        "192.0.2.1",
+        "2001:db9",
+        "370:7335",
+        "2001:dba",
+        "dba::1",
+        "2001:dbb",
+        "67ce",
+        "fe21",
+        "192.0.2.9",
+    ] {
+        assert!(!json.contains(gone), "{gone} in {json}");
+    }
+    assert!(
+        json.contains("failed to connect to <redacted-ip>: Connection refused"),
+        "{json}"
+    );
+    assert!(json.contains("host foo.<redacted-ip> is down"), "{json}");
+    assert!(json.contains("reset by <redacted-ip>.Retrying"), "{json}");
+    assert!(json.contains("resolved <redacted-ip>.local"), "{json}");
+    assert!(json.contains("mapped <redacted-ip>.extra"), "{json}");
+    for kept in [
+        "12:00:00",
+        "std::fmt",
+        "lib::providers",
+        "2026-10-08T15:00:00Z",
+    ] {
+        assert!(json.contains(kept), "{kept} lost in {json}");
+    }
+    assert!(
+        json.contains("route <redacted-ip> has no gateway"),
+        "{json}"
+    );
+}
+
+#[test]
+fn the_sweep_refuses_a_compressed_ipv6_left_in_place() {
+    assert!(benchmark_sanitization_sweep("at fe80::200:f8ff:fe21:67cf").is_err());
+    assert!(benchmark_sanitization_sweep("at 2001:db8::").is_err());
+    assert!(benchmark_sanitization_sweep("to 2001:db8::1: Connection refused").is_err());
+    assert!(benchmark_sanitization_sweep("by 2001:db8::1.Retrying").is_err());
+    assert!(benchmark_sanitization_sweep("at 11:18:10.123 and 23T11:18:10Z").is_ok());
+    assert!(benchmark_sanitization_sweep("at 12:00:00 in std::fmt").is_ok());
+}
+
+#[test]
+fn a_long_run_from_a_remote_error_is_redacted_quickly_and_whole() {
+    // A provider error can carry a hex dump: one run of thousands of
+    // characters made of hex digits and colons. Eight `ab` groups are already
+    // an IPv6 address, so every one of them goes, and the address after the
+    // dump is redacted too.
+    let dump = "ab:".repeat(7000);
+    let report = test_report(vec![format!("body {dump} from fe80::1 refused")]);
+    let started = std::time::Instant::now();
+    let json = sanitized_report_json(&report).unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(!json.contains("ab:ab"), "a piece of the dump is left");
+    assert!(!json.contains("fe80"), "the address after the dump is left");
+    assert!(json.contains("from <redacted-ip> refused"));
+}
+
+#[test]
+fn a_long_run_with_no_address_in_it_is_scanned_quickly() {
+    // No start of this run parses: the worst case for the candidate scan,
+    // which must stay bounded by the length of an address, not of the run.
+    let dump = "xy:".repeat(7000);
+    let started = std::time::Instant::now();
+    let json = sanitized_report_json(&test_report(vec![format!("body {dump} end")])).unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(json.contains("xy:xy:xy"));
+}
