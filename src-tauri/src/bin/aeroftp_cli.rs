@@ -51877,6 +51877,70 @@ fn profile_shifts_positionals(has_profile: bool, url: &str) -> bool {
     has_profile && !url.contains("://") && url != "_"
 }
 
+/// The notes `sync` prints for scan roots that do not exist. A missing
+/// source is always named; the run then refuses. A missing destination is
+/// announced as one the copies create only when nothing refuses the run: a
+/// refused run copies nothing, so nothing creates it (CodeRabbit on #1338).
+/// The wording holds for a dry run and an empty source too, which create
+/// nothing either.
+fn missing_root_notes(
+    direction: &str,
+    local: (&str, bool),
+    remote: (&str, bool),
+    refused: bool,
+) -> Vec<String> {
+    let mut notes = Vec::new();
+    for (side, (path, missing)) in [("local", local), ("remote", remote)] {
+        if !missing {
+            continue;
+        }
+        let is_destination = matches!(
+            (direction, side),
+            ("upload", "remote") | ("download", "local")
+        );
+        if !is_destination {
+            notes.push(format!("Note: the {side} folder {path} does not exist."));
+        } else if !refused {
+            notes.push(format!(
+                "Note: the {side} folder {path} does not exist yet; it is created when the first file is copied into it."
+            ));
+        }
+    }
+    notes
+}
+
+#[cfg(test)]
+mod missing_root_note_tests {
+    use super::missing_root_notes;
+
+    #[test]
+    fn a_refused_run_announces_no_destination_it_would_create() {
+        // Both roots missing: only the source is named, and the run refuses.
+        assert_eq!(
+            missing_root_notes("upload", ("/src", true), ("/dst", true), true),
+            vec!["Note: the local folder /src does not exist.".to_string()]
+        );
+        assert_eq!(
+            missing_root_notes("download", ("/dst", true), ("/src", true), true),
+            vec!["Note: the remote folder /src does not exist.".to_string()]
+        );
+        // A run refused for another reason creates nothing either.
+        assert!(missing_root_notes("upload", ("/src", false), ("/dst", true), true).is_empty());
+    }
+
+    #[test]
+    fn a_run_that_goes_ahead_names_the_destination_it_fills() {
+        assert_eq!(
+            missing_root_notes("upload", ("/src", false), ("/dst", true), false),
+            vec![
+                "Note: the remote folder /dst does not exist yet; it is created when the first file is copied into it."
+                    .to_string()
+            ]
+        );
+        assert!(missing_root_notes("upload", ("/src", false), ("/dst", false), false).is_empty());
+    }
+}
+
 /// `sync`: plan from the two listings, then run the transfers, renames,
 /// deletes and the empty-directory cleanup, and answer one exit code out of
 /// several facts. Ctrl-C in any phase ends the run interrupted (130,
@@ -52214,29 +52278,8 @@ async fn cmd_sync(
         "download" => local_boundaries.root_missing,
         _ => false,
     };
-    // The scan no longer warns about a root that does not exist; the run
-    // says what it means here, with the path.
-    if !quiet {
-        for (side, path, missing) in [
-            ("local", local, local_boundaries.root_missing),
-            ("remote", remote, remote_boundaries.root_missing),
-        ] {
-            if !missing {
-                continue;
-            }
-            let is_destination = matches!(
-                (direction, side),
-                ("upload", "remote") | ("download", "local")
-            );
-            if is_destination {
-                eprintln!(
-                    "Note: the {side} folder {path} does not exist yet; this run creates it."
-                );
-            } else {
-                eprintln!("Note: the {side} folder {path} does not exist.");
-            }
-        }
-    }
+    let local_root_missing = local_boundaries.root_missing;
+    let remote_root_missing = remote_boundaries.root_missing;
     let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
         local,
         local_scan.entries.iter().map(|(path, _, _)| path.as_str()),
@@ -52244,6 +52287,18 @@ async fn cmd_sync(
         &local_boundaries,
         remote_boundaries,
     );
+    // The scan no longer warns about a root that does not exist; the run
+    // says what it means here, once it is known whether it goes ahead.
+    if !quiet {
+        for note in missing_root_notes(
+            direction,
+            (local, local_root_missing),
+            (remote, remote_root_missing),
+            bound.refusal().is_some(),
+        ) {
+            eprintln!("{note}");
+        }
+    }
     if let Some(reason) = bound.refusal() {
         print_error(
             format,
