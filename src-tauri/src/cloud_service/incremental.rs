@@ -933,7 +933,7 @@ impl CloudService {
         let remote_spellings =
             crate::sync::spellings_after_baseline(&done, Some(&index.remote_spellings), &files);
         let saved = SyncIndex {
-            profile_id: None,
+            profile_id: config.server_profile_id.clone(),
             version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path: local_str,
