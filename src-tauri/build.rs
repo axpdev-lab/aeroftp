@@ -147,6 +147,7 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
             "ratatui",
             "rpassword",
             "rusqlite",
+            "same-file",
             "similar",
             "tempfile",
             "trash",

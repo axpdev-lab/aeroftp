@@ -2148,7 +2148,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--bwlimit <schedule>` | Bandwidth schedule (e.g., `"08:00,512k 18:00,off"` or `"1M"`) |
 | `--parallel <n>` | Number of parallel transfer workers for recursive/bulk operations (default 4, up to 32). Each provider has its own ceiling (SFTP 16 connections, FTP 5, S3 and B2 their clone pools, single-session providers 1); when the ceiling is lower than the request the CLI prints a note in text mode |
 | `--checkers <n>` | Directories listed at once by the remote scan of `sync`, `reconcile`, `check`, `cryptcheck`, `df --scan` and `size` (default 8, range 1-64), capped by the provider's list pool; single-session providers walk one directory at a time |
-| `--partial` | Resume interrupted transfers when the provider supports partial files or remote offsets |
+| `--partial` | Resume interrupted transfers when the provider supports partial files or remote offsets. Downloads combined with `--inplace` restart from byte 0: the final file has no source-version record. Use `--partial` without `--inplace` for source-bound download resumption on providers that support it |
 | `--include <pattern>` | Include only files matching glob pattern (repeatable) |
 | `--exclude-global <pattern>` | Exclude files matching glob pattern (repeatable). On `sync`, `sync-doctor` and `reconcile` it joins `--exclude` and follows its rules (see [sync](#sync---synchronize-directories)); an invalid pattern is exit 5 there |
 | `--include-from <file>` | Read include patterns from file |
@@ -2169,7 +2169,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--max-depth <n>` | Maximum recursion depth for ls -R, find, sync, get -r, put -r |
 | `--default-time <ts>` | Fallback mtime when backend returns None. Accepts ISO 8601, RFC 3339, or `now` |
 | `--fast-list` | S3 only: recursive listing (fewer API calls for large buckets). Sync leaves depth-limited subtrees alone on both sides and refuses a listing cut at the entry cap, even without `--delete`. |
-| `--inplace` | Write downloads directly to final path (no .aerotmp temp file) |
+| `--inplace` | Write downloads directly to final path (no .aerotmp temp file). With `--partial`, keep interrupted bytes but restart the next download from byte 0, even when the existing file has the remote size |
 | `--chunk-size <size>` | Override upload chunk size (e.g., `64M`). Min 5M for S3 multipart |
 | `--buffer-size <size>` | Override download buffer size (e.g., `256K`, `1M`) |
 | `--dump <kinds>` | Debug: `headers`, `bodies`, `auth` (comma-separated). Prints to stderr |
