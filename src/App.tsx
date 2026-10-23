@@ -546,7 +546,7 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { isSameConnection, resolveLiveConnectionParams } from './utils/liveConnection';
+import { isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -4421,6 +4421,9 @@ const App: React.FC = () => {
       providerId: liveConnectionParams.providerId || activeSession?.providerId,
       initialPath: activeSession?.serverInitialPath || quickConnectDirs.remoteDir,
       saved: !!(activeSession?.savedServerId || activeSession?.connectionParams?.savedServerId),
+      // The id a sync history records: a saved profile's only, never the
+      // fallbacks above.
+      savedProfileId: savedProfileIdOf(liveConnectionParams, activeSession),
     };
   }, [isConnected, sessions, activeSessionId, liveConnectionParams, quickConnectDirs.remoteDir]);
 
@@ -9139,6 +9142,10 @@ const App: React.FC = () => {
         // the status bar) also applies to a session AeroCloud opened.
         providerId: cloudServer.providerId,
         options: cloudServer.options,
+        // The saved profile AeroCloud syncs with, as every saved-profile
+        // connect records it: the backend connection already names it
+        // (`profile_id` above), and AeroSync's histories record it.
+        ...(cloudServer.id ? { savedServerId: cloudServer.id } : {}),
       };
 
       // === SCENARIO 1: ALREADY CONNECTED ===
@@ -11427,7 +11434,7 @@ const App: React.FC = () => {
             localPath: currentLocalPath,
             remotePath: currentRemotePath,
             // Another profile's sync index is no baseline here (Requested 79).
-            profileId: activeUnifiedRemoteProfile?.id ?? null,
+            profileId: activeUnifiedRemoteProfile?.savedProfileId ?? null,
             ...(isProviderConn && cryptCompareActive && compareCryptVaultId
               ? { cryptVaultId: compareCryptVaultId, cryptKind: compareCryptKind }
               : {}),
@@ -11490,7 +11497,7 @@ const App: React.FC = () => {
           const journal = await invoke<SyncJournal | null>('load_sync_journal_cmd', {
             localPath: currentLocalPath,
             remotePath: currentRemotePath,
-            profileId: activeUnifiedRemoteProfile?.id ?? null,
+            profileId: activeUnifiedRemoteProfile?.savedProfileId ?? null,
           });
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
           if (journal && !journal.completed) {
@@ -11587,7 +11594,7 @@ const App: React.FC = () => {
     const runConfig: RemoteSyncConfig = {
       localRoot: currentLocalPath,
       remoteRoot: currentRemotePath,
-      profileId: activeUnifiedRemoteProfile?.id ?? null,
+      profileId: activeUnifiedRemoteProfile?.savedProfileId ?? null,
       isProvider,
       isFtp: !isProvider,
       retryPolicy: opts.retryPolicy ?? {
