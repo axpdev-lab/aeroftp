@@ -395,8 +395,11 @@ type Module = {
 /**
  * A node together with the module it is written in. `embedded` marks a value
  * interpolated into a template literal, which reads as part of a sentence.
+ * `scopes` is the scope an object or array literal is written in, so its values
+ * resolve there and not at the caller: a record a function returns keeps the
+ * function's declarations.
  */
-type Found = { node: Node; mod: Module; embedded?: boolean };
+type Found = { node: Node; mod: Module; embedded?: boolean; scopes?: Array<Map<string, Node | null>> };
 
 /** Several values one name can stand for: the elements a callback walks, a state's values. */
 const union = (values: Found[]): Node => ({ type: 'Union', start: 0, end: 0, values });
@@ -574,13 +577,14 @@ function bodyScope(fn: Found, ctx: Context): Array<Map<string, Node | null>> {
 }
 
 const within = (found: Found, ctx: Context): Context =>
-    found.mod === ctx.mod ? ctx : { ...ctx, mod: found.mod, scopes: [found.mod.top] };
+    found.scopes ? { ...ctx, mod: found.mod, scopes: found.scopes }
+        : found.mod === ctx.mod ? ctx : { ...ctx, mod: found.mod, scopes: [found.mod.top] };
 
 /** The object and array literals an expression can evaluate to. */
 function objects(node: Node, ctx: Context, depth = 0): Found[] {
     if (depth > 8) return [];
     const again = (next: Node, c = ctx) => objects(next, c, depth + 1);
-    if (node.type === 'ObjectExpression' || node.type === 'ArrayExpression') return [{ node, mod: ctx.mod }];
+    if (node.type === 'ObjectExpression' || node.type === 'ArrayExpression') return [{ node, mod: ctx.mod, scopes: [...ctx.scopes] }];
     if (WRAPPERS.includes(node.type)) return again(node.expression as Node);
     if (node.type === 'ConditionalExpression') return [...again(node.consequent as Node), ...again(node.alternate as Node)];
     if (node.type === 'LogicalExpression') return [...(node.operator === '&&' ? [] : again(node.left as Node)), ...again(node.right as Node)];
@@ -623,7 +627,7 @@ function properties(object: Found, member: Node | null, ctx: Context, depth = 0)
         if (property.type === 'SpreadElement') {
             objects(property.argument as Node, inner, depth + 1).forEach((spread) => out.push(...properties(spread, member, ctx, depth + 1)));
         } else if (key === undefined || nameOf(property.key as Node) === key) {
-            out.push({ node: property.value as Node, mod: object.mod });
+            out.push({ node: property.value as Node, mod: object.mod, scopes: object.scopes });
         }
     }
     return out;
@@ -635,7 +639,7 @@ function elements(arrays: Found[], ctx: Context, depth = 0): Found[] {
         (array.node.elements as Array<Node | null>).filter(isNode).flatMap((element) =>
             element.type === 'SpreadElement'
                 ? elements(objects(element.argument as Node, within(array, ctx), depth + 1), ctx, depth + 1)
-                : [{ node: element, mod: array.mod }]));
+                : [{ node: element, mod: array.mod, scopes: array.scopes }]));
 }
 
 /**
@@ -1145,6 +1149,8 @@ describe('a translated string is not glued to English in the code', () => {
             "const fromSpread = t('activity.x', { ...record, provider: 'Box' });",
             "if (status === 'stopped') log(status);",
             "const comparedWord = t('activity.x', { reason: 'stopped' });",
+            "function failure() { const reason = 'Quota exceeded'; return { reason }; }",
+            "const fromFunction = t('activity.x', failure());",
         ].join('\n');
         const result = scan({ 'labels.ts': labels, 'panel.tsx': sample }, { 'panel.tsx': ['AES'] });
         expect(result.unused).toEqual([]);
@@ -1167,6 +1173,7 @@ describe('a translated string is not glued to English in the code', () => {
             "panel.tsx:31 'Fatal error'",
             "panel.tsx:32 'Disk full'",
             "panel.tsx:36 'stopped'",
+            "panel.tsx:37 'Quota exceeded'",
         ]);
     });
 
