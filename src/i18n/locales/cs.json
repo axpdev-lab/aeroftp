@@ -433,7 +433,10 @@
             "localFilesLabel": "Místní soubory",
             "localFilesRightLabel": "Místní soubory (pravý panel)",
             "remoteFilesLabel": "Vzdálené soubory",
-            "rightPanelMarker": "Pravý panel"
+            "rightPanelMarker": "Pravý panel",
+            "chooseRightPanelFolder": "Vyberte složku pravého panelu",
+            "chooseLeftPanelFolder": "Vyberte složku levého panelu",
+            "localRight": "Místní (vpravo)"
         },
         "contextMenu": {
             "askAeroAgent": "Zeptat se AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Nastavit jako soukromý",
             "setAsPublic": "Nastavit jako veřejný",
             "makeAllPrivate": "Nastavit vše jako soukromé",
-            "dropboxRestoreLimit": "AeroFTP může obnovit obnovitelné verze souborů. Složky obnovte v části Smazané soubory na dropbox.com. Otazník znamená, že Dropbox nerozpoznal typ položky."
+            "dropboxRestoreLimit": "AeroFTP může obnovit obnovitelné verze souborů. Složky obnovte v části Smazané soubory na dropbox.com. Otazník znamená, že Dropbox nerozpoznal typ položky.",
+            "openWithDefaultApp": "Otevřít ve výchozí aplikaci"
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Konfigurace cloudové synchronizace",
             "onePerLineHint": "(jeden na řádek)",
             "pairsEditorLabel": "Editor párů AeroCloud",
-            "remoteSubfolderPlaceholder": "mrak"
+            "remoteSubfolderPlaceholder": "mrak",
+            "countdownSoon": "Brzy..."
         },
         "statusBar": {
             "connected": "Připojeno",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Přenos selhal",
             "navigationFailed": "Navigace selhala: {error}",
             "transferComplete": "Zkopírováno {count} souborů",
-            "permissionsSessionChanged": "Připojení se od otevření tohoto dialogu změnilo, proto nebylo nic změněno. Otevřete Oprávnění znovu na aktuálním připojení."
+            "permissionsSessionChanged": "Připojení se od otevření tohoto dialogu změnilo, proto nebylo nic změněno. Otevřete Oprávnění znovu na aktuálním připojení.",
+            "createFailed": "Vytvoření selhalo"
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Odemykání složky {filename}...",
             "site_replied": "{command}: server odpověděl {code}",
             "site_unknown": "{command}: žádná úplná odpověď, výsledek není znám",
-            "site_not_sent": "{command} nebyl odeslán"
+            "site_not_sent": "{command} nebyl odeslán",
+            "b2_hidden_restore_success_one": "[{provider}] Obnoven {count} skrytý soubor",
+            "b2_hidden_restore_success_many": "[{provider}] Obnoveno skrytých souborů: {count}",
+            "b2_hidden_restore_error": "[{provider}] Obnovení skrytých souborů se nezdařilo",
+            "b2_hidden_delete_success": "[{provider}] Trvale smazáno souborů: {count} (vyčištěno verzí: {versions})",
+            "trash_restore_detail_success": "[{provider}] Obnoveno souborů z koše: {files}",
+            "trash_empty_detail_success": "[{provider}] Koš vysypán (vyčištěno souborů: {files}, složek: {folders})",
+            "trash_empty_objects_one": "[{provider}] Koš vysypán ({count} objekt)",
+            "trash_empty_objects_many": "[{provider}] Koš vysypán (objektů: {count})",
+            "trash_object_purge_success": "[{provider}] Trvale odstraněno: {key}",
+            "trash_object_purge_error": "[{provider}] Trvalé odstranění {key} se nezdařilo",
+            "trash_object_undelete_success": "[{provider}] Smazání zrušeno: {key}",
+            "trash_object_undelete_error": "[{provider}] Zrušení smazání {key} se nezdařilo",
+            "trash_object_restore_success": "[{provider}] Obnoveno: {key}",
+            "trash_object_restore_error": "[{provider}] Obnovení {key} se nezdařilo",
+            "opendrive_access_set": "[{provider}] Přístup nastaven na {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Nastavení přístupu {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Nastavení přístupu {level} se nezdařilo",
+            "download_folder_success": "Složka {path} stažena za {seconds} s",
+            "skipped_file": "Přeskočeno: {filename}",
+            "filelu_made_public": "[{provider}] Soubor zveřejněn",
+            "filelu_make_public_error": "[{provider}] Zveřejnění souboru se nezdařilo",
+            "filelu_made_private": "[{provider}] Soubor nastaven jako soukromý",
+            "filelu_make_private_error": "[{provider}] Nastavení souboru jako soukromého se nezdařilo",
+            "filelu_file_password_set": "[{provider}] Heslo souboru nastaveno",
+            "filelu_file_password_error": "[{provider}] Nastavení hesla souboru se nezdařilo",
+            "filelu_folder_password_set": "[{provider}] Heslo složky nastaveno",
+            "filelu_folder_password_error": "[{provider}] Nastavení hesla složky selhalo",
+            "filelu_public_share_success": "[{provider}] Soubor zveřejněn + sdílen",
+            "filelu_public_share_error": "[{provider}] Zveřejnění + sdílení selhalo",
+            "filelu_folder_settings_success": "[{provider}] Nastavení složky aktualizováno",
+            "filelu_folder_settings_error": "[{provider}] Aktualizace nastavení složky selhala",
+            "set_private_success": "[{provider}] Nastaveno jako soukromé",
+            "set_private_error": "[{provider}] Nastavení jako soukromé selhalo",
+            "set_public_success": "[{provider}] Nastaveno jako veřejné",
+            "set_public_error": "[{provider}] Nastavení jako veřejné selhalo",
+            "bulk_private_success_one": "[{provider}] {count} položka nastavena jako soukromá",
+            "bulk_private_success_many": "[{provider}] {count} položek nastaveno jako soukromé",
+            "bulk_private_partial": "[{provider}] {ok}/{total} položek nastaveno jako soukromé",
+            "bulk_private_error": "[{provider}] Hromadné nastavení jako soukromé selhalo",
+            "box_watermark_set": "[{provider}] Vodoznak nastaven",
+            "box_watermark_set_error": "[{provider}] Nastavení vodoznaku selhalo",
+            "box_watermark_removed": "[{provider}] Vodoznak odebrán",
+            "box_watermark_remove_error": "[{provider}] Odebrání vodoznaku selhalo",
+            "box_folder_locked": "[{provider}] Složka uzamčena",
+            "box_folder_lock_error": "[{provider}] Uzamčení složky selhalo",
+            "box_folder_unlocked": "[{provider}] Složka odemčena",
+            "box_folder_not_locked": "[{provider}] Složka nebyla uzamčena",
+            "box_folder_unlock_error": "[{provider}] Odemčení složky selhalo",
+            "gdrive_starred": "[{provider}] Soubor označen hvězdičkou",
+            "gdrive_unstarred": "[{provider}] Hvězdička u souboru odebrána",
+            "gdrive_star_error": "[{provider}] Označení hvězdičkou se nezdařilo",
+            "gdrive_unstar_error": "[{provider}] Odebrání hvězdičky se nezdařilo",
+            "extract_success": "Rozbaleno {filename}",
+            "extract_success_to": "Rozbaleno {filename} → {dest}",
+            "extract_error": "Rozbalení se nezdařilo: {error}",
+            "zoho_document_created": "[{provider}] Vytvořen dokument {type}",
+            "zoho_document_create_error": "[{provider}] Vytvoření dokumentu {type} se nezdařilo",
+            "note_saved": "[{provider}] Uložena poznámka \"{title}\"",
+            "note_save_error": "[{provider}] Poznámku se nepodařilo uložit",
+            "note_created": "[{provider}] Vytvořena poznámka \"{title}\"",
+            "note_create_error": "[{provider}] Poznámku se nepodařilo vytvořit",
+            "note_favorited": "[{provider}] Poznámka \"{title}\" přidána do oblíbených",
+            "note_unfavorited": "[{provider}] Poznámka \"{title}\" odebrána z oblíbených",
+            "note_favorite_error": "[{provider}] Nepodařilo se přepnout oblíbené",
+            "note_pinned": "[{provider}] Připnuta poznámka \"{title}\"",
+            "note_unpinned": "[{provider}] Odepnuta poznámka \"{title}\"",
+            "note_pin_error": "[{provider}] Nepodařilo se přepnout připnutí",
+            "note_trashed": "[{provider}] Poznámka \"{title}\" přesunuta do koše",
+            "note_trash_error": "[{provider}] Poznámku se nepodařilo přesunout do koše",
+            "note_restored": "[{provider}] Obnovena poznámka \"{title}\"",
+            "note_restore_error": "[{provider}] Poznámku se nepodařilo obnovit",
+            "note_deleted": "[{provider}] Poznámka \"{title}\" trvale smazána",
+            "note_delete_error": "[{provider}] Poznámku se nepodařilo trvale smazat",
+            "note_archived": "[{provider}] Poznámka \"{title}\" archivována",
+            "note_archive_error": "[{provider}] Poznámku se nepodařilo archivovat",
+            "note_version_restored": "[{provider}] Verze poznámky obnovena",
+            "note_version_restore_error": "[{provider}] Obnovení verze poznámky se nezdařilo",
+            "github_pages_config_updated": "[{provider}] Konfigurace Pages aktualizována",
+            "github_pages_config_error": "[{provider}] Aktualizace konfigurace Pages se nezdařila",
+            "opendrive_set_access": "[{provider}] Nastavování přístupu pro {filename}...",
+            "gdrive_star": "[{provider}] Označování {filename} hvězdičkou...",
+            "gdrive_unstar": "[{provider}] Odebírání hvězdičky z {filename}...",
+            "extract_start": "Rozbalování {filename}...",
+            "extract_start_to": "Rozbalování {filename} → {dest}...",
+            "compress_start": "Komprimace do {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Obnoveno z koše: soubory {files}, složky {folders}",
+            "trash_restore_detail_present_success": "[{provider}] Obnoveno z koše: soubory {files}, již existující {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] Obnoveno z koše: soubory {files}, složky {folders}, již existující {present}",
+            "filelu_file_password_removed": "[{provider}] Heslo souboru odebráno",
+            "filelu_folder_password_removed": "[{provider}] Heslo složky odebráno"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Vyloučení",
             "templateLocal": "Místní",
             "templateRemote": "Vzdálené",
-            "templateRetries": "Opakování"
+            "templateRetries": "Opakování",
+            "rollbackRestoreLocalCount": "místní {count}",
+            "rollbackRestoreRemoteCount": "vzdálené {count}",
+            "rollbackRestoreSkippedCount": "přeskočeno {count}",
+            "rollbackRestoreFailedCount": "selhalo {count}",
+            "rollbackRestoreCompleted": "Obnovení dokončeno: {summary}",
+            "rollbackRestoreNothing": "Není co obnovit",
+            "rollbackRestoreFailed": "Obnovení selhalo: {error}"
         },
         "ui": {
             "syncing": "Synchronizace...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Povolit pro tuto relaci",
                 "nonAtomicReplace": "Neatomické nahrazení: soubor krátce chybí",
                 "moreOptions": "Další možnosti",
-                "panelAria": "Panel schvalování nástrojů"
+                "panelAria": "Panel schvalování nástrojů",
+                "previewFailed": "Náhled se nezdařil"
             },
             "settings": {
                 "title": "Nastavení AI",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Podporuje nástroje",
                 "supportsVision": "Podporuje vidění",
                 "thinkingReasoning": "Přemýšlení/Uvažování",
-                "toolQuality": "Kvalita nástrojů: {quality}/5"
+                "toolQuality": "Kvalita nástrojů: {quality}/5",
+                "ollamaNotReachable": "Ollama není dostupná"
             },
             "copy": "Kopírovat",
             "attachImage": "Přiložit obrázek",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnostika",
                     "truncated": "Seznam diagnostiky byl zkrácen.",
                     "warningCountMany": "{count} varování",
-                    "warningCountOne": "{count} varování"
+                    "warningCountOne": "{count} varování",
+                    "noLocation": "(bez umístění)"
                 },
                 "search": {
                     "none": "Nebyly nalezeny žádné shody.",
@@ -3522,7 +3628,15 @@
                 "destination": "Cíl: {destination}",
                 "title": "Kontrola plánu přenosu",
                 "warnings": "Upozornění"
-            }
+            },
+            "voiceNoAudio": "Nebyl zachycen žádný zvuk.",
+            "voiceDownloadingModel": "Stahování místního hlasového modelu...",
+            "voiceNoSpeech": "Nebyla rozpoznána žádná řeč.",
+            "voiceReady": "Hlasový vstup je připraven.",
+            "voiceReadyLanguage": "Hlasový vstup je připraven ({language}).",
+            "voiceTranscriptionFailed": "Místní přepis selhal.",
+            "voiceListeningLocally": "Místní poslech...",
+            "voiceMicrophoneFailed": "Nelze získat přístup k mikrofonu."
         },
         "archive": {
             "passwordRequired": "Tento archiv je chráněn heslem",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator formát 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Obsah AES-GCM",
             "featureNameCipher": "Názvy AES-SIV",
-            "formatVersion": "Formát {version}"
+            "formatVersion": "Formát {version}",
+            "invalidVaultName": "Neplatné znaky v názvu trezoru"
         },
         "compress": {
             "title": "Komprimovat soubory",
@@ -4161,7 +4276,8 @@
             "total": "Celkem",
             "across": "v",
             "empty": "Tento adresář je prázdný",
-            "hoverHint": "Najeďte na blok pro zobrazení podrobností"
+            "hoverHint": "Najeďte na blok pro zobrazení podrobností",
+            "scanUnknownError": "Neznámá chyba při analýze využití disku"
         },
         "dependencies": {
             "title": "Závislosti",
@@ -4575,7 +4691,8 @@
                 "unmute": "Zrušit ztlumení (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 není podporováno"
+                "notSupported": "WebGL 2 není podporováno",
+                "contextLost": "Kontext WebGL byl ztracen"
             },
             "clickToViewDetails": "Klikněte na soubor pro zobrazení detailů",
             "copyPath": "Kopírovat cestu",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Délka (bajty)",
             "argon2DefaultsHint": "Výchozí hodnoty: profil, který používají AeroVault a AeroCrypt (128 MiB, 4 iterace, 4 dráhy, 32bajtový výstup). Sůl výše je vaše. Paměť až 2 GiB.",
             "argon2Derive": "Odvodit",
-            "argon2Phc": "Řetězec PHC"
+            "argon2Phc": "Řetězec PHC",
+            "hashError": "Chyba: {error}"
         },
         "dialog": {
             "deleteFile": "Odstranit \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Odebrat štítek",
             "manageTags": "Spravovat štítky",
             "deleteTagConfirm": "Smazat štítek „{name}“? Poznámky si ponechají svůj text.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Text",
+                "markdown": "Markdown",
+                "code": "Kód",
+                "richText": "Formátovaný text",
+                "checklist": "Kontrolní seznam"
+            }
         },
         "shareLinkModal": {
             "title": "Odkaz ke sdílení",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Vyberte cílovou složku",
             "passwordPrompt": "Tato položka je šifrovaná. Pro rozbalení zadejte heslo.",
             "showPassword": "Zobrazit heslo",
-            "hidePassword": "Skrýt heslo"
+            "hidePassword": "Skrýt heslo",
+            "missingPayload": "Chybí data pro rozbalení"
         },
         "provider": {
             "modes": {

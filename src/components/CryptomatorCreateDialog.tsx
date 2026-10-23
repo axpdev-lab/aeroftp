@@ -46,7 +46,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
     if (!isValid) return;
     // Validate vault name: reject path separators, null bytes, and traversal
     if (/[\/\\:\0]|\.\./.test(vaultName.trim())) {
-      setError('Invalid characters in vault name');
+      setError(t('cryptomator.invalidVaultName'));
       return;
     }
     setCreating(true);

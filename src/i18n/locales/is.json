@@ -433,7 +433,10 @@
             "localFilesLabel": "Staðbundnar skrár",
             "localFilesRightLabel": "Staðbundnar skrár (hægra spjald)",
             "remoteFilesLabel": "Fjartengdar skrár",
-            "rightPanelMarker": "Hægra spjald"
+            "rightPanelMarker": "Hægra spjald",
+            "chooseRightPanelFolder": "Veldu möppu hægri glugga",
+            "chooseLeftPanelFolder": "Veldu möppu vinstri glugga",
+            "localRight": "Staðbundið (hægri)"
         },
         "contextMenu": {
             "askAeroAgent": "Spyrja AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Stilla sem einkamál",
             "setAsPublic": "Stilla sem opinbert",
             "makeAllPrivate": "Gera allt einkamál",
-            "dropboxRestoreLimit": "AeroFTP getur endurheimt endurheimtanlegar útgáfur skráa. Endurheimtu möppur úr Eyddum skrám á dropbox.com. Spurningarmerki þýðir að Dropbox hefur ekki greint gerð atriðisins."
+            "dropboxRestoreLimit": "AeroFTP getur endurheimt endurheimtanlegar útgáfur skráa. Endurheimtu möppur úr Eyddum skrám á dropbox.com. Spurningarmerki þýðir að Dropbox hefur ekki greint gerð atriðisins.",
+            "openWithDefaultApp": "Opna með sjálfgefnu forriti"
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Uppsetning skýjasamstillingar",
             "onePerLineHint": "(eitt í hverri línu)",
             "pairsEditorLabel": "Ritill fyrir AeroCloud-pör",
-            "remoteSubfolderPlaceholder": "ský"
+            "remoteSubfolderPlaceholder": "ský",
+            "countdownSoon": "Bráðum..."
         },
         "statusBar": {
             "connected": "Tengt",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Flutningur mistókst",
             "navigationFailed": "Flakk mistókst: {error}",
             "transferComplete": "{count} skrár afritaðar",
-            "permissionsSessionChanged": "Tengingin breyttist eftir að þessi gluggi var opnaður, þannig að engu var breytt. Opnaðu Heimildir aftur á núverandi tengingu."
+            "permissionsSessionChanged": "Tengingin breyttist eftir að þessi gluggi var opnaður, þannig að engu var breytt. Opnaðu Heimildir aftur á núverandi tengingu.",
+            "createFailed": "Stofnun mistókst"
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Aflæsi möppu {filename}...",
             "site_replied": "{command}: þjónninn svaraði {code}",
             "site_unknown": "{command}: ekkert fullkomið svar, niðurstaða óþekkt",
-            "site_not_sent": "{command} var ekki send"
+            "site_not_sent": "{command} var ekki send",
+            "b2_hidden_restore_success_one": "[{provider}] Endurheimti {count} falda skrá",
+            "b2_hidden_restore_success_many": "[{provider}] Endurheimti {count} faldar skrár",
+            "b2_hidden_restore_error": "[{provider}] Mistókst að endurheimta faldar skrár",
+            "b2_hidden_delete_success": "[{provider}] Eyddi {count} skrá(m) varanlega ({versions} útgáfum eytt)",
+            "trash_restore_detail_success": "[{provider}] Endurheimti {files} skrá(r) úr ruslinu",
+            "trash_empty_detail_success": "[{provider}] Tæmdi ruslið ({files} skrá(r), {folders} möppu(r) eytt)",
+            "trash_empty_objects_one": "[{provider}] Tæmdi ruslið ({count} hlutur)",
+            "trash_empty_objects_many": "[{provider}] Tæmdi ruslið ({count} hlutir)",
+            "trash_object_purge_success": "[{provider}] Eyddi {key} varanlega",
+            "trash_object_purge_error": "[{provider}] Mistókst að eyða {key} varanlega",
+            "trash_object_undelete_success": "[{provider}] Afturkallaði eyðingu {key}",
+            "trash_object_undelete_error": "[{provider}] Mistókst að afturkalla eyðingu {key}",
+            "trash_object_restore_success": "[{provider}] Endurheimti {key}",
+            "trash_object_restore_error": "[{provider}] Mistókst að endurheimta {key}",
+            "opendrive_access_set": "[{provider}] Aðgangur stilltur á {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Stilla aðgang {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Mistókst að stilla aðgang {level}",
+            "download_folder_success": "Sótti möppuna {path} á {seconds} sek.",
+            "skipped_file": "Sleppti {filename}",
+            "filelu_made_public": "[{provider}] Skráin gerð opinber",
+            "filelu_make_public_error": "[{provider}] Mistókst að gera skrána opinbera",
+            "filelu_made_private": "[{provider}] Skráin gerð að einkaskrá",
+            "filelu_make_private_error": "[{provider}] Mistókst að gera skrána að einkaskrá",
+            "filelu_file_password_set": "[{provider}] Lykilorð skrár stillt",
+            "filelu_file_password_error": "[{provider}] Mistókst að stilla lykilorð skrár",
+            "filelu_folder_password_set": "[{provider}] Lykilorð möppu stillt",
+            "filelu_folder_password_error": "[{provider}] Ekki tókst að stilla lykilorð möppu",
+            "filelu_public_share_success": "[{provider}] Skrá gerð opinber + deilt",
+            "filelu_public_share_error": "[{provider}] Ekki tókst að gera opinbera + deila",
+            "filelu_folder_settings_success": "[{provider}] Stillingar möppu uppfærðar",
+            "filelu_folder_settings_error": "[{provider}] Ekki tókst að uppfæra stillingar möppu",
+            "set_private_success": "[{provider}] Stillt á einka",
+            "set_private_error": "[{provider}] Ekki tókst að stilla á einka",
+            "set_public_success": "[{provider}] Stillt á opinbert",
+            "set_public_error": "[{provider}] Ekki tókst að stilla á opinbert",
+            "bulk_private_success_one": "[{provider}] {count} færsla stillt á einka",
+            "bulk_private_success_many": "[{provider}] {count} færslur stilltar á einka",
+            "bulk_private_partial": "[{provider}] {ok}/{total} færslur stilltar á einka",
+            "bulk_private_error": "[{provider}] Magnstilling á einka mistókst",
+            "box_watermark_set": "[{provider}] Vatnsmerki stillt",
+            "box_watermark_set_error": "[{provider}] Ekki tókst að stilla vatnsmerki",
+            "box_watermark_removed": "[{provider}] Vatnsmerki fjarlægt",
+            "box_watermark_remove_error": "[{provider}] Ekki tókst að fjarlægja vatnsmerki",
+            "box_folder_locked": "[{provider}] Mappa læst",
+            "box_folder_lock_error": "[{provider}] Ekki tókst að læsa möppu",
+            "box_folder_unlocked": "[{provider}] Mappa aflæst",
+            "box_folder_not_locked": "[{provider}] Mappa var ekki læst",
+            "box_folder_unlock_error": "[{provider}] Ekki tókst að aflæsa möppu",
+            "gdrive_starred": "[{provider}] Skrá stjörnumerkt",
+            "gdrive_unstarred": "[{provider}] Stjörnumerking fjarlægð af skrá",
+            "gdrive_star_error": "[{provider}] Stjörnumerking mistókst",
+            "gdrive_unstar_error": "[{provider}] Fjarlæging stjörnu mistókst",
+            "extract_success": "Afþjappaði {filename}",
+            "extract_success_to": "Afþjappaði {filename} → {dest}",
+            "extract_error": "Afþjöppun mistókst: {error}",
+            "zoho_document_created": "[{provider}] Bjó til {type}-skjal",
+            "zoho_document_create_error": "[{provider}] Ekki tókst að búa til {type}-skjal",
+            "note_saved": "[{provider}] Vistaði minnismiðann \"{title}\"",
+            "note_save_error": "[{provider}] Ekki tókst að vista minnismiðann",
+            "note_created": "[{provider}] Bjó til minnismiðann \"{title}\"",
+            "note_create_error": "[{provider}] Ekki tókst að búa til minnismiðann",
+            "note_favorited": "[{provider}] Bætti minnismiðanum \"{title}\" við eftirlæti",
+            "note_unfavorited": "[{provider}] Fjarlægði minnismiðann \"{title}\" úr eftirlætum",
+            "note_favorite_error": "[{provider}] Ekki tókst að breyta eftirlæti",
+            "note_pinned": "[{provider}] Festi minnismiðann \"{title}\"",
+            "note_unpinned": "[{provider}] Losaði minnismiðann \"{title}\"",
+            "note_pin_error": "[{provider}] Ekki tókst að breyta festingu",
+            "note_trashed": "[{provider}] Færði minnismiðann \"{title}\" í ruslið",
+            "note_trash_error": "[{provider}] Ekki tókst að færa minnismiðann í ruslið",
+            "note_restored": "[{provider}] Endurheimti minnismiðann \"{title}\"",
+            "note_restore_error": "[{provider}] Ekki tókst að endurheimta minnismiðann",
+            "note_deleted": "[{provider}] Eyddi minnismiðanum \"{title}\" varanlega",
+            "note_delete_error": "[{provider}] Ekki tókst að eyða minnismiðanum varanlega",
+            "note_archived": "[{provider}] Setti minnismiðann \"{title}\" í geymslu",
+            "note_archive_error": "[{provider}] Ekki tókst að setja minnismiðann í geymslu",
+            "note_version_restored": "[{provider}] Útgáfa minnismiða endurheimt",
+            "note_version_restore_error": "[{provider}] Mistókst að endurheimta útgáfu minnismiða",
+            "github_pages_config_updated": "[{provider}] Pages-stillingar uppfærðar",
+            "github_pages_config_error": "[{provider}] Mistókst að uppfæra Pages-stillingar",
+            "opendrive_set_access": "[{provider}] Stilli aðgang fyrir {filename}...",
+            "gdrive_star": "[{provider}] Stjörnumerki {filename}...",
+            "gdrive_unstar": "[{provider}] Fjarlægi stjörnu af {filename}...",
+            "extract_start": "Afþjappa {filename}...",
+            "extract_start_to": "Afþjappa {filename} → {dest}...",
+            "compress_start": "Þjappa í {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Endurheimti {files} skrá(r), {folders} möppu(r) úr ruslinu",
+            "trash_restore_detail_present_success": "[{provider}] Endurheimti {files} skrá(r) úr ruslinu, {present} þegar til staðar",
+            "trash_restore_detail_folders_present_success": "[{provider}] Endurheimti {files} skrá(r), {folders} möppu(r) úr ruslinu, {present} þegar til staðar",
+            "filelu_file_password_removed": "[{provider}] Lykilorð skrár fjarlægt",
+            "filelu_folder_password_removed": "[{provider}] Lykilorð möppu fjarlægt"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Undanskilið",
             "templateLocal": "Staðbundið",
             "templateRemote": "Fjartengt",
-            "templateRetries": "Endurtilraunir"
+            "templateRetries": "Endurtilraunir",
+            "rollbackRestoreLocalCount": "staðbundið {count}",
+            "rollbackRestoreRemoteCount": "fjartengt {count}",
+            "rollbackRestoreSkippedCount": "sleppt {count}",
+            "rollbackRestoreFailedCount": "mistókst {count}",
+            "rollbackRestoreCompleted": "Endurheimt lokið: {summary}",
+            "rollbackRestoreNothing": "Ekkert að endurheimta",
+            "rollbackRestoreFailed": "Endurheimt mistókst: {error}"
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Leyfa fyrir þessa lotu",
                 "nonAtomicReplace": "Ósamfelld útskipting: skráin er horfin í skamma stund",
                 "moreOptions": "Fleiri valkostir",
-                "panelAria": "Samþykktarspjald verkfæra"
+                "panelAria": "Samþykktarspjald verkfæra",
+                "previewFailed": "Forskoðun mistókst"
             },
             "settings": {
                 "title": "AI Stillingar",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Styður verkfæri",
                 "supportsVision": "Styður myndgreiningu",
                 "thinkingReasoning": "Hugsun/Röksemdafærsla",
-                "toolQuality": "Gæði verkfæra: {quality}/5"
+                "toolQuality": "Gæði verkfæra: {quality}/5",
+                "ollamaNotReachable": "Ekki næst í Ollama"
             },
             "copy": "Afrita",
             "attachImage": "Hengja mynd við",
@@ -3423,7 +3528,8 @@
                     "title": "Greining",
                     "truncated": "Greiningarlistinn var styttur.",
                     "warningCountMany": "{count} viðvaranir",
-                    "warningCountOne": "{count} viðvörun"
+                    "warningCountOne": "{count} viðvörun",
+                    "noLocation": "(engin staðsetning)"
                 },
                 "search": {
                     "none": "Engar samsvaranir fundust.",
@@ -3522,7 +3628,15 @@
                 "destination": "Áfangastaður: {destination}",
                 "title": "Yfirferð flutningsáætlunar",
                 "warnings": "Viðvaranir"
-            }
+            },
+            "voiceNoAudio": "Ekkert hljóð tekið upp.",
+            "voiceDownloadingModel": "Sæki staðbundið raddlíkan...",
+            "voiceNoSpeech": "Ekkert tal greindist.",
+            "voiceReady": "Raddinnsláttur tilbúinn.",
+            "voiceReadyLanguage": "Raddinnsláttur tilbúinn ({language}).",
+            "voiceTranscriptionFailed": "Staðbundin umritun mistókst.",
+            "voiceListeningLocally": "Hlustar staðbundið...",
+            "voiceMicrophoneFailed": "Ekki tókst að fá aðgang að hljóðnema."
         },
         "archive": {
             "passwordRequired": "Þessi skjalasafn er varið með lykilorði",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator snið 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM efni",
             "featureNameCipher": "AES-SIV nöfn",
-            "formatVersion": "Snið {version}"
+            "formatVersion": "Snið {version}",
+            "invalidVaultName": "Ógildir stafir í nafni hvelfingar"
         },
         "compress": {
             "title": "Þjappa Skrár",
@@ -4161,7 +4276,8 @@
             "total": "Samtals",
             "across": "yfir",
             "empty": "Þessi mappa er tóm",
-            "hoverHint": "Sveima yfir blokka til að sjá upplýsingar"
+            "hoverHint": "Sveima yfir blokka til að sjá upplýsingar",
+            "scanUnknownError": "Óþekkt villa við skönnun á diskanotkun"
         },
         "dependencies": {
             "title": "Háðir Pakkar",
@@ -4575,7 +4691,8 @@
                 "unmute": "Afþagga (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 er ekki stutt"
+                "notSupported": "WebGL 2 er ekki stutt",
+                "contextLost": "WebGL-samhengi tapaðist"
             },
             "clickToViewDetails": "Smelltu á skrá til að skoða upplýsingar hennar",
             "copyPath": "Afrita slóð",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Lengd (bæti)",
             "argon2DefaultsHint": "Sjálfgefin gildi: sniðið sem AeroVault og AeroCrypt nota (128 MiB, 4 ítranir, 4 brautir, 32 bæta úttak). Saltið hér að ofan er þitt. Minni allt að 2 GiB.",
             "argon2Derive": "Leiða út",
-            "argon2Phc": "PHC-strengur"
+            "argon2Phc": "PHC-strengur",
+            "hashError": "Villa: {error}"
         },
         "dialog": {
             "deleteFile": "Eyða \"{name}\"?",
@@ -5320,7 +5438,14 @@
             "removeTag": "Fjarlægja merki",
             "manageTags": "Sýsla með merki",
             "deleteTagConfirm": "Eyða merkinu „{name}“? Minnismiðar halda textanum sínum.",
-            "betaBadge": "PRÓFUN"
+            "betaBadge": "PRÓFUN",
+            "noteTypes": {
+                "text": "Texti",
+                "markdown": "Markdown",
+                "code": "Kóði",
+                "richText": "Sniðinn texti",
+                "checklist": "Gátlisti"
+            }
         },
         "shareLinkModal": {
             "title": "Deilitengill",
@@ -6620,7 +6745,8 @@
             "chooseFolder": "Veldu áfangamöppu",
             "passwordPrompt": "Þetta atriði er dulkóðað. Sláðu inn lykilorðið til að afþjappa.",
             "showPassword": "Sýna lykilorð",
-            "hidePassword": "Fela lykilorð"
+            "hidePassword": "Fela lykilorð",
+            "missingPayload": "Útdráttargögn vantar"
         },
         "provider": {
             "modes": {

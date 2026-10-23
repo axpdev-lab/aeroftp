@@ -433,7 +433,10 @@
             "localFilesLabel": "Ficheiros locais",
             "localFilesRightLabel": "Ficheiros locais (panel dereito)",
             "remoteFilesLabel": "Ficheiros remotos",
-            "rightPanelMarker": "Panel dereito"
+            "rightPanelMarker": "Panel dereito",
+            "chooseRightPanelFolder": "Escoller cartafol do panel dereito",
+            "chooseLeftPanelFolder": "Escoller cartafol do panel esquerdo",
+            "localRight": "Local (dereita)"
         },
         "contextMenu": {
             "askAeroAgent": "Preguntar a AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Establecer como privado",
             "setAsPublic": "Establecer como público",
             "makeAllPrivate": "Facer todo privado",
-            "dropboxRestoreLimit": "AeroFTP pode restaurar versións recuperables de ficheiros. Restaura os cartafoles desde Ficheiros eliminados en dropbox.com. Un signo de interrogación indica que Dropbox non identificou o tipo de elemento."
+            "dropboxRestoreLimit": "AeroFTP pode restaurar versións recuperables de ficheiros. Restaura os cartafoles desde Ficheiros eliminados en dropbox.com. Un signo de interrogación indica que Dropbox non identificou o tipo de elemento.",
+            "openWithDefaultApp": "Abrir coa aplicación predeterminada"
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Configuración da sincronización na nube",
             "onePerLineHint": "(un por liña)",
             "pairsEditorLabel": "Editor de pares de AeroCloud",
-            "remoteSubfolderPlaceholder": "nube"
+            "remoteSubfolderPlaceholder": "nube",
+            "countdownSoon": "En breve..."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Produciuse un erro na transferencia",
             "navigationFailed": "Fallou a navegación: {error}",
             "transferComplete": "{count} ficheiros copiados",
-            "permissionsSessionChanged": "A conexión cambiou desde que se abriu este diálogo, polo que non se cambiou nada. Abre Permisos de novo na conexión actual."
+            "permissionsSessionChanged": "A conexión cambiou desde que se abriu este diálogo, polo que non se cambiou nada. Abre Permisos de novo na conexión actual.",
+            "createFailed": "Fallou a creación"
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Desbloqueando o cartafol {filename}...",
             "site_replied": "{command}: o servidor respondeu {code}",
             "site_unknown": "{command}: sen resposta completa, resultado descoñecido",
-            "site_not_sent": "{command} non se enviou"
+            "site_not_sent": "{command} non se enviou",
+            "b2_hidden_restore_success_one": "[{provider}] Restaurouse {count} ficheiro oculto",
+            "b2_hidden_restore_success_many": "[{provider}] Restauráronse {count} ficheiros ocultos",
+            "b2_hidden_restore_error": "[{provider}] Non se puideron restaurar os ficheiros ocultos",
+            "b2_hidden_delete_success": "[{provider}] Elimináronse permanentemente {count} ficheiro(s) ({versions} versións purgadas)",
+            "trash_restore_detail_success": "[{provider}] Restauráronse {files} ficheiro(s) do lixo",
+            "trash_empty_detail_success": "[{provider}] Baleirouse o lixo ({files} ficheiro(s), {folders} cartafol(es) purgados)",
+            "trash_empty_objects_one": "[{provider}] Baleirouse o lixo ({count} obxecto)",
+            "trash_empty_objects_many": "[{provider}] Baleirouse o lixo ({count} obxectos)",
+            "trash_object_purge_success": "[{provider}] Purgouse {key}",
+            "trash_object_purge_error": "[{provider}] Non se puido purgar {key}",
+            "trash_object_undelete_success": "[{provider}] Desfíxose a eliminación de {key}",
+            "trash_object_undelete_error": "[{provider}] Non se puido desfacer a eliminación de {key}",
+            "trash_object_restore_success": "[{provider}] Restaurouse {key}",
+            "trash_object_restore_error": "[{provider}] Non se puido restaurar {key}",
+            "opendrive_access_set": "[{provider}] Acceso establecido en {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Establecer acceso {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Non se puido establecer o acceso {level}",
+            "download_folder_success": "Cartafol {path} descargado en {seconds} s",
+            "skipped_file": "Omitiuse {filename}",
+            "filelu_made_public": "[{provider}] O ficheiro fíxose público",
+            "filelu_make_public_error": "[{provider}] Non se puido facer público o ficheiro",
+            "filelu_made_private": "[{provider}] O ficheiro fíxose privado",
+            "filelu_make_private_error": "[{provider}] Non se puido facer privado o ficheiro",
+            "filelu_file_password_set": "[{provider}] Estableceuse o contrasinal do ficheiro",
+            "filelu_file_password_error": "[{provider}] Non se puido establecer o contrasinal do ficheiro",
+            "filelu_folder_password_set": "[{provider}] Contrasinal do cartafol establecido",
+            "filelu_folder_password_error": "[{provider}] Erro ao establecer o contrasinal do cartafol",
+            "filelu_public_share_success": "[{provider}] Ficheiro feito público + compartido",
+            "filelu_public_share_error": "[{provider}] Erro ao facer público + compartir",
+            "filelu_folder_settings_success": "[{provider}] Configuración do cartafol actualizada",
+            "filelu_folder_settings_error": "[{provider}] Erro ao actualizar a configuración do cartafol",
+            "set_private_success": "[{provider}] Establecido como privado",
+            "set_private_error": "[{provider}] Erro ao establecer como privado",
+            "set_public_success": "[{provider}] Establecido como público",
+            "set_public_error": "[{provider}] Erro ao establecer como público",
+            "bulk_private_success_one": "[{provider}] {count} elemento establecido como privado",
+            "bulk_private_success_many": "[{provider}] {count} elementos establecidos como privados",
+            "bulk_private_partial": "[{provider}] {ok}/{total} elementos establecidos como privados",
+            "bulk_private_error": "[{provider}] Erro ao establecer como privado en bloque",
+            "box_watermark_set": "[{provider}] Marca de auga establecida",
+            "box_watermark_set_error": "[{provider}] Erro ao establecer a marca de auga",
+            "box_watermark_removed": "[{provider}] Marca de auga eliminada",
+            "box_watermark_remove_error": "[{provider}] Erro ao eliminar a marca de auga",
+            "box_folder_locked": "[{provider}] Cartafol bloqueado",
+            "box_folder_lock_error": "[{provider}] Erro ao bloquear o cartafol",
+            "box_folder_unlocked": "[{provider}] Cartafol desbloqueado",
+            "box_folder_not_locked": "[{provider}] O cartafol non estaba bloqueado",
+            "box_folder_unlock_error": "[{provider}] Erro ao desbloquear o cartafol",
+            "gdrive_starred": "[{provider}] Ficheiro destacado",
+            "gdrive_unstarred": "[{provider}] Ficheiro quitado de destacados",
+            "gdrive_star_error": "[{provider}] Non se puido destacar",
+            "gdrive_unstar_error": "[{provider}] Non se puido quitar o destacado",
+            "extract_success": "Extraído {filename}",
+            "extract_success_to": "Extraído {filename} → {dest}",
+            "extract_error": "Fallou a extracción: {error}",
+            "zoho_document_created": "[{provider}] Creouse o documento {type}",
+            "zoho_document_create_error": "[{provider}] Non se puido crear o documento {type}",
+            "note_saved": "[{provider}] Gardouse a nota \"{title}\"",
+            "note_save_error": "[{provider}] Non se puido gardar a nota",
+            "note_created": "[{provider}] Creouse a nota \"{title}\"",
+            "note_create_error": "[{provider}] Non se puido crear a nota",
+            "note_favorited": "[{provider}] Engadiuse a nota \"{title}\" aos favoritos",
+            "note_unfavorited": "[{provider}] Quitouse a nota \"{title}\" dos favoritos",
+            "note_favorite_error": "[{provider}] Non se puido cambiar o favorito",
+            "note_pinned": "[{provider}] Fixouse a nota \"{title}\"",
+            "note_unpinned": "[{provider}] Desfixouse a nota \"{title}\"",
+            "note_pin_error": "[{provider}] Non se puido cambiar a fixación",
+            "note_trashed": "[{provider}] Moveuse a nota \"{title}\" ao lixo",
+            "note_trash_error": "[{provider}] Non se puido mover a nota ao lixo",
+            "note_restored": "[{provider}] Restaurouse a nota \"{title}\"",
+            "note_restore_error": "[{provider}] Non se puido restaurar a nota",
+            "note_deleted": "[{provider}] Eliminouse definitivamente a nota \"{title}\"",
+            "note_delete_error": "[{provider}] Non se puido eliminar definitivamente a nota",
+            "note_archived": "[{provider}] Arquivouse a nota \"{title}\"",
+            "note_archive_error": "[{provider}] Non se puido arquivar a nota",
+            "note_version_restored": "[{provider}] Restaurouse a versión da nota",
+            "note_version_restore_error": "[{provider}] Non se puido restaurar a versión da nota",
+            "github_pages_config_updated": "[{provider}] Actualizouse a configuración de Pages",
+            "github_pages_config_error": "[{provider}] Non se puido actualizar a configuración de Pages",
+            "opendrive_set_access": "[{provider}] Configurando o acceso para {filename}...",
+            "gdrive_star": "[{provider}] Marcando con estrela {filename}...",
+            "gdrive_unstar": "[{provider}] Quitando a estrela de {filename}...",
+            "extract_start": "Extraendo {filename}...",
+            "extract_start_to": "Extraendo {filename} → {dest}...",
+            "compress_start": "Comprimindo en {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Restauráronse {files} ficheiro(s), {folders} cartafol(es) do lixo",
+            "trash_restore_detail_present_success": "[{provider}] Restauráronse {files} ficheiro(s) do lixo, {present} xa presentes",
+            "trash_restore_detail_folders_present_success": "[{provider}] Restauráronse {files} ficheiro(s), {folders} cartafol(es) do lixo, {present} xa presentes",
+            "filelu_file_password_removed": "[{provider}] Eliminouse o contrasinal do ficheiro",
+            "filelu_folder_password_removed": "[{provider}] Contrasinal do cartafol eliminado"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Exclusións",
             "templateLocal": "Local",
             "templateRemote": "Remoto",
-            "templateRetries": "Reintentos"
+            "templateRetries": "Reintentos",
+            "rollbackRestoreLocalCount": "local {count}",
+            "rollbackRestoreRemoteCount": "remoto {count}",
+            "rollbackRestoreSkippedCount": "omitidos {count}",
+            "rollbackRestoreFailedCount": "fallidos {count}",
+            "rollbackRestoreCompleted": "Restauración completada: {summary}",
+            "rollbackRestoreNothing": "Nada que restaurar",
+            "rollbackRestoreFailed": "Fallou a restauración: {error}"
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -2673,7 +2776,8 @@
                 "allowSession": "Permitir para esta sesión",
                 "nonAtomicReplace": "Substitución non atómica: o ficheiro desaparece un instante",
                 "moreOptions": "Máis opcións",
-                "panelAria": "Panel de aprobación de ferramentas"
+                "panelAria": "Panel de aprobación de ferramentas",
+                "previewFailed": "Fallou a vista previa"
             },
             "settings": {
                 "title": "Configuración de IA",
@@ -2835,7 +2939,8 @@
                 "supportsTools": "Admite ferramentas",
                 "supportsVision": "Admite visión",
                 "thinkingReasoning": "Pensamento/Razoamento",
-                "toolQuality": "Calidade das ferramentas: {quality}/5"
+                "toolQuality": "Calidade das ferramentas: {quality}/5",
+                "ollamaNotReachable": "Ollama non accesible"
             },
             "rag": {
                 "indexing": "Indexando ficheiros...",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnósticos",
                     "truncated": "A lista de diagnósticos truncouse.",
                     "warningCountMany": "{count} avisos",
-                    "warningCountOne": "{count} aviso"
+                    "warningCountOne": "{count} aviso",
+                    "noLocation": "(sen localización)"
                 },
                 "search": {
                     "none": "Non se atoparon coincidencias.",
@@ -3522,7 +3628,15 @@
                 "destination": "Destino: {destination}",
                 "title": "Revisión do plan de transferencia",
                 "warnings": "Avisos"
-            }
+            },
+            "voiceNoAudio": "Non se capturou audio.",
+            "voiceDownloadingModel": "Descargando o modelo de voz local...",
+            "voiceNoSpeech": "Non se detectou voz.",
+            "voiceReady": "Entrada de voz lista.",
+            "voiceReadyLanguage": "Entrada de voz lista ({language}).",
+            "voiceTranscriptionFailed": "Fallou a transcrición local.",
+            "voiceListeningLocally": "Escoitando localmente...",
+            "voiceMicrophoneFailed": "Non se pode acceder ao micrófono."
         },
         "archive": {
             "passwordRequired": "Arquivo protexido con contrasinal",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator formato 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Contido AES-GCM",
             "featureNameCipher": "Nomes AES-SIV",
-            "formatVersion": "Formato {version}"
+            "formatVersion": "Formato {version}",
+            "invalidVaultName": "Caracteres non válidos no nome da caixa forte"
         },
         "compress": {
             "title": "Comprimir ficheiros",
@@ -4161,7 +4276,8 @@
             "hoverHint": "Pasa o rato para ver detalles",
             "scanFailed": "Fallo na análise",
             "retry": "Reintentar",
-            "drillDown": "Clic para explorar"
+            "drillDown": "Clic para explorar",
+            "scanUnknownError": "Erro descoñecido ao analizar o uso do disco"
         },
         "dependencies": {
             "title": "Dependencias",
@@ -4575,7 +4691,8 @@
                 "unmute": "Activar son (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 non soportado"
+                "notSupported": "WebGL 2 non soportado",
+                "contextLost": "Perdeuse o contexto WebGL"
             },
             "clickToViewDetails": "Preme nun ficheiro para ver os seus detalles",
             "copyPath": "Copiar ruta",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Lonxitude (bytes)",
             "argon2DefaultsHint": "Valores predeterminados: o perfil que usan AeroVault e AeroCrypt (128 MiB, 4 iteracións, 4 carrís, saída de 32 bytes). O sal de arriba é seu. Memoria ata 2 GiB.",
             "argon2Derive": "Derivar",
-            "argon2Phc": "Cadea PHC"
+            "argon2Phc": "Cadea PHC",
+            "hashError": "Erro: {error}"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5320,7 +5438,14 @@
             "removeTag": "Quitar etiqueta",
             "manageTags": "Xestionar etiquetas",
             "deleteTagConfirm": "Eliminar a etiqueta «{name}»? As notas manteñen o seu texto.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Texto",
+                "markdown": "Markdown",
+                "code": "Código",
+                "richText": "Texto enriquecido",
+                "checklist": "Lista de verificación"
+            }
         },
         "shareLinkModal": {
             "title": "Ligazón para compartir",
@@ -6620,7 +6745,8 @@
             "chooseFolder": "Escolla un cartafol de destino",
             "passwordPrompt": "Este elemento está cifrado. Introduza o contrasinal para extraelo.",
             "showPassword": "Amosar o contrasinal",
-            "hidePassword": "Ocultar o contrasinal"
+            "hidePassword": "Ocultar o contrasinal",
+            "missingPayload": "Faltan os datos de extracción"
         },
         "provider": {
             "modes": {

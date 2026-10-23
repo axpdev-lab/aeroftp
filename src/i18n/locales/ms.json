@@ -433,7 +433,10 @@
             "localFilesLabel": "Fail setempat",
             "localFilesRightLabel": "Fail setempat (panel kanan)",
             "remoteFilesLabel": "Fail jauh",
-            "rightPanelMarker": "Panel kanan"
+            "rightPanelMarker": "Panel kanan",
+            "chooseRightPanelFolder": "Pilih folder panel kanan",
+            "chooseLeftPanelFolder": "Pilih folder panel kiri",
+            "localRight": "Setempat (kanan)"
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Tetapkan sebagai Peribadi",
             "setAsPublic": "Tetapkan sebagai Awam",
             "makeAllPrivate": "Jadikan semua peribadi",
-            "dropboxRestoreLimit": "AeroFTP boleh memulihkan versi fail yang masih boleh dipulihkan. Pulihkan folder daripada Fail dipadam di dropbox.com. Tanda soal bermaksud Dropbox tidak mengenal pasti jenis item."
+            "dropboxRestoreLimit": "AeroFTP boleh memulihkan versi fail yang masih boleh dipulihkan. Pulihkan folder daripada Fail dipadam di dropbox.com. Tanda soal bermaksud Dropbox tidak mengenal pasti jenis item.",
+            "openWithDefaultApp": "Buka dengan apl lalai"
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Persediaan Penyegerakan Awan",
             "onePerLineHint": "(satu setiap baris)",
             "pairsEditorLabel": "Editor Pasangan AeroCloud",
-            "remoteSubfolderPlaceholder": "awan"
+            "remoteSubfolderPlaceholder": "awan",
+            "countdownSoon": "Tidak lama lagi..."
         },
         "statusBar": {
             "connected": "Disambung",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Pemindahan gagal",
             "navigationFailed": "Navigasi gagal: {error}",
             "transferComplete": "{count} fail disalin",
-            "permissionsSessionChanged": "Sambungan telah berubah sejak dialog ini dibuka, jadi tiada apa yang diubah. Buka Kebenaran semula pada sambungan semasa."
+            "permissionsSessionChanged": "Sambungan telah berubah sejak dialog ini dibuka, jadi tiada apa yang diubah. Buka Kebenaran semula pada sambungan semasa.",
+            "createFailed": "Gagal mencipta"
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Membuka kunci folder {filename}...",
             "site_replied": "{command}: pelayan membalas {code}",
             "site_unknown": "{command}: tiada balasan lengkap, hasil tidak diketahui",
-            "site_not_sent": "{command} tidak dihantar"
+            "site_not_sent": "{command} tidak dihantar",
+            "b2_hidden_restore_success_one": "[{provider}] Memulihkan {count} fail tersembunyi",
+            "b2_hidden_restore_success_many": "[{provider}] Memulihkan {count} fail tersembunyi",
+            "b2_hidden_restore_error": "[{provider}] Gagal memulihkan fail tersembunyi",
+            "b2_hidden_delete_success": "[{provider}] Memadam {count} fail secara kekal ({versions} versi dibersihkan)",
+            "trash_restore_detail_success": "[{provider}] Memulihkan {files} fail daripada tong sampah",
+            "trash_empty_detail_success": "[{provider}] Mengosongkan tong sampah ({files} fail, {folders} folder dibersihkan)",
+            "trash_empty_objects_one": "[{provider}] Mengosongkan tong sampah ({count} objek)",
+            "trash_empty_objects_many": "[{provider}] Mengosongkan tong sampah ({count} objek)",
+            "trash_object_purge_success": "[{provider}] Memadam {key} secara kekal",
+            "trash_object_purge_error": "[{provider}] Gagal memadam {key} secara kekal",
+            "trash_object_undelete_success": "[{provider}] Membatalkan pemadaman {key}",
+            "trash_object_undelete_error": "[{provider}] Gagal membatalkan pemadaman {key}",
+            "trash_object_restore_success": "[{provider}] Memulihkan {key}",
+            "trash_object_restore_error": "[{provider}] Gagal memulihkan {key}",
+            "opendrive_access_set": "[{provider}] Akses ditetapkan kepada {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Tetapkan akses {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Gagal menetapkan akses {level}",
+            "download_folder_success": "Folder {path} dimuat turun dalam {seconds} saat",
+            "skipped_file": "Melangkau {filename}",
+            "filelu_made_public": "[{provider}] Fail dijadikan awam",
+            "filelu_make_public_error": "[{provider}] Gagal menjadikan fail awam",
+            "filelu_made_private": "[{provider}] Fail dijadikan peribadi",
+            "filelu_make_private_error": "[{provider}] Gagal menjadikan fail peribadi",
+            "filelu_file_password_set": "[{provider}] Kata laluan fail ditetapkan",
+            "filelu_file_password_error": "[{provider}] Gagal menetapkan kata laluan fail",
+            "filelu_folder_password_set": "[{provider}] Kata laluan folder ditetapkan",
+            "filelu_folder_password_error": "[{provider}] Gagal menetapkan kata laluan folder",
+            "filelu_public_share_success": "[{provider}] Fail dijadikan awam + dikongsi",
+            "filelu_public_share_error": "[{provider}] Gagal menjadikan awam + berkongsi",
+            "filelu_folder_settings_success": "[{provider}] Tetapan folder dikemas kini",
+            "filelu_folder_settings_error": "[{provider}] Gagal mengemas kini tetapan folder",
+            "set_private_success": "[{provider}] Ditetapkan sebagai peribadi",
+            "set_private_error": "[{provider}] Gagal menetapkan sebagai peribadi",
+            "set_public_success": "[{provider}] Ditetapkan sebagai awam",
+            "set_public_error": "[{provider}] Gagal menetapkan sebagai awam",
+            "bulk_private_success_one": "[{provider}] {count} entri ditetapkan sebagai peribadi",
+            "bulk_private_success_many": "[{provider}] {count} entri ditetapkan sebagai peribadi",
+            "bulk_private_partial": "[{provider}] {ok}/{total} entri ditetapkan sebagai peribadi",
+            "bulk_private_error": "[{provider}] Gagal menetapkan secara pukal sebagai peribadi",
+            "box_watermark_set": "[{provider}] Tera air ditetapkan",
+            "box_watermark_set_error": "[{provider}] Gagal menetapkan tera air",
+            "box_watermark_removed": "[{provider}] Tera air dialih keluar",
+            "box_watermark_remove_error": "[{provider}] Gagal mengalih keluar tera air",
+            "box_folder_locked": "[{provider}] Folder dikunci",
+            "box_folder_lock_error": "[{provider}] Gagal mengunci folder",
+            "box_folder_unlocked": "[{provider}] Kunci folder dibuka",
+            "box_folder_not_locked": "[{provider}] Folder tidak dikunci",
+            "box_folder_unlock_error": "[{provider}] Gagal membuka kunci folder",
+            "gdrive_starred": "[{provider}] Fail dibintangkan",
+            "gdrive_unstarred": "[{provider}] Bintang fail dialih keluar",
+            "gdrive_star_error": "[{provider}] Gagal membintangkan",
+            "gdrive_unstar_error": "[{provider}] Gagal membuang bintang",
+            "extract_success": "{filename} diekstrak",
+            "extract_success_to": "{filename} diekstrak → {dest}",
+            "extract_error": "Pengekstrakan gagal: {error}",
+            "zoho_document_created": "[{provider}] Dokumen {type} dicipta",
+            "zoho_document_create_error": "[{provider}] Gagal mencipta dokumen {type}",
+            "note_saved": "[{provider}] Nota \"{title}\" disimpan",
+            "note_save_error": "[{provider}] Gagal menyimpan nota",
+            "note_created": "[{provider}] Nota \"{title}\" dicipta",
+            "note_create_error": "[{provider}] Gagal mencipta nota",
+            "note_favorited": "[{provider}] Nota \"{title}\" ditambah ke kegemaran",
+            "note_unfavorited": "[{provider}] Nota \"{title}\" dibuang daripada kegemaran",
+            "note_favorite_error": "[{provider}] Gagal menukar kegemaran",
+            "note_pinned": "[{provider}] Nota \"{title}\" disematkan",
+            "note_unpinned": "[{provider}] Nota \"{title}\" dinyahsemat",
+            "note_pin_error": "[{provider}] Gagal menukar sematan",
+            "note_trashed": "[{provider}] Nota \"{title}\" dipindahkan ke tong sampah",
+            "note_trash_error": "[{provider}] Gagal memindahkan nota ke tong sampah",
+            "note_restored": "[{provider}] Nota \"{title}\" dipulihkan",
+            "note_restore_error": "[{provider}] Gagal memulihkan nota",
+            "note_deleted": "[{provider}] Nota \"{title}\" dipadam secara kekal",
+            "note_delete_error": "[{provider}] Gagal memadam nota secara kekal",
+            "note_archived": "[{provider}] Nota \"{title}\" diarkibkan",
+            "note_archive_error": "[{provider}] Gagal mengarkibkan nota",
+            "note_version_restored": "[{provider}] Versi nota dipulihkan",
+            "note_version_restore_error": "[{provider}] Gagal memulihkan versi nota",
+            "github_pages_config_updated": "[{provider}] Konfigurasi Pages dikemas kini",
+            "github_pages_config_error": "[{provider}] Gagal mengemas kini konfigurasi Pages",
+            "opendrive_set_access": "[{provider}] Menetapkan akses untuk {filename}...",
+            "gdrive_star": "[{provider}] Membintangkan {filename}...",
+            "gdrive_unstar": "[{provider}] Menyahbintang {filename}...",
+            "extract_start": "Mengekstrak {filename}...",
+            "extract_start_to": "Mengekstrak {filename} → {dest}...",
+            "compress_start": "Memampatkan ke {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Memulihkan {files} fail, {folders} folder daripada tong sampah",
+            "trash_restore_detail_present_success": "[{provider}] Memulihkan {files} fail daripada tong sampah, {present} sudah wujud",
+            "trash_restore_detail_folders_present_success": "[{provider}] Memulihkan {files} fail, {folders} folder daripada tong sampah, {present} sudah wujud",
+            "filelu_file_password_removed": "[{provider}] Kata laluan fail dialih keluar",
+            "filelu_folder_password_removed": "[{provider}] Kata laluan folder dialih keluar"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Pengecualian",
             "templateLocal": "Setempat",
             "templateRemote": "Jauh",
-            "templateRetries": "Cubaan semula"
+            "templateRetries": "Cubaan semula",
+            "rollbackRestoreLocalCount": "setempat {count}",
+            "rollbackRestoreRemoteCount": "jauh {count}",
+            "rollbackRestoreSkippedCount": "dilangkau {count}",
+            "rollbackRestoreFailedCount": "gagal {count}",
+            "rollbackRestoreCompleted": "Pemulihan selesai: {summary}",
+            "rollbackRestoreNothing": "Tiada apa-apa untuk dipulihkan",
+            "rollbackRestoreFailed": "Pemulihan gagal: {error}"
         },
         "ui": {
             "syncing": "Menyegerak...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Benarkan untuk sesi ini",
                 "nonAtomicReplace": "Penggantian bukan atom: fail hilang seketika",
                 "moreOptions": "Lagi pilihan",
-                "panelAria": "Panel kelulusan alat"
+                "panelAria": "Panel kelulusan alat",
+                "previewFailed": "Pratonton gagal"
             },
             "settings": {
                 "title": "Tetapan AI",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Menyokong alat",
                 "supportsVision": "Menyokong penglihatan",
                 "thinkingReasoning": "Pemikiran/Penaakulan",
-                "toolQuality": "Kualiti alat: {quality}/5"
+                "toolQuality": "Kualiti alat: {quality}/5",
+                "ollamaNotReachable": "Ollama tidak dapat dicapai"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan imej",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnostik",
                     "truncated": "Senarai diagnostik telah dipotong.",
                     "warningCountMany": "{count} amaran",
-                    "warningCountOne": "{count} amaran"
+                    "warningCountOne": "{count} amaran",
+                    "noLocation": "(tiada lokasi)"
                 },
                 "search": {
                     "none": "Tiada padanan ditemui.",
@@ -3522,7 +3628,15 @@
                 "destination": "Destinasi: {destination}",
                 "title": "Semakan Pelan Pemindahan",
                 "warnings": "Amaran"
-            }
+            },
+            "voiceNoAudio": "Tiada audio dirakam.",
+            "voiceDownloadingModel": "Memuat turun model suara setempat...",
+            "voiceNoSpeech": "Tiada pertuturan dikesan.",
+            "voiceReady": "Input suara sedia.",
+            "voiceReadyLanguage": "Input suara sedia ({language}).",
+            "voiceTranscriptionFailed": "Transkripsi setempat gagal.",
+            "voiceListeningLocally": "Mendengar secara setempat...",
+            "voiceMicrophoneFailed": "Tidak dapat mengakses mikrofon."
         },
         "archive": {
             "passwordRequired": "Arkib ini dilindungi kata laluan",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator Format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Kandungan AES-GCM",
             "featureNameCipher": "Nama AES-SIV",
-            "formatVersion": "Versi format {version}"
+            "formatVersion": "Versi format {version}",
+            "invalidVaultName": "Aksara tidak sah dalam nama peti besi"
         },
         "compress": {
             "title": "Mampatkan Fail",
@@ -4161,7 +4276,8 @@
             "total": "Jumlah",
             "across": "merentasi",
             "empty": "Direktori ini kosong",
-            "hoverHint": "Tuding pada blok untuk melihat butiran"
+            "hoverHint": "Tuding pada blok untuk melihat butiran",
+            "scanUnknownError": "Ralat tidak diketahui semasa mengimbas penggunaan cakera"
         },
         "dependencies": {
             "title": "Kebergantungan",
@@ -4575,7 +4691,8 @@
                 "unmute": "Nyahsenyap (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 tidak disokong"
+                "notSupported": "WebGL 2 tidak disokong",
+                "contextLost": "Konteks WebGL hilang"
             },
             "clickToViewDetails": "Klik pada fail untuk lihat butirannya",
             "copyPath": "Salin Laluan",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Panjang (bait)",
             "argon2DefaultsHint": "Lalai: profil yang digunakan oleh AeroVault dan AeroCrypt (128 MiB, 4 lelaran, 4 lorong, output 32 bait). Garam di atas adalah milik anda. Memori sehingga 2 GiB.",
             "argon2Derive": "Terbitkan",
-            "argon2Phc": "Rentetan PHC"
+            "argon2Phc": "Rentetan PHC",
+            "hashError": "Ralat: {error}"
         },
         "dialog": {
             "deleteFile": "Padam \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Alih keluar teg",
             "manageTags": "Urus teg",
             "deleteTagConfirm": "Padam teg “{name}”? Nota mengekalkan teksnya.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Teks",
+                "markdown": "Markdown",
+                "code": "Kod",
+                "richText": "Teks Kaya",
+                "checklist": "Senarai Semak"
+            }
         },
         "shareLinkModal": {
             "title": "Pautan Kongsi",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Pilih folder destinasi",
             "passwordPrompt": "Item ini disulitkan. Masukkan kata laluan untuk mengekstrak.",
             "showPassword": "Tunjukkan kata laluan",
-            "hidePassword": "Sembunyikan kata laluan"
+            "hidePassword": "Sembunyikan kata laluan",
+            "missingPayload": "Data pengekstrakan tiada"
         },
         "provider": {
             "modes": {

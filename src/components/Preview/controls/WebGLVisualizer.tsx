@@ -111,6 +111,9 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
     onContextLost,
 }) => {
     const { t } = useI18n();
+    // The mount-once WebGL effect reads the current translator through a ref.
+    const tRef = useRef(t);
+    tRef.current = t;
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     // WebGL object refs (survive across renders, cleaned up on unmount)
@@ -164,7 +167,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
         const handleContextLost = (e: Event) => {
             e.preventDefault();
             cancelAnimationFrame(rafRef.current);
-            setError('WebGL context lost');
+            setError(tRef.current('preview.webgl.contextLost'));
             onContextLost?.();
         };
         const handleContextRestored = () => setError(null);

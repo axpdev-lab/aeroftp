@@ -433,7 +433,10 @@
             "localFilesLabel": "Berkas lokal",
             "localFilesRightLabel": "Berkas lokal (panel kanan)",
             "remoteFilesLabel": "Berkas jarak jauh",
-            "rightPanelMarker": "Panel kanan"
+            "rightPanelMarker": "Panel kanan",
+            "chooseRightPanelFolder": "Pilih folder panel kanan",
+            "chooseLeftPanelFolder": "Pilih folder panel kiri",
+            "localRight": "Lokal (kanan)"
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Jadikan Privat",
             "setAsPublic": "Jadikan Publik",
             "makeAllPrivate": "Jadikan semua privat",
-            "dropboxRestoreLimit": "AeroFTP dapat memulihkan revisi file yang masih dapat dipulihkan. Pulihkan folder dari File yang dihapus di dropbox.com. Tanda tanya berarti Dropbox tidak mengidentifikasi jenis item."
+            "dropboxRestoreLimit": "AeroFTP dapat memulihkan revisi file yang masih dapat dipulihkan. Pulihkan folder dari File yang dihapus di dropbox.com. Tanda tanya berarti Dropbox tidak mengidentifikasi jenis item.",
+            "openWithDefaultApp": "Buka dengan aplikasi default"
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Penyiapan Sinkronisasi Awan",
             "onePerLineHint": "(satu per baris)",
             "pairsEditorLabel": "Editor Pasangan AeroCloud",
-            "remoteSubfolderPlaceholder": "awan"
+            "remoteSubfolderPlaceholder": "awan",
+            "countdownSoon": "Segera..."
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Transfer gagal",
             "navigationFailed": "Navigasi gagal: {error}",
             "transferComplete": "{count} berkas disalin",
-            "permissionsSessionChanged": "Koneksi berubah sejak dialog ini dibuka, jadi tidak ada yang diubah. Buka Izin lagi pada koneksi saat ini."
+            "permissionsSessionChanged": "Koneksi berubah sejak dialog ini dibuka, jadi tidak ada yang diubah. Buka Izin lagi pada koneksi saat ini.",
+            "createFailed": "Gagal membuat"
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Membuka kunci folder {filename}...",
             "site_replied": "{command}: server membalas {code}",
             "site_unknown": "{command}: tidak ada balasan lengkap, hasil tidak diketahui",
-            "site_not_sent": "{command} tidak dikirim"
+            "site_not_sent": "{command} tidak dikirim",
+            "b2_hidden_restore_success_one": "[{provider}] Memulihkan {count} file tersembunyi",
+            "b2_hidden_restore_success_many": "[{provider}] Memulihkan {count} file tersembunyi",
+            "b2_hidden_restore_error": "[{provider}] Gagal memulihkan file tersembunyi",
+            "b2_hidden_delete_success": "[{provider}] Menghapus permanen {count} file ({versions} versi dibersihkan)",
+            "trash_restore_detail_success": "[{provider}] Memulihkan {files} file dari tempat sampah",
+            "trash_empty_detail_success": "[{provider}] Mengosongkan tempat sampah ({files} file, {folders} folder dibersihkan)",
+            "trash_empty_objects_one": "[{provider}] Mengosongkan tempat sampah ({count} objek)",
+            "trash_empty_objects_many": "[{provider}] Mengosongkan tempat sampah ({count} objek)",
+            "trash_object_purge_success": "[{provider}] Menghapus permanen {key}",
+            "trash_object_purge_error": "[{provider}] Gagal menghapus permanen {key}",
+            "trash_object_undelete_success": "[{provider}] Membatalkan penghapusan {key}",
+            "trash_object_undelete_error": "[{provider}] Gagal membatalkan penghapusan {key}",
+            "trash_object_restore_success": "[{provider}] Memulihkan {key}",
+            "trash_object_restore_error": "[{provider}] Gagal memulihkan {key}",
+            "opendrive_access_set": "[{provider}] Akses diatur ke {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Atur akses {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Gagal mengatur akses {level}",
+            "download_folder_success": "Folder {path} diunduh dalam {seconds} dtk",
+            "skipped_file": "Melewati {filename}",
+            "filelu_made_public": "[{provider}] File dijadikan publik",
+            "filelu_make_public_error": "[{provider}] Gagal menjadikan file publik",
+            "filelu_made_private": "[{provider}] File dijadikan privat",
+            "filelu_make_private_error": "[{provider}] Gagal menjadikan file privat",
+            "filelu_file_password_set": "[{provider}] Kata sandi file diatur",
+            "filelu_file_password_error": "[{provider}] Gagal mengatur kata sandi file",
+            "filelu_folder_password_set": "[{provider}] Kata sandi folder disetel",
+            "filelu_folder_password_error": "[{provider}] Gagal menyetel kata sandi folder",
+            "filelu_public_share_success": "[{provider}] File dijadikan publik + dibagikan",
+            "filelu_public_share_error": "[{provider}] Gagal menjadikan publik + membagikan",
+            "filelu_folder_settings_success": "[{provider}] Pengaturan folder diperbarui",
+            "filelu_folder_settings_error": "[{provider}] Gagal memperbarui pengaturan folder",
+            "set_private_success": "[{provider}] Disetel sebagai privat",
+            "set_private_error": "[{provider}] Gagal menyetel sebagai privat",
+            "set_public_success": "[{provider}] Disetel sebagai publik",
+            "set_public_error": "[{provider}] Gagal menyetel sebagai publik",
+            "bulk_private_success_one": "[{provider}] {count} entri disetel sebagai privat",
+            "bulk_private_success_many": "[{provider}] {count} entri disetel sebagai privat",
+            "bulk_private_partial": "[{provider}] {ok}/{total} entri disetel sebagai privat",
+            "bulk_private_error": "[{provider}] Gagal menyetel massal sebagai privat",
+            "box_watermark_set": "[{provider}] Tanda air disetel",
+            "box_watermark_set_error": "[{provider}] Gagal menyetel tanda air",
+            "box_watermark_removed": "[{provider}] Tanda air dihapus",
+            "box_watermark_remove_error": "[{provider}] Gagal menghapus tanda air",
+            "box_folder_locked": "[{provider}] Folder dikunci",
+            "box_folder_lock_error": "[{provider}] Gagal mengunci folder",
+            "box_folder_unlocked": "[{provider}] Kunci folder dibuka",
+            "box_folder_not_locked": "[{provider}] Folder tidak terkunci",
+            "box_folder_unlock_error": "[{provider}] Gagal membuka kunci folder",
+            "gdrive_starred": "[{provider}] File diberi bintang",
+            "gdrive_unstarred": "[{provider}] Bintang file dihapus",
+            "gdrive_star_error": "[{provider}] Gagal memberi bintang",
+            "gdrive_unstar_error": "[{provider}] Gagal menghapus bintang",
+            "extract_success": "{filename} diekstrak",
+            "extract_success_to": "{filename} diekstrak → {dest}",
+            "extract_error": "Ekstraksi gagal: {error}",
+            "zoho_document_created": "[{provider}] Dokumen {type} dibuat",
+            "zoho_document_create_error": "[{provider}] Gagal membuat dokumen {type}",
+            "note_saved": "[{provider}] Catatan \"{title}\" disimpan",
+            "note_save_error": "[{provider}] Gagal menyimpan catatan",
+            "note_created": "[{provider}] Catatan \"{title}\" dibuat",
+            "note_create_error": "[{provider}] Gagal membuat catatan",
+            "note_favorited": "[{provider}] Catatan \"{title}\" ditambahkan ke favorit",
+            "note_unfavorited": "[{provider}] Catatan \"{title}\" dihapus dari favorit",
+            "note_favorite_error": "[{provider}] Gagal mengubah favorit",
+            "note_pinned": "[{provider}] Catatan \"{title}\" disematkan",
+            "note_unpinned": "[{provider}] Sematan catatan \"{title}\" dilepas",
+            "note_pin_error": "[{provider}] Gagal mengubah sematan",
+            "note_trashed": "[{provider}] Catatan \"{title}\" dipindahkan ke sampah",
+            "note_trash_error": "[{provider}] Gagal memindahkan catatan ke sampah",
+            "note_restored": "[{provider}] Catatan \"{title}\" dipulihkan",
+            "note_restore_error": "[{provider}] Gagal memulihkan catatan",
+            "note_deleted": "[{provider}] Catatan \"{title}\" dihapus permanen",
+            "note_delete_error": "[{provider}] Gagal menghapus catatan secara permanen",
+            "note_archived": "[{provider}] Catatan \"{title}\" diarsipkan",
+            "note_archive_error": "[{provider}] Gagal mengarsipkan catatan",
+            "note_version_restored": "[{provider}] Versi catatan dipulihkan",
+            "note_version_restore_error": "[{provider}] Gagal memulihkan versi catatan",
+            "github_pages_config_updated": "[{provider}] Konfigurasi Pages diperbarui",
+            "github_pages_config_error": "[{provider}] Gagal memperbarui konfigurasi Pages",
+            "opendrive_set_access": "[{provider}] Mengatur akses untuk {filename}...",
+            "gdrive_star": "[{provider}] Memberi bintang pada {filename}...",
+            "gdrive_unstar": "[{provider}] Menghapus bintang dari {filename}...",
+            "extract_start": "Mengekstrak {filename}...",
+            "extract_start_to": "Mengekstrak {filename} → {dest}...",
+            "compress_start": "Mengompres ke {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Memulihkan {files} file, {folders} folder dari tempat sampah",
+            "trash_restore_detail_present_success": "[{provider}] Memulihkan {files} file dari tempat sampah, {present} sudah ada",
+            "trash_restore_detail_folders_present_success": "[{provider}] Memulihkan {files} file, {folders} folder dari tempat sampah, {present} sudah ada",
+            "filelu_file_password_removed": "[{provider}] Kata sandi file dihapus",
+            "filelu_folder_password_removed": "[{provider}] Kata sandi folder dihapus"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Pengecualian",
             "templateLocal": "Lokal",
             "templateRemote": "Jarak jauh",
-            "templateRetries": "Percobaan ulang"
+            "templateRetries": "Percobaan ulang",
+            "rollbackRestoreLocalCount": "lokal {count}",
+            "rollbackRestoreRemoteCount": "jarak jauh {count}",
+            "rollbackRestoreSkippedCount": "dilewati {count}",
+            "rollbackRestoreFailedCount": "gagal {count}",
+            "rollbackRestoreCompleted": "Pemulihan selesai: {summary}",
+            "rollbackRestoreNothing": "Tidak ada yang perlu dipulihkan",
+            "rollbackRestoreFailed": "Pemulihan gagal: {error}"
         },
         "ui": {
             "syncing": "Menyinkronkan...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Izinkan untuk sesi ini",
                 "nonAtomicReplace": "Penggantian non-atomik: berkas sesaat tidak ada",
                 "moreOptions": "Opsi lainnya",
-                "panelAria": "Panel persetujuan alat"
+                "panelAria": "Panel persetujuan alat",
+                "previewFailed": "Pratinjau gagal"
             },
             "settings": {
                 "title": "Pengaturan AI",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Mendukung alat",
                 "supportsVision": "Mendukung visi",
                 "thinkingReasoning": "Berpikir/Penalaran",
-                "toolQuality": "Kualitas alat: {quality}/5"
+                "toolQuality": "Kualitas alat: {quality}/5",
+                "ollamaNotReachable": "Ollama tidak dapat dijangkau"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnostik",
                     "truncated": "Daftar diagnostik dipotong.",
                     "warningCountMany": "{count} peringatan",
-                    "warningCountOne": "{count} peringatan"
+                    "warningCountOne": "{count} peringatan",
+                    "noLocation": "(tanpa lokasi)"
                 },
                 "search": {
                     "none": "Tidak ada kecocokan ditemukan.",
@@ -3522,7 +3628,15 @@
                 "destination": "Tujuan: {destination}",
                 "title": "Tinjauan Rencana Transfer",
                 "warnings": "Peringatan"
-            }
+            },
+            "voiceNoAudio": "Tidak ada audio yang direkam.",
+            "voiceDownloadingModel": "Mengunduh model suara lokal...",
+            "voiceNoSpeech": "Tidak ada ucapan yang terdeteksi.",
+            "voiceReady": "Input suara siap.",
+            "voiceReadyLanguage": "Input suara siap ({language}).",
+            "voiceTranscriptionFailed": "Transkripsi lokal gagal.",
+            "voiceListeningLocally": "Mendengarkan secara lokal...",
+            "voiceMicrophoneFailed": "Tidak dapat mengakses mikrofon."
         },
         "archive": {
             "passwordRequired": "Arsip ini dilindungi kata sandi",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator Format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Konten AES-GCM",
             "featureNameCipher": "Nama AES-SIV",
-            "formatVersion": "Versi format {version}"
+            "formatVersion": "Versi format {version}",
+            "invalidVaultName": "Karakter tidak valid dalam nama brankas"
         },
         "compress": {
             "title": "Kompres File",
@@ -4161,7 +4276,8 @@
             "total": "Total",
             "across": "di seluruh",
             "empty": "Direktori ini kosong",
-            "hoverHint": "Arahkan kursor ke blok untuk melihat detail"
+            "hoverHint": "Arahkan kursor ke blok untuk melihat detail",
+            "scanUnknownError": "Kesalahan tidak diketahui saat memindai penggunaan disk"
         },
         "dependencies": {
             "title": "Dependensi",
@@ -4575,7 +4691,8 @@
                 "unmute": "Bunyikan (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 tidak didukung"
+                "notSupported": "WebGL 2 tidak didukung",
+                "contextLost": "Konteks WebGL hilang"
             },
             "clickToViewDetails": "Klik pada file untuk melihat detailnya",
             "copyPath": "Salin Jalur",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Panjang (byte)",
             "argon2DefaultsHint": "Bawaan: profil yang digunakan AeroVault dan AeroCrypt (128 MiB, 4 iterasi, 4 jalur, keluaran 32 byte). Garam di atas adalah milik Anda. Memori hingga 2 GiB.",
             "argon2Derive": "Turunkan",
-            "argon2Phc": "String PHC"
+            "argon2Phc": "String PHC",
+            "hashError": "Galat: {error}"
         },
         "dialog": {
             "deleteFile": "Hapus \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Hapus tag",
             "manageTags": "Kelola tag",
             "deleteTagConfirm": "Hapus tag “{name}”? Catatan tetap menyimpan teksnya.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Teks",
+                "markdown": "Markdown",
+                "code": "Kode",
+                "richText": "Teks Kaya",
+                "checklist": "Daftar Periksa"
+            }
         },
         "shareLinkModal": {
             "title": "Tautan Berbagi",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Pilih folder tujuan",
             "passwordPrompt": "Item ini terenkripsi. Masukkan kata sandi untuk mengekstrak.",
             "showPassword": "Tampilkan kata sandi",
-            "hidePassword": "Sembunyikan kata sandi"
+            "hidePassword": "Sembunyikan kata sandi",
+            "missingPayload": "Data ekstraksi tidak ada"
         },
         "provider": {
             "modes": {

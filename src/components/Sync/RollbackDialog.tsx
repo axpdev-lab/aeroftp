@@ -112,15 +112,15 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
                 versioningStrategy,
             });
             const messages = [
-                result.restored_from_remote > 0 ? `local ${result.restored_from_remote}` : null,
-                result.restored_to_remote > 0 ? `remote ${result.restored_to_remote}` : null,
-                result.skipped > 0 ? `skipped ${result.skipped}` : null,
-                result.failed.length > 0 ? `failed ${result.failed.length}` : null,
+                result.restored_from_remote > 0 ? t('syncPanel.rollbackRestoreLocalCount', { count: result.restored_from_remote }) : null,
+                result.restored_to_remote > 0 ? t('syncPanel.rollbackRestoreRemoteCount', { count: result.restored_to_remote }) : null,
+                result.skipped > 0 ? t('syncPanel.rollbackRestoreSkippedCount', { count: result.skipped }) : null,
+                result.failed.length > 0 ? t('syncPanel.rollbackRestoreFailedCount', { count: result.failed.length }) : null,
             ].filter(Boolean);
-            setRestoreResult(messages.length > 0 ? `Restore completed: ${messages.join(', ')}` : 'Nothing to restore');
+            setRestoreResult(messages.length > 0 ? t('syncPanel.rollbackRestoreCompleted', { summary: messages.join(', ') }) : t('syncPanel.rollbackRestoreNothing'));
             await loadSnapshots();
         } catch (e: any) {
-            setRestoreResult(`Restore failed: ${e?.toString() || 'unknown error'}`);
+            setRestoreResult(t('syncPanel.rollbackRestoreFailed', { error: e?.toString() || t('errors.unknown') }));
         } finally {
             setRestoring(false);
         }

@@ -433,7 +433,10 @@
             "localFilesLabel": "Fișiere locale",
             "localFilesRightLabel": "Fișiere locale (panoul din dreapta)",
             "remoteFilesLabel": "Fișiere la distanță",
-            "rightPanelMarker": "Panoul din dreapta"
+            "rightPanelMarker": "Panoul din dreapta",
+            "chooseRightPanelFolder": "Alegeți dosarul panoului din dreapta",
+            "chooseLeftPanelFolder": "Alegeți dosarul panoului din stânga",
+            "localRight": "Local (dreapta)"
         },
         "contextMenu": {
             "askAeroAgent": "Întreabă AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Setați ca privat",
             "setAsPublic": "Setați ca public",
             "makeAllPrivate": "Fă totul privat",
-            "dropboxRestoreLimit": "AeroFTP poate restaura versiunile recuperabile ale fișierelor. Restaurați dosarele din Fișiere șterse pe dropbox.com. Un semn de întrebare înseamnă că Dropbox nu a identificat tipul elementului."
+            "dropboxRestoreLimit": "AeroFTP poate restaura versiunile recuperabile ale fișierelor. Restaurați dosarele din Fișiere șterse pe dropbox.com. Un semn de întrebare înseamnă că Dropbox nu a identificat tipul elementului.",
+            "openWithDefaultApp": "Deschide cu aplicația implicită"
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Configurarea sincronizării în cloud",
             "onePerLineHint": "(câte unul pe linie)",
             "pairsEditorLabel": "Editor de perechi AeroCloud",
-            "remoteSubfolderPlaceholder": "nor"
+            "remoteSubfolderPlaceholder": "nor",
+            "countdownSoon": "În curând..."
         },
         "statusBar": {
             "connected": "Conectat",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Transferul a eșuat",
             "navigationFailed": "Navigarea a eșuat: {error}",
             "transferComplete": "{count} fișiere copiate",
-            "permissionsSessionChanged": "Conexiunea s-a schimbat de când a fost deschis acest dialog, așa că nu s-a modificat nimic. Deschideți din nou Permisiuni pe conexiunea curentă."
+            "permissionsSessionChanged": "Conexiunea s-a schimbat de când a fost deschis acest dialog, așa că nu s-a modificat nimic. Deschideți din nou Permisiuni pe conexiunea curentă.",
+            "createFailed": "Crearea a eșuat"
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Se deblochează folderul {filename}...",
             "site_replied": "{command}: serverul a răspuns {code}",
             "site_unknown": "{command}: niciun răspuns complet, rezultat necunoscut",
-            "site_not_sent": "{command} nu a fost trimisă"
+            "site_not_sent": "{command} nu a fost trimisă",
+            "b2_hidden_restore_success_one": "[{provider}] S-a restaurat {count} fișier ascuns",
+            "b2_hidden_restore_success_many": "[{provider}] S-au restaurat {count} fișiere ascunse",
+            "b2_hidden_restore_error": "[{provider}] Restaurarea fișierelor ascunse a eșuat",
+            "b2_hidden_delete_success": "[{provider}] S-au șters definitiv {count} fișier(e) ({versions} versiuni eliminate)",
+            "trash_restore_detail_success": "[{provider}] S-au restaurat {files} fișier(e) din coșul de gunoi",
+            "trash_empty_detail_success": "[{provider}] Coșul de gunoi a fost golit ({files} fișier(e), {folders} dosar(e) eliminate)",
+            "trash_empty_objects_one": "[{provider}] Coșul de gunoi a fost golit ({count} obiect)",
+            "trash_empty_objects_many": "[{provider}] Coșul de gunoi a fost golit ({count} obiecte)",
+            "trash_object_purge_success": "[{provider}] {key} a fost eliminat definitiv",
+            "trash_object_purge_error": "[{provider}] Eliminarea definitivă a {key} a eșuat",
+            "trash_object_undelete_success": "[{provider}] Ștergerea {key} a fost anulată",
+            "trash_object_undelete_error": "[{provider}] Anularea ștergerii {key} a eșuat",
+            "trash_object_restore_success": "[{provider}] {key} a fost restaurat",
+            "trash_object_restore_error": "[{provider}] Restaurarea {key} a eșuat",
+            "opendrive_access_set": "[{provider}] Acces setat la {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Setare acces {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Setarea accesului {level} a eșuat",
+            "download_folder_success": "Dosarul {path} a fost descărcat în {seconds} s",
+            "skipped_file": "S-a omis {filename}",
+            "filelu_made_public": "[{provider}] Fișierul a fost făcut public",
+            "filelu_make_public_error": "[{provider}] Nu s-a putut face fișierul public",
+            "filelu_made_private": "[{provider}] Fișierul a fost făcut privat",
+            "filelu_make_private_error": "[{provider}] Nu s-a putut face fișierul privat",
+            "filelu_file_password_set": "[{provider}] Parola fișierului a fost setată",
+            "filelu_file_password_error": "[{provider}] Setarea parolei fișierului a eșuat",
+            "filelu_folder_password_set": "[{provider}] Parola dosarului a fost setată",
+            "filelu_folder_password_error": "[{provider}] Setarea parolei dosarului a eșuat",
+            "filelu_public_share_success": "[{provider}] Fișier făcut public + partajat",
+            "filelu_public_share_error": "[{provider}] Facerea publică + partajarea a eșuat",
+            "filelu_folder_settings_success": "[{provider}] Setările dosarului au fost actualizate",
+            "filelu_folder_settings_error": "[{provider}] Actualizarea setărilor dosarului a eșuat",
+            "set_private_success": "[{provider}] Setat ca privat",
+            "set_private_error": "[{provider}] Setarea ca privat a eșuat",
+            "set_public_success": "[{provider}] Setat ca public",
+            "set_public_error": "[{provider}] Setarea ca public a eșuat",
+            "bulk_private_success_one": "[{provider}] {count} element setat ca privat",
+            "bulk_private_success_many": "[{provider}] {count} elemente setate ca private",
+            "bulk_private_partial": "[{provider}] {ok}/{total} elemente setate ca private",
+            "bulk_private_error": "[{provider}] Setarea ca privat în masă a eșuat",
+            "box_watermark_set": "[{provider}] Filigran setat",
+            "box_watermark_set_error": "[{provider}] Setarea filigranului a eșuat",
+            "box_watermark_removed": "[{provider}] Filigran eliminat",
+            "box_watermark_remove_error": "[{provider}] Eliminarea filigranului a eșuat",
+            "box_folder_locked": "[{provider}] Dosar blocat",
+            "box_folder_lock_error": "[{provider}] Blocarea dosarului a eșuat",
+            "box_folder_unlocked": "[{provider}] Dosar deblocat",
+            "box_folder_not_locked": "[{provider}] Dosarul nu era blocat",
+            "box_folder_unlock_error": "[{provider}] Deblocarea dosarului a eșuat",
+            "gdrive_starred": "[{provider}] Fișier marcat cu stea",
+            "gdrive_unstarred": "[{provider}] Stea eliminată de pe fișier",
+            "gdrive_star_error": "[{provider}] Marcarea cu stea a eșuat",
+            "gdrive_unstar_error": "[{provider}] Eliminarea stelei a eșuat",
+            "extract_success": "{filename} extras",
+            "extract_success_to": "{filename} extras → {dest}",
+            "extract_error": "Extragerea a eșuat: {error}",
+            "zoho_document_created": "[{provider}] Document {type} creat",
+            "zoho_document_create_error": "[{provider}] Crearea documentului {type} a eșuat",
+            "note_saved": "[{provider}] Nota \"{title}\" a fost salvată",
+            "note_save_error": "[{provider}] Salvarea notei a eșuat",
+            "note_created": "[{provider}] Nota \"{title}\" a fost creată",
+            "note_create_error": "[{provider}] Crearea notei a eșuat",
+            "note_favorited": "[{provider}] Nota \"{title}\" a fost adăugată la favorite",
+            "note_unfavorited": "[{provider}] Nota \"{title}\" a fost eliminată din favorite",
+            "note_favorite_error": "[{provider}] Comutarea favoritului a eșuat",
+            "note_pinned": "[{provider}] Nota \"{title}\" a fost fixată",
+            "note_unpinned": "[{provider}] Fixarea notei \"{title}\" a fost anulată",
+            "note_pin_error": "[{provider}] Comutarea fixării a eșuat",
+            "note_trashed": "[{provider}] Nota \"{title}\" a fost mutată în coș",
+            "note_trash_error": "[{provider}] Mutarea notei în coș a eșuat",
+            "note_restored": "[{provider}] Nota \"{title}\" a fost restaurată",
+            "note_restore_error": "[{provider}] Restaurarea notei a eșuat",
+            "note_deleted": "[{provider}] Nota \"{title}\" a fost ștearsă definitiv",
+            "note_delete_error": "[{provider}] Ștergerea definitivă a notei a eșuat",
+            "note_archived": "[{provider}] Nota \"{title}\" a fost arhivată",
+            "note_archive_error": "[{provider}] Arhivarea notei a eșuat",
+            "note_version_restored": "[{provider}] Versiunea notei a fost restaurată",
+            "note_version_restore_error": "[{provider}] Restaurarea versiunii notei a eșuat",
+            "github_pages_config_updated": "[{provider}] Configurația Pages a fost actualizată",
+            "github_pages_config_error": "[{provider}] Actualizarea configurației Pages a eșuat",
+            "opendrive_set_access": "[{provider}] Se setează accesul pentru {filename}...",
+            "gdrive_star": "[{provider}] Se marchează cu stea {filename}...",
+            "gdrive_unstar": "[{provider}] Se elimină steaua de la {filename}...",
+            "extract_start": "Se extrage {filename}...",
+            "extract_start_to": "Se extrage {filename} → {dest}...",
+            "compress_start": "Se comprimă în {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Restaurate {files} fișier(e), {folders} dosar(e) din coș",
+            "trash_restore_detail_present_success": "[{provider}] Restaurate {files} fișier(e) din coș, {present} deja prezente",
+            "trash_restore_detail_folders_present_success": "[{provider}] Restaurate {files} fișier(e), {folders} dosar(e) din coș, {present} deja prezente",
+            "filelu_file_password_removed": "[{provider}] Parola fișierului a fost eliminată",
+            "filelu_folder_password_removed": "[{provider}] Parola dosarului a fost eliminată"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Excluderi",
             "templateLocal": "Local",
             "templateRemote": "La distanță",
-            "templateRetries": "Reîncercări"
+            "templateRetries": "Reîncercări",
+            "rollbackRestoreLocalCount": "locale {count}",
+            "rollbackRestoreRemoteCount": "la distanță {count}",
+            "rollbackRestoreSkippedCount": "omise {count}",
+            "rollbackRestoreFailedCount": "eșuate {count}",
+            "rollbackRestoreCompleted": "Restaurare finalizată: {summary}",
+            "rollbackRestoreNothing": "Nimic de restaurat",
+            "rollbackRestoreFailed": "Restaurarea a eșuat: {error}"
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Permite pentru această sesiune",
                 "nonAtomicReplace": "Înlocuire neatomică: fișierul lipsește pentru o clipă",
                 "moreOptions": "Mai multe opțiuni",
-                "panelAria": "Panou de aprobare a instrumentelor"
+                "panelAria": "Panou de aprobare a instrumentelor",
+                "previewFailed": "Previzualizarea a eșuat"
             },
             "settings": {
                 "title": "Setări AI",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Acceptă instrumente",
                 "supportsVision": "Acceptă viziune",
                 "thinkingReasoning": "Gândire/Raționament",
-                "toolQuality": "Calitatea instrumentelor: {quality}/5"
+                "toolQuality": "Calitatea instrumentelor: {quality}/5",
+                "ollamaNotReachable": "Ollama nu este accesibil"
             },
             "copy": "Copiază",
             "attachImage": "Atașează imagine",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnostice",
                     "truncated": "Lista de diagnostice a fost trunchiată.",
                     "warningCountMany": "{count} avertismente",
-                    "warningCountOne": "{count} avertisment"
+                    "warningCountOne": "{count} avertisment",
+                    "noLocation": "(fără locație)"
                 },
                 "search": {
                     "none": "Nu s-au găsit potriviri.",
@@ -3522,7 +3628,15 @@
                 "destination": "Destinație: {destination}",
                 "title": "Revizuirea planului de transfer",
                 "warnings": "Avertismente"
-            }
+            },
+            "voiceNoAudio": "Nu s-a capturat audio.",
+            "voiceDownloadingModel": "Se descarcă modelul vocal local...",
+            "voiceNoSpeech": "Nu s-a detectat vorbire.",
+            "voiceReady": "Intrarea vocală este pregătită.",
+            "voiceReadyLanguage": "Intrarea vocală este pregătită ({language}).",
+            "voiceTranscriptionFailed": "Transcrierea locală a eșuat.",
+            "voiceListeningLocally": "Se ascultă local...",
+            "voiceMicrophoneFailed": "Nu se poate accesa microfonul."
         },
         "archive": {
             "passwordRequired": "Această arhivă este protejată cu parolă",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Conținut AES-GCM",
             "featureNameCipher": "Nume AES-SIV",
-            "formatVersion": "Versiunea formatului {version}"
+            "formatVersion": "Versiunea formatului {version}",
+            "invalidVaultName": "Caractere nevalide în numele seifului"
         },
         "compress": {
             "title": "Comprimare fișiere",
@@ -4161,7 +4276,8 @@
             "total": "Total",
             "across": "în",
             "empty": "Acest director este gol",
-            "hoverHint": "Treceți cursorul peste un bloc pentru a vedea detaliile"
+            "hoverHint": "Treceți cursorul peste un bloc pentru a vedea detaliile",
+            "scanUnknownError": "Eroare necunoscută la scanarea utilizării discului"
         },
         "dependencies": {
             "title": "Dependențe",
@@ -4575,7 +4691,8 @@
                 "unmute": "Activează sunetul (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 nu este suportat"
+                "notSupported": "WebGL 2 nu este suportat",
+                "contextLost": "Contextul WebGL a fost pierdut"
             },
             "clickToViewDetails": "Faceți clic pe un fișier pentru a vedea detaliile sale",
             "copyPath": "Copiază Calea",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Lungime (octeți)",
             "argon2DefaultsHint": "Valori implicite: profilul folosit de AeroVault și AeroCrypt (128 MiB, 4 iterații, 4 benzi, ieșire de 32 de octeți). Saltul de mai sus este al tău. Memorie până la 2 GiB.",
             "argon2Derive": "Derivă",
-            "argon2Phc": "Șir PHC"
+            "argon2Phc": "Șir PHC",
+            "hashError": "Eroare: {error}"
         },
         "dialog": {
             "deleteFile": "Ștergeți \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Elimină eticheta",
             "manageTags": "Gestionează etichetele",
             "deleteTagConfirm": "Ștergi eticheta „{name}”? Notițele își păstrează textul.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Text",
+                "markdown": "Markdown",
+                "code": "Cod",
+                "richText": "Text formatat",
+                "checklist": "Listă de verificare"
+            }
         },
         "shareLinkModal": {
             "title": "Link de partajare",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Alegeți un folder de destinație",
             "passwordPrompt": "Acest element este criptat. Introduceți parola pentru a-l extrage.",
             "showPassword": "Afișează parola",
-            "hidePassword": "Ascunde parola"
+            "hidePassword": "Ascunde parola",
+            "missingPayload": "Lipsesc datele de extragere"
         },
         "provider": {
             "modes": {

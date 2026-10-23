@@ -433,7 +433,10 @@
             "localFilesLabel": "Локальные файлы",
             "localFilesRightLabel": "Локальные файлы (правая панель)",
             "remoteFilesLabel": "Удалённые файлы",
-            "rightPanelMarker": "Правая панель"
+            "rightPanelMarker": "Правая панель",
+            "chooseRightPanelFolder": "Выберите папку правой панели",
+            "chooseLeftPanelFolder": "Выберите папку левой панели",
+            "localRight": "Локально (справа)"
         },
         "contextMenu": {
             "askAeroAgent": "Спросить AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Сделать приватным",
             "setAsPublic": "Сделать публичным",
             "makeAllPrivate": "Сделать все приватными",
-            "dropboxRestoreLimit": "AeroFTP может восстанавливать доступные для восстановления версии файлов. Папки восстанавливайте в разделе «Удалённые файлы» на dropbox.com. Вопросительный знак означает, что Dropbox не определил тип элемента."
+            "dropboxRestoreLimit": "AeroFTP может восстанавливать доступные для восстановления версии файлов. Папки восстанавливайте в разделе «Удалённые файлы» на dropbox.com. Вопросительный знак означает, что Dropbox не определил тип элемента.",
+            "openWithDefaultApp": "Открыть в приложении по умолчанию"
         },
         "transfer": {
             "transferring": "Передача...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Настройка облачной синхронизации",
             "onePerLineHint": "(по одному в строке)",
             "pairsEditorLabel": "Редактор пар AeroCloud",
-            "remoteSubfolderPlaceholder": "облако"
+            "remoteSubfolderPlaceholder": "облако",
+            "countdownSoon": "Скоро..."
         },
         "statusBar": {
             "connected": "Подключено",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Передача не удалась",
             "navigationFailed": "Не удалось перейти: {error}",
             "transferComplete": "Скопировано файлов: {count}",
-            "permissionsSessionChanged": "Соединение изменилось с момента открытия этого диалога, поэтому ничего не было изменено. Откройте Права доступа снова на текущем соединении."
+            "permissionsSessionChanged": "Соединение изменилось с момента открытия этого диалога, поэтому ничего не было изменено. Откройте Права доступа снова на текущем соединении.",
+            "createFailed": "Не удалось создать"
         },
         "about": {
             "tagline": "Больше чем FTP. Полный инструментарий разработчика.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Разблокировка папки {filename}...",
             "site_replied": "{command}: сервер ответил {code}",
             "site_unknown": "{command}: полного ответа нет, результат неизвестен",
-            "site_not_sent": "{command} не была отправлена"
+            "site_not_sent": "{command} не была отправлена",
+            "b2_hidden_restore_success_one": "[{provider}] Восстановлен {count} скрытый файл",
+            "b2_hidden_restore_success_many": "[{provider}] Восстановлено скрытых файлов: {count}",
+            "b2_hidden_restore_error": "[{provider}] Не удалось восстановить скрытые файлы",
+            "b2_hidden_delete_success": "[{provider}] Безвозвратно удалено файлов: {count} (очищено версий: {versions})",
+            "trash_restore_detail_success": "[{provider}] Восстановлено файлов из корзины: {files}",
+            "trash_empty_detail_success": "[{provider}] Корзина очищена (удалено файлов: {files}, папок: {folders})",
+            "trash_empty_objects_one": "[{provider}] Корзина очищена ({count} объект)",
+            "trash_empty_objects_many": "[{provider}] Корзина очищена (объектов: {count})",
+            "trash_object_purge_success": "[{provider}] Безвозвратно удалён {key}",
+            "trash_object_purge_error": "[{provider}] Не удалось безвозвратно удалить {key}",
+            "trash_object_undelete_success": "[{provider}] Отменено удаление {key}",
+            "trash_object_undelete_error": "[{provider}] Не удалось отменить удаление {key}",
+            "trash_object_restore_success": "[{provider}] Восстановлен {key}",
+            "trash_object_restore_error": "[{provider}] Не удалось восстановить {key}",
+            "opendrive_access_set": "[{provider}] Доступ установлен на {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Установка доступа {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Не удалось установить доступ {level}",
+            "download_folder_success": "Папка {path} скачана за {seconds} с",
+            "skipped_file": "Пропущен {filename}",
+            "filelu_made_public": "[{provider}] Файл сделан общедоступным",
+            "filelu_make_public_error": "[{provider}] Не удалось сделать файл общедоступным",
+            "filelu_made_private": "[{provider}] Файл сделан приватным",
+            "filelu_make_private_error": "[{provider}] Не удалось сделать файл приватным",
+            "filelu_file_password_set": "[{provider}] Пароль файла установлен",
+            "filelu_file_password_error": "[{provider}] Не удалось установить пароль файла",
+            "filelu_folder_password_set": "[{provider}] Пароль папки установлен",
+            "filelu_folder_password_error": "[{provider}] Не удалось установить пароль папки",
+            "filelu_public_share_success": "[{provider}] Файл сделан публичным + общий доступ открыт",
+            "filelu_public_share_error": "[{provider}] Не удалось сделать публичным + открыть общий доступ",
+            "filelu_folder_settings_success": "[{provider}] Настройки папки обновлены",
+            "filelu_folder_settings_error": "[{provider}] Не удалось обновить настройки папки",
+            "set_private_success": "[{provider}] Сделано приватным",
+            "set_private_error": "[{provider}] Не удалось сделать приватным",
+            "set_public_success": "[{provider}] Сделано публичным",
+            "set_public_error": "[{provider}] Не удалось сделать публичным",
+            "bulk_private_success_one": "[{provider}] {count} элемент сделан приватным",
+            "bulk_private_success_many": "[{provider}] {count} элементов сделано приватными",
+            "bulk_private_partial": "[{provider}] {ok}/{total} элементов сделано приватными",
+            "bulk_private_error": "[{provider}] Не удалось массово сделать приватными",
+            "box_watermark_set": "[{provider}] Водяной знак установлен",
+            "box_watermark_set_error": "[{provider}] Не удалось установить водяной знак",
+            "box_watermark_removed": "[{provider}] Водяной знак удалён",
+            "box_watermark_remove_error": "[{provider}] Не удалось удалить водяной знак",
+            "box_folder_locked": "[{provider}] Папка заблокирована",
+            "box_folder_lock_error": "[{provider}] Не удалось заблокировать папку",
+            "box_folder_unlocked": "[{provider}] Папка разблокирована",
+            "box_folder_not_locked": "[{provider}] Папка не была заблокирована",
+            "box_folder_unlock_error": "[{provider}] Не удалось разблокировать папку",
+            "gdrive_starred": "[{provider}] Файл отмечен звёздочкой",
+            "gdrive_unstarred": "[{provider}] Звёздочка с файла снята",
+            "gdrive_star_error": "[{provider}] Не удалось пометить звёздочкой",
+            "gdrive_unstar_error": "[{provider}] Не удалось снять звёздочку",
+            "extract_success": "Извлечён {filename}",
+            "extract_success_to": "Извлечён {filename} → {dest}",
+            "extract_error": "Ошибка извлечения: {error}",
+            "zoho_document_created": "[{provider}] Создан документ {type}",
+            "zoho_document_create_error": "[{provider}] Не удалось создать документ {type}",
+            "note_saved": "[{provider}] Сохранена заметка \"{title}\"",
+            "note_save_error": "[{provider}] Не удалось сохранить заметку",
+            "note_created": "[{provider}] Создана заметка \"{title}\"",
+            "note_create_error": "[{provider}] Не удалось создать заметку",
+            "note_favorited": "[{provider}] Заметка \"{title}\" добавлена в избранное",
+            "note_unfavorited": "[{provider}] Заметка \"{title}\" удалена из избранного",
+            "note_favorite_error": "[{provider}] Не удалось переключить избранное",
+            "note_pinned": "[{provider}] Закреплена заметка \"{title}\"",
+            "note_unpinned": "[{provider}] Откреплена заметка \"{title}\"",
+            "note_pin_error": "[{provider}] Не удалось переключить закрепление",
+            "note_trashed": "[{provider}] Заметка \"{title}\" перемещена в корзину",
+            "note_trash_error": "[{provider}] Не удалось переместить заметку в корзину",
+            "note_restored": "[{provider}] Восстановлена заметка \"{title}\"",
+            "note_restore_error": "[{provider}] Не удалось восстановить заметку",
+            "note_deleted": "[{provider}] Заметка \"{title}\" удалена навсегда",
+            "note_delete_error": "[{provider}] Не удалось удалить заметку навсегда",
+            "note_archived": "[{provider}] Заметка \"{title}\" архивирована",
+            "note_archive_error": "[{provider}] Не удалось архивировать заметку",
+            "note_version_restored": "[{provider}] Версия заметки восстановлена",
+            "note_version_restore_error": "[{provider}] Не удалось восстановить версию заметки",
+            "github_pages_config_updated": "[{provider}] Конфигурация Pages обновлена",
+            "github_pages_config_error": "[{provider}] Не удалось обновить конфигурацию Pages",
+            "opendrive_set_access": "[{provider}] Настройка доступа для {filename}...",
+            "gdrive_star": "[{provider}] Пометка {filename} звёздочкой...",
+            "gdrive_unstar": "[{provider}] Снятие звёздочки с {filename}...",
+            "extract_start": "Извлечение {filename}...",
+            "extract_start_to": "Извлечение {filename} → {dest}...",
+            "compress_start": "Сжатие в {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Восстановлено из корзины: файлов {files}, папок {folders}",
+            "trash_restore_detail_present_success": "[{provider}] Восстановлено из корзины: файлов {files}, уже существует {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] Восстановлено из корзины: файлов {files}, папок {folders}, уже существует {present}",
+            "filelu_file_password_removed": "[{provider}] Пароль файла удалён",
+            "filelu_folder_password_removed": "[{provider}] Пароль папки удалён"
         },
         "protocol": {
             "selectProtocol": "Выберите протокол...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Исключения",
             "templateLocal": "Локально",
             "templateRemote": "Удалённо",
-            "templateRetries": "Повторы"
+            "templateRetries": "Повторы",
+            "rollbackRestoreLocalCount": "локально {count}",
+            "rollbackRestoreRemoteCount": "на удалённом сервере {count}",
+            "rollbackRestoreSkippedCount": "пропущено {count}",
+            "rollbackRestoreFailedCount": "ошибок {count}",
+            "rollbackRestoreCompleted": "Восстановление завершено: {summary}",
+            "rollbackRestoreNothing": "Нечего восстанавливать",
+            "rollbackRestoreFailed": "Не удалось восстановить: {error}"
         },
         "ui": {
             "syncing": "Синхронизация...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Разрешить для этой сессии",
                 "nonAtomicReplace": "Неатомарная замена: файл на короткое время отсутствует",
                 "moreOptions": "Другие параметры",
-                "panelAria": "Панель одобрения инструментов"
+                "panelAria": "Панель одобрения инструментов",
+                "previewFailed": "Ошибка предпросмотра"
             },
             "settings": {
                 "title": "Настройки ИИ",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Поддерживает инструменты",
                 "supportsVision": "Поддерживает зрение",
                 "thinkingReasoning": "Мышление/Рассуждение",
-                "toolQuality": "Качество инструментов: {quality}/5"
+                "toolQuality": "Качество инструментов: {quality}/5",
+                "ollamaNotReachable": "Ollama недоступна"
             },
             "copy": "Копировать",
             "attachImage": "Прикрепить изображение",
@@ -3423,7 +3528,8 @@
                     "title": "Диагностика",
                     "truncated": "Список диагностики был обрезан.",
                     "warningCountMany": "{count} предупреждений",
-                    "warningCountOne": "{count} предупреждение"
+                    "warningCountOne": "{count} предупреждение",
+                    "noLocation": "(без расположения)"
                 },
                 "search": {
                     "none": "Совпадений не найдено.",
@@ -3522,7 +3628,15 @@
                 "destination": "Назначение: {destination}",
                 "title": "Проверка плана передачи",
                 "warnings": "Предупреждения"
-            }
+            },
+            "voiceNoAudio": "Звук не записан.",
+            "voiceDownloadingModel": "Загрузка локальной голосовой модели...",
+            "voiceNoSpeech": "Речь не обнаружена.",
+            "voiceReady": "Голосовой ввод готов.",
+            "voiceReadyLanguage": "Голосовой ввод готов ({language}).",
+            "voiceTranscriptionFailed": "Не удалось выполнить локальную расшифровку.",
+            "voiceListeningLocally": "Локальное прослушивание...",
+            "voiceMicrophoneFailed": "Не удалось получить доступ к микрофону."
         },
         "archive": {
             "passwordRequired": "Этот архив защищён паролем",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator формат 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Содержимое AES-GCM",
             "featureNameCipher": "Имена AES-SIV",
-            "formatVersion": "Формат {version}"
+            "formatVersion": "Формат {version}",
+            "invalidVaultName": "Недопустимые символы в имени хранилища"
         },
         "compress": {
             "title": "Сжать файлы",
@@ -4161,7 +4276,8 @@
             "total": "Всего",
             "across": "в",
             "empty": "Этот каталог пуст",
-            "hoverHint": "Наведите на блок для просмотра деталей"
+            "hoverHint": "Наведите на блок для просмотра деталей",
+            "scanUnknownError": "Неизвестная ошибка при сканировании использования диска"
         },
         "dependencies": {
             "title": "Зависимости",
@@ -4575,7 +4691,8 @@
                 "unmute": "Включить звук (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 не поддерживается"
+                "notSupported": "WebGL 2 не поддерживается",
+                "contextLost": "Контекст WebGL потерян"
             },
             "clickToViewDetails": "Нажмите на файл для просмотра деталей",
             "copyPath": "Скопировать путь",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Длина (байт)",
             "argon2DefaultsHint": "По умолчанию: профиль, который используют AeroVault и AeroCrypt (128 MiB, 4 итерации, 4 полосы, 32-байтовый вывод). Соль выше ваша. Память до 2 GiB.",
             "argon2Derive": "Вывести",
-            "argon2Phc": "Строка PHC"
+            "argon2Phc": "Строка PHC",
+            "hashError": "Ошибка: {error}"
         },
         "dialog": {
             "deleteFile": "Удалить \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Убрать тег",
             "manageTags": "Управление тегами",
             "deleteTagConfirm": "Удалить тег «{name}»? Заметки сохранят свой текст.",
-            "betaBadge": "БЕТА"
+            "betaBadge": "БЕТА",
+            "noteTypes": {
+                "text": "Текст",
+                "markdown": "Markdown",
+                "code": "Код",
+                "richText": "Форматированный текст",
+                "checklist": "Чек-лист"
+            }
         },
         "shareLinkModal": {
             "title": "Ссылка для общего доступа",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Выберите папку назначения",
             "passwordPrompt": "Этот элемент зашифрован. Введите пароль для извлечения.",
             "showPassword": "Показать пароль",
-            "hidePassword": "Скрыть пароль"
+            "hidePassword": "Скрыть пароль",
+            "missingPayload": "Отсутствуют данные для извлечения"
         },
         "provider": {
             "modes": {

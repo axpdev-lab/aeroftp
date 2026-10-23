@@ -433,7 +433,10 @@
             "localFilesLabel": "ローカルファイル",
             "localFilesRightLabel": "ローカルファイル (右パネル)",
             "remoteFilesLabel": "リモートファイル",
-            "rightPanelMarker": "右パネル"
+            "rightPanelMarker": "右パネル",
+            "chooseRightPanelFolder": "右パネルのフォルダーを選択",
+            "chooseLeftPanelFolder": "左パネルのフォルダーを選択",
+            "localRight": "ローカル (右)"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgentに質問...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "プライベートに設定",
             "setAsPublic": "公開に設定",
             "makeAllPrivate": "すべて非公開にする",
-            "dropboxRestoreLimit": "AeroFTP は復元可能なファイルのバージョンを復元できます。フォルダーは dropbox.com の「削除したファイル」から復元してください。疑問符は、Dropbox が項目の種類を識別できなかったことを示します。"
+            "dropboxRestoreLimit": "AeroFTP は復元可能なファイルのバージョンを復元できます。フォルダーは dropbox.com の「削除したファイル」から復元してください。疑問符は、Dropbox が項目の種類を識別できなかったことを示します。",
+            "openWithDefaultApp": "既定のアプリで開く"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "クラウド同期のセットアップ",
             "onePerLineHint": "(1 行に 1 つ)",
             "pairsEditorLabel": "AeroCloud ペアエディター",
-            "remoteSubfolderPlaceholder": "クラウド"
+            "remoteSubfolderPlaceholder": "クラウド",
+            "countdownSoon": "まもなく..."
         },
         "statusBar": {
             "connected": "接続済み",
@@ -1682,7 +1687,8 @@
             "transferFailed": "転送に失敗しました",
             "navigationFailed": "移動に失敗しました: {error}",
             "transferComplete": "{count} 個のファイルをコピーしました",
-            "permissionsSessionChanged": "このダイアログを開いてから接続が変更されたため、何も変更されませんでした。現在の接続で「権限」をもう一度開いてください。"
+            "permissionsSessionChanged": "このダイアログを開いてから接続が変更されたため、何も変更されませんでした。現在の接続で「権限」をもう一度開いてください。",
+            "createFailed": "作成に失敗しました"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] フォルダ {filename} のロックを解除しています...",
             "site_replied": "{command}: サーバーの応答は {code} でした",
             "site_unknown": "{command}: 完全な応答がなく、結果は不明です",
-            "site_not_sent": "{command} は送信されませんでした"
+            "site_not_sent": "{command} は送信されませんでした",
+            "b2_hidden_restore_success_one": "[{provider}] 非表示ファイルを {count} 件復元しました",
+            "b2_hidden_restore_success_many": "[{provider}] 非表示ファイルを {count} 件復元しました",
+            "b2_hidden_restore_error": "[{provider}] 非表示ファイルの復元に失敗しました",
+            "b2_hidden_delete_success": "[{provider}] {count} 件のファイルを完全に削除しました ({versions} 個のバージョンを消去)",
+            "trash_restore_detail_success": "[{provider}] ゴミ箱から {files} 件のファイルを復元しました",
+            "trash_empty_detail_success": "[{provider}] ゴミ箱を空にしました ({files} 件のファイル、{folders} 件のフォルダーを消去)",
+            "trash_empty_objects_one": "[{provider}] ゴミ箱を空にしました ({count} 個のオブジェクト)",
+            "trash_empty_objects_many": "[{provider}] ゴミ箱を空にしました ({count} 個のオブジェクト)",
+            "trash_object_purge_success": "[{provider}] {key} を完全に削除しました",
+            "trash_object_purge_error": "[{provider}] {key} の完全削除に失敗しました",
+            "trash_object_undelete_success": "[{provider}] {key} の削除を取り消しました",
+            "trash_object_undelete_error": "[{provider}] {key} の削除の取り消しに失敗しました",
+            "trash_object_restore_success": "[{provider}] {key} を復元しました",
+            "trash_object_restore_error": "[{provider}] {key} の復元に失敗しました",
+            "opendrive_access_set": "[{provider}] アクセスを {level} に設定しました ({count})",
+            "opendrive_access_partial": "[{provider}] アクセス {level} の設定: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] アクセス {level} の設定に失敗しました",
+            "download_folder_success": "フォルダー {path} を {seconds} 秒でダウンロードしました",
+            "skipped_file": "{filename} をスキップしました",
+            "filelu_made_public": "[{provider}] ファイルを公開しました",
+            "filelu_make_public_error": "[{provider}] ファイルの公開に失敗しました",
+            "filelu_made_private": "[{provider}] ファイルを非公開にしました",
+            "filelu_make_private_error": "[{provider}] ファイルの非公開化に失敗しました",
+            "filelu_file_password_set": "[{provider}] ファイルのパスワードを設定しました",
+            "filelu_file_password_error": "[{provider}] ファイルのパスワード設定に失敗しました",
+            "filelu_folder_password_set": "[{provider}] フォルダーのパスワードを設定しました",
+            "filelu_folder_password_error": "[{provider}] フォルダーのパスワードの設定に失敗しました",
+            "filelu_public_share_success": "[{provider}] ファイルを公開 + 共有しました",
+            "filelu_public_share_error": "[{provider}] 公開 + 共有に失敗しました",
+            "filelu_folder_settings_success": "[{provider}] フォルダーの設定を更新しました",
+            "filelu_folder_settings_error": "[{provider}] フォルダーの設定の更新に失敗しました",
+            "set_private_success": "[{provider}] 非公開に設定しました",
+            "set_private_error": "[{provider}] 非公開への設定に失敗しました",
+            "set_public_success": "[{provider}] 公開に設定しました",
+            "set_public_error": "[{provider}] 公開への設定に失敗しました",
+            "bulk_private_success_one": "[{provider}] {count} 件の項目を非公開に設定しました",
+            "bulk_private_success_many": "[{provider}] {count} 件の項目を非公開に設定しました",
+            "bulk_private_partial": "[{provider}] {ok}/{total} 件の項目を非公開に設定しました",
+            "bulk_private_error": "[{provider}] 一括非公開化に失敗しました",
+            "box_watermark_set": "[{provider}] 透かしを設定しました",
+            "box_watermark_set_error": "[{provider}] 透かしの設定に失敗しました",
+            "box_watermark_removed": "[{provider}] 透かしを削除しました",
+            "box_watermark_remove_error": "[{provider}] 透かしの削除に失敗しました",
+            "box_folder_locked": "[{provider}] フォルダーをロックしました",
+            "box_folder_lock_error": "[{provider}] フォルダーのロックに失敗しました",
+            "box_folder_unlocked": "[{provider}] フォルダーのロックを解除しました",
+            "box_folder_not_locked": "[{provider}] フォルダーはロックされていませんでした",
+            "box_folder_unlock_error": "[{provider}] フォルダーのロック解除に失敗しました",
+            "gdrive_starred": "[{provider}] ファイルにスターを付けました",
+            "gdrive_unstarred": "[{provider}] ファイルのスターを外しました",
+            "gdrive_star_error": "[{provider}] スターの追加に失敗しました",
+            "gdrive_unstar_error": "[{provider}] スターの解除に失敗しました",
+            "extract_success": "{filename} を展開しました",
+            "extract_success_to": "{filename} を展開しました → {dest}",
+            "extract_error": "展開に失敗しました: {error}",
+            "zoho_document_created": "[{provider}] {type} ドキュメントを作成しました",
+            "zoho_document_create_error": "[{provider}] {type} ドキュメントの作成に失敗しました",
+            "note_saved": "[{provider}] ノート「{title}」を保存しました",
+            "note_save_error": "[{provider}] ノートの保存に失敗しました",
+            "note_created": "[{provider}] ノート「{title}」を作成しました",
+            "note_create_error": "[{provider}] ノートの作成に失敗しました",
+            "note_favorited": "[{provider}] ノート「{title}」をお気に入りに追加しました",
+            "note_unfavorited": "[{provider}] ノート「{title}」をお気に入りから削除しました",
+            "note_favorite_error": "[{provider}] お気に入りの切り替えに失敗しました",
+            "note_pinned": "[{provider}] ノート「{title}」をピン留めしました",
+            "note_unpinned": "[{provider}] ノート「{title}」のピン留めを解除しました",
+            "note_pin_error": "[{provider}] ピン留めの切り替えに失敗しました",
+            "note_trashed": "[{provider}] ノート「{title}」をゴミ箱に移動しました",
+            "note_trash_error": "[{provider}] ノートをゴミ箱に移動できませんでした",
+            "note_restored": "[{provider}] ノート「{title}」を復元しました",
+            "note_restore_error": "[{provider}] ノートの復元に失敗しました",
+            "note_deleted": "[{provider}] ノート「{title}」を完全に削除しました",
+            "note_delete_error": "[{provider}] ノートの完全削除に失敗しました",
+            "note_archived": "[{provider}] ノート「{title}」をアーカイブしました",
+            "note_archive_error": "[{provider}] ノートのアーカイブに失敗しました",
+            "note_version_restored": "[{provider}] ノートのバージョンを復元しました",
+            "note_version_restore_error": "[{provider}] ノートのバージョンを復元できませんでした",
+            "github_pages_config_updated": "[{provider}] Pages の設定を更新しました",
+            "github_pages_config_error": "[{provider}] Pages の設定を更新できませんでした",
+            "opendrive_set_access": "[{provider}] {filename} のアクセスを設定中...",
+            "gdrive_star": "[{provider}] {filename} にスターを付けています...",
+            "gdrive_unstar": "[{provider}] {filename} のスターを外しています...",
+            "extract_start": "{filename} を展開中...",
+            "extract_start_to": "{filename} を展開中 → {dest}...",
+            "compress_start": "{archive} に圧縮中...",
+            "trash_restore_detail_folders_success": "[{provider}] ゴミ箱から {files} 個のファイル、{folders} 個のフォルダーを復元しました",
+            "trash_restore_detail_present_success": "[{provider}] ゴミ箱から {files} 個のファイルを復元しました ({present} 個は既に存在)",
+            "trash_restore_detail_folders_present_success": "[{provider}] ゴミ箱から {files} 個のファイル、{folders} 個のフォルダーを復元しました ({present} 個は既に存在)",
+            "filelu_file_password_removed": "[{provider}] ファイルのパスワードを削除しました",
+            "filelu_folder_password_removed": "[{provider}] フォルダーのパスワードを削除しました"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -2445,7 +2541,14 @@
             "templateExcludes": "除外",
             "templateLocal": "ローカル",
             "templateRemote": "リモート",
-            "templateRetries": "再試行"
+            "templateRetries": "再試行",
+            "rollbackRestoreLocalCount": "ローカル {count}",
+            "rollbackRestoreRemoteCount": "リモート {count}",
+            "rollbackRestoreSkippedCount": "スキップ {count}",
+            "rollbackRestoreFailedCount": "失敗 {count}",
+            "rollbackRestoreCompleted": "復元が完了しました: {summary}",
+            "rollbackRestoreNothing": "復元するものはありません",
+            "rollbackRestoreFailed": "復元に失敗しました: {error}"
         },
         "ui": {
             "syncing": "同期中...",
@@ -2618,7 +2721,8 @@
                 "allowSession": "このセッションで許可",
                 "nonAtomicReplace": "非アトミックな置き換え: ファイルが一瞬存在しなくなります",
                 "moreOptions": "その他のオプション",
-                "panelAria": "ツール承認パネル"
+                "panelAria": "ツール承認パネル",
+                "previewFailed": "プレビューに失敗しました"
             },
             "settings": {
                 "title": "AI設定",
@@ -2780,7 +2884,8 @@
                 "supportsTools": "ツール対応",
                 "supportsVision": "ビジョン対応",
                 "thinkingReasoning": "思考/推論",
-                "toolQuality": "ツール品質: {quality}/5"
+                "toolQuality": "ツール品質: {quality}/5",
+                "ollamaNotReachable": "Ollama に接続できません"
             },
             "copy": "コピー",
             "attachImage": "画像を添付",
@@ -3387,7 +3492,8 @@
                     "title": "診断",
                     "truncated": "診断リストは切り詰められました。",
                     "warningCountMany": "{count} 件の警告",
-                    "warningCountOne": "{count} 件の警告"
+                    "warningCountOne": "{count} 件の警告",
+                    "noLocation": "(場所なし)"
                 },
                 "search": {
                     "none": "一致するものが見つかりません。",
@@ -3486,7 +3592,15 @@
                 "destination": "宛先: {destination}",
                 "title": "転送計画のレビュー",
                 "warnings": "警告"
-            }
+            },
+            "voiceNoAudio": "音声がキャプチャされませんでした。",
+            "voiceDownloadingModel": "ローカル音声モデルをダウンロード中...",
+            "voiceNoSpeech": "発話が検出されませんでした。",
+            "voiceReady": "音声入力の準備ができました。",
+            "voiceReadyLanguage": "音声入力の準備ができました ({language})。",
+            "voiceTranscriptionFailed": "ローカル文字起こしに失敗しました。",
+            "voiceListeningLocally": "ローカルで聞き取り中...",
+            "voiceMicrophoneFailed": "マイクにアクセスできません。"
         },
         "archive": {
             "passwordRequired": "このアーカイブはパスワードで保護されています",
@@ -3760,7 +3874,8 @@
             "createFormatBadge": "Cryptomator フォーマット 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM コンテンツ",
             "featureNameCipher": "AES-SIV 名前",
-            "formatVersion": "フォーマット {version}"
+            "formatVersion": "フォーマット {version}",
+            "invalidVaultName": "保管庫名に無効な文字が含まれています"
         },
         "compress": {
             "title": "ファイルを圧縮",
@@ -4125,7 +4240,8 @@
             "total": "合計",
             "across": "全体",
             "empty": "このディレクトリは空です",
-            "hoverHint": "ブロックにカーソルを合わせて詳細を表示"
+            "hoverHint": "ブロックにカーソルを合わせて詳細を表示",
+            "scanUnknownError": "ディスク使用量のスキャン中に不明なエラーが発生しました"
         },
         "dependencies": {
             "title": "依存関係",
@@ -4539,7 +4655,8 @@
                 "unmute": "ミュート解除 (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 はサポートされていません"
+                "notSupported": "WebGL 2 はサポートされていません",
+                "contextLost": "WebGL コンテキストが失われました"
             },
             "clickToViewDetails": "ファイルをクリックして詳細を表示",
             "copyPath": "パスをコピー",
@@ -4698,7 +4815,8 @@
             "argon2OutputLength": "長さ (バイト)",
             "argon2DefaultsHint": "既定値: AeroVault と AeroCrypt が使うプロファイル (128 MiB、反復 4 回、4 レーン、32 バイトの出力)。上のソルトはあなた自身のものです。メモリは最大 2 GiB。",
             "argon2Derive": "導出",
-            "argon2Phc": "PHC 文字列"
+            "argon2Phc": "PHC 文字列",
+            "hashError": "エラー: {error}"
         },
         "dialog": {
             "deleteFile": "「{name}」を削除しますか？",
@@ -5301,7 +5419,14 @@
             "removeTag": "タグを外す",
             "manageTags": "タグを管理",
             "deleteTagConfirm": "タグ「{name}」を削除しますか？ノートの本文は残ります。",
-            "betaBadge": "ベータ"
+            "betaBadge": "ベータ",
+            "noteTypes": {
+                "text": "テキスト",
+                "markdown": "Markdown",
+                "code": "コード",
+                "richText": "リッチテキスト",
+                "checklist": "チェックリスト"
+            }
         },
         "shareLinkModal": {
             "title": "共有リンク",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "展開先フォルダーを選択",
             "passwordPrompt": "この項目は暗号化されています。展開するにはパスワードを入力してください。",
             "showPassword": "パスワードを表示",
-            "hidePassword": "パスワードを非表示"
+            "hidePassword": "パスワードを非表示",
+            "missingPayload": "展開ペイロードがありません"
         },
         "provider": {
             "modes": {

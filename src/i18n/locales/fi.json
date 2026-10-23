@@ -433,7 +433,10 @@
             "localFilesLabel": "Paikalliset tiedostot",
             "localFilesRightLabel": "Paikalliset tiedostot (oikea paneeli)",
             "remoteFilesLabel": "Etätiedostot",
-            "rightPanelMarker": "Oikea paneeli"
+            "rightPanelMarker": "Oikea paneeli",
+            "chooseRightPanelFolder": "Valitse oikean paneelin kansio",
+            "chooseLeftPanelFolder": "Valitse vasemman paneelin kansio",
+            "localRight": "Paikallinen (oikea)"
         },
         "contextMenu": {
             "askAeroAgent": "Kysy AeroAgent-ilta...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Aseta yksityiseksi",
             "setAsPublic": "Aseta julkiseksi",
             "makeAllPrivate": "Aseta kaikki yksityisiksi",
-            "dropboxRestoreLimit": "AeroFTP voi palauttaa palautettavissa olevia tiedostoversioita. Palauta kansiot dropbox.com-sivuston Poistetut tiedostot -osiosta. Kysymysmerkki tarkoittaa, ettei Dropbox tunnistanut kohteen tyyppiä."
+            "dropboxRestoreLimit": "AeroFTP voi palauttaa palautettavissa olevia tiedostoversioita. Palauta kansiot dropbox.com-sivuston Poistetut tiedostot -osiosta. Kysymysmerkki tarkoittaa, ettei Dropbox tunnistanut kohteen tyyppiä.",
+            "openWithDefaultApp": "Avaa oletussovelluksella"
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Pilvisynkronoinnin käyttöönotto",
             "onePerLineHint": "(yksi riviä kohden)",
             "pairsEditorLabel": "AeroCloud-parien muokkain",
-            "remoteSubfolderPlaceholder": "pilvi"
+            "remoteSubfolderPlaceholder": "pilvi",
+            "countdownSoon": "Pian..."
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Siirto epäonnistui",
             "navigationFailed": "Siirtyminen epäonnistui: {error}",
             "transferComplete": "{count} tiedostoa kopioitu",
-            "permissionsSessionChanged": "Yhteys on muuttunut tämän valintaikkunan avaamisen jälkeen, joten mitään ei muutettu. Avaa Oikeudet uudelleen nykyisellä yhteydellä."
+            "permissionsSessionChanged": "Yhteys on muuttunut tämän valintaikkunan avaamisen jälkeen, joten mitään ei muutettu. Avaa Oikeudet uudelleen nykyisellä yhteydellä.",
+            "createFailed": "Luonti epäonnistui"
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Avataan kansion {filename} lukitusta...",
             "site_replied": "{command}: palvelin vastasi {code}",
             "site_unknown": "{command}: ei täydellistä vastausta, lopputulos tuntematon",
-            "site_not_sent": "Komentoa {command} ei lähetetty"
+            "site_not_sent": "Komentoa {command} ei lähetetty",
+            "b2_hidden_restore_success_one": "[{provider}] Palautettiin {count} piilotettu tiedosto",
+            "b2_hidden_restore_success_many": "[{provider}] Palautettiin {count} piilotettua tiedostoa",
+            "b2_hidden_restore_error": "[{provider}] Piilotettujen tiedostojen palautus epäonnistui",
+            "b2_hidden_delete_success": "[{provider}] Poistettiin pysyvästi {count} tiedosto(a) ({versions} versiota tyhjennetty)",
+            "trash_restore_detail_success": "[{provider}] Palautettiin {files} tiedosto(a) roskakorista",
+            "trash_empty_detail_success": "[{provider}] Roskakori tyhjennetty ({files} tiedosto(a), {folders} kansio(ta) poistettu pysyvästi)",
+            "trash_empty_objects_one": "[{provider}] Roskakori tyhjennetty ({count} objekti)",
+            "trash_empty_objects_many": "[{provider}] Roskakori tyhjennetty ({count} objektia)",
+            "trash_object_purge_success": "[{provider}] Poistettiin pysyvästi {key}",
+            "trash_object_purge_error": "[{provider}] Kohteen {key} pysyvä poisto epäonnistui",
+            "trash_object_undelete_success": "[{provider}] Kohteen {key} poisto peruttiin",
+            "trash_object_undelete_error": "[{provider}] Kohteen {key} poiston peruminen epäonnistui",
+            "trash_object_restore_success": "[{provider}] Palautettiin {key}",
+            "trash_object_restore_error": "[{provider}] Kohteen {key} palautus epäonnistui",
+            "opendrive_access_set": "[{provider}] Käyttöoikeudeksi asetettiin {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Käyttöoikeuden {level} asetus: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Käyttöoikeuden {level} asetus epäonnistui",
+            "download_folder_success": "Kansio {path} ladattiin {seconds} sekunnissa",
+            "skipped_file": "Ohitettiin {filename}",
+            "filelu_made_public": "[{provider}] Tiedosto tehtiin julkiseksi",
+            "filelu_make_public_error": "[{provider}] Tiedoston julkiseksi tekeminen epäonnistui",
+            "filelu_made_private": "[{provider}] Tiedosto tehtiin yksityiseksi",
+            "filelu_make_private_error": "[{provider}] Tiedoston yksityiseksi tekeminen epäonnistui",
+            "filelu_file_password_set": "[{provider}] Tiedoston salasana asetettiin",
+            "filelu_file_password_error": "[{provider}] Tiedoston salasanan asetus epäonnistui",
+            "filelu_folder_password_set": "[{provider}] Kansion salasana asetettu",
+            "filelu_folder_password_error": "[{provider}] Kansion salasanan asettaminen epäonnistui",
+            "filelu_public_share_success": "[{provider}] Tiedosto tehty julkiseksi + jaettu",
+            "filelu_public_share_error": "[{provider}] Julkiseksi tekeminen + jakaminen epäonnistui",
+            "filelu_folder_settings_success": "[{provider}] Kansion asetukset päivitetty",
+            "filelu_folder_settings_error": "[{provider}] Kansion asetusten päivittäminen epäonnistui",
+            "set_private_success": "[{provider}] Asetettu yksityiseksi",
+            "set_private_error": "[{provider}] Yksityiseksi asettaminen epäonnistui",
+            "set_public_success": "[{provider}] Asetettu julkiseksi",
+            "set_public_error": "[{provider}] Julkiseksi asettaminen epäonnistui",
+            "bulk_private_success_one": "[{provider}] {count} kohde asetettu yksityiseksi",
+            "bulk_private_success_many": "[{provider}] {count} kohdetta asetettu yksityisiksi",
+            "bulk_private_partial": "[{provider}] {ok}/{total} kohdetta asetettu yksityisiksi",
+            "bulk_private_error": "[{provider}] Joukkoasetus yksityiseksi epäonnistui",
+            "box_watermark_set": "[{provider}] Vesileima asetettu",
+            "box_watermark_set_error": "[{provider}] Vesileiman asettaminen epäonnistui",
+            "box_watermark_removed": "[{provider}] Vesileima poistettu",
+            "box_watermark_remove_error": "[{provider}] Vesileiman poistaminen epäonnistui",
+            "box_folder_locked": "[{provider}] Kansio lukittu",
+            "box_folder_lock_error": "[{provider}] Kansion lukitseminen epäonnistui",
+            "box_folder_unlocked": "[{provider}] Kansion lukitus avattu",
+            "box_folder_not_locked": "[{provider}] Kansio ei ollut lukittu",
+            "box_folder_unlock_error": "[{provider}] Kansion lukituksen avaaminen epäonnistui",
+            "gdrive_starred": "[{provider}] Tiedosto merkitty tähdellä",
+            "gdrive_unstarred": "[{provider}] Tähti poistettu tiedostosta",
+            "gdrive_star_error": "[{provider}] Tähdellä merkitseminen epäonnistui",
+            "gdrive_unstar_error": "[{provider}] Tähden poistaminen epäonnistui",
+            "extract_success": "Purettiin {filename}",
+            "extract_success_to": "Purettiin {filename} → {dest}",
+            "extract_error": "Purkaminen epäonnistui: {error}",
+            "zoho_document_created": "[{provider}] Luotiin {type}-asiakirja",
+            "zoho_document_create_error": "[{provider}] {type}-asiakirjan luominen epäonnistui",
+            "note_saved": "[{provider}] Tallennettiin muistiinpano \"{title}\"",
+            "note_save_error": "[{provider}] Muistiinpanon tallentaminen epäonnistui",
+            "note_created": "[{provider}] Luotiin muistiinpano \"{title}\"",
+            "note_create_error": "[{provider}] Muistiinpanon luominen epäonnistui",
+            "note_favorited": "[{provider}] Muistiinpano \"{title}\" lisättiin suosikkeihin",
+            "note_unfavorited": "[{provider}] Muistiinpano \"{title}\" poistettiin suosikeista",
+            "note_favorite_error": "[{provider}] Suosikin vaihtaminen epäonnistui",
+            "note_pinned": "[{provider}] Kiinnitettiin muistiinpano \"{title}\"",
+            "note_unpinned": "[{provider}] Irrotettiin muistiinpano \"{title}\"",
+            "note_pin_error": "[{provider}] Kiinnityksen vaihtaminen epäonnistui",
+            "note_trashed": "[{provider}] Muistiinpano \"{title}\" siirrettiin roskakoriin",
+            "note_trash_error": "[{provider}] Muistiinpanon siirtäminen roskakoriin epäonnistui",
+            "note_restored": "[{provider}] Palautettiin muistiinpano \"{title}\"",
+            "note_restore_error": "[{provider}] Muistiinpanon palauttaminen epäonnistui",
+            "note_deleted": "[{provider}] Muistiinpano \"{title}\" poistettiin pysyvästi",
+            "note_delete_error": "[{provider}] Muistiinpanon pysyvä poistaminen epäonnistui",
+            "note_archived": "[{provider}] Arkistoitiin muistiinpano \"{title}\"",
+            "note_archive_error": "[{provider}] Muistiinpanon arkistointi epäonnistui",
+            "note_version_restored": "[{provider}] Muistiinpanon versio palautettu",
+            "note_version_restore_error": "[{provider}] Muistiinpanon version palauttaminen epäonnistui",
+            "github_pages_config_updated": "[{provider}] Pages-määritykset päivitetty",
+            "github_pages_config_error": "[{provider}] Pages-määritysten päivittäminen epäonnistui",
+            "opendrive_set_access": "[{provider}] Asetetaan käyttöoikeutta kohteelle {filename}...",
+            "gdrive_star": "[{provider}] Merkitään tähdellä {filename}...",
+            "gdrive_unstar": "[{provider}] Poistetaan tähti kohteesta {filename}...",
+            "extract_start": "Puretaan {filename}...",
+            "extract_start_to": "Puretaan {filename} → {dest}...",
+            "compress_start": "Pakataan kohteeseen {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {folders} kansio(ta)",
+            "trash_restore_detail_present_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {present} oli jo olemassa",
+            "trash_restore_detail_folders_present_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {folders} kansio(ta), {present} oli jo olemassa",
+            "filelu_file_password_removed": "[{provider}] Tiedoston salasana poistettiin",
+            "filelu_folder_password_removed": "[{provider}] Kansion salasana poistettu"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Poissulkemiset",
             "templateLocal": "Paikallinen",
             "templateRemote": "Etä",
-            "templateRetries": "Uusintayritykset"
+            "templateRetries": "Uusintayritykset",
+            "rollbackRestoreLocalCount": "paikallinen {count}",
+            "rollbackRestoreRemoteCount": "etä {count}",
+            "rollbackRestoreSkippedCount": "ohitettu {count}",
+            "rollbackRestoreFailedCount": "epäonnistui {count}",
+            "rollbackRestoreCompleted": "Palautus valmis: {summary}",
+            "rollbackRestoreNothing": "Ei palautettavaa",
+            "rollbackRestoreFailed": "Palautus epäonnistui: {error}"
         },
         "ui": {
             "syncing": "Synkronoidaan...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Salli tälle istunnolle",
                 "nonAtomicReplace": "Ei-atominen korvaus: tiedosto puuttuu hetken",
                 "moreOptions": "Lisää vaihtoehtoja",
-                "panelAria": "Työkalujen hyväksyntäpaneeli"
+                "panelAria": "Työkalujen hyväksyntäpaneeli",
+                "previewFailed": "Esikatselu epäonnistui"
             },
             "settings": {
                 "title": "Tekoälyasetukset",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Tukee työkaluja",
                 "supportsVision": "Tukee näkökykyä",
                 "thinkingReasoning": "Ajattelu/Päättely",
-                "toolQuality": "Työkalujen laatu: {quality}/5"
+                "toolQuality": "Työkalujen laatu: {quality}/5",
+                "ollamaNotReachable": "Ollamaan ei saada yhteyttä"
             },
             "copy": "Kopioi",
             "attachImage": "Liitä kuva",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnostiikka",
                     "truncated": "Diagnostiikkaluettelo katkaistiin.",
                     "warningCountMany": "{count} varoitusta",
-                    "warningCountOne": "{count} varoitus"
+                    "warningCountOne": "{count} varoitus",
+                    "noLocation": "(ei sijaintia)"
                 },
                 "search": {
                     "none": "Osumia ei löytynyt.",
@@ -3522,7 +3628,15 @@
                 "destination": "Kohde: {destination}",
                 "title": "Siirtosuunnitelman tarkistus",
                 "warnings": "Varoitukset"
-            }
+            },
+            "voiceNoAudio": "Ääntä ei tallentunut.",
+            "voiceDownloadingModel": "Ladataan paikallista puhemallia...",
+            "voiceNoSpeech": "Puhetta ei havaittu.",
+            "voiceReady": "Puhesyöte valmis.",
+            "voiceReadyLanguage": "Puhesyöte valmis ({language}).",
+            "voiceTranscriptionFailed": "Paikallinen litterointi epäonnistui.",
+            "voiceListeningLocally": "Kuunnellaan paikallisesti...",
+            "voiceMicrophoneFailed": "Mikrofoniin ei saada yhteyttä."
         },
         "archive": {
             "passwordRequired": "Tämä arkisto on salasanasuojattu",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator-muoto 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM-sisältö",
             "featureNameCipher": "AES-SIV-nimet",
-            "formatVersion": "Muoto {version}"
+            "formatVersion": "Muoto {version}",
+            "invalidVaultName": "Virheellisiä merkkejä holvin nimessä"
         },
         "compress": {
             "title": "Pakkaa tiedostot",
@@ -4161,7 +4276,8 @@
             "total": "Yhteensä",
             "across": "yli",
             "empty": "Tämä hakemisto on tyhjä",
-            "hoverHint": "Vie hiiri lohkon päälle nähdäksesi tiedot"
+            "hoverHint": "Vie hiiri lohkon päälle nähdäksesi tiedot",
+            "scanUnknownError": "Tuntematon virhe levynkäytön tarkistuksessa"
         },
         "dependencies": {
             "title": "Riippuvuudet",
@@ -4575,7 +4691,8 @@
                 "unmute": "Poista mykistys (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 ei tuettu"
+                "notSupported": "WebGL 2 ei tuettu",
+                "contextLost": "WebGL-konteksti menetettiin"
             },
             "clickToViewDetails": "Napsauta tiedostoa nähdäksesi sen tiedot",
             "copyPath": "Kopioi polku",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Pituus (tavua)",
             "argon2DefaultsHint": "Oletukset: profiili, jota AeroVault ja AeroCrypt käyttävät (128 MiB, 4 iteraatiota, 4 kaistaa, 32 tavun tulos). Yllä oleva suola on sinun. Muistia enintään 2 GiB.",
             "argon2Derive": "Johda",
-            "argon2Phc": "PHC-merkkijono"
+            "argon2Phc": "PHC-merkkijono",
+            "hashError": "Virhe: {error}"
         },
         "dialog": {
             "deleteFile": "Poista \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Poista tunniste",
             "manageTags": "Hallitse tunnisteita",
             "deleteTagConfirm": "Poistetaanko tunniste ”{name}”? Muistiinpanot säilyttävät tekstinsä.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Teksti",
+                "markdown": "Markdown",
+                "code": "Koodi",
+                "richText": "Muotoiltu teksti",
+                "checklist": "Tarkistuslista"
+            }
         },
         "shareLinkModal": {
             "title": "Jakolinkki",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Valitse kohdekansio",
             "passwordPrompt": "Tämä kohde on salattu. Anna salasana purkamista varten.",
             "showPassword": "Näytä salasana",
-            "hidePassword": "Piilota salasana"
+            "hidePassword": "Piilota salasana",
+            "missingPayload": "Purkutiedot puuttuvat"
         },
         "provider": {
             "modes": {

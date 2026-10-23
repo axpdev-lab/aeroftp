@@ -78,11 +78,11 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
     setActionLoading('restore');
     try {
       await invoke('koofr_restore_trash', { files });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Koofr] Restored ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Koofr', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Koofr] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Koofr' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -103,11 +103,11 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
     setActionLoading('empty');
     try {
       await invoke('koofr_empty_trash');
-      humanLog.updateEntry(logId, { status: 'success', message: `[Koofr] Emptied trash (${totalCount} item(s))` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Koofr' }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Koofr] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'Koofr' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

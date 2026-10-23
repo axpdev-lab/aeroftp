@@ -433,7 +433,10 @@
             "localFilesLabel": "Lokalne datoteke",
             "localFilesRightLabel": "Lokalne datoteke (desna plošča)",
             "remoteFilesLabel": "Oddaljene datoteke",
-            "rightPanelMarker": "Desna plošča"
+            "rightPanelMarker": "Desna plošča",
+            "chooseRightPanelFolder": "Izberite mapo desnega podokna",
+            "chooseLeftPanelFolder": "Izberite mapo levega podokna",
+            "localRight": "Lokalno (desno)"
         },
         "contextMenu": {
             "askAeroAgent": "Vprašaj AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Nastavi kot zasebno",
             "setAsPublic": "Nastavi kot javno",
             "makeAllPrivate": "Nastavi vse kot zasebno",
-            "dropboxRestoreLimit": "AeroFTP lahko obnovi obnovljive različice datotek. Mape obnovite v razdelku Izbrisane datoteke na dropbox.com. Vprašaj pomeni, da Dropbox ni prepoznal vrste elementa."
+            "dropboxRestoreLimit": "AeroFTP lahko obnovi obnovljive različice datotek. Mape obnovite v razdelku Izbrisane datoteke na dropbox.com. Vprašaj pomeni, da Dropbox ni prepoznal vrste elementa.",
+            "openWithDefaultApp": "Odpri s privzeto aplikacijo"
         },
         "transfer": {
             "transferring": "Prenašanje...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Priprava sinhronizacije v oblaku",
             "onePerLineHint": "(ena na vrstico)",
             "pairsEditorLabel": "Urejevalnik parov AeroCloud",
-            "remoteSubfolderPlaceholder": "oblak"
+            "remoteSubfolderPlaceholder": "oblak",
+            "countdownSoon": "Kmalu..."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Prenos ni uspel",
             "navigationFailed": "Krmarjenje ni uspelo: {error}",
             "transferComplete": "Kopiranih {count} datotek",
-            "permissionsSessionChanged": "Povezava se je spremenila, odkar je bilo to pogovorno okno odprto, zato ni bilo nič spremenjeno. Znova odprite Dovoljenja na trenutni povezavi."
+            "permissionsSessionChanged": "Povezava se je spremenila, odkar je bilo to pogovorno okno odprto, zato ni bilo nič spremenjeno. Znova odprite Dovoljenja na trenutni povezavi.",
+            "createFailed": "Ustvarjanje ni uspelo"
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Odklepanje mape {filename}...",
             "site_replied": "{command}: strežnik je odgovoril {code}",
             "site_unknown": "{command}: ni popolnega odgovora, izid ni znan",
-            "site_not_sent": "{command} ni bil poslan"
+            "site_not_sent": "{command} ni bil poslan",
+            "b2_hidden_restore_success_one": "[{provider}] Obnovljena {count} skrita datoteka",
+            "b2_hidden_restore_success_many": "[{provider}] Obnovljene skrite datoteke: {count}",
+            "b2_hidden_restore_error": "[{provider}] Obnovitev skritih datotek ni uspela",
+            "b2_hidden_delete_success": "[{provider}] Trajno izbrisane datoteke: {count} (počiščene različice: {versions})",
+            "trash_restore_detail_success": "[{provider}] Obnovljene datoteke iz koša: {files}",
+            "trash_empty_detail_success": "[{provider}] Koš izpraznjen (počiščene datoteke: {files}, mape: {folders})",
+            "trash_empty_objects_one": "[{provider}] Koš izpraznjen ({count} predmet)",
+            "trash_empty_objects_many": "[{provider}] Koš izpraznjen (predmeti: {count})",
+            "trash_object_purge_success": "[{provider}] Trajno odstranjeno: {key}",
+            "trash_object_purge_error": "[{provider}] Trajna odstranitev {key} ni uspela",
+            "trash_object_undelete_success": "[{provider}] Brisanje razveljavljeno: {key}",
+            "trash_object_undelete_error": "[{provider}] Razveljavitev brisanja {key} ni uspela",
+            "trash_object_restore_success": "[{provider}] Obnovljeno: {key}",
+            "trash_object_restore_error": "[{provider}] Obnovitev {key} ni uspela",
+            "opendrive_access_set": "[{provider}] Dostop nastavljen na {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Nastavitev dostopa {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Nastavitev dostopa {level} ni uspela",
+            "download_folder_success": "Mapa {path} prenesena v {seconds} s",
+            "skipped_file": "Preskočeno: {filename}",
+            "filelu_made_public": "[{provider}] Datoteka je postala javna",
+            "filelu_make_public_error": "[{provider}] Nastavitev datoteke kot javne ni uspela",
+            "filelu_made_private": "[{provider}] Datoteka je postala zasebna",
+            "filelu_make_private_error": "[{provider}] Nastavitev datoteke kot zasebne ni uspela",
+            "filelu_file_password_set": "[{provider}] Geslo datoteke nastavljeno",
+            "filelu_file_password_error": "[{provider}] Nastavitev gesla datoteke ni uspela",
+            "filelu_folder_password_set": "[{provider}] Geslo mape nastavljeno",
+            "filelu_folder_password_error": "[{provider}] Nastavitev gesla mape ni uspela",
+            "filelu_public_share_success": "[{provider}] Datoteka objavljena + deljena",
+            "filelu_public_share_error": "[{provider}] Objava + deljenje ni uspelo",
+            "filelu_folder_settings_success": "[{provider}] Nastavitve mape posodobljene",
+            "filelu_folder_settings_error": "[{provider}] Posodobitev nastavitev mape ni uspela",
+            "set_private_success": "[{provider}] Nastavljeno kot zasebno",
+            "set_private_error": "[{provider}] Nastavitev kot zasebno ni uspela",
+            "set_public_success": "[{provider}] Nastavljeno kot javno",
+            "set_public_error": "[{provider}] Nastavitev kot javno ni uspela",
+            "bulk_private_success_one": "[{provider}] {count} vnos nastavljen kot zaseben",
+            "bulk_private_success_many": "[{provider}] {count} vnosov nastavljenih kot zasebni",
+            "bulk_private_partial": "[{provider}] {ok}/{total} vnosov nastavljenih kot zasebni",
+            "bulk_private_error": "[{provider}] Množična nastavitev kot zasebno ni uspela",
+            "box_watermark_set": "[{provider}] Vodni žig nastavljen",
+            "box_watermark_set_error": "[{provider}] Nastavitev vodnega žiga ni uspela",
+            "box_watermark_removed": "[{provider}] Vodni žig odstranjen",
+            "box_watermark_remove_error": "[{provider}] Odstranitev vodnega žiga ni uspela",
+            "box_folder_locked": "[{provider}] Mapa zaklenjena",
+            "box_folder_lock_error": "[{provider}] Zaklepanje mape ni uspelo",
+            "box_folder_unlocked": "[{provider}] Mapa odklenjena",
+            "box_folder_not_locked": "[{provider}] Mapa ni bila zaklenjena",
+            "box_folder_unlock_error": "[{provider}] Odklepanje mape ni uspelo",
+            "gdrive_starred": "[{provider}] Datoteka označena z zvezdico",
+            "gdrive_unstarred": "[{provider}] Zvezdica odstranjena z datoteke",
+            "gdrive_star_error": "[{provider}] Označevanje z zvezdico ni uspelo",
+            "gdrive_unstar_error": "[{provider}] Odstranjevanje zvezdice ni uspelo",
+            "extract_success": "Razširjeno {filename}",
+            "extract_success_to": "Razširjeno {filename} → {dest}",
+            "extract_error": "Razširjanje ni uspelo: {error}",
+            "zoho_document_created": "[{provider}] Ustvarjen dokument {type}",
+            "zoho_document_create_error": "[{provider}] Ustvarjanje dokumenta {type} ni uspelo",
+            "note_saved": "[{provider}] Shranjen zapisek \"{title}\"",
+            "note_save_error": "[{provider}] Zapiska ni bilo mogoče shraniti",
+            "note_created": "[{provider}] Ustvarjen zapisek \"{title}\"",
+            "note_create_error": "[{provider}] Zapiska ni bilo mogoče ustvariti",
+            "note_favorited": "[{provider}] Zapisek \"{title}\" dodan med priljubljene",
+            "note_unfavorited": "[{provider}] Zapisek \"{title}\" odstranjen iz priljubljenih",
+            "note_favorite_error": "[{provider}] Preklop priljubljenega ni uspel",
+            "note_pinned": "[{provider}] Pripet zapisek \"{title}\"",
+            "note_unpinned": "[{provider}] Odpet zapisek \"{title}\"",
+            "note_pin_error": "[{provider}] Preklop pripetosti ni uspel",
+            "note_trashed": "[{provider}] Zapisek \"{title}\" premaknjen v koš",
+            "note_trash_error": "[{provider}] Zapiska ni bilo mogoče premakniti v koš",
+            "note_restored": "[{provider}] Obnovljen zapisek \"{title}\"",
+            "note_restore_error": "[{provider}] Zapiska ni bilo mogoče obnoviti",
+            "note_deleted": "[{provider}] Zapisek \"{title}\" trajno izbrisan",
+            "note_delete_error": "[{provider}] Zapiska ni bilo mogoče trajno izbrisati",
+            "note_archived": "[{provider}] Zapisek \"{title}\" arhiviran",
+            "note_archive_error": "[{provider}] Zapiska ni bilo mogoče arhivirati",
+            "note_version_restored": "[{provider}] Različica zapiska obnovljena",
+            "note_version_restore_error": "[{provider}] Obnovitev različice zapiska ni uspela",
+            "github_pages_config_updated": "[{provider}] Konfiguracija Pages posodobljena",
+            "github_pages_config_error": "[{provider}] Posodobitev konfiguracije Pages ni uspela",
+            "opendrive_set_access": "[{provider}] Nastavljanje dostopa za {filename}...",
+            "gdrive_star": "[{provider}] Označevanje z zvezdico: {filename}...",
+            "gdrive_unstar": "[{provider}] Odstranjevanje zvezdice: {filename}...",
+            "extract_start": "Razširjanje {filename}...",
+            "extract_start_to": "Razširjanje {filename} → {dest}...",
+            "compress_start": "Stiskanje v {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Obnovljeno iz koša: datoteke {files}, mape {folders}",
+            "trash_restore_detail_present_success": "[{provider}] Obnovljeno iz koša: datoteke {files}, že obstoječe {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] Obnovljeno iz koša: datoteke {files}, mape {folders}, že obstoječe {present}",
+            "filelu_file_password_removed": "[{provider}] Geslo datoteke odstranjeno",
+            "filelu_folder_password_removed": "[{provider}] Geslo mape odstranjeno"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Izključitve",
             "templateLocal": "Lokalno",
             "templateRemote": "Oddaljeno",
-            "templateRetries": "Ponovni poskusi"
+            "templateRetries": "Ponovni poskusi",
+            "rollbackRestoreLocalCount": "lokalno {count}",
+            "rollbackRestoreRemoteCount": "oddaljeno {count}",
+            "rollbackRestoreSkippedCount": "preskočeno {count}",
+            "rollbackRestoreFailedCount": "neuspešno {count}",
+            "rollbackRestoreCompleted": "Obnovitev končana: {summary}",
+            "rollbackRestoreNothing": "Ni ničesar za obnovitev",
+            "rollbackRestoreFailed": "Obnovitev ni uspela: {error}"
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Dovoli za to sejo",
                 "nonAtomicReplace": "Neatomarna zamenjava: datoteka za trenutek manjka",
                 "moreOptions": "Več možnosti",
-                "panelAria": "Plošča za odobritev orodij"
+                "panelAria": "Plošča za odobritev orodij",
+                "previewFailed": "Predogled ni uspel"
             },
             "settings": {
                 "title": "Nastavitve AI",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Podpira orodja",
                 "supportsVision": "Podpira vid",
                 "thinkingReasoning": "Razmišljanje/Sklepanje",
-                "toolQuality": "Kakovost orodij: {quality}/5"
+                "toolQuality": "Kakovost orodij: {quality}/5",
+                "ollamaNotReachable": "Ollama ni dosegljiva"
             },
             "copy": "Kopiraj",
             "attachImage": "Priloži sliko",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnostika",
                     "truncated": "Seznam diagnostike je bil skrajšan.",
                     "warningCountMany": "{count} opozoril",
-                    "warningCountOne": "{count} opozorilo"
+                    "warningCountOne": "{count} opozorilo",
+                    "noLocation": "(brez lokacije)"
                 },
                 "search": {
                     "none": "Ni najdenih ujemanj.",
@@ -3522,7 +3628,15 @@
                 "destination": "Cilj: {destination}",
                 "title": "Pregled načrta prenosa",
                 "warnings": "Opozorila"
-            }
+            },
+            "voiceNoAudio": "Zvok ni bil zajet.",
+            "voiceDownloadingModel": "Prenašanje lokalnega glasovnega modela...",
+            "voiceNoSpeech": "Govor ni bil zaznan.",
+            "voiceReady": "Glasovni vnos je pripravljen.",
+            "voiceReadyLanguage": "Glasovni vnos je pripravljen ({language}).",
+            "voiceTranscriptionFailed": "Lokalni prepis ni uspel.",
+            "voiceListeningLocally": "Lokalno poslušanje...",
+            "voiceMicrophoneFailed": "Dostop do mikrofona ni mogoč."
         },
         "archive": {
             "passwordRequired": "Ta arhiv je zaščiten z geslom",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Vsebina AES-GCM",
             "featureNameCipher": "Imena AES-SIV",
-            "formatVersion": "Različica formata {version}"
+            "formatVersion": "Različica formata {version}",
+            "invalidVaultName": "Neveljavni znaki v imenu trezorja"
         },
         "compress": {
             "title": "Stisni datoteke",
@@ -4161,7 +4276,8 @@
             "total": "Skupaj",
             "across": "v",
             "empty": "Ta imenik je prazen",
-            "hoverHint": "Pomaknite se nad blok za podrobnosti"
+            "hoverHint": "Pomaknite se nad blok za podrobnosti",
+            "scanUnknownError": "Neznana napaka pri pregledovanju porabe diska"
         },
         "dependencies": {
             "title": "Odvisnosti",
@@ -4575,7 +4691,8 @@
                 "unmute": "Vklopi zvok (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 ni podprt"
+                "notSupported": "WebGL 2 ni podprt",
+                "contextLost": "Kontekst WebGL izgubljen"
             },
             "clickToViewDetails": "Kliknite na datoteko za prikaz podrobnosti",
             "copyPath": "Kopiraj pot",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Dolžina (bajti)",
             "argon2DefaultsHint": "Privzeto: profil, ki ga uporabljata AeroVault in AeroCrypt (128 MiB, 4 ponovitve, 4 steze, 32-bajtni izhod). Sol zgoraj je vaša. Pomnilnik do 2 GiB.",
             "argon2Derive": "Izpelji",
-            "argon2Phc": "Niz PHC"
+            "argon2Phc": "Niz PHC",
+            "hashError": "Napaka: {error}"
         },
         "dialog": {
             "deleteFile": "Izbrisati \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Odstrani oznako",
             "manageTags": "Upravljaj oznake",
             "deleteTagConfirm": "Izbrišem oznako »{name}«? Zapiski obdržijo svoje besedilo.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Besedilo",
+                "markdown": "Markdown",
+                "code": "Koda",
+                "richText": "Oblikovano besedilo",
+                "checklist": "Kontrolni seznam"
+            }
         },
         "shareLinkModal": {
             "title": "Povezava za skupno rabo",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Izberite ciljno mapo",
             "passwordPrompt": "Ta element je šifriran. Za razširjanje vnesite geslo.",
             "showPassword": "Pokaži geslo",
-            "hidePassword": "Skrij geslo"
+            "hidePassword": "Skrij geslo",
+            "missingPayload": "Manjkajo podatki za razširjanje"
         },
         "provider": {
             "modes": {

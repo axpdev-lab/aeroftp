@@ -433,7 +433,10 @@
             "localFilesLabel": "ឯកសារមូលដ្ឋាន",
             "localFilesRightLabel": "ឯកសារមូលដ្ឋាន (ផ្ទាំងខាងស្តាំ)",
             "remoteFilesLabel": "ឯកសារពីចម្ងាយ",
-            "rightPanelMarker": "ផ្ទាំងខាងស្តាំ"
+            "rightPanelMarker": "ផ្ទាំងខាងស្តាំ",
+            "chooseRightPanelFolder": "ជ្រើសថតផ្ទាំងស្ដាំ",
+            "chooseLeftPanelFolder": "ជ្រើសថតផ្ទាំងឆ្វេង",
+            "localRight": "មូលដ្ឋាន (ស្ដាំ)"
         },
         "contextMenu": {
             "askAeroAgent": "សួរ AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "កំណត់ជាឯកជន",
             "setAsPublic": "កំណត់ជាសាធារណៈ",
             "makeAllPrivate": "ធ្វើឱ្យទាំងអស់ជាឯកជន",
-            "dropboxRestoreLimit": "AeroFTP អាចស្ដារកំណែឯកសារដែលនៅអាចស្ដារបាន។ ស្ដារថតពីផ្នែកឯកសារដែលបានលុបនៅលើ dropbox.com។ សញ្ញាសួរមានន័យថា Dropbox មិនបានកំណត់អត្តសញ្ញាណប្រភេទធាតុទេ។"
+            "dropboxRestoreLimit": "AeroFTP អាចស្ដារកំណែឯកសារដែលនៅអាចស្ដារបាន។ ស្ដារថតពីផ្នែកឯកសារដែលបានលុបនៅលើ dropbox.com។ សញ្ញាសួរមានន័យថា Dropbox មិនបានកំណត់អត្តសញ្ញាណប្រភេទធាតុទេ។",
+            "openWithDefaultApp": "បើកដោយកម្មវិធីលំនាំដើម"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "ការរៀបចំសមកាលកម្មពពក",
             "onePerLineHint": "(មួយក្នុងមួយបន្ទាត់)",
             "pairsEditorLabel": "កម្មវិធីកែគូ AeroCloud",
-            "remoteSubfolderPlaceholder": "ពពក"
+            "remoteSubfolderPlaceholder": "ពពក",
+            "countdownSoon": "ឆាប់ៗនេះ..."
         },
         "statusBar": {
             "connected": "បានតភ្ជាប់",
@@ -1682,7 +1687,8 @@
             "transferFailed": "ការផ្ទេរបានបរាជ័យ",
             "navigationFailed": "ការរុករកបានបរាជ័យ៖ {error}",
             "transferComplete": "បានចម្លងឯកសារ {count}",
-            "permissionsSessionChanged": "ការតភ្ជាប់បានផ្លាស់ប្តូរចាប់តាំងពីបើកប្រអប់នេះ ដូច្នេះគ្មានអ្វីត្រូវបានផ្លាស់ប្តូរទេ។ សូមបើកការអនុញ្ញាតម្ដងទៀតលើការតភ្ជាប់បច្ចុប្បន្ន។"
+            "permissionsSessionChanged": "ការតភ្ជាប់បានផ្លាស់ប្តូរចាប់តាំងពីបើកប្រអប់នេះ ដូច្នេះគ្មានអ្វីត្រូវបានផ្លាស់ប្តូរទេ។ សូមបើកការអនុញ្ញាតម្ដងទៀតលើការតភ្ជាប់បច្ចុប្បន្ន។",
+            "createFailed": "ការបង្កើតបានបរាជ័យ"
         },
         "about": {
             "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] កំពុងដោះសោថត {filename}...",
             "site_replied": "{command}៖ ម៉ាស៊ីនមេបានឆ្លើយតប {code}",
             "site_unknown": "{command}៖ គ្មានការឆ្លើយតបពេញលេញ លទ្ធផលមិនស្គាល់",
-            "site_not_sent": "{command} មិនត្រូវបានផ្ញើទេ"
+            "site_not_sent": "{command} មិនត្រូវបានផ្ញើទេ",
+            "b2_hidden_restore_success_one": "[{provider}] បានស្ដារឯកសារលាក់ {count}",
+            "b2_hidden_restore_success_many": "[{provider}] បានស្ដារឯកសារលាក់ {count}",
+            "b2_hidden_restore_error": "[{provider}] បរាជ័យក្នុងការស្ដារឯកសារលាក់",
+            "b2_hidden_delete_success": "[{provider}] បានលុបឯកសារ {count} ជាអចិន្ត្រៃយ៍ (បានសម្អាតកំណែ {versions})",
+            "trash_restore_detail_success": "[{provider}] បានស្ដារឯកសារ {files} ពីធុងសំរាម",
+            "trash_empty_detail_success": "[{provider}] បានសម្អាតធុងសំរាម (បានលុបឯកសារ {files}, ថត {folders})",
+            "trash_empty_objects_one": "[{provider}] បានសម្អាតធុងសំរាម (វត្ថុ {count})",
+            "trash_empty_objects_many": "[{provider}] បានសម្អាតធុងសំរាម (វត្ថុ {count})",
+            "trash_object_purge_success": "[{provider}] បានលុប {key} ជាអចិន្ត្រៃយ៍",
+            "trash_object_purge_error": "[{provider}] បរាជ័យក្នុងការលុប {key} ជាអចិន្ត្រៃយ៍",
+            "trash_object_undelete_success": "[{provider}] បានបោះបង់ការលុប {key}",
+            "trash_object_undelete_error": "[{provider}] បរាជ័យក្នុងការបោះបង់ការលុប {key}",
+            "trash_object_restore_success": "[{provider}] បានស្ដារ {key}",
+            "trash_object_restore_error": "[{provider}] បរាជ័យក្នុងការស្ដារ {key}",
+            "opendrive_access_set": "[{provider}] បានកំណត់សិទ្ធិចូលប្រើជា {level} ({count})",
+            "opendrive_access_partial": "[{provider}] កំណត់សិទ្ធិចូលប្រើ {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] បរាជ័យក្នុងការកំណត់សិទ្ធិចូលប្រើ {level}",
+            "download_folder_success": "បានទាញយកថត {path} ក្នុងរយៈពេល {seconds} វិនាទី",
+            "skipped_file": "បានរំលង {filename}",
+            "filelu_made_public": "[{provider}] បានធ្វើឱ្យឯកសារជាសាធារណៈ",
+            "filelu_make_public_error": "[{provider}] បរាជ័យក្នុងការធ្វើឱ្យឯកសារជាសាធារណៈ",
+            "filelu_made_private": "[{provider}] បានធ្វើឱ្យឯកសារជាឯកជន",
+            "filelu_make_private_error": "[{provider}] បរាជ័យក្នុងការធ្វើឱ្យឯកសារជាឯកជន",
+            "filelu_file_password_set": "[{provider}] បានកំណត់ពាក្យសម្ងាត់ឯកសារ",
+            "filelu_file_password_error": "[{provider}] បរាជ័យក្នុងការកំណត់ពាក្យសម្ងាត់ឯកសារ",
+            "filelu_folder_password_set": "[{provider}] បានកំណត់ពាក្យសម្ងាត់ថត",
+            "filelu_folder_password_error": "[{provider}] ការកំណត់ពាក្យសម្ងាត់ថតបានបរាជ័យ",
+            "filelu_public_share_success": "[{provider}] បានធ្វើឱ្យឯកសារជាសាធារណៈ + បានចែករំលែក",
+            "filelu_public_share_error": "[{provider}] ការធ្វើជាសាធារណៈ + ចែករំលែកបានបរាជ័យ",
+            "filelu_folder_settings_success": "[{provider}] បានធ្វើបច្ចុប្បន្នភាពការកំណត់ថត",
+            "filelu_folder_settings_error": "[{provider}] ការធ្វើបច្ចុប្បន្នភាពការកំណត់ថតបានបរាជ័យ",
+            "set_private_success": "[{provider}] បានកំណត់ជាឯកជន",
+            "set_private_error": "[{provider}] ការកំណត់ជាឯកជនបានបរាជ័យ",
+            "set_public_success": "[{provider}] បានកំណត់ជាសាធារណៈ",
+            "set_public_error": "[{provider}] ការកំណត់ជាសាធារណៈបានបរាជ័យ",
+            "bulk_private_success_one": "[{provider}] បានកំណត់ {count} ធាតុជាឯកជន",
+            "bulk_private_success_many": "[{provider}] បានកំណត់ {count} ធាតុជាឯកជន",
+            "bulk_private_partial": "[{provider}] បានកំណត់ {ok}/{total} ធាតុជាឯកជន",
+            "bulk_private_error": "[{provider}] ការកំណត់ជាឯកជនជាបណ្តុំបានបរាជ័យ",
+            "box_watermark_set": "[{provider}] បានកំណត់ស្នាមទឹក",
+            "box_watermark_set_error": "[{provider}] ការកំណត់ស្នាមទឹកបានបរាជ័យ",
+            "box_watermark_removed": "[{provider}] បានដកស្នាមទឹកចេញ",
+            "box_watermark_remove_error": "[{provider}] ការដកស្នាមទឹកចេញបានបរាជ័យ",
+            "box_folder_locked": "[{provider}] បានចាក់សោថត",
+            "box_folder_lock_error": "[{provider}] ការចាក់សោថតបានបរាជ័យ",
+            "box_folder_unlocked": "[{provider}] បានដោះសោថត",
+            "box_folder_not_locked": "[{provider}] ថតមិនត្រូវបានចាក់សោទេ",
+            "box_folder_unlock_error": "[{provider}] ការដោះសោថតបានបរាជ័យ",
+            "gdrive_starred": "[{provider}] បានដាក់ផ្កាយលើឯកសារ",
+            "gdrive_unstarred": "[{provider}] បានដកផ្កាយចេញពីឯកសារ",
+            "gdrive_star_error": "[{provider}] ការដាក់ផ្កាយបានបរាជ័យ",
+            "gdrive_unstar_error": "[{provider}] ការដកផ្កាយបានបរាជ័យ",
+            "extract_success": "បានស្រង់ចេញ {filename}",
+            "extract_success_to": "បានស្រង់ចេញ {filename} → {dest}",
+            "extract_error": "ការស្រង់ចេញបានបរាជ័យ: {error}",
+            "zoho_document_created": "[{provider}] បានបង្កើតឯកសារ {type}",
+            "zoho_document_create_error": "[{provider}] ការបង្កើតឯកសារ {type} បានបរាជ័យ",
+            "note_saved": "[{provider}] បានរក្សាទុកកំណត់ចំណាំ \"{title}\"",
+            "note_save_error": "[{provider}] មិនអាចរក្សាទុកកំណត់ចំណាំបានទេ",
+            "note_created": "[{provider}] បានបង្កើតកំណត់ចំណាំ \"{title}\"",
+            "note_create_error": "[{provider}] មិនអាចបង្កើតកំណត់ចំណាំបានទេ",
+            "note_favorited": "[{provider}] បានដាក់កំណត់ចំណាំ \"{title}\" ក្នុងចំណូលចិត្ត",
+            "note_unfavorited": "[{provider}] បានដកកំណត់ចំណាំ \"{title}\" ចេញពីចំណូលចិត្ត",
+            "note_favorite_error": "[{provider}] មិនអាចប្ដូរចំណូលចិត្តបានទេ",
+            "note_pinned": "[{provider}] បានខ្ទាស់កំណត់ចំណាំ \"{title}\"",
+            "note_unpinned": "[{provider}] បានដោះខ្ទាស់កំណត់ចំណាំ \"{title}\"",
+            "note_pin_error": "[{provider}] មិនអាចប្ដូរការខ្ទាស់បានទេ",
+            "note_trashed": "[{provider}] បានផ្លាស់កំណត់ចំណាំ \"{title}\" ទៅធុងសំរាម",
+            "note_trash_error": "[{provider}] មិនអាចផ្លាស់កំណត់ចំណាំទៅធុងសំរាមបានទេ",
+            "note_restored": "[{provider}] បានស្ដារកំណត់ចំណាំ \"{title}\"",
+            "note_restore_error": "[{provider}] មិនអាចស្ដារកំណត់ចំណាំបានទេ",
+            "note_deleted": "[{provider}] បានលុបកំណត់ចំណាំ \"{title}\" ជាអចិន្ត្រៃយ៍",
+            "note_delete_error": "[{provider}] មិនអាចលុបកំណត់ចំណាំជាអចិន្ត្រៃយ៍បានទេ",
+            "note_archived": "[{provider}] បានទុកកំណត់ចំណាំ \"{title}\" ក្នុងបណ្ណសារ",
+            "note_archive_error": "[{provider}] មិនអាចទុកកំណត់ចំណាំក្នុងបណ្ណសារបានទេ",
+            "note_version_restored": "[{provider}] បានស្ដារកំណែកំណត់ចំណាំ",
+            "note_version_restore_error": "[{provider}] បរាជ័យក្នុងការស្ដារកំណែកំណត់ចំណាំ",
+            "github_pages_config_updated": "[{provider}] បានធ្វើបច្ចុប្បន្នភាពការកំណត់រចនាសម្ព័ន្ធ Pages",
+            "github_pages_config_error": "[{provider}] បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាពការកំណត់រចនាសម្ព័ន្ធ Pages",
+            "opendrive_set_access": "[{provider}] កំពុងកំណត់សិទ្ធិចូលប្រើសម្រាប់ {filename}...",
+            "gdrive_star": "[{provider}] កំពុងដាក់ផ្កាយលើ {filename}...",
+            "gdrive_unstar": "[{provider}] កំពុងដកផ្កាយចេញពី {filename}...",
+            "extract_start": "កំពុងស្រង់ចេញ {filename}...",
+            "extract_start_to": "កំពុងស្រង់ចេញ {filename} → {dest}...",
+            "compress_start": "កំពុងបង្ហាប់ទៅ {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] បានស្ដារឯកសារ {files}, ថត {folders} ពីធុងសំរាម",
+            "trash_restore_detail_present_success": "[{provider}] បានស្ដារឯកសារ {files} ពីធុងសំរាម, {present} មានរួចហើយ",
+            "trash_restore_detail_folders_present_success": "[{provider}] បានស្ដារឯកសារ {files}, ថត {folders} ពីធុងសំរាម, {present} មានរួចហើយ",
+            "filelu_file_password_removed": "[{provider}] បានដកពាក្យសម្ងាត់ឯកសារចេញ",
+            "filelu_folder_password_removed": "[{provider}] បានដកពាក្យសម្ងាត់ថតចេញ"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "ការដកចេញ",
             "templateLocal": "មូលដ្ឋាន",
             "templateRemote": "ពីចម្ងាយ",
-            "templateRetries": "ការព្យាយាមឡើងវិញ"
+            "templateRetries": "ការព្យាយាមឡើងវិញ",
+            "rollbackRestoreLocalCount": "មូលដ្ឋាន {count}",
+            "rollbackRestoreRemoteCount": "ពីចម្ងាយ {count}",
+            "rollbackRestoreSkippedCount": "បានរំលង {count}",
+            "rollbackRestoreFailedCount": "បរាជ័យ {count}",
+            "rollbackRestoreCompleted": "ការស្ដារបានបញ្ចប់: {summary}",
+            "rollbackRestoreNothing": "គ្មានអ្វីត្រូវស្ដារទេ",
+            "rollbackRestoreFailed": "ការស្ដារបានបរាជ័យ៖ {error}"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "អនុញ្ញាតសម្រាប់សម័យនេះ",
                 "nonAtomicReplace": "ការជំនួសមិនអាតូមិក: ឯកសារបាត់មួយភ្លែត",
                 "moreOptions": "ជម្រើសច្រើនទៀត",
-                "panelAria": "ផ្ទាំងអនុម័តឧបករណ៍"
+                "panelAria": "ផ្ទាំងអនុម័តឧបករណ៍",
+                "previewFailed": "ការមើលជាមុនបរាជ័យ"
             },
             "settings": {
                 "title": "ការកំណត់ AI",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "គាំទ្រឧបករណ៍",
                 "supportsVision": "គាំទ្រការមើលឃើញ",
                 "thinkingReasoning": "ការគិត/ការវែកញែក",
-                "toolQuality": "គុណភាពឧបករណ៍៖ {quality}/5"
+                "toolQuality": "គុណភាពឧបករណ៍៖ {quality}/5",
+                "ollamaNotReachable": "មិនអាចភ្ជាប់ទៅ Ollama បានទេ"
             },
             "copy": "ចម្លង",
             "attachImage": "ភ្ជាប់រូបភាព",
@@ -3423,7 +3528,8 @@
                     "title": "ការវិនិច្ឆ័យ",
                     "truncated": "បញ្ជីការវិនិច្ឆ័យត្រូវបានកាត់ខ្លី។",
                     "warningCountMany": "ការព្រមាន {count}",
-                    "warningCountOne": "ការព្រមាន {count}"
+                    "warningCountOne": "ការព្រមាន {count}",
+                    "noLocation": "(គ្មានទីតាំង)"
                 },
                 "search": {
                     "none": "រកមិនឃើញការផ្គូផ្គងទេ។",
@@ -3522,7 +3628,15 @@
                 "destination": "គោលដៅ៖ {destination}",
                 "title": "ការពិនិត្យផែនការផ្ទេរ",
                 "warnings": "ការព្រមាន"
-            }
+            },
+            "voiceNoAudio": "មិនបានថតសំឡេងទេ។",
+            "voiceDownloadingModel": "កំពុងទាញយកម៉ូដែលសំឡេងមូលដ្ឋាន...",
+            "voiceNoSpeech": "រកមិនឃើញការនិយាយទេ។",
+            "voiceReady": "ការបញ្ចូលសំឡេងរួចរាល់។",
+            "voiceReadyLanguage": "ការបញ្ចូលសំឡេងរួចរាល់ ({language})។",
+            "voiceTranscriptionFailed": "ការចម្លងជាអក្សរមូលដ្ឋានបានបរាជ័យ។",
+            "voiceListeningLocally": "កំពុងស្ដាប់នៅមូលដ្ឋាន...",
+            "voiceMicrophoneFailed": "មិនអាចចូលប្រើមីក្រូហ្វូនបានទេ។"
         },
         "archive": {
             "passwordRequired": "បណ្ណសារនេះត្រូវបានការពារដោយពាក្យសម្ងាត់",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator ទម្រង់ 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "ខ្លឹមសារ AES-GCM",
             "featureNameCipher": "ឈ្មោះ AES-SIV",
-            "formatVersion": "ទម្រង់ {version}"
+            "formatVersion": "ទម្រង់ {version}",
+            "invalidVaultName": "តួអក្សរមិនត្រឹមត្រូវក្នុងឈ្មោះឃ្លាំង"
         },
         "compress": {
             "title": "បង្ហាប់ឯកសារ",
@@ -4161,7 +4276,8 @@
             "total": "សរុប",
             "across": "នៅទូទាំង",
             "empty": "ថតនេះទទេ",
-            "hoverHint": "ដាក់កណ្តុរលើប្លុកដើម្បីមើលព័ត៌មានលម្អិត"
+            "hoverHint": "ដាក់កណ្តុរលើប្លុកដើម្បីមើលព័ត៌មានលម្អិត",
+            "scanUnknownError": "កំហុសមិនស្គាល់ពេលស្កេនការប្រើប្រាស់ថាស"
         },
         "dependencies": {
             "title": "ការពឹងផ្អែក",
@@ -4575,7 +4691,8 @@
                 "unmute": "បើកសំឡេង (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 មិនត្រូវបានគាំទ្រ"
+                "notSupported": "WebGL 2 មិនត្រូវបានគាំទ្រ",
+                "contextLost": "បាត់បង់បរិបទ WebGL"
             },
             "clickToViewDetails": "ចុចលើឯកសារដើម្បីមើលព័ត៌មានលម្អិតរបស់វា",
             "copyPath": "ចំលងផ្លូវ",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "ប្រវែង (បៃ)",
             "argon2DefaultsHint": "លំនាំដើម៖ ទម្រង់ដែល AeroVault និង AeroCrypt ប្រើ (128 MiB, 4 ដង, 4 ផ្លូវ, ទិន្នផល 32 បៃ)។ អំបិលខាងលើជារបស់អ្នក។ អង្គចងចាំរហូតដល់ 2 GiB។",
             "argon2Derive": "បង្កើត",
-            "argon2Phc": "ខ្សែអក្សរ PHC"
+            "argon2Phc": "ខ្សែអក្សរ PHC",
+            "hashError": "កំហុស៖ {error}"
         },
         "dialog": {
             "deleteFile": "លុប \"{name}\"?",
@@ -5320,7 +5438,14 @@
             "removeTag": "ដកស្លាកចេញ",
             "manageTags": "គ្រប់គ្រងស្លាក",
             "deleteTagConfirm": "លុបស្លាក “{name}” ឬ? កំណត់ចំណាំនៅរក្សាអត្ថបទរបស់វា។",
-            "betaBadge": "បេតា"
+            "betaBadge": "បេតា",
+            "noteTypes": {
+                "text": "អត្ថបទ",
+                "markdown": "Markdown",
+                "code": "កូដ",
+                "richText": "អត្ថបទសម្បូរបែប",
+                "checklist": "បញ្ជីត្រួតពិនិត្យ"
+            }
         },
         "shareLinkModal": {
             "title": "តំណចែករំលែក",
@@ -6620,7 +6745,8 @@
             "chooseFolder": "ជ្រើសរើសថតគោលដៅ",
             "passwordPrompt": "ធាតុនេះត្រូវបានអ៊ិនគ្រីប។ បញ្ចូលពាក្យសម្ងាត់ដើម្បីស្រង់ចេញ។",
             "showPassword": "បង្ហាញពាក្យសម្ងាត់",
-            "hidePassword": "លាក់ពាក្យសម្ងាត់"
+            "hidePassword": "លាក់ពាក្យសម្ងាត់",
+            "missingPayload": "បាត់ទិន្នន័យសម្រាប់ស្រង់ចេញ"
         },
         "provider": {
             "modes": {

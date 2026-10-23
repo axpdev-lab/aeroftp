@@ -433,7 +433,10 @@
             "localFilesLabel": "Lokala filer",
             "localFilesRightLabel": "Lokala filer (höger panel)",
             "remoteFilesLabel": "Fjärrfiler",
-            "rightPanelMarker": "Höger panel"
+            "rightPanelMarker": "Höger panel",
+            "chooseRightPanelFolder": "Välj mapp för höger panel",
+            "chooseLeftPanelFolder": "Välj mapp för vänster panel",
+            "localRight": "Lokal (höger)"
         },
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Ange som privat",
             "setAsPublic": "Ange som offentlig",
             "makeAllPrivate": "Gör alla privata",
-            "dropboxRestoreLimit": "AeroFTP kan återställa återställningsbara filversioner. Återställ mappar från Raderade filer på dropbox.com. Ett frågetecken betyder att Dropbox inte har identifierat objekttypen."
+            "dropboxRestoreLimit": "AeroFTP kan återställa återställningsbara filversioner. Återställ mappar från Raderade filer på dropbox.com. Ett frågetecken betyder att Dropbox inte har identifierat objekttypen.",
+            "openWithDefaultApp": "Öppna med standardapp"
         },
         "transfer": {
             "transferring": "Överför...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Konfiguration av molnsynkronisering",
             "onePerLineHint": "(en per rad)",
             "pairsEditorLabel": "Redigerare för AeroCloud-par",
-            "remoteSubfolderPlaceholder": "moln"
+            "remoteSubfolderPlaceholder": "moln",
+            "countdownSoon": "Snart..."
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Överföringen misslyckades",
             "navigationFailed": "Navigeringen misslyckades: {error}",
             "transferComplete": "{count} fil(er) kopierade",
-            "permissionsSessionChanged": "Anslutningen har ändrats sedan den här dialogrutan öppnades, så ingenting ändrades. Öppna Behörigheter igen på den aktuella anslutningen."
+            "permissionsSessionChanged": "Anslutningen har ändrats sedan den här dialogrutan öppnades, så ingenting ändrades. Öppna Behörigheter igen på den aktuella anslutningen.",
+            "createFailed": "Skapandet misslyckades"
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Låser upp mappen {filename}...",
             "site_replied": "{command}: servern svarade {code}",
             "site_unknown": "{command}: inget fullständigt svar, utfallet är okänt",
-            "site_not_sent": "{command} skickades inte"
+            "site_not_sent": "{command} skickades inte",
+            "b2_hidden_restore_success_one": "[{provider}] Återställde {count} dold fil",
+            "b2_hidden_restore_success_many": "[{provider}] Återställde {count} dolda filer",
+            "b2_hidden_restore_error": "[{provider}] Kunde inte återställa dolda filer",
+            "b2_hidden_delete_success": "[{provider}] Raderade {count} fil(er) permanent ({versions} versioner rensade)",
+            "trash_restore_detail_success": "[{provider}] Återställde {files} fil(er) från papperskorgen",
+            "trash_empty_detail_success": "[{provider}] Tömde papperskorgen ({files} fil(er), {folders} mapp(ar) rensade)",
+            "trash_empty_objects_one": "[{provider}] Tömde papperskorgen ({count} objekt)",
+            "trash_empty_objects_many": "[{provider}] Tömde papperskorgen ({count} objekt)",
+            "trash_object_purge_success": "[{provider}] Rensade {key}",
+            "trash_object_purge_error": "[{provider}] Kunde inte rensa {key}",
+            "trash_object_undelete_success": "[{provider}] Ångrade radering av {key}",
+            "trash_object_undelete_error": "[{provider}] Kunde inte ångra radering av {key}",
+            "trash_object_restore_success": "[{provider}] Återställde {key}",
+            "trash_object_restore_error": "[{provider}] Kunde inte återställa {key}",
+            "opendrive_access_set": "[{provider}] Åtkomst satt till {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Ange åtkomst {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Kunde inte ange åtkomst {level}",
+            "download_folder_success": "Laddade ned mappen {path} på {seconds} s",
+            "skipped_file": "Hoppade över {filename}",
+            "filelu_made_public": "[{provider}] Gjorde filen offentlig",
+            "filelu_make_public_error": "[{provider}] Kunde inte göra filen offentlig",
+            "filelu_made_private": "[{provider}] Gjorde filen privat",
+            "filelu_make_private_error": "[{provider}] Kunde inte göra filen privat",
+            "filelu_file_password_set": "[{provider}] Angav lösenord för filen",
+            "filelu_file_password_error": "[{provider}] Kunde inte ange lösenord för filen",
+            "filelu_folder_password_set": "[{provider}] Mapplösenord angivet",
+            "filelu_folder_password_error": "[{provider}] Ange mapplösenord misslyckades",
+            "filelu_public_share_success": "[{provider}] Fil gjord offentlig + delad",
+            "filelu_public_share_error": "[{provider}] Gör offentlig + dela misslyckades",
+            "filelu_folder_settings_success": "[{provider}] Mappinställningar uppdaterade",
+            "filelu_folder_settings_error": "[{provider}] Uppdatera mappinställningar misslyckades",
+            "set_private_success": "[{provider}] Angiven som privat",
+            "set_private_error": "[{provider}] Ange som privat misslyckades",
+            "set_public_success": "[{provider}] Angiven som offentlig",
+            "set_public_error": "[{provider}] Ange som offentlig misslyckades",
+            "bulk_private_success_one": "[{provider}] {count} objekt angivet som privat",
+            "bulk_private_success_many": "[{provider}] {count} objekt angivna som privata",
+            "bulk_private_partial": "[{provider}] {ok}/{total} objekt angivna som privata",
+            "bulk_private_error": "[{provider}] Massinställning som privat misslyckades",
+            "box_watermark_set": "[{provider}] Vattenstämpel angiven",
+            "box_watermark_set_error": "[{provider}] Ange vattenstämpel misslyckades",
+            "box_watermark_removed": "[{provider}] Vattenstämpel borttagen",
+            "box_watermark_remove_error": "[{provider}] Ta bort vattenstämpel misslyckades",
+            "box_folder_locked": "[{provider}] Mapp låst",
+            "box_folder_lock_error": "[{provider}] Låsa mapp misslyckades",
+            "box_folder_unlocked": "[{provider}] Mapp upplåst",
+            "box_folder_not_locked": "[{provider}] Mappen var inte låst",
+            "box_folder_unlock_error": "[{provider}] Låsa upp mapp misslyckades",
+            "gdrive_starred": "[{provider}] Fil stjärnmärkt",
+            "gdrive_unstarred": "[{provider}] Stjärnmärkning borttagen från fil",
+            "gdrive_star_error": "[{provider}] Stjärnmärkning misslyckades",
+            "gdrive_unstar_error": "[{provider}] Borttagning av stjärna misslyckades",
+            "extract_success": "Extraherade {filename}",
+            "extract_success_to": "Extraherade {filename} → {dest}",
+            "extract_error": "Extrahering misslyckades: {error}",
+            "zoho_document_created": "[{provider}] Skapade {type}-dokument",
+            "zoho_document_create_error": "[{provider}] Det gick inte att skapa {type}-dokument",
+            "note_saved": "[{provider}] Sparade anteckningen \"{title}\"",
+            "note_save_error": "[{provider}] Det gick inte att spara anteckningen",
+            "note_created": "[{provider}] Skapade anteckningen \"{title}\"",
+            "note_create_error": "[{provider}] Det gick inte att skapa anteckningen",
+            "note_favorited": "[{provider}] Lade till anteckningen \"{title}\" i favoriter",
+            "note_unfavorited": "[{provider}] Tog bort anteckningen \"{title}\" från favoriter",
+            "note_favorite_error": "[{provider}] Det gick inte att växla favorit",
+            "note_pinned": "[{provider}] Fäste anteckningen \"{title}\"",
+            "note_unpinned": "[{provider}] Lossade anteckningen \"{title}\"",
+            "note_pin_error": "[{provider}] Det gick inte att växla fästning",
+            "note_trashed": "[{provider}] Flyttade anteckningen \"{title}\" till papperskorgen",
+            "note_trash_error": "[{provider}] Det gick inte att flytta anteckningen till papperskorgen",
+            "note_restored": "[{provider}] Återställde anteckningen \"{title}\"",
+            "note_restore_error": "[{provider}] Det gick inte att återställa anteckningen",
+            "note_deleted": "[{provider}] Raderade anteckningen \"{title}\" permanent",
+            "note_delete_error": "[{provider}] Det gick inte att radera anteckningen permanent",
+            "note_archived": "[{provider}] Arkiverade anteckningen \"{title}\"",
+            "note_archive_error": "[{provider}] Det gick inte att arkivera anteckningen",
+            "note_version_restored": "[{provider}] Anteckningsversion återställd",
+            "note_version_restore_error": "[{provider}] Det gick inte att återställa anteckningsversionen",
+            "github_pages_config_updated": "[{provider}] Pages-konfigurationen uppdaterad",
+            "github_pages_config_error": "[{provider}] Det gick inte att uppdatera Pages-konfigurationen",
+            "opendrive_set_access": "[{provider}] Anger åtkomst för {filename}...",
+            "gdrive_star": "[{provider}] Stjärnmärker {filename}...",
+            "gdrive_unstar": "[{provider}] Tar bort stjärnmarkering från {filename}...",
+            "extract_start": "Extraherar {filename}...",
+            "extract_start_to": "Extraherar {filename} → {dest}...",
+            "compress_start": "Komprimerar till {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Återställde {files} fil(er), {folders} mapp(ar) från papperskorgen",
+            "trash_restore_detail_present_success": "[{provider}] Återställde {files} fil(er) från papperskorgen, {present} fanns redan",
+            "trash_restore_detail_folders_present_success": "[{provider}] Återställde {files} fil(er), {folders} mapp(ar) från papperskorgen, {present} fanns redan",
+            "filelu_file_password_removed": "[{provider}] Tog bort lösenord för filen",
+            "filelu_folder_password_removed": "[{provider}] Mapplösenord borttaget"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Undantag",
             "templateLocal": "Lokal",
             "templateRemote": "Fjärr",
-            "templateRetries": "Nya försök"
+            "templateRetries": "Nya försök",
+            "rollbackRestoreLocalCount": "lokal {count}",
+            "rollbackRestoreRemoteCount": "fjärr {count}",
+            "rollbackRestoreSkippedCount": "överhoppade {count}",
+            "rollbackRestoreFailedCount": "misslyckade {count}",
+            "rollbackRestoreCompleted": "Återställning slutförd: {summary}",
+            "rollbackRestoreNothing": "Inget att återställa",
+            "rollbackRestoreFailed": "Återställningen misslyckades: {error}"
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Tillåt för denna session",
                 "nonAtomicReplace": "Icke-atomiskt utbyte: filen saknas kortvarigt",
                 "moreOptions": "Fler alternativ",
-                "panelAria": "Panel för verktygsgodkännande"
+                "panelAria": "Panel för verktygsgodkännande",
+                "previewFailed": "Förhandsgranskning misslyckades"
             },
             "settings": {
                 "title": "AI-inställningar",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Stöder verktyg",
                 "supportsVision": "Stöder bildförståelse",
                 "thinkingReasoning": "Tänkande/Resonemang",
-                "toolQuality": "Verktygskvalitet: {quality}/5"
+                "toolQuality": "Verktygskvalitet: {quality}/5",
+                "ollamaNotReachable": "Ollama kan inte nås"
             },
             "copy": "Kopiera",
             "attachImage": "Bifoga bild",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnostik",
                     "truncated": "Diagnostiklistan kortades av.",
                     "warningCountMany": "{count} varningar",
-                    "warningCountOne": "{count} varning"
+                    "warningCountOne": "{count} varning",
+                    "noLocation": "(ingen plats)"
                 },
                 "search": {
                     "none": "Inga träffar hittades.",
@@ -3522,7 +3628,15 @@
                 "destination": "Mål: {destination}",
                 "title": "Granskning av överföringsplan",
                 "warnings": "Varningar"
-            }
+            },
+            "voiceNoAudio": "Inget ljud spelades in.",
+            "voiceDownloadingModel": "Laddar ner lokal röstmodell...",
+            "voiceNoSpeech": "Inget tal identifierades.",
+            "voiceReady": "Röstinmatning redo.",
+            "voiceReadyLanguage": "Röstinmatning redo ({language}).",
+            "voiceTranscriptionFailed": "Lokal transkribering misslyckades.",
+            "voiceListeningLocally": "Lyssnar lokalt...",
+            "voiceMicrophoneFailed": "Kan inte komma åt mikrofonen."
         },
         "archive": {
             "passwordRequired": "Detta arkiv är lösenordsskyddat",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator-format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM-innehåll",
             "featureNameCipher": "AES-SIV-namn",
-            "formatVersion": "Formatversion {version}"
+            "formatVersion": "Formatversion {version}",
+            "invalidVaultName": "Ogiltiga tecken i valvets namn"
         },
         "compress": {
             "title": "Komprimera filer",
@@ -4161,7 +4276,8 @@
             "total": "Totalt",
             "across": "fördelat på",
             "empty": "Denna katalog är tom",
-            "hoverHint": "Håll muspekaren över ett block för att se detaljer"
+            "hoverHint": "Håll muspekaren över ett block för att se detaljer",
+            "scanUnknownError": "Okänt fel vid skanning av diskanvändning"
         },
         "dependencies": {
             "title": "Beroenden",
@@ -4575,7 +4691,8 @@
                 "unmute": "Slå på ljud (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 stöds inte"
+                "notSupported": "WebGL 2 stöds inte",
+                "contextLost": "WebGL-kontext förlorad"
             },
             "clickToViewDetails": "Klicka på en fil för att visa dess detaljer",
             "copyPath": "Kopiera sökväg",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Längd (byte)",
             "argon2DefaultsHint": "Standardvärden: profilen som AeroVault och AeroCrypt använder (128 MiB, 4 iterationer, 4 banor, 32-byte utdata). Saltet ovan är ditt. Minne upp till 2 GiB.",
             "argon2Derive": "Härled",
-            "argon2Phc": "PHC-sträng"
+            "argon2Phc": "PHC-sträng",
+            "hashError": "Fel: {error}"
         },
         "dialog": {
             "deleteFile": "Radera \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Ta bort tagg",
             "manageTags": "Hantera taggar",
             "deleteTagConfirm": "Ta bort taggen ”{name}”? Anteckningarna behåller sin text.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Text",
+                "markdown": "Markdown",
+                "code": "Kod",
+                "richText": "Formaterad text",
+                "checklist": "Checklista"
+            }
         },
         "shareLinkModal": {
             "title": "Delningslänk",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Välj en målmapp",
             "passwordPrompt": "Det här objektet är krypterat. Ange lösenordet för att extrahera.",
             "showPassword": "Visa lösenord",
-            "hidePassword": "Dölj lösenord"
+            "hidePassword": "Dölj lösenord",
+            "missingPayload": "Uppackningsdata saknas"
         },
         "provider": {
             "modes": {

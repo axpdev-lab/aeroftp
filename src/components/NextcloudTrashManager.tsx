@@ -76,11 +76,11 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     setActionLoading('restore');
     try {
       await invoke('webdav_restore_trash', { ids });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Nextcloud] Restored ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Nextcloud', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Nextcloud] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Nextcloud' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -95,10 +95,10 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     setActionLoading('delete');
     try {
       await invoke('webdav_delete_trash', { ids });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Nextcloud] Permanently deleted ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Nextcloud', count: selectedCount }) });
       await loadTrash();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Nextcloud] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Nextcloud' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -119,11 +119,11 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     setActionLoading('empty');
     try {
       await invoke('webdav_empty_trash');
-      humanLog.updateEntry(logId, { status: 'success', message: `[Nextcloud] Emptied trash (${totalCount} item(s))` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Nextcloud' }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Nextcloud] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'Nextcloud' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

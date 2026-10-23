@@ -433,7 +433,10 @@
             "localFilesLabel": "Локалне датотеке",
             "localFilesRightLabel": "Локалне датотеке (десни панел)",
             "remoteFilesLabel": "Удаљене датотеке",
-            "rightPanelMarker": "Десни панел"
+            "rightPanelMarker": "Десни панел",
+            "chooseRightPanelFolder": "Изаберите фасциклу десног панела",
+            "chooseLeftPanelFolder": "Изаберите фасциклу левог панела",
+            "localRight": "Локално (десно)"
         },
         "contextMenu": {
             "askAeroAgent": "Питај AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Постави као приватно",
             "setAsPublic": "Постави као јавно",
             "makeAllPrivate": "Учини све приватним",
-            "dropboxRestoreLimit": "AeroFTP може да врати верзије датотека које је могуће опоравити. Фасцикле вратите из одељка Избрисане датотеке на dropbox.com. Упитник значи да Dropbox није препознао тип ставке."
+            "dropboxRestoreLimit": "AeroFTP може да врати верзије датотека које је могуће опоравити. Фасцикле вратите из одељка Избрисане датотеке на dropbox.com. Упитник значи да Dropbox није препознао тип ставке.",
+            "openWithDefaultApp": "Отвори подразумеваном апликацијом"
         },
         "transfer": {
             "transferring": "Пренос...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Постављање синхронизације у облаку",
             "onePerLineHint": "(један по реду)",
             "pairsEditorLabel": "Уређивач парова AeroCloud",
-            "remoteSubfolderPlaceholder": "облак"
+            "remoteSubfolderPlaceholder": "облак",
+            "countdownSoon": "Ускоро..."
         },
         "statusBar": {
             "connected": "Повезано",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Пренос није успео",
             "navigationFailed": "Навигација није успела: {error}",
             "transferComplete": "Копирано {count} датотека",
-            "permissionsSessionChanged": "Веза се променила откако је овај дијалог отворен, па ништа није промењено. Поново отворите Дозволе на тренутној вези."
+            "permissionsSessionChanged": "Веза се променила откако је овај дијалог отворен, па ништа није промењено. Поново отворите Дозволе на тренутној вези.",
+            "createFailed": "Креирање није успело"
         },
         "about": {
             "tagline": "Више од FTP-а. Комплетан развојни алат.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Откључавање фасцикле {filename}...",
             "site_replied": "{command}: сервер је одговорио {code}",
             "site_unknown": "{command}: нема потпуног одговора, исход је непознат",
-            "site_not_sent": "{command} није послата"
+            "site_not_sent": "{command} није послата",
+            "b2_hidden_restore_success_one": "[{provider}] Враћена {count} скривена датотека",
+            "b2_hidden_restore_success_many": "[{provider}] Враћено скривених датотека: {count}",
+            "b2_hidden_restore_error": "[{provider}] Враћање скривених датотека није успело",
+            "b2_hidden_delete_success": "[{provider}] Трајно избрисано датотека: {count} (очишћено верзија: {versions})",
+            "trash_restore_detail_success": "[{provider}] Враћено датотека из отпада: {files}",
+            "trash_empty_detail_success": "[{provider}] Отпад испражњен (очишћено датотека: {files}, фасцикли: {folders})",
+            "trash_empty_objects_one": "[{provider}] Отпад испражњен ({count} објекат)",
+            "trash_empty_objects_many": "[{provider}] Отпад испражњен (објеката: {count})",
+            "trash_object_purge_success": "[{provider}] Трајно уклоњено: {key}",
+            "trash_object_purge_error": "[{provider}] Трајно уклањање {key} није успело",
+            "trash_object_undelete_success": "[{provider}] Поништено брисање: {key}",
+            "trash_object_undelete_error": "[{provider}] Поништавање брисања {key} није успело",
+            "trash_object_restore_success": "[{provider}] Враћено: {key}",
+            "trash_object_restore_error": "[{provider}] Враћање {key} није успело",
+            "opendrive_access_set": "[{provider}] Приступ постављен на {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Постављање приступа {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Постављање приступа {level} није успело",
+            "download_folder_success": "Фасцикла {path} преузета за {seconds} с",
+            "skipped_file": "Прескочено: {filename}",
+            "filelu_made_public": "[{provider}] Датотека је постала јавна",
+            "filelu_make_public_error": "[{provider}] Постављање датотеке као јавне није успело",
+            "filelu_made_private": "[{provider}] Датотека је постала приватна",
+            "filelu_make_private_error": "[{provider}] Постављање датотеке као приватне није успело",
+            "filelu_file_password_set": "[{provider}] Лозинка датотеке постављена",
+            "filelu_file_password_error": "[{provider}] Постављање лозинке датотеке није успело",
+            "filelu_folder_password_set": "[{provider}] Лозинка фасцикле постављена",
+            "filelu_folder_password_error": "[{provider}] Постављање лозинке фасцикле није успело",
+            "filelu_public_share_success": "[{provider}] Датотека учињена јавном + дељена",
+            "filelu_public_share_error": "[{provider}] Постављање јавним + дељење није успело",
+            "filelu_folder_settings_success": "[{provider}] Подешавања фасцикле ажурирана",
+            "filelu_folder_settings_error": "[{provider}] Ажурирање подешавања фасцикле није успело",
+            "set_private_success": "[{provider}] Постављено као приватно",
+            "set_private_error": "[{provider}] Постављање као приватно није успело",
+            "set_public_success": "[{provider}] Постављено као јавно",
+            "set_public_error": "[{provider}] Постављање као јавно није успело",
+            "bulk_private_success_one": "[{provider}] {count} ставка постављена као приватна",
+            "bulk_private_success_many": "[{provider}] {count} ставки постављено као приватно",
+            "bulk_private_partial": "[{provider}] {ok}/{total} ставки постављено као приватно",
+            "bulk_private_error": "[{provider}] Групно постављање као приватно није успело",
+            "box_watermark_set": "[{provider}] Водени жиг постављен",
+            "box_watermark_set_error": "[{provider}] Постављање воденог жига није успело",
+            "box_watermark_removed": "[{provider}] Водени жиг уклоњен",
+            "box_watermark_remove_error": "[{provider}] Уклањање воденог жига није успело",
+            "box_folder_locked": "[{provider}] Фасцикла закључана",
+            "box_folder_lock_error": "[{provider}] Закључавање фасцикле није успело",
+            "box_folder_unlocked": "[{provider}] Фасцикла откључана",
+            "box_folder_not_locked": "[{provider}] Фасцикла није била закључана",
+            "box_folder_unlock_error": "[{provider}] Откључавање фасцикле није успело",
+            "gdrive_starred": "[{provider}] Датотека означена звездицом",
+            "gdrive_unstarred": "[{provider}] Звездица уклоњена са датотеке",
+            "gdrive_star_error": "[{provider}] Означавање звездицом није успело",
+            "gdrive_unstar_error": "[{provider}] Уклањање звездице није успело",
+            "extract_success": "Распаковано {filename}",
+            "extract_success_to": "Распаковано {filename} → {dest}",
+            "extract_error": "Распакивање није успело: {error}",
+            "zoho_document_created": "[{provider}] Направљен документ {type}",
+            "zoho_document_create_error": "[{provider}] Прављење документа {type} није успело",
+            "note_saved": "[{provider}] Сачувана белешка \"{title}\"",
+            "note_save_error": "[{provider}] Чување белешке није успело",
+            "note_created": "[{provider}] Направљена белешка \"{title}\"",
+            "note_create_error": "[{provider}] Прављење белешке није успело",
+            "note_favorited": "[{provider}] Белешка \"{title}\" додата у омиљене",
+            "note_unfavorited": "[{provider}] Белешка \"{title}\" уклоњена из омиљених",
+            "note_favorite_error": "[{provider}] Промена омиљеног није успела",
+            "note_pinned": "[{provider}] Закачена белешка \"{title}\"",
+            "note_unpinned": "[{provider}] Откачена белешка \"{title}\"",
+            "note_pin_error": "[{provider}] Промена закачињања није успела",
+            "note_trashed": "[{provider}] Белешка \"{title}\" премештена у отпад",
+            "note_trash_error": "[{provider}] Премештање белешке у отпад није успело",
+            "note_restored": "[{provider}] Враћена белешка \"{title}\"",
+            "note_restore_error": "[{provider}] Враћање белешке није успело",
+            "note_deleted": "[{provider}] Белешка \"{title}\" трајно обрисана",
+            "note_delete_error": "[{provider}] Трајно брисање белешке није успело",
+            "note_archived": "[{provider}] Белешка \"{title}\" архивирана",
+            "note_archive_error": "[{provider}] Архивирање белешке није успело",
+            "note_version_restored": "[{provider}] Верзија белешке је враћена",
+            "note_version_restore_error": "[{provider}] Враћање верзије белешке није успело",
+            "github_pages_config_updated": "[{provider}] Конфигурација Pages је ажурирана",
+            "github_pages_config_error": "[{provider}] Ажурирање конфигурације Pages није успело",
+            "opendrive_set_access": "[{provider}] Подешавање приступа за {filename}...",
+            "gdrive_star": "[{provider}] Означавање звездицом: {filename}...",
+            "gdrive_unstar": "[{provider}] Уклањање звездице: {filename}...",
+            "extract_start": "Распакивање {filename}...",
+            "extract_start_to": "Распакивање {filename} → {dest}...",
+            "compress_start": "Компримовање у {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Враћено из отпада: датотеке {files}, фасцикле {folders}",
+            "trash_restore_detail_present_success": "[{provider}] Враћено из отпада: датотеке {files}, већ постоји {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] Враћено из отпада: датотеке {files}, фасцикле {folders}, већ постоји {present}",
+            "filelu_file_password_removed": "[{provider}] Лозинка датотеке уклоњена",
+            "filelu_folder_password_removed": "[{provider}] Лозинка фасцикле уклоњена"
         },
         "protocol": {
             "selectProtocol": "Изабери протокол...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Изузеци",
             "templateLocal": "Локално",
             "templateRemote": "Удаљено",
-            "templateRetries": "Поновни покушаји"
+            "templateRetries": "Поновни покушаји",
+            "rollbackRestoreLocalCount": "локално {count}",
+            "rollbackRestoreRemoteCount": "удаљено {count}",
+            "rollbackRestoreSkippedCount": "прескочено {count}",
+            "rollbackRestoreFailedCount": "неуспело {count}",
+            "rollbackRestoreCompleted": "Враћање је завршено: {summary}",
+            "rollbackRestoreNothing": "Нема ничега за враћање",
+            "rollbackRestoreFailed": "Враћање није успело: {error}"
         },
         "ui": {
             "syncing": "Синхронизација...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Дозволи за ову сесију",
                 "nonAtomicReplace": "Неатомска замена: датотека привремено недостаје",
                 "moreOptions": "Више опција",
-                "panelAria": "Табла за одобравање алата"
+                "panelAria": "Табла за одобравање алата",
+                "previewFailed": "Преглед није успео"
             },
             "settings": {
                 "title": "AI подешавања",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Подржава алате",
                 "supportsVision": "Подржава вид",
                 "thinkingReasoning": "Размишљање/Закључивање",
-                "toolQuality": "Квалитет алата: {quality}/5"
+                "toolQuality": "Квалитет алата: {quality}/5",
+                "ollamaNotReachable": "Ollama није доступна"
             },
             "copy": "Копирај",
             "attachImage": "Приложи слику",
@@ -3423,7 +3528,8 @@
                     "title": "Дијагностика",
                     "truncated": "Листа дијагностике је скраћена.",
                     "warningCountMany": "{count} упозорења",
-                    "warningCountOne": "{count} упозорење"
+                    "warningCountOne": "{count} упозорење",
+                    "noLocation": "(без локације)"
                 },
                 "search": {
                     "none": "Нема пронађених подударања.",
@@ -3522,7 +3628,15 @@
                 "destination": "Одредиште: {destination}",
                 "title": "Преглед плана преноса",
                 "warnings": "Упозорења"
-            }
+            },
+            "voiceNoAudio": "Звук није снимљен.",
+            "voiceDownloadingModel": "Преузимање локалног гласовног модела...",
+            "voiceNoSpeech": "Говор није откривен.",
+            "voiceReady": "Гласовни унос је спреман.",
+            "voiceReadyLanguage": "Гласовни унос је спреман ({language}).",
+            "voiceTranscriptionFailed": "Локална транскрипција није успела.",
+            "voiceListeningLocally": "Локално слушање...",
+            "voiceMicrophoneFailed": "Није могуће приступити микрофону."
         },
         "archive": {
             "passwordRequired": "Ова архива је заштићена лозинком",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator формат 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Садржај AES-GCM",
             "featureNameCipher": "Називи AES-SIV",
-            "formatVersion": "Формат {version}"
+            "formatVersion": "Формат {version}",
+            "invalidVaultName": "Неважећи знакови у називу сефа"
         },
         "compress": {
             "title": "Компресуј фајлове",
@@ -4161,7 +4276,8 @@
             "total": "Укупно",
             "across": "кроз",
             "empty": "Овај директоријум је празан",
-            "hoverHint": "Пређите мишем преко блока за детаље"
+            "hoverHint": "Пређите мишем преко блока за детаље",
+            "scanUnknownError": "Непозната грешка при скенирању заузећа диска"
         },
         "dependencies": {
             "title": "Зависности",
@@ -4575,7 +4691,8 @@
                 "unmute": "Укључи звук (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 није подржан"
+                "notSupported": "WebGL 2 није подржан",
+                "contextLost": "WebGL контекст је изгубљен"
             },
             "clickToViewDetails": "Кликните на фајл за приказ детаља",
             "copyPath": "Копирај путању",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Дужина (бајтови)",
             "argon2DefaultsHint": "Подразумевано: профил који користе AeroVault и AeroCrypt (128 MiB, 4 итерације, 4 траке, излаз од 32 бајта). Со изнад је ваша. Меморија до 2 GiB.",
             "argon2Derive": "Изведи",
-            "argon2Phc": "PHC низ"
+            "argon2Phc": "PHC низ",
+            "hashError": "Грешка: {error}"
         },
         "dialog": {
             "deleteFile": "Обрисати \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Уклони ознаку",
             "manageTags": "Управљај ознакама",
             "deleteTagConfirm": "Обрисати ознаку „{name}“? Белешке задржавају свој текст.",
-            "betaBadge": "БЕТА"
+            "betaBadge": "БЕТА",
+            "noteTypes": {
+                "text": "Текст",
+                "markdown": "Markdown",
+                "code": "Код",
+                "richText": "Форматирани текст",
+                "checklist": "Контролна листа"
+            }
         },
         "shareLinkModal": {
             "title": "Линк за дељење",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Изаберите одредишну фасциклу",
             "passwordPrompt": "Ова ставка је шифрована. Унесите лозинку за распакивање.",
             "showPassword": "Прикажи лозинку",
-            "hidePassword": "Сакриј лозинку"
+            "hidePassword": "Сакриј лозинку",
+            "missingPayload": "Недостају подаци за распакивање"
         },
         "provider": {
             "modes": {

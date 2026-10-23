@@ -119,7 +119,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } catch (_) { /* ignore */ }
         setVaultInfo(null);
         setEntries([]);
-        setBreadcrumb([{ name: 'Root', dirId: '' }]);
+        setBreadcrumb([{ name: t('cryptomator.root'), dirId: '' }]);
         setPassword('');
     };
 

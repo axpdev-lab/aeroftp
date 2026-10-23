@@ -75,12 +75,12 @@ const NOTE_TYPE_ICONS: Record<NoteTypeOption, React.ReactNode> = {
   checklist: <CheckSquare size={12} />,
 };
 
-const NOTE_TYPE_LABELS: Record<NoteTypeOption, string> = {
-  text: 'Text',
-  md: 'Markdown',
-  code: 'Code',
-  rich: 'Rich Text',
-  checklist: 'Checklist',
+const NOTE_TYPE_LABEL_KEYS: Record<NoteTypeOption, string> = {
+  text: 'filenNotes.noteTypes.text',
+  md: 'filenNotes.noteTypes.markdown',
+  code: 'filenNotes.noteTypes.code',
+  rich: 'filenNotes.noteTypes.richText',
+  checklist: 'filenNotes.noteTypes.checklist',
 };
 
 // ─── Component ───
@@ -285,15 +285,15 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           title: noteTitle,
         });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Saved note "${noteTitle}"` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_saved', { provider: 'Filen', title: noteTitle }) });
       setDirty(false);
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to save note' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_save_error', { provider: 'Filen' }) });
       setError(String(err));
     } finally {
       setSaving(false);
     }
-  }, [selectedNote, saving, noteContent, noteTitle, noteType, humanLog]);
+  }, [selectedNote, saving, noteContent, noteTitle, noteType, humanLog, t]);
 
   const createNote = useCallback(async () => {
     if (!newTitle.trim()) return;
@@ -305,7 +305,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         content: '',
         noteType: newType,
       });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Created note "${newTitle.trim()}"` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_created', { provider: 'Filen', title: newTitle.trim() }) });
       const createdTitle = newTitle.trim();
       const createdType = newType;
       setShowCreateForm(false);
@@ -331,40 +331,38 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         setDirty(false);
       }
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to create note' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_create_error', { provider: 'Filen' }) });
       setError(String(err));
     } finally {
       setCreating(false);
     }
-  }, [newTitle, newType, openNote, humanLog]);
+  }, [newTitle, newType, openNote, humanLog, t]);
 
   const toggleFavorite = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
-    const action = note.favorite ? 'Unfavorited' : 'Favorited';
     const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_toggle_favorite', { uuid: note.uuid, favorite: !note.favorite });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, favorite: !n.favorite } : n));
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] ${action} note "${note.title}"` });
+      humanLog.updateEntry(logId, { status: 'success', message: t(note.favorite ? 'activity.note_unfavorited' : 'activity.note_favorited', { provider: 'Filen', title: note.title }) });
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to toggle favorite' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_favorite_error', { provider: 'Filen' }) });
       setError(String(err));
     }
-  }, [humanLog]);
+  }, [humanLog, t]);
 
   const togglePinned = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
-    const action = note.pinned ? 'Unpinned' : 'Pinned';
     const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_toggle_pinned', { uuid: note.uuid, pinned: !note.pinned });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, pinned: !n.pinned } : n));
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] ${action} note "${note.title}"` });
+      humanLog.updateEntry(logId, { status: 'success', message: t(note.pinned ? 'activity.note_unpinned' : 'activity.note_pinned', { provider: 'Filen', title: note.title }) });
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to toggle pinned' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_pin_error', { provider: 'Filen' }) });
       setError(String(err));
     }
-  }, [humanLog]);
+  }, [humanLog, t]);
 
   const trashNote = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -372,12 +370,12 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     try {
       await invoke('filen_notes_trash', { uuid: note.uuid });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, trash: true } : n));
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Trashed note "${note.title}"` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_trashed', { provider: 'Filen', title: note.title }) });
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to trash note' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_trash_error', { provider: 'Filen' }) });
       setError(String(err));
     }
-  }, [humanLog]);
+  }, [humanLog, t]);
 
   const restoreNote = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -385,12 +383,12 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     try {
       await invoke('filen_notes_restore', { uuid: note.uuid });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, trash: false, archive: false } : n));
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Restored note "${note.title}"` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_restored', { provider: 'Filen', title: note.title }) });
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to restore note' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_restore_error', { provider: 'Filen' }) });
       setError(String(err));
     }
-  }, [humanLog]);
+  }, [humanLog, t]);
 
   const deleteNotePermanently = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -398,12 +396,12 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     try {
       await invoke('filen_notes_delete', { uuid: note.uuid });
       setNotes(prev => prev.filter(n => n.uuid !== note.uuid));
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Permanently deleted note "${note.title}"` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_deleted', { provider: 'Filen', title: note.title }) });
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to permanently delete note' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_delete_error', { provider: 'Filen' }) });
       setError(String(err));
     }
-  }, [humanLog]);
+  }, [humanLog, t]);
 
   const archiveNote = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -411,12 +409,12 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     try {
       await invoke('filen_notes_archive', { uuid: note.uuid });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, archive: true } : n));
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Archived note "${note.title}"` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_archived', { provider: 'Filen', title: note.title }) });
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to archive note' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_archive_error', { provider: 'Filen' }) });
       setError(String(err));
     }
-  }, [humanLog]);
+  }, [humanLog, t]);
 
   // ── History ──
 
@@ -438,14 +436,14 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     const logId = humanLog.logRaw('activity.provider_operation', 'RESTORE', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_history_restore', { uuid: selectedNote.uuid, historyId });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Restored note version` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_version_restored', { provider: 'Filen' }) });
       setHistory(null);
       openNote(selectedNote);
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to restore note version' });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_version_restore_error', { provider: 'Filen' }) });
       setError(String(err));
     }
-  }, [selectedNote, openNote, humanLog]);
+  }, [selectedNote, openNote, humanLog, t]);
 
   // ── Filtering ──
 
@@ -681,8 +679,8 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
             aria-label={t('filenNotes.noteType')}
             className="text-xs bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-700 dark:text-gray-300"
           >
-            {Object.entries(NOTE_TYPE_LABELS).map(([k, label]) => (
-              <option key={k} value={k}>{label}</option>
+            {Object.entries(NOTE_TYPE_LABEL_KEYS).map(([k, labelKey]) => (
+              <option key={k} value={k}>{t(labelKey)}</option>
             ))}
           </select>
           <button
@@ -868,8 +866,8 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
               onChange={e => setNewType(e.target.value as NoteTypeOption)}
               className="text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-1.5 text-gray-700 dark:text-gray-300"
             >
-              {Object.entries(NOTE_TYPE_LABELS).map(([k, label]) => (
-                <option key={k} value={k}>{label}</option>
+              {Object.entries(NOTE_TYPE_LABEL_KEYS).map(([k, labelKey]) => (
+                <option key={k} value={k}>{t(labelKey)}</option>
               ))}
             </select>
             <button

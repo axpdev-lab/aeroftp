@@ -433,7 +433,10 @@
             "localFilesLabel": "Tệp cục bộ",
             "localFilesRightLabel": "Tệp cục bộ (bảng bên phải)",
             "remoteFilesLabel": "Tệp từ xa",
-            "rightPanelMarker": "Bảng bên phải"
+            "rightPanelMarker": "Bảng bên phải",
+            "chooseRightPanelFolder": "Chọn thư mục bảng phải",
+            "chooseLeftPanelFolder": "Chọn thư mục bảng trái",
+            "localRight": "Cục bộ (phải)"
         },
         "contextMenu": {
             "askAeroAgent": "Hỏi AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Đặt làm riêng tư",
             "setAsPublic": "Đặt làm công khai",
             "makeAllPrivate": "Đặt tất cả ở chế độ riêng tư",
-            "dropboxRestoreLimit": "AeroFTP có thể khôi phục các phiên bản tệp còn khôi phục được. Khôi phục thư mục từ mục Tệp đã xóa trên dropbox.com. Dấu hỏi có nghĩa là Dropbox chưa xác định được loại mục."
+            "dropboxRestoreLimit": "AeroFTP có thể khôi phục các phiên bản tệp còn khôi phục được. Khôi phục thư mục từ mục Tệp đã xóa trên dropbox.com. Dấu hỏi có nghĩa là Dropbox chưa xác định được loại mục.",
+            "openWithDefaultApp": "Mở bằng ứng dụng mặc định"
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Thiết lập đồng bộ đám mây",
             "onePerLineHint": "(mỗi dòng một mục)",
             "pairsEditorLabel": "Trình chỉnh sửa cặp AeroCloud",
-            "remoteSubfolderPlaceholder": "đám mây"
+            "remoteSubfolderPlaceholder": "đám mây",
+            "countdownSoon": "Sắp tới..."
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Truyền thất bại",
             "navigationFailed": "Điều hướng thất bại: {error}",
             "transferComplete": "Đã sao chép {count} tệp",
-            "permissionsSessionChanged": "Kết nối đã thay đổi kể từ khi hộp thoại này được mở, nên không có gì được thay đổi. Hãy mở lại Quyền trên kết nối hiện tại."
+            "permissionsSessionChanged": "Kết nối đã thay đổi kể từ khi hộp thoại này được mở, nên không có gì được thay đổi. Hãy mở lại Quyền trên kết nối hiện tại.",
+            "createFailed": "Tạo thất bại"
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Đang mở khóa thư mục {filename}...",
             "site_replied": "{command}: máy chủ đã phản hồi {code}",
             "site_unknown": "{command}: không có phản hồi đầy đủ, kết quả không xác định",
-            "site_not_sent": "{command} không được gửi"
+            "site_not_sent": "{command} không được gửi",
+            "b2_hidden_restore_success_one": "[{provider}] Đã khôi phục {count} tệp ẩn",
+            "b2_hidden_restore_success_many": "[{provider}] Đã khôi phục {count} tệp ẩn",
+            "b2_hidden_restore_error": "[{provider}] Không thể khôi phục tệp ẩn",
+            "b2_hidden_delete_success": "[{provider}] Đã xóa vĩnh viễn {count} tệp (đã dọn {versions} phiên bản)",
+            "trash_restore_detail_success": "[{provider}] Đã khôi phục {files} tệp từ thùng rác",
+            "trash_empty_detail_success": "[{provider}] Đã dọn sạch thùng rác (đã dọn {files} tệp, {folders} thư mục)",
+            "trash_empty_objects_one": "[{provider}] Đã dọn sạch thùng rác ({count} đối tượng)",
+            "trash_empty_objects_many": "[{provider}] Đã dọn sạch thùng rác ({count} đối tượng)",
+            "trash_object_purge_success": "[{provider}] Đã xóa vĩnh viễn {key}",
+            "trash_object_purge_error": "[{provider}] Không thể xóa vĩnh viễn {key}",
+            "trash_object_undelete_success": "[{provider}] Đã hoàn tác xóa {key}",
+            "trash_object_undelete_error": "[{provider}] Không thể hoàn tác xóa {key}",
+            "trash_object_restore_success": "[{provider}] Đã khôi phục {key}",
+            "trash_object_restore_error": "[{provider}] Không thể khôi phục {key}",
+            "opendrive_access_set": "[{provider}] Đã đặt quyền truy cập thành {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Đặt quyền truy cập {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Không thể đặt quyền truy cập {level}",
+            "download_folder_success": "Đã tải xuống thư mục {path} trong {seconds} giây",
+            "skipped_file": "Đã bỏ qua {filename}",
+            "filelu_made_public": "[{provider}] Đã đặt tệp ở chế độ công khai",
+            "filelu_make_public_error": "[{provider}] Không thể đặt tệp ở chế độ công khai",
+            "filelu_made_private": "[{provider}] Đã đặt tệp ở chế độ riêng tư",
+            "filelu_make_private_error": "[{provider}] Không thể đặt tệp ở chế độ riêng tư",
+            "filelu_file_password_set": "[{provider}] Đã đặt mật khẩu tệp",
+            "filelu_file_password_error": "[{provider}] Không thể đặt mật khẩu tệp",
+            "filelu_folder_password_set": "[{provider}] Đã đặt mật khẩu thư mục",
+            "filelu_folder_password_error": "[{provider}] Đặt mật khẩu thư mục thất bại",
+            "filelu_public_share_success": "[{provider}] Đã công khai + chia sẻ tệp",
+            "filelu_public_share_error": "[{provider}] Công khai + chia sẻ thất bại",
+            "filelu_folder_settings_success": "[{provider}] Đã cập nhật cài đặt thư mục",
+            "filelu_folder_settings_error": "[{provider}] Cập nhật cài đặt thư mục thất bại",
+            "set_private_success": "[{provider}] Đã đặt riêng tư",
+            "set_private_error": "[{provider}] Đặt riêng tư thất bại",
+            "set_public_success": "[{provider}] Đã đặt công khai",
+            "set_public_error": "[{provider}] Đặt công khai thất bại",
+            "bulk_private_success_one": "[{provider}] Đã đặt {count} mục thành riêng tư",
+            "bulk_private_success_many": "[{provider}] Đã đặt {count} mục thành riêng tư",
+            "bulk_private_partial": "[{provider}] Đã đặt {ok}/{total} mục thành riêng tư",
+            "bulk_private_error": "[{provider}] Đặt riêng tư hàng loạt thất bại",
+            "box_watermark_set": "[{provider}] Đã đặt hình mờ",
+            "box_watermark_set_error": "[{provider}] Đặt hình mờ thất bại",
+            "box_watermark_removed": "[{provider}] Đã xóa hình mờ",
+            "box_watermark_remove_error": "[{provider}] Xóa hình mờ thất bại",
+            "box_folder_locked": "[{provider}] Đã khóa thư mục",
+            "box_folder_lock_error": "[{provider}] Khóa thư mục thất bại",
+            "box_folder_unlocked": "[{provider}] Đã mở khóa thư mục",
+            "box_folder_not_locked": "[{provider}] Thư mục chưa bị khóa",
+            "box_folder_unlock_error": "[{provider}] Mở khóa thư mục thất bại",
+            "gdrive_starred": "[{provider}] Đã gắn dấu sao cho tệp",
+            "gdrive_unstarred": "[{provider}] Đã bỏ dấu sao khỏi tệp",
+            "gdrive_star_error": "[{provider}] Gắn dấu sao thất bại",
+            "gdrive_unstar_error": "[{provider}] Bỏ dấu sao thất bại",
+            "extract_success": "Đã giải nén {filename}",
+            "extract_success_to": "Đã giải nén {filename} → {dest}",
+            "extract_error": "Giải nén thất bại: {error}",
+            "zoho_document_created": "[{provider}] Đã tạo tài liệu {type}",
+            "zoho_document_create_error": "[{provider}] Tạo tài liệu {type} thất bại",
+            "note_saved": "[{provider}] Đã lưu ghi chú \"{title}\"",
+            "note_save_error": "[{provider}] Không thể lưu ghi chú",
+            "note_created": "[{provider}] Đã tạo ghi chú \"{title}\"",
+            "note_create_error": "[{provider}] Không thể tạo ghi chú",
+            "note_favorited": "[{provider}] Đã thêm ghi chú \"{title}\" vào yêu thích",
+            "note_unfavorited": "[{provider}] Đã bỏ ghi chú \"{title}\" khỏi yêu thích",
+            "note_favorite_error": "[{provider}] Không thể chuyển trạng thái yêu thích",
+            "note_pinned": "[{provider}] Đã ghim ghi chú \"{title}\"",
+            "note_unpinned": "[{provider}] Đã bỏ ghim ghi chú \"{title}\"",
+            "note_pin_error": "[{provider}] Không thể chuyển trạng thái ghim",
+            "note_trashed": "[{provider}] Đã chuyển ghi chú \"{title}\" vào thùng rác",
+            "note_trash_error": "[{provider}] Không thể chuyển ghi chú vào thùng rác",
+            "note_restored": "[{provider}] Đã khôi phục ghi chú \"{title}\"",
+            "note_restore_error": "[{provider}] Không thể khôi phục ghi chú",
+            "note_deleted": "[{provider}] Đã xóa vĩnh viễn ghi chú \"{title}\"",
+            "note_delete_error": "[{provider}] Không thể xóa vĩnh viễn ghi chú",
+            "note_archived": "[{provider}] Đã lưu trữ ghi chú \"{title}\"",
+            "note_archive_error": "[{provider}] Không thể lưu trữ ghi chú",
+            "note_version_restored": "[{provider}] Đã khôi phục phiên bản ghi chú",
+            "note_version_restore_error": "[{provider}] Không thể khôi phục phiên bản ghi chú",
+            "github_pages_config_updated": "[{provider}] Đã cập nhật cấu hình Pages",
+            "github_pages_config_error": "[{provider}] Không thể cập nhật cấu hình Pages",
+            "opendrive_set_access": "[{provider}] Đang đặt quyền truy cập cho {filename}...",
+            "gdrive_star": "[{provider}] Đang gắn dấu sao cho {filename}...",
+            "gdrive_unstar": "[{provider}] Đang bỏ dấu sao khỏi {filename}...",
+            "extract_start": "Đang giải nén {filename}...",
+            "extract_start_to": "Đang giải nén {filename} → {dest}...",
+            "compress_start": "Đang nén vào {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Đã khôi phục {files} tệp, {folders} thư mục từ thùng rác",
+            "trash_restore_detail_present_success": "[{provider}] Đã khôi phục {files} tệp từ thùng rác, {present} đã có sẵn",
+            "trash_restore_detail_folders_present_success": "[{provider}] Đã khôi phục {files} tệp, {folders} thư mục từ thùng rác, {present} đã có sẵn",
+            "filelu_file_password_removed": "[{provider}] Đã xóa mật khẩu tệp",
+            "filelu_folder_password_removed": "[{provider}] Đã xóa mật khẩu thư mục"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Loại trừ",
             "templateLocal": "Cục bộ",
             "templateRemote": "Từ xa",
-            "templateRetries": "Thử lại"
+            "templateRetries": "Thử lại",
+            "rollbackRestoreLocalCount": "cục bộ {count}",
+            "rollbackRestoreRemoteCount": "từ xa {count}",
+            "rollbackRestoreSkippedCount": "đã bỏ qua {count}",
+            "rollbackRestoreFailedCount": "thất bại {count}",
+            "rollbackRestoreCompleted": "Khôi phục hoàn tất: {summary}",
+            "rollbackRestoreNothing": "Không có gì để khôi phục",
+            "rollbackRestoreFailed": "Khôi phục thất bại: {error}"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Cho phép cho phiên này",
                 "nonAtomicReplace": "Thay thế không nguyên tử: tệp biến mất trong chốc lát",
                 "moreOptions": "Tùy chọn khác",
-                "panelAria": "Bảng phê duyệt công cụ"
+                "panelAria": "Bảng phê duyệt công cụ",
+                "previewFailed": "Xem trước thất bại"
             },
             "settings": {
                 "title": "Cài đặt AI",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Hỗ trợ công cụ",
                 "supportsVision": "Hỗ trợ thị giác",
                 "thinkingReasoning": "Suy nghĩ/Lập luận",
-                "toolQuality": "Chất lượng công cụ: {quality}/5"
+                "toolQuality": "Chất lượng công cụ: {quality}/5",
+                "ollamaNotReachable": "Không thể kết nối Ollama"
             },
             "copy": "Sao chép",
             "attachImage": "Đính kèm hình ảnh",
@@ -3423,7 +3528,8 @@
                     "title": "Chẩn đoán",
                     "truncated": "Danh sách chẩn đoán đã bị cắt bớt.",
                     "warningCountMany": "{count} cảnh báo",
-                    "warningCountOne": "{count} cảnh báo"
+                    "warningCountOne": "{count} cảnh báo",
+                    "noLocation": "(không có vị trí)"
                 },
                 "search": {
                     "none": "Không tìm thấy kết quả khớp.",
@@ -3522,7 +3628,15 @@
                 "destination": "Đích: {destination}",
                 "title": "Xem xét kế hoạch truyền",
                 "warnings": "Cảnh báo"
-            }
+            },
+            "voiceNoAudio": "Không thu được âm thanh.",
+            "voiceDownloadingModel": "Đang tải xuống mô hình giọng nói cục bộ...",
+            "voiceNoSpeech": "Không phát hiện giọng nói.",
+            "voiceReady": "Nhập liệu bằng giọng nói đã sẵn sàng.",
+            "voiceReadyLanguage": "Nhập liệu bằng giọng nói đã sẵn sàng ({language}).",
+            "voiceTranscriptionFailed": "Chuyển giọng nói thành văn bản cục bộ thất bại.",
+            "voiceListeningLocally": "Đang nghe cục bộ...",
+            "voiceMicrophoneFailed": "Không thể truy cập micrô."
         },
         "archive": {
             "passwordRequired": "Tệp lưu trữ này được bảo vệ bằng mật khẩu",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator định dạng 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Nội dung AES-GCM",
             "featureNameCipher": "Tên AES-SIV",
-            "formatVersion": "Định dạng {version}"
+            "formatVersion": "Định dạng {version}",
+            "invalidVaultName": "Ký tự không hợp lệ trong tên kho"
         },
         "compress": {
             "title": "Nén tệp",
@@ -4161,7 +4276,8 @@
             "total": "Tổng",
             "across": "trong",
             "empty": "Thư mục này trống",
-            "hoverHint": "Di chuột lên một khối để xem chi tiết"
+            "hoverHint": "Di chuột lên một khối để xem chi tiết",
+            "scanUnknownError": "Lỗi không xác định khi quét dung lượng đĩa"
         },
         "dependencies": {
             "title": "Phụ thuộc",
@@ -4575,7 +4691,8 @@
                 "unmute": "Bật tiếng (M)"
             },
             "webgl": {
-                "notSupported": "Không hỗ trợ WebGL 2"
+                "notSupported": "Không hỗ trợ WebGL 2",
+                "contextLost": "Mất ngữ cảnh WebGL"
             },
             "clickToViewDetails": "Nhấn vào tệp để xem chi tiết",
             "copyPath": "Sao chép đường dẫn",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Độ dài (byte)",
             "argon2DefaultsHint": "Mặc định: hồ sơ mà AeroVault và AeroCrypt dùng (128 MiB, 4 vòng lặp, 4 làn, đầu ra 32 byte). Muối ở trên là của bạn. Bộ nhớ tối đa 2 GiB.",
             "argon2Derive": "Dẫn xuất",
-            "argon2Phc": "Chuỗi PHC"
+            "argon2Phc": "Chuỗi PHC",
+            "hashError": "Lỗi: {error}"
         },
         "dialog": {
             "deleteFile": "Xóa \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Gỡ thẻ",
             "manageTags": "Quản lý thẻ",
             "deleteTagConfirm": "Xóa thẻ “{name}”? Ghi chú vẫn giữ nội dung.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Văn bản",
+                "markdown": "Markdown",
+                "code": "Mã",
+                "richText": "Văn bản định dạng",
+                "checklist": "Danh sách kiểm tra"
+            }
         },
         "shareLinkModal": {
             "title": "Liên kết chia sẻ",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Chọn thư mục đích",
             "passwordPrompt": "Mục này được mã hóa. Nhập mật khẩu để giải nén.",
             "showPassword": "Hiện mật khẩu",
-            "hidePassword": "Ẩn mật khẩu"
+            "hidePassword": "Ẩn mật khẩu",
+            "missingPayload": "Thiếu dữ liệu giải nén"
         },
         "provider": {
             "modes": {

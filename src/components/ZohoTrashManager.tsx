@@ -74,11 +74,11 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     setActionLoading('restore');
     try {
       await invoke('zoho_restore_from_trash', { fileIds: ids });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Zoho WorkDrive] Restored ${ids.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Zoho WorkDrive', count: ids.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Zoho WorkDrive] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Zoho WorkDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -101,11 +101,11 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     setActionLoading('delete');
     try {
       await invoke('zoho_permanent_delete', { fileIds: ids });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Zoho WorkDrive] Permanently deleted ${ids.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Zoho WorkDrive', count: ids.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Zoho WorkDrive] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Zoho WorkDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

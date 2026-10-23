@@ -433,7 +433,10 @@
             "localFilesLabel": "Локальні файли",
             "localFilesRightLabel": "Локальні файли (права панель)",
             "remoteFilesLabel": "Віддалені файли",
-            "rightPanelMarker": "Права панель"
+            "rightPanelMarker": "Права панель",
+            "chooseRightPanelFolder": "Виберіть теку правої панелі",
+            "chooseLeftPanelFolder": "Виберіть теку лівої панелі",
+            "localRight": "Локально (праворуч)"
         },
         "contextMenu": {
             "askAeroAgent": "Запитати AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Зробити приватним",
             "setAsPublic": "Зробити публічним",
             "makeAllPrivate": "Зробити всі приватними",
-            "dropboxRestoreLimit": "AeroFTP може відновлювати доступні для відновлення версії файлів. Папки відновлюйте в розділі «Видалені файли» на dropbox.com. Знак питання означає, що Dropbox не визначив тип елемента."
+            "dropboxRestoreLimit": "AeroFTP може відновлювати доступні для відновлення версії файлів. Папки відновлюйте в розділі «Видалені файли» на dropbox.com. Знак питання означає, що Dropbox не визначив тип елемента.",
+            "openWithDefaultApp": "Відкрити в програмі за замовчуванням"
         },
         "transfer": {
             "transferring": "Передача...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Налаштування хмарної синхронізації",
             "onePerLineHint": "(по одному в рядку)",
             "pairsEditorLabel": "Редактор пар AeroCloud",
-            "remoteSubfolderPlaceholder": "хмара"
+            "remoteSubfolderPlaceholder": "хмара",
+            "countdownSoon": "Незабаром..."
         },
         "statusBar": {
             "connected": "Підключено",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Передавання не вдалося",
             "navigationFailed": "Не вдалося перейти: {error}",
             "transferComplete": "Скопійовано файлів: {count}",
-            "permissionsSessionChanged": "З'єднання змінилося з моменту відкриття цього діалогу, тому нічого не було змінено. Відкрийте Права доступу знову на поточному з'єднанні."
+            "permissionsSessionChanged": "З'єднання змінилося з моменту відкриття цього діалогу, тому нічого не було змінено. Відкрийте Права доступу знову на поточному з'єднанні.",
+            "createFailed": "Не вдалося створити"
         },
         "about": {
             "tagline": "Більше ніж FTP. Повний набір інструментів розробника.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Розблокування теки {filename}...",
             "site_replied": "{command}: сервер відповів {code}",
             "site_unknown": "{command}: повної відповіді немає, результат невідомий",
-            "site_not_sent": "{command} не було надіслано"
+            "site_not_sent": "{command} не було надіслано",
+            "b2_hidden_restore_success_one": "[{provider}] Відновлено {count} прихований файл",
+            "b2_hidden_restore_success_many": "[{provider}] Відновлено прихованих файлів: {count}",
+            "b2_hidden_restore_error": "[{provider}] Не вдалося відновити приховані файли",
+            "b2_hidden_delete_success": "[{provider}] Остаточно видалено файлів: {count} (очищено версій: {versions})",
+            "trash_restore_detail_success": "[{provider}] Відновлено файлів із кошика: {files}",
+            "trash_empty_detail_success": "[{provider}] Кошик очищено (видалено файлів: {files}, тек: {folders})",
+            "trash_empty_objects_one": "[{provider}] Кошик очищено ({count} об’єкт)",
+            "trash_empty_objects_many": "[{provider}] Кошик очищено (об’єктів: {count})",
+            "trash_object_purge_success": "[{provider}] Остаточно видалено {key}",
+            "trash_object_purge_error": "[{provider}] Не вдалося остаточно видалити {key}",
+            "trash_object_undelete_success": "[{provider}] Скасовано видалення {key}",
+            "trash_object_undelete_error": "[{provider}] Не вдалося скасувати видалення {key}",
+            "trash_object_restore_success": "[{provider}] Відновлено {key}",
+            "trash_object_restore_error": "[{provider}] Не вдалося відновити {key}",
+            "opendrive_access_set": "[{provider}] Доступ встановлено на {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Встановлення доступу {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Не вдалося встановити доступ {level}",
+            "download_folder_success": "Теку {path} завантажено за {seconds} с",
+            "skipped_file": "Пропущено {filename}",
+            "filelu_made_public": "[{provider}] Файл зроблено публічним",
+            "filelu_make_public_error": "[{provider}] Не вдалося зробити файл публічним",
+            "filelu_made_private": "[{provider}] Файл зроблено приватним",
+            "filelu_make_private_error": "[{provider}] Не вдалося зробити файл приватним",
+            "filelu_file_password_set": "[{provider}] Пароль файлу встановлено",
+            "filelu_file_password_error": "[{provider}] Не вдалося встановити пароль файлу",
+            "filelu_folder_password_set": "[{provider}] Пароль папки встановлено",
+            "filelu_folder_password_error": "[{provider}] Не вдалося встановити пароль папки",
+            "filelu_public_share_success": "[{provider}] Файл зроблено публічним + спільний доступ відкрито",
+            "filelu_public_share_error": "[{provider}] Не вдалося зробити публічним + відкрити спільний доступ",
+            "filelu_folder_settings_success": "[{provider}] Налаштування папки оновлено",
+            "filelu_folder_settings_error": "[{provider}] Не вдалося оновити налаштування папки",
+            "set_private_success": "[{provider}] Зроблено приватним",
+            "set_private_error": "[{provider}] Не вдалося зробити приватним",
+            "set_public_success": "[{provider}] Зроблено публічним",
+            "set_public_error": "[{provider}] Не вдалося зробити публічним",
+            "bulk_private_success_one": "[{provider}] {count} елемент зроблено приватним",
+            "bulk_private_success_many": "[{provider}] {count} елементів зроблено приватними",
+            "bulk_private_partial": "[{provider}] {ok}/{total} елементів зроблено приватними",
+            "bulk_private_error": "[{provider}] Не вдалося масово зробити приватними",
+            "box_watermark_set": "[{provider}] Водяний знак встановлено",
+            "box_watermark_set_error": "[{provider}] Не вдалося встановити водяний знак",
+            "box_watermark_removed": "[{provider}] Водяний знак видалено",
+            "box_watermark_remove_error": "[{provider}] Не вдалося видалити водяний знак",
+            "box_folder_locked": "[{provider}] Папку заблоковано",
+            "box_folder_lock_error": "[{provider}] Не вдалося заблокувати папку",
+            "box_folder_unlocked": "[{provider}] Папку розблоковано",
+            "box_folder_not_locked": "[{provider}] Папка не була заблокована",
+            "box_folder_unlock_error": "[{provider}] Не вдалося розблокувати папку",
+            "gdrive_starred": "[{provider}] Файл позначено зірочкою",
+            "gdrive_unstarred": "[{provider}] Зірочку з файлу знято",
+            "gdrive_star_error": "[{provider}] Не вдалося позначити зірочкою",
+            "gdrive_unstar_error": "[{provider}] Не вдалося зняти зірочку",
+            "extract_success": "Видобуто {filename}",
+            "extract_success_to": "Видобуто {filename} → {dest}",
+            "extract_error": "Помилка видобування: {error}",
+            "zoho_document_created": "[{provider}] Створено документ {type}",
+            "zoho_document_create_error": "[{provider}] Не вдалося створити документ {type}",
+            "note_saved": "[{provider}] Збережено нотатку \"{title}\"",
+            "note_save_error": "[{provider}] Не вдалося зберегти нотатку",
+            "note_created": "[{provider}] Створено нотатку \"{title}\"",
+            "note_create_error": "[{provider}] Не вдалося створити нотатку",
+            "note_favorited": "[{provider}] Нотатку \"{title}\" додано до обраного",
+            "note_unfavorited": "[{provider}] Нотатку \"{title}\" вилучено з обраного",
+            "note_favorite_error": "[{provider}] Не вдалося перемкнути обране",
+            "note_pinned": "[{provider}] Закріплено нотатку \"{title}\"",
+            "note_unpinned": "[{provider}] Відкріплено нотатку \"{title}\"",
+            "note_pin_error": "[{provider}] Не вдалося перемкнути закріплення",
+            "note_trashed": "[{provider}] Нотатку \"{title}\" переміщено до кошика",
+            "note_trash_error": "[{provider}] Не вдалося перемістити нотатку до кошика",
+            "note_restored": "[{provider}] Відновлено нотатку \"{title}\"",
+            "note_restore_error": "[{provider}] Не вдалося відновити нотатку",
+            "note_deleted": "[{provider}] Нотатку \"{title}\" видалено назавжди",
+            "note_delete_error": "[{provider}] Не вдалося видалити нотатку назавжди",
+            "note_archived": "[{provider}] Нотатку \"{title}\" архівовано",
+            "note_archive_error": "[{provider}] Не вдалося архівувати нотатку",
+            "note_version_restored": "[{provider}] Версію нотатки відновлено",
+            "note_version_restore_error": "[{provider}] Не вдалося відновити версію нотатки",
+            "github_pages_config_updated": "[{provider}] Конфігурацію Pages оновлено",
+            "github_pages_config_error": "[{provider}] Не вдалося оновити конфігурацію Pages",
+            "opendrive_set_access": "[{provider}] Налаштування доступу для {filename}...",
+            "gdrive_star": "[{provider}] Позначення {filename} зірочкою...",
+            "gdrive_unstar": "[{provider}] Зняття зірочки з {filename}...",
+            "extract_start": "Розпакування {filename}...",
+            "extract_start_to": "Розпакування {filename} → {dest}...",
+            "compress_start": "Стиснення в {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Відновлено з кошика: файлів {files}, папок {folders}",
+            "trash_restore_detail_present_success": "[{provider}] Відновлено з кошика: файлів {files}, уже існує {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] Відновлено з кошика: файлів {files}, папок {folders}, уже існує {present}",
+            "filelu_file_password_removed": "[{provider}] Пароль файлу видалено",
+            "filelu_folder_password_removed": "[{provider}] Пароль папки видалено"
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Винятки",
             "templateLocal": "Локально",
             "templateRemote": "Віддалено",
-            "templateRetries": "Повтори"
+            "templateRetries": "Повтори",
+            "rollbackRestoreLocalCount": "локально {count}",
+            "rollbackRestoreRemoteCount": "віддалено {count}",
+            "rollbackRestoreSkippedCount": "пропущено {count}",
+            "rollbackRestoreFailedCount": "помилок {count}",
+            "rollbackRestoreCompleted": "Відновлення завершено: {summary}",
+            "rollbackRestoreNothing": "Нічого відновлювати",
+            "rollbackRestoreFailed": "Не вдалося відновити: {error}"
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Дозволити для цієї сесії",
                 "nonAtomicReplace": "Неатомарна заміна: файл на короткий час відсутній",
                 "moreOptions": "Інші параметри",
-                "panelAria": "Панель схвалення інструментів"
+                "panelAria": "Панель схвалення інструментів",
+                "previewFailed": "Не вдалося створити попередній перегляд"
             },
             "settings": {
                 "title": "Налаштування ШІ",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Підтримує інструменти",
                 "supportsVision": "Підтримує зір",
                 "thinkingReasoning": "Мислення/Міркування",
-                "toolQuality": "Якість інструментів: {quality}/5"
+                "toolQuality": "Якість інструментів: {quality}/5",
+                "ollamaNotReachable": "Ollama недоступна"
             },
             "copy": "Копіювати",
             "attachImage": "Прикріпити зображення",
@@ -3423,7 +3528,8 @@
                     "title": "Діагностика",
                     "truncated": "Список діагностики було обрізано.",
                     "warningCountMany": "{count} попереджень",
-                    "warningCountOne": "{count} попередження"
+                    "warningCountOne": "{count} попередження",
+                    "noLocation": "(без розташування)"
                 },
                 "search": {
                     "none": "Збігів не знайдено.",
@@ -3522,7 +3628,15 @@
                 "destination": "Призначення: {destination}",
                 "title": "Перевірка плану передавання",
                 "warnings": "Попередження"
-            }
+            },
+            "voiceNoAudio": "Звук не записано.",
+            "voiceDownloadingModel": "Завантаження локальної голосової моделі...",
+            "voiceNoSpeech": "Мовлення не виявлено.",
+            "voiceReady": "Голосове введення готове.",
+            "voiceReadyLanguage": "Голосове введення готове ({language}).",
+            "voiceTranscriptionFailed": "Не вдалося виконати локальну транскрипцію.",
+            "voiceListeningLocally": "Локальне прослуховування...",
+            "voiceMicrophoneFailed": "Не вдалося отримати доступ до мікрофона."
         },
         "archive": {
             "passwordRequired": "Цей архів захищений паролем",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator формат 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Вміст AES-GCM",
             "featureNameCipher": "Імена AES-SIV",
-            "formatVersion": "Формат {version}"
+            "formatVersion": "Формат {version}",
+            "invalidVaultName": "Неприпустимі символи в назві сховища"
         },
         "compress": {
             "title": "Стиснути файли",
@@ -4161,7 +4276,8 @@
             "total": "Усього",
             "across": "у",
             "empty": "Цей каталог порожній",
-            "hoverHint": "Наведіть на блок для перегляду деталей"
+            "hoverHint": "Наведіть на блок для перегляду деталей",
+            "scanUnknownError": "Невідома помилка під час сканування використання диска"
         },
         "dependencies": {
             "title": "Залежності",
@@ -4575,7 +4691,8 @@
                 "unmute": "Увімкнути звук (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 не підтримується"
+                "notSupported": "WebGL 2 не підтримується",
+                "contextLost": "Контекст WebGL втрачено"
             },
             "clickToViewDetails": "Натисніть на файл для перегляду деталей",
             "copyPath": "Скопіювати шлях",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Довжина (байти)",
             "argon2DefaultsHint": "Типово: профіль, який використовують AeroVault і AeroCrypt (128 MiB, 4 ітерації, 4 смуги, 32-байтовий вивід). Сіль вище ваша. Пам'ять до 2 GiB.",
             "argon2Derive": "Вивести",
-            "argon2Phc": "Рядок PHC"
+            "argon2Phc": "Рядок PHC",
+            "hashError": "Помилка: {error}"
         },
         "dialog": {
             "deleteFile": "Видалити \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Прибрати тег",
             "manageTags": "Керування тегами",
             "deleteTagConfirm": "Видалити тег «{name}»? Нотатки збережуть свій текст.",
-            "betaBadge": "БЕТА"
+            "betaBadge": "БЕТА",
+            "noteTypes": {
+                "text": "Текст",
+                "markdown": "Markdown",
+                "code": "Код",
+                "richText": "Форматований текст",
+                "checklist": "Контрольний список"
+            }
         },
         "shareLinkModal": {
             "title": "Посилання для спільного доступу",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Виберіть цільову папку",
             "passwordPrompt": "Цей елемент зашифровано. Введіть пароль для видобування.",
             "showPassword": "Показати пароль",
-            "hidePassword": "Сховати пароль"
+            "hidePassword": "Сховати пароль",
+            "missingPayload": "Відсутні дані для розпакування"
         },
         "provider": {
             "modes": {

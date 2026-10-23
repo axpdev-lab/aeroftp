@@ -69,11 +69,11 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
     setActionLoading('restore');
     try {
       await invoke('mega_restore_from_trash', { filenames });
-      humanLog.updateEntry(logId, { status: 'success', message: `[MEGA] Restored ${filenames.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'MEGA', count: filenames.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[MEGA] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'MEGA' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -96,11 +96,11 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
     setActionLoading('delete');
     try {
       await invoke('mega_permanent_delete', { filenames });
-      humanLog.updateEntry(logId, { status: 'success', message: `[MEGA] Permanently deleted ${filenames.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'MEGA', count: filenames.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[MEGA] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'MEGA' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

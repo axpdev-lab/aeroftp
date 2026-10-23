@@ -76,11 +76,11 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
         const itemType = item ? getItemType(item) : 'file';
         await invoke('box_restore_from_trash', { itemId, itemType });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Box] Restored ${ids.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Box', count: ids.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Box] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Box' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -106,11 +106,11 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
         const itemType = item ? getItemType(item) : 'file';
         await invoke('box_permanent_delete', { itemId, itemType });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Box] Permanently deleted ${ids.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Box', count: ids.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Box] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Box' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

@@ -107,7 +107,7 @@ const ExtractWindow: React.FC = () => {
         const drive = async () => {
             const payload = window.__AEROFTP_EXTRACT__;
             if (!payload || !payload.path) {
-                setError('Missing extract payload');
+                setError(t('extractWindow.missingPayload'));
                 setPhase('error');
                 return;
             }

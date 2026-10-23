@@ -84,7 +84,11 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
   const restore = async (entry: TrashEntry, mode: RestoreMode) => {
     setActionKey(entry.version_id);
     setError(null);
-    const label = mode === 'purge' ? 'purge' : mode === 'undelete' ? 'undelete' : 'restore';
+    const [successKey, errorKey] = mode === 'purge'
+      ? ['activity.trash_object_purge_success', 'activity.trash_object_purge_error']
+      : mode === 'undelete'
+        ? ['activity.trash_object_undelete_success', 'activity.trash_object_undelete_error']
+        : ['activity.trash_object_restore_success', 'activity.trash_object_restore_error'];
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'S3', count: 1 });
     try {
       await invoke('s3_restore_from_trash', {
@@ -92,11 +96,11 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
         versionId: entry.version_id,
         mode,
       });
-      humanLog.updateEntry(logId, { status: 'success', message: `[S3] ${label} ${entry.display_key}` });
+      humanLog.updateEntry(logId, { status: 'success', message: t(successKey, { provider: 'S3', key: entry.display_key }) });
       await loadTrash();
       if (mode !== 'purge') onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[S3] Failed to ${label} ${entry.display_key}` });
+      humanLog.updateEntry(logId, { status: 'error', message: t(errorKey, { provider: 'S3', key: entry.display_key }) });
       setError(String(err));
     } finally {
       setActionKey(null);
@@ -139,11 +143,11 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
         includeNoncurrent,
         dryRun: false,
       });
-      humanLog.updateEntry(logId, { status: 'success', message: `[S3] Emptied trash (${summary.count} object(s))` });
+      humanLog.updateEntry(logId, { status: 'success', message: t(summary.count === 1 ? 'activity.trash_empty_objects_one' : 'activity.trash_empty_objects_many', { provider: 'S3', count: summary.count }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[S3] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'S3' }) });
       setError(String(err));
     } finally {
       setEmptyLoading(false);

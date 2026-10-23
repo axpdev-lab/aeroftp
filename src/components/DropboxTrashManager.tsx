@@ -94,11 +94,11 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
         const rev = item?.metadata?.rev || '';
         await invoke('dropbox_restore_from_trash', { path, rev });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Dropbox] Restored ${paths.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Dropbox', count: paths.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Dropbox] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Dropbox' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -121,11 +121,11 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
       for (const path of paths) {
         await invoke('dropbox_permanent_delete', { path });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Dropbox] Permanently deleted ${paths.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Dropbox', count: paths.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Dropbox] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Dropbox' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -145,11 +145,11 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
       for (const path of paths) {
         await invoke('dropbox_permanent_delete', { path });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Dropbox] Emptied trash (${paths.length} item(s))` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Dropbox' }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Dropbox] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'Dropbox' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

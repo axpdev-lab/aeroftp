@@ -79,11 +79,11 @@ export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManag
         const fileId = item.metadata?.file_id ?? '';
         await invoke('kdrive_restore_from_trash', { fileId });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[kDrive] Restored ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'kDrive', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[kDrive] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'kDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -102,11 +102,11 @@ export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManag
         const fileId = item.metadata?.file_id ?? '';
         await invoke('kdrive_permanently_delete_trash', { fileId });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[kDrive] Permanently deleted ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'kDrive', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[kDrive] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'kDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -121,11 +121,11 @@ export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManag
     setError(null);
     try {
       await invoke('kdrive_empty_trash');
-      humanLog.updateEntry(logId, { status: 'success', message: `[kDrive] Emptied trash (${totalCount} item(s))` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'kDrive' }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[kDrive] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'kDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

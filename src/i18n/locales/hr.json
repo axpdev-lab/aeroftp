@@ -433,7 +433,10 @@
             "localFilesLabel": "Lokalne datoteke",
             "localFilesRightLabel": "Lokalne datoteke (desna ploča)",
             "remoteFilesLabel": "Udaljene datoteke",
-            "rightPanelMarker": "Desna ploča"
+            "rightPanelMarker": "Desna ploča",
+            "chooseRightPanelFolder": "Odaberite mapu desnog panela",
+            "chooseLeftPanelFolder": "Odaberite mapu lijevog panela",
+            "localRight": "Lokalno (desno)"
         },
         "contextMenu": {
             "askAeroAgent": "Pitaj AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Postavi kao privatno",
             "setAsPublic": "Postavi kao javno",
             "makeAllPrivate": "Postavi sve kao privatno",
-            "dropboxRestoreLimit": "AeroFTP može vratiti verzije datoteka koje je moguće oporaviti. Mape vratite iz odjeljka Izbrisane datoteke na dropbox.com. Upitnik znači da Dropbox nije prepoznao vrstu stavke."
+            "dropboxRestoreLimit": "AeroFTP može vratiti verzije datoteka koje je moguće oporaviti. Mape vratite iz odjeljka Izbrisane datoteke na dropbox.com. Upitnik znači da Dropbox nije prepoznao vrstu stavke.",
+            "openWithDefaultApp": "Otvori zadanom aplikacijom"
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Postavljanje sinkronizacije u oblaku",
             "onePerLineHint": "(jedan po retku)",
             "pairsEditorLabel": "Uređivač parova AeroCloud",
-            "remoteSubfolderPlaceholder": "oblak"
+            "remoteSubfolderPlaceholder": "oblak",
+            "countdownSoon": "Uskoro..."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Prijenos nije uspio",
             "navigationFailed": "Navigacija nije uspjela: {error}",
             "transferComplete": "Kopirano {count} datoteka",
-            "permissionsSessionChanged": "Veza se promijenila otkako je ovaj dijalog otvoren, pa ništa nije promijenjeno. Ponovno otvorite Dozvole na trenutnoj vezi."
+            "permissionsSessionChanged": "Veza se promijenila otkako je ovaj dijalog otvoren, pa ništa nije promijenjeno. Ponovno otvorite Dozvole na trenutnoj vezi.",
+            "createFailed": "Stvaranje nije uspjelo"
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Otključavanje mape {filename}...",
             "site_replied": "{command}: poslužitelj je odgovorio {code}",
             "site_unknown": "{command}: nema potpunog odgovora, ishod nepoznat",
-            "site_not_sent": "{command} nije poslana"
+            "site_not_sent": "{command} nije poslana",
+            "b2_hidden_restore_success_one": "[{provider}] Vraćena {count} skrivena datoteka",
+            "b2_hidden_restore_success_many": "[{provider}] Vraćeno skrivenih datoteka: {count}",
+            "b2_hidden_restore_error": "[{provider}] Vraćanje skrivenih datoteka nije uspjelo",
+            "b2_hidden_delete_success": "[{provider}] Trajno izbrisano datoteka: {count} (očišćeno verzija: {versions})",
+            "trash_restore_detail_success": "[{provider}] Vraćeno datoteka iz smeća: {files}",
+            "trash_empty_detail_success": "[{provider}] Smeće ispražnjeno (očišćeno datoteka: {files}, mapa: {folders})",
+            "trash_empty_objects_one": "[{provider}] Smeće ispražnjeno ({count} objekt)",
+            "trash_empty_objects_many": "[{provider}] Smeće ispražnjeno (objekata: {count})",
+            "trash_object_purge_success": "[{provider}] Trajno uklonjeno: {key}",
+            "trash_object_purge_error": "[{provider}] Trajno uklanjanje {key} nije uspjelo",
+            "trash_object_undelete_success": "[{provider}] Poništeno brisanje: {key}",
+            "trash_object_undelete_error": "[{provider}] Poništavanje brisanja {key} nije uspjelo",
+            "trash_object_restore_success": "[{provider}] Vraćeno: {key}",
+            "trash_object_restore_error": "[{provider}] Vraćanje {key} nije uspjelo",
+            "opendrive_access_set": "[{provider}] Pristup postavljen na {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Postavljanje pristupa {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Postavljanje pristupa {level} nije uspjelo",
+            "download_folder_success": "Mapa {path} preuzeta za {seconds} s",
+            "skipped_file": "Preskočeno: {filename}",
+            "filelu_made_public": "[{provider}] Datoteka je postala javna",
+            "filelu_make_public_error": "[{provider}] Postavljanje datoteke kao javne nije uspjelo",
+            "filelu_made_private": "[{provider}] Datoteka je postala privatna",
+            "filelu_make_private_error": "[{provider}] Postavljanje datoteke kao privatne nije uspjelo",
+            "filelu_file_password_set": "[{provider}] Lozinka datoteke postavljena",
+            "filelu_file_password_error": "[{provider}] Postavljanje lozinke datoteke nije uspjelo",
+            "filelu_folder_password_set": "[{provider}] Lozinka mape postavljena",
+            "filelu_folder_password_error": "[{provider}] Postavljanje lozinke mape nije uspjelo",
+            "filelu_public_share_success": "[{provider}] Datoteka učinjena javnom + dijeljena",
+            "filelu_public_share_error": "[{provider}] Postavljanje javnim + dijeljenje nije uspjelo",
+            "filelu_folder_settings_success": "[{provider}] Postavke mape ažurirane",
+            "filelu_folder_settings_error": "[{provider}] Ažuriranje postavki mape nije uspjelo",
+            "set_private_success": "[{provider}] Postavljeno kao privatno",
+            "set_private_error": "[{provider}] Postavljanje kao privatno nije uspjelo",
+            "set_public_success": "[{provider}] Postavljeno kao javno",
+            "set_public_error": "[{provider}] Postavljanje kao javno nije uspjelo",
+            "bulk_private_success_one": "[{provider}] {count} stavka postavljena kao privatna",
+            "bulk_private_success_many": "[{provider}] {count} stavki postavljeno kao privatno",
+            "bulk_private_partial": "[{provider}] {ok}/{total} stavki postavljeno kao privatno",
+            "bulk_private_error": "[{provider}] Skupno postavljanje kao privatno nije uspjelo",
+            "box_watermark_set": "[{provider}] Vodeni žig postavljen",
+            "box_watermark_set_error": "[{provider}] Postavljanje vodenog žiga nije uspjelo",
+            "box_watermark_removed": "[{provider}] Vodeni žig uklonjen",
+            "box_watermark_remove_error": "[{provider}] Uklanjanje vodenog žiga nije uspjelo",
+            "box_folder_locked": "[{provider}] Mapa zaključana",
+            "box_folder_lock_error": "[{provider}] Zaključavanje mape nije uspjelo",
+            "box_folder_unlocked": "[{provider}] Mapa otključana",
+            "box_folder_not_locked": "[{provider}] Mapa nije bila zaključana",
+            "box_folder_unlock_error": "[{provider}] Otključavanje mape nije uspjelo",
+            "gdrive_starred": "[{provider}] Datoteka označena zvjezdicom",
+            "gdrive_unstarred": "[{provider}] Zvjezdica uklonjena s datoteke",
+            "gdrive_star_error": "[{provider}] Označavanje zvjezdicom nije uspjelo",
+            "gdrive_unstar_error": "[{provider}] Uklanjanje zvjezdice nije uspjelo",
+            "extract_success": "Raspakirano {filename}",
+            "extract_success_to": "Raspakirano {filename} → {dest}",
+            "extract_error": "Raspakiravanje nije uspjelo: {error}",
+            "zoho_document_created": "[{provider}] Stvoren dokument {type}",
+            "zoho_document_create_error": "[{provider}] Stvaranje dokumenta {type} nije uspjelo",
+            "note_saved": "[{provider}] Spremljena bilješka \"{title}\"",
+            "note_save_error": "[{provider}] Spremanje bilješke nije uspjelo",
+            "note_created": "[{provider}] Stvorena bilješka \"{title}\"",
+            "note_create_error": "[{provider}] Stvaranje bilješke nije uspjelo",
+            "note_favorited": "[{provider}] Bilješka \"{title}\" dodana u favorite",
+            "note_unfavorited": "[{provider}] Bilješka \"{title}\" uklonjena iz favorita",
+            "note_favorite_error": "[{provider}] Promjena favorita nije uspjela",
+            "note_pinned": "[{provider}] Prikvačena bilješka \"{title}\"",
+            "note_unpinned": "[{provider}] Otkvačena bilješka \"{title}\"",
+            "note_pin_error": "[{provider}] Promjena prikvačivanja nije uspjela",
+            "note_trashed": "[{provider}] Bilješka \"{title}\" premještena u smeće",
+            "note_trash_error": "[{provider}] Premještanje bilješke u smeće nije uspjelo",
+            "note_restored": "[{provider}] Vraćena bilješka \"{title}\"",
+            "note_restore_error": "[{provider}] Vraćanje bilješke nije uspjelo",
+            "note_deleted": "[{provider}] Bilješka \"{title}\" trajno izbrisana",
+            "note_delete_error": "[{provider}] Trajno brisanje bilješke nije uspjelo",
+            "note_archived": "[{provider}] Bilješka \"{title}\" arhivirana",
+            "note_archive_error": "[{provider}] Arhiviranje bilješke nije uspjelo",
+            "note_version_restored": "[{provider}] Verzija bilješke vraćena",
+            "note_version_restore_error": "[{provider}] Vraćanje verzije bilješke nije uspjelo",
+            "github_pages_config_updated": "[{provider}] Konfiguracija Pages ažurirana",
+            "github_pages_config_error": "[{provider}] Ažuriranje konfiguracije Pages nije uspjelo",
+            "opendrive_set_access": "[{provider}] Postavljanje pristupa za {filename}...",
+            "gdrive_star": "[{provider}] Označavanje zvjezdicom: {filename}...",
+            "gdrive_unstar": "[{provider}] Uklanjanje zvjezdice: {filename}...",
+            "extract_start": "Raspakiravanje {filename}...",
+            "extract_start_to": "Raspakiravanje {filename} → {dest}...",
+            "compress_start": "Sažimanje u {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, mape {folders}",
+            "trash_restore_detail_present_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, već postoji {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, mape {folders}, već postoji {present}",
+            "filelu_file_password_removed": "[{provider}] Lozinka datoteke uklonjena",
+            "filelu_folder_password_removed": "[{provider}] Lozinka mape uklonjena"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Izuzeća",
             "templateLocal": "Lokalno",
             "templateRemote": "Udaljeno",
-            "templateRetries": "Ponovni pokušaji"
+            "templateRetries": "Ponovni pokušaji",
+            "rollbackRestoreLocalCount": "lokalno {count}",
+            "rollbackRestoreRemoteCount": "udaljeno {count}",
+            "rollbackRestoreSkippedCount": "preskočeno {count}",
+            "rollbackRestoreFailedCount": "neuspjelo {count}",
+            "rollbackRestoreCompleted": "Vraćanje dovršeno: {summary}",
+            "rollbackRestoreNothing": "Nema ničega za vraćanje",
+            "rollbackRestoreFailed": "Vraćanje nije uspjelo: {error}"
         },
         "ui": {
             "syncing": "Sinkronizacija...",
@@ -2673,7 +2776,8 @@
                 "allowSession": "Dopusti za ovu sesiju",
                 "nonAtomicReplace": "Neatomska zamjena: datoteka nakratko nedostaje",
                 "moreOptions": "Više mogućnosti",
-                "panelAria": "Ploča za odobrenje alata"
+                "panelAria": "Ploča za odobrenje alata",
+                "previewFailed": "Pregled nije uspio"
             },
             "settings": {
                 "title": "AI postavke",
@@ -2835,7 +2939,8 @@
                 "supportsTools": "Podržava alate",
                 "supportsVision": "Podržava vid",
                 "thinkingReasoning": "Razmišljanje/Zaključivanje",
-                "toolQuality": "Kvaliteta alata: {quality}/5"
+                "toolQuality": "Kvaliteta alata: {quality}/5",
+                "ollamaNotReachable": "Ollama nije dostupna"
             },
             "rag": {
                 "indexing": "Indeksiranje datoteka...",
@@ -3423,7 +3528,8 @@
                     "title": "Dijagnostika",
                     "truncated": "Popis dijagnostike je skraćen.",
                     "warningCountMany": "{count} upozorenja",
-                    "warningCountOne": "{count} upozorenje"
+                    "warningCountOne": "{count} upozorenje",
+                    "noLocation": "(bez lokacije)"
                 },
                 "search": {
                     "none": "Nema pronađenih podudaranja.",
@@ -3522,7 +3628,15 @@
                 "destination": "Odredište: {destination}",
                 "title": "Pregled plana prijenosa",
                 "warnings": "Upozorenja"
-            }
+            },
+            "voiceNoAudio": "Nije snimljen zvuk.",
+            "voiceDownloadingModel": "Preuzimanje lokalnog glasovnog modela...",
+            "voiceNoSpeech": "Nije otkriven govor.",
+            "voiceReady": "Glasovni unos je spreman.",
+            "voiceReadyLanguage": "Glasovni unos je spreman ({language}).",
+            "voiceTranscriptionFailed": "Lokalna transkripcija nije uspjela.",
+            "voiceListeningLocally": "Lokalno slušanje...",
+            "voiceMicrophoneFailed": "Nije moguće pristupiti mikrofonu."
         },
         "archive": {
             "passwordRequired": "Arhiva je zaštićena lozinkom",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Sadržaj AES-GCM",
             "featureNameCipher": "Nazivi AES-SIV",
-            "formatVersion": "Verzija formata {version}"
+            "formatVersion": "Verzija formata {version}",
+            "invalidVaultName": "Nevažeći znakovi u nazivu trezora"
         },
         "compress": {
             "title": "Sažmi datoteke",
@@ -4161,7 +4276,8 @@
             "hoverHint": "Zadržite pokazivač iznad bloka za detalje",
             "scanFailed": "Analiza nije uspjela",
             "retry": "Ponovni pokušaj",
-            "drillDown": "Kliknite za istraživanje"
+            "drillDown": "Kliknite za istraživanje",
+            "scanUnknownError": "Nepoznata pogreška pri skeniranju korištenja diska"
         },
         "dependencies": {
             "title": "Zavisnosti",
@@ -4575,7 +4691,8 @@
                 "unmute": "Uključi zvuk (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 nije podržan"
+                "notSupported": "WebGL 2 nije podržan",
+                "contextLost": "WebGL kontekst izgubljen"
             },
             "clickToViewDetails": "Kliknite na datoteku za prikaz detalja",
             "copyPath": "Kopiraj putanju",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Duljina (bajtovi)",
             "argon2DefaultsHint": "Zadano: profil koji koriste AeroVault i AeroCrypt (128 MiB, 4 iteracije, 4 trake, izlaz od 32 bajta). Sol iznad je vaša. Memorija do 2 GiB.",
             "argon2Derive": "Izvedi",
-            "argon2Phc": "PHC niz"
+            "argon2Phc": "PHC niz",
+            "hashError": "Pogreška: {error}"
         },
         "dialog": {
             "deleteFile": "Obrisati \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Ukloni oznaku",
             "manageTags": "Upravljaj oznakama",
             "deleteTagConfirm": "Izbrisati oznaku „{name}“? Bilješke zadržavaju svoj tekst.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Tekst",
+                "markdown": "Markdown",
+                "code": "Kod",
+                "richText": "Oblikovani tekst",
+                "checklist": "Kontrolni popis"
+            }
         },
         "shareLinkModal": {
             "title": "Veza za dijeljenje",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Odaberite odredišnu mapu",
             "passwordPrompt": "Ova je stavka šifrirana. Unesite lozinku za raspakiravanje.",
             "showPassword": "Prikaži lozinku",
-            "hidePassword": "Sakrij lozinku"
+            "hidePassword": "Sakrij lozinku",
+            "missingPayload": "Nedostaju podaci za raspakiravanje"
         },
         "provider": {
             "modes": {

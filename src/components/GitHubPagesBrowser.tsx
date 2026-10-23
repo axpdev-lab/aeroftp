@@ -391,11 +391,11 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                               sourceBranch: configBranch || null,
                               sourcePath: configPath || null,
                             });
-                            humanLog.updateEntry(logId, { status: 'success', message: '[GitHub] Updated Pages configuration' });
+                            humanLog.updateEntry(logId, { status: 'success', message: t('activity.github_pages_config_updated', { provider: 'GitHub' }) });
                             await fetchData();
                             setShowConfigEdit(false);
                           } catch (err) {
-                            humanLog.updateEntry(logId, { status: 'error', message: '[GitHub] Failed to update Pages configuration' });
+                            humanLog.updateEntry(logId, { status: 'error', message: t('activity.github_pages_config_error', { provider: 'GitHub' }) });
                             setError(String(err));
                           } finally {
                             setSavingConfig(false);

@@ -1443,21 +1443,23 @@ const App: React.FC = () => {
       );
       const ok = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.length - ok;
+      const levelLabel = t(level === 'public' ? 'properties.privacyPublic' : level === 'private' ? 'properties.privacyPrivate' : 'properties.privacyHidden');
       if (failed === 0) {
         notify.success(t('opendrive.privacyUpdated') || 'OpenDrive privacy updated');
-        humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Access set to ${level} (${ok})` });
+        humanLog.updateEntry(logId, { status: 'success', message: t('activity.opendrive_access_set', { provider: 'OpenDrive', level: levelLabel, count: ok }) });
         // Reflect the new level in any open Properties dialog without closing it.
         const targetPaths = new Set(targets.map(tg => tg.path));
         setPropertiesDialog(prev => prev && targetPaths.has(prev.path) ? { ...prev, permissions: level } : prev);
         setMultiPropertiesDialog(prev => prev ? { ...prev, files: prev.files.map(f => targetPaths.has(f.path) ? { ...f, permissions: level } : f) } : prev);
       } else {
         notify.warning(`${t('opendrive.privacyUpdated') || 'OpenDrive privacy updated'}: ${ok}/${results.length}`);
-        humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Set access ${level}: ${ok}/${results.length}` });
+        humanLog.updateEntry(logId, { status: 'error', message: t('activity.opendrive_access_partial', { provider: 'OpenDrive', level: levelLabel, ok, total: results.length }) });
       }
       await loadRemoteFiles(undefined, true);
     } catch (err) {
+      const levelLabel = t(level === 'public' ? 'properties.privacyPublic' : level === 'private' ? 'properties.privacyPrivate' : 'properties.privacyHidden');
       notify.error(String(err));
-      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Set access ${level} failed` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.opendrive_access_error', { provider: 'OpenDrive', level: levelLabel }) });
     }
   };
   const [fileLuRemoteUploadDialog, setFileLuRemoteUploadDialog] = useState<{
@@ -9696,7 +9698,7 @@ const App: React.FC = () => {
         directory: true,
         multiple: false,
         defaultPath: await safePickerStartDir(current),
-        title: panelId === 'local2' ? 'Choose right panel folder' : 'Choose left panel folder',
+        title: panelId === 'local2' ? t('browser.chooseRightPanelFolder') : t('browser.chooseLeftPanelFolder'),
       });
       if (typeof selected !== 'string') return;
       setActivePanel('local');
@@ -9970,8 +9972,7 @@ const App: React.FC = () => {
           // Don't log success if the transfer was cancelled
           if (!folderResult.cancelled) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-            humanLog.log('DOWNLOAD', `[Local] Downloaded folder ${folderPath} in ${elapsed}s`, 'success');
-            humanLog.updateEntry(logId, { status: 'success', message: `Downloaded folder ${folderPath} in ${elapsed}s` });
+            humanLog.updateEntry(logId, { status: 'success', message: t('activity.download_folder_success', { path: folderPath, seconds: elapsed }) });
           }
           // A folder with failed files is not done: a "cut" keeps its source.
           completed = folderTransferIsComplete(folderResult);
@@ -9997,7 +9998,7 @@ const App: React.FC = () => {
             );
 
             if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
-              humanLog.updateEntry(logId, { status: 'success', message: `Skipped ${fileName}` });
+              humanLog.updateEntry(logId, { status: 'success', message: t('activity.skipped_file', { filename: fileName }) });
               return false;
             }
 
@@ -11279,8 +11280,8 @@ const App: React.FC = () => {
           compareLoading: canRecurse && startScan,
           scanProgressId: canRecurse && startScan ? scanProgressId : undefined,
           compareIdle: canRecurse && !startScan,
-          leftLabel: leftPath || 'Local',
-          rightLabel: rightPath || currentLocalPath || 'Local (right)',
+          leftLabel: leftPath || t('browser.local'),
+          rightLabel: rightPath || currentLocalPath || t('browser.localRight'),
           pairKind: 'local-local',
           initialSource: leftPath,
           initialDestination: rightPath,
@@ -11364,7 +11365,7 @@ const App: React.FC = () => {
       // visually-left panel = Local iff swapPanels is true.
       const leftLocal = swapPanels;
       const isProviderConn = usesProviderApi(activeUnifiedRemoteProfile?.protocol);
-      const remoteLabel = activeUnifiedRemoteProfile?.name || 'Remote';
+      const remoteLabel = activeUnifiedRemoteProfile?.name || t('browser.remote');
       const cryptCompareActive = isCryptOverlayActive();
       // Crypt-aware Compare: the backend only runs its rclone-crypt name/size
       // normalization when provider_compare_directories is given the vault
@@ -11389,8 +11390,8 @@ const App: React.FC = () => {
           compareLoading: startScan,
           scanProgressId: startScan ? scanProgressId : undefined,
           compareIdle: !startScan,
-          leftLabel: leftLocal ? (currentLocalPath || 'Local') : remoteLabel,
-          rightLabel: leftLocal ? remoteLabel : (currentLocalPath || 'Local'),
+          leftLabel: leftLocal ? (currentLocalPath || t('browser.local')) : remoteLabel,
+          rightLabel: leftLocal ? remoteLabel : (currentLocalPath || t('browser.local')),
           pairKind: leftLocal ? 'local-remote' : 'remote-local',
           initialSource: currentLocalPath || '',
           initialDestination: currentRemotePath || '',
@@ -11494,7 +11495,7 @@ const App: React.FC = () => {
       initialTab,
       context: {
         compareResult: null,
-        leftLabel: currentLocalPath || 'Local',
+        leftLabel: currentLocalPath || t('browser.local'),
         rightLabel: '',
         pairKind: null,
         initialSource: currentLocalPath || '',
@@ -11677,7 +11678,7 @@ const App: React.FC = () => {
           || 'Delta sync unavailable for this server.';
         const serverLabel = activeUnifiedRemoteProfile?.name
           || verdict.server_identity?.host
-          || 'remote';
+          || t('browser.remote');
         setDeltaEligibilityPrompt({
           reason,
           serverLabel,
@@ -14151,7 +14152,7 @@ const App: React.FC = () => {
             });
             const logId = humanLog.logRaw('activity.trash_move_start', 'DELETE', { provider: 'Box', filename: filesToUse.join(', ') }, 'running');
             await invoke('box_trash_files', { paths });
-            humanLog.updateEntry(logId, { status: 'success', message: `[Box] Moved ${paths.length} item(s) to trash` });
+            humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_move_success', { provider: 'Box', filename: filesToUse.join(', ') }) });
             notify.success(t('toast.movedToTrash', { count: paths.length }));
             loadRemoteFiles(undefined, true);
           } catch (err) {
@@ -14173,8 +14174,8 @@ const App: React.FC = () => {
                   await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: false });
                   setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'public' } : r));
                   notify.success(t('filelu.fileSetPublic'));
-                  humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Made file public' });
-                } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Make file public failed' }); }
+                  humanLog.updateEntry(logId, { status: 'success', message: t('activity.filelu_made_public', { provider: 'FileLu' }) });
+                } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.filelu_make_public_error', { provider: 'FileLu' }) }); }
               },
             }];
           }
@@ -14188,8 +14189,8 @@ const App: React.FC = () => {
                   await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: true });
                   setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'private' } : r));
                   notify.success(t('filelu.fileSetPrivate'));
-                  humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Made file private' });
-                } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Make file private failed' }); }
+                  humanLog.updateEntry(logId, { status: 'success', message: t('activity.filelu_made_private', { provider: 'FileLu' }) });
+                } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.filelu_make_private_error', { provider: 'FileLu' }) }); }
               },
             }];
           }
@@ -14223,10 +14224,10 @@ const App: React.FC = () => {
                       : r,
                     ));
                     notify.success(pwd ? t('filelu.filePasswordSet') : t('filelu.filePasswordRemoved'));
-                    humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Set file password' });
+                    humanLog.updateEntry(logId, { status: 'success', message: t(pwd ? 'activity.filelu_file_password_set' : 'activity.filelu_file_password_removed', { provider: 'FileLu' }) });
                   } catch (err) {
                     notify.error(t('filelu.filePasswordError'), String(err));
-                    humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Set file password failed' });
+                    humanLog.updateEntry(logId, { status: 'error', message: t('activity.filelu_file_password_error', { provider: 'FileLu' }) });
                   }
                 }
               });
@@ -14276,10 +14277,10 @@ const App: React.FC = () => {
                       : r,
                     ));
                     notify.success(pwd ? t('filelu.folderPasswordSet') : t('filelu.folderPasswordRemoved'));
-                    humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Set folder password' });
+                    humanLog.updateEntry(logId, { status: 'success', message: t(pwd ? 'activity.filelu_folder_password_set' : 'activity.filelu_folder_password_removed', { provider: 'FileLu' }) });
                   } catch (err) {
                     notify.error(t('filelu.folderPasswordError'), String(err));
-                    humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Set folder password failed' });
+                    humanLog.updateEntry(logId, { status: 'error', message: t('activity.filelu_folder_password_error', { provider: 'FileLu' }) });
                   }
                 }
               });
@@ -14327,11 +14328,11 @@ const App: React.FC = () => {
                   isDir: !!file.is_dir,
                 });
                 notify.success(t('contextMenu.setAsPrivate'));
-                humanLog.updateEntry(logId, { status: 'success', message: '[4shared] Set private' });
+                humanLog.updateEntry(logId, { status: 'success', message: t('activity.set_private_success', { provider: '4shared' }) });
                 await loadRemoteFiles(undefined, true);
               } catch (err) {
                 notify.error(String(err));
-                humanLog.updateEntry(logId, { status: 'error', message: '[4shared] Set private failed' });
+                humanLog.updateEntry(logId, { status: 'error', message: t('activity.set_private_error', { provider: '4shared' }) });
               }
             },
           },
@@ -14350,11 +14351,11 @@ const App: React.FC = () => {
                   isDir: !!file.is_dir,
                 });
                 notify.success(t('contextMenu.setAsPublic'));
-                humanLog.updateEntry(logId, { status: 'success', message: '[4shared] Set public' });
+                humanLog.updateEntry(logId, { status: 'success', message: t('activity.set_public_success', { provider: '4shared' }) });
                 await loadRemoteFiles(undefined, true);
               } catch (err) {
                 notify.error(String(err));
-                humanLog.updateEntry(logId, { status: 'error', message: '[4shared] Set public failed' });
+                humanLog.updateEntry(logId, { status: 'error', message: t('activity.set_public_error', { provider: '4shared' }) });
               }
             },
           },
@@ -14377,15 +14378,15 @@ const App: React.FC = () => {
               const failed = results.length - ok;
               if (failed === 0) {
                 notify.success(t('contextMenu.makeAllPrivate'));
-                humanLog.updateEntry(logId, { status: 'success', message: `[4shared] Set ${ok} entries private` });
+                humanLog.updateEntry(logId, { status: 'success', message: t(ok === 1 ? 'activity.bulk_private_success_one' : 'activity.bulk_private_success_many', { provider: '4shared', count: ok }) });
               } else {
                 notify.warning(`${t('contextMenu.makeAllPrivate')}: ${ok}/${results.length}`);
-                humanLog.updateEntry(logId, { status: 'error', message: `[4shared] Set ${ok}/${results.length} entries private` });
+                humanLog.updateEntry(logId, { status: 'error', message: t('activity.bulk_private_partial', { provider: '4shared', ok, total: results.length }) });
               }
               await loadRemoteFiles(undefined, true);
             } catch (err) {
               notify.error(String(err));
-              humanLog.updateEntry(logId, { status: 'error', message: '[4shared] Bulk private failed' });
+              humanLog.updateEntry(logId, { status: 'error', message: t('activity.bulk_private_error', { provider: '4shared' }) });
             }
           }
         }] : []),
@@ -14521,10 +14522,10 @@ const App: React.FC = () => {
                 const result = await invoke<{ url: string; password: string | null }>('provider_create_share_link', { path: file.path });
                 await copyText(result.url);
                 notify.success(t('contextMenu.shareLinkCopied'), result.url);
-                humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Made file public + shared' });
+                humanLog.updateEntry(logId, { status: 'success', message: t('activity.filelu_public_share_success', { provider: 'FileLu' }) });
               } catch (err: unknown) {
                 notify.error(t('contextMenu.shareLinkFailed'), String(err));
-                humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Make public + share failed' });
+                humanLog.updateEntry(logId, { status: 'error', message: t('activity.filelu_public_share_error', { provider: 'FileLu' }) });
               }
             }
           });
@@ -14694,8 +14695,8 @@ const App: React.FC = () => {
               await invoke('box_set_watermark', { path: file.path });
               notify.success(t('box.watermarkApplied'));
               loadRemoteFiles(undefined, true);
-              humanLog.updateEntry(logId, { status: 'success', message: '[Box] Set watermark' });
-            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Set watermark failed' }); }
+              humanLog.updateEntry(logId, { status: 'success', message: t('activity.box_watermark_set', { provider: 'Box' }) });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.box_watermark_set_error', { provider: 'Box' }) }); }
           },
         });
         items.push({
@@ -14709,8 +14710,8 @@ const App: React.FC = () => {
               await invoke('box_remove_watermark', { path: file.path });
               notify.success(t('box.watermarkRemoved'));
               loadRemoteFiles(undefined, true);
-              humanLog.updateEntry(logId, { status: 'success', message: '[Box] Removed watermark' });
-            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Remove watermark failed' }); }
+              humanLog.updateEntry(logId, { status: 'success', message: t('activity.box_watermark_removed', { provider: 'Box' }) });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.box_watermark_remove_error', { provider: 'Box' }) }); }
           },
         });
       }
@@ -14725,8 +14726,8 @@ const App: React.FC = () => {
             try {
               await invoke('box_lock_folder', { path: file.path });
               notify.success(t('box.folderLocked'));
-              humanLog.updateEntry(logId, { status: 'success', message: '[Box] Locked folder' });
-            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Lock folder failed' }); }
+              humanLog.updateEntry(logId, { status: 'success', message: t('activity.box_folder_locked', { provider: 'Box' }) });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.box_folder_lock_error', { provider: 'Box' }) }); }
           },
         });
         items.push({
@@ -14739,8 +14740,8 @@ const App: React.FC = () => {
               const removed = await unlockBoxFolder(invoke, file.path);
               if (removed > 0) notify.success(t('box.folderUnlocked'));
               else notify.info(t('box.folderNotLocked'));
-              humanLog.updateEntry(logId, { status: 'success', message: removed > 0 ? '[Box] Unlocked folder' : '[Box] Folder was not locked' });
-            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Unlock folder failed' }); }
+              humanLog.updateEntry(logId, { status: 'success', message: t(removed > 0 ? 'activity.box_folder_unlocked' : 'activity.box_folder_not_locked', { provider: 'Box' }) });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.box_folder_unlock_error', { provider: 'Box' }) }); }
           },
           divider: true,
         });
@@ -14873,8 +14874,8 @@ const App: React.FC = () => {
               await invoke('google_drive_set_starred', { paths: [file.path], starred: !isStarred });
               notify.success(isStarred ? t('googledrive.unstarred') : t('googledrive.starred'));
               loadRemoteFiles(undefined, true);
-              humanLog.updateEntry(logId, { status: 'success', message: isStarred ? '[Google Drive] Unstarred file' : '[Google Drive] Starred file' });
-            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: isStarred ? '[Google Drive] Unstar failed' : '[Google Drive] Star failed' }); }
+              humanLog.updateEntry(logId, { status: 'success', message: t(isStarred ? 'activity.gdrive_unstarred' : 'activity.gdrive_starred', { provider: 'Google Drive' }) });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: t(isStarred ? 'activity.gdrive_unstar_error' : 'activity.gdrive_star_error', { provider: 'Google Drive' }) }); }
           },
         });
         // Google Drive: Comments (single file only): read, add, delete
@@ -15299,7 +15300,7 @@ const App: React.FC = () => {
         },
       } as ContextMenuItem] : []),
       {
-        label: 'Open with default app',
+        label: t('contextMenu.openWithDefaultApp'),
         icon: <ExternalLink size={14} />,
         action: () => handleOpenWithDefaultApp(file),
         disabled: count > 1,
@@ -15652,15 +15653,15 @@ const App: React.FC = () => {
               onSubmit: async (password: string) => {
                 const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
                 notify.info(t('contextMenu.extracting'), file.name);
-                const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+                const logId = activityLog.log('INFO', createSubfolder ? t('activity.extract_start_to', { filename: file.name, dest }) : t('activity.extract_start', { filename: file.name }), 'running');
                 const toastOpts = { filename: file.name, archiveBytes: file.size };
                 try {
                   const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: extractOutputDir, createSubfolder: extractCreateSubfolder, password, toastOpts });
-                  activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
+                  activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: file.name, dest }) : t('activity.extract_success', { filename: file.name }), details: formatExtractDetails(file.size ?? 0, extractedTotal) });
                   notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
                   await loadLocalFiles(currentLocalPath);
                 } catch (err) {
-                  activityLog.updateEntry(logId, { status: 'error', message: `Extraction failed: ${String(err)}` });
+                  activityLog.updateEntry(logId, { status: 'error', message: t('activity.extract_error', { error: String(err) }) });
                   // Wrong password stays inline for retry; a real failure surfaces
                   // its true message inline too (the user can cancel).
                   throw new Error(isWrongPasswordError(err) ? t('contextMenu.wrongPassword') : String(err));
@@ -15676,15 +15677,15 @@ const App: React.FC = () => {
           }
           const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
           notify.info(t('contextMenu.extracting'), file.name);
-          const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+          const logId = activityLog.log('INFO', createSubfolder ? t('activity.extract_start_to', { filename: file.name, dest }) : t('activity.extract_start', { filename: file.name }), 'running');
           const toastOpts = { filename: file.name, archiveBytes: file.size };
           const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : isTarArchive ? 'tar' : isSingleArchive ? 'single' : 'zip';
           const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: extractOutputDir, createSubfolder: extractCreateSubfolder, password: null, toastOpts });
-          activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
+          activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: file.name, dest }) : t('activity.extract_success', { filename: file.name }), details: formatExtractDetails(file.size ?? 0, extractedTotal) });
           notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
           await loadLocalFiles(currentLocalPath);
         } catch (err) {
-          activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
+          activityLog.log('ERROR', t('activity.extract_error', { error: String(err) }), 'error');
           notify.error(t('contextMenu.extractionFailed'), String(err));
         }
       };
@@ -15776,7 +15777,7 @@ const App: React.FC = () => {
         },
       });
       items.push({
-        label: 'Cross-Profile Transfer',
+        label: t('transfer.crossProfile.title'),
         icon: <ArrowRight size={14} className="text-indigo-500" />,
         action: () => setShowCrossProfilePanel({}),
       });
@@ -15945,8 +15946,8 @@ const App: React.FC = () => {
                   const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'writer', folderPath: currentRemotePath || '' });
                   notify.success('Zoho Writer', url);
                   loadRemoteFiles(undefined, true);
-                  humanLog.updateEntry(logId, { status: 'success', message: '[Zoho WorkDrive] Created Writer document' });
-                } catch (err) { notify.error('Create failed', String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Zoho WorkDrive] Create Writer document failed' }); }
+                  humanLog.updateEntry(logId, { status: 'success', message: t('activity.zoho_document_created', { provider: 'Zoho WorkDrive', type: 'Writer' }) });
+                } catch (err) { notify.error(t('toast.createFailed'), String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.zoho_document_create_error', { provider: 'Zoho WorkDrive', type: 'Writer' }) }); }
               },
             });
           },
@@ -15967,8 +15968,8 @@ const App: React.FC = () => {
                   const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'sheet', folderPath: currentRemotePath || '' });
                   notify.success('Zoho Sheet', url);
                   loadRemoteFiles(undefined, true);
-                  humanLog.updateEntry(logId, { status: 'success', message: '[Zoho WorkDrive] Created Sheet document' });
-                } catch (err) { notify.error('Create failed', String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Zoho WorkDrive] Create Sheet document failed' }); }
+                  humanLog.updateEntry(logId, { status: 'success', message: t('activity.zoho_document_created', { provider: 'Zoho WorkDrive', type: 'Sheet' }) });
+                } catch (err) { notify.error(t('toast.createFailed'), String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.zoho_document_create_error', { provider: 'Zoho WorkDrive', type: 'Sheet' }) }); }
               },
             });
           },
@@ -15990,8 +15991,8 @@ const App: React.FC = () => {
                   const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'show', folderPath: currentRemotePath || '' });
                   notify.success('Zoho Show', url);
                   loadRemoteFiles(undefined, true);
-                  humanLog.updateEntry(logId, { status: 'success', message: '[Zoho WorkDrive] Created Show document' });
-                } catch (err) { notify.error('Create failed', String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Zoho WorkDrive] Create Show document failed' }); }
+                  humanLog.updateEntry(logId, { status: 'success', message: t('activity.zoho_document_created', { provider: 'Zoho WorkDrive', type: 'Show' }) });
+                } catch (err) { notify.error(t('toast.createFailed'), String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.zoho_document_create_error', { provider: 'Zoho WorkDrive', type: 'Show' }) }); }
               },
             });
           },
@@ -16905,7 +16906,7 @@ const App: React.FC = () => {
                         // Track deleted IDs so Zoho GET cache won't re-show them
                         zohoDeletedLinkIds.add(link.id);
                         notify.success(t('contextMenu.shareLinkDeleted'), link.id);
-                        humanLog.updateEntry(logId, { status: 'success', message: '[Zoho WorkDrive] Deleted share link' });
+                        humanLog.updateEntry(logId, { status: 'success', message: t('activity.share_link_deleted', { provider: 'Zoho WorkDrive' }) });
                         setZohoShareLinksDialog(prev => prev ? { ...prev, links: prev.links.filter(l => l.id !== link.id) } : null);
                       }} className="px-2 py-0.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-[11px] font-medium">
                         <Trash2 size={12} className="inline mr-1" />{t('common.delete') || 'Delete'}
@@ -17801,8 +17802,8 @@ const App: React.FC = () => {
                     try {
                       await invoke('filelu_set_folder_settings', { path: d.path, filedrop: d.filedrop, isPublic: d.isPublic });
                       notify.success(t('filelu.folderSettingsSaved'));
-                      humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Updated folder settings' });
-                    } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Update folder settings failed' }); }
+                      humanLog.updateEntry(logId, { status: 'success', message: t('activity.filelu_folder_settings_success', { provider: 'FileLu' }) });
+                    } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: t('activity.filelu_folder_settings_error', { provider: 'FileLu' }) }); }
                     setFileLuFolderSettingsDialog(null);
                   }}
                   className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
@@ -17866,7 +17867,7 @@ const App: React.FC = () => {
               const outputPath = `${compressDialogState.outputDir}/${opts.archiveName}${ext}`;
               const paths = compressDialogState.files.map(f => f.path);
               const inputBytes = compressDialogState.files.reduce((sum, f) => sum + (f.size || 0), 0);
-              const logId = activityLog.log('INFO', `Compressing to ${opts.archiveName}${ext}...`, 'running');
+              const logId = activityLog.log('INFO', t('activity.compress_start', { archive: `${opts.archiveName}${ext}` }), 'running');
               try {
                 if (opts.format === 'zip') {
                   await invoke<string>('compress_files', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
@@ -17886,7 +17887,7 @@ const App: React.FC = () => {
                   outputBytes = props?.size ?? 0;
                 } catch { /* size stays 0 -> log reports input only, no fake ratio */ }
                 const suffix = opts.password ? ' (AES-256)' : '';
-                activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}`, details: formatCompressDetails(inputBytes, outputBytes) });
+                activityLog.updateEntry(logId, { status: 'success', message: t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }), details: formatCompressDetails(inputBytes, outputBytes) });
                 notify.success(t('toast.compressed'), t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }));
                 await loadLocalFiles(currentLocalPath);
                 // Keep the dialog open so it can present the completion stats

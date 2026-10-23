@@ -73,11 +73,11 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
       for (const itemId of itemIds) {
         await invoke('onedrive_restore_from_trash', { itemId });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[OneDrive] Restored ${itemIds.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'OneDrive', count: itemIds.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[OneDrive] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'OneDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -101,11 +101,11 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
       for (const itemId of itemIds) {
         await invoke('onedrive_permanent_delete', { itemId });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[OneDrive] Permanently deleted ${itemIds.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'OneDrive', count: itemIds.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[OneDrive] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'OneDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

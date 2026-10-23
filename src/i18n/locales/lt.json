@@ -433,7 +433,10 @@
             "localFilesLabel": "Vietiniai failai",
             "localFilesRightLabel": "Vietiniai failai (dešinysis skydelis)",
             "remoteFilesLabel": "Nuotoliniai failai",
-            "rightPanelMarker": "Dešinysis skydelis"
+            "rightPanelMarker": "Dešinysis skydelis",
+            "chooseRightPanelFolder": "Pasirinkite dešiniojo skydelio aplanką",
+            "chooseLeftPanelFolder": "Pasirinkite kairiojo skydelio aplanką",
+            "localRight": "Vietinis (dešinė)"
         },
         "contextMenu": {
             "askAeroAgent": "Klausti AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Nustatyti kaip privačią",
             "setAsPublic": "Nustatyti kaip viešą",
             "makeAllPrivate": "Padaryti visus privačius",
-            "dropboxRestoreLimit": "AeroFTP gali atkurti atkuriamas failų versijas. Aplankus atkurkite dropbox.com skiltyje „Ištrinti failai“. Klaustukas reiškia, kad Dropbox neatpažino elemento tipo."
+            "dropboxRestoreLimit": "AeroFTP gali atkurti atkuriamas failų versijas. Aplankus atkurkite dropbox.com skiltyje „Ištrinti failai“. Klaustukas reiškia, kad Dropbox neatpažino elemento tipo.",
+            "openWithDefaultApp": "Atidaryti numatytąja programa"
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Debesies sinchronizavimo sąranka",
             "onePerLineHint": "(po vieną eilutėje)",
             "pairsEditorLabel": "AeroCloud porų redaktorius",
-            "remoteSubfolderPlaceholder": "debesis"
+            "remoteSubfolderPlaceholder": "debesis",
+            "countdownSoon": "Netrukus..."
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Perdavimas nepavyko",
             "navigationFailed": "Nepavyko naršyti: {error}",
             "transferComplete": "Nukopijuota failų: {count}",
-            "permissionsSessionChanged": "Ryšys pasikeitė nuo šio dialogo atidarymo, todėl niekas nebuvo pakeista. Atidarykite Teises dar kartą dabartiniame ryšyje."
+            "permissionsSessionChanged": "Ryšys pasikeitė nuo šio dialogo atidarymo, todėl niekas nebuvo pakeista. Atidarykite Teises dar kartą dabartiniame ryšyje.",
+            "createFailed": "Sukurti nepavyko"
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kūrėjų įrankių rinkinys.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Atrakinamas aplankas {filename}...",
             "site_replied": "{command}: serveris atsakė {code}",
             "site_unknown": "{command}: išsamaus atsakymo nėra, rezultatas nežinomas",
-            "site_not_sent": "{command} nebuvo išsiųsta"
+            "site_not_sent": "{command} nebuvo išsiųsta",
+            "b2_hidden_restore_success_one": "[{provider}] Atkurtas {count} paslėptas failas",
+            "b2_hidden_restore_success_many": "[{provider}] Atkurta paslėptų failų: {count}",
+            "b2_hidden_restore_error": "[{provider}] Nepavyko atkurti paslėptų failų",
+            "b2_hidden_delete_success": "[{provider}] Visam laikui ištrinta failų: {count} (išvalyta versijų: {versions})",
+            "trash_restore_detail_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}",
+            "trash_empty_detail_success": "[{provider}] Šiukšlinė išvalyta (pašalinta failų: {files}, aplankų: {folders})",
+            "trash_empty_objects_one": "[{provider}] Šiukšlinė išvalyta ({count} objektas)",
+            "trash_empty_objects_many": "[{provider}] Šiukšlinė išvalyta (objektų: {count})",
+            "trash_object_purge_success": "[{provider}] Visam laikui pašalinta: {key}",
+            "trash_object_purge_error": "[{provider}] Nepavyko visam laikui pašalinti {key}",
+            "trash_object_undelete_success": "[{provider}] Atšauktas ištrynimas: {key}",
+            "trash_object_undelete_error": "[{provider}] Nepavyko atšaukti {key} ištrynimo",
+            "trash_object_restore_success": "[{provider}] Atkurta: {key}",
+            "trash_object_restore_error": "[{provider}] Nepavyko atkurti {key}",
+            "opendrive_access_set": "[{provider}] Prieiga nustatyta į {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Prieigos {level} nustatymas: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Nepavyko nustatyti prieigos {level}",
+            "download_folder_success": "Aplankas {path} atsisiųstas per {seconds} s",
+            "skipped_file": "Praleista: {filename}",
+            "filelu_made_public": "[{provider}] Failas padarytas viešu",
+            "filelu_make_public_error": "[{provider}] Nepavyko padaryti failo viešu",
+            "filelu_made_private": "[{provider}] Failas padarytas privačiu",
+            "filelu_make_private_error": "[{provider}] Nepavyko padaryti failo privačiu",
+            "filelu_file_password_set": "[{provider}] Nustatytas failo slaptažodis",
+            "filelu_file_password_error": "[{provider}] Nepavyko nustatyti failo slaptažodžio",
+            "filelu_folder_password_set": "[{provider}] Aplanko slaptažodis nustatytas",
+            "filelu_folder_password_error": "[{provider}] Nepavyko nustatyti aplanko slaptažodžio",
+            "filelu_public_share_success": "[{provider}] Failas padarytas viešas + bendrinamas",
+            "filelu_public_share_error": "[{provider}] Nepavyko padaryti viešu + bendrinti",
+            "filelu_folder_settings_success": "[{provider}] Aplanko nustatymai atnaujinti",
+            "filelu_folder_settings_error": "[{provider}] Nepavyko atnaujinti aplanko nustatymų",
+            "set_private_success": "[{provider}] Nustatyta kaip privatu",
+            "set_private_error": "[{provider}] Nepavyko nustatyti kaip privataus",
+            "set_public_success": "[{provider}] Nustatyta kaip vieša",
+            "set_public_error": "[{provider}] Nepavyko nustatyti kaip viešo",
+            "bulk_private_success_one": "[{provider}] {count} įrašas nustatytas kaip privatus",
+            "bulk_private_success_many": "[{provider}] {count} įrašai nustatyti kaip privatūs",
+            "bulk_private_partial": "[{provider}] {ok}/{total} įrašai nustatyti kaip privatūs",
+            "bulk_private_error": "[{provider}] Nepavyko masiškai nustatyti kaip privačių",
+            "box_watermark_set": "[{provider}] Vandens ženklas nustatytas",
+            "box_watermark_set_error": "[{provider}] Nepavyko nustatyti vandens ženklo",
+            "box_watermark_removed": "[{provider}] Vandens ženklas pašalintas",
+            "box_watermark_remove_error": "[{provider}] Nepavyko pašalinti vandens ženklo",
+            "box_folder_locked": "[{provider}] Aplankas užrakintas",
+            "box_folder_lock_error": "[{provider}] Nepavyko užrakinti aplanko",
+            "box_folder_unlocked": "[{provider}] Aplankas atrakintas",
+            "box_folder_not_locked": "[{provider}] Aplankas nebuvo užrakintas",
+            "box_folder_unlock_error": "[{provider}] Nepavyko atrakinti aplanko",
+            "gdrive_starred": "[{provider}] Failas pažymėtas žvaigždute",
+            "gdrive_unstarred": "[{provider}] Žvaigždutė pašalinta nuo failo",
+            "gdrive_star_error": "[{provider}] Nepavyko pažymėti žvaigždute",
+            "gdrive_unstar_error": "[{provider}] Nepavyko pašalinti žvaigždutės",
+            "extract_success": "Išskleista {filename}",
+            "extract_success_to": "Išskleista {filename} → {dest}",
+            "extract_error": "Išskleisti nepavyko: {error}",
+            "zoho_document_created": "[{provider}] Sukurtas {type} dokumentas",
+            "zoho_document_create_error": "[{provider}] Nepavyko sukurti {type} dokumento",
+            "note_saved": "[{provider}] Išsaugota pastaba \"{title}\"",
+            "note_save_error": "[{provider}] Nepavyko išsaugoti pastabos",
+            "note_created": "[{provider}] Sukurta pastaba \"{title}\"",
+            "note_create_error": "[{provider}] Nepavyko sukurti pastabos",
+            "note_favorited": "[{provider}] Pastaba \"{title}\" pridėta prie mėgstamų",
+            "note_unfavorited": "[{provider}] Pastaba \"{title}\" pašalinta iš mėgstamų",
+            "note_favorite_error": "[{provider}] Nepavyko perjungti mėgstamos",
+            "note_pinned": "[{provider}] Prisegta pastaba \"{title}\"",
+            "note_unpinned": "[{provider}] Atsegta pastaba \"{title}\"",
+            "note_pin_error": "[{provider}] Nepavyko perjungti prisegimo",
+            "note_trashed": "[{provider}] Pastaba \"{title}\" perkelta į šiukšlinę",
+            "note_trash_error": "[{provider}] Nepavyko perkelti pastabos į šiukšlinę",
+            "note_restored": "[{provider}] Atkurta pastaba \"{title}\"",
+            "note_restore_error": "[{provider}] Nepavyko atkurti pastabos",
+            "note_deleted": "[{provider}] Pastaba \"{title}\" ištrinta visam laikui",
+            "note_delete_error": "[{provider}] Nepavyko ištrinti pastabos visam laikui",
+            "note_archived": "[{provider}] Pastaba \"{title}\" suarchyvuota",
+            "note_archive_error": "[{provider}] Nepavyko suarchyvuoti pastabos",
+            "note_version_restored": "[{provider}] Pastabos versija atkurta",
+            "note_version_restore_error": "[{provider}] Nepavyko atkurti pastabos versijos",
+            "github_pages_config_updated": "[{provider}] Pages konfigūracija atnaujinta",
+            "github_pages_config_error": "[{provider}] Nepavyko atnaujinti Pages konfigūracijos",
+            "opendrive_set_access": "[{provider}] Nustatoma prieiga failui {filename}...",
+            "gdrive_star": "[{provider}] Žymima žvaigždute {filename}...",
+            "gdrive_unstar": "[{provider}] Šalinama žvaigždutė nuo {filename}...",
+            "extract_start": "Išskleidžiama {filename}...",
+            "extract_start_to": "Išskleidžiama {filename} → {dest}...",
+            "compress_start": "Glaudinama į {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, aplankų: {folders}",
+            "trash_restore_detail_present_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, jau yra: {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, aplankų: {folders}, jau yra: {present}",
+            "filelu_file_password_removed": "[{provider}] Pašalintas failo slaptažodis",
+            "filelu_folder_password_removed": "[{provider}] Aplanko slaptažodis pašalintas"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Išimtys",
             "templateLocal": "Vietinis",
             "templateRemote": "Nuotolinis",
-            "templateRetries": "Pakartojimai"
+            "templateRetries": "Pakartojimai",
+            "rollbackRestoreLocalCount": "vietiniai {count}",
+            "rollbackRestoreRemoteCount": "nuotoliniai {count}",
+            "rollbackRestoreSkippedCount": "praleisti {count}",
+            "rollbackRestoreFailedCount": "nepavykę {count}",
+            "rollbackRestoreCompleted": "Atkūrimas baigtas: {summary}",
+            "rollbackRestoreNothing": "Nėra ką atkurti",
+            "rollbackRestoreFailed": "Atkūrimas nepavyko: {error}"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Leisti šiai sesijai",
                 "nonAtomicReplace": "Neatominis pakeitimas: failas trumpam pranyksta",
                 "moreOptions": "Daugiau parinkčių",
-                "panelAria": "Įrankių patvirtinimo skydelis"
+                "panelAria": "Įrankių patvirtinimo skydelis",
+                "previewFailed": "Peržiūra nepavyko"
             },
             "settings": {
                 "title": "AI nustatymai",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Palaiko įrankius",
                 "supportsVision": "Palaiko vaizdą",
                 "thinkingReasoning": "Mąstymas/Samprotavimas",
-                "toolQuality": "Įrankių kokybė: {quality}/5"
+                "toolQuality": "Įrankių kokybė: {quality}/5",
+                "ollamaNotReachable": "Ollama nepasiekiama"
             },
             "copy": "Kopijuoti",
             "attachImage": "Pridėti vaizdą",
@@ -3423,7 +3528,8 @@
                     "title": "Diagnostika",
                     "truncated": "Diagnostikos sąrašas buvo sutrumpintas.",
                     "warningCountMany": "{count} įspėjimai",
-                    "warningCountOne": "{count} įspėjimas"
+                    "warningCountOne": "{count} įspėjimas",
+                    "noLocation": "(be vietos)"
                 },
                 "search": {
                     "none": "Atitikmenų nerasta.",
@@ -3522,7 +3628,15 @@
                 "destination": "Paskirtis: {destination}",
                 "title": "Perdavimo plano peržiūra",
                 "warnings": "Įspėjimai"
-            }
+            },
+            "voiceNoAudio": "Garsas neįrašytas.",
+            "voiceDownloadingModel": "Atsisiunčiamas vietinis balso modelis...",
+            "voiceNoSpeech": "Kalba neaptikta.",
+            "voiceReady": "Balso įvestis paruošta.",
+            "voiceReadyLanguage": "Balso įvestis paruošta ({language}).",
+            "voiceTranscriptionFailed": "Vietinė transkripcija nepavyko.",
+            "voiceListeningLocally": "Klausomasi vietoje...",
+            "voiceMicrophoneFailed": "Nepavyko pasiekti mikrofono."
         },
         "archive": {
             "passwordRequired": "Šis archyvas apsaugotas slaptažodžiu",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator 8 formatas: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM turinys",
             "featureNameCipher": "AES-SIV pavadinimai",
-            "formatVersion": "Formatas {version}"
+            "formatVersion": "Formatas {version}",
+            "invalidVaultName": "Netinkami simboliai saugyklos pavadinime"
         },
         "compress": {
             "title": "Suspausti failus",
@@ -4161,7 +4276,8 @@
             "total": "Iš viso",
             "across": "per",
             "empty": "Šis katalogas tuščias",
-            "hoverHint": "Užveskite pelę ant bloko norėdami pamatyti detales"
+            "hoverHint": "Užveskite pelę ant bloko norėdami pamatyti detales",
+            "scanUnknownError": "Nežinoma klaida nuskaitant disko naudojimą"
         },
         "dependencies": {
             "title": "Priklausomybės",
@@ -4575,7 +4691,8 @@
                 "unmute": "Įjungti garsą (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 nepalaikomas"
+                "notSupported": "WebGL 2 nepalaikomas",
+                "contextLost": "Prarastas WebGL kontekstas"
             },
             "clickToViewDetails": "Spustelėkite ant failo, kad peržiūrėtumėte jo informaciją",
             "copyPath": "Kopijuoti kelią",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Ilgis (baitais)",
             "argon2DefaultsHint": "Numatytosios reikšmės: profilis, kurį naudoja AeroVault ir AeroCrypt (128 MiB, 4 iteracijos, 4 juostos, 32 baitų išvestis). Aukščiau esanti druska yra jūsų. Atmintis iki 2 GiB.",
             "argon2Derive": "Išvesti",
-            "argon2Phc": "PHC eilutė"
+            "argon2Phc": "PHC eilutė",
+            "hashError": "Klaida: {error}"
         },
         "dialog": {
             "deleteFile": "Ištrinti \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Pašalinti žymą",
             "manageTags": "Tvarkyti žymas",
             "deleteTagConfirm": "Ištrinti žymą „{name}“? Užrašai išsaugo savo tekstą.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Tekstas",
+                "markdown": "Markdown",
+                "code": "Kodas",
+                "richText": "Raiškusis tekstas",
+                "checklist": "Kontrolinis sąrašas"
+            }
         },
         "shareLinkModal": {
             "title": "Bendrinimo nuoroda",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Pasirinkite paskirties aplanką",
             "passwordPrompt": "Šis elementas užšifruotas. Įveskite slaptažodį, kad išskleistumėte.",
             "showPassword": "Rodyti slaptažodį",
-            "hidePassword": "Slėpti slaptažodį"
+            "hidePassword": "Slėpti slaptažodį",
+            "missingPayload": "Trūksta išskleidimo duomenų"
         },
         "provider": {
             "modes": {

@@ -433,7 +433,10 @@
             "localFilesLabel": "Локални файлове",
             "localFilesRightLabel": "Локални файлове (десен панел)",
             "remoteFilesLabel": "Отдалечени файлове",
-            "rightPanelMarker": "Десен панел"
+            "rightPanelMarker": "Десен панел",
+            "chooseRightPanelFolder": "Изберете папка за десния панел",
+            "chooseLeftPanelFolder": "Изберете папка за левия панел",
+            "localRight": "Локално (дясно)"
         },
         "contextMenu": {
             "askAeroAgent": "Питай AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Задаване като частен",
             "setAsPublic": "Задаване като публичен",
             "makeAllPrivate": "Направи всички частни",
-            "dropboxRestoreLimit": "AeroFTP може да възстановява възстановими версии на файлове. Възстановявайте папки от „Изтрити файлове“ на dropbox.com. Въпросителният знак означава, че Dropbox не е определил типа на елемента."
+            "dropboxRestoreLimit": "AeroFTP може да възстановява възстановими версии на файлове. Възстановявайте папки от „Изтрити файлове“ на dropbox.com. Въпросителният знак означава, че Dropbox не е определил типа на елемента.",
+            "openWithDefaultApp": "Отваряне с приложението по подразбиране"
         },
         "transfer": {
             "transferring": "Прехвърляне...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Настройване на облачната синхронизация",
             "onePerLineHint": "(по един на ред)",
             "pairsEditorLabel": "Редактор на двойки AeroCloud",
-            "remoteSubfolderPlaceholder": "облак"
+            "remoteSubfolderPlaceholder": "облак",
+            "countdownSoon": "Скоро..."
         },
         "statusBar": {
             "connected": "Свързан",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Прехвърлянето е неуспешно",
             "navigationFailed": "Навигацията е неуспешна: {error}",
             "transferComplete": "{count} копирани файла",
-            "permissionsSessionChanged": "Връзката се е променила, откакто този диалог беше отворен, затова нищо не беше променено. Отворете отново Права на текущата връзка."
+            "permissionsSessionChanged": "Връзката се е променила, откакто този диалог беше отворен, затова нищо не беше променено. Отворете отново Права на текущата връзка.",
+            "createFailed": "Създаването е неуспешно"
         },
         "about": {
             "tagline": "Повече от FTP. Пълен набор инструменти за разработчици.",
@@ -1891,7 +1897,97 @@
             "box_unlock_folder": "[Box] Отключване на папка {filename}...",
             "site_replied": "{command}: сървърът отговори {code}",
             "site_unknown": "{command}: няма пълен отговор, резултатът е неизвестен",
-            "site_not_sent": "{command} не беше изпратена"
+            "site_not_sent": "{command} не беше изпратена",
+            "b2_hidden_restore_success_one": "[{provider}] Възстановен {count} скрит файл",
+            "b2_hidden_restore_success_many": "[{provider}] Възстановени {count} скрити файла",
+            "b2_hidden_restore_error": "[{provider}] Неуспешно възстановяване на скрити файлове",
+            "b2_hidden_delete_success": "[{provider}] Окончателно изтрити {count} файла ({versions} версии изчистени)",
+            "trash_restore_detail_success": "[{provider}] Възстановени {files} файла от кошчето",
+            "trash_empty_detail_success": "[{provider}] Кошчето е изпразнено ({files} файла, {folders} папки изчистени)",
+            "trash_empty_objects_one": "[{provider}] Кошчето е изпразнено ({count} обект)",
+            "trash_empty_objects_many": "[{provider}] Кошчето е изпразнено ({count} обекта)",
+            "trash_object_purge_success": "[{provider}] Изчистен {key}",
+            "trash_object_purge_error": "[{provider}] Неуспешно изчистване на {key}",
+            "trash_object_undelete_success": "[{provider}] Отменено изтриване на {key}",
+            "trash_object_undelete_error": "[{provider}] Неуспешна отмяна на изтриването на {key}",
+            "trash_object_restore_success": "[{provider}] Възстановен {key}",
+            "trash_object_restore_error": "[{provider}] Неуспешно възстановяване на {key}",
+            "opendrive_access_set": "[{provider}] Достъпът е зададен на {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Задаване на достъп {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Задаването на достъп {level} не бе успешно",
+            "download_folder_success": "Папката {path} е изтеглена за {seconds} с",
+            "skipped_file": "Пропуснат {filename}",
+            "filelu_made_public": "[{provider}] Файлът е направен публичен",
+            "filelu_make_public_error": "[{provider}] Неуспешно правене на файла публичен",
+            "filelu_made_private": "[{provider}] Файлът е направен частен",
+            "filelu_make_private_error": "[{provider}] Неуспешно правене на файла частен",
+            "filelu_file_password_set": "[{provider}] Зададена е парола за файла",
+            "filelu_file_password_error": "[{provider}] Неуспешно задаване на парола за файла",
+            "filelu_folder_password_set": "[{provider}] Паролата на папката е зададена",
+            "filelu_folder_password_error": "[{provider}] Неуспешно задаване на парола на папката",
+            "filelu_public_share_success": "[{provider}] Файлът е направен публичен + споделен",
+            "filelu_public_share_error": "[{provider}] Неуспешно правене публичен + споделяне",
+            "filelu_folder_settings_success": "[{provider}] Настройките на папката са обновени",
+            "filelu_folder_settings_error": "[{provider}] Неуспешно обновяване на настройките на папката",
+            "set_private_success": "[{provider}] Зададено като лично",
+            "set_private_error": "[{provider}] Неуспешно задаване като лично",
+            "set_public_success": "[{provider}] Зададено като публично",
+            "set_public_error": "[{provider}] Неуспешно задаване като публично",
+            "bulk_private_success_one": "[{provider}] {count} елемент е зададен като личен",
+            "bulk_private_success_many": "[{provider}] {count} елемента са зададени като лични",
+            "bulk_private_partial": "[{provider}] {ok}/{total} елемента са зададени като лични",
+            "bulk_private_error": "[{provider}] Неуспешно групово задаване като лични",
+            "box_watermark_set": "[{provider}] Воденият знак е зададен",
+            "box_watermark_set_error": "[{provider}] Неуспешно задаване на воден знак",
+            "box_watermark_removed": "[{provider}] Воденият знак е премахнат",
+            "box_watermark_remove_error": "[{provider}] Неуспешно премахване на воден знак",
+            "box_folder_locked": "[{provider}] Папката е заключена",
+            "box_folder_lock_error": "[{provider}] Неуспешно заключване на папката",
+            "box_folder_unlocked": "[{provider}] Папката е отключена",
+            "box_folder_not_locked": "[{provider}] Папката не беше заключена",
+            "box_folder_unlock_error": "[{provider}] Неуспешно отключване на папката",
+            "gdrive_starred": "[{provider}] Файлът е отбелязан със звезда",
+            "gdrive_unstarred": "[{provider}] Звездата е премахната от файла",
+            "gdrive_star_error": "[{provider}] Неуспешно отбелязване със звезда",
+            "gdrive_unstar_error": "[{provider}] Неуспешно премахване на звезда",
+            "extract_success": "Извлечен {filename}",
+            "extract_success_to": "Извлечен {filename} → {dest}",
+            "extract_error": "Неуспешно извличане: {error}",
+            "zoho_document_created": "[{provider}] Създаден документ {type}",
+            "zoho_document_create_error": "[{provider}] Неуспешно създаване на документ {type}",
+            "note_saved": "[{provider}] Запазена бележка \"{title}\"",
+            "note_save_error": "[{provider}] Неуспешно запазване на бележката",
+            "note_created": "[{provider}] Създадена бележка \"{title}\"",
+            "note_create_error": "[{provider}] Неуспешно създаване на бележката",
+            "note_favorited": "[{provider}] Бележката \"{title}\" е добавена в любими",
+            "note_unfavorited": "[{provider}] Бележката \"{title}\" е премахната от любими",
+            "note_favorite_error": "[{provider}] Неуспешна смяна на любимо",
+            "note_pinned": "[{provider}] Закачена бележка \"{title}\"",
+            "note_unpinned": "[{provider}] Откачена бележка \"{title}\"",
+            "note_pin_error": "[{provider}] Неуспешна смяна на закачването",
+            "note_trashed": "[{provider}] Бележката \"{title}\" е преместена в кошчето",
+            "note_trash_error": "[{provider}] Неуспешно преместване на бележката в кошчето",
+            "note_restored": "[{provider}] Възстановена бележка \"{title}\"",
+            "note_restore_error": "[{provider}] Неуспешно възстановяване на бележката",
+            "note_deleted": "[{provider}] Бележката \"{title}\" е изтрита окончателно",
+            "note_delete_error": "[{provider}] Неуспешно окончателно изтриване на бележката",
+            "note_archived": "[{provider}] Бележката \"{title}\" е архивирана",
+            "note_archive_error": "[{provider}] Неуспешно архивиране на бележката",
+            "note_version_restored": "[{provider}] Версията на бележката е възстановена",
+            "note_version_restore_error": "[{provider}] Неуспешно възстановяване на версията на бележката",
+            "github_pages_config_updated": "[{provider}] Конфигурацията на Pages е обновена",
+            "github_pages_config_error": "[{provider}] Неуспешно обновяване на конфигурацията на Pages",
+            "opendrive_set_access": "[{provider}] Задаване на достъп за {filename}...",
+            "gdrive_star": "[{provider}] Отбелязване със звезда на {filename}...",
+            "gdrive_unstar": "[{provider}] Премахване на звездата от {filename}...",
+            "extract_start": "Извличане на {filename}...",
+            "extract_start_to": "Извличане на {filename} → {dest}...",
+            "compress_start": "Компресиране в {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Възстановени {files} файл(а), {folders} папка(и) от кошчето",
+            "trash_restore_detail_present_success": "[{provider}] Възстановени {files} файл(а) от кошчето, {present} вече налични",
+            "trash_restore_detail_folders_present_success": "[{provider}] Възстановени {files} файл(а), {folders} папка(и) от кошчето, {present} вече налични",
+            "filelu_file_password_removed": "[{provider}] Премахната е паролата на файла",
+            "filelu_folder_password_removed": "[{provider}] Паролата на папката е премахната"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -2481,7 +2577,14 @@
             "templateExcludes": "Изключения",
             "templateLocal": "Локално",
             "templateRemote": "Отдалечено",
-            "templateRetries": "Повторни опити"
+            "templateRetries": "Повторни опити",
+            "rollbackRestoreLocalCount": "локални {count}",
+            "rollbackRestoreRemoteCount": "отдалечени {count}",
+            "rollbackRestoreSkippedCount": "пропуснати {count}",
+            "rollbackRestoreFailedCount": "неуспешни {count}",
+            "rollbackRestoreCompleted": "Възстановяването завърши: {summary}",
+            "rollbackRestoreNothing": "Няма нищо за възстановяване",
+            "rollbackRestoreFailed": "Възстановяването е неуспешно: {error}"
         },
         "ui": {
             "syncing": "Синхронизиране...",
@@ -2654,7 +2757,8 @@
                 "allowSession": "Разреши за тази сесия",
                 "nonAtomicReplace": "Неатомарна замяна: файлът временно липсва",
                 "moreOptions": "Още опции",
-                "panelAria": "Панел за одобрение на инструменти"
+                "panelAria": "Панел за одобрение на инструменти",
+                "previewFailed": "Неуспешен преглед"
             },
             "settings": {
                 "title": "AI настройки",
@@ -2816,7 +2920,8 @@
                 "supportsTools": "Поддържа инструменти",
                 "supportsVision": "Поддържа зрение",
                 "thinkingReasoning": "Мислене/Разсъждение",
-                "toolQuality": "Качество на инструментите: {quality}/5"
+                "toolQuality": "Качество на инструментите: {quality}/5",
+                "ollamaNotReachable": "Ollama не е достъпен"
             },
             "copy": "Копиране",
             "attachImage": "Прикачване на изображение",
@@ -3423,7 +3528,8 @@
                     "title": "Диагностика",
                     "truncated": "Списъкът с диагностика беше съкратен.",
                     "warningCountMany": "{count} предупреждения",
-                    "warningCountOne": "{count} предупреждение"
+                    "warningCountOne": "{count} предупреждение",
+                    "noLocation": "(без местоположение)"
                 },
                 "search": {
                     "none": "Няма намерени съвпадения.",
@@ -3522,7 +3628,15 @@
                 "destination": "Местоназначение: {destination}",
                 "title": "Преглед на плана за прехвърляне",
                 "warnings": "Предупреждения"
-            }
+            },
+            "voiceNoAudio": "Не е записано аудио.",
+            "voiceDownloadingModel": "Изтегляне на локален гласов модел...",
+            "voiceNoSpeech": "Не е открита реч.",
+            "voiceReady": "Гласовото въвеждане е готово.",
+            "voiceReadyLanguage": "Гласовото въвеждане е готово ({language}).",
+            "voiceTranscriptionFailed": "Локалното транскрибиране е неуспешно.",
+            "voiceListeningLocally": "Локално слушане...",
+            "voiceMicrophoneFailed": "Няма достъп до микрофона."
         },
         "archive": {
             "passwordRequired": "Този архив е защитен с парола",
@@ -3796,7 +3910,8 @@
             "createFormatBadge": "Cryptomator формат 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Съдържание AES-GCM",
             "featureNameCipher": "Имена AES-SIV",
-            "formatVersion": "Формат {version}"
+            "formatVersion": "Формат {version}",
+            "invalidVaultName": "Невалидни знаци в името на трезора"
         },
         "compress": {
             "title": "Компресиране на файлове",
@@ -4161,7 +4276,8 @@
             "total": "Общо",
             "across": "в",
             "empty": "Тази директория е празна",
-            "hoverHint": "Задръжте курсора върху блок за детайли"
+            "hoverHint": "Задръжте курсора върху блок за детайли",
+            "scanUnknownError": "Неизвестна грешка при сканиране на използването на диска"
         },
         "dependencies": {
             "title": "Зависимости",
@@ -4575,7 +4691,8 @@
                 "unmute": "Включи звука (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 не се поддържа"
+                "notSupported": "WebGL 2 не се поддържа",
+                "contextLost": "Контекстът на WebGL е загубен"
             },
             "clickToViewDetails": "Натиснете върху файл за преглед на детайли",
             "copyPath": "Копирай път",
@@ -4734,7 +4851,8 @@
             "argon2OutputLength": "Дължина (байтове)",
             "argon2DefaultsHint": "По подразбиране: профилът, който използват AeroVault и AeroCrypt (128 MiB, 4 итерации, 4 ленти, 32-байтов изход). Солта по-горе е ваша. Памет до 2 GiB.",
             "argon2Derive": "Извличане",
-            "argon2Phc": "PHC низ"
+            "argon2Phc": "PHC низ",
+            "hashError": "Грешка: {error}"
         },
         "dialog": {
             "deleteFile": "Изтрий \"{name}\"?",
@@ -5301,7 +5419,14 @@
             "removeTag": "Премахни етикета",
             "manageTags": "Управление на етикети",
             "deleteTagConfirm": "Да се изтрие ли етикетът „{name}“? Бележките запазват текста си.",
-            "betaBadge": "БЕТА"
+            "betaBadge": "БЕТА",
+            "noteTypes": {
+                "text": "Текст",
+                "markdown": "Markdown",
+                "code": "Код",
+                "richText": "Форматиран текст",
+                "checklist": "Списък със задачи"
+            }
         },
         "shareLinkModal": {
             "title": "Връзка за споделяне",
@@ -6601,7 +6726,8 @@
             "chooseFolder": "Изберете целева папка",
             "passwordPrompt": "Този елемент е криптиран. Въведете паролата за извличане.",
             "showPassword": "Показване на паролата",
-            "hidePassword": "Скриване на паролата"
+            "hidePassword": "Скриване на паролата",
+            "missingPayload": "Липсват данни за извличане"
         },
         "provider": {
             "modes": {

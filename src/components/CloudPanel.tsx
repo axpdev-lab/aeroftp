@@ -176,7 +176,7 @@ const CloudDashboard: React.FC<{
             const remainingMs = nextSync - now;
 
             if (remainingMs <= 0) {
-                setCountdown('Soon...');
+                setCountdown(t('cloud.countdownSoon'));
             } else {
                 const totalSecs = Math.floor(remainingMs / 1000);
                 const hours = Math.floor(totalSecs / 3600);
@@ -193,7 +193,7 @@ const CloudDashboard: React.FC<{
         updateCountdown();
         const interval = setInterval(updateCountdown, 1000);
         return () => clearInterval(interval);
-    }, [config.last_sync, config.sync_interval_secs, status.type]);
+    }, [config.last_sync, config.sync_interval_secs, status.type, t]);
 
     const formatLastSync = (timestamp: string | null) => {
         if (!timestamp) return t('cloud.never');
