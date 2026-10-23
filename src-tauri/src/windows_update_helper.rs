@@ -325,14 +325,39 @@ fn find_exe_named(dir: &Path, name: &OsStr) -> Result<PathBuf, String> {
 /// The CLI exes the portable ZIP ships next to the app (#340).
 const PORTABLE_CLI_EXES: &[&str] = &["aeroftp-cli.exe", "aeroftp-dispatch.exe"];
 
+/// The app exe and its copy in the portable ZIP. The copy has a name NTFS
+/// lists before `aeroftp-cli.exe`, so the updater of 4.0.8 to 4.2.4, which
+/// took the first `.exe` of the ZIP, installs the app and not the CLI. It
+/// can go once updates from those versions no longer matter.
+const PORTABLE_APP_EXES: &[&str] = &["AeroFTP.exe", "aeroftp-app.exe"];
+
+/// The exes the helper replaces after the running one: the CLI exes, and the
+/// other copy of the app when a folder extracted by hand has it, so it does
+/// not stay behind at an old version.
+fn companion_exes(current_exe: &Path) -> Vec<&'static str> {
+    let running = current_exe
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let exe_dir = current_exe.parent();
+    let mut names = PORTABLE_CLI_EXES.to_vec();
+    for &app in PORTABLE_APP_EXES {
+        let installed = exe_dir.is_some_and(|dir| dir.join(app).is_file());
+        if installed && !running.eq_ignore_ascii_case(app) {
+            names.push(app);
+        }
+    }
+    names
+}
+
 /// The file the log plugin writes in `portable::log_dir()`, named after the
 /// product. The helper appends to it when it keeps an installed CLI exe.
 const APP_LOG_FILE: &str = "AeroFTP.log";
 
 /// Stages every exe of the update next to the one it replaces: the app exe
-/// and each CLI exe the ZIP holds. Staging touches none of the installed
-/// exes. Any failure removes what was staged and stops the update, so it
-/// installs the three exes of one version or none. Returns the CLI exes
+/// and each of `companion_exes` the ZIP holds. Staging touches none of the
+/// installed exes. Any failure removes what was staged and stops the update,
+/// so it installs the exes of one version or none. Returns the companions
 /// staged, which the helper replaces once the app exe is the new one.
 fn stage_update(staged: &StagedPortable, current_exe: &Path) -> Result<Vec<&'static str>, String> {
     let exe_dir = current_exe
@@ -340,7 +365,7 @@ fn stage_update(staged: &StagedPortable, current_exe: &Path) -> Result<Vec<&'sta
         .ok_or_else(|| "Cannot resolve current exe parent dir".to_string())?;
     stage_beside(&staged.new_exe, current_exe)?;
     let mut cli = Vec::new();
-    for &name in PORTABLE_CLI_EXES {
+    for name in companion_exes(current_exe) {
         let source = staged.stage_dir.join(name);
         if !source.is_file() {
             continue;
@@ -786,6 +811,33 @@ mod tests {
         ("LICENSE.txt", b"license"),
     ];
 
+    /// The same ZIP with the bridge copy of the app the CI adds now.
+    const BRIDGE_ZIP_ENTRIES: [(&str, &[u8]); 7] = [
+        ("AeroFTP.exe", NEW_EXE),
+        ("aeroftp-app.exe", NEW_EXE),
+        ("aeroftp-cli.exe", b"new cli"),
+        ("aeroftp-dispatch.exe", b"new dispatch"),
+        ("portable.marker", b"portable"),
+        ("README.txt", b"readme"),
+        ("LICENSE.txt", b"license"),
+    ];
+
+    /// How the updater of 4.0.8 to 4.2.4 picked the app exe: the first
+    /// `.exe` of the extracted ZIP, in the order the folder lists.
+    fn first_exe_as_before(dir: &Path) -> PathBuf {
+        std::fs::read_dir(dir)
+            .expect("stage dir")
+            .flatten()
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.is_file()
+                    && path
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+            })
+            .expect("an exe")
+    }
+
     fn portable_zip(dir: &Path, entries: &[(&str, &[u8])]) -> PathBuf {
         use std::io::Write;
         let path = dir.join(format!("portable-{}.zip", entries.len()));
@@ -1013,6 +1065,80 @@ mod tests {
         assert_eq!(
             staged.new_exe.file_name().and_then(|n| n.to_str()),
             Some("AeroFTP.exe")
+        );
+    }
+
+    /// The bridge: from the ZIP the CI builds now, the updater of 4.0.8 to
+    /// 4.2.4 takes `aeroftp-app.exe`, which is the app, while this one takes
+    /// `AeroFTP.exe` by name. Without the copy the old one took the CLI.
+    #[test]
+    fn the_old_updater_takes_the_bridge_copy_and_this_one_the_app_by_name() {
+        let root = tempfile::tempdir().expect("temp dir");
+
+        let before = portable_zip(root.path(), &CI_ZIP_ENTRIES);
+        let staged = stage_portable_artifact(&before, OsStr::new("AeroFTP.exe")).expect("staged");
+        let old_pick = first_exe_as_before(&staged.stage_dir);
+        let _ = std::fs::remove_dir_all(&staged.stage_dir);
+        assert_eq!(
+            old_pick.file_name().and_then(|n| n.to_str()),
+            Some("aeroftp-cli.exe")
+        );
+
+        let bridged = portable_zip(root.path(), &BRIDGE_ZIP_ENTRIES);
+        let staged = stage_portable_artifact(&bridged, OsStr::new("AeroFTP.exe")).expect("staged");
+        let old_pick = first_exe_as_before(&staged.stage_dir);
+        let old_content = std::fs::read(&old_pick).expect("old pick");
+        let _ = std::fs::remove_dir_all(&staged.stage_dir);
+        assert_eq!(
+            old_pick.file_name().and_then(|n| n.to_str()),
+            Some("aeroftp-app.exe")
+        );
+        assert_eq!(old_content, NEW_EXE);
+        assert_eq!(
+            staged.new_exe.file_name().and_then(|n| n.to_str()),
+            Some("AeroFTP.exe")
+        );
+    }
+
+    /// A folder without the bridge copy does not get one: the helper does
+    /// not stage or install `aeroftp-app.exe` there.
+    #[test]
+    fn the_bridge_copy_is_not_installed_where_it_was_not() {
+        let fx = fixture();
+        with_cli(&fx);
+        std::fs::write(fx.staged.stage_dir.join("aeroftp-app.exe"), NEW_EXE).expect("bridge");
+        let script = script_for(&fx);
+        assert!(!script.contains("aeroftp-app"), "{script}");
+        run(&fx, &runnable(&script));
+        let mut expected: Vec<String> = THREE_EXES.iter().map(|n| n.to_string()).collect();
+        expected.push("portable.marker".to_string());
+        assert_eq!(names_in(&fx.app), expected);
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+    }
+
+    /// A folder extracted by hand from the bridged ZIP has `aeroftp-app.exe`.
+    /// Updates keep it at the version of the app, after the app swap, and
+    /// when it is the running exe the same goes for `AeroFTP.exe`.
+    #[test]
+    fn a_bridge_copy_extracted_by_hand_is_kept_current() {
+        let fx = fixture();
+        with_cli(&fx);
+        std::fs::write(fx.app.join("aeroftp-app.exe"), OLD_EXE).expect("installed bridge");
+        std::fs::write(fx.staged.stage_dir.join("aeroftp-app.exe"), NEW_EXE).expect("bridge");
+        let script = script_for(&fx);
+        run(&fx, &runnable(&script));
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+        assert_eq!(read(&fx, "aeroftp-app.exe"), NEW_EXE);
+        assert!(!fx.app.join("aeroftp-app.exe.new").exists());
+
+        let running_bridge = companion_exes(&fx.app.join("aeroftp-app.exe"));
+        assert!(
+            running_bridge.contains(&"AeroFTP.exe"),
+            "{running_bridge:?}"
+        );
+        assert!(
+            !running_bridge.contains(&"aeroftp-app.exe"),
+            "{running_bridge:?}"
         );
     }
 
