@@ -1708,7 +1708,8 @@
             "navigationFailed": "이동 실패: {error}",
             "transferComplete": "{count}개 파일을 복사했습니다",
             "permissionsSessionChanged": "이 대화상자를 연 이후 연결이 변경되어 아무것도 변경되지 않았습니다. 현재 연결에서 권한을 다시 여세요.",
-            "createFailed": "생성 실패"
+            "createFailed": "생성 실패",
+            "unknownServer": "알 수 없는 서버"
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} ({percent}% 절약)",
             "compress_details_grew": "{input} → {output} ({percent}% 증가)",
             "extract_details": "{input} → {output} (압축 해제됨)",
-            "download_details": "({size}, {seconds}초)"
+            "download_details": "({size}, {seconds}초)",
+            "transfer_details": "({time} 동안 {size})"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -2506,7 +2508,8 @@
                 "timeout": "타임아웃",
                 "file_locked": "파일 잠김",
                 "disk_error": "디스크 오류",
-                "unknown": "알 수 없음"
+                "unknown": "알 수 없음",
+                "fatal": "치명적 오류"
             },
             "schedulerTitle": "동기화 스케줄러",
             "schedulerEnabled": "스케줄러 활성화",

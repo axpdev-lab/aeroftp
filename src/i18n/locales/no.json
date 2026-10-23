@@ -1708,7 +1708,8 @@
             "navigationFailed": "Navigering mislyktes: {error}",
             "transferComplete": "{count} fil(er) kopiert",
             "permissionsSessionChanged": "Tilkoblingen er endret siden denne dialogen ble åpnet, så ingenting ble endret. Åpne Tillatelser på nytt på den gjeldende tilkoblingen.",
-            "createFailed": "Oppretting mislyktes"
+            "createFailed": "Oppretting mislyktes",
+            "unknownServer": "Ukjent"
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} ({percent} % spart)",
             "compress_details_grew": "{input} → {output} (økte {percent} %)",
             "extract_details": "{input} → {output} (pakket ut)",
-            "download_details": "({size} på {seconds} s)"
+            "download_details": "({size} på {seconds} s)",
+            "transfer_details": "({size} på {time})"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fil låst",
                 "disk_error": "Diskfeil",
-                "unknown": "Ukjent"
+                "unknown": "Ukjent",
+                "fatal": "Kritisk feil"
             },
             "schedulerTitle": "Synkroniseringsplanlegger",
             "schedulerEnabled": "Aktiver planlegger",

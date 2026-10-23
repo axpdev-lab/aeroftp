@@ -1708,7 +1708,8 @@
             "navigationFailed": "Navigeerimine ebaõnnestus: {error}",
             "transferComplete": "Kopeeriti {count} faili",
             "permissionsSessionChanged": "Ühendus muutus pärast selle dialoogi avamist, seega midagi ei muudetud. Ava Õigused uuesti praeguse ühenduse jaoks.",
-            "createFailed": "Loomine ebaõnnestus"
+            "createFailed": "Loomine ebaõnnestus",
+            "unknownServer": "Tundmatu"
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (säästetud {percent}%)",
             "compress_details_grew": "{input} → {output} (kasvas {percent}%)",
             "extract_details": "{input} → {output} (lahti pakitud)",
-            "download_details": "({size} {seconds} s jooksul)"
+            "download_details": "({size} {seconds} s jooksul)",
+            "transfer_details": "({size} ajaga {time})"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fail lukustatud",
                 "disk_error": "Kettaviga",
-                "unknown": "Tundmatu"
+                "unknown": "Tundmatu",
+                "fatal": "Kriitiline viga"
             },
             "schedulerTitle": "Sünkroonimise ajastaja",
             "schedulerEnabled": "Luba ajastaja",

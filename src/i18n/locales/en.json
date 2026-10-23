@@ -313,7 +313,8 @@
             "compress_details_saved": "{input} → {output} (saved {percent}%)",
             "compress_details_grew": "{input} → {output} (grew {percent}%)",
             "extract_details": "{input} → {output} (expanded)",
-            "download_details": "({size} in {seconds}s)"
+            "download_details": "({size} in {seconds}s)",
+            "transfer_details": "({size} in {time})"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -4670,7 +4671,8 @@
                 "timeout": "Timeout",
                 "file_locked": "File locked",
                 "disk_error": "Disk error",
-                "unknown": "Unknown"
+                "unknown": "Unknown",
+                "fatal": "Fatal error"
             },
             "schedulerTitle": "Sync Scheduler",
             "schedulerEnabled": "Enable Scheduler",
@@ -4901,7 +4903,8 @@
             "transferFailed": "Transfer failed",
             "navigationFailed": "Navigation failed: {error}",
             "transferComplete": "{count} file(s) copied",
-            "createFailed": "Create failed"
+            "createFailed": "Create failed",
+            "unknownServer": "Unknown"
         },
         "toolbar": {
             "aerovaultOverlayActive": "AeroVault container overlay active - click to detach",

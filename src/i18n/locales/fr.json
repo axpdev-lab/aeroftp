@@ -1708,7 +1708,8 @@
             "navigationFailed": "Échec de la navigation : {error}",
             "transferComplete": "{count} fichier(s) copié(s)",
             "permissionsSessionChanged": "La connexion a changé depuis l'ouverture de cette boîte de dialogue, donc rien n'a été modifié. Rouvrez Permissions sur la connexion actuelle.",
-            "createFailed": "Échec de la création"
+            "createFailed": "Échec de la création",
+            "unknownServer": "Inconnu"
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} ({percent} % économisés)",
             "compress_details_grew": "{input} → {output} (+{percent} %)",
             "extract_details": "{input} → {output} (décompressé)",
-            "download_details": "({size} en {seconds} s)"
+            "download_details": "({size} en {seconds} s)",
+            "transfer_details": "({size} en {time})"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fichier verrouillé",
                 "disk_error": "Erreur disque",
-                "unknown": "Inconnu"
+                "unknown": "Inconnu",
+                "fatal": "Erreur fatale"
             },
             "schedulerTitle": "Planificateur de synchronisation",
             "schedulerEnabled": "Activer le planificateur",

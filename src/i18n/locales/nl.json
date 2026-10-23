@@ -1708,7 +1708,8 @@
             "navigationFailed": "Navigatie mislukt: {error}",
             "transferComplete": "{count} bestand(en) gekopieerd",
             "permissionsSessionChanged": "De verbinding is gewijzigd sinds dit dialoogvenster werd geopend, dus er is niets gewijzigd. Open Rechten opnieuw op de huidige verbinding.",
-            "createFailed": "Aanmaken mislukt"
+            "createFailed": "Aanmaken mislukt",
+            "unknownServer": "Onbekend"
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} ({percent}% bespaard)",
             "compress_details_grew": "{input} → {output} ({percent}% gegroeid)",
             "extract_details": "{input} → {output} (uitgepakt)",
-            "download_details": "({size} in {seconds} s)"
+            "download_details": "({size} in {seconds} s)",
+            "transfer_details": "({size} in {time})"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Bestand vergrendeld",
                 "disk_error": "Schijffout",
-                "unknown": "Onbekend"
+                "unknown": "Onbekend",
+                "fatal": "Fatale fout"
             },
             "schedulerTitle": "Synchronisatieplanner",
             "schedulerEnabled": "Planner inschakelen",

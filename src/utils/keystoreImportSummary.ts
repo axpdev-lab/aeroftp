@@ -62,10 +62,10 @@ export function keystoreImportSummary(
     // silently leaves an empty "My Servers" with no explanation.
     const extraNotes: string[] = [];
     if ((result.userPartitionsRekeyed ?? 0) > 0) {
-        extraNotes.push(t('settings.keystoreRekeyedPartitions', { count: result.userPartitionsRekeyed ?? 0, defaultValue: 'Re-keyed {count} account(s) to this device.' }));
+        extraNotes.push(t('settings.keystoreRekeyedPartitions', { count: result.userPartitionsRekeyed ?? 0 }));
     }
     if ((result.userPartitionsUnreadable ?? 0) > 0) {
-        extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' }));
+        extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0 }));
     }
     if (result.profilePartitionSkipped) {
         extraNotes.push(t('settings.keystorePartitionSkipped'));
@@ -81,7 +81,7 @@ export function keystoreImportSummary(
         extraNotes.push(t('settings.keystorePreferencesFailed', { error: asSentence(preferencesError) }));
     }
     if (result.requiresRestart) {
-        extraNotes.push(t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' }));
+        extraNotes.push(t('settings.keystoreRestartRequired'));
     }
     const hadWarning = (result.userPartitionsUnreadable ?? 0) > 0
         || !!result.profilePartitionSkipped

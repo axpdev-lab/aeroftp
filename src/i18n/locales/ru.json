@@ -1708,7 +1708,8 @@
             "navigationFailed": "Не удалось перейти: {error}",
             "transferComplete": "Скопировано файлов: {count}",
             "permissionsSessionChanged": "Соединение изменилось с момента открытия этого диалога, поэтому ничего не было изменено. Откройте Права доступа снова на текущем соединении.",
-            "createFailed": "Не удалось создать"
+            "createFailed": "Не удалось создать",
+            "unknownServer": "неизвестному серверу"
         },
         "about": {
             "tagline": "Больше чем FTP. Полный инструментарий разработчика.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (сэкономлено {percent}%)",
             "compress_details_grew": "{input} → {output} (увеличение на {percent}%)",
             "extract_details": "{input} → {output} (распаковано)",
-            "download_details": "({size} за {seconds} с)"
+            "download_details": "({size} за {seconds} с)",
+            "transfer_details": "({size} за {time})"
         },
         "protocol": {
             "selectProtocol": "Выберите протокол...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Файл заблокирован",
                 "disk_error": "Ошибка диска",
-                "unknown": "Неизвестно"
+                "unknown": "Неизвестно",
+                "fatal": "Критическая ошибка"
             },
             "schedulerTitle": "Планировщик синхронизации",
             "schedulerEnabled": "Включить планировщик",

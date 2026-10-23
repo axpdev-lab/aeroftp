@@ -1708,7 +1708,8 @@
             "navigationFailed": "Gezinme başarısız: {error}",
             "transferComplete": "{count} dosya kopyalandı",
             "permissionsSessionChanged": "Bu iletişim kutusu açıldığından beri bağlantı değişti, bu yüzden hiçbir şey değiştirilmedi. İzinler'i geçerli bağlantıda yeniden açın.",
-            "createFailed": "Oluşturma başarısız"
+            "createFailed": "Oluşturma başarısız",
+            "unknownServer": "Bilinmeyen"
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (%{percent} tasarruf)",
             "compress_details_grew": "{input} → {output} (%{percent} büyüdü)",
             "extract_details": "{input} → {output} (açıldı)",
-            "download_details": "({size}, {seconds} sn'de)"
+            "download_details": "({size}, {seconds} sn'de)",
+            "transfer_details": "({time} içinde {size})"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Dosya kilitli",
                 "disk_error": "Disk hatası",
-                "unknown": "Bilinmiyor"
+                "unknown": "Bilinmiyor",
+                "fatal": "Kritik hata"
             },
             "schedulerTitle": "Senkronizasyon Zamanlayıcı",
             "schedulerEnabled": "Zamanlayıcıyı Etkinleştir",

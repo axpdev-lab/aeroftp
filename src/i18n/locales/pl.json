@@ -1708,7 +1708,8 @@
             "navigationFailed": "Nawigacja nie powiodła się: {error}",
             "transferComplete": "Skopiowano {count} plików",
             "permissionsSessionChanged": "Połączenie zmieniło się od otwarcia tego okna, więc nic nie zostało zmienione. Otwórz Uprawnienia ponownie na bieżącym połączeniu.",
-            "createFailed": "Tworzenie nie powiodło się"
+            "createFailed": "Tworzenie nie powiodło się",
+            "unknownServer": "nieznanym serwerem"
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (zaoszczędzono {percent}%)",
             "compress_details_grew": "{input} → {output} (wzrost o {percent}%)",
             "extract_details": "{input} → {output} (rozpakowano)",
-            "download_details": "({size} w {seconds} s)"
+            "download_details": "({size} w {seconds} s)",
+            "transfer_details": "({size} w {time})"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Plik zablokowany",
                 "disk_error": "Błąd dysku",
-                "unknown": "Nieznany"
+                "unknown": "Nieznany",
+                "fatal": "Błąd krytyczny"
             },
             "schedulerTitle": "Harmonogram synchronizacji",
             "schedulerEnabled": "Włącz harmonogram",

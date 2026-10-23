@@ -1701,7 +1701,8 @@
             "navigationFailed": "Նավարկումը ձախողվեց՝ {error}",
             "transferComplete": "Պատճենվեց {count} ֆայլ",
             "permissionsSessionChanged": "Կապը փոխվել է այս երկխոսության բացվելուց հետո, ուստի ոչինչ չի փոխվել։ Նորից բացեք Թույլտվությունները ընթացիկ կապի վրա։",
-            "createFailed": "Ստեղծումը ձախողվեց"
+            "createFailed": "Ստեղծումը ձախողվեց",
+            "unknownServer": "Անհայտ"
         },
         "about": {
             "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -2015,7 +2016,8 @@
             "compress_details_saved": "{input} → {output} (խնայվել է {percent}%)",
             "compress_details_grew": "{input} → {output} (աճել է {percent}%)",
             "extract_details": "{input} → {output} (ընդլայնված)",
-            "download_details": "({size}՝ {seconds} վրկ-ում)"
+            "download_details": "({size}՝ {seconds} վրկ-ում)",
+            "transfer_details": "({size}՝ {time}-ում)"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -2499,7 +2501,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Ֆայլը կողպված է",
                 "disk_error": "Սկավառակի սխալ",
-                "unknown": "Անհայտ"
+                "unknown": "Անհայտ",
+                "fatal": "Ճակատագրական սխալ"
             },
             "schedulerTitle": "Համաժամացման պլանավորում",
             "schedulerEnabled": "Միացնել պլանավորումը",

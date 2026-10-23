@@ -10,7 +10,6 @@ import { keystoreImportSummary } from './keystoreImportSummary';
 // Echo the key and its parameters, so the assertions read what was asked for.
 const t = (key: string, params?: Record<string, string | number>) => {
     const shown = Object.entries(params ?? {})
-        .filter(([k]) => k !== 'defaultValue')
         .map(([k, v]) => `${k}=${v}`)
         .join(',');
     return shown ? `${key}(${shown})` : key;
