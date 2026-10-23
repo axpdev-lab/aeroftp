@@ -848,12 +848,20 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         });
     }
     let continue_on_error = get_bool_opt(args, "continue_on_error").unwrap_or(true);
-    let mut tally = UploadTally::new(items.len());
+    // The batch-level `no_clobber` is the default of every item that does
+    // not set its own, on the bulk and the single-file path alike.
+    let batch_no_clobber = get_bool_opt(args, "no_clobber");
+    let delay_ms = args
+        .get("delay_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        .min(MAX_UPLOAD_DELAY_MS);
+    let mut tally = UploadTally::new(items.len(), delay_ms);
     let started = std::time::Instant::now();
     // A native bulk sends a whole group at once, so a batch that must stop
     // at its first failure keeps one upload per item.
     let plan = if continue_on_error {
-        plan_bulk_uploads(ctx, &server, items).await
+        plan_bulk_uploads(ctx, &server, items, batch_no_clobber).await
     } else {
         None
     };
@@ -863,14 +871,13 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         for (idx, item) in items.iter().enumerate() {
             // M9: Stop ends the batch after the file in flight.
             crate::ai_core::tools::check_cancelled(ctx)?;
-            let mut item_args = item.clone();
-            let Some(obj) = item_args.as_object_mut() else {
+            let Some(item_args) = upload_many_item_args(item, &server, batch_no_clobber) else {
                 return Err(ToolError::InvalidArgs {
                     tool: "aeroftp_upload_many".to_string(),
                     reason: format!("items[{idx}] must be an object"),
                 });
             };
-            obj.insert("server".to_string(), json!(server));
+            tally.pace(ctx).await?;
             if !tally.record(idx, upload_file(ctx, &item_args).await) && !continue_on_error {
                 break;
             }
@@ -880,8 +887,10 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let UploadTally {
         results,
         uploaded,
+        skipped,
         errors,
         bulk_groups,
+        ..
     } = tally;
     let results: Vec<Value> = results.into_iter().flatten().collect();
     Ok(json!({
@@ -891,17 +900,43 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             "planned": items.len(),
             "processed": results.len(),
             "uploaded": uploaded,
+            "skipped": skipped,
             "errors": errors,
             "bulk_groups": bulk_groups,
+            "delay_ms": delay_ms,
             "totals": {
                 "requested": items.len(),
                 "succeeded": uploaded,
                 "failed": errors,
-                "skipped": 0u32,
+                "skipped": skipped,
                 "elapsed_secs": elapsed_secs,
             },
         },
     }))
+}
+
+/// Cap of `aeroftp_upload_many`'s `delay_ms`, as the tool schema states.
+const MAX_UPLOAD_DELAY_MS: u64 = 2_000;
+
+/// The `upload_many` item as `upload_file` receives it: `server` set, and
+/// the batch's `no_clobber` unless the item sets its own. Only a boolean is
+/// an item's own value: `upload_file` reads `null` or any other type as
+/// false, so leaving one in place would let it overwrite what the batch
+/// protects. `None` for an item that is not an object.
+fn upload_many_item_args(
+    item: &Value,
+    server: &str,
+    batch_no_clobber: Option<bool>,
+) -> Option<Value> {
+    let mut item_args = item.clone();
+    let obj = item_args.as_object_mut()?;
+    obj.insert("server".to_string(), json!(server));
+    if let Some(no_clobber) = batch_no_clobber {
+        if !obj.get("no_clobber").is_some_and(Value::is_boolean) {
+            obj.insert("no_clobber".to_string(), json!(no_clobber));
+        }
+    }
+    Some(item_args)
 }
 
 /// Per-item results of `upload_many`, in item order whatever order the
@@ -909,19 +944,44 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
 struct UploadTally {
     results: Vec<Option<Value>>,
     uploaded: u32,
+    /// Items `no_clobber` kept: the destination was already there.
+    skipped: u32,
     errors: u32,
     /// Native bulk calls made.
     bulk_groups: u32,
+    /// `delay_ms`: the pause before every upload call after the first, a
+    /// native bulk counting as one call.
+    pause: std::time::Duration,
+    paced: bool,
 }
 
 impl UploadTally {
-    fn new(items: usize) -> Self {
+    fn new(items: usize, delay_ms: u64) -> Self {
         Self {
             results: vec![None; items],
             uploaded: 0,
+            skipped: 0,
             errors: 0,
             bulk_groups: 0,
+            pause: std::time::Duration::from_millis(delay_ms),
+            paced: false,
         }
+    }
+
+    /// Waits `delay_ms` before an upload call, except the first. Stop ends
+    /// the wait and the batch.
+    async fn pace(&mut self, ctx: &dyn ToolCtx) -> Result<(), ToolError> {
+        if std::mem::replace(&mut self.paced, true) && !self.pause.is_zero() {
+            match ctx.cancel_token() {
+                Some(token) => tokio::select! {
+                    biased;
+                    _ = token.cancelled() => return Err(ToolError::Cancelled),
+                    _ = tokio::time::sleep(self.pause) => {}
+                },
+                None => tokio::time::sleep(self.pause).await,
+            }
+        }
+        Ok(())
     }
 
     /// Records one item as `upload_file` reports it; false when it failed.
@@ -930,6 +990,8 @@ impl UploadTally {
             Ok(v) => {
                 self.uploaded +=
                     u32::from(v.get("uploaded").and_then(|b| b.as_bool()).unwrap_or(false));
+                self.skipped +=
+                    u32::from(v.get("skipped").and_then(|b| b.as_bool()).unwrap_or(false));
                 self.results[index] = Some(v);
                 true
             }
@@ -974,19 +1036,14 @@ async fn plan_bulk_uploads(
     ctx: &dyn ToolCtx,
     server: &str,
     items: &[Value],
+    batch_no_clobber: Option<bool>,
 ) -> Option<BulkUploadPlan> {
     if items.len() < 2 {
         return None;
     }
     let item_args = items
         .iter()
-        .map(|item| {
-            let mut item_args = item.clone();
-            item_args
-                .as_object_mut()?
-                .insert("server".to_string(), json!(server));
-            Some(item_args)
-        })
+        .map(|item| upload_many_item_args(item, server, batch_no_clobber))
         .collect::<Option<Vec<_>>>()?;
     let backend = ctx.remote_backend(server).await.ok()?;
     // An empty bulk only asks whether the provider has one.
@@ -1090,6 +1147,7 @@ async fn run_bulk_uploads(
             // Its checks are settled: only the write is left.
             for (index, member) in pending {
                 crate::ai_core::tools::check_cancelled(ctx)?;
+                tally.pace(ctx).await?;
                 let outcome = backend
                     .upload(&member.local_path, &member.remote_path)
                     .await
@@ -1103,6 +1161,7 @@ async fn run_bulk_uploads(
             .iter()
             .map(|(_, m)| bulk_item(&m.local_path, &m.remote_path, m.size))
             .collect();
+        tally.pace(ctx).await?;
         // A bulk carries the whole group, so Stop does not wait for it: the
         // provider stops its own wire work when the call is dropped, and
         // what already landed stays.
@@ -1183,6 +1242,7 @@ async fn upload_each(
 ) -> Result<(), ToolError> {
     for &index in indices {
         crate::ai_core::tools::check_cancelled(ctx)?;
+        tally.pace(ctx).await?;
         tally.record(index, upload_file(ctx, &item_args[index]).await);
     }
     Ok(())
@@ -5148,6 +5208,164 @@ mod tests {
         assert_eq!(report["results"][2]["uploaded"], true);
         assert_eq!(report["summary"]["uploaded"], 2);
         assert_eq!(report["summary"]["errors"], 0);
+    }
+
+    /// Requested 80 on #1318: the schema promised a batch-level `no_clobber`
+    /// as the default of every item without its own, and the handler never
+    /// read it, so a batch marked `no_clobber` overwrote existing files.
+    #[tokio::test]
+    async fn upload_many_applies_the_batch_no_clobber_to_items_without_their_own() {
+        // `/root/a.txt` exists in the sample tree.
+        let (_dir, items) = bulk_fixture(&["a.txt", "fresh1.txt"]);
+        let fake = Arc::new(FakeBackend {
+            upload_succeeds: true,
+            ..FakeBackend::sample()
+        });
+        let ctx = test_ctx(Arc::clone(&fake));
+        let report = upload_many(
+            &ctx,
+            &json!({"server": "srv", "items": items, "no_clobber": true}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            *fake.local_uploads.lock().unwrap(),
+            vec!["/root/fresh1.txt"]
+        );
+        assert_eq!(report["results"][0]["skipped"], true);
+        assert_eq!(report["summary"]["skipped"], 1);
+        assert_eq!(report["summary"]["totals"]["skipped"], 1);
+        assert_eq!(report["summary"]["uploaded"], 1);
+
+        // An item's own `no_clobber: false` overrides the batch default.
+        let (_dir, mut items) = bulk_fixture(&["a.txt"]);
+        items[0]["no_clobber"] = json!(false);
+        let fake = Arc::new(FakeBackend {
+            upload_succeeds: true,
+            ..FakeBackend::sample()
+        });
+        let report = upload_many(
+            &test_ctx(Arc::clone(&fake)),
+            &json!({"server": "srv", "items": items, "no_clobber": true}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(*fake.local_uploads.lock().unwrap(), vec!["/root/a.txt"]);
+        assert_eq!(report["summary"]["skipped"], 0);
+    }
+
+    /// CodeRabbit on #1338: an item's `"no_clobber": null` (or a string) kept
+    /// its slot, `upload_file` read it as false, and the file the batch
+    /// protects was overwritten. Only a boolean overrides the batch, on both
+    /// paths.
+    #[tokio::test]
+    async fn upload_many_batch_no_clobber_overrides_a_null_or_non_boolean_item_value() {
+        for value in [json!(null), json!("yes"), json!(1)] {
+            let (_dir, mut items) = bulk_fixture(&["a.txt", "fresh1.txt"]);
+            items[0]["no_clobber"] = value.clone();
+            let fake = Arc::new(FakeBackend {
+                upload_succeeds: true,
+                ..FakeBackend::sample()
+            });
+            let report = upload_many(
+                &test_ctx(Arc::clone(&fake)),
+                &json!({"server": "srv", "items": items, "no_clobber": true}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                *fake.local_uploads.lock().unwrap(),
+                vec!["/root/fresh1.txt"],
+                "single-file path, item no_clobber {value}"
+            );
+            assert_eq!(report["results"][0]["skipped"], true);
+
+            let (_dir, mut items) = bulk_fixture(&["a.txt", "fresh1.txt", "fresh2.txt"]);
+            items[0]["no_clobber"] = value.clone();
+            let fake = Arc::new(bulk_backend(|_| BulkTransferOutcome::Completed));
+            let report = upload_many(
+                &test_ctx(Arc::clone(&fake)),
+                &json!({"server": "srv", "items": items, "no_clobber": true}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                *fake.bulk_calls.lock().unwrap(),
+                vec![vec!["/root/fresh1.txt", "/root/fresh2.txt"]],
+                "bulk path, item no_clobber {value}"
+            );
+            assert_eq!(report["results"][0]["skipped"], true);
+        }
+    }
+
+    /// The batch default reaches the native bulk too: one listing settles it
+    /// and the existing file stays out of the bulk.
+    #[tokio::test]
+    async fn upload_many_applies_the_batch_no_clobber_on_the_bulk_path() {
+        let (_dir, items) = bulk_fixture(&["a.txt", "fresh1.txt", "fresh2.txt"]);
+        let fake = Arc::new(bulk_backend(|_| BulkTransferOutcome::Completed));
+        let report = upload_many(
+            &test_ctx(Arc::clone(&fake)),
+            &json!({"server": "srv", "items": items, "no_clobber": true}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(*fake.list_calls.lock().unwrap(), vec!["/root"]);
+        assert_eq!(
+            *fake.bulk_calls.lock().unwrap(),
+            vec![vec!["/root/fresh1.txt", "/root/fresh2.txt"]]
+        );
+        assert_eq!(report["results"][0]["skipped"], true);
+        assert_eq!(report["summary"]["totals"]["skipped"], 1);
+    }
+
+    /// `delay_ms` was advertised and ignored. It pauses before every upload
+    /// call after the first, a native bulk counting as one call, and is
+    /// capped at 2000 ms.
+    #[tokio::test(start_paused = true)]
+    async fn upload_many_pauses_delay_ms_between_upload_calls() {
+        let (_dir, items) = bulk_fixture(&["fresh1.txt", "fresh2.txt", "fresh3.txt"]);
+        let fake = Arc::new(FakeBackend {
+            upload_succeeds: true,
+            ..FakeBackend::sample()
+        });
+        let started = tokio::time::Instant::now();
+        let report = upload_many(
+            &test_ctx(Arc::clone(&fake)),
+            &json!({"server": "srv", "items": items, "delay_ms": 300}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(started.elapsed(), std::time::Duration::from_millis(600));
+        assert_eq!(fake.local_uploads.lock().unwrap().len(), 3);
+        assert_eq!(report["summary"]["delay_ms"], 300);
+
+        // Two folders, two native calls, one pause.
+        let (_dir, mut items) = bulk_fixture(&["n0.txt", "n1.txt", "n2.txt", "n3.txt"]);
+        items[2]["remote_path"] = json!("/other/n2.txt");
+        items[3]["remote_path"] = json!("/other/n3.txt");
+        let fake = Arc::new(bulk_backend(|_| BulkTransferOutcome::Completed));
+        let started = tokio::time::Instant::now();
+        upload_many(
+            &test_ctx(Arc::clone(&fake)),
+            &json!({"server": "srv", "items": items, "delay_ms": 300}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(fake.bulk_calls.lock().unwrap().len(), 2);
+        assert_eq!(started.elapsed(), std::time::Duration::from_millis(300));
+
+        let (_dir, items) = bulk_fixture(&["fresh1.txt"]);
+        let report = upload_many(
+            &test_ctx(Arc::new(FakeBackend {
+                upload_succeeds: true,
+                ..FakeBackend::sample()
+            })),
+            &json!({"server": "srv", "items": items, "delay_ms": 60_000}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report["summary"]["delay_ms"], 2_000);
     }
 
     /// A backend without a native bulk keeps one `upload_file` per item,
