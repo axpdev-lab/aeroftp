@@ -1985,7 +1985,9 @@
             "compress_start": "Comprimiendo en {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Restaurados {files} archivo(s), {folders} carpeta(s) de la papelera",
             "trash_restore_detail_present_success": "[{provider}] Restaurados {files} archivo(s) de la papelera, {present} ya presentes",
-            "trash_restore_detail_folders_present_success": "[{provider}] Restaurados {files} archivo(s), {folders} carpeta(s) de la papelera, {present} ya presentes"
+            "trash_restore_detail_folders_present_success": "[{provider}] Restaurados {files} archivo(s), {folders} carpeta(s) de la papelera, {present} ya presentes",
+            "filelu_file_password_removed": "[{provider}] Contraseña del archivo eliminada",
+            "filelu_folder_password_removed": "[{provider}] Contraseña de carpeta eliminada"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",

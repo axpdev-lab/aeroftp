@@ -1985,7 +1985,9 @@
             "compress_start": "{archive}(으)로 압축 중...",
             "trash_restore_detail_folders_success": "[{provider}] 휴지통에서 파일 {files}개, 폴더 {folders}개 복원됨",
             "trash_restore_detail_present_success": "[{provider}] 휴지통에서 파일 {files}개 복원됨, {present}개는 이미 있음",
-            "trash_restore_detail_folders_present_success": "[{provider}] 휴지통에서 파일 {files}개, 폴더 {folders}개 복원됨, {present}개는 이미 있음"
+            "trash_restore_detail_folders_present_success": "[{provider}] 휴지통에서 파일 {files}개, 폴더 {folders}개 복원됨, {present}개는 이미 있음",
+            "filelu_file_password_removed": "[{provider}] 파일 비밀번호를 제거했습니다",
+            "filelu_folder_password_removed": "[{provider}] 폴더 비밀번호를 제거했습니다"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",

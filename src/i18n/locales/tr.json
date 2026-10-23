@@ -1985,7 +1985,9 @@
             "compress_start": "{archive} arşivine sıkıştırılıyor...",
             "trash_restore_detail_folders_success": "[{provider}] Çöp kutusundan {files} dosya, {folders} klasör geri yüklendi",
             "trash_restore_detail_present_success": "[{provider}] Çöp kutusundan {files} dosya geri yüklendi, {present} zaten mevcut",
-            "trash_restore_detail_folders_present_success": "[{provider}] Çöp kutusundan {files} dosya, {folders} klasör geri yüklendi, {present} zaten mevcut"
+            "trash_restore_detail_folders_present_success": "[{provider}] Çöp kutusundan {files} dosya, {folders} klasör geri yüklendi, {present} zaten mevcut",
+            "filelu_file_password_removed": "[{provider}] Dosya parolası kaldırıldı",
+            "filelu_folder_password_removed": "[{provider}] Klasör parolası kaldırıldı"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",

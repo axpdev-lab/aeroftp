@@ -1985,7 +1985,9 @@
             "compress_start": "Tömörítés ide: {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] {files} fájl, {folders} mappa visszaállítva a kukából",
             "trash_restore_detail_present_success": "[{provider}] {files} fájl visszaállítva a kukából, {present} már létezett",
-            "trash_restore_detail_folders_present_success": "[{provider}] {files} fájl, {folders} mappa visszaállítva a kukából, {present} már létezett"
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} fájl, {folders} mappa visszaállítva a kukából, {present} már létezett",
+            "filelu_file_password_removed": "[{provider}] Fájljelszó eltávolítva",
+            "filelu_folder_password_removed": "[{provider}] Mappajelszó eltávolítva"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",

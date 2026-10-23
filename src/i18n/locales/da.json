@@ -1985,7 +1985,9 @@
             "compress_start": "Komprimerer til {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Gendannede {files} fil(er), {folders} mappe(r) fra papirkurven",
             "trash_restore_detail_present_success": "[{provider}] Gendannede {files} fil(er) fra papirkurven, {present} fandtes allerede",
-            "trash_restore_detail_folders_present_success": "[{provider}] Gendannede {files} fil(er), {folders} mappe(r) fra papirkurven, {present} fandtes allerede"
+            "trash_restore_detail_folders_present_success": "[{provider}] Gendannede {files} fil(er), {folders} mappe(r) fra papirkurven, {present} fandtes allerede",
+            "filelu_file_password_removed": "[{provider}] Fjernede adgangskode for filen",
+            "filelu_folder_password_removed": "[{provider}] Mappeadgangskode fjernet"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -2577,7 +2579,7 @@
             "templateRemote": "Fjern",
             "templateRetries": "Genforsøg",
             "rollbackRestoreLocalCount": "lokal {count}",
-            "rollbackRestoreRemoteCount": "fjern {count}",
+            "rollbackRestoreRemoteCount": "eksternt {count}",
             "rollbackRestoreSkippedCount": "sprunget over {count}",
             "rollbackRestoreFailedCount": "mislykket {count}",
             "rollbackRestoreCompleted": "Gendannelse fuldført: {summary}",

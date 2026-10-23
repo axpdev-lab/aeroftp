@@ -1985,7 +1985,9 @@
             "compress_start": "Komprimace do {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Obnoveno z koše: soubory {files}, složky {folders}",
             "trash_restore_detail_present_success": "[{provider}] Obnoveno z koše: soubory {files}, již existující {present}",
-            "trash_restore_detail_folders_present_success": "[{provider}] Obnoveno z koše: soubory {files}, složky {folders}, již existující {present}"
+            "trash_restore_detail_folders_present_success": "[{provider}] Obnoveno z koše: soubory {files}, složky {folders}, již existující {present}",
+            "filelu_file_password_removed": "[{provider}] Heslo souboru odebráno",
+            "filelu_folder_password_removed": "[{provider}] Heslo složky odebráno"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",

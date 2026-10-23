@@ -1985,7 +1985,9 @@
             "compress_start": "正在压缩到 {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] 已从回收站恢复 {files} 个文件、{folders} 个文件夹",
             "trash_restore_detail_present_success": "[{provider}] 已从回收站恢复 {files} 个文件，{present} 个已存在",
-            "trash_restore_detail_folders_present_success": "[{provider}] 已从回收站恢复 {files} 个文件、{folders} 个文件夹，{present} 个已存在"
+            "trash_restore_detail_folders_present_success": "[{provider}] 已从回收站恢复 {files} 个文件、{folders} 个文件夹，{present} 个已存在",
+            "filelu_file_password_removed": "[{provider}] 已移除文件密码",
+            "filelu_folder_password_removed": "[{provider}] 已移除文件夹密码"
         },
         "protocol": {
             "selectProtocol": "选择协议...",

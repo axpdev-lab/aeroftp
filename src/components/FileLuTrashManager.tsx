@@ -146,7 +146,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     } finally {
       setActionLoading(null);
     }
-  }, [humanLog, loadTrash, onRefreshFiles]);
+  }, [humanLog, loadTrash, onRefreshFiles, t]);
 
   const deleteOne = useCallback(async (code: string) => {
     const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'FileLu', count: 1 });
@@ -161,7 +161,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     } finally {
       setActionLoading(null);
     }
-  }, [humanLog, loadTrash]);
+  }, [humanLog, loadTrash, t]);
 
   const fileLuColumns = useMemo(
     () => [

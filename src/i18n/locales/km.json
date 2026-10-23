@@ -1985,7 +1985,9 @@
             "compress_start": "កំពុងបង្ហាប់ទៅ {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] បានស្ដារឯកសារ {files}, ថត {folders} ពីធុងសំរាម",
             "trash_restore_detail_present_success": "[{provider}] បានស្ដារឯកសារ {files} ពីធុងសំរាម, {present} មានរួចហើយ",
-            "trash_restore_detail_folders_present_success": "[{provider}] បានស្ដារឯកសារ {files}, ថត {folders} ពីធុងសំរាម, {present} មានរួចហើយ"
+            "trash_restore_detail_folders_present_success": "[{provider}] បានស្ដារឯកសារ {files}, ថត {folders} ពីធុងសំរាម, {present} មានរួចហើយ",
+            "filelu_file_password_removed": "[{provider}] បានដកពាក្យសម្ងាត់ឯកសារចេញ",
+            "filelu_folder_password_removed": "[{provider}] បានដកពាក្យសម្ងាត់ថតចេញ"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",

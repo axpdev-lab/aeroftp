@@ -1985,7 +1985,9 @@
             "compress_start": "Wird nach {archive} komprimiert...",
             "trash_restore_detail_folders_success": "[{provider}] {files} Datei(en), {folders} Ordner aus dem Papierkorb wiederhergestellt",
             "trash_restore_detail_present_success": "[{provider}] {files} Datei(en) aus dem Papierkorb wiederhergestellt, {present} bereits vorhanden",
-            "trash_restore_detail_folders_present_success": "[{provider}] {files} Datei(en), {folders} Ordner aus dem Papierkorb wiederhergestellt, {present} bereits vorhanden"
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} Datei(en), {folders} Ordner aus dem Papierkorb wiederhergestellt, {present} bereits vorhanden",
+            "filelu_file_password_removed": "[{provider}] Dateipasswort entfernt",
+            "filelu_folder_password_removed": "[{provider}] Ordnerpasswort entfernt"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -2577,7 +2579,7 @@
             "templateRemote": "Entfernt",
             "templateRetries": "Wiederholungen",
             "rollbackRestoreLocalCount": "lokal {count}",
-            "rollbackRestoreRemoteCount": "entfernt {count}",
+            "rollbackRestoreRemoteCount": "remote {count}",
             "rollbackRestoreSkippedCount": "übersprungen {count}",
             "rollbackRestoreFailedCount": "fehlgeschlagen {count}",
             "rollbackRestoreCompleted": "Wiederherstellung abgeschlossen: {summary}",

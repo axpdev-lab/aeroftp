@@ -1985,7 +1985,9 @@
             "compress_start": "S'està comprimint a {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] S'han restaurat {files} fitxer(s), {folders} carpeta(es) de la paperera",
             "trash_restore_detail_present_success": "[{provider}] S'han restaurat {files} fitxer(s) de la paperera, {present} ja presents",
-            "trash_restore_detail_folders_present_success": "[{provider}] S'han restaurat {files} fitxer(s), {folders} carpeta(es) de la paperera, {present} ja presents"
+            "trash_restore_detail_folders_present_success": "[{provider}] S'han restaurat {files} fitxer(s), {folders} carpeta(es) de la paperera, {present} ja presents",
+            "filelu_file_password_removed": "[{provider}] S'ha eliminat la contrasenya del fitxer",
+            "filelu_folder_password_removed": "[{provider}] Contrasenya de la carpeta eliminada"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",

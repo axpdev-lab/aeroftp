@@ -1985,7 +1985,9 @@
             "compress_start": "กำลังบีบอัดเป็น {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] กู้คืน {files} ไฟล์, {folders} โฟลเดอร์จากถังขยะแล้ว",
             "trash_restore_detail_present_success": "[{provider}] กู้คืน {files} ไฟล์จากถังขยะแล้ว, {present} มีอยู่แล้ว",
-            "trash_restore_detail_folders_present_success": "[{provider}] กู้คืน {files} ไฟล์, {folders} โฟลเดอร์จากถังขยะแล้ว, {present} มีอยู่แล้ว"
+            "trash_restore_detail_folders_present_success": "[{provider}] กู้คืน {files} ไฟล์, {folders} โฟลเดอร์จากถังขยะแล้ว, {present} มีอยู่แล้ว",
+            "filelu_file_password_removed": "[{provider}] ลบรหัสผ่านไฟล์แล้ว",
+            "filelu_folder_password_removed": "[{provider}] ลบรหัสผ่านโฟลเดอร์แล้ว"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",

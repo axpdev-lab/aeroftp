@@ -1985,7 +1985,9 @@
             "compress_start": "Компримовање у {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Враћено из отпада: датотеке {files}, фасцикле {folders}",
             "trash_restore_detail_present_success": "[{provider}] Враћено из отпада: датотеке {files}, већ постоји {present}",
-            "trash_restore_detail_folders_present_success": "[{provider}] Враћено из отпада: датотеке {files}, фасцикле {folders}, већ постоји {present}"
+            "trash_restore_detail_folders_present_success": "[{provider}] Враћено из отпада: датотеке {files}, фасцикле {folders}, већ постоји {present}",
+            "filelu_file_password_removed": "[{provider}] Лозинка датотеке уклоњена",
+            "filelu_folder_password_removed": "[{provider}] Лозинка фасцикле уклоњена"
         },
         "protocol": {
             "selectProtocol": "Изабери протокол...",

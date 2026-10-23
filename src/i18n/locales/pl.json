@@ -1985,7 +1985,9 @@
             "compress_start": "Kompresowanie do {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Przywrócono z kosza: pliki {files}, foldery {folders}",
             "trash_restore_detail_present_success": "[{provider}] Przywrócono z kosza: pliki {files}, już istniejące {present}",
-            "trash_restore_detail_folders_present_success": "[{provider}] Przywrócono z kosza: pliki {files}, foldery {folders}, już istniejące {present}"
+            "trash_restore_detail_folders_present_success": "[{provider}] Przywrócono z kosza: pliki {files}, foldery {folders}, już istniejące {present}",
+            "filelu_file_password_removed": "[{provider}] Usunięto hasło pliku",
+            "filelu_folder_password_removed": "[{provider}] Usunięto hasło folderu"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",

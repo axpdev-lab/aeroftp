@@ -1985,7 +1985,9 @@
             "compress_start": "Kino-compress sa {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Naibalik ang {files} file, {folders} folder mula sa basurahan",
             "trash_restore_detail_present_success": "[{provider}] Naibalik ang {files} file mula sa basurahan, {present} ay naroon na",
-            "trash_restore_detail_folders_present_success": "[{provider}] Naibalik ang {files} file, {folders} folder mula sa basurahan, {present} ay naroon na"
+            "trash_restore_detail_folders_present_success": "[{provider}] Naibalik ang {files} file, {folders} folder mula sa basurahan, {present} ay naroon na",
+            "filelu_file_password_removed": "[{provider}] Inalis ang password ng file",
+            "filelu_folder_password_removed": "[{provider}] Naalis ang password ng folder"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",

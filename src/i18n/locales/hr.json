@@ -1985,7 +1985,9 @@
             "compress_start": "Sažimanje u {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, mape {folders}",
             "trash_restore_detail_present_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, već postoji {present}",
-            "trash_restore_detail_folders_present_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, mape {folders}, već postoji {present}"
+            "trash_restore_detail_folders_present_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, mape {folders}, već postoji {present}",
+            "filelu_file_password_removed": "[{provider}] Lozinka datoteke uklonjena",
+            "filelu_folder_password_removed": "[{provider}] Lozinka mape uklonjena"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",

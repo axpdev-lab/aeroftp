@@ -1985,7 +1985,9 @@
             "compress_start": "Memampatkan ke {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Memulihkan {files} fail, {folders} folder daripada tong sampah",
             "trash_restore_detail_present_success": "[{provider}] Memulihkan {files} fail daripada tong sampah, {present} sudah wujud",
-            "trash_restore_detail_folders_present_success": "[{provider}] Memulihkan {files} fail, {folders} folder daripada tong sampah, {present} sudah wujud"
+            "trash_restore_detail_folders_present_success": "[{provider}] Memulihkan {files} fail, {folders} folder daripada tong sampah, {present} sudah wujud",
+            "filelu_file_password_removed": "[{provider}] Kata laluan fail dialih keluar",
+            "filelu_folder_password_removed": "[{provider}] Kata laluan folder dialih keluar"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",

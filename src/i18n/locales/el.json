@@ -1985,7 +1985,9 @@
             "compress_start": "Συμπίεση σε {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία, {folders} φάκελοι από τον κάδο",
             "trash_restore_detail_present_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία από τον κάδο, {present} υπήρχαν ήδη",
-            "trash_restore_detail_folders_present_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία, {folders} φάκελοι από τον κάδο, {present} υπήρχαν ήδη"
+            "trash_restore_detail_folders_present_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία, {folders} φάκελοι από τον κάδο, {present} υπήρχαν ήδη",
+            "filelu_file_password_removed": "[{provider}] Καταργήθηκε ο κωδικός αρχείου",
+            "filelu_folder_password_removed": "[{provider}] Καταργήθηκε ο κωδικός πρόσβασης φακέλου"
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",

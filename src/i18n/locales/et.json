@@ -1985,7 +1985,9 @@
             "compress_start": "Tihendamine arhiivi {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Prügikastist taastati {files} fail(i), {folders} kaust(a)",
             "trash_restore_detail_present_success": "[{provider}] Prügikastist taastati {files} fail(i), {present} oli juba olemas",
-            "trash_restore_detail_folders_present_success": "[{provider}] Prügikastist taastati {files} fail(i), {folders} kaust(a), {present} oli juba olemas"
+            "trash_restore_detail_folders_present_success": "[{provider}] Prügikastist taastati {files} fail(i), {folders} kaust(a), {present} oli juba olemas",
+            "filelu_file_password_removed": "[{provider}] Faili parool eemaldati",
+            "filelu_folder_password_removed": "[{provider}] Kausta parool eemaldatud"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",

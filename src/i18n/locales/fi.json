@@ -1985,7 +1985,9 @@
             "compress_start": "Pakataan kohteeseen {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {folders} kansio(ta)",
             "trash_restore_detail_present_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {present} oli jo olemassa",
-            "trash_restore_detail_folders_present_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {folders} kansio(ta), {present} oli jo olemassa"
+            "trash_restore_detail_folders_present_success": "[{provider}] Palautettiin roskakorista {files} tiedosto(a), {folders} kansio(ta), {present} oli jo olemassa",
+            "filelu_file_password_removed": "[{provider}] Tiedoston salasana poistettiin",
+            "filelu_folder_password_removed": "[{provider}] Kansion salasana poistettu"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",

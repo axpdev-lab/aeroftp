@@ -1985,7 +1985,9 @@
             "compress_start": "{archive} に圧縮中...",
             "trash_restore_detail_folders_success": "[{provider}] ゴミ箱から {files} 個のファイル、{folders} 個のフォルダーを復元しました",
             "trash_restore_detail_present_success": "[{provider}] ゴミ箱から {files} 個のファイルを復元しました ({present} 個は既に存在)",
-            "trash_restore_detail_folders_present_success": "[{provider}] ゴミ箱から {files} 個のファイル、{folders} 個のフォルダーを復元しました ({present} 個は既に存在)"
+            "trash_restore_detail_folders_present_success": "[{provider}] ゴミ箱から {files} 個のファイル、{folders} 個のフォルダーを復元しました ({present} 個は既に存在)",
+            "filelu_file_password_removed": "[{provider}] ファイルのパスワードを削除しました",
+            "filelu_folder_password_removed": "[{provider}] フォルダーのパスワードを削除しました"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",

@@ -1985,7 +1985,9 @@
             "compress_start": "{archive}(e)n konprimatzen...",
             "trash_restore_detail_folders_success": "[{provider}] {files} fitxategi, {folders} karpeta leheneratu dira zakarrontzitik",
             "trash_restore_detail_present_success": "[{provider}] {files} fitxategi leheneratu dira zakarrontzitik, {present} lehendik zeuden",
-            "trash_restore_detail_folders_present_success": "[{provider}] {files} fitxategi, {folders} karpeta leheneratu dira zakarrontzitik, {present} lehendik zeuden"
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} fitxategi, {folders} karpeta leheneratu dira zakarrontzitik, {present} lehendik zeuden",
+            "filelu_file_password_removed": "[{provider}] Fitxategiaren pasahitza kendu da",
+            "filelu_folder_password_removed": "[{provider}] Karpetaren pasahitza kendu da"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",

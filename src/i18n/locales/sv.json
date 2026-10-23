@@ -1985,7 +1985,9 @@
             "compress_start": "Komprimerar till {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Återställde {files} fil(er), {folders} mapp(ar) från papperskorgen",
             "trash_restore_detail_present_success": "[{provider}] Återställde {files} fil(er) från papperskorgen, {present} fanns redan",
-            "trash_restore_detail_folders_present_success": "[{provider}] Återställde {files} fil(er), {folders} mapp(ar) från papperskorgen, {present} fanns redan"
+            "trash_restore_detail_folders_present_success": "[{provider}] Återställde {files} fil(er), {folders} mapp(ar) från papperskorgen, {present} fanns redan",
+            "filelu_file_password_removed": "[{provider}] Tog bort lösenord för filen",
+            "filelu_folder_password_removed": "[{provider}] Mapplösenord borttaget"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",

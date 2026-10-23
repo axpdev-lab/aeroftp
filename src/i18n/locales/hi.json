@@ -1985,7 +1985,9 @@
             "compress_start": "{archive} में संपीड़ित किया जा रहा है...",
             "trash_restore_detail_folders_success": "[{provider}] ट्रैश से {files} फ़ाइल(ें), {folders} फ़ोल्डर पुनर्स्थापित किए गए",
             "trash_restore_detail_present_success": "[{provider}] ट्रैश से {files} फ़ाइल(ें) पुनर्स्थापित की गईं, {present} पहले से मौजूद",
-            "trash_restore_detail_folders_present_success": "[{provider}] ट्रैश से {files} फ़ाइल(ें), {folders} फ़ोल्डर पुनर्स्थापित किए गए, {present} पहले से मौजूद"
+            "trash_restore_detail_folders_present_success": "[{provider}] ट्रैश से {files} फ़ाइल(ें), {folders} फ़ोल्डर पुनर्स्थापित किए गए, {present} पहले से मौजूद",
+            "filelu_file_password_removed": "[{provider}] फ़ाइल पासवर्ड हटाया गया",
+            "filelu_folder_password_removed": "[{provider}] फ़ोल्डर पासवर्ड हटाया गया"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",

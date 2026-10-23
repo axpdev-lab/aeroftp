@@ -1978,7 +1978,9 @@
             "compress_start": "Սեղմում {archive}-ում...",
             "trash_restore_detail_folders_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {folders} թղթապանակ",
             "trash_restore_detail_present_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {present} արդեն առկա է",
-            "trash_restore_detail_folders_present_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {folders} թղթապանակ, {present} արդեն առկա է"
+            "trash_restore_detail_folders_present_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {folders} թղթապանակ, {present} արդեն առկա է",
+            "filelu_file_password_removed": "[{provider}] Ֆայլի գաղտնաբառը հեռացվեց",
+            "filelu_folder_password_removed": "[{provider}] Թղթապանակի գաղտնաբառը հեռացվեց"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",

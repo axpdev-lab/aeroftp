@@ -1985,7 +1985,9 @@
             "compress_start": "Saspiež arhīvā {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] No atkritnes atjaunoti faili: {files}, mapes: {folders}",
             "trash_restore_detail_present_success": "[{provider}] No atkritnes atjaunoti faili: {files}, jau esoši: {present}",
-            "trash_restore_detail_folders_present_success": "[{provider}] No atkritnes atjaunoti faili: {files}, mapes: {folders}, jau esoši: {present}"
+            "trash_restore_detail_folders_present_success": "[{provider}] No atkritnes atjaunoti faili: {files}, mapes: {folders}, jau esoši: {present}",
+            "filelu_file_password_removed": "[{provider}] Faila parole noņemta",
+            "filelu_folder_password_removed": "[{provider}] Mapes parole noņemta"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",

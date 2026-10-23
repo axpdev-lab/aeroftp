@@ -1985,7 +1985,9 @@
             "compress_start": "Glaudinama į {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, aplankų: {folders}",
             "trash_restore_detail_present_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, jau yra: {present}",
-            "trash_restore_detail_folders_present_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, aplankų: {folders}, jau yra: {present}"
+            "trash_restore_detail_folders_present_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, aplankų: {folders}, jau yra: {present}",
+            "filelu_file_password_removed": "[{provider}] Pašalintas failo slaptažodis",
+            "filelu_folder_password_removed": "[{provider}] Aplanko slaptažodis pašalintas"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",

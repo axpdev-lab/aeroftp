@@ -296,7 +296,9 @@
             "compress_start": "Compressing to {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Restored {files} file(s), {folders} folder(s) from trash",
             "trash_restore_detail_present_success": "[{provider}] Restored {files} file(s), {present} already present from trash",
-            "trash_restore_detail_folders_present_success": "[{provider}] Restored {files} file(s), {folders} folder(s), {present} already present from trash"
+            "trash_restore_detail_folders_present_success": "[{provider}] Restored {files} file(s), {folders} folder(s), {present} already present from trash",
+            "filelu_file_password_removed": "[{provider}] Removed file password",
+            "filelu_folder_password_removed": "[{provider}] Removed folder password"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",

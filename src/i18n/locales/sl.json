@@ -1985,7 +1985,9 @@
             "compress_start": "Stiskanje v {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Obnovljeno iz koša: datoteke {files}, mape {folders}",
             "trash_restore_detail_present_success": "[{provider}] Obnovljeno iz koša: datoteke {files}, že obstoječe {present}",
-            "trash_restore_detail_folders_present_success": "[{provider}] Obnovljeno iz koša: datoteke {files}, mape {folders}, že obstoječe {present}"
+            "trash_restore_detail_folders_present_success": "[{provider}] Obnovljeno iz koša: datoteke {files}, mape {folders}, že obstoječe {present}",
+            "filelu_file_password_removed": "[{provider}] Geslo datoteke odstranjeno",
+            "filelu_folder_password_removed": "[{provider}] Geslo mape odstranjeno"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",

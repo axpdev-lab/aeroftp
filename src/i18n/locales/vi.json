@@ -1985,7 +1985,9 @@
             "compress_start": "Đang nén vào {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Đã khôi phục {files} tệp, {folders} thư mục từ thùng rác",
             "trash_restore_detail_present_success": "[{provider}] Đã khôi phục {files} tệp từ thùng rác, {present} đã có sẵn",
-            "trash_restore_detail_folders_present_success": "[{provider}] Đã khôi phục {files} tệp, {folders} thư mục từ thùng rác, {present} đã có sẵn"
+            "trash_restore_detail_folders_present_success": "[{provider}] Đã khôi phục {files} tệp, {folders} thư mục từ thùng rác, {present} đã có sẵn",
+            "filelu_file_password_removed": "[{provider}] Đã xóa mật khẩu tệp",
+            "filelu_folder_password_removed": "[{provider}] Đã xóa mật khẩu thư mục"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",

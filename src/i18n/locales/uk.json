@@ -1985,7 +1985,9 @@
             "compress_start": "Стиснення в {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Відновлено з кошика: файлів {files}, папок {folders}",
             "trash_restore_detail_present_success": "[{provider}] Відновлено з кошика: файлів {files}, уже існує {present}",
-            "trash_restore_detail_folders_present_success": "[{provider}] Відновлено з кошика: файлів {files}, папок {folders}, уже існує {present}"
+            "trash_restore_detail_folders_present_success": "[{provider}] Відновлено з кошика: файлів {files}, папок {folders}, уже існує {present}",
+            "filelu_file_password_removed": "[{provider}] Пароль файлу видалено",
+            "filelu_folder_password_removed": "[{provider}] Пароль папки видалено"
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",

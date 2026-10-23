@@ -1985,7 +1985,9 @@
             "compress_start": "Þjappa í {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Endurheimti {files} skrá(r), {folders} möppu(r) úr ruslinu",
             "trash_restore_detail_present_success": "[{provider}] Endurheimti {files} skrá(r) úr ruslinu, {present} þegar til staðar",
-            "trash_restore_detail_folders_present_success": "[{provider}] Endurheimti {files} skrá(r), {folders} möppu(r) úr ruslinu, {present} þegar til staðar"
+            "trash_restore_detail_folders_present_success": "[{provider}] Endurheimti {files} skrá(r), {folders} möppu(r) úr ruslinu, {present} þegar til staðar",
+            "filelu_file_password_removed": "[{provider}] Lykilorð skrár fjarlægt",
+            "filelu_folder_password_removed": "[{provider}] Lykilorð möppu fjarlægt"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",

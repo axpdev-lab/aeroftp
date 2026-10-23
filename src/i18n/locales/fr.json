@@ -1985,7 +1985,9 @@
             "compress_start": "Compression vers {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] {files} fichier(s), {folders} dossier(s) restauré(s) depuis la corbeille",
             "trash_restore_detail_present_success": "[{provider}] {files} fichier(s) restauré(s) depuis la corbeille, {present} déjà présent(s)",
-            "trash_restore_detail_folders_present_success": "[{provider}] {files} fichier(s), {folders} dossier(s) restauré(s) depuis la corbeille, {present} déjà présent(s)"
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} fichier(s), {folders} dossier(s) restauré(s) depuis la corbeille, {present} déjà présent(s)",
+            "filelu_file_password_removed": "[{provider}] Mot de passe du fichier supprimé",
+            "filelu_folder_password_removed": "[{provider}] Mot de passe du dossier supprimé"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",

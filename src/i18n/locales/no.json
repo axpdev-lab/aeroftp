@@ -1985,7 +1985,9 @@
             "compress_start": "Komprimerer til {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Gjenopprettet {files} fil(er), {folders} mappe(r) fra papirkurven",
             "trash_restore_detail_present_success": "[{provider}] Gjenopprettet {files} fil(er) fra papirkurven, {present} fantes allerede",
-            "trash_restore_detail_folders_present_success": "[{provider}] Gjenopprettet {files} fil(er), {folders} mappe(r) fra papirkurven, {present} fantes allerede"
+            "trash_restore_detail_folders_present_success": "[{provider}] Gjenopprettet {files} fil(er), {folders} mappe(r) fra papirkurven, {present} fantes allerede",
+            "filelu_file_password_removed": "[{provider}] Fjernet passord for filen",
+            "filelu_folder_password_removed": "[{provider}] Mappepassord fjernet"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",

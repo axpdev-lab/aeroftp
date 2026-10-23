@@ -1985,7 +1985,9 @@
             "compress_start": "Se comprimă în {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Restaurate {files} fișier(e), {folders} dosar(e) din coș",
             "trash_restore_detail_present_success": "[{provider}] Restaurate {files} fișier(e) din coș, {present} deja prezente",
-            "trash_restore_detail_folders_present_success": "[{provider}] Restaurate {files} fișier(e), {folders} dosar(e) din coș, {present} deja prezente"
+            "trash_restore_detail_folders_present_success": "[{provider}] Restaurate {files} fișier(e), {folders} dosar(e) din coș, {present} deja prezente",
+            "filelu_file_password_removed": "[{provider}] Parola fișierului a fost eliminată",
+            "filelu_folder_password_removed": "[{provider}] Parola dosarului a fost eliminată"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",

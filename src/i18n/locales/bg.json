@@ -1985,7 +1985,9 @@
             "compress_start": "Компресиране в {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Възстановени {files} файл(а), {folders} папка(и) от кошчето",
             "trash_restore_detail_present_success": "[{provider}] Възстановени {files} файл(а) от кошчето, {present} вече налични",
-            "trash_restore_detail_folders_present_success": "[{provider}] Възстановени {files} файл(а), {folders} папка(и) от кошчето, {present} вече налични"
+            "trash_restore_detail_folders_present_success": "[{provider}] Възстановени {files} файл(а), {folders} папка(и) от кошчето, {present} вече налични",
+            "filelu_file_password_removed": "[{provider}] Премахната е паролата на файла",
+            "filelu_folder_password_removed": "[{provider}] Паролата на папката е премахната"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",

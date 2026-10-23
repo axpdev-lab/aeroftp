@@ -1985,7 +1985,9 @@
             "compress_start": "Comprimeren naar {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] {files} bestand(en), {folders} map(pen) hersteld uit prullenbak",
             "trash_restore_detail_present_success": "[{provider}] {files} bestand(en) hersteld uit prullenbak, {present} al aanwezig",
-            "trash_restore_detail_folders_present_success": "[{provider}] {files} bestand(en), {folders} map(pen) hersteld uit prullenbak, {present} al aanwezig"
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} bestand(en), {folders} map(pen) hersteld uit prullenbak, {present} al aanwezig",
+            "filelu_file_password_removed": "[{provider}] Bestandswachtwoord verwijderd",
+            "filelu_folder_password_removed": "[{provider}] Mapwachtwoord verwijderd"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",

@@ -2552,7 +2552,9 @@
             "compress_start": "Compressione in {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Ripristinati {files} file, {folders} cartella/e dal cestino",
             "trash_restore_detail_present_success": "[{provider}] Ripristinati {files} file dal cestino, {present} già presenti",
-            "trash_restore_detail_folders_present_success": "[{provider}] Ripristinati {files} file, {folders} cartella/e dal cestino, {present} già presenti"
+            "trash_restore_detail_folders_present_success": "[{provider}] Ripristinati {files} file, {folders} cartella/e dal cestino, {present} già presenti",
+            "filelu_file_password_removed": "[{provider}] Password del file rimossa",
+            "filelu_folder_password_removed": "[{provider}] Password della cartella rimossa"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",

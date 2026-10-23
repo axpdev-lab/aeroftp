@@ -1985,7 +1985,9 @@
             "compress_start": "Inabana hadi {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Imerejesha faili {files}, folda {folders} kutoka kwenye tupio",
             "trash_restore_detail_present_success": "[{provider}] Imerejesha faili {files} kutoka kwenye tupio, {present} tayari zipo",
-            "trash_restore_detail_folders_present_success": "[{provider}] Imerejesha faili {files}, folda {folders} kutoka kwenye tupio, {present} tayari zipo"
+            "trash_restore_detail_folders_present_success": "[{provider}] Imerejesha faili {files}, folda {folders} kutoka kwenye tupio, {present} tayari zipo",
+            "filelu_file_password_removed": "[{provider}] Nenosiri la faili limeondolewa",
+            "filelu_folder_password_removed": "[{provider}] Nenosiri la folda limeondolewa"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",

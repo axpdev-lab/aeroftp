@@ -9972,7 +9972,6 @@ const App: React.FC = () => {
           // Don't log success if the transfer was cancelled
           if (!folderResult.cancelled) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-            humanLog.log('DOWNLOAD', `[Local] Downloaded folder ${folderPath} in ${elapsed}s`, 'success');
             humanLog.updateEntry(logId, { status: 'success', message: t('activity.download_folder_success', { path: folderPath, seconds: elapsed }) });
           }
           // A folder with failed files is not done: a "cut" keeps its source.
@@ -14225,7 +14224,7 @@ const App: React.FC = () => {
                       : r,
                     ));
                     notify.success(pwd ? t('filelu.filePasswordSet') : t('filelu.filePasswordRemoved'));
-                    humanLog.updateEntry(logId, { status: 'success', message: t('activity.filelu_file_password_set', { provider: 'FileLu' }) });
+                    humanLog.updateEntry(logId, { status: 'success', message: t(pwd ? 'activity.filelu_file_password_set' : 'activity.filelu_file_password_removed', { provider: 'FileLu' }) });
                   } catch (err) {
                     notify.error(t('filelu.filePasswordError'), String(err));
                     humanLog.updateEntry(logId, { status: 'error', message: t('activity.filelu_file_password_error', { provider: 'FileLu' }) });
@@ -14278,7 +14277,7 @@ const App: React.FC = () => {
                       : r,
                     ));
                     notify.success(pwd ? t('filelu.folderPasswordSet') : t('filelu.folderPasswordRemoved'));
-                    humanLog.updateEntry(logId, { status: 'success', message: t('activity.filelu_folder_password_set', { provider: 'FileLu' }) });
+                    humanLog.updateEntry(logId, { status: 'success', message: t(pwd ? 'activity.filelu_folder_password_set' : 'activity.filelu_folder_password_removed', { provider: 'FileLu' }) });
                   } catch (err) {
                     notify.error(t('filelu.folderPasswordError'), String(err));
                     humanLog.updateEntry(logId, { status: 'error', message: t('activity.filelu_folder_password_error', { provider: 'FileLu' }) });

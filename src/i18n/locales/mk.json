@@ -1985,7 +1985,9 @@
             "compress_start": "Се компресира во {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Вратени {files} датотеки, {folders} папки од корпата",
             "trash_restore_detail_present_success": "[{provider}] Вратени {files} датотеки од корпата, {present} веќе постојат",
-            "trash_restore_detail_folders_present_success": "[{provider}] Вратени {files} датотеки, {folders} папки од корпата, {present} веќе постојат"
+            "trash_restore_detail_folders_present_success": "[{provider}] Вратени {files} датотеки, {folders} папки од корпата, {present} веќе постојат",
+            "filelu_file_password_removed": "[{provider}] Отстранета е лозинката за датотеката",
+            "filelu_folder_password_removed": "[{provider}] Лозинката на папката е отстранета"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",

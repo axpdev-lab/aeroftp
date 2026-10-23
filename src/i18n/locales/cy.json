@@ -1985,7 +1985,9 @@
             "compress_start": "Yn cywasgu i {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Adferwyd {files} ffeil, {folders} ffolder o'r sbwriel",
             "trash_restore_detail_present_success": "[{provider}] Adferwyd {files} ffeil o'r sbwriel, {present} yn bresennol eisoes",
-            "trash_restore_detail_folders_present_success": "[{provider}] Adferwyd {files} ffeil, {folders} ffolder o'r sbwriel, {present} yn bresennol eisoes"
+            "trash_restore_detail_folders_present_success": "[{provider}] Adferwyd {files} ffeil, {folders} ffolder o'r sbwriel, {present} yn bresennol eisoes",
+            "filelu_file_password_removed": "[{provider}] Tynnwyd cyfrinair y ffeil",
+            "filelu_folder_password_removed": "[{provider}] Tynnwyd cyfrinair y ffolder"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",

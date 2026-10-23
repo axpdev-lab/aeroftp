@@ -1985,7 +1985,9 @@
             "compress_start": "{archive}-এ সংকুচিত করা হচ্ছে...",
             "trash_restore_detail_folders_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল, {folders}টি ফোল্ডার পুনরুদ্ধার করা হয়েছে",
             "trash_restore_detail_present_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল পুনরুদ্ধার করা হয়েছে, {present}টি আগে থেকেই আছে",
-            "trash_restore_detail_folders_present_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল, {folders}টি ফোল্ডার পুনরুদ্ধার করা হয়েছে, {present}টি আগে থেকেই আছে"
+            "trash_restore_detail_folders_present_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল, {folders}টি ফোল্ডার পুনরুদ্ধার করা হয়েছে, {present}টি আগে থেকেই আছে",
+            "filelu_file_password_removed": "[{provider}] ফাইলের পাসওয়ার্ড সরানো হয়েছে",
+            "filelu_folder_password_removed": "[{provider}] ফোল্ডারের পাসওয়ার্ড সরানো হয়েছে"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",

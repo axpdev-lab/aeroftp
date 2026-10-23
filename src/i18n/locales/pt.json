@@ -1985,7 +1985,9 @@
             "compress_start": "Compactando em {archive}...",
             "trash_restore_detail_folders_success": "[{provider}] Restaurado(s) {files} arquivo(s), {folders} pasta(s) da lixeira",
             "trash_restore_detail_present_success": "[{provider}] Restaurado(s) {files} arquivo(s) da lixeira, {present} já presente(s)",
-            "trash_restore_detail_folders_present_success": "[{provider}] Restaurado(s) {files} arquivo(s), {folders} pasta(s) da lixeira, {present} já presente(s)"
+            "trash_restore_detail_folders_present_success": "[{provider}] Restaurado(s) {files} arquivo(s), {folders} pasta(s) da lixeira, {present} já presente(s)",
+            "filelu_file_password_removed": "[{provider}] Senha do arquivo removida",
+            "filelu_folder_password_removed": "[{provider}] Senha da pasta removida"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
