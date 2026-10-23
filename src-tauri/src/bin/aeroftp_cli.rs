@@ -47768,15 +47768,53 @@ async fn cmd_benchmark(
     // The connect is timed: DNS, TCP, TLS and the login, which for some
     // services (MEGA, an OAuth refresh) is most of what opening a session
     // costs.
+    //
+    // Bridge the Ctrl+C flag to a stop token first, as the transfer commands
+    // do: the connect and then the engine end at it. The connect is bounded
+    // by the profile timeout too, and the run gets what is left of it.
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let ctrl_c_watcher = {
+        let token = cancel_token.clone();
+        let flag = cancelled.clone();
+        tokio::spawn(async move {
+            while !flag.load(Ordering::Relaxed) {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+            token.cancel();
+        })
+    };
     let connect_start = std::time::Instant::now();
-    let (provider, initial_path, _metadata) =
-        match create_and_connect_with("_", cli, profile_for_connect, format, true, synth_profile)
-            .await
-        {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+    let connected = bounded_connect(
+        create_and_connect_with("_", cli, profile_for_connect, format, true, synth_profile),
+        &cancel_token,
+        std::time::Duration::from_secs(profile_timeout_secs),
+    )
+    .await;
+    let (provider, initial_path, _metadata) = match connected {
+        Ok(Ok(v)) => v,
+        Ok(Err(code)) => {
+            ctrl_c_watcher.abort();
+            return code;
+        }
+        Err(code) => {
+            ctrl_c_watcher.abort();
+            let message = if code == 130 {
+                "benchmark stopped (Ctrl+C) while connecting".to_string()
+            } else {
+                format!(
+                    "benchmark timed out after {}s while connecting; the server did not answer",
+                    profile_timeout_secs
+                )
+            };
+            print_error(format, &message, code);
+            return code;
+        }
+    };
     let connect_ms = connect_start.elapsed().as_secs_f64() * 1000.0;
+    // The run gets what the connect left of the profile timeout.
+    let run_timeout_secs = profile_timeout_secs
+        .saturating_sub(connect_start.elapsed().as_secs())
+        .max(1);
     let local_endpoint = benchmark_profile_str(
         cli,
         profile_for_connect,
@@ -47796,27 +47834,13 @@ async fn cmd_benchmark(
     );
     let protocol = provider.provider_type().to_string();
 
-    // Bridge the Ctrl+C flag to the engine's stop token, as the transfer
-    // commands do: the engine then ends after its current step and cleans up.
-    let cancel_token = tokio_util::sync::CancellationToken::new();
-    let ctrl_c_watcher = {
-        let token = cancel_token.clone();
-        let flag = cancelled.clone();
-        tokio::spawn(async move {
-            while !flag.load(Ordering::Relaxed) {
-                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-            }
-            token.cancel();
-        })
-    };
-
     let options = BenchmarkOptions {
         level,
         config: cfg,
         many_files: many_files_cfg,
         consent_publish,
         anonymize_extra,
-        profile_timeout_secs,
+        profile_timeout_secs: run_timeout_secs,
         test_root_prefix: test_root_prefix_override.map(str::to_string),
         pre_delete,
         direct_transfers: cli.partial,
@@ -47889,6 +47913,22 @@ async fn cmd_benchmark(
     }
 
     exit_code
+}
+
+/// Run the connect of a benchmark profile until it ends, the user stops it
+/// (`Err(130)`) or `limit` passes (`Err(8)`). Opening a session can take
+/// several provider round trips with their own long deadlines (MEGA), so the
+/// connect is bounded like the run: by Ctrl+C and by `--profile-timeout`.
+async fn bounded_connect<F: std::future::Future>(
+    connect: F,
+    cancel: &tokio_util::sync::CancellationToken,
+    limit: std::time::Duration,
+) -> Result<F::Output, i32> {
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err(130),
+        out = tokio::time::timeout(limit, connect) => out.map_err(|_| 8),
+    }
 }
 
 /// The exit code of one benchmark run: 130 when the user stopped it, 4 when a
@@ -77498,6 +77538,41 @@ mod tests {
             benchmark_skip_reason(6),
             "authentication failed: re-authorize the profile"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn benchmark_connect_ends_at_ctrl_c_and_at_the_profile_timeout() {
+        use std::time::Duration;
+        use tokio_util::sync::CancellationToken;
+        // A connect that never answers, as a provider stuck in its own
+        // deadlines. The outer timeout only keeps a wrong helper from hanging
+        // the test; time is virtual, so it costs nothing.
+        let hour = Duration::from_secs(3600);
+        let never = std::future::pending::<()>;
+
+        let token = CancellationToken::new();
+        let stopper = {
+            let token = token.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                token.cancel();
+            })
+        };
+        let outcome = tokio::time::timeout(hour, bounded_connect(never(), &token, hour * 2)).await;
+        stopper.abort();
+        assert_eq!(outcome.ok(), Some(Err(130)));
+
+        let token = CancellationToken::new();
+        let outcome = tokio::time::timeout(
+            hour,
+            bounded_connect(never(), &token, Duration::from_secs(60)),
+        )
+        .await;
+        assert_eq!(outcome.ok(), Some(Err(8)));
+
+        // A connect that answers passes its result through.
+        let outcome = bounded_connect(async { 7 }, &CancellationToken::new(), hour).await;
+        assert_eq!(outcome, Ok(7));
     }
 
     #[test]
