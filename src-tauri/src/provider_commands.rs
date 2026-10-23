@@ -4389,7 +4389,12 @@ async fn take_download_listing(
         folders: Vec::new(),
         files: Vec::new(),
     };
+    let mut listing_scope = crate::sync_core::WalkScope::new(remote_folder);
+    listing_scope.learn_root_listing(&files);
     for file in files {
+        if remote_folder == walk.root && listing_scope.is_root_entry(&file) {
+            continue;
+        }
         let safe_name = match sanitize_remote_filename(&file.name) {
             Ok(n) => n,
             Err(e) => {
@@ -10375,6 +10380,8 @@ pub async fn onedrive_permanent_delete(
 /// Progress payload emitted during folder size scan
 #[derive(Clone, Serialize)]
 pub struct FolderSizeProgress {
+    /// True while scanning or when limits/cancellation leave content unseen.
+    partial: bool,
     total_bytes: u64,
     file_count: u64,
     dir_count: u64,
@@ -10400,19 +10407,27 @@ async fn provider_calculate_folder_size_inner(
     path: String,
     emit_progress: impl Fn(&FolderSizeProgress),
 ) -> Result<FolderSizeProgress, String> {
+    provider_calculate_folder_size_with_limits(state, path, emit_progress, 50, 50_000).await
+}
+
+async fn provider_calculate_folder_size_with_limits(
+    state: &ProviderState,
+    path: String,
+    emit_progress: impl Fn(&FolderSizeProgress),
+    max_depth: usize,
+    max_entries: u64,
+) -> Result<FolderSizeProgress, String> {
     // One Properties dialog at a time: a reopened dialog replaces the request
     // of the one just closed, whose fire-and-forget cancel may not have
     // released the slot yet.
     let (id, token) = state.folder_size_cancel.replace_and_cancel();
     let _guard = ListingTokenGuard::new(&state.folder_size_cancel, id);
 
+    let mut partial = false;
     let mut total_bytes: u64 = 0;
     let mut file_count: u64 = 0;
     let mut dir_count: u64 = 0;
     let mut entries_scanned: u64 = 0;
-
-    const MAX_ENTRIES: u64 = 50_000;
-    const MAX_DEPTH: usize = 50;
 
     // Each folder's path is built from its parent and the name the listing
     // gives, so a name such as `../d1` or `up/../../elsewhere` leads back to
@@ -10427,10 +10442,11 @@ async fn provider_calculate_folder_size_inner(
     // BFS queue: (path, depth)
     let mut queue: Vec<(String, usize)> = vec![(path, 0)];
 
-    while let Some((current_path, depth)) = queue.pop() {
+    'walk: while let Some((current_path, depth)) = queue.pop() {
         if token.is_cancelled() {
             // Cancelled: return partial results
             let result = FolderSizeProgress {
+                partial: true,
                 total_bytes,
                 file_count,
                 dir_count,
@@ -10440,8 +10456,9 @@ async fn provider_calculate_folder_size_inner(
             return Ok(result);
         }
 
-        if depth > MAX_DEPTH || entries_scanned > MAX_ENTRIES {
-            break;
+        if depth > max_depth {
+            partial = true;
+            continue;
         }
 
         // List directory contents. The deadline covers the listing only, not
@@ -10456,10 +10473,22 @@ async fn provider_calculate_folder_size_inner(
                 .map_err(|e| format!("Failed to list {}: {}", current_path, e))
         })
         .await;
-        let Some(entries) = entries else { break };
+        let Some(entries) = entries else {
+            partial = true;
+            break;
+        };
         let entries = entries?;
 
+        let mut listing_scope = crate::sync_core::WalkScope::new(&current_path);
+        listing_scope.learn_root_listing(&entries);
         for entry in &entries {
+            if depth == 0 && listing_scope.is_root_entry(entry) {
+                continue;
+            }
+            if entries_scanned >= max_entries {
+                partial = true;
+                break 'walk;
+            }
             entries_scanned += 1;
             let subpath = if current_path == "/" || current_path.is_empty() {
                 format!("/{}", entry.name)
@@ -10493,6 +10522,7 @@ async fn provider_calculate_folder_size_inner(
 
         // Emit progress every directory listing
         let progress = FolderSizeProgress {
+            partial: true,
             total_bytes,
             file_count,
             dir_count,
@@ -10502,6 +10532,7 @@ async fn provider_calculate_folder_size_inner(
     }
 
     let result = FolderSizeProgress {
+        partial,
         total_bytes,
         file_count,
         dir_count,
@@ -13445,7 +13476,12 @@ async fn walk_compare_remote_serially(
             })?
         };
 
+        let mut listing_scope = crate::sync_core::WalkScope::new(&current_dir);
+        listing_scope.learn_root_listing(&entries);
         for entry in entries {
+            if current_dir == remote_path && listing_scope.is_root_entry(&entry) {
+                continue;
+            }
             // The cap the shared walk applies, rows and skipped links alike: a
             // tree beyond it is refused, not held without bound.
             if remote_files.len() + skipped_links.len() >= max_entries {
@@ -17672,6 +17708,78 @@ mod walk_scope_tests {
     use super::*;
     use crate::sync_core::scan::tests::stray_listings;
 
+    #[tokio::test]
+    async fn requested54_folder_size_reports_depth_and_entry_caps() {
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        for (depth, limit, entries) in [
+            (
+                0,
+                10,
+                vec![RemoteEntry::directory("child".into(), "/root/child".into())],
+            ),
+            (
+                10,
+                1,
+                vec![
+                    RemoteEntry::file("a".into(), "/root/a".into(), 1),
+                    RemoteEntry::file("b".into(), "/root/b".into(), 2),
+                ],
+            ),
+        ] {
+            let state = ProviderState::new();
+            *state.provider.lock().await = Some(Box::new(WalkTreeProvider::new(
+                std::collections::HashMap::from([("/root".into(), entries)]),
+                false,
+            )));
+            let result = provider_calculate_folder_size_with_limits(
+                &state,
+                "/root".into(),
+                |_| {},
+                depth,
+                limit,
+            )
+            .await
+            .unwrap();
+            let value = serde_json::to_value(result).unwrap();
+            assert_eq!(value["partial"], true, "{value}");
+            assert!(value["file_count"].as_u64().unwrap() <= limit, "{value}");
+        }
+    }
+
+    #[tokio::test]
+    async fn requested54_folder_size_exact_cap_is_complete_and_cancel_is_partial() {
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        for cancel in [false, true] {
+            let entries = if cancel {
+                vec![RemoteEntry::directory("child".into(), "/root/child".into())]
+            } else {
+                vec![RemoteEntry::file("a".into(), "/root/a".into(), 7)]
+            };
+            let state = ProviderState::new();
+            *state.provider.lock().await = Some(Box::new(WalkTreeProvider::new(
+                std::collections::HashMap::from([("/root".into(), entries)]),
+                false,
+            )));
+            let result = provider_calculate_folder_size_with_limits(
+                &state,
+                "/root".into(),
+                |progress| {
+                    if cancel && progress.scanning {
+                        state.folder_size_cancel.cancel();
+                    }
+                },
+                10,
+                1,
+            )
+            .await
+            .unwrap();
+            assert_eq!(result.partial, cancel);
+            if !cancel {
+                assert_eq!((result.file_count, result.total_bytes), (1, 7));
+            }
+        }
+    }
+
     /// The Properties size of a folder builds each subfolder's path from the
     /// name its listing gives: through `../d1` it sized the same folder again
     /// down to its depth cap, and through `d1/../..` or `up/../../elsewhere`
@@ -17746,6 +17854,150 @@ mod walk_scope_tests {
                 .collect();
             expected.sort();
             assert_eq!(paths, expected, "{case}");
+        }
+    }
+
+    #[tokio::test]
+    async fn requested54_gui_size_skips_self_entries() {
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(
+            crate::sync_core::scan::tests::WalkTreeProvider::new(
+                std::collections::HashMap::from([(
+                    "/root".into(),
+                    vec![
+                        RemoteEntry::directory("root".into(), "/root".into()),
+                        RemoteEntry::file("root".into(), "/root/".into(), 0),
+                        RemoteEntry::file("a.txt".into(), "/root/a.txt".into(), 4),
+                    ],
+                )]),
+                false,
+            ),
+        ));
+        let sized =
+            provider_calculate_folder_size_with_limits(&state, "/root".into(), |_| {}, 10, 1)
+                .await
+                .unwrap();
+        assert_eq!(
+            (sized.file_count, sized.dir_count, sized.total_bytes),
+            (1, 0, 4)
+        );
+        assert!(!sized.partial);
+    }
+
+    #[tokio::test]
+    async fn requested54_gui_serial_compare_skips_self_entries() {
+        let provider: Mutex<Option<Box<dyn StorageProvider>>> = Mutex::new(Some(Box::new(
+            crate::sync_core::scan::tests::WalkTreeProvider::new(
+                std::collections::HashMap::from([(
+                    "/root".into(),
+                    vec![
+                        RemoteEntry::directory("root".into(), "/root".into()),
+                        RemoteEntry::file("root".into(), "/root/".into(), 0),
+                        RemoteEntry::file("a.txt".into(), "/root/a.txt".into(), 4),
+                    ],
+                )]),
+                false,
+            ),
+        )));
+        let (rows, links) = walk_compare_remote_serially(
+            &provider,
+            "/root",
+            &[],
+            1,
+            &AtomicBool::new(false),
+            &|| true,
+            &mut |_, _, _| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows.keys().cloned().collect::<Vec<_>>(), ["a.txt"]);
+        assert!(links.is_empty());
+    }
+
+    #[tokio::test]
+    async fn requested54_gui_download_skips_self_entries() {
+        for (root, spelled) in [("/root", "/root"), ("docs", "/home/u/docs")] {
+            let root_name = spelled.rsplit('/').next().unwrap();
+            let local = tempfile::tempdir().unwrap();
+            let mut walk = DownloadWalk::new(root);
+            let listing = take_download_listing(
+                &mut walk,
+                root,
+                local.path().to_str().unwrap(),
+                local.path(),
+                vec![
+                    RemoteEntry::directory(root_name.into(), spelled.into()),
+                    RemoteEntry::file(root_name.into(), format!("{spelled}/"), 0),
+                    RemoteEntry::file("a.txt".into(), format!("{spelled}/a.txt"), 4),
+                ],
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                listing.files.len(),
+                1,
+                "{root}: a self marker is not a child file"
+            );
+            assert!(
+                listing.folders.is_empty(),
+                "{root}: a self entry is not a child folder"
+            );
+            assert_eq!(
+                std::path::Path::new(&listing.files[0].local_path),
+                local.path().join("a.txt")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn requested54_gui_download_uses_child_names_under_provider_spelled_roots() {
+        for (root, spelled) in [
+            ("docs", "/home/u/docs"),
+            ("/Docs", "/docs"),
+            ("disk:/docs", "/docs"),
+            ("/docs ", "/docs"),
+        ] {
+            let local = tempfile::tempdir().unwrap();
+            let base = local.path().to_str().unwrap();
+            let mut walk = DownloadWalk::new(root);
+            let listing = take_download_listing(
+                &mut walk,
+                root,
+                base,
+                local.path(),
+                vec![
+                    RemoteEntry::file("a.txt".into(), format!("{spelled}/a.txt"), 4),
+                    RemoteEntry::directory("sub".into(), format!("{spelled}/sub")),
+                    RemoteEntry::directory("empty".into(), format!("{spelled}/empty")),
+                ],
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                std::path::Path::new(&listing.files[0].local_path),
+                local.path().join("a.txt"),
+                "{root}"
+            );
+            assert!(local.path().join("empty").is_dir(), "{root}");
+            let (remote_sub, local_sub) = &listing.folders[0];
+            let nested = take_download_listing(
+                &mut walk,
+                remote_sub,
+                local_sub,
+                local.path(),
+                vec![RemoteEntry::file(
+                    "b.txt".into(),
+                    format!("{spelled}/sub/b.txt"),
+                    4,
+                )],
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                std::path::Path::new(&nested.files[0].local_path),
+                local.path().join("sub/b.txt"),
+                "{root}"
+            );
         }
     }
 

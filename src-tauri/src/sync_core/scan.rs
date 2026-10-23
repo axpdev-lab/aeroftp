@@ -1999,10 +1999,15 @@ async fn scan_remote_dir(
         }
     }
 
+    let mut listing_scope = WalkScope::new(&dir.abs_dir);
+    listing_scope.learn_root_listing(&entries);
     for entry in entries {
         if scan_cancelled(cancel) {
             cancelled = true;
             break;
+        }
+        if dir.depth == 0 && listing_scope.is_root_entry(&entry) {
+            continue;
         }
         if opts.skip_symlinks && entry.is_symlink {
             continue;
@@ -4954,6 +4959,36 @@ pub(crate) mod tests {
         .unwrap()
         .0
         .is_empty());
+    }
+
+    #[tokio::test]
+    async fn requested54_gui_scan_skips_self_markers_but_keeps_outside_errors() {
+        use crate::providers::RemoteEntry as Listed;
+        for pool in [false, true] {
+            for outside in [false, true] {
+                let mut entries = vec![
+                    Listed::directory("root".into(), "/root".into()),
+                    Listed::file("root".into(), "/root/".into(), 0),
+                    Listed::file("a.txt".into(), "/root/a.txt".into(), 4),
+                ];
+                if outside {
+                    entries.push(Listed::directory("away".into(), "/outside/away".into()));
+                }
+                let tree = WalkTreeProvider::new(
+                    std::collections::HashMap::from([("/root".into(), entries)]),
+                    pool,
+                );
+                let (rows, completeness, boundaries) = walk_tree_at(tree, "/root").await;
+                assert_eq!(
+                    sorted_rows(&rows),
+                    ["a.txt"],
+                    "pool={pool}, outside={outside}"
+                );
+                assert_eq!(completeness.list_errors, usize::from(outside));
+                assert_eq!(completeness.is_complete(), !outside);
+                assert_eq!(boundaries.unseen.len(), usize::from(outside));
+            }
+        }
     }
 
     /// The guard must not refuse a root the provider spells differently from

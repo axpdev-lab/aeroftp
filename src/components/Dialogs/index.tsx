@@ -541,7 +541,7 @@ interface PropertiesDialogProps {
     checksumCapability?: ChecksumCapability | null;
     onCalculateChecksum?: (algorithm: ChecksumAlgorithm) => void;
     onCalculateFolderSize?: () => void;
-    folderSize?: { total_bytes: number; file_count: number; dir_count: number } | null;
+    folderSize?: { total_bytes: number; file_count: number; dir_count: number; partial?: boolean } | null;
     folderSizeCalculating?: boolean;
     /** Tab to open on first render (#252: deep-link to Permissions). */
     initialTab?: 'general' | 'permissions' | 'checksum';
@@ -952,6 +952,9 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                             <div className="flex items-center gap-2">
                                                 <div className="text-sm text-gray-900 dark:text-gray-100">
                                                     {formatBytes(folderSize.total_bytes)} ({folderSize.file_count.toLocaleString()} {t('properties.files')}, {folderSize.dir_count.toLocaleString()} {t('properties.folders')})
+                                                    {folderSize.partial && !folderSizeCalculating && (
+                                                        <span className="text-amber-600 dark:text-amber-400 ml-1" role="status">{t('properties.sizesPartial')}</span>
+                                                    )}
                                                 </div>
                                                 {folderSizeCalculating && (
                                                     <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />

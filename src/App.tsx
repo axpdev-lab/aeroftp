@@ -5078,22 +5078,27 @@ const App: React.FC = () => {
     setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
 
     // Listen for progress events
-    const unlisten = await listen<{ total_bytes: number; file_count: number; dir_count: number; scanning: boolean }>(
+    const unlisten = await listen<FolderSizeResult & { scanning: boolean }>(
       'folder-size-progress',
       (event) => {
         const p = event.payload;
         // Update cache with partial results during scan
         setFolderSizeCache(prev => {
           const next = new Map(prev);
-          next.set(path, { total_bytes: p.total_bytes, file_count: p.file_count, dir_count: p.dir_count });
+          next.set(path, { total_bytes: p.total_bytes, file_count: p.file_count, dir_count: p.dir_count, partial: p.partial });
           return next;
         });
       }
     );
 
     try {
-      await invoke<{ total_bytes: number; file_count: number; dir_count: number }>('provider_calculate_folder_size', { path });
+      const result = await invoke<FolderSizeResult>('provider_calculate_folder_size', { path });
+      setFolderSizeCache(prev => new Map(prev).set(path, result));
     } catch (err) {
+      setFolderSizeCache(prev => {
+        const cached = prev.get(path);
+        return cached ? new Map(prev).set(path, { ...cached, partial: true }) : prev;
+      });
       notify.error(t('toast.sizeFailed'), String(err));
     } finally {
       unlisten();

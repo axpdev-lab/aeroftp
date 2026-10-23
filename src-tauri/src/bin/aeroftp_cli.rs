@@ -35589,12 +35589,12 @@ async fn cmd_get_recursive(
                         if !fetched.insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path)) {
                             continue;
                         }
-                        let relative = e
-                            .path
-                            .strip_prefix(remote_dir)
-                            .unwrap_or(&e.path)
-                            .trim_start_matches('/');
-                        let Some(relative) = validate_relative_path(relative) else {
+                        let Some(relative) = scope.relative_path(&e.path) else {
+                            listing_errors
+                                .push(format!("cannot map {} under {}", e.path, remote_dir));
+                            continue;
+                        };
+                        let Some(relative) = validate_relative_path(&relative) else {
                             continue;
                         };
                         // --files-from: skip files not in the list
@@ -35644,12 +35644,32 @@ async fn cmd_get_recursive(
         sp.finish_and_clear();
     }
 
+    // Different provider root aliases must never publish two sources onto
+    // the same local file. Refuse the plan before creating any destination.
+    {
+        let mut targets = std::collections::HashSet::new();
+        for (_, target, _) in &files {
+            if !targets.insert(target.as_str()) {
+                print_error(
+                    format,
+                    &format!(
+                        "Ambiguous remote root aliases map multiple files to {}",
+                        target
+                    ),
+                    4,
+                );
+                let _ = provider.disconnect().await;
+                return 4;
+            }
+        }
+    }
+
     for dir in &dirs {
-        let relative = dir
-            .strip_prefix(remote_dir)
-            .unwrap_or(dir)
-            .trim_start_matches('/');
-        let Some(relative) = validate_relative_path(relative) else {
+        let Some(relative) = scope.relative_path(dir) else {
+            listing_errors.push(format!("cannot map {} under {}", dir, remote_dir));
+            continue;
+        };
+        let Some(relative) = validate_relative_path(&relative) else {
             if !quiet {
                 eprintln!("Warning: skipping unsafe directory path: {}", dir);
             }
@@ -54809,6 +54829,8 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
         shown: std::collections::HashSet<String>,
         root_listed: bool,
         quiet: bool,
+        errors: usize,
+        truncated: bool,
     }
 
     impl TreeWalk {
@@ -54818,6 +54840,8 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                 shown: std::collections::HashSet::new(),
                 root_listed: false,
                 quiet,
+                errors: 0,
+                truncated: false,
             }
         }
 
@@ -54835,6 +54859,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                         Ok(true) => {}
                         Ok(false) => return false,
                         Err(refusal) => {
+                            self.errors += 1;
                             if !self.quiet {
                                 eprintln!("Warning: {refusal}");
                             }
@@ -54847,7 +54872,8 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                 .collect()
         }
 
-        fn cannot_list(&self, path: &str, error: &ProviderError) {
+        fn cannot_list(&mut self, path: &str, error: &ProviderError) {
+            self.errors += 1;
             if !self.quiet {
                 eprintln!("Warning: cannot list {path}: {error}");
             }
@@ -54863,7 +54889,11 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
         entry_count: &mut usize,
         walk: &mut TreeWalk,
     ) -> Vec<TreeNode> {
-        if depth >= max_depth || *entry_count >= MAX_SCAN_ENTRIES {
+        if depth >= max_depth {
+            return Vec::new();
+        }
+        if *entry_count >= MAX_SCAN_ENTRIES {
+            walk.truncated = true;
             return Vec::new();
         }
         let entries = match provider.list(path).await {
@@ -54876,6 +54906,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
         let mut nodes = Vec::new();
         for e in entries {
             if *entry_count >= MAX_SCAN_ENTRIES {
+                walk.truncated = true;
                 break;
             }
             *entry_count += 1;
@@ -54908,7 +54939,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
         nodes
     }
 
-    match format {
+    let partial = match format {
         OutputFormat::Json => {
             let mut tree_entry_count: usize = 0;
             let mut walk = TreeWalk::new(effective_path, cli.quiet);
@@ -54966,17 +54997,26 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                 directories: usize,
                 files: usize,
                 layers: usize,
+                errors: usize,
+                truncated: bool,
             }
             print_json(&TreeResult {
-                status: "ok",
+                status: if walk.errors > 0 || walk.truncated {
+                    "partial"
+                } else {
+                    "ok"
+                },
                 root: effective_path.to_string(),
                 tree: root_children,
                 summary: TreeSummary {
                     directories: dir_count,
                     files: file_count,
                     layers,
+                    errors: walk.errors,
+                    truncated: walk.truncated,
                 },
             });
+            walk.errors > 0 || walk.truncated
         }
         OutputFormat::Text => {
             // Iterative DFS with prefix tracking for tree drawing
@@ -55039,6 +55079,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
 
             while let Some(item) = stack.pop() {
                 if tree_entry_count >= MAX_SCAN_ENTRIES {
+                    walk.truncated = true;
                     eprintln!(
                         "Warning: max entries {} reached, tree output truncated",
                         MAX_SCAN_ENTRIES
@@ -55126,11 +55167,22 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                     println!("\n{} directories and {} files", dir_count, file_count);
                 }
             }
+            if (walk.errors > 0 || walk.truncated) && !cli.quiet {
+                eprintln!(
+                    "Warning: tree is partial ({} listing error(s))",
+                    walk.errors
+                );
+            }
+            walk.errors > 0 || walk.truncated
         }
-    }
+    };
 
     let _ = provider.disconnect().await;
-    0
+    if partial {
+        4
+    } else {
+        0
+    }
 }
 
 // ── NCDU - Interactive Disk Usage Explorer ────────────────────────
@@ -63727,6 +63779,7 @@ async fn scan_doctor_remote_tree(
 ) {
     let mut entries_found: HashMap<String, (u64, Option<String>)> = HashMap::new();
     let mut scan = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
+    let mut source_paths = std::collections::HashSet::new();
     let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(remote);
     let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
     'walk: while let Some((dir, depth)) = queue.pop() {
@@ -63747,12 +63800,13 @@ async fn scan_doctor_remote_tree(
             scope.learn_root_listing(&listed);
         }
         for e in listed {
-            let relative = e
-                .path
-                .strip_prefix(remote)
-                .unwrap_or(&e.path)
-                .trim_start_matches('/')
-                .to_string();
+            if scope.is_root(&e.path) {
+                continue;
+            }
+            let Some(relative) = scope.relative_path(&e.path) else {
+                scan.list_errors += 1;
+                continue;
+            };
             // An excluded directory is not walked, as the sync scan prunes it.
             if !relative.is_empty() && exclude_matchers.is_excluded_entry(&relative, &e.name) {
                 continue;
@@ -63770,6 +63824,13 @@ async fn scan_doctor_remote_tree(
                     continue;
                 }
                 if cli_walk_step(&mut scope, &dir, &e.path, false).is_err() {
+                    scan.list_errors += 1;
+                    continue;
+                }
+                if !source_paths.insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path)) {
+                    continue;
+                }
+                if entries_found.contains_key(&relative) {
                     scan.list_errors += 1;
                     continue;
                 }
@@ -93009,6 +93070,250 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         }
     }
 
+    #[test]
+    fn requested54_tree_reports_unlistable_root_as_partial() {
+        let full_name = concat!(
+            module_path!(),
+            "::requested54_tree_reports_unlistable_root_as_partial"
+        );
+        let test_name = full_name.split_once("::").unwrap().1;
+        if let Ok(case) = std::env::var(WALK_CHILD) {
+            let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+            let remote = if case == "root" {
+                MemTreeProvider::default()
+            } else {
+                listed_remote(
+                    &[(
+                        "/root",
+                        &[
+                            ("unreadable", "/root/unreadable", None),
+                            ("a.txt", "/root/a.txt", Some(4)),
+                        ],
+                    )],
+                    &[],
+                )
+            };
+            let depth = if case == "display-depth" { 1 } else { 10 };
+            let code = run_against_remote(remote, || async {
+                cmd_tree(
+                    "memory://",
+                    "/root",
+                    depth,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            });
+            assert_eq!(code, if case == "display-depth" { 0 } else { 4 });
+            return;
+        }
+        for case in ["root", "child", "display-depth"] {
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", test_name, "--nocapture", "--test-threads=1"])
+                .env(WALK_CHILD, case)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&child.stdout);
+            assert!(
+                child.status.success(),
+                "{case}: {stdout}\n{}",
+                String::from_utf8_lossy(&child.stderr)
+            );
+            let report = first_json(case, &stdout);
+            assert_eq!(
+                report["status"],
+                if case == "display-depth" {
+                    "ok"
+                } else {
+                    "partial"
+                },
+                "{report}"
+            );
+            assert_eq!(
+                report["summary"]["errors"],
+                if case == "display-depth" { 0 } else { 1 }
+            );
+            assert_eq!(report["summary"]["truncated"], false);
+            if case == "root" {
+                assert_eq!(report["tree"], json!([]));
+            } else {
+                assert_eq!(report["summary"]["files"], 1);
+                assert_eq!(report["tree"].as_array().unwrap().len(), 2);
+            }
+        }
+    }
+
+    fn requested54_spelled_remote(root: &str, spelled: &str) -> MemTreeProvider {
+        let a = format!("{spelled}/a.txt");
+        let sub = format!("{spelled}/sub");
+        let b = format!("{sub}/b.txt");
+        let empty = format!("{spelled}/empty");
+        listed_remote(
+            &[
+                (
+                    root,
+                    &[
+                        ("a.txt", &a, Some(4)),
+                        ("sub", &sub, None),
+                        ("empty", &empty, None),
+                    ],
+                ),
+                (&sub, &[("b.txt", &b, Some(4))]),
+                (&empty, &[]),
+            ],
+            &[(&a, b"data"), (&b, b"data")],
+        )
+    }
+
+    #[test]
+    fn requested54_get_uses_names_relative_to_provider_root() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for (root, spelled) in [
+            ("docs", "/home/u/docs"),
+            ("/Docs", "/docs"),
+            ("disk:/docs", "/docs"),
+            ("/docs ", "/docs"),
+        ] {
+            let local = tempfile::tempdir().unwrap();
+            let cli = Cli {
+                quiet: true,
+                parallel: 1,
+                ..test_cli()
+            };
+            let code = run_against_remote(requested54_spelled_remote(root, spelled), || async {
+                cmd_get_recursive(
+                    "memory://",
+                    root,
+                    Some(local.path().to_str().unwrap()),
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            assert_eq!(code, 0);
+            assert_eq!(
+                std::fs::read(local.path().join("a.txt")).ok(),
+                Some(b"data".to_vec()),
+                "{root}"
+            );
+            assert_eq!(
+                std::fs::read(local.path().join("sub/b.txt")).ok(),
+                Some(b"data".to_vec()),
+                "{root}"
+            );
+            assert!(local.path().join("empty").is_dir(), "{root}");
+        }
+    }
+
+    #[tokio::test]
+    async fn requested54_cli_scan_skips_self_but_reports_outside_root() {
+        for (root, spelled) in [("/root", "/root"), ("docs", "/home/u/docs")] {
+            for outside in [false, true] {
+                let marker = format!("{spelled}/");
+                let file = format!("{spelled}/a.txt");
+                let mut entries = vec![
+                    ("root", spelled, None),
+                    ("marker", marker.as_str(), Some(0)),
+                    ("root", root, None),
+                    ("a.txt", file.as_str(), Some(4)),
+                ];
+                if outside {
+                    entries.push(("off.txt", "/elsewhere/off.txt", Some(8)));
+                }
+                let mut remote = listed_remote(&[(root, &entries)], &[]);
+                let (files, scan) =
+                    scan_doctor_remote_tree(&mut remote, root, &SyncExcludes::default(), 100, 100)
+                        .await;
+                assert_eq!(files.keys().cloned().collect::<Vec<_>>(), ["a.txt"]);
+                assert_eq!(
+                    scan.list_errors,
+                    usize::from(outside),
+                    "{root}, outside={outside}"
+                );
+                assert_eq!(scan.is_complete(), !outside);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn requested54_cli_doctor_uses_relative_keys_and_excludes() {
+        for (root, spelled) in [
+            ("docs", "/home/u/docs"),
+            ("/Docs", "/docs"),
+            ("disk:/docs", "/docs"),
+            ("/docs ", "/docs"),
+        ] {
+            let mut remote = requested54_spelled_remote(root, spelled);
+            let excludes = SyncExcludes::new(&["/sub/b.txt".to_string()]).unwrap();
+            let (found, scan) =
+                scan_doctor_remote_tree(&mut remote, root, &excludes, 100, 100).await;
+            assert!(scan.is_complete());
+            assert_eq!(
+                found.keys().cloned().collect::<Vec<_>>(),
+                ["a.txt"],
+                "{root}: {found:?}"
+            );
+        }
+    }
+
+    fn requested54_alias_collision_remote() -> MemTreeProvider {
+        listed_remote(
+            &[(
+                "docs",
+                &[
+                    ("a.txt", "/home/u/docs/a.txt", Some(4)),
+                    ("a.txt", "/docs/a.txt", Some(4)),
+                ],
+            )],
+            &[("/home/u/docs/a.txt", b"left"), ("/docs/a.txt", b"rght")],
+        )
+    }
+
+    #[test]
+    fn requested54_get_refuses_ambiguous_root_alias_targets_before_writing() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let local = tempfile::tempdir().unwrap();
+        let cli = Cli {
+            quiet: true,
+            parallel: 1,
+            ..test_cli()
+        };
+        let code = run_against_remote(requested54_alias_collision_remote(), || async {
+            cmd_get_recursive(
+                "memory://",
+                "docs",
+                Some(local.path().to_str().unwrap()),
+                &cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        assert_eq!(
+            code, 4,
+            "two distinct sources must not overwrite the same mapped target"
+        );
+        assert!(!local.path().join("a.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn requested54_cli_doctor_reports_ambiguous_root_aliases() {
+        let (found, scan) = scan_doctor_remote_tree(
+            &mut requested54_alias_collision_remote(),
+            "docs",
+            &SyncExcludes::default(),
+            100,
+            100,
+        )
+        .await;
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            scan.list_errors, 1,
+            "an ambiguous key is not a complete inventory"
+        );
+    }
+
     /// `tree` (both renderings) built its rows from what each listing named:
     /// a folder listed inside itself showed under itself, a folder listed as
     /// `/` showed the account root, a folder named twice showed twice. Each
@@ -93022,7 +93327,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 let code = run_against_remote(shape.remote(), || async {
                     cmd_tree("memory://", "/root", 10, &test_cli(), format).await
                 });
-                assert_eq!(code, 0);
+                assert_eq!(code, if shape.refused > 0 { 4 } else { 0 });
                 println!("END OF RENDERING");
             }
             return;
