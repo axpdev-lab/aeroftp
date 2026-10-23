@@ -52208,6 +52208,12 @@ async fn cmd_sync(
             .unbounded
             .get_or_insert("source_root_missing");
     }
+    // The other half: the side a one-way run writes to may not exist yet.
+    let destination_root_missing = match direction {
+        "upload" => remote_boundaries.root_missing,
+        "download" => local_boundaries.root_missing,
+        _ => false,
+    };
     let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
         local,
         local_scan.entries.iter().map(|(path, _, _)| path.as_str()),
@@ -52297,11 +52303,24 @@ async fn cmd_sync(
     // in the exit code / JSON status instead of reporting success. A
     // from-reconcile plan is an explicit, user-supplied source of truth and is
     // treated as complete.
-    let local_scan_health = local_scan.completeness;
-    let remote_scan_health = ftp_client_gui_lib::sync_core::ScanCompleteness {
+    let mut local_scan_health = local_scan.completeness;
+    let mut remote_scan_health = ftp_client_gui_lib::sync_core::ScanCompleteness {
         list_errors: remote_scan_errors,
         truncated: remote_scan_truncated,
     };
+    // A first sync into a destination that does not exist yet. Its scan
+    // counts the root it could not list, so that no orphan delete trusts the
+    // listing; but the root is the empty tree the run creates, with nothing
+    // left unseen, and an empty destination holds no orphan. That one count
+    // does not make the run partial (Requested 78 on #1318).
+    if destination_root_missing {
+        let destination = if direction == "upload" {
+            &mut remote_scan_health
+        } else {
+            &mut local_scan_health
+        };
+        destination.list_errors = destination.list_errors.saturating_sub(1);
+    }
     let scan_incomplete = reconcile_plan.is_none()
         && !(local_scan_health.is_complete() && remote_scan_health.is_complete());
 
@@ -52328,7 +52347,7 @@ async fn cmd_sync(
     if scan_incomplete && !quiet {
         eprintln!(
             "Warning: scan incomplete (remote errors: {}, local errors: {}, remote truncated: {}, local truncated: {}); results may be partial.",
-            remote_scan_errors,
+            remote_scan_health.list_errors,
             local_scan_health.list_errors,
             remote_scan_truncated,
             local_scan_health.truncated
@@ -96327,6 +96346,42 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             stats.uploaded, 1,
             "a destination root that does not exist is an empty tree"
         );
+        // Requested 78 on #1318: the first sync into a new remote folder
+        // uploaded everything and still ended `partial`, exit 4, because the
+        // unlisted root was counted as a scan error.
+        assert_eq!(stats.deleted, 0, "an empty destination holds no orphan");
+        assert_eq!(stats.exit_code, 0, "a new destination is not a partial run");
+    }
+
+    /// The download twin: a first sync into a local folder that does not
+    /// exist yet plans its copies and is a clean run.
+    #[test]
+    fn sync_download_into_a_local_root_that_does_not_exist_is_a_clean_run() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        let local = dir.path().join("not-created-yet");
+        let mut a = RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1);
+        a.modified = Some(FIXTURE_MTIME.to_string());
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = plan_sync_with_delete(
+            MemTreeProvider {
+                dirs: HashMap::from([("/root".to_string(), vec![a])]),
+                ..Default::default()
+            },
+            local.to_str().unwrap(),
+            "download",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(
+            stats.downloaded, 1,
+            "the copy into the new folder is planned"
+        );
+        assert_eq!(stats.deleted, 0);
+        assert_eq!(stats.exit_code, 0, "a new destination is not a partial run");
     }
 
     /// The real `cmd_sync` as a dry-run upload whose scans start cancelled.

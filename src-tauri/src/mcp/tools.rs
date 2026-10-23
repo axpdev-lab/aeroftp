@@ -186,7 +186,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         // already-registered name (vec push order wins on `find`).
         McpToolDef {
             name: "aeroftp_upload_many",
-            description: "Upload multiple local files to a remote server in a single batch. Each item may specify its own `create_parents` and `no_clobber` flags. Applies a server-friendly backoff between operations (same contract as aeroftp_delete_many) and returns per-item results plus summary.totals. Serial-per-connection: one item at a time on the pooled connection, since most protocols (FTP, SFTP) do not parallelize uploads on a single session. On a provider with a native bulk upload (Proton Drive CLI mode), local files that share a remote folder go up in one native call, with the same per-item results. Set continue_on_error=false to stop at the first failure.",
+            description: "Upload multiple local files to a remote server in a single batch. Each item may specify its own `create_parents` and `no_clobber` flags; the batch-level `no_clobber` is the default for every item that does not set it. With `delay_ms` it pauses between upload calls. Returns per-item results plus summary.totals. Serial-per-connection: one item at a time on the pooled connection, since most protocols (FTP, SFTP) do not parallelize uploads on a single session. On a provider with a native bulk upload (Proton Drive CLI mode), local files that share a remote folder go up in one native call, with the same per-item results. Set continue_on_error=false to stop at the first failure.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "items": {
@@ -204,7 +204,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
                     "description": "Items to upload (max 100)"
                 },
                 "continue_on_error": { "type": "boolean", "description": "Keep going after a single-item failure (default: true)" },
-                "delay_ms": { "type": "integer", "description": "Pause between uploads in milliseconds (default: 0, cap: 2000)" },
+                "delay_ms": { "type": "integer", "description": "Pause before every upload call after the first, in milliseconds; a native bulk counts as one call (default: 0, cap: 2000)" },
                 "no_clobber": { "type": "boolean", "description": "Default no_clobber for every item that does not override it (default: false)" }
             }, "required": ["server", "items"] }),
             category: RateCategory::Mutative,
