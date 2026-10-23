@@ -49,7 +49,7 @@ use super::error::{
     CODE_NOT_EXISTS,
 };
 use super::nodes::Node;
-use super::{account, app_version, vault};
+use super::{app_version, vault};
 use crate::providers::proton::ProtonConfig;
 use crate::providers::{
     ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider, MAX_DOWNLOAD_TO_BYTES,
@@ -1065,9 +1065,10 @@ impl StorageProvider for ProtonNativeProvider {
         let api = Arc::new(ProtonApi::new(app_version::app_version()));
         api.set_tokens(Some(session.tokens.clone())).await;
         api.set_session_store(Arc::new(vault::VaultSession::new(owner, source, &session)));
-        let account = account::load_account(&api, &session.key_password)
-            .await
-            .map_err(|error| map_error("/", error))?;
+        let (account, my_files) =
+            super::client::load_account_and_my_files(&api, &session.key_password)
+                .await
+                .map_err(|error| map_error("/", error))?;
         if let (true, Some(profile_id)) = (unbound, profile_id.as_deref()) {
             let addresses: Vec<&str> = account
                 .addresses()
@@ -1095,9 +1096,14 @@ impl StorageProvider for ProtonNativeProvider {
                 &current,
             )));
         }
-        let drive = DriveClient::open(Arc::clone(&api), account)
-            .await
-            .map_err(|error| map_error("/", error))?;
+        let drive = DriveClient::open_with(
+            Arc::clone(&api),
+            account,
+            my_files,
+            super::client::machine_client_uid(),
+        )
+        .await
+        .map_err(|error| map_error("/", error))?;
 
         self.drive = Some(Arc::new(drive));
         self.current_path = "/".to_string();

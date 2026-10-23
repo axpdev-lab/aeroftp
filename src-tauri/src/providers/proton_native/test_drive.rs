@@ -36,9 +36,36 @@ struct Revision {
     blocks: Vec<Vec<u8>>,
 }
 
+/// How the test drive answers `GET drive/v2/shares/my-files`.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum MyFilesRoot {
+    /// The root folder's details, as Proton sends them.
+    #[default]
+    Details,
+    /// Only the root's link ID.
+    IdOnly,
+    /// The root's details with a node passphrase that is not the one locked
+    /// to the share key.
+    WrongPassphrase,
+    /// The root's details with the passphrase signature of another node.
+    WrongSignature,
+}
+
 #[derive(Default)]
 struct Wire {
     base: String,
+    /// `/core/v4/users` and `/core/v4/addresses`, with the delay before each
+    /// answer.
+    users: Value,
+    addresses: Value,
+    account_delay: std::time::Duration,
+    my_files: Value,
+    my_files_root: MyFilesRoot,
+    /// My Files answers that the account has no Drive volume (code 2501).
+    no_volume: bool,
+    /// When each route was asked, from the server's start.
+    arrivals: Vec<(&'static str, std::time::Duration)>,
+    started: Option<std::time::Instant>,
     links: HashMap<String, Value>,
     children: HashMap<String, Vec<String>>,
     revisions: HashMap<(String, String), Revision>,
@@ -53,6 +80,65 @@ fn count(wire: &Shared, route: &'static str, what: &str) {
     let mut wire = wire.lock().unwrap();
     *wire.counts.entry(route).or_default() += 1;
     wire.log.push(format!("{route} {what}"));
+    let at = wire
+        .started
+        .map(|started| started.elapsed())
+        .unwrap_or_default();
+    wire.arrivals.push((route, at));
+}
+
+async fn users(State(wire): State<Shared>) -> Json<Value> {
+    count(&wire, "users", "");
+    let delay = wire.lock().unwrap().account_delay;
+    tokio::time::sleep(delay).await;
+    Json(wire.lock().unwrap().users.clone())
+}
+
+async fn addresses(State(wire): State<Shared>) -> Json<Value> {
+    count(&wire, "addresses", "");
+    let delay = wire.lock().unwrap().account_delay;
+    tokio::time::sleep(delay).await;
+    Json(wire.lock().unwrap().addresses.clone())
+}
+
+async fn my_files(State(wire): State<Shared>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    count(&wire, "my-files", "");
+    let wire = wire.lock().unwrap();
+    if wire.no_volume {
+        return (
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "Code": 2501, "Error": "Volume not found" })),
+        )
+            .into_response();
+    }
+    let mut answer = wire.my_files.clone();
+    let mut root = wire.links[ROOT].clone();
+    match wire.my_files_root {
+        MyFilesRoot::Details => {}
+        MyFilesRoot::IdOnly => root = json!({ "Link": { "LinkID": ROOT } }),
+        MyFilesRoot::WrongPassphrase => {
+            // A passphrase locked to another key than the share key.
+            let other = wire
+                .links
+                .iter()
+                .find(|(id, _)| id.as_str() != ROOT)
+                .map(|(_, details)| details["Link"]["NodePassphrase"].clone())
+                .expect("a second node to borrow a passphrase from");
+            root["Link"]["NodePassphrase"] = other;
+        }
+        MyFilesRoot::WrongSignature => {
+            let other = wire
+                .links
+                .iter()
+                .find(|(id, _)| id.as_str() != ROOT)
+                .map(|(_, details)| details["Link"]["NodePassphraseSignature"].clone())
+                .expect("a second node to borrow a signature from");
+            root["Link"]["NodePassphraseSignature"] = other;
+        }
+    }
+    answer["Link"] = root;
+    Json(answer).into_response()
 }
 
 async fn links(State(wire): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
@@ -186,11 +272,18 @@ impl<P: PGPProviderSync> TestDrive<P> {
                 get(revision),
             )
             .route("/storage/{link}/{revision}/{index}", get(storage))
+            .route("/core/v4/users", get(users))
+            .route("/core/v4/addresses", get(addresses))
+            .route("/drive/v2/shares/my-files", get(my_files))
             .with_state(Arc::clone(&wire));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });
-        wire.lock().unwrap().base = base.clone();
+        {
+            let mut wire = wire.lock().unwrap();
+            wire.base = base.clone();
+            wire.started = Some(std::time::Instant::now());
+        }
 
         let api = ProtonApi::with_base_url(base, "test@1.0.0-alpha".into());
         api.set_tokens(Some(super::session::SessionTokens {
@@ -204,9 +297,21 @@ impl<P: PGPProviderSync> TestDrive<P> {
         let address = &account.addresses()[0];
         let address_key = address.keys[0].private_key.clone();
         let address_public = address.keys[0].public_key.clone();
-        let share_key = drive_crypto::generate_node_key(provider, &address_public, &address_key)
-            .unwrap()
-            .key;
+        let share =
+            drive_crypto::generate_node_key(provider, &address_public, &address_key).unwrap();
+        wire.lock().unwrap().my_files = json!({
+            "Code": 1000,
+            "Volume": { "VolumeID": VOLUME },
+            "Share": {
+                "ShareID": "share",
+                "CreatorEmail": address.email,
+                "Key": share.armored_key,
+                "Passphrase": share.armored_passphrase,
+                "PassphraseSignature": share.armored_passphrase_signature,
+                "AddressID": address.id,
+            },
+        });
+        let share_key = share.key;
         let mut drive = Self {
             wire,
             api: Arc::new(api),
@@ -428,8 +533,37 @@ impl<P: PGPProviderSync> TestDrive<P> {
         found.blocks.truncate(keep);
     }
 
+    /// Answers the account's keys from `users` and `addresses` (the API
+    /// JSON), each after `delay`.
+    pub fn serve_account(&self, users: Value, addresses: Value, delay: std::time::Duration) {
+        let mut wire = self.wire.lock().unwrap();
+        wire.users = users;
+        wire.addresses = addresses;
+        wire.account_delay = delay;
+    }
+
+    pub fn set_my_files_root(&self, root: MyFilesRoot) {
+        self.wire.lock().unwrap().my_files_root = root;
+    }
+
+    /// My Files answers that the account has no Drive volume.
+    pub fn without_volume(&self) {
+        self.wire.lock().unwrap().no_volume = true;
+    }
+
+    /// When `route` was first asked, from the server's start.
+    pub fn first_arrival(&self, route: &str) -> Option<std::time::Duration> {
+        self.wire
+            .lock()
+            .unwrap()
+            .arrivals
+            .iter()
+            .find(|(asked, _)| *asked == route)
+            .map(|(_, at)| *at)
+    }
+
     /// Requests made so far on `route` (`links`, `children`, `revision`,
-    /// `storage`).
+    /// `storage`, `users`, `addresses`, `my-files`).
     pub fn count(&self, route: &str) -> usize {
         self.wire
             .lock()
@@ -445,6 +579,7 @@ impl<P: PGPProviderSync> TestDrive<P> {
         let mut wire = self.wire.lock().unwrap();
         wire.counts.clear();
         wire.log.clear();
+        wire.arrivals.clear();
     }
 
     /// The requests made so far, in order, as `route link`.
