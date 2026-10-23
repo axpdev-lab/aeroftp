@@ -1708,7 +1708,8 @@
             "navigationFailed": "Навигацијата не успеа: {error}",
             "transferComplete": "Копирани се {count} датотеки",
             "permissionsSessionChanged": "Врската се променила откако е отворен овој дијалог, па ништо не е променето. Отворете Дозволи повторно на тековната врска.",
-            "createFailed": "Креирањето не успеа"
+            "createFailed": "Креирањето не успеа",
+            "unknownServer": "непознат сервер"
         },
         "about": {
             "tagline": "Повеќе од FTP. Комплетна развојна алатка.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (заштедено {percent}%)",
             "compress_details_grew": "{input} → {output} (зголемено {percent}%)",
             "extract_details": "{input} → {output} (распакувано)",
-            "download_details": "({size} за {seconds} с)"
+            "download_details": "({size} за {seconds} с)",
+            "transfer_details": "({size} за {time})"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Датотеката е заклучена",
                 "disk_error": "Грешка на дискот",
-                "unknown": "Непознато"
+                "unknown": "Непознато",
+                "fatal": "Фатална грешка"
             },
             "schedulerTitle": "Распоредувач за синхронизација",
             "schedulerEnabled": "Овозможи распоредувач",

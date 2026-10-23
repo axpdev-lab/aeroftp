@@ -1708,7 +1708,8 @@
             "navigationFailed": "Navigacija nije uspjela: {error}",
             "transferComplete": "Kopirano {count} datoteka",
             "permissionsSessionChanged": "Veza se promijenila otkako je ovaj dijalog otvoren, pa ništa nije promijenjeno. Ponovno otvorite Dozvole na trenutnoj vezi.",
-            "createFailed": "Stvaranje nije uspjelo"
+            "createFailed": "Stvaranje nije uspjelo",
+            "unknownServer": "nepoznatim poslužiteljem"
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (ušteđeno {percent}%)",
             "compress_details_grew": "{input} → {output} (povećano {percent}%)",
             "extract_details": "{input} → {output} (raspakirano)",
-            "download_details": "({size} za {seconds} s)"
+            "download_details": "({size} za {seconds} s)",
+            "transfer_details": "({size} za {time})"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Datoteka zaključana",
                 "disk_error": "Pogreška diska",
-                "unknown": "Nepoznato"
+                "unknown": "Nepoznato",
+                "fatal": "Kobna pogreška"
             },
             "schedulerTitle": "Planer sinkronizacije",
             "schedulerEnabled": "Omogući planer",

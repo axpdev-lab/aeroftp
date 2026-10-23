@@ -1708,7 +1708,8 @@
             "navigationFailed": "Nabigazioak huts egin du: {error}",
             "transferComplete": "{count} fitxategi kopiatu dira",
             "permissionsSessionChanged": "Elkarrizketa-koadroa ireki zenetik konexioa aldatu da, beraz, ez da ezer aldatu. Ireki Baimenak berriro uneko konexioan.",
-            "createFailed": "Sorrerak huts egin du"
+            "createFailed": "Sorrerak huts egin du",
+            "unknownServer": "Ezezaguna"
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (%{percent} aurreztuta)",
             "compress_details_grew": "{input} → {output} (%{percent} handitu da)",
             "extract_details": "{input} → {output} (zabalduta)",
-            "download_details": "({size} {seconds} s-tan)"
+            "download_details": "({size} {seconds} s-tan)",
+            "transfer_details": "({size} {time} denboran)"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fitxategia blokeatuta",
                 "disk_error": "Disko errorea",
-                "unknown": "Ezezaguna"
+                "unknown": "Ezezaguna",
+                "fatal": "Errore larria"
             },
             "schedulerTitle": "Sinkronizazio-antolatzailea",
             "schedulerEnabled": "Gaitu antolatzailea",

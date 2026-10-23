@@ -797,7 +797,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         const displayName = transferIdToDisplayPath.current.get(data.transfer_id)
           || resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
-        const details = size && time ? `(${size} in ${time})` : size ? `(${size})` : '';
+        const details = size && time ? t('activity.transfer_details', { size, time }) : size ? `(${size})` : '';
         const formattedMessage = t(successKey, { filename: displayName, location: loc, details });
 
         const logId = transferIdToLogId.current.get(data.transfer_id);

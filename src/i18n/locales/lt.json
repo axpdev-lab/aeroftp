@@ -1708,7 +1708,8 @@
             "navigationFailed": "Nepavyko naršyti: {error}",
             "transferComplete": "Nukopijuota failų: {count}",
             "permissionsSessionChanged": "Ryšys pasikeitė nuo šio dialogo atidarymo, todėl niekas nebuvo pakeista. Atidarykite Teises dar kartą dabartiniame ryšyje.",
-            "createFailed": "Sukurti nepavyko"
+            "createFailed": "Sukurti nepavyko",
+            "unknownServer": "nežinomo serverio"
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kūrėjų įrankių rinkinys.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (sutaupyta {percent}%)",
             "compress_details_grew": "{input} → {output} (padidėjo {percent}%)",
             "extract_details": "{input} → {output} (išskleista)",
-            "download_details": "({size} per {seconds} s)"
+            "download_details": "({size} per {seconds} s)",
+            "transfer_details": "({size} per {time})"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Failas užrakintas",
                 "disk_error": "Disko klaida",
-                "unknown": "Nežinoma"
+                "unknown": "Nežinoma",
+                "fatal": "Lemtinga klaida"
             },
             "schedulerTitle": "Sinchronizacijos planuoklis",
             "schedulerEnabled": "Įjungti planavimą",

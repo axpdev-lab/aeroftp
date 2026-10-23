@@ -1708,7 +1708,8 @@
             "navigationFailed": "Navigation fehlgeschlagen: {error}",
             "transferComplete": "{count} Datei(en) kopiert",
             "permissionsSessionChanged": "Die Verbindung hat sich geändert, seit dieser Dialog geöffnet wurde, daher wurde nichts geändert. Öffnen Sie Berechtigungen erneut für die aktuelle Verbindung.",
-            "createFailed": "Erstellen fehlgeschlagen"
+            "createFailed": "Erstellen fehlgeschlagen",
+            "unknownServer": "Unbekannt"
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} ({percent}% gespart)",
             "compress_details_grew": "{input} → {output} ({percent}% größer)",
             "extract_details": "{input} → {output} (entpackt)",
-            "download_details": "({size} in {seconds} s)"
+            "download_details": "({size} in {seconds} s)",
+            "transfer_details": "({size} in {time})"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Datei gesperrt",
                 "disk_error": "Festplattenfehler",
-                "unknown": "Unbekannt"
+                "unknown": "Unbekannt",
+                "fatal": "Schwerwiegender Fehler"
             },
             "schedulerTitle": "Synchronisationsplaner",
             "schedulerEnabled": "Planer aktivieren",

@@ -12885,7 +12885,7 @@ const App: React.FC = () => {
             const errorKind = circuitBreaker.tripErrorKindRef.current;
 
             if (reason === 'fatal_error') {
-              const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+              const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : t('syncPanel.errorKind.fatal');
               for (let j = i; j < queueItems.length; j++) {
                 transferQueue.failTransfer(queueItems[j].id, label);
               }
@@ -13070,7 +13070,7 @@ const App: React.FC = () => {
           const errorKind = circuitBreaker.tripErrorKindRef.current;
 
           if (reason === 'fatal_error') {
-            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : t('syncPanel.errorKind.fatal');
             for (let j = i; j < queueItems.length; j++) {
               transferQueue.failTransfer(queueItems[j].id, label);
             }
@@ -13273,7 +13273,7 @@ const App: React.FC = () => {
           const errorKind = circuitBreaker.tripErrorKindRef.current;
 
           if (reason === 'fatal_error') {
-            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : t('syncPanel.errorKind.fatal');
             for (let j = i; j < queueItems.length; j++) {
               transferQueue.failTransfer(queueItems[j].id, label);
             }
@@ -17972,7 +17972,7 @@ const App: React.FC = () => {
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                   setShowConnectionScreen(false);
                   const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', fourshared: '4shared' };
-                  const providerName = normalizedParams.displayName || (normalizedParams.protocol && providerNames[normalizedParams.protocol]) || normalizedParams.protocol || 'Unknown';
+                  const providerName = normalizedParams.displayName || (normalizedParams.protocol && providerNames[normalizedParams.protocol]) || normalizedParams.protocol || t('toast.unknownServer');
                   notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
                   // Load remote files for OAuth provider - pass protocol explicitly.
                   // When the saved OAuth profile carries a confirmed crypt overlay,

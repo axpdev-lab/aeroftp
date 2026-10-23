@@ -1708,7 +1708,8 @@
             "navigationFailed": "Nabigo ang paglipat: {error}",
             "transferComplete": "{count} (na) file ang nakopya",
             "permissionsSessionChanged": "Nagbago ang koneksyon mula nang buksan ang dialog na ito, kaya walang binago. Buksan muli ang Mga Pahintulot sa kasalukuyang koneksyon.",
-            "createFailed": "Nabigo ang paglikha"
+            "createFailed": "Nabigo ang paglikha",
+            "unknownServer": "Hindi kilala"
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (nakatipid ng {percent}%)",
             "compress_details_grew": "{input} → {output} (lumaki ng {percent}%)",
             "extract_details": "{input} → {output} (na-extract)",
-            "download_details": "({size} sa loob ng {seconds} seg)"
+            "download_details": "({size} sa loob ng {seconds} seg)",
+            "transfer_details": "({size} sa loob ng {time})"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Naka-lock ang file",
                 "disk_error": "Error sa disk",
-                "unknown": "Hindi alam"
+                "unknown": "Hindi alam",
+                "fatal": "Malubhang error"
             },
             "schedulerTitle": "Sync Scheduler",
             "schedulerEnabled": "I-enable ang Scheduler",

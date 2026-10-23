@@ -1708,7 +1708,8 @@
             "navigationFailed": "ნავიგაცია ვერ მოხერხდა: {error}",
             "transferComplete": "დაკოპირდა {count} ფაილი",
             "permissionsSessionChanged": "კავშირი შეიცვალა ამ დიალოგის გახსნის შემდეგ, ამიტომ არაფერი შეცვლილა. გახსენით უფლებები ხელახლა მიმდინარე კავშირზე.",
-            "createFailed": "შექმნა ვერ მოხერხდა"
+            "createFailed": "შექმნა ვერ მოხერხდა",
+            "unknownServer": "უცნობი"
         },
         "about": {
             "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (დაზოგილია {percent}%)",
             "compress_details_grew": "{input} → {output} (გაიზარდა {percent}%)",
             "extract_details": "{input} → {output} (გაშლილი)",
-            "download_details": "({size} {seconds} წმ-ში)"
+            "download_details": "({size} {seconds} წმ-ში)",
+            "transfer_details": "({size} {time}-ში)"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "ფაილი დაბლოკილია",
                 "disk_error": "დისკის შეცდომა",
-                "unknown": "უცნობი"
+                "unknown": "უცნობი",
+                "fatal": "ფატალური შეცდომა"
             },
             "schedulerTitle": "სინქრონიზაციის გრაფიკი",
             "schedulerEnabled": "გრაფიკის ჩართვა",

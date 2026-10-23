@@ -1708,7 +1708,8 @@
             "navigationFailed": "Navigarea a eșuat: {error}",
             "transferComplete": "{count} fișiere copiate",
             "permissionsSessionChanged": "Conexiunea s-a schimbat de când a fost deschis acest dialog, așa că nu s-a modificat nimic. Deschideți din nou Permisiuni pe conexiunea curentă.",
-            "createFailed": "Crearea a eșuat"
+            "createFailed": "Crearea a eșuat",
+            "unknownServer": "Necunoscut"
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (economisit {percent}%)",
             "compress_details_grew": "{input} → {output} (crescut cu {percent}%)",
             "extract_details": "{input} → {output} (extins)",
-            "download_details": "({size} în {seconds} s)"
+            "download_details": "({size} în {seconds} s)",
+            "transfer_details": "({size} în {time})"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Fișier blocat",
                 "disk_error": "Eroare disc",
-                "unknown": "Necunoscut"
+                "unknown": "Necunoscut",
+                "fatal": "Eroare fatală"
             },
             "schedulerTitle": "Programator sincronizare",
             "schedulerEnabled": "Activează programator",

@@ -1708,7 +1708,8 @@
             "navigationFailed": "Methodd y llywio: {error}",
             "transferComplete": "Copïwyd {count} ffeil",
             "permissionsSessionChanged": "Mae'r cysylltiad wedi newid ers agor y deialog hwn, felly ni newidiwyd dim. Agorwch Caniatadau eto ar y cysylltiad cyfredol.",
-            "createFailed": "Methodd y creu"
+            "createFailed": "Methodd y creu",
+            "unknownServer": "Anhysbys"
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (arbedwyd {percent}%)",
             "compress_details_grew": "{input} → {output} (tyfodd {percent}%)",
             "extract_details": "{input} → {output} (wedi ehangu)",
-            "download_details": "({size} mewn {seconds}e)"
+            "download_details": "({size} mewn {seconds}e)",
+            "transfer_details": "({size} mewn {time})"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Ffeil wedi'i chloi",
                 "disk_error": "Gwall disg",
-                "unknown": "Anhysbys"
+                "unknown": "Anhysbys",
+                "fatal": "Gwall angheuol"
             },
             "schedulerTitle": "Amserlenydd Cydweddu",
             "schedulerEnabled": "Galluogi Amserlenydd",

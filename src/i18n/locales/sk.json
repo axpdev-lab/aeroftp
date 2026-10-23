@@ -1708,7 +1708,8 @@
             "navigationFailed": "Navigácia zlyhala: {error}",
             "transferComplete": "Skopírovaných {count} súborov",
             "permissionsSessionChanged": "Pripojenie sa od otvorenia tohto dialógu zmenilo, preto sa nič nezmenilo. Otvorte Oprávnenia znova na aktuálnom pripojení.",
-            "createFailed": "Vytvorenie zlyhalo"
+            "createFailed": "Vytvorenie zlyhalo",
+            "unknownServer": "neznámemu serveru"
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (ušetrené {percent}%)",
             "compress_details_grew": "{input} → {output} (zväčšené o {percent}%)",
             "extract_details": "{input} → {output} (rozbalené)",
-            "download_details": "({size} za {seconds} s)"
+            "download_details": "({size} za {seconds} s)",
+            "transfer_details": "({size} za {time})"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Súbor uzamknutý",
                 "disk_error": "Chyba disku",
-                "unknown": "Neznáme"
+                "unknown": "Neznáme",
+                "fatal": "Fatálna chyba"
             },
             "schedulerTitle": "Plánovač synchronizácie",
             "schedulerEnabled": "Povoliť plánovač",

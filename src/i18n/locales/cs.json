@@ -1708,7 +1708,8 @@
             "navigationFailed": "Navigace selhala: {error}",
             "transferComplete": "Zkopírováno {count} souborů",
             "permissionsSessionChanged": "Připojení se od otevření tohoto dialogu změnilo, proto nebylo nic změněno. Otevřete Oprávnění znovu na aktuálním připojení.",
-            "createFailed": "Vytvoření selhalo"
+            "createFailed": "Vytvoření selhalo",
+            "unknownServer": "neznámému serveru"
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",
@@ -2022,7 +2023,8 @@
             "compress_details_saved": "{input} → {output} (ušetřeno {percent}%)",
             "compress_details_grew": "{input} → {output} (zvětšeno o {percent}%)",
             "extract_details": "{input} → {output} (rozbaleno)",
-            "download_details": "({size} za {seconds} s)"
+            "download_details": "({size} za {seconds} s)",
+            "transfer_details": "({size} za {time})"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -2506,7 +2508,8 @@
                 "timeout": "Timeout",
                 "file_locked": "Soubor zamknut",
                 "disk_error": "Chyba disku",
-                "unknown": "Neznámý"
+                "unknown": "Neznámý",
+                "fatal": "Fatální chyba"
             },
             "schedulerTitle": "Plánovač synchronizace",
             "schedulerEnabled": "Povolit plánovač",
