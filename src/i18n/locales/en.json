@@ -208,7 +208,95 @@
             "box_unlock_folder": "[Box] Unlocking folder {filename}...",
             "site_replied": "{command}: the server replied {code}",
             "site_unknown": "{command}: no complete reply, outcome unknown",
-            "site_not_sent": "{command} was not sent"
+            "site_not_sent": "{command} was not sent",
+            "b2_hidden_restore_success_one": "[{provider}] Restored {count} hidden file",
+            "b2_hidden_restore_success_many": "[{provider}] Restored {count} hidden files",
+            "b2_hidden_restore_error": "[{provider}] Failed to restore hidden file(s)",
+            "b2_hidden_delete_success": "[{provider}] Permanently deleted {count} file(s) ({versions} versions purged)",
+            "trash_restore_detail_success": "[{provider}] Restored {files} file(s) from trash",
+            "trash_empty_detail_success": "[{provider}] Emptied trash ({files} file(s), {folders} folder(s) purged)",
+            "trash_empty_objects_one": "[{provider}] Emptied trash ({count} object)",
+            "trash_empty_objects_many": "[{provider}] Emptied trash ({count} objects)",
+            "trash_object_purge_success": "[{provider}] Purged {key}",
+            "trash_object_purge_error": "[{provider}] Failed to purge {key}",
+            "trash_object_undelete_success": "[{provider}] Undeleted {key}",
+            "trash_object_undelete_error": "[{provider}] Failed to undelete {key}",
+            "trash_object_restore_success": "[{provider}] Restored {key}",
+            "trash_object_restore_error": "[{provider}] Failed to restore {key}",
+            "opendrive_access_set": "[{provider}] Access set to {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Set access {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Set access {level} failed",
+            "download_folder_success": "Downloaded folder {path} in {seconds}s",
+            "skipped_file": "Skipped {filename}",
+            "filelu_made_public": "[{provider}] Made file public",
+            "filelu_make_public_error": "[{provider}] Make file public failed",
+            "filelu_made_private": "[{provider}] Made file private",
+            "filelu_make_private_error": "[{provider}] Make file private failed",
+            "filelu_file_password_set": "[{provider}] Set file password",
+            "filelu_file_password_error": "[{provider}] Set file password failed",
+            "filelu_folder_password_set": "[{provider}] Set folder password",
+            "filelu_folder_password_error": "[{provider}] Set folder password failed",
+            "filelu_public_share_success": "[{provider}] Made file public + shared",
+            "filelu_public_share_error": "[{provider}] Make public + share failed",
+            "filelu_folder_settings_success": "[{provider}] Updated folder settings",
+            "filelu_folder_settings_error": "[{provider}] Update folder settings failed",
+            "set_private_success": "[{provider}] Set private",
+            "set_private_error": "[{provider}] Set private failed",
+            "set_public_success": "[{provider}] Set public",
+            "set_public_error": "[{provider}] Set public failed",
+            "bulk_private_success_one": "[{provider}] Set {count} entry private",
+            "bulk_private_success_many": "[{provider}] Set {count} entries private",
+            "bulk_private_partial": "[{provider}] Set {ok}/{total} entries private",
+            "bulk_private_error": "[{provider}] Bulk private failed",
+            "box_watermark_set": "[{provider}] Set watermark",
+            "box_watermark_set_error": "[{provider}] Set watermark failed",
+            "box_watermark_removed": "[{provider}] Removed watermark",
+            "box_watermark_remove_error": "[{provider}] Remove watermark failed",
+            "box_folder_locked": "[{provider}] Locked folder",
+            "box_folder_lock_error": "[{provider}] Lock folder failed",
+            "box_folder_unlocked": "[{provider}] Unlocked folder",
+            "box_folder_not_locked": "[{provider}] Folder was not locked",
+            "box_folder_unlock_error": "[{provider}] Unlock folder failed",
+            "gdrive_starred": "[{provider}] Starred file",
+            "gdrive_unstarred": "[{provider}] Unstarred file",
+            "gdrive_star_error": "[{provider}] Star failed",
+            "gdrive_unstar_error": "[{provider}] Unstar failed",
+            "extract_success": "Extracted {filename}",
+            "extract_success_to": "Extracted {filename} → {dest}",
+            "extract_error": "Extraction failed: {error}",
+            "zoho_document_created": "[{provider}] Created {type} document",
+            "zoho_document_create_error": "[{provider}] Create {type} document failed",
+            "note_saved": "[{provider}] Saved note \"{title}\"",
+            "note_save_error": "[{provider}] Failed to save note",
+            "note_created": "[{provider}] Created note \"{title}\"",
+            "note_create_error": "[{provider}] Failed to create note",
+            "note_favorited": "[{provider}] Favorited note \"{title}\"",
+            "note_unfavorited": "[{provider}] Unfavorited note \"{title}\"",
+            "note_favorite_error": "[{provider}] Failed to toggle favorite",
+            "note_pinned": "[{provider}] Pinned note \"{title}\"",
+            "note_unpinned": "[{provider}] Unpinned note \"{title}\"",
+            "note_pin_error": "[{provider}] Failed to toggle pinned",
+            "note_trashed": "[{provider}] Trashed note \"{title}\"",
+            "note_trash_error": "[{provider}] Failed to trash note",
+            "note_restored": "[{provider}] Restored note \"{title}\"",
+            "note_restore_error": "[{provider}] Failed to restore note",
+            "note_deleted": "[{provider}] Permanently deleted note \"{title}\"",
+            "note_delete_error": "[{provider}] Failed to permanently delete note",
+            "note_archived": "[{provider}] Archived note \"{title}\"",
+            "note_archive_error": "[{provider}] Failed to archive note",
+            "note_version_restored": "[{provider}] Restored note version",
+            "note_version_restore_error": "[{provider}] Failed to restore note version",
+            "github_pages_config_updated": "[{provider}] Updated Pages configuration",
+            "github_pages_config_error": "[{provider}] Failed to update Pages configuration",
+            "opendrive_set_access": "[{provider}] Setting access for {filename}...",
+            "gdrive_star": "[{provider}] Starring {filename}...",
+            "gdrive_unstar": "[{provider}] Unstarring {filename}...",
+            "extract_start": "Extracting {filename}...",
+            "extract_start_to": "Extracting {filename} → {dest}...",
+            "compress_start": "Compressing to {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Restored {files} file(s), {folders} folder(s) from trash",
+            "trash_restore_detail_present_success": "[{provider}] Restored {files} file(s), {present} already present from trash",
+            "trash_restore_detail_folders_present_success": "[{provider}] Restored {files} file(s), {folders} folder(s), {present} already present from trash"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -667,7 +755,8 @@
                 "supportsTools": "Supports tools",
                 "supportsVision": "Supports vision",
                 "thinkingReasoning": "Thinking/Reasoning",
-                "toolQuality": "Tool quality: {quality}/5"
+                "toolQuality": "Tool quality: {quality}/5",
+                "ollamaNotReachable": "Ollama not reachable"
             },
             "shortcuts": {
                 "clearChat": "Clear chat (Ctrl+L)",
@@ -792,7 +881,8 @@
                 "allowSession": "Allow for this session",
                 "nonAtomicReplace": "Non-atomic replace: the file is briefly missing",
                 "moreOptions": "More options",
-                "panelAria": "Tool approval panel"
+                "panelAria": "Tool approval panel",
+                "previewFailed": "Preview failed"
             },
             "toolFailed": "Tool failed: {error}",
             "toolLabels": {
@@ -1094,7 +1184,8 @@
                     "title": "Diagnostics",
                     "truncated": "Diagnostics list was truncated.",
                     "warningCountMany": "{count} warnings",
-                    "warningCountOne": "{count} warning"
+                    "warningCountOne": "{count} warning",
+                    "noLocation": "(no location)"
                 },
                 "search": {
                     "none": "No matches found.",
@@ -1193,7 +1284,15 @@
                 "destination": "Destination: {destination}",
                 "title": "Transfer Plan Review",
                 "warnings": "Warnings"
-            }
+            },
+            "voiceNoAudio": "No audio captured.",
+            "voiceDownloadingModel": "Downloading local voice model...",
+            "voiceNoSpeech": "No speech detected.",
+            "voiceReady": "Voice input ready.",
+            "voiceReadyLanguage": "Voice input ready ({language}).",
+            "voiceTranscriptionFailed": "Local transcription failed.",
+            "voiceListeningLocally": "Listening locally...",
+            "voiceMicrophoneFailed": "Unable to access microphone."
         },
         "appearance": {
             "patternBubbles": "Bubbles",
@@ -1340,7 +1439,10 @@
             "localFilesLabel": "Local files",
             "localFilesRightLabel": "Local files (right panel)",
             "remoteFilesLabel": "Remote files",
-            "rightPanelMarker": "Right panel"
+            "rightPanelMarker": "Right panel",
+            "chooseRightPanelFolder": "Choose right panel folder",
+            "chooseLeftPanelFolder": "Choose left panel folder",
+            "localRight": "Local (right)"
         },
         "cloud": {
             "cloudName": "Cloud Name",
@@ -1484,7 +1586,8 @@
             "dialogSetupLabel": "Cloud Sync Setup",
             "onePerLineHint": "(one per line)",
             "pairsEditorLabel": "AeroCloud Pairs Editor",
-            "remoteSubfolderPlaceholder": "cloud"
+            "remoteSubfolderPlaceholder": "cloud",
+            "countdownSoon": "Soon..."
         },
         "common": {
             "about": "About",
@@ -1925,7 +2028,8 @@
             "chooseFolder": "Choose a destination folder",
             "passwordPrompt": "This item is encrypted. Enter the password to extract.",
             "showPassword": "Show password",
-            "hidePassword": "Hide password"
+            "hidePassword": "Hide password",
+            "missingPayload": "Missing extract payload"
         },
         "contextMenu": {
             "askAeroAgent": "Ask AeroAgent...",
@@ -2059,7 +2163,8 @@
             "permissionsEllipsis": "Permissions...",
             "setAsPrivate": "Set as Private",
             "setAsPublic": "Set as Public",
-            "makeAllPrivate": "Make all private"
+            "makeAllPrivate": "Make all private",
+            "openWithDefaultApp": "Open with default app"
         },
         "aerocrypt": {
             "title": "Rclone Crypt overlay",
@@ -2259,7 +2364,8 @@
             "createFormatBadge": "Cryptomator Format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM content",
             "featureNameCipher": "AES-SIV names",
-            "formatVersion": "Format {version}"
+            "formatVersion": "Format {version}",
+            "invalidVaultName": "Invalid characters in vault name"
         },
         "debug": {
             "copyFileListToClipboard": "Copy file list to clipboard",
@@ -2486,7 +2592,8 @@
             "scanning": "Analyzing disk usage...",
             "title": "Disk Usage",
             "total": "Total",
-            "totalItems": "Total: {size} across {count} items"
+            "totalItems": "Total: {size} across {count} items",
+            "scanUnknownError": "Unknown error while scanning disk usage"
         },
         "duplicates": {
             "sortWasted": "Wasted space",
@@ -3152,7 +3259,8 @@
                 "unmute": "Unmute (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 not supported"
+                "notSupported": "WebGL 2 not supported",
+                "contextLost": "WebGL context lost"
             },
             "clickToViewDetails": "Click on a file to view its details",
             "copyPath": "Copy Path",
@@ -4592,7 +4700,14 @@
             "templateExcludes": "Excludes",
             "templateLocal": "Local",
             "templateRemote": "Remote",
-            "templateRetries": "Retries"
+            "templateRetries": "Retries",
+            "rollbackRestoreLocalCount": "local {count}",
+            "rollbackRestoreRemoteCount": "remote {count}",
+            "rollbackRestoreSkippedCount": "skipped {count}",
+            "rollbackRestoreFailedCount": "failed {count}",
+            "rollbackRestoreCompleted": "Restore completed: {summary}",
+            "rollbackRestoreNothing": "Nothing to restore",
+            "rollbackRestoreFailed": "Restore failed: {error}"
         },
         "toast": {
             "batchRenamePartial": "Batch rename completed with errors",
@@ -4700,7 +4815,8 @@
             "cancelConnection": "Cancel connection",
             "transferFailed": "Transfer failed",
             "navigationFailed": "Navigation failed: {error}",
-            "transferComplete": "{count} file(s) copied"
+            "transferComplete": "{count} file(s) copied",
+            "createFailed": "Create failed"
         },
         "toolbar": {
             "aerovaultOverlayActive": "AeroVault container overlay active - click to detach",
@@ -5100,7 +5216,8 @@
             "pwdAutoClear": "Copied (auto-clear in 30s)",
             "pwdShow": "Show password",
             "pwdHide": "Hide password",
-            "pwdNoCharset": "Select at least one character set"
+            "pwdNoCharset": "Select at least one character set",
+            "hashError": "Error: {error}"
         },
         "vault": {
             "addFiles": "Add Files",
@@ -6021,7 +6138,14 @@
                 "archived": "Archived",
                 "trash": "Trash"
             },
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Text",
+                "markdown": "Markdown",
+                "code": "Code",
+                "richText": "Rich Text",
+                "checklist": "Checklist"
+            }
         },
         "table": {
             "manageColumns": "Manage columns",

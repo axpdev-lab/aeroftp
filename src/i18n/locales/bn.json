@@ -433,7 +433,10 @@
             "localFilesLabel": "স্থানীয় ফাইল",
             "localFilesRightLabel": "স্থানীয় ফাইল (ডান প্যানেল)",
             "remoteFilesLabel": "রিমোট ফাইল",
-            "rightPanelMarker": "ডান প্যানেল"
+            "rightPanelMarker": "ডান প্যানেল",
+            "chooseRightPanelFolder": "ডান প্যানেলের ফোল্ডার বেছে নিন",
+            "chooseLeftPanelFolder": "বাম প্যানেলের ফোল্ডার বেছে নিন",
+            "localRight": "লোকাল (ডান)"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent-কে জিজ্ঞাসা করুন...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "প্রাইভেট হিসেবে সেট করুন",
             "setAsPublic": "পাবলিক হিসেবে সেট করুন",
             "makeAllPrivate": "সবগুলিকে ব্যক্তিগত করুন",
-            "dropboxRestoreLimit": "AeroFTP পুনরুদ্ধারযোগ্য ফাইল সংস্করণ পুনরুদ্ধার করতে পারে। dropbox.com-এর মুছে ফেলা ফাইল বিভাগ থেকে ফোল্ডার পুনরুদ্ধার করুন। প্রশ্নবোধক চিহ্নের অর্থ হলো Dropbox আইটেমটির ধরন শনাক্ত করতে পারেনি।"
+            "dropboxRestoreLimit": "AeroFTP পুনরুদ্ধারযোগ্য ফাইল সংস্করণ পুনরুদ্ধার করতে পারে। dropbox.com-এর মুছে ফেলা ফাইল বিভাগ থেকে ফোল্ডার পুনরুদ্ধার করুন। প্রশ্নবোধক চিহ্নের অর্থ হলো Dropbox আইটেমটির ধরন শনাক্ত করতে পারেনি।",
+            "openWithDefaultApp": "ডিফল্ট অ্যাপ দিয়ে খুলুন"
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "ক্লাউড সিঙ্ক সেটআপ",
             "onePerLineHint": "(প্রতি লাইনে একটি)",
             "pairsEditorLabel": "AeroCloud জোড়া সম্পাদক",
-            "remoteSubfolderPlaceholder": "ক্লাউড"
+            "remoteSubfolderPlaceholder": "ক্লাউড",
+            "countdownSoon": "শীঘ্রই..."
         },
         "statusBar": {
             "connected": "সংযুক্ত",
@@ -1682,7 +1687,8 @@
             "transferFailed": "স্থানান্তর ব্যর্থ হয়েছে",
             "navigationFailed": "নেভিগেশন ব্যর্থ হয়েছে: {error}",
             "transferComplete": "{count}টি ফাইল কপি করা হয়েছে",
-            "permissionsSessionChanged": "এই ডায়ালগ খোলার পর সংযোগ পরিবর্তিত হয়েছে, তাই কিছুই পরিবর্তন করা হয়নি। বর্তমান সংযোগে আবার অনুমতি খুলুন।"
+            "permissionsSessionChanged": "এই ডায়ালগ খোলার পর সংযোগ পরিবর্তিত হয়েছে, তাই কিছুই পরিবর্তন করা হয়নি। বর্তমান সংযোগে আবার অনুমতি খুলুন।",
+            "createFailed": "তৈরি করা ব্যর্থ হয়েছে"
         },
         "about": {
             "tagline": "FTP এর চেয়েও বেশি। একটি সম্পূর্ণ ডেভেলপার টুলকিট।",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] ফোল্ডার {filename} আনলক করা হচ্ছে...",
             "site_replied": "{command}: সার্ভার {code} উত্তর দিয়েছে",
             "site_unknown": "{command}: সম্পূর্ণ উত্তর নেই, ফলাফল অজানা",
-            "site_not_sent": "{command} পাঠানো হয়নি"
+            "site_not_sent": "{command} পাঠানো হয়নি",
+            "b2_hidden_restore_success_one": "[{provider}] {count}টি লুকানো ফাইল পুনরুদ্ধার করা হয়েছে",
+            "b2_hidden_restore_success_many": "[{provider}] {count}টি লুকানো ফাইল পুনরুদ্ধার করা হয়েছে",
+            "b2_hidden_restore_error": "[{provider}] লুকানো ফাইল পুনরুদ্ধার করতে ব্যর্থ",
+            "b2_hidden_delete_success": "[{provider}] {count}টি ফাইল স্থায়ীভাবে মুছে ফেলা হয়েছে ({versions}টি সংস্করণ অপসারিত)",
+            "trash_restore_detail_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল পুনরুদ্ধার করা হয়েছে",
+            "trash_empty_detail_success": "[{provider}] ট্র্যাশ খালি করা হয়েছে ({files}টি ফাইল, {folders}টি ফোল্ডার অপসারিত)",
+            "trash_empty_objects_one": "[{provider}] ট্র্যাশ খালি করা হয়েছে ({count}টি অবজেক্ট)",
+            "trash_empty_objects_many": "[{provider}] ট্র্যাশ খালি করা হয়েছে ({count}টি অবজেক্ট)",
+            "trash_object_purge_success": "[{provider}] {key} স্থায়ীভাবে মুছে ফেলা হয়েছে",
+            "trash_object_purge_error": "[{provider}] {key} স্থায়ীভাবে মুছতে ব্যর্থ",
+            "trash_object_undelete_success": "[{provider}] {key} মোছা বাতিল করা হয়েছে",
+            "trash_object_undelete_error": "[{provider}] {key} মোছা বাতিল করতে ব্যর্থ",
+            "trash_object_restore_success": "[{provider}] {key} পুনরুদ্ধার করা হয়েছে",
+            "trash_object_restore_error": "[{provider}] {key} পুনরুদ্ধার করতে ব্যর্থ",
+            "opendrive_access_set": "[{provider}] অ্যাক্সেস {level} এ সেট করা হয়েছে ({count})",
+            "opendrive_access_partial": "[{provider}] অ্যাক্সেস {level} সেট করা হচ্ছে: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] অ্যাক্সেস {level} সেট করতে ব্যর্থ",
+            "download_folder_success": "{path} ফোল্ডার {seconds} সেকেন্ডে ডাউনলোড করা হয়েছে",
+            "skipped_file": "{filename} এড়িয়ে যাওয়া হয়েছে",
+            "filelu_made_public": "[{provider}] ফাইল সর্বজনীন করা হয়েছে",
+            "filelu_make_public_error": "[{provider}] ফাইল সর্বজনীন করতে ব্যর্থ",
+            "filelu_made_private": "[{provider}] ফাইল ব্যক্তিগত করা হয়েছে",
+            "filelu_make_private_error": "[{provider}] ফাইল ব্যক্তিগত করতে ব্যর্থ",
+            "filelu_file_password_set": "[{provider}] ফাইলের পাসওয়ার্ড সেট করা হয়েছে",
+            "filelu_file_password_error": "[{provider}] ফাইলের পাসওয়ার্ড সেট করতে ব্যর্থ",
+            "filelu_folder_password_set": "[{provider}] ফোল্ডারের পাসওয়ার্ড সেট করা হয়েছে",
+            "filelu_folder_password_error": "[{provider}] ফোল্ডারের পাসওয়ার্ড সেট করতে ব্যর্থ",
+            "filelu_public_share_success": "[{provider}] ফাইল সর্বজনীন + শেয়ার করা হয়েছে",
+            "filelu_public_share_error": "[{provider}] সর্বজনীন + শেয়ার করতে ব্যর্থ",
+            "filelu_folder_settings_success": "[{provider}] ফোল্ডারের সেটিংস আপডেট করা হয়েছে",
+            "filelu_folder_settings_error": "[{provider}] ফোল্ডারের সেটিংস আপডেট করতে ব্যর্থ",
+            "set_private_success": "[{provider}] ব্যক্তিগত হিসেবে সেট করা হয়েছে",
+            "set_private_error": "[{provider}] ব্যক্তিগত হিসেবে সেট করতে ব্যর্থ",
+            "set_public_success": "[{provider}] সর্বজনীন হিসেবে সেট করা হয়েছে",
+            "set_public_error": "[{provider}] সর্বজনীন হিসেবে সেট করতে ব্যর্থ",
+            "bulk_private_success_one": "[{provider}] {count}টি এন্ট্রি ব্যক্তিগত হিসেবে সেট করা হয়েছে",
+            "bulk_private_success_many": "[{provider}] {count}টি এন্ট্রি ব্যক্তিগত হিসেবে সেট করা হয়েছে",
+            "bulk_private_partial": "[{provider}] {ok}/{total}টি এন্ট্রি ব্যক্তিগত হিসেবে সেট করা হয়েছে",
+            "bulk_private_error": "[{provider}] একসাথে ব্যক্তিগত করতে ব্যর্থ",
+            "box_watermark_set": "[{provider}] ওয়াটারমার্ক সেট করা হয়েছে",
+            "box_watermark_set_error": "[{provider}] ওয়াটারমার্ক সেট করতে ব্যর্থ",
+            "box_watermark_removed": "[{provider}] ওয়াটারমার্ক সরানো হয়েছে",
+            "box_watermark_remove_error": "[{provider}] ওয়াটারমার্ক সরাতে ব্যর্থ",
+            "box_folder_locked": "[{provider}] ফোল্ডার লক করা হয়েছে",
+            "box_folder_lock_error": "[{provider}] ফোল্ডার লক করতে ব্যর্থ",
+            "box_folder_unlocked": "[{provider}] ফোল্ডার আনলক করা হয়েছে",
+            "box_folder_not_locked": "[{provider}] ফোল্ডারটি লক করা ছিল না",
+            "box_folder_unlock_error": "[{provider}] ফোল্ডার আনলক করতে ব্যর্থ",
+            "gdrive_starred": "[{provider}] ফাইলে তারকা দেওয়া হয়েছে",
+            "gdrive_unstarred": "[{provider}] ফাইল থেকে তারকা সরানো হয়েছে",
+            "gdrive_star_error": "[{provider}] তারকা চিহ্ন দেওয়া ব্যর্থ হয়েছে",
+            "gdrive_unstar_error": "[{provider}] তারকা চিহ্ন সরানো ব্যর্থ হয়েছে",
+            "extract_success": "{filename} নিষ্কাশন করা হয়েছে",
+            "extract_success_to": "{filename} নিষ্কাশন করা হয়েছে → {dest}",
+            "extract_error": "নিষ্কাশন ব্যর্থ হয়েছে: {error}",
+            "zoho_document_created": "[{provider}] {type} নথি তৈরি হয়েছে",
+            "zoho_document_create_error": "[{provider}] {type} নথি তৈরি ব্যর্থ হয়েছে",
+            "note_saved": "[{provider}] নোট \"{title}\" সংরক্ষিত হয়েছে",
+            "note_save_error": "[{provider}] নোট সংরক্ষণ করা যায়নি",
+            "note_created": "[{provider}] নোট \"{title}\" তৈরি হয়েছে",
+            "note_create_error": "[{provider}] নোট তৈরি করা যায়নি",
+            "note_favorited": "[{provider}] নোট \"{title}\" প্রিয়তে যোগ করা হয়েছে",
+            "note_unfavorited": "[{provider}] নোট \"{title}\" প্রিয় থেকে সরানো হয়েছে",
+            "note_favorite_error": "[{provider}] প্রিয় পরিবর্তন করা যায়নি",
+            "note_pinned": "[{provider}] নোট \"{title}\" পিন করা হয়েছে",
+            "note_unpinned": "[{provider}] নোট \"{title}\" থেকে পিন সরানো হয়েছে",
+            "note_pin_error": "[{provider}] পিন পরিবর্তন করা যায়নি",
+            "note_trashed": "[{provider}] নোট \"{title}\" আবর্জনায় সরানো হয়েছে",
+            "note_trash_error": "[{provider}] নোট আবর্জনায় সরানো যায়নি",
+            "note_restored": "[{provider}] নোট \"{title}\" পুনরুদ্ধার করা হয়েছে",
+            "note_restore_error": "[{provider}] নোট পুনরুদ্ধার করা যায়নি",
+            "note_deleted": "[{provider}] নোট \"{title}\" স্থায়ীভাবে মুছে ফেলা হয়েছে",
+            "note_delete_error": "[{provider}] নোট স্থায়ীভাবে মুছে ফেলা যায়নি",
+            "note_archived": "[{provider}] নোট \"{title}\" আর্কাইভ করা হয়েছে",
+            "note_archive_error": "[{provider}] নোট আর্কাইভ করা যায়নি",
+            "note_version_restored": "[{provider}] নোটের সংস্করণ পুনরুদ্ধার করা হয়েছে",
+            "note_version_restore_error": "[{provider}] নোটের সংস্করণ পুনরুদ্ধার করতে ব্যর্থ",
+            "github_pages_config_updated": "[{provider}] Pages কনফিগারেশন আপডেট করা হয়েছে",
+            "github_pages_config_error": "[{provider}] Pages কনফিগারেশন আপডেট করতে ব্যর্থ",
+            "opendrive_set_access": "[{provider}] {filename}-এর অ্যাক্সেস সেট করা হচ্ছে...",
+            "gdrive_star": "[{provider}] {filename}-এ তারকা চিহ্ন দেওয়া হচ্ছে...",
+            "gdrive_unstar": "[{provider}] {filename} থেকে তারকা চিহ্ন সরানো হচ্ছে...",
+            "extract_start": "{filename} এক্সট্র্যাক্ট করা হচ্ছে...",
+            "extract_start_to": "{filename} → {dest} এক্সট্র্যাক্ট করা হচ্ছে...",
+            "compress_start": "{archive}-এ সংকুচিত করা হচ্ছে...",
+            "trash_restore_detail_folders_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল, {folders}টি ফোল্ডার পুনরুদ্ধার করা হয়েছে",
+            "trash_restore_detail_present_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল পুনরুদ্ধার করা হয়েছে, {present}টি আগে থেকেই আছে",
+            "trash_restore_detail_folders_present_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল, {folders}টি ফোল্ডার পুনরুদ্ধার করা হয়েছে, {present}টি আগে থেকেই আছে"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "বাদ দেওয়া",
             "templateLocal": "লোকাল",
             "templateRemote": "রিমোট",
-            "templateRetries": "পুনঃচেষ্টা"
+            "templateRetries": "পুনঃচেষ্টা",
+            "rollbackRestoreLocalCount": "লোকাল {count}",
+            "rollbackRestoreRemoteCount": "রিমোট {count}",
+            "rollbackRestoreSkippedCount": "এড়িয়ে যাওয়া {count}",
+            "rollbackRestoreFailedCount": "ব্যর্থ {count}",
+            "rollbackRestoreCompleted": "পুনরুদ্ধার সম্পন্ন: {summary}",
+            "rollbackRestoreNothing": "পুনরুদ্ধার করার কিছু নেই",
+            "rollbackRestoreFailed": "পুনরুদ্ধার ব্যর্থ: {error}"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "এই সেশনের জন্য অনুমতি দিন",
                 "nonAtomicReplace": "নন-অ্যাটমিক প্রতিস্থাপন: ফাইলটি সংক্ষিপ্তভাবে অনুপস্থিত থাকে",
                 "moreOptions": "আরও বিকল্প",
-                "panelAria": "সরঞ্জাম অনুমোদন প্যানেল"
+                "panelAria": "সরঞ্জাম অনুমোদন প্যানেল",
+                "previewFailed": "প্রিভিউ ব্যর্থ হয়েছে"
             },
             "settings": {
                 "title": "AI সেটিংস",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "টুল সমর্থন করে",
                 "supportsVision": "দৃষ্টি সমর্থন করে",
                 "thinkingReasoning": "চিন্তা/যুক্তি",
-                "toolQuality": "সরঞ্জামের মান: {quality}/5"
+                "toolQuality": "সরঞ্জামের মান: {quality}/5",
+                "ollamaNotReachable": "Ollama-তে পৌঁছানো যাচ্ছে না"
             },
             "copy": "অনুলিপি",
             "attachImage": "ছবি সংযুক্ত করুন",
@@ -3423,7 +3526,8 @@
                     "title": "ডায়াগনস্টিকস",
                     "truncated": "ডায়াগনস্টিকস তালিকা ছেঁটে ফেলা হয়েছে।",
                     "warningCountMany": "{count}টি সতর্কতা",
-                    "warningCountOne": "{count}টি সতর্কতা"
+                    "warningCountOne": "{count}টি সতর্কতা",
+                    "noLocation": "(কোনো অবস্থান নেই)"
                 },
                 "search": {
                     "none": "কোনো মিল পাওয়া যায়নি।",
@@ -3522,7 +3626,15 @@
                 "destination": "গন্তব্য: {destination}",
                 "title": "স্থানান্তর পরিকল্পনা পর্যালোচনা",
                 "warnings": "সতর্কতা"
-            }
+            },
+            "voiceNoAudio": "কোনো অডিও ধারণ করা হয়নি।",
+            "voiceDownloadingModel": "স্থানীয় ভয়েস মডেল ডাউনলোড হচ্ছে...",
+            "voiceNoSpeech": "কোনো কথা শনাক্ত হয়নি।",
+            "voiceReady": "ভয়েস ইনপুট প্রস্তুত।",
+            "voiceReadyLanguage": "ভয়েস ইনপুট প্রস্তুত ({language})।",
+            "voiceTranscriptionFailed": "স্থানীয় ট্রান্সক্রিপশন ব্যর্থ হয়েছে।",
+            "voiceListeningLocally": "স্থানীয়ভাবে শোনা হচ্ছে...",
+            "voiceMicrophoneFailed": "মাইক্রোফোনে অ্যাক্সেস করা যাচ্ছে না।"
         },
         "archive": {
             "passwordRequired": "এই আর্কাইভটি পাসওয়ার্ড দ্বারা সুরক্ষিত",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator ফরম্যাট 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM বিষয়বস্তু",
             "featureNameCipher": "AES-SIV নাম",
-            "formatVersion": "ফরম্যাট {version}"
+            "formatVersion": "ফরম্যাট {version}",
+            "invalidVaultName": "ভল্টের নামে অবৈধ অক্ষর"
         },
         "compress": {
             "title": "ফাইল কম্প্রেস করুন",
@@ -4161,7 +4274,8 @@
             "total": "মোট",
             "across": "জুড়ে",
             "empty": "এই ফোল্ডারটি খালি",
-            "hoverHint": "বিস্তারিত দেখতে ব্লকের উপর মাউস রাখুন"
+            "hoverHint": "বিস্তারিত দেখতে ব্লকের উপর মাউস রাখুন",
+            "scanUnknownError": "ডিস্ক ব্যবহার স্ক্যান করার সময় অজানা ত্রুটি"
         },
         "dependencies": {
             "title": "ডিপেন্ডেন্সি",
@@ -4575,7 +4689,8 @@
                 "unmute": "আনমিউট (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 সমর্থিত নয়"
+                "notSupported": "WebGL 2 সমর্থিত নয়",
+                "contextLost": "WebGL কনটেক্সট হারিয়ে গেছে"
             },
             "clickToViewDetails": "বিবরণ দেখতে একটি ফাইলে ক্লিক করুন",
             "copyPath": "পথ অনুলিপি করুন",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "দৈর্ঘ্য (বাইট)",
             "argon2DefaultsHint": "ডিফল্ট: AeroVault এবং AeroCrypt যে প্রোফাইল ব্যবহার করে (128 MiB, 4 পুনরাবৃত্তি, 4 লেন, 32 বাইট আউটপুট)। উপরের সল্ট আপনার। মেমরি 2 GiB পর্যন্ত।",
             "argon2Derive": "ডিরাইভ করুন",
-            "argon2Phc": "PHC স্ট্রিং"
+            "argon2Phc": "PHC স্ট্রিং",
+            "hashError": "ত্রুটি: {error}"
         },
         "dialog": {
             "deleteFile": "\"{name}\" মুছে ফেলবেন?",
@@ -5301,7 +5417,14 @@
             "removeTag": "ট্যাগ সরান",
             "manageTags": "ট্যাগ পরিচালনা",
             "deleteTagConfirm": "ট্যাগ “{name}” মুছবেন? নোটগুলোর লেখা থেকে যাবে।",
-            "betaBadge": "বিটা"
+            "betaBadge": "বিটা",
+            "noteTypes": {
+                "text": "টেক্সট",
+                "markdown": "Markdown",
+                "code": "কোড",
+                "richText": "রিচ টেক্সট",
+                "checklist": "চেকলিস্ট"
+            }
         },
         "shareLinkModal": {
             "title": "শেয়ার লিঙ্ক",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "একটি গন্তব্য ফোল্ডার নির্বাচন করুন",
             "passwordPrompt": "এই আইটেমটি এনক্রিপ্ট করা। নিষ্কাশন করতে পাসওয়ার্ড লিখুন।",
             "showPassword": "পাসওয়ার্ড দেখান",
-            "hidePassword": "পাসওয়ার্ড লুকান"
+            "hidePassword": "পাসওয়ার্ড লুকান",
+            "missingPayload": "এক্সট্র্যাক্ট পেলোড অনুপস্থিত"
         },
         "provider": {
             "modes": {

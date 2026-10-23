@@ -433,7 +433,10 @@
             "localFilesLabel": "Lokale Dateien",
             "localFilesRightLabel": "Lokale Dateien (rechter Bereich)",
             "remoteFilesLabel": "Remote-Dateien",
-            "rightPanelMarker": "Rechter Bereich"
+            "rightPanelMarker": "Rechter Bereich",
+            "chooseRightPanelFolder": "Ordner für rechtes Panel wählen",
+            "chooseLeftPanelFolder": "Ordner für linkes Panel wählen",
+            "localRight": "Lokal (rechts)"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent fragen...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Als privat festlegen",
             "setAsPublic": "Als öffentlich festlegen",
             "makeAllPrivate": "Alle auf privat setzen",
-            "dropboxRestoreLimit": "AeroFTP kann wiederherstellbare Dateiversionen wiederherstellen. Stellen Sie Ordner unter „Gelöschte Dateien“ auf dropbox.com wieder her. Ein Fragezeichen bedeutet, dass Dropbox den Elementtyp nicht erkannt hat."
+            "dropboxRestoreLimit": "AeroFTP kann wiederherstellbare Dateiversionen wiederherstellen. Stellen Sie Ordner unter „Gelöschte Dateien“ auf dropbox.com wieder her. Ein Fragezeichen bedeutet, dass Dropbox den Elementtyp nicht erkannt hat.",
+            "openWithDefaultApp": "Mit Standard-App öffnen"
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Cloud-Sync-Einrichtung",
             "onePerLineHint": "(eine pro Zeile)",
             "pairsEditorLabel": "AeroCloud-Paareditor",
-            "remoteSubfolderPlaceholder": "wolke"
+            "remoteSubfolderPlaceholder": "wolke",
+            "countdownSoon": "Bald..."
         },
         "statusBar": {
             "connected": "Verbunden",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Übertragung fehlgeschlagen",
             "navigationFailed": "Navigation fehlgeschlagen: {error}",
             "transferComplete": "{count} Datei(en) kopiert",
-            "permissionsSessionChanged": "Die Verbindung hat sich geändert, seit dieser Dialog geöffnet wurde, daher wurde nichts geändert. Öffnen Sie Berechtigungen erneut für die aktuelle Verbindung."
+            "permissionsSessionChanged": "Die Verbindung hat sich geändert, seit dieser Dialog geöffnet wurde, daher wurde nichts geändert. Öffnen Sie Berechtigungen erneut für die aktuelle Verbindung.",
+            "createFailed": "Erstellen fehlgeschlagen"
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Ordner {filename} wird entsperrt...",
             "site_replied": "{command}: Der Server antwortete {code}",
             "site_unknown": "{command}: keine vollständige Antwort, Ergebnis unbekannt",
-            "site_not_sent": "{command} wurde nicht gesendet"
+            "site_not_sent": "{command} wurde nicht gesendet",
+            "b2_hidden_restore_success_one": "[{provider}] {count} versteckte Datei wiederhergestellt",
+            "b2_hidden_restore_success_many": "[{provider}] {count} versteckte Dateien wiederhergestellt",
+            "b2_hidden_restore_error": "[{provider}] Wiederherstellen versteckter Datei(en) fehlgeschlagen",
+            "b2_hidden_delete_success": "[{provider}] {count} Datei(en) endgültig gelöscht ({versions} Versionen bereinigt)",
+            "trash_restore_detail_success": "[{provider}] {files} Datei(en) aus dem Papierkorb wiederhergestellt",
+            "trash_empty_detail_success": "[{provider}] Papierkorb geleert ({files} Datei(en), {folders} Ordner bereinigt)",
+            "trash_empty_objects_one": "[{provider}] Papierkorb geleert ({count} Objekt)",
+            "trash_empty_objects_many": "[{provider}] Papierkorb geleert ({count} Objekte)",
+            "trash_object_purge_success": "[{provider}] {key} endgültig entfernt",
+            "trash_object_purge_error": "[{provider}] Endgültiges Entfernen von {key} fehlgeschlagen",
+            "trash_object_undelete_success": "[{provider}] Löschen von {key} rückgängig gemacht",
+            "trash_object_undelete_error": "[{provider}] Rückgängigmachen des Löschens von {key} fehlgeschlagen",
+            "trash_object_restore_success": "[{provider}] {key} wiederhergestellt",
+            "trash_object_restore_error": "[{provider}] Wiederherstellen von {key} fehlgeschlagen",
+            "opendrive_access_set": "[{provider}] Zugriff auf {level} gesetzt ({count})",
+            "opendrive_access_partial": "[{provider}] Zugriff {level} setzen: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Zugriff {level} setzen fehlgeschlagen",
+            "download_folder_success": "Ordner {path} in {seconds} s heruntergeladen",
+            "skipped_file": "{filename} übersprungen",
+            "filelu_made_public": "[{provider}] Datei öffentlich gemacht",
+            "filelu_make_public_error": "[{provider}] Datei öffentlich machen fehlgeschlagen",
+            "filelu_made_private": "[{provider}] Datei privat gemacht",
+            "filelu_make_private_error": "[{provider}] Datei privat machen fehlgeschlagen",
+            "filelu_file_password_set": "[{provider}] Dateipasswort gesetzt",
+            "filelu_file_password_error": "[{provider}] Dateipasswort setzen fehlgeschlagen",
+            "filelu_folder_password_set": "[{provider}] Ordnerpasswort festgelegt",
+            "filelu_folder_password_error": "[{provider}] Festlegen des Ordnerpassworts fehlgeschlagen",
+            "filelu_public_share_success": "[{provider}] Datei öffentlich gemacht + freigegeben",
+            "filelu_public_share_error": "[{provider}] Öffentlich machen + freigeben fehlgeschlagen",
+            "filelu_folder_settings_success": "[{provider}] Ordnereinstellungen aktualisiert",
+            "filelu_folder_settings_error": "[{provider}] Aktualisieren der Ordnereinstellungen fehlgeschlagen",
+            "set_private_success": "[{provider}] Auf privat gesetzt",
+            "set_private_error": "[{provider}] Auf privat setzen fehlgeschlagen",
+            "set_public_success": "[{provider}] Auf öffentlich gesetzt",
+            "set_public_error": "[{provider}] Auf öffentlich setzen fehlgeschlagen",
+            "bulk_private_success_one": "[{provider}] {count} Eintrag auf privat gesetzt",
+            "bulk_private_success_many": "[{provider}] {count} Einträge auf privat gesetzt",
+            "bulk_private_partial": "[{provider}] {ok}/{total} Einträge auf privat gesetzt",
+            "bulk_private_error": "[{provider}] Massenhaftes Privatsetzen fehlgeschlagen",
+            "box_watermark_set": "[{provider}] Wasserzeichen gesetzt",
+            "box_watermark_set_error": "[{provider}] Setzen des Wasserzeichens fehlgeschlagen",
+            "box_watermark_removed": "[{provider}] Wasserzeichen entfernt",
+            "box_watermark_remove_error": "[{provider}] Entfernen des Wasserzeichens fehlgeschlagen",
+            "box_folder_locked": "[{provider}] Ordner gesperrt",
+            "box_folder_lock_error": "[{provider}] Sperren des Ordners fehlgeschlagen",
+            "box_folder_unlocked": "[{provider}] Ordner entsperrt",
+            "box_folder_not_locked": "[{provider}] Ordner war nicht gesperrt",
+            "box_folder_unlock_error": "[{provider}] Entsperren des Ordners fehlgeschlagen",
+            "gdrive_starred": "[{provider}] Datei mit Stern markiert",
+            "gdrive_unstarred": "[{provider}] Stern von Datei entfernt",
+            "gdrive_star_error": "[{provider}] Markieren mit Stern fehlgeschlagen",
+            "gdrive_unstar_error": "[{provider}] Entfernen des Sterns fehlgeschlagen",
+            "extract_success": "{filename} entpackt",
+            "extract_success_to": "{filename} entpackt → {dest}",
+            "extract_error": "Entpacken fehlgeschlagen: {error}",
+            "zoho_document_created": "[{provider}] {type}-Dokument erstellt",
+            "zoho_document_create_error": "[{provider}] Erstellen des {type}-Dokuments fehlgeschlagen",
+            "note_saved": "[{provider}] Notiz \"{title}\" gespeichert",
+            "note_save_error": "[{provider}] Notiz konnte nicht gespeichert werden",
+            "note_created": "[{provider}] Notiz \"{title}\" erstellt",
+            "note_create_error": "[{provider}] Notiz konnte nicht erstellt werden",
+            "note_favorited": "[{provider}] Notiz \"{title}\" zu Favoriten hinzugefügt",
+            "note_unfavorited": "[{provider}] Notiz \"{title}\" aus Favoriten entfernt",
+            "note_favorite_error": "[{provider}] Favorit konnte nicht umgeschaltet werden",
+            "note_pinned": "[{provider}] Notiz \"{title}\" angeheftet",
+            "note_unpinned": "[{provider}] Notiz \"{title}\" losgelöst",
+            "note_pin_error": "[{provider}] Anheften konnte nicht umgeschaltet werden",
+            "note_trashed": "[{provider}] Notiz \"{title}\" in den Papierkorb verschoben",
+            "note_trash_error": "[{provider}] Notiz konnte nicht in den Papierkorb verschoben werden",
+            "note_restored": "[{provider}] Notiz \"{title}\" wiederhergestellt",
+            "note_restore_error": "[{provider}] Notiz konnte nicht wiederhergestellt werden",
+            "note_deleted": "[{provider}] Notiz \"{title}\" endgültig gelöscht",
+            "note_delete_error": "[{provider}] Notiz konnte nicht endgültig gelöscht werden",
+            "note_archived": "[{provider}] Notiz \"{title}\" archiviert",
+            "note_archive_error": "[{provider}] Notiz konnte nicht archiviert werden",
+            "note_version_restored": "[{provider}] Notizversion wiederhergestellt",
+            "note_version_restore_error": "[{provider}] Notizversion konnte nicht wiederhergestellt werden",
+            "github_pages_config_updated": "[{provider}] Pages-Konfiguration aktualisiert",
+            "github_pages_config_error": "[{provider}] Pages-Konfiguration konnte nicht aktualisiert werden",
+            "opendrive_set_access": "[{provider}] Zugriff für {filename} wird festgelegt...",
+            "gdrive_star": "[{provider}] {filename} wird mit Stern markiert...",
+            "gdrive_unstar": "[{provider}] Stern wird von {filename} entfernt...",
+            "extract_start": "{filename} wird entpackt...",
+            "extract_start_to": "{filename} wird entpackt → {dest}...",
+            "compress_start": "Wird nach {archive} komprimiert...",
+            "trash_restore_detail_folders_success": "[{provider}] {files} Datei(en), {folders} Ordner aus dem Papierkorb wiederhergestellt",
+            "trash_restore_detail_present_success": "[{provider}] {files} Datei(en) aus dem Papierkorb wiederhergestellt, {present} bereits vorhanden",
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} Datei(en), {folders} Ordner aus dem Papierkorb wiederhergestellt, {present} bereits vorhanden"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Ausschlüsse",
             "templateLocal": "Lokal",
             "templateRemote": "Entfernt",
-            "templateRetries": "Wiederholungen"
+            "templateRetries": "Wiederholungen",
+            "rollbackRestoreLocalCount": "lokal {count}",
+            "rollbackRestoreRemoteCount": "entfernt {count}",
+            "rollbackRestoreSkippedCount": "übersprungen {count}",
+            "rollbackRestoreFailedCount": "fehlgeschlagen {count}",
+            "rollbackRestoreCompleted": "Wiederherstellung abgeschlossen: {summary}",
+            "rollbackRestoreNothing": "Nichts wiederherzustellen",
+            "rollbackRestoreFailed": "Wiederherstellung fehlgeschlagen: {error}"
         },
         "ui": {
             "syncing": "Synchronisiere...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Für diese Sitzung erlauben",
                 "nonAtomicReplace": "Nicht atomarer Ersatz: die Datei fehlt kurz",
                 "moreOptions": "Weitere Optionen",
-                "panelAria": "Bereich zur Werkzeugfreigabe"
+                "panelAria": "Bereich zur Werkzeugfreigabe",
+                "previewFailed": "Vorschau fehlgeschlagen"
             },
             "settings": {
                 "title": "KI-Einstellungen",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Unterstützt Werkzeuge",
                 "supportsVision": "Unterstützt Bildverarbeitung",
                 "thinkingReasoning": "Denken/Schlussfolgern",
-                "toolQuality": "Werkzeugqualität: {quality}/5"
+                "toolQuality": "Werkzeugqualität: {quality}/5",
+                "ollamaNotReachable": "Ollama nicht erreichbar"
             },
             "copy": "Kopieren",
             "attachImage": "Bild anhängen",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnose",
                     "truncated": "Die Diagnoseliste wurde gekürzt.",
                     "warningCountMany": "{count} Warnungen",
-                    "warningCountOne": "{count} Warnung"
+                    "warningCountOne": "{count} Warnung",
+                    "noLocation": "(keine Position)"
                 },
                 "search": {
                     "none": "Keine Treffer gefunden.",
@@ -3522,7 +3626,15 @@
                 "destination": "Ziel: {destination}",
                 "title": "Überprüfung des Übertragungsplans",
                 "warnings": "Warnungen"
-            }
+            },
+            "voiceNoAudio": "Kein Audio aufgenommen.",
+            "voiceDownloadingModel": "Lokales Sprachmodell wird heruntergeladen...",
+            "voiceNoSpeech": "Keine Sprache erkannt.",
+            "voiceReady": "Spracheingabe bereit.",
+            "voiceReadyLanguage": "Spracheingabe bereit ({language}).",
+            "voiceTranscriptionFailed": "Lokale Transkription fehlgeschlagen.",
+            "voiceListeningLocally": "Hört lokal zu...",
+            "voiceMicrophoneFailed": "Zugriff auf das Mikrofon nicht möglich."
         },
         "archive": {
             "passwordRequired": "Dieses Archiv ist passwortgeschützt",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator-Format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM-Inhalte",
             "featureNameCipher": "AES-SIV-Namen",
-            "formatVersion": "Formatversion {version}"
+            "formatVersion": "Formatversion {version}",
+            "invalidVaultName": "Ungültige Zeichen im Tresornamen"
         },
         "compress": {
             "title": "Dateien komprimieren",
@@ -4161,7 +4274,8 @@
             "total": "Gesamt",
             "across": "in",
             "empty": "Dieses Verzeichnis ist leer",
-            "hoverHint": "Fahren Sie über einen Block, um Details zu sehen"
+            "hoverHint": "Fahren Sie über einen Block, um Details zu sehen",
+            "scanUnknownError": "Unbekannter Fehler beim Scannen der Festplattennutzung"
         },
         "dependencies": {
             "title": "Abhängigkeiten",
@@ -4575,7 +4689,8 @@
                 "unmute": "Stummschaltung aufheben (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 nicht unterstützt"
+                "notSupported": "WebGL 2 nicht unterstützt",
+                "contextLost": "WebGL-Kontext verloren"
             },
             "clickToViewDetails": "Klicken Sie auf eine Datei, um ihre Details anzuzeigen",
             "copyPath": "Pfad kopieren",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Länge (Bytes)",
             "argon2DefaultsHint": "Standardwerte: das Profil, das AeroVault und AeroCrypt verwenden (128 MiB, 4 Iterationen, 4 Lanes, 32-Byte-Ausgabe). Das Salt oben ist Ihres. Speicher bis 2 GiB.",
             "argon2Derive": "Ableiten",
-            "argon2Phc": "PHC-String"
+            "argon2Phc": "PHC-String",
+            "hashError": "Fehler: {error}"
         },
         "dialog": {
             "deleteFile": "\"{name}\" löschen?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Tag entfernen",
             "manageTags": "Tags verwalten",
             "deleteTagConfirm": "Den Tag „{name}“ löschen? Notizen behalten ihren Text.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Text",
+                "markdown": "Markdown",
+                "code": "Code",
+                "richText": "Formatierter Text",
+                "checklist": "Checkliste"
+            }
         },
         "shareLinkModal": {
             "title": "Freigabelink",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Zielordner auswählen",
             "passwordPrompt": "Dieses Element ist verschlüsselt. Passwort zum Entpacken eingeben.",
             "showPassword": "Passwort anzeigen",
-            "hidePassword": "Passwort verbergen"
+            "hidePassword": "Passwort verbergen",
+            "missingPayload": "Fehlende Entpackungsdaten"
         },
         "provider": {
             "modes": {

@@ -433,7 +433,10 @@
             "localFilesLabel": "Mga lokal na talaksan",
             "localFilesRightLabel": "Mga lokal na talaksan (kanang panel)",
             "remoteFilesLabel": "Mga remote na talaksan",
-            "rightPanelMarker": "Kanang panel"
+            "rightPanelMarker": "Kanang panel",
+            "chooseRightPanelFolder": "Pumili ng folder ng kanang panel",
+            "chooseLeftPanelFolder": "Pumili ng folder ng kaliwang panel",
+            "localRight": "Lokal (kanan)"
         },
         "contextMenu": {
             "askAeroAgent": "Itanong sa AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Itakda bilang Pribado",
             "setAsPublic": "Itakda bilang Pampubliko",
             "makeAllPrivate": "Gawing pribado lahat",
-            "dropboxRestoreLimit": "Maaaring ibalik ng AeroFTP ang mga bersyon ng file na maaari pang mabawi. Ibalik ang mga folder mula sa Mga na-delete na file sa dropbox.com. Ang tandang pananong ay nangangahulugang hindi natukoy ng Dropbox ang uri ng item."
+            "dropboxRestoreLimit": "Maaaring ibalik ng AeroFTP ang mga bersyon ng file na maaari pang mabawi. Ibalik ang mga folder mula sa Mga na-delete na file sa dropbox.com. Ang tandang pananong ay nangangahulugang hindi natukoy ng Dropbox ang uri ng item.",
+            "openWithDefaultApp": "Buksan gamit ang default na app"
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Pag-setup ng Pag-sync sa Ulap",
             "onePerLineHint": "(isa bawat linya)",
             "pairsEditorLabel": "Editor ng mga Pares ng AeroCloud",
-            "remoteSubfolderPlaceholder": "ulap"
+            "remoteSubfolderPlaceholder": "ulap",
+            "countdownSoon": "Malapit na..."
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Nabigo ang paglipat",
             "navigationFailed": "Nabigo ang paglipat: {error}",
             "transferComplete": "{count} (na) file ang nakopya",
-            "permissionsSessionChanged": "Nagbago ang koneksyon mula nang buksan ang dialog na ito, kaya walang binago. Buksan muli ang Mga Pahintulot sa kasalukuyang koneksyon."
+            "permissionsSessionChanged": "Nagbago ang koneksyon mula nang buksan ang dialog na ito, kaya walang binago. Buksan muli ang Mga Pahintulot sa kasalukuyang koneksyon.",
+            "createFailed": "Nabigo ang paglikha"
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Ina-unlock ang folder na {filename}...",
             "site_replied": "{command}: sumagot ang server ng {code}",
             "site_unknown": "{command}: walang kumpletong tugon, hindi alam ang resulta",
-            "site_not_sent": "Hindi ipinadala ang {command}"
+            "site_not_sent": "Hindi ipinadala ang {command}",
+            "b2_hidden_restore_success_one": "[{provider}] Naibalik ang {count} nakatagong file",
+            "b2_hidden_restore_success_many": "[{provider}] Naibalik ang {count} nakatagong file",
+            "b2_hidden_restore_error": "[{provider}] Nabigong ibalik ang mga nakatagong file",
+            "b2_hidden_delete_success": "[{provider}] Permanenteng binura ang {count} file ({versions} bersyon ang nilinis)",
+            "trash_restore_detail_success": "[{provider}] Naibalik ang {files} file mula sa basurahan",
+            "trash_empty_detail_success": "[{provider}] Inalisan ng laman ang basurahan ({files} file, {folders} folder ang nilinis)",
+            "trash_empty_objects_one": "[{provider}] Inalisan ng laman ang basurahan ({count} bagay)",
+            "trash_empty_objects_many": "[{provider}] Inalisan ng laman ang basurahan ({count} bagay)",
+            "trash_object_purge_success": "[{provider}] Permanenteng inalis ang {key}",
+            "trash_object_purge_error": "[{provider}] Nabigong permanenteng alisin ang {key}",
+            "trash_object_undelete_success": "[{provider}] Binawi ang pagbura sa {key}",
+            "trash_object_undelete_error": "[{provider}] Nabigong bawiin ang pagbura sa {key}",
+            "trash_object_restore_success": "[{provider}] Naibalik ang {key}",
+            "trash_object_restore_error": "[{provider}] Nabigong ibalik ang {key}",
+            "opendrive_access_set": "[{provider}] Itinakda ang pag-access sa {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Itakda ang pag-access {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Nabigong itakda ang pag-access {level}",
+            "download_folder_success": "Na-download ang folder {path} sa loob ng {seconds} segundo",
+            "skipped_file": "Nilaktawan ang {filename}",
+            "filelu_made_public": "[{provider}] Ginawang pampubliko ang file",
+            "filelu_make_public_error": "[{provider}] Nabigong gawing pampubliko ang file",
+            "filelu_made_private": "[{provider}] Ginawang pribado ang file",
+            "filelu_make_private_error": "[{provider}] Nabigong gawing pribado ang file",
+            "filelu_file_password_set": "[{provider}] Itinakda ang password ng file",
+            "filelu_file_password_error": "[{provider}] Nabigong itakda ang password ng file",
+            "filelu_folder_password_set": "[{provider}] Naitakda ang password ng folder",
+            "filelu_folder_password_error": "[{provider}] Nabigong itakda ang password ng folder",
+            "filelu_public_share_success": "[{provider}] Ginawang pampubliko + ibinahagi ang file",
+            "filelu_public_share_error": "[{provider}] Nabigong gawing pampubliko + ibahagi",
+            "filelu_folder_settings_success": "[{provider}] Na-update ang mga setting ng folder",
+            "filelu_folder_settings_error": "[{provider}] Nabigong i-update ang mga setting ng folder",
+            "set_private_success": "[{provider}] Itinakda bilang pribado",
+            "set_private_error": "[{provider}] Nabigong itakda bilang pribado",
+            "set_public_success": "[{provider}] Itinakda bilang pampubliko",
+            "set_public_error": "[{provider}] Nabigong itakda bilang pampubliko",
+            "bulk_private_success_one": "[{provider}] Itinakda ang {count} tala bilang pribado",
+            "bulk_private_success_many": "[{provider}] Itinakda ang {count} na tala bilang pribado",
+            "bulk_private_partial": "[{provider}] Itinakda ang {ok}/{total} na tala bilang pribado",
+            "bulk_private_error": "[{provider}] Nabigo ang maramihang pagtakda bilang pribado",
+            "box_watermark_set": "[{provider}] Naitakda ang watermark",
+            "box_watermark_set_error": "[{provider}] Nabigong itakda ang watermark",
+            "box_watermark_removed": "[{provider}] Inalis ang watermark",
+            "box_watermark_remove_error": "[{provider}] Nabigong alisin ang watermark",
+            "box_folder_locked": "[{provider}] Na-lock ang folder",
+            "box_folder_lock_error": "[{provider}] Nabigong i-lock ang folder",
+            "box_folder_unlocked": "[{provider}] Na-unlock ang folder",
+            "box_folder_not_locked": "[{provider}] Hindi naka-lock ang folder",
+            "box_folder_unlock_error": "[{provider}] Nabigong i-unlock ang folder",
+            "gdrive_starred": "[{provider}] Nilagyan ng bituin ang file",
+            "gdrive_unstarred": "[{provider}] Inalis ang bituin sa file",
+            "gdrive_star_error": "[{provider}] Nabigo ang paglalagay ng bituin",
+            "gdrive_unstar_error": "[{provider}] Nabigo ang pag-alis ng bituin",
+            "extract_success": "Hinango ang {filename}",
+            "extract_success_to": "Hinango ang {filename} → {dest}",
+            "extract_error": "Nabigo ang paghango: {error}",
+            "zoho_document_created": "[{provider}] Nalikha ang dokumentong {type}",
+            "zoho_document_create_error": "[{provider}] Nabigo ang paglikha ng dokumentong {type}",
+            "note_saved": "[{provider}] Naitago ang talang \"{title}\"",
+            "note_save_error": "[{provider}] Hindi naitago ang tala",
+            "note_created": "[{provider}] Nalikha ang talang \"{title}\"",
+            "note_create_error": "[{provider}] Hindi nalikha ang tala",
+            "note_favorited": "[{provider}] Idinagdag sa mga paborito ang talang \"{title}\"",
+            "note_unfavorited": "[{provider}] Inalis sa mga paborito ang talang \"{title}\"",
+            "note_favorite_error": "[{provider}] Hindi napalitan ang paborito",
+            "note_pinned": "[{provider}] Ikinabit ang talang \"{title}\"",
+            "note_unpinned": "[{provider}] Tinanggal ang pagkakabit ng talang \"{title}\"",
+            "note_pin_error": "[{provider}] Hindi napalitan ang pagkakabit",
+            "note_trashed": "[{provider}] Inilipat sa basurahan ang talang \"{title}\"",
+            "note_trash_error": "[{provider}] Hindi nailipat sa basurahan ang tala",
+            "note_restored": "[{provider}] Naibalik ang talang \"{title}\"",
+            "note_restore_error": "[{provider}] Hindi naibalik ang tala",
+            "note_deleted": "[{provider}] Permanenteng binura ang talang \"{title}\"",
+            "note_delete_error": "[{provider}] Hindi permanenteng nabura ang tala",
+            "note_archived": "[{provider}] Inilagay sa arkibo ang talang \"{title}\"",
+            "note_archive_error": "[{provider}] Hindi nailagay sa arkibo ang tala",
+            "note_version_restored": "[{provider}] Naibalik ang bersyon ng tala",
+            "note_version_restore_error": "[{provider}] Nabigong ibalik ang bersyon ng tala",
+            "github_pages_config_updated": "[{provider}] Na-update ang pagsasaayos ng Pages",
+            "github_pages_config_error": "[{provider}] Nabigong i-update ang pagsasaayos ng Pages",
+            "opendrive_set_access": "[{provider}] Itinatakda ang pag-access para sa {filename}...",
+            "gdrive_star": "[{provider}] Nilalagyan ng bituin ang {filename}...",
+            "gdrive_unstar": "[{provider}] Inaalis ang bituin sa {filename}...",
+            "extract_start": "Ine-extract ang {filename}...",
+            "extract_start_to": "Ine-extract ang {filename} → {dest}...",
+            "compress_start": "Kino-compress sa {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Naibalik ang {files} file, {folders} folder mula sa basurahan",
+            "trash_restore_detail_present_success": "[{provider}] Naibalik ang {files} file mula sa basurahan, {present} ay naroon na",
+            "trash_restore_detail_folders_present_success": "[{provider}] Naibalik ang {files} file, {folders} folder mula sa basurahan, {present} ay naroon na"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Mga hindi isasama",
             "templateLocal": "Lokal",
             "templateRemote": "Remote",
-            "templateRetries": "Mga muling pagsubok"
+            "templateRetries": "Mga muling pagsubok",
+            "rollbackRestoreLocalCount": "lokal {count}",
+            "rollbackRestoreRemoteCount": "malayuan {count}",
+            "rollbackRestoreSkippedCount": "nilaktawan {count}",
+            "rollbackRestoreFailedCount": "nabigo {count}",
+            "rollbackRestoreCompleted": "Tapos na ang pagbabalik: {summary}",
+            "rollbackRestoreNothing": "Walang maibabalik",
+            "rollbackRestoreFailed": "Nabigo ang pagbabalik: {error}"
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Payagan para sa session na ito",
                 "nonAtomicReplace": "Hindi atomikong pagpapalit: pansamantalang nawawala ang file",
                 "moreOptions": "Higit pang opsyon",
-                "panelAria": "Panel ng pag-apruba ng kasangkapan"
+                "panelAria": "Panel ng pag-apruba ng kasangkapan",
+                "previewFailed": "Nabigo ang pag-preview"
             },
             "settings": {
                 "title": "AI Settings",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Sumusuporta sa mga tool",
                 "supportsVision": "Sumusuporta sa paningin",
                 "thinkingReasoning": "Pag-iisip/Pangangatwiran",
-                "toolQuality": "Kalidad ng kasangkapan: {quality}/5"
+                "toolQuality": "Kalidad ng kasangkapan: {quality}/5",
+                "ollamaNotReachable": "Hindi maabot ang Ollama"
             },
             "copy": "Kopyahin",
             "attachImage": "Mag-attach ng larawan",
@@ -3423,7 +3526,8 @@
                     "title": "Diyagnostiko",
                     "truncated": "Pinaikli ang listahan ng diyagnostiko.",
                     "warningCountMany": "{count} babala",
-                    "warningCountOne": "{count} babala"
+                    "warningCountOne": "{count} babala",
+                    "noLocation": "(walang lokasyon)"
                 },
                 "search": {
                     "none": "Walang nahanap na tugma.",
@@ -3522,7 +3626,15 @@
                 "destination": "Patutunguhan: {destination}",
                 "title": "Pagsusuri ng Plano ng Paglilipat",
                 "warnings": "Mga babala"
-            }
+            },
+            "voiceNoAudio": "Walang nakuhang audio.",
+            "voiceDownloadingModel": "Dina-download ang lokal na modelo ng boses...",
+            "voiceNoSpeech": "Walang natukoy na pananalita.",
+            "voiceReady": "Handa na ang pag-input ng boses.",
+            "voiceReadyLanguage": "Handa na ang pag-input ng boses ({language}).",
+            "voiceTranscriptionFailed": "Nabigo ang lokal na transkripsyon.",
+            "voiceListeningLocally": "Nakikinig nang lokal...",
+            "voiceMicrophoneFailed": "Hindi ma-access ang mikropono."
         },
         "archive": {
             "passwordRequired": "Ang archive na ito ay protektado ng password",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator Pormat 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Nilalaman na AES-GCM",
             "featureNameCipher": "Mga pangalan na AES-SIV",
-            "formatVersion": "Pormat {version}"
+            "formatVersion": "Pormat {version}",
+            "invalidVaultName": "Di-wastong mga karakter sa pangalan ng vault"
         },
         "compress": {
             "title": "I-compress ang mga File",
@@ -4161,7 +4274,8 @@
             "total": "Kabuuan",
             "across": "sa",
             "empty": "Walang laman ang direktoryo na ito",
-            "hoverHint": "Mag-hover sa isang block para makita ang mga detalye"
+            "hoverHint": "Mag-hover sa isang block para makita ang mga detalye",
+            "scanUnknownError": "Hindi kilalang error habang ini-scan ang paggamit ng disk"
         },
         "dependencies": {
             "title": "Mga Dependency",
@@ -4575,7 +4689,8 @@
                 "unmute": "I-unmute (M)"
             },
             "webgl": {
-                "notSupported": "Hindi sinusuportahan ang WebGL 2"
+                "notSupported": "Hindi sinusuportahan ang WebGL 2",
+                "contextLost": "Nawala ang konteksto ng WebGL"
             },
             "clickToViewDetails": "I-click ang isang file upang tingnan ang mga detalye nito",
             "copyPath": "Kopyahin ang Path",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Haba (byte)",
             "argon2DefaultsHint": "Mga default: ang profil na ginagamit ng AeroVault at AeroCrypt (128 MiB, 4 pag-ulit, 4 na lane, output na 32 byte). Ang asin sa itaas ay iyo. Memorya hanggang 2 GiB.",
             "argon2Derive": "I-derive",
-            "argon2Phc": "String ng PHC"
+            "argon2Phc": "String ng PHC",
+            "hashError": "Error: {error}"
         },
         "dialog": {
             "deleteFile": "Tanggalin ang \"{name}\"?",
@@ -5320,7 +5436,14 @@
             "removeTag": "Alisin ang tag",
             "manageTags": "Pamahalaan ang mga tag",
             "deleteTagConfirm": "Burahin ang tag na “{name}”? Mananatili ang teksto ng mga tala.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Teksto",
+                "markdown": "Markdown",
+                "code": "Kodigo",
+                "richText": "Naka-format na Teksto",
+                "checklist": "Listahan ng Pagsusuri"
+            }
         },
         "shareLinkModal": {
             "title": "Link ng pagbabahagi",
@@ -6620,7 +6743,8 @@
             "chooseFolder": "Pumili ng patutunguhang folder",
             "passwordPrompt": "Naka-encrypt ang item na ito. Ilagay ang password para i-extract.",
             "showPassword": "Ipakita ang password",
-            "hidePassword": "Itago ang password"
+            "hidePassword": "Itago ang password",
+            "missingPayload": "Nawawala ang data ng pag-extract"
         },
         "provider": {
             "modes": {

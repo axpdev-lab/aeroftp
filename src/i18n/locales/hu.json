@@ -433,7 +433,10 @@
             "localFilesLabel": "Helyi fájlok",
             "localFilesRightLabel": "Helyi fájlok (jobb panel)",
             "remoteFilesLabel": "Távoli fájlok",
-            "rightPanelMarker": "Jobb panel"
+            "rightPanelMarker": "Jobb panel",
+            "chooseRightPanelFolder": "Jobb oldali panel mappájának kiválasztása",
+            "chooseLeftPanelFolder": "Bal oldali panel mappájának kiválasztása",
+            "localRight": "Helyi (jobb)"
         },
         "contextMenu": {
             "askAeroAgent": "Kérdezd meg AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Beállítás privátra",
             "setAsPublic": "Beállítás nyilvánosra",
             "makeAllPrivate": "Összes priváttá tétele",
-            "dropboxRestoreLimit": "Az AeroFTP vissza tudja állítani a helyreállítható fájlverziókat. A mappákat a dropbox.com Törölt fájlok részéből állíthatja vissza. A kérdőjel azt jelenti, hogy a Dropbox nem azonosította az elem típusát."
+            "dropboxRestoreLimit": "Az AeroFTP vissza tudja állítani a helyreállítható fájlverziókat. A mappákat a dropbox.com Törölt fájlok részéből állíthatja vissza. A kérdőjel azt jelenti, hogy a Dropbox nem azonosította az elem típusát.",
+            "openWithDefaultApp": "Megnyitás az alapértelmezett alkalmazással"
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Felhőszinkronizálás beállítása",
             "onePerLineHint": "(soronként egy)",
             "pairsEditorLabel": "AeroCloud párszerkesztő",
-            "remoteSubfolderPlaceholder": "felhő"
+            "remoteSubfolderPlaceholder": "felhő",
+            "countdownSoon": "Hamarosan..."
         },
         "statusBar": {
             "connected": "Csatlakozva",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Az átvitel sikertelen",
             "navigationFailed": "A navigáció sikertelen: {error}",
             "transferComplete": "{count} fájl másolva",
-            "permissionsSessionChanged": "A kapcsolat megváltozott a párbeszédablak megnyitása óta, ezért semmi sem változott. Nyissa meg újra a Jogosultságokat az aktuális kapcsolaton."
+            "permissionsSessionChanged": "A kapcsolat megváltozott a párbeszédablak megnyitása óta, ezért semmi sem változott. Nyissa meg újra a Jogosultságokat az aktuális kapcsolaton.",
+            "createFailed": "A létrehozás sikertelen"
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] A(z) {filename} mappa zárolásának feloldása...",
             "site_replied": "{command}: a szerver válasza {code}",
             "site_unknown": "{command}: nincs teljes válasz, az eredmény ismeretlen",
-            "site_not_sent": "{command} nem lett elküldve"
+            "site_not_sent": "{command} nem lett elküldve",
+            "b2_hidden_restore_success_one": "[{provider}] {count} rejtett fájl visszaállítva",
+            "b2_hidden_restore_success_many": "[{provider}] {count} rejtett fájl visszaállítva",
+            "b2_hidden_restore_error": "[{provider}] A rejtett fájlok visszaállítása sikertelen",
+            "b2_hidden_delete_success": "[{provider}] {count} fájl véglegesen törölve ({versions} verzió eltávolítva)",
+            "trash_restore_detail_success": "[{provider}] {files} fájl visszaállítva a kukából",
+            "trash_empty_detail_success": "[{provider}] Kuka kiürítve ({files} fájl, {folders} mappa véglegesen törölve)",
+            "trash_empty_objects_one": "[{provider}] Kuka kiürítve ({count} objektum)",
+            "trash_empty_objects_many": "[{provider}] Kuka kiürítve ({count} objektum)",
+            "trash_object_purge_success": "[{provider}] {key} véglegesen törölve",
+            "trash_object_purge_error": "[{provider}] {key} végleges törlése sikertelen",
+            "trash_object_undelete_success": "[{provider}] {key} törlése visszavonva",
+            "trash_object_undelete_error": "[{provider}] {key} törlésének visszavonása sikertelen",
+            "trash_object_restore_success": "[{provider}] {key} visszaállítva",
+            "trash_object_restore_error": "[{provider}] {key} visszaállítása sikertelen",
+            "opendrive_access_set": "[{provider}] Hozzáférés beállítva: {level} ({count})",
+            "opendrive_access_partial": "[{provider}] {level} hozzáférés beállítása: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] {level} hozzáférés beállítása sikertelen",
+            "download_folder_success": "{path} mappa letöltve {seconds} mp alatt",
+            "skipped_file": "{filename} kihagyva",
+            "filelu_made_public": "[{provider}] Fájl nyilvánossá téve",
+            "filelu_make_public_error": "[{provider}] A fájl nyilvánossá tétele sikertelen",
+            "filelu_made_private": "[{provider}] Fájl priváttá téve",
+            "filelu_make_private_error": "[{provider}] A fájl priváttá tétele sikertelen",
+            "filelu_file_password_set": "[{provider}] Fájljelszó beállítva",
+            "filelu_file_password_error": "[{provider}] Fájljelszó beállítása sikertelen",
+            "filelu_folder_password_set": "[{provider}] Mappajelszó beállítva",
+            "filelu_folder_password_error": "[{provider}] A mappajelszó beállítása sikertelen",
+            "filelu_public_share_success": "[{provider}] Fájl nyilvánossá téve + megosztva",
+            "filelu_public_share_error": "[{provider}] Nyilvánossá tétel + megosztás sikertelen",
+            "filelu_folder_settings_success": "[{provider}] Mappabeállítások frissítve",
+            "filelu_folder_settings_error": "[{provider}] A mappabeállítások frissítése sikertelen",
+            "set_private_success": "[{provider}] Privátra állítva",
+            "set_private_error": "[{provider}] Privátra állítás sikertelen",
+            "set_public_success": "[{provider}] Nyilvánosra állítva",
+            "set_public_error": "[{provider}] Nyilvánosra állítás sikertelen",
+            "bulk_private_success_one": "[{provider}] {count} elem privátra állítva",
+            "bulk_private_success_many": "[{provider}] {count} elem privátra állítva",
+            "bulk_private_partial": "[{provider}] {ok}/{total} elem privátra állítva",
+            "bulk_private_error": "[{provider}] Tömeges privátra állítás sikertelen",
+            "box_watermark_set": "[{provider}] Vízjel beállítva",
+            "box_watermark_set_error": "[{provider}] A vízjel beállítása sikertelen",
+            "box_watermark_removed": "[{provider}] Vízjel eltávolítva",
+            "box_watermark_remove_error": "[{provider}] A vízjel eltávolítása sikertelen",
+            "box_folder_locked": "[{provider}] Mappa zárolva",
+            "box_folder_lock_error": "[{provider}] A mappa zárolása sikertelen",
+            "box_folder_unlocked": "[{provider}] Mappa zárolása feloldva",
+            "box_folder_not_locked": "[{provider}] A mappa nem volt zárolva",
+            "box_folder_unlock_error": "[{provider}] A mappa zárolásának feloldása sikertelen",
+            "gdrive_starred": "[{provider}] Fájl csillagozva",
+            "gdrive_unstarred": "[{provider}] Csillag eltávolítva a fájlról",
+            "gdrive_star_error": "[{provider}] A csillagozás nem sikerült",
+            "gdrive_unstar_error": "[{provider}] A csillag eltávolítása nem sikerült",
+            "extract_success": "Kibontva: {filename}",
+            "extract_success_to": "Kibontva: {filename} → {dest}",
+            "extract_error": "A kibontás nem sikerült: {error}",
+            "zoho_document_created": "[{provider}] {type} dokumentum létrehozva",
+            "zoho_document_create_error": "[{provider}] A(z) {type} dokumentum létrehozása nem sikerült",
+            "note_saved": "[{provider}] Jegyzet mentve: \"{title}\"",
+            "note_save_error": "[{provider}] A jegyzet mentése nem sikerült",
+            "note_created": "[{provider}] Jegyzet létrehozva: \"{title}\"",
+            "note_create_error": "[{provider}] A jegyzet létrehozása nem sikerült",
+            "note_favorited": "[{provider}] Jegyzet hozzáadva a kedvencekhez: \"{title}\"",
+            "note_unfavorited": "[{provider}] Jegyzet eltávolítva a kedvencekből: \"{title}\"",
+            "note_favorite_error": "[{provider}] A kedvenc váltása nem sikerült",
+            "note_pinned": "[{provider}] Jegyzet kitűzve: \"{title}\"",
+            "note_unpinned": "[{provider}] Jegyzet kitűzése megszüntetve: \"{title}\"",
+            "note_pin_error": "[{provider}] A kitűzés váltása nem sikerült",
+            "note_trashed": "[{provider}] Jegyzet áthelyezve a kukába: \"{title}\"",
+            "note_trash_error": "[{provider}] A jegyzet áthelyezése a kukába nem sikerült",
+            "note_restored": "[{provider}] Jegyzet visszaállítva: \"{title}\"",
+            "note_restore_error": "[{provider}] A jegyzet visszaállítása nem sikerült",
+            "note_deleted": "[{provider}] Jegyzet véglegesen törölve: \"{title}\"",
+            "note_delete_error": "[{provider}] A jegyzet végleges törlése nem sikerült",
+            "note_archived": "[{provider}] Jegyzet archiválva: \"{title}\"",
+            "note_archive_error": "[{provider}] A jegyzet archiválása nem sikerült",
+            "note_version_restored": "[{provider}] Jegyzetverzió visszaállítva",
+            "note_version_restore_error": "[{provider}] Nem sikerült visszaállítani a jegyzetverziót",
+            "github_pages_config_updated": "[{provider}] Pages-konfiguráció frissítve",
+            "github_pages_config_error": "[{provider}] Nem sikerült frissíteni a Pages-konfigurációt",
+            "opendrive_set_access": "[{provider}] Hozzáférés beállítása: {filename}...",
+            "gdrive_star": "[{provider}] Csillagozás: {filename}...",
+            "gdrive_unstar": "[{provider}] Csillag eltávolítása: {filename}...",
+            "extract_start": "Kibontás: {filename}...",
+            "extract_start_to": "Kibontás: {filename} → {dest}...",
+            "compress_start": "Tömörítés ide: {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] {files} fájl, {folders} mappa visszaállítva a kukából",
+            "trash_restore_detail_present_success": "[{provider}] {files} fájl visszaállítva a kukából, {present} már létezett",
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} fájl, {folders} mappa visszaállítva a kukából, {present} már létezett"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Kizárások",
             "templateLocal": "Helyi",
             "templateRemote": "Távoli",
-            "templateRetries": "Újrapróbálkozások"
+            "templateRetries": "Újrapróbálkozások",
+            "rollbackRestoreLocalCount": "helyi {count}",
+            "rollbackRestoreRemoteCount": "távoli {count}",
+            "rollbackRestoreSkippedCount": "kihagyva {count}",
+            "rollbackRestoreFailedCount": "sikertelen {count}",
+            "rollbackRestoreCompleted": "Visszaállítás kész: {summary}",
+            "rollbackRestoreNothing": "Nincs mit visszaállítani",
+            "rollbackRestoreFailed": "A visszaállítás sikertelen: {error}"
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Engedélyezés ehhez a munkamenethez",
                 "nonAtomicReplace": "Nem atomi csere: a fájl rövid ideig hiányzik",
                 "moreOptions": "További lehetőségek",
-                "panelAria": "Eszközjóváhagyási panel"
+                "panelAria": "Eszközjóváhagyási panel",
+                "previewFailed": "Az előnézet sikertelen"
             },
             "settings": {
                 "title": "MI beállítások",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Támogatja az eszközöket",
                 "supportsVision": "Támogatja a látást",
                 "thinkingReasoning": "Gondolkodás/Érvelés",
-                "toolQuality": "Eszközminőség: {quality}/5"
+                "toolQuality": "Eszközminőség: {quality}/5",
+                "ollamaNotReachable": "Az Ollama nem érhető el"
             },
             "copy": "Másolás",
             "attachImage": "Kép csatolása",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnosztika",
                     "truncated": "A diagnosztikai lista csonkolva lett.",
                     "warningCountMany": "{count} figyelmeztetés",
-                    "warningCountOne": "{count} figyelmeztetés"
+                    "warningCountOne": "{count} figyelmeztetés",
+                    "noLocation": "(nincs hely)"
                 },
                 "search": {
                     "none": "Nincs találat.",
@@ -3522,7 +3626,15 @@
                 "destination": "Cél: {destination}",
                 "title": "Átviteli terv áttekintése",
                 "warnings": "Figyelmeztetések"
-            }
+            },
+            "voiceNoAudio": "Nem rögzült hang.",
+            "voiceDownloadingModel": "Helyi hangmodell letöltése...",
+            "voiceNoSpeech": "Nem észlelhető beszéd.",
+            "voiceReady": "A hangbevitel kész.",
+            "voiceReadyLanguage": "A hangbevitel kész ({language}).",
+            "voiceTranscriptionFailed": "A helyi átírás sikertelen.",
+            "voiceListeningLocally": "Helyi figyelés...",
+            "voiceMicrophoneFailed": "Nem lehet hozzáférni a mikrofonhoz."
         },
         "archive": {
             "passwordRequired": "Ez az archívum jelszóval védett",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator 8-as formátum: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM tartalom",
             "featureNameCipher": "AES-SIV nevek",
-            "formatVersion": "{version}. formátum"
+            "formatVersion": "{version}. formátum",
+            "invalidVaultName": "Érvénytelen karakterek a széf nevében"
         },
         "compress": {
             "title": "Fájlok tömörítése",
@@ -4161,7 +4274,8 @@
             "total": "Összesen",
             "across": "át",
             "empty": "Ez a könyvtár üres",
-            "hoverHint": "Vigye az egeret a blokkra a részletekhez"
+            "hoverHint": "Vigye az egeret a blokkra a részletekhez",
+            "scanUnknownError": "Ismeretlen hiba a lemezhasználat vizsgálata közben"
         },
         "dependencies": {
             "title": "Függőségek",
@@ -4575,7 +4689,8 @@
                 "unmute": "Némítás feloldása (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 nem támogatott"
+                "notSupported": "WebGL 2 nem támogatott",
+                "contextLost": "A WebGL-környezet elveszett"
             },
             "clickToViewDetails": "Kattintson egy fájlra a részletek megtekintéséhez",
             "copyPath": "Útvonal Másolása",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Hossz (bájt)",
             "argon2DefaultsHint": "Alapértékek: az AeroVault és az AeroCrypt által használt profil (128 MiB, 4 iteráció, 4 sáv, 32 bájtos kimenet). A fenti só az Öné. Memória legfeljebb 2 GiB.",
             "argon2Derive": "Származtatás",
-            "argon2Phc": "PHC karakterlánc"
+            "argon2Phc": "PHC karakterlánc",
+            "hashError": "Hiba: {error}"
         },
         "dialog": {
             "deleteFile": "Törli a \"{name}\" fájlt?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Címke eltávolítása",
             "manageTags": "Címkék kezelése",
             "deleteTagConfirm": "Törlöd a(z) „{name}” címkét? A jegyzetek megőrzik a szövegüket.",
-            "betaBadge": "BÉTA"
+            "betaBadge": "BÉTA",
+            "noteTypes": {
+                "text": "Szöveg",
+                "markdown": "Markdown",
+                "code": "Kód",
+                "richText": "Formázott szöveg",
+                "checklist": "Ellenőrzőlista"
+            }
         },
         "shareLinkModal": {
             "title": "Megosztási hivatkozás",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Válasszon célmappát",
             "passwordPrompt": "Ez az elem titkosítva van. Adja meg a jelszót a kibontáshoz.",
             "showPassword": "Jelszó megjelenítése",
-            "hidePassword": "Jelszó elrejtése"
+            "hidePassword": "Jelszó elrejtése",
+            "missingPayload": "Hiányzó kibontási adatok"
         },
         "provider": {
             "modes": {

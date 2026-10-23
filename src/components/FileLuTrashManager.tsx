@@ -74,11 +74,11 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
       for (const code of selected) {
         await invoke('filelu_restore_file', { fileCode: code });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Restored ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'FileLu', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'FileLu' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -94,10 +94,10 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
       for (const code of selected) {
         await invoke('filelu_permanent_delete', { fileCode: code });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Permanently deleted ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'FileLu', count: selectedCount }) });
       await loadTrash();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'FileLu' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -137,11 +137,11 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     setActionLoading('restore');
     try {
       await invoke('filelu_restore_file', { fileCode: code });
-      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Restored 1 item from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'FileLu', count: 1 }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'FileLu' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -153,10 +153,10 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     setActionLoading('delete');
     try {
       await invoke('filelu_permanent_delete', { fileCode: code });
-      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Permanently deleted 1 item from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'FileLu', count: 1 }) });
       await loadTrash();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'FileLu' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

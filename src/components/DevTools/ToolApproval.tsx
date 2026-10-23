@@ -127,12 +127,12 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
             if (r.success) {
                 setDiffData({ original: r.original as string, modified: r.modified as string });
             } else {
-                setDiffError((r.message as string) || 'Preview failed');
+                setDiffError((r.message as string) || t('ai.toolApproval.previewFailed'));
             }
         })
         .catch((err: unknown) => setDiffError(String(err)))
         .finally(() => setDiffLoading(false));
-    }, [isEditTool, sessionId, toolCall.args.find, toolCall.args.path, toolCall.args.replace, toolCall.args.replace_all, toolCall.id, toolCall.status, toolCall.toolName]);
+    }, [isEditTool, sessionId, toolCall.args.find, toolCall.args.path, toolCall.args.replace, toolCall.args.replace_all, toolCall.id, toolCall.status, toolCall.toolName, t]);
 
     const label = getToolLabel(toolCall.toolName, t);
     const mainArg = getMainArg(toolCall.toolName, toolCall.args);

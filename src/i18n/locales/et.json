@@ -433,7 +433,10 @@
             "localFilesLabel": "Kohalikud failid",
             "localFilesRightLabel": "Kohalikud failid (parem paneel)",
             "remoteFilesLabel": "Kaugfailid",
-            "rightPanelMarker": "Parem paneel"
+            "rightPanelMarker": "Parem paneel",
+            "chooseRightPanelFolder": "Vali parema paneeli kaust",
+            "chooseLeftPanelFolder": "Vali vasaku paneeli kaust",
+            "localRight": "Kohalik (parem)"
         },
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Määra privaatseks",
             "setAsPublic": "Määra avalikuks",
             "makeAllPrivate": "Muuda kõik privaatseks",
-            "dropboxRestoreLimit": "AeroFTP saab taastada taastatavaid failiversioone. Taasta kaustad lehel dropbox.com jaotises Kustutatud failid. Küsimärk tähendab, et Dropbox ei tuvastanud üksuse tüüpi."
+            "dropboxRestoreLimit": "AeroFTP saab taastada taastatavaid failiversioone. Taasta kaustad lehel dropbox.com jaotises Kustutatud failid. Küsimärk tähendab, et Dropbox ei tuvastanud üksuse tüüpi.",
+            "openWithDefaultApp": "Ava vaikerakendusega"
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Pilvesünkroonimise seadistamine",
             "onePerLineHint": "(üks rea kohta)",
             "pairsEditorLabel": "AeroCloudi paaride redaktor",
-            "remoteSubfolderPlaceholder": "pilv"
+            "remoteSubfolderPlaceholder": "pilv",
+            "countdownSoon": "Varsti..."
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Ülekanne ebaõnnestus",
             "navigationFailed": "Navigeerimine ebaõnnestus: {error}",
             "transferComplete": "Kopeeriti {count} faili",
-            "permissionsSessionChanged": "Ühendus muutus pärast selle dialoogi avamist, seega midagi ei muudetud. Ava Õigused uuesti praeguse ühenduse jaoks."
+            "permissionsSessionChanged": "Ühendus muutus pärast selle dialoogi avamist, seega midagi ei muudetud. Ava Õigused uuesti praeguse ühenduse jaoks.",
+            "createFailed": "Loomine ebaõnnestus"
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Kausta {filename} avamine...",
             "site_replied": "{command}: server vastas {code}",
             "site_unknown": "{command}: täielik vastus puudub, tulemus on teadmata",
-            "site_not_sent": "{command} jäi saatmata"
+            "site_not_sent": "{command} jäi saatmata",
+            "b2_hidden_restore_success_one": "[{provider}] Taastati {count} peidetud fail",
+            "b2_hidden_restore_success_many": "[{provider}] Taastati {count} peidetud faili",
+            "b2_hidden_restore_error": "[{provider}] Peidetud failide taastamine ebaõnnestus",
+            "b2_hidden_delete_success": "[{provider}] Jäädavalt kustutati {count} fail(i) ({versions} versiooni puhastati)",
+            "trash_restore_detail_success": "[{provider}] Prügikastist taastati {files} fail(i)",
+            "trash_empty_detail_success": "[{provider}] Prügikast tühjendati ({files} fail(i), {folders} kaust(a) puhastati)",
+            "trash_empty_objects_one": "[{provider}] Prügikast tühjendati ({count} objekt)",
+            "trash_empty_objects_many": "[{provider}] Prügikast tühjendati ({count} objekti)",
+            "trash_object_purge_success": "[{provider}] Jäädavalt eemaldati {key}",
+            "trash_object_purge_error": "[{provider}] {key} jäädav eemaldamine ebaõnnestus",
+            "trash_object_undelete_success": "[{provider}] {key} kustutamine võeti tagasi",
+            "trash_object_undelete_error": "[{provider}] {key} kustutamise tagasivõtmine ebaõnnestus",
+            "trash_object_restore_success": "[{provider}] Taastati {key}",
+            "trash_object_restore_error": "[{provider}] {key} taastamine ebaõnnestus",
+            "opendrive_access_set": "[{provider}] Juurdepääs seati tasemele {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Juurdepääsu {level} seadmine: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Juurdepääsu {level} seadmine ebaõnnestus",
+            "download_folder_success": "Kaust {path} laaditi alla {seconds} sekundiga",
+            "skipped_file": "Jäeti vahele {filename}",
+            "filelu_made_public": "[{provider}] Fail muudeti avalikuks",
+            "filelu_make_public_error": "[{provider}] Faili avalikuks muutmine ebaõnnestus",
+            "filelu_made_private": "[{provider}] Fail muudeti privaatseks",
+            "filelu_make_private_error": "[{provider}] Faili privaatseks muutmine ebaõnnestus",
+            "filelu_file_password_set": "[{provider}] Faili parool määrati",
+            "filelu_file_password_error": "[{provider}] Faili parooli määramine ebaõnnestus",
+            "filelu_folder_password_set": "[{provider}] Kausta parool määratud",
+            "filelu_folder_password_error": "[{provider}] Kausta parooli määramine nurjus",
+            "filelu_public_share_success": "[{provider}] Fail tehtud avalikuks + jagatud",
+            "filelu_public_share_error": "[{provider}] Avalikuks tegemine + jagamine nurjus",
+            "filelu_folder_settings_success": "[{provider}] Kausta sätted uuendatud",
+            "filelu_folder_settings_error": "[{provider}] Kausta sätete uuendamine nurjus",
+            "set_private_success": "[{provider}] Määratud privaatseks",
+            "set_private_error": "[{provider}] Privaatseks määramine nurjus",
+            "set_public_success": "[{provider}] Määratud avalikuks",
+            "set_public_error": "[{provider}] Avalikuks määramine nurjus",
+            "bulk_private_success_one": "[{provider}] {count} kirje määratud privaatseks",
+            "bulk_private_success_many": "[{provider}] {count} kirjet määratud privaatseks",
+            "bulk_private_partial": "[{provider}] {ok}/{total} kirjet määratud privaatseks",
+            "bulk_private_error": "[{provider}] Hulgi privaatseks määramine nurjus",
+            "box_watermark_set": "[{provider}] Vesimärk määratud",
+            "box_watermark_set_error": "[{provider}] Vesimärgi määramine nurjus",
+            "box_watermark_removed": "[{provider}] Vesimärk eemaldatud",
+            "box_watermark_remove_error": "[{provider}] Vesimärgi eemaldamine nurjus",
+            "box_folder_locked": "[{provider}] Kaust lukustatud",
+            "box_folder_lock_error": "[{provider}] Kausta lukustamine nurjus",
+            "box_folder_unlocked": "[{provider}] Kausta lukustus eemaldatud",
+            "box_folder_not_locked": "[{provider}] Kaust ei olnud lukustatud",
+            "box_folder_unlock_error": "[{provider}] Kausta lukustuse eemaldamine nurjus",
+            "gdrive_starred": "[{provider}] Fail tärniga märgitud",
+            "gdrive_unstarred": "[{provider}] Faililt tärn eemaldatud",
+            "gdrive_star_error": "[{provider}] Tärniga märkimine ebaõnnestus",
+            "gdrive_unstar_error": "[{provider}] Tärni eemaldamine ebaõnnestus",
+            "extract_success": "Lahti pakitud {filename}",
+            "extract_success_to": "Lahti pakitud {filename} → {dest}",
+            "extract_error": "Lahtipakkimine ebaõnnestus: {error}",
+            "zoho_document_created": "[{provider}] Loodud {type}-dokument",
+            "zoho_document_create_error": "[{provider}] {type}-dokumendi loomine ebaõnnestus",
+            "note_saved": "[{provider}] Märkus \"{title}\" salvestatud",
+            "note_save_error": "[{provider}] Märkuse salvestamine ebaõnnestus",
+            "note_created": "[{provider}] Märkus \"{title}\" loodud",
+            "note_create_error": "[{provider}] Märkuse loomine ebaõnnestus",
+            "note_favorited": "[{provider}] Märkus \"{title}\" lisatud lemmikutesse",
+            "note_unfavorited": "[{provider}] Märkus \"{title}\" eemaldatud lemmikutest",
+            "note_favorite_error": "[{provider}] Lemmiku lülitamine ebaõnnestus",
+            "note_pinned": "[{provider}] Märkus \"{title}\" kinnitatud",
+            "note_unpinned": "[{provider}] Märkuse \"{title}\" kinnitus eemaldatud",
+            "note_pin_error": "[{provider}] Kinnituse lülitamine ebaõnnestus",
+            "note_trashed": "[{provider}] Märkus \"{title}\" teisaldatud prügikasti",
+            "note_trash_error": "[{provider}] Märkuse teisaldamine prügikasti ebaõnnestus",
+            "note_restored": "[{provider}] Märkus \"{title}\" taastatud",
+            "note_restore_error": "[{provider}] Märkuse taastamine ebaõnnestus",
+            "note_deleted": "[{provider}] Märkus \"{title}\" jäädavalt kustutatud",
+            "note_delete_error": "[{provider}] Märkuse jäädav kustutamine ebaõnnestus",
+            "note_archived": "[{provider}] Märkus \"{title}\" arhiveeritud",
+            "note_archive_error": "[{provider}] Märkuse arhiveerimine ebaõnnestus",
+            "note_version_restored": "[{provider}] Märkme versioon taastatud",
+            "note_version_restore_error": "[{provider}] Märkme versiooni taastamine ebaõnnestus",
+            "github_pages_config_updated": "[{provider}] Pages'i seadistus uuendatud",
+            "github_pages_config_error": "[{provider}] Pages'i seadistuse uuendamine ebaõnnestus",
+            "opendrive_set_access": "[{provider}] Juurdepääsu määramine failile {filename}...",
+            "gdrive_star": "[{provider}] Faili {filename} tärniga märkimine...",
+            "gdrive_unstar": "[{provider}] Tärni eemaldamine faililt {filename}...",
+            "extract_start": "Faili {filename} lahtipakkimine...",
+            "extract_start_to": "Faili {filename} lahtipakkimine → {dest}...",
+            "compress_start": "Tihendamine arhiivi {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Prügikastist taastati {files} fail(i), {folders} kaust(a)",
+            "trash_restore_detail_present_success": "[{provider}] Prügikastist taastati {files} fail(i), {present} oli juba olemas",
+            "trash_restore_detail_folders_present_success": "[{provider}] Prügikastist taastati {files} fail(i), {folders} kaust(a), {present} oli juba olemas"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Välistused",
             "templateLocal": "Kohalik",
             "templateRemote": "Kaug",
-            "templateRetries": "Kordused"
+            "templateRetries": "Kordused",
+            "rollbackRestoreLocalCount": "kohalik {count}",
+            "rollbackRestoreRemoteCount": "kaug {count}",
+            "rollbackRestoreSkippedCount": "vahele jäetud {count}",
+            "rollbackRestoreFailedCount": "ebaõnnestunud {count}",
+            "rollbackRestoreCompleted": "Taastamine lõpetatud: {summary}",
+            "rollbackRestoreNothing": "Pole midagi taastada",
+            "rollbackRestoreFailed": "Taastamine ebaõnnestus: {error}"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Luba selles seansis",
                 "nonAtomicReplace": "Mitteatomaarne asendamine: fail on hetkeks puudu",
                 "moreOptions": "Rohkem valikuid",
-                "panelAria": "Tööriistade kinnitamise paneel"
+                "panelAria": "Tööriistade kinnitamise paneel",
+                "previewFailed": "Eelvaade ebaõnnestus"
             },
             "settings": {
                 "title": "AI seaded",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Toetab tööriistu",
                 "supportsVision": "Toetab nägemist",
                 "thinkingReasoning": "Mõtlemine/Arutlemine",
-                "toolQuality": "Tööriistade kvaliteet: {quality}/5"
+                "toolQuality": "Tööriistade kvaliteet: {quality}/5",
+                "ollamaNotReachable": "Ollama pole kättesaadav"
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnostika",
                     "truncated": "Diagnostika loendit kärbiti.",
                     "warningCountMany": "{count} hoiatust",
-                    "warningCountOne": "{count} hoiatus"
+                    "warningCountOne": "{count} hoiatus",
+                    "noLocation": "(asukoht puudub)"
                 },
                 "search": {
                     "none": "Vasteid ei leitud.",
@@ -3522,7 +3626,15 @@
                 "destination": "Sihtkoht: {destination}",
                 "title": "Edastusplaani ülevaatus",
                 "warnings": "Hoiatused"
-            }
+            },
+            "voiceNoAudio": "Heli ei salvestatud.",
+            "voiceDownloadingModel": "Kohaliku häälemudeli allalaadimine...",
+            "voiceNoSpeech": "Kõnet ei tuvastatud.",
+            "voiceReady": "Häälsisend on valmis.",
+            "voiceReadyLanguage": "Häälsisend on valmis ({language}).",
+            "voiceTranscriptionFailed": "Kohalik transkribeerimine ebaõnnestus.",
+            "voiceListeningLocally": "Kohalik kuulamine...",
+            "voiceMicrophoneFailed": "Mikrofonile ei pääse ligi."
         },
         "archive": {
             "passwordRequired": "See arhiiv on parooliga kaitstud",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomatori vorming 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM sisu",
             "featureNameCipher": "AES-SIV nimed",
-            "formatVersion": "Vorming {version}"
+            "formatVersion": "Vorming {version}",
+            "invalidVaultName": "Hoidla nimes on sobimatud märgid"
         },
         "compress": {
             "title": "Paki failid",
@@ -4161,7 +4274,8 @@
             "total": "Kokku",
             "across": "üle",
             "empty": "See kataloog on tühi",
-            "hoverHint": "Hõljutage ploki kohal üksikasjades"
+            "hoverHint": "Hõljutage ploki kohal üksikasjades",
+            "scanUnknownError": "Tundmatu viga kettakasutuse skannimisel"
         },
         "dependencies": {
             "title": "Sõltuvused",
@@ -4575,7 +4689,8 @@
                 "unmute": "Taasta heli (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 pole toetatud"
+                "notSupported": "WebGL 2 pole toetatud",
+                "contextLost": "WebGL-kontekst kadus"
             },
             "clickToViewDetails": "Klõpsake failil, et vaadata selle üksikasju",
             "copyPath": "Kopeeri tee",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Pikkus (baiti)",
             "argon2DefaultsHint": "Vaikeväärtused: profiil, mida kasutavad AeroVault ja AeroCrypt (128 MiB, 4 iteratsiooni, 4 rada, 32-baidine väljund). Ülalolev sool on teie oma. Mälu kuni 2 GiB.",
             "argon2Derive": "Tuleta",
-            "argon2Phc": "PHC-string"
+            "argon2Phc": "PHC-string",
+            "hashError": "Viga: {error}"
         },
         "dialog": {
             "deleteFile": "Kustuta \"{name}\"?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Eemalda silt",
             "manageTags": "Halda silte",
             "deleteTagConfirm": "Kas kustutada silt „{name}“? Märkmed säilitavad oma teksti.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Tekst",
+                "markdown": "Markdown",
+                "code": "Kood",
+                "richText": "Vormindatud tekst",
+                "checklist": "Kontrollnimekiri"
+            }
         },
         "shareLinkModal": {
             "title": "Jagamislink",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Vali sihtkaust",
             "passwordPrompt": "See üksus on krüpteeritud. Ekstraktimiseks sisesta parool.",
             "showPassword": "Näita parooli",
-            "hidePassword": "Peida parool"
+            "hidePassword": "Peida parool",
+            "missingPayload": "Lahtipakkimise andmed puuduvad"
         },
         "provider": {
             "modes": {

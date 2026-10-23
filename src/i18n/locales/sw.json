@@ -433,7 +433,10 @@
             "localFilesLabel": "Faili za ndani",
             "localFilesRightLabel": "Faili za ndani (paneli ya kulia)",
             "remoteFilesLabel": "Faili za mbali",
-            "rightPanelMarker": "Paneli ya kulia"
+            "rightPanelMarker": "Paneli ya kulia",
+            "chooseRightPanelFolder": "Chagua folda ya paneli ya kulia",
+            "chooseLeftPanelFolder": "Chagua folda ya paneli ya kushoto",
+            "localRight": "Ndani (kulia)"
         },
         "contextMenu": {
             "askAeroAgent": "Uliza AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Weka kama Binafsi",
             "setAsPublic": "Weka kama Umma",
             "makeAllPrivate": "Fanya zote za faragha",
-            "dropboxRestoreLimit": "AeroFTP inaweza kurejesha matoleo ya faili yanayoweza kurejeshwa. Rejesha folda kutoka sehemu ya Faili zilizofutwa kwenye dropbox.com. Alama ya kuuliza inamaanisha kuwa Dropbox haikutambua aina ya kipengee."
+            "dropboxRestoreLimit": "AeroFTP inaweza kurejesha matoleo ya faili yanayoweza kurejeshwa. Rejesha folda kutoka sehemu ya Faili zilizofutwa kwenye dropbox.com. Alama ya kuuliza inamaanisha kuwa Dropbox haikutambua aina ya kipengee.",
+            "openWithDefaultApp": "Fungua kwa programu chaguomsingi"
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Usanidi wa Usawazishaji wa Wingu",
             "onePerLineHint": "(moja kwa kila mstari)",
             "pairsEditorLabel": "Kihariri cha Jozi za AeroCloud",
-            "remoteSubfolderPlaceholder": "wingu"
+            "remoteSubfolderPlaceholder": "wingu",
+            "countdownSoon": "Hivi karibuni..."
         },
         "statusBar": {
             "connected": "Imeunganishwa",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Uhamishaji umeshindwa",
             "navigationFailed": "Urambazaji umeshindwa: {error}",
             "transferComplete": "Faili {count} zimenakiliwa",
-            "permissionsSessionChanged": "Muunganisho umebadilika tangu kisanduku hiki cha mazungumzo kifunguliwe, kwa hivyo hakuna kilichobadilishwa. Fungua Ruhusa tena kwenye muunganisho wa sasa."
+            "permissionsSessionChanged": "Muunganisho umebadilika tangu kisanduku hiki cha mazungumzo kifunguliwe, kwa hivyo hakuna kilichobadilishwa. Fungua Ruhusa tena kwenye muunganisho wa sasa.",
+            "createFailed": "Kuunda kumeshindwa"
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Inafungua kufuli ya folda {filename}...",
             "site_replied": "{command}: seva ilijibu {code}",
             "site_unknown": "{command}: hakuna jibu kamili, matokeo hayajulikani",
-            "site_not_sent": "{command} haikutumwa"
+            "site_not_sent": "{command} haikutumwa",
+            "b2_hidden_restore_success_one": "[{provider}] Imerejesha faili {count} iliyofichwa",
+            "b2_hidden_restore_success_many": "[{provider}] Imerejesha faili {count} zilizofichwa",
+            "b2_hidden_restore_error": "[{provider}] Imeshindwa kurejesha faili zilizofichwa",
+            "b2_hidden_delete_success": "[{provider}] Imefuta kabisa faili {count} (matoleo {versions} yamesafishwa)",
+            "trash_restore_detail_success": "[{provider}] Imerejesha faili {files} kutoka kwenye tupio",
+            "trash_empty_detail_success": "[{provider}] Imemwaga tupio (faili {files}, folda {folders} zimesafishwa)",
+            "trash_empty_objects_one": "[{provider}] Imemwaga tupio (kitu {count})",
+            "trash_empty_objects_many": "[{provider}] Imemwaga tupio (vitu {count})",
+            "trash_object_purge_success": "[{provider}] Imefuta kabisa {key}",
+            "trash_object_purge_error": "[{provider}] Imeshindwa kufuta kabisa {key}",
+            "trash_object_undelete_success": "[{provider}] Imetendua ufutaji wa {key}",
+            "trash_object_undelete_error": "[{provider}] Imeshindwa kutendua ufutaji wa {key}",
+            "trash_object_restore_success": "[{provider}] Imerejesha {key}",
+            "trash_object_restore_error": "[{provider}] Imeshindwa kurejesha {key}",
+            "opendrive_access_set": "[{provider}] Ufikiaji umewekwa kuwa {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Weka ufikiaji {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Imeshindwa kuweka ufikiaji {level}",
+            "download_folder_success": "Imepakua folda {path} kwa sekunde {seconds}",
+            "skipped_file": "Imeruka {filename}",
+            "filelu_made_public": "[{provider}] Faili imefanywa ya umma",
+            "filelu_make_public_error": "[{provider}] Imeshindwa kufanya faili kuwa ya umma",
+            "filelu_made_private": "[{provider}] Faili imefanywa ya faragha",
+            "filelu_make_private_error": "[{provider}] Imeshindwa kufanya faili kuwa ya faragha",
+            "filelu_file_password_set": "[{provider}] Nenosiri la faili limewekwa",
+            "filelu_file_password_error": "[{provider}] Imeshindwa kuweka nenosiri la faili",
+            "filelu_folder_password_set": "[{provider}] Nenosiri la folda limewekwa",
+            "filelu_folder_password_error": "[{provider}] Imeshindwa kuweka nenosiri la folda",
+            "filelu_public_share_success": "[{provider}] Faili imefanywa ya umma + imeshirikiwa",
+            "filelu_public_share_error": "[{provider}] Imeshindwa kufanya ya umma + kushiriki",
+            "filelu_folder_settings_success": "[{provider}] Mipangilio ya folda imesasishwa",
+            "filelu_folder_settings_error": "[{provider}] Imeshindwa kusasisha mipangilio ya folda",
+            "set_private_success": "[{provider}] Imewekwa kuwa ya faragha",
+            "set_private_error": "[{provider}] Imeshindwa kuweka kuwa ya faragha",
+            "set_public_success": "[{provider}] Imewekwa kuwa ya umma",
+            "set_public_error": "[{provider}] Imeshindwa kuweka kuwa ya umma",
+            "bulk_private_success_one": "[{provider}] Kipengee {count} kimewekwa kuwa cha faragha",
+            "bulk_private_success_many": "[{provider}] Vipengee {count} vimewekwa kuwa vya faragha",
+            "bulk_private_partial": "[{provider}] Vipengee {ok}/{total} vimewekwa kuwa vya faragha",
+            "bulk_private_error": "[{provider}] Imeshindwa kuweka kwa wingi kuwa vya faragha",
+            "box_watermark_set": "[{provider}] Alama ya maji imewekwa",
+            "box_watermark_set_error": "[{provider}] Imeshindwa kuweka alama ya maji",
+            "box_watermark_removed": "[{provider}] Alama ya maji imeondolewa",
+            "box_watermark_remove_error": "[{provider}] Imeshindwa kuondoa alama ya maji",
+            "box_folder_locked": "[{provider}] Folda imefungwa",
+            "box_folder_lock_error": "[{provider}] Imeshindwa kufunga folda",
+            "box_folder_unlocked": "[{provider}] Folda imefunguliwa",
+            "box_folder_not_locked": "[{provider}] Folda haikuwa imefungwa",
+            "box_folder_unlock_error": "[{provider}] Imeshindwa kufungua folda",
+            "gdrive_starred": "[{provider}] Faili imewekewa nyota",
+            "gdrive_unstarred": "[{provider}] Nyota imeondolewa kwenye faili",
+            "gdrive_star_error": "[{provider}] Kuweka nyota kumeshindwa",
+            "gdrive_unstar_error": "[{provider}] Kuondoa nyota kumeshindwa",
+            "extract_success": "Imetolewa {filename}",
+            "extract_success_to": "Imetolewa {filename} → {dest}",
+            "extract_error": "Utoaji umeshindwa: {error}",
+            "zoho_document_created": "[{provider}] Hati ya {type} imeundwa",
+            "zoho_document_create_error": "[{provider}] Kuunda hati ya {type} kumeshindwa",
+            "note_saved": "[{provider}] Dokezo \"{title}\" limehifadhiwa",
+            "note_save_error": "[{provider}] Imeshindwa kuhifadhi dokezo",
+            "note_created": "[{provider}] Dokezo \"{title}\" limeundwa",
+            "note_create_error": "[{provider}] Imeshindwa kuunda dokezo",
+            "note_favorited": "[{provider}] Dokezo \"{title}\" limeongezwa kwenye vipendwa",
+            "note_unfavorited": "[{provider}] Dokezo \"{title}\" limeondolewa kwenye vipendwa",
+            "note_favorite_error": "[{provider}] Imeshindwa kubadili kipendwa",
+            "note_pinned": "[{provider}] Dokezo \"{title}\" limebandikwa",
+            "note_unpinned": "[{provider}] Dokezo \"{title}\" limebanduliwa",
+            "note_pin_error": "[{provider}] Imeshindwa kubadili ubandikaji",
+            "note_trashed": "[{provider}] Dokezo \"{title}\" limehamishiwa kwenye tupio",
+            "note_trash_error": "[{provider}] Imeshindwa kuhamisha dokezo kwenye tupio",
+            "note_restored": "[{provider}] Dokezo \"{title}\" limerejeshwa",
+            "note_restore_error": "[{provider}] Imeshindwa kurejesha dokezo",
+            "note_deleted": "[{provider}] Dokezo \"{title}\" limefutwa kabisa",
+            "note_delete_error": "[{provider}] Imeshindwa kufuta dokezo kabisa",
+            "note_archived": "[{provider}] Dokezo \"{title}\" limehifadhiwa kwenye kumbukumbu",
+            "note_archive_error": "[{provider}] Imeshindwa kuhifadhi dokezo kwenye kumbukumbu",
+            "note_version_restored": "[{provider}] Toleo la dokezo limerejeshwa",
+            "note_version_restore_error": "[{provider}] Imeshindwa kurejesha toleo la dokezo",
+            "github_pages_config_updated": "[{provider}] Usanidi wa Pages umesasishwa",
+            "github_pages_config_error": "[{provider}] Imeshindwa kusasisha usanidi wa Pages",
+            "opendrive_set_access": "[{provider}] Inaweka ufikiaji wa {filename}...",
+            "gdrive_star": "[{provider}] Inaweka nyota kwenye {filename}...",
+            "gdrive_unstar": "[{provider}] Inaondoa nyota kwenye {filename}...",
+            "extract_start": "Inatoa {filename}...",
+            "extract_start_to": "Inatoa {filename} → {dest}...",
+            "compress_start": "Inabana hadi {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Imerejesha faili {files}, folda {folders} kutoka kwenye tupio",
+            "trash_restore_detail_present_success": "[{provider}] Imerejesha faili {files} kutoka kwenye tupio, {present} tayari zipo",
+            "trash_restore_detail_folders_present_success": "[{provider}] Imerejesha faili {files}, folda {folders} kutoka kwenye tupio, {present} tayari zipo"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Vizuizi",
             "templateLocal": "Ndani",
             "templateRemote": "Mbali",
-            "templateRetries": "Majaribio upya"
+            "templateRetries": "Majaribio upya",
+            "rollbackRestoreLocalCount": "ndani {count}",
+            "rollbackRestoreRemoteCount": "mbali {count}",
+            "rollbackRestoreSkippedCount": "zilizorukwa {count}",
+            "rollbackRestoreFailedCount": "zilizoshindwa {count}",
+            "rollbackRestoreCompleted": "Urejeshaji umekamilika: {summary}",
+            "rollbackRestoreNothing": "Hakuna cha kurejesha",
+            "rollbackRestoreFailed": "Kurejesha kumeshindwa: {error}"
         },
         "ui": {
             "syncing": "Inasawazisha...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Ruhusu kwa kipindi hiki",
                 "nonAtomicReplace": "Ubadilishaji si atomiki: faili haipo kwa muda mfupi",
                 "moreOptions": "Chaguo zaidi",
-                "panelAria": "Paneli ya kuidhinisha zana"
+                "panelAria": "Paneli ya kuidhinisha zana",
+                "previewFailed": "Onyesho la kukagua limeshindwa"
             },
             "settings": {
                 "title": "Mipangilio ya AI",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Inaauni zana",
                 "supportsVision": "Inaauni maono",
                 "thinkingReasoning": "Kufikiri/Kutoa hoja",
-                "toolQuality": "Ubora wa zana: {quality}/5"
+                "toolQuality": "Ubora wa zana: {quality}/5",
+                "ollamaNotReachable": "Ollama haifikiki"
             },
             "copy": "Nakili",
             "attachImage": "Ambatanisha picha",
@@ -3423,7 +3526,8 @@
                     "title": "Uchunguzi",
                     "truncated": "Orodha ya uchunguzi ilifupishwa.",
                     "warningCountMany": "maonyo {count}",
-                    "warningCountOne": "onyo {count}"
+                    "warningCountOne": "onyo {count}",
+                    "noLocation": "(hakuna mahali)"
                 },
                 "search": {
                     "none": "Hakuna yanayolingana yaliyopatikana.",
@@ -3522,7 +3626,15 @@
                 "destination": "Mahali pa kwenda: {destination}",
                 "title": "Ukaguzi wa Mpango wa Uhamisho",
                 "warnings": "Maonyo"
-            }
+            },
+            "voiceNoAudio": "Hakuna sauti iliyorekodiwa.",
+            "voiceDownloadingModel": "Inapakua modeli ya sauti ya ndani...",
+            "voiceNoSpeech": "Hakuna usemi uliogunduliwa.",
+            "voiceReady": "Uingizaji wa sauti uko tayari.",
+            "voiceReadyLanguage": "Uingizaji wa sauti uko tayari ({language}).",
+            "voiceTranscriptionFailed": "Unukuzi wa ndani umeshindwa.",
+            "voiceListeningLocally": "Inasikiliza ndani ya kifaa...",
+            "voiceMicrophoneFailed": "Imeshindwa kufikia maikrofoni."
         },
         "archive": {
             "passwordRequired": "Kumbukumbu hii inalindwa na nenosiri",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator Muundo 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Maudhui ya AES-GCM",
             "featureNameCipher": "Majina ya AES-SIV",
-            "formatVersion": "Muundo {version}"
+            "formatVersion": "Muundo {version}",
+            "invalidVaultName": "Herufi batili katika jina la hifadhi"
         },
         "compress": {
             "title": "Bana Faili",
@@ -4161,7 +4274,8 @@
             "total": "Jumla",
             "across": "katika",
             "empty": "Saraka hii ni tupu",
-            "hoverHint": "Pindua juu ya kisanduku kuona maelezo"
+            "hoverHint": "Pindua juu ya kisanduku kuona maelezo",
+            "scanUnknownError": "Hitilafu isiyojulikana wakati wa kuchanganua matumizi ya diski"
         },
         "dependencies": {
             "title": "Vitegemezi",
@@ -4575,7 +4689,8 @@
                 "unmute": "Rejesha Sauti (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 haitumiki"
+                "notSupported": "WebGL 2 haitumiki",
+                "contextLost": "Muktadha wa WebGL umepotea"
             },
             "clickToViewDetails": "Bofya kwenye faili ili kuona maelezo yake",
             "copyPath": "Nakili Njia",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Urefu (baiti)",
             "argon2DefaultsHint": "Chaguo-msingi: wasifu ambao AeroVault na AeroCrypt wanatumia (128 MiB, marudio 4, njia 4, pato la baiti 32). Chumvi hapo juu ni yako. Kumbukumbu hadi 2 GiB.",
             "argon2Derive": "Tokeza",
-            "argon2Phc": "Mfuatano wa PHC"
+            "argon2Phc": "Mfuatano wa PHC",
+            "hashError": "Hitilafu: {error}"
         },
         "dialog": {
             "deleteFile": "Futa \"{name}\"?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Ondoa lebo",
             "manageTags": "Dhibiti lebo",
             "deleteTagConfirm": "Futa lebo “{name}”? Noti zinabaki na maandishi yake.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Maandishi",
+                "markdown": "Markdown",
+                "code": "Msimbo",
+                "richText": "Maandishi yaliyoumbizwa",
+                "checklist": "Orodha ya ukaguzi"
+            }
         },
         "shareLinkModal": {
             "title": "Kiungo cha kushiriki",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Chagua folda lengwa",
             "passwordPrompt": "Kipengee hiki kimesimbwa. Weka nenosiri ili kukitoa.",
             "showPassword": "Onyesha nenosiri",
-            "hidePassword": "Ficha nenosiri"
+            "hidePassword": "Ficha nenosiri",
+            "missingPayload": "Data ya kutoa haipo"
         },
         "provider": {
             "modes": {

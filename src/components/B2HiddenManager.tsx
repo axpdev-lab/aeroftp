@@ -86,11 +86,11 @@ export function B2HiddenManager({ onClose, onRefreshFiles, currentPath }: B2Hidd
       for (const path of paths) {
         await invoke('b2_restore_hidden', { path });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Backblaze B2] Restored ${paths.length} hidden file(s)` });
+      humanLog.updateEntry(logId, { status: 'success', message: t(paths.length === 1 ? 'activity.b2_hidden_restore_success_one' : 'activity.b2_hidden_restore_success_many', { provider: 'Backblaze B2', count: paths.length }) });
       await loadHidden();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Backblaze B2] Failed to restore hidden file(s)` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.b2_hidden_restore_error', { provider: 'Backblaze B2' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -116,12 +116,12 @@ export function B2HiddenManager({ onClose, onRefreshFiles, currentPath }: B2Hidd
       }
       humanLog.updateEntry(logId, {
         status: 'success',
-        message: `[Backblaze B2] Permanently deleted ${paths.length} file(s) (${totalVersions} versions purged)`,
+        message: t('activity.b2_hidden_delete_success', { provider: 'Backblaze B2', count: paths.length, versions: totalVersions }),
       });
       await loadHidden();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Backblaze B2] Failed to permanently delete` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Backblaze B2' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

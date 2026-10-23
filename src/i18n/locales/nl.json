@@ -433,7 +433,10 @@
             "localFilesLabel": "Lokale bestanden",
             "localFilesRightLabel": "Lokale bestanden (rechterpaneel)",
             "remoteFilesLabel": "Externe bestanden",
-            "rightPanelMarker": "Rechterpaneel"
+            "rightPanelMarker": "Rechterpaneel",
+            "chooseRightPanelFolder": "Map voor rechterpaneel kiezen",
+            "chooseLeftPanelFolder": "Map voor linkerpaneel kiezen",
+            "localRight": "Lokaal (rechts)"
         },
         "contextMenu": {
             "askAeroAgent": "Vraag AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Instellen als privé",
             "setAsPublic": "Instellen als openbaar",
             "makeAllPrivate": "Alles privé maken",
-            "dropboxRestoreLimit": "AeroFTP kan herstelbare bestandsversies terugzetten. Zet mappen terug via Verwijderde bestanden op dropbox.com. Een vraagteken betekent dat Dropbox het itemtype niet heeft herkend."
+            "dropboxRestoreLimit": "AeroFTP kan herstelbare bestandsversies terugzetten. Zet mappen terug via Verwijderde bestanden op dropbox.com. Een vraagteken betekent dat Dropbox het itemtype niet heeft herkend.",
+            "openWithDefaultApp": "Openen met standaardapp"
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Cloudsynchronisatie instellen",
             "onePerLineHint": "(één per regel)",
             "pairsEditorLabel": "AeroCloud-paareneditor",
-            "remoteSubfolderPlaceholder": "wolk"
+            "remoteSubfolderPlaceholder": "wolk",
+            "countdownSoon": "Binnenkort..."
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Overdracht mislukt",
             "navigationFailed": "Navigatie mislukt: {error}",
             "transferComplete": "{count} bestand(en) gekopieerd",
-            "permissionsSessionChanged": "De verbinding is gewijzigd sinds dit dialoogvenster werd geopend, dus er is niets gewijzigd. Open Rechten opnieuw op de huidige verbinding."
+            "permissionsSessionChanged": "De verbinding is gewijzigd sinds dit dialoogvenster werd geopend, dus er is niets gewijzigd. Open Rechten opnieuw op de huidige verbinding.",
+            "createFailed": "Aanmaken mislukt"
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Map {filename} ontgrendelen...",
             "site_replied": "{command}: de server antwoordde {code}",
             "site_unknown": "{command}: geen volledig antwoord, uitkomst onbekend",
-            "site_not_sent": "{command} is niet verzonden"
+            "site_not_sent": "{command} is niet verzonden",
+            "b2_hidden_restore_success_one": "[{provider}] {count} verborgen bestand hersteld",
+            "b2_hidden_restore_success_many": "[{provider}] {count} verborgen bestanden hersteld",
+            "b2_hidden_restore_error": "[{provider}] Herstellen van verborgen bestand(en) mislukt",
+            "b2_hidden_delete_success": "[{provider}] {count} bestand(en) definitief verwijderd ({versions} versies opgeschoond)",
+            "trash_restore_detail_success": "[{provider}] {files} bestand(en) hersteld uit de prullenbak",
+            "trash_empty_detail_success": "[{provider}] Prullenbak geleegd ({files} bestand(en), {folders} map(pen) opgeschoond)",
+            "trash_empty_objects_one": "[{provider}] Prullenbak geleegd ({count} object)",
+            "trash_empty_objects_many": "[{provider}] Prullenbak geleegd ({count} objecten)",
+            "trash_object_purge_success": "[{provider}] {key} definitief verwijderd",
+            "trash_object_purge_error": "[{provider}] Definitief verwijderen van {key} mislukt",
+            "trash_object_undelete_success": "[{provider}] Verwijderen van {key} ongedaan gemaakt",
+            "trash_object_undelete_error": "[{provider}] Ongedaan maken van verwijderen van {key} mislukt",
+            "trash_object_restore_success": "[{provider}] {key} hersteld",
+            "trash_object_restore_error": "[{provider}] Herstellen van {key} mislukt",
+            "opendrive_access_set": "[{provider}] Toegang ingesteld op {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Toegang {level} instellen: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Toegang {level} instellen mislukt",
+            "download_folder_success": "Map {path} gedownload in {seconds} s",
+            "skipped_file": "{filename} overgeslagen",
+            "filelu_made_public": "[{provider}] Bestand openbaar gemaakt",
+            "filelu_make_public_error": "[{provider}] Bestand openbaar maken mislukt",
+            "filelu_made_private": "[{provider}] Bestand privé gemaakt",
+            "filelu_make_private_error": "[{provider}] Bestand privé maken mislukt",
+            "filelu_file_password_set": "[{provider}] Bestandswachtwoord ingesteld",
+            "filelu_file_password_error": "[{provider}] Bestandswachtwoord instellen mislukt",
+            "filelu_folder_password_set": "[{provider}] Mapwachtwoord ingesteld",
+            "filelu_folder_password_error": "[{provider}] Instellen van mapwachtwoord mislukt",
+            "filelu_public_share_success": "[{provider}] Bestand openbaar gemaakt + gedeeld",
+            "filelu_public_share_error": "[{provider}] Openbaar maken + delen mislukt",
+            "filelu_folder_settings_success": "[{provider}] Mapinstellingen bijgewerkt",
+            "filelu_folder_settings_error": "[{provider}] Bijwerken van mapinstellingen mislukt",
+            "set_private_success": "[{provider}] Ingesteld als privé",
+            "set_private_error": "[{provider}] Instellen als privé mislukt",
+            "set_public_success": "[{provider}] Ingesteld als openbaar",
+            "set_public_error": "[{provider}] Instellen als openbaar mislukt",
+            "bulk_private_success_one": "[{provider}] {count} item ingesteld als privé",
+            "bulk_private_success_many": "[{provider}] {count} items ingesteld als privé",
+            "bulk_private_partial": "[{provider}] {ok}/{total} items ingesteld als privé",
+            "bulk_private_error": "[{provider}] Bulksgewijs privé maken mislukt",
+            "box_watermark_set": "[{provider}] Watermerk ingesteld",
+            "box_watermark_set_error": "[{provider}] Instellen van watermerk mislukt",
+            "box_watermark_removed": "[{provider}] Watermerk verwijderd",
+            "box_watermark_remove_error": "[{provider}] Verwijderen van watermerk mislukt",
+            "box_folder_locked": "[{provider}] Map vergrendeld",
+            "box_folder_lock_error": "[{provider}] Vergrendelen van map mislukt",
+            "box_folder_unlocked": "[{provider}] Map ontgrendeld",
+            "box_folder_not_locked": "[{provider}] Map was niet vergrendeld",
+            "box_folder_unlock_error": "[{provider}] Ontgrendelen van map mislukt",
+            "gdrive_starred": "[{provider}] Bestand met ster gemarkeerd",
+            "gdrive_unstarred": "[{provider}] Ster van bestand verwijderd",
+            "gdrive_star_error": "[{provider}] Ster toevoegen mislukt",
+            "gdrive_unstar_error": "[{provider}] Ster verwijderen mislukt",
+            "extract_success": "{filename} uitgepakt",
+            "extract_success_to": "{filename} uitgepakt → {dest}",
+            "extract_error": "Uitpakken mislukt: {error}",
+            "zoho_document_created": "[{provider}] {type}-document aangemaakt",
+            "zoho_document_create_error": "[{provider}] {type}-document aanmaken mislukt",
+            "note_saved": "[{provider}] Notitie \"{title}\" opgeslagen",
+            "note_save_error": "[{provider}] Notitie opslaan mislukt",
+            "note_created": "[{provider}] Notitie \"{title}\" aangemaakt",
+            "note_create_error": "[{provider}] Notitie aanmaken mislukt",
+            "note_favorited": "[{provider}] Notitie \"{title}\" aan favorieten toegevoegd",
+            "note_unfavorited": "[{provider}] Notitie \"{title}\" uit favorieten verwijderd",
+            "note_favorite_error": "[{provider}] Favoriet wisselen mislukt",
+            "note_pinned": "[{provider}] Notitie \"{title}\" vastgemaakt",
+            "note_unpinned": "[{provider}] Notitie \"{title}\" losgemaakt",
+            "note_pin_error": "[{provider}] Vastmaken wisselen mislukt",
+            "note_trashed": "[{provider}] Notitie \"{title}\" naar prullenbak verplaatst",
+            "note_trash_error": "[{provider}] Notitie naar prullenbak verplaatsen mislukt",
+            "note_restored": "[{provider}] Notitie \"{title}\" hersteld",
+            "note_restore_error": "[{provider}] Notitie herstellen mislukt",
+            "note_deleted": "[{provider}] Notitie \"{title}\" definitief verwijderd",
+            "note_delete_error": "[{provider}] Notitie definitief verwijderen mislukt",
+            "note_archived": "[{provider}] Notitie \"{title}\" gearchiveerd",
+            "note_archive_error": "[{provider}] Notitie archiveren mislukt",
+            "note_version_restored": "[{provider}] Notitieversie hersteld",
+            "note_version_restore_error": "[{provider}] Notitieversie herstellen mislukt",
+            "github_pages_config_updated": "[{provider}] Pages-configuratie bijgewerkt",
+            "github_pages_config_error": "[{provider}] Pages-configuratie bijwerken mislukt",
+            "opendrive_set_access": "[{provider}] Toegang instellen voor {filename}...",
+            "gdrive_star": "[{provider}] Ster toevoegen aan {filename}...",
+            "gdrive_unstar": "[{provider}] Ster verwijderen van {filename}...",
+            "extract_start": "{filename} uitpakken...",
+            "extract_start_to": "{filename} uitpakken → {dest}...",
+            "compress_start": "Comprimeren naar {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] {files} bestand(en), {folders} map(pen) hersteld uit prullenbak",
+            "trash_restore_detail_present_success": "[{provider}] {files} bestand(en) hersteld uit prullenbak, {present} al aanwezig",
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} bestand(en), {folders} map(pen) hersteld uit prullenbak, {present} al aanwezig"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Uitsluitingen",
             "templateLocal": "Lokaal",
             "templateRemote": "Extern",
-            "templateRetries": "Nieuwe pogingen"
+            "templateRetries": "Nieuwe pogingen",
+            "rollbackRestoreLocalCount": "lokaal {count}",
+            "rollbackRestoreRemoteCount": "extern {count}",
+            "rollbackRestoreSkippedCount": "overgeslagen {count}",
+            "rollbackRestoreFailedCount": "mislukt {count}",
+            "rollbackRestoreCompleted": "Herstel voltooid: {summary}",
+            "rollbackRestoreNothing": "Niets te herstellen",
+            "rollbackRestoreFailed": "Herstellen mislukt: {error}"
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Toestaan voor deze sessie",
                 "nonAtomicReplace": "Niet-atomaire vervanging: het bestand is even afwezig",
                 "moreOptions": "Meer opties",
-                "panelAria": "Paneel voor goedkeuring van hulpmiddelen"
+                "panelAria": "Paneel voor goedkeuring van hulpmiddelen",
+                "previewFailed": "Voorbeeld mislukt"
             },
             "settings": {
                 "title": "AI-instellingen",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Ondersteunt tools",
                 "supportsVision": "Ondersteunt beeldherkenning",
                 "thinkingReasoning": "Denken/Redeneren",
-                "toolQuality": "Kwaliteit van hulpmiddelen: {quality}/5"
+                "toolQuality": "Kwaliteit van hulpmiddelen: {quality}/5",
+                "ollamaNotReachable": "Ollama niet bereikbaar"
             },
             "copy": "Kopiëren",
             "attachImage": "Afbeelding bijvoegen",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnostiek",
                     "truncated": "De diagnostieklijst is ingekort.",
                     "warningCountMany": "{count} waarschuwingen",
-                    "warningCountOne": "{count} waarschuwing"
+                    "warningCountOne": "{count} waarschuwing",
+                    "noLocation": "(geen locatie)"
                 },
                 "search": {
                     "none": "Geen overeenkomsten gevonden.",
@@ -3522,7 +3626,15 @@
                 "destination": "Bestemming: {destination}",
                 "title": "Controle van overdrachtsplan",
                 "warnings": "Waarschuwingen"
-            }
+            },
+            "voiceNoAudio": "Geen audio opgenomen.",
+            "voiceDownloadingModel": "Lokaal spraakmodel downloaden...",
+            "voiceNoSpeech": "Geen spraak gedetecteerd.",
+            "voiceReady": "Spraakinvoer gereed.",
+            "voiceReadyLanguage": "Spraakinvoer gereed ({language}).",
+            "voiceTranscriptionFailed": "Lokale transcriptie mislukt.",
+            "voiceListeningLocally": "Lokaal luisteren...",
+            "voiceMicrophoneFailed": "Geen toegang tot microfoon."
         },
         "archive": {
             "passwordRequired": "Dit archief is beveiligd met een wachtwoord",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator-formaat 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM-inhoud",
             "featureNameCipher": "AES-SIV-namen",
-            "formatVersion": "Formaat {version}"
+            "formatVersion": "Formaat {version}",
+            "invalidVaultName": "Ongeldige tekens in kluisnaam"
         },
         "compress": {
             "title": "Bestanden comprimeren",
@@ -4161,7 +4274,8 @@
             "total": "Totaal",
             "across": "over",
             "empty": "Deze map is leeg",
-            "hoverHint": "Beweeg over een blok voor details"
+            "hoverHint": "Beweeg over een blok voor details",
+            "scanUnknownError": "Onbekende fout bij scannen van schijfgebruik"
         },
         "dependencies": {
             "title": "Afhankelijkheden",
@@ -4575,7 +4689,8 @@
                 "unmute": "Demping opheffen (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 niet ondersteund"
+                "notSupported": "WebGL 2 niet ondersteund",
+                "contextLost": "WebGL-context verloren"
             },
             "clickToViewDetails": "Klik op een bestand om de details te bekijken",
             "copyPath": "Pad kopiëren",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Lengte (bytes)",
             "argon2DefaultsHint": "Standaardwaarden: het profiel dat AeroVault en AeroCrypt gebruiken (128 MiB, 4 iteraties, 4 lanes, uitvoer van 32 bytes). Het salt hierboven is van u. Geheugen tot 2 GiB.",
             "argon2Derive": "Afleiden",
-            "argon2Phc": "PHC-tekenreeks"
+            "argon2Phc": "PHC-tekenreeks",
+            "hashError": "Fout: {error}"
         },
         "dialog": {
             "deleteFile": "\"{name}\" verwijderen?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Tag verwijderen",
             "manageTags": "Tags beheren",
             "deleteTagConfirm": "De tag “{name}” verwijderen? Notities behouden hun tekst.",
-            "betaBadge": "BÈTA"
+            "betaBadge": "BÈTA",
+            "noteTypes": {
+                "text": "Tekst",
+                "markdown": "Markdown",
+                "code": "Code",
+                "richText": "Opgemaakte tekst",
+                "checklist": "Controlelijst"
+            }
         },
         "shareLinkModal": {
             "title": "Deellink",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Kies een doelmap",
             "passwordPrompt": "Dit item is versleuteld. Voer het wachtwoord in om uit te pakken.",
             "showPassword": "Wachtwoord tonen",
-            "hidePassword": "Wachtwoord verbergen"
+            "hidePassword": "Wachtwoord verbergen",
+            "missingPayload": "Uitpakgegevens ontbreken"
         },
         "provider": {
             "modes": {

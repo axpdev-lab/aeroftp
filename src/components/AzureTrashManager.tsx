@@ -70,11 +70,11 @@ export function AzureTrashManager({ onClose, onRefreshFiles }: AzureTrashManager
       for (const item of selectedItems) {
         await invoke('azure_undelete_blob', { blobName: item.path });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Azure Blob] Restored ${selectedItems.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Azure Blob', count: selectedItems.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Azure Blob] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Azure Blob' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

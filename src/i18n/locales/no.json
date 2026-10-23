@@ -433,7 +433,10 @@
             "localFilesLabel": "Lokale filer",
             "localFilesRightLabel": "Lokale filer (høyre panel)",
             "remoteFilesLabel": "Eksterne filer",
-            "rightPanelMarker": "Høyre panel"
+            "rightPanelMarker": "Høyre panel",
+            "chooseRightPanelFolder": "Velg mappe for høyre panel",
+            "chooseLeftPanelFolder": "Velg mappe for venstre panel",
+            "localRight": "Lokal (høyre)"
         },
         "contextMenu": {
             "askAeroAgent": "Spør AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Angi som privat",
             "setAsPublic": "Angi som offentlig",
             "makeAllPrivate": "Gjør alle private",
-            "dropboxRestoreLimit": "AeroFTP kan gjenopprette filversjoner som kan gjenopprettes. Gjenopprett mapper fra Slettede filer på dropbox.com. Et spørsmålstegn betyr at Dropbox ikke har identifisert elementtypen."
+            "dropboxRestoreLimit": "AeroFTP kan gjenopprette filversjoner som kan gjenopprettes. Gjenopprett mapper fra Slettede filer på dropbox.com. Et spørsmålstegn betyr at Dropbox ikke har identifisert elementtypen.",
+            "openWithDefaultApp": "Åpne med standardapp"
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Oppsett av skysynkronisering",
             "onePerLineHint": "(én per linje)",
             "pairsEditorLabel": "Redigering av AeroCloud-par",
-            "remoteSubfolderPlaceholder": "sky"
+            "remoteSubfolderPlaceholder": "sky",
+            "countdownSoon": "Snart..."
         },
         "statusBar": {
             "connected": "Tilkoblet",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Overføring mislyktes",
             "navigationFailed": "Navigering mislyktes: {error}",
             "transferComplete": "{count} fil(er) kopiert",
-            "permissionsSessionChanged": "Tilkoblingen er endret siden denne dialogen ble åpnet, så ingenting ble endret. Åpne Tillatelser på nytt på den gjeldende tilkoblingen."
+            "permissionsSessionChanged": "Tilkoblingen er endret siden denne dialogen ble åpnet, så ingenting ble endret. Åpne Tillatelser på nytt på den gjeldende tilkoblingen.",
+            "createFailed": "Oppretting mislyktes"
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Låser opp mappen {filename}...",
             "site_replied": "{command}: serveren svarte {code}",
             "site_unknown": "{command}: ingen fullstendig respons, utfallet er ukjent",
-            "site_not_sent": "{command} ble ikke sendt"
+            "site_not_sent": "{command} ble ikke sendt",
+            "b2_hidden_restore_success_one": "[{provider}] Gjenopprettet {count} skjult fil",
+            "b2_hidden_restore_success_many": "[{provider}] Gjenopprettet {count} skjulte filer",
+            "b2_hidden_restore_error": "[{provider}] Kunne ikke gjenopprette skjulte filer",
+            "b2_hidden_delete_success": "[{provider}] Slettet {count} fil(er) permanent ({versions} versjoner fjernet)",
+            "trash_restore_detail_success": "[{provider}] Gjenopprettet {files} fil(er) fra papirkurven",
+            "trash_empty_detail_success": "[{provider}] Tømte papirkurven ({files} fil(er), {folders} mappe(r) fjernet)",
+            "trash_empty_objects_one": "[{provider}] Tømte papirkurven ({count} objekt)",
+            "trash_empty_objects_many": "[{provider}] Tømte papirkurven ({count} objekter)",
+            "trash_object_purge_success": "[{provider}] Fjernet {key} permanent",
+            "trash_object_purge_error": "[{provider}] Kunne ikke fjerne {key} permanent",
+            "trash_object_undelete_success": "[{provider}] Angret sletting av {key}",
+            "trash_object_undelete_error": "[{provider}] Kunne ikke angre sletting av {key}",
+            "trash_object_restore_success": "[{provider}] Gjenopprettet {key}",
+            "trash_object_restore_error": "[{provider}] Kunne ikke gjenopprette {key}",
+            "opendrive_access_set": "[{provider}] Tilgang satt til {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Angi tilgang {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Kunne ikke angi tilgang {level}",
+            "download_folder_success": "Lastet ned mappen {path} på {seconds} s",
+            "skipped_file": "Hoppet over {filename}",
+            "filelu_made_public": "[{provider}] Gjorde filen offentlig",
+            "filelu_make_public_error": "[{provider}] Kunne ikke gjøre filen offentlig",
+            "filelu_made_private": "[{provider}] Gjorde filen privat",
+            "filelu_make_private_error": "[{provider}] Kunne ikke gjøre filen privat",
+            "filelu_file_password_set": "[{provider}] Angav passord for filen",
+            "filelu_file_password_error": "[{provider}] Kunne ikke angi passord for filen",
+            "filelu_folder_password_set": "[{provider}] Mappepassord angitt",
+            "filelu_folder_password_error": "[{provider}] Angivelse av mappepassord mislyktes",
+            "filelu_public_share_success": "[{provider}] Fil gjort offentlig + delt",
+            "filelu_public_share_error": "[{provider}] Gjør offentlig + del mislyktes",
+            "filelu_folder_settings_success": "[{provider}] Mappeinnstillinger oppdatert",
+            "filelu_folder_settings_error": "[{provider}] Oppdatering av mappeinnstillinger mislyktes",
+            "set_private_success": "[{provider}] Angitt som privat",
+            "set_private_error": "[{provider}] Angivelse som privat mislyktes",
+            "set_public_success": "[{provider}] Angitt som offentlig",
+            "set_public_error": "[{provider}] Angivelse som offentlig mislyktes",
+            "bulk_private_success_one": "[{provider}] {count} element angitt som privat",
+            "bulk_private_success_many": "[{provider}] {count} elementer angitt som private",
+            "bulk_private_partial": "[{provider}] {ok}/{total} elementer angitt som private",
+            "bulk_private_error": "[{provider}] Masseangivelse som privat mislyktes",
+            "box_watermark_set": "[{provider}] Vannmerke angitt",
+            "box_watermark_set_error": "[{provider}] Angivelse av vannmerke mislyktes",
+            "box_watermark_removed": "[{provider}] Vannmerke fjernet",
+            "box_watermark_remove_error": "[{provider}] Fjerning av vannmerke mislyktes",
+            "box_folder_locked": "[{provider}] Mappe låst",
+            "box_folder_lock_error": "[{provider}] Låsing av mappe mislyktes",
+            "box_folder_unlocked": "[{provider}] Mappe låst opp",
+            "box_folder_not_locked": "[{provider}] Mappen var ikke låst",
+            "box_folder_unlock_error": "[{provider}] Opplåsing av mappe mislyktes",
+            "gdrive_starred": "[{provider}] Fil stjernemerket",
+            "gdrive_unstarred": "[{provider}] Stjernemerking fjernet fra fil",
+            "gdrive_star_error": "[{provider}] Stjernemerking mislyktes",
+            "gdrive_unstar_error": "[{provider}] Fjerning av stjerne mislyktes",
+            "extract_success": "Pakket ut {filename}",
+            "extract_success_to": "Pakket ut {filename} → {dest}",
+            "extract_error": "Utpakking mislyktes: {error}",
+            "zoho_document_created": "[{provider}] Opprettet {type}-dokument",
+            "zoho_document_create_error": "[{provider}] Oppretting av {type}-dokument mislyktes",
+            "note_saved": "[{provider}] Lagret notatet \"{title}\"",
+            "note_save_error": "[{provider}] Kunne ikke lagre notatet",
+            "note_created": "[{provider}] Opprettet notatet \"{title}\"",
+            "note_create_error": "[{provider}] Kunne ikke opprette notatet",
+            "note_favorited": "[{provider}] La til notatet \"{title}\" i favoritter",
+            "note_unfavorited": "[{provider}] Fjernet notatet \"{title}\" fra favoritter",
+            "note_favorite_error": "[{provider}] Kunne ikke veksle favoritt",
+            "note_pinned": "[{provider}] Festet notatet \"{title}\"",
+            "note_unpinned": "[{provider}] Løsnet notatet \"{title}\"",
+            "note_pin_error": "[{provider}] Kunne ikke veksle festing",
+            "note_trashed": "[{provider}] Flyttet notatet \"{title}\" til papirkurven",
+            "note_trash_error": "[{provider}] Kunne ikke flytte notatet til papirkurven",
+            "note_restored": "[{provider}] Gjenopprettet notatet \"{title}\"",
+            "note_restore_error": "[{provider}] Kunne ikke gjenopprette notatet",
+            "note_deleted": "[{provider}] Slettet notatet \"{title}\" permanent",
+            "note_delete_error": "[{provider}] Kunne ikke slette notatet permanent",
+            "note_archived": "[{provider}] Arkiverte notatet \"{title}\"",
+            "note_archive_error": "[{provider}] Kunne ikke arkivere notatet",
+            "note_version_restored": "[{provider}] Notatversjon gjenopprettet",
+            "note_version_restore_error": "[{provider}] Kunne ikke gjenopprette notatversjon",
+            "github_pages_config_updated": "[{provider}] Pages-konfigurasjon oppdatert",
+            "github_pages_config_error": "[{provider}] Kunne ikke oppdatere Pages-konfigurasjon",
+            "opendrive_set_access": "[{provider}] Angir tilgang for {filename}...",
+            "gdrive_star": "[{provider}] Stjernemerker {filename}...",
+            "gdrive_unstar": "[{provider}] Fjerner stjerne fra {filename}...",
+            "extract_start": "Pakker ut {filename}...",
+            "extract_start_to": "Pakker ut {filename} → {dest}...",
+            "compress_start": "Komprimerer til {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Gjenopprettet {files} fil(er), {folders} mappe(r) fra papirkurven",
+            "trash_restore_detail_present_success": "[{provider}] Gjenopprettet {files} fil(er) fra papirkurven, {present} fantes allerede",
+            "trash_restore_detail_folders_present_success": "[{provider}] Gjenopprettet {files} fil(er), {folders} mappe(r) fra papirkurven, {present} fantes allerede"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Utelatelser",
             "templateLocal": "Lokal",
             "templateRemote": "Ekstern",
-            "templateRetries": "Nye forsøk"
+            "templateRetries": "Nye forsøk",
+            "rollbackRestoreLocalCount": "lokal {count}",
+            "rollbackRestoreRemoteCount": "ekstern {count}",
+            "rollbackRestoreSkippedCount": "hoppet over {count}",
+            "rollbackRestoreFailedCount": "mislyktes {count}",
+            "rollbackRestoreCompleted": "Gjenoppretting fullført: {summary}",
+            "rollbackRestoreNothing": "Ingenting å gjenopprette",
+            "rollbackRestoreFailed": "Gjenoppretting mislyktes: {error}"
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Tillat for denne økten",
                 "nonAtomicReplace": "Ikke-atomisk utskifting: filen er borte et kort øyeblikk",
                 "moreOptions": "Flere alternativer",
-                "panelAria": "Panel for verktøygodkjenning"
+                "panelAria": "Panel for verktøygodkjenning",
+                "previewFailed": "Forhåndsvisning mislyktes"
             },
             "settings": {
                 "title": "AI-innstillinger",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Støtter verktøy",
                 "supportsVision": "Støtter bildeforståelse",
                 "thinkingReasoning": "Tenkning/Resonnering",
-                "toolQuality": "Verktøykvalitet: {quality}/5"
+                "toolQuality": "Verktøykvalitet: {quality}/5",
+                "ollamaNotReachable": "Ollama kan ikke nås"
             },
             "copy": "Kopier",
             "attachImage": "Legg ved bilde",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnostikk",
                     "truncated": "Diagnostikklisten ble avkortet.",
                     "warningCountMany": "{count} advarsler",
-                    "warningCountOne": "{count} advarsel"
+                    "warningCountOne": "{count} advarsel",
+                    "noLocation": "(ingen plassering)"
                 },
                 "search": {
                     "none": "Ingen treff funnet.",
@@ -3522,7 +3626,15 @@
                 "destination": "Mål: {destination}",
                 "title": "Gjennomgang av overføringsplan",
                 "warnings": "Advarsler"
-            }
+            },
+            "voiceNoAudio": "Ingen lyd tatt opp.",
+            "voiceDownloadingModel": "Laster ned lokal talemodell...",
+            "voiceNoSpeech": "Ingen tale oppdaget.",
+            "voiceReady": "Taleinndata klar.",
+            "voiceReadyLanguage": "Taleinndata klar ({language}).",
+            "voiceTranscriptionFailed": "Lokal transkribering mislyktes.",
+            "voiceListeningLocally": "Lytter lokalt...",
+            "voiceMicrophoneFailed": "Får ikke tilgang til mikrofonen."
         },
         "archive": {
             "passwordRequired": "Dette arkivet er passordbeskyttet",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator-format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM-innhold",
             "featureNameCipher": "AES-SIV-navn",
-            "formatVersion": "Formatversjon {version}"
+            "formatVersion": "Formatversjon {version}",
+            "invalidVaultName": "Ugyldige tegn i hvelvnavnet"
         },
         "compress": {
             "title": "Komprimer filer",
@@ -4161,7 +4274,8 @@
             "total": "Totalt",
             "across": "fordelt på",
             "empty": "Denne katalogen er tom",
-            "hoverHint": "Hold musepekeren over en blokk for å se detaljer"
+            "hoverHint": "Hold musepekeren over en blokk for å se detaljer",
+            "scanUnknownError": "Ukjent feil under skanning av diskbruk"
         },
         "dependencies": {
             "title": "Avhengigheter",
@@ -4575,7 +4689,8 @@
                 "unmute": "Slå på lyd (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 støttes ikke"
+                "notSupported": "WebGL 2 støttes ikke",
+                "contextLost": "WebGL-kontekst mistet"
             },
             "clickToViewDetails": "Klikk på en fil for å se dens detaljer",
             "copyPath": "Kopier bane",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Lengde (byte)",
             "argon2DefaultsHint": "Standardverdier: profilen som AeroVault og AeroCrypt bruker (128 MiB, 4 iterasjoner, 4 baner, 32-byte utdata). Saltet ovenfor er ditt. Minne opptil 2 GiB.",
             "argon2Derive": "Utled",
-            "argon2Phc": "PHC-streng"
+            "argon2Phc": "PHC-streng",
+            "hashError": "Feil: {error}"
         },
         "dialog": {
             "deleteFile": "Slett \"{name}\"?",
@@ -5320,7 +5436,14 @@
             "removeTag": "Fjern merkelapp",
             "manageTags": "Administrer merkelapper",
             "deleteTagConfirm": "Slette merkelappen «{name}»? Notater beholder teksten sin.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Tekst",
+                "markdown": "Markdown",
+                "code": "Kode",
+                "richText": "Formatert tekst",
+                "checklist": "Sjekkliste"
+            }
         },
         "shareLinkModal": {
             "title": "Delingslenke",
@@ -6620,7 +6743,8 @@
             "chooseFolder": "Velg en målmappe",
             "passwordPrompt": "Dette elementet er kryptert. Skriv inn passordet for å pakke ut.",
             "showPassword": "Vis passord",
-            "hidePassword": "Skjul passord"
+            "hidePassword": "Skjul passord",
+            "missingPayload": "Mangler utpakkingsdata"
         },
         "provider": {
             "modes": {

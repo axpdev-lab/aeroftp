@@ -76,11 +76,11 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
     setError(null);
     try {
       await invoke('yandex_restore_from_trash', { paths });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Yandex Disk] Restored ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Yandex Disk', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Yandex Disk] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Yandex Disk' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -96,11 +96,11 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
     setError(null);
     try {
       await invoke('yandex_permanent_delete', { paths });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Yandex Disk] Permanently deleted ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Yandex Disk', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Yandex Disk] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Yandex Disk' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -115,11 +115,11 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
     setError(null);
     try {
       await invoke('yandex_empty_trash');
-      humanLog.updateEntry(logId, { status: 'success', message: `[Yandex Disk] Emptied trash (${totalCount} item(s))` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Yandex Disk' }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Yandex Disk] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'Yandex Disk' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

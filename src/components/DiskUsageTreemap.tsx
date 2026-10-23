@@ -194,7 +194,8 @@ const DiskUsageTreemap: React.FC<DiskUsageTreemapProps> = ({ isOpen, scanPath, o
         } catch (err) {
             if (scanIdRef.current !== currentScanId) return;
             const message = err instanceof Error ? err.message : String(err);
-            setError(message || 'Unknown error while scanning disk usage');
+            // An empty message is kept as '' and rendered with the translated fallback.
+            setError(message);
             setRootNode(null);
         } finally {
             if (scanIdRef.current === currentScanId) {
@@ -373,10 +374,10 @@ const DiskUsageTreemap: React.FC<DiskUsageTreemapProps> = ({ isOpen, scanPath, o
                         </div>
                     )}
 
-                    {error && !loading && (
+                    {error !== null && !loading && (
                         <div className="flex flex-col items-center justify-center h-[400px] gap-3">
                             <AlertCircle size={32} className="text-red-400" />
-                            <span className="text-sm text-red-400">{error}</span>
+                            <span className="text-sm text-red-400">{error || t('diskUsage.scanUnknownError')}</span>
                             <button
                                 onClick={() => scanDirectory(currentPath)}
                                 className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -386,7 +387,7 @@ const DiskUsageTreemap: React.FC<DiskUsageTreemapProps> = ({ isOpen, scanPath, o
                         </div>
                     )}
 
-                    {!loading && !error && rootNode && (
+                    {!loading && error === null && rootNode && (
                         <>
                             {rootNode.children && rootNode.children.length > 0 ? (
                                 <div

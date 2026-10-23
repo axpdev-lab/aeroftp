@@ -433,7 +433,10 @@
             "localFilesLabel": "Miestne súbory",
             "localFilesRightLabel": "Miestne súbory (pravý panel)",
             "remoteFilesLabel": "Vzdialené súbory",
-            "rightPanelMarker": "Pravý panel"
+            "rightPanelMarker": "Pravý panel",
+            "chooseRightPanelFolder": "Vyberte priečinok pravého panela",
+            "chooseLeftPanelFolder": "Vyberte priečinok ľavého panela",
+            "localRight": "Lokálne (vpravo)"
         },
         "contextMenu": {
             "askAeroAgent": "Opýtať sa AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Nastaviť ako súkromný",
             "setAsPublic": "Nastaviť ako verejný",
             "makeAllPrivate": "Nastaviť všetko ako súkromné",
-            "dropboxRestoreLimit": "AeroFTP môže obnoviť obnoviteľné verzie súborov. Priečinky obnovte v časti Odstránené súbory na dropbox.com. Otáznik znamená, že Dropbox nerozpoznal typ položky."
+            "dropboxRestoreLimit": "AeroFTP môže obnoviť obnoviteľné verzie súborov. Priečinky obnovte v časti Odstránené súbory na dropbox.com. Otáznik znamená, že Dropbox nerozpoznal typ položky.",
+            "openWithDefaultApp": "Otvoriť predvolenou aplikáciou"
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Konfigurácia cloudovej synchronizácie",
             "onePerLineHint": "(jeden na riadok)",
             "pairsEditorLabel": "Editor párov AeroCloud",
-            "remoteSubfolderPlaceholder": "oblak"
+            "remoteSubfolderPlaceholder": "oblak",
+            "countdownSoon": "Čoskoro..."
         },
         "statusBar": {
             "connected": "Pripojený",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Prenos zlyhal",
             "navigationFailed": "Navigácia zlyhala: {error}",
             "transferComplete": "Skopírovaných {count} súborov",
-            "permissionsSessionChanged": "Pripojenie sa od otvorenia tohto dialógu zmenilo, preto sa nič nezmenilo. Otvorte Oprávnenia znova na aktuálnom pripojení."
+            "permissionsSessionChanged": "Pripojenie sa od otvorenia tohto dialógu zmenilo, preto sa nič nezmenilo. Otvorte Oprávnenia znova na aktuálnom pripojení.",
+            "createFailed": "Vytvorenie zlyhalo"
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Odomyká sa priečinok {filename}...",
             "site_replied": "{command}: server odpovedal {code}",
             "site_unknown": "{command}: žiadna úplná odpoveď, výsledok je neznámy",
-            "site_not_sent": "{command} sa neodoslal"
+            "site_not_sent": "{command} sa neodoslal",
+            "b2_hidden_restore_success_one": "[{provider}] Obnovený {count} skrytý súbor",
+            "b2_hidden_restore_success_many": "[{provider}] Obnovené skryté súbory: {count}",
+            "b2_hidden_restore_error": "[{provider}] Obnovenie skrytých súborov zlyhalo",
+            "b2_hidden_delete_success": "[{provider}] Natrvalo odstránené súbory: {count} (vyčistené verzie: {versions})",
+            "trash_restore_detail_success": "[{provider}] Obnovené súbory z koša: {files}",
+            "trash_empty_detail_success": "[{provider}] Kôš vyprázdnený (vyčistené súbory: {files}, priečinky: {folders})",
+            "trash_empty_objects_one": "[{provider}] Kôš vyprázdnený ({count} objekt)",
+            "trash_empty_objects_many": "[{provider}] Kôš vyprázdnený (objekty: {count})",
+            "trash_object_purge_success": "[{provider}] Natrvalo odstránené: {key}",
+            "trash_object_purge_error": "[{provider}] Trvalé odstránenie {key} zlyhalo",
+            "trash_object_undelete_success": "[{provider}] Odstránenie zrušené: {key}",
+            "trash_object_undelete_error": "[{provider}] Zrušenie odstránenia {key} zlyhalo",
+            "trash_object_restore_success": "[{provider}] Obnovené: {key}",
+            "trash_object_restore_error": "[{provider}] Obnovenie {key} zlyhalo",
+            "opendrive_access_set": "[{provider}] Prístup nastavený na {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Nastavenie prístupu {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Nastavenie prístupu {level} zlyhalo",
+            "download_folder_success": "Priečinok {path} stiahnutý za {seconds} s",
+            "skipped_file": "Preskočené: {filename}",
+            "filelu_made_public": "[{provider}] Súbor sprístupnený verejne",
+            "filelu_make_public_error": "[{provider}] Verejné sprístupnenie súboru zlyhalo",
+            "filelu_made_private": "[{provider}] Súbor nastavený ako súkromný",
+            "filelu_make_private_error": "[{provider}] Nastavenie súboru ako súkromného zlyhalo",
+            "filelu_file_password_set": "[{provider}] Heslo súboru nastavené",
+            "filelu_file_password_error": "[{provider}] Nastavenie hesla súboru zlyhalo",
+            "filelu_folder_password_set": "[{provider}] Heslo priečinka nastavené",
+            "filelu_folder_password_error": "[{provider}] Nastavenie hesla priečinka zlyhalo",
+            "filelu_public_share_success": "[{provider}] Súbor zverejnený + zdieľaný",
+            "filelu_public_share_error": "[{provider}] Zverejnenie + zdieľanie zlyhalo",
+            "filelu_folder_settings_success": "[{provider}] Nastavenia priečinka aktualizované",
+            "filelu_folder_settings_error": "[{provider}] Aktualizácia nastavení priečinka zlyhala",
+            "set_private_success": "[{provider}] Nastavené ako súkromné",
+            "set_private_error": "[{provider}] Nastavenie ako súkromné zlyhalo",
+            "set_public_success": "[{provider}] Nastavené ako verejné",
+            "set_public_error": "[{provider}] Nastavenie ako verejné zlyhalo",
+            "bulk_private_success_one": "[{provider}] {count} položka nastavená ako súkromná",
+            "bulk_private_success_many": "[{provider}] {count} položiek nastavených ako súkromné",
+            "bulk_private_partial": "[{provider}] {ok}/{total} položiek nastavených ako súkromné",
+            "bulk_private_error": "[{provider}] Hromadné nastavenie ako súkromné zlyhalo",
+            "box_watermark_set": "[{provider}] Vodoznak nastavený",
+            "box_watermark_set_error": "[{provider}] Nastavenie vodoznaku zlyhalo",
+            "box_watermark_removed": "[{provider}] Vodoznak odstránený",
+            "box_watermark_remove_error": "[{provider}] Odstránenie vodoznaku zlyhalo",
+            "box_folder_locked": "[{provider}] Priečinok uzamknutý",
+            "box_folder_lock_error": "[{provider}] Uzamknutie priečinka zlyhalo",
+            "box_folder_unlocked": "[{provider}] Priečinok odomknutý",
+            "box_folder_not_locked": "[{provider}] Priečinok nebol uzamknutý",
+            "box_folder_unlock_error": "[{provider}] Odomknutie priečinka zlyhalo",
+            "gdrive_starred": "[{provider}] Súbor označený hviezdičkou",
+            "gdrive_unstarred": "[{provider}] Hviezdička zo súboru odstránená",
+            "gdrive_star_error": "[{provider}] Označenie hviezdičkou zlyhalo",
+            "gdrive_unstar_error": "[{provider}] Odstránenie hviezdičky zlyhalo",
+            "extract_success": "Rozbalené {filename}",
+            "extract_success_to": "Rozbalené {filename} → {dest}",
+            "extract_error": "Rozbalenie zlyhalo: {error}",
+            "zoho_document_created": "[{provider}] Vytvorený dokument {type}",
+            "zoho_document_create_error": "[{provider}] Vytvorenie dokumentu {type} zlyhalo",
+            "note_saved": "[{provider}] Uložená poznámka \"{title}\"",
+            "note_save_error": "[{provider}] Poznámku sa nepodarilo uložiť",
+            "note_created": "[{provider}] Vytvorená poznámka \"{title}\"",
+            "note_create_error": "[{provider}] Poznámku sa nepodarilo vytvoriť",
+            "note_favorited": "[{provider}] Poznámka \"{title}\" pridaná medzi obľúbené",
+            "note_unfavorited": "[{provider}] Poznámka \"{title}\" odstránená z obľúbených",
+            "note_favorite_error": "[{provider}] Nepodarilo sa prepnúť obľúbené",
+            "note_pinned": "[{provider}] Pripnutá poznámka \"{title}\"",
+            "note_unpinned": "[{provider}] Odopnutá poznámka \"{title}\"",
+            "note_pin_error": "[{provider}] Nepodarilo sa prepnúť pripnutie",
+            "note_trashed": "[{provider}] Poznámka \"{title}\" presunutá do koša",
+            "note_trash_error": "[{provider}] Poznámku sa nepodarilo presunúť do koša",
+            "note_restored": "[{provider}] Obnovená poznámka \"{title}\"",
+            "note_restore_error": "[{provider}] Poznámku sa nepodarilo obnoviť",
+            "note_deleted": "[{provider}] Poznámka \"{title}\" natrvalo odstránená",
+            "note_delete_error": "[{provider}] Poznámku sa nepodarilo natrvalo odstrániť",
+            "note_archived": "[{provider}] Poznámka \"{title}\" archivovaná",
+            "note_archive_error": "[{provider}] Poznámku sa nepodarilo archivovať",
+            "note_version_restored": "[{provider}] Verzia poznámky obnovená",
+            "note_version_restore_error": "[{provider}] Obnovenie verzie poznámky zlyhalo",
+            "github_pages_config_updated": "[{provider}] Konfigurácia Pages aktualizovaná",
+            "github_pages_config_error": "[{provider}] Aktualizácia konfigurácie Pages zlyhala",
+            "opendrive_set_access": "[{provider}] Nastavuje sa prístup pre {filename}...",
+            "gdrive_star": "[{provider}] Označuje sa hviezdičkou {filename}...",
+            "gdrive_unstar": "[{provider}] Odstraňuje sa hviezdička z {filename}...",
+            "extract_start": "Rozbaľuje sa {filename}...",
+            "extract_start_to": "Rozbaľuje sa {filename} → {dest}...",
+            "compress_start": "Komprimuje sa do {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Obnovené z koša: súbory {files}, priečinky {folders}",
+            "trash_restore_detail_present_success": "[{provider}] Obnovené z koša: súbory {files}, už existujúce {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] Obnovené z koša: súbory {files}, priečinky {folders}, už existujúce {present}"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Vylúčenia",
             "templateLocal": "Miestne",
             "templateRemote": "Vzdialené",
-            "templateRetries": "Opakovania"
+            "templateRetries": "Opakovania",
+            "rollbackRestoreLocalCount": "lokálne {count}",
+            "rollbackRestoreRemoteCount": "vzdialené {count}",
+            "rollbackRestoreSkippedCount": "preskočené {count}",
+            "rollbackRestoreFailedCount": "zlyhané {count}",
+            "rollbackRestoreCompleted": "Obnovenie dokončené: {summary}",
+            "rollbackRestoreNothing": "Nie je čo obnoviť",
+            "rollbackRestoreFailed": "Obnovenie zlyhalo: {error}"
         },
         "ui": {
             "syncing": "Synchronizácia...",
@@ -2598,7 +2699,7 @@
             "automaticModelSelection": "Automatický výber modelu",
             "noModelsConfigured": "Modely nie sú nakonfigurované. Kliknite na ⚙️",
             "askPlaceholder": "Opýtajte sa čokoľvek... (Shift+Enter pre nový riadok)",
-            "voiceInput": "Hlasovy vstup",
+            "voiceInput": "Hlasový vstup",
             "stopListening": "Zastaviť počúvanie",
             "speechNotSupported": "Rozpoznávanie reči nie je v tomto prehliadači podporované.",
             "addContext": "Pridať kontext (@cesta)",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Povoliť pre túto reláciu",
                 "nonAtomicReplace": "Neatomická náhrada: súbor krátko chýba",
                 "moreOptions": "Ďalšie možnosti",
-                "panelAria": "Panel schvaľovania nástrojov"
+                "panelAria": "Panel schvaľovania nástrojov",
+                "previewFailed": "Náhľad zlyhal"
             },
             "settings": {
                 "title": "Nastavenia AI",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Podporuje nástroje",
                 "supportsVision": "Podporuje videnie",
                 "thinkingReasoning": "Premýšľanie/Uvažovanie",
-                "toolQuality": "Kvalita nástrojov: {quality}/5"
+                "toolQuality": "Kvalita nástrojov: {quality}/5",
+                "ollamaNotReachable": "Ollama nie je dostupná"
             },
             "copy": "Kopírovať",
             "attachImage": "Priložiť obrázok",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnostika",
                     "truncated": "Zoznam diagnostiky bol skrátený.",
                     "warningCountMany": "{count} upozornení",
-                    "warningCountOne": "{count} upozornenie"
+                    "warningCountOne": "{count} upozornenie",
+                    "noLocation": "(bez umiestnenia)"
                 },
                 "search": {
                     "none": "Nenašli sa žiadne zhody.",
@@ -3522,7 +3626,15 @@
                 "destination": "Cieľ: {destination}",
                 "title": "Kontrola plánu prenosu",
                 "warnings": "Upozornenia"
-            }
+            },
+            "voiceNoAudio": "Nezachytil sa žiadny zvuk.",
+            "voiceDownloadingModel": "Sťahuje sa lokálny hlasový model...",
+            "voiceNoSpeech": "Nezistila sa žiadna reč.",
+            "voiceReady": "Hlasový vstup je pripravený.",
+            "voiceReadyLanguage": "Hlasový vstup je pripravený ({language}).",
+            "voiceTranscriptionFailed": "Lokálny prepis zlyhal.",
+            "voiceListeningLocally": "Lokálne počúvanie...",
+            "voiceMicrophoneFailed": "Nie je možné získať prístup k mikrofónu."
         },
         "archive": {
             "passwordRequired": "Tento archív je chránený heslom",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator formát 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Obsah AES-GCM",
             "featureNameCipher": "Názvy AES-SIV",
-            "formatVersion": "Formát {version}"
+            "formatVersion": "Formát {version}",
+            "invalidVaultName": "Neplatné znaky v názve trezoru"
         },
         "compress": {
             "title": "Komprimovať súbory",
@@ -4161,7 +4274,8 @@
             "total": "Celkom",
             "across": "v",
             "empty": "Tento adresár je prázdny",
-            "hoverHint": "Najazdite na blok pre zobrazenie podrobnosti"
+            "hoverHint": "Najazdite na blok pre zobrazenie podrobnosti",
+            "scanUnknownError": "Neznáma chyba pri skenovaní využitia disku"
         },
         "dependencies": {
             "title": "Závislosti",
@@ -4575,7 +4689,8 @@
                 "unmute": "Zapnúť zvuk (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 nie je podporovaný"
+                "notSupported": "WebGL 2 nie je podporovaný",
+                "contextLost": "Kontext WebGL sa stratil"
             },
             "clickToViewDetails": "Kliknite na súbor pre zobrazenie detailov",
             "copyPath": "Kopírovať cestu",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Dĺžka (bajty)",
             "argon2DefaultsHint": "Predvolené hodnoty: profil, ktorý používajú AeroVault a AeroCrypt (128 MiB, 4 iterácie, 4 dráhy, 32-bajtový výstup). Soľ vyššie je vaša. Pamäť až 2 GiB.",
             "argon2Derive": "Odvodiť",
-            "argon2Phc": "Reťazec PHC"
+            "argon2Phc": "Reťazec PHC",
+            "hashError": "Chyba: {error}"
         },
         "dialog": {
             "deleteFile": "Odstrániť \"{name}\"?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Odstrániť štítok",
             "manageTags": "Spravovať štítky",
             "deleteTagConfirm": "Odstrániť štítok „{name}“? Poznámky si ponechajú svoj text.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Text",
+                "markdown": "Markdown",
+                "code": "Kód",
+                "richText": "Formátovaný text",
+                "checklist": "Kontrolný zoznam"
+            }
         },
         "shareLinkModal": {
             "title": "Odkaz na zdieľanie",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Vyberte cieľový priečinok",
             "passwordPrompt": "Táto položka je šifrovaná. Na rozbalenie zadajte heslo.",
             "showPassword": "Zobraziť heslo",
-            "hidePassword": "Skryť heslo"
+            "hidePassword": "Skryť heslo",
+            "missingPayload": "Chýbajú údaje na rozbalenie"
         },
         "provider": {
             "modes": {

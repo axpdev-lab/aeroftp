@@ -136,6 +136,8 @@ export const HashForgeTab: React.FC<HashForgeTabProps> = ({ nativeDropScope }) =
     const [blake3Key, setBlake3Key] = useState('');
     const [blake3Context, setBlake3Context] = useState('');
     const [result, setResult] = useState('');
+    // Raw failure detail; rendered through t() so the error line is translated.
+    const [resultError, setResultError] = useState<string | null>(null);
     const [expected, setExpected] = useState('');
     const [match, setMatch] = useState<boolean | null>(null);
     const [loading, setLoading] = useState(false);
@@ -183,6 +185,7 @@ export const HashForgeTab: React.FC<HashForgeTabProps> = ({ nativeDropScope }) =
         if (isArgon2 || blake3Incomplete || (mode === 'file' && !filePath)) {
             ++calcGenRef.current;
             setResult('');
+            setResultError(null);
             setMatch(null);
             setLoading(false);
             return;
@@ -215,11 +218,13 @@ export const HashForgeTab: React.FC<HashForgeTabProps> = ({ nativeDropScope }) =
                 }
                 if (gen !== calcGenRef.current) return;
                 setResult(hash);
+                setResultError(null);
                 // Match against expected is handled by the separate compare effect.
                 setMatch(null);
             } catch (e) {
                 if (gen !== calcGenRef.current) return;
-                setResult(`Error: ${e}`);
+                setResult('');
+                setResultError(String(e));
                 setMatch(null);
             } finally {
                 if (gen === calcGenRef.current) setLoading(false);
@@ -300,12 +305,12 @@ export const HashForgeTab: React.FC<HashForgeTabProps> = ({ nativeDropScope }) =
     // Auto-compare when expected changes against a stable result (re-run is
     // also covered by the calculate effect when expected is in its deps).
     useEffect(() => {
-        if (result && !result.startsWith('Error:') && expected.trim()) {
+        if (result && !resultError && expected.trim()) {
             invoke<boolean>('compare_hashes', { hashA: result, hashB: expected.trim() }).then(setMatch);
         } else if (!expected.trim()) {
             setMatch(null);
         }
-    }, [expected, result]);
+    }, [expected, result, resultError]);
 
     const handleHtmlDrop = useCallback(async (e: ReactDragEvent) => {
         e.preventDefault();
@@ -378,7 +383,8 @@ export const HashForgeTab: React.FC<HashForgeTabProps> = ({ nativeDropScope }) =
             applyDroppedPath(staged);
             stagedPathRef.current = staged;
         } catch (err) {
-            setResult(`Error: ${err}`);
+            setResult('');
+            setResultError(String(err));
             setLoading(false);
         }
     }, [applyDroppedPath]);
@@ -568,16 +574,16 @@ export const HashForgeTab: React.FC<HashForgeTabProps> = ({ nativeDropScope }) =
             )}
 
             {/* Result */}
-            {result && (
+            {(result || resultError) && (
                 <div className="space-y-2">
                     <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('cyberTools.hashResult')}</label>
                     <div className="flex items-start gap-2">
                         <code className={`flex-1 min-w-0 px-3 py-2 text-xs font-mono rounded bg-gray-50 dark:bg-gray-900 break-all border border-gray-200 dark:border-gray-700 select-all ${
-                            result.startsWith('Error:') ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'
+                            resultError ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'
                         }`}>
-                            {result}
+                            {resultError ? t('cyberTools.hashError', { error: resultError }) : result}
                         </code>
-                        {!result.startsWith('Error:') && (
+                        {!resultError && (
                             <CopyButton text={result} label={t('cyberTools.hashCopy')} />
                         )}
                     </div>
@@ -585,7 +591,7 @@ export const HashForgeTab: React.FC<HashForgeTabProps> = ({ nativeDropScope }) =
             )}
 
             {/* Compare */}
-            {result && !result.startsWith('Error:') && (
+            {result && !resultError && (
                 <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('cyberTools.hashExpected')}</label>
                     <input

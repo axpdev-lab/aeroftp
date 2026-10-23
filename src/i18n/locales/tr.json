@@ -433,7 +433,10 @@
             "localFilesLabel": "Yerel dosyalar",
             "localFilesRightLabel": "Yerel dosyalar (sağ panel)",
             "remoteFilesLabel": "Uzak dosyalar",
-            "rightPanelMarker": "Sağ panel"
+            "rightPanelMarker": "Sağ panel",
+            "chooseRightPanelFolder": "Sağ panel klasörünü seçin",
+            "chooseLeftPanelFolder": "Sol panel klasörünü seçin",
+            "localRight": "Yerel (sağ)"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent'a sor...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Gizli Olarak Ayarla",
             "setAsPublic": "Herkese Açık Olarak Ayarla",
             "makeAllPrivate": "Tümünü özel yap",
-            "dropboxRestoreLimit": "AeroFTP, kurtarılabilir dosya sürümlerini geri yükleyebilir. Klasörleri dropbox.com üzerindeki Silinen dosyalar bölümünden geri yükleyin. Soru işareti, Dropbox'ın öğe türünü belirleyemediği anlamına gelir."
+            "dropboxRestoreLimit": "AeroFTP, kurtarılabilir dosya sürümlerini geri yükleyebilir. Klasörleri dropbox.com üzerindeki Silinen dosyalar bölümünden geri yükleyin. Soru işareti, Dropbox'ın öğe türünü belirleyemediği anlamına gelir.",
+            "openWithDefaultApp": "Varsayılan uygulamayla aç"
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Bulut Eşitleme Kurulumu",
             "onePerLineHint": "(her satıra bir tane)",
             "pairsEditorLabel": "AeroCloud Çift Düzenleyicisi",
-            "remoteSubfolderPlaceholder": "bulut"
+            "remoteSubfolderPlaceholder": "bulut",
+            "countdownSoon": "Yakında..."
         },
         "statusBar": {
             "connected": "Bağlı",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Aktarım başarısız",
             "navigationFailed": "Gezinme başarısız: {error}",
             "transferComplete": "{count} dosya kopyalandı",
-            "permissionsSessionChanged": "Bu iletişim kutusu açıldığından beri bağlantı değişti, bu yüzden hiçbir şey değiştirilmedi. İzinler'i geçerli bağlantıda yeniden açın."
+            "permissionsSessionChanged": "Bu iletişim kutusu açıldığından beri bağlantı değişti, bu yüzden hiçbir şey değiştirilmedi. İzinler'i geçerli bağlantıda yeniden açın.",
+            "createFailed": "Oluşturma başarısız"
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] {filename} klasörünün kilidi açılıyor...",
             "site_replied": "{command}: sunucu {code} yanıtını verdi",
             "site_unknown": "{command}: tam yanıt yok, sonuç bilinmiyor",
-            "site_not_sent": "{command} gönderilmedi"
+            "site_not_sent": "{command} gönderilmedi",
+            "b2_hidden_restore_success_one": "[{provider}] {count} gizli dosya geri yüklendi",
+            "b2_hidden_restore_success_many": "[{provider}] {count} gizli dosya geri yüklendi",
+            "b2_hidden_restore_error": "[{provider}] Gizli dosyalar geri yüklenemedi",
+            "b2_hidden_delete_success": "[{provider}] {count} dosya kalıcı olarak silindi ({versions} sürüm temizlendi)",
+            "trash_restore_detail_success": "[{provider}] Çöp kutusundan {files} dosya geri yüklendi",
+            "trash_empty_detail_success": "[{provider}] Çöp kutusu boşaltıldı ({files} dosya, {folders} klasör temizlendi)",
+            "trash_empty_objects_one": "[{provider}] Çöp kutusu boşaltıldı ({count} nesne)",
+            "trash_empty_objects_many": "[{provider}] Çöp kutusu boşaltıldı ({count} nesne)",
+            "trash_object_purge_success": "[{provider}] {key} kalıcı olarak silindi",
+            "trash_object_purge_error": "[{provider}] {key} kalıcı olarak silinemedi",
+            "trash_object_undelete_success": "[{provider}] {key} silme işlemi geri alındı",
+            "trash_object_undelete_error": "[{provider}] {key} silme işlemi geri alınamadı",
+            "trash_object_restore_success": "[{provider}] {key} geri yüklendi",
+            "trash_object_restore_error": "[{provider}] {key} geri yüklenemedi",
+            "opendrive_access_set": "[{provider}] Erişim {level} olarak ayarlandı ({count})",
+            "opendrive_access_partial": "[{provider}] Erişim {level} ayarlanıyor: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Erişim {level} olarak ayarlanamadı",
+            "download_folder_success": "{path} klasörü {seconds} sn içinde indirildi",
+            "skipped_file": "{filename} atlandı",
+            "filelu_made_public": "[{provider}] Dosya herkese açık yapıldı",
+            "filelu_make_public_error": "[{provider}] Dosya herkese açık yapılamadı",
+            "filelu_made_private": "[{provider}] Dosya özel yapıldı",
+            "filelu_make_private_error": "[{provider}] Dosya özel yapılamadı",
+            "filelu_file_password_set": "[{provider}] Dosya parolası ayarlandı",
+            "filelu_file_password_error": "[{provider}] Dosya parolası ayarlanamadı",
+            "filelu_folder_password_set": "[{provider}] Klasör parolası ayarlandı",
+            "filelu_folder_password_error": "[{provider}] Klasör parolası ayarlanamadı",
+            "filelu_public_share_success": "[{provider}] Dosya herkese açık yapıldı + paylaşıldı",
+            "filelu_public_share_error": "[{provider}] Herkese açık yapma + paylaşma başarısız",
+            "filelu_folder_settings_success": "[{provider}] Klasör ayarları güncellendi",
+            "filelu_folder_settings_error": "[{provider}] Klasör ayarları güncellenemedi",
+            "set_private_success": "[{provider}] Özel olarak ayarlandı",
+            "set_private_error": "[{provider}] Özel olarak ayarlanamadı",
+            "set_public_success": "[{provider}] Herkese açık olarak ayarlandı",
+            "set_public_error": "[{provider}] Herkese açık olarak ayarlanamadı",
+            "bulk_private_success_one": "[{provider}] {count} öğe özel olarak ayarlandı",
+            "bulk_private_success_many": "[{provider}] {count} öğe özel olarak ayarlandı",
+            "bulk_private_partial": "[{provider}] {ok}/{total} öğe özel olarak ayarlandı",
+            "bulk_private_error": "[{provider}] Toplu özel ayarlama başarısız",
+            "box_watermark_set": "[{provider}] Filigran ayarlandı",
+            "box_watermark_set_error": "[{provider}] Filigran ayarlanamadı",
+            "box_watermark_removed": "[{provider}] Filigran kaldırıldı",
+            "box_watermark_remove_error": "[{provider}] Filigran kaldırılamadı",
+            "box_folder_locked": "[{provider}] Klasör kilitlendi",
+            "box_folder_lock_error": "[{provider}] Klasör kilitlenemedi",
+            "box_folder_unlocked": "[{provider}] Klasörün kilidi açıldı",
+            "box_folder_not_locked": "[{provider}] Klasör kilitli değildi",
+            "box_folder_unlock_error": "[{provider}] Klasörün kilidi açılamadı",
+            "gdrive_starred": "[{provider}] Dosya yıldızlandı",
+            "gdrive_unstarred": "[{provider}] Dosyanın yıldızı kaldırıldı",
+            "gdrive_star_error": "[{provider}] Yıldızlama başarısız",
+            "gdrive_unstar_error": "[{provider}] Yıldız kaldırma başarısız",
+            "extract_success": "{filename} çıkarıldı",
+            "extract_success_to": "{filename} çıkarıldı → {dest}",
+            "extract_error": "Çıkarma başarısız: {error}",
+            "zoho_document_created": "[{provider}] {type} belgesi oluşturuldu",
+            "zoho_document_create_error": "[{provider}] {type} belgesi oluşturulamadı",
+            "note_saved": "[{provider}] \"{title}\" notu kaydedildi",
+            "note_save_error": "[{provider}] Not kaydedilemedi",
+            "note_created": "[{provider}] \"{title}\" notu oluşturuldu",
+            "note_create_error": "[{provider}] Not oluşturulamadı",
+            "note_favorited": "[{provider}] \"{title}\" notu favorilere eklendi",
+            "note_unfavorited": "[{provider}] \"{title}\" notu favorilerden çıkarıldı",
+            "note_favorite_error": "[{provider}] Favori değiştirilemedi",
+            "note_pinned": "[{provider}] \"{title}\" notu sabitlendi",
+            "note_unpinned": "[{provider}] \"{title}\" notunun sabitlemesi kaldırıldı",
+            "note_pin_error": "[{provider}] Sabitleme değiştirilemedi",
+            "note_trashed": "[{provider}] \"{title}\" notu çöp kutusuna taşındı",
+            "note_trash_error": "[{provider}] Not çöp kutusuna taşınamadı",
+            "note_restored": "[{provider}] \"{title}\" notu geri yüklendi",
+            "note_restore_error": "[{provider}] Not geri yüklenemedi",
+            "note_deleted": "[{provider}] \"{title}\" notu kalıcı olarak silindi",
+            "note_delete_error": "[{provider}] Not kalıcı olarak silinemedi",
+            "note_archived": "[{provider}] \"{title}\" notu arşivlendi",
+            "note_archive_error": "[{provider}] Not arşivlenemedi",
+            "note_version_restored": "[{provider}] Not sürümü geri yüklendi",
+            "note_version_restore_error": "[{provider}] Not sürümü geri yüklenemedi",
+            "github_pages_config_updated": "[{provider}] Pages yapılandırması güncellendi",
+            "github_pages_config_error": "[{provider}] Pages yapılandırması güncellenemedi",
+            "opendrive_set_access": "[{provider}] {filename} için erişim ayarlanıyor...",
+            "gdrive_star": "[{provider}] {filename} yıldızlanıyor...",
+            "gdrive_unstar": "[{provider}] {filename} yıldızı kaldırılıyor...",
+            "extract_start": "{filename} çıkarılıyor...",
+            "extract_start_to": "{filename} çıkarılıyor → {dest}...",
+            "compress_start": "{archive} arşivine sıkıştırılıyor...",
+            "trash_restore_detail_folders_success": "[{provider}] Çöp kutusundan {files} dosya, {folders} klasör geri yüklendi",
+            "trash_restore_detail_present_success": "[{provider}] Çöp kutusundan {files} dosya geri yüklendi, {present} zaten mevcut",
+            "trash_restore_detail_folders_present_success": "[{provider}] Çöp kutusundan {files} dosya, {folders} klasör geri yüklendi, {present} zaten mevcut"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Hariç tutulanlar",
             "templateLocal": "Yerel",
             "templateRemote": "Uzak",
-            "templateRetries": "Yeniden denemeler"
+            "templateRetries": "Yeniden denemeler",
+            "rollbackRestoreLocalCount": "yerel {count}",
+            "rollbackRestoreRemoteCount": "uzak {count}",
+            "rollbackRestoreSkippedCount": "atlanan {count}",
+            "rollbackRestoreFailedCount": "başarısız {count}",
+            "rollbackRestoreCompleted": "Geri yükleme tamamlandı: {summary}",
+            "rollbackRestoreNothing": "Geri yüklenecek bir şey yok",
+            "rollbackRestoreFailed": "Geri yükleme başarısız: {error}"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Bu oturum için izin ver",
                 "nonAtomicReplace": "Atomik olmayan değiştirme: dosya kısa süreliğine kaybolur",
                 "moreOptions": "Diğer seçenekler",
-                "panelAria": "Araç onay paneli"
+                "panelAria": "Araç onay paneli",
+                "previewFailed": "Önizleme başarısız"
             },
             "settings": {
                 "title": "AI Ayarları",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Araçları destekler",
                 "supportsVision": "Görmeyi destekler",
                 "thinkingReasoning": "Düşünme/Akıl yürütme",
-                "toolQuality": "Araç kalitesi: {quality}/5"
+                "toolQuality": "Araç kalitesi: {quality}/5",
+                "ollamaNotReachable": "Ollama'ya ulaşılamıyor"
             },
             "copy": "Kopyala",
             "attachImage": "Görsel ekle",
@@ -3423,7 +3526,8 @@
                     "title": "Tanılama",
                     "truncated": "Tanılama listesi kısaltıldı.",
                     "warningCountMany": "{count} uyarı",
-                    "warningCountOne": "{count} uyarı"
+                    "warningCountOne": "{count} uyarı",
+                    "noLocation": "(konum yok)"
                 },
                 "search": {
                     "none": "Eşleşme bulunamadı.",
@@ -3522,7 +3626,15 @@
                 "destination": "Hedef: {destination}",
                 "title": "Aktarım Planı İncelemesi",
                 "warnings": "Uyarılar"
-            }
+            },
+            "voiceNoAudio": "Ses kaydedilmedi.",
+            "voiceDownloadingModel": "Yerel ses modeli indiriliyor...",
+            "voiceNoSpeech": "Konuşma algılanmadı.",
+            "voiceReady": "Sesli giriş hazır.",
+            "voiceReadyLanguage": "Sesli giriş hazır ({language}).",
+            "voiceTranscriptionFailed": "Yerel yazıya dökme başarısız oldu.",
+            "voiceListeningLocally": "Yerel olarak dinleniyor...",
+            "voiceMicrophoneFailed": "Mikrofona erişilemiyor."
         },
         "archive": {
             "passwordRequired": "Bu arşiv parola korumalı",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator Biçim 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM içerik",
             "featureNameCipher": "AES-SIV adlar",
-            "formatVersion": "Biçim {version}"
+            "formatVersion": "Biçim {version}",
+            "invalidVaultName": "Kasa adında geçersiz karakterler"
         },
         "compress": {
             "title": "Dosyaları Sıkıştır",
@@ -4161,7 +4274,8 @@
             "total": "Toplam",
             "across": "genelinde",
             "empty": "Bu dizin boş",
-            "hoverHint": "Ayrıntıları görmek için bir bloğun üzerine gelin"
+            "hoverHint": "Ayrıntıları görmek için bir bloğun üzerine gelin",
+            "scanUnknownError": "Disk kullanımı taranırken bilinmeyen hata"
         },
         "dependencies": {
             "title": "Bağımlılıklar",
@@ -4575,7 +4689,8 @@
                 "unmute": "Sesi Aç (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 desteklenmiyor"
+                "notSupported": "WebGL 2 desteklenmiyor",
+                "contextLost": "WebGL bağlamı kaybedildi"
             },
             "clickToViewDetails": "Ayrıntılarını görüntülemek için bir dosyaya tıklayın",
             "copyPath": "Yolu Kopyala",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Uzunluk (bayt)",
             "argon2DefaultsHint": "Varsayılanlar: AeroVault ve AeroCrypt'in kullandığı profil (128 MiB, 4 yineleme, 4 şerit, 32 baytlık çıktı). Yukarıdaki tuz sizindir. Bellek en fazla 2 GiB.",
             "argon2Derive": "Türet",
-            "argon2Phc": "PHC dizesi"
+            "argon2Phc": "PHC dizesi",
+            "hashError": "Hata: {error}"
         },
         "dialog": {
             "deleteFile": "\"{name}\" silinsin mi?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Etiketi kaldır",
             "manageTags": "Etiketleri yönet",
             "deleteTagConfirm": "“{name}” etiketi silinsin mi? Notlar metinlerini korur.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Metin",
+                "markdown": "Markdown",
+                "code": "Kod",
+                "richText": "Zengin Metin",
+                "checklist": "Kontrol Listesi"
+            }
         },
         "shareLinkModal": {
             "title": "Paylaşım bağlantısı",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Bir hedef klasör seçin",
             "passwordPrompt": "Bu öğe şifreli. Çıkarmak için parolayı girin.",
             "showPassword": "Parolayı göster",
-            "hidePassword": "Parolayı gizle"
+            "hidePassword": "Parolayı gizle",
+            "missingPayload": "Ayıklama verisi eksik"
         },
         "provider": {
             "modes": {

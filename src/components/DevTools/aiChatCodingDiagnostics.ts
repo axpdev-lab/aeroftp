@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { translate } from '../../i18n';
 import type {
     ChatResultData,
     CodingDiagnostic,
@@ -98,7 +99,7 @@ export function getCodingDiagnosticsFromResultData(
 }
 
 export function diagnosticLocation(diagnostic: CodingDiagnostic): string {
-    if (!diagnostic.file) return '(no location)';
+    if (!diagnostic.file) return translate('ai.coding.diagnostics.noLocation');
     const line = diagnostic.line != null ? `:${diagnostic.line}` : '';
     const column = diagnostic.line != null && diagnostic.column != null ? `:${diagnostic.column}` : '';
     return `${diagnostic.file}${line}${column}`;

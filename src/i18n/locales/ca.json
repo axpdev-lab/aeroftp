@@ -433,7 +433,10 @@
             "localFilesLabel": "Fitxers locals",
             "localFilesRightLabel": "Fitxers locals (tauler dret)",
             "remoteFilesLabel": "Fitxers remots",
-            "rightPanelMarker": "Tauler dret"
+            "rightPanelMarker": "Tauler dret",
+            "chooseRightPanelFolder": "Tria la carpeta del panell dret",
+            "chooseLeftPanelFolder": "Tria la carpeta del panell esquerre",
+            "localRight": "Local (dreta)"
         },
         "contextMenu": {
             "askAeroAgent": "Pregunta a AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Establir com a privat",
             "setAsPublic": "Establir com a públic",
             "makeAllPrivate": "Fes-ho tot privat",
-            "dropboxRestoreLimit": "AeroFTP pot restaurar revisions recuperables de fitxers. Restaureu les carpetes des de Fitxers suprimits a dropbox.com. Un signe d'interrogació indica que Dropbox no ha identificat el tipus d'element."
+            "dropboxRestoreLimit": "AeroFTP pot restaurar revisions recuperables de fitxers. Restaureu les carpetes des de Fitxers suprimits a dropbox.com. Un signe d'interrogació indica que Dropbox no ha identificat el tipus d'element.",
+            "openWithDefaultApp": "Obre amb l'aplicació predeterminada"
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Preparació de la sincronització al núvol",
             "onePerLineHint": "(un per línia)",
             "pairsEditorLabel": "Editor de parelles d'AeroCloud",
-            "remoteSubfolderPlaceholder": "núvol"
+            "remoteSubfolderPlaceholder": "núvol",
+            "countdownSoon": "Aviat..."
         },
         "statusBar": {
             "connected": "Connectat",
@@ -1682,7 +1687,8 @@
             "transferFailed": "La transferència ha fallat",
             "navigationFailed": "Ha fallat la navegació: {error}",
             "transferComplete": "{count} fitxers copiats",
-            "permissionsSessionChanged": "La connexió ha canviat des que es va obrir aquest diàleg, així que no s'ha canviat res. Torna a obrir Permisos a la connexió actual."
+            "permissionsSessionChanged": "La connexió ha canviat des que es va obrir aquest diàleg, així que no s'ha canviat res. Torna a obrir Permisos a la connexió actual.",
+            "createFailed": "Ha fallat la creació"
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] S'està desbloquejant la carpeta {filename}...",
             "site_replied": "{command}: el servidor ha respost {code}",
             "site_unknown": "{command}: cap resposta completa, resultat desconegut",
-            "site_not_sent": "{command} no s'ha enviat"
+            "site_not_sent": "{command} no s'ha enviat",
+            "b2_hidden_restore_success_one": "[{provider}] S'ha restaurat {count} fitxer ocult",
+            "b2_hidden_restore_success_many": "[{provider}] S'han restaurat {count} fitxers ocults",
+            "b2_hidden_restore_error": "[{provider}] No s'han pogut restaurar els fitxers ocults",
+            "b2_hidden_delete_success": "[{provider}] S'han eliminat permanentment {count} fitxer(s) ({versions} versions purgades)",
+            "trash_restore_detail_success": "[{provider}] S'han restaurat {files} fitxer(s) de la paperera",
+            "trash_empty_detail_success": "[{provider}] S'ha buidat la paperera ({files} fitxer(s), {folders} carpeta(es) purgats)",
+            "trash_empty_objects_one": "[{provider}] S'ha buidat la paperera ({count} objecte)",
+            "trash_empty_objects_many": "[{provider}] S'ha buidat la paperera ({count} objectes)",
+            "trash_object_purge_success": "[{provider}] S'ha purgat {key}",
+            "trash_object_purge_error": "[{provider}] No s'ha pogut purgar {key}",
+            "trash_object_undelete_success": "[{provider}] S'ha desfet l'eliminació de {key}",
+            "trash_object_undelete_error": "[{provider}] No s'ha pogut desfer l'eliminació de {key}",
+            "trash_object_restore_success": "[{provider}] S'ha restaurat {key}",
+            "trash_object_restore_error": "[{provider}] No s'ha pogut restaurar {key}",
+            "opendrive_access_set": "[{provider}] Accés establert a {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Establiment de l'accés {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] No s'ha pogut establir l'accés {level}",
+            "download_folder_success": "S'ha baixat la carpeta {path} en {seconds} s",
+            "skipped_file": "S'ha omès {filename}",
+            "filelu_made_public": "[{provider}] S'ha fet públic el fitxer",
+            "filelu_make_public_error": "[{provider}] No s'ha pogut fer públic el fitxer",
+            "filelu_made_private": "[{provider}] S'ha fet privat el fitxer",
+            "filelu_make_private_error": "[{provider}] No s'ha pogut fer privat el fitxer",
+            "filelu_file_password_set": "[{provider}] S'ha establert la contrasenya del fitxer",
+            "filelu_file_password_error": "[{provider}] No s'ha pogut establir la contrasenya del fitxer",
+            "filelu_folder_password_set": "[{provider}] Contrasenya de la carpeta establerta",
+            "filelu_folder_password_error": "[{provider}] Error en establir la contrasenya de la carpeta",
+            "filelu_public_share_success": "[{provider}] Fitxer fet públic + compartit",
+            "filelu_public_share_error": "[{provider}] Error en fer públic + compartir",
+            "filelu_folder_settings_success": "[{provider}] Configuració de la carpeta actualitzada",
+            "filelu_folder_settings_error": "[{provider}] Error en actualitzar la configuració de la carpeta",
+            "set_private_success": "[{provider}] Establert com a privat",
+            "set_private_error": "[{provider}] Error en establir com a privat",
+            "set_public_success": "[{provider}] Establert com a públic",
+            "set_public_error": "[{provider}] Error en establir com a públic",
+            "bulk_private_success_one": "[{provider}] {count} element establert com a privat",
+            "bulk_private_success_many": "[{provider}] {count} elements establerts com a privats",
+            "bulk_private_partial": "[{provider}] {ok}/{total} elements establerts com a privats",
+            "bulk_private_error": "[{provider}] Error en establir com a privat en bloc",
+            "box_watermark_set": "[{provider}] Marca d'aigua establerta",
+            "box_watermark_set_error": "[{provider}] Error en establir la marca d'aigua",
+            "box_watermark_removed": "[{provider}] Marca d'aigua eliminada",
+            "box_watermark_remove_error": "[{provider}] Error en eliminar la marca d'aigua",
+            "box_folder_locked": "[{provider}] Carpeta bloquejada",
+            "box_folder_lock_error": "[{provider}] Error en bloquejar la carpeta",
+            "box_folder_unlocked": "[{provider}] Carpeta desbloquejada",
+            "box_folder_not_locked": "[{provider}] La carpeta no estava bloquejada",
+            "box_folder_unlock_error": "[{provider}] Error en desbloquejar la carpeta",
+            "gdrive_starred": "[{provider}] Fitxer destacat",
+            "gdrive_unstarred": "[{provider}] Fitxer tret de destacats",
+            "gdrive_star_error": "[{provider}] No s'ha pogut destacar",
+            "gdrive_unstar_error": "[{provider}] No s'ha pogut treure el destacat",
+            "extract_success": "S'ha extret {filename}",
+            "extract_success_to": "S'ha extret {filename} → {dest}",
+            "extract_error": "L'extracció ha fallat: {error}",
+            "zoho_document_created": "[{provider}] S'ha creat el document {type}",
+            "zoho_document_create_error": "[{provider}] No s'ha pogut crear el document {type}",
+            "note_saved": "[{provider}] S'ha desat la nota \"{title}\"",
+            "note_save_error": "[{provider}] No s'ha pogut desar la nota",
+            "note_created": "[{provider}] S'ha creat la nota \"{title}\"",
+            "note_create_error": "[{provider}] No s'ha pogut crear la nota",
+            "note_favorited": "[{provider}] S'ha afegit la nota \"{title}\" als preferits",
+            "note_unfavorited": "[{provider}] S'ha tret la nota \"{title}\" dels preferits",
+            "note_favorite_error": "[{provider}] No s'ha pogut canviar el preferit",
+            "note_pinned": "[{provider}] S'ha fixat la nota \"{title}\"",
+            "note_unpinned": "[{provider}] S'ha deixat de fixar la nota \"{title}\"",
+            "note_pin_error": "[{provider}] No s'ha pogut canviar la fixació",
+            "note_trashed": "[{provider}] S'ha mogut la nota \"{title}\" a la paperera",
+            "note_trash_error": "[{provider}] No s'ha pogut moure la nota a la paperera",
+            "note_restored": "[{provider}] S'ha restaurat la nota \"{title}\"",
+            "note_restore_error": "[{provider}] No s'ha pogut restaurar la nota",
+            "note_deleted": "[{provider}] S'ha eliminat definitivament la nota \"{title}\"",
+            "note_delete_error": "[{provider}] No s'ha pogut eliminar definitivament la nota",
+            "note_archived": "[{provider}] S'ha arxivat la nota \"{title}\"",
+            "note_archive_error": "[{provider}] No s'ha pogut arxivar la nota",
+            "note_version_restored": "[{provider}] S'ha restaurat la versió de la nota",
+            "note_version_restore_error": "[{provider}] No s'ha pogut restaurar la versió de la nota",
+            "github_pages_config_updated": "[{provider}] S'ha actualitzat la configuració de Pages",
+            "github_pages_config_error": "[{provider}] No s'ha pogut actualitzar la configuració de Pages",
+            "opendrive_set_access": "[{provider}] S'està definint l'accés per a {filename}...",
+            "gdrive_star": "[{provider}] S'està marcant amb estrella {filename}...",
+            "gdrive_unstar": "[{provider}] S'està traient l'estrella de {filename}...",
+            "extract_start": "S'està extraient {filename}...",
+            "extract_start_to": "S'està extraient {filename} → {dest}...",
+            "compress_start": "S'està comprimint a {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] S'han restaurat {files} fitxer(s), {folders} carpeta(es) de la paperera",
+            "trash_restore_detail_present_success": "[{provider}] S'han restaurat {files} fitxer(s) de la paperera, {present} ja presents",
+            "trash_restore_detail_folders_present_success": "[{provider}] S'han restaurat {files} fitxer(s), {folders} carpeta(es) de la paperera, {present} ja presents"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Exclusions",
             "templateLocal": "Local",
             "templateRemote": "Remot",
-            "templateRetries": "Reintents"
+            "templateRetries": "Reintents",
+            "rollbackRestoreLocalCount": "local {count}",
+            "rollbackRestoreRemoteCount": "remot {count}",
+            "rollbackRestoreSkippedCount": "omesos {count}",
+            "rollbackRestoreFailedCount": "fallits {count}",
+            "rollbackRestoreCompleted": "Restauració completada: {summary}",
+            "rollbackRestoreNothing": "No hi ha res a restaurar",
+            "rollbackRestoreFailed": "Ha fallat la restauració: {error}"
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Permet per a aquesta sessió",
                 "nonAtomicReplace": "Substitució no atòmica: el fitxer desapareix un instant",
                 "moreOptions": "Més opcions",
-                "panelAria": "Tauler d'aprovació d'eines"
+                "panelAria": "Tauler d'aprovació d'eines",
+                "previewFailed": "Ha fallat la previsualització"
             },
             "settings": {
                 "title": "Configuració d'IA",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Admet eines",
                 "supportsVision": "Admet visió",
                 "thinkingReasoning": "Pensament/Raonament",
-                "toolQuality": "Qualitat de les eines: {quality}/5"
+                "toolQuality": "Qualitat de les eines: {quality}/5",
+                "ollamaNotReachable": "Ollama no és accessible"
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imatge",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnòstics",
                     "truncated": "La llista de diagnòstics s'ha truncat.",
                     "warningCountMany": "{count} avisos",
-                    "warningCountOne": "{count} avís"
+                    "warningCountOne": "{count} avís",
+                    "noLocation": "(sense ubicació)"
                 },
                 "search": {
                     "none": "No s'han trobat coincidències.",
@@ -3522,7 +3626,15 @@
                 "destination": "Destinació: {destination}",
                 "title": "Revisió del pla de transferència",
                 "warnings": "Advertiments"
-            }
+            },
+            "voiceNoAudio": "No s'ha capturat àudio.",
+            "voiceDownloadingModel": "S'està baixant el model de veu local...",
+            "voiceNoSpeech": "No s'ha detectat veu.",
+            "voiceReady": "Entrada de veu a punt.",
+            "voiceReadyLanguage": "Entrada de veu a punt ({language}).",
+            "voiceTranscriptionFailed": "Ha fallat la transcripció local.",
+            "voiceListeningLocally": "S'està escoltant localment...",
+            "voiceMicrophoneFailed": "No es pot accedir al micròfon."
         },
         "archive": {
             "passwordRequired": "Aquest arxiu està protegit amb contrasenya",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator format 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Contingut AES-GCM",
             "featureNameCipher": "Noms AES-SIV",
-            "formatVersion": "Versió del format {version}"
+            "formatVersion": "Versió del format {version}",
+            "invalidVaultName": "Caràcters no vàlids al nom de la caixa forta"
         },
         "compress": {
             "title": "Comprimir fitxers",
@@ -4161,7 +4274,8 @@
             "total": "Total",
             "across": "en",
             "empty": "Aquest directori és buit",
-            "hoverHint": "Passeu el cursor sobre un bloc per veure els detalls"
+            "hoverHint": "Passeu el cursor sobre un bloc per veure els detalls",
+            "scanUnknownError": "Error desconegut en analitzar l'ús del disc"
         },
         "dependencies": {
             "title": "Dependències",
@@ -4575,7 +4689,8 @@
                 "unmute": "Activar so (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 no és compatible"
+                "notSupported": "WebGL 2 no és compatible",
+                "contextLost": "S'ha perdut el context WebGL"
             },
             "clickToViewDetails": "Fes clic en un fitxer per veure els seus detalls",
             "copyPath": "Copiar camí",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Longitud (bytes)",
             "argon2DefaultsHint": "Valors per defecte: el perfil que utilitzen AeroVault i AeroCrypt (128 MiB, 4 iteracions, 4 carrils, sortida de 32 bytes). La sal de dalt és vostra. Memòria fins a 2 GiB.",
             "argon2Derive": "Derivar",
-            "argon2Phc": "Cadena PHC"
+            "argon2Phc": "Cadena PHC",
+            "hashError": "Error: {error}"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5320,7 +5436,14 @@
             "removeTag": "Elimina l'etiqueta",
             "manageTags": "Gestiona les etiquetes",
             "deleteTagConfirm": "Vols eliminar l'etiqueta «{name}»? Les notes conserven el text.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Text",
+                "markdown": "Markdown",
+                "code": "Codi",
+                "richText": "Text enriquit",
+                "checklist": "Llista de verificació"
+            }
         },
         "shareLinkModal": {
             "title": "Enllaç per compartir",
@@ -6620,7 +6743,8 @@
             "chooseFolder": "Trieu una carpeta de destinació",
             "passwordPrompt": "Aquest element està xifrat. Introduïu la contrasenya per extreure'l.",
             "showPassword": "Mostra la contrasenya",
-            "hidePassword": "Amaga la contrasenya"
+            "hidePassword": "Amaga la contrasenya",
+            "missingPayload": "Falten les dades d'extracció"
         },
         "provider": {
             "modes": {

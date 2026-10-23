@@ -433,7 +433,10 @@
             "localFilesLabel": "Ffeiliau lleol",
             "localFilesRightLabel": "Ffeiliau lleol (panel de)",
             "remoteFilesLabel": "Ffeiliau pell",
-            "rightPanelMarker": "Panel de"
+            "rightPanelMarker": "Panel de",
+            "chooseRightPanelFolder": "Dewiswch ffolder y panel de",
+            "chooseLeftPanelFolder": "Dewiswch ffolder y panel chwith",
+            "localRight": "Lleol (de)"
         },
         "contextMenu": {
             "askAeroAgent": "Gofyn i AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Gosod fel Preifat",
             "setAsPublic": "Gosod fel Cyhoeddus",
             "makeAllPrivate": "Gwneud pob un yn breifat",
-            "dropboxRestoreLimit": "Gall AeroFTP adfer fersiynau o ffeiliau y gellir eu hadfer. Adferwch ffolderi o Ffeiliau wedi'u dileu ar dropbox.com. Mae marc cwestiwn yn golygu nad yw Dropbox wedi adnabod math yr eitem."
+            "dropboxRestoreLimit": "Gall AeroFTP adfer fersiynau o ffeiliau y gellir eu hadfer. Adferwch ffolderi o Ffeiliau wedi'u dileu ar dropbox.com. Mae marc cwestiwn yn golygu nad yw Dropbox wedi adnabod math yr eitem.",
+            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Gosod Cysoni Cwmwl",
             "onePerLineHint": "(un i bob llinell)",
             "pairsEditorLabel": "Golygydd Parau AeroCloud",
-            "remoteSubfolderPlaceholder": "cwmwl"
+            "remoteSubfolderPlaceholder": "cwmwl",
+            "countdownSoon": "Cyn bo hir..."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Methodd y trosglwyddo",
             "navigationFailed": "Methodd y llywio: {error}",
             "transferComplete": "Copïwyd {count} ffeil",
-            "permissionsSessionChanged": "Mae'r cysylltiad wedi newid ers agor y deialog hwn, felly ni newidiwyd dim. Agorwch Caniatadau eto ar y cysylltiad cyfredol."
+            "permissionsSessionChanged": "Mae'r cysylltiad wedi newid ers agor y deialog hwn, felly ni newidiwyd dim. Agorwch Caniatadau eto ar y cysylltiad cyfredol.",
+            "createFailed": "Methodd y creu"
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Datgloi'r ffolder {filename}...",
             "site_replied": "{command}: atebodd y gweinydd {code}",
             "site_unknown": "{command}: dim ateb cyflawn, canlyniad anhysbys",
-            "site_not_sent": "Ni anfonwyd {command}"
+            "site_not_sent": "Ni anfonwyd {command}",
+            "b2_hidden_restore_success_one": "[{provider}] Adferwyd {count} ffeil gudd",
+            "b2_hidden_restore_success_many": "[{provider}] Adferwyd {count} ffeil gudd",
+            "b2_hidden_restore_error": "[{provider}] Methwyd adfer ffeiliau cudd",
+            "b2_hidden_delete_success": "[{provider}] Dilëwyd {count} ffeil yn barhaol (carthwyd {versions} fersiwn)",
+            "trash_restore_detail_success": "[{provider}] Adferwyd {files} ffeil o'r sbwriel",
+            "trash_empty_detail_success": "[{provider}] Gwagiwyd y sbwriel (carthwyd {files} ffeil, {folders} ffolder)",
+            "trash_empty_objects_one": "[{provider}] Gwagiwyd y sbwriel ({count} gwrthrych)",
+            "trash_empty_objects_many": "[{provider}] Gwagiwyd y sbwriel ({count} gwrthrych)",
+            "trash_object_purge_success": "[{provider}] Carthwyd {key}",
+            "trash_object_purge_error": "[{provider}] Methwyd carthu {key}",
+            "trash_object_undelete_success": "[{provider}] Dad-ddilëwyd {key}",
+            "trash_object_undelete_error": "[{provider}] Methwyd dad-ddileu {key}",
+            "trash_object_restore_success": "[{provider}] Adferwyd {key}",
+            "trash_object_restore_error": "[{provider}] Methwyd adfer {key}",
+            "opendrive_access_set": "[{provider}] Gosodwyd mynediad i {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Gosod mynediad {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Methwyd gosod mynediad {level}",
+            "download_folder_success": "Llwythwyd y ffolder {path} i lawr mewn {seconds} eiliad",
+            "skipped_file": "Hepgorwyd {filename}",
+            "filelu_made_public": "[{provider}] Gwnaed y ffeil yn gyhoeddus",
+            "filelu_make_public_error": "[{provider}] Methwyd gwneud y ffeil yn gyhoeddus",
+            "filelu_made_private": "[{provider}] Gwnaed y ffeil yn breifat",
+            "filelu_make_private_error": "[{provider}] Methwyd gwneud y ffeil yn breifat",
+            "filelu_file_password_set": "[{provider}] Gosodwyd cyfrinair y ffeil",
+            "filelu_file_password_error": "[{provider}] Methwyd gosod cyfrinair y ffeil",
+            "filelu_folder_password_set": "[{provider}] Gosodwyd cyfrinair y ffolder",
+            "filelu_folder_password_error": "[{provider}] Methwyd gosod cyfrinair y ffolder",
+            "filelu_public_share_success": "[{provider}] Gwnaed y ffeil yn gyhoeddus + rhannwyd hi",
+            "filelu_public_share_error": "[{provider}] Methwyd gwneud yn gyhoeddus + rhannu",
+            "filelu_folder_settings_success": "[{provider}] Diweddarwyd gosodiadau'r ffolder",
+            "filelu_folder_settings_error": "[{provider}] Methwyd diweddaru gosodiadau'r ffolder",
+            "set_private_success": "[{provider}] Gosodwyd yn breifat",
+            "set_private_error": "[{provider}] Methwyd gosod yn breifat",
+            "set_public_success": "[{provider}] Gosodwyd yn gyhoeddus",
+            "set_public_error": "[{provider}] Methwyd gosod yn gyhoeddus",
+            "bulk_private_success_one": "[{provider}] Gosodwyd {count} eitem yn breifat",
+            "bulk_private_success_many": "[{provider}] Gosodwyd {count} eitem yn breifat",
+            "bulk_private_partial": "[{provider}] Gosodwyd {ok}/{total} eitem yn breifat",
+            "bulk_private_error": "[{provider}] Methwyd gosod swmp yn breifat",
+            "box_watermark_set": "[{provider}] Gosodwyd dyfrnod",
+            "box_watermark_set_error": "[{provider}] Methwyd gosod dyfrnod",
+            "box_watermark_removed": "[{provider}] Tynnwyd y dyfrnod",
+            "box_watermark_remove_error": "[{provider}] Methwyd tynnu'r dyfrnod",
+            "box_folder_locked": "[{provider}] Cloiwyd y ffolder",
+            "box_folder_lock_error": "[{provider}] Methwyd cloi'r ffolder",
+            "box_folder_unlocked": "[{provider}] Datgloiwyd y ffolder",
+            "box_folder_not_locked": "[{provider}] Nid oedd y ffolder wedi'i chloi",
+            "box_folder_unlock_error": "[{provider}] Methwyd datgloi'r ffolder",
+            "gdrive_starred": "[{provider}] Serenwyd y ffeil",
+            "gdrive_unstarred": "[{provider}] Tynnwyd y seren o'r ffeil",
+            "gdrive_star_error": "[{provider}] Methwyd rhoi seren",
+            "gdrive_unstar_error": "[{provider}] Methwyd tynnu seren",
+            "extract_success": "Echdynnwyd {filename}",
+            "extract_success_to": "Echdynnwyd {filename} → {dest}",
+            "extract_error": "Methodd yr echdynnu: {error}",
+            "zoho_document_created": "[{provider}] Crëwyd dogfen {type}",
+            "zoho_document_create_error": "[{provider}] Methwyd creu dogfen {type}",
+            "note_saved": "[{provider}] Cadwyd y nodyn \"{title}\"",
+            "note_save_error": "[{provider}] Methwyd cadw'r nodyn",
+            "note_created": "[{provider}] Crëwyd y nodyn \"{title}\"",
+            "note_create_error": "[{provider}] Methwyd creu'r nodyn",
+            "note_favorited": "[{provider}] Ychwanegwyd y nodyn \"{title}\" at y ffefrynnau",
+            "note_unfavorited": "[{provider}] Tynnwyd y nodyn \"{title}\" o'r ffefrynnau",
+            "note_favorite_error": "[{provider}] Methwyd toglo ffefryn",
+            "note_pinned": "[{provider}] Piniwyd y nodyn \"{title}\"",
+            "note_unpinned": "[{provider}] Dadbiniwyd y nodyn \"{title}\"",
+            "note_pin_error": "[{provider}] Methwyd toglo pinio",
+            "note_trashed": "[{provider}] Symudwyd y nodyn \"{title}\" i'r sbwriel",
+            "note_trash_error": "[{provider}] Methwyd symud y nodyn i'r sbwriel",
+            "note_restored": "[{provider}] Adferwyd y nodyn \"{title}\"",
+            "note_restore_error": "[{provider}] Methwyd adfer y nodyn",
+            "note_deleted": "[{provider}] Dilëwyd y nodyn \"{title}\" yn barhaol",
+            "note_delete_error": "[{provider}] Methwyd dileu'r nodyn yn barhaol",
+            "note_archived": "[{provider}] Archifwyd y nodyn \"{title}\"",
+            "note_archive_error": "[{provider}] Methwyd archifo'r nodyn",
+            "note_version_restored": "[{provider}] Adferwyd fersiwn y nodyn",
+            "note_version_restore_error": "[{provider}] Methwyd adfer fersiwn y nodyn",
+            "github_pages_config_updated": "[{provider}] Diweddarwyd ffurfweddiad Pages",
+            "github_pages_config_error": "[{provider}] Methwyd diweddaru ffurfweddiad Pages",
+            "opendrive_set_access": "[{provider}] Yn gosod mynediad ar gyfer {filename}...",
+            "gdrive_star": "[{provider}] Yn rhoi seren ar {filename}...",
+            "gdrive_unstar": "[{provider}] Yn tynnu'r seren oddi ar {filename}...",
+            "extract_start": "Yn echdynnu {filename}...",
+            "extract_start_to": "Yn echdynnu {filename} → {dest}...",
+            "compress_start": "Yn cywasgu i {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Adferwyd {files} ffeil, {folders} ffolder o'r sbwriel",
+            "trash_restore_detail_present_success": "[{provider}] Adferwyd {files} ffeil o'r sbwriel, {present} yn bresennol eisoes",
+            "trash_restore_detail_folders_present_success": "[{provider}] Adferwyd {files} ffeil, {folders} ffolder o'r sbwriel, {present} yn bresennol eisoes"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Eithriadau",
             "templateLocal": "Lleol",
             "templateRemote": "Pell",
-            "templateRetries": "Ailgeisiadau"
+            "templateRetries": "Ailgeisiadau",
+            "rollbackRestoreLocalCount": "lleol {count}",
+            "rollbackRestoreRemoteCount": "pell {count}",
+            "rollbackRestoreSkippedCount": "wedi'u hepgor {count}",
+            "rollbackRestoreFailedCount": "wedi methu {count}",
+            "rollbackRestoreCompleted": "Adfer wedi'i gwblhau: {summary}",
+            "rollbackRestoreNothing": "Dim byd i'w adfer",
+            "rollbackRestoreFailed": "Methodd yr adfer: {error}"
         },
         "ui": {
             "syncing": "Yn cysoni...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Caniatáu ar gyfer y sesiwn hon",
                 "nonAtomicReplace": "Amnewid heb fod yn atomig: mae'r ffeil ar goll am ennyd",
                 "moreOptions": "Rhagor o ddewisiadau",
-                "panelAria": "Panel cymeradwyo offer"
+                "panelAria": "Panel cymeradwyo offer",
+                "previewFailed": "Methodd y rhagolwg"
             },
             "settings": {
                 "title": "Gosodiadau AI",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Yn cefnogi offer",
                 "supportsVision": "Yn cefnogi golwg",
                 "thinkingReasoning": "Meddwl/Rhesymu",
-                "toolQuality": "Ansawdd offer: {quality}/5"
+                "toolQuality": "Ansawdd offer: {quality}/5",
+                "ollamaNotReachable": "Methu cyrraedd Ollama"
             },
             "copy": "Copïo",
             "attachImage": "Atodi delwedd",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnosteg",
                     "truncated": "Cafodd y rhestr ddiagnosteg ei chwtogi.",
                     "warningCountMany": "{count} rhybudd",
-                    "warningCountOne": "{count} rhybudd"
+                    "warningCountOne": "{count} rhybudd",
+                    "noLocation": "(dim lleoliad)"
                 },
                 "search": {
                     "none": "Heb ganfod unrhyw gyfatebiaethau.",
@@ -3522,7 +3626,15 @@
                 "destination": "Cyrchfan: {destination}",
                 "title": "Adolygu'r Cynllun Trosglwyddo",
                 "warnings": "Rhybuddion"
-            }
+            },
+            "voiceNoAudio": "Ni chipiwyd sain.",
+            "voiceDownloadingModel": "Yn llwytho'r model llais lleol i lawr...",
+            "voiceNoSpeech": "Ni chanfuwyd lleferydd.",
+            "voiceReady": "Mewnbwn llais yn barod.",
+            "voiceReadyLanguage": "Mewnbwn llais yn barod ({language}).",
+            "voiceTranscriptionFailed": "Methodd y trawsgrifio lleol.",
+            "voiceListeningLocally": "Yn gwrando'n lleol...",
+            "voiceMicrophoneFailed": "Methu cyrchu'r meicroffon."
         },
         "archive": {
             "passwordRequired": "Mae'r archif hwn wedi'i ddiogelu â chyfrinair",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator Fformat 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Cynnwys AES-GCM",
             "featureNameCipher": "Enwau AES-SIV",
-            "formatVersion": "Fformat {version}"
+            "formatVersion": "Fformat {version}",
+            "invalidVaultName": "Nodau annilys yn enw'r gladdgell"
         },
         "compress": {
             "title": "Cywasgu Ffeiliau",
@@ -4161,7 +4274,8 @@
             "total": "Cyfanswm",
             "across": "ar draws",
             "empty": "Mae'r cyfeiriadur hwn yn wag",
-            "hoverHint": "Hofranwch dros floc i weld manylion"
+            "hoverHint": "Hofranwch dros floc i weld manylion",
+            "scanUnknownError": "Gwall anhysbys wrth sganio defnydd disg"
         },
         "dependencies": {
             "title": "Dibyniaethau",
@@ -4575,7 +4689,8 @@
                 "unmute": "Dad-dewi (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 heb ei gefnogi"
+                "notSupported": "WebGL 2 heb ei gefnogi",
+                "contextLost": "Collwyd y cyd-destun WebGL"
             },
             "clickToViewDetails": "Cliciwch ar ffeil i weld ei manylion",
             "copyPath": "Copïo llwybr",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Hyd (beitiau)",
             "argon2DefaultsHint": "Rhagosodiadau: y proffil y mae AeroVault ac AeroCrypt yn ei ddefnyddio (128 MiB, 4 iteriad, 4 lôn, allbwn 32 beit). Yr halen uchod yw eich un chi. Cof hyd at 2 GiB.",
             "argon2Derive": "Deillio",
-            "argon2Phc": "Llinyn PHC"
+            "argon2Phc": "Llinyn PHC",
+            "hashError": "Gwall: {error}"
         },
         "dialog": {
             "deleteFile": "Dileu \"{name}\"?",
@@ -5320,7 +5436,14 @@
             "removeTag": "Tynnu'r tag",
             "manageTags": "Rheoli tagiau",
             "deleteTagConfirm": "Dileu'r tag “{name}”? Mae'r nodiadau'n cadw eu testun.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Testun",
+                "markdown": "Markdown",
+                "code": "Cod",
+                "richText": "Testun cyfoethog",
+                "checklist": "Rhestr wirio"
+            }
         },
         "shareLinkModal": {
             "title": "Dolen Rhannu",
@@ -6620,7 +6743,8 @@
             "chooseFolder": "Dewiswch ffolder cyrchfan",
             "passwordPrompt": "Mae'r eitem hon wedi'i hamgryptio. Rhowch y cyfrinair i'w echdynnu.",
             "showPassword": "Dangos y cyfrinair",
-            "hidePassword": "Cuddio'r cyfrinair"
+            "hidePassword": "Cuddio'r cyfrinair",
+            "missingPayload": "Llwyth echdynnu ar goll"
         },
         "provider": {
             "modes": {

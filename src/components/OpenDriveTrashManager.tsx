@@ -88,11 +88,11 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     setError(null);
     try {
       await invoke('opendrive_restore_from_trash', { items: selectedItems });
-      humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Restored ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'OpenDrive', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'OpenDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -108,11 +108,11 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     setError(null);
     try {
       await invoke('opendrive_permanent_delete', { items: selectedItems });
-      humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Permanently deleted ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'OpenDrive', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'OpenDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -127,11 +127,11 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     setError(null);
     try {
       await invoke('opendrive_empty_trash');
-      humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Emptied trash (${totalCount} item(s))` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'OpenDrive' }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'OpenDrive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

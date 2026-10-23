@@ -433,7 +433,10 @@
             "localFilesLabel": "ლოკალური ფაილები",
             "localFilesRightLabel": "ლოკალური ფაილები (მარჯვენა პანელი)",
             "remoteFilesLabel": "დისტანციური ფაილები",
-            "rightPanelMarker": "მარჯვენა პანელი"
+            "rightPanelMarker": "მარჯვენა პანელი",
+            "chooseRightPanelFolder": "აირჩიეთ მარჯვენა პანელის საქაღალდე",
+            "chooseLeftPanelFolder": "აირჩიეთ მარცხენა პანელის საქაღალდე",
+            "localRight": "ლოკალური (მარჯვნივ)"
         },
         "contextMenu": {
             "askAeroAgent": "ჰკითხე AeroAgent-ს...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "კერძოდ მონიშვნა",
             "setAsPublic": "საჯაროდ მონიშვნა",
             "makeAllPrivate": "ყველას პირადად გადაქცევა",
-            "dropboxRestoreLimit": "AeroFTP-ს შეუძლია ფაილების აღდგენადი ვერსიების აღდგენა. საქაღალდეები აღადგინეთ dropbox.com-ის „წაშლილი ფაილების“ განყოფილებიდან. კითხვის ნიშანი ნიშნავს, რომ Dropbox-მა ელემენტის ტიპი ვერ ამოიცნო."
+            "dropboxRestoreLimit": "AeroFTP-ს შეუძლია ფაილების აღდგენადი ვერსიების აღდგენა. საქაღალდეები აღადგინეთ dropbox.com-ის „წაშლილი ფაილების“ განყოფილებიდან. კითხვის ნიშანი ნიშნავს, რომ Dropbox-მა ელემენტის ტიპი ვერ ამოიცნო.",
+            "openWithDefaultApp": "გახსნა ნაგულისხმევი აპით"
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "ღრუბლოვანი სინქრონიზაციის დაყენება",
             "onePerLineHint": "(თითო ხაზზე ერთი)",
             "pairsEditorLabel": "AeroCloud წყვილების რედაქტორი",
-            "remoteSubfolderPlaceholder": "ღრუბელი"
+            "remoteSubfolderPlaceholder": "ღრუბელი",
+            "countdownSoon": "მალე..."
         },
         "statusBar": {
             "connected": "დაკავშირებული",
@@ -1682,7 +1687,8 @@
             "transferFailed": "გადაცემა ვერ მოხერხდა",
             "navigationFailed": "ნავიგაცია ვერ მოხერხდა: {error}",
             "transferComplete": "დაკოპირდა {count} ფაილი",
-            "permissionsSessionChanged": "კავშირი შეიცვალა ამ დიალოგის გახსნის შემდეგ, ამიტომ არაფერი შეცვლილა. გახსენით უფლებები ხელახლა მიმდინარე კავშირზე."
+            "permissionsSessionChanged": "კავშირი შეიცვალა ამ დიალოგის გახსნის შემდეგ, ამიტომ არაფერი შეცვლილა. გახსენით უფლებები ხელახლა მიმდინარე კავშირზე.",
+            "createFailed": "შექმნა ვერ მოხერხდა"
         },
         "about": {
             "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] საქაღალდის {filename} განბლოკვა...",
             "site_replied": "{command}: სერვერმა უპასუხა {code}",
             "site_unknown": "{command}: სრული პასუხი არ არის, შედეგი უცნობია",
-            "site_not_sent": "{command} არ გაიგზავნა"
+            "site_not_sent": "{command} არ გაიგზავნა",
+            "b2_hidden_restore_success_one": "[{provider}] აღდგა {count} დამალული ფაილი",
+            "b2_hidden_restore_success_many": "[{provider}] აღდგა {count} დამალული ფაილი",
+            "b2_hidden_restore_error": "[{provider}] დამალული ფაილების აღდგენა ვერ მოხერხდა",
+            "b2_hidden_delete_success": "[{provider}] სამუდამოდ წაიშალა {count} ფაილი ({versions} ვერსია გასუფთავდა)",
+            "trash_restore_detail_success": "[{provider}] ნაგვის ყუთიდან აღდგა {files} ფაილი",
+            "trash_empty_detail_success": "[{provider}] ნაგვის ყუთი დაცარიელდა ({files} ფაილი, {folders} საქაღალდე გასუფთავდა)",
+            "trash_empty_objects_one": "[{provider}] ნაგვის ყუთი დაცარიელდა ({count} ობიექტი)",
+            "trash_empty_objects_many": "[{provider}] ნაგვის ყუთი დაცარიელდა ({count} ობიექტი)",
+            "trash_object_purge_success": "[{provider}] სამუდამოდ წაიშალა {key}",
+            "trash_object_purge_error": "[{provider}] {key}-ის სამუდამოდ წაშლა ვერ მოხერხდა",
+            "trash_object_undelete_success": "[{provider}] {key}-ის წაშლა გაუქმდა",
+            "trash_object_undelete_error": "[{provider}] {key}-ის წაშლის გაუქმება ვერ მოხერხდა",
+            "trash_object_restore_success": "[{provider}] აღდგა {key}",
+            "trash_object_restore_error": "[{provider}] {key}-ის აღდგენა ვერ მოხერხდა",
+            "opendrive_access_set": "[{provider}] წვდომა დაყენდა: {level} ({count})",
+            "opendrive_access_partial": "[{provider}] წვდომის დაყენება {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] წვდომის დაყენება {level} ვერ მოხერხდა",
+            "download_folder_success": "საქაღალდე {path} ჩამოიტვირთა {seconds} წამში",
+            "skipped_file": "გამოტოვებულია {filename}",
+            "filelu_made_public": "[{provider}] ფაილი გახდა საჯარო",
+            "filelu_make_public_error": "[{provider}] ფაილის საჯაროდ გადაქცევა ვერ მოხერხდა",
+            "filelu_made_private": "[{provider}] ფაილი გახდა პირადი",
+            "filelu_make_private_error": "[{provider}] ფაილის პირადად გადაქცევა ვერ მოხერხდა",
+            "filelu_file_password_set": "[{provider}] ფაილის პაროლი დაყენდა",
+            "filelu_file_password_error": "[{provider}] ფაილის პაროლის დაყენება ვერ მოხერხდა",
+            "filelu_folder_password_set": "[{provider}] საქაღალდის პაროლი დაყენდა",
+            "filelu_folder_password_error": "[{provider}] საქაღალდის პაროლის დაყენება ვერ მოხერხდა",
+            "filelu_public_share_success": "[{provider}] ფაილი გახდა საჯარო + გაზიარდა",
+            "filelu_public_share_error": "[{provider}] საჯაროდ გადაქცევა + გაზიარება ვერ მოხერხდა",
+            "filelu_folder_settings_success": "[{provider}] საქაღალდის პარამეტრები განახლდა",
+            "filelu_folder_settings_error": "[{provider}] საქაღალდის პარამეტრების განახლება ვერ მოხერხდა",
+            "set_private_success": "[{provider}] დაყენდა პირადად",
+            "set_private_error": "[{provider}] პირადად დაყენება ვერ მოხერხდა",
+            "set_public_success": "[{provider}] დაყენდა საჯაროდ",
+            "set_public_error": "[{provider}] საჯაროდ დაყენება ვერ მოხერხდა",
+            "bulk_private_success_one": "[{provider}] {count} ჩანაწერი დაყენდა პირადად",
+            "bulk_private_success_many": "[{provider}] {count} ჩანაწერი დაყენდა პირადად",
+            "bulk_private_partial": "[{provider}] {ok}/{total} ჩანაწერი დაყენდა პირადად",
+            "bulk_private_error": "[{provider}] მასობრივი პირადად დაყენება ვერ მოხერხდა",
+            "box_watermark_set": "[{provider}] ჭვირნიშანი დაყენდა",
+            "box_watermark_set_error": "[{provider}] ჭვირნიშნის დაყენება ვერ მოხერხდა",
+            "box_watermark_removed": "[{provider}] ჭვირნიშანი წაიშალა",
+            "box_watermark_remove_error": "[{provider}] ჭვირნიშნის წაშლა ვერ მოხერხდა",
+            "box_folder_locked": "[{provider}] საქაღალდე დაიბლოკა",
+            "box_folder_lock_error": "[{provider}] საქაღალდის დაბლოკვა ვერ მოხერხდა",
+            "box_folder_unlocked": "[{provider}] საქაღალდე განიბლოკა",
+            "box_folder_not_locked": "[{provider}] საქაღალდე არ იყო დაბლოკილი",
+            "box_folder_unlock_error": "[{provider}] საქაღალდის განბლოკვა ვერ მოხერხდა",
+            "gdrive_starred": "[{provider}] ფაილი მოინიშნა ვარსკვლავით",
+            "gdrive_unstarred": "[{provider}] ფაილს ვარსკვლავი მოეხსნა",
+            "gdrive_star_error": "[{provider}] ვარსკვლავით მონიშვნა ვერ მოხერხდა",
+            "gdrive_unstar_error": "[{provider}] ვარსკვლავის მოხსნა ვერ მოხერხდა",
+            "extract_success": "ამოღებულია {filename}",
+            "extract_success_to": "ამოღებულია {filename} → {dest}",
+            "extract_error": "ამოღება ვერ მოხერხდა: {error}",
+            "zoho_document_created": "[{provider}] შეიქმნა {type} დოკუმენტი",
+            "zoho_document_create_error": "[{provider}] {type} დოკუმენტის შექმნა ვერ მოხერხდა",
+            "note_saved": "[{provider}] შენახულია ჩანაწერი \"{title}\"",
+            "note_save_error": "[{provider}] ჩანაწერის შენახვა ვერ მოხერხდა",
+            "note_created": "[{provider}] შეიქმნა ჩანაწერი \"{title}\"",
+            "note_create_error": "[{provider}] ჩანაწერის შექმნა ვერ მოხერხდა",
+            "note_favorited": "[{provider}] ჩანაწერი \"{title}\" დაემატა რჩეულებს",
+            "note_unfavorited": "[{provider}] ჩანაწერი \"{title}\" ამოიშალა რჩეულებიდან",
+            "note_favorite_error": "[{provider}] რჩეულის გადართვა ვერ მოხერხდა",
+            "note_pinned": "[{provider}] მიმაგრდა ჩანაწერი \"{title}\"",
+            "note_unpinned": "[{provider}] ჩანაწერს \"{title}\" მოეხსნა მიმაგრება",
+            "note_pin_error": "[{provider}] მიმაგრების გადართვა ვერ მოხერხდა",
+            "note_trashed": "[{provider}] ჩანაწერი \"{title}\" გადავიდა სანაგვეში",
+            "note_trash_error": "[{provider}] ჩანაწერის სანაგვეში გადატანა ვერ მოხერხდა",
+            "note_restored": "[{provider}] აღდგა ჩანაწერი \"{title}\"",
+            "note_restore_error": "[{provider}] ჩანაწერის აღდგენა ვერ მოხერხდა",
+            "note_deleted": "[{provider}] ჩანაწერი \"{title}\" სამუდამოდ წაიშალა",
+            "note_delete_error": "[{provider}] ჩანაწერის სამუდამოდ წაშლა ვერ მოხერხდა",
+            "note_archived": "[{provider}] ჩანაწერი \"{title}\" დაარქივდა",
+            "note_archive_error": "[{provider}] ჩანაწერის დაარქივება ვერ მოხერხდა",
+            "note_version_restored": "[{provider}] შენიშვნის ვერსია აღდგენილია",
+            "note_version_restore_error": "[{provider}] შენიშვნის ვერსიის აღდგენა ვერ მოხერხდა",
+            "github_pages_config_updated": "[{provider}] Pages-ის კონფიგურაცია განახლდა",
+            "github_pages_config_error": "[{provider}] Pages-ის კონფიგურაციის განახლება ვერ მოხერხდა",
+            "opendrive_set_access": "[{provider}] წვდომის დაყენება: {filename}...",
+            "gdrive_star": "[{provider}] ვარსკვლავით მონიშვნა: {filename}...",
+            "gdrive_unstar": "[{provider}] ვარსკვლავის მოხსნა: {filename}...",
+            "extract_start": "ამოარქივება: {filename}...",
+            "extract_start_to": "ამოარქივება: {filename} → {dest}...",
+            "compress_start": "შეკუმშვა არქივში {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] სანაგვედან აღდგა {files} ფაილი, {folders} საქაღალდე",
+            "trash_restore_detail_present_success": "[{provider}] სანაგვედან აღდგა {files} ფაილი, {present} უკვე არსებობს",
+            "trash_restore_detail_folders_present_success": "[{provider}] სანაგვედან აღდგა {files} ფაილი, {folders} საქაღალდე, {present} უკვე არსებობს"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "გამორიცხვები",
             "templateLocal": "ლოკალური",
             "templateRemote": "დისტანციური",
-            "templateRetries": "ხელახალი ცდები"
+            "templateRetries": "ხელახალი ცდები",
+            "rollbackRestoreLocalCount": "ლოკალური {count}",
+            "rollbackRestoreRemoteCount": "დისტანციური {count}",
+            "rollbackRestoreSkippedCount": "გამოტოვებული {count}",
+            "rollbackRestoreFailedCount": "წარუმატებელი {count}",
+            "rollbackRestoreCompleted": "აღდგენა დასრულდა: {summary}",
+            "rollbackRestoreNothing": "აღსადგენი არაფერია",
+            "rollbackRestoreFailed": "აღდგენა ვერ მოხერხდა: {error}"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "ნება დართეთ ამ სესიისთვის",
                 "nonAtomicReplace": "არაატომური ჩანაცვლება: ფაილი მოკლედ არ არსებობს",
                 "moreOptions": "მეტი პარამეტრი",
-                "panelAria": "ხელსაწყოების დამტკიცების პანელი"
+                "panelAria": "ხელსაწყოების დამტკიცების პანელი",
+                "previewFailed": "გადახედვა ვერ მოხერხდა"
             },
             "settings": {
                 "title": "AI პარამეტრები",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "მხარს უჭერს ხელსაწყოებს",
                 "supportsVision": "მხარს უჭერს ხედვას",
                 "thinkingReasoning": "ფიქრი/მსჯელობა",
-                "toolQuality": "ხელსაწყოების ხარისხი: {quality}/5"
+                "toolQuality": "ხელსაწყოების ხარისხი: {quality}/5",
+                "ollamaNotReachable": "Ollama მიუწვდომელია"
             },
             "copy": "კოპირება",
             "attachImage": "სურათის მიმაგრება",
@@ -3423,7 +3526,8 @@
                     "title": "დიაგნოსტიკა",
                     "truncated": "დიაგნოსტიკის სია შემოკლდა.",
                     "warningCountMany": "{count} გაფრთხილება",
-                    "warningCountOne": "{count} გაფრთხილება"
+                    "warningCountOne": "{count} გაფრთხილება",
+                    "noLocation": "(მდებარეობის გარეშე)"
                 },
                 "search": {
                     "none": "დამთხვევები ვერ მოიძებნა.",
@@ -3522,7 +3626,15 @@
                 "destination": "დანიშნულება: {destination}",
                 "title": "გადაცემის გეგმის მიმოხილვა",
                 "warnings": "გაფრთხილებები"
-            }
+            },
+            "voiceNoAudio": "აუდიო არ ჩაიწერა.",
+            "voiceDownloadingModel": "ლოკალური ხმოვანი მოდელის ჩამოტვირთვა...",
+            "voiceNoSpeech": "მეტყველება ვერ აღმოჩნდა.",
+            "voiceReady": "ხმოვანი შეყვანა მზადაა.",
+            "voiceReadyLanguage": "ხმოვანი შეყვანა მზადაა ({language}).",
+            "voiceTranscriptionFailed": "ლოკალური ტრანსკრიფცია ვერ მოხერხდა.",
+            "voiceListeningLocally": "ლოკალური მოსმენა...",
+            "voiceMicrophoneFailed": "მიკროფონზე წვდომა ვერ მოხერხდა."
         },
         "archive": {
             "passwordRequired": "ეს არქივი პაროლით არის დაცული",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator ფორმატი 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM შიგთავსი",
             "featureNameCipher": "AES-SIV სახელები",
-            "formatVersion": "ფორმატი {version}"
+            "formatVersion": "ფორმატი {version}",
+            "invalidVaultName": "საცავის სახელში არასწორი სიმბოლოებია"
         },
         "compress": {
             "title": "ფაილების შეკუმშვა",
@@ -4161,7 +4274,8 @@
             "total": "სულ",
             "across": "გასწვრივ",
             "empty": "დირექტორია ცარიელია",
-            "hoverHint": "მიიტანეთ მაუსი ბლოკზე დეტალების სანახავად"
+            "hoverHint": "მიიტანეთ მაუსი ბლოკზე დეტალების სანახავად",
+            "scanUnknownError": "უცნობი შეცდომა დისკის გამოყენების სკანირებისას"
         },
         "dependencies": {
             "title": "დამოკიდებულებები",
@@ -4575,7 +4689,8 @@
                 "unmute": "ხმის ჩართვა (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 არ არის მხარდაჭერილი"
+                "notSupported": "WebGL 2 არ არის მხარდაჭერილი",
+                "contextLost": "WebGL კონტექსტი დაიკარგა"
             },
             "clickToViewDetails": "დააწკაპუნეთ ფაილზე დეტალების სანახავად",
             "copyPath": "ბილიკის კოპირება",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "სიგრძე (ბაიტი)",
             "argon2DefaultsHint": "ნაგულისხმევი: პროფილი, რომელსაც იყენებენ AeroVault და AeroCrypt (128 MiB, 4 იტერაცია, 4 ზოლი, 32-ბაიტიანი გამომავალი). ზემოთა მარილი თქვენია. მეხსიერება 2 GiB-მდე.",
             "argon2Derive": "გამოყვანა",
-            "argon2Phc": "PHC სტრიქონი"
+            "argon2Phc": "PHC სტრიქონი",
+            "hashError": "შეცდომა: {error}"
         },
         "dialog": {
             "deleteFile": "წაიშალოს \"{name}\"?",
@@ -5301,7 +5417,14 @@
             "removeTag": "ტეგის მოშორება",
             "manageTags": "ტეგების მართვა",
             "deleteTagConfirm": "წაიშალოს ტეგი „{name}“? ჩანაწერები ტექსტს შეინარჩუნებენ.",
-            "betaBadge": "ბეტა"
+            "betaBadge": "ბეტა",
+            "noteTypes": {
+                "text": "ტექსტი",
+                "markdown": "Markdown",
+                "code": "კოდი",
+                "richText": "ფორმატირებული ტექსტი",
+                "checklist": "საკონტროლო სია"
+            }
         },
         "shareLinkModal": {
             "title": "გაზიარების ბმული",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "აირჩიეთ სამიზნე საქაღალდე",
             "passwordPrompt": "ეს ელემენტი დაშიფრულია. შეიყვანეთ პაროლი ამოსაღებად.",
             "showPassword": "პაროლის ჩვენება",
-            "hidePassword": "პაროლის დამალვა"
+            "hidePassword": "პაროლის დამალვა",
+            "missingPayload": "ამოსაღები მონაცემები აკლია"
         },
         "provider": {
             "modes": {

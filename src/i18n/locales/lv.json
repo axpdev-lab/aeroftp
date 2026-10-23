@@ -433,7 +433,10 @@
             "localFilesLabel": "Lokālie faili",
             "localFilesRightLabel": "Lokālie faili (labais panelis)",
             "remoteFilesLabel": "Attālie faili",
-            "rightPanelMarker": "Labais panelis"
+            "rightPanelMarker": "Labais panelis",
+            "chooseRightPanelFolder": "Izvēlieties labā paneļa mapi",
+            "chooseLeftPanelFolder": "Izvēlieties kreisā paneļa mapi",
+            "localRight": "Lokāls (labais)"
         },
         "contextMenu": {
             "askAeroAgent": "Jautāt AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Iestatīt kā privātu",
             "setAsPublic": "Iestatīt kā publisku",
             "makeAllPrivate": "Padarīt visus privātus",
-            "dropboxRestoreLimit": "AeroFTP var atjaunot atjaunojamās failu versijas. Mapes atjaunojiet vietnes dropbox.com sadaļā Dzēstie faili. Jautājuma zīme nozīmē, ka Dropbox nav noteicis vienuma veidu."
+            "dropboxRestoreLimit": "AeroFTP var atjaunot atjaunojamās failu versijas. Mapes atjaunojiet vietnes dropbox.com sadaļā Dzēstie faili. Jautājuma zīme nozīmē, ka Dropbox nav noteicis vienuma veidu.",
+            "openWithDefaultApp": "Atvērt ar noklusējuma lietotni"
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Mākoņa sinhronizācijas uzstādīšana",
             "onePerLineHint": "(pa vienam katrā rindā)",
             "pairsEditorLabel": "AeroCloud pāru redaktors",
-            "remoteSubfolderPlaceholder": "mākonis"
+            "remoteSubfolderPlaceholder": "mākonis",
+            "countdownSoon": "Drīzumā..."
         },
         "statusBar": {
             "connected": "Savienots",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Pārsūtīšana neizdevās",
             "navigationFailed": "Navigācija neizdevās: {error}",
             "transferComplete": "Nokopēti {count} faili",
-            "permissionsSessionChanged": "Savienojums ir mainījies kopš šī dialoga atvēršanas, tāpēc nekas netika mainīts. Atveriet Atļaujas vēlreiz pašreizējā savienojumā."
+            "permissionsSessionChanged": "Savienojums ir mainījies kopš šī dialoga atvēršanas, tāpēc nekas netika mainīts. Atveriet Atļaujas vēlreiz pašreizējā savienojumā.",
+            "createFailed": "Izveide neizdevās"
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Atbloķē mapi {filename}...",
             "site_replied": "{command}: serveris atbildēja {code}",
             "site_unknown": "{command}: pilnīgas atbildes nav, iznākums nav zināms",
-            "site_not_sent": "{command} netika nosūtīta"
+            "site_not_sent": "{command} netika nosūtīta",
+            "b2_hidden_restore_success_one": "[{provider}] Atjaunots {count} slēpts fails",
+            "b2_hidden_restore_success_many": "[{provider}] Atjaunoti {count} slēpti faili",
+            "b2_hidden_restore_error": "[{provider}] Neizdevās atjaunot slēptos failus",
+            "b2_hidden_delete_success": "[{provider}] Neatgriezeniski dzēsti faili: {count} (iztīrītas versijas: {versions})",
+            "trash_restore_detail_success": "[{provider}] No atkritnes atjaunoti faili: {files}",
+            "trash_empty_detail_success": "[{provider}] Atkritne iztukšota (iztīrīti faili: {files}, mapes: {folders})",
+            "trash_empty_objects_one": "[{provider}] Atkritne iztukšota ({count} objekts)",
+            "trash_empty_objects_many": "[{provider}] Atkritne iztukšota ({count} objekti)",
+            "trash_object_purge_success": "[{provider}] Neatgriezeniski dzēsts: {key}",
+            "trash_object_purge_error": "[{provider}] Neizdevās neatgriezeniski dzēst {key}",
+            "trash_object_undelete_success": "[{provider}] Atsaukta dzēšana: {key}",
+            "trash_object_undelete_error": "[{provider}] Neizdevās atsaukt {key} dzēšanu",
+            "trash_object_restore_success": "[{provider}] Atjaunots: {key}",
+            "trash_object_restore_error": "[{provider}] Neizdevās atjaunot {key}",
+            "opendrive_access_set": "[{provider}] Piekļuve iestatīta uz {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Piekļuves {level} iestatīšana: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Neizdevās iestatīt piekļuvi {level}",
+            "download_folder_success": "Mape {path} lejupielādēta {seconds} s laikā",
+            "skipped_file": "Izlaists: {filename}",
+            "filelu_made_public": "[{provider}] Fails padarīts publisks",
+            "filelu_make_public_error": "[{provider}] Neizdevās padarīt failu publisku",
+            "filelu_made_private": "[{provider}] Fails padarīts privāts",
+            "filelu_make_private_error": "[{provider}] Neizdevās padarīt failu privātu",
+            "filelu_file_password_set": "[{provider}] Faila parole iestatīta",
+            "filelu_file_password_error": "[{provider}] Neizdevās iestatīt faila paroli",
+            "filelu_folder_password_set": "[{provider}] Mapes parole iestatīta",
+            "filelu_folder_password_error": "[{provider}] Neizdevās iestatīt mapes paroli",
+            "filelu_public_share_success": "[{provider}] Fails padarīts publisks + kopīgots",
+            "filelu_public_share_error": "[{provider}] Neizdevās padarīt publisku + kopīgot",
+            "filelu_folder_settings_success": "[{provider}] Mapes iestatījumi atjaunināti",
+            "filelu_folder_settings_error": "[{provider}] Neizdevās atjaunināt mapes iestatījumus",
+            "set_private_success": "[{provider}] Iestatīts kā privāts",
+            "set_private_error": "[{provider}] Neizdevās iestatīt kā privātu",
+            "set_public_success": "[{provider}] Iestatīts kā publisks",
+            "set_public_error": "[{provider}] Neizdevās iestatīt kā publisku",
+            "bulk_private_success_one": "[{provider}] {count} ieraksts iestatīts kā privāts",
+            "bulk_private_success_many": "[{provider}] {count} ieraksti iestatīti kā privāti",
+            "bulk_private_partial": "[{provider}] {ok}/{total} ieraksti iestatīti kā privāti",
+            "bulk_private_error": "[{provider}] Neizdevās masveidā iestatīt kā privātus",
+            "box_watermark_set": "[{provider}] Ūdenszīme iestatīta",
+            "box_watermark_set_error": "[{provider}] Neizdevās iestatīt ūdenszīmi",
+            "box_watermark_removed": "[{provider}] Ūdenszīme noņemta",
+            "box_watermark_remove_error": "[{provider}] Neizdevās noņemt ūdenszīmi",
+            "box_folder_locked": "[{provider}] Mape bloķēta",
+            "box_folder_lock_error": "[{provider}] Neizdevās bloķēt mapi",
+            "box_folder_unlocked": "[{provider}] Mape atbloķēta",
+            "box_folder_not_locked": "[{provider}] Mape nebija bloķēta",
+            "box_folder_unlock_error": "[{provider}] Neizdevās atbloķēt mapi",
+            "gdrive_starred": "[{provider}] Fails atzīmēts ar zvaigznīti",
+            "gdrive_unstarred": "[{provider}] Zvaigznīte noņemta no faila",
+            "gdrive_star_error": "[{provider}] Neizdevās atzīmēt ar zvaigznīti",
+            "gdrive_unstar_error": "[{provider}] Neizdevās noņemt zvaigznīti",
+            "extract_success": "Izvilkts {filename}",
+            "extract_success_to": "Izvilkts {filename} → {dest}",
+            "extract_error": "Izvilkšana neizdevās: {error}",
+            "zoho_document_created": "[{provider}] Izveidots {type} dokuments",
+            "zoho_document_create_error": "[{provider}] Neizdevās izveidot {type} dokumentu",
+            "note_saved": "[{provider}] Saglabāta piezīme \"{title}\"",
+            "note_save_error": "[{provider}] Neizdevās saglabāt piezīmi",
+            "note_created": "[{provider}] Izveidota piezīme \"{title}\"",
+            "note_create_error": "[{provider}] Neizdevās izveidot piezīmi",
+            "note_favorited": "[{provider}] Piezīme \"{title}\" pievienota izlasei",
+            "note_unfavorited": "[{provider}] Piezīme \"{title}\" noņemta no izlases",
+            "note_favorite_error": "[{provider}] Neizdevās pārslēgt izlasi",
+            "note_pinned": "[{provider}] Piesprausta piezīme \"{title}\"",
+            "note_unpinned": "[{provider}] Atsprausta piezīme \"{title}\"",
+            "note_pin_error": "[{provider}] Neizdevās pārslēgt piespraušanu",
+            "note_trashed": "[{provider}] Piezīme \"{title}\" pārvietota uz atkritni",
+            "note_trash_error": "[{provider}] Neizdevās pārvietot piezīmi uz atkritni",
+            "note_restored": "[{provider}] Atjaunota piezīme \"{title}\"",
+            "note_restore_error": "[{provider}] Neizdevās atjaunot piezīmi",
+            "note_deleted": "[{provider}] Piezīme \"{title}\" neatgriezeniski dzēsta",
+            "note_delete_error": "[{provider}] Neizdevās neatgriezeniski dzēst piezīmi",
+            "note_archived": "[{provider}] Piezīme \"{title}\" arhivēta",
+            "note_archive_error": "[{provider}] Neizdevās arhivēt piezīmi",
+            "note_version_restored": "[{provider}] Piezīmes versija atjaunota",
+            "note_version_restore_error": "[{provider}] Neizdevās atjaunot piezīmes versiju",
+            "github_pages_config_updated": "[{provider}] Pages konfigurācija atjaunināta",
+            "github_pages_config_error": "[{provider}] Neizdevās atjaunināt Pages konfigurāciju",
+            "opendrive_set_access": "[{provider}] Iestata piekļuvi failam {filename}...",
+            "gdrive_star": "[{provider}] Atzīmē ar zvaigznīti {filename}...",
+            "gdrive_unstar": "[{provider}] Noņem zvaigznīti no {filename}...",
+            "extract_start": "Atarhivē {filename}...",
+            "extract_start_to": "Atarhivē {filename} → {dest}...",
+            "compress_start": "Saspiež arhīvā {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] No atkritnes atjaunoti faili: {files}, mapes: {folders}",
+            "trash_restore_detail_present_success": "[{provider}] No atkritnes atjaunoti faili: {files}, jau esoši: {present}",
+            "trash_restore_detail_folders_present_success": "[{provider}] No atkritnes atjaunoti faili: {files}, mapes: {folders}, jau esoši: {present}"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Izņēmumi",
             "templateLocal": "Lokālais",
             "templateRemote": "Attālais",
-            "templateRetries": "Atkārtojumi"
+            "templateRetries": "Atkārtojumi",
+            "rollbackRestoreLocalCount": "lokāli {count}",
+            "rollbackRestoreRemoteCount": "attāli {count}",
+            "rollbackRestoreSkippedCount": "izlaisti {count}",
+            "rollbackRestoreFailedCount": "neizdevās {count}",
+            "rollbackRestoreCompleted": "Atjaunošana pabeigta: {summary}",
+            "rollbackRestoreNothing": "Nav ko atjaunot",
+            "rollbackRestoreFailed": "Atjaunošana neizdevās: {error}"
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Atļaut šai sesijai",
                 "nonAtomicReplace": "Neatomiska aizstāšana: fails īslaicīgi pazūd",
                 "moreOptions": "Vairāk opciju",
-                "panelAria": "Rīku apstiprināšanas panelis"
+                "panelAria": "Rīku apstiprināšanas panelis",
+                "previewFailed": "Priekšskatījums neizdevās"
             },
             "settings": {
                 "title": "AI iestatījumi",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Atbalsta rīkus",
                 "supportsVision": "Atbalsta redzi",
                 "thinkingReasoning": "Domāšana/Spriešana",
-                "toolQuality": "Rīku kvalitāte: {quality}/5"
+                "toolQuality": "Rīku kvalitāte: {quality}/5",
+                "ollamaNotReachable": "Ollama nav sasniedzama"
             },
             "copy": "Kopēt",
             "attachImage": "Pievienot attēlu",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnostika",
                     "truncated": "Diagnostikas saraksts tika saīsināts.",
                     "warningCountMany": "{count} brīdinājumi",
-                    "warningCountOne": "{count} brīdinājums"
+                    "warningCountOne": "{count} brīdinājums",
+                    "noLocation": "(nav atrašanās vietas)"
                 },
                 "search": {
                     "none": "Atbilstības nav atrastas.",
@@ -3522,7 +3626,15 @@
                 "destination": "Galamērķis: {destination}",
                 "title": "Pārsūtīšanas plāna pārskats",
                 "warnings": "Brīdinājumi"
-            }
+            },
+            "voiceNoAudio": "Audio netika ierakstīts.",
+            "voiceDownloadingModel": "Lejupielādē lokālo balss modeli...",
+            "voiceNoSpeech": "Runa netika noteikta.",
+            "voiceReady": "Balss ievade gatava.",
+            "voiceReadyLanguage": "Balss ievade gatava ({language}).",
+            "voiceTranscriptionFailed": "Lokālā transkripcija neizdevās.",
+            "voiceListeningLocally": "Klausās lokāli...",
+            "voiceMicrophoneFailed": "Nevar piekļūt mikrofonam."
         },
         "archive": {
             "passwordRequired": "Šis arhīvs ir aizsargāts ar paroli",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator formāts 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM saturs",
             "featureNameCipher": "AES-SIV nosaukumi",
-            "formatVersion": "Formāts {version}"
+            "formatVersion": "Formāts {version}",
+            "invalidVaultName": "Nederīgas rakstzīmes glabātuves nosaukumā"
         },
         "compress": {
             "title": "Saspiest failus",
@@ -4161,7 +4274,8 @@
             "total": "Kopā",
             "across": "pāri",
             "empty": "Šī direktorija ir tukša",
-            "hoverHint": "Novietojiet peli virs bloka, lai redzētu detaļas"
+            "hoverHint": "Novietojiet peli virs bloka, lai redzētu detaļas",
+            "scanUnknownError": "Nezināma kļūda, skenējot diska lietojumu"
         },
         "dependencies": {
             "title": "Atkarības",
@@ -4575,7 +4689,8 @@
                 "unmute": "Ieslēgt skaņu (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 netiek atbalstīts"
+                "notSupported": "WebGL 2 netiek atbalstīts",
+                "contextLost": "WebGL konteksts zaudēts"
             },
             "clickToViewDetails": "Noklikšķiniet uz faila, lai skatītu tā detaļas",
             "copyPath": "Kopēt ceļu",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Garums (baiti)",
             "argon2DefaultsHint": "Noklusējumi: profils, ko izmanto AeroVault un AeroCrypt (128 MiB, 4 iterācijas, 4 joslas, 32 baitu izvade). Augšā esošā sāls ir jūsu. Atmiņa līdz 2 GiB.",
             "argon2Derive": "Atvasināt",
-            "argon2Phc": "PHC virkne"
+            "argon2Phc": "PHC virkne",
+            "hashError": "Kļūda: {error}"
         },
         "dialog": {
             "deleteFile": "Dzēst \"{name}\"?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Noņemt atzīmi",
             "manageTags": "Pārvaldīt atzīmes",
             "deleteTagConfirm": "Dzēst atzīmi “{name}”? Piezīmes saglabā savu tekstu.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Teksts",
+                "markdown": "Markdown",
+                "code": "Kods",
+                "richText": "Formatēts teksts",
+                "checklist": "Kontrolsaraksts"
+            }
         },
         "shareLinkModal": {
             "title": "Koplietošanas saite",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Izvēlieties mērķa mapi",
             "passwordPrompt": "Šis vienums ir šifrēts. Ievadiet paroli, lai izvilktu.",
             "showPassword": "Rādīt paroli",
-            "hidePassword": "Slēpt paroli"
+            "hidePassword": "Slēpt paroli",
+            "missingPayload": "Trūkst izvilkšanas datu"
         },
         "provider": {
             "modes": {

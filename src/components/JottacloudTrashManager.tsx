@@ -72,14 +72,24 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
       const report = await invoke<{ files_restored: number; files_already_present: number; dirs_restored: number; failed: string[] }>('jottacloud_restore_from_trash', { paths });
       // Show what the server confirmed, not what was selected (#397): a
       // folder restore revives its descendants one file at a time.
-      const parts = [`${report.files_restored} file(s)`];
-      if (report.dirs_restored > 0) parts.push(`${report.dirs_restored} folder(s)`);
-      if (report.files_already_present > 0) parts.push(`${report.files_already_present} already present`);
-      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Restored ${parts.join(', ')} from trash` });
+      humanLog.updateEntry(logId, {
+        status: 'success',
+        message: t(
+          report.dirs_restored > 0
+            ? report.files_already_present > 0 ? 'activity.trash_restore_detail_folders_present_success' : 'activity.trash_restore_detail_folders_success'
+            : report.files_already_present > 0 ? 'activity.trash_restore_detail_present_success' : 'activity.trash_restore_detail_success',
+          {
+            provider: 'Jottacloud',
+            files: report.files_restored,
+            folders: report.dirs_restored,
+            present: report.files_already_present,
+          },
+        ),
+      });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Jottacloud] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Jottacloud' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -102,11 +112,11 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
     setActionLoading('delete');
     try {
       await invoke('jottacloud_permanent_delete', { paths });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Permanently deleted ${paths.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Jottacloud', count: paths.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Jottacloud] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Jottacloud' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -125,11 +135,11 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
     setError(null);
     try {
       const [files, folders] = await invoke<[number, number]>('jottacloud_empty_trash');
-      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Emptied trash (${files} file(s), ${folders} folder(s) purged)` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_detail_success', { provider: 'Jottacloud', files, folders }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Jottacloud] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'Jottacloud' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

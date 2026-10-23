@@ -433,7 +433,10 @@
             "localFilesLabel": "Arquivos locais",
             "localFilesRightLabel": "Arquivos locais (painel direito)",
             "remoteFilesLabel": "Arquivos remotos",
-            "rightPanelMarker": "Painel direito"
+            "rightPanelMarker": "Painel direito",
+            "chooseRightPanelFolder": "Escolher pasta do painel direito",
+            "chooseLeftPanelFolder": "Escolher pasta do painel esquerdo",
+            "localRight": "Local (direita)"
         },
         "contextMenu": {
             "askAeroAgent": "Perguntar ao AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Definir como privado",
             "setAsPublic": "Definir como público",
             "makeAllPrivate": "Tornar tudo privado",
-            "dropboxRestoreLimit": "O AeroFTP pode restaurar versões recuperáveis de arquivos. Restaure pastas em Arquivos excluídos no dropbox.com. Um ponto de interrogação significa que o Dropbox não identificou o tipo de item."
+            "dropboxRestoreLimit": "O AeroFTP pode restaurar versões recuperáveis de arquivos. Restaure pastas em Arquivos excluídos no dropbox.com. Um ponto de interrogação significa que o Dropbox não identificou o tipo de item.",
+            "openWithDefaultApp": "Abrir com o aplicativo padrão"
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Configuração inicial da sincronização na nuvem",
             "onePerLineHint": "(um por linha)",
             "pairsEditorLabel": "Editor de pares do AeroCloud",
-            "remoteSubfolderPlaceholder": "nuvem"
+            "remoteSubfolderPlaceholder": "nuvem",
+            "countdownSoon": "Em breve..."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Falha na transferência",
             "navigationFailed": "Falha na navegação: {error}",
             "transferComplete": "{count} ficheiro(s) copiado(s)",
-            "permissionsSessionChanged": "A conexão mudou desde que este diálogo foi aberto, por isso nada foi alterado. Abra Permissões novamente na conexão atual."
+            "permissionsSessionChanged": "A conexão mudou desde que este diálogo foi aberto, por isso nada foi alterado. Abra Permissões novamente na conexão atual.",
+            "createFailed": "Falha ao criar"
         },
         "about": {
             "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Desbloqueando a pasta {filename}...",
             "site_replied": "{command}: o servidor respondeu {code}",
             "site_unknown": "{command}: nenhuma resposta completa, resultado desconhecido",
-            "site_not_sent": "{command} não foi enviado"
+            "site_not_sent": "{command} não foi enviado",
+            "b2_hidden_restore_success_one": "[{provider}] {count} arquivo oculto restaurado",
+            "b2_hidden_restore_success_many": "[{provider}] {count} arquivos ocultos restaurados",
+            "b2_hidden_restore_error": "[{provider}] Falha ao restaurar arquivo(s) oculto(s)",
+            "b2_hidden_delete_success": "[{provider}] {count} arquivo(s) excluído(s) permanentemente ({versions} versões removidas)",
+            "trash_restore_detail_success": "[{provider}] {files} arquivo(s) restaurado(s) da lixeira",
+            "trash_empty_detail_success": "[{provider}] Lixeira esvaziada ({files} arquivo(s), {folders} pasta(s) removidos)",
+            "trash_empty_objects_one": "[{provider}] Lixeira esvaziada ({count} objeto)",
+            "trash_empty_objects_many": "[{provider}] Lixeira esvaziada ({count} objetos)",
+            "trash_object_purge_success": "[{provider}] {key} removido permanentemente",
+            "trash_object_purge_error": "[{provider}] Falha ao remover permanentemente {key}",
+            "trash_object_undelete_success": "[{provider}] Exclusão de {key} desfeita",
+            "trash_object_undelete_error": "[{provider}] Falha ao desfazer a exclusão de {key}",
+            "trash_object_restore_success": "[{provider}] {key} restaurado",
+            "trash_object_restore_error": "[{provider}] Falha ao restaurar {key}",
+            "opendrive_access_set": "[{provider}] Acesso definido como {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Definir acesso {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Falha ao definir acesso {level}",
+            "download_folder_success": "Pasta {path} baixada em {seconds} s",
+            "skipped_file": "{filename} ignorado",
+            "filelu_made_public": "[{provider}] Arquivo tornado público",
+            "filelu_make_public_error": "[{provider}] Falha ao tornar o arquivo público",
+            "filelu_made_private": "[{provider}] Arquivo tornado privado",
+            "filelu_make_private_error": "[{provider}] Falha ao tornar o arquivo privado",
+            "filelu_file_password_set": "[{provider}] Senha do arquivo definida",
+            "filelu_file_password_error": "[{provider}] Falha ao definir a senha do arquivo",
+            "filelu_folder_password_set": "[{provider}] Senha da pasta definida",
+            "filelu_folder_password_error": "[{provider}] Falha ao definir a senha da pasta",
+            "filelu_public_share_success": "[{provider}] Arquivo tornado público + compartilhado",
+            "filelu_public_share_error": "[{provider}] Falha ao tornar público + compartilhar",
+            "filelu_folder_settings_success": "[{provider}] Configurações da pasta atualizadas",
+            "filelu_folder_settings_error": "[{provider}] Falha ao atualizar as configurações da pasta",
+            "set_private_success": "[{provider}] Definido como privado",
+            "set_private_error": "[{provider}] Falha ao definir como privado",
+            "set_public_success": "[{provider}] Definido como público",
+            "set_public_error": "[{provider}] Falha ao definir como público",
+            "bulk_private_success_one": "[{provider}] {count} item definido como privado",
+            "bulk_private_success_many": "[{provider}] {count} itens definidos como privados",
+            "bulk_private_partial": "[{provider}] {ok}/{total} itens definidos como privados",
+            "bulk_private_error": "[{provider}] Falha ao definir como privado em massa",
+            "box_watermark_set": "[{provider}] Marca d'água definida",
+            "box_watermark_set_error": "[{provider}] Falha ao definir a marca d'água",
+            "box_watermark_removed": "[{provider}] Marca d'água removida",
+            "box_watermark_remove_error": "[{provider}] Falha ao remover a marca d'água",
+            "box_folder_locked": "[{provider}] Pasta bloqueada",
+            "box_folder_lock_error": "[{provider}] Falha ao bloquear a pasta",
+            "box_folder_unlocked": "[{provider}] Pasta desbloqueada",
+            "box_folder_not_locked": "[{provider}] A pasta não estava bloqueada",
+            "box_folder_unlock_error": "[{provider}] Falha ao desbloquear a pasta",
+            "gdrive_starred": "[{provider}] Arquivo marcado com estrela",
+            "gdrive_unstarred": "[{provider}] Estrela removida do arquivo",
+            "gdrive_star_error": "[{provider}] Falha ao marcar com estrela",
+            "gdrive_unstar_error": "[{provider}] Falha ao remover a estrela",
+            "extract_success": "{filename} extraído",
+            "extract_success_to": "{filename} extraído → {dest}",
+            "extract_error": "Falha na extração: {error}",
+            "zoho_document_created": "[{provider}] Documento {type} criado",
+            "zoho_document_create_error": "[{provider}] Falha ao criar documento {type}",
+            "note_saved": "[{provider}] Nota \"{title}\" salva",
+            "note_save_error": "[{provider}] Falha ao salvar a nota",
+            "note_created": "[{provider}] Nota \"{title}\" criada",
+            "note_create_error": "[{provider}] Falha ao criar a nota",
+            "note_favorited": "[{provider}] Nota \"{title}\" adicionada aos favoritos",
+            "note_unfavorited": "[{provider}] Nota \"{title}\" removida dos favoritos",
+            "note_favorite_error": "[{provider}] Falha ao alternar favorito",
+            "note_pinned": "[{provider}] Nota \"{title}\" fixada",
+            "note_unpinned": "[{provider}] Nota \"{title}\" desafixada",
+            "note_pin_error": "[{provider}] Falha ao alternar fixação",
+            "note_trashed": "[{provider}] Nota \"{title}\" movida para a lixeira",
+            "note_trash_error": "[{provider}] Falha ao mover a nota para a lixeira",
+            "note_restored": "[{provider}] Nota \"{title}\" restaurada",
+            "note_restore_error": "[{provider}] Falha ao restaurar a nota",
+            "note_deleted": "[{provider}] Nota \"{title}\" excluída permanentemente",
+            "note_delete_error": "[{provider}] Falha ao excluir permanentemente a nota",
+            "note_archived": "[{provider}] Nota \"{title}\" arquivada",
+            "note_archive_error": "[{provider}] Falha ao arquivar a nota",
+            "note_version_restored": "[{provider}] Versão da nota restaurada",
+            "note_version_restore_error": "[{provider}] Falha ao restaurar a versão da nota",
+            "github_pages_config_updated": "[{provider}] Configuração do Pages atualizada",
+            "github_pages_config_error": "[{provider}] Falha ao atualizar a configuração do Pages",
+            "opendrive_set_access": "[{provider}] Definindo acesso para {filename}...",
+            "gdrive_star": "[{provider}] Marcando {filename} com estrela...",
+            "gdrive_unstar": "[{provider}] Removendo estrela de {filename}...",
+            "extract_start": "Extraindo {filename}...",
+            "extract_start_to": "Extraindo {filename} → {dest}...",
+            "compress_start": "Compactando em {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Restaurado(s) {files} arquivo(s), {folders} pasta(s) da lixeira",
+            "trash_restore_detail_present_success": "[{provider}] Restaurado(s) {files} arquivo(s) da lixeira, {present} já presente(s)",
+            "trash_restore_detail_folders_present_success": "[{provider}] Restaurado(s) {files} arquivo(s), {folders} pasta(s) da lixeira, {present} já presente(s)"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Exclusões",
             "templateLocal": "Local",
             "templateRemote": "Remoto",
-            "templateRetries": "Tentativas"
+            "templateRetries": "Tentativas",
+            "rollbackRestoreLocalCount": "local {count}",
+            "rollbackRestoreRemoteCount": "remoto {count}",
+            "rollbackRestoreSkippedCount": "ignorados {count}",
+            "rollbackRestoreFailedCount": "falhas {count}",
+            "rollbackRestoreCompleted": "Restauração concluída: {summary}",
+            "rollbackRestoreNothing": "Nada para restaurar",
+            "rollbackRestoreFailed": "Falha ao restaurar: {error}"
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Permitir para esta sessão",
                 "nonAtomicReplace": "Substituição não atómica: o ficheiro fica ausente por um instante",
                 "moreOptions": "Mais opções",
-                "panelAria": "Painel de aprovação de ferramentas"
+                "panelAria": "Painel de aprovação de ferramentas",
+                "previewFailed": "Falha na pré-visualização"
             },
             "settings": {
                 "title": "Configurações de IA",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Suporta ferramentas",
                 "supportsVision": "Suporta visão",
                 "thinkingReasoning": "Pensamento/Raciocínio",
-                "toolQuality": "Qualidade das ferramentas: {quality}/5"
+                "toolQuality": "Qualidade das ferramentas: {quality}/5",
+                "ollamaNotReachable": "Ollama inacessível"
             },
             "copy": "Copiar",
             "attachImage": "Anexar imagem",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnósticos",
                     "truncated": "A lista de diagnósticos foi truncada.",
                     "warningCountMany": "{count} avisos",
-                    "warningCountOne": "{count} aviso"
+                    "warningCountOne": "{count} aviso",
+                    "noLocation": "(sem localização)"
                 },
                 "search": {
                     "none": "Nenhuma correspondência encontrada.",
@@ -3522,7 +3626,15 @@
                 "destination": "Destino: {destination}",
                 "title": "Revisão do plano de transferência",
                 "warnings": "Avisos"
-            }
+            },
+            "voiceNoAudio": "Nenhum áudio capturado.",
+            "voiceDownloadingModel": "Baixando modelo de voz local...",
+            "voiceNoSpeech": "Nenhuma fala detectada.",
+            "voiceReady": "Entrada de voz pronta.",
+            "voiceReadyLanguage": "Entrada de voz pronta ({language}).",
+            "voiceTranscriptionFailed": "Falha na transcrição local.",
+            "voiceListeningLocally": "Ouvindo localmente...",
+            "voiceMicrophoneFailed": "Não foi possível acessar o microfone."
         },
         "archive": {
             "passwordRequired": "Este arquivo é protegido por senha",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator formato 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Conteúdo AES-GCM",
             "featureNameCipher": "Nomes AES-SIV",
-            "formatVersion": "Formato {version}"
+            "formatVersion": "Formato {version}",
+            "invalidVaultName": "Caracteres inválidos no nome do cofre"
         },
         "compress": {
             "title": "Compactar Arquivos",
@@ -4161,7 +4274,8 @@
             "total": "Total",
             "across": "em",
             "empty": "Este diretório está vazio",
-            "hoverHint": "Passe o mouse sobre um bloco para ver detalhes"
+            "hoverHint": "Passe o mouse sobre um bloco para ver detalhes",
+            "scanUnknownError": "Erro desconhecido ao analisar o uso do disco"
         },
         "dependencies": {
             "title": "Dependências",
@@ -4575,7 +4689,8 @@
                 "unmute": "Ativar som (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 não suportado"
+                "notSupported": "WebGL 2 não suportado",
+                "contextLost": "Contexto WebGL perdido"
             },
             "clickToViewDetails": "Clique num ficheiro para ver os seus detalhes",
             "copyPath": "Copiar caminho",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Comprimento (bytes)",
             "argon2DefaultsHint": "Padrões: o perfil que o AeroVault e o AeroCrypt usam (128 MiB, 4 iterações, 4 faixas, saída de 32 bytes). O sal acima é seu. Memória até 2 GiB.",
             "argon2Derive": "Derivar",
-            "argon2Phc": "String PHC"
+            "argon2Phc": "String PHC",
+            "hashError": "Erro: {error}"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Remover etiqueta",
             "manageTags": "Gerenciar etiquetas",
             "deleteTagConfirm": "Excluir a etiqueta “{name}”? As notas mantêm o texto.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Texto",
+                "markdown": "Markdown",
+                "code": "Código",
+                "richText": "Texto formatado",
+                "checklist": "Lista de verificação"
+            }
         },
         "shareLinkModal": {
             "title": "Link de partilha",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Escolha uma pasta de destino",
             "passwordPrompt": "Este item está encriptado. Introduza a palavra-passe para extrair.",
             "showPassword": "Mostrar palavra-passe",
-            "hidePassword": "Ocultar palavra-passe"
+            "hidePassword": "Ocultar palavra-passe",
+            "missingPayload": "Dados de extração ausentes"
         },
         "provider": {
             "modes": {

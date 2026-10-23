@@ -433,7 +433,10 @@
             "localFilesLabel": "Fichiers locaux",
             "localFilesRightLabel": "Fichiers locaux (panneau droit)",
             "remoteFilesLabel": "Fichiers distants",
-            "rightPanelMarker": "Panneau droit"
+            "rightPanelMarker": "Panneau droit",
+            "chooseRightPanelFolder": "Choisir le dossier du panneau droit",
+            "chooseLeftPanelFolder": "Choisir le dossier du panneau gauche",
+            "localRight": "Local (droite)"
         },
         "contextMenu": {
             "askAeroAgent": "Demander à AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Définir comme privé",
             "setAsPublic": "Définir comme public",
             "makeAllPrivate": "Tout rendre privé",
-            "dropboxRestoreLimit": "AeroFTP peut restaurer les versions récupérables des fichiers. Restaurez les dossiers depuis Fichiers supprimés sur dropbox.com. Un point d’interrogation signifie que Dropbox n’a pas identifié le type d’élément."
+            "dropboxRestoreLimit": "AeroFTP peut restaurer les versions récupérables des fichiers. Restaurez les dossiers depuis Fichiers supprimés sur dropbox.com. Un point d’interrogation signifie que Dropbox n’a pas identifié le type d’élément.",
+            "openWithDefaultApp": "Ouvrir avec l'application par défaut"
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Configuration de la synchronisation cloud",
             "onePerLineHint": "(un par ligne)",
             "pairsEditorLabel": "Éditeur de paires AeroCloud",
-            "remoteSubfolderPlaceholder": "nuage"
+            "remoteSubfolderPlaceholder": "nuage",
+            "countdownSoon": "Bientôt..."
         },
         "statusBar": {
             "connected": "Connecté",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Échec du transfert",
             "navigationFailed": "Échec de la navigation : {error}",
             "transferComplete": "{count} fichier(s) copié(s)",
-            "permissionsSessionChanged": "La connexion a changé depuis l'ouverture de cette boîte de dialogue, donc rien n'a été modifié. Rouvrez Permissions sur la connexion actuelle."
+            "permissionsSessionChanged": "La connexion a changé depuis l'ouverture de cette boîte de dialogue, donc rien n'a été modifié. Rouvrez Permissions sur la connexion actuelle.",
+            "createFailed": "Échec de la création"
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Déverrouillage du dossier {filename}...",
             "site_replied": "{command} : le serveur a répondu {code}",
             "site_unknown": "{command} : aucune réponse complète, résultat inconnu",
-            "site_not_sent": "{command} n'a pas été envoyée"
+            "site_not_sent": "{command} n'a pas été envoyée",
+            "b2_hidden_restore_success_one": "[{provider}] {count} fichier masqué restauré",
+            "b2_hidden_restore_success_many": "[{provider}] {count} fichiers masqués restaurés",
+            "b2_hidden_restore_error": "[{provider}] Échec de la restauration des fichiers masqués",
+            "b2_hidden_delete_success": "[{provider}] {count} fichier(s) supprimé(s) définitivement ({versions} versions purgées)",
+            "trash_restore_detail_success": "[{provider}] {files} fichier(s) restauré(s) depuis la corbeille",
+            "trash_empty_detail_success": "[{provider}] Corbeille vidée ({files} fichier(s), {folders} dossier(s) purgés)",
+            "trash_empty_objects_one": "[{provider}] Corbeille vidée ({count} objet)",
+            "trash_empty_objects_many": "[{provider}] Corbeille vidée ({count} objets)",
+            "trash_object_purge_success": "[{provider}] {key} purgé",
+            "trash_object_purge_error": "[{provider}] Échec de la purge de {key}",
+            "trash_object_undelete_success": "[{provider}] Suppression de {key} annulée",
+            "trash_object_undelete_error": "[{provider}] Échec de l'annulation de la suppression de {key}",
+            "trash_object_restore_success": "[{provider}] {key} restauré",
+            "trash_object_restore_error": "[{provider}] Échec de la restauration de {key}",
+            "opendrive_access_set": "[{provider}] Accès défini sur {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Définition de l'accès {level} : {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Échec de la définition de l'accès {level}",
+            "download_folder_success": "Dossier {path} téléchargé en {seconds} s",
+            "skipped_file": "{filename} ignoré",
+            "filelu_made_public": "[{provider}] Fichier rendu public",
+            "filelu_make_public_error": "[{provider}] Impossible de rendre le fichier public",
+            "filelu_made_private": "[{provider}] Fichier rendu privé",
+            "filelu_make_private_error": "[{provider}] Impossible de rendre le fichier privé",
+            "filelu_file_password_set": "[{provider}] Mot de passe du fichier défini",
+            "filelu_file_password_error": "[{provider}] Échec de la définition du mot de passe du fichier",
+            "filelu_folder_password_set": "[{provider}] Mot de passe du dossier défini",
+            "filelu_folder_password_error": "[{provider}] Échec de la définition du mot de passe du dossier",
+            "filelu_public_share_success": "[{provider}] Fichier rendu public + partagé",
+            "filelu_public_share_error": "[{provider}] Échec de la mise en public + partage",
+            "filelu_folder_settings_success": "[{provider}] Paramètres du dossier mis à jour",
+            "filelu_folder_settings_error": "[{provider}] Échec de la mise à jour des paramètres du dossier",
+            "set_private_success": "[{provider}] Défini comme privé",
+            "set_private_error": "[{provider}] Échec de la définition comme privé",
+            "set_public_success": "[{provider}] Défini comme public",
+            "set_public_error": "[{provider}] Échec de la définition comme public",
+            "bulk_private_success_one": "[{provider}] {count} élément défini comme privé",
+            "bulk_private_success_many": "[{provider}] {count} éléments définis comme privés",
+            "bulk_private_partial": "[{provider}] {ok}/{total} éléments définis comme privés",
+            "bulk_private_error": "[{provider}] Échec de la mise en privé groupée",
+            "box_watermark_set": "[{provider}] Filigrane défini",
+            "box_watermark_set_error": "[{provider}] Échec de la définition du filigrane",
+            "box_watermark_removed": "[{provider}] Filigrane supprimé",
+            "box_watermark_remove_error": "[{provider}] Échec de la suppression du filigrane",
+            "box_folder_locked": "[{provider}] Dossier verrouillé",
+            "box_folder_lock_error": "[{provider}] Échec du verrouillage du dossier",
+            "box_folder_unlocked": "[{provider}] Dossier déverrouillé",
+            "box_folder_not_locked": "[{provider}] Le dossier n'était pas verrouillé",
+            "box_folder_unlock_error": "[{provider}] Échec du déverrouillage du dossier",
+            "gdrive_starred": "[{provider}] Fichier marqué d'une étoile",
+            "gdrive_unstarred": "[{provider}] Étoile retirée du fichier",
+            "gdrive_star_error": "[{provider}] Échec de l'ajout de l'étoile",
+            "gdrive_unstar_error": "[{provider}] Échec du retrait de l'étoile",
+            "extract_success": "{filename} extrait",
+            "extract_success_to": "{filename} extrait → {dest}",
+            "extract_error": "Échec de l'extraction : {error}",
+            "zoho_document_created": "[{provider}] Document {type} créé",
+            "zoho_document_create_error": "[{provider}] Échec de la création du document {type}",
+            "note_saved": "[{provider}] Note \"{title}\" enregistrée",
+            "note_save_error": "[{provider}] Échec de l'enregistrement de la note",
+            "note_created": "[{provider}] Note \"{title}\" créée",
+            "note_create_error": "[{provider}] Échec de la création de la note",
+            "note_favorited": "[{provider}] Note \"{title}\" ajoutée aux favoris",
+            "note_unfavorited": "[{provider}] Note \"{title}\" retirée des favoris",
+            "note_favorite_error": "[{provider}] Échec de la modification du favori",
+            "note_pinned": "[{provider}] Note \"{title}\" épinglée",
+            "note_unpinned": "[{provider}] Note \"{title}\" désépinglée",
+            "note_pin_error": "[{provider}] Échec de la modification de l'épinglage",
+            "note_trashed": "[{provider}] Note \"{title}\" placée dans la corbeille",
+            "note_trash_error": "[{provider}] Échec du placement de la note dans la corbeille",
+            "note_restored": "[{provider}] Note \"{title}\" restaurée",
+            "note_restore_error": "[{provider}] Échec de la restauration de la note",
+            "note_deleted": "[{provider}] Note \"{title}\" supprimée définitivement",
+            "note_delete_error": "[{provider}] Échec de la suppression définitive de la note",
+            "note_archived": "[{provider}] Note \"{title}\" archivée",
+            "note_archive_error": "[{provider}] Échec de l'archivage de la note",
+            "note_version_restored": "[{provider}] Version de la note restaurée",
+            "note_version_restore_error": "[{provider}] Échec de la restauration de la version de la note",
+            "github_pages_config_updated": "[{provider}] Configuration Pages mise à jour",
+            "github_pages_config_error": "[{provider}] Échec de la mise à jour de la configuration Pages",
+            "opendrive_set_access": "[{provider}] Définition de l'accès pour {filename}...",
+            "gdrive_star": "[{provider}] Ajout d'une étoile à {filename}...",
+            "gdrive_unstar": "[{provider}] Retrait de l'étoile de {filename}...",
+            "extract_start": "Extraction de {filename}...",
+            "extract_start_to": "Extraction de {filename} → {dest}...",
+            "compress_start": "Compression vers {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] {files} fichier(s), {folders} dossier(s) restauré(s) depuis la corbeille",
+            "trash_restore_detail_present_success": "[{provider}] {files} fichier(s) restauré(s) depuis la corbeille, {present} déjà présent(s)",
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} fichier(s), {folders} dossier(s) restauré(s) depuis la corbeille, {present} déjà présent(s)"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Exclusions",
             "templateLocal": "Local",
             "templateRemote": "Distant",
-            "templateRetries": "Tentatives"
+            "templateRetries": "Tentatives",
+            "rollbackRestoreLocalCount": "local {count}",
+            "rollbackRestoreRemoteCount": "distant {count}",
+            "rollbackRestoreSkippedCount": "ignorés {count}",
+            "rollbackRestoreFailedCount": "échecs {count}",
+            "rollbackRestoreCompleted": "Restauration terminée : {summary}",
+            "rollbackRestoreNothing": "Rien à restaurer",
+            "rollbackRestoreFailed": "Échec de la restauration : {error}"
         },
         "ui": {
             "syncing": "Synchronisation...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Autoriser pour cette session",
                 "nonAtomicReplace": "Remplacement non atomique : le fichier est brièvement absent",
                 "moreOptions": "Plus d'options",
-                "panelAria": "Panneau d'approbation des outils"
+                "panelAria": "Panneau d'approbation des outils",
+                "previewFailed": "Échec de l'aperçu"
             },
             "settings": {
                 "title": "Paramètres IA",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Prend en charge les outils",
                 "supportsVision": "Prend en charge la vision",
                 "thinkingReasoning": "Réflexion/Raisonnement",
-                "toolQuality": "Qualité des outils : {quality}/5"
+                "toolQuality": "Qualité des outils : {quality}/5",
+                "ollamaNotReachable": "Ollama inaccessible"
             },
             "copy": "Copier",
             "attachImage": "Joindre une image",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnostics",
                     "truncated": "La liste des diagnostics a été tronquée.",
                     "warningCountMany": "{count} avertissements",
-                    "warningCountOne": "{count} avertissement"
+                    "warningCountOne": "{count} avertissement",
+                    "noLocation": "(aucun emplacement)"
                 },
                 "search": {
                     "none": "Aucune correspondance trouvée.",
@@ -3522,7 +3626,15 @@
                 "destination": "Destination : {destination}",
                 "title": "Revue du plan de transfert",
                 "warnings": "Avertissements"
-            }
+            },
+            "voiceNoAudio": "Aucun audio capturé.",
+            "voiceDownloadingModel": "Téléchargement du modèle vocal local...",
+            "voiceNoSpeech": "Aucune parole détectée.",
+            "voiceReady": "Saisie vocale prête.",
+            "voiceReadyLanguage": "Saisie vocale prête ({language}).",
+            "voiceTranscriptionFailed": "Échec de la transcription locale.",
+            "voiceListeningLocally": "Écoute en local...",
+            "voiceMicrophoneFailed": "Impossible d'accéder au microphone."
         },
         "archive": {
             "passwordRequired": "Cette archive est protégée par mot de passe",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator format 8 : AES-256-GCM + AES-SIV",
             "featureContentCipher": "Contenu AES-GCM",
             "featureNameCipher": "Noms AES-SIV",
-            "formatVersion": "Version du format {version}"
+            "formatVersion": "Version du format {version}",
+            "invalidVaultName": "Caractères non valides dans le nom du coffre"
         },
         "compress": {
             "title": "Compresser des fichiers",
@@ -4161,7 +4274,8 @@
             "total": "Total",
             "across": "dans",
             "empty": "Ce répertoire est vide",
-            "hoverHint": "Survolez un bloc pour voir les détails"
+            "hoverHint": "Survolez un bloc pour voir les détails",
+            "scanUnknownError": "Erreur inconnue lors de l'analyse de l'utilisation du disque"
         },
         "dependencies": {
             "title": "Dependances",
@@ -4575,7 +4689,8 @@
                 "unmute": "Rétablir le son (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 non pris en charge"
+                "notSupported": "WebGL 2 non pris en charge",
+                "contextLost": "Contexte WebGL perdu"
             },
             "clickToViewDetails": "Cliquez sur un fichier pour voir ses détails",
             "copyPath": "Copier le chemin",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Longueur (octets)",
             "argon2DefaultsHint": "Valeurs par défaut : le profil utilisé par AeroVault et AeroCrypt (128 MiB, 4 itérations, 4 voies, sortie de 32 octets). Le sel ci-dessus est le vôtre. Mémoire jusqu'à 2 GiB.",
             "argon2Derive": "Dériver",
-            "argon2Phc": "Chaîne PHC"
+            "argon2Phc": "Chaîne PHC",
+            "hashError": "Erreur : {error}"
         },
         "dialog": {
             "deleteFile": "Supprimer \"{name}\" ?",
@@ -5301,7 +5417,14 @@
             "removeTag": "Retirer l'étiquette",
             "manageTags": "Gérer les étiquettes",
             "deleteTagConfirm": "Supprimer l'étiquette « {name} » ? Les notes conservent leur texte.",
-            "betaBadge": "BÊTA"
+            "betaBadge": "BÊTA",
+            "noteTypes": {
+                "text": "Texte",
+                "markdown": "Markdown",
+                "code": "Code",
+                "richText": "Texte enrichi",
+                "checklist": "Liste de contrôle"
+            }
         },
         "shareLinkModal": {
             "title": "Lien de partage",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Choisissez un dossier de destination",
             "passwordPrompt": "Cet élément est chiffré. Saisissez le mot de passe pour l'extraire.",
             "showPassword": "Afficher le mot de passe",
-            "hidePassword": "Masquer le mot de passe"
+            "hidePassword": "Masquer le mot de passe",
+            "missingPayload": "Données d'extraction manquantes"
         },
         "provider": {
             "modes": {

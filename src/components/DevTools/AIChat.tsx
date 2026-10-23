@@ -1379,7 +1379,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const transcribeRecordedAudio = useCallback(async (chunks: Float32Array[], sourceRate: number) => {
         const merged = mergeAudioChunks(chunks);
         if (merged.length === 0) {
-            setTemporaryVoiceStatus('No audio captured.', 3000);
+            setTemporaryVoiceStatus(t('ai.voiceNoAudio'), 3000);
             return;
         }
 
@@ -1387,11 +1387,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         try {
             const speechStatus = await invoke<SpeechModelStatus>('speech_model_status');
             if (!speechStatus.available) {
-                setVoiceStatus('Downloading local voice model...');
+                setVoiceStatus(t('ai.voiceDownloadingModel'));
                 await invoke<SpeechModelStatus>('download_speech_model');
             }
 
-            setVoiceStatus('Transcribing locally...');
+            setVoiceStatus(t('ai.transcribingLocally'));
             const pcm16k = resampleAudio(merged, sourceRate, VOICE_SAMPLE_RATE);
             const wavBytes = encodeWav(pcm16k, VOICE_SAMPLE_RATE);
             const audioBase64 = bytesToBase64(wavBytes);
@@ -1401,22 +1401,22 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             });
 
             if (!result.text.trim()) {
-                setTemporaryVoiceStatus('No speech detected.', 3500);
+                setTemporaryVoiceStatus(t('ai.voiceNoSpeech'), 3500);
                 return;
             }
 
             appendTranscriptToComposer(result.text);
             setTemporaryVoiceStatus(
-                result.language ? `Voice input ready (${result.language}).` : 'Voice input ready.',
+                result.language ? t('ai.voiceReadyLanguage', { language: result.language }) : t('ai.voiceReady'),
                 2500,
             );
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            setTemporaryVoiceStatus(message || 'Local transcription failed.', 5000);
+            setTemporaryVoiceStatus(message || t('ai.voiceTranscriptionFailed'), 5000);
         } finally {
             setIsTranscribingAudio(false);
         }
-    }, [appendTranscriptToComposer, setTemporaryVoiceStatus]);
+    }, [appendTranscriptToComposer, setTemporaryVoiceStatus, t]);
 
     const stopListeningSession = useCallback(async (shouldTranscribe: boolean) => {
         const chunks = recordedChunksRef.current;
@@ -1443,7 +1443,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         }
 
         try {
-            setVoiceStatus('Listening locally...');
+            setVoiceStatus(t('ai.voiceListeningLocally'));
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
@@ -1488,7 +1488,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             await cleanupVoiceCapture();
             setIsListening(false);
             const message = error instanceof Error ? error.message : String(error);
-            setTemporaryVoiceStatus(message || 'Unable to access microphone.', 5000);
+            setTemporaryVoiceStatus(message || t('ai.voiceMicrophoneFailed'), 5000);
         }
     }, [cleanupVoiceCapture, isListening, isTranscribingAudio, setTemporaryVoiceStatus, stopListeningSession, t, voiceSupported]);
 

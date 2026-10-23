@@ -612,7 +612,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 throw new Error('Connection test returned false');
             }
         } catch (error: any) {
-            const msg = typeof error === 'string' ? error : error?.message || 'Connection failed';
+            const msg = typeof error === 'string' ? error : error?.message || t('ai.settings.testFailed');
             setTestResults((prev) => ({
                 ...prev,
                 [provider.id]: { status: 'error', message: msg },
@@ -635,7 +635,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             if (modelNames.length === 0) {
                 setTestResults((prev) => ({
                     ...prev,
-                    [provider.id]: { status: 'error', message: 'No models found' },
+                    [provider.id]: { status: 'error', message: t('ai.settings.fetchModelsEmpty') },
                 }));
                 return;
             }
@@ -672,7 +672,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         } catch {
             setTestResults((prev) => ({
                 ...prev,
-                [provider.id]: { status: 'error', message: 'Ollama not reachable' },
+                [provider.id]: { status: 'error', message: t('ai.settings.ollamaNotReachable') },
             }));
         } finally {
             setDetectingModels(null);
@@ -750,7 +750,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 ? resolveProviderModel(model, live, metadata.find(m => m.id === model.name)) as AIModel : model);
             if (JSON.stringify(models) !== JSON.stringify(current.models)) saveSettings({ ...current, models });
         } catch (error: any) {
-            const msg = typeof error === 'string' ? error : error?.message || 'Failed to fetch models';
+            const msg = typeof error === 'string' ? error : error?.message || t('ai.settings.fetchModelsError');
             setTestResults((prev) => ({
                 ...prev,
                 [provider.id]: { status: 'error', message: msg },

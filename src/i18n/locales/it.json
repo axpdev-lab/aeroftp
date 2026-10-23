@@ -872,7 +872,10 @@
             "localFilesLabel": "File locali",
             "localFilesRightLabel": "File locali (pannello destro)",
             "remoteFilesLabel": "File remoti",
-            "rightPanelMarker": "Pannello destro"
+            "rightPanelMarker": "Pannello destro",
+            "chooseRightPanelFolder": "Scegli la cartella del pannello destro",
+            "chooseLeftPanelFolder": "Scegli la cartella del pannello sinistro",
+            "localRight": "Locale (destra)"
         },
         "commandPalette": {
             "category": {
@@ -893,7 +896,8 @@
             "chooseFolder": "Scegli una cartella di destinazione",
             "passwordPrompt": "Questo elemento e' cifrato. Inserisci la password per estrarre.",
             "showPassword": "Mostra password",
-            "hidePassword": "Nascondi password"
+            "hidePassword": "Nascondi password",
+            "missingPayload": "Dati di estrazione mancanti"
         },
         "contextMenu": {
             "askAeroAgent": "Chiedi ad AeroAgent...",
@@ -1027,7 +1031,8 @@
             "setAsPrivate": "Rendi Privato",
             "setAsPublic": "Rendi Pubblico",
             "makeAllPrivate": "Rendi tutto privato",
-            "dropboxRestoreLimit": "AeroFTP può ripristinare le versioni recuperabili dei file. Ripristina le cartelle da File eliminati su dropbox.com. Un punto interrogativo indica che Dropbox non ha identificato il tipo di elemento."
+            "dropboxRestoreLimit": "AeroFTP può ripristinare le versioni recuperabili dei file. Ripristina le cartelle da File eliminati su dropbox.com. Un punto interrogativo indica che Dropbox non ha identificato il tipo di elemento.",
+            "openWithDefaultApp": "Apri con l'app predefinita"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -2010,7 +2015,8 @@
             "dialogSetupLabel": "Configurazione Sincronizzazione Cloud",
             "onePerLineHint": "(uno per riga)",
             "pairsEditorLabel": "Editor delle coppie AeroCloud",
-            "remoteSubfolderPlaceholder": "nuvola"
+            "remoteSubfolderPlaceholder": "nuvola",
+            "countdownSoon": "A breve..."
         },
         "statusBar": {
             "connected": "Connesso",
@@ -2248,7 +2254,8 @@
             "transferFailed": "Trasferimento non riuscito",
             "navigationFailed": "Navigazione non riuscita: {error}",
             "transferComplete": "{count} file copiati",
-            "permissionsSessionChanged": "La connessione è cambiata da quando questa finestra è stata aperta, quindi non è stato modificato nulla. Riapri Permessi sulla connessione corrente."
+            "permissionsSessionChanged": "La connessione è cambiata da quando questa finestra è stata aperta, quindi non è stato modificato nulla. Riapri Permessi sulla connessione corrente.",
+            "createFailed": "Creazione non riuscita"
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -2457,7 +2464,95 @@
             "box_unlock_folder": "[Box] Sblocco della cartella {filename}...",
             "site_replied": "{command}: il server ha risposto {code}",
             "site_unknown": "{command}: nessuna risposta completa, esito sconosciuto",
-            "site_not_sent": "{command} non è stato inviato"
+            "site_not_sent": "{command} non è stato inviato",
+            "b2_hidden_restore_success_one": "[{provider}] Ripristinato {count} file nascosto",
+            "b2_hidden_restore_success_many": "[{provider}] Ripristinati {count} file nascosti",
+            "b2_hidden_restore_error": "[{provider}] Ripristino dei file nascosti non riuscito",
+            "b2_hidden_delete_success": "[{provider}] Eliminati definitivamente {count} file ({versions} versioni rimosse)",
+            "trash_restore_detail_success": "[{provider}] Ripristinati {files} file dal cestino",
+            "trash_empty_detail_success": "[{provider}] Cestino svuotato ({files} file, {folders} cartelle rimossi)",
+            "trash_empty_objects_one": "[{provider}] Cestino svuotato ({count} oggetto)",
+            "trash_empty_objects_many": "[{provider}] Cestino svuotato ({count} oggetti)",
+            "trash_object_purge_success": "[{provider}] Eliminato definitivamente {key}",
+            "trash_object_purge_error": "[{provider}] Eliminazione definitiva di {key} non riuscita",
+            "trash_object_undelete_success": "[{provider}] Annullata l'eliminazione di {key}",
+            "trash_object_undelete_error": "[{provider}] Annullamento dell'eliminazione di {key} non riuscito",
+            "trash_object_restore_success": "[{provider}] Ripristinato {key}",
+            "trash_object_restore_error": "[{provider}] Ripristino di {key} non riuscito",
+            "opendrive_access_set": "[{provider}] Accesso impostato su {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Impostazione accesso {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Impostazione accesso {level} non riuscita",
+            "download_folder_success": "Cartella {path} scaricata in {seconds} s",
+            "skipped_file": "Saltato {filename}",
+            "filelu_made_public": "[{provider}] File reso pubblico",
+            "filelu_make_public_error": "[{provider}] Impossibile rendere pubblico il file",
+            "filelu_made_private": "[{provider}] File reso privato",
+            "filelu_make_private_error": "[{provider}] Impossibile rendere privato il file",
+            "filelu_file_password_set": "[{provider}] Password del file impostata",
+            "filelu_file_password_error": "[{provider}] Impostazione password del file non riuscita",
+            "filelu_folder_password_set": "[{provider}] Password della cartella impostata",
+            "filelu_folder_password_error": "[{provider}] Impostazione password della cartella non riuscita",
+            "filelu_public_share_success": "[{provider}] File reso pubblico + condiviso",
+            "filelu_public_share_error": "[{provider}] Rendi pubblico + condividi non riuscito",
+            "filelu_folder_settings_success": "[{provider}] Impostazioni della cartella aggiornate",
+            "filelu_folder_settings_error": "[{provider}] Aggiornamento impostazioni della cartella non riuscito",
+            "set_private_success": "[{provider}] Impostato come privato",
+            "set_private_error": "[{provider}] Impostazione come privato non riuscita",
+            "set_public_success": "[{provider}] Impostato come pubblico",
+            "set_public_error": "[{provider}] Impostazione come pubblico non riuscita",
+            "bulk_private_success_one": "[{provider}] {count} elemento impostato come privato",
+            "bulk_private_success_many": "[{provider}] {count} elementi impostati come privati",
+            "bulk_private_partial": "[{provider}] {ok}/{total} elementi impostati come privati",
+            "bulk_private_error": "[{provider}] Impostazione privata in blocco non riuscita",
+            "box_watermark_set": "[{provider}] Filigrana impostata",
+            "box_watermark_set_error": "[{provider}] Impostazione filigrana non riuscita",
+            "box_watermark_removed": "[{provider}] Filigrana rimossa",
+            "box_watermark_remove_error": "[{provider}] Rimozione filigrana non riuscita",
+            "box_folder_locked": "[{provider}] Cartella bloccata",
+            "box_folder_lock_error": "[{provider}] Blocco cartella non riuscito",
+            "box_folder_unlocked": "[{provider}] Cartella sbloccata",
+            "box_folder_not_locked": "[{provider}] La cartella non era bloccata",
+            "box_folder_unlock_error": "[{provider}] Sblocco cartella non riuscito",
+            "gdrive_starred": "[{provider}] File contrassegnato con stella",
+            "gdrive_unstarred": "[{provider}] Stella rimossa dal file",
+            "gdrive_star_error": "[{provider}] Aggiunta della stella non riuscita",
+            "gdrive_unstar_error": "[{provider}] Rimozione della stella non riuscita",
+            "extract_success": "Estratto {filename}",
+            "extract_success_to": "Estratto {filename} → {dest}",
+            "extract_error": "Estrazione non riuscita: {error}",
+            "zoho_document_created": "[{provider}] Creato documento {type}",
+            "zoho_document_create_error": "[{provider}] Creazione del documento {type} non riuscita",
+            "note_saved": "[{provider}] Nota \"{title}\" salvata",
+            "note_save_error": "[{provider}] Impossibile salvare la nota",
+            "note_created": "[{provider}] Nota \"{title}\" creata",
+            "note_create_error": "[{provider}] Impossibile creare la nota",
+            "note_favorited": "[{provider}] Nota \"{title}\" aggiunta ai preferiti",
+            "note_unfavorited": "[{provider}] Nota \"{title}\" rimossa dai preferiti",
+            "note_favorite_error": "[{provider}] Impossibile modificare il preferito",
+            "note_pinned": "[{provider}] Nota \"{title}\" fissata",
+            "note_unpinned": "[{provider}] Nota \"{title}\" non più fissata",
+            "note_pin_error": "[{provider}] Impossibile modificare il fissaggio",
+            "note_trashed": "[{provider}] Nota \"{title}\" spostata nel cestino",
+            "note_trash_error": "[{provider}] Impossibile spostare la nota nel cestino",
+            "note_restored": "[{provider}] Nota \"{title}\" ripristinata",
+            "note_restore_error": "[{provider}] Impossibile ripristinare la nota",
+            "note_deleted": "[{provider}] Nota \"{title}\" eliminata definitivamente",
+            "note_delete_error": "[{provider}] Impossibile eliminare definitivamente la nota",
+            "note_archived": "[{provider}] Nota \"{title}\" archiviata",
+            "note_archive_error": "[{provider}] Impossibile archiviare la nota",
+            "note_version_restored": "[{provider}] Versione della nota ripristinata",
+            "note_version_restore_error": "[{provider}] Impossibile ripristinare la versione della nota",
+            "github_pages_config_updated": "[{provider}] Configurazione di Pages aggiornata",
+            "github_pages_config_error": "[{provider}] Impossibile aggiornare la configurazione di Pages",
+            "opendrive_set_access": "[{provider}] Impostazione dell'accesso per {filename}...",
+            "gdrive_star": "[{provider}] Aggiunta della stella a {filename}...",
+            "gdrive_unstar": "[{provider}] Rimozione della stella da {filename}...",
+            "extract_start": "Estrazione di {filename}...",
+            "extract_start_to": "Estrazione di {filename} → {dest}...",
+            "compress_start": "Compressione in {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Ripristinati {files} file, {folders} cartella/e dal cestino",
+            "trash_restore_detail_present_success": "[{provider}] Ripristinati {files} file dal cestino, {present} già presenti",
+            "trash_restore_detail_folders_present_success": "[{provider}] Ripristinati {files} file, {folders} cartella/e dal cestino, {present} già presenti"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",
@@ -2707,7 +2802,14 @@
             "templateExcludes": "Esclusioni",
             "templateLocal": "Locale",
             "templateRemote": "Remoto",
-            "templateRetries": "Tentativi"
+            "templateRetries": "Tentativi",
+            "rollbackRestoreLocalCount": "locali {count}",
+            "rollbackRestoreRemoteCount": "remoti {count}",
+            "rollbackRestoreSkippedCount": "saltati {count}",
+            "rollbackRestoreFailedCount": "non riusciti {count}",
+            "rollbackRestoreCompleted": "Ripristino completato: {summary}",
+            "rollbackRestoreNothing": "Niente da ripristinare",
+            "rollbackRestoreFailed": "Ripristino non riuscito: {error}"
         },
         "ui": {
             "syncing": "Sincronizzazione...",
@@ -2888,7 +2990,8 @@
                 "allowSession": "Consenti per questa sessione",
                 "nonAtomicReplace": "Sostituzione non atomica: il file manca per un istante",
                 "moreOptions": "Altre opzioni",
-                "panelAria": "Pannello di approvazione strumenti"
+                "panelAria": "Pannello di approvazione strumenti",
+                "previewFailed": "Anteprima non riuscita"
             },
             "settings": {
                 "title": "Impostazioni AI",
@@ -3050,7 +3153,8 @@
                 "supportsTools": "Supporta strumenti",
                 "supportsVision": "Supporta visione",
                 "thinkingReasoning": "Ragionamento",
-                "toolQuality": "Qualità strumenti: {quality}/5"
+                "toolQuality": "Qualità strumenti: {quality}/5",
+                "ollamaNotReachable": "Ollama non raggiungibile"
             },
             "copy": "Copia",
             "attachImage": "Allega immagine",
@@ -3649,7 +3753,8 @@
                     "title": "Diagnostica",
                     "truncated": "L'elenco della diagnostica è stato troncato.",
                     "warningCountMany": "{count} avvisi",
-                    "warningCountOne": "{count} avviso"
+                    "warningCountOne": "{count} avviso",
+                    "noLocation": "(nessuna posizione)"
                 },
                 "search": {
                     "none": "Nessuna corrispondenza trovata.",
@@ -3748,7 +3853,15 @@
                 "destination": "Destinazione: {destination}",
                 "title": "Revisione del piano di trasferimento",
                 "warnings": "Avvisi"
-            }
+            },
+            "voiceNoAudio": "Nessun audio acquisito.",
+            "voiceDownloadingModel": "Scaricamento del modello vocale locale...",
+            "voiceNoSpeech": "Nessun parlato rilevato.",
+            "voiceReady": "Input vocale pronto.",
+            "voiceReadyLanguage": "Input vocale pronto ({language}).",
+            "voiceTranscriptionFailed": "Trascrizione locale non riuscita.",
+            "voiceListeningLocally": "Ascolto in locale...",
+            "voiceMicrophoneFailed": "Impossibile accedere al microfono."
         },
         "archive": {
             "passwordRequired": "Questo archivio è protetto da password",
@@ -3869,7 +3982,8 @@
             "argon2OutputLength": "Lunghezza (byte)",
             "argon2DefaultsHint": "Valori predefiniti: il profilo usato da AeroVault e AeroCrypt (128 MiB, 4 iterazioni, 4 corsie, output di 32 byte). Il salt sopra è tuo. Memoria fino a 2 GiB.",
             "argon2Derive": "Deriva",
-            "argon2Phc": "Stringa PHC"
+            "argon2Phc": "Stringa PHC",
+            "hashError": "Errore: {error}"
         },
         "vault": {
             "addDirectorySuccess": "Aggiunti {files} file in {dirs} directory",
@@ -4293,7 +4407,8 @@
             "createFormatBadge": "Cryptomator Formato 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Contenuti AES-GCM",
             "featureNameCipher": "Nomi AES-SIV",
-            "formatVersion": "Formato {version}"
+            "formatVersion": "Formato {version}",
+            "invalidVaultName": "Caratteri non validi nel nome del vault"
         },
         "batchRename": {
             "title": "Rinomina Multipla",
@@ -4605,7 +4720,8 @@
             "total": "Totale",
             "across": "su",
             "empty": "Questa directory è vuota",
-            "hoverHint": "Passa il mouse su un blocco per i dettagli"
+            "hoverHint": "Passa il mouse su un blocco per i dettagli",
+            "scanUnknownError": "Errore sconosciuto durante l'analisi dell'uso del disco"
         },
         "dependencies": {
             "title": "Dipendenze",
@@ -5055,7 +5171,8 @@
                 "viewAsText": "Visualizza come testo"
             },
             "webgl": {
-                "notSupported": "WebGL 2 non supportato"
+                "notSupported": "WebGL 2 non supportato",
+                "contextLost": "Contesto WebGL perso"
             },
             "clickToViewDetails": "Clicca su un file per visualizzarne i dettagli",
             "copyPath": "Copia Percorso",
@@ -5656,7 +5773,14 @@
             "removeTag": "Rimuovi tag",
             "manageTags": "Gestisci tag",
             "deleteTagConfirm": "Eliminare il tag \"{name}\"? Le note mantengono il loro testo.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Testo",
+                "markdown": "Markdown",
+                "code": "Codice",
+                "richText": "Testo formattato",
+                "checklist": "Lista di controllo"
+            }
         },
         "shareLinkModal": {
             "title": "Link di condivisione",

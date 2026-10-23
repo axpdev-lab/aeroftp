@@ -433,7 +433,10 @@
             "localFilesLabel": "Տեղային ֆայլեր",
             "localFilesRightLabel": "Տեղային ֆայլեր (աջ վահանակ)",
             "remoteFilesLabel": "Հեռավոր ֆայլեր",
-            "rightPanelMarker": "Աջ վահանակ"
+            "rightPanelMarker": "Աջ վահանակ",
+            "chooseRightPanelFolder": "Ընտրել աջ վահանակի թղթապանակը",
+            "chooseLeftPanelFolder": "Ընտրել ձախ վահանակի թղթապանակը",
+            "localRight": "Տեղային (աջ)"
         },
         "contextMenu": {
             "askAeroAgent": "Հարցնել AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Սահմանել որպես անձնական",
             "setAsPublic": "Սահմանել որպես հանրային",
             "makeAllPrivate": "Դարձնել բոլորը մասնավոր",
-            "dropboxRestoreLimit": "AeroFTP-ը կարող է վերականգնել ֆայլերի վերականգնելի տարբերակները։ Պանակները վերականգնեք dropbox.com-ի «Ջնջված ֆայլեր» բաժնից։ Հարցական նշանը նշանակում է, որ Dropbox-ը չի ճանաչել տարրի տեսակը։"
+            "dropboxRestoreLimit": "AeroFTP-ը կարող է վերականգնել ֆայլերի վերականգնելի տարբերակները։ Պանակները վերականգնեք dropbox.com-ի «Ջնջված ֆայլեր» բաժնից։ Հարցական նշանը նշանակում է, որ Dropbox-ը չի ճանաչել տարրի տեսակը։",
+            "openWithDefaultApp": "Բացել լռելյայն հավելվածով"
         },
         "transfer": {
             "transferring": "Փոխանցում...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Ամպային համաժամացման կազմաձևում",
             "onePerLineHint": "(մեկական յուրաքանչյուր տողում)",
             "pairsEditorLabel": "AeroCloud զույգերի խմբագիր",
-            "remoteSubfolderPlaceholder": "ամպ"
+            "remoteSubfolderPlaceholder": "ամպ",
+            "countdownSoon": "Շուտով..."
         },
         "statusBar": {
             "connected": "Միացված է",
@@ -1675,7 +1680,8 @@
             "transferFailed": "Փոխանցումը ձախողվեց",
             "navigationFailed": "Նավարկումը ձախողվեց՝ {error}",
             "transferComplete": "Պատճենվեց {count} ֆայլ",
-            "permissionsSessionChanged": "Կապը փոխվել է այս երկխոսության բացվելուց հետո, ուստի ոչինչ չի փոխվել։ Նորից բացեք Թույլտվությունները ընթացիկ կապի վրա։"
+            "permissionsSessionChanged": "Կապը փոխվել է այս երկխոսության բացվելուց հետո, ուստի ոչինչ չի փոխվել։ Նորից բացեք Թույլտվությունները ընթացիկ կապի վրա։",
+            "createFailed": "Ստեղծումը ձախողվեց"
         },
         "about": {
             "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -1884,7 +1890,95 @@
             "box_unlock_folder": "[Box] {filename} թղթապանակի արգելափակումը հանվում է...",
             "site_replied": "{command}: սերվերը պատասխանեց {code}",
             "site_unknown": "{command}: լրիվ պատասխան չկա, արդյունքն անհայտ է",
-            "site_not_sent": "{command}-ը չուղարկվեց"
+            "site_not_sent": "{command}-ը չուղարկվեց",
+            "b2_hidden_restore_success_one": "[{provider}] Վերականգնվեց {count} թաքնված ֆայլ",
+            "b2_hidden_restore_success_many": "[{provider}] Վերականգնվեցին {count} թաքնված ֆայլեր",
+            "b2_hidden_restore_error": "[{provider}] Չհաջողվեց վերականգնել թաքնված ֆայլերը",
+            "b2_hidden_delete_success": "[{provider}] Ընդմիշտ ջնջվեց {count} ֆայլ ({versions} տարբերակ մաքրվեց)",
+            "trash_restore_detail_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ",
+            "trash_empty_detail_success": "[{provider}] Աղբարկղը դատարկվեց ({files} ֆայլ, {folders} թղթապանակ մաքրվեց)",
+            "trash_empty_objects_one": "[{provider}] Աղբարկղը դատարկվեց ({count} օբյեկտ)",
+            "trash_empty_objects_many": "[{provider}] Աղբարկղը դատարկվեց ({count} օբյեկտ)",
+            "trash_object_purge_success": "[{provider}] Ընդմիշտ ջնջվեց {key}",
+            "trash_object_purge_error": "[{provider}] Չհաջողվեց ընդմիշտ ջնջել {key}",
+            "trash_object_undelete_success": "[{provider}] Ջնջումը չեղարկվեց՝ {key}",
+            "trash_object_undelete_error": "[{provider}] Չհաջողվեց չեղարկել ջնջումը՝ {key}",
+            "trash_object_restore_success": "[{provider}] Վերականգնվեց {key}",
+            "trash_object_restore_error": "[{provider}] Չհաջողվեց վերականգնել {key}",
+            "opendrive_access_set": "[{provider}] Մուտքը սահմանվեց {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Մուտքի սահմանում {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Չհաջողվեց սահմանել մուտքը {level}",
+            "download_folder_success": "{path} թղթապանակը ներբեռնվեց {seconds} վայրկյանում",
+            "skipped_file": "Բաց թողնվեց {filename}",
+            "filelu_made_public": "[{provider}] Ֆայլը դարձվեց հանրային",
+            "filelu_make_public_error": "[{provider}] Չհաջողվեց ֆայլը դարձնել հանրային",
+            "filelu_made_private": "[{provider}] Ֆայլը դարձվեց անձնական",
+            "filelu_make_private_error": "[{provider}] Չհաջողվեց ֆայլը դարձնել անձնական",
+            "filelu_file_password_set": "[{provider}] Ֆայլի գաղտնաբառը սահմանվեց",
+            "filelu_file_password_error": "[{provider}] Չհաջողվեց սահմանել ֆայլի գաղտնաբառը",
+            "filelu_folder_password_set": "[{provider}] Թղթապանակի գաղտնաբառը սահմանվեց",
+            "filelu_folder_password_error": "[{provider}] Թղթապանակի գաղտնաբառի սահմանումը ձախողվեց",
+            "filelu_public_share_success": "[{provider}] Ֆայլը դարձվեց հանրային + համօգտագործվեց",
+            "filelu_public_share_error": "[{provider}] Հանրային դարձնելը + համօգտագործելը ձախողվեց",
+            "filelu_folder_settings_success": "[{provider}] Թղթապանակի կարգավորումները թարմացվեցին",
+            "filelu_folder_settings_error": "[{provider}] Թղթապանակի կարգավորումների թարմացումը ձախողվեց",
+            "set_private_success": "[{provider}] Սահմանվեց որպես մասնավոր",
+            "set_private_error": "[{provider}] Մասնավոր սահմանելը ձախողվեց",
+            "set_public_success": "[{provider}] Սահմանվեց որպես հանրային",
+            "set_public_error": "[{provider}] Հանրային սահմանելը ձախողվեց",
+            "bulk_private_success_one": "[{provider}] {count} տարր սահմանվեց որպես մասնավոր",
+            "bulk_private_success_many": "[{provider}] {count} տարր սահմանվեցին որպես մասնավոր",
+            "bulk_private_partial": "[{provider}] {ok}/{total} տարր սահմանվեցին որպես մասնավոր",
+            "bulk_private_error": "[{provider}] Զանգվածային մասնավոր սահմանումը ձախողվեց",
+            "box_watermark_set": "[{provider}] Ջրանիշը սահմանվեց",
+            "box_watermark_set_error": "[{provider}] Ջրանիշի սահմանումը ձախողվեց",
+            "box_watermark_removed": "[{provider}] Ջրանիշը հեռացվեց",
+            "box_watermark_remove_error": "[{provider}] Ջրանիշի հեռացումը ձախողվեց",
+            "box_folder_locked": "[{provider}] Թղթապանակը կողպվեց",
+            "box_folder_lock_error": "[{provider}] Թղթապանակի կողպումը ձախողվեց",
+            "box_folder_unlocked": "[{provider}] Թղթապանակը ապակողպվեց",
+            "box_folder_not_locked": "[{provider}] Թղթապանակը կողպված չէր",
+            "box_folder_unlock_error": "[{provider}] Թղթապանակի ապակողպումը ձախողվեց",
+            "gdrive_starred": "[{provider}] Ֆայլը նշվեց աստղանիշով",
+            "gdrive_unstarred": "[{provider}] Ֆայլից աստղանիշը հանվեց",
+            "gdrive_star_error": "[{provider}] Աստղանշումը ձախողվեց",
+            "gdrive_unstar_error": "[{provider}] Աստղանշման հեռացումը ձախողվեց",
+            "extract_success": "Ապարխիվացվեց {filename}",
+            "extract_success_to": "Ապարխիվացվեց {filename} → {dest}",
+            "extract_error": "Ապարխիվացումը ձախողվեց: {error}",
+            "zoho_document_created": "[{provider}] Ստեղծվեց {type} փաստաթուղթ",
+            "zoho_document_create_error": "[{provider}] {type} փաստաթղթի ստեղծումը ձախողվեց",
+            "note_saved": "[{provider}] Պահպանվեց \"{title}\" նշումը",
+            "note_save_error": "[{provider}] Չհաջողվեց պահպանել նշումը",
+            "note_created": "[{provider}] Ստեղծվեց \"{title}\" նշումը",
+            "note_create_error": "[{provider}] Չհաջողվեց ստեղծել նշումը",
+            "note_favorited": "[{provider}] \"{title}\" նշումը ավելացվեց ընտրյալներին",
+            "note_unfavorited": "[{provider}] \"{title}\" նշումը հեռացվեց ընտրյալներից",
+            "note_favorite_error": "[{provider}] Չհաջողվեց փոխել ընտրյալը",
+            "note_pinned": "[{provider}] Ամրացվեց \"{title}\" նշումը",
+            "note_unpinned": "[{provider}] Ապամրացվեց \"{title}\" նշումը",
+            "note_pin_error": "[{provider}] Չհաջողվեց փոխել ամրացումը",
+            "note_trashed": "[{provider}] \"{title}\" նշումը տեղափոխվեց աղբարկղ",
+            "note_trash_error": "[{provider}] Չհաջողվեց նշումը տեղափոխել աղբարկղ",
+            "note_restored": "[{provider}] Վերականգնվեց \"{title}\" նշումը",
+            "note_restore_error": "[{provider}] Չհաջողվեց վերականգնել նշումը",
+            "note_deleted": "[{provider}] \"{title}\" նշումը ընդմիշտ ջնջվեց",
+            "note_delete_error": "[{provider}] Չհաջողվեց ընդմիշտ ջնջել նշումը",
+            "note_archived": "[{provider}] \"{title}\" նշումը արխիվացվեց",
+            "note_archive_error": "[{provider}] Չհաջողվեց արխիվացնել նշումը",
+            "note_version_restored": "[{provider}] Նշման տարբերակը վերականգնվեց",
+            "note_version_restore_error": "[{provider}] Չհաջողվեց վերականգնել նշման տարբերակը",
+            "github_pages_config_updated": "[{provider}] Pages-ի կազմաձևումը թարմացվեց",
+            "github_pages_config_error": "[{provider}] Չհաջողվեց թարմացնել Pages-ի կազմաձևումը",
+            "opendrive_set_access": "[{provider}] {filename}-ի հասանելիության կարգավորում...",
+            "gdrive_star": "[{provider}] {filename}-ի նշում աստղանիշով...",
+            "gdrive_unstar": "[{provider}] Աստղանիշի հեռացում {filename}-ից...",
+            "extract_start": "{filename}-ի ապարխիվացում...",
+            "extract_start_to": "{filename}-ի ապարխիվացում → {dest}...",
+            "compress_start": "Սեղմում {archive}-ում...",
+            "trash_restore_detail_folders_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {folders} թղթապանակ",
+            "trash_restore_detail_present_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {present} արդեն առկա է",
+            "trash_restore_detail_folders_present_success": "[{provider}] Աղբարկղից վերականգնվեց {files} ֆայլ, {folders} թղթապանակ, {present} արդեն առկա է"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -2474,7 +2568,14 @@
             "templateExcludes": "Բացառություններ",
             "templateLocal": "Տեղային",
             "templateRemote": "Հեռավոր",
-            "templateRetries": "Կրկնափորձեր"
+            "templateRetries": "Կրկնափորձեր",
+            "rollbackRestoreLocalCount": "տեղային {count}",
+            "rollbackRestoreRemoteCount": "հեռակա {count}",
+            "rollbackRestoreSkippedCount": "բաց թողնված {count}",
+            "rollbackRestoreFailedCount": "ձախողված {count}",
+            "rollbackRestoreCompleted": "Վերականգնումն ավարտվեց: {summary}",
+            "rollbackRestoreNothing": "Վերականգնելու ոչինչ չկա",
+            "rollbackRestoreFailed": "Վերականգնումը ձախողվեց: {error}"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",
@@ -2666,7 +2767,8 @@
                 "allowSession": "Թույլատրել այս նիստի համար",
                 "nonAtomicReplace": "Ոչ ատոմային փոխարինում: ֆայլը կարճ ժամանակով բացակայում է",
                 "moreOptions": "Այլ ընտրանքներ",
-                "panelAria": "Գործիքների հաստատման վահանակ"
+                "panelAria": "Գործիքների հաստատման վահանակ",
+                "previewFailed": "Նախադիտումը ձախողվեց"
             },
             "settings": {
                 "title": "AI կարգավորումներ",
@@ -2828,7 +2930,8 @@
                 "supportsTools": "Աջակցում է գործիքներ",
                 "supportsVision": "Աջակցում է տեսողություն",
                 "thinkingReasoning": "Մտածում/Դատողություն",
-                "toolQuality": "Գործիքների որակ: {quality}/5"
+                "toolQuality": "Գործիքների որակ: {quality}/5",
+                "ollamaNotReachable": "Ollama-ն հասանելի չէ"
             },
             "rag": {
                 "indexing": "Ֆայլերի ինդեքսավորում...",
@@ -3416,7 +3519,8 @@
                     "title": "Ախտորոշում",
                     "truncated": "Ախտորոշման ցանկը կրճատվել է։",
                     "warningCountMany": "{count} նախազգուշացում",
-                    "warningCountOne": "{count} նախազգուշացում"
+                    "warningCountOne": "{count} նախազգուշացում",
+                    "noLocation": "(առանց տեղադրության)"
                 },
                 "search": {
                     "none": "Համընկնումներ չեն գտնվել։",
@@ -3515,7 +3619,15 @@
                 "destination": "Նպատակակետ: {destination}",
                 "title": "Փոխանցման պլանի վերանայում",
                 "warnings": "Զգուշացումներ"
-            }
+            },
+            "voiceNoAudio": "Ձայն չի ձայնագրվել։",
+            "voiceDownloadingModel": "Տեղային ձայնային մոդելի ներբեռնում...",
+            "voiceNoSpeech": "Խոսք չի հայտնաբերվել։",
+            "voiceReady": "Ձայնային մուտքը պատրաստ է։",
+            "voiceReadyLanguage": "Ձայնային մուտքը պատրաստ է ({language})։",
+            "voiceTranscriptionFailed": "Տեղային տառադարձումը ձախողվեց։",
+            "voiceListeningLocally": "Տեղային լսում...",
+            "voiceMicrophoneFailed": "Խոսափողին հասանելիություն չկա։"
         },
         "archive": {
             "passwordRequired": "Արխիվը պաշտպանված է գաղտնաբառով",
@@ -3789,7 +3901,8 @@
             "createFormatBadge": "Cryptomator ձևաչափ 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM բովանդակություն",
             "featureNameCipher": "AES-SIV անուններ",
-            "formatVersion": "Ձևաչափ {version}"
+            "formatVersion": "Ձևաչափ {version}",
+            "invalidVaultName": "Անվավեր նիշեր պահոցի անվանման մեջ"
         },
         "compress": {
             "title": "Սեղմել ֆայլերը",
@@ -4154,7 +4267,8 @@
             "hoverHint": "Մկնիկը պահել մանրամասների համար",
             "scanFailed": "Սկանավորումը ձախողվեց",
             "retry": "Կրկնել",
-            "drillDown": "Սեղմեք բացելու համար"
+            "drillDown": "Սեղմեք բացելու համար",
+            "scanUnknownError": "Անհայտ սխալ սկավառակի օգտագործման սկանավորման ժամանակ"
         },
         "dependencies": {
             "title": "Կախվածություններ",
@@ -4568,7 +4682,8 @@
                 "unmute": "Վերամիացնել ձայնը (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 չի աջակցվում"
+                "notSupported": "WebGL 2 չի աջակցվում",
+                "contextLost": "WebGL համատեքստը կորել է"
             },
             "clickToViewDetails": "Սեղմեք ֆայլի վրա՝ մանրամասները դիտելու համար",
             "copyPath": "Պատճենել ուղին",
@@ -4727,7 +4842,8 @@
             "argon2OutputLength": "Երկարություն (բայթ)",
             "argon2DefaultsHint": "Լռելյայն՝ AeroVault-ի և AeroCrypt-ի օգտագործած պրոֆիլը (128 MiB, 4 կրկնություն, 4 ուղի, 32 բայթ ելք)։ Վերևի աղը ձերն է։ Հիշողություն մինչև 2 GiB։",
             "argon2Derive": "Ածանցել",
-            "argon2Phc": "PHC տող"
+            "argon2Phc": "PHC տող",
+            "hashError": "Սխալ: {error}"
         },
         "dialog": {
             "deleteFile": "Ջնջե՞լ «{name}»-ը։",
@@ -5301,7 +5417,14 @@
             "removeTag": "Հեռացնել պիտակը",
             "manageTags": "Կառավարել պիտակները",
             "deleteTagConfirm": "Ջնջե՞լ «{name}» պիտակը։ Գրառումները կպահպանեն իրենց տեքստը։",
-            "betaBadge": "ԲԵՏԱ"
+            "betaBadge": "ԲԵՏԱ",
+            "noteTypes": {
+                "text": "Տեքստ",
+                "markdown": "Markdown",
+                "code": "Կոդ",
+                "richText": "Ձևաչափված տեքստ",
+                "checklist": "Ստուգաթերթ"
+            }
         },
         "shareLinkModal": {
             "title": "Տարածման հղում",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Ընտրեք նպատակային պանակը",
             "passwordPrompt": "Այս տարրը գաղտնագրված է։ Մուտքագրեք գաղտնաբառը՝ բացելու համար։",
             "showPassword": "Ցույց տալ գաղտնաբառը",
-            "hidePassword": "Թաքցնել գաղտնաբառը"
+            "hidePassword": "Թաքցնել գաղտնաբառը",
+            "missingPayload": "Ապափաթեթավորման տվյալները բացակայում են"
         },
         "provider": {
             "modes": {

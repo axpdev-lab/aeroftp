@@ -433,7 +433,10 @@
             "localFilesLabel": "Τοπικά αρχεία",
             "localFilesRightLabel": "Τοπικά αρχεία (δεξί πλαίσιο)",
             "remoteFilesLabel": "Απομακρυσμένα αρχεία",
-            "rightPanelMarker": "Δεξί πλαίσιο"
+            "rightPanelMarker": "Δεξί πλαίσιο",
+            "chooseRightPanelFolder": "Επιλογή φακέλου δεξιού πλαισίου",
+            "chooseLeftPanelFolder": "Επιλογή φακέλου αριστερού πλαισίου",
+            "localRight": "Τοπικό (δεξιά)"
         },
         "contextMenu": {
             "askAeroAgent": "Ρωτήστε το AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Ορισμός ως ιδιωτικό",
             "setAsPublic": "Ορισμός ως δημόσιο",
             "makeAllPrivate": "Να γίνουν όλα ιδιωτικά",
-            "dropboxRestoreLimit": "Το AeroFTP μπορεί να επαναφέρει ανακτήσιμες εκδόσεις αρχείων. Επαναφέρετε φακέλους από τα Διαγραμμένα αρχεία στο dropbox.com. Το ερωτηματικό σημαίνει ότι το Dropbox δεν αναγνώρισε τον τύπο του στοιχείου."
+            "dropboxRestoreLimit": "Το AeroFTP μπορεί να επαναφέρει ανακτήσιμες εκδόσεις αρχείων. Επαναφέρετε φακέλους από τα Διαγραμμένα αρχεία στο dropbox.com. Το ερωτηματικό σημαίνει ότι το Dropbox δεν αναγνώρισε τον τύπο του στοιχείου.",
+            "openWithDefaultApp": "Άνοιγμα με την προεπιλεγμένη εφαρμογή"
         },
         "transfer": {
             "transferring": "Μεταφορά...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Διαμόρφωση συγχρονισμού νέφους",
             "onePerLineHint": "(ένα ανά γραμμή)",
             "pairsEditorLabel": "Επεξεργαστής ζευγών AeroCloud",
-            "remoteSubfolderPlaceholder": "νέφος"
+            "remoteSubfolderPlaceholder": "νέφος",
+            "countdownSoon": "Σύντομα..."
         },
         "statusBar": {
             "connected": "Συνδεδεμένο",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Η μεταφορά απέτυχε",
             "navigationFailed": "Η πλοήγηση απέτυχε: {error}",
             "transferComplete": "Αντιγράφηκαν {count} αρχεία",
-            "permissionsSessionChanged": "Η σύνδεση άλλαξε από τότε που άνοιξε αυτό το παράθυρο διαλόγου, οπότε δεν άλλαξε τίποτα. Ανοίξτε ξανά τα Δικαιώματα στην τρέχουσα σύνδεση."
+            "permissionsSessionChanged": "Η σύνδεση άλλαξε από τότε που άνοιξε αυτό το παράθυρο διαλόγου, οπότε δεν άλλαξε τίποτα. Ανοίξτε ξανά τα Δικαιώματα στην τρέχουσα σύνδεση.",
+            "createFailed": "Η δημιουργία απέτυχε"
         },
         "about": {
             "tagline": "Περισσότερο από FTP. Πλήρης εργαλειοθήκη προγραμματιστή.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] Ξεκλείδωμα φακέλου {filename}...",
             "site_replied": "{command}: ο διακομιστής απάντησε {code}",
             "site_unknown": "{command}: καμία πλήρης απάντηση, άγνωστο αποτέλεσμα",
-            "site_not_sent": "Η εντολή {command} δεν στάλθηκε"
+            "site_not_sent": "Η εντολή {command} δεν στάλθηκε",
+            "b2_hidden_restore_success_one": "[{provider}] Επαναφέρθηκε {count} κρυφό αρχείο",
+            "b2_hidden_restore_success_many": "[{provider}] Επαναφέρθηκαν {count} κρυφά αρχεία",
+            "b2_hidden_restore_error": "[{provider}] Αποτυχία επαναφοράς κρυφών αρχείων",
+            "b2_hidden_delete_success": "[{provider}] Διαγράφηκαν οριστικά {count} αρχεία ({versions} εκδόσεις εκκαθαρίστηκαν)",
+            "trash_restore_detail_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία από τον κάδο",
+            "trash_empty_detail_success": "[{provider}] Ο κάδος αδειάστηκε ({files} αρχεία, {folders} φάκελοι εκκαθαρίστηκαν)",
+            "trash_empty_objects_one": "[{provider}] Ο κάδος αδειάστηκε ({count} αντικείμενο)",
+            "trash_empty_objects_many": "[{provider}] Ο κάδος αδειάστηκε ({count} αντικείμενα)",
+            "trash_object_purge_success": "[{provider}] Εκκαθαρίστηκε το {key}",
+            "trash_object_purge_error": "[{provider}] Αποτυχία εκκαθάρισης του {key}",
+            "trash_object_undelete_success": "[{provider}] Αναιρέθηκε η διαγραφή του {key}",
+            "trash_object_undelete_error": "[{provider}] Αποτυχία αναίρεσης διαγραφής του {key}",
+            "trash_object_restore_success": "[{provider}] Επαναφέρθηκε το {key}",
+            "trash_object_restore_error": "[{provider}] Αποτυχία επαναφοράς του {key}",
+            "opendrive_access_set": "[{provider}] Η πρόσβαση ορίστηκε σε {level} ({count})",
+            "opendrive_access_partial": "[{provider}] Ορισμός πρόσβασης {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Αποτυχία ορισμού πρόσβασης {level}",
+            "download_folder_success": "Ο φάκελος {path} λήφθηκε σε {seconds} δ",
+            "skipped_file": "Παραλείφθηκε το {filename}",
+            "filelu_made_public": "[{provider}] Το αρχείο έγινε δημόσιο",
+            "filelu_make_public_error": "[{provider}] Αποτυχία δημοσιοποίησης αρχείου",
+            "filelu_made_private": "[{provider}] Το αρχείο έγινε ιδιωτικό",
+            "filelu_make_private_error": "[{provider}] Αποτυχία μετατροπής αρχείου σε ιδιωτικό",
+            "filelu_file_password_set": "[{provider}] Ορίστηκε κωδικός αρχείου",
+            "filelu_file_password_error": "[{provider}] Αποτυχία ορισμού κωδικού αρχείου",
+            "filelu_folder_password_set": "[{provider}] Ορίστηκε κωδικός πρόσβασης φακέλου",
+            "filelu_folder_password_error": "[{provider}] Αποτυχία ορισμού κωδικού πρόσβασης φακέλου",
+            "filelu_public_share_success": "[{provider}] Το αρχείο έγινε δημόσιο + κοινοποιήθηκε",
+            "filelu_public_share_error": "[{provider}] Αποτυχία δημοσιοποίησης + κοινοποίησης",
+            "filelu_folder_settings_success": "[{provider}] Ενημερώθηκαν οι ρυθμίσεις φακέλου",
+            "filelu_folder_settings_error": "[{provider}] Αποτυχία ενημέρωσης ρυθμίσεων φακέλου",
+            "set_private_success": "[{provider}] Ορίστηκε ως ιδιωτικό",
+            "set_private_error": "[{provider}] Αποτυχία ορισμού ως ιδιωτικό",
+            "set_public_success": "[{provider}] Ορίστηκε ως δημόσιο",
+            "set_public_error": "[{provider}] Αποτυχία ορισμού ως δημόσιο",
+            "bulk_private_success_one": "[{provider}] Ορίστηκε {count} στοιχείο ως ιδιωτικό",
+            "bulk_private_success_many": "[{provider}] Ορίστηκαν {count} στοιχεία ως ιδιωτικά",
+            "bulk_private_partial": "[{provider}] Ορίστηκαν {ok}/{total} στοιχεία ως ιδιωτικά",
+            "bulk_private_error": "[{provider}] Αποτυχία μαζικού ορισμού ως ιδιωτικά",
+            "box_watermark_set": "[{provider}] Ορίστηκε υδατογράφημα",
+            "box_watermark_set_error": "[{provider}] Αποτυχία ορισμού υδατογραφήματος",
+            "box_watermark_removed": "[{provider}] Αφαιρέθηκε το υδατογράφημα",
+            "box_watermark_remove_error": "[{provider}] Αποτυχία αφαίρεσης υδατογραφήματος",
+            "box_folder_locked": "[{provider}] Ο φάκελος κλειδώθηκε",
+            "box_folder_lock_error": "[{provider}] Αποτυχία κλειδώματος φακέλου",
+            "box_folder_unlocked": "[{provider}] Ο φάκελος ξεκλειδώθηκε",
+            "box_folder_not_locked": "[{provider}] Ο φάκελος δεν ήταν κλειδωμένος",
+            "box_folder_unlock_error": "[{provider}] Αποτυχία ξεκλειδώματος φακέλου",
+            "gdrive_starred": "[{provider}] Το αρχείο επισημάνθηκε με αστέρι",
+            "gdrive_unstarred": "[{provider}] Αφαιρέθηκε το αστέρι από το αρχείο",
+            "gdrive_star_error": "[{provider}] Η επισήμανση με αστέρι απέτυχε",
+            "gdrive_unstar_error": "[{provider}] Η αφαίρεση αστεριού απέτυχε",
+            "extract_success": "Εξήχθη το {filename}",
+            "extract_success_to": "Εξήχθη το {filename} → {dest}",
+            "extract_error": "Η εξαγωγή απέτυχε: {error}",
+            "zoho_document_created": "[{provider}] Δημιουργήθηκε έγγραφο {type}",
+            "zoho_document_create_error": "[{provider}] Η δημιουργία εγγράφου {type} απέτυχε",
+            "note_saved": "[{provider}] Αποθηκεύτηκε η σημείωση \"{title}\"",
+            "note_save_error": "[{provider}] Αποτυχία αποθήκευσης σημείωσης",
+            "note_created": "[{provider}] Δημιουργήθηκε η σημείωση \"{title}\"",
+            "note_create_error": "[{provider}] Αποτυχία δημιουργίας σημείωσης",
+            "note_favorited": "[{provider}] Η σημείωση \"{title}\" προστέθηκε στα αγαπημένα",
+            "note_unfavorited": "[{provider}] Η σημείωση \"{title}\" αφαιρέθηκε από τα αγαπημένα",
+            "note_favorite_error": "[{provider}] Αποτυχία εναλλαγής αγαπημένου",
+            "note_pinned": "[{provider}] Καρφιτσώθηκε η σημείωση \"{title}\"",
+            "note_unpinned": "[{provider}] Ξεκαρφιτσώθηκε η σημείωση \"{title}\"",
+            "note_pin_error": "[{provider}] Αποτυχία εναλλαγής καρφιτσώματος",
+            "note_trashed": "[{provider}] Η σημείωση \"{title}\" μετακινήθηκε στον κάδο",
+            "note_trash_error": "[{provider}] Αποτυχία μετακίνησης σημείωσης στον κάδο",
+            "note_restored": "[{provider}] Επαναφέρθηκε η σημείωση \"{title}\"",
+            "note_restore_error": "[{provider}] Αποτυχία επαναφοράς σημείωσης",
+            "note_deleted": "[{provider}] Η σημείωση \"{title}\" διαγράφηκε οριστικά",
+            "note_delete_error": "[{provider}] Αποτυχία οριστικής διαγραφής σημείωσης",
+            "note_archived": "[{provider}] Η σημείωση \"{title}\" αρχειοθετήθηκε",
+            "note_archive_error": "[{provider}] Αποτυχία αρχειοθέτησης σημείωσης",
+            "note_version_restored": "[{provider}] Η έκδοση της σημείωσης επαναφέρθηκε",
+            "note_version_restore_error": "[{provider}] Αποτυχία επαναφοράς έκδοσης σημείωσης",
+            "github_pages_config_updated": "[{provider}] Οι ρυθμίσεις Pages ενημερώθηκαν",
+            "github_pages_config_error": "[{provider}] Αποτυχία ενημέρωσης ρυθμίσεων Pages",
+            "opendrive_set_access": "[{provider}] Ορισμός πρόσβασης για {filename}...",
+            "gdrive_star": "[{provider}] Προσθήκη αστεριού στο {filename}...",
+            "gdrive_unstar": "[{provider}] Αφαίρεση αστεριού από το {filename}...",
+            "extract_start": "Εξαγωγή {filename}...",
+            "extract_start_to": "Εξαγωγή {filename} → {dest}...",
+            "compress_start": "Συμπίεση σε {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία, {folders} φάκελοι από τον κάδο",
+            "trash_restore_detail_present_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία από τον κάδο, {present} υπήρχαν ήδη",
+            "trash_restore_detail_folders_present_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία, {folders} φάκελοι από τον κάδο, {present} υπήρχαν ήδη"
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Εξαιρέσεις",
             "templateLocal": "Τοπικό",
             "templateRemote": "Απομακρυσμένο",
-            "templateRetries": "Επαναλήψεις"
+            "templateRetries": "Επαναλήψεις",
+            "rollbackRestoreLocalCount": "τοπικά {count}",
+            "rollbackRestoreRemoteCount": "απομακρυσμένα {count}",
+            "rollbackRestoreSkippedCount": "παραλείφθηκαν {count}",
+            "rollbackRestoreFailedCount": "απέτυχαν {count}",
+            "rollbackRestoreCompleted": "Η επαναφορά ολοκληρώθηκε: {summary}",
+            "rollbackRestoreNothing": "Τίποτα για επαναφορά",
+            "rollbackRestoreFailed": "Η επαναφορά απέτυχε: {error}"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "Να επιτραπεί για αυτή τη συνεδρία",
                 "nonAtomicReplace": "Μη ατομική αντικατάσταση: το αρχείο λείπει για λίγο",
                 "moreOptions": "Περισσότερες επιλογές",
-                "panelAria": "Πίνακας έγκρισης εργαλείων"
+                "panelAria": "Πίνακας έγκρισης εργαλείων",
+                "previewFailed": "Η προεπισκόπηση απέτυχε"
             },
             "settings": {
                 "title": "Ρυθμίσεις AI",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "Υποστηρίζει εργαλεία",
                 "supportsVision": "Υποστηρίζει όραση",
                 "thinkingReasoning": "Σκέψη/Συλλογισμός",
-                "toolQuality": "Ποιότητα εργαλείων: {quality}/5"
+                "toolQuality": "Ποιότητα εργαλείων: {quality}/5",
+                "ollamaNotReachable": "Το Ollama δεν είναι προσβάσιμο"
             },
             "copy": "Αντιγραφή",
             "attachImage": "Επισύναψη εικόνας",
@@ -3423,7 +3526,8 @@
                     "title": "Διαγνωστικά",
                     "truncated": "Η λίστα διαγνωστικών περικόπηκε.",
                     "warningCountMany": "{count} προειδοποιήσεις",
-                    "warningCountOne": "{count} προειδοποίηση"
+                    "warningCountOne": "{count} προειδοποίηση",
+                    "noLocation": "(χωρίς τοποθεσία)"
                 },
                 "search": {
                     "none": "Δεν βρέθηκαν αντιστοιχίες.",
@@ -3522,7 +3626,15 @@
                 "destination": "Προορισμός: {destination}",
                 "title": "Αναθεώρηση σχεδίου μεταφοράς",
                 "warnings": "Προειδοποιήσεις"
-            }
+            },
+            "voiceNoAudio": "Δεν καταγράφηκε ήχος.",
+            "voiceDownloadingModel": "Λήψη τοπικού μοντέλου φωνής...",
+            "voiceNoSpeech": "Δεν εντοπίστηκε ομιλία.",
+            "voiceReady": "Η φωνητική εισαγωγή είναι έτοιμη.",
+            "voiceReadyLanguage": "Η φωνητική εισαγωγή είναι έτοιμη ({language}).",
+            "voiceTranscriptionFailed": "Η τοπική μεταγραφή απέτυχε.",
+            "voiceListeningLocally": "Τοπική ακρόαση...",
+            "voiceMicrophoneFailed": "Δεν είναι δυνατή η πρόσβαση στο μικρόφωνο."
         },
         "archive": {
             "passwordRequired": "Αυτό το αρχείο προστατεύεται με κωδικό",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator μορφή 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "Περιεχόμενο AES-GCM",
             "featureNameCipher": "Ονόματα AES-SIV",
-            "formatVersion": "Μορφή {version}"
+            "formatVersion": "Μορφή {version}",
+            "invalidVaultName": "Μη έγκυροι χαρακτήρες στο όνομα θησαυροφυλακίου"
         },
         "compress": {
             "title": "Συμπίεση Αρχείων",
@@ -4161,7 +4274,8 @@
             "total": "Σύνολο",
             "across": "σε",
             "empty": "Αυτός ο κατάλογος είναι κενός",
-            "hoverHint": "Τοποθετήστε τον δείκτη πάνω σε ένα μπλοκ για λεπτομέρειες"
+            "hoverHint": "Τοποθετήστε τον δείκτη πάνω σε ένα μπλοκ για λεπτομέρειες",
+            "scanUnknownError": "Άγνωστο σφάλμα κατά τη σάρωση χρήσης δίσκου"
         },
         "dependencies": {
             "title": "Εξαρτήσεις",
@@ -4575,7 +4689,8 @@
                 "unmute": "Κατάργηση σίγασης (M)"
             },
             "webgl": {
-                "notSupported": "Το WebGL 2 δεν υποστηρίζεται"
+                "notSupported": "Το WebGL 2 δεν υποστηρίζεται",
+                "contextLost": "Χάθηκε το περιβάλλον WebGL"
             },
             "clickToViewDetails": "Κάντε κλικ σε ένα αρχείο για να δείτε τις λεπτομέρειές του",
             "copyPath": "Αντιγραφή Διαδρομής",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Μήκος (byte)",
             "argon2DefaultsHint": "Προεπιλογές: το προφίλ που χρησιμοποιούν AeroVault και AeroCrypt (128 MiB, 4 επαναλήψεις, 4 λωρίδες, έξοδος 32 byte). Το αλάτι παραπάνω είναι δικό σας. Μνήμη έως 2 GiB.",
             "argon2Derive": "Παραγωγή",
-            "argon2Phc": "Συμβολοσειρά PHC"
+            "argon2Phc": "Συμβολοσειρά PHC",
+            "hashError": "Σφάλμα: {error}"
         },
         "dialog": {
             "deleteFile": "Διαγραφή του \"{name}\";",
@@ -5301,7 +5417,14 @@
             "removeTag": "Κατάργηση ετικέτας",
             "manageTags": "Διαχείριση ετικετών",
             "deleteTagConfirm": "Διαγραφή της ετικέτας «{name}»; Οι σημειώσεις διατηρούν το κείμενό τους.",
-            "betaBadge": "ΔΟΚΙΜΑΣΤΙΚΟ"
+            "betaBadge": "ΔΟΚΙΜΑΣΤΙΚΟ",
+            "noteTypes": {
+                "text": "Κείμενο",
+                "markdown": "Markdown",
+                "code": "Κώδικας",
+                "richText": "Μορφοποιημένο κείμενο",
+                "checklist": "Λίστα ελέγχου"
+            }
         },
         "shareLinkModal": {
             "title": "Σύνδεσμος Κοινοποίησης",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "Επιλέξτε φάκελο προορισμού",
             "passwordPrompt": "Αυτό το στοιχείο είναι κρυπτογραφημένο. Εισαγάγετε τον κωδικό για εξαγωγή.",
             "showPassword": "Εμφάνιση κωδικού",
-            "hidePassword": "Απόκρυψη κωδικού"
+            "hidePassword": "Απόκρυψη κωδικού",
+            "missingPayload": "Λείπουν τα δεδομένα εξαγωγής"
         },
         "provider": {
             "modes": {

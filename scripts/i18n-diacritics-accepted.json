@@ -494,6 +494,13 @@
       "folded": "josla",
       "twin": "joslā",
       "reason": "Statusa josla is the nominative name of the status bar; joslā is the locative case, which this label does not use."
+    },
+    "pl\u001fproviders.star\u001fGwiazdka": {
+      "locale": "pl",
+      "key": "providers.star",
+      "folded": "gwiazdka",
+      "twin": "gwiazdką",
+      "reason": "Gwiazdka is the nominative name of the Star feature; gwiazdką is the instrumental case, which this label does not use."
     }
   }
 }

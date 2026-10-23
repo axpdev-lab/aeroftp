@@ -433,7 +433,10 @@
             "localFilesLabel": "ไฟล์ในเครื่อง",
             "localFilesRightLabel": "ไฟล์ในเครื่อง (แผงด้านขวา)",
             "remoteFilesLabel": "ไฟล์ระยะไกล",
-            "rightPanelMarker": "แผงด้านขวา"
+            "rightPanelMarker": "แผงด้านขวา",
+            "chooseRightPanelFolder": "เลือกโฟลเดอร์แผงขวา",
+            "chooseLeftPanelFolder": "เลือกโฟลเดอร์แผงซ้าย",
+            "localRight": "ในเครื่อง (ขวา)"
         },
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "ตั้งเป็นส่วนตัว",
             "setAsPublic": "ตั้งเป็นสาธารณะ",
             "makeAllPrivate": "ทำให้ทั้งหมดเป็นส่วนตัว",
-            "dropboxRestoreLimit": "AeroFTP สามารถกู้คืนเวอร์ชันไฟล์ที่ยังกู้คืนได้ กู้คืนโฟลเดอร์จากส่วนไฟล์ที่ลบบน dropbox.com เครื่องหมายคำถามหมายความว่า Dropbox ไม่สามารถระบุประเภทของรายการได้"
+            "dropboxRestoreLimit": "AeroFTP สามารถกู้คืนเวอร์ชันไฟล์ที่ยังกู้คืนได้ กู้คืนโฟลเดอร์จากส่วนไฟล์ที่ลบบน dropbox.com เครื่องหมายคำถามหมายความว่า Dropbox ไม่สามารถระบุประเภทของรายการได้",
+            "openWithDefaultApp": "เปิดด้วยแอปเริ่มต้น"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "การตั้งค่าเริ่มต้นการซิงค์คลาวด์",
             "onePerLineHint": "(หนึ่งรายการต่อบรรทัด)",
             "pairsEditorLabel": "ตัวแก้ไขคู่ AeroCloud",
-            "remoteSubfolderPlaceholder": "คลาวด์"
+            "remoteSubfolderPlaceholder": "คลาวด์",
+            "countdownSoon": "เร็วๆ นี้..."
         },
         "statusBar": {
             "connected": "เชื่อมต่อแล้ว",
@@ -1682,7 +1687,8 @@
             "transferFailed": "การถ่ายโอนล้มเหลว",
             "navigationFailed": "การนำทางล้มเหลว: {error}",
             "transferComplete": "คัดลอกไฟล์แล้ว {count} ไฟล์",
-            "permissionsSessionChanged": "การเชื่อมต่อเปลี่ยนไปนับตั้งแต่เปิดกล่องโต้ตอบนี้ จึงไม่มีสิ่งใดถูกเปลี่ยนแปลง โปรดเปิดสิทธิ์อีกครั้งบนการเชื่อมต่อปัจจุบัน"
+            "permissionsSessionChanged": "การเชื่อมต่อเปลี่ยนไปนับตั้งแต่เปิดกล่องโต้ตอบนี้ จึงไม่มีสิ่งใดถูกเปลี่ยนแปลง โปรดเปิดสิทธิ์อีกครั้งบนการเชื่อมต่อปัจจุบัน",
+            "createFailed": "สร้างไม่สำเร็จ"
         },
         "about": {
             "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] กำลังปลดล็อกโฟลเดอร์ {filename}...",
             "site_replied": "{command}: เซิร์ฟเวอร์ตอบกลับ {code}",
             "site_unknown": "{command}: ไม่มีการตอบกลับที่สมบูรณ์ ไม่ทราบผลลัพธ์",
-            "site_not_sent": "ไม่ได้ส่ง {command}"
+            "site_not_sent": "ไม่ได้ส่ง {command}",
+            "b2_hidden_restore_success_one": "[{provider}] กู้คืนไฟล์ที่ซ่อน {count} ไฟล์แล้ว",
+            "b2_hidden_restore_success_many": "[{provider}] กู้คืนไฟล์ที่ซ่อน {count} ไฟล์แล้ว",
+            "b2_hidden_restore_error": "[{provider}] กู้คืนไฟล์ที่ซ่อนไม่สำเร็จ",
+            "b2_hidden_delete_success": "[{provider}] ลบ {count} ไฟล์อย่างถาวรแล้ว (ล้าง {versions} เวอร์ชัน)",
+            "trash_restore_detail_success": "[{provider}] กู้คืน {files} ไฟล์จากถังขยะแล้ว",
+            "trash_empty_detail_success": "[{provider}] ล้างถังขยะแล้ว (ล้าง {files} ไฟล์, {folders} โฟลเดอร์)",
+            "trash_empty_objects_one": "[{provider}] ล้างถังขยะแล้ว ({count} ออบเจ็กต์)",
+            "trash_empty_objects_many": "[{provider}] ล้างถังขยะแล้ว ({count} ออบเจ็กต์)",
+            "trash_object_purge_success": "[{provider}] ลบ {key} อย่างถาวรแล้ว",
+            "trash_object_purge_error": "[{provider}] ลบ {key} อย่างถาวรไม่สำเร็จ",
+            "trash_object_undelete_success": "[{provider}] ยกเลิกการลบ {key} แล้ว",
+            "trash_object_undelete_error": "[{provider}] ยกเลิกการลบ {key} ไม่สำเร็จ",
+            "trash_object_restore_success": "[{provider}] กู้คืน {key} แล้ว",
+            "trash_object_restore_error": "[{provider}] กู้คืน {key} ไม่สำเร็จ",
+            "opendrive_access_set": "[{provider}] ตั้งค่าการเข้าถึงเป็น {level} แล้ว ({count})",
+            "opendrive_access_partial": "[{provider}] ตั้งค่าการเข้าถึง {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] ตั้งค่าการเข้าถึง {level} ไม่สำเร็จ",
+            "download_folder_success": "ดาวน์โหลดโฟลเดอร์ {path} ใน {seconds} วินาที",
+            "skipped_file": "ข้าม {filename}",
+            "filelu_made_public": "[{provider}] ตั้งไฟล์เป็นสาธารณะแล้ว",
+            "filelu_make_public_error": "[{provider}] ตั้งไฟล์เป็นสาธารณะไม่สำเร็จ",
+            "filelu_made_private": "[{provider}] ตั้งไฟล์เป็นส่วนตัวแล้ว",
+            "filelu_make_private_error": "[{provider}] ตั้งไฟล์เป็นส่วนตัวไม่สำเร็จ",
+            "filelu_file_password_set": "[{provider}] ตั้งรหัสผ่านไฟล์แล้ว",
+            "filelu_file_password_error": "[{provider}] ตั้งรหัสผ่านไฟล์ไม่สำเร็จ",
+            "filelu_folder_password_set": "[{provider}] ตั้งรหัสผ่านโฟลเดอร์แล้ว",
+            "filelu_folder_password_error": "[{provider}] ตั้งรหัสผ่านโฟลเดอร์ไม่สำเร็จ",
+            "filelu_public_share_success": "[{provider}] ทำให้ไฟล์เป็นสาธารณะ + แชร์แล้ว",
+            "filelu_public_share_error": "[{provider}] ทำให้เป็นสาธารณะ + แชร์ไม่สำเร็จ",
+            "filelu_folder_settings_success": "[{provider}] อัปเดตการตั้งค่าโฟลเดอร์แล้ว",
+            "filelu_folder_settings_error": "[{provider}] อัปเดตการตั้งค่าโฟลเดอร์ไม่สำเร็จ",
+            "set_private_success": "[{provider}] ตั้งเป็นส่วนตัวแล้ว",
+            "set_private_error": "[{provider}] ตั้งเป็นส่วนตัวไม่สำเร็จ",
+            "set_public_success": "[{provider}] ตั้งเป็นสาธารณะแล้ว",
+            "set_public_error": "[{provider}] ตั้งเป็นสาธารณะไม่สำเร็จ",
+            "bulk_private_success_one": "[{provider}] ตั้ง {count} รายการเป็นส่วนตัวแล้ว",
+            "bulk_private_success_many": "[{provider}] ตั้ง {count} รายการเป็นส่วนตัวแล้ว",
+            "bulk_private_partial": "[{provider}] ตั้ง {ok}/{total} รายการเป็นส่วนตัวแล้ว",
+            "bulk_private_error": "[{provider}] ตั้งเป็นส่วนตัวแบบกลุ่มไม่สำเร็จ",
+            "box_watermark_set": "[{provider}] ตั้งลายน้ำแล้ว",
+            "box_watermark_set_error": "[{provider}] ตั้งลายน้ำไม่สำเร็จ",
+            "box_watermark_removed": "[{provider}] ลบลายน้ำแล้ว",
+            "box_watermark_remove_error": "[{provider}] ลบลายน้ำไม่สำเร็จ",
+            "box_folder_locked": "[{provider}] ล็อกโฟลเดอร์แล้ว",
+            "box_folder_lock_error": "[{provider}] ล็อกโฟลเดอร์ไม่สำเร็จ",
+            "box_folder_unlocked": "[{provider}] ปลดล็อกโฟลเดอร์แล้ว",
+            "box_folder_not_locked": "[{provider}] โฟลเดอร์ไม่ได้ถูกล็อก",
+            "box_folder_unlock_error": "[{provider}] ปลดล็อกโฟลเดอร์ไม่สำเร็จ",
+            "gdrive_starred": "[{provider}] ติดดาวไฟล์แล้ว",
+            "gdrive_unstarred": "[{provider}] เลิกติดดาวไฟล์แล้ว",
+            "gdrive_star_error": "[{provider}] ติดดาวไม่สำเร็จ",
+            "gdrive_unstar_error": "[{provider}] เลิกติดดาวไม่สำเร็จ",
+            "extract_success": "แตกไฟล์ {filename} แล้ว",
+            "extract_success_to": "แตกไฟล์ {filename} แล้ว → {dest}",
+            "extract_error": "แตกไฟล์ไม่สำเร็จ: {error}",
+            "zoho_document_created": "[{provider}] สร้างเอกสาร {type} แล้ว",
+            "zoho_document_create_error": "[{provider}] สร้างเอกสาร {type} ไม่สำเร็จ",
+            "note_saved": "[{provider}] บันทึกโน้ต \"{title}\" แล้ว",
+            "note_save_error": "[{provider}] บันทึกโน้ตไม่สำเร็จ",
+            "note_created": "[{provider}] สร้างโน้ต \"{title}\" แล้ว",
+            "note_create_error": "[{provider}] สร้างโน้ตไม่สำเร็จ",
+            "note_favorited": "[{provider}] เพิ่มโน้ต \"{title}\" ในรายการโปรดแล้ว",
+            "note_unfavorited": "[{provider}] นำโน้ต \"{title}\" ออกจากรายการโปรดแล้ว",
+            "note_favorite_error": "[{provider}] สลับรายการโปรดไม่สำเร็จ",
+            "note_pinned": "[{provider}] ปักหมุดโน้ต \"{title}\" แล้ว",
+            "note_unpinned": "[{provider}] เลิกปักหมุดโน้ต \"{title}\" แล้ว",
+            "note_pin_error": "[{provider}] สลับการปักหมุดไม่สำเร็จ",
+            "note_trashed": "[{provider}] ย้ายโน้ต \"{title}\" ไปถังขยะแล้ว",
+            "note_trash_error": "[{provider}] ย้ายโน้ตไปถังขยะไม่สำเร็จ",
+            "note_restored": "[{provider}] กู้คืนโน้ต \"{title}\" แล้ว",
+            "note_restore_error": "[{provider}] กู้คืนโน้ตไม่สำเร็จ",
+            "note_deleted": "[{provider}] ลบโน้ต \"{title}\" ถาวรแล้ว",
+            "note_delete_error": "[{provider}] ลบโน้ตถาวรไม่สำเร็จ",
+            "note_archived": "[{provider}] เก็บถาวรโน้ต \"{title}\" แล้ว",
+            "note_archive_error": "[{provider}] เก็บถาวรโน้ตไม่สำเร็จ",
+            "note_version_restored": "[{provider}] กู้คืนเวอร์ชันโน้ตแล้ว",
+            "note_version_restore_error": "[{provider}] กู้คืนเวอร์ชันโน้ตไม่สำเร็จ",
+            "github_pages_config_updated": "[{provider}] อัปเดตการกำหนดค่า Pages แล้ว",
+            "github_pages_config_error": "[{provider}] อัปเดตการกำหนดค่า Pages ไม่สำเร็จ",
+            "opendrive_set_access": "[{provider}] กำลังตั้งค่าการเข้าถึงสำหรับ {filename}...",
+            "gdrive_star": "[{provider}] กำลังติดดาว {filename}...",
+            "gdrive_unstar": "[{provider}] กำลังเลิกติดดาว {filename}...",
+            "extract_start": "กำลังแตกไฟล์ {filename}...",
+            "extract_start_to": "กำลังแตกไฟล์ {filename} → {dest}...",
+            "compress_start": "กำลังบีบอัดเป็น {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] กู้คืน {files} ไฟล์, {folders} โฟลเดอร์จากถังขยะแล้ว",
+            "trash_restore_detail_present_success": "[{provider}] กู้คืน {files} ไฟล์จากถังขยะแล้ว, {present} มีอยู่แล้ว",
+            "trash_restore_detail_folders_present_success": "[{provider}] กู้คืน {files} ไฟล์, {folders} โฟลเดอร์จากถังขยะแล้ว, {present} มีอยู่แล้ว"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "รายการยกเว้น",
             "templateLocal": "ในเครื่อง",
             "templateRemote": "ระยะไกล",
-            "templateRetries": "การลองใหม่"
+            "templateRetries": "การลองใหม่",
+            "rollbackRestoreLocalCount": "ในเครื่อง {count}",
+            "rollbackRestoreRemoteCount": "ระยะไกล {count}",
+            "rollbackRestoreSkippedCount": "ข้าม {count}",
+            "rollbackRestoreFailedCount": "ล้มเหลว {count}",
+            "rollbackRestoreCompleted": "กู้คืนเสร็จสมบูรณ์: {summary}",
+            "rollbackRestoreNothing": "ไม่มีอะไรให้กู้คืน",
+            "rollbackRestoreFailed": "กู้คืนไม่สำเร็จ: {error}"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "อนุญาตสำหรับเซสชันนี้",
                 "nonAtomicReplace": "การแทนที่แบบไม่อะตอมมิก: ไฟล์จะหายไปชั่วขณะ",
                 "moreOptions": "ตัวเลือกเพิ่มเติม",
-                "panelAria": "แผงอนุมัติเครื่องมือ"
+                "panelAria": "แผงอนุมัติเครื่องมือ",
+                "previewFailed": "การแสดงตัวอย่างล้มเหลว"
             },
             "settings": {
                 "title": "การตั้งค่า AI",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "รองรับเครื่องมือ",
                 "supportsVision": "รองรับการมองเห็น",
                 "thinkingReasoning": "การคิด/การให้เหตุผล",
-                "toolQuality": "คุณภาพเครื่องมือ: {quality}/5"
+                "toolQuality": "คุณภาพเครื่องมือ: {quality}/5",
+                "ollamaNotReachable": "ไม่สามารถเข้าถึง Ollama ได้"
             },
             "copy": "คัดลอก",
             "attachImage": "แนบรูปภาพ",
@@ -3423,7 +3526,8 @@
                     "title": "การวินิจฉัย",
                     "truncated": "รายการวินิจฉัยถูกตัดทอน",
                     "warningCountMany": "คำเตือน {count} รายการ",
-                    "warningCountOne": "คำเตือน {count} รายการ"
+                    "warningCountOne": "คำเตือน {count} รายการ",
+                    "noLocation": "(ไม่มีตำแหน่ง)"
                 },
                 "search": {
                     "none": "ไม่พบรายการที่ตรงกัน",
@@ -3522,7 +3626,15 @@
                 "destination": "ปลายทาง: {destination}",
                 "title": "ตรวจสอบแผนการถ่ายโอน",
                 "warnings": "คำเตือน"
-            }
+            },
+            "voiceNoAudio": "ไม่ได้บันทึกเสียง",
+            "voiceDownloadingModel": "กำลังดาวน์โหลดโมเดลเสียงภายในเครื่อง...",
+            "voiceNoSpeech": "ไม่พบเสียงพูด",
+            "voiceReady": "การป้อนข้อมูลด้วยเสียงพร้อมแล้ว",
+            "voiceReadyLanguage": "การป้อนข้อมูลด้วยเสียงพร้อมแล้ว ({language})",
+            "voiceTranscriptionFailed": "การถอดเสียงภายในเครื่องล้มเหลว",
+            "voiceListeningLocally": "กำลังฟังภายในเครื่อง...",
+            "voiceMicrophoneFailed": "ไม่สามารถเข้าถึงไมโครโฟน"
         },
         "archive": {
             "passwordRequired": "ไฟล์เก็บถาวรนี้มีรหัสผ่านป้องกัน",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator รูปแบบ 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "เนื้อหา AES-GCM",
             "featureNameCipher": "ชื่อ AES-SIV",
-            "formatVersion": "รูปแบบ {version}"
+            "formatVersion": "รูปแบบ {version}",
+            "invalidVaultName": "อักขระในชื่อห้องนิรภัยไม่ถูกต้อง"
         },
         "compress": {
             "title": "บีบอัดไฟล์",
@@ -4161,7 +4274,8 @@
             "total": "รวม",
             "across": "จาก",
             "empty": "ไดเรกทอรีนี้ว่างเปล่า",
-            "hoverHint": "วางเมาส์เหนือบล็อกเพื่อดูรายละเอียด"
+            "hoverHint": "วางเมาส์เหนือบล็อกเพื่อดูรายละเอียด",
+            "scanUnknownError": "ข้อผิดพลาดที่ไม่รู้จักขณะสแกนการใช้ดิสก์"
         },
         "dependencies": {
             "title": "ไลบรารีที่ใช้",
@@ -4575,7 +4689,8 @@
                 "unmute": "เปิดเสียง (M)"
             },
             "webgl": {
-                "notSupported": "ไม่รองรับ WebGL 2"
+                "notSupported": "ไม่รองรับ WebGL 2",
+                "contextLost": "บริบท WebGL สูญหาย"
             },
             "clickToViewDetails": "คลิกที่ไฟล์เพื่อดูรายละเอียด",
             "copyPath": "คัดลอกเส้นทาง",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "ความยาว (ไบต์)",
             "argon2DefaultsHint": "ค่าเริ่มต้น: โปรไฟล์ที่ AeroVault และ AeroCrypt ใช้ (128 MiB, 4 รอบ, 4 เลน, เอาต์พุต 32 ไบต์) ซอลต์ด้านบนเป็นของคุณ หน่วยความจำสูงสุด 2 GiB",
             "argon2Derive": "สร้าง",
-            "argon2Phc": "สตริง PHC"
+            "argon2Phc": "สตริง PHC",
+            "hashError": "ข้อผิดพลาด: {error}"
         },
         "dialog": {
             "deleteFile": "ลบ \"{name}\" หรือไม่?",
@@ -5301,7 +5417,14 @@
             "removeTag": "นำแท็กออก",
             "manageTags": "จัดการแท็ก",
             "deleteTagConfirm": "ลบแท็ก “{name}” หรือไม่ โน้ตจะยังคงข้อความไว้",
-            "betaBadge": "เบต้า"
+            "betaBadge": "เบต้า",
+            "noteTypes": {
+                "text": "ข้อความ",
+                "markdown": "Markdown",
+                "code": "โค้ด",
+                "richText": "ข้อความแบบจัดรูปแบบ",
+                "checklist": "รายการตรวจสอบ"
+            }
         },
         "shareLinkModal": {
             "title": "ลิงก์แชร์",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "เลือกโฟลเดอร์ปลายทาง",
             "passwordPrompt": "รายการนี้ถูกเข้ารหัส กรอกรหัสผ่านเพื่อแตกไฟล์",
             "showPassword": "แสดงรหัสผ่าน",
-            "hidePassword": "ซ่อนรหัสผ่าน"
+            "hidePassword": "ซ่อนรหัสผ่าน",
+            "missingPayload": "ไม่มีข้อมูลสำหรับแตกไฟล์"
         },
         "provider": {
             "modes": {

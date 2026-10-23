@@ -433,7 +433,10 @@
             "localFilesLabel": "本地文件",
             "localFilesRightLabel": "本地文件 (右侧面板)",
             "remoteFilesLabel": "远程文件",
-            "rightPanelMarker": "右侧面板"
+            "rightPanelMarker": "右侧面板",
+            "chooseRightPanelFolder": "选择右侧面板文件夹",
+            "chooseLeftPanelFolder": "选择左侧面板文件夹",
+            "localRight": "本地 (右)"
         },
         "contextMenu": {
             "askAeroAgent": "询问 AeroAgent...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "设为私有",
             "setAsPublic": "设为公开",
             "makeAllPrivate": "全部设为私有",
-            "dropboxRestoreLimit": "AeroFTP 可以还原可恢复的文件版本。请在 dropbox.com 的“已删除文件”中还原文件夹。问号表示 Dropbox 未能识别项目类型。"
+            "dropboxRestoreLimit": "AeroFTP 可以还原可恢复的文件版本。请在 dropbox.com 的“已删除文件”中还原文件夹。问号表示 Dropbox 未能识别项目类型。",
+            "openWithDefaultApp": "使用默认应用打开"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "云同步配置",
             "onePerLineHint": "(每行一个)",
             "pairsEditorLabel": "AeroCloud 配对编辑器",
-            "remoteSubfolderPlaceholder": "云"
+            "remoteSubfolderPlaceholder": "云",
+            "countdownSoon": "即将到来..."
         },
         "statusBar": {
             "connected": "已连接",
@@ -1682,7 +1687,8 @@
             "transferFailed": "传输失败",
             "navigationFailed": "导航失败：{error}",
             "transferComplete": "已复制 {count} 个文件",
-            "permissionsSessionChanged": "自打开此对话框以来连接已发生变化，因此未做任何更改。请在当前连接上重新打开“权限”。"
+            "permissionsSessionChanged": "自打开此对话框以来连接已发生变化，因此未做任何更改。请在当前连接上重新打开“权限”。",
+            "createFailed": "创建失败"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] 正在解锁文件夹 {filename}...",
             "site_replied": "{command}：服务器回复 {code}",
             "site_unknown": "{command}：没有完整回复，结果未知",
-            "site_not_sent": "{command} 未发送"
+            "site_not_sent": "{command} 未发送",
+            "b2_hidden_restore_success_one": "[{provider}] 已恢复 {count} 个隐藏文件",
+            "b2_hidden_restore_success_many": "[{provider}] 已恢复 {count} 个隐藏文件",
+            "b2_hidden_restore_error": "[{provider}] 恢复隐藏文件失败",
+            "b2_hidden_delete_success": "[{provider}] 已永久删除 {count} 个文件 (已清除 {versions} 个版本)",
+            "trash_restore_detail_success": "[{provider}] 已从回收站恢复 {files} 个文件",
+            "trash_empty_detail_success": "[{provider}] 已清空回收站 (已清除 {files} 个文件、{folders} 个文件夹)",
+            "trash_empty_objects_one": "[{provider}] 已清空回收站 ({count} 个对象)",
+            "trash_empty_objects_many": "[{provider}] 已清空回收站 ({count} 个对象)",
+            "trash_object_purge_success": "[{provider}] 已永久删除 {key}",
+            "trash_object_purge_error": "[{provider}] 永久删除 {key} 失败",
+            "trash_object_undelete_success": "[{provider}] 已撤销删除 {key}",
+            "trash_object_undelete_error": "[{provider}] 撤销删除 {key} 失败",
+            "trash_object_restore_success": "[{provider}] 已恢复 {key}",
+            "trash_object_restore_error": "[{provider}] 恢复 {key} 失败",
+            "opendrive_access_set": "[{provider}] 访问权限已设为 {level} ({count})",
+            "opendrive_access_partial": "[{provider}] 设置访问权限 {level}: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] 设置访问权限 {level} 失败",
+            "download_folder_success": "已在 {seconds} 秒内下载文件夹 {path}",
+            "skipped_file": "已跳过 {filename}",
+            "filelu_made_public": "[{provider}] 已将文件设为公开",
+            "filelu_make_public_error": "[{provider}] 将文件设为公开失败",
+            "filelu_made_private": "[{provider}] 已将文件设为私有",
+            "filelu_make_private_error": "[{provider}] 将文件设为私有失败",
+            "filelu_file_password_set": "[{provider}] 已设置文件密码",
+            "filelu_file_password_error": "[{provider}] 设置文件密码失败",
+            "filelu_folder_password_set": "[{provider}] 已设置文件夹密码",
+            "filelu_folder_password_error": "[{provider}] 设置文件夹密码失败",
+            "filelu_public_share_success": "[{provider}] 已将文件设为公开 + 共享",
+            "filelu_public_share_error": "[{provider}] 设为公开 + 共享失败",
+            "filelu_folder_settings_success": "[{provider}] 已更新文件夹设置",
+            "filelu_folder_settings_error": "[{provider}] 更新文件夹设置失败",
+            "set_private_success": "[{provider}] 已设为私有",
+            "set_private_error": "[{provider}] 设为私有失败",
+            "set_public_success": "[{provider}] 已设为公开",
+            "set_public_error": "[{provider}] 设为公开失败",
+            "bulk_private_success_one": "[{provider}] 已将 {count} 个条目设为私有",
+            "bulk_private_success_many": "[{provider}] 已将 {count} 个条目设为私有",
+            "bulk_private_partial": "[{provider}] 已将 {ok}/{total} 个条目设为私有",
+            "bulk_private_error": "[{provider}] 批量设为私有失败",
+            "box_watermark_set": "[{provider}] 已设置水印",
+            "box_watermark_set_error": "[{provider}] 设置水印失败",
+            "box_watermark_removed": "[{provider}] 已移除水印",
+            "box_watermark_remove_error": "[{provider}] 移除水印失败",
+            "box_folder_locked": "[{provider}] 已锁定文件夹",
+            "box_folder_lock_error": "[{provider}] 锁定文件夹失败",
+            "box_folder_unlocked": "[{provider}] 已解锁文件夹",
+            "box_folder_not_locked": "[{provider}] 文件夹未锁定",
+            "box_folder_unlock_error": "[{provider}] 解锁文件夹失败",
+            "gdrive_starred": "[{provider}] 已为文件加星标",
+            "gdrive_unstarred": "[{provider}] 已取消文件星标",
+            "gdrive_star_error": "[{provider}] 加星标失败",
+            "gdrive_unstar_error": "[{provider}] 取消星标失败",
+            "extract_success": "已解压 {filename}",
+            "extract_success_to": "已解压 {filename} → {dest}",
+            "extract_error": "解压失败：{error}",
+            "zoho_document_created": "[{provider}] 已创建 {type} 文档",
+            "zoho_document_create_error": "[{provider}] 创建 {type} 文档失败",
+            "note_saved": "[{provider}] 已保存笔记“{title}”",
+            "note_save_error": "[{provider}] 保存笔记失败",
+            "note_created": "[{provider}] 已创建笔记“{title}”",
+            "note_create_error": "[{provider}] 创建笔记失败",
+            "note_favorited": "[{provider}] 已收藏笔记“{title}”",
+            "note_unfavorited": "[{provider}] 已取消收藏笔记“{title}”",
+            "note_favorite_error": "[{provider}] 切换收藏失败",
+            "note_pinned": "[{provider}] 已置顶笔记“{title}”",
+            "note_unpinned": "[{provider}] 已取消置顶笔记“{title}”",
+            "note_pin_error": "[{provider}] 切换置顶失败",
+            "note_trashed": "[{provider}] 已将笔记“{title}”移至回收站",
+            "note_trash_error": "[{provider}] 将笔记移至回收站失败",
+            "note_restored": "[{provider}] 已恢复笔记“{title}”",
+            "note_restore_error": "[{provider}] 恢复笔记失败",
+            "note_deleted": "[{provider}] 已永久删除笔记“{title}”",
+            "note_delete_error": "[{provider}] 永久删除笔记失败",
+            "note_archived": "[{provider}] 已归档笔记“{title}”",
+            "note_archive_error": "[{provider}] 归档笔记失败",
+            "note_version_restored": "[{provider}] 已恢复笔记版本",
+            "note_version_restore_error": "[{provider}] 恢复笔记版本失败",
+            "github_pages_config_updated": "[{provider}] 已更新 Pages 配置",
+            "github_pages_config_error": "[{provider}] 更新 Pages 配置失败",
+            "opendrive_set_access": "[{provider}] 正在设置 {filename} 的访问权限...",
+            "gdrive_star": "[{provider}] 正在为 {filename} 加星标...",
+            "gdrive_unstar": "[{provider}] 正在取消 {filename} 的星标...",
+            "extract_start": "正在解压 {filename}...",
+            "extract_start_to": "正在解压 {filename} → {dest}...",
+            "compress_start": "正在压缩到 {archive}...",
+            "trash_restore_detail_folders_success": "[{provider}] 已从回收站恢复 {files} 个文件、{folders} 个文件夹",
+            "trash_restore_detail_present_success": "[{provider}] 已从回收站恢复 {files} 个文件，{present} 个已存在",
+            "trash_restore_detail_folders_present_success": "[{provider}] 已从回收站恢复 {files} 个文件、{folders} 个文件夹，{present} 个已存在"
         },
         "protocol": {
             "selectProtocol": "选择协议...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "排除项",
             "templateLocal": "本地",
             "templateRemote": "远程",
-            "templateRetries": "重试次数"
+            "templateRetries": "重试次数",
+            "rollbackRestoreLocalCount": "本地 {count}",
+            "rollbackRestoreRemoteCount": "远程 {count}",
+            "rollbackRestoreSkippedCount": "已跳过 {count}",
+            "rollbackRestoreFailedCount": "失败 {count}",
+            "rollbackRestoreCompleted": "恢复完成: {summary}",
+            "rollbackRestoreNothing": "没有需要恢复的内容",
+            "rollbackRestoreFailed": "恢复失败：{error}"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "允许本次会话",
                 "nonAtomicReplace": "非原子替换：文件会短暂消失",
                 "moreOptions": "更多选项",
-                "panelAria": "工具审批面板"
+                "panelAria": "工具审批面板",
+                "previewFailed": "预览失败"
             },
             "settings": {
                 "title": "AI 设置",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "支持工具",
                 "supportsVision": "支持视觉",
                 "thinkingReasoning": "思考/推理",
-                "toolQuality": "工具质量：{quality}/5"
+                "toolQuality": "工具质量：{quality}/5",
+                "ollamaNotReachable": "无法连接 Ollama"
             },
             "copy": "复制",
             "attachImage": "附加图片",
@@ -3423,7 +3526,8 @@
                     "title": "诊断",
                     "truncated": "诊断列表已被截断。",
                     "warningCountMany": "{count} 个警告",
-                    "warningCountOne": "{count} 个警告"
+                    "warningCountOne": "{count} 个警告",
+                    "noLocation": "（无位置）"
                 },
                 "search": {
                     "none": "未找到匹配项。",
@@ -3522,7 +3626,15 @@
                 "destination": "目标：{destination}",
                 "title": "传输计划审查",
                 "warnings": "警告"
-            }
+            },
+            "voiceNoAudio": "未捕获到音频。",
+            "voiceDownloadingModel": "正在下载本地语音模型...",
+            "voiceNoSpeech": "未检测到语音。",
+            "voiceReady": "语音输入已就绪。",
+            "voiceReadyLanguage": "语音输入已就绪（{language}）。",
+            "voiceTranscriptionFailed": "本地转录失败。",
+            "voiceListeningLocally": "正在本地监听...",
+            "voiceMicrophoneFailed": "无法访问麦克风。"
         },
         "archive": {
             "passwordRequired": "此压缩包受密码保护",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator 格式 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM 内容",
             "featureNameCipher": "AES-SIV 名称",
-            "formatVersion": "格式 {version}"
+            "formatVersion": "格式 {version}",
+            "invalidVaultName": "保险库名称中包含无效字符"
         },
         "compress": {
             "title": "压缩文件",
@@ -4161,7 +4274,8 @@
             "total": "总计",
             "across": "包含",
             "empty": "此目录为空",
-            "hoverHint": "将鼠标悬停在方块上查看详情"
+            "hoverHint": "将鼠标悬停在方块上查看详情",
+            "scanUnknownError": "扫描磁盘使用情况时出现未知错误"
         },
         "dependencies": {
             "title": "依赖项",
@@ -4575,7 +4689,8 @@
                 "unmute": "取消静音 (M)"
             },
             "webgl": {
-                "notSupported": "不支持 WebGL 2"
+                "notSupported": "不支持 WebGL 2",
+                "contextLost": "WebGL 上下文丢失"
             },
             "clickToViewDetails": "点击文件查看详细信息",
             "copyPath": "复制路径",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "长度（字节）",
             "argon2DefaultsHint": "默认值：AeroVault 和 AeroCrypt 使用的配置（128 MiB、4 次迭代、4 条通道、32 字节输出）。上方的盐值是你的。内存最高 2 GiB。",
             "argon2Derive": "派生",
-            "argon2Phc": "PHC 字符串"
+            "argon2Phc": "PHC 字符串",
+            "hashError": "错误：{error}"
         },
         "dialog": {
             "deleteFile": "删除\"{name}\"？",
@@ -5301,7 +5417,14 @@
             "removeTag": "移除标签",
             "manageTags": "管理标签",
             "deleteTagConfirm": "删除标签“{name}”？笔记会保留其文本。",
-            "betaBadge": "测试版"
+            "betaBadge": "测试版",
+            "noteTypes": {
+                "text": "文本",
+                "markdown": "Markdown",
+                "code": "代码",
+                "richText": "富文本",
+                "checklist": "清单"
+            }
         },
         "shareLinkModal": {
             "title": "共享链接",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "选择目标文件夹",
             "passwordPrompt": "此项目已加密。请输入密码以解压。",
             "showPassword": "显示密码",
-            "hidePassword": "隐藏密码"
+            "hidePassword": "隐藏密码",
+            "missingPayload": "缺少解压数据"
         },
         "provider": {
             "modes": {

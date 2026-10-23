@@ -433,7 +433,10 @@
             "localFilesLabel": "Fitxategi lokalak",
             "localFilesRightLabel": "Fitxategi lokalak (eskuineko panela)",
             "remoteFilesLabel": "Urruneko fitxategiak",
-            "rightPanelMarker": "Eskuineko panela"
+            "rightPanelMarker": "Eskuineko panela",
+            "chooseRightPanelFolder": "Aukeratu eskuineko paneleko karpeta",
+            "chooseLeftPanelFolder": "Aukeratu ezkerreko paneleko karpeta",
+            "localRight": "Lokala (eskuina)"
         },
         "contextMenu": {
             "askAeroAgent": "Galdetu AeroAgent-i...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "Ezarri pribatu gisa",
             "setAsPublic": "Ezarri publiko gisa",
             "makeAllPrivate": "Egin denak pribatu",
-            "dropboxRestoreLimit": "AeroFTP-k fitxategien bertsio berreskuragarriak lehenera ditzake. Berreskuratu karpetak dropbox.com-eko Ezabatutako fitxategiak ataletik. Galdera-markak esan nahi du Dropbox-ek ez duela elementu mota identifikatu."
+            "dropboxRestoreLimit": "AeroFTP-k fitxategien bertsio berreskuragarriak lehenera ditzake. Berreskuratu karpetak dropbox.com-eko Ezabatutako fitxategiak ataletik. Galdera-markak esan nahi du Dropbox-ek ez duela elementu mota identifikatu.",
+            "openWithDefaultApp": "Ireki aplikazio lehenetsiarekin"
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "Hodeiko sinkronizazioaren konfigurazioa",
             "onePerLineHint": "(bat lerro bakoitzeko)",
             "pairsEditorLabel": "AeroCloud bikoteen editorea",
-            "remoteSubfolderPlaceholder": "hodeia"
+            "remoteSubfolderPlaceholder": "hodeia",
+            "countdownSoon": "Laster..."
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -1682,7 +1687,8 @@
             "transferFailed": "Transferentziak huts egin du",
             "navigationFailed": "Nabigazioak huts egin du: {error}",
             "transferComplete": "{count} fitxategi kopiatu dira",
-            "permissionsSessionChanged": "Elkarrizketa-koadroa ireki zenetik konexioa aldatu da, beraz, ez da ezer aldatu. Ireki Baimenak berriro uneko konexioan."
+            "permissionsSessionChanged": "Elkarrizketa-koadroa ireki zenetik konexioa aldatu da, beraz, ez da ezer aldatu. Ireki Baimenak berriro uneko konexioan.",
+            "createFailed": "Sorrerak huts egin du"
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] {filename} karpeta desblokeatzen...",
             "site_replied": "{command}: zerbitzariak {code} erantzun du",
             "site_unknown": "{command}: erantzun osorik ez, emaitza ezezaguna",
-            "site_not_sent": "{command} ez da bidali"
+            "site_not_sent": "{command} ez da bidali",
+            "b2_hidden_restore_success_one": "[{provider}] Ezkutuko {count} fitxategi leheneratu da",
+            "b2_hidden_restore_success_many": "[{provider}] Ezkutuko {count} fitxategi leheneratu dira",
+            "b2_hidden_restore_error": "[{provider}] Ezin izan dira ezkutuko fitxategiak leheneratu",
+            "b2_hidden_delete_success": "[{provider}] {count} fitxategi betiko ezabatu dira ({versions} bertsio garbitu dira)",
+            "trash_restore_detail_success": "[{provider}] {files} fitxategi leheneratu dira zakarrontzitik",
+            "trash_empty_detail_success": "[{provider}] Zakarrontzia hustu da ({files} fitxategi, {folders} karpeta garbitu dira)",
+            "trash_empty_objects_one": "[{provider}] Zakarrontzia hustu da ({count} objektu)",
+            "trash_empty_objects_many": "[{provider}] Zakarrontzia hustu da ({count} objektu)",
+            "trash_object_purge_success": "[{provider}] {key} betiko ezabatu da",
+            "trash_object_purge_error": "[{provider}] Ezin izan da {key} betiko ezabatu",
+            "trash_object_undelete_success": "[{provider}] {key} ezabatzea desegin da",
+            "trash_object_undelete_error": "[{provider}] Ezin izan da {key} ezabatzea desegin",
+            "trash_object_restore_success": "[{provider}] {key} leheneratu da",
+            "trash_object_restore_error": "[{provider}] Ezin izan da {key} leheneratu",
+            "opendrive_access_set": "[{provider}] Sarbidea {level} gisa ezarri da ({count})",
+            "opendrive_access_partial": "[{provider}] {level} sarbidea ezartzea: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] Ezin izan da {level} sarbidea ezarri",
+            "download_folder_success": "{path} karpeta {seconds} segundotan deskargatu da",
+            "skipped_file": "{filename} saltatu da",
+            "filelu_made_public": "[{provider}] Fitxategia publiko egin da",
+            "filelu_make_public_error": "[{provider}] Ezin izan da fitxategia publiko egin",
+            "filelu_made_private": "[{provider}] Fitxategia pribatu egin da",
+            "filelu_make_private_error": "[{provider}] Ezin izan da fitxategia pribatu egin",
+            "filelu_file_password_set": "[{provider}] Fitxategiaren pasahitza ezarri da",
+            "filelu_file_password_error": "[{provider}] Ezin izan da fitxategiaren pasahitza ezarri",
+            "filelu_folder_password_set": "[{provider}] Karpetaren pasahitza ezarri da",
+            "filelu_folder_password_error": "[{provider}] Ezin izan da karpetaren pasahitza ezarri",
+            "filelu_public_share_success": "[{provider}] Fitxategia publiko egin da + partekatu da",
+            "filelu_public_share_error": "[{provider}] Ezin izan da publiko egin + partekatu",
+            "filelu_folder_settings_success": "[{provider}] Karpetaren ezarpenak eguneratu dira",
+            "filelu_folder_settings_error": "[{provider}] Ezin izan dira karpetaren ezarpenak eguneratu",
+            "set_private_success": "[{provider}] Pribatu gisa ezarri da",
+            "set_private_error": "[{provider}] Ezin izan da pribatu gisa ezarri",
+            "set_public_success": "[{provider}] Publiko gisa ezarri da",
+            "set_public_error": "[{provider}] Ezin izan da publiko gisa ezarri",
+            "bulk_private_success_one": "[{provider}] {count} elementu pribatu gisa ezarri da",
+            "bulk_private_success_many": "[{provider}] {count} elementu pribatu gisa ezarri dira",
+            "bulk_private_partial": "[{provider}] {ok}/{total} elementu pribatu gisa ezarri dira",
+            "bulk_private_error": "[{provider}] Ezin izan da multzoka pribatu gisa ezarri",
+            "box_watermark_set": "[{provider}] Ur-marka ezarri da",
+            "box_watermark_set_error": "[{provider}] Ezin izan da ur-marka ezarri",
+            "box_watermark_removed": "[{provider}] Ur-marka kendu da",
+            "box_watermark_remove_error": "[{provider}] Ezin izan da ur-marka kendu",
+            "box_folder_locked": "[{provider}] Karpeta blokeatu da",
+            "box_folder_lock_error": "[{provider}] Ezin izan da karpeta blokeatu",
+            "box_folder_unlocked": "[{provider}] Karpeta desblokeatu da",
+            "box_folder_not_locked": "[{provider}] Karpeta ez zegoen blokeatuta",
+            "box_folder_unlock_error": "[{provider}] Ezin izan da karpeta desblokeatu",
+            "gdrive_starred": "[{provider}] Fitxategia izarrez markatu da",
+            "gdrive_unstarred": "[{provider}] Izarra kendu zaio fitxategiari",
+            "gdrive_star_error": "[{provider}] Izarrarekin markatzeak huts egin du",
+            "gdrive_unstar_error": "[{provider}] Izarra kentzeak huts egin du",
+            "extract_success": "{filename} erauzita",
+            "extract_success_to": "{filename} erauzita → {dest}",
+            "extract_error": "Erauzketak huts egin du: {error}",
+            "zoho_document_created": "[{provider}] {type} dokumentua sortuta",
+            "zoho_document_create_error": "[{provider}] {type} dokumentua sortzeak huts egin du",
+            "note_saved": "[{provider}] \"{title}\" oharra gordeta",
+            "note_save_error": "[{provider}] Ezin izan da oharra gorde",
+            "note_created": "[{provider}] \"{title}\" oharra sortuta",
+            "note_create_error": "[{provider}] Ezin izan da oharra sortu",
+            "note_favorited": "[{provider}] \"{title}\" oharra gogokoetara gehituta",
+            "note_unfavorited": "[{provider}] \"{title}\" oharra gogokoetatik kenduta",
+            "note_favorite_error": "[{provider}] Ezin izan da gogokoa aldatu",
+            "note_pinned": "[{provider}] \"{title}\" oharra ainguratuta",
+            "note_unpinned": "[{provider}] \"{title}\" oharraren aingura kenduta",
+            "note_pin_error": "[{provider}] Ezin izan da aingura aldatu",
+            "note_trashed": "[{provider}] \"{title}\" oharra zakarrontzira eramanda",
+            "note_trash_error": "[{provider}] Ezin izan da oharra zakarrontzira eraman",
+            "note_restored": "[{provider}] \"{title}\" oharra leheneratuta",
+            "note_restore_error": "[{provider}] Ezin izan da oharra leheneratu",
+            "note_deleted": "[{provider}] \"{title}\" oharra betiko ezabatuta",
+            "note_delete_error": "[{provider}] Ezin izan da oharra betiko ezabatu",
+            "note_archived": "[{provider}] \"{title}\" oharra artxibatuta",
+            "note_archive_error": "[{provider}] Ezin izan da oharra artxibatu",
+            "note_version_restored": "[{provider}] Oharraren bertsioa leheneratu da",
+            "note_version_restore_error": "[{provider}] Ezin izan da oharraren bertsioa leheneratu",
+            "github_pages_config_updated": "[{provider}] Pages konfigurazioa eguneratu da",
+            "github_pages_config_error": "[{provider}] Ezin izan da Pages konfigurazioa eguneratu",
+            "opendrive_set_access": "[{provider}] {filename}(r)en sarbidea ezartzen...",
+            "gdrive_star": "[{provider}] {filename} izarrarekin markatzen...",
+            "gdrive_unstar": "[{provider}] {filename}(r)i izarra kentzen...",
+            "extract_start": "{filename} erauzten...",
+            "extract_start_to": "{filename} erauzten → {dest}...",
+            "compress_start": "{archive}(e)n konprimatzen...",
+            "trash_restore_detail_folders_success": "[{provider}] {files} fitxategi, {folders} karpeta leheneratu dira zakarrontzitik",
+            "trash_restore_detail_present_success": "[{provider}] {files} fitxategi leheneratu dira zakarrontzitik, {present} lehendik zeuden",
+            "trash_restore_detail_folders_present_success": "[{provider}] {files} fitxategi, {folders} karpeta leheneratu dira zakarrontzitik, {present} lehendik zeuden"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "Baztertzeak",
             "templateLocal": "Lokala",
             "templateRemote": "Urrunekoa",
-            "templateRetries": "Saiakerak"
+            "templateRetries": "Saiakerak",
+            "rollbackRestoreLocalCount": "lokalak {count}",
+            "rollbackRestoreRemoteCount": "urrunekoak {count}",
+            "rollbackRestoreSkippedCount": "saltatuak {count}",
+            "rollbackRestoreFailedCount": "huts eginak {count}",
+            "rollbackRestoreCompleted": "Leheneratzea osatuta: {summary}",
+            "rollbackRestoreNothing": "Ez dago ezer leheneratzeko",
+            "rollbackRestoreFailed": "Leheneratzeak huts egin du: {error}"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -2673,7 +2774,8 @@
                 "allowSession": "Baimendu saio honetarako",
                 "nonAtomicReplace": "Ordezkapen ez-atomikoa: fitxategia labur batez falta da",
                 "moreOptions": "Aukera gehiago",
-                "panelAria": "Tresnen onarpen-panela"
+                "panelAria": "Tresnen onarpen-panela",
+                "previewFailed": "Aurrebistak huts egin du"
             },
             "settings": {
                 "title": "AI Ezarpenak",
@@ -2835,7 +2937,8 @@
                 "supportsTools": "Tresnak onartzen ditu",
                 "supportsVision": "Ikusmena onartzen du",
                 "thinkingReasoning": "Pentsamendua/Arrazoiketa",
-                "toolQuality": "Tresnen kalitatea: {quality}/5"
+                "toolQuality": "Tresnen kalitatea: {quality}/5",
+                "ollamaNotReachable": "Ollama ez dago eskuragarri"
             },
             "rag": {
                 "indexing": "Fitxategiak indexatzen...",
@@ -3423,7 +3526,8 @@
                     "title": "Diagnostikoak",
                     "truncated": "Diagnostikoen zerrenda moztu egin da.",
                     "warningCountMany": "{count} abisu",
-                    "warningCountOne": "{count} abisu"
+                    "warningCountOne": "{count} abisu",
+                    "noLocation": "(kokapenik ez)"
                 },
                 "search": {
                     "none": "Ez da bat-etortzerik aurkitu.",
@@ -3522,7 +3626,15 @@
                 "destination": "Helmuga: {destination}",
                 "title": "Transferentzia-planaren berrikuspena",
                 "warnings": "Abisuak"
-            }
+            },
+            "voiceNoAudio": "Ez da audiorik grabatu.",
+            "voiceDownloadingModel": "Ahots-eredu lokala deskargatzen...",
+            "voiceNoSpeech": "Ez da hizketarik detektatu.",
+            "voiceReady": "Ahots-sarrera prest.",
+            "voiceReadyLanguage": "Ahots-sarrera prest ({language}).",
+            "voiceTranscriptionFailed": "Transkripzio lokalak huts egin du.",
+            "voiceListeningLocally": "Lokalki entzuten...",
+            "voiceMicrophoneFailed": "Ezin da mikrofonoa atzitu."
         },
         "archive": {
             "passwordRequired": "Artxibo hau pasahitzarekin babestuta dago",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator 8. formatua: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM edukia",
             "featureNameCipher": "AES-SIV izenak",
-            "formatVersion": "{version}. formatua"
+            "formatVersion": "{version}. formatua",
+            "invalidVaultName": "Karaktere baliogabeak gordailuaren izenean"
         },
         "compress": {
             "title": "Konprimitu fitxategiak",
@@ -4161,7 +4274,8 @@
             "hoverHint": "Pasa sagua gainetik xehetasunak ikusteko",
             "scanFailed": "Eskaneatzeak huts egin du",
             "retry": "Saiatu berriro",
-            "drillDown": "Klikatu arakatzeko"
+            "drillDown": "Klikatu arakatzeko",
+            "scanUnknownError": "Errore ezezaguna diskoaren erabilera eskaneatzean"
         },
         "dependencies": {
             "title": "Mendekotasunak",
@@ -4575,7 +4689,8 @@
                 "unmute": "Desmututu (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2 ez da onartzen"
+                "notSupported": "WebGL 2 ez da onartzen",
+                "contextLost": "WebGL testuingurua galdu da"
             },
             "clickToViewDetails": "Sakatu fitxategi bat bere xehetasunak ikusteko",
             "copyPath": "Kopiatu bidea",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "Luzera (byte)",
             "argon2DefaultsHint": "Balio lehenetsiak: AeroVault eta AeroCrypt erabiltzen duten profila (128 MiB, 4 iterazio, 4 errei, 32 byteko irteera). Goiko gatza zurea da. Memoria 2 GiB arte.",
             "argon2Derive": "Eratorri",
-            "argon2Phc": "PHC katea"
+            "argon2Phc": "PHC katea",
+            "hashError": "Errorea: {error}"
         },
         "dialog": {
             "deleteFile": "\"{name}\" ezabatu?",
@@ -5320,7 +5436,14 @@
             "removeTag": "Kendu etiketa",
             "manageTags": "Kudeatu etiketak",
             "deleteTagConfirm": "«{name}» etiketa ezabatu? Oharrek testua mantentzen dute.",
-            "betaBadge": "BETA"
+            "betaBadge": "BETA",
+            "noteTypes": {
+                "text": "Testua",
+                "markdown": "Markdown",
+                "code": "Kodea",
+                "richText": "Testu aberatsa",
+                "checklist": "Egiaztapen-zerrenda"
+            }
         },
         "shareLinkModal": {
             "title": "Partekatzeko esteka",
@@ -6620,7 +6743,8 @@
             "chooseFolder": "Aukeratu helburuko karpeta",
             "passwordPrompt": "Elementu hau zifratuta dago. Sartu pasahitza erauzteko.",
             "showPassword": "Erakutsi pasahitza",
-            "hidePassword": "Ezkutatu pasahitza"
+            "hidePassword": "Ezkutatu pasahitza",
+            "missingPayload": "Erauzteko datuak falta dira"
         },
         "provider": {
             "modes": {

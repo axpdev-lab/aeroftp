@@ -73,11 +73,11 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
     setActionLoading('restore');
     try {
       await invoke('google_drive_restore_from_trash', { fileIds });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Google Drive] Restored ${fileIds.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Google Drive', count: fileIds.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Google Drive] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Google Drive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -100,11 +100,11 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
     setActionLoading('delete');
     try {
       await invoke('google_drive_permanent_delete', { fileIds });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Google Drive] Permanently deleted ${fileIds.length} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Google Drive', count: fileIds.length }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Google Drive] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Google Drive' }) });
       setError(String(err));
     } finally {
       setActionLoading(null);

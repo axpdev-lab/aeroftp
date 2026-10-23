@@ -433,7 +433,10 @@
             "localFilesLabel": "로컬 파일",
             "localFilesRightLabel": "로컬 파일 (오른쪽 패널)",
             "remoteFilesLabel": "원격 파일",
-            "rightPanelMarker": "오른쪽 패널"
+            "rightPanelMarker": "오른쪽 패널",
+            "chooseRightPanelFolder": "오른쪽 패널 폴더 선택",
+            "chooseLeftPanelFolder": "왼쪽 패널 폴더 선택",
+            "localRight": "로컬 (오른쪽)"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent에게 질문...",
@@ -567,7 +570,8 @@
             "setAsPrivate": "비공개로 설정",
             "setAsPublic": "공개로 설정",
             "makeAllPrivate": "모두 비공개로 설정",
-            "dropboxRestoreLimit": "AeroFTP는 복구 가능한 파일 버전을 복원할 수 있습니다. 폴더는 dropbox.com의 삭제된 파일에서 복원하세요. 물음표는 Dropbox가 항목 유형을 식별하지 못했음을 의미합니다."
+            "dropboxRestoreLimit": "AeroFTP는 복구 가능한 파일 버전을 복원할 수 있습니다. 폴더는 dropbox.com의 삭제된 파일에서 복원하세요. 물음표는 Dropbox가 항목 유형을 식별하지 못했음을 의미합니다.",
+            "openWithDefaultApp": "기본 앱으로 열기"
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -1530,7 +1534,8 @@
             "dialogSetupLabel": "클라우드 동기화 구성",
             "onePerLineHint": "(한 줄에 하나씩)",
             "pairsEditorLabel": "AeroCloud 페어 편집기",
-            "remoteSubfolderPlaceholder": "클라우드"
+            "remoteSubfolderPlaceholder": "클라우드",
+            "countdownSoon": "곧..."
         },
         "statusBar": {
             "connected": "연결됨",
@@ -1682,7 +1687,8 @@
             "transferFailed": "전송 실패",
             "navigationFailed": "이동 실패: {error}",
             "transferComplete": "{count}개 파일을 복사했습니다",
-            "permissionsSessionChanged": "이 대화상자를 연 이후 연결이 변경되어 아무것도 변경되지 않았습니다. 현재 연결에서 권한을 다시 여세요."
+            "permissionsSessionChanged": "이 대화상자를 연 이후 연결이 변경되어 아무것도 변경되지 않았습니다. 현재 연결에서 권한을 다시 여세요.",
+            "createFailed": "생성 실패"
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
@@ -1891,7 +1897,95 @@
             "box_unlock_folder": "[Box] {filename} 폴더 잠금 해제 중...",
             "site_replied": "{command}: 서버가 {code} 응답을 보냈습니다",
             "site_unknown": "{command}: 완전한 응답 없음, 결과를 알 수 없습니다",
-            "site_not_sent": "{command}: 전송되지 않았습니다"
+            "site_not_sent": "{command}: 전송되지 않았습니다",
+            "b2_hidden_restore_success_one": "[{provider}] 숨김 파일 {count}개를 복원했습니다",
+            "b2_hidden_restore_success_many": "[{provider}] 숨김 파일 {count}개를 복원했습니다",
+            "b2_hidden_restore_error": "[{provider}] 숨김 파일 복원 실패",
+            "b2_hidden_delete_success": "[{provider}] 파일 {count}개를 영구 삭제했습니다 (버전 {versions}개 제거)",
+            "trash_restore_detail_success": "[{provider}] 휴지통에서 파일 {files}개를 복원했습니다",
+            "trash_empty_detail_success": "[{provider}] 휴지통을 비웠습니다 (파일 {files}개, 폴더 {folders}개 제거)",
+            "trash_empty_objects_one": "[{provider}] 휴지통을 비웠습니다 (객체 {count}개)",
+            "trash_empty_objects_many": "[{provider}] 휴지통을 비웠습니다 (객체 {count}개)",
+            "trash_object_purge_success": "[{provider}] {key}을(를) 영구 삭제했습니다",
+            "trash_object_purge_error": "[{provider}] {key} 영구 삭제 실패",
+            "trash_object_undelete_success": "[{provider}] {key} 삭제를 취소했습니다",
+            "trash_object_undelete_error": "[{provider}] {key} 삭제 취소 실패",
+            "trash_object_restore_success": "[{provider}] {key}을(를) 복원했습니다",
+            "trash_object_restore_error": "[{provider}] {key} 복원 실패",
+            "opendrive_access_set": "[{provider}] 액세스를 {level}(으)로 설정했습니다 ({count})",
+            "opendrive_access_partial": "[{provider}] 액세스 {level} 설정: {ok}/{total}",
+            "opendrive_access_error": "[{provider}] 액세스 {level} 설정 실패",
+            "download_folder_success": "폴더 {path}을(를) {seconds}초 만에 다운로드했습니다",
+            "skipped_file": "{filename} 건너뜀",
+            "filelu_made_public": "[{provider}] 파일을 공개로 설정했습니다",
+            "filelu_make_public_error": "[{provider}] 파일 공개 설정 실패",
+            "filelu_made_private": "[{provider}] 파일을 비공개로 설정했습니다",
+            "filelu_make_private_error": "[{provider}] 파일 비공개 설정 실패",
+            "filelu_file_password_set": "[{provider}] 파일 비밀번호를 설정했습니다",
+            "filelu_file_password_error": "[{provider}] 파일 비밀번호 설정 실패",
+            "filelu_folder_password_set": "[{provider}] 폴더 비밀번호를 설정했습니다",
+            "filelu_folder_password_error": "[{provider}] 폴더 비밀번호 설정 실패",
+            "filelu_public_share_success": "[{provider}] 파일을 공개 + 공유했습니다",
+            "filelu_public_share_error": "[{provider}] 공개 + 공유 실패",
+            "filelu_folder_settings_success": "[{provider}] 폴더 설정을 업데이트했습니다",
+            "filelu_folder_settings_error": "[{provider}] 폴더 설정 업데이트 실패",
+            "set_private_success": "[{provider}] 비공개로 설정했습니다",
+            "set_private_error": "[{provider}] 비공개 설정 실패",
+            "set_public_success": "[{provider}] 공개로 설정했습니다",
+            "set_public_error": "[{provider}] 공개 설정 실패",
+            "bulk_private_success_one": "[{provider}] 항목 {count}개를 비공개로 설정했습니다",
+            "bulk_private_success_many": "[{provider}] 항목 {count}개를 비공개로 설정했습니다",
+            "bulk_private_partial": "[{provider}] 항목 {ok}/{total}개를 비공개로 설정했습니다",
+            "bulk_private_error": "[{provider}] 일괄 비공개 설정 실패",
+            "box_watermark_set": "[{provider}] 워터마크를 설정했습니다",
+            "box_watermark_set_error": "[{provider}] 워터마크 설정 실패",
+            "box_watermark_removed": "[{provider}] 워터마크를 제거했습니다",
+            "box_watermark_remove_error": "[{provider}] 워터마크 제거 실패",
+            "box_folder_locked": "[{provider}] 폴더를 잠갔습니다",
+            "box_folder_lock_error": "[{provider}] 폴더 잠금 실패",
+            "box_folder_unlocked": "[{provider}] 폴더 잠금을 해제했습니다",
+            "box_folder_not_locked": "[{provider}] 폴더가 잠겨 있지 않았습니다",
+            "box_folder_unlock_error": "[{provider}] 폴더 잠금 해제 실패",
+            "gdrive_starred": "[{provider}] 파일에 별표를 표시했습니다",
+            "gdrive_unstarred": "[{provider}] 파일의 별표를 해제했습니다",
+            "gdrive_star_error": "[{provider}] 별표 추가 실패",
+            "gdrive_unstar_error": "[{provider}] 별표 해제 실패",
+            "extract_success": "{filename} 압축 해제됨",
+            "extract_success_to": "{filename} 압축 해제됨 → {dest}",
+            "extract_error": "압축 해제 실패: {error}",
+            "zoho_document_created": "[{provider}] {type} 문서 생성됨",
+            "zoho_document_create_error": "[{provider}] {type} 문서 생성 실패",
+            "note_saved": "[{provider}] 노트 \"{title}\" 저장됨",
+            "note_save_error": "[{provider}] 노트 저장 실패",
+            "note_created": "[{provider}] 노트 \"{title}\" 생성됨",
+            "note_create_error": "[{provider}] 노트 생성 실패",
+            "note_favorited": "[{provider}] 노트 \"{title}\" 즐겨찾기에 추가됨",
+            "note_unfavorited": "[{provider}] 노트 \"{title}\" 즐겨찾기에서 제거됨",
+            "note_favorite_error": "[{provider}] 즐겨찾기 전환 실패",
+            "note_pinned": "[{provider}] 노트 \"{title}\" 고정됨",
+            "note_unpinned": "[{provider}] 노트 \"{title}\" 고정 해제됨",
+            "note_pin_error": "[{provider}] 고정 전환 실패",
+            "note_trashed": "[{provider}] 노트 \"{title}\" 휴지통으로 이동됨",
+            "note_trash_error": "[{provider}] 노트를 휴지통으로 이동하지 못함",
+            "note_restored": "[{provider}] 노트 \"{title}\" 복원됨",
+            "note_restore_error": "[{provider}] 노트 복원 실패",
+            "note_deleted": "[{provider}] 노트 \"{title}\" 영구 삭제됨",
+            "note_delete_error": "[{provider}] 노트 영구 삭제 실패",
+            "note_archived": "[{provider}] 노트 \"{title}\" 보관됨",
+            "note_archive_error": "[{provider}] 노트 보관 실패",
+            "note_version_restored": "[{provider}] 노트 버전을 복원했습니다",
+            "note_version_restore_error": "[{provider}] 노트 버전을 복원하지 못했습니다",
+            "github_pages_config_updated": "[{provider}] Pages 구성을 업데이트했습니다",
+            "github_pages_config_error": "[{provider}] Pages 구성을 업데이트하지 못했습니다",
+            "opendrive_set_access": "[{provider}] {filename}의 액세스 설정 중...",
+            "gdrive_star": "[{provider}] {filename}에 별표 추가 중...",
+            "gdrive_unstar": "[{provider}] {filename}의 별표 제거 중...",
+            "extract_start": "{filename} 압축 해제 중...",
+            "extract_start_to": "{filename} 압축 해제 중 → {dest}...",
+            "compress_start": "{archive}(으)로 압축 중...",
+            "trash_restore_detail_folders_success": "[{provider}] 휴지통에서 파일 {files}개, 폴더 {folders}개 복원됨",
+            "trash_restore_detail_present_success": "[{provider}] 휴지통에서 파일 {files}개 복원됨, {present}개는 이미 있음",
+            "trash_restore_detail_folders_present_success": "[{provider}] 휴지통에서 파일 {files}개, 폴더 {folders}개 복원됨, {present}개는 이미 있음"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -2481,7 +2575,14 @@
             "templateExcludes": "제외 항목",
             "templateLocal": "로컬",
             "templateRemote": "원격",
-            "templateRetries": "재시도"
+            "templateRetries": "재시도",
+            "rollbackRestoreLocalCount": "로컬 {count}",
+            "rollbackRestoreRemoteCount": "원격 {count}",
+            "rollbackRestoreSkippedCount": "건너뜀 {count}",
+            "rollbackRestoreFailedCount": "실패 {count}",
+            "rollbackRestoreCompleted": "복원 완료: {summary}",
+            "rollbackRestoreNothing": "복원할 항목이 없습니다",
+            "rollbackRestoreFailed": "복원 실패: {error}"
         },
         "ui": {
             "syncing": "동기화 중...",
@@ -2654,7 +2755,8 @@
                 "allowSession": "이 세션 동안 허용",
                 "nonAtomicReplace": "비원자적 교체: 파일이 잠시 사라집니다",
                 "moreOptions": "추가 옵션",
-                "panelAria": "도구 승인 패널"
+                "panelAria": "도구 승인 패널",
+                "previewFailed": "미리 보기 실패"
             },
             "settings": {
                 "title": "AI 설정",
@@ -2816,7 +2918,8 @@
                 "supportsTools": "도구 지원",
                 "supportsVision": "비전 지원",
                 "thinkingReasoning": "사고/추론",
-                "toolQuality": "도구 품질: {quality}/5"
+                "toolQuality": "도구 품질: {quality}/5",
+                "ollamaNotReachable": "Ollama에 연결할 수 없음"
             },
             "copy": "복사",
             "attachImage": "이미지 첨부",
@@ -3423,7 +3526,8 @@
                     "title": "진단",
                     "truncated": "진단 목록이 잘렸습니다.",
                     "warningCountMany": "경고 {count}개",
-                    "warningCountOne": "경고 {count}개"
+                    "warningCountOne": "경고 {count}개",
+                    "noLocation": "(위치 없음)"
                 },
                 "search": {
                     "none": "일치하는 항목이 없습니다.",
@@ -3522,7 +3626,15 @@
                 "destination": "대상: {destination}",
                 "title": "전송 계획 검토",
                 "warnings": "경고"
-            }
+            },
+            "voiceNoAudio": "캡처된 오디오가 없습니다.",
+            "voiceDownloadingModel": "로컬 음성 모델 다운로드 중...",
+            "voiceNoSpeech": "감지된 음성이 없습니다.",
+            "voiceReady": "음성 입력 준비 완료.",
+            "voiceReadyLanguage": "음성 입력 준비 완료 ({language}).",
+            "voiceTranscriptionFailed": "로컬 전사에 실패했습니다.",
+            "voiceListeningLocally": "로컬에서 듣는 중...",
+            "voiceMicrophoneFailed": "마이크에 액세스할 수 없습니다."
         },
         "archive": {
             "passwordRequired": "이 압축 파일은 비밀번호로 보호되어 있습니다",
@@ -3796,7 +3908,8 @@
             "createFormatBadge": "Cryptomator 형식 8: AES-256-GCM + AES-SIV",
             "featureContentCipher": "AES-GCM 콘텐츠",
             "featureNameCipher": "AES-SIV 이름",
-            "formatVersion": "형식 {version}"
+            "formatVersion": "형식 {version}",
+            "invalidVaultName": "보관소 이름에 잘못된 문자가 있습니다"
         },
         "compress": {
             "title": "파일 압축",
@@ -4161,7 +4274,8 @@
             "total": "합계",
             "across": "에 걸쳐",
             "empty": "이 디렉토리는 비어 있습니다",
-            "hoverHint": "블록 위에 마우스를 올려 세부 정보를 확인하세요"
+            "hoverHint": "블록 위에 마우스를 올려 세부 정보를 확인하세요",
+            "scanUnknownError": "디스크 사용량 검사 중 알 수 없는 오류"
         },
         "dependencies": {
             "title": "의존성",
@@ -4575,7 +4689,8 @@
                 "unmute": "음소거 해제 (M)"
             },
             "webgl": {
-                "notSupported": "WebGL 2가 지원되지 않습니다"
+                "notSupported": "WebGL 2가 지원되지 않습니다",
+                "contextLost": "WebGL 컨텍스트 손실됨"
             },
             "clickToViewDetails": "파일을 클릭하여 상세 정보 보기",
             "copyPath": "경로 복사",
@@ -4734,7 +4849,8 @@
             "argon2OutputLength": "길이 (바이트)",
             "argon2DefaultsHint": "기본값: AeroVault와 AeroCrypt가 사용하는 프로필 (128 MiB, 반복 4회, 레인 4개, 32바이트 출력). 위의 솔트는 사용자의 것입니다. 메모리 최대 2 GiB.",
             "argon2Derive": "파생",
-            "argon2Phc": "PHC 문자열"
+            "argon2Phc": "PHC 문자열",
+            "hashError": "오류: {error}"
         },
         "dialog": {
             "deleteFile": "\"{name}\"을(를) 삭제하시겠습니까?",
@@ -5301,7 +5417,14 @@
             "removeTag": "태그 제거",
             "manageTags": "태그 관리",
             "deleteTagConfirm": "태그 “{name}”을(를) 삭제할까요? 노트의 텍스트는 유지됩니다.",
-            "betaBadge": "베타"
+            "betaBadge": "베타",
+            "noteTypes": {
+                "text": "텍스트",
+                "markdown": "Markdown",
+                "code": "코드",
+                "richText": "서식 있는 텍스트",
+                "checklist": "체크리스트"
+            }
         },
         "shareLinkModal": {
             "title": "공유 링크",
@@ -6601,7 +6724,8 @@
             "chooseFolder": "대상 폴더 선택",
             "passwordPrompt": "이 항목은 암호화되어 있습니다. 압축을 풀려면 비밀번호를 입력하세요.",
             "showPassword": "비밀번호 표시",
-            "hidePassword": "비밀번호 숨기기"
+            "hidePassword": "비밀번호 숨기기",
+            "missingPayload": "추출 페이로드가 없습니다"
         },
         "provider": {
             "modes": {
