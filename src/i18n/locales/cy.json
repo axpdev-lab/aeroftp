@@ -377,7 +377,24 @@
                 "fetchUrl": "Nôl URL",
                 "megacmdWebdavHint": "Mae'r Enw Defnyddiwr a'r Cyfrinair wedi'u hepgor yn fwriadol. Mae AeroFTP yn rhedeg \"{cmd}\" ei hun wrth gysylltu i gychwyn y bont a darllen y cyfeiriad hwn: mae'n iawn ei adael yn wag. Adnewyddiad â llaw dewisol yw Nôl URL; newidiwch y porth yma os yw MEGAcmd yn defnyddio un personol."
             },
-            "manualStorageUnitLabel": "Uned {label}"
+            "manualStorageUnitLabel": "Uned {label}",
+            "protonSwitch": {
+                "title": "Newid {name} i {mode}?",
+                "intro": "Mae'r CLI yn ysgrifennu My Files fel /my-files, a'r API fel /. Mae'r llwybrau cadw hyn yn symud gyda'r proffil:",
+                "initialPath": "Ffolder cychwynnol",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Pâr AeroCloud {name}",
+                "syncHistory": "Hanes cysoni {folder}",
+                "pendingSync": "Cysoni sy'n aros ar gyfer {folder}",
+                "noEquivalent": "Dim cyfwerth yn y modd {mode}, wedi'i gadw fel y mae:",
+                "legacy_one": "Cafodd 1 hanes cysoni ei ysgrifennu cyn i hanesion gofnodi proffil, ac nid yw'n cael ei symud. Mae'r cysoni nesaf o'i ffolderi yn cymharu heb hanes, ac felly nid yw'n dileu dim.",
+                "legacy_many": "Cafodd {count} hanes cysoni eu hysgrifennu cyn i hanesion gofnodi proffil, ac nid ydynt yn cael eu symud. Mae'r cysoni nesaf o'u ffolderi yn cymharu heb hanes, ac felly nid yw'n dileu dim.",
+                "nothing": "Nid oes angen newid unrhyw lwybr wedi'i gadw.",
+                "confirm": "Newid modd",
+                "refused": "Ni newidiwyd y modd",
+                "copyKeptTitle": "Cadwyd y ffolder cychwynnol",
+                "copyKept": "Nid oes gan y ffolder cychwynnol {path} gyfwerth yn y modd {mode}, a chafodd ei gadw fel y mae."
+            }
         },
         "browser": {
             "remote": "Pell",
@@ -6895,7 +6912,9 @@
                 "proton": {
                     "headerDescription": "Storfa cwmwl Proton gydag amgryptio o un pen i'r llall",
                     "apiDescription": "Cleient Proton Drive AeroFTP ei hun: rydych chi'n mewngofnodi ar dudalen Proton yn y porwr, caiff ffeiliau eu hamgryptio a'u dadgryptio ar y cyfrifiadur hwn, ac nid oes angen unrhyw ap arall.",
-                    "cliDescription": "Yn gyrru'r CLI Proton Drive swyddogol sydd wedi'i osod ac wedi mewngofnodi ar y peiriant hwn. Rydych chi'n mewngofnodi yn y porwr; nid yw AeroFTP byth yn gweld eich cyfrinair Proton."
+                    "cliDescription": "Yn gyrru'r CLI Proton Drive swyddogol sydd wedi'i osod ac wedi mewngofnodi ar y peiriant hwn. Rydych chi'n mewngofnodi yn y porwr; nid yw AeroFTP byth yn gweld eich cyfrinair Proton.",
+                    "apiPaths": "Mae llwybrau'n dechrau yn My Files: My Files yw /.",
+                    "cliPaths": "Mae llwybrau absoliwt yn dechrau o'r adrannau: My Files yw /my-files, lle mae sesiwn yn agor."
                 },
                 "opendrive": {
                     "headerDescription": "Storfa cwmwl OpenDrive (5 GB am ddim)",

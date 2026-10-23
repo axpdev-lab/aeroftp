@@ -231,7 +231,8 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-purple-500',
                 label: 'API',
-                description: (t) => t('provider.modes.proton.apiDescription'),
+                // Each tab also says where its paths start (Requested 79).
+                description: (t) => `${t('provider.modes.proton.apiDescription')} ${t('provider.modes.proton.apiPaths')}`,
                 options: { proton_mode: 'native' },
                 requires: 'proton-native',
             },
@@ -240,7 +241,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('CLI', { size: 14 }),
                 activeColor: 'text-purple-500',
                 label: 'CLI',
-                description: (t) => t('provider.modes.proton.cliDescription'),
+                description: (t) => `${t('provider.modes.proton.cliDescription')} ${t('provider.modes.proton.cliPaths')}`,
                 badge: 'LOCAL',
                 // Status banner: installed, signed in, or neither.
                 bridgeKind: 'proton-cli',

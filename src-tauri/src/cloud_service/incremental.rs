@@ -25,7 +25,7 @@ use crate::cloud_config::{CloudConfig, CloudSyncStatus};
 use crate::credential_store;
 use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 use crate::sync::{
-    build_comparison_results_with_index, decide_sync_action, load_sync_index, local_changed_since,
+    build_comparison_results_with_index, decide_sync_action, local_changed_since,
     normalize_relative_key, save_sync_index, CompareOptions, FileComparison, FileInfo, SyncAction,
     SyncIndex, SyncIndexEntry, SyncStatus, SYNC_INDEX_VERSION,
 };
@@ -336,9 +336,13 @@ pub fn prepare_incremental(
 ) -> Result<IncrementalPrep, String> {
     let local = config.local_folder.to_string_lossy().to_string();
     // An index that cannot be read is no baseline, as the full sync reads it.
-    let index = load_sync_index(&local, &config.remote_folder)
-        .ok()
-        .flatten();
+    let index = crate::sync::load_sync_index_for_profile(
+        &local,
+        &config.remote_folder,
+        config.server_profile_id.as_deref(),
+    )
+    .ok()
+    .flatten();
     plan(config, index, changes, hints)
 }
 
@@ -929,6 +933,7 @@ impl CloudService {
         let remote_spellings =
             crate::sync::spellings_after_baseline(&done, Some(&index.remote_spellings), &files);
         let saved = SyncIndex {
+            profile_id: None,
             version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path: local_str,

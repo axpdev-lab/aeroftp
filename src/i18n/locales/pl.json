@@ -377,7 +377,24 @@
                 "fetchUrl": "Pobierz URL",
                 "megacmdWebdavHint": "Nazwa użytkownika i hasło zostały celowo pominięte. AeroFTP podczas łączenia sam uruchamia „{cmd}”, aby uruchomić most i odczytać ten adres: pole może pozostać puste. „Pobierz URL” to opcjonalne ręczne odświeżenie; zmień tutaj port, jeśli MEGAcmd używa niestandardowego."
             },
-            "manualStorageUnitLabel": "Jednostka {label}"
+            "manualStorageUnitLabel": "Jednostka {label}",
+            "protonSwitch": {
+                "title": "Przełączyć {name} na {mode}?",
+                "intro": "CLI zapisuje My Files jako /my-files, a API jako /. Te zapisane ścieżki przenoszą się wraz z profilem:",
+                "initialPath": "Folder początkowy",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Para AeroCloud {name}",
+                "syncHistory": "Historia synchronizacji {folder}",
+                "pendingSync": "Oczekująca synchronizacja {folder}",
+                "noEquivalent": "Brak odpowiednika w trybie {mode}, pozostawiono bez zmian:",
+                "legacy_one": "1 historia synchronizacji została zapisana, zanim historie zaczęły rejestrować profil, i nie jest przenoszona. Następna synchronizacja jej folderów porównuje bez historii i z tego powodu niczego nie usuwa.",
+                "legacy_many": "Historie synchronizacji ({count}) zostały zapisane, zanim historie zaczęły rejestrować profil, i nie są przenoszone. Następna synchronizacja ich folderów porównuje bez historii i z tego powodu niczego nie usuwa.",
+                "nothing": "Żadna zapisana ścieżka nie wymaga zmiany.",
+                "confirm": "Przełącz tryb",
+                "refused": "Tryb nie został przełączony",
+                "copyKeptTitle": "Zachowano folder początkowy",
+                "copyKept": "Folder początkowy {path} nie ma odpowiednika w trybie {mode} i został zachowany bez zmian."
+            }
         },
         "browser": {
             "remote": "Zdalny",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Pamięć w chmurze Proton z szyfrowaniem end-to-end",
                     "apiDescription": "Własny klient Proton Drive w AeroFTP: logujesz się na stronie Proton w przeglądarce, pliki są szyfrowane i odszyfrowywane na tym komputerze i nie potrzeba żadnej innej aplikacji.",
-                    "cliDescription": "Steruje oficjalnym CLI Proton Drive zainstalowanym i zalogowanym na tym komputerze. Logujesz się w przeglądarce; AeroFTP nigdy nie widzi Twojego hasła Proton."
+                    "cliDescription": "Steruje oficjalnym CLI Proton Drive zainstalowanym i zalogowanym na tym komputerze. Logujesz się w przeglądarce; AeroFTP nigdy nie widzi Twojego hasła Proton.",
+                    "apiPaths": "Ścieżki zaczynają się w My Files: My Files to /.",
+                    "cliPaths": "Ścieżki bezwzględne zaczynają się od sekcji: My Files to /my-files, gdzie otwiera się sesja."
                 },
                 "opendrive": {
                     "headerDescription": "Pamięć w chmurze OpenDrive (5 GB za darmo)",

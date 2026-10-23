@@ -18,9 +18,9 @@ use crate::crypt_overlay_provider;
 use crate::providers::{ProviderError, RemoteEntry as ProviderRemoteEntry, StorageProvider};
 use crate::sync::{
     build_comparison_results_with_index, classify_with_summary, decide_sync_action,
-    load_sync_index, normalize_relative_key, save_sync_index, validate_relative_path,
-    CompareDirection, CompareOptions, FileComparison, FileInfo, SyncAction, SyncIndex,
-    SyncIndexEntry, SyncStatus, SYNC_INDEX_VERSION, UNSETTLED_BASELINE,
+    normalize_relative_key, save_sync_index, validate_relative_path, CompareDirection,
+    CompareOptions, FileComparison, FileInfo, SyncAction, SyncIndex, SyncIndexEntry, SyncStatus,
+    SYNC_INDEX_VERSION, UNSETTLED_BASELINE,
 };
 // file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};
@@ -515,7 +515,13 @@ impl CloudService {
     fn load_index(&self, config: &CloudConfig) -> Option<SyncIndex> {
         let local = config.local_folder.to_string_lossy().to_string();
         let remote = config.remote_folder.clone();
-        load_sync_index(&local, &remote).ok().flatten()
+        crate::sync::load_sync_index_for_profile(
+            &local,
+            &remote,
+            config.server_profile_id.as_deref(),
+        )
+        .ok()
+        .flatten()
     }
 
     /// Resolve the action for a comparison EXACTLY as the executor does, so the
@@ -673,6 +679,7 @@ impl CloudService {
                 &plan.remote_str,
                 &plan.comparisons,
                 plan.index.as_ref(),
+                config.server_profile_id.as_deref(),
             );
             return;
         }
@@ -690,6 +697,9 @@ impl CloudService {
             &files,
         );
         let idx = SyncIndex {
+            // The profile this pair syncs with, so that a switch of that
+            // profile's client can move the baseline (Requested 79).
+            profile_id: config.server_profile_id.clone(),
             // Carried over from #854 when the two branches met here: the index
             // this writes is a v2 index, and a freshly written one has nothing
             // unverified in it, because `unverified_keys` marks only the keys a
@@ -720,6 +730,7 @@ impl CloudService {
         remote: &str,
         comparisons: &[FileComparison],
         prior_index: Option<&SyncIndex>,
+        profile_id: Option<&str>,
     ) {
         let unsettled = self
             .unsettled
@@ -730,6 +741,7 @@ impl CloudService {
             return;
         }
         let mut idx = prior_index.cloned().unwrap_or_else(|| SyncIndex {
+            profile_id: None,
             version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path: local.to_string(),
@@ -760,6 +772,7 @@ impl CloudService {
                 },
             );
         }
+        idx.profile_id = profile_id.map(str::to_string);
         if let Err(e) = save_sync_index(&idx) {
             tracing::warn!("Failed to save AeroCloud sync index: {}", e);
         }
@@ -3291,6 +3304,7 @@ mod baseline_tests {
             .as_deref()
             .and_then(crate::parse_remote_datetime);
         let index = SyncIndex {
+            profile_id: None,
             version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path: root.to_string_lossy().into_owned(),
@@ -3607,6 +3621,7 @@ mod baseline_tests {
                 is_dir: false,
             };
             let prior = SyncIndex {
+                profile_id: None,
                 version: SYNC_INDEX_VERSION,
                 last_sync: Utc::now(),
                 local_path: "/l/unverified".to_string(),
@@ -3620,8 +3635,8 @@ mod baseline_tests {
             };
             let svc = CloudService::new();
             svc.unsettled.lock().unwrap().push("f.txt".to_string());
-            svc.save_unsettled_into("/l/unverified", "/unverified", &[], Some(&prior));
-            let saved = load_sync_index("/l/unverified", "/unverified")
+            svc.save_unsettled_into("/l/unverified", "/unverified", &[], Some(&prior), None);
+            let saved = crate::sync::load_sync_index("/l/unverified", "/unverified")
                 .unwrap()
                 .expect("the sentinel is recorded");
             assert!(
@@ -4617,6 +4632,44 @@ mod baseline_tests {
         });
     }
 
+    /// Requested 79: AeroCloud records in the baseline the profile it syncs
+    /// with, so that a Proton Drive switch of that profile can move it, and
+    /// does not take as its baseline an index another profile wrote for the
+    /// same pair of folders. `aeroftp-cli aerocloud sync` runs this engine too
+    /// (`sync_one_config`).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_baseline_records_the_profile_and_ignores_another_profiles() {
+        with_scratch_index(async {
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("a.txt"), b"a").unwrap();
+            let mut provider = MemoryProvider::default();
+            let svc = CloudService::new();
+            let config = CloudConfig {
+                server_profile_id: Some("srv_p1".into()),
+                ..gone_config(local.path())
+            };
+            svc.init(config.clone()).await;
+            let first = svc
+                .perform_full_sync_with_provider(&mut provider)
+                .await
+                .unwrap();
+            assert!(first.errors.is_empty(), "{:?}", first.errors);
+            let baseline = svc.load_index(&config).unwrap();
+            assert_eq!(baseline.profile_id.as_deref(), Some("srv_p1"));
+            let other = CloudConfig {
+                server_profile_id: Some("srv_p2".into()),
+                ..config.clone()
+            };
+            assert!(svc.load_index(&other).is_none());
+            let unbound = CloudConfig {
+                server_profile_id: None,
+                ..config
+            };
+            assert!(svc.load_index(&unbound).is_some());
+        });
+    }
+
     /// A path the scans leave out by design is absent from both of them and is
     /// not gone: `.aeroignore`, the exclude list, an excluded folder (and what
     /// is under it), a local link or what sits behind one. Only the plain
@@ -4655,6 +4708,7 @@ mod baseline_tests {
             ..Default::default()
         };
         let index = SyncIndex {
+            profile_id: None,
             version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path: local.path().to_string_lossy().into_owned(),
@@ -5098,6 +5152,7 @@ mod secval_b_tests {
                             ..Default::default()
                         };
                         save_sync_index(&SyncIndex {
+                            profile_id: None,
                             version: SYNC_INDEX_VERSION,
                             last_sync: Utc::now(),
                             local_path: local.path().to_string_lossy().into_owned(),

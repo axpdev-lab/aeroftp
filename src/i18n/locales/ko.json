@@ -377,7 +377,24 @@
                 "fetchUrl": "URL 가져오기",
                 "megacmdWebdavHint": "사용자 이름과 비밀번호는 의도적으로 생략되었습니다. AeroFTP는 연결 시 직접 \"{cmd}\"를 실행해 브리지를 시작하고 이 주소를 읽습니다. 비워 두어도 됩니다. \"URL 가져오기\"는 선택적 수동 새로 고침입니다. MEGAcmd가 사용자 지정 포트를 사용하면 여기서 포트를 변경하세요."
             },
-            "manualStorageUnitLabel": "{label} 단위"
+            "manualStorageUnitLabel": "{label} 단위",
+            "protonSwitch": {
+                "title": "{name}을(를) {mode}(으)로 전환할까요?",
+                "intro": "CLI는 My Files를 /my-files로, API는 /로 씁니다. 다음 저장된 경로가 프로필과 함께 이동합니다:",
+                "initialPath": "초기 폴더",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud 페어 {name}",
+                "syncHistory": "{folder}의 동기화 기록",
+                "pendingSync": "{folder}의 대기 중인 동기화",
+                "noEquivalent": "{mode} 모드에 해당 항목이 없어 그대로 유지됩니다:",
+                "legacy_one": "동기화 기록 1개는 기록에 프로필이 저장되기 전에 작성되어 이동되지 않습니다. 해당 폴더의 다음 동기화는 기록 없이 비교하며, 이로 인해 삭제되는 항목은 없습니다.",
+                "legacy_many": "동기화 기록 {count}개는 기록에 프로필이 저장되기 전에 작성되어 이동되지 않습니다. 해당 폴더의 다음 동기화는 기록 없이 비교하며, 이로 인해 삭제되는 항목은 없습니다.",
+                "nothing": "변경해야 할 저장된 경로가 없습니다.",
+                "confirm": "모드 전환",
+                "refused": "모드가 전환되지 않았습니다",
+                "copyKeptTitle": "시작 폴더 유지됨",
+                "copyKept": "시작 폴더 {path}에 해당하는 항목이 {mode} 모드에 없어 그대로 유지되었습니다."
+            }
         },
         "browser": {
             "remote": "원격",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "종단 간 암호화를 지원하는 Proton 클라우드 스토리지",
                     "apiDescription": "AeroFTP 자체 Proton Drive 클라이언트: 브라우저의 Proton 페이지에서 로그인하고, 파일은 이 컴퓨터에서 암호화 및 복호화되며, 다른 앱이 필요하지 않습니다.",
-                    "cliDescription": "이 컴퓨터에 설치되고 로그인된 공식 Proton Drive CLI를 구동합니다. 로그인은 브라우저에서 하며, AeroFTP는 Proton 비밀번호를 절대 볼 수 없습니다."
+                    "cliDescription": "이 컴퓨터에 설치되고 로그인된 공식 Proton Drive CLI를 구동합니다. 로그인은 브라우저에서 하며, AeroFTP는 Proton 비밀번호를 절대 볼 수 없습니다.",
+                    "apiPaths": "경로는 My Files에서 시작합니다: My Files는 /입니다.",
+                    "cliPaths": "절대 경로는 섹션에서 시작합니다: My Files는 /my-files이며, 세션이 여기에서 열립니다."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive 클라우드 스토리지 (5 GB 무료)",

@@ -377,7 +377,24 @@
                 "fetchUrl": "Obtén l'URL",
                 "megacmdWebdavHint": "El nom d'usuari i la contrasenya s'ometen expressament. AeroFTP executa ell mateix «{cmd}» en connectar per iniciar el pont i llegir aquesta adreça: podeu deixar-la en blanc. «Obtén l'URL» és una actualització manual opcional; canvieu aquí el port si MEGAcmd en fa servir un de personalitzat."
             },
-            "manualStorageUnitLabel": "Unitat de {label}"
+            "manualStorageUnitLabel": "Unitat de {label}",
+            "protonSwitch": {
+                "title": "Voleu canviar {name} a {mode}?",
+                "intro": "La CLI escriu My Files com a /my-files i l'API com a /. Aquests camins desats es mouen amb el perfil:",
+                "initialPath": "Carpeta inicial",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Parella AeroCloud {name}",
+                "syncHistory": "Historial de sincronització de {folder}",
+                "pendingSync": "Sincronització pendent de {folder}",
+                "noEquivalent": "Sense equivalent en mode {mode}, es manté tal com és:",
+                "legacy_one": "1 historial de sincronització es va escriure abans que els historials registressin un perfil i no es mou. La propera sincronització de les seves carpetes compara sense historial i, per això, no elimina res.",
+                "legacy_many": "{count} historials de sincronització es van escriure abans que els historials registressin un perfil i no es mouen. La propera sincronització de les seves carpetes compara sense historial i, per això, no elimina res.",
+                "nothing": "Cap camí desat no s'ha de canviar.",
+                "confirm": "Canvia el mode",
+                "refused": "No s'ha canviat el mode",
+                "copyKeptTitle": "S'ha mantingut la carpeta inicial",
+                "copyKept": "La carpeta inicial {path} no té cap equivalent en el mode {mode} i s'ha mantingut tal com era."
+            }
         },
         "browser": {
             "remote": "Remot",
@@ -6895,7 +6912,9 @@
                 "proton": {
                     "headerDescription": "Emmagatzematge al núvol de Proton amb xifratge d'extrem a extrem",
                     "apiDescription": "El client propi de Proton Drive d'AeroFTP: inicieu la sessió a la pàgina de Proton al navegador, els fitxers es xifren i desxifren en aquest ordinador i no cal cap altra aplicació.",
-                    "cliDescription": "Controla la CLI oficial de Proton Drive instal·lada i amb la sessió iniciada en aquest equip. Inicieu la sessió al navegador; AeroFTP no veu mai la vostra contrasenya de Proton."
+                    "cliDescription": "Controla la CLI oficial de Proton Drive instal·lada i amb la sessió iniciada en aquest equip. Inicieu la sessió al navegador; AeroFTP no veu mai la vostra contrasenya de Proton.",
+                    "apiPaths": "Els camins comencen a My Files: My Files és /.",
+                    "cliPaths": "Els camins absoluts comencen a les seccions: My Files és /my-files, on s'obre una sessió."
                 },
                 "opendrive": {
                     "headerDescription": "Emmagatzematge al núvol d'OpenDrive (5 GB gratuïts)",

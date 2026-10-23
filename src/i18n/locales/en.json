@@ -2042,7 +2042,24 @@
                 "fetchUrl": "Fetch URL",
                 "megacmdWebdavHint": "Username and Password are intentionally omitted. AeroFTP runs \"{cmd}\" itself on connect to start the bridge and read this address: leaving it blank is fine. Fetch URL is an optional manual refresh; change the port here if MEGAcmd uses a custom one."
             },
-            "manualStorageUnitLabel": "{label} unit"
+            "manualStorageUnitLabel": "{label} unit",
+            "protonSwitch": {
+                "title": "Switch {name} to {mode}?",
+                "intro": "The CLI writes My Files as /my-files, the API as /. These saved paths move with the profile:",
+                "initialPath": "Initial folder",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud pair {name}",
+                "syncHistory": "Sync history of {folder}",
+                "pendingSync": "Pending sync of {folder}",
+                "noEquivalent": "No equivalent in {mode} mode, kept as it is:",
+                "legacy_one": "1 sync history was written before histories recorded a profile and is not moved. The next sync of its folders compares without history, which deletes nothing because of it.",
+                "legacy_many": "{count} sync histories were written before histories recorded a profile and are not moved. The next sync of their folders compares without history, which deletes nothing because of it.",
+                "nothing": "No saved path needs to change.",
+                "confirm": "Switch mode",
+                "refused": "The mode was not switched",
+                "copyKeptTitle": "Initial folder kept",
+                "copyKept": "The initial folder {path} has no equivalent in {mode} mode and was kept as it is."
+            }
         },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",
@@ -6897,7 +6914,9 @@
                 "proton": {
                     "headerDescription": "Proton cloud storage with end-to-end encryption",
                     "apiDescription": "AeroFTP's own Proton Drive client: you sign in on Proton's page in the browser, files are encrypted and decrypted on this computer, and no other app is needed.",
-                    "cliDescription": "Drives the official Proton Drive CLI installed and signed in on this machine. You sign in in the browser; AeroFTP never sees your Proton password."
+                    "cliDescription": "Drives the official Proton Drive CLI installed and signed in on this machine. You sign in in the browser; AeroFTP never sees your Proton password.",
+                    "apiPaths": "Paths start in My Files: My Files is /.",
+                    "cliPaths": "Absolute paths start from the sections: My Files is /my-files, where a session opens."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive cloud storage (5 GB free)",

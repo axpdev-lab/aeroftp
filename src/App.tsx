@@ -487,6 +487,7 @@ import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunRep
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
+import { usedScanRoot } from './utils/protonPaths';
 import { describeScanIncompleteError, isCompareCancelled, isScanIncompleteError } from './utils/scanCompleteness';
 import { useCancelStaleCompare } from './hooks/useCancelStaleCompare';
 import { useTranslation } from './i18n';
@@ -3557,7 +3558,12 @@ const App: React.FC = () => {
     // NOT persisted (profileId stays undefined) rather than corrupting
     // another card.
     let manualTotal: number | undefined;
-    let scanRoot = currentRemotePath || '/';
+    let scanRoot = usedScanRoot({
+      currentRemotePath,
+      automatic: scanOptions?.automatic === true,
+      protocol: cp.protocol,
+      options: opts,
+    });
     let profileId: string | undefined;
     let quotaProfile: ServerProfile | undefined;
     try {
@@ -11415,6 +11421,8 @@ const App: React.FC = () => {
           const compareArgs: Record<string, unknown> = {
             localPath: currentLocalPath,
             remotePath: currentRemotePath,
+            // Another profile's sync index is no baseline here (Requested 79).
+            profileId: activeUnifiedRemoteProfile?.id ?? null,
             ...(isProviderConn && cryptCompareActive && compareCryptVaultId
               ? { cryptVaultId: compareCryptVaultId, cryptKind: compareCryptKind }
               : {}),
@@ -11477,6 +11485,7 @@ const App: React.FC = () => {
           const journal = await invoke<SyncJournal | null>('load_sync_journal_cmd', {
             localPath: currentLocalPath,
             remotePath: currentRemotePath,
+            profileId: activeUnifiedRemoteProfile?.id ?? null,
           });
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
           if (journal && !journal.completed) {
@@ -11573,6 +11582,7 @@ const App: React.FC = () => {
     const runConfig: RemoteSyncConfig = {
       localRoot: currentLocalPath,
       remoteRoot: currentRemotePath,
+      profileId: activeUnifiedRemoteProfile?.id ?? null,
       isProvider,
       isFtp: !isProvider,
       retryPolicy: opts.retryPolicy ?? {

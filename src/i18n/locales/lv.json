@@ -377,7 +377,24 @@
                 "fetchUrl": "Iegūt URL",
                 "megacmdWebdavHint": "Lietotājvārds un parole ir apzināti izlaisti. Savienojoties AeroFTP pats palaiž \"{cmd}\", lai startētu tiltu un nolasītu šo adresi: lauku drīkst atstāt tukšu. \"Iegūt URL\" ir neobligāta manuāla atsvaidzināšana; mainiet portu šeit, ja MEGAcmd izmanto pielāgotu portu."
             },
-            "manualStorageUnitLabel": "{label} vienība"
+            "manualStorageUnitLabel": "{label} vienība",
+            "protonSwitch": {
+                "title": "Pārslēgt {name} uz {mode}?",
+                "intro": "CLI raksta My Files kā /my-files, API kā /. Šie saglabātie ceļi pārvietojas kopā ar profilu:",
+                "initialPath": "Sākuma mape",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud pāris {name}",
+                "syncHistory": "{folder} sinhronizācijas vēsture",
+                "pendingSync": "{folder} gaidošā sinhronizācija",
+                "noEquivalent": "{mode} režīmā nav atbilstības, atstāts kā ir:",
+                "legacy_one": "1 sinhronizācijas vēsture tika ierakstīta, pirms vēstures sāka reģistrēt profilu, un netiek pārvietota. Nākamā tās mapju sinhronizācija salīdzina bez vēstures un tādēļ neko neizdzēš.",
+                "legacy_many": "Sinhronizācijas vēstures ({count}) tika ierakstītas, pirms vēstures sāka reģistrēt profilu, un netiek pārvietotas. Nākamā to mapju sinhronizācija salīdzina bez vēstures un tādēļ neko neizdzēš.",
+                "nothing": "Nevienu saglabāto ceļu nav jāmaina.",
+                "confirm": "Pārslēgt režīmu",
+                "refused": "Režīms netika pārslēgts",
+                "copyKeptTitle": "Sākotnējā mape saglabāta",
+                "copyKept": "Sākotnējai mapei {path} nav atbilsmes režīmā {mode}, un tā tika saglabāta nemainīta."
+            }
         },
         "browser": {
             "remote": "Attālināts",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Proton mākoņkrātuve ar pilnīgu šifrēšanu",
                     "apiDescription": "AeroFTP paša Proton Drive klients: jūs pierakstāties Proton lapā pārlūkā, faili tiek šifrēti un atšifrēti šajā datorā, un nav vajadzīga neviena cita lietotne.",
-                    "cliDescription": "Vada oficiālo Proton Drive CLI, kas ir instalēts un pierakstījies šajā datorā. Jūs pierakstāties pārlūkā; AeroFTP nekad neredz jūsu Proton paroli."
+                    "cliDescription": "Vada oficiālo Proton Drive CLI, kas ir instalēts un pierakstījies šajā datorā. Jūs pierakstāties pārlūkā; AeroFTP nekad neredz jūsu Proton paroli.",
+                    "apiPaths": "Ceļi sākas mapē My Files: My Files ir /.",
+                    "cliPaths": "Absolūtie ceļi sākas no sadaļām: My Files ir /my-files, kur atveras sesija."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive mākoņkrātuve (5 GB bez maksas)",

@@ -377,7 +377,24 @@
                 "fetchUrl": "URL ophalen",
                 "megacmdWebdavHint": "Gebruikersnaam en wachtwoord zijn bewust weggelaten. AeroFTP voert bij het verbinden zelf \"{cmd}\" uit om de brug te starten en dit adres te lezen: leeg laten is prima. URL ophalen is een optionele handmatige vernieuwing; wijzig hier de poort als MEGAcmd een aangepaste poort gebruikt."
             },
-            "manualStorageUnitLabel": "{label}-eenheid"
+            "manualStorageUnitLabel": "{label}-eenheid",
+            "protonSwitch": {
+                "title": "{name} overschakelen naar {mode}?",
+                "intro": "De CLI schrijft My Files als /my-files, de API als /. Deze opgeslagen paden verhuizen mee met het profiel:",
+                "initialPath": "Beginmap",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud-paar {name}",
+                "syncHistory": "Synchronisatiegeschiedenis van {folder}",
+                "pendingSync": "Openstaande synchronisatie van {folder}",
+                "noEquivalent": "Geen equivalent in {mode}-modus, blijft ongewijzigd:",
+                "legacy_one": "1 synchronisatiegeschiedenis is geschreven voordat geschiedenissen een profiel vastlegden en wordt niet verplaatst. De volgende synchronisatie van de mappen ervan vergelijkt zonder geschiedenis en verwijdert daardoor niets.",
+                "legacy_many": "{count} synchronisatiegeschiedenissen zijn geschreven voordat geschiedenissen een profiel vastlegden en worden niet verplaatst. De volgende synchronisatie van hun mappen vergelijkt zonder geschiedenis en verwijdert daardoor niets.",
+                "nothing": "Geen opgeslagen pad hoeft te veranderen.",
+                "confirm": "Modus wisselen",
+                "refused": "De modus is niet gewisseld",
+                "copyKeptTitle": "Beginmap behouden",
+                "copyKept": "De beginmap {path} heeft geen equivalent in de {mode}-modus en is ongewijzigd behouden."
+            }
         },
         "browser": {
             "remote": "Extern",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Proton-cloudopslag met end-to-end-versleuteling",
                     "apiDescription": "De eigen Proton Drive-client van AeroFTP: je meldt je aan op de pagina van Proton in de browser, bestanden worden op deze computer versleuteld en ontsleuteld, en er is geen andere app nodig.",
-                    "cliDescription": "Bestuurt de officiële Proton Drive-CLI die op deze machine is geïnstalleerd en aangemeld. Je meldt je aan in de browser; AeroFTP ziet nooit je Proton-wachtwoord."
+                    "cliDescription": "Bestuurt de officiële Proton Drive-CLI die op deze machine is geïnstalleerd en aangemeld. Je meldt je aan in de browser; AeroFTP ziet nooit je Proton-wachtwoord.",
+                    "apiPaths": "Paden beginnen in My Files: My Files is /.",
+                    "cliPaths": "Absolute paden beginnen bij de secties: My Files is /my-files, waar een sessie opent."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive-cloudopslag (5 GB gratis)",

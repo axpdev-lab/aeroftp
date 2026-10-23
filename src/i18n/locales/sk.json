@@ -377,7 +377,24 @@
                 "fetchUrl": "Načítať URL",
                 "megacmdWebdavHint": "Používateľské meno a heslo sú zámerne vynechané. AeroFTP pri pripojení sám spustí „{cmd}“, aby naštartoval most a načítal túto adresu: pole môže zostať prázdne. „Načítať URL“ je voliteľné ručné obnovenie; ak MEGAcmd používa vlastný port, zmeňte ho tu."
             },
-            "manualStorageUnitLabel": "Jednotka {label}"
+            "manualStorageUnitLabel": "Jednotka {label}",
+            "protonSwitch": {
+                "title": "Prepnúť {name} na {mode}?",
+                "intro": "CLI zapisuje My Files ako /my-files, API ako /. Tieto uložené cesty sa presunú spolu s profilom:",
+                "initialPath": "Počiatočný priečinok",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Pár AeroCloud {name}",
+                "syncHistory": "História synchronizácie {folder}",
+                "pendingSync": "Čakajúca synchronizácia {folder}",
+                "noEquivalent": "V režime {mode} bez ekvivalentu, ponechané bez zmeny:",
+                "legacy_one": "1 história synchronizácie bola zapísaná skôr, než histórie začali zaznamenávať profil, a nepresúva sa. Nasledujúca synchronizácia jej priečinkov porovnáva bez histórie, a preto nič neodstráni.",
+                "legacy_many": "Histórie synchronizácie ({count}) boli zapísané skôr, než histórie začali zaznamenávať profil, a nepresúvajú sa. Nasledujúca synchronizácia ich priečinkov porovnáva bez histórie, a preto nič neodstráni.",
+                "nothing": "Žiadnu uloženú cestu netreba meniť.",
+                "confirm": "Prepnúť režim",
+                "refused": "Režim nebol prepnutý",
+                "copyKeptTitle": "Počiatočný priečinok zachovaný",
+                "copyKept": "Počiatočný priečinok {path} nemá v režime {mode} žiadny ekvivalent a zostal bez zmeny."
+            }
         },
         "browser": {
             "remote": "Vzdialený",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Cloudové úložisko Proton s end-to-end šifrovaním",
                     "apiDescription": "Vlastný klient Proton Drive v AeroFTP: prihlásite sa na stránke Proton v prehliadači, súbory sa šifrujú a dešifrujú na tomto počítači a žiadna iná aplikácia nie je potrebná.",
-                    "cliDescription": "Ovláda oficiálne CLI Proton Drive nainštalované a prihlásené na tomto počítači. Prihlásite sa v prehliadači; AeroFTP nikdy neuvidí vaše heslo k Protonu."
+                    "cliDescription": "Ovláda oficiálne CLI Proton Drive nainštalované a prihlásené na tomto počítači. Prihlásite sa v prehliadači; AeroFTP nikdy neuvidí vaše heslo k Protonu.",
+                    "apiPaths": "Cesty začínajú v My Files: My Files je /.",
+                    "cliPaths": "Absolútne cesty začínajú od sekcií: My Files je /my-files, kde sa otvára relácia."
                 },
                 "opendrive": {
                     "headerDescription": "Cloudové úložisko OpenDrive (5 GB zadarmo)",

@@ -377,7 +377,24 @@
                 "fetchUrl": "URL lekérése",
                 "megacmdWebdavHint": "A felhasználónév és a jelszó szándékosan maradt ki. Az AeroFTP csatlakozáskor maga futtatja a(z) „{cmd}” parancsot, hogy elindítsa a hidat és kiolvassa ezt a címet: a mező üresen is maradhat. Az „URL lekérése” egy opcionális kézi frissítés; itt módosítsa a portot, ha a MEGAcmd egyéni portot használ."
             },
-            "manualStorageUnitLabel": "{label} mértékegysége"
+            "manualStorageUnitLabel": "{label} mértékegysége",
+            "protonSwitch": {
+                "title": "Átváltja a(z) {name} profilt {mode} módra?",
+                "intro": "A CLI a My Files mappát /my-files formában írja, az API / formában. Ezek a mentett útvonalak a profillal együtt változnak:",
+                "initialPath": "Kezdőmappa",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud-pár: {name}",
+                "syncHistory": "{folder} szinkronizálási előzményei",
+                "pendingSync": "{folder} függőben lévő szinkronizálása",
+                "noEquivalent": "Nincs megfelelője {mode} módban, változatlan marad:",
+                "legacy_one": "1 szinkronizálási előzmény még azelőtt íródott, hogy az előzmények profilt rögzítettek volna, és nem kerül áthelyezésre. A mappái következő szinkronizálása előzmény nélkül hasonlít össze, és emiatt semmit sem töröl.",
+                "legacy_many": "{count} szinkronizálási előzmény még azelőtt íródott, hogy az előzmények profilt rögzítettek volna, és nem kerül áthelyezésre. A mappáik következő szinkronizálása előzmény nélkül hasonlít össze, és emiatt semmit sem töröl.",
+                "nothing": "Egyetlen mentett útvonalat sem kell módosítani.",
+                "confirm": "Mód váltása",
+                "refused": "A mód nem változott",
+                "copyKeptTitle": "A kezdőmappa megmaradt",
+                "copyKept": "A(z) {path} kezdőmappának nincs megfelelője {mode} módban, ezért változatlanul megmaradt."
+            }
         },
         "browser": {
             "remote": "Távoli",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Proton felhőtárhely végponttól végpontig tartó titkosítással",
                     "apiDescription": "Az AeroFTP saját Proton Drive-kliense: a böngészőben a Proton oldalán jelentkezik be, a fájlok ezen a számítógépen titkosítódnak és fejtődnek vissza, és nincs szükség más alkalmazásra.",
-                    "cliDescription": "Az ezen a gépen telepített és bejelentkezett hivatalos Proton Drive CLI-t vezérli. A böngészőben jelentkezik be; az AeroFTP soha nem látja a Proton-jelszavát."
+                    "cliDescription": "Az ezen a gépen telepített és bejelentkezett hivatalos Proton Drive CLI-t vezérli. A böngészőben jelentkezik be; az AeroFTP soha nem látja a Proton-jelszavát.",
+                    "apiPaths": "Az útvonalak a My Files mappában kezdődnek: a My Files a /.",
+                    "cliPaths": "Az abszolút útvonalak a szakaszoktól indulnak: a My Files a /my-files, ahol a munkamenet megnyílik."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive felhőtárhely (5 GB ingyenes)",

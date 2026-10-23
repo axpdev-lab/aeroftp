@@ -377,7 +377,24 @@
                 "fetchUrl": "URL'yi Getir",
                 "megacmdWebdavHint": "Kullanıcı adı ve parola bilerek atlanmıştır. AeroFTP bağlanırken köprüyü başlatmak ve bu adresi okumak için \"{cmd}\" komutunu kendisi çalıştırır: alanı boş bırakabilirsiniz. \"URL'yi Getir\" isteğe bağlı bir elle yenilemedir; MEGAcmd özel bir bağlantı noktası kullanıyorsa bağlantı noktasını burada değiştirin."
             },
-            "manualStorageUnitLabel": "{label} birimi"
+            "manualStorageUnitLabel": "{label} birimi",
+            "protonSwitch": {
+                "title": "{name}, {mode} moduna geçirilsin mi?",
+                "intro": "CLI, My Files'ı /my-files olarak, API ise / olarak yazar. Bu kayıtlı yollar profille birlikte taşınır:",
+                "initialPath": "Başlangıç klasörü",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud çifti {name}",
+                "syncHistory": "{folder} eşitleme geçmişi",
+                "pendingSync": "{folder} bekleyen eşitleme",
+                "noEquivalent": "{mode} modunda karşılığı yok, olduğu gibi bırakıldı:",
+                "legacy_one": "1 eşitleme geçmişi, geçmişler profil kaydetmeye başlamadan önce yazıldı ve taşınmaz. Klasörlerinin bir sonraki eşitlemesi geçmiş olmadan karşılaştırır ve bu nedenle hiçbir şey silmez.",
+                "legacy_many": "{count} eşitleme geçmişi, geçmişler profil kaydetmeye başlamadan önce yazıldı ve taşınmaz. Klasörlerinin bir sonraki eşitlemesi geçmiş olmadan karşılaştırır ve bu nedenle hiçbir şey silmez.",
+                "nothing": "Kaydedilmiş hiçbir yolun değişmesi gerekmiyor.",
+                "confirm": "Modu değiştir",
+                "refused": "Mod değiştirilmedi",
+                "copyKeptTitle": "Başlangıç klasörü korundu",
+                "copyKept": "{path} başlangıç klasörünün {mode} modunda bir karşılığı yok ve olduğu gibi korundu."
+            }
         },
         "browser": {
             "remote": "Uzak",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Uçtan uca şifrelemeli Proton bulut depolama",
                     "apiDescription": "AeroFTP'nin kendi Proton Drive istemcisi: tarayıcıda Proton'un sayfasında oturum açarsınız, dosyalar bu bilgisayarda şifrelenip çözülür ve başka bir uygulama gerekmez.",
-                    "cliDescription": "Bu makinede kurulu ve oturum açılmış resmi Proton Drive CLI'ı yönetir. Tarayıcıda oturum açarsınız; AeroFTP Proton parolanızı asla görmez."
+                    "cliDescription": "Bu makinede kurulu ve oturum açılmış resmi Proton Drive CLI'ı yönetir. Tarayıcıda oturum açarsınız; AeroFTP Proton parolanızı asla görmez.",
+                    "apiPaths": "Yollar My Files içinde başlar: My Files, / yoludur.",
+                    "cliPaths": "Mutlak yollar bölümlerden başlar: My Files, oturumun açıldığı /my-files yoludur."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive bulut depolama (5 GB ücretsiz)",

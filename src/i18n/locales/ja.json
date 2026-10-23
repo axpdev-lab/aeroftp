@@ -377,7 +377,24 @@
                 "fetchUrl": "URL を取得",
                 "megacmdWebdavHint": "ユーザー名とパスワードは意図的に省略されています。AeroFTP は接続時に自ら「{cmd}」を実行してブリッジを起動し、このアドレスを読み取ります。空欄のままで問題ありません。「URL を取得」は任意の手動更新です。MEGAcmd がカスタムポートを使う場合は、ここでポートを変更してください。"
             },
-            "manualStorageUnitLabel": "{label} の単位"
+            "manualStorageUnitLabel": "{label} の単位",
+            "protonSwitch": {
+                "title": "{name} を {mode} に切り替えますか？",
+                "intro": "CLI は My Files を /my-files、API は / と書きます。以下の保存済みパスはプロファイルと一緒に移動します：",
+                "initialPath": "初期フォルダー",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud ペア {name}",
+                "syncHistory": "{folder} の同期履歴",
+                "pendingSync": "{folder} の保留中の同期",
+                "noEquivalent": "{mode} モードに対応するものがないため、そのまま保持します：",
+                "legacy_one": "1 件の同期履歴は、履歴がプロファイルを記録するようになる前に書き込まれたため、移動されません。そのフォルダーの次回の同期は履歴なしで比較しますが、それが原因で何かが削除されることはありません。",
+                "legacy_many": "{count} 件の同期履歴は、履歴がプロファイルを記録するようになる前に書き込まれたため、移動されません。それらのフォルダーの次回の同期は履歴なしで比較しますが、それが原因で何かが削除されることはありません。",
+                "nothing": "変更が必要な保存済みパスはありません。",
+                "confirm": "モードを切り替え",
+                "refused": "モードは切り替えられませんでした",
+                "copyKeptTitle": "初期フォルダーを維持しました",
+                "copyKept": "初期フォルダー {path} には {mode} モードでの対応先がないため、そのまま維持されました。"
+            }
         },
         "browser": {
             "remote": "リモート",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "エンドツーエンド暗号化付きの Proton クラウドストレージ",
                     "apiDescription": "AeroFTP 独自の Proton Drive クライアント: ブラウザーで Proton のページからサインインし、ファイルはこのコンピューター上で暗号化・復号され、他のアプリは不要です。",
-                    "cliDescription": "このマシンにインストールされサインイン済みの公式 Proton Drive CLI を操作します。サインインはブラウザーで行うため、AeroFTP が Proton のパスワードを見ることはありません。"
+                    "cliDescription": "このマシンにインストールされサインイン済みの公式 Proton Drive CLI を操作します。サインインはブラウザーで行うため、AeroFTP が Proton のパスワードを見ることはありません。",
+                    "apiPaths": "パスは My Files から始まります：My Files は / です。",
+                    "cliPaths": "絶対パスはセクションから始まります：My Files は /my-files で、セッションはここで開きます。"
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive クラウドストレージ (5 GB 無料)",

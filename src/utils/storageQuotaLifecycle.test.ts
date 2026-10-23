@@ -5,6 +5,7 @@ import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
 import { describe, expect, it, vi } from 'vitest';
 import { shouldPersistUsedScan } from './usedScanPersist';
+import { usedScanRoot } from './protonPaths';
 
 // Execute the actual App closures without mounting Monaco/Tauri. Only their
 // surrounding component is omitted; no lifecycle implementation is copied here.
@@ -99,7 +100,7 @@ function fixture(mode: Mode, options: {
     currentRemotePath: '/A', resolveUsernameTemplate: (path: string) => path,
     stripLegacyNextcloudWebdavRoot: (path: string) => path, setUsedScanStatus: vi.fn(),
     notify, activityLog,
-    t: (key: string) => key, formatBytes: String, shouldPersistUsedScan,
+    t: (key: string) => key, formatBytes: String, shouldPersistUsedScan, usedScanRoot,
     usedScanBoundKey: () => null, listen: vi.fn(options.listen ?? (async () => vi.fn())),
     console: { warn: vi.fn() },
   };

@@ -377,7 +377,24 @@
                 "fetchUrl": "Hent URL",
                 "megacmdWebdavHint": "Brugernavn og adgangskode er udeladt med vilje. AeroFTP kører selv \"{cmd}\" ved tilslutning for at starte broen og læse denne adresse: feltet må gerne være tomt. Hent URL er en valgfri manuel opdatering; skift porten her, hvis MEGAcmd bruger en brugerdefineret port."
             },
-            "manualStorageUnitLabel": "{label}-enhed"
+            "manualStorageUnitLabel": "{label}-enhed",
+            "protonSwitch": {
+                "title": "Skift {name} til {mode}?",
+                "intro": "CLI'en skriver My Files som /my-files, API'en som /. Disse gemte stier flyttes med profilen:",
+                "initialPath": "Startmappe",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud-par {name}",
+                "syncHistory": "Synkroniseringshistorik for {folder}",
+                "pendingSync": "Afventende synkronisering af {folder}",
+                "noEquivalent": "Ingen tilsvarende i {mode}-tilstand, beholdes som den er:",
+                "legacy_one": "1 synkroniseringshistorik blev skrevet, før historikker registrerede en profil, og flyttes ikke. Den næste synkronisering af dens mapper sammenligner uden historik og sletter derfor intet.",
+                "legacy_many": "{count} synkroniseringshistorikker blev skrevet, før historikker registrerede en profil, og flyttes ikke. Den næste synkronisering af deres mapper sammenligner uden historik og sletter derfor intet.",
+                "nothing": "Ingen gemt sti skal ændres.",
+                "confirm": "Skift tilstand",
+                "refused": "Tilstanden blev ikke skiftet",
+                "copyKeptTitle": "Startmappe bevaret",
+                "copyKept": "Startmappen {path} har ingen tilsvarende i {mode}-tilstand og er bevaret, som den er."
+            }
         },
         "browser": {
             "remote": "Ekstern",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Proton-lagring i skyen med end-to-end-kryptering",
                     "apiDescription": "AeroFTP's egen Proton Drive-klient: du logger ind på Protons side i browseren, filer krypteres og dekrypteres på denne computer, og der kræves ingen anden app.",
-                    "cliDescription": "Styrer den officielle Proton Drive-CLI, der er installeret og logget ind på denne maskine. Du logger ind i browseren; AeroFTP ser aldrig din Proton-adgangskode."
+                    "cliDescription": "Styrer den officielle Proton Drive-CLI, der er installeret og logget ind på denne maskine. Du logger ind i browseren; AeroFTP ser aldrig din Proton-adgangskode.",
+                    "apiPaths": "Stier starter i My Files: My Files er /.",
+                    "cliPaths": "Absolutte stier starter fra sektionerne: My Files er /my-files, hvor en session åbner."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive-lagring i skyen (5 GB gratis)",

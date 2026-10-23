@@ -377,7 +377,24 @@
                 "fetchUrl": "Ambil URL",
                 "megacmdWebdavHint": "Nama pengguna dan kata sandi sengaja dihilangkan. AeroFTP menjalankan \"{cmd}\" sendiri saat terhubung untuk memulai jembatan dan membaca alamat ini: boleh dibiarkan kosong. Ambil URL adalah penyegaran manual opsional; ubah port di sini jika MEGAcmd memakai port khusus."
             },
-            "manualStorageUnitLabel": "Satuan {label}"
+            "manualStorageUnitLabel": "Satuan {label}",
+            "protonSwitch": {
+                "title": "Alihkan {name} ke {mode}?",
+                "intro": "CLI menulis My Files sebagai /my-files, API sebagai /. Jalur tersimpan ini ikut berpindah bersama profil:",
+                "initialPath": "Folder awal",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Pasangan AeroCloud {name}",
+                "syncHistory": "Riwayat sinkronisasi {folder}",
+                "pendingSync": "Sinkronisasi tertunda {folder}",
+                "noEquivalent": "Tidak ada padanan dalam mode {mode}, dibiarkan apa adanya:",
+                "legacy_one": "1 riwayat sinkronisasi ditulis sebelum riwayat mencatat profil dan tidak dipindahkan. Sinkronisasi berikutnya untuk foldernya membandingkan tanpa riwayat, sehingga tidak ada yang terhapus karenanya.",
+                "legacy_many": "{count} riwayat sinkronisasi ditulis sebelum riwayat mencatat profil dan tidak dipindahkan. Sinkronisasi berikutnya untuk folder-foldernya membandingkan tanpa riwayat, sehingga tidak ada yang terhapus karenanya.",
+                "nothing": "Tidak ada jalur tersimpan yang perlu diubah.",
+                "confirm": "Ganti mode",
+                "refused": "Mode tidak diganti",
+                "copyKeptTitle": "Folder awal dipertahankan",
+                "copyKept": "Folder awal {path} tidak memiliki padanan dalam mode {mode} dan dipertahankan apa adanya."
+            }
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Penyimpanan cloud Proton dengan enkripsi ujung ke ujung",
                     "apiDescription": "Klien Proton Drive milik AeroFTP sendiri: Anda masuk di halaman Proton di browser, file dienkripsi dan didekripsi di komputer ini, dan tidak perlu aplikasi lain.",
-                    "cliDescription": "Mengendalikan CLI resmi Proton Drive yang terpasang dan sudah masuk di mesin ini. Anda masuk di browser; AeroFTP tidak pernah melihat kata sandi Proton Anda."
+                    "cliDescription": "Mengendalikan CLI resmi Proton Drive yang terpasang dan sudah masuk di mesin ini. Anda masuk di browser; AeroFTP tidak pernah melihat kata sandi Proton Anda.",
+                    "apiPaths": "Jalur dimulai di My Files: My Files adalah /.",
+                    "cliPaths": "Jalur absolut dimulai dari bagian-bagian: My Files adalah /my-files, tempat sesi dibuka."
                 },
                 "opendrive": {
                     "headerDescription": "Penyimpanan cloud OpenDrive (5 GB gratis)",

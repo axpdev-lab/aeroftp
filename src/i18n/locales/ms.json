@@ -377,7 +377,24 @@
                 "fetchUrl": "Dapatkan URL",
                 "megacmdWebdavHint": "Nama pengguna dan kata laluan sengaja ditinggalkan. AeroFTP menjalankan \"{cmd}\" sendiri semasa menyambung untuk memulakan jambatan dan membaca alamat ini: boleh dibiarkan kosong. Dapatkan URL ialah muat semula manual pilihan; tukar port di sini jika MEGAcmd menggunakan port tersuai."
             },
-            "manualStorageUnitLabel": "Unit {label}"
+            "manualStorageUnitLabel": "Unit {label}",
+            "protonSwitch": {
+                "title": "Tukar {name} kepada {mode}?",
+                "intro": "CLI menulis My Files sebagai /my-files, API sebagai /. Laluan tersimpan ini berpindah bersama profil:",
+                "initialPath": "Folder awal",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Pasangan AeroCloud {name}",
+                "syncHistory": "Sejarah penyegerakan {folder}",
+                "pendingSync": "Penyegerakan tertunda {folder}",
+                "noEquivalent": "Tiada padanan dalam mod {mode}, dikekalkan seperti sedia ada:",
+                "legacy_one": "1 sejarah penyegerakan ditulis sebelum sejarah merekodkan profil dan tidak dipindahkan. Penyegerakan seterusnya bagi foldernya membandingkan tanpa sejarah, dan tiada apa-apa dipadam kerananya.",
+                "legacy_many": "{count} sejarah penyegerakan ditulis sebelum sejarah merekodkan profil dan tidak dipindahkan. Penyegerakan seterusnya bagi folder-foldernya membandingkan tanpa sejarah, dan tiada apa-apa dipadam kerananya.",
+                "nothing": "Tiada laluan tersimpan yang perlu diubah.",
+                "confirm": "Tukar mod",
+                "refused": "Mod tidak ditukar",
+                "copyKeptTitle": "Folder awal dikekalkan",
+                "copyKept": "Folder awal {path} tiada padanan dalam mod {mode} dan dikekalkan seperti sedia ada."
+            }
         },
         "browser": {
             "remote": "Jauh",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Storan awan Proton dengan penyulitan hujung ke hujung",
                     "apiDescription": "Klien Proton Drive milik AeroFTP sendiri: anda log masuk di halaman Proton dalam pelayar, fail disulitkan dan dinyahsulit pada komputer ini, dan tiada aplikasi lain diperlukan.",
-                    "cliDescription": "Mengawal CLI rasmi Proton Drive yang dipasang dan telah log masuk pada mesin ini. Anda log masuk dalam pelayar; AeroFTP tidak pernah melihat kata laluan Proton anda."
+                    "cliDescription": "Mengawal CLI rasmi Proton Drive yang dipasang dan telah log masuk pada mesin ini. Anda log masuk dalam pelayar; AeroFTP tidak pernah melihat kata laluan Proton anda.",
+                    "apiPaths": "Laluan bermula dalam My Files: My Files ialah /.",
+                    "cliPaths": "Laluan mutlak bermula dari bahagian: My Files ialah /my-files, tempat sesi dibuka."
                 },
                 "opendrive": {
                     "headerDescription": "Storan awan OpenDrive (5 GB percuma)",

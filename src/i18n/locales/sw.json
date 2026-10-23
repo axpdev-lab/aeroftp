@@ -377,7 +377,24 @@
                 "fetchUrl": "Leta URL",
                 "megacmdWebdavHint": "Jina la mtumiaji na nenosiri vimeachwa kwa makusudi. AeroFTP huendesha \"{cmd}\" yenyewe wakati wa kuunganisha ili kuanzisha daraja na kusoma anwani hii: ni sawa kuiacha tupu. \"Leta URL\" ni uonyeshaji upya wa mkono wa hiari; badilisha mlango hapa ikiwa MEGAcmd inatumia mlango maalum."
             },
-            "manualStorageUnitLabel": "Kipimo cha {label}"
+            "manualStorageUnitLabel": "Kipimo cha {label}",
+            "protonSwitch": {
+                "title": "Badilisha {name} kwenda {mode}?",
+                "intro": "CLI huandika My Files kama /my-files, API kama /. Njia hizi zilizohifadhiwa huhamia pamoja na wasifu:",
+                "initialPath": "Folda ya awali",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Jozi ya AeroCloud {name}",
+                "syncHistory": "Historia ya usawazishaji ya {folder}",
+                "pendingSync": "Usawazishaji unaosubiri wa {folder}",
+                "noEquivalent": "Hakuna kinacholingana katika hali ya {mode}, kimeachwa kama kilivyo:",
+                "legacy_one": "Historia 1 ya usawazishaji iliandikwa kabla historia hazijaanza kurekodi wasifu, na haihamishwi. Usawazishaji ujao wa folda zake unalinganisha bila historia, na kwa sababu hiyo haufuti chochote.",
+                "legacy_many": "Historia {count} za usawazishaji ziliandikwa kabla historia hazijaanza kurekodi wasifu, na hazihamishwi. Usawazishaji ujao wa folda zake unalinganisha bila historia, na kwa sababu hiyo haufuti chochote.",
+                "nothing": "Hakuna njia iliyohifadhiwa inayohitaji kubadilishwa.",
+                "confirm": "Badilisha hali",
+                "refused": "Hali haikubadilishwa",
+                "copyKeptTitle": "Folda ya mwanzo imehifadhiwa",
+                "copyKept": "Folda ya mwanzo {path} haina kilinganishi katika hali ya {mode} na imehifadhiwa kama ilivyo."
+            }
         },
         "browser": {
             "remote": "Mbali",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Hifadhi ya wingu ya Proton yenye usimbaji fiche wa mwisho hadi mwisho",
                     "apiDescription": "Mteja wa Proton Drive wa AeroFTP mwenyewe: unaingia kwenye ukurasa wa Proton katika kivinjari, faili zinasimbwa na kufumbuliwa kwenye kompyuta hii, na hakuna programu nyingine inayohitajika.",
-                    "cliDescription": "Huendesha CLI rasmi ya Proton Drive iliyosakinishwa na kuingiwa kwenye mashine hii. Unaingia kwenye kivinjari; AeroFTP haioni kamwe nenosiri lako la Proton."
+                    "cliDescription": "Huendesha CLI rasmi ya Proton Drive iliyosakinishwa na kuingiwa kwenye mashine hii. Unaingia kwenye kivinjari; AeroFTP haioni kamwe nenosiri lako la Proton.",
+                    "apiPaths": "Njia zinaanzia katika My Files: My Files ni /.",
+                    "cliPaths": "Njia kamili zinaanzia kwenye sehemu: My Files ni /my-files, ambapo kipindi hufunguka."
                 },
                 "opendrive": {
                     "headerDescription": "Hifadhi ya wingu ya OpenDrive (GB 5 bila malipo)",

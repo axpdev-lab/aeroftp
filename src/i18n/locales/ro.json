@@ -377,7 +377,24 @@
                 "fetchUrl": "Preia URL",
                 "megacmdWebdavHint": "Numele de utilizator și parola sunt omise intenționat. AeroFTP rulează singur „{cmd}” la conectare pentru a porni puntea și a citi această adresă: câmpul poate rămâne gol. „Preia URL” este o reîmprospătare manuală opțională; schimbați portul aici dacă MEGAcmd folosește unul personalizat."
             },
-            "manualStorageUnitLabel": "Unitate {label}"
+            "manualStorageUnitLabel": "Unitate {label}",
+            "protonSwitch": {
+                "title": "Comutați {name} la {mode}?",
+                "intro": "CLI scrie My Files ca /my-files, iar API ca /. Aceste căi salvate se mută odată cu profilul:",
+                "initialPath": "Dosar inițial",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Pereche AeroCloud {name}",
+                "syncHistory": "Istoricul sincronizării pentru {folder}",
+                "pendingSync": "Sincronizare în așteptare pentru {folder}",
+                "noEquivalent": "Niciun echivalent în modul {mode}, păstrat așa cum este:",
+                "legacy_one": "1 istoric de sincronizare a fost scris înainte ca istoricele să înregistreze un profil și nu este mutat. Următoarea sincronizare a folderelor sale compară fără istoric și, din acest motiv, nu șterge nimic.",
+                "legacy_many": "Istoricele de sincronizare ({count}) au fost scrise înainte ca istoricele să înregistreze un profil și nu sunt mutate. Următoarea sincronizare a folderelor lor compară fără istoric și, din acest motiv, nu șterge nimic.",
+                "nothing": "Nicio cale salvată nu trebuie modificată.",
+                "confirm": "Comută modul",
+                "refused": "Modul nu a fost comutat",
+                "copyKeptTitle": "Folderul inițial a fost păstrat",
+                "copyKept": "Folderul inițial {path} nu are echivalent în modul {mode} și a fost păstrat ca atare."
+            }
         },
         "browser": {
             "remote": "La distanță",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Stocare în cloud Proton cu criptare integrală",
                     "apiDescription": "Clientul Proton Drive propriu al AeroFTP: vă autentificați pe pagina Proton în browser, fișierele sunt criptate și decriptate pe acest computer și nu este nevoie de nicio altă aplicație.",
-                    "cliDescription": "Controlează CLI-ul oficial Proton Drive instalat și autentificat pe acest computer. Vă autentificați în browser; AeroFTP nu vede niciodată parola dvs. Proton."
+                    "cliDescription": "Controlează CLI-ul oficial Proton Drive instalat și autentificat pe acest computer. Vă autentificați în browser; AeroFTP nu vede niciodată parola dvs. Proton.",
+                    "apiPaths": "Căile încep în My Files: My Files este /.",
+                    "cliPaths": "Căile absolute pornesc de la secțiuni: My Files este /my-files, unde se deschide o sesiune."
                 },
                 "opendrive": {
                     "headerDescription": "Stocare în cloud OpenDrive (5 GB gratuit)",

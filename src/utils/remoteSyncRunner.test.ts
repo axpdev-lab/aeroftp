@@ -1111,6 +1111,41 @@ describe('remoteSyncRunner — helpers', () => {
 });
 
 describe('remoteSyncRunner — GAP-6 sync index', () => {
+    // Requested 79: a history serves only its own profile and moves with it
+    // when a Proton Drive profile changes client, so the run records the
+    // profile in the journal and the index, and reads back only its own.
+    it('records the profile in the journal and the index and loads its own index', async () => {
+        let savedIndex: Record<string, unknown> | undefined;
+        const { invoke, calls } = makeInvoke({
+            load_sync_index_cmd: () => null,
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as Record<string, unknown>;
+            },
+        });
+        await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig({ profileId: 'srv_p1' }),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        expect(lastSavedJournal(calls)?.profile_id).toBe('srv_p1');
+        expect(calls.find((c) => c.cmd === 'load_sync_index_cmd')?.args).toMatchObject({ profileId: 'srv_p1' });
+        expect(savedIndex?.profile_id).toBe('srv_p1');
+    });
+
+    it('records no profile when the remote has none', async () => {
+        let savedIndex: Record<string, unknown> | undefined;
+        const { invoke, calls } = makeInvoke({
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as Record<string, unknown>;
+            },
+        });
+        await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+        expect(lastSavedJournal(calls)).not.toHaveProperty('profile_id');
+        expect(savedIndex).not.toHaveProperty('profile_id');
+    });
+
     it('does not touch the index when writeIndex is unset', async () => {
         const { invoke, calls } = makeInvoke();
         await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke));

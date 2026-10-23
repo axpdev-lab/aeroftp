@@ -253,3 +253,180 @@ async fn proton_alias_preserves_manifest_options_and_explicit_client_after_savin
     );
     assert_eq!(options["manualTotalBytes"], 123456);
 }
+
+fn json(out: &Output) -> serde_json::Value {
+    serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", describe(out)))
+}
+
+/// The saved profile `id` whole, options included, read back through an
+/// export (`profiles --json` lists no options).
+async fn saved(root: &Path, id: &str) -> serde_json::Value {
+    let export = root.join(format!("{}.aeroftp", uuid::Uuid::new_v4()));
+    let out = isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), root)
+        .args(["profile-export", "--output", export.to_str().unwrap()])
+        .env("AEROFTP_PROFILE_PASSWORD", "synthetic switch export")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
+        export.to_string_lossy().into_owned(),
+        "synthetic switch export".into(),
+        Some(std::collections::HashSet::new()),
+    )
+    .await
+    .unwrap();
+    preview["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|profile| profile["id"] == id)
+        .cloned()
+        .unwrap_or_else(|| panic!("{id} not exported"))
+}
+
+/// Requested 79: `profile-convert-mode` switches a Proton Drive profile
+/// between its clients in place (same id) and moves its initial folder to the
+/// other spelling of My Files, in both directions; `profile-duplicate-mode`
+/// adds a copy with the folder translated and keeps the source; `pwd` gives
+/// My Files as the start folder of a CLI-mode profile that saves no folder.
+#[tokio::test]
+async fn proton_mode_switch_translates_the_initial_folder_both_ways() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let out = cli(
+        root,
+        &[
+            "--json",
+            "profile-add",
+            "--name",
+            "Switch",
+            "--protocol",
+            "proton",
+            "--proton-mode",
+            "cli",
+            "--initial-path",
+            "/my-files/docs",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let id = json(&out)["id"].as_str().unwrap().to_string();
+
+    let native = cli(
+        root,
+        &[
+            "--json",
+            "profile-convert-mode",
+            &id,
+            "--mode",
+            "native",
+            "--yes",
+        ],
+    );
+    assert_eq!(native.status.code(), Some(0), "{}", describe(&native));
+    let report = json(&native);
+    assert_eq!(report["id"], id.as_str());
+    assert_eq!(report["translated"][0]["from"], "/my-files/docs");
+    assert_eq!(report["translated"][0]["to"], "/docs");
+    let profile = saved(root, &id).await;
+    assert_eq!(profile["initialPath"], "/docs");
+    assert_eq!(profile["options"]["proton_mode"], "native");
+
+    let back = cli(
+        root,
+        &[
+            "--json",
+            "profile-convert-mode",
+            &id,
+            "--mode",
+            "cli",
+            "--yes",
+        ],
+    );
+    assert_eq!(back.status.code(), Some(0), "{}", describe(&back));
+    let profile = saved(root, &id).await;
+    assert_eq!(profile["initialPath"], "/my-files/docs");
+    assert!(profile["options"].get("proton_mode").is_none());
+
+    // A section with no native equivalent is kept and reported, not dropped.
+    let shared = cli(
+        root,
+        &[
+            "--json",
+            "profile-add",
+            "--name",
+            "Shared",
+            "--protocol",
+            "proton",
+            "--proton-mode",
+            "cli",
+            "--initial-path",
+            "/shared-with-me/team",
+        ],
+    );
+    let shared_id = json(&shared)["id"].as_str().unwrap().to_string();
+    let copy = cli(
+        root,
+        &[
+            "--json",
+            "profile-duplicate-mode",
+            &shared_id,
+            "--mode",
+            "native",
+        ],
+    );
+    assert_eq!(copy.status.code(), Some(0), "{}", describe(&copy));
+    let copy = json(&copy);
+    assert_eq!(
+        copy["without_equivalent"][0]["from"],
+        "/shared-with-me/team"
+    );
+    let copied = saved(root, copy["id"].as_str().unwrap()).await;
+    assert_eq!(copied["initialPath"], "/shared-with-me/team");
+    assert_eq!(copied["options"]["proton_mode"], "native");
+    assert_eq!(
+        saved(root, &shared_id).await["initialPath"],
+        "/shared-with-me/team"
+    );
+
+    // Native into a new CLI copy: `/docs` becomes `/my-files/docs`.
+    let copy = cli(
+        root,
+        &["--json", "profile-duplicate-mode", &id, "--mode", "native"],
+    );
+    let native_copy = json(&copy)["id"].as_str().unwrap().to_string();
+    let cli_copy = cli(
+        root,
+        &[
+            "--json",
+            "profile-duplicate-mode",
+            &native_copy,
+            "--mode",
+            "cli",
+        ],
+    );
+    assert_eq!(cli_copy.status.code(), Some(0), "{}", describe(&cli_copy));
+    let cli_copy = saved(root, json(&cli_copy)["id"].as_str().unwrap()).await;
+    assert_eq!(cli_copy["initialPath"], "/my-files/docs");
+
+    // pwd: a CLI-mode profile without a folder starts in My Files.
+    let bare = cli(
+        root,
+        &[
+            "--json",
+            "profile-add",
+            "--name",
+            "Bare",
+            "--protocol",
+            "proton",
+            "--proton-mode",
+            "cli",
+        ],
+    );
+    let bare_id = json(&bare)["id"].as_str().unwrap().to_string();
+    let pwd = cli(root, &["--json", "pwd", &bare_id]);
+    assert_eq!(pwd.status.code(), Some(0), "{}", describe(&pwd));
+    // The root stays the sections; relative paths start in My Files.
+    assert_eq!(json(&pwd)["resolved_root"], "/");
+    assert_eq!(json(&pwd)["start_folder"], "/my-files");
+}

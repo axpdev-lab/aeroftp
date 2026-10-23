@@ -377,7 +377,24 @@
                 "fetchUrl": "Too URL",
                 "megacmdWebdavHint": "Kasutajanimi ja parool on meelega välja jäetud. AeroFTP käivitab ühendamisel ise käsu \"{cmd}\", et silla käivitada ja see aadress lugeda: välja võib tühjaks jätta. \"Too URL\" on valikuline käsitsi värskendus; muutke porti siin, kui MEGAcmd kasutab kohandatud porti."
             },
-            "manualStorageUnitLabel": "{label} ühik"
+            "manualStorageUnitLabel": "{label} ühik",
+            "protonSwitch": {
+                "title": "Kas lülitada {name} režiimile {mode}?",
+                "intro": "CLI kirjutab My Files kujul /my-files, API kujul /. Need salvestatud teed liiguvad koos profiiliga:",
+                "initialPath": "Algkaust",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloudi paar {name}",
+                "syncHistory": "{folder} sünkroonimisajalugu",
+                "pendingSync": "{folder} ootel sünkroonimine",
+                "noEquivalent": "Režiimis {mode} vaste puudub, jäetakse muutmata:",
+                "legacy_one": "1 sünkroonimisajalugu kirjutati enne, kui ajalood hakkasid profiili salvestama, ja seda ei teisaldata. Selle kaustade järgmine sünkroonimine võrdleb ilma ajaloota ega kustuta seetõttu midagi.",
+                "legacy_many": "{count} sünkroonimisajalugu kirjutati enne, kui ajalood hakkasid profiili salvestama, ja neid ei teisaldata. Nende kaustade järgmine sünkroonimine võrdleb ilma ajaloota ega kustuta seetõttu midagi.",
+                "nothing": "Ühtegi salvestatud teed pole vaja muuta.",
+                "confirm": "Vaheta režiimi",
+                "refused": "Režiimi ei vahetatud",
+                "copyKeptTitle": "Algkaust säilitati",
+                "copyKept": "Algkaustal {path} pole režiimis {mode} vastet ja see säilitati muutmata kujul."
+            }
         },
         "browser": {
             "remote": "Kaugserver",
@@ -6876,7 +6893,9 @@
                 "proton": {
                     "headerDescription": "Protoni pilvesalvestus otspunktkrüpteerimisega",
                     "apiDescription": "AeroFTP oma Proton Drive'i klient: logite sisse Protoni lehel brauseris, failid krüpteeritakse ja dekrüpteeritakse selles arvutis ning muud rakendust pole vaja.",
-                    "cliDescription": "Juhib ametlikku Proton Drive'i CLI-d, mis on sellesse masinasse installitud ja sisse logitud. Logite sisse brauseris; AeroFTP ei näe kunagi teie Protoni parooli."
+                    "cliDescription": "Juhib ametlikku Proton Drive'i CLI-d, mis on sellesse masinasse installitud ja sisse logitud. Logite sisse brauseris; AeroFTP ei näe kunagi teie Protoni parooli.",
+                    "apiPaths": "Teed algavad kaustast My Files: My Files on /.",
+                    "cliPaths": "Absoluutsed teed algavad jaotistest: My Files on /my-files, kus seanss avaneb."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive'i pilvesalvestus (5 GB tasuta)",

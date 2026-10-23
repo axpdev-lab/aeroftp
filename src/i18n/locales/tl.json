@@ -377,7 +377,24 @@
                 "fetchUrl": "Kunin ang URL",
                 "megacmdWebdavHint": "Sadyang hindi isinama ang Username at Password. Ang AeroFTP mismo ang nagpapatakbo ng \"{cmd}\" sa pagkonekta para simulan ang tulay at basahin ang address na ito: ayos lang na iwan itong blangko. Ang \"Kunin ang URL\" ay opsyonal na manwal na pag-refresh; palitan dito ang port kung custom ang gamit ng MEGAcmd."
             },
-            "manualStorageUnitLabel": "Yunit ng {label}"
+            "manualStorageUnitLabel": "Yunit ng {label}",
+            "protonSwitch": {
+                "title": "Ilipat ang {name} sa {mode}?",
+                "intro": "Isinusulat ng CLI ang My Files bilang /my-files, at ng API bilang /. Sasama sa profile ang mga naka-save na path na ito:",
+                "initialPath": "Panimulang folder",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Pares ng AeroCloud {name}",
+                "syncHistory": "Kasaysayan ng sync ng {folder}",
+                "pendingSync": "Nakabinbing sync ng {folder}",
+                "noEquivalent": "Walang katumbas sa {mode} mode, pinanatili kung ano ito:",
+                "legacy_one": "1 kasaysayan ng sync ang naisulat bago nagtala ng profile ang mga kasaysayan at hindi ito inililipat. Ang susunod na sync ng mga folder nito ay naghahambing nang walang kasaysayan, kaya walang nabubura dahil dito.",
+                "legacy_many": "{count} kasaysayan ng sync ang naisulat bago nagtala ng profile ang mga kasaysayan at hindi inililipat ang mga ito. Ang susunod na sync ng mga folder ng mga ito ay naghahambing nang walang kasaysayan, kaya walang nabubura dahil dito.",
+                "nothing": "Walang naka-save na path na kailangang baguhin.",
+                "confirm": "Palitan ang mode",
+                "refused": "Hindi napalitan ang mode",
+                "copyKeptTitle": "Pinanatili ang panimulang folder",
+                "copyKept": "Walang katumbas ang panimulang folder na {path} sa {mode} mode at pinanatili ito nang walang pagbabago."
+            }
         },
         "browser": {
             "remote": "Remote",
@@ -6895,7 +6912,9 @@
                 "proton": {
                     "headerDescription": "Cloud storage ng Proton na may end-to-end encryption",
                     "apiDescription": "Sariling Proton Drive client ng AeroFTP: mag-sign in ka sa pahina ng Proton sa browser, ine-encrypt at dine-decrypt ang mga file sa computer na ito, at hindi kailangan ng ibang app.",
-                    "cliDescription": "Pinapatakbo ang opisyal na Proton Drive CLI na naka-install at naka-sign in sa makinang ito. Mag-sign in ka sa browser; hindi kailanman nakikita ng AeroFTP ang iyong Proton password."
+                    "cliDescription": "Pinapatakbo ang opisyal na Proton Drive CLI na naka-install at naka-sign in sa makinang ito. Mag-sign in ka sa browser; hindi kailanman nakikita ng AeroFTP ang iyong Proton password.",
+                    "apiPaths": "Nagsisimula ang mga path sa My Files: ang My Files ay /.",
+                    "cliPaths": "Nagsisimula ang mga absolute path sa mga seksyon: ang My Files ay /my-files, kung saan nagbubukas ang session."
                 },
                 "opendrive": {
                     "headerDescription": "Cloud storage ng OpenDrive (5 GB libre)",
