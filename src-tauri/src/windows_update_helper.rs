@@ -94,24 +94,14 @@ pub fn install_with_helper(
     let exe_path =
         std::env::current_exe().map_err(|e| format!("Cannot resolve current exe path: {e}"))?;
 
-    let script = match format {
-        InstallFormat::Msi => write_msi_helper(downloaded_path, &exe_path)?,
-        InstallFormat::Nsis => write_nsis_helper(downloaded_path, &exe_path)?,
+    let (script, portable) = match format {
+        InstallFormat::Msi => (write_msi_helper(downloaded_path, &exe_path)?, None),
+        InstallFormat::Nsis => (write_nsis_helper(downloaded_path, &exe_path)?, None),
         InstallFormat::Portable => {
-            let app_exe_name = exe_path
-                .file_name()
-                .ok_or_else(|| "Cannot resolve current exe file name".to_string())?;
-            let staged = stage_portable_artifact(downloaded_path, app_exe_name)?;
-            let cli = stage_update(&staged, &exe_path)?;
             let log_file = crate::portable::log_dir().map(|dir| dir.join(APP_LOG_FILE));
-            write_portable_helper(
-                &staged,
-                &exe_path,
-                &cli,
-                log_file.as_deref(),
-                downloaded_path,
-            )
-            .inspect_err(|_| discard_staged(&exe_path, &cli))?
+            let prepared =
+                prepare_portable(downloaded_path, &exe_path, &temp_dir(), log_file.as_deref())?;
+            (prepared.script.clone(), Some(prepared))
         }
     };
 
@@ -121,7 +111,12 @@ pub fn install_with_helper(
         format
     );
 
-    spawn_detached(&script)?;
+    if let Err(e) = spawn_detached(&script) {
+        if let Some(prepared) = &portable {
+            prepared.discard(&exe_path, downloaded_path);
+        }
+        return Err(e);
+    }
 
     // Notify frontend before we drop the AppHandle. Same phase emitted by
     // the Linux paths so the UI state machine stays uniform.
@@ -221,9 +216,11 @@ struct StagedPortable {
     stage_dir: PathBuf,
 }
 
-/// Extract the portable ZIP into `%TEMP%\aeroftp-update-stage-<rand>\`
-/// and locate the inner files. The CI ZIP layout is flat:
+/// Extract the portable ZIP into `<work_dir>\aeroftp-update-stage-<rand>\`
+/// (`%TEMP%` in production) and locate the inner files. The CI ZIP layout
+/// is flat:
 ///   AeroFTP.exe
+///   aeroftp-app.exe
 ///   aeroftp-cli.exe
 ///   aeroftp-dispatch.exe
 ///   portable.marker
@@ -231,12 +228,26 @@ struct StagedPortable {
 ///   LICENSE.txt
 ///
 /// `app_exe_name` is the file name of the running exe: the new app exe is
-/// the entry with that name.
+/// the entry with that name. Any failure removes the stage dir.
 fn stage_portable_artifact(
     zip_path: &Path,
     app_exe_name: &OsStr,
+    work_dir: &Path,
 ) -> Result<StagedPortable, String> {
-    let stage_dir = temp_dir().join(format!("aeroftp-update-stage-{}", random_suffix()));
+    let stage_dir = work_dir.join(format!("aeroftp-update-stage-{}", random_suffix()));
+    let staged = extract_portable(zip_path, app_exe_name, &stage_dir);
+    if staged.is_err() {
+        let _ = std::fs::remove_dir_all(&stage_dir);
+    }
+    staged
+}
+
+fn extract_portable(
+    zip_path: &Path,
+    app_exe_name: &OsStr,
+    stage_dir: &Path,
+) -> Result<StagedPortable, String> {
+    let stage_dir = stage_dir.to_path_buf();
     std::fs::create_dir_all(&stage_dir).map_err(|e| format!("Failed to create stage dir: {e}"))?;
 
     let file =
@@ -280,13 +291,7 @@ fn stage_portable_artifact(
     // Locate the app exe at the top of the stage directory by name. The ZIP
     // also holds the CLI exes, and taking the first `.exe` took
     // `aeroftp-cli.exe`, which NTFS lists before `AeroFTP.exe`.
-    let new_exe = match find_exe_named(&stage_dir, app_exe_name) {
-        Ok(path) => path,
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&stage_dir);
-            return Err(e);
-        }
-    };
+    let new_exe = find_exe_named(&stage_dir, app_exe_name)?;
 
     let pick_optional = |name: &str| -> Option<PathBuf> {
         let p = stage_dir.join(name);
@@ -452,6 +457,91 @@ fn stage_beside(new_exe: &Path, current_exe: &Path) -> Result<PathBuf, String> {
 /// delays the relaunch by a second.
 const CLI_ATTEMPTS: u32 = 5;
 
+/// The signature sidecar the download leaves next to the ZIP.
+fn sigstore_sidecar(downloaded_zip: &Path) -> PathBuf {
+    downloaded_zip.with_file_name(format!(
+        "{}.sigstore.json",
+        downloaded_zip
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+    ))
+}
+
+/// Removes the downloaded ZIP and its signature sidecar.
+fn discard_download(downloaded_zip: &Path) {
+    let _ = std::fs::remove_file(downloaded_zip);
+    let _ = std::fs::remove_file(sigstore_sidecar(downloaded_zip));
+}
+
+/// What `prepare_portable` leaves for the helper: its script, the stage dir
+/// and the companions staged next to the installed exes.
+struct PreparedPortable {
+    script: PathBuf,
+    stage_dir: PathBuf,
+    cli: Vec<&'static str>,
+}
+
+impl PreparedPortable {
+    /// The helper was not launched: removes everything the update left, as
+    /// a failure inside `prepare_portable` does.
+    fn discard(&self, current_exe: &Path, downloaded_zip: &Path) {
+        discard_staged(current_exe, &self.cli);
+        let _ = std::fs::remove_dir_all(&self.stage_dir);
+        let _ = std::fs::remove_file(&self.script);
+        discard_download(downloaded_zip);
+    }
+}
+
+/// Stages the portable update and writes its helper, both in `work_dir`
+/// (`%TEMP%` in production). Any failure removes what the update left
+/// behind (the staged copies next to the installed exes, the stage dir, and
+/// the downloaded ZIP with its signature sidecar), so a failed update leaves
+/// no trace either (issue #176).
+fn prepare_portable(
+    downloaded_zip: &Path,
+    current_exe: &Path,
+    work_dir: &Path,
+    log_file: Option<&Path>,
+) -> Result<PreparedPortable, String> {
+    let fail = |stage_dir: Option<&Path>, e: String| {
+        if let Some(dir) = stage_dir {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        discard_download(downloaded_zip);
+        Err(e)
+    };
+    let Some(app_exe_name) = current_exe.file_name() else {
+        return fail(None, "Cannot resolve current exe file name".to_string());
+    };
+    let staged = match stage_portable_artifact(downloaded_zip, app_exe_name, work_dir) {
+        Ok(staged) => staged,
+        Err(e) => return fail(None, e),
+    };
+    let cli = match stage_update(&staged, current_exe) {
+        Ok(cli) => cli,
+        Err(e) => return fail(Some(&staged.stage_dir), e),
+    };
+    match write_portable_helper(
+        &staged,
+        current_exe,
+        &cli,
+        log_file,
+        downloaded_zip,
+        work_dir,
+    ) {
+        Ok(script) => Ok(PreparedPortable {
+            script,
+            stage_dir: staged.stage_dir,
+            cli,
+        }),
+        Err(e) => {
+            discard_staged(current_exe, &cli);
+            fail(Some(&staged.stage_dir), e)
+        }
+    }
+}
+
 /// Portable helper: replace the exe with the copy `stage_update` put next to
 /// it, then the CLI exes the same way, copy marker and ancillary files,
 /// relaunch with --post-update-cleanup, and wipe the staged ZIP + extraction
@@ -463,8 +553,9 @@ fn write_portable_helper(
     cli: &[&str],
     log_file: Option<&Path>,
     downloaded_zip: &Path,
+    work_dir: &Path,
 ) -> Result<PathBuf, String> {
-    let script_path = temp_dir().join(format!("aeroftp-update-{}.cmd", random_suffix()));
+    let script_path = work_dir.join(format!("aeroftp-update-{}.cmd", random_suffix()));
     let body = portable_helper_script(staged, current_exe, cli, log_file, downloaded_zip)?;
     std::fs::write(&script_path, body)
         .map_err(|e| format!("Failed to write portable helper script: {e}"))?;
@@ -580,8 +671,13 @@ goto replace_loop
 
 :replace_failed
 rem The old exe never left the launch path: drop the staged copies, the
-rem CLI exes stay at the same version as the app.
-{discard_block}exit /b 1
+rem CLI exes stay at the same version as the app. The download, the stage
+rem and this script go too, as after an update that went through (#176).
+{discard_block}del /F /Q {zip} >nul 2>&1
+del /F /Q {sigstore} >nul 2>&1
+rmdir /S /Q {stage} >nul 2>&1
+rem One line: cmd has read it whole before the script is gone.
+del /F /Q "%~f0" & exit /b 1
 
 :replace_done
 rem The app exe is the new one: replace the CLI exes.
@@ -612,10 +708,7 @@ endlocal
         cli_block = cli_block,
         copy_block = copy_block,
         zip = quote_for_cmd(downloaded_zip),
-        sigstore = quote_for_cmd(&downloaded_zip.with_file_name(format!(
-            "{}.sigstore.json",
-            downloaded_zip.file_name().and_then(|n| n.to_str()).unwrap_or("")
-        ))),
+        sigstore = quote_for_cmd(&sigstore_sidecar(downloaded_zip)),
         stage = quote_for_cmd(&staged.stage_dir),
     );
     // CRLF: cmd finds a `goto` label by scanning the file, and in an LF-only
@@ -1024,11 +1117,13 @@ mod tests {
 
     /// The old process never lets go of its exe. The helper gives up with the
     /// old app exe where it was, leaves the CLI exes at the same old version,
-    /// and removes every staged copy.
+    /// and removes every staged copy, the download with its sidecar, the
+    /// stage and itself, as an update that went through does.
     #[test]
     fn a_failed_app_swap_leaves_every_exe_as_it_was() {
         let fx = fixture();
         with_cli(&fx);
+        std::fs::write(sigstore_sidecar(&fx.zip), b"{}").expect("sidecar");
         let script = script_for(&fx);
         let held = hold(&fx.current);
         run(&fx, &runnable(&script));
@@ -1037,6 +1132,45 @@ mod tests {
         assert_eq!(read(&fx, "aeroftp-cli.exe"), b"old cli");
         assert_eq!(read(&fx, "aeroftp-dispatch.exe"), b"old dispatch");
         assert_eq!(names_in(&fx.app), THREE_EXES.map(String::from).to_vec());
+        assert!(!fx.zip.exists(), "the download is left");
+        assert!(!sigstore_sidecar(&fx.zip).exists(), "the sidecar is left");
+        assert!(!fx.staged.stage_dir.exists(), "the stage is left");
+        assert!(
+            !fx.root.path().join("helper.cmd").exists(),
+            "the script is left"
+        );
+    }
+
+    /// A failure before the helper runs (here a CLI exe that cannot be
+    /// staged) leaves nothing of the update: no staged copy next to the
+    /// installed exes, no stage or script in the work dir, no download.
+    #[test]
+    fn a_failed_preparation_leaves_no_trace() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let work = root.path().join("work");
+        let app = root.path().join("app");
+        std::fs::create_dir_all(&work).expect("work dir");
+        std::fs::create_dir_all(&app).expect("app dir");
+        let current = app.join("AeroFTP.exe");
+        std::fs::write(&current, OLD_EXE).expect("old exe");
+        for (name, old, _) in CLI_FILES {
+            std::fs::write(app.join(name), old).expect("installed cli");
+        }
+        let zip = portable_zip(root.path(), &BRIDGE_ZIP_ENTRIES);
+        std::fs::write(sigstore_sidecar(&zip), b"{}").expect("sidecar");
+        // A folder at a staged name: it cannot be cleared or created.
+        std::fs::create_dir(app.join("aeroftp-dispatch.exe.new")).expect("blocker");
+
+        let refused = prepare_portable(&zip, &current, &work, None)
+            .err()
+            .expect("refused");
+        assert!(refused.contains("aeroftp-dispatch.exe"), "{refused}");
+        std::fs::remove_dir(app.join("aeroftp-dispatch.exe.new")).expect("blocker");
+        assert_eq!(names_in(&app), THREE_EXES.map(String::from).to_vec());
+        assert_eq!(std::fs::read(&current).expect("exe"), OLD_EXE);
+        assert_eq!(names_in(&work), Vec::<String>::new());
+        assert!(!zip.exists(), "the download is left");
+        assert!(!sigstore_sidecar(&zip).exists(), "the sidecar is left");
     }
 
     /// The staged copy is whole, sits next to the exe, and staging does not
@@ -1060,7 +1194,8 @@ mod tests {
     fn the_update_takes_the_app_exe_from_a_zip_that_also_holds_the_cli() {
         let root = tempfile::tempdir().expect("temp dir");
         let zip_path = portable_zip(root.path(), &CI_ZIP_ENTRIES);
-        let staged = stage_portable_artifact(&zip_path, OsStr::new("AeroFTP.exe")).expect("staged");
+        let staged = stage_portable_artifact(&zip_path, OsStr::new("AeroFTP.exe"), root.path())
+            .expect("staged");
         let _ = std::fs::remove_dir_all(&staged.stage_dir);
         assert_eq!(
             staged.new_exe.file_name().and_then(|n| n.to_str()),
@@ -1076,7 +1211,8 @@ mod tests {
         let root = tempfile::tempdir().expect("temp dir");
 
         let before = portable_zip(root.path(), &CI_ZIP_ENTRIES);
-        let staged = stage_portable_artifact(&before, OsStr::new("AeroFTP.exe")).expect("staged");
+        let staged = stage_portable_artifact(&before, OsStr::new("AeroFTP.exe"), root.path())
+            .expect("staged");
         let old_pick = first_exe_as_before(&staged.stage_dir);
         let _ = std::fs::remove_dir_all(&staged.stage_dir);
         assert_eq!(
@@ -1085,7 +1221,8 @@ mod tests {
         );
 
         let bridged = portable_zip(root.path(), &BRIDGE_ZIP_ENTRIES);
-        let staged = stage_portable_artifact(&bridged, OsStr::new("AeroFTP.exe")).expect("staged");
+        let staged = stage_portable_artifact(&bridged, OsStr::new("AeroFTP.exe"), root.path())
+            .expect("staged");
         let old_pick = first_exe_as_before(&staged.stage_dir);
         let old_content = std::fs::read(&old_pick).expect("old pick");
         let _ = std::fs::remove_dir_all(&staged.stage_dir);
@@ -1148,16 +1285,22 @@ mod tests {
     fn the_app_exe_is_found_by_the_running_name_or_the_update_is_refused() {
         let root = tempfile::tempdir().expect("temp dir");
         let zip_path = portable_zip(root.path(), &CI_ZIP_ENTRIES);
-        let staged = stage_portable_artifact(&zip_path, OsStr::new("aeroftp.EXE")).expect("staged");
+        let staged = stage_portable_artifact(&zip_path, OsStr::new("aeroftp.EXE"), root.path())
+            .expect("staged");
         let new_exe = std::fs::read(&staged.new_exe).expect("new exe");
         let _ = std::fs::remove_dir_all(&staged.stage_dir);
         assert_eq!(new_exe, NEW_EXE);
 
         let without_app = portable_zip(root.path(), &CI_ZIP_ENTRIES[1..]);
-        let refused = stage_portable_artifact(&without_app, OsStr::new("AeroFTP.exe"))
+        let refused = stage_portable_artifact(&without_app, OsStr::new("AeroFTP.exe"), root.path())
             .err()
             .expect("refused");
         assert!(refused.contains("AeroFTP.exe"), "{refused}");
+        let stages: Vec<String> = names_in(root.path())
+            .into_iter()
+            .filter(|name| name.starts_with("aeroftp-update-stage-"))
+            .collect();
+        assert!(stages.is_empty(), "{stages:?}");
     }
 
     /// A CLI exe held open (a mount still running) keeps the installed one,
