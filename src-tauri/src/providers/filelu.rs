@@ -34,14 +34,26 @@ const PATH_CACHE_MAX: usize = 10_000;
 /// Maximum pages to retrieve per listing (100 items/page → 10 000 items max)
 const MAX_LIST_PAGES: u32 = 100;
 
-fn require_another_listing_page(page: u32) -> Result<(), ProviderError> {
-    if page >= MAX_LIST_PAGES {
-        Err(ProviderError::ParseError(
-            "FileLu listing page limit reached before completion".into(),
-        ))
-    } else {
-        Ok(())
+/// A full final page needs one lookahead to distinguish exactly the cap
+/// from truncation. Display may warn and retain the capped prefix; probes may not.
+fn listing_is_truncated(
+    page: u32,
+    has_entries: bool,
+    for_display: bool,
+) -> Result<bool, ProviderError> {
+    if page <= MAX_LIST_PAGES || !has_entries {
+        return Ok(false);
     }
+    if !for_display {
+        return Err(ProviderError::ParseError(
+            "FileLu listing page limit reached before completion".into(),
+        ));
+    }
+    super::report_warning(
+        "FileLu listing truncated at the page limit; unlisted names are not confirmed absent"
+            .into(),
+    );
+    Ok(true)
 }
 
 fn filelu_log(msg: &str) {
@@ -630,6 +642,14 @@ impl FileLuProvider {
     /// Support confirmed on 2026-03-28: the response includes both files and folders,
     /// plus file `hash` and `direct_link` metadata.
     async fn list_folder_v2(&self, folder_path: &str) -> Result<FolderListResult, ProviderError> {
+        self.list_folder_v2_mode(folder_path, false).await
+    }
+
+    async fn list_folder_v2_mode(
+        &self,
+        folder_path: &str,
+        for_display: bool,
+    ) -> Result<FolderListResult, ProviderError> {
         let path = if folder_path.is_empty() || folder_path == "/" {
             "/".to_string()
         } else {
@@ -639,7 +659,7 @@ impl FileLuProvider {
         let mut all_files: Vec<FileEntry> = Vec::new();
         let mut all_folders: Vec<FolderEntry> = Vec::new();
 
-        for page in 1..=MAX_LIST_PAGES {
+        for page in 1..=MAX_LIST_PAGES + 1 {
             let page_str = page.to_string();
             let url = self.api_v2_url(
                 "folder/list",
@@ -653,12 +673,14 @@ impl FileLuProvider {
             let result = Self::parse_api::<FolderListResult>(resp).await?;
             let file_count = result.files.len();
             let folder_count = result.folders.len();
+            if listing_is_truncated(page, file_count > 0 || folder_count > 0, for_display)? {
+                break;
+            }
             all_files.extend(result.files);
             all_folders.extend(result.folders);
             if file_count < 100 && folder_count < 100 {
                 break;
             }
-            require_another_listing_page(page)?;
         }
 
         Ok(FolderListResult {
@@ -674,6 +696,16 @@ impl FileLuProvider {
         folder_path: &str,
         fld_id: u64,
     ) -> Result<FolderListResult, ProviderError> {
+        self.list_folder_legacy_hybrid_mode(folder_path, fld_id, false)
+            .await
+    }
+
+    async fn list_folder_legacy_hybrid_mode(
+        &self,
+        folder_path: &str,
+        fld_id: u64,
+        for_display: bool,
+    ) -> Result<FolderListResult, ProviderError> {
         let fld_id_str = fld_id.to_string();
         let path = if folder_path.is_empty() || folder_path == "/" {
             "/".to_string()
@@ -684,7 +716,7 @@ impl FileLuProvider {
 
         let files_fut = async {
             let mut all_files: Vec<FileEntry> = Vec::new();
-            for page in 1..=MAX_LIST_PAGES {
+            for page in 1..=MAX_LIST_PAGES + 1 {
                 let page_str = page.to_string();
                 let url = self.api_url_with(
                     "file/list",
@@ -697,6 +729,9 @@ impl FileLuProvider {
                 let resp = self.get_with_retry(&url).await?;
                 let result = Self::parse_api::<FileListResult>(resp).await?;
                 let count = result.files.len();
+                if listing_is_truncated(page, count > 0, for_display)? {
+                    break;
+                }
                 all_files.extend(
                     result
                         .files
@@ -706,14 +741,13 @@ impl FileLuProvider {
                 if count < 100 {
                     break;
                 }
-                require_another_listing_page(page)?;
             }
             Ok::<_, ProviderError>(all_files)
         };
 
         let folders_fut = async {
             let mut all_folders: Vec<FolderEntry> = Vec::new();
-            for page in 1..=MAX_LIST_PAGES {
+            for page in 1..=MAX_LIST_PAGES + 1 {
                 let page_str = page.to_string();
                 let url = self.api_v2_url(
                     "folder/list",
@@ -726,11 +760,13 @@ impl FileLuProvider {
                 let resp = self.get_with_retry(&url).await?;
                 let result = Self::parse_api::<FolderListResult>(resp).await?;
                 let count = result.folders.len();
+                if listing_is_truncated(page, count > 0, for_display)? {
+                    break;
+                }
                 all_folders.extend(result.folders);
                 if count < 100 {
                     break;
                 }
-                require_another_listing_page(page)?;
             }
             Ok::<_, ProviderError>(all_folders)
         };
@@ -751,7 +787,7 @@ impl FileLuProvider {
         let mut all_files: Vec<FileEntry> = Vec::new();
         let mut all_folders: Vec<FolderEntry> = Vec::new();
 
-        for page in 1..=MAX_LIST_PAGES {
+        for page in 1..=MAX_LIST_PAGES + 1 {
             let page_str = page.to_string();
             let url = self.api_url_with(
                 "file/list",
@@ -764,6 +800,9 @@ impl FileLuProvider {
             let resp = self.get_with_retry(&url).await?;
             let result = Self::parse_api::<FileListResult>(resp).await?;
             let count = result.files.len();
+            if listing_is_truncated(page, count > 0, false)? {
+                break;
+            }
             all_files.extend(
                 result
                     .files
@@ -773,10 +812,9 @@ impl FileLuProvider {
             if count < 100 {
                 break;
             }
-            require_another_listing_page(page)?;
         }
 
-        for page in 1..=MAX_LIST_PAGES {
+        for page in 1..=MAX_LIST_PAGES + 1 {
             let page_str = page.to_string();
             let url = self.api_url_with(
                 "folder/list",
@@ -789,11 +827,13 @@ impl FileLuProvider {
             let resp = self.get_with_retry(&url).await?;
             let result = Self::parse_api::<FolderListResult>(resp).await?;
             let count = result.folders.len();
+            if listing_is_truncated(page, count > 0, false)? {
+                break;
+            }
             all_folders.extend(result.folders);
             if count < 100 {
                 break;
             }
-            require_another_listing_page(page)?;
         }
 
         Ok(FolderListResult {
@@ -807,15 +847,35 @@ impl FileLuProvider {
         parent_path: &str,
         parent_fld_id: u64,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let result = match self.list_folder_v2(parent_path).await {
+        self.populate_cache_for_mode(parent_path, parent_fld_id, false, None)
+            .await
+    }
+
+    async fn populate_cache_for_mode(
+        &mut self,
+        parent_path: &str,
+        parent_fld_id: u64,
+        for_display: bool,
+        cache_only: Option<&str>,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let result = match if for_display {
+            self.list_folder_v2_mode(parent_path, true).await
+        } else {
+            self.list_folder_v2(parent_path).await
+        } {
             Ok(result) => result,
             Err(error) => {
                 filelu_log(&format!(
                     "v2 folder/list failed for '{}', falling back to legacy hybrid listing: {}",
                     parent_path, error
                 ));
-                self.list_folder_legacy_hybrid(parent_path, parent_fld_id)
-                    .await?
+                if for_display {
+                    self.list_folder_legacy_hybrid_mode(parent_path, parent_fld_id, true)
+                        .await?
+                } else {
+                    self.list_folder_legacy_hybrid(parent_path, parent_fld_id)
+                        .await?
+                }
             }
         };
         let mut entries: Vec<RemoteEntry> = Vec::new();
@@ -831,18 +891,20 @@ impl FileLuProvider {
             let name = folder.name.clone().unwrap_or_else(|| "unnamed".to_string());
             let child_norm = Self::normalize_path(&format!("{}/{}", prefix, name));
 
-            self.cache_insert(
-                child_norm.clone(),
-                CacheEntry {
-                    is_dir: true,
-                    fld_id: folder.fld_id,
-                    fld_token: folder.code.clone(),
-                    file_code: String::new(),
-                    size: 0,
-                    modified: None,
-                    hash: None,
-                },
-            );
+            if cache_only.is_none_or(|wanted| wanted == child_norm) {
+                self.cache_insert(
+                    child_norm.clone(),
+                    CacheEntry {
+                        is_dir: true,
+                        fld_id: folder.fld_id,
+                        fld_token: folder.code.clone(),
+                        file_code: String::new(),
+                        size: 0,
+                        modified: None,
+                        hash: None,
+                    },
+                );
+            }
 
             let mut metadata = HashMap::new();
             if let Some(is_password_protected) = folder.password_protected {
@@ -873,18 +935,20 @@ impl FileLuProvider {
             let code = file.file_code.clone().unwrap_or_default();
             let child_norm = Self::normalize_path(&format!("{}/{}", prefix, name));
 
-            self.cache_insert(
-                child_norm.clone(),
-                CacheEntry {
-                    is_dir: false,
-                    fld_id: parent_fld_id,
-                    fld_token: None,
-                    file_code: code,
-                    size: file.size,
-                    modified: file.uploaded.clone(),
-                    hash: file.hash.clone(),
-                },
-            );
+            if cache_only.is_none_or(|wanted| wanted == child_norm) {
+                self.cache_insert(
+                    child_norm.clone(),
+                    CacheEntry {
+                        is_dir: false,
+                        fld_id: parent_fld_id,
+                        fld_token: None,
+                        file_code: code,
+                        size: file.size,
+                        modified: file.uploaded.clone(),
+                        hash: file.hash.clone(),
+                    },
+                );
+            }
 
             let mime = Path::new(&name)
                 .extension()
@@ -967,10 +1031,16 @@ impl FileLuProvider {
                 current_virtual.clone()
             };
 
-            self.populate_cache_for(&parent_virtual, current_fld_id)
-                .await?;
-
             let child_virtual = Self::normalize_path(&format!("{}/{}", parent_virtual, seg));
+            // Retain the requested match even when a full sibling listing would
+            // evict earlier names from the bounded cache.
+            self.populate_cache_for_mode(
+                &parent_virtual,
+                current_fld_id,
+                false,
+                Some(&child_virtual),
+            )
+            .await?;
             let entry = self
                 .path_cache
                 .get(&child_virtual)
@@ -1578,6 +1648,16 @@ impl StorageProvider for FileLuProvider {
         let norm = self.resolve_path(path);
         let fld_id = self.resolve_fld_id(&norm).await?;
         self.populate_cache_for(&norm, fld_id).await
+    }
+
+    async fn list_for_display(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let norm = self.resolve_path(path);
+        let fld_id = self.resolve_fld_id(&norm).await?;
+        self.populate_cache_for_mode(&norm, fld_id, true, None)
+            .await
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -2417,6 +2497,89 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+
+    async fn r47_review_filelu_paged(
+        empty_after_cap: bool,
+    ) -> (FileLuProvider, tokio::task::JoinHandle<()>) {
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| async move {
+            let page: u32 = uri.query().unwrap_or("").split('&').find_map(|q| q.strip_prefix("page=")).unwrap_or("1").parse().unwrap();
+            let empty = empty_after_cap && page > MAX_LIST_PAGES;
+            let files: Vec<_> = (0..if empty {0} else {100}).map(|i| serde_json::json!({"name":format!("file-{page}-{i}"),"file_code":format!("code-{page}-{i}"),"fld_id":0})).collect();
+            axum::Json(serde_json::json!({"status":200,"msg":"OK","result":{"files":files,"folders":[]}}))
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        p.connected = true;
+        p.api_origin_override = Some(format!("http://{addr}"));
+        (p, server)
+    }
+
+    #[tokio::test]
+    async fn r47_review_filelu_lookup_survives_cache_eviction() {
+        let (mut p, server) = r47_review_filelu_paged(true).await;
+        // A prior browse leaves an unrelated item. Adding the complete 10k
+        // siblings now evicts early names before the requested lookup uses them.
+        p.path_cache.insert(
+            "/unrelated".into(),
+            CacheEntry {
+                is_dir: true,
+                fld_id: 99,
+                fld_token: None,
+                file_code: String::new(),
+                size: 0,
+                modified: None,
+                hash: None,
+            },
+        );
+        let result = p.exists("/file-1-0").await;
+        server.abort();
+        assert!(result.unwrap());
+        assert!(p.path_cache.len() <= PATH_CACHE_MAX);
+    }
+
+    #[tokio::test]
+    async fn r47_review_filelu_exact_cap_completes_with_an_empty_lookahead() {
+        let (p, server) = r47_review_filelu_paged(true).await;
+        assert_eq!(p.list_folder_v2("/").await.unwrap().files.len(), 10_000);
+        assert_eq!(
+            p.list_folder_legacy_hybrid("/", 0)
+                .await
+                .unwrap()
+                .files
+                .len(),
+            10_000
+        );
+        assert_eq!(p.list_folder_by_id(0).await.unwrap().files.len(), 10_000);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn r47_review_filelu_display_warns_but_probes_refuse_truncated_data() {
+        let (mut p, server) = r47_review_filelu_paged(false).await;
+        let warnings = crate::providers::CallWarnings::default();
+        let result = warnings.scope(p.list_for_display("/")).await;
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 10_000);
+        assert!(warnings
+            .take()
+            .iter()
+            .any(|w| w.contains("FileLu") && w.contains("truncat")));
+        assert!(matches!(
+            p.exists("/beyond-cap").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        assert!(matches!(
+            p.list("/").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        server.abort();
+    }
+
     #[tokio::test]
     async fn probe_contract_filelu_capped_listing_cannot_prove_absence() {
         let app = axum::Router::new().fallback(axum::routing::get(|| async {

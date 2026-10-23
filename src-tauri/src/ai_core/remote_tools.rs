@@ -636,7 +636,10 @@ async fn list_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError>
     validate_remote_path(&path, "path")?;
     let opts = ListFilterOpts::from_args(args, 200);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
-    let entries = backend.list(&path).await.map_err(ToolError::Exec)?;
+    let entries = backend
+        .list_for_display(&path)
+        .await
+        .map_err(ToolError::Exec)?;
     let total_unfiltered = entries.len();
     let mut filtered = apply_entry_filter(entries, &opts);
     let total_matched = filtered.len();

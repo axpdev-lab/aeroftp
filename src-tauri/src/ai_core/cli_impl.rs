@@ -338,6 +338,12 @@ impl RemoteBackend for CliRemoteBackend {
         p.list(path).await.map_err(|e| e.to_string())
     }
 
+    async fn list_for_display(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected to any server")?;
+        p.list_for_display(path).await.map_err(|e| e.to_string())
+    }
+
     async fn supports_upload_if_absent(&self) -> bool {
         self.provider
             .lock()

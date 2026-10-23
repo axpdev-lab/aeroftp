@@ -2397,7 +2397,7 @@ async fn provider_list_files_inner(
     // between user actions; surfacing the raw `session closed` as a
     // hard error forces a manual reconnect, which Tom (issue #161)
     // flagged as the workflow killer.
-    let files = match provider.list(list_path).await {
+    let files = match provider.list_for_display(list_path).await {
         Ok(files) => files,
         Err(e) if e.is_connection_lost() => {
             emit_session_event(app, SessionEventKind::Lost, e.to_string());
@@ -2405,7 +2405,7 @@ async fn provider_list_files_inner(
                 .await
                 .map_err(|err| format!("Failed to reconnect: {}", err))?;
             let files = provider
-                .list(list_path)
+                .list_for_display(list_path)
                 .await
                 .map_err(|err| format!("Failed to list files after reconnect: {}", err))?;
             emit_session_event(app, SessionEventKind::Reconnected, "");
@@ -2495,7 +2495,7 @@ async fn provider_change_dir_inner(
     }
 
     let files = provider
-        .list(".")
+        .list_for_display(".")
         .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
 

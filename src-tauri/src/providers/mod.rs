@@ -982,6 +982,13 @@ pub trait StorageProvider: Send + Sync {
     /// List files and directories in the given path
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError>;
 
+    /// Readable entries for an interactive listing. Partial results must report
+    /// a warning. Never use this method to prove absence, completeness or emptiness;
+    /// internal walks and protected operations keep using `list`.
+    async fn list_for_display(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list(path).await
+    }
+
     /// Get current working directory
     async fn pwd(&mut self) -> Result<String, ProviderError>;
 

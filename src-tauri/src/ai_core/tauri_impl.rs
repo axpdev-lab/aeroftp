@@ -388,6 +388,25 @@ impl RemoteBackend for TauriRemoteBackend {
         }
     }
 
+    async fn list_for_display(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.list_for_display(path).await.map_err(|e| e.to_string());
+                }
+                let app_state = app.state::<AppState>();
+                let mut manager = app_state.ftp_manager.lock().await;
+                legacy_ftp_list(&mut manager, path).await
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .list_for_display(path)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
         match self {
             TauriRemoteBackend::Active { app } => {

@@ -34337,7 +34337,7 @@ async fn collect_cli_list_entries(
     .map_err(CliListError::RemotePath)?;
     let effective_path = resolved_path;
 
-    let entries = match provider.list(&effective_path).await {
+    let entries = match provider.list_for_display(&effective_path).await {
         Ok(entries) => entries,
         Err(err) => return Err(CliListError::Provider(err)),
     };
@@ -45463,7 +45463,12 @@ async fn cmd_lsjson(
                 let _ = err.flush();
                 spin_i += 1;
             }
-            let entries = match provider.list(&dir_path).await {
+            let listed = if recursive {
+                provider.list(&dir_path).await
+            } else {
+                provider.list_for_display(&dir_path).await
+            };
+            let entries = match listed {
                 Ok(e) => e,
                 Err(e) => {
                     if is_root_list {

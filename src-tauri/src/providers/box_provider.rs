@@ -561,15 +561,16 @@ impl BoxProvider {
         Ok(())
     }
 
-    /// A lookup may report absence only after the entire exact-name
-    /// listing. A short page is not necessarily the final page on Box.
+    /// A positive exact-name match is conclusive: Box enforces sibling-name
+    /// uniqueness (case-insensitive; https://developer.box.com/reference/post-folders).
+    /// Only absence needs all pages; a short/empty slot page may not be last.
     async fn lookup_items(
         &mut self,
         folder_id: &str,
         path: &str,
+        encoded_name: &str,
     ) -> Result<Vec<BoxItem>, ProviderError> {
         let mut offset = 0u64;
-        let mut all = Vec::new();
         loop {
             let token = self.get_token().await?;
             let response = self
@@ -600,9 +601,15 @@ impl BoxProvider {
                 .ok_or_else(|| {
                     ProviderError::ParseError("Box listing offset overflow".to_string())
                 })?;
-            all.extend(page.entries);
+            if let Some(item) = page
+                .entries
+                .into_iter()
+                .find(|item| item.name == encoded_name)
+            {
+                return Ok(vec![item]);
+            }
             if offset >= page.total_count {
-                return Ok(all);
+                return Ok(Vec::new());
             }
         }
     }
@@ -628,13 +635,12 @@ impl BoxProvider {
                 continue;
             }
 
-            let items = self.lookup_items(&current_id, path).await?;
-
             // Box returns names in their stored ENCODED form (a name a user
             // could not otherwise create round-trips via reversible encoding),
             // so match the encoded leaf. The `id_cache` and error text keep the
             // user's original spelling.
             let encoded_part = crate::restricted_chars::encode_leaf(ProviderType::Box, part);
+            let items = self.lookup_items(&current_id, path, &encoded_part).await?;
             let found = items
                 .iter()
                 .find(|item| item.name == encoded_part && item.item_type == "folder");
@@ -660,12 +666,11 @@ impl BoxProvider {
         };
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
-        let items = self.lookup_items(&parent_id, path).await?;
-
         let encoded_name = crate::restricted_chars::encode_leaf(ProviderType::Box, file_name);
+        let items = self.lookup_items(&parent_id, path, &encoded_name).await?;
         items
             .iter()
-            .find(|item| item.name == encoded_name)
+            .find(|item| item.name == encoded_name && item.item_type == "file")
             .map(|item| item.id.clone())
             .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))
     }
@@ -695,9 +700,8 @@ impl BoxProvider {
         };
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
-        let items = self.lookup_items(&parent_id, path).await?;
-
         let encoded_name = crate::restricted_chars::encode_leaf(ProviderType::Box, item_name);
+        let items = self.lookup_items(&parent_id, path, &encoded_name).await?;
         items
             .iter()
             .find(|item| item.name == encoded_name)
@@ -3205,6 +3209,35 @@ fn rename_refused(body: &str, to: &str) -> ProviderError {
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn r47_review_box_stops_after_an_exact_encoded_match() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let requests = Arc::new(AtomicUsize::new(0));
+        let seen = requests.clone();
+        let encoded = crate::restricted_chars::encode_leaf(ProviderType::Box, "target:name");
+        let app = axum::Router::new().fallback(axum::routing::get(move || {
+            let seen = seen.clone(); let encoded = encoded.clone();
+            async move {
+                let first = seen.fetch_add(1, Ordering::SeqCst) == 0;
+                (if first { axum::http::StatusCode::OK } else { axum::http::StatusCode::FORBIDDEN },
+                 axum::Json(serde_json::json!({"entries":[{"type":"folder","id":"target","name":encoded}],"offset":0,"limit":1,"total_count":99})))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = fixture_connected();
+        p.api_base_override = Some(format!("http://{addr}"));
+        let result = p.resolve_folder_id("/target:name").await;
+        server.abort();
+        assert_eq!(result.unwrap(), "target");
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+    }
+
     #[tokio::test]
     async fn probe_contract_box_uses_declared_offsets_even_with_short_pages() {
         for empty_first in [false, true] {

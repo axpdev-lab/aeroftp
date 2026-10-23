@@ -219,6 +219,12 @@ impl RemoteBackend for McpRemoteBackend {
             .await
     }
 
+    async fn list_for_display(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
+        let path = path.to_string();
+        self.with_provider(move |p| Box::pin(async move { p.list_for_display(&path).await }))
+            .await
+    }
+
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
         let path = path.to_string();
         self.with_provider(move |p| Box::pin(async move { p.stat(&path).await }))
