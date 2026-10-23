@@ -329,14 +329,60 @@ pub(crate) fn classify_mega_webdav_result(
 /// MEGA credentials, so the one-time login stays manual until a credentialled
 /// MEGAcmd connection mode exists. Best-effort: callers treat any error as
 /// non-fatal and fall back to the existing connection probe.
-pub async fn ensure_megacmd_webdav_bridge() -> Result<(), ProviderError> {
+///
+/// Returns the URL the bridge serves the account at, when the output names
+/// one: MEGAcmd 2.6 serves it under `/<handle>/Cloud%20Drive`, not at the
+/// server root, see [`megacmd_served_base`].
+pub async fn ensure_megacmd_webdav_bridge() -> Result<Option<String>, ProviderError> {
     let output = run_mega_cmd_capture("mega-webdav", &["/"]).await?;
     let combined = format!(
         "{} {}",
         String::from_utf8_lossy(&output.stderr),
         String::from_utf8_lossy(&output.stdout)
     );
-    classify_mega_webdav_result(output.status.success(), &combined)
+    classify_mega_webdav_result(output.status.success(), &combined)?;
+    Ok(parse_mega_webdav_url(&combined))
+}
+
+/// The base a MEGAcmd WebDAV profile should connect to, when it is not the
+/// one saved. MEGAcmd 2.6 serves the account under `/<handle>/Cloud%20Drive`
+/// (`mega-webdav /` prints `Serving via webdav /: http://127.0.0.1:4443/<handle>/Cloud%20Drive`),
+/// and a profile aimed at the server root could list but not create a folder:
+/// `MKCOL` answered 404 there. `Some(served)` only when the profile points at
+/// that server's root (same scheme, host and port, empty path) and the bridge
+/// serves a path below it. A profile that names a path of its own, another
+/// host or port, or an older MEGAcmd that serves the root, keeps its URL.
+/// Pure, for testing; the saved profile is never rewritten.
+pub(crate) fn megacmd_served_base(profile_url: &str, served_url: &str) -> Option<String> {
+    let profile = reqwest::Url::parse(profile_url.trim()).ok()?;
+    let served = reqwest::Url::parse(served_url.trim()).ok()?;
+    let same_server = profile.scheme() == served.scheme()
+        && profile.host_str() == served.host_str()
+        && profile.port_or_known_default() == served.port_or_known_default();
+    let profile_at_root = profile.path().trim_matches('/').is_empty();
+    let served_below_root = !served.path().trim_matches('/').is_empty();
+    (same_server && profile_at_root && served_below_root)
+        .then(|| served_url.trim().trim_end_matches('/').to_string())
+}
+
+/// The URL a MEGAcmd WebDAV session connects to, chosen on every connect from
+/// the profile's own URL, the one the session used so far, and the URL the
+/// bridge reports serving now (`None` when `mega-webdav /` printed none).
+/// Pure, for testing.
+pub(crate) fn megacmd_session_url(
+    profile_url: &str,
+    current_url: &str,
+    served: Option<&str>,
+) -> String {
+    match served {
+        // Always from the profile's URL: after a first move the session's own
+        // URL is a served path, which would make every later move look like a
+        // profile with a path of its own.
+        Some(served) => {
+            megacmd_served_base(profile_url, served).unwrap_or_else(|| profile_url.to_string())
+        }
+        None => current_url.to_string(),
+    }
 }
 
 /// Extract the served WebDAV URL from `mega-webdav /` output. Pure, for testing.
@@ -652,6 +698,74 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
             parse_mega_webdav_url("served at https://127.0.0.1:4443/ (TLS)"),
             Some("https://127.0.0.1:4443/".to_string())
         );
+    }
+
+    #[test]
+    fn parses_the_served_path_in_every_megacmd_26_form() {
+        let served = "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive";
+        for output in [
+            "Serving via webdav /: http://127.0.0.1:4443/aBcD1234/Cloud%20Drive",
+            "/: already being served at http://127.0.0.1:4443/aBcD1234/Cloud%20Drive",
+            "WEBDAV SERVED LOCATIONS:\n/: http://127.0.0.1:4443/aBcD1234/Cloud%20Drive\n",
+        ] {
+            assert_eq!(
+                parse_mega_webdav_url(output).as_deref(),
+                Some(served),
+                "{output}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_root_profile_moves_to_the_served_path_and_nothing_else_does() {
+        let served = "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive";
+        // The profile the GUI preset saves, with and without a trailing slash.
+        for profile in ["http://127.0.0.1:4443/", "http://127.0.0.1:4443"] {
+            assert_eq!(
+                megacmd_served_base(profile, served).as_deref(),
+                Some(served),
+                "{profile}"
+            );
+        }
+        // A trailing slash on the served URL is not carried over.
+        assert_eq!(
+            megacmd_served_base("http://127.0.0.1:4443/", &format!("{served}/")).as_deref(),
+            Some(served)
+        );
+        // A profile that already names a path keeps it.
+        assert_eq!(megacmd_served_base(served, served), None);
+        assert_eq!(
+            megacmd_served_base("http://127.0.0.1:4443/Other", served),
+            None
+        );
+        // Another host, port or scheme is another server.
+        assert_eq!(megacmd_served_base("http://localhost:4443/", served), None);
+        assert_eq!(megacmd_served_base("http://127.0.0.1:4444/", served), None);
+        assert_eq!(megacmd_served_base("https://127.0.0.1:4443/", served), None);
+        // An older MEGAcmd that serves the root: nothing to move.
+        assert_eq!(
+            megacmd_served_base("http://127.0.0.1:4443/", "http://127.0.0.1:4443/"),
+            None
+        );
+        assert_eq!(megacmd_served_base("not a url", served), None);
+    }
+
+    #[test]
+    fn a_reconnect_follows_the_path_the_bridge_serves_now() {
+        let root = "http://127.0.0.1:4443/";
+        let first = "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive";
+        let second = "http://127.0.0.1:4443/eFgH5678/Cloud%20Drive";
+        // First connect of a profile saved at the root.
+        assert_eq!(megacmd_session_url(root, root, Some(first)), first);
+        // A reconnect of the same session after the bridge moved (another
+        // account logged in to MEGAcmd): the new path, not the old one.
+        assert_eq!(megacmd_session_url(root, first, Some(second)), second);
+        // A bridge that serves the root again: back to the profile's URL.
+        assert_eq!(megacmd_session_url(root, first, Some(root)), root);
+        // Nothing learned from the bridge: the session keeps its URL.
+        assert_eq!(megacmd_session_url(root, first, None), first);
+        // A profile with a path of its own is never moved.
+        assert_eq!(megacmd_session_url(first, first, Some(second)), first);
     }
 
     #[test]

@@ -598,6 +598,11 @@ pub struct WebDavProvider {
     /// cap. Unlike a refusal this may pass, so it is remembered for
     /// [`INFINITY_TIMEOUT_MEMORY`] only, then asked again.
     infinity_timed_out_at: Option<std::time::Instant>,
+    /// The URL the profile was saved with. A MEGAcmd session may connect to
+    /// the path the bridge serves instead (`config.url`), and a reconnect of
+    /// the same session chooses again from this one, so a bridge that moved
+    /// meanwhile is followed rather than the path it served before.
+    profile_url: String,
 }
 
 /// How long a `Depth: infinity` that sent no headers keeps the next scans on
@@ -699,6 +704,7 @@ impl WebDavProvider {
         })?;
 
         let infinity_refused = infinity_refused_from_the_start(config.provider_id.as_deref());
+        let profile_url = config.url.clone();
         Ok(Self {
             config,
             client,
@@ -712,6 +718,7 @@ impl WebDavProvider {
             infinity_headers_timeout: INFINITY_HEADERS_TIMEOUT,
             infinity_refused,
             infinity_timed_out_at: None,
+            profile_url,
         })
     }
 
@@ -2647,7 +2654,17 @@ impl WebDavProvider {
                                 .unwrap_or_else(|_| href.trim().into());
                             let clean_path = decoded_href.trim_end_matches('/');
                             let base_clean = base_path.trim_end_matches('/');
-                            let url_clean = self.config.url.trim_end_matches('/');
+                            // The base URL is decoded like the href it is
+                            // compared with: a base whose path carries escapes
+                            // (`/my%20dav`, MEGAcmd's `/<handle>/Cloud%20Drive`)
+                            // otherwise never matches its own self-reference,
+                            // relative or absolute (MEGAcmd answers with
+                            // absolute hrefs), and the root listing showed the
+                            // base as an entry of itself.
+                            let url_raw = self.config.url.trim_end_matches('/');
+                            let url_decoded =
+                                urlencoding::decode(url_raw).unwrap_or_else(|_| url_raw.into());
+                            let url_clean: &str = url_decoded.trim_end_matches('/');
 
                             let url_path_clean = url_clean
                                 .find("://")
@@ -3330,9 +3347,27 @@ impl StorageProvider for WebDavProvider {
                     // default plaintext bridge is auto-armed; a TLS bridge
                     // (`webdav -tls /`) is left to the user, who configured HTTPS.
                     match super::mega_df::ensure_megacmd_webdav_bridge().await {
-                        Ok(()) => tracing::info!(
-                            "[MEGAcmd] local WebDAV bridge ensured (mega-webdav /)"
-                        ),
+                        Ok(served) => {
+                            tracing::info!("[MEGAcmd] local WebDAV bridge ensured (mega-webdav /)");
+                            // MEGAcmd 2.6 serves the account below the server
+                            // root: a profile aimed at the root lists but
+                            // cannot create folders (MKCOL 404). Connect to the
+                            // served path for this session; the saved profile
+                            // is left as it is.
+                            let url = super::mega_df::megacmd_session_url(
+                                &self.profile_url,
+                                &self.config.url,
+                                served.as_deref(),
+                            );
+                            if url != self.config.url {
+                                tracing::info!(
+                                    "[MEGAcmd] bridge serves the account at {}; connecting there instead of {}",
+                                    url,
+                                    self.config.url
+                                );
+                                self.config.url = url;
+                            }
+                        }
                         Err(e) => tracing::warn!(
                             "[MEGAcmd] could not auto-start the WebDAV bridge ({}); run `mega-webdav /` manually if the connection fails",
                             e
@@ -6074,6 +6109,105 @@ mod tests {
         assert_eq!(entries[0].size, 1024);
         assert_eq!(entries[1].name, "subdir");
         assert!(entries[1].is_dir);
+    }
+
+    /// MEGAcmd 2.6 serves the account under `/<handle>/Cloud%20Drive`: the
+    /// base keeps its own escape and only the path is encoded, so `%20`
+    /// never becomes `%2520`.
+    #[test]
+    fn a_base_with_an_escaped_space_keeps_it_and_encodes_only_the_path() {
+        let base = "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive";
+        let provider = WebDavProvider::new(test_config(base)).expect("provider");
+        assert_eq!(provider.build_url("/"), format!("{base}/"));
+        assert_eq!(
+            provider.build_url("/My Folder/a#b%c?.txt"),
+            format!("{base}/My%20Folder/a%23b%25c%3F.txt")
+        );
+        assert!(!provider.build_url("/x y").contains("%2520"));
+    }
+
+    /// Listing the root of a base whose path holds an escaped space: the
+    /// server's self-reference (`/<handle>/Cloud%20Drive/`) is not an entry.
+    #[test]
+    fn the_root_listing_under_an_escaped_base_skips_the_base_itself() {
+        let provider =
+            WebDavProvider::new(test_config("http://127.0.0.1:4443/aBcD1234/Cloud%20Drive"))
+                .expect("provider");
+        // MEGAcmd 2.6 answers with absolute hrefs and a displayname; the
+        // relative form is what other servers send.
+        for prefix in ["", "http://127.0.0.1:4443"] {
+            let xml = format!(
+                r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>{prefix}/aBcD1234/Cloud%20Drive/</d:href>
+                <d:propstat><d:prop><d:displayname>Cloud Drive</d:displayname><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>{prefix}/aBcD1234/Cloud%20Drive/My%20Folder/</d:href>
+                <d:propstat><d:prop><d:displayname>My Folder</d:displayname><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat>
+            </d:response>
+        </d:multistatus>"#
+            );
+            let entries = provider.parse_propfind_response(&xml, "/").unwrap();
+            let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+            assert_eq!(names, vec!["My Folder"], "hrefs {prefix:?}");
+        }
+    }
+
+    /// Any WebDAV base whose path carries escapes (`%20`, a UTF-8 `%C3%A8`):
+    /// the root listing skips the base itself and keeps every child, and a
+    /// subfolder listing does the same, with names decoded.
+    #[test]
+    fn listings_under_an_escaped_base_have_no_phantom_and_no_lost_entry() {
+        let collection = r#"<d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat>"#;
+        let file = r#"<d:propstat><d:prop><d:resourcetype/><d:getcontentlength>3</d:getcontentlength></d:prop></d:propstat>"#;
+        let response = |href: String, props: &str| {
+            format!("<d:response><d:href>{href}</d:href>{props}</d:response>")
+        };
+        for (base, href_path) in [
+            ("https://example.com/my%20dav", "/my%20dav"),
+            ("https://example.com/caf%C3%A8/dav", "/caf%C3%A8/dav"),
+            // Absolute hrefs, as MEGAcmd sends them.
+            (
+                "https://example.com/my%20dav",
+                "https://example.com/my%20dav",
+            ),
+            (
+                "https://example.com/caf%C3%A8/dav",
+                "https://example.com/caf%C3%A8/dav",
+            ),
+        ] {
+            let provider = WebDavProvider::new(test_config(base)).expect("provider");
+            let root = format!(
+                r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">{}{}{}</d:multistatus>"#,
+                response(format!("{href_path}/"), collection),
+                response(format!("{href_path}/Sub%20Dir/"), collection),
+                response(format!("{href_path}/r%C3%A9sum%C3%A9.txt"), file),
+            );
+            let entries = provider.parse_propfind_response(&root, "/").unwrap();
+            let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+            assert_eq!(
+                names,
+                vec!["Sub Dir", "r\u{e9}sum\u{e9}.txt"],
+                "root of {base}"
+            );
+            assert_eq!(entries[0].path, "/Sub Dir");
+
+            let sub = format!(
+                r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">{}{}</d:multistatus>"#,
+                response(format!("{href_path}/Sub%20Dir/"), collection),
+                response(format!("{href_path}/Sub%20Dir/x%20y.txt"), file),
+            );
+            let entries = provider.parse_propfind_response(&sub, "/Sub Dir").unwrap();
+            let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+            assert_eq!(
+                names,
+                vec!["x y.txt"],
+                "subfolder of {base}, hrefs {href_path}"
+            );
+            assert_eq!(entries[0].path, "/Sub Dir/x y.txt");
+        }
     }
 
     /// LIVE-1 regression: with trim_text(true), a displayname like
