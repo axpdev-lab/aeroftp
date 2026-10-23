@@ -2631,7 +2631,7 @@
             "rollbackRestoreNothing": "Нечего восстанавливать",
             "rollbackRestoreFailed": "Не удалось восстановить: {error}",
             "intervalHoursOne": "{count} час",
-            "intervalHoursMany": "{count} часов"
+            "intervalHoursMany": "{count} ч"
         },
         "ui": {
             "syncing": "Синхронизация...",
@@ -5591,8 +5591,8 @@
             "manageNeverExpires": "Никогда",
             "managePasswordProtected": "Защищено паролем",
             "expirationHoursOne": "{count} час",
-            "expirationHoursMany": "{count} часов",
-            "expirationDaysMany": "{count} дней"
+            "expirationHoursMany": "{count} ч",
+            "expirationDaysMany": "{count} дн."
         },
         "introHub": {
             "tab": {

@@ -2018,7 +2018,7 @@
             "github_run_action_error": "[{provider}] {action} mistókst",
             "batch_rename_start": "[{location}] Endurnefni {count} atriði...",
             "batch_rename_success": "[{location}] Endurnefndi {count} atriði",
-            "batch_rename_error": "[{location}] Endurnefndi {count} atriði, {failed} mistókust",
+            "batch_rename_error": "[{location}] Endurnefndi {count} atriði, mistókst: {failed}",
             "compress_details_saved": "{input} → {output} ({percent}% sparað)",
             "compress_details_grew": "{input} → {output} (stækkaði um {percent}%)",
             "extract_details": "{input} → {output} (afþjappað)",

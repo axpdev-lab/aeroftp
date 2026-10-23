@@ -2631,7 +2631,7 @@
             "rollbackRestoreNothing": "Нічого відновлювати",
             "rollbackRestoreFailed": "Не вдалося відновити: {error}",
             "intervalHoursOne": "{count} година",
-            "intervalHoursMany": "{count} годин"
+            "intervalHoursMany": "{count} год."
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -5591,8 +5591,8 @@
             "manageNeverExpires": "Ніколи",
             "managePasswordProtected": "Захищено паролем",
             "expirationHoursOne": "{count} година",
-            "expirationHoursMany": "{count} годин",
-            "expirationDaysMany": "{count} днів"
+            "expirationHoursMany": "{count} год.",
+            "expirationDaysMany": "{count} дн."
         },
         "introHub": {
             "tab": {

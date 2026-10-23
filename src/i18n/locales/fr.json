@@ -2016,9 +2016,9 @@
             "filelu_folder_password_removed": "[{provider}] Mot de passe du dossier supprimé",
             "github_run_action_success": "[{provider}] {action} #{runId}",
             "github_run_action_error": "[{provider}] {action} a échoué",
-            "batch_rename_start": "[{location}] Renommage de {count} éléments...",
-            "batch_rename_success": "[{location}] {count} éléments renommés",
-            "batch_rename_error": "[{location}] {count} éléments renommés, {failed} en échec",
+            "batch_rename_start": "[{location}] Renommage de {count} élément(s)...",
+            "batch_rename_success": "[{location}] {count} élément(s) renommé(s)",
+            "batch_rename_error": "[{location}] {count} élément(s) renommé(s), {failed} en échec",
             "compress_details_saved": "{input} → {output} ({percent} % économisés)",
             "compress_details_grew": "{input} → {output} (+{percent} %)",
             "extract_details": "{input} → {output} (décompressé)",
@@ -3086,13 +3086,13 @@
             },
             "templates": {
                 "code": "Code",
-                "debug": "Debogage",
+                "debug": "Débogage",
                 "docs": "Documentation",
                 "security": "Sécurité",
                 "general": "Général",
                 "typeSlash": "Tapez / pour utiliser les modèles",
                 "analyzeUi": "Analyser la capture d'écran de l'interface pour les problèmes de mise en page, d'accessibilité et d'expérience utilisateur",
-                "performance": "Analyser le code pour les goulots d'etranglement de performance et l'optimisation",
+                "performance": "Analyser le code pour les goulots d'étranglement de performance et l'optimisation",
                 "analysis": "Analyse"
             },
             "costBudget": {

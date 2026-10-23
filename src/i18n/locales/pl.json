@@ -2016,9 +2016,9 @@
             "filelu_folder_password_removed": "[{provider}] Usunięto hasło folderu",
             "github_run_action_success": "[{provider}] {action} #{runId}",
             "github_run_action_error": "[{provider}] {action} nie powiodło się",
-            "batch_rename_start": "[{location}] Zmiana nazwy {count} elementów...",
-            "batch_rename_success": "[{location}] Zmieniono nazwę {count} elementów",
-            "batch_rename_error": "[{location}] Zmieniono nazwę {count} elementów, {failed} nie powiodło się",
+            "batch_rename_start": "[{location}] Zmiana nazwy elementów: {count}...",
+            "batch_rename_success": "[{location}] Zmieniono nazwę elementów: {count}",
+            "batch_rename_error": "[{location}] Zmieniono nazwę elementów: {count}, niepowodzenia: {failed}",
             "compress_details_saved": "{input} → {output} (zaoszczędzono {percent}%)",
             "compress_details_grew": "{input} → {output} (wzrost o {percent}%)",
             "extract_details": "{input} → {output} (rozpakowano)",
@@ -2631,7 +2631,7 @@
             "rollbackRestoreNothing": "Nic do przywrócenia",
             "rollbackRestoreFailed": "Przywracanie nie powiodło się: {error}",
             "intervalHoursOne": "{count} godzina",
-            "intervalHoursMany": "{count} godzin"
+            "intervalHoursMany": "{count} godz."
         },
         "ui": {
             "syncing": "Synchronizacja...",
@@ -5591,7 +5591,7 @@
             "manageNeverExpires": "Nigdy",
             "managePasswordProtected": "Chroniony hasłem",
             "expirationHoursOne": "{count} godzina",
-            "expirationHoursMany": "{count} godzin",
+            "expirationHoursMany": "{count} godz.",
             "expirationDaysMany": "{count} dni"
         },
         "introHub": {

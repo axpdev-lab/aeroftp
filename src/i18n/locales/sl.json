@@ -2016,9 +2016,9 @@
             "filelu_folder_password_removed": "[{provider}] Geslo mape odstranjeno",
             "github_run_action_success": "[{provider}] {action} #{runId}",
             "github_run_action_error": "[{provider}] {action} ni uspelo",
-            "batch_rename_start": "[{location}] Preimenovanje {count} elementov...",
-            "batch_rename_success": "[{location}] Preimenovanih {count} elementov",
-            "batch_rename_error": "[{location}] Preimenovanih {count} elementov, {failed} neuspešnih",
+            "batch_rename_start": "[{location}] Preimenovanje elementov: {count}...",
+            "batch_rename_success": "[{location}] Preimenovani elementi: {count}",
+            "batch_rename_error": "[{location}] Preimenovani elementi: {count}, neuspešni: {failed}",
             "compress_details_saved": "{input} → {output} (prihranjeno {percent}%)",
             "compress_details_grew": "{input} → {output} (povečano za {percent}%)",
             "extract_details": "{input} → {output} (razširjeno)",
@@ -2631,7 +2631,7 @@
             "rollbackRestoreNothing": "Ni ničesar za obnovitev",
             "rollbackRestoreFailed": "Obnovitev ni uspela: {error}",
             "intervalHoursOne": "{count} ura",
-            "intervalHoursMany": "{count} ur"
+            "intervalHoursMany": "{count} h"
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -5591,8 +5591,8 @@
             "manageNeverExpires": "Nikoli",
             "managePasswordProtected": "Zaščiteno z geslom",
             "expirationHoursOne": "{count} ura",
-            "expirationHoursMany": "{count} ur",
-            "expirationDaysMany": "{count} dni"
+            "expirationHoursMany": "{count} h",
+            "expirationDaysMany": "{count} d"
         },
         "introHub": {
             "tab": {

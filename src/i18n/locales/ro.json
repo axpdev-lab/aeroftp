@@ -2016,9 +2016,9 @@
             "filelu_folder_password_removed": "[{provider}] Parola dosarului a fost eliminată",
             "github_run_action_success": "[{provider}] {action} #{runId}",
             "github_run_action_error": "[{provider}] {action} a eșuat",
-            "batch_rename_start": "[{location}] Se redenumesc {count} elemente...",
-            "batch_rename_success": "[{location}] Au fost redenumite {count} elemente",
-            "batch_rename_error": "[{location}] Au fost redenumite {count} elemente, {failed} au eșuat",
+            "batch_rename_start": "[{location}] Se redenumesc elemente: {count}...",
+            "batch_rename_success": "[{location}] Elemente redenumite: {count}",
+            "batch_rename_error": "[{location}] Elemente redenumite: {count}, eșuate: {failed}",
             "compress_details_saved": "{input} → {output} (economisit {percent}%)",
             "compress_details_grew": "{input} → {output} (crescut cu {percent}%)",
             "extract_details": "{input} → {output} (extins)",
@@ -2631,7 +2631,7 @@
             "rollbackRestoreNothing": "Nimic de restaurat",
             "rollbackRestoreFailed": "Restaurarea a eșuat: {error}",
             "intervalHoursOne": "{count} oră",
-            "intervalHoursMany": "{count} ore"
+            "intervalHoursMany": "{count} h"
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -5591,8 +5591,8 @@
             "manageNeverExpires": "Niciodată",
             "managePasswordProtected": "Protejat cu parolă",
             "expirationHoursOne": "{count} oră",
-            "expirationHoursMany": "{count} ore",
-            "expirationDaysMany": "{count} zile"
+            "expirationHoursMany": "{count} h",
+            "expirationDaysMany": "Zile: {count}"
         },
         "introHub": {
             "tab": {

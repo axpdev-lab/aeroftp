@@ -2016,9 +2016,9 @@
             "filelu_folder_password_removed": "[{provider}] Heslo priečinka odstránené",
             "github_run_action_success": "[{provider}] {action} #{runId}",
             "github_run_action_error": "[{provider}] {action} zlyhalo",
-            "batch_rename_start": "[{location}] Premenovanie {count} položiek...",
-            "batch_rename_success": "[{location}] Premenovaných {count} položiek",
-            "batch_rename_error": "[{location}] Premenovaných {count} položiek, {failed} zlyhalo",
+            "batch_rename_start": "[{location}] Premenovávanie položiek: {count}...",
+            "batch_rename_success": "[{location}] Premenované položky: {count}",
+            "batch_rename_error": "[{location}] Premenované položky: {count}, neúspešné: {failed}",
             "compress_details_saved": "{input} → {output} (ušetrené {percent}%)",
             "compress_details_grew": "{input} → {output} (zväčšené o {percent}%)",
             "extract_details": "{input} → {output} (rozbalené)",
@@ -2631,7 +2631,7 @@
             "rollbackRestoreNothing": "Nie je čo obnoviť",
             "rollbackRestoreFailed": "Obnovenie zlyhalo: {error}",
             "intervalHoursOne": "{count} hodina",
-            "intervalHoursMany": "{count} hodín"
+            "intervalHoursMany": "{count} h"
         },
         "ui": {
             "syncing": "Synchronizácia...",
@@ -5591,8 +5591,8 @@
             "manageNeverExpires": "Nikdy",
             "managePasswordProtected": "Chránené heslom",
             "expirationHoursOne": "{count} hodina",
-            "expirationHoursMany": "{count} hodín",
-            "expirationDaysMany": "{count} dní"
+            "expirationHoursMany": "{count} h",
+            "expirationDaysMany": "{count} d"
         },
         "introHub": {
             "tab": {

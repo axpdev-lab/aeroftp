@@ -2016,9 +2016,9 @@
             "filelu_folder_password_removed": "[{provider}] Лозинка фасцикле уклоњена",
             "github_run_action_success": "[{provider}] {action} #{runId}",
             "github_run_action_error": "[{provider}] {action} није успело",
-            "batch_rename_start": "[{location}] Преименовање {count} ставки...",
-            "batch_rename_success": "[{location}] Преименовано {count} ставки",
-            "batch_rename_error": "[{location}] Преименовано {count} ставки, {failed} неуспешно",
+            "batch_rename_start": "[{location}] Преименовање ставки: {count}...",
+            "batch_rename_success": "[{location}] Преименоване ставке: {count}",
+            "batch_rename_error": "[{location}] Преименоване ставке: {count}, неуспешно: {failed}",
             "compress_details_saved": "{input} → {output} (уштеђено {percent}%)",
             "compress_details_grew": "{input} → {output} (повећано {percent}%)",
             "extract_details": "{input} → {output} (распаковано)",
@@ -2631,7 +2631,7 @@
             "rollbackRestoreNothing": "Нема ничега за враћање",
             "rollbackRestoreFailed": "Враћање није успело: {error}",
             "intervalHoursOne": "{count} сат",
-            "intervalHoursMany": "{count} сати"
+            "intervalHoursMany": "{count} ч"
         },
         "ui": {
             "syncing": "Синхронизација...",
@@ -5591,8 +5591,8 @@
             "manageNeverExpires": "Никада",
             "managePasswordProtected": "Заштићено лозинком",
             "expirationHoursOne": "{count} сат",
-            "expirationHoursMany": "{count} сати",
-            "expirationDaysMany": "{count} дана"
+            "expirationHoursMany": "{count} ч",
+            "expirationDaysMany": "{count} д"
         },
         "introHub": {
             "tab": {

@@ -2631,7 +2631,7 @@
             "rollbackRestoreNothing": "Nėra ką atkurti",
             "rollbackRestoreFailed": "Atkūrimas nepavyko: {error}",
             "intervalHoursOne": "{count} valanda",
-            "intervalHoursMany": "{count} valandos"
+            "intervalHoursMany": "{count} val."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -5591,8 +5591,8 @@
             "manageNeverExpires": "Niekada",
             "managePasswordProtected": "Apsaugota slaptažodžiu",
             "expirationHoursOne": "{count} valanda",
-            "expirationHoursMany": "{count} valandos",
-            "expirationDaysMany": "{count} dienos"
+            "expirationHoursMany": "{count} val.",
+            "expirationDaysMany": "{count} d."
         },
         "introHub": {
             "tab": {
