@@ -10215,7 +10215,8 @@ const App: React.FC = () => {
             remotePlainName: targetName,
           });
         } else if (isProvider) {
-          await invoke('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null });
+          const uploadOutcome = await invoke<string>('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null, noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null });
+          if (uploadOutcome?.startsWith('Skipped:')) return false;
           if (protocol === 'opendrive') {
             await invoke('opendrive_set_path_privacy', {
               path: remotePath,
@@ -12500,6 +12501,7 @@ const App: React.FC = () => {
       if (isProvider) registerFileBatchRows(batchId, queueIds);
       const params = {
         entries: batchEntries,
+        no_clobber: !isDownload && protocol === 'imagekit' && fileExistsAction === 'skip',
         batch_id: batchId,
         max_concurrent: effectiveMaxConcurrentTransfers,
         retry_count: retryCount,
@@ -12570,12 +12572,14 @@ const App: React.FC = () => {
               ...buildSftpDownloadPresetPayload(protocol, sftpDownloadPreset),
             });
           } else {
-            await invoke('provider_upload_file', {
+            const uploadOutcome = await invoke<string>('provider_upload_file', {
               localPath: entry.local_path,
               remotePath: entry.remote_path,
               commitMessage: null,
               resume: resumes.has(entry) || null,
+              noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null,
             });
+            if (uploadOutcome?.startsWith('Skipped:')) continue;
             await setPrivate([entry]);
           }
           transferQueue.completeTransfer(queueIds[i]);

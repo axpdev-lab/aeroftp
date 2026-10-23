@@ -293,6 +293,35 @@ async fn legacy_ftp_stat(
 
 #[async_trait]
 impl RemoteBackend for TauriRemoteBackend {
+    async fn supports_upload_if_absent(&self) -> bool {
+        match self {
+            Self::Active { app } => Self::active_provider(app)
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(|p| p.supports_upload_if_absent()),
+            Self::Temp { provider } => provider.lock().await.supports_upload_if_absent(),
+        }
+    }
+    async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
+        match self {
+            Self::Active { app } => {
+                let state = Self::active_provider(app);
+                let mut guard = state.lock().await;
+                let provider = guard
+                    .as_mut()
+                    .ok_or("No active provider supports conditional upload")?;
+                crate::providers::create_only_upload(provider.as_mut(), local, remote)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+            Self::Temp { provider } => {
+                crate::providers::create_only_upload(provider.lock().await.as_mut(), local, remote)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+        }
+    }
     async fn listing_is_authoritative(&self) -> bool {
         match self {
             Self::Active { app } => {

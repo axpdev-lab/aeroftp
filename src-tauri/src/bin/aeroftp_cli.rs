@@ -7779,6 +7779,14 @@ async fn skip_if_destination_exists(
     cli: &Cli,
     format: OutputFormat,
 ) -> Option<i32> {
+    if !cli.immutable && provider.supports_upload_if_absent() {
+        if put_run_left_incomplete(target) {
+            put_run_note_refused();
+            print_error(format, &left_incomplete_refusal(target), 4);
+            return Some(4);
+        }
+        return None;
+    }
     match provider.stat(target).await {
         Ok(entry) => {
             let refusal = if put_run_left_incomplete(target) {
@@ -11112,8 +11120,18 @@ async fn upload_transfer_on(
         ));
     }
 
+    let native_guard = no_clobber && !cli.immutable && provider.supports_upload_if_absent();
+    if native_guard && put_run_left_incomplete(&remote_path) {
+        put_run_note_refused();
+        return Err(TransferOnError {
+            message: left_incomplete_refusal(&remote_path),
+            session_lost: false,
+            retry_safe: false,
+            untouched: false,
+        });
+    }
     // --immutable / --no-clobber: never overwrite a remote file.
-    if cli.immutable || no_clobber {
+    if cli.immutable || (no_clobber && !native_guard) {
         match provider.stat(&remote_path).await {
             Ok(entry) => {
                 let local_size = std::fs::metadata(&local_path).map(|m| m.len()).ok();
@@ -11200,7 +11218,21 @@ async fn upload_transfer_on(
         }
         None => (None, None),
     };
-    let result = upload_with_resume(provider, &local_path, &remote_path, cli, progress_cb).await;
+    let result = if native_guard {
+        provider
+            .upload_if_absent(&local_path, &remote_path, progress_cb)
+            .await
+    } else {
+        upload_with_resume(provider, &local_path, &remote_path, cli, progress_cb).await
+    };
+    if native_guard && matches!(result, Err(ProviderError::AlreadyExists(_))) {
+        if let Some(attempt) = attempt {
+            attempt.take_back();
+        }
+        return Err(TransferOnError::skipped(format!(
+            "{UPLOAD_SKIP_PREFIX}--no-clobber): {remote_path}"
+        )));
+    }
     if let (Err(_), Some(attempt)) = (&result, &attempt) {
         attempt.take_back();
     }
@@ -36468,7 +36500,7 @@ async fn cmd_put(
     // signals a security-relevant fault (host-key mismatch, etc.) that the
     // operator must see.
     let not_finished = format!("the upload did not finish, {remote_path} may be incomplete");
-    if delta {
+    if delta && !(no_clobber && !cli.immutable && provider.supports_upload_if_absent()) {
         let attempt = run_until_interrupted(
             &cancelled,
             ftp_client_gui_lib::delta_sync_rsync::try_delta_transfer(
@@ -36550,7 +36582,16 @@ async fn cmd_put(
     // DAG-ENGINE: route the plain classic single-file upload through the
     // graph engine. `--partial` keeps the legacy `upload_with_resume` (its
     // resume branch is not the plain leaf). Both stop on Ctrl-C.
-    let (mut provider, up_result) = if !cli.partial {
+    let native_guard = no_clobber && !cli.immutable && provider.supports_upload_if_absent();
+    let (mut provider, up_result) = if native_guard {
+        let result = run_until_interrupted(
+            &cancelled,
+            provider.upload_if_absent(local, remote_path, progress_cb),
+        )
+        .await
+        .unwrap_or_else(|| Err(interrupted_by_user()));
+        (provider, result)
+    } else if !cli.partial {
         cli_run_single_file_dag(
             provider,
             ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
@@ -36633,6 +36674,20 @@ async fn cmd_put(
             }
             let _ = provider.disconnect().await;
             0
+        }
+        Err(ProviderError::AlreadyExists(_)) if native_guard => {
+            if let Some(pb) = pb {
+                pb.finish_and_clear();
+            }
+            if matches!(format, OutputFormat::Json) {
+                print_json(
+                    &serde_json::json!({"status":"skipped","reason":"already_exists","path":remote_path}),
+                );
+            } else if !cli.quiet {
+                eprintln!("Skipped: {remote_path} (already exists, --no-clobber)");
+            }
+            let _ = provider.disconnect().await;
+            9
         }
         Err(e) => {
             // It may have left a partial at the target: a later attempt of
@@ -88089,6 +88144,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         kind: Option<ProviderType>,
         /// A backend such as ImageKit cannot prove absence from its list.
         refuse_unlisted_absence: bool,
+        conditional_uploads: bool,
         /// `reports_exact_size` says no, as the size-changing overlays do.
         inexact_sizes: bool,
         /// Paths whose `stat` loses the session, and how many times. The
@@ -88201,6 +88257,26 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
     #[async_trait::async_trait]
     impl StorageProvider for WorkerFake {
+        fn supports_upload_if_absent(&self) -> bool {
+            self.state.lock().unwrap().conditional_uploads
+        }
+        async fn upload_if_absent(
+            &mut self,
+            local: &str,
+            remote: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let bytes = tokio::fs::read(local)
+                .await
+                .map_err(ProviderError::IoError)?;
+            let mut state = self.state.lock().unwrap();
+            if state.files.contains_key(remote) {
+                return Err(ProviderError::AlreadyExists(remote.into()));
+            }
+            state.files.insert(remote.into(), bytes);
+            state.served.push((self.id, remote.into()));
+            Ok(())
+        }
         fn listing_is_authoritative(&self) -> bool {
             !self.state.lock().unwrap().refuse_unlisted_absence
         }
@@ -90247,6 +90323,61 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             assert_eq!(st.files.len(), if recursive { 5 } else { 1 });
             assert_eq!(st.files["/root/f1.txt"], b"file 1");
             assert_eq!(st.served.len(), if recursive { 5 } else { 1 });
+        }
+    }
+
+    #[test]
+    fn probe_contract_cli_native_no_clobber_accepts_fresh_and_skips_existing() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for recursive in [false, true] {
+            for taken in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let (folder, cli) = local_batch(&dir, 1);
+                let single = format!("{folder}/f1.txt");
+                let state = WorkerFake::state();
+                {
+                    let mut st = state.lock().unwrap();
+                    st.kind = Some(ProviderType::ImageKit);
+                    st.refuse_unlisted_absence = true;
+                    st.conditional_uploads = true;
+                    if taken {
+                        st.files.insert("/root/f1.txt".into(), b"original".to_vec());
+                    }
+                }
+                let code = run_on_fake(&state, || {
+                    cmd_put(
+                        "memory://",
+                        if recursive { &folder } else { &single },
+                        Some(if recursive { "/root" } else { "/root/f1.txt" }),
+                        recursive,
+                        true,
+                        false,
+                        None,
+                        &cli,
+                        OutputFormat::Json,
+                        Arc::new(AtomicBool::new(false)),
+                    )
+                });
+                assert_eq!(
+                    code,
+                    if taken && !recursive { 9 } else { 0 },
+                    "recursive={recursive} taken={taken}"
+                );
+                let st = state.lock().unwrap();
+                assert_eq!(st.files.len(), if recursive { 5 } else { 1 });
+                assert_eq!(
+                    st.files["/root/f1.txt"],
+                    if taken {
+                        b"original".as_slice()
+                    } else {
+                        b"file 1".as_slice()
+                    }
+                );
+                assert_eq!(
+                    st.served.len(),
+                    if recursive { 5 } else { 1 } - usize::from(taken)
+                );
+            }
         }
     }
 

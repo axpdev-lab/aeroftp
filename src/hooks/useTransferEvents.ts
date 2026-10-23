@@ -663,14 +663,35 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
         emitToastState();
       } else if (data.event_type === 'file_skip') {
-        // File skipped due to file_exists_action setting (identical/not newer)
+        // A preflight keep policy or a native create-only server collision skipped the file.
         const displayName = resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
-        humanLog.logRaw('activity.file_skipped', 'INFO', { filename: displayName }, 'success');
+        const trackedLog = findTrackedEntry(pendingFileLogIds.current, data.transfer_id, data.path, data.filename);
+        if (trackedLog) {
+          activityLog.updateEntry(trackedLog.value, { status: 'success', message: t('activity.file_skipped', { filename: displayName }) });
+          pendingFileLogIds.current.delete(trackedLog.key);
+        } else {
+          humanLog.logRaw('activity.file_skipped', 'INFO', { filename: displayName }, 'success');
+        }
 
-        // Add skipped file to queue and mark as completed
-        const skipDirection = data.direction === 'upload' ? 'upload' : 'download';
-        const skipQueueId = transferQueue.addItem(data.filename, '', 0, skipDirection);
-        transferQueue.completeTransfer(skipQueueId);
+        // A native create-only upload can start before the server decides to
+        // skip it. Settle that row rather than creating a second completed row
+        // and leaving the original transfer running.
+        const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
+        if (trackedQueue) {
+          transferQueue.completeTransfer(trackedQueue.value);
+          transferIdToQueueId.current.delete(trackedQueue.key);
+        } else {
+          const skipDirection = data.direction === 'upload' ? 'upload' : 'download';
+          const skipQueueId = transferQueue.addItem(data.filename, data.path || '', 0, skipDirection);
+          transferQueue.completeTransfer(skipQueueId);
+        }
+        transferIdToQueueId.current.delete(data.transfer_id);
+        const existingLane = toastLanesRef.current.get(data.transfer_id);
+        if (existingLane) {
+          toastLanesRef.current.set(data.transfer_id, { ...existingLane, percentage: 100, speed_bps: 0, eta_seconds: 0, state: 'completed' });
+          scheduleLaneCleanup(data.transfer_id);
+        }
+        emitToastState();
       } else if (data.event_type === 'progress' && data.progress) {
         // Cancel any pending toast-clear timer (prevents flicker between consecutive files)
         if (clearToastTimer.current) {

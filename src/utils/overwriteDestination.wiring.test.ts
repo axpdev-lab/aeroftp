@@ -34,7 +34,7 @@ const { code: overwriteCode } = await transformWithOxc(
 type Direction = 'upload' | 'download';
 type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
 const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; failListing?: boolean; protocol?: 'webdav' | 'sftp' }) {
+function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; failListing?: boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
   const direction = options.direction;
   const protocol = options.protocol || 'webdav';
   const destination = options.destination ?? [file('a.bin')];
@@ -174,4 +174,13 @@ it.each(['upload', 'download'] as const)('preserves both same-name %s sources in
     ? args!.params.entries.map((entry: any) => entry[direction === 'upload' ? 'remote_path' : 'local_path'])
     : [args![direction === 'upload' ? 'remotePath' : 'localPath']]);
   expect(paths).toEqual(['/actual/a.bin', '/actual/a (1).bin']);
+});
+
+it('carries ImageKit skip policy to native single and batch uploads', async () => {
+  const f = fixture({ direction: 'upload', protocol: 'imagekit', policy: 'skip', destination: [] });
+  await single(f, 'upload');
+  expect(f.writers()[0]).toEqual(['provider_upload_file', expect.objectContaining({ noClobber: true })]);
+  const batch = fixture({ direction: 'upload', protocol: 'imagekit', policy: 'skip', destination: [] });
+  await batch.runtime.runFileBatch('upload', items, '/actual');
+  expect(batch.writers()[0]).toEqual(['provider_upload_files_batch', expect.objectContaining({ params: expect.objectContaining({ no_clobber: true }) })]);
 });

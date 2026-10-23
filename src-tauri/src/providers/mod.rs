@@ -1086,6 +1086,25 @@ pub trait StorageProvider: Send + Sync {
     /// Create a directory
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError>;
 
+    /// Whether uploads can atomically refuse an occupied destination.
+    /// This is independent of stat/list completeness and immutable size checks.
+    fn supports_upload_if_absent(&self) -> bool {
+        false
+    }
+
+    /// Create a file without replacing an existing destination. No fallback
+    /// to an ordinary upload is permitted when this operation is unsupported.
+    async fn upload_if_absent(
+        &mut self,
+        _local_path: &str,
+        _remote_path: &str,
+        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported(
+            "Conditional create-only upload is unavailable".into(),
+        ))
+    }
+
     /// Delete a file
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError>;
 
@@ -2141,6 +2160,19 @@ pub(crate) fn the_one_trashed_item<T>(
 
 /// The refusal of a directory that holds `entries` entries, as every backend
 /// whose `rmdir` lists first says it.
+/// A native conditional upload's confirmed create/skip result for agent backends.
+pub(crate) async fn create_only_upload(
+    provider: &mut dyn StorageProvider,
+    local: &str,
+    remote: &str,
+) -> Result<bool, ProviderError> {
+    match provider.upload_if_absent(local, remote, None).await {
+        Ok(()) => Ok(true),
+        Err(ProviderError::AlreadyExists(_)) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 pub fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
     ProviderError::DirectoryNotEmpty(format!(
         "{path} holds {entries} entr{}; delete it recursively to remove it with its content",

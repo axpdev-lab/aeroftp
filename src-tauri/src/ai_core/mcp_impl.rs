@@ -225,6 +225,21 @@ impl RemoteBackend for McpRemoteBackend {
             .await
     }
 
+    async fn supports_upload_if_absent(&self) -> bool {
+        self.with_provider(|p| Box::pin(async move { Ok(p.supports_upload_if_absent()) }))
+            .await
+            .unwrap_or(false)
+    }
+    async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
+        let local = local.to_string();
+        let remote = remote.to_string();
+        self.with_provider(move |p| {
+            Box::pin(async move {
+                crate::providers::create_only_upload(p.as_mut(), &local, &remote).await
+            })
+        })
+        .await
+    }
     async fn listing_is_authoritative(&self) -> bool {
         self.with_provider(|p| Box::pin(async move { Ok(p.listing_is_authoritative()) }))
             .await

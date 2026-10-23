@@ -316,6 +316,9 @@ impl ImageKitProvider {
             }
             StatusCode::NOT_FOUND => ProviderError::NotFound(msg),
             StatusCode::CONFLICT => ProviderError::AlreadyExists(msg),
+            StatusCode::BAD_REQUEST if parsed.as_ref().is_some_and(|error|
+                error.message == "A file with the same name already exists at the exact location. We could not overwrite it because both overwriteFile and useUniqueFileName are set to false."
+            ) => ProviderError::AlreadyExists(msg),
             s if s.is_client_error() => ProviderError::InvalidConfig(msg),
             s if s.is_server_error() => ProviderError::ServerError(msg),
             _ => ProviderError::Other(format!("HTTP {}: {}", status, msg)),
@@ -369,6 +372,94 @@ impl ImageKitProvider {
                 ProviderError::ParseError("ImageKit listing offset overflow".into())
             })?;
         }
+    }
+
+    async fn upload_file(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let target = self.resolve_path(remote_path);
+        let file_name = if target.ends_with('/') {
+            Path::new(local_path)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .ok_or_else(|| {
+                    ProviderError::InvalidPath("Upload path must include a filename".to_string())
+                })?
+        } else {
+            basename(&target).to_string()
+        };
+        let folder = folder_path(&parent_path(&target));
+        let meta = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let total = meta.len();
+        let file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+
+        let mut uploaded = 0u64;
+        let progress_cb = on_progress;
+        let stream = crate::transfer_dag::throttle::throttle_stream(
+            ReaderStream::with_capacity(file, 64 * 1024),
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        )
+        .map(move |chunk| {
+            if let Ok(bytes) = &chunk {
+                uploaded += bytes.len() as u64;
+                if let Some(ref cb) = progress_cb {
+                    cb(uploaded, total);
+                }
+            }
+            chunk
+        });
+
+        let body = reqwest::Body::wrap_stream(stream);
+        let mime = mime_guess::from_path(&file_name).first_or_octet_stream();
+        let file_part = multipart::Part::stream_with_length(body, total)
+            .file_name(file_name.clone())
+            .mime_str(mime.as_ref())
+            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+
+        let form = multipart::Form::new()
+            .part("file", file_part)
+            .text("fileName", file_name)
+            .text("folder", folder)
+            .text("useUniqueFileName", "false")
+            .text("overwriteFile", if overwrite { "true" } else { "false" });
+
+        let resp = self
+            .auth(self.client.post(self.upload_url()))
+            .multipart(form)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            return Err(self.parse_error(resp).await);
+        }
+
+        let uploaded = resp
+            .json::<IkUploadResponse>()
+            .await
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let _ = (
+            uploaded.file_id,
+            uploaded.name,
+            uploaded.file_path,
+            uploaded.url,
+            uploaded.thumbnail_url,
+            uploaded.file_type,
+            uploaded.size,
+        );
+        Ok(())
     }
 
     async fn find_entry(&self, path: &str) -> Result<IkFile, ProviderError> {
@@ -619,6 +710,17 @@ impl ImageKitProvider {
         let occupant = match self.find_entry(&target).await {
             Ok(found) => Some(file_to_entry(&found)),
             Err(ProviderError::NotFound(_)) => None,
+            Err(ProviderError::NotSupported(_))
+                if !overwrite && parent_path(&source) == parent_path(&target) =>
+            {
+                // Only same-folder rename has a documented collision409.
+                // Move APIs append versions/merge and have no such guard.
+                if entry.is_dir {
+                    refuse_rewritten_folder_name(basename(&target))?;
+                    return self.rename_folder_job(&source, basename(&target)).await;
+                }
+                return self.rename_file(&source, basename(&target)).await;
+            }
             Err(e) => return Err(e),
         };
         if let Some(occupant) = occupant {
@@ -1146,85 +1248,22 @@ impl StorageProvider for ImageKitProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-
-        let target = self.resolve_path(remote_path);
-        let file_name = if target.ends_with('/') {
-            Path::new(local_path)
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .ok_or_else(|| {
-                    ProviderError::InvalidPath("Upload path must include a filename".to_string())
-                })?
-        } else {
-            basename(&target).to_string()
-        };
-        let folder = folder_path(&parent_path(&target));
-        let meta = tokio::fs::metadata(local_path)
+        self.upload_file(local_path, remote_path, on_progress, true)
             .await
-            .map_err(ProviderError::IoError)?;
-        let total = meta.len();
-        let file = tokio::fs::File::open(local_path)
+    }
+
+    fn supports_upload_if_absent(&self) -> bool {
+        true
+    }
+
+    async fn upload_if_absent(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.upload_file(local_path, remote_path, on_progress, false)
             .await
-            .map_err(ProviderError::IoError)?;
-
-        let mut uploaded = 0u64;
-        let progress_cb = on_progress;
-        let stream = crate::transfer_dag::throttle::throttle_stream(
-            ReaderStream::with_capacity(file, 64 * 1024),
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        )
-        .map(move |chunk| {
-            if let Ok(bytes) = &chunk {
-                uploaded += bytes.len() as u64;
-                if let Some(ref cb) = progress_cb {
-                    cb(uploaded, total);
-                }
-            }
-            chunk
-        });
-
-        let body = reqwest::Body::wrap_stream(stream);
-        let mime = mime_guess::from_path(&file_name).first_or_octet_stream();
-        let file_part = multipart::Part::stream_with_length(body, total)
-            .file_name(file_name.clone())
-            .mime_str(mime.as_ref())
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
-
-        let form = multipart::Form::new()
-            .part("file", file_part)
-            .text("fileName", file_name)
-            .text("folder", folder)
-            .text("useUniqueFileName", "false")
-            .text("overwriteFile", "true");
-
-        let resp = self
-            .auth(self.client.post(self.upload_url()))
-            .multipart(form)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            return Err(self.parse_error(resp).await);
-        }
-
-        let uploaded = resp
-            .json::<IkUploadResponse>()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-        let _ = (
-            uploaded.file_id,
-            uploaded.name,
-            uploaded.file_path,
-            uploaded.url,
-            uploaded.thumbnail_url,
-            uploaded.file_type,
-            uploaded.size,
-        );
-        Ok(())
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1666,6 +1705,80 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     #[tokio::test]
+    async fn probe_contract_imagekit_create_only_upload_uses_the_native_guard() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::post(|request: axum::extract::Request| async move {
+            let body = axum::body::to_bytes(request.into_body(), 1 << 20).await.unwrap();
+            let text = String::from_utf8_lossy(&body);
+            assert!(text.contains("name=\"useUniqueFileName\"\r\n\r\nfalse"), "{text}");
+            assert!(text.contains("name=\"overwriteFile\"\r\n\r\nfalse"), "{text}");
+            if text.contains("name=\"fileName\"\r\n\r\ntaken") {
+                (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"message":"A file with the same name already exists at the exact location. We could not overwrite it because both overwriteFile and useUniqueFileName are set to false."}))).into_response()
+            } else if text.contains("name=\"fileName\"\r\n\r\nbad") {
+                (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"message":"Your request is missing file parameter."}))).into_response()
+            } else { axum::Json(serde_json::json!({"fileId":"new"})).into_response() }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{address}"));
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), b"payload").unwrap();
+        assert!(provider.supports_upload_if_absent());
+        assert!(provider
+            .upload_if_absent(file.path().to_str().unwrap(), "/fresh", None)
+            .await
+            .is_ok());
+        assert!(matches!(
+            provider
+                .upload_if_absent(file.path().to_str().unwrap(), "/taken", None)
+                .await,
+            Err(ProviderError::AlreadyExists(_))
+        ));
+        assert!(matches!(
+            provider
+                .upload_if_absent(file.path().to_str().unwrap(), "/bad", None)
+                .await,
+            Err(ProviderError::InvalidConfig(_))
+        ));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn probe_contract_imagekit_same_folder_file_rename_lets_the_server_decide() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::any(|request: axum::extract::Request| async move {
+            if request.method() == "GET" {
+                axum::Json(serde_json::json!([{"fileId":"source", "name":"source", "filePath":"/source", "type":"file", "size":3},{"folderId":"f","name":"folder","folderPath":"/folder","type":"folder"}])).into_response()
+            } else {
+                let body = axum::body::to_bytes(request.into_body(), 1 << 20).await.unwrap();
+                let request:serde_json::Value=serde_json::from_slice(&body).unwrap();
+                if request["newFileName"] == "taken" || request["newFolderName"] == "taken" {
+                    (axum::http::StatusCode::CONFLICT,axum::Json(serde_json::json!({"reason":"FILE_ALREADY_EXISTS","message":"File with name taken already exists at the same location."}))).into_response()
+                } else { axum::Json(serde_json::json!({})).into_response() }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{address}"));
+        assert!(matches!(
+            provider.rename("/source", "/taken").await,
+            Err(ProviderError::AlreadyExists(_))
+        ));
+        provider.rename("/source", "/fresh").await.unwrap();
+        assert!(matches!(
+            provider.rename("/folder", "/taken").await,
+            Err(ProviderError::AlreadyExists(_))
+        ));
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn probe_contract_imagekit_empty_partial_list_cannot_authorize_rmdir() {
         let (mut provider, deletes) = provider_on_listings(&[("/dir", "[]")]).await;
         let outcome = provider.rmdir("/dir").await;
@@ -1793,6 +1906,115 @@ mod tests {
             .filter(|(path, _)| path == "/upload")
             .collect();
         assert_eq!(uploads.len(), 2);
+        assert!(uploads[0]
+            .1
+            .windows(b"first payload".len())
+            .any(|part| part == b"first payload"));
+        assert!(uploads[1]
+            .1
+            .windows(b"second payload".len())
+            .any(|part| part == b"second payload"));
+        assert!(
+            requests.iter().all(|(path, _)| path != "/files"),
+            "plain GUI upload must not require a missing-name proof"
+        );
+    }
+    #[tokio::test]
+    async fn probe_contract_imagekit_gui_skip_uses_native_guard() {
+        use crate::provider_transfer_executor::{
+            ProviderExecutorSessionModel, ProviderUploadExecutor,
+        };
+        use crate::transfer_orchestrator::TransferExecutor;
+        use std::sync::{Arc, Mutex};
+        type RequestLog = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+        let requests: RequestLog = Arc::default();
+        let seen = requests.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |request: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let path = request.uri().path().to_string();
+                    let body = axum::body::to_bytes(request.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    seen.lock().unwrap().push((path.clone(), body.to_vec()));
+                    use axum::response::IntoResponse;
+                    if path == "/upload" && String::from_utf8_lossy(&body).contains("name=\"fileName\"\r\n\r\nb.txt") {
+                        (axum::http::StatusCode::BAD_REQUEST,axum::Json(serde_json::json!({"message":"A file with the same name already exists at the exact location. We could not overwrite it because both overwriteFile and useUniqueFileName are set to false."}))).into_response()
+                    } else if path == "/files" {
+                        axum::Json(serde_json::json!([])).into_response()
+                    } else {
+                        axum::Json(serde_json::json!({"fileId":"uploaded"})).into_response()
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.mkdir("/target").await.unwrap();
+        provider.mkdir("/target/sub").await.unwrap();
+        let capabilities = provider.transfer_capabilities();
+        let executor = ProviderUploadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(tokio::sync::Mutex::new(Some(
+                Box::new(provider) as Box<dyn StorageProvider>
+            ))),
+            crate::transfer_settings::ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 0,
+                timeout_seconds: 10,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+                sftp_download_preset: None,
+            },
+            None,
+            tokio_util::sync::CancellationToken::new(),
+            ProviderExecutorSessionModel::LockedSingle {
+                provider_type: Some(ProviderType::ImageKit),
+            },
+            capabilities,
+        )
+        .with_no_clobber(true);
+        let temp = tempfile::tempdir().unwrap();
+        for (index, remote, bytes) in [
+            (0, "/target/a.txt", b"first payload".as_slice()),
+            (1, "/target/sub/b.txt", b"second payload".as_slice()),
+        ] {
+            let local = temp.path().join(format!("file-{index}"));
+            std::fs::write(&local, bytes).unwrap();
+            let result = executor
+                .execute(crate::transfer_domain::TransferEntry {
+                    id: index.to_string(),
+                    display_name: format!("file-{index}"),
+                    local_path: local.to_string_lossy().into_owned(),
+                    remote_path: remote.into(),
+                    size: bytes.len() as u64,
+                    modified: None,
+                })
+                .await;
+            assert!(
+                matches!(
+                    (&index, &result),
+                    (0, crate::transfer_domain::TransferOutcome::Success)
+                        | (1, crate::transfer_domain::TransferOutcome::Skipped { .. })
+                ),
+                "{result:?}"
+            );
+        }
+        server.abort();
+        let requests = requests.lock().unwrap();
+        let uploads: Vec<_> = requests
+            .iter()
+            .filter(|(path, _)| path == "/upload")
+            .collect();
+        assert_eq!(uploads.len(), 2);
+        for (_, body) in &uploads {
+            assert!(String::from_utf8_lossy(body).contains("name=\"overwriteFile\"\r\n\r\nfalse"));
+        }
         assert!(uploads[0]
             .1
             .windows(b"first payload".len())
@@ -2095,14 +2317,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_folder_rename_refuses_an_unverified_new_name() {
+    async fn probe_contract_imagekit_same_folder_rename_uses_native_collision_check() {
         let (mut provider, posts) = provider_recording_folder_jobs().await;
         let outcome = provider.rename("/src/photos", "/src/albums").await;
-        assert!(
-            matches!(outcome, Err(ProviderError::NotSupported(ref error)) if error.contains("cannot verify")),
-            "{outcome:?}"
-        );
-        assert!(posts.lock().unwrap().is_empty());
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(posts.lock().unwrap().len(), 1);
     }
 
     /// An unknown final name must not start the first of two folder jobs.

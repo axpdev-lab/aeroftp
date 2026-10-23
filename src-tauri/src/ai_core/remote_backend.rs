@@ -71,6 +71,13 @@ pub trait RemoteBackend: Send + Sync {
     /// Upload bytes to remote path.
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String>;
 
+    async fn supports_upload_if_absent(&self) -> bool {
+        false
+    }
+    async fn upload_if_absent(&self, _local: &str, _remote: &str) -> Result<bool, String> {
+        Err("Conditional create-only upload is unavailable".into())
+    }
+
     /// Download a file to local path.
     async fn download(&self, remote: &str, local: &str) -> Result<(), String>;
 

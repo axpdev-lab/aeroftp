@@ -1539,6 +1539,7 @@ impl ProviderDownloadExecutor {
 }
 
 pub struct ProviderUploadExecutor {
+    no_clobber: bool,
     sink: Arc<dyn TransferEventSink>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     runtime_settings: ResolvedTransferSettings,
@@ -1566,6 +1567,7 @@ impl ProviderUploadExecutor {
         capabilities: TransferCapabilities,
     ) -> Self {
         Self {
+            no_clobber: false,
             sink,
             provider,
             runtime_settings,
@@ -1576,6 +1578,20 @@ impl ProviderUploadExecutor {
             attempt_counts: AttemptCounts::default(),
             warm_workers: WarmWorkerPool::default(),
         }
+    }
+
+    pub fn with_no_clobber(mut self, no_clobber: bool) -> Self {
+        self.no_clobber = no_clobber;
+        if no_clobber {
+            // Only the conditional whole-file operation carries the server
+            // precondition; ordinary bulk/multipart/resume must not bypass it.
+            self.capabilities.bulk_upload = Capability::Unsupported;
+            self.capabilities.multipart_upload = Capability::Unsupported;
+            self.capabilities.resume_upload = Capability::Unsupported;
+            self.capabilities.offset_upload = Capability::Unsupported;
+            self.capabilities.upload_session = Capability::Unsupported;
+        }
+        self
     }
 
     async fn clone_worker(&self) -> Result<WarmWorker, String> {
@@ -1638,7 +1654,23 @@ impl ProviderUploadExecutor {
                 .upload_attempt(provider, &entry, &file_transfer_id, file_size)
                 .await
             {
-                Ok(()) => {
+                Ok(false) => {
+                    self.sink.emit_transfer_event(crate::TransferEvent {
+                        event_type: "file_skip".into(),
+                        transfer_id: file_transfer_id.clone(),
+                        filename: entry.display_name.clone(),
+                        direction: "upload".into(),
+                        message: Some("Skipped: destination already exists".into()),
+                        progress: None,
+                        path: Some(entry.remote_path.clone()),
+                        delta_stats: None,
+                        fallback_reason: None,
+                    });
+                    return TransferOutcome::Skipped {
+                        reason: "Destination already exists".into(),
+                    };
+                }
+                Ok(true) => {
                     self.emit_upload_complete(&entry, &file_transfer_id);
                     return TransferOutcome::Success;
                 }
@@ -1672,7 +1704,7 @@ impl ProviderUploadExecutor {
         entry: &TransferEntry,
         file_transfer_id: &str,
         file_size: u64,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let remote_path = entry.remote_path.clone();
         let local_path = entry.local_path.clone();
         // Reject names with characters this provider's backend forbids before
@@ -1687,6 +1719,9 @@ impl ProviderUploadExecutor {
             .timeout_seconds
             .max(size_secs + self.runtime_settings.timeout_seconds);
 
+        if self.no_clobber && !provider.supports_upload_if_absent() {
+            return Err("Provider cannot guarantee a create-only upload".into());
+        }
         if is_plain_github_provider(provider) {
             let github = provider
                 .as_any_mut()
@@ -1708,7 +1743,7 @@ impl ProviderUploadExecutor {
                 _ = self.cancel_token.cancelled() => {
                     Err("Transfer cancelled by user".to_string())
                 }
-                result = upload => result,
+                result = upload => result.map(|()|true),
             };
         }
 
@@ -1722,59 +1757,64 @@ impl ProviderUploadExecutor {
         let cancel_race = self.cancel_token.clone();
         let speed_meter = crate::transfer_speed::SpeedMeter::new();
 
-        let upload_fut = tokio::time::timeout(
-            Duration::from_secs(eff_timeout),
-            provider.upload(
-                &local_path,
-                &remote_path,
-                Some(Box::new(move |transferred, total| {
-                    if cancel_token.is_cancelled() {
-                        return;
-                    }
+        let progress: Option<Box<dyn Fn(u64, u64) + Send>> =
+            Some(Box::new(move |transferred, total| {
+                if cancel_token.is_cancelled() {
+                    return;
+                }
 
-                    let percentage = if total > 0 {
-                        ((transferred as f64 / total as f64) * 100.0) as u8
-                    } else {
-                        0
-                    };
-                    let speed = speed_meter.bps(transferred);
-                    let remaining = total.max(file_size).saturating_sub(transferred);
-                    let eta = if speed > 0 {
-                        (remaining as f64 / speed as f64) as u64
-                    } else {
-                        0
-                    };
+                let percentage = if total > 0 {
+                    ((transferred as f64 / total as f64) * 100.0) as u8
+                } else {
+                    0
+                };
+                let speed = speed_meter.bps(transferred);
+                let remaining = total.max(file_size).saturating_sub(transferred);
+                let eta = if speed > 0 {
+                    (remaining as f64 / speed as f64) as u64
+                } else {
+                    0
+                };
 
-                    sink.emit_transfer_event(crate::TransferEvent {
-                        event_type: "progress".to_string(),
+                sink.emit_transfer_event(crate::TransferEvent {
+                    event_type: "progress".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: display_name.clone(),
+                    direction: "upload".to_string(),
+                    message: None,
+                    progress: Some(crate::TransferProgress {
                         transfer_id: transfer_id.clone(),
                         filename: display_name.clone(),
+                        transferred,
+                        total: total.max(file_size),
+                        percentage,
+                        speed_bps: speed,
+                        eta_seconds: eta as u32,
                         direction: "upload".to_string(),
-                        message: None,
-                        progress: Some(crate::TransferProgress {
-                            transfer_id: transfer_id.clone(),
-                            filename: display_name.clone(),
-                            transferred,
-                            total: total.max(file_size),
-                            percentage,
-                            speed_bps: speed,
-                            eta_seconds: eta as u32,
-                            direction: "upload".to_string(),
-                            total_files: None,
-                            path: None,
-                        }),
-                        path: Some(remote_path_for_progress.clone()),
-                        delta_stats: None,
-                        fallback_reason: None,
-                    });
-                })),
-            ),
-        );
+                        total_files: None,
+                        path: None,
+                    }),
+                    path: Some(remote_path_for_progress.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                });
+            }));
+        let upload_fut = tokio::time::timeout(Duration::from_secs(eff_timeout), async {
+            if self.no_clobber {
+                provider
+                    .upload_if_absent(&local_path, &remote_path, progress)
+                    .await
+            } else {
+                provider.upload(&local_path, &remote_path, progress).await
+            }
+        });
         tokio::select! {
             biased;
             _ = cancel_race.cancelled() => Err("Transfer cancelled by user".to_string()),
             res = upload_fut => match res {
-                Ok(result) => result.map_err(|e| e.to_string()),
+                Ok(Ok(()))=>Ok(true),
+                Ok(Err(crate::providers::ProviderError::AlreadyExists(_))) if self.no_clobber=>Ok(false),
+                Ok(Err(error))=>Err(error.to_string()),
                 Err(_) => Err(format!("Upload timed out after {} seconds", eff_timeout)),
             },
         }

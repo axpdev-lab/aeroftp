@@ -781,11 +781,48 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let no_clobber = get_bool_opt(args, "no_clobber").unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     reject_restricted_leaf(backend.as_ref(), &remote_path).await?;
-    if no_clobber && remote_path_exists(backend.as_ref(), &remote_path, "no_clobber").await? {
+    let native_guard = no_clobber && backend.supports_upload_if_absent().await;
+    if no_clobber
+        && !native_guard
+        && remote_path_exists(backend.as_ref(), &remote_path, "no_clobber").await?
+    {
         return Ok(no_clobber_skipped(&server, &remote_path));
     }
     if create_parents {
         ensure_remote_parents(ctx, &server, &remote_path).await?;
+    }
+    if native_guard {
+        let staged;
+        let local = if let Some(local) = get_str_opt(args, "local_path") {
+            validate_local_path(&local, "local_path")?;
+            local
+        } else if let Some(content) = get_str_opt(args, "content") {
+            staged = tempfile::NamedTempFile::new().map_err(|e| ToolError::Exec(e.to_string()))?;
+            std::fs::write(staged.path(), content.as_bytes())
+                .map_err(|e| ToolError::Exec(e.to_string()))?;
+            staged.path().to_string_lossy().into_owned()
+        } else {
+            return Err(ToolError::InvalidArgs {
+                tool: "aeroftp_upload_file".into(),
+                reason: "Provide either 'local_path' or 'content'".into(),
+            });
+        };
+        return match backend
+            .upload_if_absent(&local, &remote_path)
+            .await
+            .map_err(ToolError::Exec)?
+        {
+            true => {
+                if get_str_opt(args, "local_path").is_some() {
+                    Ok(local_file_uploaded(&server, &local, &remote_path))
+                } else {
+                    Ok(
+                        json!({"server":server,"remote_path":remote_path,"uploaded":true,"bytes":get_str_opt(args,"content").map_or(0,|content|content.len())}),
+                    )
+                }
+            }
+            false => Ok(no_clobber_skipped(&server, &remote_path)),
+        };
     }
     if let Some(local_path) = get_str_opt(args, "local_path") {
         validate_local_path(&local_path, "local_path")?;
@@ -4621,6 +4658,7 @@ mod tests {
         stat_fails_with: Option<String>,
         list_fails_with: Option<String>,
         listing_authoritative: bool,
+        conditional_result: Option<Result<bool, String>>,
         /// When set, `mkdir` fails with this message instead of the default
         /// "unused", so a test can hand the walk the wording a real server
         /// uses when the path is already taken.
@@ -4710,6 +4748,7 @@ mod tests {
                 stat_fails_with: None,
                 list_fails_with: None,
                 listing_authoritative: true,
+                conditional_result: None,
                 mkdir_fails_with: None,
                 mkdir_calls: Mutex::new(Vec::new()),
                 symlinks: std::collections::HashSet::new(),
@@ -4743,6 +4782,17 @@ mod tests {
 
     #[async_trait::async_trait]
     impl RemoteBackend for FakeBackend {
+        async fn supports_upload_if_absent(&self) -> bool {
+            self.conditional_result.is_some()
+        }
+        async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
+            let result = self.conditional_result.clone().ok_or("unavailable")?;
+            if result == Ok(true) {
+                let bytes = std::fs::read(local).map_err(|e| e.to_string())?;
+                self.uploads.lock().unwrap().push((remote.into(), bytes));
+            }
+            result
+        }
         async fn listing_is_authoritative(&self) -> bool {
             self.listing_authoritative
         }
@@ -5326,6 +5376,29 @@ mod tests {
         );
         assert_eq!(report["results"][0]["skipped"], true);
         assert_eq!(report["summary"]["totals"]["skipped"], 1);
+    }
+
+    #[tokio::test]
+    async fn probe_contract_mcp_native_no_clobber_uses_server_instead_of_stat() {
+        for created in [false, true] {
+            let mut fake = FakeBackend::sample();
+            fake.conditional_result = Some(Ok(created));
+            fake.listing_authoritative = false;
+            let fake = Arc::new(fake);
+            let ctx = test_ctx(fake.clone());
+            let result = upload_file(
+                &ctx,
+                &json!({"server":"s","remote_path":"/new","content":"payload","no_clobber":true}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(result[if created { "uploaded" } else { "skipped" }], true);
+            if created {
+                assert_eq!(result["bytes"], 7);
+            }
+            assert!(fake.stat_calls.lock().unwrap().is_empty());
+            assert_eq!(fake.uploads.lock().unwrap().len(), usize::from(created));
+        }
     }
 
     #[tokio::test]
