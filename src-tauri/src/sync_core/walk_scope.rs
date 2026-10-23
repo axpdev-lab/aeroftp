@@ -221,6 +221,47 @@ impl WalkScope {
         }
     }
 
+    /// Whether a path is the root itself, under any exact known spelling.
+    /// Self entries are not descendants and need no further scan.
+    pub fn is_root(&self, path: &str) -> bool {
+        self.identities.contains(&walk_path_key(path))
+    }
+
+    /// A well-formed self entry or object marker for this scope's root.
+    /// An alias with another name still reaches the walk's refusal guards.
+    pub fn is_root_entry(&self, entry: &RemoteEntry) -> bool {
+        if !self.is_root(&entry.path) {
+            return false;
+        }
+        let identity = walk_path_key(&entry.path);
+        let name = entry.name.trim_end_matches('/');
+        name.is_empty() || name == "." || identity.rsplit('/').next() == Some(name)
+    }
+
+    /// Map a strict descendant to the local name under this walk's root.
+    /// Prefer the longest exact root spelling learned from the root listing,
+    /// preserving the case and literal characters of every child component.
+    /// This does not expand a walk's authority or change deletion guards.
+    pub fn relative_path(&self, path: &str) -> Option<String> {
+        let path = walk_path_key(path);
+        if self.identities.contains(&path) {
+            return None;
+        }
+        self.identities
+            .iter()
+            .filter_map(|root| {
+                let relative = if root == "/" {
+                    path.strip_prefix('/')
+                } else {
+                    path.strip_prefix(root)
+                        .and_then(|tail| tail.strip_prefix('/'))
+                }?;
+                (!relative.is_empty()).then_some((root.len(), relative))
+            })
+            .max_by_key(|(length, _)| *length)
+            .map(|(_, relative)| relative.to_string())
+    }
+
     /// Decide whether a walk lists `child`, a folder the listing of
     /// `listed_dir` named. [`WalkStep::Follow`] also records it as listed, so
     /// a later listing that names it again gets [`WalkStep::AlreadyListed`].
@@ -644,6 +685,43 @@ mod tests {
         let mut scope = WalkScope::new("/");
         assert_eq!(scope.admit("/", "/Docs"), WalkStep::Follow);
         assert_eq!(scope.admit("/", "/docs"), WalkStep::Follow);
+    }
+
+    #[test]
+    fn relative_names_use_the_longest_known_root_without_prefix_bleed() {
+        for (root, spelled) in [
+            ("docs", "/home/u/docs"),
+            ("/Docs", "/docs"),
+            ("disk:/docs", "/docs"),
+            ("/docs ", "/docs"),
+            ("/", "/home/u"),
+        ] {
+            let mut scope = WalkScope::new(root);
+            scope.learn_root_listing(&[file("a.txt", &format!("{spelled}/a.txt"))]);
+            assert_eq!(
+                scope
+                    .relative_path(&format!("{spelled}/Sub/back\\slash.txt"))
+                    .as_deref(),
+                Some("Sub/back\\slash.txt"),
+                "{root}"
+            );
+            assert_eq!(
+                scope.relative_path(spelled),
+                None,
+                "the root is not its own child"
+            );
+            assert!(scope.is_root(root));
+            assert!(scope.is_root(&format!("{spelled}/")));
+            assert!(!scope.is_root(&format!("{spelled}/a.txt")));
+            assert!(!scope.is_root(&format!("{spelled}-other")));
+            let name = spelled.rsplit('/').next().unwrap();
+            assert!(scope.is_root_entry(&file(name, &format!("{spelled}/"))));
+            assert!(scope.is_root_entry(&file("", &format!("{spelled}/"))));
+            assert!(!scope.is_root_entry(&file("different-name", spelled)));
+            if root != "/" {
+                assert_eq!(scope.relative_path(&format!("{spelled}-other/a.txt")), None);
+            }
+        }
     }
 
     /// GitHub returns repo-relative paths, with no leading `/`.
