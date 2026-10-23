@@ -224,6 +224,13 @@ pub struct FtpProvider {
     /// `ensure_connected` puts a session that was dropped back in its
     /// directory; a pool worker that never dialled has none to go back to.
     has_dialled: bool,
+    /// The server answered `REST` with 502 or 504: it cannot restart a
+    /// transfer at all. Learnt once and kept for the session, because
+    /// suppaftp 12.2.1 sends `REST` only after PASV, so every further attempt
+    /// at an offset would open a passive connection just to be refused again.
+    /// With it set, a resume starts again from byte 0, a download takes one
+    /// stream, and a range past byte 0 is `NotSupported` without a command.
+    restart_unsupported: bool,
 }
 
 impl FtpProvider {
@@ -244,6 +251,7 @@ impl FtpProvider {
             multi_thread_streams: 1,
             multi_thread_cutoff: FTP_MULTI_THREAD_CUTOFF_DEFAULT,
             has_dialled: false,
+            restart_unsupported: false,
         }
     }
 
@@ -1245,6 +1253,26 @@ impl FtpProvider {
         ProviderError::ServerError(err.to_string())
     }
 
+    /// A remote path carrying CR or LF, refused before any command is sent.
+    ///
+    /// The library refuses to write such a command line as well, but only at
+    /// the moment it writes it, and suppaftp 12.2.1 negotiates PASV and
+    /// connects the data socket before it builds `STOR`, `RETR` or `LIST`. The
+    /// refusal was the same `InvalidPath`, and it cost a round trip, a passive
+    /// connection left open on the server and the session. Every operation
+    /// that opens a data connection checks the name here first; the library's
+    /// own check and `classify_data_failure` stay behind it.
+    fn refuse_line_breaks(operation: &str, path: &str) -> Result<(), ProviderError> {
+        if path.contains(['\r', '\n']) {
+            return Err(ProviderError::InvalidPath(Self::doing(
+                operation,
+                &format!("{path:?}"),
+                "a remote path cannot contain CR or LF",
+            )));
+        }
+        Ok(())
+    }
+
     /// Turn a permanent upload refusal into one the user can act on.
     ///
     /// The CLI used to check the parent BEFORE every upload and say "Parent
@@ -1643,6 +1671,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        Self::refuse_line_breaks("listing", path)?;
         self.redial_if_a_reply_is_pending().await?;
         match self.list_inner(path).await {
             Ok(entries) => Ok(entries),
@@ -1706,6 +1735,7 @@ impl StorageProvider for FtpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        Self::refuse_line_breaks("downloading", remote_path)?;
         self.redial_if_a_reply_is_pending().await?;
         // No-op when the provider is already connected (CLI path); connects
         // a `clone_for_transfer()` worker on its first transfer (generic
@@ -1754,7 +1784,7 @@ impl StorageProvider for FtpProvider {
         // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
         // the single-file path agrees with batch and pget.
         let planned_mt = self.planned_download_segments(total_size);
-        if planned_mt >= 2 && self.connection_spec.is_some() {
+        if planned_mt >= 2 && self.connection_spec.is_some() && !self.restart_unsupported {
             let (attempt_progress, fallback_progress) =
                 super::multi_thread::share_progress(on_progress.take());
             on_progress = fallback_progress;
@@ -1773,6 +1803,17 @@ impl StorageProvider for FtpProvider {
                 // promise here, and it reports through the half of the
                 // progress callback that stayed here.
                 Ok(false) => {}
+                // Every window past byte 0 opens with REST, and a server
+                // without restart support refuses all of them; one stream
+                // from byte 0 needs no REST at all. Not a failure of the
+                // file, so the download goes on rather than ending here.
+                Err(ProviderError::NotSupported(why)) => {
+                    self.restart_unsupported = true;
+                    tracing::warn!("FTP intra-file download refused: {why}");
+                    report_download_fallback(
+                        "FTP: the server does not support restarting a transfer",
+                    );
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -1808,6 +1849,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        Self::refuse_line_breaks("downloading", remote_path)?;
         self.redial_if_a_reply_is_pending().await?;
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
 
@@ -1881,6 +1923,7 @@ impl StorageProvider for FtpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        Self::refuse_line_breaks("uploading", remote_path)?;
         self.redial_if_a_reply_is_pending().await?;
         // PD-FTP-1: a `clone_for_transfer()` pool worker starts unconnected
         // and carries only the spec; it must dial its own control+data
@@ -2200,9 +2243,12 @@ impl StorageProvider for FtpProvider {
         // tail at it into the destination joined two files, or left a run of
         // zeros where the destination was missing. In place the destination
         // is the part, gone on from at `offset` as before.
-        if !super::atomic_write::inplace_active() {
+        // In place, a server that cannot restart gets the whole file again
+        // from byte 0: `download` writes the destination from the start.
+        if !super::atomic_write::inplace_active() || self.restart_unsupported {
             return self.download(remote_path, local_path, on_progress).await;
         }
+        Self::refuse_line_breaks("resuming", remote_path)?;
         self.redial_if_a_reply_is_pending().await?;
         use tokio::io::{AsyncSeekExt, AsyncWriteExt as _};
 
@@ -2240,7 +2286,15 @@ impl StorageProvider for FtpProvider {
         let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
             Ok(opened) => opened,
             Err(err) => {
-                return Err(self.refused_restart_open("resuming", remote_path, offset, err))
+                let refused = self.refused_restart_open("resuming", remote_path, offset, err);
+                if !matches!(refused, ProviderError::NotSupported(_)) {
+                    return Err(refused);
+                }
+                // No restart at all on this server: start again from byte 0
+                // instead of failing every attempt at the same offset.
+                self.restart_unsupported = true;
+                tracing::warn!("{refused}; downloading {remote_path} again from byte 0");
+                return self.download(remote_path, local_path, on_progress).await;
             }
         };
         let data_stream = match opened {
@@ -2308,6 +2362,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        Self::refuse_line_breaks("uploading", remote_path)?;
         self.redial_if_a_reply_is_pending().await?;
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
@@ -2554,6 +2609,9 @@ impl StorageProvider for FtpProvider {
         worker.connection_spec = Some(spec);
         worker.multi_thread_streams = self.multi_thread_streams;
         worker.multi_thread_cutoff = self.multi_thread_cutoff;
+        // Same server, same answer: a worker need not pay one refused REST
+        // to learn what this session already knows.
+        worker.restart_unsupported = self.restart_unsupported;
         Ok(Box::new(worker))
     }
 
@@ -2609,6 +2667,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         len: u64,
     ) -> Result<Vec<u8>, ProviderError> {
+        Self::refuse_line_breaks("reading a range of", path)?;
         self.redial_if_a_reply_is_pending().await?;
         const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
         if len > MAX_READ_RANGE {
@@ -2624,6 +2683,15 @@ impl StorageProvider for FtpProvider {
         // worker, so without this self-dial every segmented download
         // against a clone pool fails with `Not connected`.
         self.ensure_connected().await?;
+        // Already refused once on this server: the same REST would cost a
+        // passive connection and be refused again. Byte 0 needs no REST.
+        if offset > 0 && self.restart_unsupported {
+            return Err(ProviderError::NotSupported(Self::doing(
+                "reading a range of",
+                &format!("{path} from byte {offset}"),
+                "the server does not support restarting a transfer",
+            )));
+        }
         // No TYPE I here: connect() already put the session in binary mode
         // (the same invariant upload_single relies on).
         let stream = self.stream_mut()?;
@@ -2636,7 +2704,11 @@ impl StorageProvider for FtpProvider {
         let opened = match Self::open_with_cap(stream.retr_as_stream(path)).await {
             Ok(opened) => opened,
             Err(err) => {
-                return Err(self.refused_restart_open("reading a range of", path, offset, err))
+                let refused = self.refused_restart_open("reading a range of", path, offset, err);
+                if matches!(refused, ProviderError::NotSupported(_)) {
+                    self.restart_unsupported = true;
+                }
+                return Err(refused);
             }
         };
         let data_stream = match opened {
@@ -4731,59 +4803,86 @@ mod restart_contract_tests {
     const CONTENT: &[u8] = b"0123456789abcdef";
     type CommandLog = Arc<Mutex<Vec<String>>>;
 
+    /// How the strict server answers `REST`.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum Restart {
+        Accept,
+        /// 501: this offset refused, a retry may do better.
+        Refuse,
+        /// 502: no restart support at all.
+        Unsupported,
+    }
+
     /// Like strict REST servers, forget the offset on any command other than
     /// the RETR immediately following it. Distinct bytes expose a lost offset.
+    /// Serves `sessions` control connections one after the other, each with
+    /// its own passive listener: a data connection the client opened for a
+    /// refused `REST` must not be taken for the next session's `RETR`.
     async fn strict_server(
-        reject_restart: bool,
+        restart: Restart,
+        sessions: usize,
     ) -> (FtpConfig, CommandLog, tokio::task::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let data_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let data_port = data_listener.local_addr().unwrap().port();
         let log: CommandLog = Arc::new(Mutex::new(Vec::new()));
         let commands = Arc::clone(&log);
         let server = tokio::spawn(async move {
             tokio::time::timeout(Duration::from_secs(15), async move {
-                let (socket, _) = listener.accept().await.unwrap();
-                let (read, mut write) = socket.into_split();
-                let mut lines = BufReader::new(read).lines();
-                let mut restart: Option<usize> = None;
-                write.write_all(b"220 ready\r\n").await.unwrap();
-                while let Some(line) = lines.next_line().await.unwrap() {
-                    commands.lock().unwrap().push(line.clone());
-                    let offset = restart.take().unwrap_or(0);
-                    let (verb, argument) = line.split_once(' ').unwrap_or((&line, ""));
-                    let reply = match verb {
-                        "USER" => "331 password please\r\n".to_string(),
-                        "PASS" => "230 logged in\r\n".to_string(),
-                        "PWD" => "257 \"/\" is current\r\n".to_string(),
-                        "FEAT" => "211-Features\r\n211 End\r\n".to_string(),
-                        "SIZE" => format!("213 {}\r\n", CONTENT.len()),
-                        "PASV" => format!(
-                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
-                            data_port / 256,
-                            data_port % 256
-                        ),
-                        "EPSV" => {
-                            format!("229 Entering Extended Passive Mode (|||{data_port}|)\r\n")
+                for _ in 0..sessions {
+                    let (socket, _) = listener.accept().await.unwrap();
+                    let (read, mut write) = socket.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    let mut restart_at: Option<usize> = None;
+                    let mut data_listener: Option<TcpListener> = None;
+                    write.write_all(b"220 ready\r\n").await.unwrap();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        commands.lock().unwrap().push(line.clone());
+                        let offset = restart_at.take().unwrap_or(0);
+                        let (verb, argument) = line.split_once(' ').unwrap_or((&line, ""));
+                        let reply = match verb {
+                            "USER" => "331 password please\r\n".to_string(),
+                            "PASS" => "230 logged in\r\n".to_string(),
+                            "PWD" => "257 \"/\" is current\r\n".to_string(),
+                            "FEAT" => "211-Features\r\n211 End\r\n".to_string(),
+                            "SIZE" => format!("213 {}\r\n", CONTENT.len()),
+                            "PASV" | "EPSV" => {
+                                let data = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                                let data_port = data.local_addr().unwrap().port();
+                                data_listener = Some(data);
+                                if verb == "PASV" {
+                                    format!(
+                                        "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                                        data_port / 256,
+                                        data_port % 256
+                                    )
+                                } else {
+                                    format!(
+                                        "229 Entering Extended Passive Mode (|||{data_port}|)\r\n"
+                                    )
+                                }
+                            }
+                            "REST" => match restart {
+                                Restart::Refuse => "501 restart refused\r\n".to_string(),
+                                Restart::Unsupported => "502 REST not implemented\r\n".to_string(),
+                                Restart::Accept => {
+                                    restart_at = Some(argument.parse().unwrap());
+                                    "350 restarting\r\n".to_string()
+                                }
+                            },
+                            "RETR" => {
+                                let data = data_listener.take().expect("RETR without PASV");
+                                let (mut data, _) = data.accept().await.unwrap();
+                                write.write_all(b"150 opening\r\n").await.unwrap();
+                                let _ = data.write_all(&CONTENT[offset..]).await;
+                                drop(data);
+                                "226 done\r\n".to_string()
+                            }
+                            "QUIT" => "221 goodbye\r\n".to_string(),
+                            _ => "200 ok\r\n".to_string(),
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() || verb == "QUIT" {
+                            break;
                         }
-                        "REST" if reject_restart => "501 restart refused\r\n".to_string(),
-                        "REST" => {
-                            restart = Some(argument.parse().unwrap());
-                            "350 restarting\r\n".to_string()
-                        }
-                        "RETR" => {
-                            let (mut data, _) = data_listener.accept().await.unwrap();
-                            write.write_all(b"150 opening\r\n").await.unwrap();
-                            let _ = data.write_all(&CONTENT[offset..]).await;
-                            drop(data);
-                            "226 done\r\n".to_string()
-                        }
-                        "QUIT" => "221 goodbye\r\n".to_string(),
-                        _ => "200 ok\r\n".to_string(),
-                    };
-                    if write.write_all(reply.as_bytes()).await.is_err() || verb == "QUIT" {
-                        break;
                     }
                 }
             })
@@ -4875,7 +4974,12 @@ mod restart_contract_tests {
     async fn ftp_ranges_obey_the_deferred_restart_contract() {
         for parallel_window in [false, true] {
             for rejected in [false, true] {
-                let (config, log, server) = strict_server(rejected).await;
+                let restart = if rejected {
+                    Restart::Refuse
+                } else {
+                    Restart::Accept
+                };
+                let (config, log, server) = strict_server(restart, 1).await;
                 let directory = tempfile::tempdir().unwrap();
                 let path = directory.path().join("f.bin.aerotmp");
                 let original = vec![b'_'; CONTENT.len()];
@@ -4929,18 +5033,27 @@ mod restart_contract_tests {
     }
 
     /// Inplace is process-global: isolate this test so concurrent tests keep
-    /// their normal atomic-download mode.
+    /// their normal atomic-download mode. The child proves it ran by writing a
+    /// marker after its last assertion, so the parent depends neither on the
+    /// harness's summary line (libtest and cargo-nextest print different
+    /// ones) nor on a module path spelled out by hand: a filter that matches
+    /// nothing exits 0 with no marker and fails here.
     #[test]
     fn ftp_inplace_resume_obeys_the_deferred_restart_contract() {
         const CHILD: &str = "AEROFTP_TEST_FTP_INPLACE_RESTART_CHILD";
-        if std::env::var_os(CHILD).is_none() {
+        let Some(marker) = std::env::var_os(CHILD) else {
+            let directory = tempfile::tempdir().unwrap();
+            let marker = directory.path().join("child-finished");
+            let name = concat!(
+                module_path!(),
+                "::ftp_inplace_resume_obeys_the_deferred_restart_contract"
+            );
+            // The harness names a test without the crate: `module_path!()`
+            // starts with it.
+            let name = name.split_once("::").map_or(name, |(_, rest)| rest);
             let output = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "providers::ftp::restart_contract_tests::ftp_inplace_resume_obeys_the_deferred_restart_contract",
-                    "--test-threads=1",
-                ])
-                .env(CHILD, "1")
+                .args(["--exact", name, "--test-threads=1"])
+                .env(CHILD, &marker)
                 .output()
                 .unwrap();
             assert!(
@@ -4949,17 +5062,26 @@ mod restart_contract_tests {
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             );
-            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"));
+            assert!(
+                marker.exists(),
+                "the child ran no test for {name:?}: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
             return;
-        }
+        };
         super::super::atomic_write::set_inplace_mode(true);
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
             .block_on(async {
-                for rejected in [false, true] {
-                    let (config, log, server) = strict_server(rejected).await;
+                for restart in [Restart::Accept, Restart::Refuse, Restart::Unsupported] {
+                    let sessions = if restart == Restart::Unsupported {
+                        2
+                    } else {
+                        1
+                    };
+                    let (config, log, server) = strict_server(restart, sessions).await;
                     let mut provider = FtpProvider::new(config);
                     provider.connect().await.unwrap();
                     let directory = tempfile::tempdir().unwrap();
@@ -4971,8 +5093,42 @@ mod restart_contract_tests {
                     )
                     .await
                     .expect("the resume attempt must end");
+                    if restart == Restart::Unsupported {
+                        // No restart on this server: the part is downloaded
+                        // again from byte 0 on a fresh session, and a second
+                        // resume does not offer REST again.
+                        result.unwrap();
+                        assert_eq!(std::fs::read(&path).unwrap(), CONTENT);
+                        std::fs::write(&path, &CONTENT[..4]).unwrap();
+                        tokio::time::timeout(
+                            Duration::from_secs(10),
+                            provider.resume_download("/f.bin", path.to_str().unwrap(), 4, None),
+                        )
+                        .await
+                        .expect("the second resume must end")
+                        .unwrap();
+                        assert_eq!(std::fs::read(&path).unwrap(), CONTENT);
+                        let _ = provider.disconnect().await;
+                        server.await.unwrap();
+                        let commands = log.lock().unwrap();
+                        let rest: Vec<_> = commands
+                            .iter()
+                            .filter(|line| line.starts_with("REST "))
+                            .collect();
+                        assert_eq!(rest, ["REST 4"], "{commands:?}");
+                        assert_eq!(
+                            commands
+                                .iter()
+                                .filter(|line| *line == "RETR /f.bin")
+                                .count(),
+                            2,
+                            "{commands:?}"
+                        );
+                        continue;
+                    }
                     let _ = provider.disconnect().await;
                     server.await.unwrap();
+                    let rejected = restart == Restart::Refuse;
                     assert_restart_commands(&log, rejected);
                     if rejected {
                         assert_refused_restart(result.unwrap_err());
@@ -4983,6 +5139,232 @@ mod restart_contract_tests {
                     }
                 }
             });
+        std::fs::write(marker, b"").unwrap();
+    }
+
+    /// A server that refuses `REST` with 502 to every connection, serving
+    /// each control connection on its own task (the windows of a parallel
+    /// download each open one) with its own passive listener per PASV. The
+    /// log prefixes every line with the connection's number, counted from 1.
+    async fn no_restart_server(
+        content: Arc<Vec<u8>>,
+    ) -> (FtpConfig, CommandLog, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log: CommandLog = Arc::new(Mutex::new(Vec::new()));
+        let commands = Arc::clone(&log);
+        let server = tokio::spawn(async move {
+            let mut connection = 0usize;
+            while let Ok((socket, _)) = listener.accept().await {
+                connection += 1;
+                let commands = Arc::clone(&commands);
+                let content = Arc::clone(&content);
+                tokio::spawn(async move {
+                    let (read, mut write) = socket.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    let mut data_listener: Option<TcpListener> = None;
+                    if write.write_all(b"220 ready\r\n").await.is_err() {
+                        return;
+                    }
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        commands
+                            .lock()
+                            .unwrap()
+                            .push(format!("{connection} {line}"));
+                        let (verb, _) = line.split_once(' ').unwrap_or((&line, ""));
+                        let reply = match verb {
+                            "USER" => "331 password please\r\n".to_string(),
+                            "PASS" => "230 logged in\r\n".to_string(),
+                            "PWD" => "257 \"/\" is current\r\n".to_string(),
+                            "FEAT" => "211-Features\r\n MLST size*;modify*;type*;\r\n211 End\r\n"
+                                .to_string(),
+                            "SIZE" => format!("213 {}\r\n", content.len()),
+                            "MLST" => format!(
+                                "250-Listing /f.bin\r\n type=file;size={};modify=20260101000000; /f.bin\r\n250 End\r\n",
+                                content.len()
+                            ),
+                            "PASV" | "EPSV" => {
+                                let data = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                                let data_port = data.local_addr().unwrap().port();
+                                data_listener = Some(data);
+                                if verb == "PASV" {
+                                    format!(
+                                        "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                                        data_port / 256,
+                                        data_port % 256
+                                    )
+                                } else {
+                                    format!(
+                                        "229 Entering Extended Passive Mode (|||{data_port}|)\r\n"
+                                    )
+                                }
+                            }
+                            "REST" => "502 REST not implemented\r\n".to_string(),
+                            "RETR" => {
+                                let Some(data) = data_listener.take() else {
+                                    return;
+                                };
+                                let Ok((mut data, _)) = data.accept().await else {
+                                    return;
+                                };
+                                if write.write_all(b"150 opening\r\n").await.is_err() {
+                                    return;
+                                }
+                                let sent = data.write_all(&content).await;
+                                drop(data);
+                                if sent.is_ok() {
+                                    "226 done\r\n".to_string()
+                                } else {
+                                    "426 connection closed\r\n".to_string()
+                                }
+                            }
+                            "QUIT" => "221 goodbye\r\n".to_string(),
+                            _ => "200 ok\r\n".to_string(),
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() || verb == "QUIT" {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        let config = FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        };
+        (config, log, server)
+    }
+
+    /// A parallel download against a server without restart support: the
+    /// window past byte 0 is refused with 502, and the file still arrives
+    /// whole and identical over one stream. The answer is kept, so the next
+    /// download takes one stream straight away: no window connection and no
+    /// `REST` at all.
+    #[tokio::test]
+    async fn a_parallel_download_falls_back_to_one_stream_without_restart() {
+        let content: Arc<Vec<u8>> = Arc::new(
+            (0..2 * 1024 * 1024 + 1234)
+                .map(|i| (i % 251) as u8)
+                .collect(),
+        );
+        let (config, log, server) = no_restart_server(Arc::clone(&content)).await;
+        let mut provider = FtpProvider::new(config);
+        provider.connect().await.unwrap();
+        provider.set_multi_thread_download(2, FTP_MULTI_THREAD_CUTOFF_FLOOR);
+        assert_eq!(provider.planned_download_segments(content.len() as u64), 2);
+        let directory = tempfile::tempdir().unwrap();
+
+        let first = directory.path().join("first.bin");
+        tokio::time::timeout(
+            Duration::from_secs(20),
+            provider.download("/f.bin", first.to_str().unwrap(), None),
+        )
+        .await
+        .expect("the first download must end")
+        .unwrap();
+        assert!(
+            std::fs::read(&first).unwrap() == *content,
+            "first download differs"
+        );
+        let (connections, refused) = {
+            let commands = log.lock().unwrap();
+            let connections: std::collections::BTreeSet<_> = commands
+                .iter()
+                .filter_map(|line| line.split_once(' ').map(|(n, _)| n.to_string()))
+                .collect();
+            let refused = commands
+                .iter()
+                .filter(|line| line.contains(" REST "))
+                .count();
+            (connections.len(), refused)
+        };
+        assert!(
+            connections >= 2,
+            "no window connection was opened: {connections}"
+        );
+        assert!(refused >= 1, "no window asked for a restart");
+
+        let mark = log.lock().unwrap().len();
+        let second = directory.path().join("second.bin");
+        tokio::time::timeout(
+            Duration::from_secs(20),
+            provider.download("/f.bin", second.to_str().unwrap(), None),
+        )
+        .await
+        .expect("the second download must end")
+        .unwrap();
+        assert!(
+            std::fs::read(&second).unwrap() == *content,
+            "second download differs"
+        );
+        let _ = provider.disconnect().await;
+        server.abort();
+        let commands = log.lock().unwrap();
+        let later = &commands[mark..];
+        assert!(
+            later.iter().all(|line| line.starts_with("1 ")),
+            "the second download opened another connection: {later:?}"
+        );
+        assert!(
+            !later.iter().any(|line| line.contains(" REST ")),
+            "the second download asked for a restart again: {later:?}"
+        );
+    }
+
+    /// A server without restart support answers `REST` with 502. The range is
+    /// `NotSupported`, and the session keeps that answer: the next range past
+    /// byte 0 is refused without another PASV, while byte 0, which needs no
+    /// REST, still reads.
+    #[tokio::test]
+    async fn a_server_without_restart_is_asked_once() {
+        let (config, log, server) = strict_server(Restart::Unsupported, 2).await;
+        let passive = |log: &CommandLog| {
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|line| matches!(line.as_str(), "PASV" | "EPSV"))
+                .count()
+        };
+        let mut provider = FtpProvider::new(config);
+        provider.connect().await.unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(10), async {
+            let first = provider.read_range("/f.bin", 4, 6).await;
+            assert!(
+                matches!(first, Err(ProviderError::NotSupported(_))),
+                "{first:?}"
+            );
+            let asked = passive(&log);
+            let again = provider.read_range("/f.bin", 4, 6).await;
+            assert!(
+                matches!(again, Err(ProviderError::NotSupported(_))),
+                "{again:?}"
+            );
+            assert_eq!(
+                passive(&log),
+                asked,
+                "the refused offset was asked for again"
+            );
+            provider.read_range("/f.bin", 0, CONTENT.len() as u64).await
+        })
+        .await
+        .expect("the range attempts must end");
+        assert_eq!(result.unwrap(), CONTENT);
+        let _ = provider.disconnect().await;
+        server.await.unwrap();
+        let commands = log.lock().unwrap();
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|line| line.starts_with("REST "))
+                .count(),
+            1,
+            "{commands:?}"
+        );
     }
 }
 

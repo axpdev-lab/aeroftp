@@ -40,14 +40,14 @@ async fn session(stream: tokio::net::TcpStream, commands: Arc<Mutex<Vec<String>>
     }
     let mut lines = BufReader::new(read).lines();
     // Keep passive listeners alive until the control session ends. The
-    // client may connect the data socket before validating the STOR name.
+    // provider refuses a CR/LF name before it asks for a data channel, and
+    // `assert_refused_cleanly` fails on any PASV or EPSV; a real 227 here only
+    // keeps a regression from turning into a hang instead of that failure.
     let mut passive_listeners = Vec::new();
     while let Ok(Some(line)) = lines.next_line().await {
         commands.lock().unwrap().push(line.clone());
         let verb = line.split_whitespace().next().unwrap_or("").to_uppercase();
-        // PASV needs a real 227 with a listen address: the upload path asks
-        // for the data channel before STOR, and the test asserts the STOR
-        // with a CR/LF name is never written.
+        // A real 227 with a listen address (see the listeners above).
         if verb == "PASV" {
             let Ok(data) = TcpListener::bind("127.0.0.1:0").await else {
                 if write.write_all(b"425 Cannot listen\r\n").await.is_err() {
@@ -104,7 +104,10 @@ async fn connected_provider() -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
     (provider, recorded)
 }
 
-fn assert_refused_cleanly(result: Result<(), ProviderError>, commands: &[String]) {
+fn assert_refused_cleanly<T: std::fmt::Debug>(
+    result: Result<T, ProviderError>,
+    commands: &[String],
+) {
     let err = result.expect_err("a CR/LF name must be refused");
     assert!(
         matches!(err, ProviderError::InvalidPath(_)),
@@ -119,6 +122,17 @@ fn assert_refused_cleanly(result: Result<(), ProviderError>, commands: &[String]
     assert!(
         !commands.iter().any(|c| c.contains("ledger")),
         "no fragment of the injected command may cross the wire: {commands:?}"
+    );
+    // The name is refused before any data channel is asked for. suppaftp
+    // 12.2.1 negotiates PASV and connects the data socket before it builds the
+    // command line, so a refusal left to the library cost a round trip, a
+    // passive connection left open on the server and the session.
+    assert!(
+        !commands.iter().any(|c| {
+            let verb = c.to_uppercase();
+            verb.starts_with("PASV") || verb.starts_with("EPSV")
+        }),
+        "a CR/LF name must be refused before PASV or EPSV: {commands:?}"
     );
 }
 
@@ -152,6 +166,35 @@ async fn upload_with_a_crlf_name_is_refused_and_never_reaches_the_wire() {
 async fn delete_with_a_crlf_name_is_refused_and_never_reaches_the_wire() {
     let (mut provider, recorded) = connected_provider().await;
     let result = provider.delete("/staging/old.bin\r\nDELE ledger.bin").await;
+    provider.disconnect().await.ok();
+    assert_refused_cleanly(result, &recorded.lock().unwrap());
+}
+
+/// The download, listing and range paths open a data connection too, and are
+/// refused the same way: before PASV, with nothing of the name on the wire.
+#[tokio::test]
+async fn download_list_and_range_with_a_crlf_name_are_refused_before_pasv() {
+    let injected = "/staging/report.bin\r\nDELE ledger.bin";
+    let local = std::env::temp_dir().join(format!("crlf-download-{}.bin", std::process::id()));
+
+    let (mut provider, recorded) = connected_provider().await;
+    let result = provider
+        .download(injected, local.to_str().unwrap(), None)
+        .await;
+    provider.disconnect().await.ok();
+    assert_refused_cleanly(result, &recorded.lock().unwrap());
+    assert!(
+        !local.exists(),
+        "a refused download must not create the local file"
+    );
+
+    let (mut provider, recorded) = connected_provider().await;
+    let result = provider.list(injected).await;
+    provider.disconnect().await.ok();
+    assert_refused_cleanly(result, &recorded.lock().unwrap());
+
+    let (mut provider, recorded) = connected_provider().await;
+    let result = provider.read_range(injected, 4, 6).await;
     provider.disconnect().await.ok();
     assert_refused_cleanly(result, &recorded.lock().unwrap());
 }
