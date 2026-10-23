@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Bu URL'yi kopyalayın ve geliştirici uygulama ayarlarınıza Yönlendirme URI'si olarak yapıştırın.",
                 "redirectUriNoteGoogle": "Öneri: Google Cloud Console’da \"Masaüstü uygulaması\" türünde bir OAuth istemci kimliği oluşturun; yönlendirme URI’si kaydetmeniz gerekmez. \"Web uygulaması\" türündeki bir istemci için yukarıda gösterilen yönlendirme URI’sini, bağlantı noktası ve /callback yolu dahil olmak üzere aynen kaydedin.",
                 "enablePhotosApi": "Google Cloud Console'da Photos Library API'nin etkin olduğundan emin olun.",
-                "enableDriveApi": "Google Cloud Console'da Google Drive API'nin etkin olduğundan emin olun."
+                "enableDriveApi": "Google Cloud Console'da Google Drive API'nin etkin olduğundan emin olun.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "ABD",
+                "zohoRegionEu": "AB",
+                "zohoRegionIn": "Hindistan",
+                "zohoRegionAu": "Avustralya",
+                "zohoRegionJp": "Japonya",
+                "zohoRegionUk": "Birleşik Krallık",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Suudi Arabistan"
             },
             "activeSessions": "Etkin Oturumlar",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "En yüksek güvenlik için önerilir",
             "fontCustomOption": "Özel...",
             "fontSystemInstallHint": "Sistem kurulumu gerektirir. Kullanılamıyorsa AeroFTP otomatik olarak yedeğe geçer.",
-            "fontSizeIndicatorLabel": "Yazı tipi"
+            "fontSizeIndicatorLabel": "Yazı tipi",
+            "fontPresetDefault": "{font} (Varsayılan)",
+            "fontPresetSystemDefault": "Sistem varsayılanı"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Yazı tipini büyüt (Ctrl+=)",
                 "newTab": "Yeni terminal sekmesi",
                 "sshShellTo": "{host} için SSH kabuğu",
-                "theme": "Terminal teması"
+                "theme": "Terminal teması",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Siber",
+                "themeTrueDark": "Gerçek koyu",
+                "themeGreen": "Yeşil",
+                "themeIce": "Buz",
+                "themeRedLava": "Kızıl lav"
             },
             "editorPanel": {
                 "emptyState": "Bir dosyaya sağ tıklayın ve \"Kaynağı görüntüle\" seçeneğini seçin",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(her satıra bir tane)",
             "pairsEditorLabel": "AeroCloud Çift Düzenleyicisi",
             "remoteSubfolderPlaceholder": "bulut",
-            "countdownSoon": "Yakında..."
+            "countdownSoon": "Yakında...",
+            "aerocloudEnabled": "AeroCloud etkin",
+            "selectPairLocalFolder": "Çift için yerel klasör seçin",
+            "secondsAgo": "{count}sn önce"
         },
         "statusBar": {
             "connected": "Bağlı",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Araştırmacı, kalite güvence mühendisi, ortak tasarımcı"
             },
             "madeBy": "{author} tarafından",
-            "statsLine": "{protocols} protokol · {languages} dil · AES-256 arşivleri"
+            "statsLine": "{protocols} protokol · {languages} dil · AES-256 arşivleri",
+            "dependencyRoles": {
+                "sftpOps": "SFTP işlemleri",
+                "osKeyring": "Sistem anahtarlığı",
+                "vaultFormat": "Kasa biçimi",
+                "zipArchives": "ZIP arşivleri"
+            }
         },
         "support": {
             "title": "AeroFTP'yi Destekle",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Çöp kutusundan {files} dosya geri yüklendi, {present} zaten mevcut",
             "trash_restore_detail_folders_present_success": "[{provider}] Çöp kutusundan {files} dosya, {folders} klasör geri yüklendi, {present} zaten mevcut",
             "filelu_file_password_removed": "[{provider}] Dosya parolası kaldırıldı",
-            "filelu_folder_password_removed": "[{provider}] Klasör parolası kaldırıldı"
+            "filelu_folder_password_removed": "[{provider}] Klasör parolası kaldırıldı",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} başarısız",
+            "batch_rename_start": "[{location}] {count} öğe yeniden adlandırılıyor...",
+            "batch_rename_success": "[{location}] {count} öğe yeniden adlandırıldı",
+            "batch_rename_error": "[{location}] {count} öğe yeniden adlandırıldı, {failed} başarısız",
+            "compress_details_saved": "{input} → {output} (%{percent} tasarruf)",
+            "compress_details_grew": "{input} → {output} (%{percent} büyüdü)",
+            "extract_details": "{input} → {output} (açıldı)",
+            "download_details": "({size}, {seconds} sn'de)"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Yargı yetkisi",
             "insecureCertDialogLabel": "Güvensiz Sertifika Uyarısı",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Ana bilgisayar anahtarı doğrulaması"
+            "hostKeyDialogLabel": "Ana bilgisayar anahtarı doğrulaması",
+            "mtpName": "Taşınabilir cihaz (MTP)",
+            "mtpDesc": "MTP/WPD üzerinden telefon veya kamera",
+            "immichDesc": "Kendi sunucunuzda fotoğraf yönetimi",
+            "imagekitDesc": "Medya CDN + depolama (20 GB ücretsiz)",
+            "uploadcareDesc": "AB medya CDN (3 GB ücretsiz)",
+            "cloudinaryDesc": "Medya CDN (aylık 25 kredi ücretsiz)",
+            "backblazeDesc": "Backblaze B2 yerel API v4"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -2416,7 +2458,10 @@
             "add": "Ekle",
             "remove": "Kaldır",
             "none": "İzin ayarlanmamış",
-            "anyoneWithLink": "Bağlantıya sahip olan herkes"
+            "anyoneWithLink": "Bağlantıya sahip olan herkes",
+            "roleViewer": "Görüntüleyen",
+            "roleEditor": "Düzenleyen",
+            "roleCommenter": "Yorumcu"
         },
         "locking": {
             "lock": "Dosyayı Kilitle",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "başarısız {count}",
             "rollbackRestoreCompleted": "Geri yükleme tamamlandı: {summary}",
             "rollbackRestoreNothing": "Geri yüklenecek bir şey yok",
-            "rollbackRestoreFailed": "Geri yükleme başarısız: {error}"
+            "rollbackRestoreFailed": "Geri yükleme başarısız: {error}",
+            "intervalHoursOne": "{count} saat",
+            "intervalHoursMany": "{count} saat"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Görmeyi destekler",
                 "thinkingReasoning": "Düşünme/Akıl yürütme",
                 "toolQuality": "Araç kalitesi: {quality}/5",
-                "ollamaNotReachable": "Ollama'ya ulaşılamıyor"
+                "ollamaNotReachable": "Ollama'ya ulaşılamıyor",
+                "macroSafeEditName": "Güvenli Düzenleme",
+                "macroSafeEditDescription": "Bir dosyayı okur, içeriğini gösterir, ardından düzenler (yazmadan önce okuma güvenlik kalıbı)",
+                "macroFindReadName": "Bul ve Oku",
+                "macroFindReadDescription": "Yerel bir dizinde bir kalıpla eşleşen dosyaları arar",
+                "familyHintLlama3": "Doğrudan ve kısa talimatlar en iyi sonucu verir. markdown biçimlendirmesi kullanın. Araç kullanımını yerel olarak destekler.",
+                "familyHintCodellama": "Kod üretimi ve analizine odaklanın. Kod örnekleri verin. Teknik bir dil kullanın.",
+                "familyHintDeepseekCoder": "Kod üzerine akıl yürütmede ve çok adımlı problem çözmede güçlüdür. Yapılandırılmış çıktı tercih edilir. deepseek-r1 için düşünme modu otomatik olarak çalışır.",
+                "familyHintQwen": "Yapılandırılmış çıktıyı destekler. Çok dilli görevlerde iyidir. Net bölüm başlıkları kullanın.",
+                "familyHintMistral": "Talimat izlemeye yöneliktir. İstemleri net görev açıklamalarıyla yapılandırılmış tutun.",
+                "familyHintPhi": "Kompakt model: talimatları kısa tutun. Uzun metinler için değil, odaklı görevler için en iyisidir.",
+                "familyHintGemma": "Google tarzı talimat biçimi. Özetleme ve analizde iyidir.",
+                "familyHintStarcoder": "Kod tamamlamaya odaklıdır. En iyi sonuç için dosya bağlamını ve içe aktarmaları sağlayın."
             },
             "copy": "Kopyala",
             "attachImage": "Görsel ekle",
@@ -3033,7 +3092,8 @@
                 "general": "Genel",
                 "typeSlash": "Şablonları kullanmak için / yazın",
                 "analyzeUi": "Düzen, erişilebilirlik ve UX sorunları için UI ekran görüntüsünü analiz et",
-                "performance": "Performans darboğazları ve optimizasyon için kodu analiz et"
+                "performance": "Performans darboğazları ve optimizasyon için kodu analiz et",
+                "analysis": "Analiz"
             },
             "costBudget": {
                 "conversationCost": "Konuşma maliyeti",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} g önce",
             "recentFileCountMany": "{count} dosya",
             "recentFileCountOne": "{count} dosya",
-            "recentMonthsAgo": "{count} ay önce"
+            "recentMonthsAgo": "{count} ay önce",
+            "securityArchive": "Arşiv",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Hızlı",
+            "securityAdvancedDescription": "Nonce'a dayanıklı · Şifrelenmiş dosya adları · 128 MB KDF",
+            "securityParanoidDescription": "Kademeli AES + ChaCha20 · Çift şifreleme",
+            "securityArchiveDescription": "Tekilleştirilmiş arşiv · zstd parçaları · v3"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM içerik",
             "featureNameCipher": "AES-SIV adlar",
             "formatVersion": "Biçim {version}",
-            "invalidVaultName": "Kasa adında geçersiz karakterler"
+            "invalidVaultName": "Kasa adında geçersiz karakterler",
+            "defaultVaultName": "YeniKasa"
         },
         "compress": {
             "title": "Dosyaları Sıkıştır",
@@ -3952,7 +4018,10 @@
             "threads": "İş parçacıkları",
             "auto": "Otomatik",
             "solid": "Katı blok",
-            "solidHint": "Çok sayıda küçük dosyada daha iyi oran, daha yavaş rastgele çıkarma."
+            "solidHint": "Çok sayıda küçük dosyada daha iyi oran, daha yavaş rastgele çıkarma.",
+            "formatArchiveOnly": "Yalnızca arşiv",
+            "formatBestRatio": "En iyi oran",
+            "formatSingleFile": "tek dosya"
         },
         "batchRename": {
             "title": "Toplu Yeniden Adlandırma",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "İşlemleri filtrele",
                 "selected": "seçili"
-            }
+            },
+            "save": "Kaydet"
         },
         "error": {
             "description": "AeroFTP beklenmeyen bir hatayla karşılaştı. Kurtarmayı deneyebilir veya uygulamayı yeniden yükleyebilirsiniz.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radyal",
                     "spectrum": "Spektrum",
                     "vortex": "Girdap",
-                    "waveform": "Dalga Formu"
+                    "waveform": "Dalga Formu",
+                    "glWaveGlitch": "Dalga Bozulması",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tünel",
+                    "glMetaball": "Metatoplar",
+                    "glParticles": "Parçacıklar"
                 },
                 "volume": "Ses"
             },
@@ -4635,7 +4711,18 @@
                 "off": "KAPALI",
                 "on": "AÇIK",
                 "presets": "Ön Ayarlar",
-                "reset": "Düze Sıfırla"
+                "reset": "Düze Sıfırla",
+                "presetFlat": "Düz",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Caz",
+                "presetClassical": "Klasik",
+                "presetBassBoost": "Bas Güçlendirme",
+                "presetTrebleBoost": "Tiz Güçlendirme",
+                "presetVocal": "Vokal",
+                "presetElectronic": "Elektronik",
+                "presetAcoustic": "Akustik",
+                "presetCustom": "Özel"
             },
             "pdf": {
                 "download": "PDF İndir",
@@ -5118,7 +5205,37 @@
             "paidTier": "Ücretli",
             "extraFeatures": "Ek",
             "coreOpsList": "Yükleme, İndirme, Silme, Yeniden adlandırma, Taşıma, Klasör oluşturma, Arama",
-            "coreOpsLegend": "Temel = Yükleme, İndirme, Silme, Yeniden adlandırma, Taşıma, Klasör oluşturma, Arama"
+            "coreOpsLegend": "Temel = Yükleme, İndirme, Silme, Yeniden adlandırma, Taşıma, Klasör oluşturma, Arama",
+            "notes": "Notlar",
+            "storageClass": "Depolama sınıfı",
+            "objectTagging": "Nesne etiketleme",
+            "sse": "Sunucu tarafı şifreleme",
+            "checksum": "Sağlama toplamı",
+            "tierManagement": "Katman yönetimi",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Medya",
+            "sectionOther": "Diğer",
+            "trashDetails": {
+                "onedrive": "Business ve SharePoint sürücüleri. Microsoft Graph, OneDrive Personal sürücüsünün geri dönüşüm kutusunu sunmaz; bunun için OneDrive web sitesini kullanın"
+            },
+            "shareLinkDetails": {
+                "permissions": "İzinler: görüntüleme, yorum, düzenleme",
+                "passwordExpiryPlan": "Parola + süre sonu ({plan} planı gerekli)",
+                "passwordExpiryPaid": "Parola + süre sonu (ücretli plan gerekli)",
+                "passwordPersonalExpiryPermissions": "Parola (yalnızca Personal), süre sonu, izinler",
+                "passwordArgon2ExpiryPresets": "Parola (Argon2id) + süre sonu ön ayarları",
+                "passwordExpiryPermissions": "Parola, süre sonu, izinler",
+                "basicOnly": "Yalnızca temel paylaşım bağlantısı",
+                "publicToggle": "Herkese açık bağlantı (gizliliği aç/kapat)",
+                "basic": "Temel paylaşım bağlantısı",
+                "expiringDefaultYear": "Süreli bağlantılar (varsayılan 1 yıl)",
+                "publishUnpublish": "Yayınla/yayından kaldır",
+                "permanentUrl": "Kalıcı URL",
+                "sharedAlbum": "Paylaşılan albüm bağlantısı",
+                "megaPresignedS4": "Paylaşım bağlantısı / önceden imzalı URL (S4 için en fazla 7 gün)",
+                "autoPasswordExpiry": "Parola (otomatik oluşturulan) + süre sonu",
+                "presigned": "Önceden imzalı URL (en fazla 7 gün)"
+            }
         },
         "healthCheck": {
             "title": "Sunucu sağlık kontrolü",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Özel depo",
             "repoPublicTitle": "Herkese açık depo",
             "unpushedCommitsOnBranchMany": "{branch} üzerinde gönderilmemiş {count} commit",
-            "unpushedCommitsOnBranchOne": "{branch} üzerinde gönderilmemiş {count} commit"
+            "unpushedCommitsOnBranchOne": "{branch} üzerinde gönderilmemiş {count} commit",
+            "cancelWorkflow": "İş akışını iptal et",
+            "rerunWorkflow": "İş akışını yeniden çalıştır",
+            "downloadAssetTitle": "{name} indir"
         },
         "filenNotes": {
             "title": "Şifreli Notlar",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Oluşturulma",
             "manageExpires": "Süresi doluyor",
             "manageNeverExpires": "Asla",
-            "managePasswordProtected": "Şifre korumalı"
+            "managePasswordProtected": "Şifre korumalı",
+            "expirationHoursOne": "{count} saat",
+            "expirationHoursMany": "{count} saat",
+            "expirationDaysMany": "{count} gün"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} sa",
                 "days": "{count} g",
                 "months": "{count} ay"
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Yeni: {name}"
         },
         "gitlab": {
             "projectPath": "Proje Yolu",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Merge Request Oluştur",
             "mrTitle": "MR başlığı",
             "mrBody": "Açıklama (isteğe bağlı)",
-            "sourceCode": "Kaynak kodu"
+            "sourceCode": "Kaynak kodu",
+            "downloadAssetTitle": "{name} indir"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Yeni kullanıcı",
                 "noUsers": "Henüz kullanıcı yok. İlkini eklemek için aşağıdaki \"Yeni kullanıcı\" seçeneğini kullanın.",
                 "protectionNote": "Hesabınız Argon2id + AES-KW + AES-256-GCM şifrelemesiyle korunuyor",
-                "users": "Kullanıcılar"
+                "users": "Kullanıcılar",
+                "setup": "Kurulum"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Mod, bağlantı oluşturulurken seçilir ve kayıtlı bir profil düzenlenirken sabit kalır. Farklı bir mod kullanmak için yeni bir bağlantı oluşturun.",
-                "notInBuild": "AeroFTP'nin bu derlemesine dahil değil."
+                "notInBuild": "AeroFTP'nin bu derlemesine dahil değil.",
+                "header": "{name} modları",
+                "nativeApi": "Yerel API",
+                "filelu": {
+                    "apiDescription": "API anahtarlı REST API. Tam özellik seti (çöp kutusu, paylaşım bağlantıları, parola korumalı dosyalar).",
+                    "webdavDescription": "443 numaralı bağlantı noktasında WebDAV erişimi. Geniş istemci uyumluluğu, ağ sürücüsü olarak bağlanır.",
+                    "s3Description": "443 numaralı bağlantı noktasında S3 uyumlu API. rclone, AWS CLI veya herhangi bir S3 SDK'sı kullanın.",
+                    "ftpDescription": "21 numaralı bağlantı noktasında klasik FTP. Şifresiz, güvenlik kamerası NVR kaydedicileri ve eski istemciler için kullanışlı."
+                },
+                "filen": {
+                    "apiDescription": "Sıfır bilgi E2E şifreleme (Argon2id v3 / PBKDF2 v2). Tüm özellikler: depolama kotası, çöp kutusu, paylaşım bağlantısı parolaları, sürüm yönetimi, TOTP.",
+                    "webdavDescription": "Filen Desktop'ın 127.0.0.1:1900 adresinde sunduğu WebDAV köprüsü. Filen Desktop'ın çalışıyor ve oturum açılmış olması gerekir.",
+                    "s3Description": "Filen Desktop'ın local.s3.filen.io üzerinden 127.0.0.1:1800 adresinde sunduğu S3 uyumlu köprü. Yol tabanlı adresleme, her üst düzey Filen klasörü bir kovadır."
+                },
+                "proton": {
+                    "headerDescription": "Uçtan uca şifrelemeli Proton bulut depolama",
+                    "apiDescription": "AeroFTP'nin kendi Proton Drive istemcisi: tarayıcıda Proton'un sayfasında oturum açarsınız, dosyalar bu bilgisayarda şifrelenip çözülür ve başka bir uygulama gerekmez.",
+                    "cliDescription": "Bu makinede kurulu ve oturum açılmış resmi Proton Drive CLI'ı yönetir. Tarayıcıda oturum açarsınız; AeroFTP Proton parolanızı asla görmez."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive bulut depolama (5 GB ücretsiz)",
+                    "apiDescription": "Kullanıcı adı + parola ile REST API. Tüm özellikler: çöp kutusu, depolama kotası, paylaşım bağlantıları, özyinelemeli disk kullanımı.",
+                    "webdavDescription": "443 numaralı bağlantı noktasında webdav.opendrive.com üzerinden WebDAV erişimi. Eski istemciler için veya ağ sürücüsü olarak bağlamak için kullanın."
+                },
+                "koofr": {
+                    "apiDescription": "AB merkezli REST API, e-posta + uygulama parolası ile. Tüm özellikler: depolama kotası, çöp kutusu (listeleme/geri yükleme/boşaltma), paylaşım bağlantıları.",
+                    "webdavDescription": "443 numaralı bağlantı noktasında app.koofr.net/dav/Koofr üzerinden WebDAV erişimi. Depolama kotası yine Koofr REST API'sinden okunur. Eski istemciler için veya ağ sürücüsü olarak bağlamak için kullanın."
+                },
+                "mega": {
+                    "headerDescription": "İstemci tarafı şifrelemeli MEGA bulut depolama",
+                    "apiDescription": "E-posta + parola ile yerel MEGA API'si (+ isteğe bağlı TOTP). Tüm özellikler: istemci tarafı şifreleme, depolama kotası, paylaşım bağlantıları, küçük resimler.",
+                    "webdavDescription": "Resmi MEGAcmd CLI tarafından sunulan yerel WebDAV köprüsü, 127.0.0.1 üzerinde anonim. AeroFTP bağlanırken \"mega-webdav /\" komutunu sizin yerinize çalıştırır, bu yüzden elle yapılacak bir adım yoktur.",
+                    "s4Description": "MEGA S4 nesne depolama, S3 uyumlu (EU/CA bölgeleri). Erişim anahtarı + gizli anahtar + kova. Pro plan gerektirir."
+                }
             }
         },
         "flatpak": {

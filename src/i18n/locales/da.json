@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Kopiér denne URL og indsæt den som omdirigerings-URI i indstillingerne for din udviklerapp.",
                 "redirectUriNoteGoogle": "Anbefaling: Opret et OAuth-klient-id af typen \"Computerapp\" i Google Cloud Console; der kræves ingen registrering af en omdirigerings-URI. For en klient af typen \"Webapplikation\" skal du registrere den præcise omdirigerings-URI, der vises ovenfor, inklusive porten og stien /callback.",
                 "enablePhotosApi": "Sørg for, at Photos Library API er aktiveret i din Google Cloud Console.",
-                "enableDriveApi": "Sørg for, at Google Drive API er aktiveret i din Google Cloud Console."
+                "enableDriveApi": "Sørg for, at Google Drive API er aktiveret i din Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "USA",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "Indien",
+                "zohoRegionAu": "Australien",
+                "zohoRegionJp": "Japan",
+                "zohoRegionUk": "Storbritannien",
+                "zohoRegionCa": "Canada",
+                "zohoRegionSa": "Saudi-Arabien"
             },
             "activeSessions": "Aktive sessioner",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Anbefales for maksimal sikkerhed",
             "fontCustomOption": "Tilpasset...",
             "fontSystemInstallHint": "Kræver systeminstallation. AeroFTP falder automatisk tilbage, hvis den ikke er tilgængelig.",
-            "fontSizeIndicatorLabel": "Skrift"
+            "fontSizeIndicatorLabel": "Skrift",
+            "fontPresetDefault": "{font} (standard)",
+            "fontPresetSystemDefault": "Systemstandard"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Forstør skriftstørrelse (Ctrl+=)",
                 "newTab": "Ny terminalfane",
                 "sshShellTo": "SSH-shell til {host}",
-                "theme": "Terminaltema"
+                "theme": "Terminaltema",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "Ægte mørk",
+                "themeGreen": "Grøn",
+                "themeIce": "Is",
+                "themeRedLava": "Rød lava"
             },
             "editorPanel": {
                 "emptyState": "Højreklik på en fil og vælg \"Redigér\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(én pr. linje)",
             "pairsEditorLabel": "Editor til AeroCloud-par",
             "remoteSubfolderPlaceholder": "sky",
-            "countdownSoon": "Snart..."
+            "countdownSoon": "Snart...",
+            "aerocloudEnabled": "AeroCloud aktiveret",
+            "selectPairLocalFolder": "Vælg lokal mappe til parret",
+            "secondsAgo": "{count}s siden"
         },
         "statusBar": {
             "connected": "Forbundet",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Forsker, kvalitetssikringsingeniør, meddesigner"
             },
             "madeBy": "af {author}",
-            "statsLine": "{protocols} protokoller · {languages} sprog · AES-256-arkiver"
+            "statsLine": "{protocols} protokoller · {languages} sprog · AES-256-arkiver",
+            "dependencyRoles": {
+                "sftpOps": "SFTP-handlinger",
+                "osKeyring": "OS-nøglering",
+                "vaultFormat": "Boksformat",
+                "zipArchives": "ZIP-arkiver"
+            }
         },
         "support": {
             "title": "Støt AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Gendannede {files} fil(er) fra papirkurven, {present} fandtes allerede",
             "trash_restore_detail_folders_present_success": "[{provider}] Gendannede {files} fil(er), {folders} mappe(r) fra papirkurven, {present} fandtes allerede",
             "filelu_file_password_removed": "[{provider}] Fjernede adgangskode for filen",
-            "filelu_folder_password_removed": "[{provider}] Mappeadgangskode fjernet"
+            "filelu_folder_password_removed": "[{provider}] Mappeadgangskode fjernet",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} mislykkedes",
+            "batch_rename_start": "[{location}] Omdøber {count} element(er)...",
+            "batch_rename_success": "[{location}] Omdøbte {count} element(er)",
+            "batch_rename_error": "[{location}] Omdøbte {count} element(er), {failed} mislykkedes",
+            "compress_details_saved": "{input} → {output} (sparet {percent}%)",
+            "compress_details_grew": "{input} → {output} (voksede {percent}%)",
+            "extract_details": "{input} → {output} (udpakket)",
+            "download_details": "({size} på {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdiktion",
             "insecureCertDialogLabel": "Advarsel om usikkert certifikat",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Bekræftelse af værtsnøgle"
+            "hostKeyDialogLabel": "Bekræftelse af værtsnøgle",
+            "mtpName": "Bærbar enhed (MTP)",
+            "mtpDesc": "Telefon eller kamera via MTP/WPD",
+            "immichDesc": "Selvhostet fotostyring",
+            "imagekitDesc": "Medie-CDN + lager (20 GB gratis)",
+            "uploadcareDesc": "EU-medie-CDN (3 GB gratis)",
+            "cloudinaryDesc": "Medie-CDN (25 kreditter/måned gratis)",
+            "backblazeDesc": "Indbygget Backblaze B2-API v4"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -2416,7 +2458,10 @@
             "add": "Tilføj",
             "remove": "Fjern",
             "none": "Ingen tilladelser angivet",
-            "anyoneWithLink": "Alle med linket"
+            "anyoneWithLink": "Alle med linket",
+            "roleViewer": "Læser",
+            "roleEditor": "Redaktør",
+            "roleCommenter": "Kommentator"
         },
         "locking": {
             "lock": "Lås fil",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "mislykket {count}",
             "rollbackRestoreCompleted": "Gendannelse fuldført: {summary}",
             "rollbackRestoreNothing": "Intet at gendanne",
-            "rollbackRestoreFailed": "Gendannelse mislykkedes: {error}"
+            "rollbackRestoreFailed": "Gendannelse mislykkedes: {error}",
+            "intervalHoursOne": "{count} time",
+            "intervalHoursMany": "{count} timer"
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Understøtter billedgenkendelse",
                 "thinkingReasoning": "Tænkning/Ræsonnement",
                 "toolQuality": "Værktøjskvalitet: {quality}/5",
-                "ollamaNotReachable": "Ollama kan ikke nås"
+                "ollamaNotReachable": "Ollama kan ikke nås",
+                "macroSafeEditName": "Sikker redigering",
+                "macroSafeEditDescription": "Læs en fil, vis dens indhold, og rediger den derefter (sikkerhedsmønster: læs før skriv)",
+                "macroFindReadName": "Find og læs",
+                "macroFindReadDescription": "Søg efter filer, der matcher et mønster, i en lokal mappe",
+                "familyHintLlama3": "Direkte og korte instruktioner virker bedst. Brug markdown-formatering. Understøtter brug af værktøjer indbygget.",
+                "familyHintCodellama": "Fokuser på kodegenerering og -analyse. Giv kodeeksempler. Brug et teknisk sprog.",
+                "familyHintDeepseekCoder": "Stærk til kodræsonnement og problemløsning i flere trin. Struktureret output foretrækkes. For deepseek-r1 virker tænketilstanden automatisk.",
+                "familyHintQwen": "Understøtter struktureret output. God til flersprogede opgaver. Brug tydelige afsnitsoverskrifter.",
+                "familyHintMistral": "Orienteret mod at følge instruktioner. Hold prompts strukturerede med klare opgavebeskrivelser.",
+                "familyHintPhi": "Kompakt model: hold instruktionerne korte. Bedst til fokuserede opgaver, ikke lange tekster.",
+                "familyHintGemma": "Instruktionsformat i Google-stil. God til opsummering og analyse.",
+                "familyHintStarcoder": "Fokuseret på kodefuldførelse. Angiv filkontekst og imports for de bedste resultater."
             },
             "copy": "Kopiér",
             "attachImage": "Vedhæft billede",
@@ -3033,7 +3092,8 @@
                 "general": "Generelt",
                 "typeSlash": "Skriv / for at bruge skabeloner",
                 "analyzeUi": "Analysér UI-skærmbillede for layout, tilgængelighed og UX-problemer",
-                "performance": "Analysér kode for flaskehalse og optimering"
+                "performance": "Analysér kode for flaskehalse og optimering",
+                "analysis": "Analyse"
             },
             "costBudget": {
                 "conversationCost": "Samtaleomkostning",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "for {count} d. siden",
             "recentFileCountMany": "{count} filer",
             "recentFileCountOne": "{count} fil",
-            "recentMonthsAgo": "for {count} md. siden"
+            "recentMonthsAgo": "for {count} md. siden",
+            "securityArchive": "Arkiv",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Hurtig",
+            "securityAdvancedDescription": "Nonce-resistent · Krypterede filnavne · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20-kaskade · Dobbelt kryptering",
+            "securityArchiveDescription": "Deduplikeret arkiv · zstd-blokke · v3"
         },
         "cryptomator": {
             "title": "Cryptomator-boks",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM-indhold",
             "featureNameCipher": "AES-SIV-navne",
             "formatVersion": "Formatversion {version}",
-            "invalidVaultName": "Ugyldige tegn i boksnavnet"
+            "invalidVaultName": "Ugyldige tegn i boksnavnet",
+            "defaultVaultName": "NyBoks"
         },
         "compress": {
             "title": "Komprimer filer",
@@ -3952,7 +4018,10 @@
             "threads": "Tråde",
             "auto": "Auto",
             "solid": "Solid blok",
-            "solidHint": "Bedre forhold ved mange små filer, langsommere vilkårlig udpakning."
+            "solidHint": "Bedre forhold ved mange små filer, langsommere vilkårlig udpakning.",
+            "formatArchiveOnly": "Kun arkiv",
+            "formatBestRatio": "Bedste forhold",
+            "formatSingleFile": "enkelt fil"
         },
         "batchRename": {
             "title": "Masseomdøbning",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtrer handlinger",
                 "selected": "valgt"
-            }
+            },
+            "save": "Gem"
         },
         "error": {
             "description": "AeroFTP stødte på en uventet fejl. Du kan prøve at gendanne eller genindlæse applikationen.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radial",
                     "spectrum": "Spektrum",
                     "vortex": "Hvirvel",
-                    "waveform": "Bølgeform"
+                    "waveform": "Bølgeform",
+                    "glWaveGlitch": "Bølgeforvrængning",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunnel",
+                    "glMetaball": "Metakugler",
+                    "glParticles": "Partikler"
                 },
                 "volume": "Lydstyrke"
             },
@@ -4635,7 +4711,18 @@
                 "off": "FRA",
                 "on": "TIL",
                 "presets": "Forudindstillinger",
-                "reset": "Nulstil til flad"
+                "reset": "Nulstil til flad",
+                "presetFlat": "Flad",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klassisk",
+                "presetBassBoost": "Basforstærkning",
+                "presetTrebleBoost": "Diskantforstærkning",
+                "presetVocal": "Vokal",
+                "presetElectronic": "Elektronisk",
+                "presetAcoustic": "Akustisk",
+                "presetCustom": "Brugerdefineret"
             },
             "pdf": {
                 "download": "Download PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Betalt",
             "extraFeatures": "Ekstra",
             "coreOpsList": "Upload, Download, Slet, Omdøb, Flyt, Opret mappe, Søg",
-            "coreOpsLegend": "Basis = Upload, Download, Slet, Omdøb, Flyt, Opret mappe, Søg"
+            "coreOpsLegend": "Basis = Upload, Download, Slet, Omdøb, Flyt, Opret mappe, Søg",
+            "notes": "Bemærkninger",
+            "storageClass": "Lagerklasse",
+            "objectTagging": "Objektmærkning",
+            "sse": "Kryptering på serversiden",
+            "checksum": "Kontrolsum",
+            "tierManagement": "Styring af lagerniveauer",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Medier",
+            "sectionOther": "Andet",
+            "trashDetails": {
+                "onedrive": "Business- og SharePoint-drev. Microsoft Graph eksponerer ikke papirkurven for et OneDrive Personal-drev; brug OneDrive-webstedet til det"
+            },
+            "shareLinkDetails": {
+                "permissions": "Tilladelser: vis, kommentér, redigér",
+                "passwordExpiryPlan": "Adgangskode + udløb ({plan}-abonnement påkrævet)",
+                "passwordExpiryPaid": "Adgangskode + udløb (betalt abonnement påkrævet)",
+                "passwordPersonalExpiryPermissions": "Adgangskode (kun Personal), udløb, tilladelser",
+                "passwordArgon2ExpiryPresets": "Adgangskode (Argon2id) + forudindstillede udløb",
+                "passwordExpiryPermissions": "Adgangskode, udløb, tilladelser",
+                "basicOnly": "Kun simpelt delingslink",
+                "publicToggle": "Offentligt link (skift privatliv)",
+                "basic": "Simpelt delingslink",
+                "expiringDefaultYear": "Udløbende links (standard 1 år)",
+                "publishUnpublish": "Udgiv/fjern udgivelse",
+                "permanentUrl": "Permanent URL",
+                "sharedAlbum": "Link til delt album",
+                "megaPresignedS4": "Delingslink / forhåndssigneret URL (maks. 7 dage for S4)",
+                "autoPasswordExpiry": "Adgangskode (autogenereret) + udløb",
+                "presigned": "Forhåndssigneret URL (maks. 7 dage)"
+            }
         },
         "healthCheck": {
             "title": "Serversundhedstjek",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Privat repository",
             "repoPublicTitle": "Offentligt repository",
             "unpushedCommitsOnBranchMany": "{count} commits, der ikke er pushet, på {branch}",
-            "unpushedCommitsOnBranchOne": "{count} commit, der ikke er pushet, på {branch}"
+            "unpushedCommitsOnBranchOne": "{count} commit, der ikke er pushet, på {branch}",
+            "cancelWorkflow": "Annuller arbejdsgang",
+            "rerunWorkflow": "Kør arbejdsgang igen",
+            "downloadAssetTitle": "Hent {name}"
         },
         "filenNotes": {
             "title": "Krypterede noter",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Oprettet",
             "manageExpires": "Udløber",
             "manageNeverExpires": "Aldrig",
-            "managePasswordProtected": "Beskyttet med adgangskode"
+            "managePasswordProtected": "Beskyttet med adgangskode",
+            "expirationHoursOne": "{count} time",
+            "expirationHoursMany": "{count} timer",
+            "expirationDaysMany": "{count} dage"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} t",
                 "days": "{count} d",
                 "months": "{count} md."
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Ny: {name}"
         },
         "gitlab": {
             "projectPath": "Projektsti",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Opret Merge Request",
             "mrTitle": "MR-titel",
             "mrBody": "Beskrivelse (valgfri)",
-            "sourceCode": "Kildekode"
+            "sourceCode": "Kildekode",
+            "downloadAssetTitle": "Hent {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Ny bruger",
                 "noUsers": "Ingen brugere endnu. Brug \"Ny bruger\" nedenfor til at tilføje den første.",
                 "protectionNote": "Din konto er beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering",
-                "users": "Brugere"
+                "users": "Brugere",
+                "setup": "Opsætning"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Tilstanden vælges, når forbindelsen oprettes, og forbliver fast, mens du redigerer en gemt profil. Opret en ny forbindelse for at bruge en anden tilstand.",
-                "notInBuild": "Ikke inkluderet i denne build af AeroFTP."
+                "notInBuild": "Ikke inkluderet i denne build af AeroFTP.",
+                "header": "{name}-tilstande",
+                "nativeApi": "Indbygget API",
+                "filelu": {
+                    "apiDescription": "REST-API med API-nøgle. Alle funktioner (papirkurv, delingslinks, adgangskodebeskyttede filer).",
+                    "webdavDescription": "WebDAV-adgang på port 443. Bred klientkompatibilitet, kan monteres som netværksdrev.",
+                    "s3Description": "S3-kompatibel API på port 443. Brug rclone, AWS CLI eller et hvilket som helst S3-SDK.",
+                    "ftpDescription": "Klassisk FTP på port 21. Ukrypteret, nyttigt til NVR'er til videoovervågning og ældre klienter."
+                },
+                "filen": {
+                    "apiDescription": "Zero-knowledge E2E-kryptering (Argon2id v3 / PBKDF2 v2). Alle funktioner: lagerkvote, papirkurv, adgangskoder til delingslinks, versionsstyring, TOTP.",
+                    "webdavDescription": "WebDAV-bro, som Filen Desktop stiller til rådighed på 127.0.0.1:1900. Kræver, at Filen Desktop kører og er logget ind.",
+                    "s3Description": "S3-kompatibel bro, som Filen Desktop stiller til rådighed på 127.0.0.1:1800 via local.s3.filen.io. Stibaseret adressering, hver Filen-mappe på øverste niveau er en bucket."
+                },
+                "proton": {
+                    "headerDescription": "Proton-lagring i skyen med end-to-end-kryptering",
+                    "apiDescription": "AeroFTP's egen Proton Drive-klient: du logger ind på Protons side i browseren, filer krypteres og dekrypteres på denne computer, og der kræves ingen anden app.",
+                    "cliDescription": "Styrer den officielle Proton Drive-CLI, der er installeret og logget ind på denne maskine. Du logger ind i browseren; AeroFTP ser aldrig din Proton-adgangskode."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive-lagring i skyen (5 GB gratis)",
+                    "apiDescription": "REST-API med brugernavn + adgangskode. Alle funktioner: papirkurv, lagerkvote, delingslinks, rekursivt diskforbrug.",
+                    "webdavDescription": "WebDAV-adgang via webdav.opendrive.com på port 443. Til ældre klienter eller til montering som netværksdrev."
+                },
+                "koofr": {
+                    "apiDescription": "EU-baseret REST-API med e-mail + app-adgangskode. Alle funktioner: lagerkvote, papirkurv (vis/gendan/tøm), delingslinks.",
+                    "webdavDescription": "WebDAV-adgang via app.koofr.net/dav/Koofr på port 443. Lagerkvoten læses stadig fra Koofrs REST-API. Til ældre klienter eller til montering som netværksdrev."
+                },
+                "mega": {
+                    "headerDescription": "MEGA-lagring i skyen med kryptering på klientsiden",
+                    "apiDescription": "Native MEGA-API med e-mail + adgangskode (+ valgfri TOTP). Alle funktioner: kryptering på klientsiden, lagerkvote, delingslinks, miniaturer.",
+                    "webdavDescription": "Lokal WebDAV-bro leveret af den officielle MEGAcmd-CLI, anonym på 127.0.0.1. AeroFTP kører \"mega-webdav /\" for dig ved tilslutning, så der er intet manuelt trin.",
+                    "s4Description": "MEGA S4-objektlagring, S3-kompatibel (regionerne EU/CA). Adgangsnøgle + hemmelig nøgle + bucket. Kræver et Pro-abonnement."
+                }
             }
         },
         "flatpak": {

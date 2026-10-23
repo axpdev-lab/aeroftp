@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Скопіюйте цю URL-адресу та вставте її як URI перенаправлення у налаштуваннях вашого додатку розробника.",
                 "redirectUriNoteGoogle": "Рекомендовано: створіть ідентифікатор клієнта OAuth типу «Комп’ютерна програма» в Google Cloud Console; реєструвати URI переспрямування не потрібно. Для клієнта типу «Вебзастосунок» зареєструйте точно той URI переспрямування, який показано вище, включно з портом і шляхом /callback.",
                 "enablePhotosApi": "Переконайтеся, що Photos Library API увімкнено у вашій Google Cloud Console.",
-                "enableDriveApi": "Переконайтеся, що Google Drive API увімкнено у вашій Google Cloud Console."
+                "enableDriveApi": "Переконайтеся, що Google Drive API увімкнено у вашій Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "США",
+                "zohoRegionEu": "ЄС",
+                "zohoRegionIn": "Індія",
+                "zohoRegionAu": "Австралія",
+                "zohoRegionJp": "Японія",
+                "zohoRegionUk": "Велика Британія",
+                "zohoRegionCa": "Канада",
+                "zohoRegionSa": "Саудівська Аравія"
             },
             "activeSessions": "Активні сеанси",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Рекомендовано для максимальної безпеки",
             "fontCustomOption": "Власний...",
             "fontSystemInstallHint": "Потрібне встановлення в систему. Якщо шрифт недоступний, AeroFTP автоматично використає заміну.",
-            "fontSizeIndicatorLabel": "Шрифт"
+            "fontSizeIndicatorLabel": "Шрифт",
+            "fontPresetDefault": "{font} (типово)",
+            "fontPresetSystemDefault": "Системний типовий"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Збільшити шрифт (Ctrl+=)",
                 "newTab": "Нова вкладка термінала",
                 "sshShellTo": "Оболонка SSH на {host}",
-                "theme": "Тема термінала"
+                "theme": "Тема термінала",
+                "tabLabel": "Термінал {num}",
+                "themeCyber": "Кібер",
+                "themeTrueDark": "Справжня темна",
+                "themeGreen": "Зелена",
+                "themeIce": "Лід",
+                "themeRedLava": "Червона лава"
             },
             "editorPanel": {
                 "emptyState": "Клацніть правою кнопкою миші на файлі та виберіть \"Переглянути вихідний код\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(по одному в рядку)",
             "pairsEditorLabel": "Редактор пар AeroCloud",
             "remoteSubfolderPlaceholder": "хмара",
-            "countdownSoon": "Незабаром..."
+            "countdownSoon": "Незабаром...",
+            "aerocloudEnabled": "AeroCloud увімкнено",
+            "selectPairLocalFolder": "Виберіть локальну папку для пари",
+            "secondsAgo": "{count}с тому"
         },
         "statusBar": {
             "connected": "Підключено",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Дослідник, інженер із забезпечення якості, співавтор дизайну"
             },
             "madeBy": "командою {author}",
-            "statsLine": "{protocols} протоколів · {languages} мов · архіви AES-256"
+            "statsLine": "{protocols} протоколів · {languages} мов · архіви AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Операції SFTP",
+                "osKeyring": "Зв'язка ключів ОС",
+                "vaultFormat": "Формат сховища",
+                "zipArchives": "Архіви ZIP"
+            }
         },
         "support": {
             "title": "Підтримати AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Відновлено з кошика: файлів {files}, уже існує {present}",
             "trash_restore_detail_folders_present_success": "[{provider}] Відновлено з кошика: файлів {files}, папок {folders}, уже існує {present}",
             "filelu_file_password_removed": "[{provider}] Пароль файлу видалено",
-            "filelu_folder_password_removed": "[{provider}] Пароль папки видалено"
+            "filelu_folder_password_removed": "[{provider}] Пароль папки видалено",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} не вдалося",
+            "batch_rename_start": "[{location}] Перейменування елементів: {count}...",
+            "batch_rename_success": "[{location}] Перейменовано елементів: {count}",
+            "batch_rename_error": "[{location}] Перейменовано елементів: {count}, з помилкою: {failed}",
+            "compress_details_saved": "{input} → {output} (заощаджено {percent}%)",
+            "compress_details_grew": "{input} → {output} (збільшення на {percent}%)",
+            "extract_details": "{input} → {output} (розпаковано)",
+            "download_details": "({size} за {seconds} с)"
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Юрисдикція",
             "insecureCertDialogLabel": "Попередження про небезпечний сертифікат",
             "betaBadge": "БЕТА",
-            "hostKeyDialogLabel": "Перевірка ключа хоста"
+            "hostKeyDialogLabel": "Перевірка ключа хоста",
+            "mtpName": "Портативний пристрій (MTP)",
+            "mtpDesc": "Телефон або камера через MTP/WPD",
+            "immichDesc": "Керування фото на власному сервері",
+            "imagekitDesc": "Медіа-CDN + сховище (20 ГБ безкоштовно)",
+            "uploadcareDesc": "Медіа-CDN у ЄС (3 ГБ безкоштовно)",
+            "cloudinaryDesc": "Медіа-CDN (25 кредитів/місяць безкоштовно)",
+            "backblazeDesc": "Нативний API Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -2416,7 +2458,10 @@
             "add": "Додати",
             "remove": "Видалити",
             "none": "Дозволи не задані",
-            "anyoneWithLink": "Будь-хто з посиланням"
+            "anyoneWithLink": "Будь-хто з посиланням",
+            "roleViewer": "Читач",
+            "roleEditor": "Редактор",
+            "roleCommenter": "Коментатор"
         },
         "locking": {
             "lock": "Заблокувати файл",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "помилок {count}",
             "rollbackRestoreCompleted": "Відновлення завершено: {summary}",
             "rollbackRestoreNothing": "Нічого відновлювати",
-            "rollbackRestoreFailed": "Не вдалося відновити: {error}"
+            "rollbackRestoreFailed": "Не вдалося відновити: {error}",
+            "intervalHoursOne": "{count} година",
+            "intervalHoursMany": "{count} год."
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Підтримує зір",
                 "thinkingReasoning": "Мислення/Міркування",
                 "toolQuality": "Якість інструментів: {quality}/5",
-                "ollamaNotReachable": "Ollama недоступна"
+                "ollamaNotReachable": "Ollama недоступна",
+                "macroSafeEditName": "Безпечне редагування",
+                "macroSafeEditDescription": "Прочитати файл, показати його вміст, потім відредагувати (шаблон безпеки: читання перед записом)",
+                "macroFindReadName": "Знайти й прочитати",
+                "macroFindReadDescription": "Пошук файлів за шаблоном у локальному каталозі",
+                "familyHintLlama3": "Найкраще працюють прямі та стислі інструкції. Використовуйте форматування markdown. Нативно підтримує використання інструментів.",
+                "familyHintCodellama": "Зосередьтеся на генерації та аналізі коду. Наводьте приклади коду. Використовуйте технічну мову.",
+                "familyHintDeepseekCoder": "Сильний у міркуваннях щодо коду та розв'язанні багатокрокових задач. Бажано структурований вивід. Для deepseek-r1 режим міркування працює автоматично.",
+                "familyHintQwen": "Підтримує структурований вивід. Добре справляється з багатомовними завданнями. Використовуйте чіткі заголовки розділів.",
+                "familyHintMistral": "Орієнтований на виконання інструкцій. Робіть промпти структурованими, з чіткими описами завдань.",
+                "familyHintPhi": "Компактна модель: формулюйте інструкції стисло. Найкраще для вузьких завдань, а не для довгих текстів.",
+                "familyHintGemma": "Формат інструкцій у стилі Google. Добре справляється з підсумовуванням та аналізом.",
+                "familyHintStarcoder": "Орієнтований на доповнення коду. Для найкращих результатів надайте контекст файлу та імпорти."
             },
             "copy": "Копіювати",
             "attachImage": "Прикріпити зображення",
@@ -3033,7 +3092,8 @@
                 "general": "Загальні",
                 "typeSlash": "Введіть / для використання шаблонів",
                 "analyzeUi": "Аналіз скриншота UI на проблеми компонування, доступності та UX",
-                "performance": "Аналіз коду на вузькі місця продуктивності та оптимізацію"
+                "performance": "Аналіз коду на вузькі місця продуктивності та оптимізацію",
+                "analysis": "Аналіз"
             },
             "costBudget": {
                 "conversationCost": "Вартість розмови",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} дн. тому",
             "recentFileCountMany": "Файлів: {count}",
             "recentFileCountOne": "{count} файл",
-            "recentMonthsAgo": "{count} міс. тому"
+            "recentMonthsAgo": "{count} міс. тому",
+            "securityArchive": "Архів",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Швидко",
+            "securityAdvancedDescription": "Стійкість до nonce · Шифровані імена файлів · 128 MB KDF",
+            "securityParanoidDescription": "Каскад AES + ChaCha20 · Подвійне шифрування",
+            "securityArchiveDescription": "Архів із дедуплікацією · блоки zstd · v3"
         },
         "cryptomator": {
             "title": "Сховище Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Вміст AES-GCM",
             "featureNameCipher": "Імена AES-SIV",
             "formatVersion": "Формат {version}",
-            "invalidVaultName": "Неприпустимі символи в назві сховища"
+            "invalidVaultName": "Неприпустимі символи в назві сховища",
+            "defaultVaultName": "НовеСховище"
         },
         "compress": {
             "title": "Стиснути файли",
@@ -3952,7 +4018,10 @@
             "threads": "Потоки",
             "auto": "Авто",
             "solid": "Суцільний блок",
-            "solidHint": "Кращий коефіцієнт для багатьох малих файлів, повільніше довільне видобування."
+            "solidHint": "Кращий коефіцієнт для багатьох малих файлів, повільніше довільне видобування.",
+            "formatArchiveOnly": "Лише архів",
+            "formatBestRatio": "Найкраще стиснення",
+            "formatSingleFile": "один файл"
         },
         "batchRename": {
             "title": "Групове перейменування",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Фільтрувати операції",
                 "selected": "вибрано"
-            }
+            },
+            "save": "Зберегти"
         },
         "error": {
             "description": "AeroFTP зіткнувся з неочікуваною помилкою. Ви можете спробувати відновити або перезавантажити додаток.",
@@ -4529,7 +4599,13 @@
                     "radial": "Радіальний",
                     "spectrum": "Спектр",
                     "vortex": "Вихор",
-                    "waveform": "Хвильова форма"
+                    "waveform": "Хвильова форма",
+                    "glWaveGlitch": "Хвильові завади",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Мандельброт",
+                    "glTunnel": "Тунель",
+                    "glMetaball": "Метакулі",
+                    "glParticles": "Частинки"
                 },
                 "volume": "Гучність"
             },
@@ -4635,7 +4711,18 @@
                 "off": "ВИМК",
                 "on": "УВІМК",
                 "presets": "Пресети",
-                "reset": "Скинути до рівного"
+                "reset": "Скинути до рівного",
+                "presetFlat": "Рівний",
+                "presetRock": "Рок",
+                "presetPop": "Поп",
+                "presetJazz": "Джаз",
+                "presetClassical": "Класика",
+                "presetBassBoost": "Підсилення басів",
+                "presetTrebleBoost": "Підсилення високих",
+                "presetVocal": "Вокал",
+                "presetElectronic": "Електроніка",
+                "presetAcoustic": "Акустика",
+                "presetCustom": "Користувацький"
             },
             "pdf": {
                 "download": "Завантажити PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Платно",
             "extraFeatures": "Додатково",
             "coreOpsList": "Вивантаження, Завантаження, Видалення, Перейменування, Переміщення, Створення теки, Пошук",
-            "coreOpsLegend": "Базові = Вивантаження, Завантаження, Видалення, Перейменування, Переміщення, Створення теки, Пошук"
+            "coreOpsLegend": "Базові = Вивантаження, Завантаження, Видалення, Перейменування, Переміщення, Створення теки, Пошук",
+            "notes": "Примітки",
+            "storageClass": "Клас сховища",
+            "objectTagging": "Теги об'єктів",
+            "sse": "Шифрування на боці сервера",
+            "checksum": "Контрольна сума",
+            "tierManagement": "Керування рівнями зберігання",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Медіа",
+            "sectionOther": "Інше",
+            "trashDetails": {
+                "onedrive": "Диски Business і SharePoint. Microsoft Graph не надає доступу до кошика диска OneDrive Personal; використовуйте для цього сайт OneDrive"
+            },
+            "shareLinkDetails": {
+                "permissions": "Дозволи: перегляд, коментування, редагування",
+                "passwordExpiryPlan": "Пароль + термін дії (потрібен план {plan})",
+                "passwordExpiryPaid": "Пароль + термін дії (потрібен платний план)",
+                "passwordPersonalExpiryPermissions": "Пароль (лише Personal), термін дії, дозволи",
+                "passwordArgon2ExpiryPresets": "Пароль (Argon2id) + передустановки терміну дії",
+                "passwordExpiryPermissions": "Пароль, термін дії, дозволи",
+                "basicOnly": "Лише просте посилання для спільного доступу",
+                "publicToggle": "Публічне посилання (перемикання приватності)",
+                "basic": "Просте посилання для спільного доступу",
+                "expiringDefaultYear": "Посилання з терміном дії (типово 1 рік)",
+                "publishUnpublish": "Опублікувати/зняти з публікації",
+                "permanentUrl": "Постійна URL-адреса",
+                "sharedAlbum": "Посилання на спільний альбом",
+                "megaPresignedS4": "Посилання для спільного доступу / попередньо підписана URL-адреса (макс. 7 днів для S4)",
+                "autoPasswordExpiry": "Пароль (згенерований автоматично) + термін дії",
+                "presigned": "Попередньо підписана URL-адреса (макс. 7 днів)"
+            }
         },
         "healthCheck": {
             "title": "Перевірка стану сервера",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Приватний репозиторій",
             "repoPublicTitle": "Публічний репозиторій",
             "unpushedCommitsOnBranchMany": "{count} невідправлених комітів у {branch}",
-            "unpushedCommitsOnBranchOne": "{count} невідправлений коміт у {branch}"
+            "unpushedCommitsOnBranchOne": "{count} невідправлений коміт у {branch}",
+            "cancelWorkflow": "Скасувати робочий процес",
+            "rerunWorkflow": "Перезапустити робочий процес",
+            "downloadAssetTitle": "Завантажити {name}"
         },
         "filenNotes": {
             "title": "Зашифровані нотатки",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Створено",
             "manageExpires": "Спливає",
             "manageNeverExpires": "Ніколи",
-            "managePasswordProtected": "Захищено паролем"
+            "managePasswordProtected": "Захищено паролем",
+            "expirationHoursOne": "{count} година",
+            "expirationHoursMany": "{count} год.",
+            "expirationDaysMany": "{count} дн."
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} год",
                 "days": "{count} д",
                 "months": "{count} міс"
-            }
+            },
+            "demoTabLabel": "Демо: {protocol}",
+            "newTabLabel": "Нова: {name}"
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Створити Merge Request",
             "mrTitle": "Заголовок MR",
             "mrBody": "Опис (необов'язково)",
-            "sourceCode": "Вихідний код"
+            "sourceCode": "Вихідний код",
+            "downloadAssetTitle": "Завантажити {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Новий користувач",
                 "noUsers": "Користувачів ще немає. Скористайтеся кнопкою «Новий користувач» нижче, щоб додати першого.",
                 "protectionNote": "Ваш обліковий запис захищено шифруванням Argon2id + AES-KW + AES-256-GCM",
-                "users": "Користувачі"
+                "users": "Користувачі",
+                "setup": "Налаштування"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Режим вибирається під час створення з'єднання й залишається незмінним під час редагування збереженого профілю. Щоб використати інший режим, створіть нове з'єднання.",
-                "notInBuild": "Не входить до цієї збірки AeroFTP."
+                "notInBuild": "Не входить до цієї збірки AeroFTP.",
+                "header": "Режими {name}",
+                "nativeApi": "Нативний API",
+                "filelu": {
+                    "apiDescription": "REST API з ключем API. Повний набір функцій (кошик, посилання для спільного доступу, файли, захищені паролем).",
+                    "webdavDescription": "Доступ WebDAV через порт 443. Широка сумісність із клієнтами, монтується як мережевий диск.",
+                    "s3Description": "API, сумісний з S3, на порту 443. Використовуйте rclone, AWS CLI або будь-який S3 SDK.",
+                    "ftpDescription": "Класичний FTP на порту 21. Без шифрування, корисний для відеореєстраторів NVR і застарілих клієнтів."
+                },
+                "filen": {
+                    "apiDescription": "E2E-шифрування з нульовим розголошенням (Argon2id v3 / PBKDF2 v2). Повний набір функцій: квота сховища, кошик, паролі посилань для спільного доступу, версії, TOTP.",
+                    "webdavDescription": "Міст WebDAV, який надає Filen Desktop на 127.0.0.1:1900. Потрібен запущений Filen Desktop із виконаним входом.",
+                    "s3Description": "Сумісний з S3 міст, який надає Filen Desktop на 127.0.0.1:1800 через local.s3.filen.io. Адресація за шляхом, кожна папка Filen верхнього рівня є бакетом."
+                },
+                "proton": {
+                    "headerDescription": "Хмарне сховище Proton з наскрізним шифруванням",
+                    "apiDescription": "Власний клієнт Proton Drive в AeroFTP: ви входите на сторінці Proton у браузері, файли шифруються та розшифровуються на цьому комп'ютері, і жодна інша програма не потрібна.",
+                    "cliDescription": "Керує офіційним Proton Drive CLI, встановленим на цьому комп'ютері з виконаним входом. Ви входите в браузері; AeroFTP ніколи не бачить ваш пароль Proton."
+                },
+                "opendrive": {
+                    "headerDescription": "Хмарне сховище OpenDrive (5 ГБ безкоштовно)",
+                    "apiDescription": "REST API з іменем користувача + паролем. Повний набір функцій: кошик, квота сховища, посилання для спільного доступу, рекурсивне використання диска.",
+                    "webdavDescription": "Доступ через WebDAV за адресою webdav.opendrive.com на порту 443. Для застарілих клієнтів або для підключення як мережевого диска."
+                },
+                "koofr": {
+                    "apiDescription": "REST API з розміщенням у ЄС, з електронною поштою + паролем застосунку. Повний набір функцій: квота сховища, кошик (перегляд/відновлення/очищення), посилання для спільного доступу.",
+                    "webdavDescription": "Доступ через WebDAV за адресою app.koofr.net/dav/Koofr на порту 443. Квота сховища, як і раніше, зчитується з REST API Koofr. Для застарілих клієнтів або для підключення як мережевого диска."
+                },
+                "mega": {
+                    "headerDescription": "Хмарне сховище MEGA із шифруванням на боці клієнта",
+                    "apiDescription": "Нативний API MEGA з електронною поштою + паролем (+ необов'язковий TOTP). Повний набір функцій: шифрування на боці клієнта, квота сховища, посилання для спільного доступу, мініатюри.",
+                    "webdavDescription": "Локальний міст WebDAV, який обслуговує офіційний MEGAcmd CLI, анонімний на 127.0.0.1. AeroFTP сам запускає \"mega-webdav /\" під час підключення, тож ручних дій не потрібно.",
+                    "s4Description": "Об'єктне сховище MEGA S4, сумісне з S3 (регіони EU/CA). Ключ доступу + секретний ключ + бакет. Потрібен тариф Pro."
+                }
             }
         },
         "flatpak": {

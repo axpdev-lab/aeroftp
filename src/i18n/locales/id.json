@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Salin URL ini dan tempelkan sebagai URI Pengalihan di pengaturan aplikasi pengembang Anda.",
                 "redirectUriNoteGoogle": "Disarankan: buat ID klien OAuth bertipe \"Aplikasi desktop\" di Google Cloud Console; tidak perlu mendaftarkan URI pengalihan. Untuk klien bertipe \"Aplikasi web\", daftarkan URI pengalihan persis seperti yang ditampilkan di atas, termasuk port dan jalur /callback.",
                 "enablePhotosApi": "Pastikan Photos Library API diaktifkan di Google Cloud Console Anda.",
-                "enableDriveApi": "Pastikan Google Drive API diaktifkan di Google Cloud Console Anda."
+                "enableDriveApi": "Pastikan Google Drive API diaktifkan di Google Cloud Console Anda.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "AS",
+                "zohoRegionEu": "UE",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Australia",
+                "zohoRegionJp": "Jepang",
+                "zohoRegionUk": "Britania Raya",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Arab Saudi"
             },
             "activeSessions": "Sesi Aktif",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Disarankan untuk keamanan maksimal",
             "fontCustomOption": "Kustom...",
             "fontSystemInstallHint": "Memerlukan instalasi sistem. AeroFTP beralih otomatis ke alternatif jika tidak tersedia.",
-            "fontSizeIndicatorLabel": "Huruf"
+            "fontSizeIndicatorLabel": "Huruf",
+            "fontPresetDefault": "{font} (Bawaan)",
+            "fontPresetSystemDefault": "Bawaan sistem"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Perbesar ukuran font (Ctrl+=)",
                 "newTab": "Tab terminal baru",
                 "sshShellTo": "Shell SSH ke {host}",
-                "theme": "Tema terminal"
+                "theme": "Tema terminal",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Siber",
+                "themeTrueDark": "Gelap murni",
+                "themeGreen": "Hijau",
+                "themeIce": "Es",
+                "themeRedLava": "Lava merah"
             },
             "editorPanel": {
                 "emptyState": "Klik kanan pada file dan pilih \"Lihat sumber\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(satu per baris)",
             "pairsEditorLabel": "Editor Pasangan AeroCloud",
             "remoteSubfolderPlaceholder": "awan",
-            "countdownSoon": "Segera..."
+            "countdownSoon": "Segera...",
+            "aerocloudEnabled": "AeroCloud diaktifkan",
+            "selectPairLocalFolder": "Pilih folder lokal untuk pasangan",
+            "secondsAgo": "{count}d lalu"
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Peneliti, insinyur penjaminan mutu, rekan perancang"
             },
             "madeBy": "oleh {author}",
-            "statsLine": "{protocols} protokol · {languages} bahasa · arsip AES-256"
+            "statsLine": "{protocols} protokol · {languages} bahasa · arsip AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Operasi SFTP",
+                "osKeyring": "Gantungan kunci OS",
+                "vaultFormat": "Format brankas",
+                "zipArchives": "Arsip ZIP"
+            }
         },
         "support": {
             "title": "Dukung AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Memulihkan {files} file dari tempat sampah, {present} sudah ada",
             "trash_restore_detail_folders_present_success": "[{provider}] Memulihkan {files} file, {folders} folder dari tempat sampah, {present} sudah ada",
             "filelu_file_password_removed": "[{provider}] Kata sandi file dihapus",
-            "filelu_folder_password_removed": "[{provider}] Kata sandi folder dihapus"
+            "filelu_folder_password_removed": "[{provider}] Kata sandi folder dihapus",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} gagal",
+            "batch_rename_start": "[{location}] Mengganti nama {count} item...",
+            "batch_rename_success": "[{location}] Berhasil mengganti nama {count} item",
+            "batch_rename_error": "[{location}] Berhasil mengganti nama {count} item, {failed} gagal",
+            "compress_details_saved": "{input} → {output} (hemat {percent}%)",
+            "compress_details_grew": "{input} → {output} (bertambah {percent}%)",
+            "extract_details": "{input} → {output} (diekstrak)",
+            "download_details": "({size} dalam {seconds} dtk)"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Yurisdiksi",
             "insecureCertDialogLabel": "Peringatan Sertifikat Tidak Aman",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Verifikasi kunci host"
+            "hostKeyDialogLabel": "Verifikasi kunci host",
+            "mtpName": "Perangkat portabel (MTP)",
+            "mtpDesc": "Ponsel atau kamera melalui MTP/WPD",
+            "immichDesc": "Manajemen foto yang di-host sendiri",
+            "imagekitDesc": "CDN media + penyimpanan (gratis 20 GB)",
+            "uploadcareDesc": "CDN media UE (gratis 3 GB)",
+            "cloudinaryDesc": "CDN media (gratis 25 kredit/bulan)",
+            "backblazeDesc": "API bawaan Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -2416,7 +2458,10 @@
             "add": "Tambah",
             "remove": "Hapus",
             "none": "Tidak ada izin yang disetel",
-            "anyoneWithLink": "Siapa pun yang memiliki tautan"
+            "anyoneWithLink": "Siapa pun yang memiliki tautan",
+            "roleViewer": "Pelihat",
+            "roleEditor": "Penyunting",
+            "roleCommenter": "Pemberi komentar"
         },
         "locking": {
             "lock": "Kunci File",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "gagal {count}",
             "rollbackRestoreCompleted": "Pemulihan selesai: {summary}",
             "rollbackRestoreNothing": "Tidak ada yang perlu dipulihkan",
-            "rollbackRestoreFailed": "Pemulihan gagal: {error}"
+            "rollbackRestoreFailed": "Pemulihan gagal: {error}",
+            "intervalHoursOne": "{count} jam",
+            "intervalHoursMany": "{count} jam"
         },
         "ui": {
             "syncing": "Menyinkronkan...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Mendukung visi",
                 "thinkingReasoning": "Berpikir/Penalaran",
                 "toolQuality": "Kualitas alat: {quality}/5",
-                "ollamaNotReachable": "Ollama tidak dapat dijangkau"
+                "ollamaNotReachable": "Ollama tidak dapat dijangkau",
+                "macroSafeEditName": "Sunting Aman",
+                "macroSafeEditDescription": "Baca file, tampilkan isinya, lalu sunting (pola keamanan baca sebelum tulis)",
+                "macroFindReadName": "Cari & Baca",
+                "macroFindReadDescription": "Cari file yang cocok dengan pola di direktori lokal",
+                "familyHintLlama3": "Instruksi yang langsung dan ringkas bekerja paling baik. Gunakan format markdown. Mendukung penggunaan alat secara native.",
+                "familyHintCodellama": "Fokus pada pembuatan dan analisis kode. Berikan contoh kode. Gunakan bahasa teknis.",
+                "familyHintDeepseekCoder": "Kuat dalam penalaran kode dan pemecahan masalah multi-langkah. Keluaran terstruktur lebih disukai. Untuk deepseek-r1, mode berpikir bekerja secara otomatis.",
+                "familyHintQwen": "Mendukung keluaran terstruktur. Bagus untuk tugas multibahasa. Gunakan judul bagian yang jelas.",
+                "familyHintMistral": "Berorientasi pada mengikuti instruksi. Jaga prompt tetap terstruktur dengan deskripsi tugas yang jelas.",
+                "familyHintPhi": "Model ringkas: jaga instruksi tetap singkat. Terbaik untuk tugas terfokus, bukan teks panjang.",
+                "familyHintGemma": "Format instruksi gaya Google. Bagus dalam meringkas dan menganalisis.",
+                "familyHintStarcoder": "Berfokus pada pelengkapan kode. Berikan konteks file dan impor untuk hasil terbaik."
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",
@@ -3033,7 +3092,8 @@
                 "general": "Umum",
                 "typeSlash": "Ketik / untuk menggunakan template",
                 "analyzeUi": "Analisis tangkapan layar UI untuk masalah tata letak, aksesibilitas, dan UX",
-                "performance": "Analisis kode untuk hambatan kinerja dan optimasi"
+                "performance": "Analisis kode untuk hambatan kinerja dan optimasi",
+                "analysis": "Analisis"
             },
             "costBudget": {
                 "conversationCost": "Biaya Percakapan",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} hr lalu",
             "recentFileCountMany": "{count} berkas",
             "recentFileCountOne": "{count} berkas",
-            "recentMonthsAgo": "{count} bln lalu"
+            "recentMonthsAgo": "{count} bln lalu",
+            "securityArchive": "Arsip",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Cepat",
+            "securityAdvancedDescription": "Tahan nonce · Nama file terenkripsi · KDF 128 MB",
+            "securityParanoidDescription": "Kaskade AES + ChaCha20 · Enkripsi ganda",
+            "securityArchiveDescription": "Arsip terdeduplikasi · potongan zstd · v3"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Konten AES-GCM",
             "featureNameCipher": "Nama AES-SIV",
             "formatVersion": "Versi format {version}",
-            "invalidVaultName": "Karakter tidak valid dalam nama brankas"
+            "invalidVaultName": "Karakter tidak valid dalam nama brankas",
+            "defaultVaultName": "BrankasBaru"
         },
         "compress": {
             "title": "Kompres File",
@@ -3952,7 +4018,10 @@
             "threads": "Utas",
             "auto": "Otomatis",
             "solid": "Blok solid",
-            "solidHint": "Rasio lebih baik untuk banyak berkas kecil, ekstraksi acak lebih lambat."
+            "solidHint": "Rasio lebih baik untuk banyak berkas kecil, ekstraksi acak lebih lambat.",
+            "formatArchiveOnly": "Hanya arsip",
+            "formatBestRatio": "Rasio terbaik",
+            "formatSingleFile": "berkas tunggal"
         },
         "batchRename": {
             "title": "Ganti Nama Batch",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filter operasi",
                 "selected": "dipilih"
-            }
+            },
+            "save": "Simpan"
         },
         "error": {
             "description": "AeroFTP mengalami kesalahan tak terduga. Anda dapat mencoba memulihkan atau memuat ulang aplikasi.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radial",
                     "spectrum": "Spektrum",
                     "vortex": "Pusaran",
-                    "waveform": "Gelombang"
+                    "waveform": "Gelombang",
+                    "glWaveGlitch": "Gangguan Gelombang",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Terowongan",
+                    "glMetaball": "Metabola",
+                    "glParticles": "Partikel"
                 },
                 "volume": "Volume"
             },
@@ -4635,7 +4711,18 @@
                 "off": "MATI",
                 "on": "NYALA",
                 "presets": "Preset",
-                "reset": "Reset ke Flat"
+                "reset": "Reset ke Flat",
+                "presetFlat": "Datar",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klasik",
+                "presetBassBoost": "Penguat Bass",
+                "presetTrebleBoost": "Penguat Treble",
+                "presetVocal": "Vokal",
+                "presetElectronic": "Elektronik",
+                "presetAcoustic": "Akustik",
+                "presetCustom": "Kustom"
             },
             "pdf": {
                 "download": "Unduh PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Berbayar",
             "extraFeatures": "Tambahan",
             "coreOpsList": "Unggah, Unduh, Hapus, Ganti nama, Pindahkan, Buat folder, Cari",
-            "coreOpsLegend": "Dasar = Unggah, Unduh, Hapus, Ganti nama, Pindahkan, Buat folder, Cari"
+            "coreOpsLegend": "Dasar = Unggah, Unduh, Hapus, Ganti nama, Pindahkan, Buat folder, Cari",
+            "notes": "Catatan",
+            "storageClass": "Kelas penyimpanan",
+            "objectTagging": "Penandaan objek",
+            "sse": "Enkripsi sisi server",
+            "checksum": "Checksum berkas",
+            "tierManagement": "Pengelolaan tingkat",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Multimedia",
+            "sectionOther": "Lainnya",
+            "trashDetails": {
+                "onedrive": "Drive Business dan SharePoint. Microsoft Graph tidak menyediakan keranjang sampah drive OneDrive Personal; gunakan situs web OneDrive untuk itu"
+            },
+            "shareLinkDetails": {
+                "permissions": "Izin: lihat, komentar, sunting",
+                "passwordExpiryPlan": "Kata sandi + kedaluwarsa (memerlukan paket {plan})",
+                "passwordExpiryPaid": "Kata sandi + kedaluwarsa (memerlukan paket berbayar)",
+                "passwordPersonalExpiryPermissions": "Kata sandi (hanya Personal), kedaluwarsa, izin",
+                "passwordArgon2ExpiryPresets": "Kata sandi (Argon2id) + prasetel kedaluwarsa",
+                "passwordExpiryPermissions": "Kata sandi, kedaluwarsa, izin",
+                "basicOnly": "Hanya tautan berbagi dasar",
+                "publicToggle": "Tautan publik (alihkan privasi)",
+                "basic": "Tautan berbagi dasar",
+                "expiringDefaultYear": "Tautan kedaluwarsa (bawaan 1 tahun)",
+                "publishUnpublish": "Terbitkan/batalkan terbit",
+                "permanentUrl": "URL permanen",
+                "sharedAlbum": "Tautan album bersama",
+                "megaPresignedS4": "Tautan berbagi / URL pra-tanda tangan (maks. 7 hari untuk S4)",
+                "autoPasswordExpiry": "Kata sandi (dibuat otomatis) + kedaluwarsa",
+                "presigned": "URL pra-tanda tangan (maks. 7 hari)"
+            }
         },
         "healthCheck": {
             "title": "Pemeriksaan Kesehatan Server",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Repositori pribadi",
             "repoPublicTitle": "Repositori publik",
             "unpushedCommitsOnBranchMany": "{count} commit belum di-push di {branch}",
-            "unpushedCommitsOnBranchOne": "{count} commit belum di-push di {branch}"
+            "unpushedCommitsOnBranchOne": "{count} commit belum di-push di {branch}",
+            "cancelWorkflow": "Batalkan alur kerja",
+            "rerunWorkflow": "Jalankan ulang alur kerja",
+            "downloadAssetTitle": "Unduh {name}"
         },
         "filenNotes": {
             "title": "Catatan Terenkripsi",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Dibuat",
             "manageExpires": "Kedaluwarsa",
             "manageNeverExpires": "Tidak pernah",
-            "managePasswordProtected": "Dilindungi kata sandi"
+            "managePasswordProtected": "Dilindungi kata sandi",
+            "expirationHoursOne": "{count} jam",
+            "expirationHoursMany": "{count} jam",
+            "expirationDaysMany": "{count} hari"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} j",
                 "days": "{count} h",
                 "months": "{count} bln"
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Baru: {name}"
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Buat Merge Request",
             "mrTitle": "Judul MR",
             "mrBody": "Deskripsi (opsional)",
-            "sourceCode": "Kode sumber"
+            "sourceCode": "Kode sumber",
+            "downloadAssetTitle": "Unduh {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Pengguna baru",
                 "noUsers": "Belum ada pengguna. Gunakan \"Pengguna baru\" di bawah untuk menambahkan yang pertama.",
                 "protectionNote": "Akun Anda dilindungi enkripsi Argon2id + AES-KW + AES-256-GCM",
-                "users": "Pengguna"
+                "users": "Pengguna",
+                "setup": "Penyiapan"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Mode dipilih saat koneksi dibuat dan tetap tidak berubah saat mengedit profil tersimpan. Untuk menggunakan mode berbeda, buat koneksi baru.",
-                "notInBuild": "Tidak disertakan dalam build AeroFTP ini."
+                "notInBuild": "Tidak disertakan dalam build AeroFTP ini.",
+                "header": "Mode {name}",
+                "nativeApi": "API bawaan",
+                "filelu": {
+                    "apiDescription": "REST API dengan kunci API. Fitur lengkap (tempat sampah, tautan berbagi, file yang dilindungi kata sandi).",
+                    "webdavDescription": "Akses WebDAV di port 443. Kompatibilitas klien yang luas, dapat dipasang sebagai drive jaringan.",
+                    "s3Description": "API yang kompatibel dengan S3 di port 443. Gunakan rclone, AWS CLI, atau SDK S3 apa pun.",
+                    "ftpDescription": "FTP klasik di port 21. Tanpa enkripsi, berguna untuk perekam NVR kamera pengawas dan klien lama."
+                },
+                "filen": {
+                    "apiDescription": "Enkripsi E2E tanpa pengetahuan (Argon2id v3 / PBKDF2 v2). Fitur lengkap: kuota penyimpanan, tempat sampah, kata sandi tautan berbagi, pengelolaan versi, TOTP.",
+                    "webdavDescription": "Jembatan WebDAV yang disediakan Filen Desktop di 127.0.0.1:1900. Memerlukan Filen Desktop berjalan dan sudah masuk.",
+                    "s3Description": "Jembatan kompatibel S3 yang disediakan Filen Desktop di 127.0.0.1:1800 melalui local.s3.filen.io. Pengalamatan berbasis jalur, setiap folder Filen tingkat teratas adalah sebuah bucket."
+                },
+                "proton": {
+                    "headerDescription": "Penyimpanan cloud Proton dengan enkripsi ujung ke ujung",
+                    "apiDescription": "Klien Proton Drive milik AeroFTP sendiri: Anda masuk di halaman Proton di browser, file dienkripsi dan didekripsi di komputer ini, dan tidak perlu aplikasi lain.",
+                    "cliDescription": "Mengendalikan CLI resmi Proton Drive yang terpasang dan sudah masuk di mesin ini. Anda masuk di browser; AeroFTP tidak pernah melihat kata sandi Proton Anda."
+                },
+                "opendrive": {
+                    "headerDescription": "Penyimpanan cloud OpenDrive (5 GB gratis)",
+                    "apiDescription": "REST API dengan nama pengguna + kata sandi. Fitur lengkap: tempat sampah, kuota penyimpanan, tautan berbagi, penggunaan disk rekursif.",
+                    "webdavDescription": "Akses WebDAV melalui webdav.opendrive.com di port 443. Untuk klien lama atau untuk dipasang sebagai drive jaringan."
+                },
+                "koofr": {
+                    "apiDescription": "REST API berbasis di UE dengan email + kata sandi aplikasi. Fitur lengkap: kuota penyimpanan, tempat sampah (daftar/pulihkan/kosongkan), tautan berbagi.",
+                    "webdavDescription": "Akses WebDAV melalui app.koofr.net/dav/Koofr di port 443. Kuota penyimpanan tetap dibaca dari REST API Koofr. Untuk klien lama atau untuk dipasang sebagai drive jaringan."
+                },
+                "mega": {
+                    "headerDescription": "Penyimpanan cloud MEGA dengan enkripsi sisi klien",
+                    "apiDescription": "API MEGA asli dengan email + kata sandi (+ TOTP opsional). Fitur lengkap: enkripsi sisi klien, kuota penyimpanan, tautan berbagi, gambar mini.",
+                    "webdavDescription": "Jembatan WebDAV lokal yang dilayani CLI resmi MEGAcmd, anonim di 127.0.0.1. AeroFTP menjalankan \"mega-webdav /\" untuk Anda saat terhubung, jadi tidak ada langkah manual.",
+                    "s4Description": "Penyimpanan objek MEGA S4, kompatibel dengan S3 (wilayah EU/CA). Kunci akses + kunci rahasia + bucket. Memerlukan paket Pro."
+                }
             }
         },
         "flatpak": {

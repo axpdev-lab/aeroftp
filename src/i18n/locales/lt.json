@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Nukopijuokite šį URL ir įklijuokite jį kaip peradresavimo URI savo kūrėjo programos nustatymuose.",
                 "redirectUriNoteGoogle": "Rekomenduojama: Google Cloud Console sukurkite „Stalinio kompiuterio programa“ tipo OAuth kliento ID; peradresavimo URI registruoti nereikia. „Žiniatinklio programa“ tipo klientui užregistruokite tiksliai tokį peradresavimo URI, koks rodomas aukščiau, įskaitant prievadą ir kelią /callback.",
                 "enablePhotosApi": "Įsitikinkite, kad Photos Library API įjungta jūsų Google Cloud Console.",
-                "enableDriveApi": "Įsitikinkite, kad Google Drive API įjungta jūsų Google Cloud Console."
+                "enableDriveApi": "Įsitikinkite, kad Google Drive API įjungta jūsų Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "JAV",
+                "zohoRegionEu": "ES",
+                "zohoRegionIn": "Indija",
+                "zohoRegionAu": "Australija",
+                "zohoRegionJp": "Japonija",
+                "zohoRegionUk": "Jungtinė Karalystė",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Saudo Arabija"
             },
             "activeSessions": "Aktyvios sesijos",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Rekomenduojama didžiausiam saugumui",
             "fontCustomOption": "Pasirinktinis...",
             "fontSystemInstallHint": "Reikia įdiegti sistemoje. Jei nepasiekiamas, AeroFTP automatiškai naudoja atsarginį variantą.",
-            "fontSizeIndicatorLabel": "Šriftas"
+            "fontSizeIndicatorLabel": "Šriftas",
+            "fontPresetDefault": "{font} (numatytasis)",
+            "fontPresetSystemDefault": "Sistemos numatytasis"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Padidinti šrifto dydį (Ctrl+=)",
                 "newTab": "Nauja terminalo kortelė",
                 "sshShellTo": "SSH apvalkalas į {host}",
-                "theme": "Terminalo tema"
+                "theme": "Terminalo tema",
+                "tabLabel": "Terminalas {num}",
+                "themeCyber": "Kiber",
+                "themeTrueDark": "Tikra tamsi",
+                "themeGreen": "Žalia",
+                "themeIce": "Ledas",
+                "themeRedLava": "Raudona lava"
             },
             "editorPanel": {
                 "emptyState": "Spustelėkite dešiniuoju pelės mygtuku ant failo ir pasirinkite \"Rodyti pirminį kodą\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(po vieną eilutėje)",
             "pairsEditorLabel": "AeroCloud porų redaktorius",
             "remoteSubfolderPlaceholder": "debesis",
-            "countdownSoon": "Netrukus..."
+            "countdownSoon": "Netrukus...",
+            "aerocloudEnabled": "AeroCloud įjungta",
+            "selectPairLocalFolder": "Pasirinkite vietinį aplanką porai",
+            "secondsAgo": "prieš {count}s"
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Tyrėjas, kokybės užtikrinimo inžinierius, dizaino bendraautoris"
             },
             "madeBy": "bendrovės {author}",
-            "statsLine": "{protocols} protokolai · {languages} kalbos · AES-256 archyvai"
+            "statsLine": "{protocols} protokolai · {languages} kalbos · AES-256 archyvai",
+            "dependencyRoles": {
+                "sftpOps": "SFTP operacijos",
+                "osKeyring": "OS raktinė",
+                "vaultFormat": "Saugyklos formatas",
+                "zipArchives": "ZIP archyvai"
+            }
         },
         "support": {
             "title": "Palaikykite AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, jau yra: {present}",
             "trash_restore_detail_folders_present_success": "[{provider}] Iš šiukšlinės atkurta failų: {files}, aplankų: {folders}, jau yra: {present}",
             "filelu_file_password_removed": "[{provider}] Pašalintas failo slaptažodis",
-            "filelu_folder_password_removed": "[{provider}] Aplanko slaptažodis pašalintas"
+            "filelu_folder_password_removed": "[{provider}] Aplanko slaptažodis pašalintas",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} nepavyko",
+            "batch_rename_start": "[{location}] Pervadinama elementų: {count}...",
+            "batch_rename_success": "[{location}] Pervadinta elementų: {count}",
+            "batch_rename_error": "[{location}] Pervadinta elementų: {count}, nepavyko: {failed}",
+            "compress_details_saved": "{input} → {output} (sutaupyta {percent}%)",
+            "compress_details_grew": "{input} → {output} (padidėjo {percent}%)",
+            "extract_details": "{input} → {output} (išskleista)",
+            "download_details": "({size} per {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdikcija",
             "insecureCertDialogLabel": "Nesaugaus sertifikato įspėjimas",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Serverio rakto patikra"
+            "hostKeyDialogLabel": "Serverio rakto patikra",
+            "mtpName": "Nešiojamasis įrenginys (MTP)",
+            "mtpDesc": "Telefonas ar fotoaparatas per MTP/WPD",
+            "immichDesc": "Savarankiškai talpinamas nuotraukų valdymas",
+            "imagekitDesc": "Medijos CDN + saugykla (20 GB nemokamai)",
+            "uploadcareDesc": "ES medijos CDN (3 GB nemokamai)",
+            "cloudinaryDesc": "Medijos CDN (25 kreditai/mėn. nemokamai)",
+            "backblazeDesc": "Backblaze B2 vietinė API v4"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -2416,7 +2458,10 @@
             "add": "Pridėti",
             "remove": "Pašalinti",
             "none": "Leidimų nėra nustatyta",
-            "anyoneWithLink": "Bet kas, turintis nuorodą"
+            "anyoneWithLink": "Bet kas, turintis nuorodą",
+            "roleViewer": "Peržiūrėtojas",
+            "roleEditor": "Redaktorius",
+            "roleCommenter": "Komentuotojas"
         },
         "locking": {
             "lock": "Užrakinti failą",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "nepavykę {count}",
             "rollbackRestoreCompleted": "Atkūrimas baigtas: {summary}",
             "rollbackRestoreNothing": "Nėra ką atkurti",
-            "rollbackRestoreFailed": "Atkūrimas nepavyko: {error}"
+            "rollbackRestoreFailed": "Atkūrimas nepavyko: {error}",
+            "intervalHoursOne": "{count} valanda",
+            "intervalHoursMany": "{count} val."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Palaiko vaizdą",
                 "thinkingReasoning": "Mąstymas/Samprotavimas",
                 "toolQuality": "Įrankių kokybė: {quality}/5",
-                "ollamaNotReachable": "Ollama nepasiekiama"
+                "ollamaNotReachable": "Ollama nepasiekiama",
+                "macroSafeEditName": "Saugus redagavimas",
+                "macroSafeEditDescription": "Perskaityti failą, parodyti jo turinį, tada jį redaguoti (saugos šablonas: skaityti prieš rašant)",
+                "macroFindReadName": "Rasti ir skaityti",
+                "macroFindReadDescription": "Ieškoti šabloną atitinkančių failų vietiniame kataloge",
+                "familyHintLlama3": "Geriausiai veikia tiesūs ir glausti nurodymai. Naudokite markdown formatavimą. Natūraliai palaiko įrankių naudojimą.",
+                "familyHintCodellama": "Sutelkite dėmesį į kodo generavimą ir analizę. Pateikite kodo pavyzdžių. Vartokite techninę kalbą.",
+                "familyHintDeepseekCoder": "Stiprus samprotaujant apie kodą ir sprendžiant daugiažingsnes problemas. Pageidautina struktūruota išvestis. Naudojant deepseek-r1 mąstymo režimas veikia automatiškai.",
+                "familyHintQwen": "Palaiko struktūruotą išvestį. Geras daugiakalbėse užduotyse. Naudokite aiškias skyrių antraštes.",
+                "familyHintMistral": "Orientuotas į nurodymų vykdymą. Užklausas rašykite struktūruotai, su aiškiais užduočių aprašymais.",
+                "familyHintPhi": "Kompaktiškas modelis: nurodymai turi būti glausti. Geriausias konkrečioms užduotims, ne ilgiems tekstams.",
+                "familyHintGemma": "Google stiliaus nurodymų formatas. Geras apibendrinant ir analizuojant.",
+                "familyHintStarcoder": "Skirtas kodo užbaigimui. Geriausiems rezultatams pateikite failo kontekstą ir importus."
             },
             "copy": "Kopijuoti",
             "attachImage": "Pridėti vaizdą",
@@ -3033,7 +3092,8 @@
                 "general": "Bendras",
                 "typeSlash": "Įveskite / šablonams naudoti",
                 "analyzeUi": "Analizuoti UI ekrano kopiją išdėstymo, pasiekiamumo ir UX problemų atžvilgiu",
-                "performance": "Analizuoti kodą našumo kliūčių ir optimizavimo atžvilgiu"
+                "performance": "Analizuoti kodą našumo kliūčių ir optimizavimo atžvilgiu",
+                "analysis": "Analizė"
             },
             "costBudget": {
                 "conversationCost": "Pokalbio kaina",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "prieš {count} d.",
             "recentFileCountMany": "{count} failų",
             "recentFileCountOne": "{count} failas",
-            "recentMonthsAgo": "prieš {count} mėn."
+            "recentMonthsAgo": "prieš {count} mėn.",
+            "securityArchive": "Archyvas",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Greita",
+            "securityAdvancedDescription": "Atspari nonce · Šifruoti failų pavadinimai · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 kaskada · Dvigubas šifravimas",
+            "securityArchiveDescription": "Deduplikuotas archyvas · zstd blokai · v3"
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM turinys",
             "featureNameCipher": "AES-SIV pavadinimai",
             "formatVersion": "Formatas {version}",
-            "invalidVaultName": "Netinkami simboliai saugyklos pavadinime"
+            "invalidVaultName": "Netinkami simboliai saugyklos pavadinime",
+            "defaultVaultName": "NaujaSaugykla"
         },
         "compress": {
             "title": "Suspausti failus",
@@ -3952,7 +4018,10 @@
             "threads": "Gijos",
             "auto": "Automatinis",
             "solid": "Vientisas blokas",
-            "solidHint": "Geresnis santykis daugeliui mažų failų, lėtesnis atsitiktinis išskleidimas."
+            "solidHint": "Geresnis santykis daugeliui mažų failų, lėtesnis atsitiktinis išskleidimas.",
+            "formatArchiveOnly": "Tik archyvas",
+            "formatBestRatio": "Geriausias santykis",
+            "formatSingleFile": "vienas failas"
         },
         "batchRename": {
             "title": "Masinis pervadinimas",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtruoti operacijas",
                 "selected": "pasirinkta"
-            }
+            },
+            "save": "Išsaugoti"
         },
         "error": {
             "description": "AeroFTP aptiko netikėtą klaidą. Galite pabandyti atkurti arba perkrauti programą.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radialinis",
                     "spectrum": "Spektras",
                     "vortex": "Sūkurys",
-                    "waveform": "Bangos forma"
+                    "waveform": "Bangos forma",
+                    "glWaveGlitch": "Bangos trikdis",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrotas",
+                    "glTunnel": "Tunelis",
+                    "glMetaball": "Metarutuliai",
+                    "glParticles": "Dalelės"
                 },
                 "volume": "Garsumas"
             },
@@ -4635,7 +4711,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "Nustatymai",
-                "reset": "Nustatyti iš naujo"
+                "reset": "Nustatyti iš naujo",
+                "presetFlat": "Lygus",
+                "presetRock": "Rokas",
+                "presetPop": "Popsas",
+                "presetJazz": "Džiazas",
+                "presetClassical": "Klasika",
+                "presetBassBoost": "Žemųjų dažnių stiprinimas",
+                "presetTrebleBoost": "Aukštųjų dažnių stiprinimas",
+                "presetVocal": "Vokalas",
+                "presetElectronic": "Elektroninė",
+                "presetAcoustic": "Akustinė",
+                "presetCustom": "Pasirinktinis"
             },
             "pdf": {
                 "download": "Atsisiųsti PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Mokama",
             "extraFeatures": "Papildomos",
             "coreOpsList": "Įkėlimas, Atsisiuntimas, Ištrynimas, Pervadinimas, Perkėlimas, Aplanko kūrimas, Paieška",
-            "coreOpsLegend": "Bazinės = Įkėlimas, Atsisiuntimas, Ištrynimas, Pervadinimas, Perkėlimas, Aplanko kūrimas, Paieška"
+            "coreOpsLegend": "Bazinės = Įkėlimas, Atsisiuntimas, Ištrynimas, Pervadinimas, Perkėlimas, Aplanko kūrimas, Paieška",
+            "notes": "Pastabos",
+            "storageClass": "Saugyklos klasė",
+            "objectTagging": "Objektų žymėjimas",
+            "sse": "Šifravimas serverio pusėje",
+            "checksum": "Kontrolinė suma",
+            "tierManagement": "Saugyklos lygių valdymas",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Medija",
+            "sectionOther": "Kita",
+            "trashDetails": {
+                "onedrive": "Business ir SharePoint diskai. Microsoft Graph nepateikia OneDrive Personal disko šiukšlinės; tam naudokite OneDrive svetainę"
+            },
+            "shareLinkDetails": {
+                "permissions": "Teisės: peržiūra, komentavimas, redagavimas",
+                "passwordExpiryPlan": "Slaptažodis + galiojimo pabaiga (reikia {plan} plano)",
+                "passwordExpiryPaid": "Slaptažodis + galiojimo pabaiga (reikia mokamo plano)",
+                "passwordPersonalExpiryPermissions": "Slaptažodis (tik Personal), galiojimo pabaiga, teisės",
+                "passwordArgon2ExpiryPresets": "Slaptažodis (Argon2id) + galiojimo trukmės šablonai",
+                "passwordExpiryPermissions": "Slaptažodis, galiojimo pabaiga, teisės",
+                "basicOnly": "Tik paprasta bendrinimo nuoroda",
+                "publicToggle": "Vieša nuoroda (perjungti privatumą)",
+                "basic": "Paprasta bendrinimo nuoroda",
+                "expiringDefaultYear": "Nuorodos su galiojimo pabaiga (numatyta 1 metai)",
+                "publishUnpublish": "Paskelbti/atšaukti paskelbimą",
+                "permanentUrl": "Nuolatinis URL",
+                "sharedAlbum": "Bendrinamo albumo nuoroda",
+                "megaPresignedS4": "Bendrinimo nuoroda / iš anksto pasirašytas URL (iki 7 dienų S4)",
+                "autoPasswordExpiry": "Slaptažodis (sugeneruotas automatiškai) + galiojimo pabaiga",
+                "presigned": "Iš anksto pasirašytas URL (iki 7 dienų)"
+            }
         },
         "healthCheck": {
             "title": "Serverio būklės patikra",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Privati saugykla",
             "repoPublicTitle": "Vieša saugykla",
             "unpushedCommitsOnBranchMany": "{count} neišsiųsti commit šakoje {branch}",
-            "unpushedCommitsOnBranchOne": "{count} neišsiųstas commit šakoje {branch}"
+            "unpushedCommitsOnBranchOne": "{count} neišsiųstas commit šakoje {branch}",
+            "cancelWorkflow": "Atšaukti darbo eigą",
+            "rerunWorkflow": "Iš naujo paleisti darbo eigą",
+            "downloadAssetTitle": "Atsisiųsti {name}"
         },
         "filenNotes": {
             "title": "Šifruotos užrašai",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Sukurta",
             "manageExpires": "Galioja iki",
             "manageNeverExpires": "Niekada",
-            "managePasswordProtected": "Apsaugota slaptažodžiu"
+            "managePasswordProtected": "Apsaugota slaptažodžiu",
+            "expirationHoursOne": "{count} valanda",
+            "expirationHoursMany": "{count} val.",
+            "expirationDaysMany": "{count} d."
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} val.",
                 "days": "{count} d.",
                 "months": "{count} mėn."
-            }
+            },
+            "demoTabLabel": "Demonstracija: {protocol}",
+            "newTabLabel": "Naujas: {name}"
         },
         "gitlab": {
             "projectPath": "Projekto kelias",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Sukurti sujungimo užklausą",
             "mrTitle": "MR antraštė",
             "mrBody": "Aprašymas (neprivaloma)",
-            "sourceCode": "Šaltinio kodas"
+            "sourceCode": "Šaltinio kodas",
+            "downloadAssetTitle": "Atsisiųsti {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Naujas naudotojas",
                 "noUsers": "Naudotojų dar nėra. Pirmą pridėkite naudodami toliau esantį mygtuką „Naujas naudotojas“.",
                 "protectionNote": "Jūsų paskyra apsaugota Argon2id + AES-KW + AES-256-GCM šifravimu",
-                "users": "Naudotojai"
+                "users": "Naudotojai",
+                "setup": "Sąranka"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Režimas pasirenkamas kuriant ryšį ir lieka nepakitęs redaguojant išsaugotą profilį. Norėdami naudoti kitą režimą, sukurkite naują ryšį.",
-                "notInBuild": "Neįtraukta į šią AeroFTP versiją."
+                "notInBuild": "Neįtraukta į šią AeroFTP versiją.",
+                "header": "{name} režimai",
+                "nativeApi": "Vietinė API",
+                "filelu": {
+                    "apiDescription": "REST API su API raktu. Visos funkcijos (šiukšlinė, bendrinimo nuorodos, slaptažodžiu apsaugoti failai).",
+                    "webdavDescription": "WebDAV prieiga per 443 prievadą. Platus suderinamumas su klientais, prijungiamas kaip tinklo diskas.",
+                    "s3Description": "Su S3 suderinama API per 443 prievadą. Naudokite rclone, AWS CLI ar bet kurį S3 SDK.",
+                    "ftpDescription": "Klasikinis FTP per 21 prievadą. Nešifruotas, naudingas vaizdo stebėjimo NVR įrašytuvams ir senesniems klientams."
+                },
+                "filen": {
+                    "apiDescription": "Nulinių žinių E2E šifravimas (Argon2id v3 / PBKDF2 v2). Visos funkcijos: saugyklos kvota, šiukšlinė, bendrinimo nuorodų slaptažodžiai, versijų valdymas, TOTP.",
+                    "webdavDescription": "WebDAV tiltas, kurį Filen Desktop teikia adresu 127.0.0.1:1900. Reikia, kad Filen Desktop veiktų ir būtų prisijungęs.",
+                    "s3Description": "Su S3 suderinamas tiltas, kurį Filen Desktop teikia adresu 127.0.0.1:1800 per local.s3.filen.io. Kelio stiliaus adresavimas, kiekvienas aukščiausio lygio Filen aplankas yra kibiras."
+                },
+                "proton": {
+                    "headerDescription": "Proton debesų saugykla su ištisiniu šifravimu",
+                    "apiDescription": "AeroFTP nuosavas Proton Drive klientas: prisijungiate Proton puslapyje naršyklėje, failai šifruojami ir iššifruojami šiame kompiuteryje, ir jokios kitos programos nereikia.",
+                    "cliDescription": "Valdo oficialų Proton Drive CLI, įdiegtą ir prisijungusį šiame kompiuteryje. Prisijungiate naršyklėje; AeroFTP niekada nemato jūsų Proton slaptažodžio."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive debesų saugykla (5 GB nemokamai)",
+                    "apiDescription": "REST API su naudotojo vardu + slaptažodžiu. Visos funkcijos: šiukšlinė, saugyklos kvota, bendrinimo nuorodos, rekursyvus disko naudojimas.",
+                    "webdavDescription": "WebDAV prieiga per webdav.opendrive.com 443 prievadu. Senesniems klientams arba prijungti kaip tinklo diską."
+                },
+                "koofr": {
+                    "apiDescription": "ES įsikūrusi REST API su el. paštu + programėlės slaptažodžiu. Visos funkcijos: saugyklos kvota, šiukšlinė (sąrašas/atkūrimas/išvalymas), bendrinimo nuorodos.",
+                    "webdavDescription": "WebDAV prieiga per app.koofr.net/dav/Koofr 443 prievadu. Saugyklos kvota vis tiek nuskaitoma iš Koofr REST API. Senesniems klientams arba prijungti kaip tinklo diską."
+                },
+                "mega": {
+                    "headerDescription": "MEGA debesų saugykla su šifravimu kliento pusėje",
+                    "apiDescription": "Savoji MEGA API su el. paštu + slaptažodžiu (+ neprivalomas TOTP). Visos funkcijos: šifravimas kliento pusėje, saugyklos kvota, bendrinimo nuorodos, miniatiūros.",
+                    "webdavDescription": "Vietinis WebDAV tiltas, kurį teikia oficialus MEGAcmd CLI, anoniminis adresu 127.0.0.1. Jungiantis AeroFTP už jus paleidžia \"mega-webdav /\", todėl jokio rankinio veiksmo nėra.",
+                    "s4Description": "MEGA S4 objektų saugykla, suderinama su S3 (regionai EU/CA). Prieigos raktas + slaptasis raktas + kibiras. Reikalingas Pro planas."
+                }
             }
         },
         "flatpak": {

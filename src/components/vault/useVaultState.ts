@@ -10,7 +10,7 @@ import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { ArchiveEntry, AeroVaultMeta } from '../../types';
 import { formatSize } from '../../utils/formatters';
-import { useTranslation } from '../../i18n';
+import { useTranslation, translate } from '../../i18n';
 import { guardedUnlisten } from '../../hooks/useTauriListener';
 import { splitPathsByType } from './pathStaging';
 import { copyText } from '../../utils/clipboard';
@@ -214,51 +214,54 @@ export interface FolderProgress {
     current_file: string;
 }
 
-// Security level configuration: hardcoded labels (no i18n, technical terms)
+// Security level configuration. The level names are read through the global
+// translator at access time, because the consumers index this table directly;
+// `descriptionKey` is rendered with the caller's `t`. `features` are algorithm
+// names and stay as written.
 export const securityLevels = {
     standard: {
         icon: Shield,
         color: 'text-blue-400',
         bgColor: 'bg-blue-600',
         borderColor: 'border-blue-500',
-        label: 'Standard',
+        get label(): string { return translate('vault.securityStandard'); },
         version: 2,
         cascade: false,
         features: ['AES-256-GCM-SIV', 'Argon2id 128 MB', 'Encrypted filenames'],
-        description: 'AES-256-GCM-SIV · Argon2id 128 MB · Fast'
+        descriptionKey: 'vault.securityStandardDescription',
     },
     advanced: {
         icon: ShieldCheck,
         color: 'text-emerald-400',
         bgColor: 'bg-emerald-600',
         borderColor: 'border-emerald-500',
-        label: 'Advanced',
+        get label(): string { return translate('vault.securityAdvanced'); },
         version: 2,
         cascade: false,
         features: ['AES-256-GCM-SIV', 'Argon2id 128 MB', 'Encrypted filenames', 'HMAC-SHA512 header'],
-        description: 'Nonce-resistant · Encrypted filenames · 128 MB KDF'
+        descriptionKey: 'vault.securityAdvancedDescription',
     },
     paranoid: {
         icon: ShieldAlert,
         color: 'text-purple-400',
         bgColor: 'bg-purple-600',
         borderColor: 'border-purple-500',
-        label: 'Paranoid',
+        get label(): string { return translate('vault.securityParanoid'); },
         version: 2,
         cascade: true,
         features: ['AES-256-GCM-SIV', 'ChaCha20-Poly1305 cascade', 'Argon2id 128 MB', 'Double encryption'],
-        description: 'AES + ChaCha20 cascade · Double encryption'
+        descriptionKey: 'vault.securityParanoidDescription',
     },
     experimental: {
         icon: ShieldAlert,
         color: 'text-amber-400',
         bgColor: 'bg-amber-600',
         borderColor: 'border-amber-500',
-        label: 'Archive',
+        get label(): string { return translate('vault.securityArchive'); },
         version: 3,
         cascade: false,
         features: ['Gear-CDC chunking', 'Chunk deduplication', 'Zstd per chunk', 'AES-256-GCM-SIV'],
-        description: 'Deduplicated archive · zstd chunks · v3'
+        descriptionKey: 'vault.securityArchiveDescription',
     }
 };
 

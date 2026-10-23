@@ -202,7 +202,16 @@
                 "redirectUriHelp": "დააკოპირეთ ეს URL და ჩასვით როგორც გადამისამართებელი URI თქვენი დეველოპერ აპლიკაციის პარამეტრებში.",
                 "redirectUriNoteGoogle": "რეკომენდაცია: Google Cloud Console-ში შექმენით „დესკტოპის აპის“ ტიპის OAuth კლიენტის ID; გადამისამართების URI-ის რეგისტრაცია საჭირო არ არის. „ვებაპლიკაციის“ ტიპის კლიენტისთვის ზუსტად დაარეგისტრირეთ ზემოთ ნაჩვენები გადამისამართების URI, პორტისა და /callback გზის ჩათვლით.",
                 "enablePhotosApi": "დარწმუნდით, რომ Photos Library API ჩართულია თქვენს Google Cloud Console-ში.",
-                "enableDriveApi": "დარწმუნდით, რომ Google Drive API ჩართულია თქვენს Google Cloud Console-ში."
+                "enableDriveApi": "დარწმუნდით, რომ Google Drive API ჩართულია თქვენს Google Cloud Console-ში.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "აშშ",
+                "zohoRegionEu": "ევროკავშირი",
+                "zohoRegionIn": "ინდოეთი",
+                "zohoRegionAu": "ავსტრალია",
+                "zohoRegionJp": "იაპონია",
+                "zohoRegionUk": "გაერთიანებული სამეფო",
+                "zohoRegionCa": "კანადა",
+                "zohoRegionSa": "საუდის არაბეთი"
             },
             "activeSessions": "აქტიური სესიები",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "რეკომენდებულია მაქსიმალური უსაფრთხოებისთვის",
             "fontCustomOption": "მორგებული...",
             "fontSystemInstallHint": "საჭიროებს სისტემაში ინსტალაციას. თუ მიუწვდომელია, AeroFTP ავტომატურად გადადის სარეზერვო ვარიანტზე.",
-            "fontSizeIndicatorLabel": "შრიფტი"
+            "fontSizeIndicatorLabel": "შრიფტი",
+            "fontPresetDefault": "{font} (ნაგულისხმევი)",
+            "fontPresetSystemDefault": "სისტემის ნაგულისხმევი"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "შრიფტის გაზრდა (Ctrl+=)",
                 "newTab": "ტერმინალის ახალი ჩანართი",
                 "sshShellTo": "SSH გარსი {host}-ზე",
-                "theme": "ტერმინალის თემა"
+                "theme": "ტერმინალის თემა",
+                "tabLabel": "ტერმინალი {num}",
+                "themeCyber": "კიბერ",
+                "themeTrueDark": "ნამდვილი მუქი",
+                "themeGreen": "მწვანე",
+                "themeIce": "ყინული",
+                "themeRedLava": "წითელი ლავა"
             },
             "editorPanel": {
                 "emptyState": "დააწკაპუნეთ მარჯვენა ღილაკით ფაილზე და აირჩიეთ \"წყაროს ნახვა\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(თითო ხაზზე ერთი)",
             "pairsEditorLabel": "AeroCloud წყვილების რედაქტორი",
             "remoteSubfolderPlaceholder": "ღრუბელი",
-            "countdownSoon": "მალე..."
+            "countdownSoon": "მალე...",
+            "aerocloudEnabled": "AeroCloud ჩართულია",
+            "selectPairLocalFolder": "აირჩიეთ ლოკალური საქაღალდე წყვილისთვის",
+            "secondsAgo": "{count} წმ წინ"
         },
         "statusBar": {
             "connected": "დაკავშირებული",
@@ -1742,7 +1762,13 @@
                 "ekRole": "მკვლევარი, ხარისხის უზრუნველყოფის ინჟინერი, თანადიზაინერი"
             },
             "madeBy": "{author} კომპანიის მიერ",
-            "statsLine": "{protocols} პროტოკოლი · {languages} ენა · AES-256 არქივები"
+            "statsLine": "{protocols} პროტოკოლი · {languages} ენა · AES-256 არქივები",
+            "dependencyRoles": {
+                "sftpOps": "SFTP ოპერაციები",
+                "osKeyring": "სისტემის გასაღებების ასხმა",
+                "vaultFormat": "სეიფის ფორმატი",
+                "zipArchives": "ZIP არქივები"
+            }
         },
         "support": {
             "title": "მხარი დაუჭირეთ AeroFTP-ს",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] სანაგვედან აღდგა {files} ფაილი, {present} უკვე არსებობს",
             "trash_restore_detail_folders_present_success": "[{provider}] სანაგვედან აღდგა {files} ფაილი, {folders} საქაღალდე, {present} უკვე არსებობს",
             "filelu_file_password_removed": "[{provider}] ფაილის პაროლი წაიშალა",
-            "filelu_folder_password_removed": "[{provider}] საქაღალდის პაროლი წაიშალა"
+            "filelu_folder_password_removed": "[{provider}] საქაღალდის პაროლი წაიშალა",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} ვერ შესრულდა",
+            "batch_rename_start": "[{location}] {count} ელემენტის გადარქმევა...",
+            "batch_rename_success": "[{location}] გადაერქვა {count} ელემენტს",
+            "batch_rename_error": "[{location}] გადაერქვა {count} ელემენტს, {failed} ვერ მოხერხდა",
+            "compress_details_saved": "{input} → {output} (დაზოგილია {percent}%)",
+            "compress_details_grew": "{input} → {output} (გაიზარდა {percent}%)",
+            "extract_details": "{input} → {output} (გაშლილი)",
+            "download_details": "({size} {seconds} წმ-ში)"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "იურისდიქცია",
             "insecureCertDialogLabel": "დაუცველი სერტიფიკატის გაფრთხილება",
             "betaBadge": "ბეტა",
-            "hostKeyDialogLabel": "ჰოსტის გასაღების შემოწმება"
+            "hostKeyDialogLabel": "ჰოსტის გასაღების შემოწმება",
+            "mtpName": "პორტატული მოწყობილობა (MTP)",
+            "mtpDesc": "ტელეფონი ან კამერა MTP/WPD-ით",
+            "immichDesc": "თვითჰოსტინგის ფოტოების მართვა",
+            "imagekitDesc": "მედია CDN + საცავი (20 GB უფასოდ)",
+            "uploadcareDesc": "ევროკავშირის მედია CDN (3 GB უფასოდ)",
+            "cloudinaryDesc": "მედია CDN (თვეში 25 კრედიტი უფასოდ)",
+            "backblazeDesc": "Backblaze B2-ის მშობლიური API v4"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -2416,7 +2458,10 @@
             "add": "დამატება",
             "remove": "წაშლა",
             "none": "უფლებები არ არის დაყენებული",
-            "anyoneWithLink": "ნებისმიერი, ვისაც აქვს ბმული"
+            "anyoneWithLink": "ნებისმიერი, ვისაც აქვს ბმული",
+            "roleViewer": "მნახველი",
+            "roleEditor": "რედაქტორი",
+            "roleCommenter": "კომენტატორი"
         },
         "locking": {
             "lock": "ფაილის ჩაკეტვა",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "წარუმატებელი {count}",
             "rollbackRestoreCompleted": "აღდგენა დასრულდა: {summary}",
             "rollbackRestoreNothing": "აღსადგენი არაფერია",
-            "rollbackRestoreFailed": "აღდგენა ვერ მოხერხდა: {error}"
+            "rollbackRestoreFailed": "აღდგენა ვერ მოხერხდა: {error}",
+            "intervalHoursOne": "{count} საათი",
+            "intervalHoursMany": "{count} საათი"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "მხარს უჭერს ხედვას",
                 "thinkingReasoning": "ფიქრი/მსჯელობა",
                 "toolQuality": "ხელსაწყოების ხარისხი: {quality}/5",
-                "ollamaNotReachable": "Ollama მიუწვდომელია"
+                "ollamaNotReachable": "Ollama მიუწვდომელია",
+                "macroSafeEditName": "უსაფრთხო რედაქტირება",
+                "macroSafeEditDescription": "ფაილის წაკითხვა, მისი შინაარსის ჩვენება, შემდეგ რედაქტირება (ჩაწერამდე წაკითხვის უსაფრთხოების ნიმუში)",
+                "macroFindReadName": "პოვნა და წაკითხვა",
+                "macroFindReadDescription": "ლოკალურ საქაღალდეში ნიმუშის შესაბამისი ფაილების ძიება",
+                "familyHintLlama3": "საუკეთესოდ მუშაობს პირდაპირი და მოკლე ინსტრუქციები. გამოიყენეთ markdown ფორმატირება. მშობლიურად უჭერს მხარს ხელსაწყოების გამოყენებას.",
+                "familyHintCodellama": "ფოკუსირდით კოდის გენერირებასა და ანალიზზე. მიაწოდეთ კოდის მაგალითები. გამოიყენეთ ტექნიკური ენა.",
+                "familyHintDeepseekCoder": "ძლიერია კოდზე მსჯელობასა და მრავალსაფეხურიანი ამოცანების ამოხსნაში. სასურველია სტრუქტურირებული გამოტანა. deepseek-r1-ისთვის აზროვნების რეჟიმი ავტომატურად მუშაობს.",
+                "familyHintQwen": "უჭერს მხარს სტრუქტურირებულ გამოტანას. კარგია მრავალენოვან ამოცანებში. გამოიყენეთ განყოფილებების მკაფიო სათაურები.",
+                "familyHintMistral": "ორიენტირებულია ინსტრუქციების შესრულებაზე. შეინარჩუნეთ მოთხოვნები სტრუქტურირებული, ამოცანების მკაფიო აღწერით.",
+                "familyHintPhi": "კომპაქტური მოდელი: ინსტრუქციები იყოს მოკლე. საუკეთესოა კონკრეტული ამოცანებისთვის და არა გრძელი ტექსტებისთვის.",
+                "familyHintGemma": "Google-ის სტილის ინსტრუქციების ფორმატი. კარგია შეჯამებასა და ანალიზში.",
+                "familyHintStarcoder": "ორიენტირებულია კოდის დასრულებაზე. საუკეთესო შედეგისთვის მიაწოდეთ ფაილის კონტექსტი და იმპორტები."
             },
             "copy": "კოპირება",
             "attachImage": "სურათის მიმაგრება",
@@ -3033,7 +3092,8 @@
                 "general": "ზოგადი",
                 "typeSlash": "შეიყვანეთ / შაბლონების გამოსაყენებლად",
                 "analyzeUi": "UI სკრინშოტის ანალიზი განლაგების, ხელმისაწვდომობის და UX საკითხებისათვის",
-                "performance": "კოდის შესრულების ბოთლნეკებისა და ოპტიმიზაციის ანალიზი"
+                "performance": "კოდის შესრულების ბოთლნეკებისა და ოპტიმიზაციის ანალიზი",
+                "analysis": "ანალიზი"
             },
             "costBudget": {
                 "conversationCost": "საუბრის ღირებულება",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} დღის წინ",
             "recentFileCountMany": "{count} ფაილი",
             "recentFileCountOne": "{count} ფაილი",
-            "recentMonthsAgo": "{count} თვის წინ"
+            "recentMonthsAgo": "{count} თვის წინ",
+            "securityArchive": "არქივი",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · სწრაფი",
+            "securityAdvancedDescription": "Nonce-მდგრადი · დაშიფრული ფაილის სახელები · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 კასკადი · ორმაგი დაშიფვრა",
+            "securityArchiveDescription": "დედუპლიცირებული არქივი · zstd ნაწილები · v3"
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM შიგთავსი",
             "featureNameCipher": "AES-SIV სახელები",
             "formatVersion": "ფორმატი {version}",
-            "invalidVaultName": "საცავის სახელში არასწორი სიმბოლოებია"
+            "invalidVaultName": "საცავის სახელში არასწორი სიმბოლოებია",
+            "defaultVaultName": "ახალისაცავი"
         },
         "compress": {
             "title": "ფაილების შეკუმშვა",
@@ -3952,7 +4018,10 @@
             "threads": "ნაკადები",
             "auto": "ავტო",
             "solid": "მყარი ბლოკი",
-            "solidHint": "უკეთესი კოეფიციენტი ბევრი პატარა ფაილისთვის, უფრო ნელი შემთხვევითი ამოღება."
+            "solidHint": "უკეთესი კოეფიციენტი ბევრი პატარა ფაილისთვის, უფრო ნელი შემთხვევითი ამოღება.",
+            "formatArchiveOnly": "მხოლოდ არქივი",
+            "formatBestRatio": "საუკეთესო თანაფარდობა",
+            "formatSingleFile": "ერთი ფაილი"
         },
         "batchRename": {
             "title": "ჯგუფური სახელების შეცვლა",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "ოპერაციების ფილტრი",
                 "selected": "არჩეული"
-            }
+            },
+            "save": "შენახვა"
         },
         "error": {
             "description": "AeroFTP-ში მოულოდნელი შეცდომა მოხდა. შეგიძლიათ სცადოთ აღდგენა ან აპლიკაციის ხელახლა ჩატვირთვა.",
@@ -4529,7 +4599,13 @@
                     "radial": "რადიალური",
                     "spectrum": "სპექტრი",
                     "vortex": "გრიგალი",
-                    "waveform": "ტალღის ფორმა"
+                    "waveform": "ტალღის ფორმა",
+                    "glWaveGlitch": "ტალღის დამახინჯება",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "მანდელბროტი",
+                    "glTunnel": "გვირაბი",
+                    "glMetaball": "მეტაბურთები",
+                    "glParticles": "ნაწილაკები"
                 },
                 "volume": "ხმა"
             },
@@ -4635,7 +4711,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "პრესეტები",
-                "reset": "საწყისზე დაბრუნება"
+                "reset": "საწყისზე დაბრუნება",
+                "presetFlat": "ბრტყელი",
+                "presetRock": "როკი",
+                "presetPop": "პოპი",
+                "presetJazz": "ჯაზი",
+                "presetClassical": "კლასიკური",
+                "presetBassBoost": "ბასის გაძლიერება",
+                "presetTrebleBoost": "მაღალი ტონების გაძლიერება",
+                "presetVocal": "ვოკალი",
+                "presetElectronic": "ელექტრონული",
+                "presetAcoustic": "აკუსტიკური",
+                "presetCustom": "მორგებული"
             },
             "pdf": {
                 "download": "PDF-ის ჩამოტვირთვა",
@@ -5118,7 +5205,37 @@
             "paidTier": "ფასიანი",
             "extraFeatures": "დამატებითი",
             "coreOpsList": "ატვირთვა, ჩამოტვირთვა, წაშლა, გადარქმევა, გადატანა, საქაღალდის შექმნა, ძიება",
-            "coreOpsLegend": "საბაზისო = ატვირთვა, ჩამოტვირთვა, წაშლა, გადარქმევა, გადატანა, საქაღალდის შექმნა, ძიება"
+            "coreOpsLegend": "საბაზისო = ატვირთვა, ჩამოტვირთვა, წაშლა, გადარქმევა, გადატანა, საქაღალდის შექმნა, ძიება",
+            "notes": "შენიშვნები",
+            "storageClass": "საცავის კლასი",
+            "objectTagging": "ობიექტების ტეგირება",
+            "sse": "სერვერის მხარეს დაშიფვრა",
+            "checksum": "საკონტროლო ჯამი",
+            "tierManagement": "დონეების მართვა",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "მედია",
+            "sectionOther": "სხვა",
+            "trashDetails": {
+                "onedrive": "Business და SharePoint დისკები. Microsoft Graph არ იძლევა OneDrive Personal დისკის სანაგვე ყუთზე წვდომას; ამისთვის გამოიყენეთ OneDrive-ის ვებსაიტი"
+            },
+            "shareLinkDetails": {
+                "permissions": "ნებართვები: ნახვა, კომენტარი, რედაქტირება",
+                "passwordExpiryPlan": "პაროლი + ვადა (საჭიროა {plan} გეგმა)",
+                "passwordExpiryPaid": "პაროლი + ვადა (საჭიროა ფასიანი გეგმა)",
+                "passwordPersonalExpiryPermissions": "პაროლი (მხოლოდ Personal), ვადა, ნებართვები",
+                "passwordArgon2ExpiryPresets": "პაროლი (Argon2id) + ვადის წინასწარი პარამეტრები",
+                "passwordExpiryPermissions": "პაროლი, ვადა, ნებართვები",
+                "basicOnly": "მხოლოდ საბაზისო გაზიარების ბმული",
+                "publicToggle": "საჯარო ბმული (კონფიდენციალურობის გადართვა)",
+                "basic": "საბაზისო გაზიარების ბმული",
+                "expiringDefaultYear": "ვადიანი ბმულები (ნაგულისხმევად 1 წელი)",
+                "publishUnpublish": "გამოქვეყნება/გამოქვეყნების გაუქმება",
+                "permanentUrl": "მუდმივი URL",
+                "sharedAlbum": "გაზიარებული ალბომის ბმული",
+                "megaPresignedS4": "გაზიარების ბმული / წინასწარ ხელმოწერილი URL (მაქს. 7 დღე S4-ისთვის)",
+                "autoPasswordExpiry": "პაროლი (ავტომატურად შექმნილი) + ვადა",
+                "presigned": "წინასწარ ხელმოწერილი URL (მაქს. 7 დღე)"
+            }
         },
         "healthCheck": {
             "title": "სერვერის ჯანმრთელობის შემოწმება",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "პირადი საცავი",
             "repoPublicTitle": "საჯარო საცავი",
             "unpushedCommitsOnBranchMany": "{count} გაუგზავნელი commit {branch}-ზე",
-            "unpushedCommitsOnBranchOne": "{count} გაუგზავნელი commit {branch}-ზე"
+            "unpushedCommitsOnBranchOne": "{count} გაუგზავნელი commit {branch}-ზე",
+            "cancelWorkflow": "სამუშაო პროცესის გაუქმება",
+            "rerunWorkflow": "სამუშაო პროცესის ხელახლა გაშვება",
+            "downloadAssetTitle": "ჩამოტვირთვა: {name}"
         },
         "filenNotes": {
             "title": "დაშიფრული ჩანაწერები",
@@ -5469,7 +5589,10 @@
             "manageCreated": "შექმნილია",
             "manageExpires": "ვადა",
             "manageNeverExpires": "არასდროს",
-            "managePasswordProtected": "დაცულია პაროლით"
+            "managePasswordProtected": "დაცულია პაროლით",
+            "expirationHoursOne": "{count} საათი",
+            "expirationHoursMany": "{count} საათი",
+            "expirationDaysMany": "{count} დღე"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} სთ",
                 "days": "{count} დღე",
                 "months": "{count} თვე"
-            }
+            },
+            "demoTabLabel": "დემო: {protocol}",
+            "newTabLabel": "ახალი: {name}"
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "შერწყმის მოთხოვნის შექმნა",
             "mrTitle": "MR სათაური",
             "mrBody": "აღწერა (არასავალდებულო)",
-            "sourceCode": "წყაროს კოდი"
+            "sourceCode": "წყაროს კოდი",
+            "downloadAssetTitle": "ჩამოტვირთვა: {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "ახალი მომხმარებელი",
                 "noUsers": "მომხმარებლები ჯერ არ არის. პირველის დასამატებლად გამოიყენეთ ქვემოთ „ახალი მომხმარებელი“.",
                 "protectionNote": "თქვენი ანგარიში დაცულია Argon2id + AES-KW + AES-256-GCM დაშიფვრით",
-                "users": "მომხმარებლები"
+                "users": "მომხმარებლები",
+                "setup": "დაყენება"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "რეჟიმი აირჩევა კავშირის შექმნისას და უცვლელი რჩება შენახული პროფილის რედაქტირებისას. სხვა რეჟიმის გამოსაყენებლად შექმენით ახალი კავშირი.",
-                "notInBuild": "არ შედის AeroFTP-ის ამ ვერსიაში."
+                "notInBuild": "არ შედის AeroFTP-ის ამ ვერსიაში.",
+                "header": "{name}-ის რეჟიმები",
+                "nativeApi": "მშობლიური API",
+                "filelu": {
+                    "apiDescription": "REST API API გასაღებით. სრული ფუნქციონალი (სანაგვე, გაზიარების ბმულები, პაროლით დაცული ფაილები).",
+                    "webdavDescription": "WebDAV წვდომა 443 პორტზე. ფართო თავსებადობა კლიენტებთან, მიერთდება როგორც ქსელური დისკი.",
+                    "s3Description": "S3-თან თავსებადი API პორტზე 443. გამოიყენეთ rclone, AWS CLI ან ნებისმიერი S3 SDK.",
+                    "ftpDescription": "კლასიკური FTP პორტზე 21. დაუშიფრავი, სასარგებლოა ვიდეოთვალთვალის NVR ჩამწერებისა და ძველი კლიენტებისთვის."
+                },
+                "filen": {
+                    "apiDescription": "ნულოვანი ცოდნის E2E დაშიფვრა (Argon2id v3 / PBKDF2 v2). ფუნქციების სრული ნაკრები: საცავის კვოტა, სანაგვე, გაზიარების ბმულების პაროლები, ვერსიები, TOTP.",
+                    "webdavDescription": "WebDAV ხიდი, რომელსაც Filen Desktop აწვდის მისამართზე 127.0.0.1:1900. საჭიროა, რომ Filen Desktop გაშვებული და შესული იყოს.",
+                    "s3Description": "S3-თან თავსებადი ხიდი, რომელსაც Filen Desktop აწვდის მისამართზე 127.0.0.1:1800 local.s3.filen.io-ს მეშვეობით. ბილიკზე დაფუძნებული მისამართება, Filen-ის ყოველი ზედა დონის საქაღალდე არის bucket."
+                },
+                "proton": {
+                    "headerDescription": "Proton-ის ღრუბლოვანი საცავი ბოლომდე დაშიფვრით",
+                    "apiDescription": "AeroFTP-ის საკუთარი Proton Drive კლიენტი: შედიხართ Proton-ის გვერდზე ბრაუზერში, ფაილები დაიშიფრება და გაიშიფრება ამ კომპიუტერზე და სხვა აპი საჭირო არ არის.",
+                    "cliDescription": "მართავს ოფიციალურ Proton Drive CLI-ს, რომელიც დაინსტალირებული და შესულია ამ მანქანაზე. შედიხართ ბრაუზერში; AeroFTP ვერასდროს ხედავს თქვენს Proton პაროლს."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive ღრუბლოვანი საცავი (5 GB უფასოდ)",
+                    "apiDescription": "REST API მომხმარებლის სახელით + პაროლით. ფუნქციების სრული ნაკრები: სანაგვე, საცავის კვოტა, გაზიარების ბმულები, დისკის რეკურსიული გამოყენება.",
+                    "webdavDescription": "WebDAV წვდომა webdav.opendrive.com-ის მეშვეობით პორტზე 443. ძველი კლიენტებისთვის ან ქსელურ დისკად მისაერთებლად."
+                },
+                "koofr": {
+                    "apiDescription": "ევროკავშირში განთავსებული REST API ელფოსტით + აპის პაროლით. ფუნქციების სრული ნაკრები: საცავის კვოტა, სანაგვე (სია/აღდგენა/გასუფთავება), გაზიარების ბმულები.",
+                    "webdavDescription": "WebDAV წვდომა app.koofr.net/dav/Koofr-ის მეშვეობით პორტზე 443. საცავის კვოტა კვლავ იკითხება Koofr-ის REST API-დან. ძველი კლიენტებისთვის ან ქსელურ დისკად მისაერთებლად."
+                },
+                "mega": {
+                    "headerDescription": "MEGA ღრუბლოვანი საცავი კლიენტის მხარეს დაშიფვრით",
+                    "apiDescription": "MEGA-ს მშობლიური API ელფოსტით + პაროლით (+ არასავალდებულო TOTP). ფუნქციების სრული ნაკრები: კლიენტის მხარეს დაშიფვრა, საცავის კვოტა, გაზიარების ბმულები, მინიატურები.",
+                    "webdavDescription": "ლოკალური WebDAV ხიდი, რომელსაც ემსახურება ოფიციალური MEGAcmd CLI, ანონიმური მისამართზე 127.0.0.1. AeroFTP დაკავშირებისას თქვენ ნაცვლად უშვებს \"mega-webdav /\"-ს, ამიტომ ხელით ნაბიჯი არ არის.",
+                    "s4Description": "MEGA S4 ობიექტური საცავი, S3-თან თავსებადი (რეგიონები EU/CA). წვდომის გასაღები + საიდუმლო გასაღები + bucket. საჭიროა Pro გეგმა."
+                }
             }
         },
         "flatpak": {

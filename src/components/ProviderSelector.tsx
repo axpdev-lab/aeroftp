@@ -169,43 +169,4 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
     );
 };
 
-// ============================================================================
-// Quick Provider Tabs (for use in QuickConnect header)
-// ============================================================================
-
-interface ProviderTabsProps {
-    selected: 's3' | 'webdav' | 'ftp' | 'oauth';
-    onChange: (tab: 's3' | 'webdav' | 'ftp' | 'oauth') => void;
-}
-
-export const ProviderTabs: React.FC<ProviderTabsProps> = ({ selected, onChange }) => {
-    const tabs = [
-        { id: 'ftp' as const, label: 'FTP/SFTP', icon: <Server size={14} /> },
-        { id: 'oauth' as const, label: 'Cloud', icon: <Cloud size={14} /> },
-        { id: 's3' as const, label: 'S3', icon: <Bucket size={14} /> },
-        { id: 'webdav' as const, label: 'WebDAV', icon: <Globe size={14} /> },
-    ];
-
-    return (
-        <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
-            {tabs.map(tab => (
-                <button
-                    key={tab.id}
-                    onClick={() => onChange(tab.id)}
-                    className={`
-                        flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all
-                        ${selected === tab.id
-                            ? 'bg-blue-600 text-white shadow-lg'
-                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
-                        }
-                    `}
-                >
-                    {tab.icon}
-                    {tab.label}
-                </button>
-            ))}
-        </div>
-    );
-};
-
 export default ProviderSelector;

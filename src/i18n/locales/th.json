@@ -202,7 +202,16 @@
                 "redirectUriHelp": "คัดลอก URL นี้และวางเป็น URI เปลี่ยนเส้นทางในการตั้งค่าแอปนักพัฒนาของคุณ",
                 "redirectUriNoteGoogle": "แนะนำ: สร้างรหัสไคลเอ็นต์ OAuth ประเภท \"แอปเดสก์ท็อป\" ใน Google Cloud Console โดยไม่ต้องลงทะเบียน URI การเปลี่ยนเส้นทาง สำหรับไคลเอ็นต์ประเภท \"เว็บแอปพลิเคชัน\" ให้ลงทะเบียน URI การเปลี่ยนเส้นทางให้ตรงกับที่แสดงด้านบนทุกประการ รวมถึงพอร์ตและเส้นทาง /callback",
                 "enablePhotosApi": "ตรวจสอบให้แน่ใจว่า Photos Library API เปิดใช้งานใน Google Cloud Console ของคุณ",
-                "enableDriveApi": "ตรวจสอบให้แน่ใจว่า Google Drive API เปิดใช้งานใน Google Cloud Console ของคุณ"
+                "enableDriveApi": "ตรวจสอบให้แน่ใจว่า Google Drive API เปิดใช้งานใน Google Cloud Console ของคุณ",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "สหรัฐฯ",
+                "zohoRegionEu": "สหภาพยุโรป",
+                "zohoRegionIn": "อินเดีย",
+                "zohoRegionAu": "ออสเตรเลีย",
+                "zohoRegionJp": "ญี่ปุ่น",
+                "zohoRegionUk": "สหราชอาณาจักร",
+                "zohoRegionCa": "แคนาดา",
+                "zohoRegionSa": "ซาอุดีอาระเบีย"
             },
             "activeSessions": "เซสชันที่ทำงาน",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "แนะนำเพื่อความปลอดภัยสูงสุด",
             "fontCustomOption": "กำหนดเอง...",
             "fontSystemInstallHint": "ต้องติดตั้งในระบบ AeroFTP จะใช้ตัวเลือกสำรองโดยอัตโนมัติหากไม่พร้อมใช้งาน",
-            "fontSizeIndicatorLabel": "แบบอักษร"
+            "fontSizeIndicatorLabel": "แบบอักษร",
+            "fontPresetDefault": "{font} (ค่าเริ่มต้น)",
+            "fontPresetSystemDefault": "ค่าเริ่มต้นของระบบ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "เพิ่มขนาดตัวอักษร (Ctrl+=)",
                 "newTab": "แท็บเทอร์มินัลใหม่",
                 "sshShellTo": "เชลล์ SSH ไปยัง {host}",
-                "theme": "ธีมเทอร์มินัล"
+                "theme": "ธีมเทอร์มินัล",
+                "tabLabel": "เทอร์มินัล {num}",
+                "themeCyber": "ไซเบอร์",
+                "themeTrueDark": "มืดสนิท",
+                "themeGreen": "เขียว",
+                "themeIce": "น้ำแข็ง",
+                "themeRedLava": "ลาวาแดง"
             },
             "editorPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"ดูต้นฉบับ\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(หนึ่งรายการต่อบรรทัด)",
             "pairsEditorLabel": "ตัวแก้ไขคู่ AeroCloud",
             "remoteSubfolderPlaceholder": "คลาวด์",
-            "countdownSoon": "เร็วๆ นี้..."
+            "countdownSoon": "เร็วๆ นี้...",
+            "aerocloudEnabled": "เปิดใช้ AeroCloud แล้ว",
+            "selectPairLocalFolder": "เลือกโฟลเดอร์ในเครื่องสำหรับคู่",
+            "secondsAgo": "{count} วินาทีที่แล้ว"
         },
         "statusBar": {
             "connected": "เชื่อมต่อแล้ว",
@@ -1742,7 +1762,13 @@
                 "ekRole": "นักวิจัย วิศวกรประกันคุณภาพ ผู้ร่วมออกแบบ"
             },
             "madeBy": "โดย {author}",
-            "statsLine": "{protocols} โปรโตคอล · {languages} ภาษา · ไฟล์เก็บถาวร AES-256"
+            "statsLine": "{protocols} โปรโตคอล · {languages} ภาษา · ไฟล์เก็บถาวร AES-256",
+            "dependencyRoles": {
+                "sftpOps": "การดำเนินการ SFTP",
+                "osKeyring": "พวงกุญแจของระบบปฏิบัติการ",
+                "vaultFormat": "รูปแบบห้องนิรภัย",
+                "zipArchives": "ไฟล์บีบอัด ZIP"
+            }
         },
         "support": {
             "title": "สนับสนุน AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] กู้คืน {files} ไฟล์จากถังขยะแล้ว, {present} มีอยู่แล้ว",
             "trash_restore_detail_folders_present_success": "[{provider}] กู้คืน {files} ไฟล์, {folders} โฟลเดอร์จากถังขยะแล้ว, {present} มีอยู่แล้ว",
             "filelu_file_password_removed": "[{provider}] ลบรหัสผ่านไฟล์แล้ว",
-            "filelu_folder_password_removed": "[{provider}] ลบรหัสผ่านโฟลเดอร์แล้ว"
+            "filelu_folder_password_removed": "[{provider}] ลบรหัสผ่านโฟลเดอร์แล้ว",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} ล้มเหลว",
+            "batch_rename_start": "[{location}] กำลังเปลี่ยนชื่อ {count} รายการ...",
+            "batch_rename_success": "[{location}] เปลี่ยนชื่อ {count} รายการแล้ว",
+            "batch_rename_error": "[{location}] เปลี่ยนชื่อ {count} รายการแล้ว, ล้มเหลว {failed} รายการ",
+            "compress_details_saved": "{input} → {output} (ประหยัด {percent}%)",
+            "compress_details_grew": "{input} → {output} (เพิ่มขึ้น {percent}%)",
+            "extract_details": "{input} → {output} (แตกไฟล์แล้ว)",
+            "download_details": "({size} ใน {seconds} วินาที)"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "เขตอำนาจศาล",
             "insecureCertDialogLabel": "คำเตือนใบรับรองที่ไม่ปลอดภัย",
             "betaBadge": "เบต้า",
-            "hostKeyDialogLabel": "การตรวจสอบคีย์โฮสต์"
+            "hostKeyDialogLabel": "การตรวจสอบคีย์โฮสต์",
+            "mtpName": "อุปกรณ์พกพา (MTP)",
+            "mtpDesc": "โทรศัพท์หรือกล้องผ่าน MTP/WPD",
+            "immichDesc": "การจัดการรูปภาพแบบโฮสต์เอง",
+            "imagekitDesc": "CDN สื่อ + พื้นที่เก็บข้อมูล (ฟรี 20 GB)",
+            "uploadcareDesc": "CDN สื่อในสหภาพยุโรป (ฟรี 3 GB)",
+            "cloudinaryDesc": "CDN สื่อ (ฟรี 25 เครดิต/เดือน)",
+            "backblazeDesc": "API ดั้งเดิมของ Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -2416,7 +2458,10 @@
             "add": "เพิ่ม",
             "remove": "ลบ",
             "none": "ไม่ได้ตั้งสิทธิ์",
-            "anyoneWithLink": "ทุกคนที่มีลิงก์"
+            "anyoneWithLink": "ทุกคนที่มีลิงก์",
+            "roleViewer": "ผู้ดู",
+            "roleEditor": "ผู้แก้ไข",
+            "roleCommenter": "ผู้แสดงความคิดเห็น"
         },
         "locking": {
             "lock": "ล็อกไฟล์",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "ล้มเหลว {count}",
             "rollbackRestoreCompleted": "กู้คืนเสร็จสมบูรณ์: {summary}",
             "rollbackRestoreNothing": "ไม่มีอะไรให้กู้คืน",
-            "rollbackRestoreFailed": "กู้คืนไม่สำเร็จ: {error}"
+            "rollbackRestoreFailed": "กู้คืนไม่สำเร็จ: {error}",
+            "intervalHoursOne": "{count} ชั่วโมง",
+            "intervalHoursMany": "{count} ชั่วโมง"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "รองรับการมองเห็น",
                 "thinkingReasoning": "การคิด/การให้เหตุผล",
                 "toolQuality": "คุณภาพเครื่องมือ: {quality}/5",
-                "ollamaNotReachable": "ไม่สามารถเข้าถึง Ollama ได้"
+                "ollamaNotReachable": "ไม่สามารถเข้าถึง Ollama ได้",
+                "macroSafeEditName": "แก้ไขอย่างปลอดภัย",
+                "macroSafeEditDescription": "อ่านไฟล์ แสดงเนื้อหา แล้วจึงแก้ไข (รูปแบบความปลอดภัยแบบอ่านก่อนเขียน)",
+                "macroFindReadName": "ค้นหาและอ่าน",
+                "macroFindReadDescription": "ค้นหาไฟล์ที่ตรงกับรูปแบบในไดเรกทอรีภายในเครื่อง",
+                "familyHintLlama3": "คำสั่งที่ตรงไปตรงมาและกระชับได้ผลดีที่สุด ใช้การจัดรูปแบบ markdown รองรับการใช้เครื่องมือโดยตรง",
+                "familyHintCodellama": "เน้นการสร้างและวิเคราะห์โค้ด ให้ตัวอย่างโค้ด ใช้ภาษาทางเทคนิค",
+                "familyHintDeepseekCoder": "เก่งด้านการให้เหตุผลเกี่ยวกับโค้ดและการแก้ปัญหาหลายขั้นตอน ควรใช้ผลลัพธ์แบบมีโครงสร้าง สำหรับ deepseek-r1 โหมดการคิดจะทำงานโดยอัตโนมัติ",
+                "familyHintQwen": "รองรับผลลัพธ์แบบมีโครงสร้าง เก่งงานหลายภาษา ใช้หัวข้อส่วนที่ชัดเจน",
+                "familyHintMistral": "เน้นการทำตามคำสั่ง จัดพรอมต์ให้มีโครงสร้างพร้อมคำอธิบายงานที่ชัดเจน",
+                "familyHintPhi": "โมเดลขนาดกะทัดรัด: ให้คำสั่งกระชับ เหมาะที่สุดกับงานเฉพาะจุด ไม่ใช่ข้อความยาว",
+                "familyHintGemma": "รูปแบบคำสั่งสไตล์ Google เก่งด้านการสรุปและการวิเคราะห์",
+                "familyHintStarcoder": "เน้นการเติมโค้ดให้สมบูรณ์ ให้บริบทของไฟล์และการ import เพื่อผลลัพธ์ที่ดีที่สุด"
             },
             "copy": "คัดลอก",
             "attachImage": "แนบรูปภาพ",
@@ -3033,7 +3092,8 @@
                 "general": "ทั่วไป",
                 "typeSlash": "พิมพ์ / เพื่อใช้เทมเพลต",
                 "analyzeUi": "วิเคราะห์ภาพหน้าจอ UI สำหรับเลย์เอาต์ การเข้าถึง และปัญหา UX",
-                "performance": "วิเคราะห์โค้ดเพื่อหาจุดคอขวดด้านประสิทธิภาพและการเพิ่มประสิทธิภาพ"
+                "performance": "วิเคราะห์โค้ดเพื่อหาจุดคอขวดด้านประสิทธิภาพและการเพิ่มประสิทธิภาพ",
+                "analysis": "การวิเคราะห์"
             },
             "costBudget": {
                 "conversationCost": "ค่าใช้จ่ายการสนทนา",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} วันที่แล้ว",
             "recentFileCountMany": "{count} ไฟล์",
             "recentFileCountOne": "{count} ไฟล์",
-            "recentMonthsAgo": "{count} เดือนที่แล้ว"
+            "recentMonthsAgo": "{count} เดือนที่แล้ว",
+            "securityArchive": "คลังเก็บ",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · เร็ว",
+            "securityAdvancedDescription": "ทนต่อ nonce · ชื่อไฟล์ที่เข้ารหัส · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 แบบซ้อน · เข้ารหัสสองชั้น",
+            "securityArchiveDescription": "คลังเก็บที่ตัดข้อมูลซ้ำ · ชิ้นส่วน zstd · v3"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "เนื้อหา AES-GCM",
             "featureNameCipher": "ชื่อ AES-SIV",
             "formatVersion": "รูปแบบ {version}",
-            "invalidVaultName": "อักขระในชื่อห้องนิรภัยไม่ถูกต้อง"
+            "invalidVaultName": "อักขระในชื่อห้องนิรภัยไม่ถูกต้อง",
+            "defaultVaultName": "ห้องนิรภัยใหม่"
         },
         "compress": {
             "title": "บีบอัดไฟล์",
@@ -3952,7 +4018,10 @@
             "threads": "เธรด",
             "auto": "อัตโนมัติ",
             "solid": "บล็อกโซลิด",
-            "solidHint": "อัตราส่วนดีขึ้นสำหรับไฟล์เล็กจำนวนมาก แต่การแยกแบบสุ่มช้าลง"
+            "solidHint": "อัตราส่วนดีขึ้นสำหรับไฟล์เล็กจำนวนมาก แต่การแยกแบบสุ่มช้าลง",
+            "formatArchiveOnly": "เก็บถาวรเท่านั้น",
+            "formatBestRatio": "อัตราส่วนดีที่สุด",
+            "formatSingleFile": "ไฟล์เดียว"
         },
         "batchRename": {
             "title": "เปลี่ยนชื่อแบบกลุ่ม",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "กรองการดำเนินการ",
                 "selected": "ที่เลือก"
-            }
+            },
+            "save": "บันทึก"
         },
         "error": {
             "description": "AeroFTP พบข้อผิดพลาดที่ไม่คาดคิด คุณสามารถลองกู้คืนหรือโหลดแอปพลิเคชันใหม่",
@@ -4529,7 +4599,13 @@
                     "radial": "รัศมี",
                     "spectrum": "สเปกตรัม",
                     "vortex": "กระแสวน",
-                    "waveform": "รูปคลื่น"
+                    "waveform": "รูปคลื่น",
+                    "glWaveGlitch": "คลื่นผิดเพี้ยน",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "มานเดลบรอต",
+                    "glTunnel": "อุโมงค์",
+                    "glMetaball": "เมตาบอล",
+                    "glParticles": "อนุภาค"
                 },
                 "volume": "ระดับเสียง"
             },
@@ -4635,7 +4711,18 @@
                 "off": "ปิด",
                 "on": "เปิด",
                 "presets": "ค่าที่ตั้งไว้",
-                "reset": "รีเซ็ตเป็นแบน"
+                "reset": "รีเซ็ตเป็นแบน",
+                "presetFlat": "แบนราบ",
+                "presetRock": "ร็อก",
+                "presetPop": "ป๊อป",
+                "presetJazz": "แจ๊ส",
+                "presetClassical": "คลาสสิก",
+                "presetBassBoost": "เพิ่มเสียงเบส",
+                "presetTrebleBoost": "เพิ่มเสียงแหลม",
+                "presetVocal": "เสียงร้อง",
+                "presetElectronic": "อิเล็กทรอนิกส์",
+                "presetAcoustic": "อะคูสติก",
+                "presetCustom": "กำหนดเอง"
             },
             "pdf": {
                 "download": "ดาวน์โหลด PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "แบบชำระเงิน",
             "extraFeatures": "เพิ่มเติม",
             "coreOpsList": "อัปโหลด, ดาวน์โหลด, ลบ, เปลี่ยนชื่อ, ย้าย, สร้างโฟลเดอร์, ค้นหา",
-            "coreOpsLegend": "พื้นฐาน = อัปโหลด, ดาวน์โหลด, ลบ, เปลี่ยนชื่อ, ย้าย, สร้างโฟลเดอร์, ค้นหา"
+            "coreOpsLegend": "พื้นฐาน = อัปโหลด, ดาวน์โหลด, ลบ, เปลี่ยนชื่อ, ย้าย, สร้างโฟลเดอร์, ค้นหา",
+            "notes": "หมายเหตุ",
+            "storageClass": "คลาสพื้นที่จัดเก็บ",
+            "objectTagging": "การติดแท็กออบเจ็กต์",
+            "sse": "การเข้ารหัสฝั่งเซิร์ฟเวอร์",
+            "checksum": "ค่าตรวจสอบ",
+            "tierManagement": "การจัดการระดับชั้น",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "สื่อ",
+            "sectionOther": "อื่นๆ",
+            "trashDetails": {
+                "onedrive": "ไดรฟ์ Business และ SharePoint โดย Microsoft Graph ไม่เปิดให้เข้าถึงถังรีไซเคิลของไดรฟ์ OneDrive Personal ให้ใช้เว็บไซต์ OneDrive แทน"
+            },
+            "shareLinkDetails": {
+                "permissions": "สิทธิ์: ดู, แสดงความคิดเห็น, แก้ไข",
+                "passwordExpiryPlan": "รหัสผ่าน + วันหมดอายุ (ต้องใช้แผน {plan})",
+                "passwordExpiryPaid": "รหัสผ่าน + วันหมดอายุ (ต้องใช้แผนแบบชำระเงิน)",
+                "passwordPersonalExpiryPermissions": "รหัสผ่าน (เฉพาะ Personal), วันหมดอายุ, สิทธิ์",
+                "passwordArgon2ExpiryPresets": "รหัสผ่าน (Argon2id) + ค่าที่ตั้งไว้ของวันหมดอายุ",
+                "passwordExpiryPermissions": "รหัสผ่าน, วันหมดอายุ, สิทธิ์",
+                "basicOnly": "ลิงก์แชร์พื้นฐานเท่านั้น",
+                "publicToggle": "ลิงก์สาธารณะ (สลับความเป็นส่วนตัว)",
+                "basic": "ลิงก์แชร์พื้นฐาน",
+                "expiringDefaultYear": "ลิงก์ที่มีวันหมดอายุ (ค่าเริ่มต้น 1 ปี)",
+                "publishUnpublish": "เผยแพร่/ยกเลิกการเผยแพร่",
+                "permanentUrl": "URL ถาวร",
+                "sharedAlbum": "ลิงก์อัลบั้มที่แชร์",
+                "megaPresignedS4": "ลิงก์แชร์ / URL ที่ลงนามล่วงหน้า (สูงสุด 7 วันสำหรับ S4)",
+                "autoPasswordExpiry": "รหัสผ่าน (สร้างอัตโนมัติ) + วันหมดอายุ",
+                "presigned": "URL ที่ลงนามล่วงหน้า (สูงสุด 7 วัน)"
+            }
         },
         "healthCheck": {
             "title": "ตรวจสอบสถานะเซิร์ฟเวอร์",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "คลังส่วนตัว",
             "repoPublicTitle": "คลังสาธารณะ",
             "unpushedCommitsOnBranchMany": "{count} คอมมิตที่ยังไม่ได้พุชบน {branch}",
-            "unpushedCommitsOnBranchOne": "{count} คอมมิตที่ยังไม่ได้พุชบน {branch}"
+            "unpushedCommitsOnBranchOne": "{count} คอมมิตที่ยังไม่ได้พุชบน {branch}",
+            "cancelWorkflow": "ยกเลิกเวิร์กโฟลว์",
+            "rerunWorkflow": "เรียกใช้เวิร์กโฟลว์อีกครั้ง",
+            "downloadAssetTitle": "ดาวน์โหลด {name}"
         },
         "filenNotes": {
             "title": "บันทึกเข้ารหัส",
@@ -5469,7 +5589,10 @@
             "manageCreated": "สร้างเมื่อ",
             "manageExpires": "หมดอายุ",
             "manageNeverExpires": "ไม่มีวันหมดอายุ",
-            "managePasswordProtected": "ป้องกันด้วยรหัสผ่าน"
+            "managePasswordProtected": "ป้องกันด้วยรหัสผ่าน",
+            "expirationHoursOne": "{count} ชั่วโมง",
+            "expirationHoursMany": "{count} ชั่วโมง",
+            "expirationDaysMany": "{count} วัน"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} ชม.",
                 "days": "{count} วัน",
                 "months": "{count} เดือน"
-            }
+            },
+            "demoTabLabel": "สาธิต: {protocol}",
+            "newTabLabel": "ใหม่: {name}"
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "สร้าง Merge Request",
             "mrTitle": "หัวข้อ MR",
             "mrBody": "คำอธิบาย (ไม่บังคับ)",
-            "sourceCode": "ซอร์สโค้ด"
+            "sourceCode": "ซอร์สโค้ด",
+            "downloadAssetTitle": "ดาวน์โหลด {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "ผู้ใช้ใหม่",
                 "noUsers": "ยังไม่มีผู้ใช้ ใช้ \"ผู้ใช้ใหม่\" ด้านล่างเพื่อเพิ่มผู้ใช้คนแรก",
                 "protectionNote": "บัญชีของคุณได้รับการปกป้องด้วยการเข้ารหัส Argon2id + AES-KW + AES-256-GCM",
-                "users": "ผู้ใช้"
+                "users": "ผู้ใช้",
+                "setup": "การตั้งค่า"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "โหมดจะถูกเลือกเมื่อสร้างการเชื่อมต่อและจะคงที่ขณะแก้ไขโปรไฟล์ที่บันทึกไว้ หากต้องการใช้โหมดอื่น ให้สร้างการเชื่อมต่อใหม่",
-                "notInBuild": "ไม่ได้รวมอยู่ในบิลด์นี้ของ AeroFTP"
+                "notInBuild": "ไม่ได้รวมอยู่ในบิลด์นี้ของ AeroFTP",
+                "header": "โหมดของ {name}",
+                "nativeApi": "API ดั้งเดิม",
+                "filelu": {
+                    "apiDescription": "REST API พร้อมคีย์ API ฟีเจอร์ครบถ้วน (ถังขยะ ลิงก์แชร์ ไฟล์ที่ป้องกันด้วยรหัสผ่าน)",
+                    "webdavDescription": "การเข้าถึง WebDAV ผ่านพอร์ต 443 รองรับไคลเอนต์ได้หลากหลาย เมานต์เป็นไดรฟ์เครือข่ายได้",
+                    "s3Description": "API ที่เข้ากันได้กับ S3 บนพอร์ต 443 ใช้ rclone, AWS CLI หรือ S3 SDK ใดก็ได้",
+                    "ftpDescription": "FTP แบบดั้งเดิมบนพอร์ต 21 ไม่เข้ารหัส เหมาะสำหรับเครื่องบันทึก NVR ของกล้องวงจรปิดและไคลเอนต์รุ่นเก่า"
+                },
+                "filen": {
+                    "apiDescription": "การเข้ารหัส E2E แบบไม่มีผู้อื่นล่วงรู้ข้อมูล (Argon2id v3 / PBKDF2 v2) ครบทุกฟีเจอร์: โควตาพื้นที่จัดเก็บ, ถังขยะ, รหัสผ่านลิงก์แชร์, การจัดการเวอร์ชัน, TOTP",
+                    "webdavDescription": "สะพาน WebDAV ที่ Filen Desktop เปิดให้ใช้ที่ 127.0.0.1:1900 ต้องเปิด Filen Desktop และลงชื่อเข้าใช้ไว้",
+                    "s3Description": "สะพานที่เข้ากันได้กับ S3 ที่ Filen Desktop เปิดให้ใช้ที่ 127.0.0.1:1800 ผ่าน local.s3.filen.io ระบุที่อยู่แบบพาธ โฟลเดอร์ Filen ระดับบนสุดแต่ละโฟลเดอร์คือหนึ่งบักเก็ต"
+                },
+                "proton": {
+                    "headerDescription": "พื้นที่จัดเก็บบนคลาวด์ของ Proton พร้อมการเข้ารหัสแบบต้นทางถึงปลายทาง",
+                    "apiDescription": "ไคลเอนต์ Proton Drive ของ AeroFTP เอง: คุณลงชื่อเข้าใช้บนหน้าของ Proton ในเบราว์เซอร์ ไฟล์จะถูกเข้ารหัสและถอดรหัสบนคอมพิวเตอร์เครื่องนี้ และไม่ต้องใช้แอปอื่น",
+                    "cliDescription": "ควบคุม Proton Drive CLI อย่างเป็นทางการที่ติดตั้งและลงชื่อเข้าใช้ไว้บนเครื่องนี้ คุณลงชื่อเข้าใช้ในเบราว์เซอร์ AeroFTP จะไม่เห็นรหัสผ่าน Proton ของคุณเลย"
+                },
+                "opendrive": {
+                    "headerDescription": "พื้นที่จัดเก็บบนคลาวด์ของ OpenDrive (ฟรี 5 GB)",
+                    "apiDescription": "REST API ด้วยชื่อผู้ใช้ + รหัสผ่าน ครบทุกฟีเจอร์: ถังขยะ, โควตาพื้นที่จัดเก็บ, ลิงก์แชร์, การใช้ดิสก์แบบเรียกซ้ำ",
+                    "webdavDescription": "การเข้าถึง WebDAV ผ่าน webdav.opendrive.com บนพอร์ต 443 ใช้กับไคลเอนต์รุ่นเก่าหรือเมานต์เป็นไดรฟ์เครือข่าย"
+                },
+                "koofr": {
+                    "apiDescription": "REST API ที่ตั้งอยู่ใน EU ด้วยอีเมล + รหัสผ่านแอป ครบทุกฟีเจอร์: โควตาพื้นที่จัดเก็บ, ถังขยะ (แสดงรายการ/กู้คืน/ล้าง), ลิงก์แชร์",
+                    "webdavDescription": "การเข้าถึง WebDAV ผ่าน app.koofr.net/dav/Koofr บนพอร์ต 443 โควตาพื้นที่จัดเก็บยังคงอ่านจาก REST API ของ Koofr ใช้กับไคลเอนต์รุ่นเก่าหรือเมานต์เป็นไดรฟ์เครือข่าย"
+                },
+                "mega": {
+                    "headerDescription": "พื้นที่จัดเก็บบนคลาวด์ของ MEGA พร้อมการเข้ารหัสฝั่งไคลเอนต์",
+                    "apiDescription": "MEGA API ดั้งเดิมด้วยอีเมล + รหัสผ่าน (+ TOTP ที่ไม่บังคับ) ครบทุกฟีเจอร์: การเข้ารหัสฝั่งไคลเอนต์, โควตาพื้นที่จัดเก็บ, ลิงก์แชร์, ภาพขนาดย่อ",
+                    "webdavDescription": "สะพาน WebDAV ภายในเครื่องที่ให้บริการโดย MEGAcmd CLI อย่างเป็นทางการ แบบไม่ระบุตัวตนบน 127.0.0.1 AeroFTP จะเรียกใช้ \"mega-webdav /\" ให้คุณเมื่อเชื่อมต่อ จึงไม่มีขั้นตอนที่ต้องทำเอง",
+                    "s4Description": "พื้นที่จัดเก็บออบเจ็กต์ MEGA S4 ที่เข้ากันได้กับ S3 (ภูมิภาค EU/CA) คีย์การเข้าถึง + คีย์ลับ + บักเก็ต ต้องใช้แผน Pro"
+                }
             }
         },
         "flatpak": {

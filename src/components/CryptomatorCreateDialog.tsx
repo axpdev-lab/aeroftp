@@ -31,7 +31,7 @@ interface IngestReport {
 export default function CryptomatorCreateDialog({ outputDir, files, onClose, onCreated }: CryptomatorCreateDialogProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
-  const [vaultName, setVaultName] = useState('NewVault');
+  const [vaultName, setVaultName] = useState(() => t('cryptomator.defaultVaultName'));
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [creating, setCreating] = useState(false);

@@ -420,7 +420,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
                                     <div className="flex items-center justify-end gap-1">
                                       <button onClick={async () => {
                                         try {
-                                          const savePath = await pickSave({ defaultPath: link.name, title: `Download ${link.name}` });
+                                          const savePath = await pickSave({ defaultPath: link.name, title: t('gitlab.downloadAssetTitle', { name: link.name }) });
                                           if (savePath) {
                                             const logId = humanLog.logRaw('activity.release_asset_download_start', 'DOWNLOAD', { provider: 'GitLab', filename: link.name }, 'running');
                                             try {

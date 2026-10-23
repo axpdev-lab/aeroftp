@@ -3,6 +3,8 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PromptTemplate, matchTemplates } from './aiChatPromptTemplates';
+import { useTranslation } from '../../i18n';
+import type { TranslationFunction } from '../../i18n/types';
 
 interface PromptTemplateSelectorProps {
     input: string;
@@ -12,13 +14,13 @@ interface PromptTemplateSelectorProps {
     visible: boolean;
 }
 
-const CATEGORY_LABELS: Record<PromptTemplate['category'], string> = {
-    code: 'Code',
-    debug: 'Debug',
-    docs: 'Documentation',
-    security: 'Security',
-    analysis: 'Analysis',
-    general: 'General',
+const CATEGORY_LABEL_KEYS: Record<PromptTemplate['category'], string> = {
+    code: 'ai.templates.code',
+    debug: 'ai.templates.debug',
+    docs: 'ai.templates.docs',
+    security: 'ai.templates.security',
+    analysis: 'ai.templates.analysis',
+    general: 'ai.templates.general',
 };
 
 const CATEGORY_ORDER: PromptTemplate['category'][] = [
@@ -34,19 +36,20 @@ const CATEGORY_ORDER: PromptTemplate['category'][] = [
  * Group templates by category, preserving a stable category order.
  */
 function groupByCategory(
-    templates: PromptTemplate[]
+    templates: PromptTemplate[],
+    t: TranslationFunction,
 ): { category: PromptTemplate['category']; label: string; items: PromptTemplate[] }[] {
     const map = new Map<PromptTemplate['category'], PromptTemplate[]>();
-    for (const t of templates) {
-        const list = map.get(t.category) || [];
-        list.push(t);
-        map.set(t.category, list);
+    for (const template of templates) {
+        const list = map.get(template.category) || [];
+        list.push(template);
+        map.set(template.category, list);
     }
     const groups: { category: PromptTemplate['category']; label: string; items: PromptTemplate[] }[] = [];
     for (const cat of CATEGORY_ORDER) {
         const items = map.get(cat);
         if (items && items.length > 0) {
-            groups.push({ category: cat, label: CATEGORY_LABELS[cat], items });
+            groups.push({ category: cat, label: t(CATEGORY_LABEL_KEYS[cat]), items });
         }
     }
     return groups;
@@ -59,6 +62,7 @@ const PromptTemplateSelector: React.FC<PromptTemplateSelectorProps> = React.memo
     onDismiss,
     visible,
 }) => {
+    const t = useTranslation();
     const [selectedIndex, setSelectedIndex] = useState(0);
     const listRef = useRef<HTMLDivElement>(null);
     const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -72,8 +76,8 @@ const PromptTemplateSelector: React.FC<PromptTemplateSelectorProps> = React.memo
 
     const groups = useMemo(() => {
         if (!showCategories) return null;
-        return groupByCategory(filtered);
-    }, [filtered, showCategories]);
+        return groupByCategory(filtered, t);
+    }, [filtered, showCategories, t]);
 
     // Flat list of templates for index-based navigation
     const flatList = useMemo(() => {
@@ -197,8 +201,8 @@ const PromptTemplateSelector: React.FC<PromptTemplateSelectorProps> = React.memo
             {showCategories && groups ? (
                 <>
                     {groups.map((group) => {
-                        const items = group.items.map((t, i) => {
-                            const rendered = renderItem(t, flatIndex);
+                        const items = group.items.map((template) => {
+                            const rendered = renderItem(template, flatIndex);
                             flatIndex++;
                             return rendered;
                         });
@@ -213,7 +217,7 @@ const PromptTemplateSelector: React.FC<PromptTemplateSelectorProps> = React.memo
                     })}
                 </>
             ) : (
-                flatList.map((t, i) => renderItem(t, i))
+                flatList.map((template, i) => renderItem(template, i))
             )}
         </div>
     );

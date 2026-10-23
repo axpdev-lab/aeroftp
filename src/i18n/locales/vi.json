@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Sao chép URL này và dán làm URI chuyển hướng trong cài đặt ứng dụng nhà phát triển của bạn.",
                 "redirectUriNoteGoogle": "Khuyến nghị: tạo ID ứng dụng OAuth thuộc loại \"Ứng dụng dành cho máy tính\" trong Google Cloud Console; không cần đăng ký URI chuyển hướng. Đối với ứng dụng thuộc loại \"Ứng dụng web\", hãy đăng ký chính xác URI chuyển hướng hiển thị ở trên, bao gồm cổng và đường dẫn /callback.",
                 "enablePhotosApi": "Đảm bảo Photos Library API được bật trong Google Cloud Console của bạn.",
-                "enableDriveApi": "Đảm bảo Google Drive API được bật trong Google Cloud Console của bạn."
+                "enableDriveApi": "Đảm bảo Google Drive API được bật trong Google Cloud Console của bạn.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "Mỹ",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "Ấn Độ",
+                "zohoRegionAu": "Úc",
+                "zohoRegionJp": "Nhật Bản",
+                "zohoRegionUk": "Anh",
+                "zohoRegionCa": "Canada",
+                "zohoRegionSa": "Ả Rập Xê Út"
             },
             "activeSessions": "Các phiên hoạt động",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Khuyến nghị để bảo mật tối đa",
             "fontCustomOption": "Tùy chỉnh...",
             "fontSystemInstallHint": "Cần cài đặt vào hệ thống. AeroFTP tự động dùng phương án dự phòng nếu không khả dụng.",
-            "fontSizeIndicatorLabel": "Phông chữ"
+            "fontSizeIndicatorLabel": "Phông chữ",
+            "fontPresetDefault": "{font} (Mặc định)",
+            "fontPresetSystemDefault": "Mặc định hệ thống"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Tăng cỡ chữ (Ctrl+=)",
                 "newTab": "Thẻ thiết bị đầu cuối mới",
                 "sshShellTo": "Shell SSH tới {host}",
-                "theme": "Chủ đề thiết bị đầu cuối"
+                "theme": "Chủ đề thiết bị đầu cuối",
+                "tabLabel": "Thiết bị đầu cuối {num}",
+                "themeCyber": "Không gian mạng",
+                "themeTrueDark": "Tối thực",
+                "themeGreen": "Xanh lá",
+                "themeIce": "Băng",
+                "themeRedLava": "Dung nham đỏ"
             },
             "editorPanel": {
                 "emptyState": "Nhấn chuột phải vào tệp và chọn \"Xem mã nguồn\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(mỗi dòng một mục)",
             "pairsEditorLabel": "Trình chỉnh sửa cặp AeroCloud",
             "remoteSubfolderPlaceholder": "đám mây",
-            "countdownSoon": "Sắp tới..."
+            "countdownSoon": "Sắp tới...",
+            "aerocloudEnabled": "Đã bật AeroCloud",
+            "selectPairLocalFolder": "Chọn thư mục cục bộ cho cặp",
+            "secondsAgo": "{count} giây trước"
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Nhà nghiên cứu, kỹ sư đảm bảo chất lượng, người đồng thiết kế"
             },
             "madeBy": "bởi {author}",
-            "statsLine": "{protocols} giao thức · {languages} ngôn ngữ · kho lưu trữ AES-256"
+            "statsLine": "{protocols} giao thức · {languages} ngôn ngữ · kho lưu trữ AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Thao tác SFTP",
+                "osKeyring": "Chuỗi khóa hệ điều hành",
+                "vaultFormat": "Định dạng kho bảo mật",
+                "zipArchives": "Tệp nén ZIP"
+            }
         },
         "support": {
             "title": "Hỗ trợ AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Đã khôi phục {files} tệp từ thùng rác, {present} đã có sẵn",
             "trash_restore_detail_folders_present_success": "[{provider}] Đã khôi phục {files} tệp, {folders} thư mục từ thùng rác, {present} đã có sẵn",
             "filelu_file_password_removed": "[{provider}] Đã xóa mật khẩu tệp",
-            "filelu_folder_password_removed": "[{provider}] Đã xóa mật khẩu thư mục"
+            "filelu_folder_password_removed": "[{provider}] Đã xóa mật khẩu thư mục",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} thất bại",
+            "batch_rename_start": "[{location}] Đang đổi tên {count} mục...",
+            "batch_rename_success": "[{location}] Đã đổi tên {count} mục",
+            "batch_rename_error": "[{location}] Đã đổi tên {count} mục, {failed} thất bại",
+            "compress_details_saved": "{input} → {output} (tiết kiệm {percent}%)",
+            "compress_details_grew": "{input} → {output} (tăng {percent}%)",
+            "extract_details": "{input} → {output} (đã giải nén)",
+            "download_details": "({size} trong {seconds} giây)"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Quyền tài phán",
             "insecureCertDialogLabel": "Cảnh báo chứng chỉ không an toàn",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Xác minh khóa máy chủ"
+            "hostKeyDialogLabel": "Xác minh khóa máy chủ",
+            "mtpName": "Thiết bị di động (MTP)",
+            "mtpDesc": "Điện thoại hoặc máy ảnh qua MTP/WPD",
+            "immichDesc": "Quản lý ảnh tự lưu trữ",
+            "imagekitDesc": "CDN đa phương tiện + lưu trữ (miễn phí 20 GB)",
+            "uploadcareDesc": "CDN đa phương tiện tại EU (miễn phí 3 GB)",
+            "cloudinaryDesc": "CDN đa phương tiện (miễn phí 25 tín dụng/tháng)",
+            "backblazeDesc": "API gốc Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -2416,7 +2458,10 @@
             "add": "Thêm",
             "remove": "Xóa",
             "none": "Chưa có quyền nào được đặt",
-            "anyoneWithLink": "Bất kỳ ai có liên kết"
+            "anyoneWithLink": "Bất kỳ ai có liên kết",
+            "roleViewer": "Người xem",
+            "roleEditor": "Người chỉnh sửa",
+            "roleCommenter": "Người nhận xét"
         },
         "locking": {
             "lock": "Khóa tệp",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "thất bại {count}",
             "rollbackRestoreCompleted": "Khôi phục hoàn tất: {summary}",
             "rollbackRestoreNothing": "Không có gì để khôi phục",
-            "rollbackRestoreFailed": "Khôi phục thất bại: {error}"
+            "rollbackRestoreFailed": "Khôi phục thất bại: {error}",
+            "intervalHoursOne": "{count} giờ",
+            "intervalHoursMany": "{count} giờ"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Hỗ trợ thị giác",
                 "thinkingReasoning": "Suy nghĩ/Lập luận",
                 "toolQuality": "Chất lượng công cụ: {quality}/5",
-                "ollamaNotReachable": "Không thể kết nối Ollama"
+                "ollamaNotReachable": "Không thể kết nối Ollama",
+                "macroSafeEditName": "Chỉnh sửa an toàn",
+                "macroSafeEditDescription": "Đọc tệp, hiển thị nội dung, rồi chỉnh sửa (mẫu an toàn đọc trước khi ghi)",
+                "macroFindReadName": "Tìm & Đọc",
+                "macroFindReadDescription": "Tìm các tệp khớp với mẫu trong thư mục cục bộ",
+                "familyHintLlama3": "Hướng dẫn trực tiếp và ngắn gọn hoạt động tốt nhất. Sử dụng định dạng markdown. Hỗ trợ sử dụng công cụ một cách tự nhiên.",
+                "familyHintCodellama": "Tập trung vào tạo và phân tích mã. Cung cấp ví dụ mã. Sử dụng ngôn ngữ kỹ thuật.",
+                "familyHintDeepseekCoder": "Mạnh về suy luận mã và giải quyết vấn đề nhiều bước. Ưu tiên đầu ra có cấu trúc. Với deepseek-r1, chế độ suy nghĩ hoạt động tự động.",
+                "familyHintQwen": "Hỗ trợ đầu ra có cấu trúc. Giỏi các tác vụ đa ngôn ngữ. Sử dụng tiêu đề mục rõ ràng.",
+                "familyHintMistral": "Định hướng làm theo hướng dẫn. Giữ prompt có cấu trúc với mô tả tác vụ rõ ràng.",
+                "familyHintPhi": "Mô hình gọn nhẹ: giữ hướng dẫn ngắn gọn. Phù hợp nhất cho tác vụ tập trung, không dành cho văn bản dài.",
+                "familyHintGemma": "Định dạng hướng dẫn theo phong cách Google. Giỏi tóm tắt và phân tích.",
+                "familyHintStarcoder": "Tập trung vào hoàn thành mã. Cung cấp ngữ cảnh tệp và các import để có kết quả tốt nhất."
             },
             "copy": "Sao chép",
             "attachImage": "Đính kèm hình ảnh",
@@ -3033,7 +3092,8 @@
                 "general": "Chung",
                 "typeSlash": "Nhập / để sử dụng mẫu",
                 "analyzeUi": "Phân tích ảnh chụp giao diện về bố cục, trợ năng và trải nghiệm người dùng",
-                "performance": "Phân tích mã nguồn về điểm nghẽn hiệu suất và tối ưu hóa"
+                "performance": "Phân tích mã nguồn về điểm nghẽn hiệu suất và tối ưu hóa",
+                "analysis": "Phân tích"
             },
             "costBudget": {
                 "conversationCost": "Chi phí cuộc trò chuyện",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} ngày trước",
             "recentFileCountMany": "{count} tệp",
             "recentFileCountOne": "{count} tệp",
-            "recentMonthsAgo": "{count} tháng trước"
+            "recentMonthsAgo": "{count} tháng trước",
+            "securityArchive": "Lưu trữ",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Nhanh",
+            "securityAdvancedDescription": "Chống trùng nonce · Mã hóa tên tệp · 128 MB KDF",
+            "securityParanoidDescription": "Xếp tầng AES + ChaCha20 · Mã hóa kép",
+            "securityArchiveDescription": "Kho lưu trữ khử trùng lặp · khối zstd · v3"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Nội dung AES-GCM",
             "featureNameCipher": "Tên AES-SIV",
             "formatVersion": "Định dạng {version}",
-            "invalidVaultName": "Ký tự không hợp lệ trong tên kho"
+            "invalidVaultName": "Ký tự không hợp lệ trong tên kho",
+            "defaultVaultName": "KhoMới"
         },
         "compress": {
             "title": "Nén tệp",
@@ -3952,7 +4018,10 @@
             "threads": "Luồng",
             "auto": "Tự động",
             "solid": "Khối liền",
-            "solidHint": "Tỉ lệ tốt hơn với nhiều tệp nhỏ, giải nén ngẫu nhiên chậm hơn."
+            "solidHint": "Tỉ lệ tốt hơn với nhiều tệp nhỏ, giải nén ngẫu nhiên chậm hơn.",
+            "formatArchiveOnly": "Chỉ lưu trữ",
+            "formatBestRatio": "Tỷ lệ tốt nhất",
+            "formatSingleFile": "một tệp"
         },
         "batchRename": {
             "title": "Đổi tên hàng loạt",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Lọc thao tác",
                 "selected": "đã chọn"
-            }
+            },
+            "save": "Lưu"
         },
         "error": {
             "description": "AeroFTP gặp lỗi không mong muốn. Bạn có thể thử khôi phục hoặc tải lại ứng dụng.",
@@ -4529,7 +4599,13 @@
                     "radial": "Tỏa tròn",
                     "spectrum": "Phổ",
                     "vortex": "Xoáy",
-                    "waveform": "Dạng sóng"
+                    "waveform": "Dạng sóng",
+                    "glWaveGlitch": "Nhiễu sóng",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Đường hầm",
+                    "glMetaball": "Siêu cầu",
+                    "glParticles": "Hạt"
                 },
                 "volume": "Âm lượng"
             },
@@ -4635,7 +4711,18 @@
                 "off": "TẮT",
                 "on": "BẬT",
                 "presets": "Cài đặt sẵn",
-                "reset": "Đặt lại về phẳng"
+                "reset": "Đặt lại về phẳng",
+                "presetFlat": "Phẳng",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Cổ điển",
+                "presetBassBoost": "Tăng âm trầm",
+                "presetTrebleBoost": "Tăng âm cao",
+                "presetVocal": "Giọng hát",
+                "presetElectronic": "Điện tử",
+                "presetAcoustic": "Mộc",
+                "presetCustom": "Tùy chỉnh"
             },
             "pdf": {
                 "download": "Tải PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Trả phí",
             "extraFeatures": "Mở rộng",
             "coreOpsList": "Tải lên, Tải xuống, Xóa, Đổi tên, Di chuyển, Tạo thư mục, Tìm kiếm",
-            "coreOpsLegend": "Cơ bản = Tải lên, Tải xuống, Xóa, Đổi tên, Di chuyển, Tạo thư mục, Tìm kiếm"
+            "coreOpsLegend": "Cơ bản = Tải lên, Tải xuống, Xóa, Đổi tên, Di chuyển, Tạo thư mục, Tìm kiếm",
+            "notes": "Ghi chú",
+            "storageClass": "Lớp lưu trữ",
+            "objectTagging": "Gắn thẻ đối tượng",
+            "sse": "Mã hóa phía máy chủ",
+            "checksum": "Tổng kiểm tra",
+            "tierManagement": "Quản lý tầng lưu trữ",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Đa phương tiện",
+            "sectionOther": "Khác",
+            "trashDetails": {
+                "onedrive": "Ổ đĩa Business và SharePoint. Microsoft Graph không cung cấp thùng rác của ổ đĩa OneDrive Personal; hãy dùng trang web OneDrive cho việc đó"
+            },
+            "shareLinkDetails": {
+                "permissions": "Quyền: xem, bình luận, chỉnh sửa",
+                "passwordExpiryPlan": "Mật khẩu + hết hạn (yêu cầu gói {plan})",
+                "passwordExpiryPaid": "Mật khẩu + hết hạn (yêu cầu gói trả phí)",
+                "passwordPersonalExpiryPermissions": "Mật khẩu (chỉ Personal), hết hạn, quyền",
+                "passwordArgon2ExpiryPresets": "Mật khẩu (Argon2id) + mốc hết hạn đặt sẵn",
+                "passwordExpiryPermissions": "Mật khẩu, hết hạn, quyền",
+                "basicOnly": "Chỉ liên kết chia sẻ cơ bản",
+                "publicToggle": "Liên kết công khai (bật/tắt quyền riêng tư)",
+                "basic": "Liên kết chia sẻ cơ bản",
+                "expiringDefaultYear": "Liên kết có hạn (mặc định 1 năm)",
+                "publishUnpublish": "Xuất bản/hủy xuất bản",
+                "permanentUrl": "URL cố định",
+                "sharedAlbum": "Liên kết album chia sẻ",
+                "megaPresignedS4": "Liên kết chia sẻ / URL ký trước (tối đa 7 ngày với S4)",
+                "autoPasswordExpiry": "Mật khẩu (tự tạo) + hết hạn",
+                "presigned": "URL ký trước (tối đa 7 ngày)"
+            }
         },
         "healthCheck": {
             "title": "Kiểm tra tình trạng máy chủ",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Kho lưu trữ riêng tư",
             "repoPublicTitle": "Kho lưu trữ công khai",
             "unpushedCommitsOnBranchMany": "{count} commit chưa đẩy trên {branch}",
-            "unpushedCommitsOnBranchOne": "{count} commit chưa đẩy trên {branch}"
+            "unpushedCommitsOnBranchOne": "{count} commit chưa đẩy trên {branch}",
+            "cancelWorkflow": "Hủy quy trình làm việc",
+            "rerunWorkflow": "Chạy lại quy trình làm việc",
+            "downloadAssetTitle": "Tải xuống {name}"
         },
         "filenNotes": {
             "title": "Ghi chú mã hóa",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Đã tạo",
             "manageExpires": "Hết hạn",
             "manageNeverExpires": "Không bao giờ",
-            "managePasswordProtected": "Được bảo vệ bằng mật khẩu"
+            "managePasswordProtected": "Được bảo vệ bằng mật khẩu",
+            "expirationHoursOne": "{count} giờ",
+            "expirationHoursMany": "{count} giờ",
+            "expirationDaysMany": "{count} ngày"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} giờ",
                 "days": "{count} ngày",
                 "months": "{count} tháng"
-            }
+            },
+            "demoTabLabel": "Dùng thử: {protocol}",
+            "newTabLabel": "Mới: {name}"
         },
         "gitlab": {
             "projectPath": "Đường dẫn dự án",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Tạo Merge Request",
             "mrTitle": "Tiêu đề MR",
             "mrBody": "Mô tả (tùy chọn)",
-            "sourceCode": "Mã nguồn"
+            "sourceCode": "Mã nguồn",
+            "downloadAssetTitle": "Tải xuống {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Người dùng mới",
                 "noUsers": "Chưa có người dùng nào. Dùng \"Người dùng mới\" bên dưới để thêm người đầu tiên.",
                 "protectionNote": "Tài khoản của bạn được bảo vệ bằng mã hóa Argon2id + AES-KW + AES-256-GCM",
-                "users": "Người dùng"
+                "users": "Người dùng",
+                "setup": "Thiết lập"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Chế độ được chọn khi tạo kết nối và giữ nguyên khi chỉnh sửa hồ sơ đã lưu. Để dùng chế độ khác, hãy tạo kết nối mới.",
-                "notInBuild": "Không có trong bản dựng AeroFTP này."
+                "notInBuild": "Không có trong bản dựng AeroFTP này.",
+                "header": "Chế độ {name}",
+                "nativeApi": "API gốc",
+                "filelu": {
+                    "apiDescription": "REST API với khóa API. Đầy đủ tính năng (thùng rác, liên kết chia sẻ, tệp được bảo vệ bằng mật khẩu).",
+                    "webdavDescription": "Truy cập WebDAV qua cổng 443. Tương thích rộng với ứng dụng khách, gắn được như ổ đĩa mạng.",
+                    "s3Description": "API tương thích S3 trên cổng 443. Dùng rclone, AWS CLI hoặc bất kỳ SDK S3 nào.",
+                    "ftpDescription": "FTP cổ điển trên cổng 21. Không mã hóa, hữu ích cho đầu ghi NVR camera giám sát và các ứng dụng khách cũ."
+                },
+                "filen": {
+                    "apiDescription": "Mã hóa E2E không tiết lộ (Argon2id v3 / PBKDF2 v2). Đầy đủ tính năng: hạn mức lưu trữ, thùng rác, mật khẩu liên kết chia sẻ, quản lý phiên bản, TOTP.",
+                    "webdavDescription": "Cầu nối WebDAV do Filen Desktop cung cấp tại 127.0.0.1:1900. Yêu cầu Filen Desktop đang chạy và đã đăng nhập.",
+                    "s3Description": "Cầu nối tương thích S3 do Filen Desktop cung cấp tại 127.0.0.1:1800 qua local.s3.filen.io. Định địa chỉ theo đường dẫn, mỗi thư mục Filen cấp cao nhất là một bucket."
+                },
+                "proton": {
+                    "headerDescription": "Lưu trữ đám mây Proton với mã hóa đầu cuối",
+                    "apiDescription": "Ứng dụng khách Proton Drive riêng của AeroFTP: bạn đăng nhập trên trang của Proton trong trình duyệt, tệp được mã hóa và giải mã trên máy tính này, và không cần ứng dụng nào khác.",
+                    "cliDescription": "Điều khiển CLI Proton Drive chính thức đã cài đặt và đăng nhập trên máy này. Bạn đăng nhập trong trình duyệt; AeroFTP không bao giờ thấy mật khẩu Proton của bạn."
+                },
+                "opendrive": {
+                    "headerDescription": "Lưu trữ đám mây OpenDrive (5 GB miễn phí)",
+                    "apiDescription": "API REST với tên người dùng + mật khẩu. Đầy đủ tính năng: thùng rác, hạn mức lưu trữ, liên kết chia sẻ, dung lượng đĩa đệ quy.",
+                    "webdavDescription": "Truy cập WebDAV qua webdav.opendrive.com trên cổng 443. Dùng cho ứng dụng khách cũ hoặc để gắn làm ổ đĩa mạng."
+                },
+                "koofr": {
+                    "apiDescription": "API REST đặt tại EU, với email + mật khẩu ứng dụng. Đầy đủ tính năng: hạn mức lưu trữ, thùng rác (liệt kê/khôi phục/dọn sạch), liên kết chia sẻ.",
+                    "webdavDescription": "Truy cập WebDAV qua app.koofr.net/dav/Koofr trên cổng 443. Hạn mức lưu trữ vẫn được đọc từ API REST của Koofr. Dùng cho ứng dụng khách cũ hoặc để gắn làm ổ đĩa mạng."
+                },
+                "mega": {
+                    "headerDescription": "Lưu trữ đám mây MEGA với mã hóa phía máy khách",
+                    "apiDescription": "API MEGA gốc với email + mật khẩu (+ TOTP tùy chọn). Đầy đủ tính năng: mã hóa phía máy khách, hạn mức lưu trữ, liên kết chia sẻ, hình thu nhỏ.",
+                    "webdavDescription": "Cầu nối WebDAV cục bộ do CLI MEGAcmd chính thức phục vụ, ẩn danh trên 127.0.0.1. AeroFTP chạy \"mega-webdav /\" thay bạn khi kết nối, nên không có bước thủ công nào.",
+                    "s4Description": "Lưu trữ đối tượng MEGA S4, tương thích S3 (khu vực EU/CA). Khóa truy cập + khóa bí mật + bucket. Yêu cầu gói Pro."
+                }
             }
         },
         "flatpak": {

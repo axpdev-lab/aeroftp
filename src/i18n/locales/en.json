@@ -68,7 +68,13 @@
                 "ekRole": "Researcher, quality assurance engineer, co-designer"
             },
             "madeBy": "by {author}",
-            "statsLine": "{protocols} protocols · {languages} languages · AES-256 archives"
+            "statsLine": "{protocols} protocols · {languages} languages · AES-256 archives",
+            "dependencyRoles": {
+                "sftpOps": "SFTP ops",
+                "osKeyring": "OS Keyring",
+                "vaultFormat": "Vault format",
+                "zipArchives": "ZIP archives"
+            }
         },
         "activity": {
             "connect_error": "Connection to {server} failed. Check credentials.",
@@ -298,7 +304,16 @@
             "trash_restore_detail_present_success": "[{provider}] Restored {files} file(s), {present} already present from trash",
             "trash_restore_detail_folders_present_success": "[{provider}] Restored {files} file(s), {folders} folder(s), {present} already present from trash",
             "filelu_file_password_removed": "[{provider}] Removed file password",
-            "filelu_folder_password_removed": "[{provider}] Removed folder password"
+            "filelu_folder_password_removed": "[{provider}] Removed folder password",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} failed",
+            "batch_rename_start": "[{location}] Renaming {count} item(s)...",
+            "batch_rename_success": "[{location}] Renamed {count} item(s)",
+            "batch_rename_error": "[{location}] Renamed {count} item(s), {failed} failed",
+            "compress_details_saved": "{input} → {output} (saved {percent}%)",
+            "compress_details_grew": "{input} → {output} (grew {percent}%)",
+            "extract_details": "{input} → {output} (expanded)",
+            "download_details": "({size} in {seconds}s)"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -330,7 +345,8 @@
             "hideCloudSync": "Hide AeroCloud sync messages",
             "jumpToLatest": "LATEST",
             "showCloudSync": "Show AeroCloud sync messages",
-            "title": "Activity Log"
+            "title": "Activity Log",
+            "save": "Save"
         },
         "ai": {
             "addContext": "Add context (@path)",
@@ -758,7 +774,19 @@
                 "supportsVision": "Supports vision",
                 "thinkingReasoning": "Thinking/Reasoning",
                 "toolQuality": "Tool quality: {quality}/5",
-                "ollamaNotReachable": "Ollama not reachable"
+                "ollamaNotReachable": "Ollama not reachable",
+                "macroSafeEditName": "Safe Edit",
+                "macroSafeEditDescription": "Read a file, show its content, then edit it (read-before-write safety pattern)",
+                "macroFindReadName": "Find & Read",
+                "macroFindReadDescription": "Search for files matching a pattern in a local directory",
+                "familyHintLlama3": "Direct and concise instructions work best. Use markdown formatting. Supports tool use natively.",
+                "familyHintCodellama": "Focus on code generation and analysis. Provide code examples. Use technical language.",
+                "familyHintDeepseekCoder": "Strong at code reasoning and multi-step problem solving. Structured output preferred. For deepseek-r1, thinking mode works automatically.",
+                "familyHintQwen": "Supports structured output. Good at multilingual tasks. Use clear section headers.",
+                "familyHintMistral": "Instruction-following oriented. Keep prompts structured with clear task descriptions.",
+                "familyHintPhi": "Compact model: keep instructions concise. Best for focused tasks, not long-form.",
+                "familyHintGemma": "Google-style instruction format. Good at summarization and analysis.",
+                "familyHintStarcoder": "Code completion focused. Provide file context and imports for best results."
             },
             "shortcuts": {
                 "clearChat": "Clear chat (Ctrl+L)",
@@ -815,7 +843,8 @@
                 "general": "General",
                 "performance": "Analyze code for performance bottlenecks and optimization",
                 "security": "Security",
-                "typeSlash": "Type / to use templates"
+                "typeSlash": "Type / to use templates",
+                "analysis": "Analysis"
             },
             "terminalExecute": "Execute in Terminal",
             "thinking": {
@@ -1589,7 +1618,10 @@
             "onePerLineHint": "(one per line)",
             "pairsEditorLabel": "AeroCloud Pairs Editor",
             "remoteSubfolderPlaceholder": "cloud",
-            "countdownSoon": "Soon..."
+            "countdownSoon": "Soon...",
+            "aerocloudEnabled": "AeroCloud enabled",
+            "selectPairLocalFolder": "Select local folder for pair",
+            "secondsAgo": "{count}s ago"
         },
         "common": {
             "about": "About",
@@ -1710,7 +1742,10 @@
             "estimating": "Estimating…",
             "spaceSaved": "{pct}% smaller",
             "estimateExact": "exact",
-            "estimateApprox": "estimate"
+            "estimateApprox": "estimate",
+            "formatArchiveOnly": "Archive only",
+            "formatBestRatio": "Best ratio",
+            "formatSingleFile": "single file"
         },
         "connection": {
             "accessKeyId": "Access Key ID",
@@ -1891,7 +1926,16 @@
                 "enableDriveApi": "Make sure Google Drive API is enabled in your Google Cloud Console.",
                 "useDifferentAccount": "Use Different Account",
                 "zohoRegion": "Zoho Region",
-                "zohoRegionHelp": "Select the region matching your Zoho account (e.g. zoho.eu for Europe)."
+                "zohoRegionHelp": "Select the region matching your Zoho account (e.g. zoho.eu for Europe).",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "US",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Australia",
+                "zohoRegionJp": "Japan",
+                "zohoRegionUk": "UK",
+                "zohoRegionCa": "Canada",
+                "zohoRegionSa": "Saudi Arabia"
             },
             "oauth2Connection": "OAuth2 Connection",
             "optionalSettings": "Optional Settings",
@@ -2367,7 +2411,8 @@
             "featureContentCipher": "AES-GCM content",
             "featureNameCipher": "AES-SIV names",
             "formatVersion": "Format {version}",
-            "invalidVaultName": "Invalid characters in vault name"
+            "invalidVaultName": "Invalid characters in vault name",
+            "defaultVaultName": "NewVault"
         },
         "debug": {
             "copyFileListToClipboard": "Copy file list to clipboard",
@@ -2554,7 +2599,13 @@
                 "increaseFont": "Increase font size (Ctrl+=)",
                 "newTab": "New terminal tab",
                 "sshShellTo": "SSH shell to {host}",
-                "theme": "Terminal theme"
+                "theme": "Terminal theme",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "True Dark",
+                "themeGreen": "Green",
+                "themeIce": "Ice",
+                "themeRedLava": "Red Lava"
             },
             "editorPanel": {
                 "dragToTerminalRun": "Drag to Terminal to insert run command",
@@ -2882,7 +2933,8 @@
                 "newUser": "New User",
                 "noUsers": "No users yet. Use \"New User\" below to add the first one.",
                 "protectionNote": "Your account is protected with Argon2id + AES-KW + AES-256-GCM encryption",
-                "users": "Users"
+                "users": "Users",
+                "setup": "Setup"
             }
         },
         "lockScreen": {
@@ -3099,7 +3151,13 @@
                     "radial": "Radial",
                     "spectrum": "Spectrum",
                     "vortex": "Vortex",
-                    "waveform": "Waveform"
+                    "waveform": "Waveform",
+                    "glWaveGlitch": "Wave Glitch",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunnel",
+                    "glMetaball": "Metaball",
+                    "glParticles": "Particles"
                 },
                 "volume": "Volume"
             },
@@ -3205,7 +3263,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "Presets",
-                "reset": "Reset to Flat"
+                "reset": "Reset to Flat",
+                "presetFlat": "Flat",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Classical",
+                "presetBassBoost": "Bass Boost",
+                "presetTrebleBoost": "Treble Boost",
+                "presetVocal": "Vocal",
+                "presetElectronic": "Electronic",
+                "presetAcoustic": "Acoustic",
+                "presetCustom": "Custom"
             },
             "pdf": {
                 "download": "Download PDF",
@@ -3659,7 +3728,14 @@
             "jurisdiction": "Jurisdiction",
             "insecureCertDialogLabel": "Insecure Certificate Warning",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Host Key Verification"
+            "hostKeyDialogLabel": "Host Key Verification",
+            "mtpName": "Portable device (MTP)",
+            "mtpDesc": "Phone or camera over MTP/WPD",
+            "immichDesc": "Self-hosted photo management",
+            "imagekitDesc": "Media CDN + storage (20 GB free)",
+            "uploadcareDesc": "EU media CDN (3 GB free)",
+            "cloudinaryDesc": "Media CDN (25 credits/month free)",
+            "backblazeDesc": "Backblaze B2 native API v4"
         },
         "quickLook": {
             "noPreview": "No preview available",
@@ -4328,7 +4404,9 @@
             "migrationCleanupHint": "Recommended for maximum security",
             "fontCustomOption": "Custom...",
             "fontSystemInstallHint": "Requires system install. AeroFTP falls back automatically if unavailable.",
-            "fontSizeIndicatorLabel": "Font"
+            "fontSizeIndicatorLabel": "Font",
+            "fontPresetDefault": "{font} (Default)",
+            "fontPresetSystemDefault": "System Default"
         },
         "sharing": {
             "add": "Add",
@@ -4337,7 +4415,10 @@
             "none": "No permissions set",
             "remove": "Remove",
             "title": "Sharing",
-            "anyoneWithLink": "Anyone with link"
+            "anyoneWithLink": "Anyone with link",
+            "roleViewer": "Viewer",
+            "roleEditor": "Editor",
+            "roleCommenter": "Commenter"
         },
         "shortcuts": {
             "activityLog": "Activity Log",
@@ -4709,7 +4790,9 @@
             "rollbackRestoreFailedCount": "failed {count}",
             "rollbackRestoreCompleted": "Restore completed: {summary}",
             "rollbackRestoreNothing": "Nothing to restore",
-            "rollbackRestoreFailed": "Restore failed: {error}"
+            "rollbackRestoreFailed": "Restore failed: {error}",
+            "intervalHoursOne": "{count} hour",
+            "intervalHoursMany": "{count} hours"
         },
         "toast": {
             "batchRenamePartial": "Batch rename completed with errors",
@@ -5443,7 +5526,12 @@
             "recentDaysAgo": "{count}d ago",
             "recentFileCountMany": "{count} files",
             "recentFileCountOne": "{count} file",
-            "recentMonthsAgo": "{count}mo ago"
+            "recentMonthsAgo": "{count}mo ago",
+            "securityArchive": "Archive",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Fast",
+            "securityAdvancedDescription": "Nonce-resistant · Encrypted filenames · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 cascade · Double encryption",
+            "securityArchiveDescription": "Deduplicated archive · zstd chunks · v3"
         },
         "vaultSync": {
             "title": "Vault Sync",
@@ -5643,7 +5731,10 @@
             "repoPrivateTitle": "Private repository",
             "repoPublicTitle": "Public repository",
             "unpushedCommitsOnBranchMany": "{count} unpushed commits on {branch}",
-            "unpushedCommitsOnBranchOne": "{count} unpushed commit on {branch}"
+            "unpushedCommitsOnBranchOne": "{count} unpushed commit on {branch}",
+            "cancelWorkflow": "Cancel workflow",
+            "rerunWorkflow": "Re-run workflow",
+            "downloadAssetTitle": "Download {name}"
         },
         "gitlab": {
             "projectPath": "Project Path",
@@ -5678,7 +5769,8 @@
             "createMergeRequest": "Create Merge Request",
             "mrTitle": "MR title",
             "mrBody": "Description (optional)",
-            "sourceCode": "Source code"
+            "sourceCode": "Source code",
+            "downloadAssetTitle": "Download {name}"
         },
         "shareLinkModal": {
             "title": "Share Link",
@@ -5721,7 +5813,10 @@
             "manageCreated": "Created",
             "manageExpires": "Expires",
             "manageNeverExpires": "Never",
-            "managePasswordProtected": "Password protected"
+            "managePasswordProtected": "Password protected",
+            "expirationHoursOne": "{count} hour",
+            "expirationHoursMany": "{count} hours",
+            "expirationDaysMany": "{count} days"
         },
         "b2": {
             "hidden": {
@@ -6004,7 +6099,9 @@
                 "hours": "{count}h",
                 "days": "{count}d",
                 "months": "{count}mo"
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "New: {name}"
         },
         "iconPicker": {
             "title": "Choose icon",
@@ -6101,7 +6198,37 @@
             "devTools": "Dev Tools",
             "extraFeatures": "Extra",
             "coreOpsList": "Upload, Download, Delete, Rename, Move, Create Folder, Search",
-            "coreOpsLegend": "Base = Upload, Download, Delete, Rename, Move, Create Folder, Search"
+            "coreOpsLegend": "Base = Upload, Download, Delete, Rename, Move, Create Folder, Search",
+            "notes": "Notes",
+            "storageClass": "Storage Class",
+            "objectTagging": "Object Tagging",
+            "sse": "Server-Side Encryption",
+            "checksum": "Checksum",
+            "tierManagement": "Tier Management",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Media",
+            "sectionOther": "Other",
+            "trashDetails": {
+                "onedrive": "Business and SharePoint drives. Microsoft Graph does not expose the recycle bin of a OneDrive Personal drive; use the OneDrive website for it"
+            },
+            "shareLinkDetails": {
+                "permissions": "Permissions: view, comment, edit",
+                "passwordExpiryPlan": "Password + expiry ({plan} plan required)",
+                "passwordExpiryPaid": "Password + expiry (paid plan required)",
+                "passwordPersonalExpiryPermissions": "Password (Personal only), expiry, permissions",
+                "passwordArgon2ExpiryPresets": "Password (Argon2id) + expiry presets",
+                "passwordExpiryPermissions": "Password, expiry, permissions",
+                "basicOnly": "Basic share link only",
+                "publicToggle": "Public link (toggle privacy)",
+                "basic": "Basic share link",
+                "expiringDefaultYear": "Expiring links (default 1 year)",
+                "publishUnpublish": "Publish/unpublish",
+                "permanentUrl": "Permanent URL",
+                "sharedAlbum": "Shared album link",
+                "megaPresignedS4": "Share link / Pre-signed URL (max 7 days for S4)",
+                "autoPasswordExpiry": "Password (auto-gen) + expiry",
+                "presigned": "Pre-signed URL (max 7 days)"
+            }
         },
         "filenNotes": {
             "title": "Encrypted Notes",
@@ -6753,7 +6880,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection.",
-                "notInBuild": "Not included in this build of AeroFTP."
+                "notInBuild": "Not included in this build of AeroFTP.",
+                "header": "{name} Modes",
+                "nativeApi": "Native API",
+                "filelu": {
+                    "apiDescription": "REST API with API key. Full feature set (trash, share links, password-protected files).",
+                    "webdavDescription": "WebDAV access on port 443. Wide client compatibility, mounts as a network drive.",
+                    "s3Description": "S3-compatible API on port 443. Use rclone, AWS CLI, or any S3 SDK.",
+                    "ftpDescription": "Classic FTP on port 21. Plaintext, useful for CCTV NVRs and legacy clients."
+                },
+                "filen": {
+                    "apiDescription": "Zero-knowledge E2E encryption (Argon2id v3 / PBKDF2 v2). Full feature set: storage quota, trash, share-link passwords, versioning, TOTP.",
+                    "webdavDescription": "WebDAV bridge exposed by Filen Desktop on 127.0.0.1:1900. Requires Filen Desktop running and signed in.",
+                    "s3Description": "S3-compatible bridge exposed by Filen Desktop on 127.0.0.1:1800 via local.s3.filen.io. Path-style addressing, each top-level Filen folder is a bucket."
+                },
+                "proton": {
+                    "headerDescription": "Proton cloud storage with end-to-end encryption",
+                    "apiDescription": "AeroFTP's own Proton Drive client: you sign in on Proton's page in the browser, files are encrypted and decrypted on this computer, and no other app is needed.",
+                    "cliDescription": "Drives the official Proton Drive CLI installed and signed in on this machine. You sign in in the browser; AeroFTP never sees your Proton password."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive cloud storage (5 GB free)",
+                    "apiDescription": "REST API with username + password. Full feature set: trash, storage quota, share links, recursive disk usage.",
+                    "webdavDescription": "WebDAV access via webdav.opendrive.com on port 443. Use for legacy clients or to mount as a network drive."
+                },
+                "koofr": {
+                    "apiDescription": "EU-based REST API with email + app password. Full feature set: storage quota, trash (list/restore/empty), share links.",
+                    "webdavDescription": "WebDAV access via app.koofr.net/dav/Koofr on port 443. Storage quota is still read from the Koofr REST API. Use for legacy clients or to mount as a network drive."
+                },
+                "mega": {
+                    "headerDescription": "MEGA cloud storage with client-side encryption",
+                    "apiDescription": "Native MEGA API with email + password (+ optional TOTP). Full feature set: client-side encryption, storage quota, share links, thumbnails.",
+                    "webdavDescription": "Local WebDAV bridge served by the official MEGAcmd CLI, anonymous on 127.0.0.1. AeroFTP runs \"mega-webdav /\" for you on connect, so there is no manual step.",
+                    "s4Description": "MEGA S4 object storage, S3-compatible (EU/CA regions). Access key + secret key + bucket. Requires a Pro plan."
+                }
             }
         },
         "flatpak": {

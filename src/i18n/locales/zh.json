@@ -202,7 +202,16 @@
                 "redirectUriHelp": "复制此 URL 并将其粘贴为您的开发者应用设置中的重定向 URI。",
                 "redirectUriNoteGoogle": "建议：在 Google Cloud Console 中创建“桌面应用”类型的 OAuth 客户端 ID，无需注册重定向 URI。如果使用“Web 应用”类型的客户端，请完整、准确地注册上方显示的重定向 URI，包括其端口和 /callback 路径。",
                 "enablePhotosApi": "确保在您的 Google Cloud Console 中启用了 Photos Library API。",
-                "enableDriveApi": "确保在您的 Google Cloud Console 中启用了 Google Drive API。"
+                "enableDriveApi": "确保在您的 Google Cloud Console 中启用了 Google Drive API。",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "美国",
+                "zohoRegionEu": "欧盟",
+                "zohoRegionIn": "印度",
+                "zohoRegionAu": "澳大利亚",
+                "zohoRegionJp": "日本",
+                "zohoRegionUk": "英国",
+                "zohoRegionCa": "加拿大",
+                "zohoRegionSa": "沙特阿拉伯"
             },
             "activeSessions": "活动会话",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "建议启用以获得最高安全性",
             "fontCustomOption": "自定义...",
             "fontSystemInstallHint": "需要在系统中安装。如不可用，AeroFTP 会自动回退。",
-            "fontSizeIndicatorLabel": "字体"
+            "fontSizeIndicatorLabel": "字体",
+            "fontPresetDefault": "{font} (默认)",
+            "fontPresetSystemDefault": "系统默认"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "增大字号 (Ctrl+=)",
                 "newTab": "新建终端标签页",
                 "sshShellTo": "到 {host} 的 SSH 命令行",
-                "theme": "终端主题"
+                "theme": "终端主题",
+                "tabLabel": "终端 {num}",
+                "themeCyber": "赛博",
+                "themeTrueDark": "纯黑",
+                "themeGreen": "绿色",
+                "themeIce": "冰蓝",
+                "themeRedLava": "熔岩红"
             },
             "editorPanel": {
                 "emptyState": "右键点击文件并选择\"查看源代码\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(每行一个)",
             "pairsEditorLabel": "AeroCloud 配对编辑器",
             "remoteSubfolderPlaceholder": "云",
-            "countdownSoon": "即将到来..."
+            "countdownSoon": "即将到来...",
+            "aerocloudEnabled": "AeroCloud 已启用",
+            "selectPairLocalFolder": "为配对选择本地文件夹",
+            "secondsAgo": "{count}秒前"
         },
         "statusBar": {
             "connected": "已连接",
@@ -1742,7 +1762,13 @@
                 "ekRole": "研究员、质量保证工程师、联合设计者"
             },
             "madeBy": "{author} 出品",
-            "statsLine": "{protocols} 种协议 · {languages} 种语言 · AES-256 归档"
+            "statsLine": "{protocols} 种协议 · {languages} 种语言 · AES-256 归档",
+            "dependencyRoles": {
+                "sftpOps": "SFTP 操作",
+                "osKeyring": "系统密钥环",
+                "vaultFormat": "保险库格式",
+                "zipArchives": "ZIP 归档"
+            }
         },
         "support": {
             "title": "支持 AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] 已从回收站恢复 {files} 个文件，{present} 个已存在",
             "trash_restore_detail_folders_present_success": "[{provider}] 已从回收站恢复 {files} 个文件、{folders} 个文件夹，{present} 个已存在",
             "filelu_file_password_removed": "[{provider}] 已移除文件密码",
-            "filelu_folder_password_removed": "[{provider}] 已移除文件夹密码"
+            "filelu_folder_password_removed": "[{provider}] 已移除文件夹密码",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} 失败",
+            "batch_rename_start": "[{location}] 正在重命名 {count} 个项目...",
+            "batch_rename_success": "[{location}] 已重命名 {count} 个项目",
+            "batch_rename_error": "[{location}] 已重命名 {count} 个项目，{failed} 个失败",
+            "compress_details_saved": "{input} → {output}（节省 {percent}%）",
+            "compress_details_grew": "{input} → {output}（增大 {percent}%）",
+            "extract_details": "{input} → {output}（已解压）",
+            "download_details": "（{size}，用时 {seconds} 秒）"
         },
         "protocol": {
             "selectProtocol": "选择协议...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "司法管辖区",
             "insecureCertDialogLabel": "不安全证书警告",
             "betaBadge": "测试版",
-            "hostKeyDialogLabel": "主机密钥验证"
+            "hostKeyDialogLabel": "主机密钥验证",
+            "mtpName": "便携设备 (MTP)",
+            "mtpDesc": "通过 MTP/WPD 连接的手机或相机",
+            "immichDesc": "自托管照片管理",
+            "imagekitDesc": "媒体 CDN + 存储（免费 20 GB）",
+            "uploadcareDesc": "欧盟媒体 CDN（免费 3 GB）",
+            "cloudinaryDesc": "媒体 CDN（每月免费 25 积分）",
+            "backblazeDesc": "Backblaze B2 原生 API v4"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -2416,7 +2458,10 @@
             "add": "添加",
             "remove": "移除",
             "none": "未设置权限",
-            "anyoneWithLink": "任何拥有链接的人"
+            "anyoneWithLink": "任何拥有链接的人",
+            "roleViewer": "查看者",
+            "roleEditor": "编辑者",
+            "roleCommenter": "评论者"
         },
         "locking": {
             "lock": "锁定文件",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "失败 {count}",
             "rollbackRestoreCompleted": "恢复完成: {summary}",
             "rollbackRestoreNothing": "没有需要恢复的内容",
-            "rollbackRestoreFailed": "恢复失败：{error}"
+            "rollbackRestoreFailed": "恢复失败：{error}",
+            "intervalHoursOne": "{count} 小时",
+            "intervalHoursMany": "{count} 小时"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "支持视觉",
                 "thinkingReasoning": "思考/推理",
                 "toolQuality": "工具质量：{quality}/5",
-                "ollamaNotReachable": "无法连接 Ollama"
+                "ollamaNotReachable": "无法连接 Ollama",
+                "macroSafeEditName": "安全编辑",
+                "macroSafeEditDescription": "读取文件，显示其内容，然后编辑 (先读后写安全模式)",
+                "macroFindReadName": "查找并读取",
+                "macroFindReadDescription": "在本地目录中搜索匹配模式的文件",
+                "familyHintLlama3": "直接、简洁的指令效果最佳。使用 markdown 格式。原生支持工具调用。",
+                "familyHintCodellama": "专注于代码生成与分析。提供代码示例。使用技术性语言。",
+                "familyHintDeepseekCoder": "擅长代码推理和多步骤问题求解。建议使用结构化输出。对于 deepseek-r1，思考模式会自动生效。",
+                "familyHintQwen": "支持结构化输出。擅长多语言任务。使用清晰的章节标题。",
+                "familyHintMistral": "以遵循指令为导向。保持提示词结构化，并提供清晰的任务描述。",
+                "familyHintPhi": "紧凑型模型：保持指令简洁。最适合聚焦的任务，而非长篇内容。",
+                "familyHintGemma": "Google 风格的指令格式。擅长摘要与分析。",
+                "familyHintStarcoder": "专注于代码补全。提供文件上下文和导入语句以获得最佳效果。"
             },
             "copy": "复制",
             "attachImage": "附加图片",
@@ -3033,7 +3092,8 @@
                 "general": "常规",
                 "typeSlash": "输入 / 使用模板",
                 "analyzeUi": "分析 UI 截图的布局、无障碍性和用户体验问题",
-                "performance": "分析代码的性能瓶颈和优化方案"
+                "performance": "分析代码的性能瓶颈和优化方案",
+                "analysis": "分析"
             },
             "costBudget": {
                 "conversationCost": "对话费用",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count}天前",
             "recentFileCountMany": "{count} 个文件",
             "recentFileCountOne": "{count} 个文件",
-            "recentMonthsAgo": "{count}个月前"
+            "recentMonthsAgo": "{count}个月前",
+            "securityArchive": "归档",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · 快速",
+            "securityAdvancedDescription": "抗 nonce 重用 · 文件名加密 · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 级联 · 双重加密",
+            "securityArchiveDescription": "去重归档 · zstd 分块 · v3"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM 内容",
             "featureNameCipher": "AES-SIV 名称",
             "formatVersion": "格式 {version}",
-            "invalidVaultName": "保险库名称中包含无效字符"
+            "invalidVaultName": "保险库名称中包含无效字符",
+            "defaultVaultName": "新保险库"
         },
         "compress": {
             "title": "压缩文件",
@@ -3952,7 +4018,10 @@
             "threads": "线程",
             "auto": "自动",
             "solid": "固实块",
-            "solidHint": "对大量小文件压缩率更高，随机解压更慢。"
+            "solidHint": "对大量小文件压缩率更高，随机解压更慢。",
+            "formatArchiveOnly": "仅归档",
+            "formatBestRatio": "最佳压缩率",
+            "formatSingleFile": "单个文件"
         },
         "batchRename": {
             "title": "批量重命名",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "筛选操作",
                 "selected": "已选"
-            }
+            },
+            "save": "保存"
         },
         "error": {
             "description": "AeroFTP 遇到意外错误。您可以尝试恢复或重新加载应用程序。",
@@ -4529,7 +4599,13 @@
                     "radial": "径向",
                     "spectrum": "频谱",
                     "vortex": "漩涡",
-                    "waveform": "波形"
+                    "waveform": "波形",
+                    "glWaveGlitch": "波形故障",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "曼德博",
+                    "glTunnel": "隧道",
+                    "glMetaball": "元球",
+                    "glParticles": "粒子"
                 },
                 "volume": "音量"
             },
@@ -4635,7 +4711,18 @@
                 "off": "关",
                 "on": "开",
                 "presets": "预设",
-                "reset": "重置为平坦"
+                "reset": "重置为平坦",
+                "presetFlat": "平坦",
+                "presetRock": "摇滚",
+                "presetPop": "流行",
+                "presetJazz": "爵士",
+                "presetClassical": "古典",
+                "presetBassBoost": "低音增强",
+                "presetTrebleBoost": "高音增强",
+                "presetVocal": "人声",
+                "presetElectronic": "电子",
+                "presetAcoustic": "原声",
+                "presetCustom": "自定义"
             },
             "pdf": {
                 "download": "下载 PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "付费",
             "extraFeatures": "扩展",
             "coreOpsList": "上传、下载、删除、重命名、移动、新建文件夹、搜索",
-            "coreOpsLegend": "基础 = 上传、下载、删除、重命名、移动、新建文件夹、搜索"
+            "coreOpsLegend": "基础 = 上传、下载、删除、重命名、移动、新建文件夹、搜索",
+            "notes": "备注",
+            "storageClass": "存储类别",
+            "objectTagging": "对象标签",
+            "sse": "服务器端加密",
+            "checksum": "校验和",
+            "tierManagement": "层级管理",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "媒体",
+            "sectionOther": "其他",
+            "trashDetails": {
+                "onedrive": "Business 和 SharePoint 驱动器。Microsoft Graph 不提供 OneDrive Personal 驱动器的回收站；请使用 OneDrive 网站进行操作"
+            },
+            "shareLinkDetails": {
+                "permissions": "权限：查看、评论、编辑",
+                "passwordExpiryPlan": "密码 + 有效期（需要 {plan} 套餐）",
+                "passwordExpiryPaid": "密码 + 有效期（需要付费套餐）",
+                "passwordPersonalExpiryPermissions": "密码（仅 Personal）、有效期、权限",
+                "passwordArgon2ExpiryPresets": "密码（Argon2id）+ 有效期预设",
+                "passwordExpiryPermissions": "密码、有效期、权限",
+                "basicOnly": "仅基础共享链接",
+                "publicToggle": "公开链接（切换隐私）",
+                "basic": "基础共享链接",
+                "expiringDefaultYear": "限时链接（默认 1 年）",
+                "publishUnpublish": "发布/取消发布",
+                "permanentUrl": "永久 URL",
+                "sharedAlbum": "共享相册链接",
+                "megaPresignedS4": "共享链接 / 预签名 URL（S4 最长 7 天）",
+                "autoPasswordExpiry": "密码（自动生成）+ 有效期",
+                "presigned": "预签名 URL（最长 7 天）"
+            }
         },
         "healthCheck": {
             "title": "服务器健康检查",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "私有仓库",
             "repoPublicTitle": "公开仓库",
             "unpushedCommitsOnBranchMany": "{branch} 上有 {count} 个未推送的提交",
-            "unpushedCommitsOnBranchOne": "{branch} 上有 {count} 个未推送的提交"
+            "unpushedCommitsOnBranchOne": "{branch} 上有 {count} 个未推送的提交",
+            "cancelWorkflow": "取消工作流",
+            "rerunWorkflow": "重新运行工作流",
+            "downloadAssetTitle": "下载 {name}"
         },
         "filenNotes": {
             "title": "加密笔记",
@@ -5469,7 +5589,10 @@
             "manageCreated": "创建时间",
             "manageExpires": "过期时间",
             "manageNeverExpires": "永不",
-            "managePasswordProtected": "已设置密码保护"
+            "managePasswordProtected": "已设置密码保护",
+            "expirationHoursOne": "{count} 小时",
+            "expirationHoursMany": "{count} 小时",
+            "expirationDaysMany": "{count} 天"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count}小时",
                 "days": "{count}天",
                 "months": "{count}个月"
-            }
+            },
+            "demoTabLabel": "演示：{protocol}",
+            "newTabLabel": "新建：{name}"
         },
         "gitlab": {
             "projectPath": "项目路径",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "创建 Merge Request",
             "mrTitle": "MR 标题",
             "mrBody": "描述 (可选)",
-            "sourceCode": "源代码"
+            "sourceCode": "源代码",
+            "downloadAssetTitle": "下载 {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "新用户",
                 "noUsers": "暂无用户。使用下方的“新用户”添加第一个用户。",
                 "protectionNote": "您的账户受 Argon2id + AES-KW + AES-256-GCM 加密保护",
-                "users": "用户"
+                "users": "用户",
+                "setup": "设置"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "模式在创建连接时选择，编辑已保存的配置文件时保持不变。要使用其他模式，请创建新连接。",
-                "notInBuild": "此 AeroFTP 版本未包含该功能。"
+                "notInBuild": "此 AeroFTP 版本未包含该功能。",
+                "header": "{name} 模式",
+                "nativeApi": "原生 API",
+                "filelu": {
+                    "apiDescription": "使用 API 密钥的 REST API。完整功能（回收站、共享链接、密码保护文件）。",
+                    "webdavDescription": "通过端口 443 进行 WebDAV 访问。客户端兼容性广，可挂载为网络驱动器。",
+                    "s3Description": "端口 443 上的 S3 兼容 API。可使用 rclone、AWS CLI 或任意 S3 SDK。",
+                    "ftpDescription": "端口 21 上的经典 FTP。明文传输，适用于监控 NVR 和旧版客户端。"
+                },
+                "filen": {
+                    "apiDescription": "零知识 E2E 加密 (Argon2id v3 / PBKDF2 v2)。完整功能：存储配额、回收站、共享链接密码、版本控制、TOTP。",
+                    "webdavDescription": "由 Filen Desktop 在 127.0.0.1:1900 上提供的 WebDAV 桥接。需要 Filen Desktop 正在运行并已登录。",
+                    "s3Description": "由 Filen Desktop 通过 local.s3.filen.io 在 127.0.0.1:1800 上提供的 S3 兼容桥接。路径式寻址，每个顶层 Filen 文件夹都是一个存储桶。"
+                },
+                "proton": {
+                    "headerDescription": "带端到端加密的 Proton 云存储",
+                    "apiDescription": "AeroFTP 自带的 Proton Drive 客户端：你在浏览器中的 Proton 页面登录，文件在本机上加密和解密，无需其他应用。",
+                    "cliDescription": "驱动本机上已安装并登录的官方 Proton Drive CLI。你在浏览器中登录；AeroFTP 永远看不到你的 Proton 密码。"
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive 云存储 (5 GB 免费)",
+                    "apiDescription": "使用用户名 + 密码的 REST API。完整功能：回收站、存储配额、共享链接、递归磁盘用量。",
+                    "webdavDescription": "通过 webdav.opendrive.com 在端口 443 上进行 WebDAV 访问。适用于旧版客户端或挂载为网络驱动器。"
+                },
+                "koofr": {
+                    "apiDescription": "位于欧盟的 REST API，使用电子邮件 + 应用密码。完整功能：存储配额、回收站 (列出/恢复/清空)、共享链接。",
+                    "webdavDescription": "通过 app.koofr.net/dav/Koofr 在端口 443 上进行 WebDAV 访问。存储配额仍从 Koofr REST API 读取。适用于旧版客户端或挂载为网络驱动器。"
+                },
+                "mega": {
+                    "headerDescription": "带客户端加密的 MEGA 云存储",
+                    "apiDescription": "使用电子邮件 + 密码 (+ 可选 TOTP) 的原生 MEGA API。完整功能：客户端加密、存储配额、共享链接、缩略图。",
+                    "webdavDescription": "由官方 MEGAcmd CLI 提供的本地 WebDAV 桥接，在 127.0.0.1 上匿名访问。AeroFTP 在连接时会替你运行 \"mega-webdav /\"，因此无需任何手动步骤。",
+                    "s4Description": "MEGA S4 对象存储，兼容 S3 (EU/CA 区域)。访问密钥 + 私密密钥 + 存储桶。需要 Pro 套餐。"
+                }
             }
         },
         "flatpak": {

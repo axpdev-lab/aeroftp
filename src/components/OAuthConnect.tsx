@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { AlertCircle, Check, Copy, ExternalLink, Eye, EyeOff, Loader2, Save } from 'lucide-react';
 import { Checkbox } from './ui/Checkbox';
 import { useOAuth2, type OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
-import { useI18n } from '../i18n';
+import { useI18n, type TranslationFunction } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { useClipboardCopy } from '../hooks/useClipboardCopy';
@@ -84,15 +84,16 @@ const providerLogos: Record<OAuthUiProvider, React.FC<{ size?: number }>> = {
   yandexdisk: YandexDiskLogo,
 };
 
-const ZOHO_REGIONS = [
-  { value: 'us', label: 'US (zoho.com)' },
-  { value: 'eu', label: 'EU (zoho.eu)' },
-  { value: 'in', label: 'India (zoho.in)' },
-  { value: 'au', label: 'Australia (zoho.com.au)' },
-  { value: 'jp', label: 'Japan (zoho.jp)' },
-  { value: 'uk', label: 'UK (zoho.uk)' },
-  { value: 'ca', label: 'Canada (zohocloud.ca)' },
-  { value: 'sa', label: 'Saudi Arabia (zoho.sa)' },
+// The region is a name the reader's language spells; the domain is not.
+const ZOHO_REGIONS: { value: string; domain: string; region: (t: TranslationFunction) => string }[] = [
+  { value: 'us', domain: 'zoho.com', region: (t) => t('connection.oauth.zohoRegionUs') },
+  { value: 'eu', domain: 'zoho.eu', region: (t) => t('connection.oauth.zohoRegionEu') },
+  { value: 'in', domain: 'zoho.in', region: (t) => t('connection.oauth.zohoRegionIn') },
+  { value: 'au', domain: 'zoho.com.au', region: (t) => t('connection.oauth.zohoRegionAu') },
+  { value: 'jp', domain: 'zoho.jp', region: (t) => t('connection.oauth.zohoRegionJp') },
+  { value: 'uk', domain: 'zoho.uk', region: (t) => t('connection.oauth.zohoRegionUk') },
+  { value: 'ca', domain: 'zohocloud.ca', region: (t) => t('connection.oauth.zohoRegionCa') },
+  { value: 'sa', domain: 'zoho.sa', region: (t) => t('connection.oauth.zohoRegionSa') },
 ];
 
 export const OAuthConnect: React.FC<OAuthConnectProps> = ({
@@ -264,7 +265,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
             <div>
               <label className="block text-xs font-medium mb-1">{t('connection.oauth.zohoRegion')}</label>
               <select value={zohoRegion} onChange={(event) => { credentialEdits.current.region = true; setZohoRegion(event.target.value); }} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600">
-                {ZOHO_REGIONS.map((region) => <option key={region.value} value={region.value}>{region.label}</option>)}
+                {ZOHO_REGIONS.map((region) => <option key={region.value} value={region.value}>{t('connection.oauth.zohoRegionOption', { region: region.region(t), domain: region.domain })}</option>)}
               </select>
               <p className="text-xs text-gray-500 mt-1">{t('connection.oauth.zohoRegionHelp')}</p>
             </div>

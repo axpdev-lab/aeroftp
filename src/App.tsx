@@ -10038,7 +10038,7 @@ const App: React.FC = () => {
           }
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const sizeStr = fileSize ? formatBytes(fileSize) : '';
-          const details = sizeStr ? `(${sizeStr} in ${elapsed}s)` : `(${elapsed}s)`;
+          const details = sizeStr ? t('activity.download_details', { size: sizeStr, seconds: elapsed }) : `(${elapsed}s)`;
           const msg = t('activity.download_success', { filename: localFilePath, details });
           humanLog.updateEntry(logId, { status: 'success', message: msg });
           completed = true;
@@ -10236,7 +10236,7 @@ const App: React.FC = () => {
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         const sizeStr = fileSize ? formatBytes(fileSize) : '';
-        const details = sizeStr ? `(${sizeStr} in ${elapsed}s)` : `(${elapsed}s)`;
+        const details = sizeStr ? t('activity.download_details', { size: sizeStr, seconds: elapsed }) : `(${elapsed}s)`;
         const msg = t('activity.upload_success', { filename: remotePath, details });
         humanLog.updateEntry(logId, { status: 'success', message: msg });
         completed = true;
@@ -13929,10 +13929,9 @@ const App: React.FC = () => {
   // Batch rename handler for multiple selected files
   const handleBatchRename = async (renames: Map<string, string>) => {
     const isRemote = batchRenameDialog?.isRemote ?? true;
-    const logId = humanLog.logStart('RENAME', {
+    const logId = humanLog.logStart('BATCH_RENAME', {
       count: renames.size,
       isRemote,
-      message: `Batch rename (${isRemote ? 'remote' : 'local'})`
     });
 
     let successCount = 0;
@@ -13982,13 +13981,13 @@ const App: React.FC = () => {
 
     // Log and notify
     if (errorCount === 0) {
-      humanLog.logSuccess('RENAME', { count: successCount, isRemote }, logId);
+      humanLog.logSuccess('BATCH_RENAME', { count: successCount, isRemote }, logId);
       notify.success(
         t('toast.batchRenameSuccess'),
         `${successCount} ${t('browser.files')}`
       );
     } else {
-      humanLog.logError('RENAME', { count: successCount, isRemote, message: `${errorCount} failed` }, logId);
+      humanLog.logError('BATCH_RENAME', { count: successCount, failed: errorCount, isRemote }, logId);
       notify.warning(
         t('toast.batchRenamePartial'),
         t('toast.batchRenameResult', { success: successCount, errors: errorCount })
@@ -15657,7 +15656,7 @@ const App: React.FC = () => {
                 const toastOpts = { filename: file.name, archiveBytes: file.size };
                 try {
                   const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: extractOutputDir, createSubfolder: extractCreateSubfolder, password, toastOpts });
-                  activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: file.name, dest }) : t('activity.extract_success', { filename: file.name }), details: formatExtractDetails(file.size ?? 0, extractedTotal) });
+                  activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: file.name, dest }) : t('activity.extract_success', { filename: file.name }), details: formatExtractDetails(file.size ?? 0, extractedTotal, t) });
                   notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
                   await loadLocalFiles(currentLocalPath);
                 } catch (err) {
@@ -15681,7 +15680,7 @@ const App: React.FC = () => {
           const toastOpts = { filename: file.name, archiveBytes: file.size };
           const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : isTarArchive ? 'tar' : isSingleArchive ? 'single' : 'zip';
           const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: extractOutputDir, createSubfolder: extractCreateSubfolder, password: null, toastOpts });
-          activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: file.name, dest }) : t('activity.extract_success', { filename: file.name }), details: formatExtractDetails(file.size ?? 0, extractedTotal) });
+          activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: file.name, dest }) : t('activity.extract_success', { filename: file.name }), details: formatExtractDetails(file.size ?? 0, extractedTotal, t) });
           notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
           await loadLocalFiles(currentLocalPath);
         } catch (err) {
@@ -17887,7 +17886,7 @@ const App: React.FC = () => {
                   outputBytes = props?.size ?? 0;
                 } catch { /* size stays 0 -> log reports input only, no fake ratio */ }
                 const suffix = opts.password ? ' (AES-256)' : '';
-                activityLog.updateEntry(logId, { status: 'success', message: t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }), details: formatCompressDetails(inputBytes, outputBytes) });
+                activityLog.updateEntry(logId, { status: 'success', message: t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }), details: formatCompressDetails(inputBytes, outputBytes, t) });
                 notify.success(t('toast.compressed'), t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }));
                 await loadLocalFiles(currentLocalPath);
                 // Keep the dialog open so it can present the completion stats
@@ -19285,7 +19284,7 @@ const App: React.FC = () => {
                                     if (meta?.status === 'loading') {
                                       content = <Loader2 size={12} className="animate-spin text-gray-400" />;
                                     } else if (meta?.status === 'done' && meta.encrypted && meta.cipher) {
-                                      const c = formatArchiveCipher(meta.cipher);
+                                      const c = formatArchiveCipher(meta.cipher, t);
                                       content = <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${c.strong ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`} title={c.strong ? undefined : t('contextMenu.zipCryptoLegacy')}>{c.label}</span>;
                                     }
                                     return <td key="encryption" className="px-4 py-2 text-xs">{content}</td>;

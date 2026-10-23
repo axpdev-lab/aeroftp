@@ -21,6 +21,7 @@ import { useTranslation } from '../i18n';
 import {
     findActiveMode,
     findActiveModeGroup,
+    modeLabel,
 } from './providerModeGroups';
 import { protocolBadgeRank } from './providerCatalog';
 import BridgeStatusBanner from './BridgeStatusBanner';
@@ -138,12 +139,12 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                 'mb-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60'
             }
             role="tablist"
-            aria-label={`${group.headerLabel}`}
+            aria-label={group.headerLabel(t)}
         >
             <div className="flex items-center gap-1.5 mb-2 flex-wrap">
                 <FileText size={12} className="text-gray-400 dark:text-gray-500" />
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mr-2">
-                    {group.headerLabel}
+                    {group.headerLabel(t)}
                 </span>
                 {orderedModes.map(mode => {
                     const isActive = active === mode;
@@ -166,10 +167,10 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                                 missingFromBuild
                                     ? t('provider.modes.notInBuild')
                                     : unavailable
-                                    ? mode.description
+                                    ? mode.description(t)
                                     : readOnly && !isActive
                                     ? lockedHint
-                                    : mode.description
+                                    : mode.description(t)
                             }
                             className={
                                 isActive
@@ -182,7 +183,7 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                             <span className={isActive ? mode.activeColor : 'text-gray-400 dark:text-gray-500'}>
                                 {mode.icon}
                             </span>
-                            <span>{mode.label}</span>
+                            <span>{modeLabel(mode, t)}</span>
                             {mode.badge && (
                                 <span
                                     className={
@@ -200,8 +201,8 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
             </div>
             {active && (
                 <div className="text-[11px] text-gray-600 dark:text-gray-400 leading-snug pl-1">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">{active.label}:</span>{' '}
-                    {active.description}
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{modeLabel(active, t)}:</span>{' '}
+                    {active.description(t)}
                 </div>
             )}
             {readOnly && (

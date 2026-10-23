@@ -44,10 +44,10 @@ type ModalState = 'options' | 'loading' | 'success' | 'error';
 type ModalTab = 'create' | 'manage';
 
 const EXPIRATION_PRESETS = [
-  { label: '1 hour', value: 3600 },
-  { label: '24 hours', value: 86400 },
-  { label: '7 days', value: 604800 },
-  { label: '30 days', value: 2592000 },
+  { labelKey: 'shareLinkModal.expirationHoursOne', count: 1, value: 3600 },
+  { labelKey: 'shareLinkModal.expirationHoursMany', count: 24, value: 86400 },
+  { labelKey: 'shareLinkModal.expirationDaysMany', count: 7, value: 604800 },
+  { labelKey: 'shareLinkModal.expirationDaysMany', count: 30, value: 2592000 },
 ] as const;
 
 export function ShareLinkModal({ path, fileName, providerName, providerIcon, onClose }: ShareLinkModalProps) {
@@ -445,7 +445,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
                             }`}
                           >
-                            {preset.label}
+                            {t(preset.labelKey, { count: preset.count })}
                           </button>
                         ))}
                       </div>

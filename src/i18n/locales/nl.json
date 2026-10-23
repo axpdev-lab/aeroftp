@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Kopieer deze URL en plak deze als omleidings-URI in de instellingen van uw ontwikkelaarsapp.",
                 "redirectUriNoteGoogle": "Aanbevolen: maak in Google Cloud Console een OAuth-client-ID van het type \"Desktop-app\"; het registreren van een omleidings-URI is niet nodig. Registreer voor een client van het type \"Webapplicatie\" exact de hierboven getoonde omleidings-URI, inclusief de poort en het pad /callback.",
                 "enablePhotosApi": "Zorg ervoor dat Photos Library API is ingeschakeld in uw Google Cloud Console.",
-                "enableDriveApi": "Zorg ervoor dat Google Drive API is ingeschakeld in uw Google Cloud Console."
+                "enableDriveApi": "Zorg ervoor dat Google Drive API is ingeschakeld in uw Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "VS",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Australië",
+                "zohoRegionJp": "Japan",
+                "zohoRegionUk": "Verenigd Koninkrijk",
+                "zohoRegionCa": "Canada",
+                "zohoRegionSa": "Saoedi-Arabië"
             },
             "activeSessions": "Actieve sessies",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Aanbevolen voor maximale beveiliging",
             "fontCustomOption": "Aangepast...",
             "fontSystemInstallHint": "Vereist systeeminstallatie. AeroFTP valt automatisch terug als het niet beschikbaar is.",
-            "fontSizeIndicatorLabel": "Lettertype"
+            "fontSizeIndicatorLabel": "Lettertype",
+            "fontPresetDefault": "{font} (standaard)",
+            "fontPresetSystemDefault": "Systeemstandaard"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Lettergrootte vergroten (Ctrl+=)",
                 "newTab": "Nieuw terminaltabblad",
                 "sshShellTo": "SSH-shell naar {host}",
-                "theme": "Terminalthema"
+                "theme": "Terminalthema",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "Echt zwart",
+                "themeGreen": "Groen",
+                "themeIce": "IJs",
+                "themeRedLava": "Rode lava"
             },
             "editorPanel": {
                 "emptyState": "Klik met de rechtermuisknop op een bestand en kies \"Bron weergeven\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(één per regel)",
             "pairsEditorLabel": "AeroCloud-paareneditor",
             "remoteSubfolderPlaceholder": "wolk",
-            "countdownSoon": "Binnenkort..."
+            "countdownSoon": "Binnenkort...",
+            "aerocloudEnabled": "AeroCloud ingeschakeld",
+            "selectPairLocalFolder": "Lokale map voor paar selecteren",
+            "secondsAgo": "{count}s geleden"
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Onderzoeker, kwaliteitsborgingsingenieur, mede-ontwerper"
             },
             "madeBy": "door {author}",
-            "statsLine": "{protocols} protocollen · {languages} talen · AES-256-archieven"
+            "statsLine": "{protocols} protocollen · {languages} talen · AES-256-archieven",
+            "dependencyRoles": {
+                "sftpOps": "SFTP-bewerkingen",
+                "osKeyring": "OS-sleutelhanger",
+                "vaultFormat": "Kluisformaat",
+                "zipArchives": "ZIP-archieven"
+            }
         },
         "support": {
             "title": "Steun AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] {files} bestand(en) hersteld uit prullenbak, {present} al aanwezig",
             "trash_restore_detail_folders_present_success": "[{provider}] {files} bestand(en), {folders} map(pen) hersteld uit prullenbak, {present} al aanwezig",
             "filelu_file_password_removed": "[{provider}] Bestandswachtwoord verwijderd",
-            "filelu_folder_password_removed": "[{provider}] Mapwachtwoord verwijderd"
+            "filelu_folder_password_removed": "[{provider}] Mapwachtwoord verwijderd",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} mislukt",
+            "batch_rename_start": "[{location}] {count} item(s) hernoemen...",
+            "batch_rename_success": "[{location}] {count} item(s) hernoemd",
+            "batch_rename_error": "[{location}] {count} item(s) hernoemd, {failed} mislukt",
+            "compress_details_saved": "{input} → {output} ({percent}% bespaard)",
+            "compress_details_grew": "{input} → {output} ({percent}% gegroeid)",
+            "extract_details": "{input} → {output} (uitgepakt)",
+            "download_details": "({size} in {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdictie",
             "insecureCertDialogLabel": "Waarschuwing onveilig certificaat",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Verificatie van hostsleutel"
+            "hostKeyDialogLabel": "Verificatie van hostsleutel",
+            "mtpName": "Draagbaar apparaat (MTP)",
+            "mtpDesc": "Telefoon of camera via MTP/WPD",
+            "immichDesc": "Zelfgehost fotobeheer",
+            "imagekitDesc": "Media-CDN + opslag (20 GB gratis)",
+            "uploadcareDesc": "EU-media-CDN (3 GB gratis)",
+            "cloudinaryDesc": "Media-CDN (25 tegoedpunten/maand gratis)",
+            "backblazeDesc": "Native Backblaze B2-API v4"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -2416,7 +2458,10 @@
             "add": "Toevoegen",
             "remove": "Verwijderen",
             "none": "Geen rechten ingesteld",
-            "anyoneWithLink": "Iedereen met de link"
+            "anyoneWithLink": "Iedereen met de link",
+            "roleViewer": "Lezer",
+            "roleEditor": "Bewerker",
+            "roleCommenter": "Commentator"
         },
         "locking": {
             "lock": "Bestand vergrendelen",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "mislukt {count}",
             "rollbackRestoreCompleted": "Herstel voltooid: {summary}",
             "rollbackRestoreNothing": "Niets te herstellen",
-            "rollbackRestoreFailed": "Herstellen mislukt: {error}"
+            "rollbackRestoreFailed": "Herstellen mislukt: {error}",
+            "intervalHoursOne": "{count} uur",
+            "intervalHoursMany": "{count} uur"
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Ondersteunt beeldherkenning",
                 "thinkingReasoning": "Denken/Redeneren",
                 "toolQuality": "Kwaliteit van hulpmiddelen: {quality}/5",
-                "ollamaNotReachable": "Ollama niet bereikbaar"
+                "ollamaNotReachable": "Ollama niet bereikbaar",
+                "macroSafeEditName": "Veilig bewerken",
+                "macroSafeEditDescription": "Lees een bestand, toon de inhoud en bewerk het daarna (veiligheidspatroon: lezen voor schrijven)",
+                "macroFindReadName": "Zoeken en lezen",
+                "macroFindReadDescription": "Zoek bestanden die overeenkomen met een patroon in een lokale map",
+                "familyHintLlama3": "Directe en beknopte instructies werken het best. Gebruik markdown-opmaak. Ondersteunt toolgebruik standaard.",
+                "familyHintCodellama": "Richt je op codegeneratie en -analyse. Geef codevoorbeelden. Gebruik technische taal.",
+                "familyHintDeepseekCoder": "Sterk in redeneren over code en het oplossen van problemen in meerdere stappen. Gestructureerde uitvoer heeft de voorkeur. Bij deepseek-r1 werkt de denkmodus automatisch.",
+                "familyHintQwen": "Ondersteunt gestructureerde uitvoer. Goed in meertalige taken. Gebruik duidelijke sectiekoppen.",
+                "familyHintMistral": "Gericht op het opvolgen van instructies. Houd prompts gestructureerd met duidelijke taakomschrijvingen.",
+                "familyHintPhi": "Compact model: houd instructies beknopt. Het best voor gerichte taken, niet voor lange teksten.",
+                "familyHintGemma": "Instructieformaat in Google-stijl. Goed in samenvatten en analyseren.",
+                "familyHintStarcoder": "Gericht op codeaanvulling. Geef bestandscontext en imports voor de beste resultaten."
             },
             "copy": "Kopiëren",
             "attachImage": "Afbeelding bijvoegen",
@@ -3033,7 +3092,8 @@
                 "general": "Algemeen",
                 "typeSlash": "Typ / om sjablonen te gebruiken",
                 "analyzeUi": "UI-schermafbeelding analyseren op lay-out, toegankelijkheid en UX-problemen",
-                "performance": "Code analyseren op prestatieproblemen en optimalisatie"
+                "performance": "Code analyseren op prestatieproblemen en optimalisatie",
+                "analysis": "Analyse"
             },
             "costBudget": {
                 "conversationCost": "Gesprekskosten",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} d geleden",
             "recentFileCountMany": "{count} bestanden",
             "recentFileCountOne": "{count} bestand",
-            "recentMonthsAgo": "{count} mnd geleden"
+            "recentMonthsAgo": "{count} mnd geleden",
+            "securityArchive": "Archief",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Snel",
+            "securityAdvancedDescription": "Nonce-bestendig · Versleutelde bestandsnamen · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20-cascade · Dubbele versleuteling",
+            "securityArchiveDescription": "Gededupliceerd archief · zstd-blokken · v3"
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM-inhoud",
             "featureNameCipher": "AES-SIV-namen",
             "formatVersion": "Formaat {version}",
-            "invalidVaultName": "Ongeldige tekens in kluisnaam"
+            "invalidVaultName": "Ongeldige tekens in kluisnaam",
+            "defaultVaultName": "NieuweKluis"
         },
         "compress": {
             "title": "Bestanden comprimeren",
@@ -3952,7 +4018,10 @@
             "threads": "Threads",
             "auto": "Auto",
             "solid": "Solide blok",
-            "solidHint": "Betere ratio bij veel kleine bestanden, langzamere willekeurige extractie."
+            "solidHint": "Betere ratio bij veel kleine bestanden, langzamere willekeurige extractie.",
+            "formatArchiveOnly": "Alleen archiveren",
+            "formatBestRatio": "Beste verhouding",
+            "formatSingleFile": "enkel bestand"
         },
         "batchRename": {
             "title": "Batch hernoemen",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Bewerkingen filteren",
                 "selected": "geselecteerd"
-            }
+            },
+            "save": "Opslaan"
         },
         "error": {
             "description": "AeroFTP heeft een onverwachte fout ondervonden. U kunt proberen te herstellen of de applicatie opnieuw te laden.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radiaal",
                     "spectrum": "Spectrum",
                     "vortex": "Vortex",
-                    "waveform": "Golfvorm"
+                    "waveform": "Golfvorm",
+                    "glWaveGlitch": "Golfstoring",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunnel",
+                    "glMetaball": "Metaballen",
+                    "glParticles": "Deeltjes"
                 },
                 "volume": "Volume"
             },
@@ -4635,7 +4711,18 @@
                 "off": "UIT",
                 "on": "AAN",
                 "presets": "Presets",
-                "reset": "Naar vlak resetten"
+                "reset": "Naar vlak resetten",
+                "presetFlat": "Vlak",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klassiek",
+                "presetBassBoost": "Basversterking",
+                "presetTrebleBoost": "Hogetonenversterking",
+                "presetVocal": "Zang",
+                "presetElectronic": "Elektronisch",
+                "presetAcoustic": "Akoestisch",
+                "presetCustom": "Aangepast"
             },
             "pdf": {
                 "download": "PDF downloaden",
@@ -5118,7 +5205,37 @@
             "paidTier": "Betaald",
             "extraFeatures": "Extra",
             "coreOpsList": "Uploaden, Downloaden, Verwijderen, Hernoemen, Verplaatsen, Map maken, Zoeken",
-            "coreOpsLegend": "Basis = Uploaden, Downloaden, Verwijderen, Hernoemen, Verplaatsen, Map maken, Zoeken"
+            "coreOpsLegend": "Basis = Uploaden, Downloaden, Verwijderen, Hernoemen, Verplaatsen, Map maken, Zoeken",
+            "notes": "Opmerkingen",
+            "storageClass": "Opslagklasse",
+            "objectTagging": "Objecttags",
+            "sse": "Versleuteling aan serverzijde",
+            "checksum": "Controlesom",
+            "tierManagement": "Opslaglaagbeheer",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Mediabestanden",
+            "sectionOther": "Overig",
+            "trashDetails": {
+                "onedrive": "Business- en SharePoint-schijven. Microsoft Graph biedt geen toegang tot de prullenbak van een OneDrive Personal-schijf; gebruik daarvoor de OneDrive-website"
+            },
+            "shareLinkDetails": {
+                "permissions": "Machtigingen: bekijken, opmerkingen, bewerken",
+                "passwordExpiryPlan": "Wachtwoord + vervaldatum ({plan}-abonnement vereist)",
+                "passwordExpiryPaid": "Wachtwoord + vervaldatum (betaald abonnement vereist)",
+                "passwordPersonalExpiryPermissions": "Wachtwoord (alleen Personal), vervaldatum, machtigingen",
+                "passwordArgon2ExpiryPresets": "Wachtwoord (Argon2id) + vooraf ingestelde vervaltermijnen",
+                "passwordExpiryPermissions": "Wachtwoord, vervaldatum, machtigingen",
+                "basicOnly": "Alleen eenvoudige deellink",
+                "publicToggle": "Openbare link (privacy schakelen)",
+                "basic": "Eenvoudige deellink",
+                "expiringDefaultYear": "Verlopende links (standaard 1 jaar)",
+                "publishUnpublish": "Publiceren/depubliceren",
+                "permanentUrl": "Permanente URL",
+                "sharedAlbum": "Link naar gedeeld album",
+                "megaPresignedS4": "Deellink / vooraf ondertekende URL (max. 7 dagen voor S4)",
+                "autoPasswordExpiry": "Wachtwoord (automatisch gegenereerd) + vervaldatum",
+                "presigned": "Vooraf ondertekende URL (max. 7 dagen)"
+            }
         },
         "healthCheck": {
             "title": "Serverstatus controleren",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Privérepository",
             "repoPublicTitle": "Openbare repository",
             "unpushedCommitsOnBranchMany": "{count} niet-gepushte commits op {branch}",
-            "unpushedCommitsOnBranchOne": "{count} niet-gepushte commit op {branch}"
+            "unpushedCommitsOnBranchOne": "{count} niet-gepushte commit op {branch}",
+            "cancelWorkflow": "Werkstroom annuleren",
+            "rerunWorkflow": "Werkstroom opnieuw uitvoeren",
+            "downloadAssetTitle": "{name} downloaden"
         },
         "filenNotes": {
             "title": "Versleutelde notities",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Aangemaakt",
             "manageExpires": "Verloopt",
             "manageNeverExpires": "Nooit",
-            "managePasswordProtected": "Beveiligd met wachtwoord"
+            "managePasswordProtected": "Beveiligd met wachtwoord",
+            "expirationHoursOne": "{count} uur",
+            "expirationHoursMany": "{count} uur",
+            "expirationDaysMany": "{count} dagen"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} u",
                 "days": "{count} d",
                 "months": "{count} mnd"
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Nieuw: {name}"
         },
         "gitlab": {
             "projectPath": "Projectpad",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Merge Request aanmaken",
             "mrTitle": "MR-titel",
             "mrBody": "Beschrijving (optioneel)",
-            "sourceCode": "Broncode"
+            "sourceCode": "Broncode",
+            "downloadAssetTitle": "{name} downloaden"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Nieuwe gebruiker",
                 "noUsers": "Nog geen gebruikers. Gebruik hieronder \"Nieuwe gebruiker\" om de eerste toe te voegen.",
                 "protectionNote": "Je account is beveiligd met Argon2id + AES-KW + AES-256-GCM-versleuteling",
-                "users": "Gebruikers"
+                "users": "Gebruikers",
+                "setup": "Instellen"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "De modus wordt gekozen bij het maken van de verbinding en blijft vast tijdens het bewerken van een opgeslagen profiel. Maak een nieuwe verbinding om een andere modus te gebruiken.",
-                "notInBuild": "Niet opgenomen in deze build van AeroFTP."
+                "notInBuild": "Niet opgenomen in deze build van AeroFTP.",
+                "header": "{name}-modi",
+                "nativeApi": "Native API",
+                "filelu": {
+                    "apiDescription": "REST-API met API-sleutel. Volledige functionaliteit (prullenbak, deellinks, met wachtwoord beveiligde bestanden).",
+                    "webdavDescription": "WebDAV-toegang via poort 443. Brede compatibiliteit met clients, koppelbaar als netwerkstation.",
+                    "s3Description": "S3-compatibele API op poort 443. Gebruik rclone, AWS CLI of een willekeurige S3-SDK.",
+                    "ftpDescription": "Klassieke FTP op poort 21. Onversleuteld, handig voor NVR's van bewakingscamera's en oudere clients."
+                },
+                "filen": {
+                    "apiDescription": "Zero-knowledge E2E-versleuteling (Argon2id v3 / PBKDF2 v2). Volledige functies: opslagquotum, prullenbak, wachtwoorden voor deellinks, versiebeheer, TOTP.",
+                    "webdavDescription": "WebDAV-brug die Filen Desktop aanbiedt op 127.0.0.1:1900. Vereist dat Filen Desktop draait en is aangemeld.",
+                    "s3Description": "S3-compatibele brug die Filen Desktop aanbiedt op 127.0.0.1:1800 via local.s3.filen.io. Padgebaseerde adressering, elke Filen-map op het hoogste niveau is een bucket."
+                },
+                "proton": {
+                    "headerDescription": "Proton-cloudopslag met end-to-end-versleuteling",
+                    "apiDescription": "De eigen Proton Drive-client van AeroFTP: je meldt je aan op de pagina van Proton in de browser, bestanden worden op deze computer versleuteld en ontsleuteld, en er is geen andere app nodig.",
+                    "cliDescription": "Bestuurt de officiële Proton Drive-CLI die op deze machine is geïnstalleerd en aangemeld. Je meldt je aan in de browser; AeroFTP ziet nooit je Proton-wachtwoord."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive-cloudopslag (5 GB gratis)",
+                    "apiDescription": "REST-API met gebruikersnaam + wachtwoord. Volledige functies: prullenbak, opslagquotum, deellinks, recursief schijfgebruik.",
+                    "webdavDescription": "WebDAV-toegang via webdav.opendrive.com op poort 443. Voor oudere clients of om als netwerkschijf te koppelen."
+                },
+                "koofr": {
+                    "apiDescription": "In de EU gevestigde REST-API met e-mail + app-wachtwoord. Volledige functies: opslagquotum, prullenbak (tonen/herstellen/legen), deellinks.",
+                    "webdavDescription": "WebDAV-toegang via app.koofr.net/dav/Koofr op poort 443. Het opslagquotum wordt nog steeds uit de REST-API van Koofr gelezen. Voor oudere clients of om als netwerkschijf te koppelen."
+                },
+                "mega": {
+                    "headerDescription": "MEGA-cloudopslag met versleuteling aan de clientzijde",
+                    "apiDescription": "Native MEGA-API met e-mail + wachtwoord (+ optioneel TOTP). Volledige functies: versleuteling aan de clientzijde, opslagquotum, deellinks, miniaturen.",
+                    "webdavDescription": "Lokale WebDAV-brug van de officiële MEGAcmd-CLI, anoniem op 127.0.0.1. AeroFTP voert bij het verbinden \"mega-webdav /\" voor je uit, dus er is geen handmatige stap.",
+                    "s4Description": "MEGA S4-objectopslag, S3-compatibel (regio's EU/CA). Toegangssleutel + geheime sleutel + bucket. Vereist een Pro-abonnement."
+                }
             }
         },
         "flatpak": {

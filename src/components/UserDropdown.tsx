@@ -116,7 +116,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLo
     const hasUsers = users.length > 0;
     const activeUser = hasUsers
         ? (users.find((user) => user.isActive) ?? users[0])
-        : ({ id: 0, name: 'Setup', avatarEmoji: null, avatarColor: null, hasPassphrase: false, isActive: false, sortOrder: 0, isAdmin: false } as unknown as UserMetadata);
+        : ({ id: 0, name: t('manageUsers.dropdown.setup'), avatarEmoji: null, avatarColor: null, hasPassphrase: false, isActive: false, sortOrder: 0, isAdmin: false } as unknown as UserMetadata);
     const activeLocked = hasUsers && activeUser.hasPassphrase && status?.isUnlocked === false;
     const sortedUsers = [...users].sort((a, b) => {
         if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;

@@ -501,6 +501,20 @@
       "folded": "gwiazdka",
       "twin": "gwiazdką",
       "reason": "Gwiazdka is the nominative name of the Star feature; gwiazdką is the instrumental case, which this label does not use."
+    },
+    "da\u001fgithub.cancelWorkflow\u001fAnnuller arbejdsgang": {
+      "locale": "da",
+      "key": "github.cancelWorkflow",
+      "folded": "annuller",
+      "twin": "annullér",
+      "reason": "Annuller is the imperative of annullere on a button; Danish writes the stress accent (annullér) only optionally."
+    },
+    "lt\u001fproviders.sectionOther\u001fKita": {
+      "locale": "lt",
+      "key": "providers.sectionOther",
+      "folded": "kita",
+      "twin": "kitą",
+      "reason": "Kita is the nominative heading for the Other section; kitą is the accusative case, which this heading does not use."
     }
   }
 }

@@ -312,7 +312,7 @@ export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ ar
                     <div className="flex items-center gap-1.5">
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{format}</span>
                         {cipher && (() => {
-                            const c = formatArchiveCipher(cipher);
+                            const c = formatArchiveCipher(cipher, t);
                             return (
                                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${c.strong ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`} title={c.strong ? undefined : t('contextMenu.zipCryptoLegacy')}>{c.label}</span>
                             );

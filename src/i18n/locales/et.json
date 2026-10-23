@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Kopeerige see URL ja kleepige see ümbersuunamise URI-na oma arendajarakenduse seadetesse.",
                 "redirectUriNoteGoogle": "Soovitus: loo Google Cloud Console’is OAuthi kliendi ID tüübiga „Töölauarakendus“; ümbersuunamise URI-d pole vaja registreerida. Tüübi „Veebirakendus“ korral registreeri täpselt ülal kuvatud ümbersuunamise URI, sealhulgas port ja tee /callback.",
                 "enablePhotosApi": "Veenduge, et Photos Library API on teie Google Cloud Console-is lubatud.",
-                "enableDriveApi": "Veenduge, et Google Drive API on teie Google Cloud Console-is lubatud."
+                "enableDriveApi": "Veenduge, et Google Drive API on teie Google Cloud Console-is lubatud.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "USA",
+                "zohoRegionEu": "EL",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Austraalia",
+                "zohoRegionJp": "Jaapan",
+                "zohoRegionUk": "Ühendkuningriik",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Saudi Araabia"
             },
             "activeSessions": "Aktiivsed seansid",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Soovitatav maksimaalse turvalisuse jaoks",
             "fontCustomOption": "Kohandatud...",
             "fontSystemInstallHint": "Nõuab süsteemi paigaldust. AeroFTP kasutab puudumisel automaatselt varulahendust.",
-            "fontSizeIndicatorLabel": "Kiri"
+            "fontSizeIndicatorLabel": "Kiri",
+            "fontPresetDefault": "{font} (vaikimisi)",
+            "fontPresetSystemDefault": "Süsteemi vaikimisi"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Suurenda fondi suurust (Ctrl+=)",
                 "newTab": "Uus terminali vahekaart",
                 "sshShellTo": "SSH-kest hostis {host}",
-                "theme": "Terminali teema"
+                "theme": "Terminali teema",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Küber",
+                "themeTrueDark": "Tõeline tume",
+                "themeGreen": "Roheline",
+                "themeIce": "Jää",
+                "themeRedLava": "Punane laava"
             },
             "editorPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Kuva lähtekood\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(üks rea kohta)",
             "pairsEditorLabel": "AeroCloudi paaride redaktor",
             "remoteSubfolderPlaceholder": "pilv",
-            "countdownSoon": "Varsti..."
+            "countdownSoon": "Varsti...",
+            "aerocloudEnabled": "AeroCloud lubatud",
+            "selectPairLocalFolder": "Vali paari jaoks kohalik kaust",
+            "secondsAgo": "{count}s tagasi"
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Teadur, kvaliteedi tagamise insener, kaasdisainer"
             },
             "madeBy": "{author} poolt",
-            "statsLine": "{protocols} protokolli · {languages} keelt · AES-256 arhiivid"
+            "statsLine": "{protocols} protokolli · {languages} keelt · AES-256 arhiivid",
+            "dependencyRoles": {
+                "sftpOps": "SFTP toimingud",
+                "osKeyring": "OS-i võtmehoidja",
+                "vaultFormat": "Hoidla vorming",
+                "zipArchives": "ZIP-arhiivid"
+            }
         },
         "support": {
             "title": "Toeta AeroFTP-d",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Prügikastist taastati {files} fail(i), {present} oli juba olemas",
             "trash_restore_detail_folders_present_success": "[{provider}] Prügikastist taastati {files} fail(i), {folders} kaust(a), {present} oli juba olemas",
             "filelu_file_password_removed": "[{provider}] Faili parool eemaldati",
-            "filelu_folder_password_removed": "[{provider}] Kausta parool eemaldatud"
+            "filelu_folder_password_removed": "[{provider}] Kausta parool eemaldatud",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} ebaõnnestus",
+            "batch_rename_start": "[{location}] Üksuste ümbernimetamine: {count}...",
+            "batch_rename_success": "[{location}] Ümbernimetatud üksused: {count}",
+            "batch_rename_error": "[{location}] Ümbernimetatud üksused: {count}, ebaõnnestunud: {failed}",
+            "compress_details_saved": "{input} → {output} (säästetud {percent}%)",
+            "compress_details_grew": "{input} → {output} (kasvas {percent}%)",
+            "extract_details": "{input} → {output} (lahti pakitud)",
+            "download_details": "({size} {seconds} s jooksul)"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Jurisdiktsioon",
             "insecureCertDialogLabel": "Ebaturvalise sertifikaadi hoiatus",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Hostivõtme kontrollimine"
+            "hostKeyDialogLabel": "Hostivõtme kontrollimine",
+            "mtpName": "Kaasaskantav seade (MTP)",
+            "mtpDesc": "Telefon või kaamera MTP/WPD kaudu",
+            "immichDesc": "Isehostitud fotohaldus",
+            "imagekitDesc": "Meedia-CDN + salvestusruum (20 GB tasuta)",
+            "uploadcareDesc": "EL-i meedia-CDN (3 GB tasuta)",
+            "cloudinaryDesc": "Meedia-CDN (25 krediiti kuus tasuta)",
+            "backblazeDesc": "Backblaze B2 algupärane API v4"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -2416,7 +2458,10 @@
             "add": "Lisa",
             "remove": "Eemalda",
             "none": "Õigusi pole määratud",
-            "anyoneWithLink": "Igaüks, kellel on link"
+            "anyoneWithLink": "Igaüks, kellel on link",
+            "roleViewer": "Vaataja",
+            "roleEditor": "Redigeerija",
+            "roleCommenter": "Kommenteerija"
         },
         "locking": {
             "lock": "Lukusta fail",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "ebaõnnestunud {count}",
             "rollbackRestoreCompleted": "Taastamine lõpetatud: {summary}",
             "rollbackRestoreNothing": "Pole midagi taastada",
-            "rollbackRestoreFailed": "Taastamine ebaõnnestus: {error}"
+            "rollbackRestoreFailed": "Taastamine ebaõnnestus: {error}",
+            "intervalHoursOne": "{count} tund",
+            "intervalHoursMany": "{count} tundi"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Toetab nägemist",
                 "thinkingReasoning": "Mõtlemine/Arutlemine",
                 "toolQuality": "Tööriistade kvaliteet: {quality}/5",
-                "ollamaNotReachable": "Ollama pole kättesaadav"
+                "ollamaNotReachable": "Ollama pole kättesaadav",
+                "macroSafeEditName": "Turvaline muutmine",
+                "macroSafeEditDescription": "Loe faili, näita selle sisu ja muuda seda seejärel (turvamuster: loe enne kirjutamist)",
+                "macroFindReadName": "Leia ja loe",
+                "macroFindReadDescription": "Otsi kohalikust kataloogist mustrile vastavaid faile",
+                "familyHintLlama3": "Kõige paremini toimivad otsesed ja lühikesed juhised. Kasuta markdown-vormingut. Toetab tööriistade kasutamist natiivselt.",
+                "familyHintCodellama": "Keskendu koodi genereerimisele ja analüüsile. Too koodinäiteid. Kasuta tehnilist keelt.",
+                "familyHintDeepseekCoder": "Tugev koodi üle arutlemises ja mitmeastmeliste probleemide lahendamises. Eelistatud on struktureeritud väljund. deepseek-r1 puhul töötab mõtlemisrežiim automaatselt.",
+                "familyHintQwen": "Toetab struktureeritud väljundit. Hea mitmekeelsetes ülesannetes. Kasuta selgeid jaotiste pealkirju.",
+                "familyHintMistral": "Suunatud juhiste järgimisele. Hoia viibad struktureeritud ja selgete ülesandekirjeldustega.",
+                "familyHintPhi": "Kompaktne mudel: hoia juhised lühikesed. Sobib kõige paremini kitsastele ülesannetele, mitte pikkadele tekstidele.",
+                "familyHintGemma": "Google'i stiilis juhiste vorming. Hea kokkuvõtete ja analüüsi tegemisel.",
+                "familyHintStarcoder": "Keskendub koodi lõpetamisele. Parimate tulemuste saamiseks anna faili kontekst ja impordid."
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",
@@ -3033,7 +3092,8 @@
                 "general": "Üldine",
                 "typeSlash": "Tippige / mallide kasutamiseks",
                 "analyzeUi": "Analüüsige UI kuvakoopia paigutuse, ligipääsetavuse ja UX probleemide leidmiseks",
-                "performance": "Analüüsige koodi jõudluse pudelikaelte ja optimeerimise leidmiseks"
+                "performance": "Analüüsige koodi jõudluse pudelikaelte ja optimeerimise leidmiseks",
+                "analysis": "Analüüs"
             },
             "costBudget": {
                 "conversationCost": "Vestluse maksumus",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} p tagasi",
             "recentFileCountMany": "{count} faili",
             "recentFileCountOne": "{count} fail",
-            "recentMonthsAgo": "{count} k tagasi"
+            "recentMonthsAgo": "{count} k tagasi",
+            "securityArchive": "Arhiiv",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Kiire",
+            "securityAdvancedDescription": "Nonce-kindel · Krüpteeritud failinimed · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 kaskaad · Topeltkrüpteerimine",
+            "securityArchiveDescription": "Dubleerimata arhiiv · zstd plokid · v3"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM sisu",
             "featureNameCipher": "AES-SIV nimed",
             "formatVersion": "Vorming {version}",
-            "invalidVaultName": "Hoidla nimes on sobimatud märgid"
+            "invalidVaultName": "Hoidla nimes on sobimatud märgid",
+            "defaultVaultName": "UusHoidla"
         },
         "compress": {
             "title": "Paki failid",
@@ -3952,7 +4018,10 @@
             "threads": "Lõimed",
             "auto": "Automaatne",
             "solid": "Terviklik plokk",
-            "solidHint": "Parem suhe paljude väikeste failide puhul, aeglasem juhuslik ekstraktimine."
+            "solidHint": "Parem suhe paljude väikeste failide puhul, aeglasem juhuslik ekstraktimine.",
+            "formatArchiveOnly": "Ainult arhiiv",
+            "formatBestRatio": "Parim suhe",
+            "formatSingleFile": "üks fail"
         },
         "batchRename": {
             "title": "Hulgiümbernimetamine",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtreeri toiminguid",
                 "selected": "valitud"
-            }
+            },
+            "save": "Salvesta"
         },
         "error": {
             "description": "AeroFTP-s tekkis ootamatu viga. Võid proovida taastada või rakenduse uuesti laadida.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radiaalne",
                     "spectrum": "Spekter",
                     "vortex": "Keeris",
-                    "waveform": "Lainekuju"
+                    "waveform": "Lainekuju",
+                    "glWaveGlitch": "Lainemoonutus",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunnel",
+                    "glMetaball": "Metapallid",
+                    "glParticles": "Osakesed"
                 },
                 "volume": "Helitugevus"
             },
@@ -4635,7 +4711,18 @@
                 "off": "VÄLJAS",
                 "on": "SEES",
                 "presets": "Eelseaded",
-                "reset": "Lähtesta tasaseks"
+                "reset": "Lähtesta tasaseks",
+                "presetFlat": "Tasane",
+                "presetRock": "Rokk",
+                "presetPop": "Pop",
+                "presetJazz": "Džäss",
+                "presetClassical": "Klassikaline",
+                "presetBassBoost": "Bassivõimendus",
+                "presetTrebleBoost": "Kõrgete võimendus",
+                "presetVocal": "Vokaal",
+                "presetElectronic": "Elektrooniline",
+                "presetAcoustic": "Akustiline",
+                "presetCustom": "Kohandatud"
             },
             "pdf": {
                 "download": "Laadi alla PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Tasuline",
             "extraFeatures": "Lisa",
             "coreOpsList": "Üleslaadimine, Allalaadimine, Kustutamine, Ümbernimetamine, Teisaldamine, Kausta loomine, Otsing",
-            "coreOpsLegend": "Põhi = Üleslaadimine, Allalaadimine, Kustutamine, Ümbernimetamine, Teisaldamine, Kausta loomine, Otsing"
+            "coreOpsLegend": "Põhi = Üleslaadimine, Allalaadimine, Kustutamine, Ümbernimetamine, Teisaldamine, Kausta loomine, Otsing",
+            "notes": "Märkused",
+            "storageClass": "Salvestusklass",
+            "objectTagging": "Objektide sildistamine",
+            "sse": "Serveripoolne krüpteerimine",
+            "checksum": "Kontrollsumma",
+            "tierManagement": "Salvestustasemete haldus",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Meedia",
+            "sectionOther": "Muu",
+            "trashDetails": {
+                "onedrive": "Business- ja SharePointi kettad. Microsoft Graph ei avalda OneDrive Personal ketta prügikasti; kasuta selleks OneDrive'i veebisaiti"
+            },
+            "shareLinkDetails": {
+                "permissions": "Õigused: vaatamine, kommenteerimine, muutmine",
+                "passwordExpiryPlan": "Parool + aegumine (nõutav {plan} pakett)",
+                "passwordExpiryPaid": "Parool + aegumine (nõutav tasuline pakett)",
+                "passwordPersonalExpiryPermissions": "Parool (ainult Personal), aegumine, õigused",
+                "passwordArgon2ExpiryPresets": "Parool (Argon2id) + aegumise eelseaded",
+                "passwordExpiryPermissions": "Parool, aegumine, õigused",
+                "basicOnly": "Ainult lihtne jagamislink",
+                "publicToggle": "Avalik link (privaatsuse lülitamine)",
+                "basic": "Lihtne jagamislink",
+                "expiringDefaultYear": "Aeguvad lingid (vaikimisi 1 aasta)",
+                "publishUnpublish": "Avalda/tühista avaldamine",
+                "permanentUrl": "Püsiv URL",
+                "sharedAlbum": "Jagatud albumi link",
+                "megaPresignedS4": "Jagamislink / eelallkirjastatud URL (kuni 7 päeva S4 puhul)",
+                "autoPasswordExpiry": "Parool (automaatselt loodud) + aegumine",
+                "presigned": "Eelallkirjastatud URL (kuni 7 päeva)"
+            }
         },
         "healthCheck": {
             "title": "Serveri seisundikontroll",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Privaatne hoidla",
             "repoPublicTitle": "Avalik hoidla",
             "unpushedCommitsOnBranchMany": "{count} lükkamata commiti harus {branch}",
-            "unpushedCommitsOnBranchOne": "{count} lükkamata commit harus {branch}"
+            "unpushedCommitsOnBranchOne": "{count} lükkamata commit harus {branch}",
+            "cancelWorkflow": "Tühista töövoog",
+            "rerunWorkflow": "Käivita töövoog uuesti",
+            "downloadAssetTitle": "Laadi alla {name}"
         },
         "filenNotes": {
             "title": "Krüpteeritud märkmed",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Loodud",
             "manageExpires": "Aegub",
             "manageNeverExpires": "Mitte kunagi",
-            "managePasswordProtected": "Parooliga kaitstud"
+            "managePasswordProtected": "Parooliga kaitstud",
+            "expirationHoursOne": "{count} tund",
+            "expirationHoursMany": "{count} tundi",
+            "expirationDaysMany": "{count} päeva"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} h",
                 "days": "{count} p",
                 "months": "{count} k"
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Uus: {name}"
         },
         "gitlab": {
             "projectPath": "Projekti tee",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Loo ühendamistaotlus",
             "mrTitle": "MR pealkiri",
             "mrBody": "Kirjeldus (valikuline)",
-            "sourceCode": "Lähtekood"
+            "sourceCode": "Lähtekood",
+            "downloadAssetTitle": "Laadi alla {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Uus kasutaja",
                 "noUsers": "Kasutajaid veel pole. Esimese lisamiseks kasuta allpool nuppu „Uus kasutaja“.",
                 "protectionNote": "Sinu konto on kaitstud Argon2id + AES-KW + AES-256-GCM krüpteeringuga",
-                "users": "Kasutajad"
+                "users": "Kasutajad",
+                "setup": "Seadistamine"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Režiim valitakse ühenduse loomisel ja jääb salvestatud profiili muutmise ajal muutumatuks. Teistsuguse režiimi kasutamiseks looge uus ühendus.",
-                "notInBuild": "Ei sisaldu selles AeroFTP järgus."
+                "notInBuild": "Ei sisaldu selles AeroFTP järgus.",
+                "header": "{name} režiimid",
+                "nativeApi": "Algupärane API",
+                "filelu": {
+                    "apiDescription": "REST API koos API-võtmega. Kõik funktsioonid (prügikast, jagamislingid, parooliga kaitstud failid).",
+                    "webdavDescription": "WebDAV-juurdepääs pordil 443. Lai ühilduvus klientidega, ühendatav võrgukettana.",
+                    "s3Description": "S3-ühilduv API pordil 443. Kasutage rclone'i, AWS CLI-d või mis tahes S3 SDK-d.",
+                    "ftpDescription": "Klassikaline FTP pordil 21. Krüpteerimata, kasulik valvekaamerate NVR-salvestitele ja vanematele klientidele."
+                },
+                "filen": {
+                    "apiDescription": "Nullteadmusega E2E-krüpteerimine (Argon2id v3 / PBKDF2 v2). Kõik funktsioonid: salvestuskvoot, prügikast, jagamislinkide paroolid, versioonihaldus, TOTP.",
+                    "webdavDescription": "WebDAV-sild, mida Filen Desktop pakub aadressil 127.0.0.1:1900. Nõuab, et Filen Desktop töötaks ja oleks sisse logitud.",
+                    "s3Description": "S3-ühilduv sild, mida Filen Desktop pakub aadressil 127.0.0.1:1800 local.s3.filen.io kaudu. Teepõhine adresseerimine, iga ülemise taseme Fileni kaust on ämber."
+                },
+                "proton": {
+                    "headerDescription": "Protoni pilvesalvestus otspunktkrüpteerimisega",
+                    "apiDescription": "AeroFTP oma Proton Drive'i klient: logite sisse Protoni lehel brauseris, failid krüpteeritakse ja dekrüpteeritakse selles arvutis ning muud rakendust pole vaja.",
+                    "cliDescription": "Juhib ametlikku Proton Drive'i CLI-d, mis on sellesse masinasse installitud ja sisse logitud. Logite sisse brauseris; AeroFTP ei näe kunagi teie Protoni parooli."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive'i pilvesalvestus (5 GB tasuta)",
+                    "apiDescription": "REST API kasutajanime + parooliga. Kõik funktsioonid: prügikast, salvestuskvoot, jagamislingid, rekursiivne kettakasutus.",
+                    "webdavDescription": "WebDAV-juurdepääs aadressi webdav.opendrive.com kaudu pordil 443. Vanematele klientidele või võrgukettana ühendamiseks."
+                },
+                "koofr": {
+                    "apiDescription": "EL-is asuv REST API e-posti + rakenduse parooliga. Kõik funktsioonid: salvestuskvoot, prügikast (loend/taastamine/tühjendamine), jagamislingid.",
+                    "webdavDescription": "WebDAV-juurdepääs aadressi app.koofr.net/dav/Koofr kaudu pordil 443. Salvestuskvooti loetakse endiselt Koofri REST API-st. Vanematele klientidele või võrgukettana ühendamiseks."
+                },
+                "mega": {
+                    "headerDescription": "MEGA pilvesalvestus kliendipoolse krüpteerimisega",
+                    "apiDescription": "MEGA omane API e-posti + parooliga (+ valikuline TOTP). Kõik funktsioonid: kliendipoolne krüpteerimine, salvestuskvoot, jagamislingid, pisipildid.",
+                    "webdavDescription": "Kohalik WebDAV-sild, mida pakub ametlik MEGAcmd CLI, anonüümne aadressil 127.0.0.1. AeroFTP käivitab ühendamisel teie eest \"mega-webdav /\", seega pole käsitsi sammu.",
+                    "s4Description": "MEGA S4 objektisalvestus, S3-ühilduv (piirkonnad EU/CA). Juurdepääsuvõti + salajane võti + ämber. Nõuab Pro-paketti."
+                }
             }
         },
         "flatpak": {

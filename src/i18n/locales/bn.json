@@ -202,7 +202,16 @@
                 "redirectUriHelp": "এই URL কপি করুন এবং আপনার ডেভেলপার অ্যাপ সেটিংসে রিডাইরেক্ট URI হিসেবে পেস্ট করুন।",
                 "redirectUriNoteGoogle": "পরামর্শ: Google Cloud Console-এ \"ডেস্কটপ অ্যাপ\" ধরনের একটি OAuth Client ID তৈরি করুন; কোনো রিডাইরেক্ট URI নিবন্ধন করতে হবে না। \"ওয়েব অ্যাপ্লিকেশন\" ধরনের ক্লায়েন্টের জন্য উপরে দেখানো রিডাইরেক্ট URI-টি হুবহু নিবন্ধন করুন, এর পোর্ট এবং /callback পাথসহ।",
                 "enablePhotosApi": "আপনার Google Cloud Console-এ Photos Library API সক্রিয় আছে কিনা নিশ্চিত করুন।",
-                "enableDriveApi": "আপনার Google Cloud Console-এ Google Drive API সক্রিয় আছে কিনা নিশ্চিত করুন।"
+                "enableDriveApi": "আপনার Google Cloud Console-এ Google Drive API সক্রিয় আছে কিনা নিশ্চিত করুন।",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "যুক্তরাষ্ট্র",
+                "zohoRegionEu": "ইইউ",
+                "zohoRegionIn": "ভারত",
+                "zohoRegionAu": "অস্ট্রেলিয়া",
+                "zohoRegionJp": "জাপান",
+                "zohoRegionUk": "যুক্তরাজ্য",
+                "zohoRegionCa": "কানাডা",
+                "zohoRegionSa": "সৌদি আরব"
             },
             "activeSessions": "সক্রিয় সেশন",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "সর্বোচ্চ নিরাপত্তার জন্য প্রস্তাবিত",
             "fontCustomOption": "কাস্টম...",
             "fontSystemInstallHint": "সিস্টেমে ইনস্টল করা প্রয়োজন। উপলব্ধ না থাকলে AeroFTP স্বয়ংক্রিয়ভাবে বিকল্প ব্যবহার করে।",
-            "fontSizeIndicatorLabel": "ফন্ট"
+            "fontSizeIndicatorLabel": "ফন্ট",
+            "fontPresetDefault": "{font} (ডিফল্ট)",
+            "fontPresetSystemDefault": "সিস্টেম ডিফল্ট"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "ফন্টের আকার বাড়ান (Ctrl+=)",
                 "newTab": "নতুন টার্মিনাল ট্যাব",
                 "sshShellTo": "{host}-এ SSH শেল",
-                "theme": "টার্মিনাল থিম"
+                "theme": "টার্মিনাল থিম",
+                "tabLabel": "টার্মিনাল {num}",
+                "themeCyber": "সাইবার",
+                "themeTrueDark": "ট্রু ডার্ক",
+                "themeGreen": "সবুজ",
+                "themeIce": "বরফ",
+                "themeRedLava": "লাল লাভা"
             },
             "editorPanel": {
                 "emptyState": "একটি ফাইলে ডান ক্লিক করুন এবং \"উৎস দেখুন\" নির্বাচন করুন",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(প্রতি লাইনে একটি)",
             "pairsEditorLabel": "AeroCloud জোড়া সম্পাদক",
             "remoteSubfolderPlaceholder": "ক্লাউড",
-            "countdownSoon": "শীঘ্রই..."
+            "countdownSoon": "শীঘ্রই...",
+            "aerocloudEnabled": "AeroCloud সক্রিয়",
+            "selectPairLocalFolder": "জোড়ার জন্য স্থানীয় ফোল্ডার নির্বাচন করুন",
+            "secondsAgo": "{count}সে আগে"
         },
         "statusBar": {
             "connected": "সংযুক্ত",
@@ -1742,7 +1762,13 @@
                 "ekRole": "গবেষক, কোয়ালিটি অ্যাসিউরেন্স ইঞ্জিনিয়ার, সহ-ডিজাইনার"
             },
             "madeBy": "{author} দ্বারা",
-            "statsLine": "{protocols}টি প্রোটোকল · {languages}টি ভাষা · AES-256 আর্কাইভ"
+            "statsLine": "{protocols}টি প্রোটোকল · {languages}টি ভাষা · AES-256 আর্কাইভ",
+            "dependencyRoles": {
+                "sftpOps": "SFTP অপারেশন",
+                "osKeyring": "সিস্টেম কীরিং",
+                "vaultFormat": "ভল্ট ফরম্যাট",
+                "zipArchives": "ZIP আর্কাইভ"
+            }
         },
         "support": {
             "title": "AeroFTP সমর্থন করুন",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল পুনরুদ্ধার করা হয়েছে, {present}টি আগে থেকেই আছে",
             "trash_restore_detail_folders_present_success": "[{provider}] ট্র্যাশ থেকে {files}টি ফাইল, {folders}টি ফোল্ডার পুনরুদ্ধার করা হয়েছে, {present}টি আগে থেকেই আছে",
             "filelu_file_password_removed": "[{provider}] ফাইলের পাসওয়ার্ড সরানো হয়েছে",
-            "filelu_folder_password_removed": "[{provider}] ফোল্ডারের পাসওয়ার্ড সরানো হয়েছে"
+            "filelu_folder_password_removed": "[{provider}] ফোল্ডারের পাসওয়ার্ড সরানো হয়েছে",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} ব্যর্থ হয়েছে",
+            "batch_rename_start": "[{location}] {count}টি আইটেমের নাম পরিবর্তন করা হচ্ছে...",
+            "batch_rename_success": "[{location}] {count}টি আইটেমের নাম পরিবর্তন করা হয়েছে",
+            "batch_rename_error": "[{location}] {count}টি আইটেমের নাম পরিবর্তন করা হয়েছে, {failed}টি ব্যর্থ",
+            "compress_details_saved": "{input} → {output} ({percent}% সাশ্রয়)",
+            "compress_details_grew": "{input} → {output} ({percent}% বৃদ্ধি)",
+            "extract_details": "{input} → {output} (প্রসারিত)",
+            "download_details": "({seconds} সেকেন্ডে {size})"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "বিচারাধিকার",
             "insecureCertDialogLabel": "অনিরাপদ সার্টিফিকেট সতর্কতা",
             "betaBadge": "বেটা",
-            "hostKeyDialogLabel": "হোস্ট কী যাচাইকরণ"
+            "hostKeyDialogLabel": "হোস্ট কী যাচাইকরণ",
+            "mtpName": "বহনযোগ্য ডিভাইস (MTP)",
+            "mtpDesc": "MTP/WPD এর মাধ্যমে ফোন বা ক্যামেরা",
+            "immichDesc": "স্ব-হোস্টেড ছবি ব্যবস্থাপনা",
+            "imagekitDesc": "মিডিয়া CDN + স্টোরেজ (20 GB বিনামূল্যে)",
+            "uploadcareDesc": "ইইউ মিডিয়া CDN (3 GB বিনামূল্যে)",
+            "cloudinaryDesc": "মিডিয়া CDN (মাসে 25 ক্রেডিট বিনামূল্যে)",
+            "backblazeDesc": "Backblaze B2 নেটিভ API v4"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -2416,7 +2458,10 @@
             "add": "যোগ করুন",
             "remove": "সরান",
             "none": "কোনো অনুমতি সেট করা নেই",
-            "anyoneWithLink": "লিঙ্ক থাকা যে কেউ"
+            "anyoneWithLink": "লিঙ্ক থাকা যে কেউ",
+            "roleViewer": "দর্শক",
+            "roleEditor": "সম্পাদক",
+            "roleCommenter": "মন্তব্যকারী"
         },
         "locking": {
             "lock": "ফাইল লক করুন",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "ব্যর্থ {count}",
             "rollbackRestoreCompleted": "পুনরুদ্ধার সম্পন্ন: {summary}",
             "rollbackRestoreNothing": "পুনরুদ্ধার করার কিছু নেই",
-            "rollbackRestoreFailed": "পুনরুদ্ধার ব্যর্থ: {error}"
+            "rollbackRestoreFailed": "পুনরুদ্ধার ব্যর্থ: {error}",
+            "intervalHoursOne": "{count} ঘণ্টা",
+            "intervalHoursMany": "{count} ঘণ্টা"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "দৃষ্টি সমর্থন করে",
                 "thinkingReasoning": "চিন্তা/যুক্তি",
                 "toolQuality": "সরঞ্জামের মান: {quality}/5",
-                "ollamaNotReachable": "Ollama-তে পৌঁছানো যাচ্ছে না"
+                "ollamaNotReachable": "Ollama-তে পৌঁছানো যাচ্ছে না",
+                "macroSafeEditName": "নিরাপদ সম্পাদনা",
+                "macroSafeEditDescription": "একটি ফাইল পড়ুন, এর বিষয়বস্তু দেখান, তারপর সম্পাদনা করুন (লেখার আগে পড়ার নিরাপত্তা প্যাটার্ন)",
+                "macroFindReadName": "খুঁজুন ও পড়ুন",
+                "macroFindReadDescription": "একটি লোকাল ডিরেক্টরিতে প্যাটার্নের সাথে মেলে এমন ফাইল খুঁজুন",
+                "familyHintLlama3": "সরাসরি ও সংক্ষিপ্ত নির্দেশনা সবচেয়ে ভালো কাজ করে। markdown ফরম্যাটিং ব্যবহার করুন। নেটিভভাবে টুল ব্যবহার সমর্থন করে।",
+                "familyHintCodellama": "কোড তৈরি ও বিশ্লেষণে মনোযোগ দিন। কোডের উদাহরণ দিন। প্রযুক্তিগত ভাষা ব্যবহার করুন।",
+                "familyHintDeepseekCoder": "কোড যুক্তি ও বহু-ধাপের সমস্যা সমাধানে দক্ষ। কাঠামোবদ্ধ আউটপুট পছন্দনীয়। deepseek-r1 এর জন্য চিন্তন মোড স্বয়ংক্রিয়ভাবে কাজ করে।",
+                "familyHintQwen": "কাঠামোবদ্ধ আউটপুট সমর্থন করে। বহুভাষিক কাজে ভালো। স্পষ্ট বিভাগ শিরোনাম ব্যবহার করুন।",
+                "familyHintMistral": "নির্দেশনা অনুসরণমুখী। স্পষ্ট কাজের বিবরণসহ প্রম্পট কাঠামোবদ্ধ রাখুন।",
+                "familyHintPhi": "কমপ্যাক্ট মডেল: নির্দেশনা সংক্ষিপ্ত রাখুন। নির্দিষ্ট কাজের জন্য সেরা, দীর্ঘ লেখার জন্য নয়।",
+                "familyHintGemma": "Google-ধাঁচের নির্দেশনা ফরম্যাট। সারসংক্ষেপ ও বিশ্লেষণে ভালো।",
+                "familyHintStarcoder": "কোড সম্পূর্ণকরণে কেন্দ্রিত। সেরা ফলাফলের জন্য ফাইলের প্রসঙ্গ ও ইমপোর্ট দিন।"
             },
             "copy": "অনুলিপি",
             "attachImage": "ছবি সংযুক্ত করুন",
@@ -3033,7 +3092,8 @@
                 "general": "সাধারণ",
                 "typeSlash": "টেমপ্লেট ব্যবহার করতে / টাইপ করুন",
                 "analyzeUi": "লেআউট, অ্যাক্সেসযোগ্যতা এবং UX সমস্যার জন্য UI স্ক্রিনশট বিশ্লেষণ করুন",
-                "performance": "পারফরম্যান্স বাধা এবং অপ্টিমাইজেশনের জন্য কোড বিশ্লেষণ করুন"
+                "performance": "পারফরম্যান্স বাধা এবং অপ্টিমাইজেশনের জন্য কোড বিশ্লেষণ করুন",
+                "analysis": "বিশ্লেষণ"
             },
             "costBudget": {
                 "conversationCost": "কথোপকথনের খরচ",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} দিন আগে",
             "recentFileCountMany": "{count}টি ফাইল",
             "recentFileCountOne": "{count}টি ফাইল",
-            "recentMonthsAgo": "{count} মাস আগে"
+            "recentMonthsAgo": "{count} মাস আগে",
+            "securityArchive": "আর্কাইভ",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · দ্রুত",
+            "securityAdvancedDescription": "Nonce-প্রতিরোধী · এনক্রিপ্ট করা ফাইলের নাম · 128 MB KDF",
+            "securityParanoidDescription": "AES + ChaCha20 ক্যাসকেড · দ্বৈত এনক্রিপশন",
+            "securityArchiveDescription": "ডিডুপ্লিকেট করা আর্কাইভ · zstd খণ্ড · v3"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "AES-GCM বিষয়বস্তু",
             "featureNameCipher": "AES-SIV নাম",
             "formatVersion": "ফরম্যাট {version}",
-            "invalidVaultName": "ভল্টের নামে অবৈধ অক্ষর"
+            "invalidVaultName": "ভল্টের নামে অবৈধ অক্ষর",
+            "defaultVaultName": "নতুনভল্ট"
         },
         "compress": {
             "title": "ফাইল কম্প্রেস করুন",
@@ -3952,7 +4018,10 @@
             "threads": "থ্রেড",
             "auto": "স্বয়ংক্রিয়",
             "solid": "সলিড ব্লক",
-            "solidHint": "অনেক ছোট ফাইলের জন্য ভালো অনুপাত, ধীর এলোমেলো নিষ্কাশন।"
+            "solidHint": "অনেক ছোট ফাইলের জন্য ভালো অনুপাত, ধীর এলোমেলো নিষ্কাশন।",
+            "formatArchiveOnly": "শুধু আর্কাইভ",
+            "formatBestRatio": "সেরা অনুপাত",
+            "formatSingleFile": "একক ফাইল"
         },
         "batchRename": {
             "title": "ব্যাচ রিনেম",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "অপারেশন ফিল্টার করুন",
                 "selected": "নির্বাচিত"
-            }
+            },
+            "save": "সংরক্ষণ করুন"
         },
         "error": {
             "description": "AeroFTP একটি অপ্রত্যাশিত ত্রুটির সম্মুখীন হয়েছে। আপনি পুনরুদ্ধার করতে বা অ্যাপ্লিকেশন পুনরায় লোড করতে পারেন।",
@@ -4529,7 +4599,13 @@
                     "radial": "রেডিয়াল",
                     "spectrum": "স্পেকট্রাম",
                     "vortex": "ঘূর্ণি",
-                    "waveform": "ওয়েভফর্ম"
+                    "waveform": "ওয়েভফর্ম",
+                    "glWaveGlitch": "তরঙ্গ বিকৃতি",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "ম্যান্ডেলব্রট",
+                    "glTunnel": "সুড়ঙ্গ",
+                    "glMetaball": "মেটাবল",
+                    "glParticles": "কণা"
                 },
                 "volume": "ভলিউম"
             },
@@ -4635,7 +4711,18 @@
                 "off": "বন্ধ",
                 "on": "চালু",
                 "presets": "প্রিসেট",
-                "reset": "সমতলে রিসেট"
+                "reset": "সমতলে রিসেট",
+                "presetFlat": "সমতল",
+                "presetRock": "রক",
+                "presetPop": "পপ",
+                "presetJazz": "জ্যাজ",
+                "presetClassical": "ক্লাসিক্যাল",
+                "presetBassBoost": "বেস বৃদ্ধি",
+                "presetTrebleBoost": "ট্রেবল বৃদ্ধি",
+                "presetVocal": "কণ্ঠ",
+                "presetElectronic": "ইলেকট্রনিক",
+                "presetAcoustic": "অ্যাকোস্টিক",
+                "presetCustom": "কাস্টম"
             },
             "pdf": {
                 "download": "PDF ডাউনলোড",
@@ -5118,7 +5205,37 @@
             "paidTier": "পেইড",
             "extraFeatures": "অতিরিক্ত",
             "coreOpsList": "আপলোড, ডাউনলোড, মুছুন, নাম পরিবর্তন, সরান, ফোল্ডার তৈরি, অনুসন্ধান",
-            "coreOpsLegend": "মৌলিক = আপলোড, ডাউনলোড, মুছুন, নাম পরিবর্তন, সরান, ফোল্ডার তৈরি, অনুসন্ধান"
+            "coreOpsLegend": "মৌলিক = আপলোড, ডাউনলোড, মুছুন, নাম পরিবর্তন, সরান, ফোল্ডার তৈরি, অনুসন্ধান",
+            "notes": "নোট",
+            "storageClass": "স্টোরেজ ক্লাস",
+            "objectTagging": "অবজেক্ট ট্যাগিং",
+            "sse": "সার্ভার-সাইড এনক্রিপশন",
+            "checksum": "চেকসাম",
+            "tierManagement": "টিয়ার ব্যবস্থাপনা",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "মিডিয়া",
+            "sectionOther": "অন্যান্য",
+            "trashDetails": {
+                "onedrive": "Business ও SharePoint ড্রাইভ। Microsoft Graph কোনো OneDrive Personal ড্রাইভের রিসাইকেল বিন প্রকাশ করে না; এর জন্য OneDrive ওয়েবসাইট ব্যবহার করুন"
+            },
+            "shareLinkDetails": {
+                "permissions": "অনুমতি: দেখা, মন্তব্য, সম্পাদনা",
+                "passwordExpiryPlan": "পাসওয়ার্ড + মেয়াদ ({plan} প্ল্যান প্রয়োজন)",
+                "passwordExpiryPaid": "পাসওয়ার্ড + মেয়াদ (পেইড প্ল্যান প্রয়োজন)",
+                "passwordPersonalExpiryPermissions": "পাসওয়ার্ড (শুধু Personal), মেয়াদ, অনুমতি",
+                "passwordArgon2ExpiryPresets": "পাসওয়ার্ড (Argon2id) + মেয়াদের প্রিসেট",
+                "passwordExpiryPermissions": "পাসওয়ার্ড, মেয়াদ, অনুমতি",
+                "basicOnly": "শুধু সাধারণ শেয়ার লিঙ্ক",
+                "publicToggle": "পাবলিক লিঙ্ক (গোপনীয়তা টগল)",
+                "basic": "সাধারণ শেয়ার লিঙ্ক",
+                "expiringDefaultYear": "মেয়াদি লিঙ্ক (ডিফল্ট 1 বছর)",
+                "publishUnpublish": "প্রকাশ/অপ্রকাশ",
+                "permanentUrl": "স্থায়ী URL",
+                "sharedAlbum": "শেয়ার করা অ্যালবামের লিঙ্ক",
+                "megaPresignedS4": "শেয়ার লিঙ্ক / প্রি-সাইনড URL (S4-এর জন্য সর্বোচ্চ 7 দিন)",
+                "autoPasswordExpiry": "পাসওয়ার্ড (স্বয়ংক্রিয়ভাবে তৈরি) + মেয়াদ",
+                "presigned": "প্রি-সাইনড URL (সর্বোচ্চ 7 দিন)"
+            }
         },
         "healthCheck": {
             "title": "সার্ভার স্বাস্থ্য পরীক্ষা",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "ব্যক্তিগত রিপোজিটরি",
             "repoPublicTitle": "পাবলিক রিপোজিটরি",
             "unpushedCommitsOnBranchMany": "{branch}-এ {count}টি পুশ না করা কমিট",
-            "unpushedCommitsOnBranchOne": "{branch}-এ {count}টি পুশ না করা কমিট"
+            "unpushedCommitsOnBranchOne": "{branch}-এ {count}টি পুশ না করা কমিট",
+            "cancelWorkflow": "ওয়ার্কফ্লো বাতিল করুন",
+            "rerunWorkflow": "ওয়ার্কফ্লো আবার চালান",
+            "downloadAssetTitle": "{name} ডাউনলোড করুন"
         },
         "filenNotes": {
             "title": "এনক্রিপ্টেড নোট",
@@ -5469,7 +5589,10 @@
             "manageCreated": "তৈরি হয়েছে",
             "manageExpires": "মেয়াদ শেষ",
             "manageNeverExpires": "কখনো না",
-            "managePasswordProtected": "পাসওয়ার্ড সুরক্ষিত"
+            "managePasswordProtected": "পাসওয়ার্ড সুরক্ষিত",
+            "expirationHoursOne": "{count} ঘণ্টা",
+            "expirationHoursMany": "{count} ঘণ্টা",
+            "expirationDaysMany": "{count} দিন"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} ঘ",
                 "days": "{count} দি",
                 "months": "{count} মাস"
-            }
+            },
+            "demoTabLabel": "ডেমো: {protocol}",
+            "newTabLabel": "নতুন: {name}"
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "মার্জ রিকোয়েস্ট তৈরি করুন",
             "mrTitle": "MR শিরোনাম",
             "mrBody": "বিবরণ (ঐচ্ছিক)",
-            "sourceCode": "সোর্স কোড"
+            "sourceCode": "সোর্স কোড",
+            "downloadAssetTitle": "{name} ডাউনলোড করুন"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "নতুন ব্যবহারকারী",
                 "noUsers": "এখনও কোনো ব্যবহারকারী নেই। প্রথমজনকে যোগ করতে নিচের \"নতুন ব্যবহারকারী\" ব্যবহার করুন।",
                 "protectionNote": "আপনার অ্যাকাউন্ট Argon2id + AES-KW + AES-256-GCM এনক্রিপশন দিয়ে সুরক্ষিত",
-                "users": "ব্যবহারকারী"
+                "users": "ব্যবহারকারী",
+                "setup": "সেটআপ"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "সংযোগ তৈরি করার সময় মোড নির্বাচন করা হয় এবং সংরক্ষিত প্রোফাইল সম্পাদনার সময় এটি স্থির থাকে। ভিন্ন মোড ব্যবহার করতে, একটি নতুন সংযোগ তৈরি করুন।",
-                "notInBuild": "AeroFTP-এর এই বিল্ডে অন্তর্ভুক্ত নয়।"
+                "notInBuild": "AeroFTP-এর এই বিল্ডে অন্তর্ভুক্ত নয়।",
+                "header": "{name} মোড",
+                "nativeApi": "নেটিভ API",
+                "filelu": {
+                    "apiDescription": "API কী সহ REST API। সম্পূর্ণ বৈশিষ্ট্য (ট্র্যাশ, শেয়ার লিঙ্ক, পাসওয়ার্ড-সুরক্ষিত ফাইল)।",
+                    "webdavDescription": "পোর্ট 443-এ WebDAV অ্যাক্সেস। বিস্তৃত ক্লায়েন্ট সামঞ্জস্য, নেটওয়ার্ক ড্রাইভ হিসেবে মাউন্ট হয়।",
+                    "s3Description": "পোর্ট 443-এ S3-সামঞ্জস্যপূর্ণ API। rclone, AWS CLI বা যেকোনো S3 SDK ব্যবহার করুন।",
+                    "ftpDescription": "পোর্ট 21-এ প্রচলিত FTP। এনক্রিপশনবিহীন, CCTV NVR এবং পুরোনো ক্লায়েন্টের জন্য কার্যকর।"
+                },
+                "filen": {
+                    "apiDescription": "জিরো-নলেজ E2E এনক্রিপশন (Argon2id v3 / PBKDF2 v2)। সম্পূর্ণ বৈশিষ্ট্য: স্টোরেজ কোটা, ট্র্যাশ, শেয়ার লিংকের পাসওয়ার্ড, সংস্করণ ব্যবস্থাপনা, TOTP।",
+                    "webdavDescription": "Filen Desktop দ্বারা 127.0.0.1:1900-এ প্রকাশিত WebDAV ব্রিজ। Filen Desktop চালু ও সাইন ইন করা থাকতে হবে।",
+                    "s3Description": "Filen Desktop দ্বারা local.s3.filen.io-এর মাধ্যমে 127.0.0.1:1800-এ প্রকাশিত S3-সামঞ্জস্যপূর্ণ ব্রিজ। পাথ-ভিত্তিক ঠিকানা নির্ধারণ, প্রতিটি শীর্ষ-স্তরের Filen ফোল্ডার একটি বাকেট।"
+                },
+                "proton": {
+                    "headerDescription": "এন্ড-টু-এন্ড এনক্রিপশনসহ Proton ক্লাউড স্টোরেজ",
+                    "apiDescription": "AeroFTP-এর নিজস্ব Proton Drive ক্লায়েন্ট: আপনি ব্রাউজারে Proton-এর পৃষ্ঠায় সাইন ইন করেন, ফাইলগুলো এই কম্পিউটারেই এনক্রিপ্ট ও ডিক্রিপ্ট হয়, এবং অন্য কোনো অ্যাপের প্রয়োজন নেই।",
+                    "cliDescription": "এই মেশিনে ইনস্টল ও সাইন ইন করা অফিসিয়াল Proton Drive CLI চালায়। আপনি ব্রাউজারে সাইন ইন করেন; AeroFTP কখনো আপনার Proton পাসওয়ার্ড দেখে না।"
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive ক্লাউড স্টোরেজ (5 GB বিনামূল্যে)",
+                    "apiDescription": "ব্যবহারকারীর নাম + পাসওয়ার্ডসহ REST API। সম্পূর্ণ বৈশিষ্ট্য: ট্র্যাশ, স্টোরেজ কোটা, শেয়ার লিংক, পুনরাবৃত্ত ডিস্ক ব্যবহার।",
+                    "webdavDescription": "পোর্ট 443-এ webdav.opendrive.com-এর মাধ্যমে WebDAV অ্যাক্সেস। পুরোনো ক্লায়েন্টের জন্য বা নেটওয়ার্ক ড্রাইভ হিসেবে মাউন্ট করতে।"
+                },
+                "koofr": {
+                    "apiDescription": "EU-ভিত্তিক REST API, ইমেল + অ্যাপ পাসওয়ার্ডসহ। সম্পূর্ণ বৈশিষ্ট্য: স্টোরেজ কোটা, ট্র্যাশ (তালিকা/পুনরুদ্ধার/খালি করা), শেয়ার লিংক।",
+                    "webdavDescription": "পোর্ট 443-এ app.koofr.net/dav/Koofr-এর মাধ্যমে WebDAV অ্যাক্সেস। স্টোরেজ কোটা এখনও Koofr REST API থেকে পড়া হয়। পুরোনো ক্লায়েন্টের জন্য বা নেটওয়ার্ক ড্রাইভ হিসেবে মাউন্ট করতে।"
+                },
+                "mega": {
+                    "headerDescription": "ক্লায়েন্ট-সাইড এনক্রিপশনসহ MEGA ক্লাউড স্টোরেজ",
+                    "apiDescription": "ইমেল + পাসওয়ার্ড (+ ঐচ্ছিক TOTP) সহ নেটিভ MEGA API। সম্পূর্ণ বৈশিষ্ট্য: ক্লায়েন্ট-সাইড এনক্রিপশন, স্টোরেজ কোটা, শেয়ার লিংক, থাম্বনেইল।",
+                    "webdavDescription": "অফিসিয়াল MEGAcmd CLI দ্বারা পরিবেশিত স্থানীয় WebDAV ব্রিজ, 127.0.0.1-এ বেনামি। সংযোগের সময় AeroFTP আপনার হয়ে \"mega-webdav /\" চালায়, তাই কোনো ম্যানুয়াল ধাপ নেই।",
+                    "s4Description": "MEGA S4 অবজেক্ট স্টোরেজ, S3-সামঞ্জস্যপূর্ণ (EU/CA অঞ্চল)। অ্যাক্সেস কী + সিক্রেট কী + বাকেট। Pro প্ল্যান প্রয়োজন।"
+                }
             }
         },
         "flatpak": {

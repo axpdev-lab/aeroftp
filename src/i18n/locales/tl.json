@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Kopyahin ang URL na ito at i-paste bilang Redirect URI sa mga setting ng iyong developer app.",
                 "redirectUriNoteGoogle": "Inirerekomenda: gumawa ng OAuth Client ID na may uri na \"Desktop app\" sa Google Cloud Console; hindi kailangang magrehistro ng redirect URI. Para sa client na may uri na \"Web application\", irehistro ang eksaktong Redirect URI na ipinapakita sa itaas, kasama ang port at ang path na /callback.",
                 "enablePhotosApi": "Siguraduhing naka-enable ang Photos Library API sa iyong Google Cloud Console.",
-                "enableDriveApi": "Siguraduhing naka-enable ang Google Drive API sa iyong Google Cloud Console."
+                "enableDriveApi": "Siguraduhing naka-enable ang Google Drive API sa iyong Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "Estados Unidos",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "India",
+                "zohoRegionAu": "Australya",
+                "zohoRegionJp": "Hapon",
+                "zohoRegionUk": "Reyno Unido",
+                "zohoRegionCa": "Canada",
+                "zohoRegionSa": "Saudi Arabia"
             },
             "activeSessions": "Aktibong mga Sesyon",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Inirerekomenda para sa pinakamataas na seguridad",
             "fontCustomOption": "Pasadya...",
             "fontSystemInstallHint": "Kailangang naka-install sa system. Awtomatikong gagamit ang AeroFTP ng kapalit kung hindi available.",
-            "fontSizeIndicatorLabel": "Font"
+            "fontSizeIndicatorLabel": "Font",
+            "fontPresetDefault": "{font} (Nakatakda)",
+            "fontPresetSystemDefault": "Nakatakda ng sistema"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Palakihin ang laki ng font (Ctrl+=)",
                 "newTab": "Bagong tab ng terminal",
                 "sshShellTo": "SSH shell sa {host}",
-                "theme": "Tema ng terminal"
+                "theme": "Tema ng terminal",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Cyber",
+                "themeTrueDark": "Tunay na madilim",
+                "themeGreen": "Berde",
+                "themeIce": "Yelo",
+                "themeRedLava": "Pulang lava"
             },
             "editorPanel": {
                 "emptyState": "Mag-right-click sa isang file at piliin ang \"Tingnan ang pinagmulan\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(isa bawat linya)",
             "pairsEditorLabel": "Editor ng mga Pares ng AeroCloud",
             "remoteSubfolderPlaceholder": "ulap",
-            "countdownSoon": "Malapit na..."
+            "countdownSoon": "Malapit na...",
+            "aerocloudEnabled": "Pinagana ang AeroCloud",
+            "selectPairLocalFolder": "Pumili ng lokal na folder para sa pares",
+            "secondsAgo": "{count}s nakalipas"
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Mananaliksik, quality assurance engineer, katuwang na taga-disenyo"
             },
             "madeBy": "ng {author}",
-            "statsLine": "{protocols} protokol · {languages} wika · mga arkibong AES-256"
+            "statsLine": "{protocols} protokol · {languages} wika · mga arkibong AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Mga operasyon ng SFTP",
+                "osKeyring": "Lalagyan ng susi ng OS",
+                "vaultFormat": "Format ng baul",
+                "zipArchives": "Mga arkibong ZIP"
+            }
         },
         "support": {
             "title": "Suportahan ang AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Naibalik ang {files} file mula sa basurahan, {present} ay naroon na",
             "trash_restore_detail_folders_present_success": "[{provider}] Naibalik ang {files} file, {folders} folder mula sa basurahan, {present} ay naroon na",
             "filelu_file_password_removed": "[{provider}] Inalis ang password ng file",
-            "filelu_folder_password_removed": "[{provider}] Naalis ang password ng folder"
+            "filelu_folder_password_removed": "[{provider}] Naalis ang password ng folder",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] Nabigo ang {action}",
+            "batch_rename_start": "[{location}] Pinapalitan ang pangalan ng {count} item...",
+            "batch_rename_success": "[{location}] Napalitan ang pangalan ng {count} item",
+            "batch_rename_error": "[{location}] Napalitan ang pangalan ng {count} item, {failed} ang nabigo",
+            "compress_details_saved": "{input} → {output} (nakatipid ng {percent}%)",
+            "compress_details_grew": "{input} → {output} (lumaki ng {percent}%)",
+            "extract_details": "{input} → {output} (na-extract)",
+            "download_details": "({size} sa loob ng {seconds} seg)"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Hurisdiksyon",
             "insecureCertDialogLabel": "Babala sa Hindi Ligtas na Sertipiko",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Pag-verify ng susi ng host"
+            "hostKeyDialogLabel": "Pag-verify ng susi ng host",
+            "mtpName": "Nadadalang aparato (MTP)",
+            "mtpDesc": "Telepono o kamera sa pamamagitan ng MTP/WPD",
+            "immichDesc": "Sariling-host na pamamahala ng larawan",
+            "imagekitDesc": "Media CDN + imbakan (20 GB libre)",
+            "uploadcareDesc": "Media CDN sa EU (3 GB libre)",
+            "cloudinaryDesc": "Media CDN (25 kredito bawat buwan libre)",
+            "backblazeDesc": "Katutubong API ng Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -2416,7 +2458,10 @@
             "add": "Idagdag",
             "remove": "Alisin",
             "none": "Walang mga nakatakdang pahintulot",
-            "anyoneWithLink": "Sinumang may link"
+            "anyoneWithLink": "Sinumang may link",
+            "roleViewer": "Tagatingin",
+            "roleEditor": "Tagapag-edit",
+            "roleCommenter": "Tagakomento"
         },
         "locking": {
             "lock": "I-lock ang File",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "nabigo {count}",
             "rollbackRestoreCompleted": "Tapos na ang pagbabalik: {summary}",
             "rollbackRestoreNothing": "Walang maibabalik",
-            "rollbackRestoreFailed": "Nabigo ang pagbabalik: {error}"
+            "rollbackRestoreFailed": "Nabigo ang pagbabalik: {error}",
+            "intervalHoursOne": "{count} oras",
+            "intervalHoursMany": "{count} oras"
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Sumusuporta sa paningin",
                 "thinkingReasoning": "Pag-iisip/Pangangatwiran",
                 "toolQuality": "Kalidad ng kasangkapan: {quality}/5",
-                "ollamaNotReachable": "Hindi maabot ang Ollama"
+                "ollamaNotReachable": "Hindi maabot ang Ollama",
+                "macroSafeEditName": "Ligtas na Pag-edit",
+                "macroSafeEditDescription": "Basahin ang file, ipakita ang nilalaman nito, saka i-edit (pattern ng kaligtasan na basahin bago sumulat)",
+                "macroFindReadName": "Hanapin at Basahin",
+                "macroFindReadDescription": "Maghanap ng mga file na tumutugma sa pattern sa isang lokal na direktoryo",
+                "familyHintLlama3": "Pinakamabisa ang direkta at maiikling tagubilin. Gumamit ng markdown na pag-format. Likas na sumusuporta sa paggamit ng mga tool.",
+                "familyHintCodellama": "Tumuon sa pagbuo at pagsusuri ng code. Magbigay ng mga halimbawa ng code. Gumamit ng teknikal na wika.",
+                "familyHintDeepseekCoder": "Mahusay sa pangangatwiran tungkol sa code at paglutas ng mga problemang maraming hakbang. Mas mainam ang nakaayos na output. Para sa deepseek-r1, awtomatikong gumagana ang thinking mode.",
+                "familyHintQwen": "Sumusuporta sa nakaayos na output. Mahusay sa mga gawaing maraming wika. Gumamit ng malinaw na mga heading ng seksyon.",
+                "familyHintMistral": "Nakatuon sa pagsunod sa tagubilin. Panatilihing nakaayos ang mga prompt na may malinaw na paglalarawan ng gawain.",
+                "familyHintPhi": "Siksik na modelo: panatilihing maikli ang mga tagubilin. Pinakamainam para sa nakatuong gawain, hindi sa mahahabang teksto.",
+                "familyHintGemma": "Format ng tagubilin na istilong Google. Mahusay sa pagbubuod at pagsusuri.",
+                "familyHintStarcoder": "Nakatuon sa pagkumpleto ng code. Ibigay ang konteksto ng file at mga import para sa pinakamahusay na resulta."
             },
             "copy": "Kopyahin",
             "attachImage": "Mag-attach ng larawan",
@@ -3033,7 +3092,8 @@
                 "general": "Pangkalahatan",
                 "typeSlash": "I-type ang / para gumamit ng mga template",
                 "analyzeUi": "Suriin ang UI screenshot para sa layout, accessibility, at mga isyu sa UX",
-                "performance": "Suriin ang code para sa mga bottleneck sa performance at optimization"
+                "performance": "Suriin ang code para sa mga bottleneck sa performance at optimization",
+                "analysis": "Pagsusuri"
             },
             "costBudget": {
                 "conversationCost": "Gastos ng pag-uusap",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "{count} araw nakalipas",
             "recentFileCountMany": "{count} file",
             "recentFileCountOne": "{count} file",
-            "recentMonthsAgo": "{count} buwan nakalipas"
+            "recentMonthsAgo": "{count} buwan nakalipas",
+            "securityArchive": "Arkibo",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Mabilis",
+            "securityAdvancedDescription": "Matibay laban sa nonce · Naka-encrypt na mga pangalan ng file · 128 MB KDF",
+            "securityParanoidDescription": "Sunud-sunod na AES + ChaCha20 · Dobleng pag-encrypt",
+            "securityArchiveDescription": "Arkibong walang duplikado · mga piraso ng zstd · v3"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Nilalaman na AES-GCM",
             "featureNameCipher": "Mga pangalan na AES-SIV",
             "formatVersion": "Pormat {version}",
-            "invalidVaultName": "Di-wastong mga karakter sa pangalan ng vault"
+            "invalidVaultName": "Di-wastong mga karakter sa pangalan ng vault",
+            "defaultVaultName": "BagongTaguan"
         },
         "compress": {
             "title": "I-compress ang mga File",
@@ -3952,7 +4018,10 @@
             "threads": "Threads",
             "auto": "Auto",
             "solid": "Solidong bloke",
-            "solidHint": "Mas magandang ratio para sa maraming maliliit na file, mas mabagal na random na extraction."
+            "solidHint": "Mas magandang ratio para sa maraming maliliit na file, mas mabagal na random na extraction.",
+            "formatArchiveOnly": "Pag-archive lamang",
+            "formatBestRatio": "Pinakamahusay na ratio",
+            "formatSingleFile": "iisang file"
         },
         "batchRename": {
             "title": "Batch Rename",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "I-filter ang mga operasyon",
                 "selected": "napili"
-            }
+            },
+            "save": "I-save"
         },
         "error": {
             "description": "Nakatagpo ang AeroFTP ng hindi inaasahang error. Maaari mong subukang mag-recover o i-reload ang application.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radial",
                     "spectrum": "Spectrum",
                     "vortex": "Vortex",
-                    "waveform": "Waveform"
+                    "waveform": "Waveform",
+                    "glWaveGlitch": "Gulo ng Alon",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Lagusan",
+                    "glMetaball": "Metabola",
+                    "glParticles": "Mga Partikulo"
                 },
                 "volume": "Volume"
             },
@@ -4635,7 +4711,18 @@
                 "off": "OFF",
                 "on": "ON",
                 "presets": "Mga Preset",
-                "reset": "I-reset sa Flat"
+                "reset": "I-reset sa Flat",
+                "presetFlat": "Patag",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klasikal",
+                "presetBassBoost": "Pagpapalakas ng Bass",
+                "presetTrebleBoost": "Pagpapalakas ng Treble",
+                "presetVocal": "Boses",
+                "presetElectronic": "Elektroniko",
+                "presetAcoustic": "Akustiko",
+                "presetCustom": "Pasadya"
             },
             "pdf": {
                 "download": "I-download ang PDF",
@@ -5137,7 +5224,37 @@
             "paidTier": "Bayad",
             "extraFeatures": "Dagdag",
             "coreOpsList": "Pag-upload, Pag-download, Pagbura, Pagpalit ng pangalan, Paglipat, Paggawa ng folder, Paghahanap",
-            "coreOpsLegend": "Batayan = Pag-upload, Pag-download, Pagbura, Pagpalit ng pangalan, Paglipat, Paggawa ng folder, Paghahanap"
+            "coreOpsLegend": "Batayan = Pag-upload, Pag-download, Pagbura, Pagpalit ng pangalan, Paglipat, Paggawa ng folder, Paghahanap",
+            "notes": "Mga tala",
+            "storageClass": "Klase ng storage",
+            "objectTagging": "Pag-tag ng object",
+            "sse": "Encryption sa panig ng server",
+            "checksum": "Checksum ng file",
+            "tierManagement": "Pamamahala ng tier",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Mga media",
+            "sectionOther": "Iba pa",
+            "trashDetails": {
+                "onedrive": "Mga drive ng Business at SharePoint. Hindi inilalantad ng Microsoft Graph ang basurahan ng isang OneDrive Personal drive; gamitin ang website ng OneDrive para rito"
+            },
+            "shareLinkDetails": {
+                "permissions": "Mga pahintulot: tingnan, magkomento, i-edit",
+                "passwordExpiryPlan": "Password + pag-expire (kailangan ang planong {plan})",
+                "passwordExpiryPaid": "Password + pag-expire (kailangan ang bayad na plano)",
+                "passwordPersonalExpiryPermissions": "Password (Personal lamang), pag-expire, mga pahintulot",
+                "passwordArgon2ExpiryPresets": "Password (Argon2id) + mga preset ng pag-expire",
+                "passwordExpiryPermissions": "Password, pag-expire, mga pahintulot",
+                "basicOnly": "Pangunahing link sa pagbabahagi lamang",
+                "publicToggle": "Pampublikong link (i-toggle ang privacy)",
+                "basic": "Pangunahing link sa pagbabahagi",
+                "expiringDefaultYear": "Mga link na nag-e-expire (default na 1 taon)",
+                "publishUnpublish": "I-publish/i-unpublish",
+                "permanentUrl": "Permanenteng URL",
+                "sharedAlbum": "Link ng nakabahaging album",
+                "megaPresignedS4": "Link sa pagbabahagi / pre-signed na URL (max 7 araw para sa S4)",
+                "autoPasswordExpiry": "Password (awtomatikong ginawa) + pag-expire",
+                "presigned": "Pre-signed na URL (max 7 araw)"
+            }
         },
         "healthCheck": {
             "title": "Pagsusuri ng kalagayan ng server",
@@ -5399,7 +5516,10 @@
             "repoPrivateTitle": "Pribadong repository",
             "repoPublicTitle": "Pampublikong repository",
             "unpushedCommitsOnBranchMany": "{count} commit na hindi pa na-push sa {branch}",
-            "unpushedCommitsOnBranchOne": "{count} commit na hindi pa na-push sa {branch}"
+            "unpushedCommitsOnBranchOne": "{count} commit na hindi pa na-push sa {branch}",
+            "cancelWorkflow": "Kanselahin ang daloy ng trabaho",
+            "rerunWorkflow": "Patakbuhing muli ang daloy ng trabaho",
+            "downloadAssetTitle": "I-download ang {name}"
         },
         "filenNotes": {
             "title": "Naka-encrypt na Mga Tala",
@@ -5488,7 +5608,10 @@
             "manageCreated": "Nilikha",
             "manageExpires": "Mag-e-expire",
             "manageNeverExpires": "Hindi kailanman",
-            "managePasswordProtected": "Pinoprotektahan ng password"
+            "managePasswordProtected": "Pinoprotektahan ng password",
+            "expirationHoursOne": "{count} oras",
+            "expirationHoursMany": "{count} oras",
+            "expirationDaysMany": "{count} araw"
         },
         "introHub": {
             "tab": {
@@ -5679,7 +5802,9 @@
                 "hours": "{count} oras",
                 "days": "{count} araw",
                 "months": "{count} buwan"
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Bago: {name}"
         },
         "gitlab": {
             "projectPath": "Path ng Project",
@@ -5714,7 +5839,8 @@
             "createMergeRequest": "Gumawa ng Merge Request",
             "mrTitle": "Titulo ng MR",
             "mrBody": "Paglalarawan (optional)",
-            "sourceCode": "Pinagmulang code"
+            "sourceCode": "Pinagmulang code",
+            "downloadAssetTitle": "I-download ang {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6322,7 +6448,8 @@
                 "newUser": "Bagong gumagamit",
                 "noUsers": "Wala pang gumagamit. Gamitin ang \"Bagong gumagamit\" sa ibaba para idagdag ang una.",
                 "protectionNote": "Protektado ang iyong account ng pag-encrypt na Argon2id + AES-KW + AES-256-GCM",
-                "users": "Mga gumagamit"
+                "users": "Mga gumagamit",
+                "setup": "Pag-setup"
             }
         },
         "aerocryptNative": {
@@ -6751,7 +6878,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Pinipili ang mode kapag ginawa ang koneksyon at nananatiling nakapirmi habang ine-edit ang naka-save na profile. Para gumamit ng ibang mode, gumawa ng bagong koneksyon.",
-                "notInBuild": "Hindi kasama sa build na ito ng AeroFTP."
+                "notInBuild": "Hindi kasama sa build na ito ng AeroFTP.",
+                "header": "Mga mode ng {name}",
+                "nativeApi": "Katutubong API",
+                "filelu": {
+                    "apiDescription": "REST API na may susi ng API. Kumpletong hanay ng tampok (basurahan, mga link ng pagbabahagi, mga file na protektado ng password).",
+                    "webdavDescription": "Pag-access sa WebDAV sa port 443. Malawak na pagkakatugma sa mga kliyente, maaaring i-mount bilang network drive.",
+                    "s3Description": "API na tugma sa S3 sa port 443. Gamitin ang rclone, AWS CLI, o anumang S3 SDK.",
+                    "ftpDescription": "Klasikong FTP sa port 21. Walang encryption, kapaki-pakinabang para sa mga NVR ng CCTV at mga lumang client."
+                },
+                "filen": {
+                    "apiDescription": "Zero-knowledge na E2E encryption (Argon2id v3 / PBKDF2 v2). Kumpletong mga feature: quota ng storage, basurahan, mga password ng share link, pamamahala ng bersyon, TOTP.",
+                    "webdavDescription": "WebDAV bridge na inilalantad ng Filen Desktop sa 127.0.0.1:1900. Kailangang tumatakbo at naka-sign in ang Filen Desktop.",
+                    "s3Description": "Bridge na tugma sa S3 na inilalantad ng Filen Desktop sa 127.0.0.1:1800 sa pamamagitan ng local.s3.filen.io. Pag-address batay sa path, bawat pinakamataas na folder ng Filen ay isang bucket."
+                },
+                "proton": {
+                    "headerDescription": "Cloud storage ng Proton na may end-to-end encryption",
+                    "apiDescription": "Sariling Proton Drive client ng AeroFTP: mag-sign in ka sa pahina ng Proton sa browser, ine-encrypt at dine-decrypt ang mga file sa computer na ito, at hindi kailangan ng ibang app.",
+                    "cliDescription": "Pinapatakbo ang opisyal na Proton Drive CLI na naka-install at naka-sign in sa makinang ito. Mag-sign in ka sa browser; hindi kailanman nakikita ng AeroFTP ang iyong Proton password."
+                },
+                "opendrive": {
+                    "headerDescription": "Cloud storage ng OpenDrive (5 GB libre)",
+                    "apiDescription": "REST API gamit ang username + password. Kumpletong mga feature: basurahan, quota ng storage, mga share link, recursive na paggamit ng disk.",
+                    "webdavDescription": "WebDAV access sa pamamagitan ng webdav.opendrive.com sa port 443. Para sa mga lumang client o para i-mount bilang network drive."
+                },
+                "koofr": {
+                    "apiDescription": "REST API na nakabase sa EU gamit ang email + app password. Kumpletong mga feature: quota ng storage, basurahan (ilista/ibalik/alisan ng laman), mga share link.",
+                    "webdavDescription": "WebDAV access sa pamamagitan ng app.koofr.net/dav/Koofr sa port 443. Binabasa pa rin ang quota ng storage mula sa REST API ng Koofr. Para sa mga lumang client o para i-mount bilang network drive."
+                },
+                "mega": {
+                    "headerDescription": "Cloud storage ng MEGA na may client-side encryption",
+                    "apiDescription": "Native na MEGA API gamit ang email + password (+ opsyonal na TOTP). Kumpletong mga feature: client-side encryption, quota ng storage, mga share link, mga thumbnail.",
+                    "webdavDescription": "Lokal na WebDAV bridge na pinagsisilbihan ng opisyal na MEGAcmd CLI, anonymous sa 127.0.0.1. Pinapatakbo ng AeroFTP ang \"mega-webdav /\" para sa iyo sa pagkonekta, kaya walang manu-manong hakbang.",
+                    "s4Description": "MEGA S4 object storage, tugma sa S3 (mga rehiyong EU/CA). Access key + secret key + bucket. Nangangailangan ng Pro plan."
+                }
             }
         },
         "flatpak": {

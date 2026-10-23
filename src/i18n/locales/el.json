@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Αντιγράψτε αυτό το URL και επικολλήστε το ως URI Ανακατεύθυνσης στις ρυθμίσεις της εφαρμογής σας για προγραμματιστές.",
                 "redirectUriNoteGoogle": "Συνιστάται: δημιουργήστε ένα αναγνωριστικό πελάτη OAuth τύπου «Εφαρμογή για υπολογιστές» στο Google Cloud Console· δεν απαιτείται καταχώριση URI ανακατεύθυνσης. Για πελάτη τύπου «Εφαρμογή ιστού», καταχωρίστε ακριβώς το URI ανακατεύθυνσης που εμφανίζεται παραπάνω, συμπεριλαμβανομένης της θύρας και της διαδρομής /callback.",
                 "enablePhotosApi": "Βεβαιωθείτε ότι το Photos Library API είναι ενεργοποιημένο στο Google Cloud Console.",
-                "enableDriveApi": "Βεβαιωθείτε ότι το Google Drive API είναι ενεργοποιημένο στο Google Cloud Console."
+                "enableDriveApi": "Βεβαιωθείτε ότι το Google Drive API είναι ενεργοποιημένο στο Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "ΗΠΑ",
+                "zohoRegionEu": "ΕΕ",
+                "zohoRegionIn": "Ινδία",
+                "zohoRegionAu": "Αυστραλία",
+                "zohoRegionJp": "Ιαπωνία",
+                "zohoRegionUk": "Ηνωμένο Βασίλειο",
+                "zohoRegionCa": "Καναδάς",
+                "zohoRegionSa": "Σαουδική Αραβία"
             },
             "activeSessions": "Ενεργές συνεδρίες",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Συνιστάται για μέγιστη ασφάλεια",
             "fontCustomOption": "Προσαρμοσμένη...",
             "fontSystemInstallHint": "Απαιτεί εγκατάσταση στο σύστημα. Το AeroFTP χρησιμοποιεί αυτόματα εναλλακτική αν δεν είναι διαθέσιμη.",
-            "fontSizeIndicatorLabel": "Γραμματοσειρά"
+            "fontSizeIndicatorLabel": "Γραμματοσειρά",
+            "fontPresetDefault": "{font} (Προεπιλογή)",
+            "fontPresetSystemDefault": "Προεπιλογή συστήματος"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Αύξηση μεγέθους γραμματοσειράς (Ctrl+=)",
                 "newTab": "Νέα καρτέλα τερματικού",
                 "sshShellTo": "Κέλυφος SSH στο {host}",
-                "theme": "Θέμα τερματικού"
+                "theme": "Θέμα τερματικού",
+                "tabLabel": "Τερματικό {num}",
+                "themeCyber": "Σάιμπερ",
+                "themeTrueDark": "Πραγματικό σκούρο",
+                "themeGreen": "Πράσινο",
+                "themeIce": "Πάγος",
+                "themeRedLava": "Κόκκινη λάβα"
             },
             "editorPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Προβολή πηγής\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(ένα ανά γραμμή)",
             "pairsEditorLabel": "Επεξεργαστής ζευγών AeroCloud",
             "remoteSubfolderPlaceholder": "νέφος",
-            "countdownSoon": "Σύντομα..."
+            "countdownSoon": "Σύντομα...",
+            "aerocloudEnabled": "Το AeroCloud ενεργοποιήθηκε",
+            "selectPairLocalFolder": "Επιλέξτε τοπικό φάκελο για το ζεύγος",
+            "secondsAgo": "{count}δ πριν"
         },
         "statusBar": {
             "connected": "Συνδεδεμένο",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Ερευνητής, μηχανικός διασφάλισης ποιότητας, συν-σχεδιαστής"
             },
             "madeBy": "από την {author}",
-            "statsLine": "{protocols} πρωτόκολλα · {languages} γλώσσες · αρχεία AES-256"
+            "statsLine": "{protocols} πρωτόκολλα · {languages} γλώσσες · αρχεία AES-256",
+            "dependencyRoles": {
+                "sftpOps": "Λειτουργίες SFTP",
+                "osKeyring": "Κλειδοθήκη ΛΣ",
+                "vaultFormat": "Μορφή θησαυροφυλακίου",
+                "zipArchives": "Αρχεία ZIP"
+            }
         },
         "support": {
             "title": "Υποστηρίξτε το AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία από τον κάδο, {present} υπήρχαν ήδη",
             "trash_restore_detail_folders_present_success": "[{provider}] Επαναφέρθηκαν {files} αρχεία, {folders} φάκελοι από τον κάδο, {present} υπήρχαν ήδη",
             "filelu_file_password_removed": "[{provider}] Καταργήθηκε ο κωδικός αρχείου",
-            "filelu_folder_password_removed": "[{provider}] Καταργήθηκε ο κωδικός πρόσβασης φακέλου"
+            "filelu_folder_password_removed": "[{provider}] Καταργήθηκε ο κωδικός πρόσβασης φακέλου",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} απέτυχε",
+            "batch_rename_start": "[{location}] Μετονομασία στοιχείων: {count}...",
+            "batch_rename_success": "[{location}] Μετονομασμένα στοιχεία: {count}",
+            "batch_rename_error": "[{location}] Μετονομασμένα στοιχεία: {count}, αποτυχίες: {failed}",
+            "compress_details_saved": "{input} → {output} (εξοικονόμηση {percent}%)",
+            "compress_details_grew": "{input} → {output} (αύξηση {percent}%)",
+            "extract_details": "{input} → {output} (αποσυμπιέστηκε)",
+            "download_details": "({size} σε {seconds} δευτ.)"
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Δικαιοδοσία",
             "insecureCertDialogLabel": "Προειδοποίηση μη ασφαλούς πιστοποιητικού",
             "betaBadge": "ΒΗΤΑ",
-            "hostKeyDialogLabel": "Επαλήθευση κλειδιού κεντρικού υπολογιστή"
+            "hostKeyDialogLabel": "Επαλήθευση κλειδιού κεντρικού υπολογιστή",
+            "mtpName": "Φορητή συσκευή (MTP)",
+            "mtpDesc": "Τηλέφωνο ή κάμερα μέσω MTP/WPD",
+            "immichDesc": "Διαχείριση φωτογραφιών σε δικό σας διακομιστή",
+            "imagekitDesc": "CDN πολυμέσων + αποθήκευση (20 GB δωρεάν)",
+            "uploadcareDesc": "CDN πολυμέσων ΕΕ (3 GB δωρεάν)",
+            "cloudinaryDesc": "CDN πολυμέσων (25 μονάδες/μήνα δωρεάν)",
+            "backblazeDesc": "Εγγενές API Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -2416,7 +2458,10 @@
             "add": "Προσθήκη",
             "remove": "Αφαίρεση",
             "none": "Δεν έχουν οριστεί δικαιώματα",
-            "anyoneWithLink": "Οποιοσδήποτε έχει τον σύνδεσμο"
+            "anyoneWithLink": "Οποιοσδήποτε έχει τον σύνδεσμο",
+            "roleViewer": "Θεατής",
+            "roleEditor": "Επεξεργαστής",
+            "roleCommenter": "Σχολιαστής"
         },
         "locking": {
             "lock": "Κλείδωμα Αρχείου",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "απέτυχαν {count}",
             "rollbackRestoreCompleted": "Η επαναφορά ολοκληρώθηκε: {summary}",
             "rollbackRestoreNothing": "Τίποτα για επαναφορά",
-            "rollbackRestoreFailed": "Η επαναφορά απέτυχε: {error}"
+            "rollbackRestoreFailed": "Η επαναφορά απέτυχε: {error}",
+            "intervalHoursOne": "{count} ώρα",
+            "intervalHoursMany": "{count} ώρες"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -2921,7 +2968,19 @@
                 "supportsVision": "Υποστηρίζει όραση",
                 "thinkingReasoning": "Σκέψη/Συλλογισμός",
                 "toolQuality": "Ποιότητα εργαλείων: {quality}/5",
-                "ollamaNotReachable": "Το Ollama δεν είναι προσβάσιμο"
+                "ollamaNotReachable": "Το Ollama δεν είναι προσβάσιμο",
+                "macroSafeEditName": "Ασφαλής επεξεργασία",
+                "macroSafeEditDescription": "Ανάγνωση αρχείου, εμφάνιση περιεχομένου και μετά επεξεργασία (μοτίβο ασφαλείας ανάγνωση πριν από εγγραφή)",
+                "macroFindReadName": "Εύρεση & ανάγνωση",
+                "macroFindReadDescription": "Αναζήτηση αρχείων που ταιριάζουν με μοτίβο σε τοπικό κατάλογο",
+                "familyHintLlama3": "Οι άμεσες και σύντομες οδηγίες λειτουργούν καλύτερα. Χρησιμοποιήστε μορφοποίηση markdown. Υποστηρίζει εγγενώς τη χρήση εργαλείων.",
+                "familyHintCodellama": "Εστιάστε στη δημιουργία και ανάλυση κώδικα. Δώστε παραδείγματα κώδικα. Χρησιμοποιήστε τεχνική γλώσσα.",
+                "familyHintDeepseekCoder": "Ισχυρό στη συλλογιστική κώδικα και στην επίλυση προβλημάτων πολλών βημάτων. Προτιμάται δομημένη έξοδος. Για το deepseek-r1, η λειτουργία σκέψης λειτουργεί αυτόματα.",
+                "familyHintQwen": "Υποστηρίζει δομημένη έξοδο. Καλό σε πολύγλωσσες εργασίες. Χρησιμοποιήστε σαφείς επικεφαλίδες ενοτήτων.",
+                "familyHintMistral": "Προσανατολισμένο στην τήρηση οδηγιών. Κρατήστε τα prompts δομημένα με σαφείς περιγραφές εργασιών.",
+                "familyHintPhi": "Συμπαγές μοντέλο: κρατήστε τις οδηγίες σύντομες. Ιδανικό για εστιασμένες εργασίες, όχι για μακροσκελή κείμενα.",
+                "familyHintGemma": "Μορφή οδηγιών σε στυλ Google. Καλό στη σύνοψη και την ανάλυση.",
+                "familyHintStarcoder": "Εστιασμένο στη συμπλήρωση κώδικα. Δώστε το πλαίσιο του αρχείου και τα imports για καλύτερα αποτελέσματα."
             },
             "copy": "Αντιγραφή",
             "attachImage": "Επισύναψη εικόνας",
@@ -3033,7 +3092,8 @@
                 "general": "Γενικά",
                 "typeSlash": "Πληκτρολογήστε / για χρήση προτύπων",
                 "analyzeUi": "Ανάλυση στιγμιότυπου UI για διάταξη, προσβασιμότητα και θέματα UX",
-                "performance": "Ανάλυση κώδικα για σημεία συμφόρησης απόδοσης και βελτιστοποίηση"
+                "performance": "Ανάλυση κώδικα για σημεία συμφόρησης απόδοσης και βελτιστοποίηση",
+                "analysis": "Ανάλυση"
             },
             "costBudget": {
                 "conversationCost": "Κόστος συνομιλίας",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "πριν από {count} ημ.",
             "recentFileCountMany": "{count} αρχεία",
             "recentFileCountOne": "{count} αρχείο",
-            "recentMonthsAgo": "πριν από {count} μήν."
+            "recentMonthsAgo": "πριν από {count} μήν.",
+            "securityArchive": "Αρχειοθήκη",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Γρήγορο",
+            "securityAdvancedDescription": "Ανθεκτικό σε nonce · Κρυπτογραφημένα ονόματα αρχείων · 128 MB KDF",
+            "securityParanoidDescription": "Διαδοχική AES + ChaCha20 · Διπλή κρυπτογράφηση",
+            "securityArchiveDescription": "Αρχειοθήκη με αφαίρεση διπλοτύπων · τμήματα zstd · v3"
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Περιεχόμενο AES-GCM",
             "featureNameCipher": "Ονόματα AES-SIV",
             "formatVersion": "Μορφή {version}",
-            "invalidVaultName": "Μη έγκυροι χαρακτήρες στο όνομα θησαυροφυλακίου"
+            "invalidVaultName": "Μη έγκυροι χαρακτήρες στο όνομα θησαυροφυλακίου",
+            "defaultVaultName": "ΝέοΘησαυροφυλάκιο"
         },
         "compress": {
             "title": "Συμπίεση Αρχείων",
@@ -3952,7 +4018,10 @@
             "threads": "Νήματα",
             "auto": "Αυτόματο",
             "solid": "Συμπαγές μπλοκ",
-            "solidHint": "Καλύτερη αναλογία για πολλά μικρά αρχεία, πιο αργή τυχαία εξαγωγή."
+            "solidHint": "Καλύτερη αναλογία για πολλά μικρά αρχεία, πιο αργή τυχαία εξαγωγή.",
+            "formatArchiveOnly": "Μόνο αρχειοθέτηση",
+            "formatBestRatio": "Καλύτερη αναλογία",
+            "formatSingleFile": "μεμονωμένο αρχείο"
         },
         "batchRename": {
             "title": "Μαζική Μετονομασία",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Φιλτράρισμα ενεργειών",
                 "selected": "επιλεγμένα"
-            }
+            },
+            "save": "Αποθήκευση"
         },
         "error": {
             "description": "Το AeroFTP αντιμετώπισε ένα απρόσμενο σφάλμα. Μπορείτε να δοκιμάσετε να ανακτήσετε ή να επαναφορτώσετε την εφαρμογή.",
@@ -4529,7 +4599,13 @@
                     "radial": "Ακτινωτό",
                     "spectrum": "Φάσμα",
                     "vortex": "Δίνη",
-                    "waveform": "Κυματομορφή"
+                    "waveform": "Κυματομορφή",
+                    "glWaveGlitch": "Παραμόρφωση κύματος",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Μάντελμπροτ",
+                    "glTunnel": "Σήραγγα",
+                    "glMetaball": "Μετασφαίρες",
+                    "glParticles": "Σωματίδια"
                 },
                 "volume": "Ένταση"
             },
@@ -4635,7 +4711,18 @@
                 "off": "ΑΝΕΝΕΡΓΟ",
                 "on": "ΕΝΕΡΓΟ",
                 "presets": "Προεπιλογές",
-                "reset": "Επαναφορά σε Flat"
+                "reset": "Επαναφορά σε Flat",
+                "presetFlat": "Επίπεδο",
+                "presetRock": "Ροκ",
+                "presetPop": "Ποπ",
+                "presetJazz": "Τζαζ",
+                "presetClassical": "Κλασική",
+                "presetBassBoost": "Ενίσχυση μπάσων",
+                "presetTrebleBoost": "Ενίσχυση πρίμων",
+                "presetVocal": "Φωνητικά",
+                "presetElectronic": "Ηλεκτρονική",
+                "presetAcoustic": "Ακουστική",
+                "presetCustom": "Προσαρμοσμένο"
             },
             "pdf": {
                 "download": "Λήψη PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Επί πληρωμή",
             "extraFeatures": "Επιπλέον",
             "coreOpsList": "Μεταφόρτωση, Λήψη, Διαγραφή, Μετονομασία, Μετακίνηση, Δημιουργία φακέλου, Αναζήτηση",
-            "coreOpsLegend": "Βασικά = Μεταφόρτωση, Λήψη, Διαγραφή, Μετονομασία, Μετακίνηση, Δημιουργία φακέλου, Αναζήτηση"
+            "coreOpsLegend": "Βασικά = Μεταφόρτωση, Λήψη, Διαγραφή, Μετονομασία, Μετακίνηση, Δημιουργία φακέλου, Αναζήτηση",
+            "notes": "Σημειώσεις",
+            "storageClass": "Κλάση αποθήκευσης",
+            "objectTagging": "Ετικέτες αντικειμένων",
+            "sse": "Κρυπτογράφηση στην πλευρά του διακομιστή",
+            "checksum": "Άθροισμα ελέγχου",
+            "tierManagement": "Διαχείριση επιπέδων",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Πολυμέσα",
+            "sectionOther": "Άλλα",
+            "trashDetails": {
+                "onedrive": "Μονάδες Business και SharePoint. Το Microsoft Graph δεν εκθέτει τον κάδο ανακύκλωσης μιας μονάδας OneDrive Personal· χρησιμοποιήστε τον ιστότοπο του OneDrive για αυτό"
+            },
+            "shareLinkDetails": {
+                "permissions": "Δικαιώματα: προβολή, σχόλια, επεξεργασία",
+                "passwordExpiryPlan": "Κωδικός + λήξη (απαιτείται πρόγραμμα {plan})",
+                "passwordExpiryPaid": "Κωδικός + λήξη (απαιτείται συνδρομητικό πρόγραμμα)",
+                "passwordPersonalExpiryPermissions": "Κωδικός (μόνο Personal), λήξη, δικαιώματα",
+                "passwordArgon2ExpiryPresets": "Κωδικός (Argon2id) + προκαθορισμένες λήξεις",
+                "passwordExpiryPermissions": "Κωδικός, λήξη, δικαιώματα",
+                "basicOnly": "Μόνο βασικός σύνδεσμος κοινής χρήσης",
+                "publicToggle": "Δημόσιος σύνδεσμος (εναλλαγή απορρήτου)",
+                "basic": "Βασικός σύνδεσμος κοινής χρήσης",
+                "expiringDefaultYear": "Σύνδεσμοι με λήξη (προεπιλογή 1 έτος)",
+                "publishUnpublish": "Δημοσίευση/κατάργηση δημοσίευσης",
+                "permanentUrl": "Μόνιμο URL",
+                "sharedAlbum": "Σύνδεσμος κοινόχρηστου άλμπουμ",
+                "megaPresignedS4": "Σύνδεσμος κοινής χρήσης / προυπογεγραμμένο URL (έως 7 ημέρες για S4)",
+                "autoPasswordExpiry": "Κωδικός (αυτόματη δημιουργία) + λήξη",
+                "presigned": "Προυπογεγραμμένο URL (έως 7 ημέρες)"
+            }
         },
         "healthCheck": {
             "title": "Έλεγχος υγείας διακομιστή",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Ιδιωτικό αποθετήριο",
             "repoPublicTitle": "Δημόσιο αποθετήριο",
             "unpushedCommitsOnBranchMany": "{count} μη απεσταλμένα commit στο {branch}",
-            "unpushedCommitsOnBranchOne": "{count} μη απεσταλμένο commit στο {branch}"
+            "unpushedCommitsOnBranchOne": "{count} μη απεσταλμένο commit στο {branch}",
+            "cancelWorkflow": "Ακύρωση ροής εργασιών",
+            "rerunWorkflow": "Επανεκτέλεση ροής εργασιών",
+            "downloadAssetTitle": "Λήψη {name}"
         },
         "filenNotes": {
             "title": "Κρυπτογραφημένες σημειώσεις",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Δημιουργήθηκε",
             "manageExpires": "Λήγει",
             "manageNeverExpires": "Ποτέ",
-            "managePasswordProtected": "Προστασία με κωδικό"
+            "managePasswordProtected": "Προστασία με κωδικό",
+            "expirationHoursOne": "{count} ώρα",
+            "expirationHoursMany": "{count} ώρες",
+            "expirationDaysMany": "{count} ημέρες"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} ώ",
                 "days": "{count} ημ",
                 "months": "{count} μήν"
-            }
+            },
+            "demoTabLabel": "Επίδειξη: {protocol}",
+            "newTabLabel": "Νέο: {name}"
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Δημιουργία Merge Request",
             "mrTitle": "Τίτλος MR",
             "mrBody": "Περιγραφή (προαιρετική)",
-            "sourceCode": "Πηγαίος κώδικας"
+            "sourceCode": "Πηγαίος κώδικας",
+            "downloadAssetTitle": "Λήψη {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Νέος χρήστης",
                 "noUsers": "Δεν υπάρχουν ακόμη χρήστες. Χρησιμοποιήστε το «Νέος χρήστης» παρακάτω για να προσθέσετε τον πρώτο.",
                 "protectionNote": "Ο λογαριασμός σας προστατεύεται με κρυπτογράφηση Argon2id + AES-KW + AES-256-GCM",
-                "users": "Χρήστες"
+                "users": "Χρήστες",
+                "setup": "Ρύθμιση"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Η λειτουργία επιλέγεται κατά τη δημιουργία της σύνδεσης και παραμένει σταθερή κατά την επεξεργασία ενός αποθηκευμένου προφίλ. Για να χρησιμοποιήσετε διαφορετική λειτουργία, δημιουργήστε νέα σύνδεση.",
-                "notInBuild": "Δεν περιλαμβάνεται σε αυτή την έκδοση του AeroFTP."
+                "notInBuild": "Δεν περιλαμβάνεται σε αυτή την έκδοση του AeroFTP.",
+                "header": "Τρόποι λειτουργίας {name}",
+                "nativeApi": "Εγγενές API",
+                "filelu": {
+                    "apiDescription": "REST API με κλειδί API. Πλήρες σύνολο λειτουργιών (κάδος, σύνδεσμοι κοινής χρήσης, αρχεία με προστασία κωδικού).",
+                    "webdavDescription": "Πρόσβαση WebDAV στη θύρα 443. Ευρεία συμβατότητα με προγράμματα-πελάτες, προσαρτάται ως μονάδα δικτύου.",
+                    "s3Description": "API συμβατό με S3 στη θύρα 443. Χρησιμοποιήστε rclone, AWS CLI ή οποιοδήποτε S3 SDK.",
+                    "ftpDescription": "Κλασικό FTP στη θύρα 21. Χωρίς κρυπτογράφηση, χρήσιμο για καταγραφικά NVR βιντεοεπιτήρησης και παλαιότερους πελάτες."
+                },
+                "filen": {
+                    "apiDescription": "Κρυπτογράφηση E2E μηδενικής γνώσης (Argon2id v3 / PBKDF2 v2). Πλήρες σύνολο λειτουργιών: όριο αποθηκευτικού χώρου, κάδος, κωδικοί συνδέσμων κοινής χρήσης, εκδόσεις, TOTP.",
+                    "webdavDescription": "Γέφυρα WebDAV που εκθέτει το Filen Desktop στο 127.0.0.1:1900. Απαιτεί το Filen Desktop σε λειτουργία και συνδεδεμένο.",
+                    "s3Description": "Γέφυρα συμβατή με S3 που εκθέτει το Filen Desktop στο 127.0.0.1:1800 μέσω local.s3.filen.io. Διευθυνσιοδότηση βάσει διαδρομής, κάθε φάκελος Filen ανώτατου επιπέδου είναι ένας κάδος."
+                },
+                "proton": {
+                    "headerDescription": "Αποθήκευση cloud Proton με κρυπτογράφηση από άκρο σε άκρο",
+                    "apiDescription": "Ο δικός του πελάτης Proton Drive του AeroFTP: συνδέεστε στη σελίδα της Proton στο πρόγραμμα περιήγησης, τα αρχεία κρυπτογραφούνται και αποκρυπτογραφούνται σε αυτόν τον υπολογιστή και δεν χρειάζεται καμία άλλη εφαρμογή.",
+                    "cliDescription": "Ελέγχει το επίσημο Proton Drive CLI που είναι εγκατεστημένο και συνδεδεμένο σε αυτό το μηχάνημα. Συνδέεστε στο πρόγραμμα περιήγησης· το AeroFTP δεν βλέπει ποτέ τον κωδικό σας Proton."
+                },
+                "opendrive": {
+                    "headerDescription": "Αποθήκευση cloud OpenDrive (5 GB δωρεάν)",
+                    "apiDescription": "REST API με όνομα χρήστη + κωδικό. Πλήρες σύνολο λειτουργιών: κάδος, όριο αποθηκευτικού χώρου, σύνδεσμοι κοινής χρήσης, αναδρομική χρήση δίσκου.",
+                    "webdavDescription": "Πρόσβαση WebDAV μέσω webdav.opendrive.com στη θύρα 443. Για παλαιότερους πελάτες ή για προσάρτηση ως δικτυακή μονάδα."
+                },
+                "koofr": {
+                    "apiDescription": "REST API με έδρα στην ΕΕ, με email + κωδικό εφαρμογής. Πλήρες σύνολο λειτουργιών: όριο αποθηκευτικού χώρου, κάδος (λίστα/επαναφορά/άδειασμα), σύνδεσμοι κοινής χρήσης.",
+                    "webdavDescription": "Πρόσβαση WebDAV μέσω app.koofr.net/dav/Koofr στη θύρα 443. Το όριο αποθηκευτικού χώρου εξακολουθεί να διαβάζεται από το REST API του Koofr. Για παλαιότερους πελάτες ή για προσάρτηση ως δικτυακή μονάδα."
+                },
+                "mega": {
+                    "headerDescription": "Αποθήκευση cloud MEGA με κρυπτογράφηση στην πλευρά του πελάτη",
+                    "apiDescription": "Εγγενές API του MEGA με email + κωδικό (+ προαιρετικό TOTP). Πλήρες σύνολο λειτουργιών: κρυπτογράφηση στην πλευρά του πελάτη, όριο αποθηκευτικού χώρου, σύνδεσμοι κοινής χρήσης, μικρογραφίες.",
+                    "webdavDescription": "Τοπική γέφυρα WebDAV που εξυπηρετεί το επίσημο MEGAcmd CLI, ανώνυμη στο 127.0.0.1. Το AeroFTP εκτελεί το \"mega-webdav /\" για εσάς κατά τη σύνδεση, οπότε δεν υπάρχει χειροκίνητο βήμα.",
+                    "s4Description": "Αποθήκευση αντικειμένων MEGA S4, συμβατή με S3 (περιοχές EU/CA). Κλειδί πρόσβασης + μυστικό κλειδί + κάδος. Απαιτεί πρόγραμμα Pro."
+                }
             }
         },
         "flatpak": {

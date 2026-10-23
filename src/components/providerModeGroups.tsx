@@ -20,6 +20,7 @@
 import React from 'react';
 import { methodIcon } from './connectionMethodIcons';
 import type { ProviderType } from '../types';
+import { translate, type TranslationFunction } from '../i18n';
 
 export interface ProviderMode {
     /** Registry providerId. Omit (undefined) for the "protocol only"
@@ -35,11 +36,16 @@ export interface ProviderMode {
     icon: React.ReactNode;
     /** Tailwind text-color class for the active chip icon. */
     activeColor: string;
-    /** Short chip label. */
+    /** Short chip label, and the mode's name in its group (`activeWarnings`
+     *  keys, the chip key): a method name, shown as it is unless
+     *  `labelText` is set. */
     label: string;
+    /** The chip label in the reader's language, when it is words rather
+     *  than a method name. Read it through {@link modeLabel}. */
+    labelText?: (t: TranslationFunction) => string;
     /** One-line description rendered below the chip strip when this
      *  mode is active. */
-    description: string;
+    description: (t: TranslationFunction) => string;
     /** Optional badge text (e.g. "BETA", "LOCAL"). */
     badge?: string;
     /** Per-mode override of the form's top-right header source. Use only
@@ -77,7 +83,7 @@ export interface ProviderModeGroup {
      *  potential i18n root in the future. */
     id: string;
     /** "MODES" header label shown at the top of the chip strip. */
-    headerLabel: string;
+    headerLabel: (t: TranslationFunction) => string;
     /** Mode entries (ordered left-to-right). */
     modes: ProviderMode[];
     /** Optional i18n key for an extra warning block rendered under the
@@ -100,7 +106,7 @@ export interface ProviderModeGroup {
      *  "...via WebDAV"), that string is wrong for the other modes (#270,
      *  Quick Connect OpenDrive API showed "via WebDAV"). Set this to a
      *  neutral line; the protocol is already obvious from the MODES chips. */
-    headerDescription?: string;
+    headerDescription?: (t: TranslationFunction) => string;
     /** When true, every mode in the group authenticates with the SAME
      *  credential set (e.g. Koofr / OpenDrive: the Native API and WebDAV
      *  surfaces both take the same email + app password). In that case the
@@ -115,7 +121,7 @@ export interface ProviderModeGroup {
 export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
     {
         id: 'filelu',
-        headerLabel: 'FileLu Modes',
+        headerLabel: (t) => t('provider.modes.header', { name: 'FileLu' }),
         modes: [
             {
                 // Preset-less like every other group's native mode (Filen, Koofr,
@@ -126,9 +132,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 protocol: 'filelu',
                 icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-sky-500',
-                label: 'Native API',
-                description:
-                    'REST API with API key. Full feature set (trash, share links, password-protected files).',
+                label: 'API',
+                labelText: (t) => t('provider.modes.nativeApi'),
+                description: (t) => t('provider.modes.filelu.apiDescription'),
             },
             {
                 providerId: 'filelu-webdav',
@@ -136,8 +142,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-emerald-500',
                 label: 'WebDAV',
-                description:
-                    'WebDAV access on port 443. Wide client compatibility, mounts as a network drive.',
+                description: (t) => t('provider.modes.filelu.webdavDescription'),
             },
             {
                 providerId: 'filelu-s3',
@@ -148,8 +153,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 // the Add Service badge uses (#347): the tab and the badge for
                 // one method should not read differently.
                 label: 'S5 (S3)',
-                description:
-                    'S3-compatible API on port 443. Use rclone, AWS CLI, or any S3 SDK.',
+                description: (t) => t('provider.modes.filelu.s3Description'),
             },
             {
                 providerId: 'filelu-ftp',
@@ -157,8 +161,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('FTP', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'FTP',
-                description:
-                    'Classic FTP on port 21. Plaintext, useful for CCTV NVRs and legacy clients.',
+                description: (t) => t('provider.modes.filelu.ftpDescription'),
             },
         ],
         activeWarnings: {
@@ -168,7 +171,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
     },
     {
         id: 'filen',
-        headerLabel: 'Filen Modes',
+        headerLabel: (t) => t('provider.modes.header', { name: 'Filen' }),
         modes: [
             {
                 // Native Filen API is selected directly via the
@@ -177,9 +180,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 protocol: 'filen',
                 icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-emerald-500',
-                label: 'Native API',
-                description:
-                    'Zero-knowledge E2E encryption (Argon2id v3 / PBKDF2 v2). Full feature set: storage quota, trash, share-link passwords, versioning, TOTP.',
+                label: 'API',
+                labelText: (t) => t('provider.modes.nativeApi'),
+                description: (t) => t('provider.modes.filen.apiDescription'),
                 badge: 'E2E',
             },
             {
@@ -188,8 +191,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'WebDAV',
-                description:
-                    'WebDAV bridge exposed by Filen Desktop on 127.0.0.1:1900. Requires Filen Desktop running and signed in.',
+                description: (t) => t('provider.modes.filen.webdavDescription'),
                 badge: 'LOCAL',
                 bridgeKind: 'filen-webdav',
             },
@@ -199,8 +201,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('S3', { size: 14 }),
                 activeColor: 'text-amber-500',
                 label: 'S3',
-                description:
-                    'S3-compatible bridge exposed by Filen Desktop on 127.0.0.1:1800 via local.s3.filen.io. Path-style addressing, each top-level Filen folder is a bucket.',
+                description: (t) => t('provider.modes.filen.s3Description'),
                 badge: 'LOCAL',
                 bridgeKind: 'filen-s3',
             },
@@ -219,19 +220,18 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         // drives Proton's official CLI. Both tabs use the `proton` protocol and
         // are told apart by the `proton_mode` option.
         id: 'proton',
-        headerLabel: 'Proton Drive Modes',
+        headerLabel: (t) => t('provider.modes.header', { name: 'Proton Drive' }),
         headerName: 'Proton Drive',
         // Neutral across the tabs: the catalog's own text names the CLI,
         // which is wrong for the API tab. Each tab says how it connects.
-        headerDescription: 'Proton cloud storage with end-to-end encryption',
+        headerDescription: (t) => t('provider.modes.proton.headerDescription'),
         modes: [
             {
                 protocol: 'proton',
                 icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-purple-500',
                 label: 'API',
-                description:
-                    "AeroFTP's own Proton Drive client: you sign in on Proton's page in the browser, files are encrypted and decrypted on this computer, and no other app is needed.",
+                description: (t) => t('provider.modes.proton.apiDescription'),
                 options: { proton_mode: 'native' },
                 requires: 'proton-native',
             },
@@ -240,8 +240,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('CLI', { size: 14 }),
                 activeColor: 'text-purple-500',
                 label: 'CLI',
-                description:
-                    'Drives the official Proton Drive CLI installed and signed in on this machine. You sign in in the browser; AeroFTP never sees your Proton password.',
+                description: (t) => t('provider.modes.proton.cliDescription'),
                 badge: 'LOCAL',
                 // Status banner: installed, signed in, or neither.
                 bridgeKind: 'proton-cli',
@@ -253,7 +252,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         // Native API and WebDAV both use the same username + password, so the
         // per-protocol credential opt-in is hidden (#215).
         sharedCredentials: true,
-        headerLabel: 'OpenDrive Modes',
+        headerLabel: (t) => t('provider.modes.header', { name: 'OpenDrive' }),
         // WebDAV preset carries the description/Docs link/logo; show the
         // plain "OpenDrive" name so the Native API tab is not mislabeled
         // "OpenDrive (WebDAV)".
@@ -261,7 +260,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         headerName: 'OpenDrive',
         // Neutral header: the WebDAV preset's "...via WebDAV" description is
         // wrong when the Native API mode is selected (#270).
-        headerDescription: 'OpenDrive cloud storage (5 GB free)',
+        headerDescription: (t) => t('provider.modes.opendrive.headerDescription'),
         modes: [
             {
                 // OpenDrive native API selected via ProtocolSelector
@@ -269,9 +268,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 protocol: 'opendrive',
                 icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-cyan-500',
-                label: 'Native API',
-                description:
-                    'REST API with username + password. Full feature set: trash, storage quota, share links, recursive disk usage.',
+                label: 'API',
+                labelText: (t) => t('provider.modes.nativeApi'),
+                description: (t) => t('provider.modes.opendrive.apiDescription'),
             },
             {
                 providerId: 'opendrive-webdav',
@@ -279,8 +278,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'WebDAV',
-                description:
-                    'WebDAV access via webdav.opendrive.com on port 443. Use for legacy clients or to mount as a network drive.',
+                description: (t) => t('provider.modes.opendrive.webdavDescription'),
             },
         ],
     },
@@ -289,7 +287,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         // Native API and WebDAV both use the same email + app password, so the
         // per-protocol credential opt-in is hidden (#215).
         sharedCredentials: true,
-        headerLabel: 'Koofr Modes',
+        headerLabel: (t) => t('provider.modes.header', { name: 'Koofr' }),
         // Single registry entry 'koofr' (the WebDAV preset) carries the
         // canonical Koofr identity + Docs link; use it for both tabs so
         // the header stays identical (issue #213 follow-up).
@@ -303,9 +301,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 protocol: 'koofr',
                 icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-teal-500',
-                label: 'Native API',
-                description:
-                    'EU-based REST API with email + app password. Full feature set: storage quota, trash (list/restore/empty), share links.',
+                label: 'API',
+                labelText: (t) => t('provider.modes.nativeApi'),
+                description: (t) => t('provider.modes.koofr.apiDescription'),
             },
             {
                 providerId: 'koofr',
@@ -313,8 +311,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'WebDAV',
-                description:
-                    'WebDAV access via app.koofr.net/dav/Koofr on port 443. Storage quota is still read from the Koofr REST API. Use for legacy clients or to mount as a network drive.',
+                description: (t) => t('provider.modes.koofr.webdavDescription'),
             },
         ],
     },
@@ -325,10 +322,10 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         // for, "Non-WebDAV MEGAcmd" (driving mega-ls/get/put directly), has no
         // backend yet and is intentionally absent until one exists.
         id: 'mega',
-        headerLabel: 'MEGA Modes',
+        headerLabel: (t) => t('provider.modes.header', { name: 'MEGA' }),
         headerProviderId: 'mega',
         headerName: 'MEGA',
-        headerDescription: 'MEGA cloud storage with client-side encryption',
+        headerDescription: (t) => t('provider.modes.mega.headerDescription'),
         modes: [
             {
                 // Native MEGA is selected via the ProtocolSelector (type
@@ -341,8 +338,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-red-500',
                 label: 'API',
-                description:
-                    'Native MEGA API with email + password (+ optional TOTP). Full feature set: client-side encryption, storage quota, share links, thumbnails.',
+                description: (t) => t('provider.modes.mega.apiDescription'),
                 badge: 'E2E',
             },
             {
@@ -351,8 +347,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'WebDAV (MEGAcmd)',
-                description:
-                    'Local WebDAV bridge served by the official MEGAcmd CLI, anonymous on 127.0.0.1. AeroFTP runs "mega-webdav /" for you on connect, so there is no manual step.',
+                description: (t) => t('provider.modes.mega.webdavDescription'),
                 badge: 'LOCAL',
                 bridgeKind: 'megacmd-webdav',
             },
@@ -363,8 +358,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 activeColor: 'text-amber-500',
                 // Branded "S4" by MEGA; matches the Add Service badge (#347).
                 label: 'S4 (S3)',
-                description:
-                    'MEGA S4 object storage, S3-compatible (EU/CA regions). Access key + secret key + bucket. Requires a Pro plan.',
+                description: (t) => t('provider.modes.mega.s4Description'),
                 badge: 'PRO',
             },
         ],
@@ -481,6 +475,11 @@ export function findActiveMode(
     return null;
 }
 
+/** The label a mode's chip shows, in the reader's language. */
+export function modeLabel(mode: ProviderMode, t: TranslationFunction): string {
+    return mode.labelText ? mode.labelText(t) : mode.label;
+}
+
 /**
  * Canonical header source for the form's top-right logo/name/description/
  * Docs link when the active config belongs to a mode group. Resolution:
@@ -495,13 +494,14 @@ export function findActiveMode(
 export function resolveModeHeader(
     activeProviderId: string | null | undefined,
     activeProtocol: string | null | undefined,
+    t: TranslationFunction = translate,
 ): { providerId?: string; name?: string; description?: string } | null {
     const group = findActiveModeGroup(activeProviderId, activeProtocol);
     if (!group) return null;
     const mode = findActiveMode(group, activeProviderId, activeProtocol);
     const providerId = mode?.headerProviderId ?? group.headerProviderId;
     const name = mode?.headerName ?? group.headerName;
-    const description = group.headerDescription;
+    const description = group.headerDescription?.(t);
     if (!providerId && !name) return null;
     return { providerId, name, description };
 }

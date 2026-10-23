@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useEffect } from 'react';
 import { X, Check, Minus } from 'lucide-react';
-import { useTranslation } from '../i18n';
+import { useTranslation, type TranslationFunction } from '../i18n';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { CountryFlag } from './CountryFlag';
@@ -23,7 +23,7 @@ interface ProviderFeatures {
   catalogId?: string;
   base: string[];
   advanced: string[];
-  section?: string; // Section header before this provider
+  section?: SectionId; // Section header before this provider
 }
 
 // Core operations: upload, download, delete, rename, move, mkdir, search (all providers)
@@ -43,55 +43,70 @@ const PREMIUM_FEATURES = ['watermark', 'folderLock', 'filePassword'] as const;
 // Enterprise features (accorpated in single "Enterprise" column with tooltip)
 const ENTERPRISE_FEATURES = ['storageClass', 'objectTagging', 'sse', 'checksum', 'tierManagement'] as const;
 
-// Labels for tooltip display
-const FEATURE_LABELS: Record<string, string> = {
-  star: 'Star', comments: 'Comments', tags: 'Tags',
-  collaborations: 'Collaborations', devTools: 'Dev Tools', notes: 'Notes',
-  watermark: 'Watermark', folderLock: 'Folder Lock', filePassword: 'Password',
-  storageClass: 'Storage Class', objectTagging: 'Object Tagging',
-  sse: 'Server-Side Encryption', checksum: 'Checksum', tierManagement: 'Tier Management',
+// Feature names for the column headers, the tooltips and the accessible labels.
+const FEATURE_LABELS: Record<string, (t: TranslationFunction) => string> = {
+  shareLink: (t) => t('providers.shareLink'), trash: (t) => t('providers.trash'), versioning: (t) => t('providers.versioning'),
+  star: (t) => t('providers.star'), comments: (t) => t('providers.comments'), tags: (t) => t('providers.tags'),
+  collaborations: (t) => t('providers.collaborations'), devTools: (t) => t('providers.devTools'), notes: (t) => t('providers.notes'),
+  watermark: (t) => t('providers.watermark'), folderLock: (t) => t('providers.folderLock'), filePassword: (t) => t('providers.filePassword'),
+  storageClass: (t) => t('providers.storageClass'), objectTagging: (t) => t('providers.objectTagging'),
+  sse: (t) => t('providers.sse'), checksum: (t) => t('providers.checksum'), tierManagement: (t) => t('providers.tierManagement'),
 };
+
+const featureLabel = (feature: string, t: TranslationFunction): string => FEATURE_LABELS[feature]?.(t) ?? feature;
 
 // Per-feature, per-provider details for the tooltip on a listed capability.
 // A tick that holds only for some accounts of a provider says so here, so
 // Help never advertises a button the app cannot honour for the reader.
-const FEATURE_DETAILS: Record<string, Record<string, string>> = {
+const FEATURE_DETAILS: Record<string, Record<string, (t: TranslationFunction) => string>> = {
   trash: {
     // #397: Microsoft Graph has no endpoint for the OneDrive Personal
     // recycle bin (`/me/drive/special/deleted` answers 400 invalidRequest
     // there). The app reports it as a limit; Help must say the same.
-    onedrive: 'Business and SharePoint drives. Microsoft Graph does not expose the recycle bin of a OneDrive Personal drive; use the OneDrive website for it',
+    onedrive: (t) => t('providers.trashDetails.onedrive'),
   },
 };
 
 // Share link capability details for tooltip
-const SHARE_LINK_DETAILS: Record<string, string> = {
-  googledrive: 'Permissions: view, comment, edit',
-  dropbox: 'Password + expiry (Pro+ plan required)',
-  onedrive: 'Password (Personal only), expiry, permissions',
-  box: 'Password + expiry (paid plan required)',
-  pcloud: 'Password + expiry (Premium plan required)',
-  filen: 'Password (Argon2id) + expiry presets',
-  zohoworkdrive: 'Password, expiry, permissions',
-  kdrive: 'Password + expiry (paid plan required)',
-  jottacloud: 'Basic share link only',
-  filelu: 'Public link (toggle privacy)',
-  koofr: 'Basic share link',
-  opendrive: 'Expiring links (default 1 year)',
-  yandexdisk: 'Publish/unpublish',
-  github: 'Permanent URL',
-  immich: 'Shared album link',
-  mega: 'Share link / Pre-signed URL (max 7 days for S4)',
-  nextcloud: 'Password (auto-gen) + expiry',
-  felicloud: 'Password (auto-gen) + expiry',
-  drime: 'Password, expiry, permissions',
-  'amazon-s3': 'Pre-signed URL (max 7 days)',
+const SHARE_LINK_DETAILS: Record<string, (t: TranslationFunction) => string> = {
+  googledrive: (t) => t('providers.shareLinkDetails.permissions'),
+  dropbox: (t) => t('providers.shareLinkDetails.passwordExpiryPlan', { plan: 'Pro+' }),
+  onedrive: (t) => t('providers.shareLinkDetails.passwordPersonalExpiryPermissions'),
+  box: (t) => t('providers.shareLinkDetails.passwordExpiryPaid'),
+  pcloud: (t) => t('providers.shareLinkDetails.passwordExpiryPlan', { plan: 'Premium' }),
+  filen: (t) => t('providers.shareLinkDetails.passwordArgon2ExpiryPresets'),
+  zohoworkdrive: (t) => t('providers.shareLinkDetails.passwordExpiryPermissions'),
+  kdrive: (t) => t('providers.shareLinkDetails.passwordExpiryPaid'),
+  jottacloud: (t) => t('providers.shareLinkDetails.basicOnly'),
+  filelu: (t) => t('providers.shareLinkDetails.publicToggle'),
+  koofr: (t) => t('providers.shareLinkDetails.basic'),
+  opendrive: (t) => t('providers.shareLinkDetails.expiringDefaultYear'),
+  yandexdisk: (t) => t('providers.shareLinkDetails.publishUnpublish'),
+  github: (t) => t('providers.shareLinkDetails.permanentUrl'),
+  immich: (t) => t('providers.shareLinkDetails.sharedAlbum'),
+  mega: (t) => t('providers.shareLinkDetails.megaPresignedS4'),
+  nextcloud: (t) => t('providers.shareLinkDetails.autoPasswordExpiry'),
+  felicloud: (t) => t('providers.shareLinkDetails.autoPasswordExpiry'),
+  drime: (t) => t('providers.shareLinkDetails.passwordExpiryPermissions'),
+  'amazon-s3': (t) => t('providers.shareLinkDetails.presigned'),
+};
+
+type SectionId = 'oauth' | 'media' | 's3' | 'webdav' | 'swift' | 'other';
+
+// Section headers of the table.
+const SECTION_LABELS: Record<SectionId, (t: TranslationFunction) => string> = {
+  oauth: (t) => t('providers.tabOAuth'),
+  media: (t) => t('providers.sectionMedia'),
+  s3: (t) => t('providers.tabS3'),
+  webdav: (t) => t('providers.tabWebDAV'),
+  swift: () => 'Swift',
+  other: (t) => t('providers.sectionOther'),
 };
 
 // All providers in a single flat list with section markers
 const ALL_PROVIDERS: ProviderFeatures[] = [
   // ── OAuth / API ──
-  { name: 'Google Drive', logoId: 'googledrive', section: 'OAuth / API',
+  { name: 'Google Drive', logoId: 'googledrive', section: 'oauth',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: ['star', 'comments'] },
   { name: 'Dropbox', logoId: 'dropbox',
@@ -156,7 +171,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: ['devTools', 'checksum'] },
 
   // ── Media / Photo Cloud ──
-  { name: 'Immich', logoId: 'immich', section: 'Media',
+  { name: 'Immich', logoId: 'immich', section: 'media',
     base: ['upload', 'download', 'delete', 'mkdir', 'search', 'shareLink'],
     advanced: ['checksum'] },
   { name: 'PixelUnion', logoId: 'pixelunion',
@@ -176,7 +191,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
 
   // ── S3 Compatible ──
-  { name: 'Amazon Web Services (AWS)', logoId: 'amazon-s3', section: 'S3 Compatible',
+  { name: 'Amazon Web Services (AWS)', logoId: 'amazon-s3', section: 's3',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: ['storageClass', 'objectTagging', 'sse', 'checksum'] },
   { name: 'Backblaze B2', logoId: 'backblaze',
@@ -220,7 +235,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
 
   // ── WebDAV ──
-  { name: 'CloudMe', logoId: 'cloudme', section: 'WebDAV',
+  { name: 'CloudMe', logoId: 'cloudme', section: 'webdav',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
   { name: 'DriveHQ', logoId: 'drivehq',
@@ -255,25 +270,25 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
 
   // ── OpenStack Swift ──
-  { name: 'Blomp', logoId: 'blomp', section: 'Swift',
+  { name: 'Blomp', logoId: 'blomp', section: 'swift',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
 
   // ── Other ──
-  { name: 'Drime', logoId: 'drime', section: 'Other',
+  { name: 'Drime', logoId: 'drime', section: 'other',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: [] },
 ];
 
 // Helper: get extra/premium features a provider has
-function getExtraFeatures(p: ProviderFeatures): string[] {
-  return EXTRA_FEATURES.filter(f => p.advanced.includes(f)).map(f => FEATURE_LABELS[f] || f);
+function getExtraFeatures(p: ProviderFeatures, t: TranslationFunction): string[] {
+  return EXTRA_FEATURES.filter(f => p.advanced.includes(f)).map(f => featureLabel(f, t));
 }
-function getPremiumFeatures(p: ProviderFeatures): string[] {
-  return PREMIUM_FEATURES.filter(f => p.advanced.includes(f)).map(f => FEATURE_LABELS[f] || f);
+function getPremiumFeatures(p: ProviderFeatures, t: TranslationFunction): string[] {
+  return PREMIUM_FEATURES.filter(f => p.advanced.includes(f)).map(f => featureLabel(f, t));
 }
-function getEnterpriseFeatures(p: ProviderFeatures): string[] {
-  return ENTERPRISE_FEATURES.filter(f => p.advanced.includes(f)).map(f => FEATURE_LABELS[f] || f);
+function getEnterpriseFeatures(p: ProviderFeatures, t: TranslationFunction): string[] {
+  return ENTERPRISE_FEATURES.filter(f => p.advanced.includes(f)).map(f => featureLabel(f, t));
 }
 
 export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
@@ -362,7 +377,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                 </th>
                 {OPTIONAL_FEATURES.map(f => (
                   <th key={f} className="text-center py-2 px-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {t(`providers.${f}`)}
+                    {featureLabel(f, t)}
                   </th>
                 ))}
                 <th className="text-center py-2 px-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
@@ -393,7 +408,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                           colSpan={2 + OPTIONAL_FEATURES.length + 3}
                           className="py-2 px-3 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 border-t border-b border-gray-200 dark:border-gray-700"
                         >
-                          {provider.section}
+                          {SECTION_LABELS[provider.section](t)}
                         </td>
                       </tr>
                     )}
@@ -431,14 +446,14 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                         <td key={f} className="text-center py-1.5 px-2">
                           {provider.base.includes(f) ? (
                             (() => {
-                              const detail = (f === 'shareLink' ? SHARE_LINK_DETAILS[provider.logoId] : FEATURE_DETAILS[f]?.[provider.logoId]) || '';
+                              const detail = (f === 'shareLink' ? SHARE_LINK_DETAILS[provider.logoId] : FEATURE_DETAILS[f]?.[provider.logoId])?.(t) || '';
                               // A caveat that only lives in `title` is unreachable from the
                               // keyboard and unreliable for screen readers, so a tick that
                               // carries one is focusable and names it as its label.
                               return (
                                 <span
                                   title={detail}
-                                  aria-label={detail ? `${FEATURE_LABELS[f] ?? f}: ${detail}` : undefined}
+                                  aria-label={detail ? t('providers.featureDetail', { feature: featureLabel(f, t), detail }) : undefined}
                                   tabIndex={detail ? 0 : undefined}
                                   className={detail ? 'cursor-help inline-block rounded focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}
                                 >
@@ -454,7 +469,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                       {/* Extra column */}
                       <td className="text-center py-1.5 px-2">
                         {(() => {
-                          const extras = getExtraFeatures(provider);
+                          const extras = getExtraFeatures(provider, t);
                           return extras.length > 0 ? (
                             <span title={extras.join(', ')} className="cursor-help"><Check size={13} className="inline-block text-blue-500" /></span>
                           ) : (
@@ -465,7 +480,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                       {/* Premium column */}
                       <td className="text-center py-1.5 px-2">
                         {(() => {
-                          const prems = getPremiumFeatures(provider);
+                          const prems = getPremiumFeatures(provider, t);
                           return prems.length > 0 ? (
                             <span title={prems.join(', ')} className="cursor-help">
                               <Check size={13} className="inline-block text-amber-500" />
@@ -478,7 +493,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                       {/* Enterprise S3/Azure column */}
                       <td className="text-center py-1.5 px-2">
                         {(() => {
-                          const ent = getEnterpriseFeatures(provider);
+                          const ent = getEnterpriseFeatures(provider, t);
                           return ent.length > 0 ? (
                             <span title={ent.join(', ')} className="cursor-help">
                               <Check size={13} className="inline-block text-cyan-500" />

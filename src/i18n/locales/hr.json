@@ -202,7 +202,16 @@
                 "redirectUriHelp": "Kopirajte ovaj URL i zalijepite ga kao URI preusmjeravanja u postavkama svoje razvojne aplikacije.",
                 "redirectUriNoteGoogle": "Preporučeno: u Google Cloud Console izradite ID OAuth klijenta vrste „Aplikacija za računala”; nije potrebno registrirati URI za preusmjeravanje. Za klijenta vrste „Web-aplikacija” registrirajte točno onaj URI za preusmjeravanje koji je prikazan iznad, uključujući njegov port i putanju /callback.",
                 "enablePhotosApi": "Provjerite je li Photos Library API omogućen u vašoj Google Cloud Console.",
-                "enableDriveApi": "Provjerite je li Google Drive API omogućen u vašoj Google Cloud Console."
+                "enableDriveApi": "Provjerite je li Google Drive API omogućen u vašoj Google Cloud Console.",
+                "zohoRegionOption": "{region} ({domain})",
+                "zohoRegionUs": "SAD",
+                "zohoRegionEu": "EU",
+                "zohoRegionIn": "Indija",
+                "zohoRegionAu": "Australija",
+                "zohoRegionJp": "Japan",
+                "zohoRegionUk": "Ujedinjeno Kraljevstvo",
+                "zohoRegionCa": "Kanada",
+                "zohoRegionSa": "Saudijska Arabija"
             },
             "activeSessions": "Aktivne sesije",
             "internxtEmailPlaceholder": "your.email@example.com",
@@ -1326,7 +1335,9 @@
             "migrationCleanupHint": "Preporučeno za najveću sigurnost",
             "fontCustomOption": "Prilagođeno...",
             "fontSystemInstallHint": "Zahtijeva instalaciju u sustav. AeroFTP automatski koristi zamjenu ako nije dostupno.",
-            "fontSizeIndicatorLabel": "Font"
+            "fontSizeIndicatorLabel": "Font",
+            "fontPresetDefault": "{font} (zadano)",
+            "fontPresetSystemDefault": "Zadano sustava"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1371,7 +1382,13 @@
                 "increaseFont": "Povećaj veličinu fonta (Ctrl+=)",
                 "newTab": "Nova kartica terminala",
                 "sshShellTo": "SSH ljuska na {host}",
-                "theme": "Tema terminala"
+                "theme": "Tema terminala",
+                "tabLabel": "Terminal {num}",
+                "themeCyber": "Kiber",
+                "themeTrueDark": "Prava tamna",
+                "themeGreen": "Zelena",
+                "themeIce": "Led",
+                "themeRedLava": "Crvena lava"
             },
             "editorPanel": {
                 "emptyState": "Desnom tipkom kliknite na datoteku i odaberite \"Prikaži izvor\"",
@@ -1535,7 +1552,10 @@
             "onePerLineHint": "(jedan po retku)",
             "pairsEditorLabel": "Uređivač parova AeroCloud",
             "remoteSubfolderPlaceholder": "oblak",
-            "countdownSoon": "Uskoro..."
+            "countdownSoon": "Uskoro...",
+            "aerocloudEnabled": "AeroCloud omogućen",
+            "selectPairLocalFolder": "Odaberite lokalnu mapu za par",
+            "secondsAgo": "{count}s prije"
         },
         "statusBar": {
             "connected": "Povezano",
@@ -1742,7 +1762,13 @@
                 "ekRole": "Istraživač, inženjer za osiguranje kvalitete, sudizajner"
             },
             "madeBy": "u tvrtki {author}",
-            "statsLine": "{protocols} protokola · {languages} jezika · AES-256 arhive"
+            "statsLine": "{protocols} protokola · {languages} jezika · AES-256 arhive",
+            "dependencyRoles": {
+                "sftpOps": "SFTP operacije",
+                "osKeyring": "Privjesak ključeva sustava",
+                "vaultFormat": "Format trezora",
+                "zipArchives": "ZIP arhive"
+            }
         },
         "support": {
             "title": "Podrži AeroFTP",
@@ -1987,7 +2013,16 @@
             "trash_restore_detail_present_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, već postoji {present}",
             "trash_restore_detail_folders_present_success": "[{provider}] Vraćeno iz smeća: datoteke {files}, mape {folders}, već postoji {present}",
             "filelu_file_password_removed": "[{provider}] Lozinka datoteke uklonjena",
-            "filelu_folder_password_removed": "[{provider}] Lozinka mape uklonjena"
+            "filelu_folder_password_removed": "[{provider}] Lozinka mape uklonjena",
+            "github_run_action_success": "[{provider}] {action} #{runId}",
+            "github_run_action_error": "[{provider}] {action} nije uspjelo",
+            "batch_rename_start": "[{location}] Preimenovanje stavki: {count}...",
+            "batch_rename_success": "[{location}] Preimenovane stavke: {count}",
+            "batch_rename_error": "[{location}] Preimenovane stavke: {count}, neuspješno: {failed}",
+            "compress_details_saved": "{input} → {output} (ušteđeno {percent}%)",
+            "compress_details_grew": "{input} → {output} (povećano {percent}%)",
+            "extract_details": "{input} → {output} (raspakirano)",
+            "download_details": "({size} za {seconds} s)"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
@@ -2266,7 +2301,14 @@
             "jurisdiction": "Nadležnost",
             "insecureCertDialogLabel": "Upozorenje o nesigurnom certifikatu",
             "betaBadge": "BETA",
-            "hostKeyDialogLabel": "Provjera ključa poslužitelja"
+            "hostKeyDialogLabel": "Provjera ključa poslužitelja",
+            "mtpName": "Prijenosni uređaj (MTP)",
+            "mtpDesc": "Telefon ili kamera putem MTP/WPD",
+            "immichDesc": "Samostalno hostirano upravljanje fotografijama",
+            "imagekitDesc": "Medijski CDN + pohrana (20 GB besplatno)",
+            "uploadcareDesc": "Medijski CDN u EU (3 GB besplatno)",
+            "cloudinaryDesc": "Medijski CDN (25 kredita mjesečno besplatno)",
+            "backblazeDesc": "Izvorni API Backblaze B2 v4"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -2416,7 +2458,10 @@
             "add": "Dodaj",
             "remove": "Ukloni",
             "none": "Nema postavljenih dozvola",
-            "anyoneWithLink": "Svatko tko ima poveznicu"
+            "anyoneWithLink": "Svatko tko ima poveznicu",
+            "roleViewer": "Gledatelj",
+            "roleEditor": "Urednik",
+            "roleCommenter": "Komentator"
         },
         "locking": {
             "lock": "Zaključaj datoteku",
@@ -2584,7 +2629,9 @@
             "rollbackRestoreFailedCount": "neuspjelo {count}",
             "rollbackRestoreCompleted": "Vraćanje dovršeno: {summary}",
             "rollbackRestoreNothing": "Nema ničega za vraćanje",
-            "rollbackRestoreFailed": "Vraćanje nije uspjelo: {error}"
+            "rollbackRestoreFailed": "Vraćanje nije uspjelo: {error}",
+            "intervalHoursOne": "{count} sat",
+            "intervalHoursMany": "{count} h"
         },
         "ui": {
             "syncing": "Sinkronizacija...",
@@ -2940,7 +2987,19 @@
                 "supportsVision": "Podržava vid",
                 "thinkingReasoning": "Razmišljanje/Zaključivanje",
                 "toolQuality": "Kvaliteta alata: {quality}/5",
-                "ollamaNotReachable": "Ollama nije dostupna"
+                "ollamaNotReachable": "Ollama nije dostupna",
+                "macroSafeEditName": "Sigurno uređivanje",
+                "macroSafeEditDescription": "Pročitaj datoteku, prikaži njezin sadržaj, zatim je uredi (sigurnosni obrazac čitanja prije pisanja)",
+                "macroFindReadName": "Pronađi i pročitaj",
+                "macroFindReadDescription": "Traži datoteke koje odgovaraju uzorku u lokalnom direktoriju",
+                "familyHintLlama3": "Najbolje rade izravne i sažete upute. Koristite markdown oblikovanje. Izvorno podržava korištenje alata.",
+                "familyHintCodellama": "Usredotočite se na generiranje i analizu koda. Navedite primjere koda. Koristite tehnički jezik.",
+                "familyHintDeepseekCoder": "Snažan u zaključivanju o kodu i rješavanju problema u više koraka. Poželjan je strukturirani izlaz. Za deepseek-r1 način razmišljanja radi automatski.",
+                "familyHintQwen": "Podržava strukturirani izlaz. Dobar u višejezičnim zadacima. Koristite jasne naslove odjeljaka.",
+                "familyHintMistral": "Usmjeren na praćenje uputa. Neka promptovi budu strukturirani s jasnim opisima zadataka.",
+                "familyHintPhi": "Kompaktan model: neka upute budu sažete. Najbolji za usmjerene zadatke, ne za duge tekstove.",
+                "familyHintGemma": "Format uputa u stilu Googlea. Dobar u sažimanju i analizi.",
+                "familyHintStarcoder": "Usmjeren na dovršavanje koda. Za najbolje rezultate navedite kontekst datoteke i uvoze."
             },
             "rag": {
                 "indexing": "Indeksiranje datoteka...",
@@ -3033,7 +3092,8 @@
                 "general": "Općenito",
                 "typeSlash": "Upišite / za korištenje predložaka",
                 "analyzeUi": "Analiziraj snimku zaslona korisničkog sučelja za raspored, pristupačnost i UX probleme",
-                "performance": "Analiziraj kod za uska grla performansi i optimizaciju"
+                "performance": "Analiziraj kod za uska grla performansi i optimizaciju",
+                "analysis": "Analiza"
             },
             "costBudget": {
                 "conversationCost": "Trošak razgovora",
@@ -3875,7 +3935,12 @@
             "recentDaysAgo": "prije {count} d",
             "recentFileCountMany": "{count} datoteka",
             "recentFileCountOne": "{count} datoteka",
-            "recentMonthsAgo": "prije {count} mj."
+            "recentMonthsAgo": "prije {count} mj.",
+            "securityArchive": "Arhiva",
+            "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Brzo",
+            "securityAdvancedDescription": "Otporno na nonce · Šifrirani nazivi datoteka · 128 MB KDF",
+            "securityParanoidDescription": "Kaskada AES + ChaCha20 · Dvostruko šifriranje",
+            "securityArchiveDescription": "Deduplicirana arhiva · zstd blokovi · v3"
         },
         "cryptomator": {
             "title": "Cryptomator Trezor",
@@ -3911,7 +3976,8 @@
             "featureContentCipher": "Sadržaj AES-GCM",
             "featureNameCipher": "Nazivi AES-SIV",
             "formatVersion": "Verzija formata {version}",
-            "invalidVaultName": "Nevažeći znakovi u nazivu trezora"
+            "invalidVaultName": "Nevažeći znakovi u nazivu trezora",
+            "defaultVaultName": "NoviTrezor"
         },
         "compress": {
             "title": "Sažmi datoteke",
@@ -3952,7 +4018,10 @@
             "threads": "Dretve",
             "auto": "Auto",
             "solid": "Čvrsti blok",
-            "solidHint": "Bolji omjer za mnogo malih datoteka, sporije nasumično izdvajanje."
+            "solidHint": "Bolji omjer za mnogo malih datoteka, sporije nasumično izdvajanje.",
+            "formatArchiveOnly": "Samo arhiva",
+            "formatBestRatio": "Najbolji omjer",
+            "formatSingleFile": "jedna datoteka"
         },
         "batchRename": {
             "title": "Grupno preimenovanje",
@@ -4477,7 +4546,8 @@
             "filterMenu": {
                 "title": "Filtriraj operacije",
                 "selected": "odabrano"
-            }
+            },
+            "save": "Spremi"
         },
         "error": {
             "description": "AeroFTP je naišao na neočekivanu grešku. Možete pokušati oporavak ili ponovno učitati aplikaciju.",
@@ -4529,7 +4599,13 @@
                     "radial": "Radijalni",
                     "spectrum": "Spektar",
                     "vortex": "Vrtlog",
-                    "waveform": "Valni oblik"
+                    "waveform": "Valni oblik",
+                    "glWaveGlitch": "Valna smetnja",
+                    "glVhs": "VHS",
+                    "glMandelbrot": "Mandelbrot",
+                    "glTunnel": "Tunel",
+                    "glMetaball": "Metakugle",
+                    "glParticles": "Čestice"
                 },
                 "volume": "Glasnoća"
             },
@@ -4635,7 +4711,18 @@
                 "off": "ISKLJUČENO",
                 "on": "UKLJUČENO",
                 "presets": "Predlošci",
-                "reset": "Vrati na ravno"
+                "reset": "Vrati na ravno",
+                "presetFlat": "Ravno",
+                "presetRock": "Rock",
+                "presetPop": "Pop",
+                "presetJazz": "Jazz",
+                "presetClassical": "Klasična",
+                "presetBassBoost": "Pojačanje basa",
+                "presetTrebleBoost": "Pojačanje visokih tonova",
+                "presetVocal": "Vokal",
+                "presetElectronic": "Elektronička",
+                "presetAcoustic": "Akustična",
+                "presetCustom": "Prilagođeno"
             },
             "pdf": {
                 "download": "Preuzmi PDF",
@@ -5118,7 +5205,37 @@
             "paidTier": "Plaćeno",
             "extraFeatures": "Dodatno",
             "coreOpsList": "Prijenos, Preuzimanje, Brisanje, Preimenovanje, Premještanje, Stvaranje mape, Pretraživanje",
-            "coreOpsLegend": "Osnovno = Prijenos, Preuzimanje, Brisanje, Preimenovanje, Premještanje, Stvaranje mape, Pretraživanje"
+            "coreOpsLegend": "Osnovno = Prijenos, Preuzimanje, Brisanje, Preimenovanje, Premještanje, Stvaranje mape, Pretraživanje",
+            "notes": "Napomene",
+            "storageClass": "Klasa pohrane",
+            "objectTagging": "Označavanje objekata",
+            "sse": "Šifriranje na strani poslužitelja",
+            "checksum": "Kontrolni zbroj",
+            "tierManagement": "Upravljanje razinama pohrane",
+            "featureDetail": "{feature}: {detail}",
+            "sectionMedia": "Mediji",
+            "sectionOther": "Ostalo",
+            "trashDetails": {
+                "onedrive": "Business i SharePoint pogoni. Microsoft Graph ne izlaže koš za smeće pogona OneDrive Personal; za to koristite web-mjesto OneDrive"
+            },
+            "shareLinkDetails": {
+                "permissions": "Dopuštenja: pregled, komentiranje, uređivanje",
+                "passwordExpiryPlan": "Lozinka + istek (potreban paket {plan})",
+                "passwordExpiryPaid": "Lozinka + istek (potreban plaćeni paket)",
+                "passwordPersonalExpiryPermissions": "Lozinka (samo Personal), istek, dopuštenja",
+                "passwordArgon2ExpiryPresets": "Lozinka (Argon2id) + unaprijed postavljeni istek",
+                "passwordExpiryPermissions": "Lozinka, istek, dopuštenja",
+                "basicOnly": "Samo osnovna poveznica za dijeljenje",
+                "publicToggle": "Javna poveznica (prebacivanje privatnosti)",
+                "basic": "Osnovna poveznica za dijeljenje",
+                "expiringDefaultYear": "Poveznice s istekom (zadano 1 godina)",
+                "publishUnpublish": "Objavi/poništi objavu",
+                "permanentUrl": "Trajni URL",
+                "sharedAlbum": "Poveznica na dijeljeni album",
+                "megaPresignedS4": "Poveznica za dijeljenje / unaprijed potpisani URL (najviše 7 dana za S4)",
+                "autoPasswordExpiry": "Lozinka (automatski generirana) + istek",
+                "presigned": "Unaprijed potpisani URL (najviše 7 dana)"
+            }
         },
         "healthCheck": {
             "title": "Provjera stanja poslužitelja",
@@ -5380,7 +5497,10 @@
             "repoPrivateTitle": "Privatni repozitorij",
             "repoPublicTitle": "Javni repozitorij",
             "unpushedCommitsOnBranchMany": "{count} neposlanih commitova na {branch}",
-            "unpushedCommitsOnBranchOne": "{count} neposlan commit na {branch}"
+            "unpushedCommitsOnBranchOne": "{count} neposlan commit na {branch}",
+            "cancelWorkflow": "Otkaži tijek rada",
+            "rerunWorkflow": "Ponovno pokreni tijek rada",
+            "downloadAssetTitle": "Preuzmi {name}"
         },
         "filenNotes": {
             "title": "Šifrirane bilješke",
@@ -5469,7 +5589,10 @@
             "manageCreated": "Stvoreno",
             "manageExpires": "Istječe",
             "manageNeverExpires": "Nikada",
-            "managePasswordProtected": "Zaštićeno lozinkom"
+            "managePasswordProtected": "Zaštićeno lozinkom",
+            "expirationHoursOne": "{count} sat",
+            "expirationHoursMany": "{count} h",
+            "expirationDaysMany": "{count} d"
         },
         "introHub": {
             "tab": {
@@ -5660,7 +5783,9 @@
                 "hours": "{count} h",
                 "days": "{count} d",
                 "months": "{count} mj."
-            }
+            },
+            "demoTabLabel": "Demo: {protocol}",
+            "newTabLabel": "Novo: {name}"
         },
         "gitlab": {
             "projectPath": "Putanja projekta",
@@ -5695,7 +5820,8 @@
             "createMergeRequest": "Stvori Merge Request",
             "mrTitle": "Naslov MR-a",
             "mrBody": "Opis (neobavezno)",
-            "sourceCode": "Izvorni kod"
+            "sourceCode": "Izvorni kod",
+            "downloadAssetTitle": "Preuzmi {name}"
         },
         "mcp": {
             "title": "MCP Server",
@@ -6303,7 +6429,8 @@
                 "newUser": "Novi korisnik",
                 "noUsers": "Još nema korisnika. Upotrijebite „Novi korisnik” u nastavku da biste dodali prvog.",
                 "protectionNote": "Vaš je račun zaštićen šifriranjem Argon2id + AES-KW + AES-256-GCM",
-                "users": "Korisnici"
+                "users": "Korisnici",
+                "setup": "Postavljanje"
             }
         },
         "aerocryptNative": {
@@ -6732,7 +6859,40 @@
         "provider": {
             "modes": {
                 "lockedInEdit": "Način se odabire pri stvaranju veze i ostaje nepromijenjen tijekom uređivanja spremljenog profila. Za korištenje drugog načina stvorite novu vezu.",
-                "notInBuild": "Nije uključeno u ovu verziju AeroFTP-a."
+                "notInBuild": "Nije uključeno u ovu verziju AeroFTP-a.",
+                "header": "Načini rada {name}",
+                "nativeApi": "Izvorni API",
+                "filelu": {
+                    "apiDescription": "REST API s API ključem. Potpun skup značajki (smeće, poveznice za dijeljenje, datoteke zaštićene lozinkom).",
+                    "webdavDescription": "WebDAV pristup na priključku 443. Široka kompatibilnost s klijentima, montira se kao mrežni pogon.",
+                    "s3Description": "API kompatibilan s S3 na portu 443. Koristite rclone, AWS CLI ili bilo koji S3 SDK.",
+                    "ftpDescription": "Klasični FTP na portu 21. Nešifriran, koristan za NVR snimače videonadzora i starije klijente."
+                },
+                "filen": {
+                    "apiDescription": "E2E šifriranje bez znanja (Argon2id v3 / PBKDF2 v2). Sve značajke: kvota pohrane, smeće, lozinke poveznica za dijeljenje, verzije, TOTP.",
+                    "webdavDescription": "WebDAV most koji Filen Desktop izlaže na 127.0.0.1:1900. Zahtijeva pokrenut i prijavljen Filen Desktop.",
+                    "s3Description": "Most kompatibilan s S3 koji Filen Desktop izlaže na 127.0.0.1:1800 putem local.s3.filen.io. Adresiranje po putanji, svaka Filen mapa najviše razine je spremnik."
+                },
+                "proton": {
+                    "headerDescription": "Proton pohrana u oblaku sa šifriranjem s kraja na kraj",
+                    "apiDescription": "Vlastiti Proton Drive klijent u AeroFTP-u: prijavljujete se na Protonovoj stranici u pregledniku, datoteke se šifriraju i dešifriraju na ovom računalu i nije potrebna nijedna druga aplikacija.",
+                    "cliDescription": "Upravlja službenim Proton Drive CLI-jem instaliranim i prijavljenim na ovom računalu. Prijavljujete se u pregledniku; AeroFTP nikada ne vidi vašu Proton lozinku."
+                },
+                "opendrive": {
+                    "headerDescription": "OpenDrive pohrana u oblaku (5 GB besplatno)",
+                    "apiDescription": "REST API s korisničkim imenom + lozinkom. Sve značajke: smeće, kvota pohrane, poveznice za dijeljenje, rekurzivna upotreba diska.",
+                    "webdavDescription": "WebDAV pristup putem webdav.opendrive.com na portu 443. Za starije klijente ili za montiranje kao mrežni pogon."
+                },
+                "koofr": {
+                    "apiDescription": "REST API sa sjedištem u EU-u, s e-poštom + lozinkom aplikacije. Sve značajke: kvota pohrane, smeće (popis/vraćanje/pražnjenje), poveznice za dijeljenje.",
+                    "webdavDescription": "WebDAV pristup putem app.koofr.net/dav/Koofr na portu 443. Kvota pohrane i dalje se čita iz Koofrova REST API-ja. Za starije klijente ili za montiranje kao mrežni pogon."
+                },
+                "mega": {
+                    "headerDescription": "MEGA pohrana u oblaku sa šifriranjem na strani klijenta",
+                    "apiDescription": "Izvorni MEGA API s e-poštom + lozinkom (+ neobavezni TOTP). Sve značajke: šifriranje na strani klijenta, kvota pohrane, poveznice za dijeljenje, minijature.",
+                    "webdavDescription": "Lokalni WebDAV most koji poslužuje službeni MEGAcmd CLI, anoniman na 127.0.0.1. AeroFTP pri povezivanju pokreće \"mega-webdav /\" umjesto vas, pa nema ručnog koraka.",
+                    "s4Description": "MEGA S4 objektna pohrana, kompatibilna s S3 (regije EU/CA). Pristupni ključ + tajni ključ + spremnik. Zahtijeva Pro paket."
+                }
             }
         },
         "flatpak": {
