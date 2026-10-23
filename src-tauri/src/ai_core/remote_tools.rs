@@ -919,8 +919,10 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
 const MAX_UPLOAD_DELAY_MS: u64 = 2_000;
 
 /// The `upload_many` item as `upload_file` receives it: `server` set, and
-/// the batch's `no_clobber` when the item does not set its own. `None` for
-/// an item that is not an object.
+/// the batch's `no_clobber` unless the item sets its own. Only a boolean is
+/// an item's own value: `upload_file` reads `null` or any other type as
+/// false, so leaving one in place would let it overwrite what the batch
+/// protects. `None` for an item that is not an object.
 fn upload_many_item_args(
     item: &Value,
     server: &str,
@@ -930,7 +932,9 @@ fn upload_many_item_args(
     let obj = item_args.as_object_mut()?;
     obj.insert("server".to_string(), json!(server));
     if let Some(no_clobber) = batch_no_clobber {
-        obj.entry("no_clobber").or_insert(json!(no_clobber));
+        if !obj.get("no_clobber").is_some_and(Value::is_boolean) {
+            obj.insert("no_clobber".to_string(), json!(no_clobber));
+        }
     }
     Some(item_args)
 }
@@ -5248,6 +5252,50 @@ mod tests {
         .unwrap();
         assert_eq!(*fake.local_uploads.lock().unwrap(), vec!["/root/a.txt"]);
         assert_eq!(report["summary"]["skipped"], 0);
+    }
+
+    /// CodeRabbit on #1338: an item's `"no_clobber": null` (or a string) kept
+    /// its slot, `upload_file` read it as false, and the file the batch
+    /// protects was overwritten. Only a boolean overrides the batch, on both
+    /// paths.
+    #[tokio::test]
+    async fn upload_many_batch_no_clobber_overrides_a_null_or_non_boolean_item_value() {
+        for value in [json!(null), json!("yes"), json!(1)] {
+            let (_dir, mut items) = bulk_fixture(&["a.txt", "fresh1.txt"]);
+            items[0]["no_clobber"] = value.clone();
+            let fake = Arc::new(FakeBackend {
+                upload_succeeds: true,
+                ..FakeBackend::sample()
+            });
+            let report = upload_many(
+                &test_ctx(Arc::clone(&fake)),
+                &json!({"server": "srv", "items": items, "no_clobber": true}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                *fake.local_uploads.lock().unwrap(),
+                vec!["/root/fresh1.txt"],
+                "single-file path, item no_clobber {value}"
+            );
+            assert_eq!(report["results"][0]["skipped"], true);
+
+            let (_dir, mut items) = bulk_fixture(&["a.txt", "fresh1.txt", "fresh2.txt"]);
+            items[0]["no_clobber"] = value.clone();
+            let fake = Arc::new(bulk_backend(|_| BulkTransferOutcome::Completed));
+            let report = upload_many(
+                &test_ctx(Arc::clone(&fake)),
+                &json!({"server": "srv", "items": items, "no_clobber": true}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                *fake.bulk_calls.lock().unwrap(),
+                vec![vec!["/root/fresh1.txt", "/root/fresh2.txt"]],
+                "bulk path, item no_clobber {value}"
+            );
+            assert_eq!(report["results"][0]["skipped"], true);
+        }
     }
 
     /// The batch default reaches the native bulk too: one listing settles it
