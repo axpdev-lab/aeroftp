@@ -3875,7 +3875,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-xs mb-1">
                                                     <Clock size={12} /> {t('connection.syncInterval')}
                                                 </div>
-                                                <p className="text-xs font-medium">{Math.round(aeroCloudConfig.sync_interval_secs / 60)} {t('connection.minutes')}</p>
+                                                <p className="text-xs font-medium">{t('common.minutesCount', { count: Math.round(aeroCloudConfig.sync_interval_secs / 60) })}</p>
                                             </div>
                                         </div>
 

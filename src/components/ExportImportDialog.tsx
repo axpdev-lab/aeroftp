@@ -300,8 +300,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             await onImport(newServers);
             setSuccess(
                 t('settings.importSuccess').replace('{count}', String(newServers.length)) +
-                (skipped > 0 ? ` (${skipped} ${t('settings.duplicatesSkipped')})` : '') +
-                (similar > 0 ? ` (${similar} ${t('settings.similarToExisting')})` : '')
+                (skipped > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: skipped })})` : '') +
+                (similar > 0 ? ` (${t('settings.similarToExistingCount', { count: similar })})` : '')
             );
             setTimeout(() => onClose(), 2500);
         } catch (err) {

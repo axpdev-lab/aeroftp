@@ -80,7 +80,8 @@
             "reset": "Ailosod",
             "saved": "Wedi cadw",
             "saving": "Yn cadw...",
-            "creating": "Wrthi'n creu..."
+            "creating": "Wrthi'n creu...",
+            "minutesCount": "{count} mun"
         },
         "connection": {
             "title": "Cysylltu a'r Gweinydd",
@@ -159,7 +160,6 @@
             "saveChanges": "Cadw Newidiadau",
             "createAccount": "Creu cyfrif",
             "docs": "Dogfennau",
-            "minutes": "munudau",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Yn ôl i'r cyfrif presennol",
@@ -390,7 +390,6 @@
             "path": "Llwybr",
             "files": "ffeil",
             "folders": "ffolder",
-            "items": "eitem",
             "emptyFolder": "Mae'r ffolder hon yn wag",
             "parentFolder": "Ffolder rhiant",
             "newFolder": "Ffolder Newydd",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Panel de",
             "chooseRightPanelFolder": "Dewiswch ffolder y panel de",
             "chooseLeftPanelFolder": "Dewiswch ffolder y panel chwith",
-            "localRight": "Lleol (de)"
+            "localRight": "Lleol (de)",
+            "itemCount": "{count} eitem",
+            "fileCount": "{count} ffeil",
+            "folderCount": "{count} ffolder"
         },
         "contextMenu": {
             "askAeroAgent": "Gofyn i AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "Gwall copïo",
             "copyQueueToClipboard": "Copïo'r ciw i'r clipfwrdd",
             "fail": "METHIANT",
-            "pending": "Yn aros",
             "remove": "Tynnu",
             "retry": "Ailgynnig",
             "stopAll": "Stopio'r cyfan",
@@ -673,7 +674,6 @@
                 "newTransfer": "Trosglwyddiad Newydd",
                 "preparing": "Yn paratoi'r trosglwyddiad…"
             },
-            "staged": "mewn ciw",
             "start": "Cychwyn",
             "startAll": "Cychwyn popeth",
             "restored": "Wedi'i adfer",
@@ -744,7 +744,10 @@
                 "size": "Maint",
                 "source": "Ffynhonnell",
                 "title": "Cynllun: {mode}"
-            }
+            },
+            "stagedCount": "{count} wedi'u llwyfannu",
+            "pendingCount": "{count} Yn aros",
+            "failedCount": "{count} Wedi methu"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -929,7 +932,6 @@
             "migrationSkip": "Hepgor am nawr",
             "migrationFinish": "Cwblhau",
             "migrationStep": "Cam {current} o {total}",
-            "duplicatesSkipped": "dyblygu wedi'u hepgor",
             "invalidPassword": "Cyfrinair annilys",
             "backup": "Copi Wrth Gefn",
             "visibleColumns": "Colofnau Gweladwy",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Cyfrinach Defnyddiwr",
             "privacyRespect": "Mae AeroFTP yn diogelu eich preifatrwydd. Ni chesglir unrhyw ddata, nid oes olrhain nac telemetreg.",
             "keystoreEntries": "{count} cofnod",
-            "serverCredentials": "credydau gweinydd",
-            "serverProfilesLabel": "proffili gweinydd",
-            "aiKeysLabel": "allweddi AI",
-            "oauthTokensLabel": "tocynnau OAuth",
-            "configEntriesLabel": "cofnodion ffurfweddiad",
             "session": "Sesiwn",
             "aeroftpBackupFiles": "Ffeiliau wrth gefn AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Dewis gweinyddion i'w allforio",
             "selectAll": "Dewis Pob Un",
             "deselectAll": "Dad-ddewis Pob Un",
-            "selected": "wedi'u dewis",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Os na osodir unrhyw eicon, caiff y favicon neu'r icon.png o'r gweinydd ei ganfod yn awtomatig.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Golau",
             "imagePreviewBgCustom": "Addasedig",
             "showTransferProgress": "Dangos bâr cynnydd trosglwyddo",
-            "similarToExisting": "yn debyg i broffil sy'n bodoli",
             "aerocloudCompress": "Galluogi cywasgu (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: cywasgu + amgryptio (mae gan y proffil amgryptiad)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Angen ei osod yn y system. Mae AeroFTP yn newid i ddewis arall yn awtomatig os nad yw ar gael.",
             "fontSizeIndicatorLabel": "Ffont",
             "fontPresetDefault": "{font} (Rhagosodiad)",
-            "fontPresetSystemDefault": "Rhagosodiad y system"
+            "fontPresetSystemDefault": "Rhagosodiad y system",
+            "duplicatesSkippedCount": "{count} dyblyg wedi'u hepgor",
+            "similarToExistingCount": "{count} yn debyg i broffil presennol",
+            "bridgeSkippedCount": "{count} wedi'u hepgor",
+            "selectedOfTotal": "{selected} / {total} wedi'u dewis",
+            "serverCredentialsCount": "Manylion mewngofnodi gweinydd: {count}",
+            "serverProfilesCount": "{count} proffil gweinydd",
+            "aiKeysCount": "{count} allwedd AI",
+            "oauthTokensCount": "{count} tocyn OAuth",
+            "configEntriesCount": "{count} cofnod ffurfweddu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Yn cychwyn...",
             "pending": "Yn aros",
             "conflict": "Gwrthdaro",
-            "conflicts": "gwrthdaro angen sylw",
             "error": "Gwall cysoni",
             "never": "Byth",
             "justNow": "Nawr",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Cyn bo hir...",
             "aerocloudEnabled": "AeroCloud wedi'i alluogi",
             "selectPairLocalFolder": "Dewiswch ffolder lleol ar gyfer y pâr",
-            "secondsAgo": "{count}e yn ôl"
+            "secondsAgo": "{count}e yn ôl",
+            "conflictsCount": "{count} gwrthdaro angen sylw"
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "Mae'r ffeil eisoes yn bodoli",
-            "moreFiles": "ffeil(iau) eraill yn y ciw",
             "remote": "Pell",
             "local": "Lleol",
             "sourceNewer": "Mae'r ffynhonnell yn fwy newydd",
@@ -2800,7 +2803,6 @@
                 "approveThis": "Cymeradwyo'r alwad offeryn hon",
                 "confirm": "Cadarnhau",
                 "confirmDangerous": "Cadarnhau gweithred beryglus",
-                "pendingApproval": "yn aros am gymeradwyaeth",
                 "rejectAllCalls": "Gwrthod pob galwad offeryn",
                 "rejectExecution": "Gwrthod rhedeg yr offeryn",
                 "toggleDetails": "Toglo manylion",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Caniatáu Pob Un",
                 "rejectAll": "Gwrthod Pob Un",
                 "pending": "yn aros am gymeradwyaeth",
-                "toolCall": "galwad offeryn",
-                "toolCalls": "galwadau offeryn",
                 "running": "Yn rhedeg...",
                 "done": "Gorffen",
                 "failed": "Wedi methu",
-                "allowThis": "Caniatáu'r offeryn hwn"
+                "allowThis": "Caniatáu'r offeryn hwn",
+                "pendingApprovalCount": "{count} galwad offeryn yn aros am gymeradwyaeth"
             },
             "diff": {
                 "title": "Rhagolwg Cymhariaeth",
@@ -3334,7 +3335,6 @@
                 "add": "Ychwanegu",
                 "added": "Ychwanegwyd",
                 "all": "Pob un",
-                "available": "ar gael",
                 "browseProviders": "Pori darparwyr",
                 "chinese": "Tsieineg",
                 "fast": "Casgliad cyflym",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Modelau sy'n cael eu lletya gan AWS gyda mynediad drwy allwedd API ranbarthol. Ychwanegwch eich model ID â llaw.",
-                "bedrockHighlight": "Pwynt terfyn rhanbarthol AWS"
+                "bedrockHighlight": "Pwynt terfyn rhanbarthol AWS",
+                "availableCount": "{count} ar gael"
             },
             "history": {
                 "cancel": "Canslo",
@@ -3709,12 +3710,12 @@
             "size": "Maint",
             "compressed": "Cywasgiedig",
             "actions": "Gweithredoedd",
-            "files": "ffeiliau",
             "empty": "Mae'r archif yn wag",
             "extracting": "Yn echdynnu",
             "preview": "Rhagolwg",
             "extract": "Echdynnu",
-            "back": "Yn ôl"
+            "back": "Yn ôl",
+            "filesSummary": "{count} ffeil, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Ychwanegwyd {files} ffeil mewn {dirs} cyfeiriadur",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count} ffeil wedi'u hychwanegu",
             "folderName": "Enw ffolder",
             "itemDeleted": "{name} wedi'i ddileu",
-            "items": "eitemau",
             "itemsDeleted": "{count} eitem wedi'u dileu",
             "lastOpened": "Agorwyd ddiwethaf",
             "modified": "Addaswyd",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Amgryptiad cryf",
-            "totalItems": "cyfanswm",
             "unlock": "Datgloi",
             "v1Standard": "AeroVault v1 (Safonol)",
             "v2Advanced": "AeroVault v2 (Diogelwch Uwch)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "Echdynnu pob ffeil yn y gladdgell i ffolder",
             "extractedAll": "Echdynnwyd {count} ffeil i {path}",
             "dropFilesHint": "Llusgwch ffeiliau neu ffolderi yma, neu defnyddiwch y botymau isod",
-            "itemSingular": "eitem",
-            "itemPlural": "eitemau",
             "reportExported": "Adroddiad y gladdgell wedi'i gadw i {path}",
             "reportCopied": "Adroddiad y gladdgell wedi'i gopïo i'r clipfwrdd",
             "exportReportHint": "Allforio adroddiad technegol cyflawn: metadata'r gladdgell, amgryptio, cywiro gwallau a rhestr lawn o ffeiliau",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Cyflym",
             "securityAdvancedDescription": "Gwrthsefyll nonce · Enwau ffeiliau wedi'u hamgryptio · KDF 128 MB",
             "securityParanoidDescription": "Rhaeadr AES + ChaCha20 · Amgryptio dwbl",
-            "securityArchiveDescription": "Archif heb ddyblygu · talpiau zstd · v3"
+            "securityArchiveDescription": "Archif heb ddyblygu · talpiau zstd · v3",
+            "totalItemsCount": "{count} i gyd"
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",
@@ -3956,7 +3954,6 @@
             "empty": "Mae'r cyfeiriadur yn wag",
             "name": "Enw",
             "size": "Maint",
-            "items": "eitemau",
             "readOnly": "Modd darllen yn unig - creu coffor yn dod yn v2.1",
             "openAsVault": "Agor fel Coffor Cryptomator",
             "decryptAndSave": "Datgryptio a chadw",
@@ -3989,8 +3986,6 @@
             "level": "Lefel Cywasgu",
             "password": "Cyfrinair (dewisol, AES-256)",
             "passwordHint": "Gadewch yn wag ar gyfer dim amgryptiad",
-            "files": "ffeiliau",
-            "folders": "ffolderi",
             "compress": "Cywasgu",
             "store": "Storio (dim cywasgu)",
             "fast": "Cyflym",
@@ -4232,8 +4227,6 @@
             "modified": "Addaswyd",
             "file": "Ffeil",
             "folder": "Ffolder",
-            "files": "ffeiliau",
-            "folders": "ffolderi",
             "remote": "Pell",
             "local": "Lleol",
             "linkTarget": "Targed Cyswllt Symbolaidd",
@@ -4309,10 +4302,7 @@
             "deleted": "{count} ffeil ddyblyg wedi'u dileu",
             "scanFailed": "Methodd y sgan",
             "retry": "Ailgeisio",
-            "groups": "grwpiau",
-            "duplicateFiles": "ffeiliau dyblyg",
             "wasted": "wedi'i wastraffu",
-            "copies": "copïau",
             "delete": "DILEU",
             "skip": "HEPGOR",
             "deleteConfirm": "Ydych chi'n siŵr eich bod am ddileu {count} ffeil ddyblyg?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, pellter {distance}",
             "modeExact": "Union",
             "modeLabel": "Modd:",
-            "modeNonIdentical": "Ddim yn union yr un fath"
+            "modeNonIdentical": "Ddim yn union yr un fath",
+            "groupsCount": "{count} grŵp",
+            "duplicateFilesCount": "{count} ffeil ddyblyg",
+            "copiesCount": "{count} copi"
         },
         "diskUsage": {
             "title": "Defnydd Disg",
@@ -4340,20 +4333,16 @@
             "totalItems": "Cyfanswm: {size} ar draws {count} eitem",
             "percentOfParent": "{percent}% o'r rhiant",
             "backToParent": "Yn ôl i'r rhiant",
-            "items": "eitemau",
             "scanFailed": "Methodd y dadansoddiad",
             "retry": "Ailgeisio",
             "drillDown": "Cliciwch i archwilio",
             "back": "Yn ôl",
-            "total": "Cyfanswm",
-            "across": "ar draws",
             "empty": "Mae'r cyfeiriadur hwn yn wag",
             "hoverHint": "Hofranwch dros floc i weld manylion",
             "scanUnknownError": "Gwall anhysbys wrth sganio defnydd disg"
         },
         "dependencies": {
             "title": "Dibyniaethau",
-            "crates": "crates",
             "copy": "Copïo",
             "copied": "Wedi copïo!",
             "checkUpdates": "Gwirio Diweddariadau",
@@ -4363,7 +4352,8 @@
             "latest": "Diweddaraf",
             "status": "Statws",
             "footer": "Data fersiwn o API crates.io. Y fersiynau a ddangosir yw fersiynau datrysedig (Cargo.lock).",
-            "copyTitle": "Gwiriad Dibyniaethau AeroFTP"
+            "copyTitle": "Gwiriad Dibyniaethau AeroFTP",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Rhybudd",
                 "info": "Gwybodaeth",
                 "debug": "Dadfygio",
-                "entries": "cofnodion",
                 "resume": "Ailddechrau",
                 "pause": "Oedi",
                 "copyAll": "Copïo popeth",
@@ -4432,13 +4421,13 @@
                 "allSources": "Pob ffynhonnell",
                 "sourceFilterTitle": "Hidlo yn ôl ffynhonnell",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Cofnodion: {count}"
             },
             "frontend": {
                 "reactMode": "Modd React",
                 "language": "Iaith",
                 "localStorageKeys": "Allweddi LocalStorage",
-                "keys": "allweddi",
                 "localStorageSize": "Maint LocalStorage",
                 "windowSize": "Maint Ffenestr",
                 "devicePixelRatio": "Cymhareb Picsel y Ddyfais",
@@ -4447,7 +4436,8 @@
                 "light": "Golau",
                 "userAgent": "Asiant Defnyddiwr",
                 "localStorageKeysTitle": "Allweddi LocalStorage",
-                "localStorageEntrySummary": "{size} beit · {preview}"
+                "localStorageEntrySummary": "{size} beit · {preview}",
+                "keysCount": "{count} allwedd"
             },
             "copyFileListToClipboard": "Copïo rhestr ffeiliau i'r clipfwrdd",
             "filesCopied": "{count} cofnod ffeiliau wedi'u copïo i'r clipfwrdd",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "Sgubiad allweddi i18n",
                 "ipcSpeed": "Sampl cyflymder IPC",
                 "knownHosts": "darlleniad known_hosts",
-                "passed": "wedi pasio",
                 "pluginIntegrity": "Cyfanrwydd ategyn",
                 "providerSelftest": "Hunan-brawf darparwr (darllen yn unig)",
                 "runAll": "Rhedeg pob un",
                 "runOne": "Rhedeg y prawf hwn",
-                "vaultRoundtrip": "Taith gron y gladdgell"
+                "vaultRoundtrip": "Taith gron y gladdgell",
+                "passedCount": "{passed}/{total} wedi pasio"
             },
             "bundle": {
                 "title": "Allforio bwndel diagnostig (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",
             "badges": {
-                "active": "GWEITHREDOL",
                 "live": "BYW",
-                "synced": "WEDI CYDWEDDU"
+                "synced": "WEDI CYDWEDDU",
+                "activeCount": "{count} AR WAITH"
             },
             "clearLog": "Clirio'r log",
             "close": "Cau",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Hidlo gweithrediadau",
-                "selected": "wedi'u dewis"
+                "selectedCount": "{count} wedi'u dewis"
             },
             "save": "Cadw"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Awtomatig",
                 "autoRefresh": "Adnewyddu awtomatig (3s)",
                 "browser": "Porwr",
-                "chars": "nod",
                 "copy": "Copïo i'r clipfwrdd",
                 "disableWrap": "Analluogi lapio geiriau",
                 "enableWrap": "Galluogi lapio geiriau",
                 "encoding": "Amgodio",
                 "errorLoading": "Gwall wrth lwytho cynnwys",
                 "hex": "Hex",
-                "lines": "llinellau",
                 "loadFailed": "Methwyd llwytho cynnwys testun",
                 "noContent": "Dim cynnwys ar gael",
                 "openBrowser": "Agor ym mhorwr y system",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Lapio geiriau",
                 "zoomIn": "Chwyddo i mewn",
                 "zoomOut": "Chwyddo allan",
-                "htmlPreviewFrameTitle": "Rhagolwg HTML"
+                "htmlPreviewFrameTitle": "Rhagolwg HTML",
+                "stats": "{lines} llinell • {chars} nod"
             },
             "video": {
                 "exitFullscreen": "Gadael sgrin lawn (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Nifer i gynhyrchu",
             "pwdGenerate": "Cynhyrchu",
             "pwdEntropy": "Entropi",
-            "pwdBits": "bits",
             "pwdWeak": "Gwan",
             "pwdFair": "Teg",
             "pwdGood": "Da",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Rhagosodiadau: y proffil y mae AeroVault ac AeroCrypt yn ei ddefnyddio (128 MiB, 4 iteriad, 4 lôn, allbwn 32 beit). Yr halen uchod yw eich un chi. Cof hyd at 2 GiB.",
             "argon2Derive": "Deillio",
             "argon2Phc": "Llinyn PHC",
-            "hashError": "Gwall: {error}"
+            "hashError": "Gwall: {error}",
+            "pwdBitsCount": "{count} did"
         },
         "dialog": {
             "deleteFile": "Dileu \"{name}\"?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Cell yn unig",
             "localOnly": "Lleol yn unig",
             "conflict": "Gwrthdaro",
-            "conflicts": "gwrthdaro",
-            "unchanged": "heb newid",
             "allToVault": "Popeth i'r Gell",
             "allToLocal": "Popeth yn Lleol",
             "keepNewer": "Cadw'r Diweddaraf",
@@ -5018,10 +5005,14 @@
             "applySync": "Cymhwyso Cysoni",
             "close": "Cau",
             "allInSync": "Mae'r holl ffeiliau wedi'u cysoni",
-            "filesToVault": "ffeil(iau) wedi'u cysoni i'r gell",
-            "filesToLocal": "ffeil(iau) wedi'u hechdynnu'n lleol",
-            "filesSkipped": "ffeil(iau) wedi'u hepgor",
-            "errorsOccurred": "Bu rhai gwallau"
+            "errorsOccurred": "Bu rhai gwallau",
+            "vaultOnlyCount": "{count} Cell yn unig",
+            "localOnlyCount": "{count} Lleol yn unig",
+            "conflictsCount": "{count} gwrthdaro",
+            "unchangedCount": "{count} heb newid",
+            "filesToVaultCount": "{count} ffeil wedi'u cysoni i'r gell",
+            "filesToLocalCount": "{count} ffeil wedi'u hechdynnu'n lleol",
+            "filesSkippedCount": "{count} ffeil wedi'u hepgor"
         },
         "localTabs": {
             "closeAll": "Cau Pob Tab",
@@ -5265,7 +5256,6 @@
             "checkAll": "Gwirio popeth",
             "checkOne": "Gwirio'r gweinydd hwn",
             "checking": "Yn gwirio...",
-            "checked": "gwiriwyd",
             "healthy": "Iach",
             "degraded": "Dirywiad",
             "unreachable": "Analluog i gyrraedd",
@@ -5280,7 +5270,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Wrthi'n gwirio {count} gweinydd, arhoswch...",
             "scoreLegend": "Sgôr 0-100, mae uwch yn well",
-            "scoreLegendDetail": "80+ iach · 50-79 wedi diraddio · o dan 50 mae problemau"
+            "scoreLegendDetail": "80+ iach · 50-79 wedi diraddio · o dan 50 mae problemau",
+            "checkedCount": "{count} wedi'u gwirio",
+            "healthyCount": "{count} Iach",
+            "degradedCount": "{count} Wedi dirywio",
+            "unreachableCount": "{count} Analluog i gyrraedd"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5550,7 +5544,6 @@
                 "archived": "Archifd",
                 "trash": "Sbwriel"
             },
-            "participants": "cyfranogwyr",
             "saving": "Yn cadw...",
             "saved": "Wedi'i gadw",
             "saveNow": "Cadw nawr",
@@ -5568,7 +5561,8 @@
                 "code": "Cod",
                 "richText": "Testun cyfoethog",
                 "checklist": "Rhestr wirio"
-            }
+            },
+            "participantsCount": "{count} cyfranogwr"
         },
         "shareLinkModal": {
             "title": "Dolen Rhannu",
@@ -6015,13 +6009,14 @@
             "moveToOtherPanel": "Symud i'r panel arall",
             "copiedToOtherPanel": "Copïwyd i'r panel arall",
             "movedToOtherPanel": "Symudwyd i'r panel arall",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Copïo {count} yma",
             "moveHere": "Symud {count} yma",
             "copyHereFromOtherPanelTooltip": "Copïo {count} a ddewiswyd o'r panel arall i'r panel hwn (F5)",
             "moveHereFromOtherPanelTooltip": "Symud {count} a ddewiswyd o'r panel arall i'r panel hwn (F6)",
-            "syncToOtherPanel": "Cysoni i'r panel arall (delta)"
+            "syncToOtherPanel": "Cysoni i'r panel arall (delta)",
+            "failedCount": "{count} wedi methu",
+            "skippedCount": "{count} wedi'u hepgor"
         },
         "compare": {
             "title": "Cymharu paneli",
@@ -6165,9 +6160,6 @@
             "bucket": "Categori",
             "count": "Cyfrif",
             "action": "Gweithred",
-            "delete": "dileu",
-            "overwrite": "trosysgrifo",
-            "conflicts": "gwrthdaro",
             "destructiveWarning": "Bydd y rhagosod hwn yn dileu neu'n trosysgrifo ffeiliau mwy newydd.",
             "confirmDestructive": "Rwyf wedi adolygu'r gweithredoedd dinistriol ac am barhau.",
             "executeHint": "Mae Gweithredu yn ciwio'r dewis ac yn ei anfon trwy'r cynlluniwr trosglwyddo unedig.",
@@ -6194,7 +6186,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Beitiau ar y rhwydwaith",
                 "savings": "Arbedion",
-                "errorDetails": "gwall(au), manylion",
                 "errorPathsRequired": "Mae angen ffynhonnell a chyrchfan",
                 "deltaStatus": "Sync delta",
                 "deltaAuto": "AWTO YMLAEN",
@@ -6226,7 +6217,8 @@
                 "planned": "Copïau arfaethedig",
                 "resultDryRunOk": "Rhediad prawf wedi'i gwblhau",
                 "resultDryRunPartial": "Rhediad prawf wedi'i gwblhau gyda gwallau",
-                "resultDryRunCancelled": "Rhediad prawf wedi'i ganslo"
+                "resultDryRunCancelled": "Rhediad prawf wedi'i ganslo",
+                "errorDetailsCount": "{count} gwall, manylion"
             },
             "launcherTemplates": "Templedi",
             "launcherMultiPath": "Aml-lwybr",
@@ -6330,7 +6322,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Mae'r gymhariaeth yn darllen y ddau ffolder a phob ffolder oddi tanynt. Ar goeden fawr gall gymryd amser, a gallwch ei stopio.",
             "progressDelta": "[delta]",
-            "progressCopy": "[copi]"
+            "progressCopy": "[copi]",
+            "deleteCount": "{count} i'w dileu",
+            "overwriteCount": "{count} i'w trosysgrifo",
+            "conflictCount": "{count} gwrthdaro"
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

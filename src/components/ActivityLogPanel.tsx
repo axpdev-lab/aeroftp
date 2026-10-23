@@ -748,7 +748,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     {runningCount > 0 && (
                         <span className={`px-2 py-0.5 text-[10px] font-bold rounded-sm border animate-pulse flex items-center gap-1.5 ${themeConfig.badge}`}>
                             <Zap size={10} className={themeConfig.badgeIcon} />
-                            {runningCount} {t('activityPanel.badges.active')}
+                            {t('activityPanel.badges.activeCount', { count: runningCount })}
                         </span>
                     )}
 
@@ -784,7 +784,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                                 ? t('activityPanel.filters.all')
                                 : filterTypes.size === 1
                                     ? Array.from(filterTypes)[0]
-                                    : `${filterTypes.size} ${t('activityPanel.filterMenu.selected')}`}
+                                    : t('activityPanel.filterMenu.selectedCount', { count: filterTypes.size })}
                             <ChevronDown size={10} />
                         </button>
                         {filterMenuOpen && (

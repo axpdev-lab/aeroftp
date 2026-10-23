@@ -80,7 +80,8 @@
             "reset": "Վերականգնել",
             "saved": "Պահպանված է",
             "saving": "Պահպանվում է...",
-            "creating": "Ստեղծվում է..."
+            "creating": "Ստեղծվում է...",
+            "minutesCount": "{count} րոպե"
         },
         "connection": {
             "title": "Միանալ սերվերին",
@@ -159,7 +160,6 @@
             "saveChanges": "Պահպանել փոփոխությունները",
             "createAccount": "Ստեղծել հաշիվ",
             "docs": "Փաստաթղթեր",
-            "minutes": "րոպե",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Վերադառնալ գոյություն ունեցող հաշիվ",
@@ -390,7 +390,6 @@
             "path": "Ուղի",
             "files": "ֆայլ",
             "folders": "պանակ",
-            "items": "տարր",
             "emptyFolder": "Այս պանակը դատարկ է",
             "parentFolder": "Ծնողական պանակ",
             "newFolder": "Նոր պանակ",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Աջ վահանակ",
             "chooseRightPanelFolder": "Ընտրել աջ վահանակի թղթապանակը",
             "chooseLeftPanelFolder": "Ընտրել ձախ վահանակի թղթապանակը",
-            "localRight": "Տեղային (աջ)"
+            "localRight": "Տեղային (աջ)",
+            "itemCount": "{count} տարր",
+            "fileCount": "{count} ֆայլ",
+            "folderCount": "{count} թղթապանակ"
         },
         "contextMenu": {
             "askAeroAgent": "Հարցնել AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "Պատճենման սխալ",
             "copyQueueToClipboard": "Պատճենել հերթը սեղմատախտակին",
             "fail": "ՁԱԽՈՂՈՒՄ",
-            "pending": "Սպասվում է",
             "remove": "Հեռացնել",
             "retry": "Կրկնել",
             "stopAll": "Կանգնեցնել բոլորը",
@@ -673,7 +674,6 @@
                 "newTransfer": "Նոր փոխանցում",
                 "preparing": "Փոխանցման նախապատրաստում…"
             },
-            "staged": "հերթում",
             "start": "Սկսել",
             "startAll": "Սկսել բոլորը",
             "restored": "Վերականգնված",
@@ -744,7 +744,10 @@
                 "size": "Չափ",
                 "source": "Աղբյուր",
                 "title": "Պլան՝ {mode}"
-            }
+            },
+            "stagedCount": "{count} նախապատրաստված",
+            "pendingCount": "{count} Սպասող",
+            "failedCount": "{count} Ձախողված"
         },
         "settings": {
             "title": "Կարգավորումներ",
@@ -944,7 +947,6 @@
             "migrationSkip": "Բաց թողնել առայժմ",
             "migrationFinish": "Ավարտել",
             "migrationStep": "Քայլ {current}-ը {total}-ից",
-            "duplicatesSkipped": "կրկնօրինակները բաց են թողնվել",
             "invalidPassword": "Անվավեր գաղտնաբառ",
             "showHiddenFiles": "Ցուցադրել թաքնված ֆայլերը (կետային ֆայլեր)",
             "rememberLastFolder": "Հիշել վերջին պանակը",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Սպառողի գաղտնիք",
             "privacyRespect": "AeroFTP-ը պաշտպանում է ձեր գաղտնիությունը։ Տվյալներ չեն հավաքվում, չկա հետագծում, չկա հեռաչափություն։",
             "keystoreEntries": "{count} գրառումներ",
-            "serverCredentials": "սերվերի հավատարմագրեր",
-            "serverProfilesLabel": "սերվերի պրոֆիլներ",
-            "aiKeysLabel": "AI բանալիներ",
-            "oauthTokensLabel": "OAuth թոքեններ",
-            "configEntriesLabel": "կոնֆիգ գրառումներ",
             "session": "Նիստ",
             "aeroftpBackupFiles": "AeroFTP պահուստային ֆայլեր",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Ընտրել սերվերները արտահանելու համար",
             "selectAll": "Ընտրել բոլորը",
             "deselectAll": "Ապաընտրել բոլորը",
-            "selected": "ընտրված",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Եթե պատկերակը չի սահմանվել, սերվերի favicon-ը կամ icon.png-ն ավտոմատ կերպով կհայտնաբերվի:",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Բաց",
             "imagePreviewBgCustom": "Հատուկ",
             "showTransferProgress": "Ցույց տալ փոխանցման առաջընթացի գոտին",
-            "similarToExisting": "նման են առկա պրոֆիլին",
             "aerocloudCompress": "Միացնել սեղմումը (AeroCompress zstd)",
             "aerocloudCompressLevel": "Սեղմման մակարդակ (1-22, 3՝ հավասարակշռված)",
             "aerocloudCompressA1": "A1՝ սեղմում + գաղտնագրում (պրոֆիլն ունի գաղտնագրում)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Պահանջում է համակարգային տեղադրում։ Անհասանելի լինելու դեպքում AeroFTP-ն ինքնաշխատ անցնում է այլընտրանքի։",
             "fontSizeIndicatorLabel": "Տառատեսակ",
             "fontPresetDefault": "{font} (Լռելյայն)",
-            "fontPresetSystemDefault": "Համակարգի լռելյայն"
+            "fontPresetSystemDefault": "Համակարգի լռելյայն",
+            "duplicatesSkippedCount": "{count} կրկնօրինակ բաց թողնված",
+            "similarToExistingCount": "{count} նման է առկա պրոֆիլին",
+            "bridgeSkippedCount": "{count} բաց թողնված",
+            "selectedOfTotal": "{selected} / {total} ընտրված",
+            "serverCredentialsCount": "{count} սերվերի մուտքի տվյալ",
+            "serverProfilesCount": "{count} սերվերի պրոֆիլ",
+            "aiKeysCount": "{count} AI բանալի",
+            "oauthTokensCount": "{count} OAuth տոկեն",
+            "configEntriesCount": "{count} կարգավորման գրառում"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Սկսում է...",
             "pending": "Սպասող",
             "conflict": "Կոնֆլիկտ",
-            "conflicts": "կոնֆլիկտները պահանջում են ուշադրություն",
             "error": "Սինքրոնացման սխալ",
             "never": "Երբեք",
             "justNow": "Հենց հիմա",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Շուտով...",
             "aerocloudEnabled": "AeroCloud-ը միացված է",
             "selectPairLocalFolder": "Ընտրեք տեղային թղթապանակ զույգի համար",
-            "secondsAgo": "{count}վ առաջ"
+            "secondsAgo": "{count}վ առաջ",
+            "conflictsCount": "{count} կոնֆլիկտ պահանջում է ուշադրություն"
         },
         "statusBar": {
             "connected": "Միացված է",
@@ -2356,7 +2360,6 @@
         },
         "overwrite": {
             "title": "Ֆայլը արդեն գոյություն ունի",
-            "moreFiles": "այլ ֆայլեր հերթում",
             "remote": "Հեռավոր",
             "local": "Տեղական",
             "sourceNewer": "Աղբյուրը ավելի նոր է",
@@ -2812,7 +2815,6 @@
                 "approveThis": "Հաստատել այս գործիքի կանչը",
                 "confirm": "Հաստատել",
                 "confirmDangerous": "Հաստատել վտանգավոր գործողությունը",
-                "pendingApproval": "սպասում է հաստատման",
                 "rejectAllCalls": "Մերժել բոլոր գործիքի կանչերը",
                 "rejectExecution": "Մերժել գործիքի գործարկումը",
                 "toggleDetails": "Մանրամասներ ցուցադրել/թաքցնել",
@@ -3022,12 +3024,11 @@
                 "allowAll": "Թույլատրել բոլորը",
                 "rejectAll": "Մերժել բոլորը",
                 "pending": "սպասում է հաստատման",
-                "toolCall": "գործիքի կանչ",
-                "toolCalls": "գործիքի կանչեր",
                 "running": "Կատարվում է...",
                 "done": "Ավարտված",
                 "failed": "Ձախողվեց",
-                "allowThis": "Թույլատրել այս գործիքը"
+                "allowThis": "Թույլատրել այս գործիքը",
+                "pendingApprovalCount": "{count} գործիքի կանչ սպասում է հաստատման"
             },
             "diff": {
                 "title": "Տարբերությունների նախադիտում",
@@ -3327,7 +3328,6 @@
                 "add": "Ավելացնել",
                 "added": "Ավելացված",
                 "all": "Բոլորը",
-                "available": "հասանելի",
                 "browseProviders": "Դիտել մատակարարները",
                 "chinese": "Չինական",
                 "fast": "Արագ եզրակացում",
@@ -3347,7 +3347,8 @@
                 "tools": "Գործիքներ",
                 "vision": "Vision",
                 "bedrockDescription": "AWS-ում տեղակայված մոդելներ՝ տարածաշրջանային API բանալիով հասանելիությամբ։ Ձեռքով ավելացրեք ձեր model ID-ն։",
-                "bedrockHighlight": "AWS տարածաշրջանային վերջնակետ"
+                "bedrockHighlight": "AWS տարածաշրջանային վերջնակետ",
+                "availableCount": "{count} հասանելի"
             },
             "history": {
                 "cancel": "Չեղարկել",
@@ -3704,10 +3705,10 @@
             "actions": "Գործողություններ",
             "empty": "Արխիվը դատարկ է",
             "extracting": "Արտահանում...",
-            "files": "ֆայլեր",
             "preview": "Նախադիտում",
             "extract": "Արդյունահանել",
-            "back": "Հետ"
+            "back": "Հետ",
+            "filesSummary": "{count} ֆայլ, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Ավելացվել է {files} ֆայլ {dirs} գրացուցակում",
@@ -3754,7 +3755,6 @@
             "filesAdded": "{count} ֆայլ ավելացվեց",
             "folderName": "Թղթապանակի անուն",
             "itemDeleted": "Ջնջվեց՝ {name}",
-            "items": "տարրեր",
             "itemsDeleted": "{count} տարր ջնջվեց",
             "lastOpened": "Վերջին անգամ բացված",
             "modified": "Փոխված",
@@ -3795,7 +3795,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Ուժեղ գաղտնագրում",
-            "totalItems": "ընդամենը",
             "unlock": "Ապակողպել",
             "v1Standard": "AeroVault v1 (Ստանդարտ)",
             "v2Advanced": "AeroVault v2 (Ընդլայնված անվտանգություն)",
@@ -3882,8 +3881,6 @@
             "extractAllHint": "Հանել պահոցի բոլոր ֆայլերը թղթապանակ",
             "extractedAll": "Հանվել է {count} ֆայլ {path}-ում",
             "dropFilesHint": "Քաշեք ֆայլերը կամ թղթապանակները այստեղ, կամ օգտագործեք ստորև գտնվող կոճակները",
-            "itemSingular": "տարր",
-            "itemPlural": "տարր",
             "reportExported": "Պահոցի հաշվետվությունը պահպանվեց {path} վայրում",
             "reportCopied": "Պահոցի հաշվետվությունը պատճենվեց սեղմատախտակին",
             "exportReportHint": "Արտահանել ամբողջական տեխնիկական հաշվետվություն՝ պահոցի մետատվյալներ, գաղտնագրում, սխալների ուղղում և ֆայլերի ամբողջական ցանկ",
@@ -3936,7 +3933,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Արագ",
             "securityAdvancedDescription": "Nonce-կայուն · Գաղտնագրված ֆայլերի անուններ · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 կասկադ · Կրկնակի գաղտնագրում",
-            "securityArchiveDescription": "Կրկնօրինակազերծված արխիվ · zstd բլոկներ · v3"
+            "securityArchiveDescription": "Կրկնօրինակազերծված արխիվ · zstd բլոկներ · v3",
+            "totalItemsCount": "Ընդամենը՝ {count}"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",
@@ -3951,7 +3949,6 @@
             "empty": "Թղթապանակը դատարկ է",
             "name": "Անուն",
             "size": "Չափ",
-            "items": "տարրեր",
             "decryptAndSave": "Վերծանել և պահել",
             "decrypted": "Վերծանվեց՝ {name}",
             "encrypted": "Ֆայլը գաղտնագրվեց պահոցում",
@@ -3982,8 +3979,6 @@
             "level": "Սեղմման մակարդակ",
             "password": "Գաղտնաբառ (կամընտիր, AES-256)",
             "passwordHint": "Թողնել դատարկ առանց կոդավորման",
-            "files": "ֆայլ",
-            "folders": "պանակ",
             "compress": "Սեղմել",
             "store": "Պահել (առանց սեղմման)",
             "fast": "Արագ",
@@ -4220,8 +4215,6 @@
             "group": "Խումբ",
             "file": "Ֆայլ",
             "folder": "Պանակ",
-            "files": "ֆայլ",
-            "folders": "պանակ",
             "remote": "Հեռավոր",
             "local": "Տեղական",
             "symlink": "Սիմվոլիկ հղման թիրախ",
@@ -4295,10 +4288,7 @@
             "noDuplicates": "Կրկնօրինակներ չեն գտնվել",
             "keep": "Պահել",
             "group": "Խումբ",
-            "groups": "խմբեր",
-            "duplicateFiles": "կրկնօրինակ ֆայլեր",
             "wasted": "վատնված",
-            "copies": "պատճեններ",
             "delete": "ՋՆՋԵԼ",
             "skip": "ԲԱՑ ԹՈՂՆԵԼ",
             "selectAll": "Ընտրել բոլորը",
@@ -4325,7 +4315,10 @@
             "similarityDistance": "{similarity}, հեռավ. {distance}",
             "modeExact": "Ճշգրիտ",
             "modeLabel": "Ռեժիմ:",
-            "modeNonIdentical": "Ոչ նույնական"
+            "modeNonIdentical": "Ոչ նույնական",
+            "groupsCount": "{count} խումբ",
+            "duplicateFilesCount": "{count} կրկնօրինակ ֆայլ",
+            "copiesCount": "{count} պատճեն"
         },
         "diskUsage": {
             "title": "Սկավառակի օգտագործում",
@@ -4334,9 +4327,6 @@
             "percentOfParent": "{percent}% ծնողից",
             "backToParent": "Վերադառնալ ծնող թղթապանակ",
             "back": "Հետ",
-            "total": "Ընդամենը",
-            "across": "մեջ",
-            "items": "տարր",
             "empty": "Այս պանակը դատարկ է",
             "hoverHint": "Մկնիկը պահել մանրամասների համար",
             "scanFailed": "Սկանավորումը ձախողվեց",
@@ -4346,7 +4336,6 @@
         },
         "dependencies": {
             "title": "Կախվածություններ",
-            "crates": "գրադարաններ",
             "copy": "Պատճենել",
             "checkUpdates": "Ստուգել թարմացումները",
             "checking": "Ստուգում...",
@@ -4356,7 +4345,8 @@
             "status": "Կարգավիճակ",
             "footer": "Տարբերակների տվյալները crates.io API-ից։ Ցուցադրված են լուծված (Cargo.lock) տարբերակները։",
             "copyTitle": "Կախվածությունների ստուգում",
-            "copied": "Պատճենված է։"
+            "copied": "Պատճենված է։",
+            "cratesCount": "{count} գրադարան"
         },
         "debug": {
             "tabs": {
@@ -4416,7 +4406,6 @@
                 "warning": "Նախազգուշացում",
                 "info": "Տեղեկություն",
                 "debug": "Վրիպազերծում",
-                "entries": "գրառումներ",
                 "resume": "Շարունակել",
                 "pause": "Դադար",
                 "copyAll": "Պատճենել բոլորը",
@@ -4425,13 +4414,13 @@
                 "allSources": "Բոլոր աղբյուրները",
                 "sourceFilterTitle": "Զտել ըստ աղբյուրի",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Գրառումներ՝ {count}"
             },
             "frontend": {
                 "reactMode": "React ռեժիմ",
                 "language": "Լեզու",
                 "localStorageKeys": "LocalStorage բանալիներ",
-                "keys": "բանալիներ",
                 "localStorageSize": "LocalStorage չափ",
                 "windowSize": "Պատուհանի չափ",
                 "devicePixelRatio": "Սարքի պիքսելների հարաբերություն",
@@ -4440,7 +4429,8 @@
                 "light": "Լուսավոր",
                 "userAgent": "Օգտատիրոջ գործակալ",
                 "localStorageKeysTitle": "LocalStorage բանալիներ",
-                "localStorageEntrySummary": "{size} բայթ · {preview}"
+                "localStorageEntrySummary": "{size} բայթ · {preview}",
+                "keysCount": "{count} բանալի"
             },
             "copyFileListToClipboard": "Պատճենել ֆայլերի ցանկը սեղմատախտակին",
             "filesCopied": "{count} ֆայլի գրառում պատճենվեց սեղմատախտակ",
@@ -4462,12 +4452,12 @@
                 "i18nSweep": "i18n բանալիների սկան",
                 "ipcSpeed": "IPC արագության նմուշ",
                 "knownHosts": "known_hosts ընթերցում",
-                "passed": "հաջողված",
                 "pluginIntegrity": "Հավելման ամբողջականություն",
                 "providerSelftest": "Մատակարարի ինքնաթեստ (միայն ընթերցման)",
                 "runAll": "Կատարել բոլորը",
                 "runOne": "Կատարել այս թեստը",
-                "vaultRoundtrip": "Պահոցի շրջագայություն"
+                "vaultRoundtrip": "Պահոցի շրջագայություն",
+                "passedCount": "{passed}/{total} անցած"
             },
             "bundle": {
                 "title": "Արտահանել ախտորոշիչ փաթեթը (ZIP)"
@@ -4515,9 +4505,9 @@
         "activityPanel": {
             "awaitingCommands": "Սպասում է հրամանների...",
             "badges": {
-                "active": "ԱԿՏԻՎ",
                 "live": "ԸՆԹԱՑԻԿ",
-                "synced": "ՀԱՄԱԺԱՄԱՑՎԱԾ"
+                "synced": "ՀԱՄԱԺԱՄԱՑՎԱԾ",
+                "activeCount": "{count} ԱԿՏԻՎ"
             },
             "clearLog": "Մաքրել մատյանը",
             "close": "Փակել",
@@ -4541,7 +4531,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Ֆիլտրել գործողությունները",
-                "selected": "ընտրված"
+                "selectedCount": "{count} ընտրված"
             },
             "save": "Պահպանել"
         },
@@ -4733,14 +4723,12 @@
                 "auto": "Ինքնաշխատ",
                 "autoRefresh": "Ինքնաթարմացում (3s)",
                 "browser": "Դիտարկիչ",
-                "chars": "նիշ",
                 "copy": "Պատճենել սեղմատախտակին",
                 "disableWrap": "Անջատել բառերի տեղափոխումը",
                 "enableWrap": "Միացնել բառերի տեղափոխումը",
                 "encoding": "Կոդավորում",
                 "errorLoading": "Սխալ բովանդակության բեռնման ժամանակ",
                 "hex": "Hex",
-                "lines": "տող",
                 "loadFailed": "Տեքստային բովանդակության բեռնումը ձախողվեց",
                 "noContent": "Բովանդակություն հասանելի չէ",
                 "openBrowser": "Բացել համակարգի դիտարկիչում",
@@ -4759,7 +4747,8 @@
                 "wordWrap": "Բառերի տեղափոխում",
                 "zoomIn": "Մեծացնել",
                 "zoomOut": "Փոքրացնել",
-                "htmlPreviewFrameTitle": "HTML նախադիտում"
+                "htmlPreviewFrameTitle": "HTML նախադիտում",
+                "stats": "{lines} տող • {chars} նիշ"
             },
             "video": {
                 "exitFullscreen": "Դուրս գալ լիաէկրանից (F)",
@@ -4884,7 +4873,6 @@
             "pwdBatchCount": "Ստեղծման քանակ",
             "pwdGenerate": "Ստեղծել",
             "pwdEntropy": "Էնտրոպիա",
-            "pwdBits": "բիթ",
             "pwdWeak": "Թույլ",
             "pwdFair": "Բավարար",
             "pwdGood": "Լավ",
@@ -4935,7 +4923,8 @@
             "argon2DefaultsHint": "Լռելյայն՝ AeroVault-ի և AeroCrypt-ի օգտագործած պրոֆիլը (128 MiB, 4 կրկնություն, 4 ուղի, 32 բայթ ելք)։ Վերևի աղը ձերն է։ Հիշողություն մինչև 2 GiB։",
             "argon2Derive": "Ածանցել",
             "argon2Phc": "PHC տող",
-            "hashError": "Սխալ: {error}"
+            "hashError": "Սխալ: {error}",
+            "pwdBitsCount": "{count} բիթ"
         },
         "dialog": {
             "deleteFile": "Ջնջե՞լ «{name}»-ը։",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Միայն պահոցում",
             "localOnly": "Միայն տեղական",
             "conflict": "Հակասություն",
-            "conflicts": "հակասություններ",
-            "unchanged": "անփոփոխ",
             "allToVault": "Բոլորը պահոց",
             "allToLocal": "Բոլորը տեղական",
             "keepNewer": "Պահել նորը",
@@ -5018,10 +5005,14 @@
             "applySync": "Կիրառել սինքրոնիզացիա",
             "close": "Փակել",
             "allInSync": "Բոլոր ֆայլերը սինքրոնիզացված են",
-            "filesToVault": "ֆայլ(եր) սինքրոնիզացվեց պահոց",
-            "filesToLocal": "ֆայլ(եր) հանվեց տեղական թղթապանակ",
-            "filesSkipped": "ֆայլ(եր) բաց թողվեց",
-            "errorsOccurred": "Որոշ սխալներ տեղի ունեցան"
+            "errorsOccurred": "Որոշ սխալներ տեղի ունեցան",
+            "vaultOnlyCount": "{count} Միայն պահոցում",
+            "localOnlyCount": "{count} Միայն տեղական",
+            "conflictsCount": "{count} կոնֆլիկտ",
+            "unchangedCount": "{count} անփոփոխ",
+            "filesToVaultCount": "{count} ֆայլ համաժամեցվեց պահոցին",
+            "filesToLocalCount": "{count} ֆայլ արտահանվեց տեղական թղթապանակ",
+            "filesSkippedCount": "{count} ֆայլ բաց թողնվեց"
         },
         "localTabs": {
             "closeAll": "Փակել բոլոր ներդիրները",
@@ -5246,7 +5237,6 @@
             "checkAll": "Ստուգել բոլորը",
             "checkOne": "Ստուգել այս սերվերը",
             "checking": "Ստուգում...",
-            "checked": "ստուգված",
             "healthy": "Առողջ",
             "degraded": "Վատթարացած",
             "unreachable": "Անհասանելի",
@@ -5261,7 +5251,11 @@
             "copied": "Պատճենված է!",
             "batchChecking": "{count} սերվերի ստուգում, խնդրում ենք սպասել...",
             "scoreLegend": "Միավոր 0-100, ավելի բարձրը ավելի լավ",
-            "scoreLegendDetail": "80+ առողջ · 50-79 վատացած · 50-ից ցածր խնդիրներով"
+            "scoreLegendDetail": "80+ առողջ · 50-79 վատացած · 50-ից ցածր խնդիրներով",
+            "checkedCount": "{count} ստուգված",
+            "healthyCount": "{count} Առողջ",
+            "degradedCount": "{count} Վատթարացած",
+            "unreachableCount": "{count} Անհասանելի"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "Արխիվացված",
                 "trash": "Աղբաման"
             },
-            "participants": "մասնակիցներ",
             "saving": "Պահպանվում է...",
             "saved": "Պահպանված է",
             "saveNow": "Պահպանել հիմա",
@@ -5549,7 +5542,8 @@
                 "code": "Կոդ",
                 "richText": "Ձևաչափված տեքստ",
                 "checklist": "Ստուգաթերթ"
-            }
+            },
+            "participantsCount": "{count} մասնակից"
         },
         "shareLinkModal": {
             "title": "Տարածման հղում",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "Տեղափոխել մյուս պանելում",
             "copiedToOtherPanel": "Պատճենված է մյուս պանելում",
             "movedToOtherPanel": "Տեղափոխված է մյուս պանելում",
-            "itemsLower": "items",
             "resizePanels": "Փոխել վահանակների չափը",
             "copyHere": "Պատճենել {count}-ը այստեղ",
             "moveHere": "Տեղափոխել {count}-ը այստեղ",
             "copyHereFromOtherPanelTooltip": "Պատճենել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F5)",
             "moveHereFromOtherPanelTooltip": "Տեղափոխել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F6)",
-            "syncToOtherPanel": "Համաժամացնել մյուս վահանակին (delta)"
+            "syncToOtherPanel": "Համաժամացնել մյուս վահանակին (delta)",
+            "failedCount": "{count} ձախողված",
+            "skippedCount": "{count} բաց թողնված"
         },
         "compare": {
             "title": "Համեմատել վահանակները",
@@ -6146,9 +6141,6 @@
             "bucket": "Կատեգորիա",
             "count": "Քանակ",
             "action": "Գործողություն",
-            "delete": "ջնջել",
-            "overwrite": "վերագրել",
-            "conflicts": "հակամարտություն",
             "destructiveWarning": "Այս կանխադրվածքը կջնջի կամ կվերագրի ավելի նոր ֆայլերը։",
             "confirmDestructive": "Ես վերանայել եմ կործանարար գործողությունները և ցանկանում եմ շարունակել։",
             "executeHint": "Կատարել-ը պատրաստում է ընտրությունը և ուղարկում միասնական փոխանցման պլանավորիչի միջոցով։",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Բայթեր ցանցում",
                 "savings": "Խնայողություն",
-                "errorDetails": "սխալ(ներ), մանրամասներ",
                 "errorPathsRequired": "Աղբյուրը և նշանակետը պարտադիր են",
                 "deltaStatus": "Դելտա համաժամացում",
                 "deltaAuto": "ԱՎՏՈ ՄԻԱՑՎԱԾ",
@@ -6207,7 +6198,8 @@
                 "planned": "Նախատեսված պատճենումներ",
                 "resultDryRunOk": "Փորձարկումն ավարտվեց",
                 "resultDryRunPartial": "Փորձարկումն ավարտվեց սխալներով",
-                "resultDryRunCancelled": "Փորձարկումը չեղարկվեց"
+                "resultDryRunCancelled": "Փորձարկումը չեղարկվեց",
+                "errorDetailsCount": "{count} սխալ, մանրամասներ"
             },
             "launcherTemplates": "Կաղապարներ",
             "launcherMultiPath": "Բազմակի ուղիներ",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Համեմատումը կարդում է երկու պանակները և դրանց տակ գտնվող բոլոր պանակները։ Մեծ ծառի դեպքում դա կարող է որոշ ժամանակ տևել, և դուք կարող եք այն կանգնեցնել։",
             "progressDelta": "[դելտա]",
-            "progressCopy": "[պատճեն]"
+            "progressCopy": "[պատճեն]",
+            "deleteCount": "{count} ջնջելու",
+            "overwriteCount": "{count} վերագրելու",
+            "conflictCount": "{count} կոնֆլիկտ"
         },
         "accountLock": {
             "title": "Ընտրեք հաշիվ",

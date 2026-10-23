@@ -80,7 +80,8 @@
             "reset": "Setel Ulang",
             "saved": "Disimpan",
             "saving": "Menyimpan...",
-            "creating": "Membuat..."
+            "creating": "Membuat...",
+            "minutesCount": "{count} mnt"
         },
         "connection": {
             "title": "Hubungkan ke Server",
@@ -159,7 +160,6 @@
             "saveChanges": "Simpan perubahan",
             "createAccount": "Buat Akun",
             "docs": "Dokumentasi",
-            "minutes": "menit",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Kembali ke akun yang ada",
@@ -390,7 +390,6 @@
             "path": "Jalur",
             "files": "file",
             "folders": "folder",
-            "items": "item",
             "emptyFolder": "Folder ini kosong",
             "parentFolder": "Folder induk",
             "newFolder": "Folder Baru",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Panel kanan",
             "chooseRightPanelFolder": "Pilih folder panel kanan",
             "chooseLeftPanelFolder": "Pilih folder panel kiri",
-            "localRight": "Lokal (kanan)"
+            "localRight": "Lokal (kanan)",
+            "itemCount": "{count} item",
+            "fileCount": "{count} file",
+            "folderCount": "{count} folder"
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "Gagal menyalin",
             "copyQueueToClipboard": "Salin antrean ke papan klip",
             "fail": "GAGAL",
-            "pending": "Menunggu",
             "remove": "Hapus",
             "retry": "Coba lagi",
             "stopAll": "Hentikan semua",
@@ -673,7 +674,6 @@
                 "newTransfer": "Transfer Baru",
                 "preparing": "Menyiapkan transfer…"
             },
-            "staged": "dalam antrian",
             "start": "Mulai",
             "startAll": "Mulai semua",
             "restored": "Dipulihkan",
@@ -744,7 +744,10 @@
                 "size": "Ukuran",
                 "source": "Sumber",
                 "title": "Rencana {mode}"
-            }
+            },
+            "stagedCount": "{count} disiapkan",
+            "pendingCount": "{count} Menunggu",
+            "failedCount": "{count} Gagal"
         },
         "settings": {
             "title": "Pengaturan",
@@ -929,7 +932,6 @@
             "migrationSkip": "Lewati untuk saat ini",
             "migrationFinish": "Selesai",
             "migrationStep": "Langkah {current} dari {total}",
-            "duplicatesSkipped": "duplikat dilewati",
             "invalidPassword": "Kata sandi tidak valid",
             "backup": "Cadangan",
             "visibleColumns": "Kolom Terlihat",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Rahasia Konsumen",
             "privacyRespect": "AeroFTP melindungi privasi Anda. Tidak ada data yang dikumpulkan, tanpa pelacakan, tanpa telemetri.",
             "keystoreEntries": "{count} entri",
-            "serverCredentials": "kredensial server",
-            "serverProfilesLabel": "profil server",
-            "aiKeysLabel": "kunci AI",
-            "oauthTokensLabel": "token OAuth",
-            "configEntriesLabel": "entri konfigurasi",
             "session": "Sesi",
             "aeroftpBackupFiles": "File cadangan AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Pilih server untuk diekspor",
             "selectAll": "Pilih Semua",
             "deselectAll": "Batalkan Semua",
-            "selected": "dipilih",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Jika tidak ada ikon yang diatur, favicon atau icon.png dari server akan terdeteksi secara otomatis.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Terang",
             "imagePreviewBgCustom": "Kustom",
             "showTransferProgress": "Tampilkan bilah kemajuan transfer",
-            "similarToExisting": "menyerupai profil yang sudah ada",
             "aerocloudCompress": "Aktifkan kompresi (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: kompresi + enkripsi (profil memiliki enkripsi)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Memerlukan instalasi sistem. AeroFTP beralih otomatis ke alternatif jika tidak tersedia.",
             "fontSizeIndicatorLabel": "Huruf",
             "fontPresetDefault": "{font} (Bawaan)",
-            "fontPresetSystemDefault": "Bawaan sistem"
+            "fontPresetSystemDefault": "Bawaan sistem",
+            "duplicatesSkippedCount": "{count} duplikat dilewati",
+            "similarToExistingCount": "{count} mirip dengan profil yang ada",
+            "bridgeSkippedCount": "{count} dilewati",
+            "selectedOfTotal": "{selected} / {total} dipilih",
+            "serverCredentialsCount": "{count} kredensial server",
+            "serverProfilesCount": "{count} profil server",
+            "aiKeysCount": "{count} kunci AI",
+            "oauthTokensCount": "{count} token OAuth",
+            "configEntriesCount": "{count} entri konfigurasi"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Memulai...",
             "pending": "Menunggu",
             "conflict": "Konflik",
-            "conflicts": "konflik perlu perhatian",
             "error": "Kesalahan sinkronisasi",
             "never": "Tidak pernah",
             "justNow": "Baru saja",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Segera...",
             "aerocloudEnabled": "AeroCloud diaktifkan",
             "selectPairLocalFolder": "Pilih folder lokal untuk pasangan",
-            "secondsAgo": "{count}d lalu"
+            "secondsAgo": "{count}d lalu",
+            "conflictsCount": "{count} konflik perlu perhatian"
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "File sudah ada",
-            "moreFiles": "file lagi dalam antrean",
             "remote": "Jarak Jauh",
             "local": "Lokal",
             "sourceNewer": "Sumber lebih baru",
@@ -2800,7 +2803,6 @@
                 "approveThis": "Setujui panggilan alat ini",
                 "confirm": "Konfirmasi",
                 "confirmDangerous": "Konfirmasi tindakan berbahaya",
-                "pendingApproval": "menunggu persetujuan",
                 "rejectAllCalls": "Tolak semua panggilan alat",
                 "rejectExecution": "Tolak eksekusi alat",
                 "toggleDetails": "Tampilkan/sembunyikan detail",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Izinkan Semua",
                 "rejectAll": "Tolak Semua",
                 "pending": "menunggu persetujuan",
-                "toolCall": "panggilan alat",
-                "toolCalls": "panggilan alat",
                 "running": "berjalan...",
                 "done": "selesai",
                 "failed": "gagal",
-                "allowThis": "Izinkan alat ini"
+                "allowThis": "Izinkan alat ini",
+                "pendingApprovalCount": "{count} panggilan alat menunggu persetujuan"
             },
             "diff": {
                 "title": "Pratinjau Diff",
@@ -3334,7 +3335,6 @@
                 "add": "Tambah",
                 "added": "Ditambahkan",
                 "all": "Semua",
-                "available": "tersedia",
                 "browseProviders": "Jelajahi Penyedia",
                 "chinese": "Cina",
                 "fast": "Inferensi Cepat",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Model yang dihosting di AWS dengan akses kunci API regional. Tambahkan model ID Anda secara manual.",
-                "bedrockHighlight": "Endpoint regional AWS"
+                "bedrockHighlight": "Endpoint regional AWS",
+                "availableCount": "{count} tersedia"
             },
             "history": {
                 "cancel": "Batal",
@@ -3709,12 +3710,12 @@
             "size": "Ukuran",
             "compressed": "Dikompresi",
             "actions": "Tindakan",
-            "files": "file",
             "empty": "Arsip kosong",
             "extracting": "Mengekstrak",
             "preview": "Pratinjau",
             "extract": "Ekstrak",
-            "back": "Kembali"
+            "back": "Kembali",
+            "filesSummary": "{count} file, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Ditambahkan {files} file di {dirs} direktori",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count} file ditambahkan",
             "folderName": "Nama Folder",
             "itemDeleted": "Dihapus {name}",
-            "items": "item",
             "itemsDeleted": "{count} item dihapus",
             "lastOpened": "Terakhir dibuka",
             "modified": "Diubah",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Enkripsi kuat",
-            "totalItems": "total",
             "unlock": "Buka Kunci",
             "v1Standard": "AeroVault v1 (Standar)",
             "v2Advanced": "AeroVault v2 (Keamanan Lanjutan)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "Ekstrak setiap file di brankas ke folder",
             "extractedAll": "{count} file diekstrak ke {path}",
             "dropFilesHint": "Seret file atau folder ke sini, atau gunakan tombol di bawah",
-            "itemSingular": "item",
-            "itemPlural": "item",
             "reportExported": "Laporan brankas disimpan ke {path}",
             "reportCopied": "Laporan brankas disalin ke papan klip",
             "exportReportHint": "Ekspor laporan teknis lengkap: metadata brankas, enkripsi, koreksi kesalahan, dan daftar berkas lengkap",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Cepat",
             "securityAdvancedDescription": "Tahan nonce · Nama file terenkripsi · KDF 128 MB",
             "securityParanoidDescription": "Kaskade AES + ChaCha20 · Enkripsi ganda",
-            "securityArchiveDescription": "Arsip terdeduplikasi · potongan zstd · v3"
+            "securityArchiveDescription": "Arsip terdeduplikasi · potongan zstd · v3",
+            "totalItemsCount": "Total {count}"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",
@@ -3956,7 +3954,6 @@
             "empty": "Direktori kosong",
             "name": "Nama",
             "size": "Ukuran",
-            "items": "item",
             "readOnly": "Mode hanya baca - pembuatan vault hadir di v2.1",
             "openAsVault": "Buka sebagai Vault Cryptomator",
             "decryptAndSave": "Dekripsi & Simpan",
@@ -3989,8 +3986,6 @@
             "level": "Tingkat Kompresi",
             "password": "Kata Sandi (opsional, AES-256)",
             "passwordHint": "Biarkan kosong untuk tanpa enkripsi",
-            "files": "file",
-            "folders": "folder",
             "compress": "Kompres",
             "store": "Simpan (tanpa kompresi)",
             "fast": "Cepat",
@@ -4232,8 +4227,6 @@
             "modified": "Diubah",
             "file": "File",
             "folder": "Folder",
-            "files": "file",
-            "folders": "folder",
             "remote": "Jarak Jauh",
             "local": "Lokal",
             "linkTarget": "Target Tautan",
@@ -4309,10 +4302,7 @@
             "deleted": "{count} file duplikat dihapus",
             "scanFailed": "Pemindaian Gagal",
             "retry": "Coba Lagi",
-            "groups": "grup",
-            "duplicateFiles": "file duplikat",
             "wasted": "terbuang",
-            "copies": "salinan",
             "delete": "HAPUS",
             "skip": "LEWATI",
             "deleteConfirm": "Apakah Anda yakin ingin menghapus {count} file duplikat?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, jarak {distance}",
             "modeExact": "Persis",
             "modeLabel": "Mode:",
-            "modeNonIdentical": "Tidak identik"
+            "modeNonIdentical": "Tidak identik",
+            "groupsCount": "{count} grup",
+            "duplicateFilesCount": "{count} file duplikat",
+            "copiesCount": "{count} salinan"
         },
         "diskUsage": {
             "title": "Penggunaan Disk",
@@ -4340,20 +4333,16 @@
             "totalItems": "Total: {size} dalam {count} item",
             "percentOfParent": "{percent}% dari induk",
             "backToParent": "Kembali ke Induk",
-            "items": "item",
             "scanFailed": "Analisis Gagal",
             "retry": "Coba Lagi",
             "drillDown": "Klik untuk menjelajah",
             "back": "Kembali",
-            "total": "Total",
-            "across": "di seluruh",
             "empty": "Direktori ini kosong",
             "hoverHint": "Arahkan kursor ke blok untuk melihat detail",
             "scanUnknownError": "Kesalahan tidak diketahui saat memindai penggunaan disk"
         },
         "dependencies": {
             "title": "Dependensi",
-            "crates": "crate",
             "copy": "Salin",
             "copied": "Disalin!",
             "checkUpdates": "Periksa Pembaruan",
@@ -4363,7 +4352,8 @@
             "latest": "Terbaru",
             "status": "Status",
             "footer": "Data versi dari API crates.io. Versi yang ditampilkan adalah versi terselesaikan (Cargo.lock).",
-            "copyTitle": "Periksa Dependensi AeroFTP"
+            "copyTitle": "Periksa Dependensi AeroFTP",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Peringatan",
                 "info": "Info",
                 "debug": "Debug",
-                "entries": "entri",
                 "resume": "Lanjutkan",
                 "pause": "Jeda",
                 "copyAll": "Salin Semua",
@@ -4432,13 +4421,13 @@
                 "allSources": "Semua sumber",
                 "sourceFilterTitle": "Filter berdasarkan sumber",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Entri: {count}"
             },
             "frontend": {
                 "reactMode": "Mode React",
                 "language": "Bahasa",
                 "localStorageKeys": "Kunci LocalStorage",
-                "keys": "kunci",
                 "localStorageSize": "Ukuran LocalStorage",
                 "windowSize": "Ukuran Jendela",
                 "devicePixelRatio": "Rasio Piksel Perangkat",
@@ -4447,7 +4436,8 @@
                 "light": "Terang",
                 "userAgent": "Agen Pengguna",
                 "localStorageKeysTitle": "Kunci LocalStorage",
-                "localStorageEntrySummary": "{size} bita · {preview}"
+                "localStorageEntrySummary": "{size} bita · {preview}",
+                "keysCount": "{count} kunci"
             },
             "copyFileListToClipboard": "Salin daftar file ke clipboard",
             "filesCopied": "{count} entri file disalin ke clipboard",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "Pemindaian kunci i18n",
                 "ipcSpeed": "Sampel kecepatan IPC",
                 "knownHosts": "pembacaan known_hosts",
-                "passed": "lulus",
                 "pluginIntegrity": "Integritas plugin",
                 "providerSelftest": "Uji mandiri penyedia (hanya baca)",
                 "runAll": "Jalankan semua",
                 "runOne": "Jalankan tes ini",
-                "vaultRoundtrip": "Putaran brankas"
+                "vaultRoundtrip": "Putaran brankas",
+                "passedCount": "{passed}/{total} lulus"
             },
             "bundle": {
                 "title": "Ekspor paket diagnostik (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Menunggu perintah...",
             "badges": {
-                "active": "AKTIF",
                 "live": "LANGSUNG",
-                "synced": "TERSINKRONISASI"
+                "synced": "TERSINKRONISASI",
+                "activeCount": "{count} AKTIF"
             },
             "clearLog": "Hapus log",
             "close": "Tutup",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filter operasi",
-                "selected": "dipilih"
+                "selectedCount": "{count} dipilih"
             },
             "save": "Simpan"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Otomatis",
                 "autoRefresh": "Segarkan Otomatis (3s)",
                 "browser": "Browser",
-                "chars": "karakter",
                 "copy": "Salin ke Papan Klip",
                 "disableWrap": "Nonaktifkan Bungkus Kata",
                 "enableWrap": "Aktifkan Bungkus Kata",
                 "encoding": "Encoding",
                 "errorLoading": "Gagal memuat konten",
                 "hex": "Hex",
-                "lines": "baris",
                 "loadFailed": "Gagal memuat konten teks",
                 "noContent": "Tidak ada konten tersedia",
                 "openBrowser": "Buka di Browser Sistem",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Bungkus Kata",
                 "zoomIn": "Perbesar",
                 "zoomOut": "Perkecil",
-                "htmlPreviewFrameTitle": "Pratinjau HTML"
+                "htmlPreviewFrameTitle": "Pratinjau HTML",
+                "stats": "{lines} baris • {chars} karakter"
             },
             "video": {
                 "exitFullscreen": "Keluar Layar Penuh (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Jumlah yang Dibuat",
             "pwdGenerate": "Buat",
             "pwdEntropy": "Entropi",
-            "pwdBits": "bit",
             "pwdWeak": "Lemah",
             "pwdFair": "Cukup",
             "pwdGood": "Baik",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Bawaan: profil yang digunakan AeroVault dan AeroCrypt (128 MiB, 4 iterasi, 4 jalur, keluaran 32 byte). Garam di atas adalah milik Anda. Memori hingga 2 GiB.",
             "argon2Derive": "Turunkan",
             "argon2Phc": "String PHC",
-            "hashError": "Galat: {error}"
+            "hashError": "Galat: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "Hapus \"{name}\"?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Hanya di brankas",
             "localOnly": "Hanya lokal",
             "conflict": "Konflik",
-            "conflicts": "konflik",
-            "unchanged": "tidak berubah",
             "allToVault": "Semua ke Brankas",
             "allToLocal": "Semua ke Lokal",
             "keepNewer": "Simpan Terbaru",
@@ -5018,10 +5005,14 @@
             "applySync": "Terapkan Sinkronisasi",
             "close": "Tutup",
             "allInSync": "Semua file telah tersinkronisasi",
-            "filesToVault": "file disinkronkan ke brankas",
-            "filesToLocal": "file diekstrak ke lokal",
-            "filesSkipped": "file dilewati",
-            "errorsOccurred": "Beberapa kesalahan terjadi"
+            "errorsOccurred": "Beberapa kesalahan terjadi",
+            "vaultOnlyCount": "{count} Hanya di brankas",
+            "localOnlyCount": "{count} Hanya lokal",
+            "conflictsCount": "{count} konflik",
+            "unchangedCount": "{count} tidak berubah",
+            "filesToVaultCount": "{count} file disinkronkan ke brankas",
+            "filesToLocalCount": "{count} file diekstrak ke lokal",
+            "filesSkippedCount": "{count} file dilewati"
         },
         "localTabs": {
             "closeAll": "Tutup Semua Tab",
@@ -5246,7 +5237,6 @@
             "checkAll": "Periksa Semua",
             "checkOne": "Periksa server ini",
             "checking": "Memeriksa...",
-            "checked": "diperiksa",
             "healthy": "Sehat",
             "degraded": "Menurun",
             "unreachable": "Tidak terjangkau",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Memeriksa {count} server, harap tunggu...",
             "scoreLegend": "Skor 0-100, lebih tinggi lebih baik",
-            "scoreLegendDetail": "80+ sehat · 50-79 menurun · di bawah 50 bermasalah"
+            "scoreLegendDetail": "80+ sehat · 50-79 menurun · di bawah 50 bermasalah",
+            "checkedCount": "{count} diperiksa",
+            "healthyCount": "{count} Sehat",
+            "degradedCount": "{count} Menurun",
+            "unreachableCount": "{count} Tidak terjangkau"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "Arsipd",
                 "trash": "Sampah"
             },
-            "participants": "peserta",
             "saving": "Menyimpan...",
             "saved": "Tersimpan",
             "saveNow": "Simpan sekarang",
@@ -5549,7 +5542,8 @@
                 "code": "Kode",
                 "richText": "Teks Kaya",
                 "checklist": "Daftar Periksa"
-            }
+            },
+            "participantsCount": "{count} peserta"
         },
         "shareLinkModal": {
             "title": "Tautan Berbagi",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "Pindahkan ke panel lain",
             "copiedToOtherPanel": "Disalin ke panel lain",
             "movedToOtherPanel": "Dipindahkan ke panel lain",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Salin {count} di sini",
             "moveHere": "Pindahkan {count} di sini",
             "copyHereFromOtherPanelTooltip": "Salin {count} yang dipilih dari panel lain ke panel ini (F5)",
             "moveHereFromOtherPanelTooltip": "Pindahkan {count} yang dipilih dari panel lain ke panel ini (F6)",
-            "syncToOtherPanel": "Sinkronkan ke panel lain (delta)"
+            "syncToOtherPanel": "Sinkronkan ke panel lain (delta)",
+            "failedCount": "{count} gagal",
+            "skippedCount": "{count} dilewati"
         },
         "compare": {
             "title": "Bandingkan panel",
@@ -6146,9 +6141,6 @@
             "bucket": "Kategori",
             "count": "Jumlah",
             "action": "Aksi",
-            "delete": "hapus",
-            "overwrite": "timpa",
-            "conflicts": "konflik",
             "destructiveWarning": "Preset ini akan menghapus atau menimpa berkas yang lebih baru.",
             "confirmDestructive": "Saya telah meninjau tindakan destruktif dan ingin melanjutkan.",
             "executeHint": "Jalankan menyiapkan pilihan dan mengirim melalui perencana transfer terpadu.",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Byte di jaringan",
                 "savings": "Penghematan",
-                "errorDetails": "kesalahan, detail",
                 "errorPathsRequired": "Sumber dan tujuan wajib diisi",
                 "deltaStatus": "Sinkronisasi delta",
                 "deltaAuto": "AUTO AKTIF",
@@ -6207,7 +6198,8 @@
                 "planned": "Salinan terencana",
                 "resultDryRunOk": "Uji coba selesai",
                 "resultDryRunPartial": "Uji coba selesai dengan kesalahan",
-                "resultDryRunCancelled": "Uji coba dibatalkan"
+                "resultDryRunCancelled": "Uji coba dibatalkan",
+                "errorDetailsCount": "{count} kesalahan, detail"
             },
             "launcherTemplates": "Templat",
             "launcherMultiPath": "Multi-Jalur",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Perbandingan membaca kedua folder dan semua folder di bawahnya. Pada pohon yang besar, proses ini bisa memakan waktu, dan Anda dapat menghentikannya.",
             "progressDelta": "[delta]",
-            "progressCopy": "[salinan]"
+            "progressCopy": "[salinan]",
+            "deleteCount": "{count} akan dihapus",
+            "overwriteCount": "{count} akan ditimpa",
+            "conflictCount": "{count} konflik"
         },
         "accountLock": {
             "title": "Pilih akun",

@@ -80,7 +80,8 @@
             "reset": "Nulstil",
             "saved": "Gemt",
             "saving": "Gemmer...",
-            "creating": "Opretter..."
+            "creating": "Opretter...",
+            "minutesCount": "{count} min."
         },
         "connection": {
             "title": "Forbind til server",
@@ -159,7 +160,6 @@
             "saveChanges": "Gem ændringer",
             "createAccount": "Opret konto",
             "docs": "Dokumentation",
-            "minutes": "minutter",
             "localPathPlaceholder": "/home/bruger/projekter",
             "fourshared": {
                 "backToExistingAccount": "Tilbage til eksisterende konto",
@@ -390,7 +390,6 @@
             "path": "Sti",
             "files": "filer",
             "folders": "mapper",
-            "items": "elementer",
             "emptyFolder": "Denne mappe er tom",
             "parentFolder": "Overordnet mappe",
             "newFolder": "Ny mappe",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Højre panel",
             "chooseRightPanelFolder": "Vælg mappe til højre panel",
             "chooseLeftPanelFolder": "Vælg mappe til venstre panel",
-            "localRight": "Lokal (højre)"
+            "localRight": "Lokal (højre)",
+            "itemCount": "{count} element(er)",
+            "fileCount": "{count} fil(er)",
+            "folderCount": "{count} mappe(r)"
         },
         "contextMenu": {
             "askAeroAgent": "Spørg AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "Kopieringsfejl",
             "copyQueueToClipboard": "Kopiér kø til udklipsholder",
             "fail": "FEJL",
-            "pending": "Afventer",
             "remove": "Fjern",
             "retry": "Prøv igen",
             "stopAll": "Stop alt",
@@ -673,7 +674,6 @@
                 "newTransfer": "Ny overførsel",
                 "preparing": "Forbereder overførsel…"
             },
-            "staged": "i kø",
             "start": "Start",
             "startAll": "Start alle",
             "restored": "Gendannet",
@@ -744,7 +744,10 @@
                 "size": "Størrelse",
                 "source": "Kilde",
                 "title": "Plan: {mode}"
-            }
+            },
+            "stagedCount": "{count} klargjort",
+            "pendingCount": "{count} Afventer",
+            "failedCount": "{count} Mislykkedes"
         },
         "settings": {
             "title": "Indstillinger",
@@ -929,7 +932,6 @@
             "migrationSkip": "Spring over for nu",
             "migrationFinish": "Fuldfør",
             "migrationStep": "Trin {current} af {total}",
-            "duplicatesSkipped": "dubletter sprunget over",
             "invalidPassword": "Ugyldig adgangskode",
             "backup": "Sikkerhedskopi",
             "visibleColumns": "Synlige kolonner",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Forbrugerhemmelighed",
             "privacyRespect": "AeroFTP beskytter dit privatliv. Ingen data indsamles, ingen sporing, ingen telemetri.",
             "keystoreEntries": "{count} poster",
-            "serverCredentials": "serverlegitimationsoplysninger",
-            "serverProfilesLabel": "serverprofiler",
-            "aiKeysLabel": "AI-nøgler",
-            "oauthTokensLabel": "OAuth-tokens",
-            "configEntriesLabel": "konfigurationsposter",
             "session": "Session",
             "aeroftpBackupFiles": "AeroFTP-sikkerhedskopier",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Vælg servere til eksport",
             "selectAll": "Vælg alle",
             "deselectAll": "Fravælg alle",
-            "selected": "valgt",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Hvis der ikke er angivet et ikon, registreres favicon eller icon.png fra serveren automatisk.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Lys",
             "imagePreviewBgCustom": "Tilpasset",
             "showTransferProgress": "Vis statuslinje for overførsel",
-            "similarToExisting": "ligner en eksisterende profil",
             "aerocloudCompress": "Aktivér komprimering (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: komprimering + kryptering (profilen har kryptering)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Kræver systeminstallation. AeroFTP falder automatisk tilbage, hvis den ikke er tilgængelig.",
             "fontSizeIndicatorLabel": "Skrift",
             "fontPresetDefault": "{font} (standard)",
-            "fontPresetSystemDefault": "Systemstandard"
+            "fontPresetSystemDefault": "Systemstandard",
+            "duplicatesSkippedCount": "{count} dublet(ter) sprunget over",
+            "similarToExistingCount": "{count} ligner en eksisterende profil",
+            "bridgeSkippedCount": "{count} sprunget over",
+            "selectedOfTotal": "{selected} / {total} valgt",
+            "serverCredentialsCount": "Serverlegitimationsoplysninger: {count}",
+            "serverProfilesCount": "Serverprofiler: {count}",
+            "aiKeysCount": "AI-nøgler: {count}",
+            "oauthTokensCount": "OAuth-tokens: {count}",
+            "configEntriesCount": "Konfigurationsposter: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Starter...",
             "pending": "Afventer",
             "conflict": "Konflikt",
-            "conflicts": "konflikter kræver opmærksomhed",
             "error": "Synkroniseringsfejl",
             "never": "Aldrig",
             "justNow": "Lige nu",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Snart...",
             "aerocloudEnabled": "AeroCloud aktiveret",
             "selectPairLocalFolder": "Vælg lokal mappe til parret",
-            "secondsAgo": "{count}s siden"
+            "secondsAgo": "{count}s siden",
+            "conflictsCount": "{count} konflikt(er) kræver opmærksomhed"
         },
         "statusBar": {
             "connected": "Forbundet",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "Filen eksisterer allerede",
-            "moreFiles": "flere fil(er) i køen",
             "remote": "Fjern",
             "local": "Lokal",
             "sourceNewer": "Kilden er nyere",
@@ -2800,7 +2803,6 @@
                 "approveThis": "Godkend dette værktøjskald",
                 "confirm": "Bekræft",
                 "confirmDangerous": "Bekræft farlig handling",
-                "pendingApproval": "afventer godkendelse",
                 "rejectAllCalls": "Afvis alle værktøjskald",
                 "rejectExecution": "Afvis værktøjsudførelse",
                 "toggleDetails": "Vis/skjul detaljer",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Tillad alle",
                 "rejectAll": "Afvis alle",
                 "pending": "afventer godkendelse",
-                "toolCall": "værktøjskald",
-                "toolCalls": "værktøjskald",
                 "running": "Kører...",
                 "done": "Færdig",
                 "failed": "Mislykkedes",
-                "allowThis": "Tillad dette værktøj"
+                "allowThis": "Tillad dette værktøj",
+                "pendingApprovalCount": "{count} værktøjskald afventer godkendelse"
             },
             "diff": {
                 "title": "Diff-forhåndsvisning",
@@ -3334,7 +3335,6 @@
                 "add": "Tilføj",
                 "added": "Tilføjet",
                 "all": "Alle",
-                "available": "tilgængelige",
                 "browseProviders": "Gennemse udbydere",
                 "chinese": "Kinesisk",
                 "fast": "Hurtig inferens",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Modeller hostet på AWS med adgang via en regional API-nøgle. Tilføj dit model ID manuelt.",
-                "bedrockHighlight": "Regionalt AWS-slutpunkt"
+                "bedrockHighlight": "Regionalt AWS-slutpunkt",
+                "availableCount": "{count} tilgængelig(e)"
             },
             "history": {
                 "cancel": "Annullér",
@@ -3709,12 +3710,12 @@
             "size": "Størrelse",
             "compressed": "Komprimeret",
             "actions": "Handlinger",
-            "files": "filer",
             "empty": "Arkivet er tomt",
             "extracting": "Udpakker",
             "preview": "Forhåndsvisning",
             "extract": "Udpak",
-            "back": "Tilbage"
+            "back": "Tilbage",
+            "filesSummary": "{count} fil(er), {size}"
         },
         "vault": {
             "addDirectorySuccess": "Tilføjet {files} filer i {dirs} mapper",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count} fil(er) tilføjet",
             "folderName": "Mappenavn",
             "itemDeleted": "{name} slettet",
-            "items": "elementer",
             "itemsDeleted": "{count} element(er) slettet",
             "lastOpened": "Sidst åbnet",
             "modified": "Ændret",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Stærk kryptering",
-            "totalItems": "i alt",
             "unlock": "Lås op",
             "v1Standard": "AeroVault v1 (Standard)",
             "v2Advanced": "AeroVault v2 (Avanceret sikkerhed)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "Udpak alle filer i boksen til en mappe",
             "extractedAll": "Udpakkede {count} fil(er) til {path}",
             "dropFilesHint": "Træk filer eller mapper hertil, eller brug knapperne nedenfor",
-            "itemSingular": "element",
-            "itemPlural": "elementer",
             "reportExported": "Vault-rapport gemt til {path}",
             "reportCopied": "Vault-rapport kopieret til udklipsholderen",
             "exportReportHint": "Eksportér en komplet teknisk rapport: vault-metadata, kryptering, fejlkorrektion og fuld filliste",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Hurtig",
             "securityAdvancedDescription": "Nonce-resistent · Krypterede filnavne · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20-kaskade · Dobbelt kryptering",
-            "securityArchiveDescription": "Deduplikeret arkiv · zstd-blokke · v3"
+            "securityArchiveDescription": "Deduplikeret arkiv · zstd-blokke · v3",
+            "totalItemsCount": "{count} i alt"
         },
         "cryptomator": {
             "title": "Cryptomator-boks",
@@ -3956,7 +3954,6 @@
             "empty": "Mappen er tom",
             "name": "Navn",
             "size": "Størrelse",
-            "items": "elementer",
             "readOnly": "Skrivebeskyttet tilstand - oprettelse af boks kommer i v2.1",
             "openAsVault": "Åbn som Cryptomator-boks",
             "decryptAndSave": "Dekryptér og gem",
@@ -3989,8 +3986,6 @@
             "level": "Komprimeringsniveau",
             "password": "Adgangskode (valgfri, AES-256)",
             "passwordHint": "Lad være tom for ingen kryptering",
-            "files": "filer",
-            "folders": "mapper",
             "compress": "Komprimer",
             "store": "Gem (ingen komprimering)",
             "fast": "Hurtig",
@@ -4232,8 +4227,6 @@
             "modified": "Ændret",
             "file": "Fil",
             "folder": "Mappe",
-            "files": "filer",
-            "folders": "mapper",
             "remote": "Fjern",
             "local": "Lokal",
             "linkTarget": "Symbolsk link-mål",
@@ -4309,10 +4302,7 @@
             "deleted": "{count} duplikatfiler slettet",
             "scanFailed": "Scanning mislykkedes",
             "retry": "Prøv igen",
-            "groups": "grupper",
-            "duplicateFiles": "duplikatfiler",
             "wasted": "spildt",
-            "copies": "kopier",
             "delete": "SLET",
             "skip": "SPRING OVER",
             "deleteConfirm": "Er du sikker på, at du vil slette {count} duplikatfiler?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, afst. {distance}",
             "modeExact": "Nøjagtig",
             "modeLabel": "Tilstand:",
-            "modeNonIdentical": "Ikke identisk"
+            "modeNonIdentical": "Ikke identisk",
+            "groupsCount": "{count} gruppe(r)",
+            "duplicateFilesCount": "{count} dubletfil(er)",
+            "copiesCount": "{count} kopier"
         },
         "diskUsage": {
             "title": "Diskforbrug",
@@ -4340,20 +4333,16 @@
             "totalItems": "Total: {size} fordelt på {count} elementer",
             "percentOfParent": "{percent}% af overordnet",
             "backToParent": "Tilbage til overordnet",
-            "items": "elementer",
             "scanFailed": "Analyse mislykkedes",
             "retry": "Prøv igen",
             "drillDown": "Klik for at udforske",
             "back": "Tilbage",
-            "total": "Total",
-            "across": "fordelt på",
             "empty": "Denne mappe er tom",
             "hoverHint": "Hold musen over en blok for at se detaljer",
             "scanUnknownError": "Ukendt fejl under scanning af diskforbrug"
         },
         "dependencies": {
             "title": "Afhængigheder",
-            "crates": "crates",
             "copy": "Kopiér",
             "copied": "Kopieret!",
             "checkUpdates": "Tjek opdateringer",
@@ -4363,7 +4352,8 @@
             "latest": "Seneste",
             "status": "Status",
             "footer": "Versionsdata fra crates.io API. Viste versioner er løste (Cargo.lock) versioner.",
-            "copyTitle": "AeroFTP afhængighedstjek"
+            "copyTitle": "AeroFTP afhængighedstjek",
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Advarsel",
                 "info": "Info",
                 "debug": "Fejlsøgning",
-                "entries": "poster",
                 "resume": "Genoptag",
                 "pause": "Pause",
                 "copyAll": "Kopiér alle",
@@ -4432,13 +4421,13 @@
                 "allSources": "Alle kilder",
                 "sourceFilterTitle": "Filtrer efter kilde",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Poster: {count}"
             },
             "frontend": {
                 "reactMode": "React-tilstand",
                 "language": "Sprog",
                 "localStorageKeys": "LocalStorage-nøgler",
-                "keys": "nøgler",
                 "localStorageSize": "LocalStorage-størrelse",
                 "windowSize": "Vinduesstørrelse",
                 "devicePixelRatio": "Enhedspixelforhold",
@@ -4447,7 +4436,8 @@
                 "light": "Lys",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "LocalStorage-nøgler",
-                "localStorageEntrySummary": "{size} byte · {preview}"
+                "localStorageEntrySummary": "{size} byte · {preview}",
+                "keysCount": "{count} nøgle(r)"
             },
             "copyFileListToClipboard": "Kopiér filliste til udklipsholder",
             "filesCopied": "{count} filposter kopieret til udklipsholder",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "i18n nøglegennemgang",
                 "ipcSpeed": "IPC hastighedsprøve",
                 "knownHosts": "known_hosts læsning",
-                "passed": "bestået",
                 "pluginIntegrity": "Plugin-integritet",
                 "providerSelftest": "Udbyder-selvtest (skrivebeskyttet)",
                 "runAll": "Kør alle",
                 "runOne": "Kør denne test",
-                "vaultRoundtrip": "Boks tur-retur"
+                "vaultRoundtrip": "Boks tur-retur",
+                "passedCount": "{passed}/{total} bestået"
             },
             "bundle": {
                 "title": "Eksportér diagnostisk pakke (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Afventer kommandoer...",
             "badges": {
-                "active": "AKTIV",
                 "live": "LIVE",
-                "synced": "SYNKRONISERET"
+                "synced": "SYNKRONISERET",
+                "activeCount": "{count} AKTIV(E)"
             },
             "clearLog": "Ryd log",
             "close": "Luk",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtrer handlinger",
-                "selected": "valgt"
+                "selectedCount": "{count} valgt"
             },
             "save": "Gem"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Auto",
                 "autoRefresh": "Auto-opdatering (3s)",
                 "browser": "Browser",
-                "chars": "tegn",
                 "copy": "Kopiér til udklipsholder",
                 "disableWrap": "Deaktivér tekstombrydning",
                 "enableWrap": "Aktivér tekstombrydning",
                 "encoding": "Kodning",
                 "errorLoading": "Fejl ved indlæsning af indhold",
                 "hex": "Hex",
-                "lines": "linjer",
                 "loadFailed": "Kunne ikke indlæse tekstindhold",
                 "noContent": "Intet indhold tilgængeligt",
                 "openBrowser": "Åbn i systembrowser",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Tekstombrydning",
                 "zoomIn": "Zoom ind",
                 "zoomOut": "Zoom ud",
-                "htmlPreviewFrameTitle": "HTML-forhåndsvisning"
+                "htmlPreviewFrameTitle": "HTML-forhåndsvisning",
+                "stats": "{lines} linje(r) • {chars} tegn"
             },
             "video": {
                 "exitFullscreen": "Afslut fuldskærm (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Genereringsantal",
             "pwdGenerate": "Generér",
             "pwdEntropy": "Entropi",
-            "pwdBits": "bits",
             "pwdWeak": "Svag",
             "pwdFair": "Rimelig",
             "pwdGood": "God",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Standardværdier: profilen, som AeroVault og AeroCrypt bruger (128 MiB, 4 iterationer, 4 baner, 32-byte output). Saltet ovenfor er dit. Hukommelse op til 2 GiB.",
             "argon2Derive": "Udled",
             "argon2Phc": "PHC-streng",
-            "hashError": "Fejl: {error}"
+            "hashError": "Fejl: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "Slet \"{name}\"?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Kun i boksen",
             "localOnly": "Kun lokalt",
             "conflict": "Konflikt",
-            "conflicts": "konflikter",
-            "unchanged": "uændret",
             "allToVault": "Alt til boksen",
             "allToLocal": "Alt lokalt",
             "keepNewer": "Behold nyere",
@@ -5018,10 +5005,14 @@
             "applySync": "Anvend synkronisering",
             "close": "Luk",
             "allInSync": "Alle filer er synkroniserede",
-            "filesToVault": "fil(er) synkroniseret til boksen",
-            "filesToLocal": "fil(er) udtrukket lokalt",
-            "filesSkipped": "fil(er) sprunget over",
-            "errorsOccurred": "Der opstod nogle fejl"
+            "errorsOccurred": "Der opstod nogle fejl",
+            "vaultOnlyCount": "{count} Kun i boksen",
+            "localOnlyCount": "{count} Kun lokalt",
+            "conflictsCount": "{count} konflikt(er)",
+            "unchangedCount": "{count} uændret",
+            "filesToVaultCount": "{count} fil(er) synkroniseret til boksen",
+            "filesToLocalCount": "{count} fil(er) udpakket lokalt",
+            "filesSkippedCount": "{count} fil(er) sprunget over"
         },
         "localTabs": {
             "closeAll": "Luk alle faner",
@@ -5246,7 +5237,6 @@
             "checkAll": "Tjek alle",
             "checkOne": "Tjek denne server",
             "checking": "Tjekker...",
-            "checked": "tjekket",
             "healthy": "Sund",
             "degraded": "Forringet",
             "unreachable": "Utilgængelig",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Kontrollerer {count} servere, vent venligst...",
             "scoreLegend": "Score 0-100, højere er bedre",
-            "scoreLegendDetail": "80+ sund · 50-79 forringet · under 50 har problemer"
+            "scoreLegendDetail": "80+ sund · 50-79 forringet · under 50 har problemer",
+            "checkedCount": "{count} kontrolleret",
+            "healthyCount": "{count} Sund(e)",
+            "degradedCount": "{count} Forringet",
+            "unreachableCount": "{count} Utilgængelig(e)"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "Arkiverede",
                 "trash": "Papirkurv"
             },
-            "participants": "deltagere",
             "saving": "Gemmer...",
             "saved": "Gemt",
             "saveNow": "Gem nu",
@@ -5549,7 +5542,8 @@
                 "code": "Kode",
                 "richText": "Formateret tekst",
                 "checklist": "Tjekliste"
-            }
+            },
+            "participantsCount": "{count} deltagere"
         },
         "shareLinkModal": {
             "title": "Delingslink",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "Flyt til det andet panel",
             "copiedToOtherPanel": "Kopieret til det andet panel",
             "movedToOtherPanel": "Flyttet til det andet panel",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Kopiér {count} hertil",
             "moveHere": "Flyt {count} hertil",
             "copyHereFromOtherPanelTooltip": "Kopiér {count} valgte fra det andet panel til dette panel (F5)",
             "moveHereFromOtherPanelTooltip": "Flyt {count} valgte fra det andet panel til dette panel (F6)",
-            "syncToOtherPanel": "Synkronisér til andet panel (delta)"
+            "syncToOtherPanel": "Synkronisér til andet panel (delta)",
+            "failedCount": "{count} mislykkedes",
+            "skippedCount": "{count} sprunget over"
         },
         "compare": {
             "title": "Sammenlign paneler",
@@ -6146,9 +6141,6 @@
             "bucket": "Kategori",
             "count": "Antal",
             "action": "Handling",
-            "delete": "slet",
-            "overwrite": "overskriv",
-            "conflicts": "konflikt",
             "destructiveWarning": "Denne forudindstilling vil slette eller overskrive nyere filer.",
             "confirmDestructive": "Jeg har gennemgået de destruktive handlinger og ønsker at fortsætte.",
             "executeHint": "Udfør placerer markeringen i kø og afsender den via den samlede overførselsplanlægger.",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Bytes på netværket",
                 "savings": "Besparelse",
-                "errorDetails": "fejl, detaljer",
                 "errorPathsRequired": "Kilde og destination er påkrævet",
                 "deltaStatus": "Delta-sync",
                 "deltaAuto": "AUTO TIL",
@@ -6207,7 +6198,8 @@
                 "planned": "Planlagte kopieringer",
                 "resultDryRunOk": "Tørkørsel fuldført",
                 "resultDryRunPartial": "Tørkørsel fuldført med fejl",
-                "resultDryRunCancelled": "Tørkørsel annulleret"
+                "resultDryRunCancelled": "Tørkørsel annulleret",
+                "errorDetailsCount": "{count} fejl, detaljer"
             },
             "launcherTemplates": "Skabeloner",
             "launcherMultiPath": "Multi-sti",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Sammenligningen læser begge mapper og alle mapper under dem. På et stort træ kan det tage et stykke tid, og du kan stoppe den.",
             "progressDelta": "[delta]",
-            "progressCopy": "[kopi]"
+            "progressCopy": "[kopi]",
+            "deleteCount": "{count} skal slettes",
+            "overwriteCount": "{count} skal overskrives",
+            "conflictCount": "{count} konflikt(er)"
         },
         "accountLock": {
             "title": "Vælg en konto",

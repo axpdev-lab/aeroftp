@@ -500,7 +500,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
 
                         {/* Footer */}
                         <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-                            {entries.length} {t('cryptomator.items')}
+                            {t('browser.itemCount', { count: entries.length })}
                         </div>
                     </>
                 )}

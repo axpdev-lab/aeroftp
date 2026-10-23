@@ -80,7 +80,8 @@
             "reset": "Visszaállítás",
             "saved": "Mentve",
             "saving": "Mentés...",
-            "creating": "Létrehozás..."
+            "creating": "Létrehozás...",
+            "minutesCount": "{count} perc"
         },
         "connection": {
             "title": "Csatlakozás szerverhez",
@@ -159,7 +160,6 @@
             "saveChanges": "Változtatások mentése",
             "createAccount": "Fiók létrehozása",
             "docs": "Dokumentáció",
-            "minutes": "perc",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Vissza a meglévő fiókhoz",
@@ -390,7 +390,6 @@
             "path": "Útvonal",
             "files": "fájlok",
             "folders": "mappák",
-            "items": "elemek",
             "emptyFolder": "Ez a mappa üres",
             "parentFolder": "Szülő mappa",
             "newFolder": "Új mappa",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Jobb panel",
             "chooseRightPanelFolder": "Jobb oldali panel mappájának kiválasztása",
             "chooseLeftPanelFolder": "Bal oldali panel mappájának kiválasztása",
-            "localRight": "Helyi (jobb)"
+            "localRight": "Helyi (jobb)",
+            "itemCount": "{count} elem",
+            "fileCount": "{count} fájl",
+            "folderCount": "{count} mappa"
         },
         "contextMenu": {
             "askAeroAgent": "Kérdezd meg AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "Másolási hiba",
             "copyQueueToClipboard": "Sor másolása a vágólapra",
             "fail": "SIKERTELEN",
-            "pending": "Függőben",
             "remove": "Eltávolítás",
             "retry": "Újrapróbálás",
             "stopAll": "Összes leállítása",
@@ -673,7 +674,6 @@
                 "newTransfer": "Új átvitel",
                 "preparing": "Átvitel előkészítése…"
             },
-            "staged": "sorban",
             "start": "Indítás",
             "startAll": "Összes indítása",
             "restored": "Visszaállítva",
@@ -744,7 +744,10 @@
                 "size": "Méret",
                 "source": "Forrás",
                 "title": "Terv: {mode}"
-            }
+            },
+            "stagedCount": "{count} előkészítve",
+            "pendingCount": "{count} Függőben",
+            "failedCount": "{count} Sikertelen"
         },
         "settings": {
             "title": "Beállítások",
@@ -929,7 +932,6 @@
             "migrationSkip": "Kihagyás egyelre",
             "migrationFinish": "Befejezés",
             "migrationStep": "{current}. lépés / {total}",
-            "duplicatesSkipped": "duplikátumok kihagyva",
             "invalidPassword": "Érvénytelen jelszó",
             "backup": "Biztonsági mentés",
             "visibleColumns": "Látható oszlopok",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Fogyasztó titok",
             "privacyRespect": "Az AeroFTP védi az adatvédelmét. Nem gyűjtünk adatokat, nincs követés, nincs telemetria.",
             "keystoreEntries": "{count} bejegyzés",
-            "serverCredentials": "szerver hitelesítő adatok",
-            "serverProfilesLabel": "szerver profilok",
-            "aiKeysLabel": "AI kulcsok",
-            "oauthTokensLabel": "OAuth tokenek",
-            "configEntriesLabel": "konfigurációs bejegyzések",
             "session": "Munkamenet",
             "aeroftpBackupFiles": "AeroFTP biztonsági mentés fájlok",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Válasszon exportálandó szervereket",
             "selectAll": "Összes kijelölése",
             "deselectAll": "Összes kijelölés megszüntetése",
-            "selected": "kijelölve",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Ha nincs ikon beállítva, a kiszolgálóról a favicon vagy az icon.png automatikusan kerül felismerésre.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Világos",
             "imagePreviewBgCustom": "Egyéni",
             "showTransferProgress": "Átviteli folyamatjelző megjelenítése",
-            "similarToExisting": "hasonlítanak egy meglévő profilra",
             "aerocloudCompress": "Tömörítés engedélyezése (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: tömörítés + titkosítás (a profil titkosítást használ)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Rendszerszintű telepítést igényel. Ha nem érhető el, az AeroFTP automatikusan tartalékra vált.",
             "fontSizeIndicatorLabel": "Betűtípus",
             "fontPresetDefault": "{font} (Alapértelmezett)",
-            "fontPresetSystemDefault": "Rendszer alapértelmezett"
+            "fontPresetSystemDefault": "Rendszer alapértelmezett",
+            "duplicatesSkippedCount": "{count} ismétlődés kihagyva",
+            "similarToExistingCount": "{count} hasonlít egy meglévő profilhoz",
+            "bridgeSkippedCount": "{count} kihagyva",
+            "selectedOfTotal": "{selected} / {total} kiválasztva",
+            "serverCredentialsCount": "{count} kiszolgálói hitelesítő adat",
+            "serverProfilesCount": "{count} kiszolgálóprofil",
+            "aiKeysCount": "{count} AI-kulcs",
+            "oauthTokensCount": "{count} OAuth-token",
+            "configEntriesCount": "{count} konfigurációs bejegyzés"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Indítás...",
             "pending": "Függőben",
             "conflict": "Ütközés",
-            "conflicts": "ütközés figyelmet igényel",
             "error": "Szinkronizálási hiba",
             "never": "Soha",
             "justNow": "Épp most",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Hamarosan...",
             "aerocloudEnabled": "AeroCloud engedélyezve",
             "selectPairLocalFolder": "Helyi mappa kiválasztása a párhoz",
-            "secondsAgo": "{count} mp-e"
+            "secondsAgo": "{count} mp-e",
+            "conflictsCount": "{count} ütközés figyelmet igényel"
         },
         "statusBar": {
             "connected": "Csatlakozva",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "A fájl már létezik",
-            "moreFiles": "további fájl(ok) a sorban",
             "remote": "Távoli",
             "local": "Helyi",
             "sourceNewer": "A forrás újabb",
@@ -2800,7 +2803,6 @@
                 "approveThis": "Eszközhívás jóváhagyása",
                 "confirm": "Megerősítés",
                 "confirmDangerous": "Veszélyes művelet megerősítése",
-                "pendingApproval": "jóváhagyásra vár",
                 "rejectAllCalls": "Összes eszközhívás elutasítása",
                 "rejectExecution": "Eszköz futtatásának elutasítása",
                 "toggleDetails": "Részletek megjelenítése/elrejtése",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Összes engedélyezése",
                 "rejectAll": "Összes elutasítása",
                 "pending": "jóváhagyásra vár",
-                "toolCall": "eszközhívás",
-                "toolCalls": "eszközhívás",
                 "running": "Futtatás...",
                 "done": "Kész",
                 "failed": "Sikertelen",
-                "allowThis": "Eszköz engedélyezése"
+                "allowThis": "Eszköz engedélyezése",
+                "pendingApprovalCount": "{count} eszközhívás jóváhagyásra vár"
             },
             "diff": {
                 "title": "Különbség előnézet",
@@ -3334,7 +3335,6 @@
                 "add": "Hozzáadás",
                 "added": "Hozzáadva",
                 "all": "Összes",
-                "available": "elérhető",
                 "browseProviders": "Szolgáltatók böngészése",
                 "chinese": "Kínai",
                 "fast": "Gyors következtetés",
@@ -3354,7 +3354,8 @@
                 "tools": "Eszközök",
                 "vision": "Vision",
                 "bedrockDescription": "AWS-en tárolt modellek regionális API-kulcsos hozzáféréssel. Adja hozzá kézzel a model ID értékét.",
-                "bedrockHighlight": "AWS regionális végpont"
+                "bedrockHighlight": "AWS regionális végpont",
+                "availableCount": "{count} elérhető"
             },
             "history": {
                 "cancel": "Mégse",
@@ -3709,12 +3710,12 @@
             "size": "Méret",
             "compressed": "Tömörített",
             "actions": "Műveletek",
-            "files": "fájl",
             "empty": "Az archívum üres",
             "extracting": "Kibontás",
             "preview": "Előnézet",
             "extract": "Kibontás",
-            "back": "Vissza"
+            "back": "Vissza",
+            "filesSummary": "{count} fájl, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{files} fájl hozzáadva {dirs} könyvtárban",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count} fájl hozzáadva",
             "folderName": "Mappa neve",
             "itemDeleted": "Törölve: {name}",
-            "items": "elem",
             "itemsDeleted": "{count} elem törölve",
             "lastOpened": "Utoljára megnyitva",
             "modified": "Módosítva",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Erős titkosítás",
-            "totalItems": "összesen",
             "unlock": "Feloldás",
             "v1Standard": "AeroVault v1 (standard)",
             "v2Advanced": "AeroVault v2 (haladó biztonság)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "A széf minden fájljának kibontása egy mappába",
             "extractedAll": "{count} fájl kibontva ide: {path}",
             "dropFilesHint": "Húzzon ide fájlokat vagy mappákat, vagy használja az alábbi gombokat",
-            "itemSingular": "elem",
-            "itemPlural": "elem",
             "reportExported": "A széf jelentése elmentve ide: {path}",
             "reportCopied": "A széf jelentése a vágólapra másolva",
             "exportReportHint": "Teljes technikai jelentés exportálása: széf-metaadatok, titkosítás, hibajavítás és teljes fájllista",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Gyors",
             "securityAdvancedDescription": "Nonce-ellenálló · Titkosított fájlnevek · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 kaszkád · Kettős titkosítás",
-            "securityArchiveDescription": "Deduplikált archívum · zstd darabok · v3"
+            "securityArchiveDescription": "Deduplikált archívum · zstd darabok · v3",
+            "totalItemsCount": "{count} összesen"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",
@@ -3956,7 +3954,6 @@
             "empty": "A könyvtár üres",
             "name": "Név",
             "size": "Méret",
-            "items": "elem",
             "readOnly": "Csak olvasható mód - tároló létrehozás a v2.1-ben",
             "openAsVault": "Megnyitás Cryptomator tárolóként",
             "decryptAndSave": "Visszafejtés és mentés",
@@ -3989,8 +3986,6 @@
             "level": "Tömörítési szint",
             "password": "Jelszó (opcionális, AES-256)",
             "passwordHint": "Hagyja üresen titkosítás nélkül",
-            "files": "fájl",
-            "folders": "mappa",
             "compress": "Tömörítés",
             "store": "Tárolás (nincs tömörítés)",
             "fast": "Gyors",
@@ -4232,8 +4227,6 @@
             "modified": "Módosítva",
             "file": "Fájl",
             "folder": "Mappa",
-            "files": "fájl",
-            "folders": "mappa",
             "remote": "Távoli",
             "local": "Helyi",
             "linkTarget": "Szimbolikus link cél",
@@ -4309,10 +4302,7 @@
             "deleted": "{count} duplikált fájl törölve",
             "scanFailed": "Vizsgálat sikertelen",
             "retry": "Újrapróbálás",
-            "groups": "csoport",
-            "duplicateFiles": "duplikált fájl",
             "wasted": "pazarolva",
-            "copies": "másolat",
             "delete": "TÖRLÉS",
             "skip": "KIHAGYÁS",
             "deleteConfirm": "Biztosan törölni szeretné a(z) {count} duplikált fájlt?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, táv. {distance}",
             "modeExact": "Pontos",
             "modeLabel": "Mód:",
-            "modeNonIdentical": "Nem azonos"
+            "modeNonIdentical": "Nem azonos",
+            "groupsCount": "{count} csoport",
+            "duplicateFilesCount": "{count} ismétlődő fájl",
+            "copiesCount": "{count} példány"
         },
         "diskUsage": {
             "title": "Lemezfoglalás",
@@ -4340,20 +4333,16 @@
             "totalItems": "Összesen: {size} / {count} elem",
             "percentOfParent": "{percent}% a szülőből",
             "backToParent": "Vissza a szülőhöz",
-            "items": "elem",
             "scanFailed": "Elemzés sikertelen",
             "retry": "Újrapróbálás",
             "drillDown": "Kattintson a felfedezéshez",
             "back": "Vissza",
-            "total": "Összesen",
-            "across": "át",
             "empty": "Ez a könyvtár üres",
             "hoverHint": "Vigye az egeret a blokkra a részletekhez",
             "scanUnknownError": "Ismeretlen hiba a lemezhasználat vizsgálata közben"
         },
         "dependencies": {
             "title": "Függőségek",
-            "crates": "crate",
             "copy": "Másolás",
             "copied": "Másolva!",
             "checkUpdates": "Frissítések ellenőrzése",
@@ -4363,7 +4352,8 @@
             "latest": "Legújabb",
             "status": "Állapot",
             "footer": "Verzióadatok a crates.io API-ból. A megjelenített verziók a feloldott (Cargo.lock) verziók.",
-            "copyTitle": "AeroFTP függőség-ellenőrzés"
+            "copyTitle": "AeroFTP függőség-ellenőrzés",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Figyelmeztetés",
                 "info": "Információ",
                 "debug": "Hibakeresés",
-                "entries": "bejegyzés",
                 "resume": "Folytatás",
                 "pause": "Szünet",
                 "copyAll": "Mindent másol",
@@ -4432,13 +4421,13 @@
                 "allSources": "Összes forrás",
                 "sourceFilterTitle": "Szűrés forrás szerint",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Bejegyzések: {count}"
             },
             "frontend": {
                 "reactMode": "React mód",
                 "language": "Nyelv",
                 "localStorageKeys": "LocalStorage kulcsok",
-                "keys": "kulcs",
                 "localStorageSize": "LocalStorage méret",
                 "windowSize": "Ablak méret",
                 "devicePixelRatio": "Eszköz pixel arány",
@@ -4447,7 +4436,8 @@
                 "light": "Világos",
                 "userAgent": "Böngésző azonosító",
                 "localStorageKeysTitle": "LocalStorage kulcsok",
-                "localStorageEntrySummary": "{size} bájt · {preview}"
+                "localStorageEntrySummary": "{size} bájt · {preview}",
+                "keysCount": "{count} kulcs"
             },
             "copyFileListToClipboard": "Fájllista másolása vágólapra",
             "filesCopied": "{count} fájlbejegyzés másolva a vágólapra",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "i18n kulcsok átvizsgálása",
                 "ipcSpeed": "IPC sebesség minta",
                 "knownHosts": "known_hosts olvasás",
-                "passed": "sikerült",
                 "pluginIntegrity": "Bővítmény integritása",
                 "providerSelftest": "Szolgáltató önteszt (csak olvasható)",
                 "runAll": "Összes futtatása",
                 "runOne": "Ezen teszt futtatása",
-                "vaultRoundtrip": "Széf oda-vissza"
+                "vaultRoundtrip": "Széf oda-vissza",
+                "passedCount": "{passed}/{total} sikeres"
             },
             "bundle": {
                 "title": "Diagnosztikai csomag exportálása (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",
             "badges": {
-                "active": "AKTÍV",
                 "live": "ÉLŐ",
-                "synced": "SZINKRONIZÁLVA"
+                "synced": "SZINKRONIZÁLVA",
+                "activeCount": "{count} AKTÍV"
             },
             "clearLog": "Napló törlése",
             "close": "Bezárás",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Műveletek szűrése",
-                "selected": "kiválasztva"
+                "selectedCount": "{count} kiválasztva"
             },
             "save": "Mentés"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Automatikus",
                 "autoRefresh": "Automatikus frissítés (3s)",
                 "browser": "Böngésző",
-                "chars": "karakter",
                 "copy": "Másolás a vágólapra",
                 "disableWrap": "Sortörés kikapcsolása",
                 "enableWrap": "Sortörés bekapcsolása",
                 "encoding": "Kódolás",
                 "errorLoading": "Hiba a tartalom betöltésekor",
                 "hex": "Hex",
-                "lines": "sor",
                 "loadFailed": "Szöveges tartalom betöltése sikertelen",
                 "noContent": "Nincs elérhető tartalom",
                 "openBrowser": "Megnyitás a rendszerböngészőben",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Sortörés",
                 "zoomIn": "Nagyítás",
                 "zoomOut": "Kicsinyítés",
-                "htmlPreviewFrameTitle": "HTML-előnézet"
+                "htmlPreviewFrameTitle": "HTML-előnézet",
+                "stats": "{lines} sor • {chars} karakter"
             },
             "video": {
                 "exitFullscreen": "Kilépés a teljes képernyőből (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Generálási szám",
             "pwdGenerate": "Generálás",
             "pwdEntropy": "Entrópia",
-            "pwdBits": "bit",
             "pwdWeak": "Gyenge",
             "pwdFair": "Elfogadható",
             "pwdGood": "Jó",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Alapértékek: az AeroVault és az AeroCrypt által használt profil (128 MiB, 4 iteráció, 4 sáv, 32 bájtos kimenet). A fenti só az Öné. Memória legfeljebb 2 GiB.",
             "argon2Derive": "Származtatás",
             "argon2Phc": "PHC karakterlánc",
-            "hashError": "Hiba: {error}"
+            "hashError": "Hiba: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "Törli a \"{name}\" fájlt?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Csak a széfben",
             "localOnly": "Csak helyben",
             "conflict": "Ütközés",
-            "conflicts": "ütközések",
-            "unchanged": "változatlan",
             "allToVault": "Mind a széfbe",
             "allToLocal": "Mind helyben",
             "keepNewer": "Újabb megőrzése",
@@ -5018,10 +5005,14 @@
             "applySync": "Szinkronizálás alkalmazása",
             "close": "Bezárás",
             "allInSync": "Minden fájl szinkronban van",
-            "filesToVault": "fájl szinkronizálva a széfbe",
-            "filesToLocal": "fájl kicsomagolva helyben",
-            "filesSkipped": "fájl kihagyva",
-            "errorsOccurred": "Néhány hiba történt"
+            "errorsOccurred": "Néhány hiba történt",
+            "vaultOnlyCount": "{count} Csak a széfben",
+            "localOnlyCount": "{count} Csak helyi",
+            "conflictsCount": "{count} ütközés",
+            "unchangedCount": "{count} változatlan",
+            "filesToVaultCount": "{count} fájl szinkronizálva a széfbe",
+            "filesToLocalCount": "{count} fájl kibontva helyileg",
+            "filesSkippedCount": "{count} fájl kihagyva"
         },
         "localTabs": {
             "closeAll": "Összes lap bezárása",
@@ -5246,7 +5237,6 @@
             "checkAll": "Összes ellenőrzése",
             "checkOne": "Szerver ellenőrzése",
             "checking": "Ellenőrzés...",
-            "checked": "ellenőrizve",
             "healthy": "Kifogástalan",
             "degraded": "Leromlott",
             "unreachable": "Elérhetetlen",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "{count} szerver ellenőrzése, kérjük, várjon...",
             "scoreLegend": "Pontszám 0-100, magasabb a jobb",
-            "scoreLegendDetail": "80+ egészséges · 50-79 csökkent · 50 alatt problémás"
+            "scoreLegendDetail": "80+ egészséges · 50-79 csökkent · 50 alatt problémás",
+            "checkedCount": "{count} ellenőrizve",
+            "healthyCount": "{count} Kifogástalan",
+            "degradedCount": "{count} Leromlott",
+            "unreachableCount": "{count} Elérhetetlen"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "Archivált",
                 "trash": "Kuka"
             },
-            "participants": "résztvevők",
             "saving": "Mentés...",
             "saved": "Mentve",
             "saveNow": "Mentés most",
@@ -5549,7 +5542,8 @@
                 "code": "Kód",
                 "richText": "Formázott szöveg",
                 "checklist": "Ellenőrzőlista"
-            }
+            },
+            "participantsCount": "{count} résztvevő"
         },
         "shareLinkModal": {
             "title": "Megosztási hivatkozás",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "Áthelyezés a másik panelre",
             "copiedToOtherPanel": "Másolva a másik panelre",
             "movedToOtherPanel": "Áthelyezve a másik panelre",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "{count} másolása ide",
             "moveHere": "{count} áthelyezése ide",
             "copyHereFromOtherPanelTooltip": "{count} kiválasztott elem másolása a másik panelről erre a panelre (F5)",
             "moveHereFromOtherPanelTooltip": "{count} kiválasztott elem áthelyezése a másik panelről erre a panelre (F6)",
-            "syncToOtherPanel": "Szinkronizálás a másik panellel (delta)"
+            "syncToOtherPanel": "Szinkronizálás a másik panellel (delta)",
+            "failedCount": "{count} sikertelen",
+            "skippedCount": "{count} kihagyva"
         },
         "compare": {
             "title": "Panelek összehasonlítása",
@@ -6146,9 +6141,6 @@
             "bucket": "Kategória",
             "count": "Darab",
             "action": "Művelet",
-            "delete": "törlés",
-            "overwrite": "felulirás",
-            "conflicts": "ütközés",
             "destructiveWarning": "Ez a preset újabb fájlokat fog törölni vagy felülírni.",
             "confirmDestructive": "Átnéztem a romboló műveleteket és folytatni szeretném.",
             "executeHint": "A Végrehajtás előkészíti a kiválasztást és az egyesített átviteli tervezőn keresztül küldi.",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Hálózati bájtok",
                 "savings": "Megtakarítás",
-                "errorDetails": "hiba, részletek",
                 "errorPathsRequired": "A forrás és a cél kötelező",
                 "deltaStatus": "Delta sync.",
                 "deltaAuto": "AUTO BE",
@@ -6207,7 +6198,8 @@
                 "planned": "Tervezett másolások",
                 "resultDryRunOk": "Próbafuttatás befejezve",
                 "resultDryRunPartial": "Próbafuttatás hibákkal befejezve",
-                "resultDryRunCancelled": "Próbafuttatás megszakítva"
+                "resultDryRunCancelled": "Próbafuttatás megszakítva",
+                "errorDetailsCount": "{count} hiba, részletek"
             },
             "launcherTemplates": "Sablonok",
             "launcherMultiPath": "Több útvonal",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Az összehasonlítás beolvassa mindkét mappát és az alattuk lévő összes mappát. Nagy fa esetén ez eltarthat egy ideig, és leállíthatja.",
             "progressDelta": "[delta]",
-            "progressCopy": "[másolat]"
+            "progressCopy": "[másolat]",
+            "deleteCount": "{count} törlendő",
+            "overwriteCount": "{count} felülírandó",
+            "conflictCount": "{count} ütközés"
         },
         "accountLock": {
             "title": "Válasszon fiókot",

@@ -80,7 +80,8 @@
             "reset": "កំណត់ឡើងវិញ",
             "saved": "បានរក្សាទុក",
             "saving": "កំពុងរក្សាទុក...",
-            "creating": "កំពុងបង្កើត..."
+            "creating": "កំពុងបង្កើត...",
+            "minutesCount": "{count} នាទី"
         },
         "connection": {
             "title": "តភ្ជាប់ទៅម៉ាស៊ីនបម្រើ",
@@ -159,7 +160,6 @@
             "saveChanges": "រក្សាទុកការផ្លាស់ប្តូរ",
             "createAccount": "បង្កើតគណនី",
             "docs": "ឯកសារ",
-            "minutes": "នាទី",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "ត្រឡប់ទៅគណនីដែលមានស្រាប់",
@@ -390,7 +390,6 @@
             "path": "ផ្លូវ",
             "files": "ឯកសារ",
             "folders": "ថត",
-            "items": "ធាតុ",
             "emptyFolder": "ថតនេះទទេ",
             "parentFolder": "ថតមេ",
             "newFolder": "ថតថ្មី",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "ផ្ទាំងខាងស្តាំ",
             "chooseRightPanelFolder": "ជ្រើសថតផ្ទាំងស្ដាំ",
             "chooseLeftPanelFolder": "ជ្រើសថតផ្ទាំងឆ្វេង",
-            "localRight": "មូលដ្ឋាន (ស្ដាំ)"
+            "localRight": "មូលដ្ឋាន (ស្ដាំ)",
+            "itemCount": "{count} ធាតុ",
+            "fileCount": "ឯកសារ {count}",
+            "folderCount": "ថត {count}"
         },
         "contextMenu": {
             "askAeroAgent": "សួរ AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "កំហុសក្នុងការចម្លង",
             "copyQueueToClipboard": "ចម្លងជួរទៅក្ដារតម្បៀតខ្ទាស់",
             "fail": "បរាជ័យ",
-            "pending": "កំពុងរង់ចាំ",
             "remove": "លុប",
             "retry": "ព្យាយាមម្ដងទៀត",
             "stopAll": "បញ្ឈប់ទាំងអស់",
@@ -673,7 +674,6 @@
                 "newTransfer": "ផ្ទេរថ្មី",
                 "preparing": "កំពុងរៀបចំការផ្ទេរ…"
             },
-            "staged": "ក្នុងជួរ",
             "start": "ចាប់ផ្តើម",
             "startAll": "ចាប់ផ្តើមទាំងអស់",
             "restored": "បានស្តារ",
@@ -744,7 +744,10 @@
                 "size": "ទំហំ",
                 "source": "ប្រភព",
                 "title": "ផែនការ {mode}"
-            }
+            },
+            "stagedCount": "បានរៀបចំ {count}",
+            "pendingCount": "កំពុងរង់ចាំ {count}",
+            "failedCount": "បានបរាជ័យ {count}"
         },
         "settings": {
             "title": "ការកំណត់",
@@ -929,7 +932,6 @@
             "migrationSkip": "រំលងឥឡូវនេះ",
             "migrationFinish": "បញ្ចប់",
             "migrationStep": "ជំហាន {current} / {total}",
-            "duplicatesSkipped": "ស្ទួនត្រូវបានរំលង",
             "invalidPassword": "ពាក្យសម្ងាត់មិនត្រឹមត្រូវ",
             "backup": "បម្រុងទុក",
             "visibleColumns": "ជួរឈរដែលមើលឃើញ",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "ស៊ីក្រេតអ្នកប្រើប្រាស់",
             "privacyRespect": "AeroFTP ការពារឯកជនភាពរបស់អ្នក។ គ្មានការប្រមូលទិន្នន័យ គ្មានការតាមដាន គ្មានទូរមាត្រ។",
             "keystoreEntries": "{count} ធាតុ",
-            "serverCredentials": "ព័ត៌មានសម្គាល់ម៉ាស៊ីនបម្រើ",
-            "serverProfilesLabel": "ប្រវត្តិរូបម៉ាស៊ីនបម្រើ",
-            "aiKeysLabel": "សោ AI",
-            "oauthTokensLabel": "ថូខឹន OAuth",
-            "configEntriesLabel": "ធាតុកំណត់រចនាសម្ព័ន្ធ",
             "session": "វគ្គ",
             "aeroftpBackupFiles": "ឯកសារបម្រុងទុក AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "ជ្រើសរើសម៉ាស៊ីនមេដើម្បីនាំចេញ",
             "selectAll": "ជ្រើសរើសទាំងអស់",
             "deselectAll": "មិនជ្រើសរើសទាំងអស់",
-            "selected": "បានជ្រើសរើស",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "ប្រសិនបើមិនមានរូបតំណាងត្រូវបានកំណត់ favicon ឬ icon.png ពីម៉ាស៊ីនបម្រើនឹងត្រូវបានរកឃើញដោយស្វ័យប្រវត្តិ។",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "ភ្លឺ",
             "imagePreviewBgCustom": "ផ្ទាល់ខ្លួន",
             "showTransferProgress": "បង្ហាញរបារវឌ្ឍនភាពនៃការផ្ទេរ",
-            "similarToExisting": "ស្រដៀងនឹងប្រវត្តិរូបដែលមានស្រាប់",
             "aerocloudCompress": "បើកការបង្ហាប់ (AeroCompress zstd)",
             "aerocloudCompressLevel": "កម្រិតបង្ហាប់ (1-22, 3 មានតុល្យភាព)",
             "aerocloudCompressA1": "A1: ការបង្ហាប់ + ការអ៊ិនគ្រីប (ប្រវត្តិរូបមានការអ៊ិនគ្រីប)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "ត្រូវការការដំឡើងក្នុងប្រព័ន្ធ។ AeroFTP នឹងប្ដូរទៅជម្រើសបម្រុងដោយស្វ័យប្រវត្តិ ប្រសិនបើមិនមាន។",
             "fontSizeIndicatorLabel": "ពុម្ពអក្សរ",
             "fontPresetDefault": "{font} (លំនាំដើម)",
-            "fontPresetSystemDefault": "លំនាំដើមប្រព័ន្ធ"
+            "fontPresetSystemDefault": "លំនាំដើមប្រព័ន្ធ",
+            "duplicatesSkippedCount": "បានរំលងធាតុស្ទួន {count}",
+            "similarToExistingCount": "{count} ស្រដៀងនឹងប្រវត្តិរូបដែលមានស្រាប់",
+            "bridgeSkippedCount": "បានរំលង {count}",
+            "selectedOfTotal": "បានជ្រើស {selected} / {total}",
+            "serverCredentialsCount": "ព័ត៌មានសម្ងាត់ម៉ាស៊ីនមេ {count}",
+            "serverProfilesCount": "ប្រវត្តិរូបម៉ាស៊ីនមេ {count}",
+            "aiKeysCount": "សោ AI {count}",
+            "oauthTokensCount": "ថូខឹន OAuth {count}",
+            "configEntriesCount": "ធាតុកំណត់រចនាសម្ព័ន្ធ {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "កំពុងចាប់ផ្តើម...",
             "pending": "កំពុងរង់ចាំ",
             "conflict": "ការប៉ះទង្គិច",
-            "conflicts": "ការប៉ះទង្គិចត្រូវការការយកចិត្តទុកដាក់",
             "error": "កំហុសក្នុងការធ្វើសមកាលកម្ម",
             "never": "មិនដែល",
             "justNow": "ទើបតែឥឡូវ",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "ឆាប់ៗនេះ...",
             "aerocloudEnabled": "AeroCloud បានបើក",
             "selectPairLocalFolder": "ជ្រើសថតមូលដ្ឋានសម្រាប់គូ",
-            "secondsAgo": "{count}វិនាទីមុន"
+            "secondsAgo": "{count}វិនាទីមុន",
+            "conflictsCount": "វិវាទ {count} ត្រូវការការយកចិត្តទុកដាក់"
         },
         "statusBar": {
             "connected": "បានតភ្ជាប់",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "ឯកសារមានរួចហើយ",
-            "moreFiles": "ឯកសារច្រើនទៀតនៅក្នុងជួរ",
             "remote": "ពីចម្ងាយ",
             "local": "មូលដ្ឋាន",
             "sourceNewer": "ប្រភពគឺថ្មីជាង",
@@ -2800,7 +2803,6 @@
                 "approveThis": "អនុម័តការហៅឧបករណ៍នេះ",
                 "confirm": "បញ្ជាក់",
                 "confirmDangerous": "បញ្ជាក់សកម្មភាពគ្រោះថ្នាក់",
-                "pendingApproval": "កំពុងរង់ចាំការអនុម័ត",
                 "rejectAllCalls": "បដិសេធការហៅឧបករណ៍ទាំងអស់",
                 "rejectExecution": "បដិសេធការប្រតិបត្តិឧបករណ៍",
                 "toggleDetails": "បិទបើកព័ត៌មានលម្អិត",
@@ -3029,12 +3031,11 @@
                 "allowAll": "អនុញ្ញាតទាំងអស់",
                 "rejectAll": "បដិសេធទាំងអស់",
                 "pending": "រង់ចាំការអនុម័ត",
-                "toolCall": "ការហៅឧបករណ៍",
-                "toolCalls": "ការហៅឧបករណ៍",
                 "running": "កំពុងដំណើរការ...",
                 "done": "រួចរាល់",
                 "failed": "បរាជ័យ",
-                "allowThis": "អនុញ្ញាតឧបករណ៍នេះ"
+                "allowThis": "អនុញ្ញាតឧបករណ៍នេះ",
+                "pendingApprovalCount": "ការហៅឧបករណ៍ {count} កំពុងរង់ចាំការអនុម័ត"
             },
             "diff": {
                 "title": "ការមើលភាពខុសគ្នាជាមុន",
@@ -3334,7 +3335,6 @@
                 "add": "តែមត្រូវ",
                 "added": "បានបន្ថែម",
                 "all": "ទាំងអស់",
-                "available": "មាន",
                 "browseProviders": "រុករកអ្នកផ្តល់",
                 "chinese": "ចិន",
                 "fast": "ការសន្និដ្ឋានរហ័ស",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "ម៉ូដែលដែលបង្ហោះលើ AWS អាចចូលប្រើដោយសោ API តាមតំបន់។ បន្ថែម model ID របស់អ្នកដោយដៃ។",
-                "bedrockHighlight": "ចំណុចបញ្ចប់តាមតំបន់ AWS"
+                "bedrockHighlight": "ចំណុចបញ្ចប់តាមតំបន់ AWS",
+                "availableCount": "មាន {count}"
             },
             "history": {
                 "cancel": "បោះបង់",
@@ -3709,12 +3710,12 @@
             "size": "ទំហំ",
             "compressed": "បានបង្ហាប់",
             "actions": "សកម្មភាព",
-            "files": "ឯកសារ",
             "empty": "បណ្ណសារគឺទទេ",
             "extracting": "កំពុងស្រង់ចេញ",
             "preview": "មើលជាមុន",
             "extract": "ស្រង់ចេញ",
-            "back": "ថយក្រោយ"
+            "back": "ថយក្រោយ",
+            "filesSummary": "ឯកសារ {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "បានបន្ថែម {files} ឯកសារក្នុង {dirs} ថត",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count} ឯកសារត្រូវបានបន្ថែម",
             "folderName": "ឈ្មោះថត",
             "itemDeleted": "បានលុប {name}",
-            "items": "ធាតុ",
             "itemsDeleted": "{count} ធាតុត្រូវបានលុប",
             "lastOpened": "បើកចុងក្រោយ",
             "modified": "បានកែប្រែ",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - ការអ៊ិនគ្រីបខ្លាំង",
-            "totalItems": "សរុប",
             "unlock": "ដោះសោ",
             "v1Standard": "AeroVault v1 (Standard)",
             "v2Advanced": "AeroVault v2 (Advanced Security)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "ស្រង់ឯកសារទាំងអស់ក្នុងហិបទៅថត",
             "extractedAll": "បានស្រង់ឯកសារ {count} ទៅ {path}",
             "dropFilesHint": "អូសឯកសារ ឬថតនៅទីនេះ ឬប្រើប៊ូតុងខាងក្រោម",
-            "itemSingular": "ធាតុ",
-            "itemPlural": "ធាតុ",
             "reportExported": "របាយការណ៍ហិបត្រូវបានរក្សាទុកទៅ {path}",
             "reportCopied": "របាយការណ៍ហិបត្រូវបានចម្លងទៅក្ដារតម្បៀតខ្ទាស់",
             "exportReportHint": "នាំចេញរបាយការណ៍បច្ចេកទេសពេញលេញ៖ ទិន្នន័យមេតារបស់ហិប ការអ៊ិនគ្រីប ការកែកំហុស និងបញ្ជីឯកសារពេញលេញ",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · លឿន",
             "securityAdvancedDescription": "ធន់នឹង nonce · ឈ្មោះឯកសារដែលបានអ៊ិនគ្រីប · 128 MB KDF",
             "securityParanoidDescription": "កាស្កាដ AES + ChaCha20 · ការអ៊ិនគ្រីបទ្វេ",
-            "securityArchiveDescription": "បណ្ណសារដែលលុបការស្ទួន · ដុំ zstd · v3"
+            "securityArchiveDescription": "បណ្ណសារដែលលុបការស្ទួន · ដុំ zstd · v3",
+            "totalItemsCount": "សរុប {count}"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",
@@ -3956,7 +3954,6 @@
             "empty": "ថតគឺទទេ",
             "name": "ឈ្មោះ",
             "size": "ទំហំ",
-            "items": "ធាតុ",
             "readOnly": "របៀបអានតែប៉ុណ្ណោះ - ការបង្កើតវ៉ាល់នឹងមកដល់នៅ v2.1",
             "openAsVault": "បើកជាវ៉ាល់ Cryptomator",
             "decryptAndSave": "ឌិគ្រីប និងរក្សាទុក",
@@ -3989,8 +3986,6 @@
             "level": "កម្រិតបង្ហាប់",
             "password": "ពាក្យសម្ងាត់ (ស្រេចចិត្ត, AES-256)",
             "passwordHint": "ទុកឱ្យនៅទទេសម្រាប់គ្មានការអ៊ិនគ្រីប",
-            "files": "ឯកសារ",
-            "folders": "ថត",
             "compress": "បង្ហាប់",
             "store": "រក្សាទុក (គ្មានការបង្ហាប់)",
             "fast": "លឿន",
@@ -4232,8 +4227,6 @@
             "modified": "បានកែប្រែ",
             "file": "ឯកសារ",
             "folder": "ថត",
-            "files": "ឯកសារ",
-            "folders": "ថត",
             "remote": "ពីចម្ងាយ",
             "local": "មូលដ្ឋាន",
             "linkTarget": "គោលដៅតំណ",
@@ -4309,10 +4302,7 @@
             "deleted": "បានលុប {count} ឯកសារស្ទួន",
             "scanFailed": "ការស្កេនបានបរាជ័យ",
             "retry": "ព្យាយាមម្តងទៀត",
-            "groups": "ក្រុម",
-            "duplicateFiles": "ឯកសារស្ទួន",
             "wasted": "ខ្ជះខ្ជាយ",
-            "copies": "ច្បាប់ចម្លង",
             "delete": "លុប",
             "skip": "រំលង",
             "deleteConfirm": "តើអ្នកប្រាកដថាអ្នកចង់លុប {count} ឯកសារស្ទួនទេ?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, ចម្ងាយ {distance}",
             "modeExact": "ដូចបេះបិទ",
             "modeLabel": "របៀប:",
-            "modeNonIdentical": "មិនដូចគ្នាបេះបិទ"
+            "modeNonIdentical": "មិនដូចគ្នាបេះបិទ",
+            "groupsCount": "ក្រុម {count}",
+            "duplicateFilesCount": "ឯកសារស្ទួន {count}",
+            "copiesCount": "ច្បាប់ចម្លង {count}"
         },
         "diskUsage": {
             "title": "ការប្រើប្រាស់ថាស",
@@ -4340,20 +4333,16 @@
             "totalItems": "សរុប: {count} ធាតុ ដោយប្រើ {size}",
             "percentOfParent": "{percent}% នៃថតមេ",
             "backToParent": "ត្រឡប់ទៅថតមេ",
-            "items": "ធាតុ",
             "scanFailed": "ការវិភាគបានបរាជ័យ",
             "retry": "ព្យាយាមម្តងទៀត",
             "drillDown": "ចុចដើម្បីរុករក",
             "back": "ត្រឡប់",
-            "total": "សរុប",
-            "across": "នៅទូទាំង",
             "empty": "ថតនេះទទេ",
             "hoverHint": "ដាក់កណ្តុរលើប្លុកដើម្បីមើលព័ត៌មានលម្អិត",
             "scanUnknownError": "កំហុសមិនស្គាល់ពេលស្កេនការប្រើប្រាស់ថាស"
         },
         "dependencies": {
             "title": "ការពឹងផ្អែក",
-            "crates": "Crates",
             "copy": "ចម្លង",
             "copied": "បានចម្លង",
             "checkUpdates": "ពិនិត្យបច្ចុប្បន្នភាព",
@@ -4363,7 +4352,8 @@
             "latest": "ចុងក្រោយ",
             "status": "ស្ថានភាព",
             "footer": "ទិន្នន័យកំណែពី API របស់ crates.io។ កំណែដែលបង្ហាញគឺជាកំណែដែលបានដោះស្រាយ (Cargo.lock)។",
-            "copyTitle": "ចម្លងចំណងជើង"
+            "copyTitle": "ចម្លងចំណងជើង",
+            "cratesCount": "crate {count}"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "ការព្រមាន",
                 "info": "ព័ត៌មាន",
                 "debug": "កែកំហុស",
-                "entries": "ធាតុ",
                 "resume": "បន្ត",
                 "pause": "ផ្អាក",
                 "copyAll": "ចម្លងទាំងអស់",
@@ -4432,13 +4421,13 @@
                 "allSources": "ប្រភពទាំងអស់",
                 "sourceFilterTitle": "ត្រងតាមប្រភព",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "ធាតុបញ្ចូល: {count}"
             },
             "frontend": {
                 "reactMode": "របៀប React",
                 "language": "ភាសា",
                 "localStorageKeys": "គ្រាប់ចុច LocalStorage",
-                "keys": "គ្រាប់ចុច",
                 "localStorageSize": "ទំហំ LocalStorage",
                 "windowSize": "ទំហំបង្អួច",
                 "devicePixelRatio": "សមាមាត្រភីកសែលឧបករណ៍",
@@ -4447,7 +4436,8 @@
                 "light": "ពន្លឺ",
                 "userAgent": "ភ្នាក់ងារអ្នកប្រើ",
                 "localStorageKeysTitle": "គ្រាប់ចុច LocalStorage",
-                "localStorageEntrySummary": "{size} បៃ · {preview}"
+                "localStorageEntrySummary": "{size} បៃ · {preview}",
+                "keysCount": "សោ {count}"
             },
             "copyFileListToClipboard": "ចំលងបញ្ជីឯកសារទៅក្ដារតម្បៀតខ្ទាស់",
             "filesCopied": "បានចម្លង {count} ធាតុឯកសារទៅក្តារតម្បៀតខ្ទាស់",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "ការវាស់វែងគន្លឹះ i18n",
                 "ipcSpeed": "គំរូល្បឿន IPC",
                 "knownHosts": "ការអាន known_hosts",
-                "passed": "ជោគជ័យ",
                 "pluginIntegrity": "ភាពពេញលេញនៃកម្មវិធីជំនួយ",
                 "providerSelftest": "ការសាកល្បងខ្លួនឯងរបស់អ្នកផ្ដល់សេវា (អានតែប៉ុណ្ណោះ)",
                 "runAll": "ដំណើរការទាំងអស់",
                 "runOne": "ដំណើរការការសាកល្បងនេះ",
-                "vaultRoundtrip": "ដំណើរទៅមកនៃ Vault"
+                "vaultRoundtrip": "ដំណើរទៅមកនៃ Vault",
+                "passedCount": "បានឆ្លង {passed}/{total}"
             },
             "bundle": {
                 "title": "នាំចេញកញ្ចប់វិនិច្ឆ័យ (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "កំពុងរង់ចាំពាក្យបញ្ជា...",
             "badges": {
-                "active": "សកម្ម",
                 "live": "ផ្ទាល់",
-                "synced": "បានសមកាលកម្ម"
+                "synced": "បានសមកាលកម្ម",
+                "activeCount": "កំពុងដំណើរការ {count}"
             },
             "clearLog": "សម្អាតកំណត់ហេតុ",
             "close": "បិទ",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "ច្រោះប្រតិបត្តិការ",
-                "selected": "បានជ្រើសរើស"
+                "selectedCount": "បានជ្រើស {count}"
             },
             "save": "រក្សាទុក"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "ស្វ័យប្រវត្តិ",
                 "autoRefresh": "ធ្វើឱ្យស្រស់ស្វ័យប្រវត្តិ (3s)",
                 "browser": "កម្មវិធីរុករក",
-                "chars": "តួអក្សរ",
                 "copy": "ចម្លងទៅក្ដារតម្បៀតខ្ទាស់",
                 "disableWrap": "បិទការរុំពាក្យ",
                 "enableWrap": "បើកការរុំពាក្យ",
                 "encoding": "ការអ៊ិនកូដ",
                 "errorLoading": "កំហុសក្នុងការផ្ទុកមាតិកា",
                 "hex": "គោលដប់ប្រាំមួយ",
-                "lines": "បន្ទាត់",
                 "loadFailed": "ការផ្ទុកអត្ថបទបានបរាជ័យ",
                 "noContent": "គ្មានមាតិកា",
                 "openBrowser": "បើកក្នុងកម្មវិធីរុករកប្រព័ន្ធ",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "រុំពាក្យ",
                 "zoomIn": "ពង្រីក",
                 "zoomOut": "បង្រួម",
-                "htmlPreviewFrameTitle": "ការមើលជាមុន HTML"
+                "htmlPreviewFrameTitle": "ការមើលជាមុន HTML",
+                "stats": "{lines} បន្ទាត់ • {chars} តួអក្សរ"
             },
             "video": {
                 "exitFullscreen": "ចេញពីអេក្រង់ពេញ (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "ចំនួនបង្កើត",
             "pwdGenerate": "បង្កើត",
             "pwdEntropy": "អង់ត្រូពី",
-            "pwdBits": "bits",
             "pwdWeak": "ខ្សោយ",
             "pwdFair": "ល្អបង្គួរ",
             "pwdGood": "ល្អ",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "លំនាំដើម៖ ទម្រង់ដែល AeroVault និង AeroCrypt ប្រើ (128 MiB, 4 ដង, 4 ផ្លូវ, ទិន្នផល 32 បៃ)។ អំបិលខាងលើជារបស់អ្នក។ អង្គចងចាំរហូតដល់ 2 GiB។",
             "argon2Derive": "បង្កើត",
             "argon2Phc": "ខ្សែអក្សរ PHC",
-            "hashError": "កំហុស៖ {error}"
+            "hashError": "កំហុស៖ {error}",
+            "pwdBitsCount": "{count} ប៊ីត"
         },
         "dialog": {
             "deleteFile": "លុប \"{name}\"?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "ក្នុងអង្គត្ថលើកតែប៉ុណ្ណោះ",
             "localOnly": "ម៉ាស៊ីនតែប៉ុណ្ណោះ",
             "conflict": "វិវាទ",
-            "conflicts": "វិវាទ",
-            "unchanged": "មិនប្រែប្រួល",
             "allToVault": "ទាំងអស់ទៅអង្គត្ថលើក",
             "allToLocal": "ទាំងអស់ទៅម៉ាស៊ីន",
             "keepNewer": "រក្សាទុកថ្មីបំផុត",
@@ -5018,10 +5005,14 @@
             "applySync": "អនុវត្តសមវក្កម្ម",
             "close": "បិទ",
             "allInSync": "ឯកសារទាំងអស់ត្រូវបានសមវក្កម្ម",
-            "filesToVault": "ឯកសារត្រូវបានសមវក្កម្មទៅអង្គត្ថលើក",
-            "filesToLocal": "ឯកសារត្រូវបានសកែទៅម៉ាស៊ីន",
-            "filesSkipped": "ឯកសារត្រូវបានរំលង",
-            "errorsOccurred": "កំហុសមួយចំនួនបានកើតឡើង"
+            "errorsOccurred": "កំហុសមួយចំនួនបានកើតឡើង",
+            "vaultOnlyCount": "តែក្នុង vault {count}",
+            "localOnlyCount": "តែក្នុងម៉ាស៊ីន {count}",
+            "conflictsCount": "វិវាទ {count}",
+            "unchangedCount": "មិនផ្លាស់ប្តូរ {count}",
+            "filesToVaultCount": "បានធ្វើសមកាលកម្មឯកសារ {count} ទៅ vault",
+            "filesToLocalCount": "បានស្រង់ឯកសារ {count} ទៅម៉ាស៊ីន",
+            "filesSkippedCount": "បានរំលងឯកសារ {count}"
         },
         "localTabs": {
             "closeAll": "បិទផ្ទាំងទាំងអស់",
@@ -5265,7 +5256,6 @@
             "checkAll": "ពិនិត្យ​ទាំង​អស់",
             "checkOne": "ពិនិត្យ​ម៉ាស៊ីន​មែ​នេះ",
             "checking": "កំពុង​ពិនិត្យ...",
-            "checked": "បាន​ពិនិត្យ",
             "healthy": "សុខភាព​ល្អ",
             "degraded": "ធ្លាក់​ចុះ",
             "unreachable": "មិន​អាច​ទាក់ទង​បាន",
@@ -5280,7 +5270,11 @@
             "copied": "Copied\\!",
             "batchChecking": "កំពុង​ពិនិត្យ​ម៉ាស៊ីន​មេ {count}, សូម​រង់ចាំ...",
             "scoreLegend": "ពិន្ទុ 0-100 ខ្ពស់ជាងគឺល្អជាង",
-            "scoreLegendDetail": "80+ ល្អ · 50-79 ធ្លាក់ · ក្រោម 50 មានបញ្ហា"
+            "scoreLegendDetail": "80+ ល្អ · 50-79 ធ្លាក់ · ក្រោម 50 មានបញ្ហា",
+            "checkedCount": "បានពិនិត្យ {count}",
+            "healthyCount": "សុខភាពល្អ {count}",
+            "degradedCount": "ធ្លាក់ចុះ {count}",
+            "unreachableCount": "មិនអាចទាក់ទងបាន {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5550,7 +5544,6 @@
                 "archived": "បានទុកក្នុងបណ្ណសារ",
                 "trash": "ធុងសម្រាម"
             },
-            "participants": "អ្នកចូលរួម",
             "saving": "កំពុងរក្សាទុក...",
             "saved": "បានរក្សាទុក",
             "saveNow": "រក្សាទុកឥឡូវ",
@@ -5568,7 +5561,8 @@
                 "code": "កូដ",
                 "richText": "អត្ថបទសម្បូរបែប",
                 "checklist": "បញ្ជីត្រួតពិនិត្យ"
-            }
+            },
+            "participantsCount": "អ្នកចូលរួម {count} នាក់"
         },
         "shareLinkModal": {
             "title": "តំណចែករំលែក",
@@ -6015,13 +6009,14 @@
             "moveToOtherPanel": "ផ្លាស់ទីទៅបន្ទះមួយទៀត",
             "copiedToOtherPanel": "បានចម្លងទៅបន្ទះមួយទៀត",
             "movedToOtherPanel": "បានផ្លាស់ទីទៅបន្ទះមួយទៀត",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "ចម្លង {count} មកទីនេះ",
             "moveHere": "ផ្លាស់ទី {count} មកទីនេះ",
             "copyHereFromOtherPanelTooltip": "ចម្លង {count} ដែលបានជ្រើសរើសពីផ្ទាំងផ្សេងទៀតមកក្នុងផ្ទាំងនេះ (F5)",
             "moveHereFromOtherPanelTooltip": "ផ្លាស់ទី {count} ដែលបានជ្រើសរើសពីផ្ទាំងផ្សេងទៀតមកក្នុងផ្ទាំងនេះ (F6)",
-            "syncToOtherPanel": "ធ្វើសមកាលកម្មទៅផ្ទាំងផ្សេងទៀត (delta)"
+            "syncToOtherPanel": "ធ្វើសមកាលកម្មទៅផ្ទាំងផ្សេងទៀត (delta)",
+            "failedCount": "បរាជ័យ {count}",
+            "skippedCount": "បានរំលង {count}"
         },
         "compare": {
             "title": "ប្រៀបធៀបផ្ទាំង",
@@ -6165,9 +6160,6 @@
             "bucket": "ប្រភេទ",
             "count": "ចំនួន",
             "action": "សកម្មភាព",
-            "delete": "លុប",
-            "overwrite": "សរសេរជាន់",
-            "conflicts": "ជម្លោះ",
             "destructiveWarning": "ប្រេសិតនេះនឹងលុប ឬសរសេរជាន់ឯកសារថ្មីៗ។",
             "confirmDestructive": "ខ្ញុំបានពិនិត្យសកម្មភាពបំផ្លាញ ហើយចង់បន្ត។",
             "executeHint": "អនុវត្តរៀបចំការជ្រើសរើស ហើយបញ្ជូនតាមរយៈផែនការផ្ទេររួមបញ្ចូលគ្នា។",
@@ -6194,7 +6186,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "បៃនៅលើបណ្ដាញ",
                 "savings": "ការសន្សំ",
-                "errorDetails": "កំហុស, ព័ត៌មានលម្អិត",
                 "errorPathsRequired": "ប្រភព និងគោលដៅគឺចាំបាច់",
                 "deltaStatus": "ការធ្វើសមកាលកម្មដែលតា",
                 "deltaAuto": "ស្វ័យប្រវត្តិ បើក",
@@ -6226,7 +6217,8 @@
                 "planned": "ការចម្លងដែលបានគ្រោងទុក",
                 "resultDryRunOk": "ការដំណើរការសាកល្បងបានបញ្ចប់",
                 "resultDryRunPartial": "ការដំណើរការសាកល្បងបានបញ្ចប់ដោយមានកំហុស",
-                "resultDryRunCancelled": "បានបោះបង់ការដំណើរការសាកល្បង"
+                "resultDryRunCancelled": "បានបោះបង់ការដំណើរការសាកល្បង",
+                "errorDetailsCount": "កំហុស {count}, ព័ត៌មានលម្អិត"
             },
             "launcherTemplates": "ពុម្ព",
             "launcherMultiPath": "ផ្លូវច្រើន",
@@ -6330,7 +6322,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "ការប្រៀបធៀបអានថតទាំងពីរ និងរាល់ថតនៅក្រោមពួកវា។ លើមែកធាងធំ វាអាចចំណាយពេលយូរ ហើយអ្នកអាចបញ្ឈប់វាបាន។",
             "progressDelta": "[ដែលតា]",
-            "progressCopy": "[ចម្លង]"
+            "progressCopy": "[ចម្លង]",
+            "deleteCount": "ត្រូវលុប {count}",
+            "overwriteCount": "ត្រូវសរសេរជាន់ {count}",
+            "conflictCount": "វិវាទ {count}"
         },
         "accountLock": {
             "title": "ជ្រើសរើសគណនី",

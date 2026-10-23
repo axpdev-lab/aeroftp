@@ -490,9 +490,9 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
             <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
                 <span>{state.currentDir
                     ? t('vault.itemsInFolder', { count: sortedEntries.length, folder: state.currentDir })
-                    : `${sortedEntries.length} ${t('vault.items')}`}</span>
+                    : t('browser.itemCount', { count: sortedEntries.length })}</span>
                 <div className="flex items-center gap-3">
-                    {state.meta && <span>v{state.meta.version} | {state.entries.length} {t('vault.totalItems')}</span>}
+                    {state.meta && <span>v{state.meta.version} | {t('vault.totalItemsCount', { count: state.entries.length })}</span>}
                     <button
                         onClick={() => {
                             // Local vaults persist on every backend operation

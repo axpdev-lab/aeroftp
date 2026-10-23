@@ -319,9 +319,9 @@
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
             "badges": {
-                "active": "ACTIVE",
                 "live": "LIVE",
-                "synced": "SYNCED"
+                "synced": "SYNCED",
+                "activeCount": "{count} ACTIVE"
             },
             "clearLog": "Clear log",
             "close": "Close",
@@ -341,7 +341,7 @@
             },
             "filterMenu": {
                 "title": "Filter operations",
-                "selected": "selected"
+                "selectedCount": "{count} selected"
             },
             "hideCloudSync": "Hide AeroCloud sync messages",
             "jumpToLatest": "LATEST",
@@ -373,8 +373,7 @@
                 "pending": "pending approval",
                 "rejectAll": "Reject All",
                 "running": "Running...",
-                "toolCall": "tool call",
-                "toolCalls": "tool calls"
+                "pendingApprovalCount": "{count} tool call(s) pending approval"
             },
             "branch": {
                 "branchFrom": "Branch from this point",
@@ -541,7 +540,6 @@
                 "add": "Add",
                 "added": "Added",
                 "all": "All",
-                "available": "available",
                 "bedrockDescription": "AWS-hosted models with regional API key access. Add your model ID manually.",
                 "bedrockHighlight": "AWS regional endpoint",
                 "browseProviders": "Browse Providers",
@@ -561,7 +559,8 @@
                 "thinking": "Thinking",
                 "title": "AI Provider Marketplace",
                 "tools": "Tools",
-                "vision": "Vision"
+                "vision": "Vision",
+                "availableCount": "{count} available"
             },
             "maxStepsReached": "Maximum steps reached ({max})",
             "modelFamily": {
@@ -903,7 +902,6 @@
                 "errorPrefix": "Error: {error}",
                 "executing": "Executing...",
                 "highRisk": "High Risk Operation",
-                "pendingApproval": "pending approval",
                 "preview": "Preview: {preview}",
                 "rejectAllCalls": "Reject all tool calls",
                 "rejectExecution": "Reject tool execution",
@@ -1346,14 +1344,14 @@
             "empty": "Archive is empty",
             "enterPassword": "Enter password...",
             "extracting": "Extracting",
-            "files": "files",
             "name": "Name",
             "passwordRequired": "This archive is password protected",
             "size": "Size",
             "unlock": "Unlock",
             "preview": "Preview",
             "extract": "Extract",
-            "back": "Back"
+            "back": "Back",
+            "filesSummary": "{count} file(s), {size}"
         },
         "batchRename": {
             "addPrefix": "Add Prefix",
@@ -1427,7 +1425,6 @@
             "folders": "folders",
             "goUp": "Go up",
             "gridView": "Grid View",
-            "items": "items",
             "listView": "List View",
             "local": "Local",
             "localPathMismatch": "Local path doesn't match the connected server",
@@ -1474,14 +1471,16 @@
             "rightPanelMarker": "Right panel",
             "chooseRightPanelFolder": "Choose right panel folder",
             "chooseLeftPanelFolder": "Choose left panel folder",
-            "localRight": "Local (right)"
+            "localRight": "Local (right)",
+            "itemCount": "{count} item(s)",
+            "fileCount": "{count} file(s)",
+            "folderCount": "{count} folder(s)"
         },
         "cloud": {
             "cloudName": "Cloud Name",
             "cloudNameDesc": "Custom name displayed in the tab",
             "cloudNamePlaceholder": "My Cloud",
             "conflict": "Conflict",
-            "conflicts": "conflicts need attention",
             "dashboard": "Dashboard",
             "disable": "Disable",
             "disableCloud": "Disable AeroCloud",
@@ -1622,7 +1621,8 @@
             "countdownSoon": "Soon...",
             "aerocloudEnabled": "AeroCloud enabled",
             "selectPairLocalFolder": "Select local folder for pair",
-            "secondsAgo": "{count}s ago"
+            "secondsAgo": "{count}s ago",
+            "conflictsCount": "{count} conflict(s) need attention"
         },
         "common": {
             "about": "About",
@@ -1698,7 +1698,8 @@
             "reset": "Reset",
             "saved": "Saved",
             "saving": "Saving...",
-            "creating": "Creating..."
+            "creating": "Creating...",
+            "minutesCount": "{count} min"
         },
         "compare": {
             "title": "Compare panels",
@@ -1712,8 +1713,6 @@
             "fast": "Fast",
             "fastest": "Fastest",
             "balanced": "Balanced",
-            "files": "files",
-            "folders": "folders",
             "format": "Format",
             "level": "Compression Level",
             "maximum": "Maximum",
@@ -1903,7 +1902,6 @@
             "megaPasswordPlaceholder": "Your MEGA password",
             "megaRequirement": "Requirement: MEGAcmd",
             "megaRequirementDesc": "This feature requires the free MEGAcmd tool installed and running on your system.",
-            "minutes": "minutes",
             "oauth": {
                 "backToExistingAccount": "Back to existing account",
                 "configureCredentials": "Configure OAuth2 credentials",
@@ -2387,7 +2385,6 @@
             "empty": "Directory is empty",
             "encrypt": "Encrypt File",
             "encrypted": "File encrypted into vault",
-            "items": "items",
             "lock": "Lock",
             "minPassword": "Min 8 characters",
             "name": "Name",
@@ -2438,7 +2435,6 @@
                 "colorScheme": "Color Scheme",
                 "dark": "Dark",
                 "devicePixelRatio": "Device Pixel Ratio",
-                "keys": "keys",
                 "language": "Language",
                 "light": "Light",
                 "localStorageKeys": "LocalStorage Keys",
@@ -2447,7 +2443,8 @@
                 "reactMode": "React Mode",
                 "userAgent": "User Agent",
                 "windowSize": "Window Size",
-                "localStorageEntrySummary": "{size} bytes · {preview}"
+                "localStorageEntrySummary": "{size} bytes · {preview}",
+                "keysCount": "{count} key(s)"
             },
             "bundle": {
                 "title": "Export diagnostic bundle (ZIP)"
@@ -2469,12 +2466,12 @@
                 "i18nSweep": "i18n key sweep",
                 "ipcSpeed": "IPC speed sample",
                 "knownHosts": "known_hosts read",
-                "passed": "passed",
                 "pluginIntegrity": "Plugin integrity",
                 "providerSelftest": "Provider self-test (read-only)",
                 "runAll": "Run all",
                 "runOne": "Run this test",
-                "vaultRoundtrip": "Vault round-trip"
+                "vaultRoundtrip": "Vault round-trip",
+                "passedCount": "{passed}/{total} passed"
             },
             "logs": {
                 "allLevels": "All Levels",
@@ -2483,7 +2480,6 @@
                 "copyAll": "Copy all",
                 "debug": "Debug",
                 "emptyMessage": "Console output will appear here when Debug Mode is active.",
-                "entries": "entries",
                 "error": "Error",
                 "info": "Info",
                 "pause": "Pause",
@@ -2491,7 +2487,8 @@
                 "sourceFilterTitle": "Filter by source",
                 "sourceJs": "JS",
                 "sourceRust": "Rust",
-                "warning": "Warning"
+                "warning": "Warning",
+                "entriesCount": "Entries: {count}"
             },
             "network": {
                 "clear": "Clear",
@@ -2537,12 +2534,12 @@
             "copy": "Copy",
             "copyTitle": "AeroFTP Dependencies Check",
             "crate": "Crate",
-            "crates": "crates",
             "current": "Current",
             "footer": "Version data from crates.io API. Versions shown are resolved (Cargo.lock) versions.",
             "latest": "Latest",
             "status": "Status",
-            "title": "Dependencies"
+            "title": "Dependencies",
+            "cratesCount": "{count} crates"
         },
         "dialog": {
             "deleteFile": "Delete \"{name}\"?",
@@ -2633,19 +2630,16 @@
             "warningTitle": "Warning"
         },
         "diskUsage": {
-            "across": "across",
             "back": "Back",
             "backToParent": "Back to parent",
             "drillDown": "Click to explore",
             "empty": "This directory is empty",
             "hoverHint": "Hover over a block to see details",
-            "items": "items",
             "percentOfParent": "{percent}% of parent",
             "retry": "Retry",
             "scanFailed": "Analysis failed",
             "scanning": "Analyzing disk usage...",
             "title": "Disk Usage",
-            "total": "Total",
             "totalItems": "Total: {size} across {count} items",
             "scanUnknownError": "Unknown error while scanning disk usage"
         },
@@ -2656,16 +2650,13 @@
             "fuzzyCutoff": "Fuzzy cutoff",
             "fuzzyCutoffHint": "blank = defaults per type (images 10, text 3, other 100)",
             "fuzzyCutoffPlaceholder": "auto",
-            "copies": "copies",
             "delete": "DELETE",
             "deleteConfirm": "Are you sure you want to delete {count} duplicate files?",
             "deleted": "{count} duplicate files deleted",
             "deleteSelected": "Delete Selected",
             "deleting": "Deleting duplicates...",
             "deselectAll": "Deselect All",
-            "duplicateFiles": "duplicate files",
             "group": "Group",
-            "groups": "groups",
             "keep": "Keep",
             "noDuplicates": "No duplicates found",
             "retry": "Retry",
@@ -2691,7 +2682,10 @@
             "similarityDistance": "{similarity}, dist {distance}",
             "modeExact": "Exact",
             "modeLabel": "Mode:",
-            "modeNonIdentical": "Non-identical"
+            "modeNonIdentical": "Non-identical",
+            "groupsCount": "{count} group(s)",
+            "duplicateFilesCount": "{count} duplicate file(s)",
+            "copiesCount": "{count} copies"
         },
         "error": {
             "description": "AeroFTP encountered an unexpected error. You can try to recover or reload the application.",
@@ -2706,7 +2700,6 @@
             "checkAll": "Check All",
             "checkOne": "Check this server",
             "checking": "Checking...",
-            "checked": "checked",
             "healthy": "Healthy",
             "degraded": "Degraded",
             "unreachable": "Unreachable",
@@ -2721,7 +2714,11 @@
             "copied": "Copied!",
             "batchChecking": "Checking {count} servers, please wait...",
             "scoreLegend": "Score 0-100, higher is better",
-            "scoreLegendDetail": "80+ healthy · 50-79 degraded · below 50 has issues"
+            "scoreLegendDetail": "80+ healthy · 50-79 degraded · below 50 has issues",
+            "checkedCount": "{count} checked",
+            "healthyCount": "{count} Healthy",
+            "degradedCount": "{count} Degraded",
+            "unreachableCount": "{count} Unreachable"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -3089,7 +3086,6 @@
             "applyToAll": "Apply to all files",
             "cancel": "Cancel",
             "local": "Local",
-            "moreFiles": "more file(s) in queue",
             "newName": "New file name:",
             "overwrite": "Overwrite",
             "remote": "Remote",
@@ -3290,14 +3286,12 @@
                 "auto": "Auto",
                 "autoRefresh": "Auto-Refresh (3s)",
                 "browser": "Browser",
-                "chars": "chars",
                 "copy": "Copy to Clipboard",
                 "disableWrap": "Disable Word Wrap",
                 "enableWrap": "Enable Word Wrap",
                 "encoding": "Encoding",
                 "errorLoading": "Error loading content",
                 "hex": "Hex",
-                "lines": "lines",
                 "loadFailed": "Failed to load text content",
                 "noContent": "No content available",
                 "openBrowser": "Open in System Browser",
@@ -3316,7 +3310,8 @@
                 "wordWrap": "Word Wrap",
                 "zoomIn": "Zoom In",
                 "zoomOut": "Zoom Out",
-                "htmlPreviewFrameTitle": "HTML Preview"
+                "htmlPreviewFrameTitle": "HTML Preview",
+                "stats": "{lines} line(s) • {chars} chars"
             },
             "video": {
                 "exitFullscreen": "Exit Fullscreen (F)",
@@ -3406,10 +3401,8 @@
             "contains": "Contains",
             "created": "Created",
             "file": "File",
-            "files": "files",
             "folder": "Folder",
             "folderContents": "{files} files, {dirs} folders",
-            "folders": "folders",
             "foldersOnly": "Folders only",
             "general": "General",
             "group": "Group",
@@ -3829,7 +3822,6 @@
             "aerocloudCompressA2": "A2: compression only (no encryption on profile)",
             "aerocloudOverlayStack": "Overlay stack (compress before crypt)",
             "aeroftpBackupFiles": "AeroFTP Backup Files",
-            "aiKeysLabel": "AI keys",
             "analyticsDesc": "Help improve AeroFTP by sharing: app version, language, and OS. No personal data or server information is ever collected.",
             "appBackgroundPattern": "App Background Pattern",
             "appBackgroundPatternDesc": "Choose a subtle pattern for the main app background",
@@ -3885,7 +3877,6 @@
             "discoverHealthCheck": "Health check on Add Services",
             "discoverHealthCheckDesc": "Probe provider reachability in the Add Services list. Double-click the Check button on that tab to toggle it there too.",
             "concurrentTransfers": "Concurrent Transfers",
-            "configEntriesLabel": "config entries",
             "configureAerocloud": "Configure in AeroCloud Panel",
             "confirmBeforeDelete": "Confirm before delete",
             "confirmPassword": "Confirm Password",
@@ -3923,8 +3914,6 @@
             "downloadSegmentsDesc": "Split each download into parallel byte ranges. An explicit value wins over the FTP/FTPS toolbar speed preset; Auto lets that preset decide (Safe keeps one stream). Effective on providers that support range requests (SFTP, FTP/FTPS, S3, HTTP) for files large enough to benefit.",
             "dropboxClientIdPlaceholder": "xxxxxxxxxxxxxxx",
             "dropboxClientSecretPlaceholder": "xxxxxxxxxxxxxxx",
-            "duplicatesSkipped": "duplicates skipped",
-            "similarToExisting": "resemble an existing profile",
             "alreadyExists": "Already exists",
             "editServerTitle": "Edit Server",
             "encrypting": "Encrypting...",
@@ -3943,7 +3932,6 @@
             "selectServersToExport": "Select servers to export",
             "selectAll": "Select All",
             "deselectAll": "Deselect All",
-            "selected": "selected",
             "filterServersPlaceholder": "Filter by name, host, protocol or user",
             "selectShown": "Select the {count} shown",
             "deselectShown": "Deselect the {count} shown",
@@ -4175,7 +4163,6 @@
             "oauthNote": "OAuth2 credentials are stored locally in your encrypted vault and never sent to AeroFTP servers.",
             "githubOauthDesc": "Device Flow OAuth - no Client ID needed",
             "githubOauthInfo": "GitHub uses Device Flow OAuth with the built-in AeroFTP App. No client credentials are required. You can also use a Personal Access Token or a GitHub App .pem key from the connection screen.",
-            "oauthTokensLabel": "OAuth tokens",
             "onedriveClientIdPlaceholder": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
             "onedriveClientSecretPlaceholder": "xxxxxxxx~...",
             "oneFileAtATime": "1 file at a time",
@@ -4266,11 +4253,9 @@
             "selectLanguage": "Select Language",
             "selectLocalFolder": "Select Local Folder",
             "sendAnalytics": "Send anonymous usage statistics",
-            "serverCredentials": "server credentials",
             "serverIcon": "Server Icon",
             "iconAutoDetectHint": "If no icon is set, the favicon or icon.png from the server is detected automatically.",
             "serverNamePlaceholder": "My Server",
-            "serverProfilesLabel": "server profiles",
             "session": "Session",
             "sessionExpired": "expired",
             "sessionExpires": "expires",
@@ -4407,7 +4392,16 @@
             "fontSystemInstallHint": "Requires system install. AeroFTP falls back automatically if unavailable.",
             "fontSizeIndicatorLabel": "Font",
             "fontPresetDefault": "{font} (Default)",
-            "fontPresetSystemDefault": "System Default"
+            "fontPresetSystemDefault": "System Default",
+            "duplicatesSkippedCount": "{count} duplicate(s) skipped",
+            "similarToExistingCount": "{count} similar to an existing profile",
+            "bridgeSkippedCount": "{count} skipped",
+            "selectedOfTotal": "{selected} / {total} selected",
+            "serverCredentialsCount": "{count} server credentials",
+            "serverProfilesCount": "{count} server profiles",
+            "aiKeysCount": "{count} AI keys",
+            "oauthTokensCount": "{count} OAuth tokens",
+            "configEntriesCount": "{count} config entries"
         },
         "sharing": {
             "add": "Add",
@@ -4540,8 +4534,9 @@
             "moveHere": "Move {count} here",
             "copyHereFromOtherPanelTooltip": "Copy {count} selected from the other panel into this panel (F5)",
             "moveHereFromOtherPanelTooltip": "Move {count} selected from the other panel into this panel (F6)",
-            "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "failedCount": "{count} failed",
+            "skippedCount": "{count} skipped"
         },
         "statusBar": {
             "activityLog": "Activity Log",
@@ -4961,7 +4956,6 @@
             "noActivity": "No activity yet",
             "pauseAll": "Pause All",
             "paused": "Paused",
-            "pending": "Pending",
             "progress": "Progress",
             "speedGraph": "Speed graph",
             "hideSpeedGraph": "Hide speed graph",
@@ -4974,7 +4968,6 @@
             "retry": "Retry",
             "running": "running",
             "speed": "Speed",
-            "staged": "staged",
             "start": "Start",
             "startAll": "Start all",
             "forceStop": "Force stop (interrupt current file)",
@@ -5085,7 +5078,10 @@
                 "size": "Size",
                 "source": "Source",
                 "title": "{mode} plan"
-            }
+            },
+            "stagedCount": "{count} staged",
+            "pendingCount": "{count} Pending",
+            "failedCount": "{count} Failed"
         },
         "scanning": {
             "deleting": "Deleting",
@@ -5293,7 +5289,6 @@
             "pwdGenerateInline": "Generate a secure password",
             "pwdGenerateCompatibleInline": "Generate a compatible 32-character password",
             "pwdEntropy": "Entropy",
-            "pwdBits": "bits",
             "pwdWeak": "Weak",
             "pwdFair": "Fair",
             "pwdGood": "Good",
@@ -5305,7 +5300,8 @@
             "pwdShow": "Show password",
             "pwdHide": "Hide password",
             "pwdNoCharset": "Select at least one character set",
-            "hashError": "Error: {error}"
+            "hashError": "Error: {error}",
+            "pwdBitsCount": "{count} bits"
         },
         "vault": {
             "addFiles": "Add Files",
@@ -5340,7 +5336,6 @@
             "fileSize": "Size",
             "folderName": "Folder name",
             "itemDeleted": "Deleted {name}",
-            "items": "items",
             "itemsDeleted": "{count} item(s) deleted",
             "modified": "Modified",
             "newFolder": "New Folder",
@@ -5359,7 +5354,6 @@
             "securityStandard": "Standard",
             "title": "AeroVault",
             "titleFull": "AeroVault - Strong Encryption",
-            "totalItems": "total",
             "unlock": "Unlock",
             "v1Standard": "AeroVault v1 (Standard)",
             "v2Advanced": "AeroVault v2 (Advanced Security)",
@@ -5489,8 +5483,6 @@
             "addFolderHint": "Add a whole folder, preserving its structure",
             "addFolderUnsupported": "Adding a folder is supported on v2 and v3 vaults",
             "dropFilesHint": "Drag files or folders here, or use the buttons below",
-            "itemSingular": "item",
-            "itemPlural": "items",
             "reportExported": "Vault report saved to {path}",
             "reportCopied": "Vault report copied to clipboard",
             "exportReportHint": "Export a complete technical report: vault metadata, encryption, error correction and full file list",
@@ -5534,7 +5526,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Fast",
             "securityAdvancedDescription": "Nonce-resistant · Encrypted filenames · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 cascade · Double encryption",
-            "securityArchiveDescription": "Deduplicated archive · zstd chunks · v3"
+            "securityArchiveDescription": "Deduplicated archive · zstd chunks · v3",
+            "totalItemsCount": "{count} total"
         },
         "vaultSync": {
             "title": "Vault Sync",
@@ -5547,8 +5540,6 @@
             "vaultOnly": "Vault only",
             "localOnly": "Local only",
             "conflict": "Conflict",
-            "conflicts": "conflicts",
-            "unchanged": "unchanged",
             "allToVault": "All to Vault",
             "allToLocal": "All to Local",
             "keepNewer": "Keep Newer",
@@ -5563,10 +5554,14 @@
             "applySync": "Apply Sync",
             "close": "Close",
             "allInSync": "All files are in sync",
-            "filesToVault": "file(s) synced to vault",
-            "filesToLocal": "file(s) extracted to local",
-            "filesSkipped": "file(s) skipped",
-            "errorsOccurred": "Some errors occurred"
+            "errorsOccurred": "Some errors occurred",
+            "vaultOnlyCount": "{count} Vault only",
+            "localOnlyCount": "{count} Local only",
+            "conflictsCount": "{count} conflicts",
+            "unchangedCount": "{count} unchanged",
+            "filesToVaultCount": "{count} file(s) synced to vault",
+            "filesToLocalCount": "{count} file(s) extracted to local",
+            "filesSkippedCount": "{count} file(s) skipped"
         },
         "versions": {
             "actions": "Actions",
@@ -6255,7 +6250,6 @@
             "pin": "Pin",
             "archive": "Archive",
             "trash": "Trash",
-            "participants": "participants",
             "noteType": "Note type",
             "addTag": "Add tag",
             "newTag": "New tag...",
@@ -6277,7 +6271,8 @@
                 "code": "Code",
                 "richText": "Rich Text",
                 "checklist": "Checklist"
-            }
+            },
+            "participantsCount": "{count} participants"
         },
         "table": {
             "manageColumns": "Manage columns",
@@ -6432,9 +6427,6 @@
             "bucket": "Bucket",
             "count": "Count",
             "action": "Action",
-            "delete": "delete",
-            "overwrite": "overwrite",
-            "conflicts": "conflict",
             "destructiveWarning": "This preset will delete or overwrite newer files.",
             "confirmDestructive": "I have reviewed the destructive actions and want to proceed.",
             "executeHint": "Execute stages the selection and dispatches via the unified transfer planner.",
@@ -6464,7 +6456,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Bytes on wire",
                 "savings": "Savings",
-                "errorDetails": "error(s), details",
                 "errorPathsRequired": "Source and destination are required",
                 "deltaStatus": "Delta sync",
                 "deltaAuto": "AUTO ON",
@@ -6493,7 +6484,8 @@
                 "planned": "Planned copies",
                 "resultDryRunOk": "Dry run completed",
                 "resultDryRunPartial": "Dry run completed with errors",
-                "resultDryRunCancelled": "Dry run cancelled"
+                "resultDryRunCancelled": "Dry run cancelled",
+                "errorDetailsCount": "{count} error(s), details"
             },
             "launcherTemplates": "Templates",
             "launcherMultiPath": "Multi-Path",
@@ -6595,7 +6587,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "The compare reads both folders and every folder under them. On a large tree it can take a while, and you can stop it.",
             "progressDelta": "[delta]",
-            "progressCopy": "[copy]"
+            "progressCopy": "[copy]",
+            "deleteCount": "{count} to delete",
+            "overwriteCount": "{count} to overwrite",
+            "conflictCount": "{count} conflict(s)"
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

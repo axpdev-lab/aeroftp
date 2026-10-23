@@ -80,7 +80,8 @@
             "reset": "Berrezarri",
             "saved": "Gordeta",
             "saving": "Gordetzen...",
-            "creating": "Sortzen..."
+            "creating": "Sortzen...",
+            "minutesCount": "{count} min"
         },
         "connection": {
             "title": "Zerbitzarira Konektatu",
@@ -159,7 +160,6 @@
             "saveChanges": "Aldaketak gorde",
             "createAccount": "Sortu kontua",
             "docs": "Dokumentazioa",
-            "minutes": "minutu",
             "localPathPlaceholder": "/home/erabiltzailea/proiektuak",
             "fourshared": {
                 "backToExistingAccount": "Itzuli lehendik dagoen kontura",
@@ -390,7 +390,6 @@
             "path": "Bidea",
             "files": "fitxategi",
             "folders": "karpeta",
-            "items": "elementu",
             "emptyFolder": "Karpeta hau hutsik dago",
             "parentFolder": "Karpeta nagusia",
             "newFolder": "Karpeta berria",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Eskuineko panela",
             "chooseRightPanelFolder": "Aukeratu eskuineko paneleko karpeta",
             "chooseLeftPanelFolder": "Aukeratu ezkerreko paneleko karpeta",
-            "localRight": "Lokala (eskuina)"
+            "localRight": "Lokala (eskuina)",
+            "itemCount": "{count} elementu",
+            "fileCount": "{count} fitxategi",
+            "folderCount": "{count} karpeta"
         },
         "contextMenu": {
             "askAeroAgent": "Galdetu AeroAgent-i...",
@@ -608,7 +610,6 @@
             "copyError": "Kopiatzeko errorea",
             "copyQueueToClipboard": "Kopiatu ilara arbelera",
             "fail": "HUTS",
-            "pending": "Zain",
             "remove": "Kendu",
             "retry": "Saiatu berriro",
             "stopAll": "Gelditu dena",
@@ -673,7 +674,6 @@
                 "newTransfer": "Transferentzia Berria",
                 "preparing": "Transferentzia prestatzen…"
             },
-            "staged": "ilaran",
             "start": "Hasi",
             "startAll": "Dena hasi",
             "restored": "Berrezarrita",
@@ -744,7 +744,10 @@
                 "size": "Tamaina",
                 "source": "Iturburua",
                 "title": "Plana: {mode}"
-            }
+            },
+            "stagedCount": "{count} prestatuta",
+            "pendingCount": "{count} Zain",
+            "failedCount": "{count} Huts eginda"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -944,7 +947,6 @@
             "migrationSkip": "Saltatu oraingoz",
             "migrationFinish": "Amaitu",
             "migrationStep": "{current}. urratsa {total}-(e)tik",
-            "duplicatesSkipped": "bikoiztuak saltatu dira",
             "invalidPassword": "Pasahitz okerra",
             "showHiddenFiles": "Erakutsi ezkutuko fitxategiak (puntua hasieran)",
             "rememberLastFolder": "Gogoratu azken karpeta",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Kontsumitzailearen sekretua",
             "privacyRespect": "AeroFTP zure pribatutasuna babesten du. Ez da daturik biltzen, ez dago jarraipenik eta ez dago telemetriarik.",
             "keystoreEntries": "{count} sarrera",
-            "serverCredentials": "zerbitzari kredentzialak",
-            "serverProfilesLabel": "zerbitzari profilak",
-            "aiKeysLabel": "AI gakoak",
-            "oauthTokensLabel": "OAuth tokena",
-            "configEntriesLabel": "konfigurazio sarrera",
             "session": "Saioa",
             "aeroftpBackupFiles": "AeroFTP babeskopia-fitxategiak",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Hautatu esportatzeko zerbitzariak",
             "selectAll": "Hautatu Guztiak",
             "deselectAll": "Deshautatu Guztiak",
-            "selected": "hautatuta",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Ikonorik ezarri ezean, zerbitzariaren favicon edo icon.png automatikoki detektatzen da.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Argia",
             "imagePreviewBgCustom": "Pertsonalizatua",
             "showTransferProgress": "Erakutsi transferentziaren aurrerapen-barra",
-            "similarToExisting": "lehendik dagoen profil baten antza dute",
             "aerocloudCompress": "Gaitu konpresioa (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: konpresioa + zifratzea (profilak zifratzea du)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Sisteman instalatu behar da. AeroFTP-k ordezko bat erabiltzen du automatikoki erabilgarri ez badago.",
             "fontSizeIndicatorLabel": "Letra-tipoa",
             "fontPresetDefault": "{font} (Lehenetsia)",
-            "fontPresetSystemDefault": "Sistemaren lehenetsia"
+            "fontPresetSystemDefault": "Sistemaren lehenetsia",
+            "duplicatesSkippedCount": "{count} bikoiztu saltatuta",
+            "similarToExistingCount": "Lehendik dagoen profil baten antzekoak: {count}",
+            "bridgeSkippedCount": "{count} saltatuta",
+            "selectedOfTotal": "{selected} / {total} hautatuta",
+            "serverCredentialsCount": "{count} zerbitzari-kredentzial",
+            "serverProfilesCount": "{count} zerbitzari-profil",
+            "aiKeysCount": "{count} AI gako",
+            "oauthTokensCount": "{count} OAuth token",
+            "configEntriesCount": "{count} konfigurazio-sarrera"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Abiarazten...",
             "pending": "Zain",
             "conflict": "Gatazka",
-            "conflicts": "gatazkek arreta behar dute",
             "error": "Sinkronizazio errorea",
             "never": "Inoiz ez",
             "justNow": "Oraintxe bertan",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Laster...",
             "aerocloudEnabled": "AeroCloud gaituta",
             "selectPairLocalFolder": "Hautatu bikoterako karpeta lokala",
-            "secondsAgo": "{count}s duela"
+            "secondsAgo": "{count}s duela",
+            "conflictsCount": "Arreta behar duten gatazkak: {count}"
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "Fitxategia badago lehendik",
-            "moreFiles": "fitxategi gehiago ilaran",
             "remote": "Urrunekoa",
             "local": "Tokikoa",
             "sourceNewer": "Iturburua berriagoa da",
@@ -2819,7 +2822,6 @@
                 "approveThis": "Onartu tresna-dei hau",
                 "confirm": "Berretsi",
                 "confirmDangerous": "Berretsi ekintza arriskutsua",
-                "pendingApproval": "onarpenaren zain",
                 "rejectAllCalls": "Ukatu tresna-dei guztiak",
                 "rejectExecution": "Ukatu tresnaren exekuzioa",
                 "toggleDetails": "Txandakatu xehetasunak",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Denak Baimendu",
                 "rejectAll": "Denak Ukatu",
                 "pending": "onarpenaren zain",
-                "toolCall": "tresna-deia",
-                "toolCalls": "tresna-deiak",
                 "running": "Exekutatzen...",
                 "done": "Eginda",
                 "failed": "Huts egin du",
-                "allowThis": "Tresna hau baimendu"
+                "allowThis": "Tresna hau baimendu",
+                "pendingApprovalCount": "Onarpenaren zain dauden tresna-deiak: {count}"
             },
             "diff": {
                 "title": "Desberdintasunen Aurrebista",
@@ -3334,7 +3335,6 @@
                 "add": "Gehitu",
                 "added": "Gehituta",
                 "all": "Denak",
-                "available": "eskuragarri",
                 "browseProviders": "Arakatu hornitzaileak",
                 "chinese": "Txinatar",
                 "fast": "Inferentzia azkarra",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "AWSen ostatatutako modeloak, eskualdeko API gakoaren bidez atzitzeko. Gehitu zure model ID eskuz.",
-                "bedrockHighlight": "AWS eskualdeko amaiera-puntua"
+                "bedrockHighlight": "AWS eskualdeko amaiera-puntua",
+                "availableCount": "{count} eskuragarri"
             },
             "history": {
                 "cancel": "Utzi",
@@ -3711,10 +3712,10 @@
             "actions": "Ekintzak",
             "empty": "Artxiboa hutsik dago",
             "extracting": "Erauzten...",
-            "files": "fitxategiak",
             "preview": "Aurrebista",
             "extract": "Atera",
-            "back": "Atzera"
+            "back": "Atzera",
+            "filesSummary": "{count} fitxategi, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{files} fitxategi gehitu dira {dirs} direktoriotan",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count} fitxategi gehituta",
             "folderName": "Karpetaren izena",
             "itemDeleted": "{name} ezabatuta",
-            "items": "elementuak",
             "itemsDeleted": "{count} elementu ezabatuta",
             "lastOpened": "Azken aldiz irekita",
             "modified": "Aldatua",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Enkriptazio sendoa",
-            "totalItems": "guztira",
             "unlock": "Desblokeatu",
             "v1Standard": "AeroVault v1 (Estandarra)",
             "v2Advanced": "AeroVault v2 (Segurtasun Aurreratua)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "Erauzi gangako fitxategi guztiak karpeta batera",
             "extractedAll": "{count} fitxategi erauzi dira {path} helbidera",
             "dropFilesHint": "Arrastatu fitxategiak edo karpetak hona, edo erabili beheko botoiak",
-            "itemSingular": "elementu",
-            "itemPlural": "elementu",
             "reportExported": "Kutxa gotorraren txostena hemen gorde da: {path}",
             "reportCopied": "Kutxa gotorraren txostena arbelera kopiatu da",
             "exportReportHint": "Esportatu txosten tekniko osoa: kutxa gotorraren metadatuak, zifratzea, errore-zuzenketa eta fitxategien zerrenda osoa",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Azkarra",
             "securityAdvancedDescription": "Nonce-erresistentea · Fitxategi-izen enkriptatuak · 128 MB-ko KDF",
             "securityParanoidDescription": "AES + ChaCha20 kaskada · Enkriptatze bikoitza",
-            "securityArchiveDescription": "Artxibo desduplikatua · zstd zatiak · v3"
+            "securityArchiveDescription": "Artxibo desduplikatua · zstd zatiak · v3",
+            "totalItemsCount": "{count} guztira"
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",
@@ -3958,7 +3956,6 @@
             "empty": "Direktorioa hutsik dago",
             "name": "Izena",
             "size": "Tamaina",
-            "items": "elementuak",
             "decryptAndSave": "Deszifratu eta gorde",
             "decrypted": "{name} deszifratuta",
             "encrypted": "Fitxategia biltegian enkriptatuta",
@@ -3989,8 +3986,6 @@
             "level": "Konpresio maila",
             "password": "Pasahitza (aukerakoa, AES-256)",
             "passwordHint": "Utzi hutsik enkriptaziorik gabe uzteko",
-            "files": "fitxategi",
-            "folders": "karpeta",
             "compress": "Konprimitu",
             "store": "Gorde (konpresiorik gabe)",
             "fast": "Azkarra",
@@ -4227,8 +4222,6 @@
             "group": "Taldea",
             "file": "Fitxategia",
             "folder": "Karpeta",
-            "files": "fitxategi",
-            "folders": "karpeta",
             "remote": "Urrunekoa",
             "local": "Tokikoa",
             "symlink": "Esteka sinbolikoaren helburua",
@@ -4302,10 +4295,7 @@
             "noDuplicates": "Ez da bikoizturik aurkitu",
             "keep": "Mantendu",
             "group": "Taldea",
-            "groups": "taldeak",
-            "duplicateFiles": "fitxategi bikoiztu",
             "wasted": "galduta",
-            "copies": "kopiak",
             "delete": "EZABATU",
             "skip": "SALTATU",
             "selectAll": "Hautatu dena",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, dist. {distance}",
             "modeExact": "Zehatza",
             "modeLabel": "Modua:",
-            "modeNonIdentical": "Ez berdina"
+            "modeNonIdentical": "Ez berdina",
+            "groupsCount": "{count} talde",
+            "duplicateFilesCount": "{count} fitxategi bikoiztu",
+            "copiesCount": "{count} kopia"
         },
         "diskUsage": {
             "title": "Diskoaren erabilera",
@@ -4341,9 +4334,6 @@
             "percentOfParent": "Gurasoaren %{percent}",
             "backToParent": "Itzuli gurasora",
             "back": "Atzera",
-            "total": "Guztira",
-            "across": "barruan",
-            "items": "elementu",
             "empty": "Direktorio hau hutsik dago",
             "hoverHint": "Pasa sagua gainetik xehetasunak ikusteko",
             "scanFailed": "Eskaneatzeak huts egin du",
@@ -4353,7 +4343,6 @@
         },
         "dependencies": {
             "title": "Mendekotasunak",
-            "crates": "crates",
             "copy": "Kopiatu",
             "checkUpdates": "Egiaztatu eguneraketak",
             "checking": "Egiaztatzen...",
@@ -4363,7 +4352,8 @@
             "status": "Egoera",
             "footer": "Bertsio datuak crates.io API-tik.",
             "copyTitle": "AeroFTP mendekotasun egiaztapena",
-            "copied": "Kopiatuta!"
+            "copied": "Kopiatuta!",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Abisua",
                 "info": "Informazioa",
                 "debug": "Araztu",
-                "entries": "sarrerak",
                 "resume": "Berrekin",
                 "pause": "Pausatu",
                 "copyAll": "Denak kopiatu",
@@ -4432,13 +4421,13 @@
                 "allSources": "Iturri guztiak",
                 "sourceFilterTitle": "Iragazi iturriaren arabera",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Sarrerak: {count}"
             },
             "frontend": {
                 "reactMode": "React Modua",
                 "language": "Hizkuntza",
                 "localStorageKeys": "LocalStorage Gakoak",
-                "keys": "gakoak",
                 "localStorageSize": "LocalStorage Tamaina",
                 "windowSize": "Leiho Tamaina",
                 "devicePixelRatio": "Gailuaren Pixel Ratioa",
@@ -4447,7 +4436,8 @@
                 "light": "Argia",
                 "userAgent": "Erabiltzaile Agentea",
                 "localStorageKeysTitle": "LocalStorage Gakoak",
-                "localStorageEntrySummary": "{size} byte · {preview}"
+                "localStorageEntrySummary": "{size} byte · {preview}",
+                "keysCount": "{count} gako"
             },
             "copyFileListToClipboard": "Kopiatu fitxategi-zerrenda arbelera",
             "filesCopied": "{count} fitxategi sarrera arbelera kopiatuak",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "i18n gakoen barreiatzea",
                 "ipcSpeed": "IPC abiadura lagina",
                 "knownHosts": "known_hosts irakurketa",
-                "passed": "gainditutakoak",
                 "pluginIntegrity": "Pluginaren osotasuna",
                 "providerSelftest": "Hornitzailearen auto-proba (irakurtzeko soilik)",
                 "runAll": "Exekutatu denak",
                 "runOne": "Exekutatu proba hau",
-                "vaultRoundtrip": "Kutxa gotorraren joan-etorria"
+                "vaultRoundtrip": "Kutxa gotorraren joan-etorria",
+                "passedCount": "{passed}/{total} gaindituta"
             },
             "bundle": {
                 "title": "Esportatu diagnostiko-sorta (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",
             "badges": {
-                "active": "AKTIBO",
                 "live": "ZUZENEAN",
-                "synced": "SINKRONIZATUTA"
+                "synced": "SINKRONIZATUTA",
+                "activeCount": "{count} AKTIBO"
             },
             "clearLog": "Garbitu erregistroa",
             "close": "Itxi",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Iragazi eragiketak",
-                "selected": "hautatuta"
+                "selectedCount": "{count} hautatuta"
             },
             "save": "Gorde"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Automatikoa",
                 "autoRefresh": "Auto-freskatzea (3s)",
                 "browser": "Arakatzailea",
-                "chars": "karaktere",
                 "copy": "Kopiatu arbelera",
                 "disableWrap": "Desgaitu hitz-bilketa",
                 "enableWrap": "Gaitu hitz-bilketa",
                 "encoding": "Kodeketa",
                 "errorLoading": "Errorea edukia kargatzean",
                 "hex": "Hex",
-                "lines": "lerro",
                 "loadFailed": "Testu-edukia kargatzeak huts egin du",
                 "noContent": "Ez dago edukia eskuragarri",
                 "openBrowser": "Ireki sistema-arakatzailean",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Hitz-bilketa",
                 "zoomIn": "Handitu",
                 "zoomOut": "Txikitu",
-                "htmlPreviewFrameTitle": "HTML aurrebista"
+                "htmlPreviewFrameTitle": "HTML aurrebista",
+                "stats": "{lines} lerro • {chars} karaktere"
             },
             "video": {
                 "exitFullscreen": "Irten pantaila osotik (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Sortzeko kopurua",
             "pwdGenerate": "Sortu",
             "pwdEntropy": "Entropia",
-            "pwdBits": "bits",
             "pwdWeak": "Ahula",
             "pwdFair": "Onartekoa",
             "pwdGood": "Ona",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Balio lehenetsiak: AeroVault eta AeroCrypt erabiltzen duten profila (128 MiB, 4 iterazio, 4 errei, 32 byteko irteera). Goiko gatza zurea da. Memoria 2 GiB arte.",
             "argon2Derive": "Eratorri",
             "argon2Phc": "PHC katea",
-            "hashError": "Errorea: {error}"
+            "hashError": "Errorea: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "\"{name}\" ezabatu?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Kutxan bakarrik",
             "localOnly": "Lokalean bakarrik",
             "conflict": "Gatazka",
-            "conflicts": "gatazkak",
-            "unchanged": "aldatu gabe",
             "allToVault": "Dena kutxara",
             "allToLocal": "Dena lokalera",
             "keepNewer": "Berriena mantendu",
@@ -5018,10 +5005,14 @@
             "applySync": "Sinkronizazioa aplikatu",
             "close": "Itxi",
             "allInSync": "Fitxategi guztiak sinkronizatuta daude",
-            "filesToVault": "fitxategi(ak) kutxara sinkronizatuta",
-            "filesToLocal": "fitxategi(ak) lokalera aterata",
-            "filesSkipped": "fitxategi(ak) saltatuta",
-            "errorsOccurred": "Errore batzuk gertatu dira"
+            "errorsOccurred": "Errore batzuk gertatu dira",
+            "vaultOnlyCount": "{count} Kutxan bakarrik",
+            "localOnlyCount": "{count} Tokikoa soilik",
+            "conflictsCount": "{count} gatazka",
+            "unchangedCount": "{count} aldatu gabe",
+            "filesToVaultCount": "{count} fitxategi kutxarekin sinkronizatuta",
+            "filesToLocalCount": "{count} fitxategi tokian erauzita",
+            "filesSkippedCount": "{count} fitxategi saltatuta"
         },
         "localTabs": {
             "closeAll": "Itxi fitxa guztiak",
@@ -5265,7 +5256,6 @@
             "checkAll": "Egiaztatu denak",
             "checkOne": "Egiaztatu zerbitzari hau",
             "checking": "Egiaztatzen...",
-            "checked": "egiaztatuta",
             "healthy": "Osasuntsu",
             "degraded": "Degradatuta",
             "unreachable": "Eskuraezina",
@@ -5280,7 +5270,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Egiaztatzen {count} zerbitzari, itxaron mesedez...",
             "scoreLegend": "Puntuazioa 0-100, altuagoa hobe",
-            "scoreLegendDetail": "80+ osasuntsua · 50-79 degradatua · 50etik behera arazoekin"
+            "scoreLegendDetail": "80+ osasuntsua · 50-79 degradatua · 50etik behera arazoekin",
+            "checkedCount": "{count} egiaztatuta",
+            "healthyCount": "{count} Osasuntsu",
+            "degradedCount": "{count} Degradatuta",
+            "unreachableCount": "{count} Eskuraezin"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5550,7 +5544,6 @@
                 "archived": "Artxiboad",
                 "trash": "Zakarrontzia"
             },
-            "participants": "parte-hartzaileak",
             "saving": "Gordetzen...",
             "saved": "Gordeta",
             "saveNow": "Gorde orain",
@@ -5568,7 +5561,8 @@
                 "code": "Kodea",
                 "richText": "Testu aberatsa",
                 "checklist": "Egiaztapen-zerrenda"
-            }
+            },
+            "participantsCount": "{count} parte-hartzaile"
         },
         "shareLinkModal": {
             "title": "Partekatzeko esteka",
@@ -6015,13 +6009,14 @@
             "moveToOtherPanel": "Mugitu beste panelera",
             "copiedToOtherPanel": "Beste panelera kopiatuta",
             "movedToOtherPanel": "Beste panelera mugituta",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Kopiatu {count} hona",
             "moveHere": "Eraman {count} hona",
             "copyHereFromOtherPanelTooltip": "Kopiatu beste paneletik hautatutako {count} panel honetara (F5)",
             "moveHereFromOtherPanelTooltip": "Eraman beste paneletik hautatutako {count} panel honetara (F6)",
-            "syncToOtherPanel": "Sinkronizatu beste paneletik (delta)"
+            "syncToOtherPanel": "Sinkronizatu beste paneletik (delta)",
+            "failedCount": "{count} hutsegite",
+            "skippedCount": "{count} saltatuta"
         },
         "compare": {
             "title": "Konparatu paneletak",
@@ -6165,9 +6160,6 @@
             "bucket": "Kategoria",
             "count": "Kontaketa",
             "action": "Ekintza",
-            "delete": "ezabatu",
-            "overwrite": "gainidatzi",
-            "conflicts": "gatazka",
             "destructiveWarning": "Aurrezarpen honek fitxategi berriagoak ezabatu edo gainidatziko ditu.",
             "confirmDestructive": "Suntsipen ekintzak berrikusi ditut eta jarraitu nahi dut.",
             "executeHint": "Exekutatu hautapena ilaratzen du eta transferentzia-planifikatzaile bateratuaren bidez bidaltzen du.",
@@ -6194,7 +6186,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Sareko byteak",
                 "savings": "Aurrezpena",
-                "errorDetails": "errore(ak), xehetasunak",
                 "errorPathsRequired": "Iturburua eta helmuga beharrezkoak dira",
                 "deltaStatus": "Delta sinkr.",
                 "deltaAuto": "AUTO AKTIBATUTA",
@@ -6226,7 +6217,8 @@
                 "planned": "Aurreikusitako kopiak",
                 "resultDryRunOk": "Saiakera amaitu da",
                 "resultDryRunPartial": "Saiakera erroreekin amaitu da",
-                "resultDryRunCancelled": "Saiakera bertan behera utzi da"
+                "resultDryRunCancelled": "Saiakera bertan behera utzi da",
+                "errorDetailsCount": "{count} errore, xehetasunak"
             },
             "launcherTemplates": "Txantiloiak",
             "launcherMultiPath": "Bide anitz",
@@ -6330,7 +6322,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Konparazioak bi karpetak eta haien azpiko karpeta guztiak irakurtzen ditu. Zuhaitz handi batean denbora pixka bat har dezake, eta gelditu dezakezu.",
             "progressDelta": "[delta]",
-            "progressCopy": "[kopia]"
+            "progressCopy": "[kopia]",
+            "deleteCount": "{count} ezabatzeko",
+            "overwriteCount": "{count} gainidazteko",
+            "conflictCount": "{count} gatazka"
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

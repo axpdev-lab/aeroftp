@@ -80,7 +80,8 @@
             "reset": "초기화",
             "saved": "저장됨",
             "saving": "저장 중...",
-            "creating": "만드는 중..."
+            "creating": "만드는 중...",
+            "minutesCount": "{count}분"
         },
         "connection": {
             "title": "서버에 연결",
@@ -159,7 +160,6 @@
             "saveChanges": "변경 사항 저장",
             "createAccount": "계정 만들기",
             "docs": "문서",
-            "minutes": "분",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "기존 계정으로 돌아가기",
@@ -390,7 +390,6 @@
             "path": "경로",
             "files": "파일",
             "folders": "폴더",
-            "items": "항목",
             "emptyFolder": "이 폴더는 비어 있습니다",
             "parentFolder": "상위 폴더",
             "newFolder": "새 폴더",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "오른쪽 패널",
             "chooseRightPanelFolder": "오른쪽 패널 폴더 선택",
             "chooseLeftPanelFolder": "왼쪽 패널 폴더 선택",
-            "localRight": "로컬 (오른쪽)"
+            "localRight": "로컬 (오른쪽)",
+            "itemCount": "{count}개 항목",
+            "fileCount": "파일 {count}개",
+            "folderCount": "폴더 {count}개"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent에게 질문...",
@@ -608,7 +610,6 @@
             "copyError": "복사 오류",
             "copyQueueToClipboard": "대기열을 클립보드에 복사",
             "fail": "실패",
-            "pending": "대기 중",
             "remove": "제거",
             "retry": "재시도",
             "stopAll": "모두 중지",
@@ -673,7 +674,6 @@
                 "newTransfer": "새 전송",
                 "preparing": "전송 준비 중…"
             },
-            "staged": "대기 중",
             "start": "시작",
             "startAll": "모두 시작",
             "restored": "복원됨",
@@ -744,7 +744,10 @@
                 "size": "크기",
                 "source": "원본",
                 "title": "{mode} 계획"
-            }
+            },
+            "stagedCount": "{count}개 준비됨",
+            "pendingCount": "{count}개 대기 중",
+            "failedCount": "{count}개 실패"
         },
         "settings": {
             "title": "설정",
@@ -929,7 +932,6 @@
             "migrationSkip": "나중에 하기",
             "migrationFinish": "완료",
             "migrationStep": "{total}단계 중 {current}단계",
-            "duplicatesSkipped": "중복 항목 건너뜀",
             "invalidPassword": "잘못된 비밀번호",
             "backup": "백업",
             "visibleColumns": "표시 열",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "소비자 비밀",
             "privacyRespect": "AeroFTP는 개인정보를 보호합니다. 데이터 수집 없음, 추적 없음, 원격 측정 없음.",
             "keystoreEntries": "{count}개 항목",
-            "serverCredentials": "서버 자격 증명",
-            "serverProfilesLabel": "서버 프로필",
-            "aiKeysLabel": "AI 키",
-            "oauthTokensLabel": "OAuth 토큰",
-            "configEntriesLabel": "구성 항목",
             "session": "세션",
             "aeroftpBackupFiles": "AeroFTP 백업 파일",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "내보낼 서버 선택",
             "selectAll": "모두 선택",
             "deselectAll": "모두 선택 해제",
-            "selected": "선택됨",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "아이콘이 설정되지 않은 경우, 서버의 favicon 또는 icon.png가 자동으로 감지됩니다.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "밝게",
             "imagePreviewBgCustom": "사용자 지정",
             "showTransferProgress": "전송 진행률 표시줄 표시",
-            "similarToExisting": "기존 프로필과 유사함",
             "aerocloudCompress": "압축 활성화 (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: 압축 + 암호화 (프로필에 암호화가 있음)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "시스템 설치가 필요합니다. 사용할 수 없으면 AeroFTP가 자동으로 대체합니다.",
             "fontSizeIndicatorLabel": "글꼴",
             "fontPresetDefault": "{font} (기본값)",
-            "fontPresetSystemDefault": "시스템 기본값"
+            "fontPresetSystemDefault": "시스템 기본값",
+            "duplicatesSkippedCount": "중복 {count}개 건너뜀",
+            "similarToExistingCount": "{count}개가 기존 프로필과 유사함",
+            "bridgeSkippedCount": "{count}개 건너뜀",
+            "selectedOfTotal": "{selected} / {total} 선택됨",
+            "serverCredentialsCount": "서버 자격 증명 {count}개",
+            "serverProfilesCount": "서버 프로필 {count}개",
+            "aiKeysCount": "AI 키 {count}개",
+            "oauthTokensCount": "OAuth 토큰 {count}개",
+            "configEntriesCount": "구성 항목 {count}개"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "시작 중...",
             "pending": "대기 중",
             "conflict": "충돌",
-            "conflicts": "개의 충돌에 주의가 필요합니다",
             "error": "동기화 오류",
             "never": "없음",
             "justNow": "방금",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "곧...",
             "aerocloudEnabled": "AeroCloud 활성화됨",
             "selectPairLocalFolder": "페어의 로컬 폴더 선택",
-            "secondsAgo": "{count}초 전"
+            "secondsAgo": "{count}초 전",
+            "conflictsCount": "주의가 필요한 충돌 {count}개"
         },
         "statusBar": {
             "connected": "연결됨",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "파일이 이미 존재합니다",
-            "moreFiles": "대기열에 파일 더 있음",
             "remote": "원격",
             "local": "로컬",
             "sourceNewer": "원본이 더 최신",
@@ -2800,7 +2803,6 @@
                 "approveThis": "이 도구 호출 승인",
                 "confirm": "확인",
                 "confirmDangerous": "위험한 작업 확인",
-                "pendingApproval": "승인 대기 중",
                 "rejectAllCalls": "모든 도구 호출 거부",
                 "rejectExecution": "도구 실행 거부",
                 "toggleDetails": "상세 정보 전환",
@@ -3029,12 +3031,11 @@
                 "allowAll": "모두 허용",
                 "rejectAll": "모두 거부",
                 "pending": "승인 대기 중",
-                "toolCall": "도구 호출",
-                "toolCalls": "도구 호출",
                 "running": "실행 중...",
                 "done": "완료",
                 "failed": "실패",
-                "allowThis": "이 도구 허용"
+                "allowThis": "이 도구 허용",
+                "pendingApprovalCount": "승인 대기 중인 도구 호출 {count}개"
             },
             "diff": {
                 "title": "변경 사항 미리보기",
@@ -3334,7 +3335,6 @@
                 "add": "추가",
                 "added": "추가됨",
                 "all": "전체",
-                "available": "사용 가능",
                 "browseProviders": "공급자 찾아보기",
                 "chinese": "중국어",
                 "fast": "빠른 추론",
@@ -3354,7 +3354,8 @@
                 "tools": "도구",
                 "vision": "Vision",
                 "bedrockDescription": "지역별 API 키로 접근하는 AWS 호스팅 모델입니다. model ID를 수동으로 추가하세요.",
-                "bedrockHighlight": "AWS 리전 엔드포인트"
+                "bedrockHighlight": "AWS 리전 엔드포인트",
+                "availableCount": "{count}개 사용 가능"
             },
             "history": {
                 "cancel": "취소",
@@ -3709,12 +3710,12 @@
             "size": "크기",
             "compressed": "압축 크기",
             "actions": "작업",
-            "files": "파일",
             "empty": "압축 파일이 비어 있습니다",
             "extracting": "압축 해제 중",
             "preview": "미리 보기",
             "extract": "추출",
-            "back": "뒤로"
+            "back": "뒤로",
+            "filesSummary": "파일 {count}개, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{dirs}개 디렉토리에 {files}개 파일 추가됨",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count}개 파일 추가됨",
             "folderName": "폴더 이름",
             "itemDeleted": "{name} 삭제됨",
-            "items": "항목",
             "itemsDeleted": "{count}개 항목 삭제됨",
             "lastOpened": "마지막으로 열림",
             "modified": "수정일",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - 강력한 암호화",
-            "totalItems": "전체",
             "unlock": "잠금 해제",
             "v1Standard": "AeroVault v1 (표준)",
             "v2Advanced": "AeroVault v2 (고급 보안)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "보관소의 모든 파일을 폴더로 추출",
             "extractedAll": "{count}개 파일을 {path}에 추출함",
             "dropFilesHint": "파일이나 폴더를 여기에 끌어다 놓거나 아래 버튼을 사용하세요",
-            "itemSingular": "항목",
-            "itemPlural": "항목",
             "reportExported": "볼트 보고서가 {path}에 저장되었습니다",
             "reportCopied": "볼트 보고서가 클립보드에 복사되었습니다",
             "exportReportHint": "전체 기술 보고서 내보내기: 볼트 메타데이터, 암호화, 오류 정정 및 전체 파일 목록",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · 빠름",
             "securityAdvancedDescription": "nonce 내성 · 암호화된 파일 이름 · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 캐스케이드 · 이중 암호화",
-            "securityArchiveDescription": "중복 제거 아카이브 · zstd 청크 · v3"
+            "securityArchiveDescription": "중복 제거 아카이브 · zstd 청크 · v3",
+            "totalItemsCount": "총 {count}개"
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",
@@ -3956,7 +3954,6 @@
             "empty": "디렉토리가 비어 있습니다",
             "name": "이름",
             "size": "크기",
-            "items": "항목",
             "readOnly": "읽기 전용 모드 - 저장소 생성은 v2.1에서 지원 예정",
             "openAsVault": "Cryptomator 저장소로 열기",
             "decryptAndSave": "복호화 후 저장",
@@ -3989,8 +3986,6 @@
             "level": "압축 수준",
             "password": "비밀번호 (선택 사항, AES-256)",
             "passwordHint": "암호화하지 않으려면 비워 두세요",
-            "files": "파일",
-            "folders": "폴더",
             "compress": "압축",
             "store": "저장 (압축 없음)",
             "fast": "빠름",
@@ -4232,8 +4227,6 @@
             "modified": "수정일",
             "file": "파일",
             "folder": "폴더",
-            "files": "파일",
-            "folders": "폴더",
             "remote": "원격",
             "local": "로컬",
             "linkTarget": "심볼릭 링크 대상",
@@ -4309,10 +4302,7 @@
             "deleted": "{count}개 중복 파일 삭제됨",
             "scanFailed": "스캔 실패",
             "retry": "재시도",
-            "groups": "그룹",
-            "duplicateFiles": "중복 파일",
             "wasted": "낭비",
-            "copies": "사본",
             "delete": "삭제",
             "skip": "건너뛰기",
             "deleteConfirm": "{count}개 중복 파일을 삭제하시겠습니까?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, 거리 {distance}",
             "modeExact": "정확히 일치",
             "modeLabel": "모드:",
-            "modeNonIdentical": "동일하지 않음"
+            "modeNonIdentical": "동일하지 않음",
+            "groupsCount": "그룹 {count}개",
+            "duplicateFilesCount": "중복 파일 {count}개",
+            "copiesCount": "사본 {count}개"
         },
         "diskUsage": {
             "title": "디스크 사용량",
@@ -4340,20 +4333,16 @@
             "totalItems": "합계: {count}개 항목에 {size}",
             "percentOfParent": "상위 항목의 {percent}%",
             "backToParent": "상위로 돌아가기",
-            "items": "항목",
             "scanFailed": "분석 실패",
             "retry": "재시도",
             "drillDown": "클릭하여 탐색",
             "back": "뒤로",
-            "total": "합계",
-            "across": "에 걸쳐",
             "empty": "이 디렉토리는 비어 있습니다",
             "hoverHint": "블록 위에 마우스를 올려 세부 정보를 확인하세요",
             "scanUnknownError": "디스크 사용량 검사 중 알 수 없는 오류"
         },
         "dependencies": {
             "title": "의존성",
-            "crates": "크레이트",
             "copy": "복사",
             "copied": "복사됨!",
             "checkUpdates": "업데이트 확인",
@@ -4363,7 +4352,8 @@
             "latest": "최신",
             "status": "상태",
             "footer": "버전 데이터는 crates.io API에서 가져옵니다. 표시된 버전은 해결된 (Cargo.lock) 버전입니다.",
-            "copyTitle": "AeroFTP 의존성 확인"
+            "copyTitle": "AeroFTP 의존성 확인",
+            "cratesCount": "크레이트 {count}개"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "경고",
                 "info": "정보",
                 "debug": "디버그",
-                "entries": "항목",
                 "resume": "재개",
                 "pause": "일시정지",
                 "copyAll": "모두 복사",
@@ -4432,13 +4421,13 @@
                 "allSources": "모든 소스",
                 "sourceFilterTitle": "소스별 필터",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "항목: {count}"
             },
             "frontend": {
                 "reactMode": "React 모드",
                 "language": "언어",
                 "localStorageKeys": "LocalStorage 키",
-                "keys": "키",
                 "localStorageSize": "LocalStorage 크기",
                 "windowSize": "창 크기",
                 "devicePixelRatio": "장치 픽셀 비율",
@@ -4447,7 +4436,8 @@
                 "light": "라이트",
                 "userAgent": "사용자 에이전트",
                 "localStorageKeysTitle": "LocalStorage 키",
-                "localStorageEntrySummary": "{size}바이트 · {preview}"
+                "localStorageEntrySummary": "{size}바이트 · {preview}",
+                "keysCount": "키 {count}개"
             },
             "copyFileListToClipboard": "파일 목록을 클립보드에 복사",
             "filesCopied": "{count}개의 파일 항목이 클립보드에 복사됨",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "i18n 키 스윕",
                 "ipcSpeed": "IPC 속도 샘플",
                 "knownHosts": "known_hosts 읽기",
-                "passed": "통과",
                 "pluginIntegrity": "플러그인 무결성",
                 "providerSelftest": "제공자 자체 테스트 (읽기 전용)",
                 "runAll": "모두 실행",
                 "runOne": "이 테스트 실행",
-                "vaultRoundtrip": "보관함 왕복"
+                "vaultRoundtrip": "보관함 왕복",
+                "passedCount": "{passed}/{total} 통과"
             },
             "bundle": {
                 "title": "진단 번들 내보내기 (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",
             "badges": {
-                "active": "활성",
                 "live": "실시간",
-                "synced": "동기화됨"
+                "synced": "동기화됨",
+                "activeCount": "{count}개 실행 중"
             },
             "clearLog": "로그 지우기",
             "close": "닫기",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "작업 필터링",
-                "selected": "선택됨"
+                "selectedCount": "{count}개 선택됨"
             },
             "save": "저장"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "자동",
                 "autoRefresh": "자동 새로고침 (3s)",
                 "browser": "브라우저",
-                "chars": "문자",
                 "copy": "클립보드에 복사",
                 "disableWrap": "줄 바꿈 비활성화",
                 "enableWrap": "줄 바꿈 활성화",
                 "encoding": "인코딩",
                 "errorLoading": "콘텐츠 로딩 오류",
                 "hex": "16진수",
-                "lines": "줄",
                 "loadFailed": "텍스트 콘텐츠 로드 실패",
                 "noContent": "콘텐츠 없음",
                 "openBrowser": "시스템 브라우저에서 열기",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "줄 바꿈",
                 "zoomIn": "확대",
                 "zoomOut": "축소",
-                "htmlPreviewFrameTitle": "HTML 미리 보기"
+                "htmlPreviewFrameTitle": "HTML 미리 보기",
+                "stats": "{lines}줄 • {chars}자"
             },
             "video": {
                 "exitFullscreen": "전체 화면 종료 (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "생성 횟수",
             "pwdGenerate": "생성",
             "pwdEntropy": "엔트로피",
-            "pwdBits": "비트",
             "pwdWeak": "약함",
             "pwdFair": "보통",
             "pwdGood": "양호",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "기본값: AeroVault와 AeroCrypt가 사용하는 프로필 (128 MiB, 반복 4회, 레인 4개, 32바이트 출력). 위의 솔트는 사용자의 것입니다. 메모리 최대 2 GiB.",
             "argon2Derive": "파생",
             "argon2Phc": "PHC 문자열",
-            "hashError": "오류: {error}"
+            "hashError": "오류: {error}",
+            "pwdBitsCount": "{count}비트"
         },
         "dialog": {
             "deleteFile": "\"{name}\"을(를) 삭제하시겠습니까?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "vault에만 존재",
             "localOnly": "로컬에만 존재",
             "conflict": "충돌",
-            "conflicts": "충돌",
-            "unchanged": "변경 없음",
             "allToVault": "모두 vault으로",
             "allToLocal": "모두 로컬로",
             "keepNewer": "새로운 것 유지",
@@ -5018,10 +5005,14 @@
             "applySync": "동기화 적용",
             "close": "닫기",
             "allInSync": "모든 파일이 동기화되어 있습니다",
-            "filesToVault": "파일이 vault에 동기화됨",
-            "filesToLocal": "파일이 로컬에 추출됨",
-            "filesSkipped": "파일 건너뛰",
-            "errorsOccurred": "일부 오류가 발생했습니다"
+            "errorsOccurred": "일부 오류가 발생했습니다",
+            "vaultOnlyCount": "vault에만 존재: {count}",
+            "localOnlyCount": "로컬에만 존재: {count}",
+            "conflictsCount": "충돌 {count}개",
+            "unchangedCount": "{count}개 변경 없음",
+            "filesToVaultCount": "파일 {count}개를 vault에 동기화함",
+            "filesToLocalCount": "파일 {count}개를 로컬로 추출함",
+            "filesSkippedCount": "파일 {count}개 건너뜀"
         },
         "localTabs": {
             "closeAll": "모든 탭 닫기",
@@ -5246,7 +5237,6 @@
             "checkAll": "모두 점검",
             "checkOne": "이 서버 점검",
             "checking": "점검 중...",
-            "checked": "점검 완료",
             "healthy": "정상",
             "degraded": "저하됨",
             "unreachable": "연결 불가",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "{count}개 서버를 확인하는 중, 잠시 기다려 주세요...",
             "scoreLegend": "점수 0-100, 높을수록 좋음",
-            "scoreLegendDetail": "80+ 건강 · 50-79 저하 · 50 미만 문제 있음"
+            "scoreLegendDetail": "80+ 건강 · 50-79 저하 · 50 미만 문제 있음",
+            "checkedCount": "{count}개 확인됨",
+            "healthyCount": "정상 {count}개",
+            "degradedCount": "저하됨 {count}개",
+            "unreachableCount": "연결 불가 {count}개"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "보관됨",
                 "trash": "휴지통"
             },
-            "participants": "참여자",
             "saving": "저장 중...",
             "saved": "저장됨",
             "saveNow": "지금 저장",
@@ -5549,7 +5542,8 @@
                 "code": "코드",
                 "richText": "서식 있는 텍스트",
                 "checklist": "체크리스트"
-            }
+            },
+            "participantsCount": "참여자 {count}명"
         },
         "shareLinkModal": {
             "title": "공유 링크",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "다른 패널로 이동",
             "copiedToOtherPanel": "다른 패널로 복사됨",
             "movedToOtherPanel": "다른 패널로 이동됨",
-            "itemsLower": "항목",
             "resizePanels": "패널 크기 조정",
             "copyHere": "{count}개 여기에 복사",
             "moveHere": "{count}개 여기로 이동",
             "copyHereFromOtherPanelTooltip": "다른 패널에서 선택된 {count}개를 이 패널로 복사 (F5)",
             "moveHereFromOtherPanelTooltip": "다른 패널에서 선택된 {count}개를 이 패널로 이동 (F6)",
-            "syncToOtherPanel": "다른 패널로 동기화 (delta)"
+            "syncToOtherPanel": "다른 패널로 동기화 (delta)",
+            "failedCount": "{count}개 실패",
+            "skippedCount": "{count}개 건너뜀"
         },
         "compare": {
             "title": "패널 비교",
@@ -6146,9 +6141,6 @@
             "bucket": "범주",
             "count": "수",
             "action": "동작",
-            "delete": "삭제",
-            "overwrite": "덮어쓰기",
-            "conflicts": "충돌",
             "destructiveWarning": "이 프리셋은 더 새로운 파일을 삭제하거나 덮어씁니다.",
             "confirmDestructive": "파괴적 동작을 검토했으며 진행하고 싶습니다.",
             "executeHint": "실행은 선택을 준비하고 통합 전송 플래너를 통해 디스패치합니다.",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "네트워크 바이트",
                 "savings": "절약",
-                "errorDetails": "개의 오류, 세부 정보",
                 "errorPathsRequired": "원본과 대상은 필수입니다",
                 "deltaStatus": "델타 동기화",
                 "deltaAuto": "자동 켜짐",
@@ -6207,7 +6198,8 @@
                 "planned": "복사 예정",
                 "resultDryRunOk": "시험 실행 완료",
                 "resultDryRunPartial": "오류와 함께 시험 실행 완료",
-                "resultDryRunCancelled": "시험 실행 취소됨"
+                "resultDryRunCancelled": "시험 실행 취소됨",
+                "errorDetailsCount": "오류 {count}개, 세부 정보"
             },
             "launcherTemplates": "템플릿",
             "launcherMultiPath": "다중 경로",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "비교는 두 폴더와 그 아래의 모든 폴더를 읽습니다. 트리가 크면 시간이 걸릴 수 있으며, 중지할 수 있습니다.",
             "progressDelta": "[델타]",
-            "progressCopy": "[복사]"
+            "progressCopy": "[복사]",
+            "deleteCount": "{count}개 삭제 예정",
+            "overwriteCount": "{count}개 덮어쓰기 예정",
+            "conflictCount": "충돌 {count}개"
         },
         "accountLock": {
             "title": "계정 선택",

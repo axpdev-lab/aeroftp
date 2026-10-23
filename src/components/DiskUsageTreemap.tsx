@@ -358,8 +358,7 @@ const DiskUsageTreemap: React.FC<DiskUsageTreemapProps> = ({ isOpen, scanPath, o
                 {/* Summary bar */}
                 {rootNode && !loading && (
                     <div className="px-4 py-2 border-b border-gray-700/50 text-xs text-gray-400">
-                        {t('diskUsage.total')}: {formatBytes(rootNode.size)}{' '}
-                        {t('diskUsage.across')} {totalItems.toLocaleString()} {t('diskUsage.items')}
+                        {t('diskUsage.totalItems', { size: formatBytes(rootNode.size), count: totalItems.toLocaleString() })}
                     </div>
                 )}
 
@@ -535,7 +534,7 @@ const DiskUsageTreemap: React.FC<DiskUsageTreemapProps> = ({ isOpen, scanPath, o
                                     <>
                                         <span className="mx-2 text-gray-600">&mdash;</span>
                                         <span>
-                                            {countItems(hoveredNode).toLocaleString()} {t('diskUsage.items')}
+                                            {t('browser.itemCount', { count: countItems(hoveredNode).toLocaleString() })}
                                         </span>
                                     </>
                                 )}

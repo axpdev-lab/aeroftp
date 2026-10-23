@@ -208,10 +208,10 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                         <div className="space-y-3">
                             {/* Summary */}
                             <div className="flex items-center gap-3 text-xs text-[var(--color-text-secondary)]">
-                                <span className="text-blue-400">{comparison.vault_only.length} {t('vaultSync.vaultOnly')}</span>
-                                <span className="text-green-400">{comparison.local_only.length} {t('vaultSync.localOnly')}</span>
-                                <span className="text-yellow-400">{comparison.conflicts.length} {t('vaultSync.conflicts')}</span>
-                                <span className="text-gray-400">{comparison.unchanged} {t('vaultSync.unchanged')}</span>
+                                <span className="text-blue-400">{t('vaultSync.vaultOnlyCount', { count: comparison.vault_only.length })}</span>
+                                <span className="text-green-400">{t('vaultSync.localOnlyCount', { count: comparison.local_only.length })}</span>
+                                <span className="text-yellow-400">{t('vaultSync.conflictsCount', { count: comparison.conflicts.length })}</span>
+                                <span className="text-gray-400">{t('vaultSync.unchangedCount', { count: comparison.unchanged })}</span>
                             </div>
 
                             {/* Batch actions */}
@@ -321,9 +321,9 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                                 <Check size={18} /> {t('vaultSync.completed')}
                             </div>
                             <div className="text-xs space-y-1 text-[var(--color-text-secondary)]">
-                                {result.to_vault > 0 && <p>{result.to_vault} {t('vaultSync.filesToVault')}</p>}
-                                {result.to_local > 0 && <p>{result.to_local} {t('vaultSync.filesToLocal')}</p>}
-                                {result.skipped > 0 && <p>{result.skipped} {t('vaultSync.filesSkipped')}</p>}
+                                {result.to_vault > 0 && <p>{t('vaultSync.filesToVaultCount', { count: result.to_vault })}</p>}
+                                {result.to_local > 0 && <p>{t('vaultSync.filesToLocalCount', { count: result.to_local })}</p>}
+                                {result.skipped > 0 && <p>{t('vaultSync.filesSkippedCount', { count: result.skipped })}</p>}
                             </div>
                             {result.errors.length > 0 && (
                                 <div className="p-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400 space-y-1">

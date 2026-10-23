@@ -80,7 +80,8 @@
             "reset": "リセット",
             "saved": "保存しました",
             "saving": "保存中...",
-            "creating": "作成中..."
+            "creating": "作成中...",
+            "minutesCount": "{count} 分"
         },
         "connection": {
             "title": "サーバーに接続",
@@ -159,7 +160,6 @@
             "saveChanges": "変更を保存",
             "createAccount": "アカウントを作成",
             "docs": "ドキュメント",
-            "minutes": "分",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "既存のアカウントに戻る",
@@ -390,7 +390,6 @@
             "path": "パス",
             "files": "ファイル",
             "folders": "フォルダ",
-            "items": "アイテム",
             "emptyFolder": "このフォルダは空です",
             "parentFolder": "親フォルダ",
             "newFolder": "新規フォルダ",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "右パネル",
             "chooseRightPanelFolder": "右パネルのフォルダーを選択",
             "chooseLeftPanelFolder": "左パネルのフォルダーを選択",
-            "localRight": "ローカル (右)"
+            "localRight": "ローカル (右)",
+            "itemCount": "{count} 件の項目",
+            "fileCount": "{count} 個のファイル",
+            "folderCount": "{count} 個のフォルダ"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgentに質問...",
@@ -608,7 +610,6 @@
             "copyError": "コピーエラー",
             "copyQueueToClipboard": "キューをクリップボードにコピー",
             "fail": "失敗",
-            "pending": "保留中",
             "remove": "削除",
             "retry": "再試行",
             "stopAll": "すべて停止",
@@ -673,7 +674,6 @@
                 "newTransfer": "新規転送",
                 "preparing": "転送を準備しています…"
             },
-            "staged": "待機中",
             "start": "開始",
             "startAll": "すべて開始",
             "restored": "復元済み",
@@ -744,7 +744,10 @@
                 "size": "サイズ",
                 "source": "転送元",
                 "title": "{mode}プラン"
-            }
+            },
+            "stagedCount": "{count} 件ステージ済み",
+            "pendingCount": "{count} 件保留中",
+            "failedCount": "{count} 件失敗"
         },
         "settings": {
             "title": "設定",
@@ -929,7 +932,6 @@
             "migrationSkip": "今はスキップ",
             "migrationFinish": "完了",
             "migrationStep": "ステップ {current} / {total}",
-            "duplicatesSkipped": "重複をスキップ",
             "invalidPassword": "無効なパスワード",
             "backup": "バックアップ",
             "visibleColumns": "表示列",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "コンシューマーシークレット",
             "privacyRespect": "AeroFTPはプライバシーを保護します。データ収集なし、トラッキングなし、テレメトリなし。",
             "keystoreEntries": "{count} 件",
-            "serverCredentials": "サーバー資格情報",
-            "serverProfilesLabel": "サーバープロファイル",
-            "aiKeysLabel": "AIキー",
-            "oauthTokensLabel": "OAuthトークン",
-            "configEntriesLabel": "設定エントリ",
             "session": "セッション",
             "aeroftpBackupFiles": "AeroFTP バックアップファイル",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "エクスポートするサーバーを選択",
             "selectAll": "すべて選択",
             "deselectAll": "すべて選択解除",
-            "selected": "選択済み",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "アイコンが設定されていない場合、サーバーの favicon または icon.png が自動的に検出されます。",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "ライト",
             "imagePreviewBgCustom": "カスタム",
             "showTransferProgress": "転送の進行状況バーを表示",
-            "similarToExisting": "既存のプロファイルに類似",
             "aerocloudCompress": "圧縮を有効にする (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: 圧縮 + 暗号化 (プロファイルに暗号化あり)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "システムへのインストールが必要です。利用できない場合、AeroFTP は自動的に代替フォントを使用します。",
             "fontSizeIndicatorLabel": "フォント",
             "fontPresetDefault": "{font} (デフォルト)",
-            "fontPresetSystemDefault": "システムのデフォルト"
+            "fontPresetSystemDefault": "システムのデフォルト",
+            "duplicatesSkippedCount": "{count} 件の重複をスキップ",
+            "similarToExistingCount": "{count} 件が既存のプロファイルと類似",
+            "bridgeSkippedCount": "{count} 件スキップ",
+            "selectedOfTotal": "{selected} / {total} 件選択",
+            "serverCredentialsCount": "{count} 件のサーバー認証情報",
+            "serverProfilesCount": "{count} 件のサーバープロファイル",
+            "aiKeysCount": "{count} 件の AI キー",
+            "oauthTokensCount": "{count} 件の OAuth トークン",
+            "configEntriesCount": "{count} 件の設定エントリ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "開始中...",
             "pending": "保留中",
             "conflict": "競合",
-            "conflicts": "件の競合に対応が必要です",
             "error": "同期エラー",
             "never": "なし",
             "justNow": "たった今",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "まもなく...",
             "aerocloudEnabled": "AeroCloud 有効",
             "selectPairLocalFolder": "ペアのローカルフォルダーを選択",
-            "secondsAgo": "{count}秒前"
+            "secondsAgo": "{count}秒前",
+            "conflictsCount": "{count} 件の競合に対応が必要"
         },
         "statusBar": {
             "connected": "接続済み",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "ファイルは既に存在します",
-            "moreFiles": "キューにさらにファイルがあります",
             "remote": "リモート",
             "local": "ローカル",
             "sourceNewer": "ソースが新しい",
@@ -2764,7 +2767,6 @@
                 "approveThis": "このツール呼び出しを承認",
                 "confirm": "確認",
                 "confirmDangerous": "危険なアクションを確認",
-                "pendingApproval": "承認待ち",
                 "rejectAllCalls": "すべてのツール呼び出しを拒否",
                 "rejectExecution": "ツールの実行を拒否",
                 "toggleDetails": "詳細を切替",
@@ -2993,12 +2995,11 @@
                 "allowAll": "すべて許可",
                 "rejectAll": "すべて拒否",
                 "pending": "承認待ち",
-                "toolCall": "ツール呼び出し",
-                "toolCalls": "ツール呼び出し",
                 "running": "実行中...",
                 "done": "完了",
                 "failed": "失敗",
-                "allowThis": "このツールを許可"
+                "allowThis": "このツールを許可",
+                "pendingApprovalCount": "{count} 件のツール呼び出しが承認待ち"
             },
             "diff": {
                 "title": "差分プレビュー",
@@ -3298,7 +3299,6 @@
                 "add": "追加",
                 "added": "追加済み",
                 "all": "すべて",
-                "available": "利用可能",
                 "browseProviders": "プロバイダーを閲覧",
                 "chinese": "中国語",
                 "fast": "高速推論",
@@ -3318,7 +3318,8 @@
                 "tools": "ツール",
                 "vision": "Vision",
                 "bedrockDescription": "リージョン別の API キーでアクセスできる AWS ホストのモデルです。model ID を手動で追加してください。",
-                "bedrockHighlight": "AWS リージョンのエンドポイント"
+                "bedrockHighlight": "AWS リージョンのエンドポイント",
+                "availableCount": "{count} 件利用可能"
             },
             "history": {
                 "cancel": "キャンセル",
@@ -3673,12 +3674,12 @@
             "size": "サイズ",
             "compressed": "圧縮済み",
             "actions": "操作",
-            "files": "ファイル",
             "empty": "アーカイブは空です",
             "extracting": "展開中",
             "preview": "プレビュー",
             "extract": "抽出",
-            "back": "戻る"
+            "back": "戻る",
+            "filesSummary": "{count} 個のファイル、{size}"
         },
         "vault": {
             "addDirectorySuccess": "{dirs}ディレクトリの{files}ファイルを追加しました",
@@ -3725,7 +3726,6 @@
             "filesAdded": "{count} 個のファイルを追加しました",
             "folderName": "フォルダ名",
             "itemDeleted": "{name} を削除しました",
-            "items": "項目",
             "itemsDeleted": "{count} 個のアイテムを削除しました",
             "lastOpened": "最後に開いた日時",
             "modified": "更新日時",
@@ -3766,7 +3766,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - 強力な暗号化",
-            "totalItems": "合計",
             "unlock": "解除",
             "v1Standard": "AeroVault v1（標準）",
             "v2Advanced": "AeroVault v2（高度なセキュリティ）",
@@ -3853,8 +3852,6 @@
             "extractAllHint": "ボールト内のすべてのファイルをフォルダーに抽出",
             "extractedAll": "{count} 個のファイルを {path} に抽出しました",
             "dropFilesHint": "ファイルやフォルダーをここにドラッグするか、下のボタンを使用してください",
-            "itemSingular": "項目",
-            "itemPlural": "項目",
             "reportExported": "ボールトのレポートを {path} に保存しました",
             "reportCopied": "ボールトのレポートをクリップボードにコピーしました",
             "exportReportHint": "完全な技術レポートをエクスポート：ボールトのメタデータ、暗号化、誤り訂正、全ファイル一覧",
@@ -3907,7 +3904,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · 高速",
             "securityAdvancedDescription": "nonce 耐性 · ファイル名を暗号化 · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 カスケード · 二重暗号化",
-            "securityArchiveDescription": "重複排除アーカイブ · zstd チャンク · v3"
+            "securityArchiveDescription": "重複排除アーカイブ · zstd チャンク · v3",
+            "totalItemsCount": "合計 {count} 件"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",
@@ -3920,7 +3918,6 @@
             "empty": "ディレクトリは空です",
             "name": "名前",
             "size": "サイズ",
-            "items": "項目",
             "readOnly": "読み取り専用モード - 保管庫作成はv2.1で対応",
             "openAsVault": "Cryptomator保管庫として開く",
             "decryptAndSave": "復号して保存",
@@ -3953,8 +3950,6 @@
             "level": "圧縮レベル",
             "password": "パスワード（任意、AES-256）",
             "passwordHint": "未入力の場合は暗号化しません",
-            "files": "ファイル",
-            "folders": "フォルダ",
             "compress": "圧縮",
             "store": "保存（無圧縮）",
             "fast": "高速",
@@ -4196,8 +4191,6 @@
             "modified": "更新日時",
             "file": "ファイル",
             "folder": "フォルダ",
-            "files": "ファイル",
-            "folders": "フォルダ",
             "remote": "リモート",
             "local": "ローカル",
             "linkTarget": "シンボリックリンク先",
@@ -4273,10 +4266,7 @@
             "deleted": "{count} 件の重複ファイルを削除しました",
             "scanFailed": "スキャンに失敗しました",
             "retry": "再試行",
-            "groups": "グループ",
-            "duplicateFiles": "重複ファイル",
             "wasted": "無駄",
-            "copies": "コピー",
             "delete": "削除",
             "skip": "スキップ",
             "deleteConfirm": "{count} 件の重複ファイルを削除しますか？",
@@ -4296,7 +4286,10 @@
             "similarityDistance": "{similarity}、距離 {distance}",
             "modeExact": "完全一致",
             "modeLabel": "モード:",
-            "modeNonIdentical": "非同一"
+            "modeNonIdentical": "非同一",
+            "groupsCount": "{count} グループ",
+            "duplicateFilesCount": "{count} 個の重複ファイル",
+            "copiesCount": "{count} 個のコピー"
         },
         "diskUsage": {
             "title": "ディスク使用量",
@@ -4304,20 +4297,16 @@
             "totalItems": "合計: {size} / {count} 件",
             "percentOfParent": "親の {percent}%",
             "backToParent": "親に戻る",
-            "items": "項目",
             "scanFailed": "解析に失敗しました",
             "retry": "再試行",
             "drillDown": "クリックして探索",
             "back": "戻る",
-            "total": "合計",
-            "across": "全体",
             "empty": "このディレクトリは空です",
             "hoverHint": "ブロックにカーソルを合わせて詳細を表示",
             "scanUnknownError": "ディスク使用量のスキャン中に不明なエラーが発生しました"
         },
         "dependencies": {
             "title": "依存関係",
-            "crates": "crates",
             "copy": "コピー",
             "copied": "コピーしました！",
             "checkUpdates": "更新を確認",
@@ -4327,7 +4316,8 @@
             "latest": "最新",
             "status": "状態",
             "footer": "バージョン情報はcrates.io APIから取得。表示されるのは解決済み（Cargo.lock）バージョンです。",
-            "copyTitle": "AeroFTP 依存関係チェック"
+            "copyTitle": "AeroFTP 依存関係チェック",
+            "cratesCount": "{count} 個のクレート"
         },
         "debug": {
             "tabs": {
@@ -4387,7 +4377,6 @@
                 "warning": "警告",
                 "info": "情報",
                 "debug": "デバッグ",
-                "entries": "件",
                 "resume": "再開",
                 "pause": "一時停止",
                 "copyAll": "すべてコピー",
@@ -4396,13 +4385,13 @@
                 "allSources": "すべてのソース",
                 "sourceFilterTitle": "ソースでフィルター",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "エントリ: {count}"
             },
             "frontend": {
                 "reactMode": "Reactモード",
                 "language": "言語",
                 "localStorageKeys": "LocalStorageキー",
-                "keys": "キー",
                 "localStorageSize": "LocalStorageサイズ",
                 "windowSize": "ウィンドウサイズ",
                 "devicePixelRatio": "デバイスピクセル比",
@@ -4411,7 +4400,8 @@
                 "light": "ライト",
                 "userAgent": "ユーザーエージェント",
                 "localStorageKeysTitle": "LocalStorageキー",
-                "localStorageEntrySummary": "{size} バイト · {preview}"
+                "localStorageEntrySummary": "{size} バイト · {preview}",
+                "keysCount": "{count} 個のキー"
             },
             "copyFileListToClipboard": "ファイル一覧をクリップボードにコピー",
             "filesCopied": "{count} 件のファイルエントリをクリップボードにコピーしました",
@@ -4433,12 +4423,12 @@
                 "i18nSweep": "i18n キースイープ",
                 "ipcSpeed": "IPC 速度サンプル",
                 "knownHosts": "known_hosts の読み取り",
-                "passed": "成功",
                 "pluginIntegrity": "プラグイン整合性",
                 "providerSelftest": "プロバイダーセルフテスト (読み取り専用)",
                 "runAll": "すべて実行",
                 "runOne": "このテストを実行",
-                "vaultRoundtrip": "保管庫のラウンドトリップ"
+                "vaultRoundtrip": "保管庫のラウンドトリップ",
+                "passedCount": "{passed}/{total} 合格"
             },
             "bundle": {
                 "title": "診断バンドルをエクスポート (ZIP)"
@@ -4486,9 +4476,9 @@
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",
             "badges": {
-                "active": "アクティブ",
                 "live": "ライブ",
-                "synced": "同期済み"
+                "synced": "同期済み",
+                "activeCount": "{count} 件実行中"
             },
             "clearLog": "ログをクリア",
             "close": "閉じる",
@@ -4512,7 +4502,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "操作をフィルター",
-                "selected": "選択中"
+                "selectedCount": "{count} 件選択中"
             },
             "save": "保存"
         },
@@ -4704,14 +4694,12 @@
                 "auto": "自動",
                 "autoRefresh": "自動更新 (3s)",
                 "browser": "ブラウザ",
-                "chars": "文字",
                 "copy": "クリップボードにコピー",
                 "disableWrap": "折り返しを無効化",
                 "enableWrap": "折り返しを有効化",
                 "encoding": "エンコーディング",
                 "errorLoading": "コンテンツの読み込みエラー",
                 "hex": "16進数",
-                "lines": "行",
                 "loadFailed": "テキストコンテンツの読み込みに失敗しました",
                 "noContent": "コンテンツがありません",
                 "openBrowser": "システムブラウザで開く",
@@ -4730,7 +4718,8 @@
                 "wordWrap": "折り返し",
                 "zoomIn": "拡大",
                 "zoomOut": "縮小",
-                "htmlPreviewFrameTitle": "HTML プレビュー"
+                "htmlPreviewFrameTitle": "HTML プレビュー",
+                "stats": "{lines} 行 • {chars} 文字"
             },
             "video": {
                 "exitFullscreen": "フルスクリーン終了 (F)",
@@ -4855,7 +4844,6 @@
             "pwdBatchCount": "生成数",
             "pwdGenerate": "生成",
             "pwdEntropy": "エントロピー",
-            "pwdBits": "ビット",
             "pwdWeak": "弱い",
             "pwdFair": "普通",
             "pwdGood": "良い",
@@ -4906,7 +4894,8 @@
             "argon2DefaultsHint": "既定値: AeroVault と AeroCrypt が使うプロファイル (128 MiB、反復 4 回、4 レーン、32 バイトの出力)。上のソルトはあなた自身のものです。メモリは最大 2 GiB。",
             "argon2Derive": "導出",
             "argon2Phc": "PHC 文字列",
-            "hashError": "エラー: {error}"
+            "hashError": "エラー: {error}",
+            "pwdBitsCount": "{count} ビット"
         },
         "dialog": {
             "deleteFile": "「{name}」を削除しますか？",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "vaultのみ",
             "localOnly": "ローカルのみ",
             "conflict": "競合",
-            "conflicts": "競合",
-            "unchanged": "変更なし",
             "allToVault": "すべてvaultへ",
             "allToLocal": "すべてローカルへ",
             "keepNewer": "新しい方を保持",
@@ -5018,10 +5005,14 @@
             "applySync": "同期を適用",
             "close": "閉じる",
             "allInSync": "すべてのファイルが同期されています",
-            "filesToVault": "ファイルをvaultに同期済み",
-            "filesToLocal": "ファイルをローカルに抽出済み",
-            "filesSkipped": "ファイルをスキップ済み",
-            "errorsOccurred": "いくつかのエラーが発生しました"
+            "errorsOccurred": "いくつかのエラーが発生しました",
+            "vaultOnlyCount": "vaultのみ: {count}",
+            "localOnlyCount": "ローカルのみ: {count}",
+            "conflictsCount": "{count} 件の競合",
+            "unchangedCount": "{count} 件変更なし",
+            "filesToVaultCount": "{count} 個のファイルを vault に同期しました",
+            "filesToLocalCount": "{count} 個のファイルをローカルに展開しました",
+            "filesSkippedCount": "{count} 個のファイルをスキップしました"
         },
         "localTabs": {
             "closeAll": "すべてのタブを閉じる",
@@ -5246,7 +5237,6 @@
             "checkAll": "すべてチェック",
             "checkOne": "このサーバーをチェック",
             "checking": "確認中...",
-            "checked": "確認済み",
             "healthy": "正常",
             "degraded": "低下",
             "unreachable": "到達不能",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "{count} 台のサーバーを確認しています、お待ちください...",
             "scoreLegend": "スコア 0-100、高いほど良い",
-            "scoreLegendDetail": "80以上 健全 · 50-79 低下 · 50未満 問題あり"
+            "scoreLegendDetail": "80以上 健全 · 50-79 低下 · 50未満 問題あり",
+            "checkedCount": "{count} 件チェック済み",
+            "healthyCount": "{count} 件正常",
+            "degradedCount": "{count} 件低下",
+            "unreachableCount": "{count} 件到達不能"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "アーカイブ済み",
                 "trash": "ゴミ箱"
             },
-            "participants": "参加者",
             "saving": "保存中...",
             "saved": "保存済み",
             "saveNow": "今すぐ保存",
@@ -5549,7 +5542,8 @@
                 "code": "コード",
                 "richText": "リッチテキスト",
                 "checklist": "チェックリスト"
-            }
+            },
+            "participantsCount": "{count} 人の参加者"
         },
         "shareLinkModal": {
             "title": "共有リンク",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "もう一方のパネルに移動",
             "copiedToOtherPanel": "もう一方のパネルにコピーしました",
             "movedToOtherPanel": "もう一方のパネルに移動しました",
-            "itemsLower": "項目",
             "resizePanels": "パネルのサイズを変更",
             "copyHere": "{count} 件をここにコピー",
             "moveHere": "{count} 件をここに移動",
             "copyHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルにコピー (F5)",
             "moveHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルに移動 (F6)",
-            "syncToOtherPanel": "もう一方のパネルに同期 (delta)"
+            "syncToOtherPanel": "もう一方のパネルに同期 (delta)",
+            "failedCount": "{count} 件失敗",
+            "skippedCount": "{count} 件スキップ"
         },
         "compare": {
             "title": "パネルを比較",
@@ -6146,9 +6141,6 @@
             "bucket": "カテゴリ",
             "count": "件数",
             "action": "操作",
-            "delete": "削除",
-            "overwrite": "上書き",
-            "conflicts": "競合",
             "destructiveWarning": "このプリセットは新しいファイルを削除または上書きします。",
             "confirmDestructive": "破壊的操作を確認し、続行したいです。",
             "executeHint": "実行は選択をステージングし、統合転送プランナー経由でディスパッチします。",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "ネットワーク上のバイト数",
                 "savings": "節約量",
-                "errorDetails": "件のエラー、詳細",
                 "errorPathsRequired": "ソースと宛先は必須です",
                 "deltaStatus": "デルタ同期",
                 "deltaAuto": "自動オン",
@@ -6207,7 +6198,8 @@
                 "planned": "コピー予定",
                 "resultDryRunOk": "ドライランが完了しました",
                 "resultDryRunPartial": "ドライランがエラーありで完了しました",
-                "resultDryRunCancelled": "ドライランがキャンセルされました"
+                "resultDryRunCancelled": "ドライランがキャンセルされました",
+                "errorDetailsCount": "{count} 件のエラー、詳細"
             },
             "launcherTemplates": "テンプレート",
             "launcherMultiPath": "マルチパス",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "比較では、両方のフォルダーとその下のすべてのフォルダーを読み取ります。大きなツリーでは時間がかかることがありますが、途中で停止できます。",
             "progressDelta": "[差分]",
-            "progressCopy": "[コピー]"
+            "progressCopy": "[コピー]",
+            "deleteCount": "{count} 件を削除予定",
+            "overwriteCount": "{count} 件を上書き予定",
+            "conflictCount": "{count} 件の競合"
         },
         "accountLock": {
             "title": "アカウントを選択",

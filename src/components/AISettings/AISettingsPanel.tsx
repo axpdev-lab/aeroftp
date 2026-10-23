@@ -960,7 +960,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         {t('ai.marketplace.browseProviders')}
                                     </button>
                                     <span className="text-xs text-gray-500">
-                                        {unusedPresets.length} {t('ai.marketplace.available')}
+                                        {t('ai.marketplace.availableCount', { count: unusedPresets.length })}
                                     </span>
                                 </div>
                             )}

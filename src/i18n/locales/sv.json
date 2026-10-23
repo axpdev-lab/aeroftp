@@ -80,7 +80,8 @@
             "reset": "Återställ",
             "saved": "Sparat",
             "saving": "Sparar...",
-            "creating": "Skapar..."
+            "creating": "Skapar...",
+            "minutesCount": "{count} min"
         },
         "connection": {
             "title": "Anslut till server",
@@ -159,7 +160,6 @@
             "saveChanges": "Spara ändringar",
             "createAccount": "Skapa konto",
             "docs": "Dokument",
-            "minutes": "minuter",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Tillbaka till befintligt konto",
@@ -390,7 +390,6 @@
             "path": "Sökväg",
             "files": "filer",
             "folders": "mappar",
-            "items": "objekt",
             "emptyFolder": "Denna mapp är tom",
             "parentFolder": "Överordnad mapp",
             "newFolder": "Ny mapp",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Höger panel",
             "chooseRightPanelFolder": "Välj mapp för höger panel",
             "chooseLeftPanelFolder": "Välj mapp för vänster panel",
-            "localRight": "Lokal (höger)"
+            "localRight": "Lokal (höger)",
+            "itemCount": "{count} objekt",
+            "fileCount": "{count} fil(er)",
+            "folderCount": "{count} mapp(ar)"
         },
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "Kopieringsfel",
             "copyQueueToClipboard": "Kopiera kö till urklipp",
             "fail": "MISSLYCKADES",
-            "pending": "Väntar",
             "remove": "Ta bort",
             "retry": "Försök igen",
             "stopAll": "Stoppa alla",
@@ -673,7 +674,6 @@
                 "newTransfer": "Ny överföring",
                 "preparing": "Förbereder överföring…"
             },
-            "staged": "i kö",
             "start": "Starta",
             "startAll": "Starta alla",
             "restored": "Återställd",
@@ -744,7 +744,10 @@
                 "size": "Storlek",
                 "source": "Källa",
                 "title": "Plan: {mode}"
-            }
+            },
+            "stagedCount": "Förberedda: {count}",
+            "pendingCount": "Väntande: {count}",
+            "failedCount": "{count} misslyckades"
         },
         "settings": {
             "title": "Inställningar",
@@ -929,7 +932,6 @@
             "migrationSkip": "Hoppa över för nu",
             "migrationFinish": "Slutför",
             "migrationStep": "Steg {current} av {total}",
-            "duplicatesSkipped": "dubbletter hoppades över",
             "invalidPassword": "Ogiltigt lösenord",
             "backup": "Säkerhetskopia",
             "visibleColumns": "Synliga kolumner",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Konsumenthemlighet",
             "privacyRespect": "AeroFTP skyddar din integritet. Ingen data samlas in, ingen spårning, ingen telemetri.",
             "keystoreEntries": "{count} poster",
-            "serverCredentials": "serverautentiseringsuppgifter",
-            "serverProfilesLabel": "serverprofiler",
-            "aiKeysLabel": "AI-nycklar",
-            "oauthTokensLabel": "OAuth-tokens",
-            "configEntriesLabel": "konfigurationsposter",
             "session": "Session",
             "aeroftpBackupFiles": "AeroFTP-säkerhetskopiefiler",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Välj servrar att exportera",
             "selectAll": "Markera alla",
             "deselectAll": "Avmarkera alla",
-            "selected": "markerade",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Om ingen ikon är inställd identifieras favicon eller icon.png från servern automatiskt.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Ljus",
             "imagePreviewBgCustom": "Anpassad",
             "showTransferProgress": "Visa förloppsindikator för överföring",
-            "similarToExisting": "liknar en befintlig profil",
             "aerocloudCompress": "Aktivera komprimering (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: komprimering + kryptering (profilen har kryptering)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Kräver systeminstallation. AeroFTP faller tillbaka automatiskt om det inte är tillgängligt.",
             "fontSizeIndicatorLabel": "Teckensnitt",
             "fontPresetDefault": "{font} (standard)",
-            "fontPresetSystemDefault": "Systemstandard"
+            "fontPresetSystemDefault": "Systemstandard",
+            "duplicatesSkippedCount": "{count} dublett(er) hoppades över",
+            "similarToExistingCount": "{count} liknar en befintlig profil",
+            "bridgeSkippedCount": "{count} hoppades över",
+            "selectedOfTotal": "Valda: {selected} / {total}",
+            "serverCredentialsCount": "Serverautentiseringsuppgifter: {count}",
+            "serverProfilesCount": "{count} serverprofil(er)",
+            "aiKeysCount": "AI-nycklar: {count}",
+            "oauthTokensCount": "OAuth-token: {count}",
+            "configEntriesCount": "Konfigurationsposter: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Startar...",
             "pending": "Väntar",
             "conflict": "Konflikt",
-            "conflicts": "konflikter behöver uppmärksamhet",
             "error": "Synkroniseringsfel",
             "never": "Aldrig",
             "justNow": "Just nu",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Snart...",
             "aerocloudEnabled": "AeroCloud aktiverat",
             "selectPairLocalFolder": "Välj lokal mapp för paret",
-            "secondsAgo": "{count}s sedan"
+            "secondsAgo": "{count}s sedan",
+            "conflictsCount": "{count} konflikt(er) kräver åtgärd"
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "Filen finns redan",
-            "moreFiles": "fler fil(er) i kön",
             "remote": "Fjärr",
             "local": "Lokal",
             "sourceNewer": "Källan är nyare",
@@ -2800,7 +2803,6 @@
                 "approveThis": "Godkänn detta verktygsanrop",
                 "confirm": "Bekräfta",
                 "confirmDangerous": "Bekräfta farlig åtgärd",
-                "pendingApproval": "väntar på godkännande",
                 "rejectAllCalls": "Avvisa alla verktygsanrop",
                 "rejectExecution": "Avvisa verktygskörning",
                 "toggleDetails": "Visa/dölj detaljer",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Tillåt alla",
                 "rejectAll": "Avvisa alla",
                 "pending": "väntar på godkännande",
-                "toolCall": "verktygsanrop",
-                "toolCalls": "verktygsanrop",
                 "running": "Kör...",
                 "done": "Klar",
                 "failed": "Misslyckades",
-                "allowThis": "Tillåt detta verktyg"
+                "allowThis": "Tillåt detta verktyg",
+                "pendingApprovalCount": "{count} verktygsanrop väntar på godkännande"
             },
             "diff": {
                 "title": "Diff-förhandsgranskning",
@@ -3334,7 +3335,6 @@
                 "add": "Lägg till",
                 "added": "Tillagd",
                 "all": "Alla",
-                "available": "tillgängliga",
                 "browseProviders": "Bläddra bland leverantörer",
                 "chinese": "Kinesiska",
                 "fast": "Snabb inferens",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Modeller som körs på AWS med åtkomst via regional API-nyckel. Lägg till ditt model ID manuellt.",
-                "bedrockHighlight": "Regional AWS-slutpunkt"
+                "bedrockHighlight": "Regional AWS-slutpunkt",
+                "availableCount": "Tillgängliga: {count}"
             },
             "history": {
                 "cancel": "Avbryt",
@@ -3709,12 +3710,12 @@
             "size": "Storlek",
             "compressed": "Komprimerad",
             "actions": "Åtgärder",
-            "files": "filer",
             "empty": "Arkivet är tomt",
             "extracting": "Extraherar",
             "preview": "Förhandsvisa",
             "extract": "Extrahera",
-            "back": "Tillbaka"
+            "back": "Tillbaka",
+            "filesSummary": "{count} fil(er), {size}"
         },
         "vault": {
             "addDirectorySuccess": "Lade till {files} filer i {dirs} kataloger",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count} fil(er) tillagda",
             "folderName": "Mappnamn",
             "itemDeleted": "Borttaget {name}",
-            "items": "objekt",
             "itemsDeleted": "{count} objekt borttagna",
             "lastOpened": "Senast öppnad",
             "modified": "Ändrad",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Stark kryptering",
-            "totalItems": "totalt",
             "unlock": "Lås upp",
             "v1Standard": "AeroVault v1 (Standard)",
             "v2Advanced": "AeroVault v2 (Avancerad säkerhet)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "Extrahera alla filer i valvet till en mapp",
             "extractedAll": "Extraherade {count} fil(er) till {path}",
             "dropFilesHint": "Dra filer eller mappar hit, eller använd knapparna nedan",
-            "itemSingular": "objekt",
-            "itemPlural": "objekt",
             "reportExported": "Valvrapport sparad till {path}",
             "reportCopied": "Valvrapport kopierad till urklipp",
             "exportReportHint": "Exportera en komplett teknisk rapport: valvmetadata, kryptering, felkorrigering och fullständig fillista",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Snabb",
             "securityAdvancedDescription": "Nonce-resistent · Krypterade filnamn · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20-kaskad · Dubbel kryptering",
-            "securityArchiveDescription": "Deduplicerat arkiv · zstd-block · v3"
+            "securityArchiveDescription": "Deduplicerat arkiv · zstd-block · v3",
+            "totalItemsCount": "Totalt {count}"
         },
         "cryptomator": {
             "title": "Cryptomator-valv",
@@ -3956,7 +3954,6 @@
             "empty": "Katalogen är tom",
             "name": "Namn",
             "size": "Storlek",
-            "items": "objekt",
             "readOnly": "Skrivskyddat läge - valvskapande kommer i v2.1",
             "openAsVault": "Öppna som Cryptomator-valv",
             "decryptAndSave": "Dekryptera och spara",
@@ -3989,8 +3986,6 @@
             "level": "Komprimeringsnivå",
             "password": "Lösenord (valfritt, AES-256)",
             "passwordHint": "Lämna tomt för ingen kryptering",
-            "files": "filer",
-            "folders": "mappar",
             "compress": "Komprimera",
             "store": "Lagra (ingen komprimering)",
             "fast": "Snabb",
@@ -4232,8 +4227,6 @@
             "modified": "Ändrad",
             "file": "Fil",
             "folder": "Mapp",
-            "files": "filer",
-            "folders": "mappar",
             "remote": "Fjärr",
             "local": "Lokal",
             "linkTarget": "Symbolisk länk",
@@ -4309,10 +4302,7 @@
             "deleted": "{count} dubblettfiler borttagna",
             "scanFailed": "Sökning misslyckades",
             "retry": "Försök igen",
-            "groups": "grupper",
-            "duplicateFiles": "dubblettfiler",
             "wasted": "slösade",
-            "copies": "kopior",
             "delete": "TA BORT",
             "skip": "HOPPA ÖVER",
             "deleteConfirm": "Är du säker på att du vill ta bort {count} dubblettfiler?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, avst. {distance}",
             "modeExact": "Exakt",
             "modeLabel": "Läge:",
-            "modeNonIdentical": "Ej identisk"
+            "modeNonIdentical": "Ej identisk",
+            "groupsCount": "{count} grupp(er)",
+            "duplicateFilesCount": "{count} dubblettfil(er)",
+            "copiesCount": "{count} kopior"
         },
         "diskUsage": {
             "title": "Diskanvändning",
@@ -4340,20 +4333,16 @@
             "totalItems": "Totalt: {size} fördelat på {count} objekt",
             "percentOfParent": "{percent}% av överordnad",
             "backToParent": "Tillbaka till överordnad",
-            "items": "objekt",
             "scanFailed": "Analys misslyckades",
             "retry": "Försök igen",
             "drillDown": "Klicka för att utforska",
             "back": "Tillbaka",
-            "total": "Totalt",
-            "across": "fördelat på",
             "empty": "Denna katalog är tom",
             "hoverHint": "Håll muspekaren över ett block för att se detaljer",
             "scanUnknownError": "Okänt fel vid skanning av diskanvändning"
         },
         "dependencies": {
             "title": "Beroenden",
-            "crates": "crates",
             "copy": "Kopiera",
             "copied": "Kopierad!",
             "checkUpdates": "Sök uppdateringar",
@@ -4363,7 +4352,8 @@
             "latest": "Senaste",
             "status": "Status",
             "footer": "Versionsdata från crates.io API. Versioner som visas är låsta (Cargo.lock) versioner.",
-            "copyTitle": "AeroFTP Beroendecheck"
+            "copyTitle": "AeroFTP Beroendecheck",
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Varning",
                 "info": "Info",
                 "debug": "Felsökning",
-                "entries": "poster",
                 "resume": "Återuppta",
                 "pause": "Pausa",
                 "copyAll": "Kopiera alla",
@@ -4432,13 +4421,13 @@
                 "allSources": "Alla källor",
                 "sourceFilterTitle": "Filtrera efter källa",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Poster: {count}"
             },
             "frontend": {
                 "reactMode": "React-läge",
                 "language": "Språk",
                 "localStorageKeys": "LocalStorage-nycklar",
-                "keys": "nycklar",
                 "localStorageSize": "LocalStorage-storlek",
                 "windowSize": "Fönsterstorlek",
                 "devicePixelRatio": "Enhetens pixelförhållande",
@@ -4447,7 +4436,8 @@
                 "light": "Ljust",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "LocalStorage-nycklar",
-                "localStorageEntrySummary": "{size} byte · {preview}"
+                "localStorageEntrySummary": "{size} byte · {preview}",
+                "keysCount": "Nycklar: {count}"
             },
             "copyFileListToClipboard": "Kopiera fillista till urklipp",
             "filesCopied": "{count} filposter kopierade till urklipp",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "i18n-nyckelgenomgång",
                 "ipcSpeed": "IPC-hastighetsprov",
                 "knownHosts": "known_hosts-läsning",
-                "passed": "godkända",
                 "pluginIntegrity": "Plugin-integritet",
                 "providerSelftest": "Leverantörens självtest (skrivskyddad)",
                 "runAll": "Kör alla",
                 "runOne": "Kör detta test",
-                "vaultRoundtrip": "Valv-rundtur"
+                "vaultRoundtrip": "Valv-rundtur",
+                "passedCount": "Godkända: {passed}/{total}"
             },
             "bundle": {
                 "title": "Exportera diagnostikpaket (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Väntar på kommandon...",
             "badges": {
-                "active": "AKTIV",
                 "live": "LIVE",
-                "synced": "SYNKAD"
+                "synced": "SYNKAD",
+                "activeCount": "AKTIVA: {count}"
             },
             "clearLog": "Rensa logg",
             "close": "Stäng",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtrera åtgärder",
-                "selected": "valda"
+                "selectedCount": "Valda: {count}"
             },
             "save": "Spara"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Auto",
                 "autoRefresh": "Automatisk uppdatering (3s)",
                 "browser": "Webbläsare",
-                "chars": "tecken",
                 "copy": "Kopiera till urklipp",
                 "disableWrap": "Inaktivera radbrytning",
                 "enableWrap": "Aktivera radbrytning",
                 "encoding": "Kodning",
                 "errorLoading": "Fel vid inläsning av innehåll",
                 "hex": "Hex",
-                "lines": "rader",
                 "loadFailed": "Inläsning av textinnehåll misslyckades",
                 "noContent": "Inget innehåll tillgängligt",
                 "openBrowser": "Öppna i systemwebbläsare",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Radbrytning",
                 "zoomIn": "Zooma in",
                 "zoomOut": "Zooma ut",
-                "htmlPreviewFrameTitle": "HTML-förhandsvisning"
+                "htmlPreviewFrameTitle": "HTML-förhandsvisning",
+                "stats": "{lines} rad(er) • {chars} tecken"
             },
             "video": {
                 "exitFullscreen": "Avsluta helskärmsläge (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Genereringsantal",
             "pwdGenerate": "Generera",
             "pwdEntropy": "Entropi",
-            "pwdBits": "bitar",
             "pwdWeak": "Svag",
             "pwdFair": "Acceptabel",
             "pwdGood": "Bra",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Standardvärden: profilen som AeroVault och AeroCrypt använder (128 MiB, 4 iterationer, 4 banor, 32-byte utdata). Saltet ovan är ditt. Minne upp till 2 GiB.",
             "argon2Derive": "Härled",
             "argon2Phc": "PHC-sträng",
-            "hashError": "Fel: {error}"
+            "hashError": "Fel: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "Radera \"{name}\"?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Endast i valvet",
             "localOnly": "Endast lokalt",
             "conflict": "Konflikt",
-            "conflicts": "konflikter",
-            "unchanged": "oförändrad",
             "allToVault": "Allt till valvet",
             "allToLocal": "Allt lokalt",
             "keepNewer": "Behåll nyare",
@@ -5018,10 +5005,14 @@
             "applySync": "Utför synkronisering",
             "close": "Stäng",
             "allInSync": "Alla filer är synkroniserade",
-            "filesToVault": "fil(er) synkroniserade till valvet",
-            "filesToLocal": "fil(er) extraherade lokalt",
-            "filesSkipped": "fil(er) hoppade över",
-            "errorsOccurred": "Några fel inträffade"
+            "errorsOccurred": "Några fel inträffade",
+            "vaultOnlyCount": "{count} endast i valvet",
+            "localOnlyCount": "{count} endast lokalt",
+            "conflictsCount": "{count} konflikt(er)",
+            "unchangedCount": "Oförändrade: {count}",
+            "filesToVaultCount": "{count} fil(er) synkroniserades till valvet",
+            "filesToLocalCount": "{count} fil(er) extraherades lokalt",
+            "filesSkippedCount": "{count} fil(er) hoppades över"
         },
         "localTabs": {
             "closeAll": "Stäng alla flikar",
@@ -5246,7 +5237,6 @@
             "checkAll": "Kontrollera alla",
             "checkOne": "Kontrollera denna server",
             "checking": "Kontrollerar...",
-            "checked": "kontrollerad",
             "healthy": "Frisk",
             "degraded": "Försämrad",
             "unreachable": "Onåbar",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Kontrollerar {count} servrar, vänligen vänta...",
             "scoreLegend": "Poäng 0-100, högre är bättre",
-            "scoreLegendDetail": "80+ frisk · 50-79 försämrad · under 50 har problem"
+            "scoreLegendDetail": "80+ frisk · 50-79 försämrad · under 50 har problem",
+            "checkedCount": "Kontrollerade: {count}",
+            "healthyCount": "Friska: {count}",
+            "degradedCount": "Försämrade: {count}",
+            "unreachableCount": "Onåbara: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "Arkiverade",
                 "trash": "Papperskorg"
             },
-            "participants": "deltagare",
             "saving": "Sparar...",
             "saved": "Sparat",
             "saveNow": "Spara nu",
@@ -5549,7 +5542,8 @@
                 "code": "Kod",
                 "richText": "Formaterad text",
                 "checklist": "Checklista"
-            }
+            },
+            "participantsCount": "{count} deltagare"
         },
         "shareLinkModal": {
             "title": "Delningslänk",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "Flytta till andra panelen",
             "copiedToOtherPanel": "Kopierat till andra panelen",
             "movedToOtherPanel": "Flyttat till andra panelen",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Kopiera {count} hit",
             "moveHere": "Flytta {count} hit",
             "copyHereFromOtherPanelTooltip": "Kopiera {count} valda från den andra panelen till denna panel (F5)",
             "moveHereFromOtherPanelTooltip": "Flytta {count} valda från den andra panelen till denna panel (F6)",
-            "syncToOtherPanel": "Synkronisera till andra panelen (delta)"
+            "syncToOtherPanel": "Synkronisera till andra panelen (delta)",
+            "failedCount": "{count} misslyckades",
+            "skippedCount": "{count} hoppades över"
         },
         "compare": {
             "title": "Jämför paneler",
@@ -6146,9 +6141,6 @@
             "bucket": "Kategori",
             "count": "Antal",
             "action": "Åtgärd",
-            "delete": "ta bort",
-            "overwrite": "skriv över",
-            "conflicts": "konflikt",
             "destructiveWarning": "Denna förinställning kommer att ta bort eller skriva över nyare filer.",
             "confirmDestructive": "Jag har granskat de destruktiva åtgärderna och vill fortsätta.",
             "executeHint": "Utför placerar valet i kö och skickar via den enhetliga överföringsplaneraren.",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Byte på nätverket",
                 "savings": "Besparing",
-                "errorDetails": "fel, detaljer",
                 "errorPathsRequired": "Källa och destination krävs",
                 "deltaStatus": "Delta-synk",
                 "deltaAuto": "AUTO PÅ",
@@ -6207,7 +6198,8 @@
                 "planned": "Planerade kopieringar",
                 "resultDryRunOk": "Testkörning slutförd",
                 "resultDryRunPartial": "Testkörning slutförd med fel",
-                "resultDryRunCancelled": "Testkörning avbruten"
+                "resultDryRunCancelled": "Testkörning avbruten",
+                "errorDetailsCount": "{count} fel, detaljer"
             },
             "launcherTemplates": "Mallar",
             "launcherMultiPath": "Flera sökvägar",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Jämförelsen läser båda mapparna och alla mappar under dem. På ett stort träd kan det ta en stund, och du kan stoppa den.",
             "progressDelta": "[delta]",
-            "progressCopy": "[kopia]"
+            "progressCopy": "[kopia]",
+            "deleteCount": "{count} att radera",
+            "overwriteCount": "{count} att skriva över",
+            "conflictCount": "{count} konflikt(er)"
         },
         "accountLock": {
             "title": "Välj ett konto",

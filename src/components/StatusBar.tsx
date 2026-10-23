@@ -362,12 +362,12 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     <>
                         <div className="flex items-center gap-1.5">
                             <HardDrive size={12} className="text-amber-500" />
-                            <span>{localFileCount} {t('browser.items')}</span>
+                            <span>{t('browser.itemCount', { count: localFileCount })}</span>
                         </div>
                         {isConnected && (
                             <div className="flex items-center gap-1.5">
                                 <Globe size={12} className="text-blue-500" />
-                                <span>{remoteFileCount} {t('browser.items')}</span>
+                                <span>{t('browser.itemCount', { count: remoteFileCount })}</span>
                             </div>
                         )}
                     </>
@@ -376,12 +376,12 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         {isConnected && (
                             <div className="flex items-center gap-1.5">
                                 <Globe size={12} className="text-blue-500" />
-                                <span>{remoteFileCount} {t('browser.items')}</span>
+                                <span>{t('browser.itemCount', { count: remoteFileCount })}</span>
                             </div>
                         )}
                         <div className="flex items-center gap-1.5">
                             <HardDrive size={12} className="text-amber-500" />
-                            <span>{localFileCount} {t('browser.items')}</span>
+                            <span>{t('browser.itemCount', { count: localFileCount })}</span>
                         </div>
                     </>
                 ))}

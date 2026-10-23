@@ -80,7 +80,8 @@
             "reset": "Sıfırla",
             "saved": "Kaydedildi",
             "saving": "Kaydediliyor...",
-            "creating": "Oluşturuluyor..."
+            "creating": "Oluşturuluyor...",
+            "minutesCount": "{count} dk"
         },
         "connection": {
             "title": "Sunucuya Bağlan",
@@ -159,7 +160,6 @@
             "saveChanges": "Değişiklikleri Kaydet",
             "createAccount": "Hesap Oluştur",
             "docs": "Belgeler",
-            "minutes": "dakika",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Mevcut hesaba dön",
@@ -390,7 +390,6 @@
             "path": "Yol",
             "files": "dosya",
             "folders": "klasör",
-            "items": "öğe",
             "emptyFolder": "Bu klasör boş",
             "parentFolder": "Üst klasör",
             "newFolder": "Yeni Klasör",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Sağ panel",
             "chooseRightPanelFolder": "Sağ panel klasörünü seçin",
             "chooseLeftPanelFolder": "Sol panel klasörünü seçin",
-            "localRight": "Yerel (sağ)"
+            "localRight": "Yerel (sağ)",
+            "itemCount": "{count} öğe",
+            "fileCount": "{count} dosya",
+            "folderCount": "{count} klasör"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent'a sor...",
@@ -608,7 +610,6 @@
             "copyError": "Kopyalama hatası",
             "copyQueueToClipboard": "Kuyruğu panoya kopyala",
             "fail": "BAŞARISIZ",
-            "pending": "Bekliyor",
             "remove": "Kaldır",
             "retry": "Tekrar dene",
             "stopAll": "Tümünü durdur",
@@ -673,7 +674,6 @@
                 "newTransfer": "Yeni Aktarım",
                 "preparing": "Aktarım hazırlanıyor…"
             },
-            "staged": "sırada",
             "start": "Başlat",
             "startAll": "Tümünü başlat",
             "restored": "Geri yüklendi",
@@ -744,7 +744,10 @@
                 "size": "Boyut",
                 "source": "Kaynak",
                 "title": "Plan: {mode}"
-            }
+            },
+            "stagedCount": "{count} hazırlandı",
+            "pendingCount": "{count} Bekliyor",
+            "failedCount": "{count} Başarısız"
         },
         "settings": {
             "title": "Ayarlar",
@@ -929,7 +932,6 @@
             "migrationSkip": "Şimdilik atla",
             "migrationFinish": "Tamamla",
             "migrationStep": "Adım {current} / {total}",
-            "duplicatesSkipped": "yinelenen atlandı",
             "invalidPassword": "Geçersiz parola",
             "backup": "Yedekleme",
             "visibleColumns": "Görünür Sütunlar",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Tüketici Gizli Anahtarı",
             "privacyRespect": "AeroFTP gizliliğinizi korur. Hiçbir veri toplanmaz, izleme yok, telemetri yok.",
             "keystoreEntries": "{count} giriş",
-            "serverCredentials": "sunucu kimlik bilgileri",
-            "serverProfilesLabel": "sunucu profilleri",
-            "aiKeysLabel": "AI anahtarları",
-            "oauthTokensLabel": "OAuth jetonları",
-            "configEntriesLabel": "yapılandırma girdileri",
             "session": "Oturum",
             "aeroftpBackupFiles": "AeroFTP Yedek Dosyaları",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Dışa aktarılacak sunucuları seçin",
             "selectAll": "Tümünü Seç",
             "deselectAll": "Tümünün Seçimini Kaldır",
-            "selected": "seçili",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Herhangi bir simge ayarlanmamışsa, sunucudaki favicon veya icon.png otomatik olarak algılanır.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Açık",
             "imagePreviewBgCustom": "Özel",
             "showTransferProgress": "Aktarım ilerleme çubuğunu göster",
-            "similarToExisting": "mevcut bir profile benziyor",
             "aerocloudCompress": "Sıkıştırmayı etkinleştir (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: sıkıştırma + şifreleme (profilde şifreleme var)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Sistem kurulumu gerektirir. Kullanılamıyorsa AeroFTP otomatik olarak yedeğe geçer.",
             "fontSizeIndicatorLabel": "Yazı tipi",
             "fontPresetDefault": "{font} (Varsayılan)",
-            "fontPresetSystemDefault": "Sistem varsayılanı"
+            "fontPresetSystemDefault": "Sistem varsayılanı",
+            "duplicatesSkippedCount": "{count} yinelenen atlandı",
+            "similarToExistingCount": "{count} mevcut bir profile benziyor",
+            "bridgeSkippedCount": "{count} atlandı",
+            "selectedOfTotal": "{selected} / {total} seçili",
+            "serverCredentialsCount": "{count} sunucu kimlik bilgisi",
+            "serverProfilesCount": "{count} sunucu profili",
+            "aiKeysCount": "{count} AI anahtarı",
+            "oauthTokensCount": "{count} OAuth belirteci",
+            "configEntriesCount": "{count} yapılandırma girdisi"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Başlatılıyor...",
             "pending": "Beklemede",
             "conflict": "Çakışma",
-            "conflicts": "çakışma dikkat gerektiriyor",
             "error": "Senkronizasyon hatası",
             "never": "Hiçbir zaman",
             "justNow": "Az önce",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Yakında...",
             "aerocloudEnabled": "AeroCloud etkin",
             "selectPairLocalFolder": "Çift için yerel klasör seçin",
-            "secondsAgo": "{count}sn önce"
+            "secondsAgo": "{count}sn önce",
+            "conflictsCount": "{count} çakışma müdahale gerektiriyor"
         },
         "statusBar": {
             "connected": "Bağlı",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "Dosya zaten mevcut",
-            "moreFiles": "kuyrukta daha fazla dosya",
             "remote": "Uzak",
             "local": "Yerel",
             "sourceNewer": "Kaynak daha yeni",
@@ -2800,7 +2803,6 @@
                 "approveThis": "Bu araç çağrısını onayla",
                 "confirm": "Onayla",
                 "confirmDangerous": "Tehlikeli eylemi onayla",
-                "pendingApproval": "onay bekliyor",
                 "rejectAllCalls": "Tüm araç çağrılarını reddet",
                 "rejectExecution": "Araç çalıştırmayı reddet",
                 "toggleDetails": "Ayrıntıları aç/kapat",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Tümüne İzin Ver",
                 "rejectAll": "Tümünü Reddet",
                 "pending": "onay bekliyor",
-                "toolCall": "araç çağrısı",
-                "toolCalls": "araç çağrısı",
                 "running": "Çalışıyor...",
                 "done": "Tamamlandı",
                 "failed": "Başarısız",
-                "allowThis": "Bu araca izin ver"
+                "allowThis": "Bu araca izin ver",
+                "pendingApprovalCount": "{count} araç çağrısı onay bekliyor"
             },
             "diff": {
                 "title": "Fark Önizlemesi",
@@ -3334,7 +3335,6 @@
                 "add": "Ekle",
                 "added": "Eklendi",
                 "all": "Tümü",
-                "available": "mevcut",
                 "browseProviders": "Sağlayıcılara gözat",
                 "chinese": "Çince",
                 "fast": "Hızlı çıkarım",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Bölgesel API anahtarıyla erişilen AWS üzerinde barındırılan modeller. model ID değerinizi elle ekleyin.",
-                "bedrockHighlight": "AWS bölgesel uç noktası"
+                "bedrockHighlight": "AWS bölgesel uç noktası",
+                "availableCount": "{count} kullanılabilir"
             },
             "history": {
                 "cancel": "İptal",
@@ -3709,12 +3710,12 @@
             "size": "Boyut",
             "compressed": "Sıkıştırılmış",
             "actions": "Eylemler",
-            "files": "dosya",
             "empty": "Arşiv boş",
             "extracting": "Çıkarılıyor",
             "preview": "Önizleme",
             "extract": "Çıkar",
-            "back": "Geri"
+            "back": "Geri",
+            "filesSummary": "{count} dosya, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{dirs} dizinde {files} dosya eklendi",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count} dosya eklendi",
             "folderName": "Klasör adı",
             "itemDeleted": "{name} silindi",
-            "items": "öğe",
             "itemsDeleted": "{count} öğe silindi",
             "lastOpened": "Son açılma",
             "modified": "Değiştirilme",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Güçlü şifreleme",
-            "totalItems": "toplam",
             "unlock": "Kilidi Aç",
             "v1Standard": "AeroVault v1 (Standart)",
             "v2Advanced": "AeroVault v2 (Gelişmiş Güvenlik)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "Kasadaki her dosyayı bir klasöre çıkar",
             "extractedAll": "{count} dosya {path} konumuna çıkarıldı",
             "dropFilesHint": "Dosyaları veya klasörleri buraya sürükleyin ya da aşağıdaki düğmeleri kullanın",
-            "itemSingular": "öğe",
-            "itemPlural": "öğe",
             "reportExported": "Kasa raporu {path} konumuna kaydedildi",
             "reportCopied": "Kasa raporu panoya kopyalandı",
             "exportReportHint": "Eksiksiz bir teknik rapor dışa aktar: kasa meta verileri, şifreleme, hata düzeltme ve tam dosya listesi",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Hızlı",
             "securityAdvancedDescription": "Nonce'a dayanıklı · Şifrelenmiş dosya adları · 128 MB KDF",
             "securityParanoidDescription": "Kademeli AES + ChaCha20 · Çift şifreleme",
-            "securityArchiveDescription": "Tekilleştirilmiş arşiv · zstd parçaları · v3"
+            "securityArchiveDescription": "Tekilleştirilmiş arşiv · zstd parçaları · v3",
+            "totalItemsCount": "Toplam {count}"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",
@@ -3956,7 +3954,6 @@
             "empty": "Dizin boş",
             "name": "Ad",
             "size": "Boyut",
-            "items": "öğe",
             "readOnly": "Salt okunur mod - kasa oluşturma v2.1'de gelecek",
             "openAsVault": "Cryptomator Kasası Olarak Aç",
             "decryptAndSave": "Şifre Çöz ve Kaydet",
@@ -3989,8 +3986,6 @@
             "level": "Sıkıştırma Düzeyi",
             "password": "Parola (isteğe bağlı, AES-256)",
             "passwordHint": "Şifreleme istemiyorsanız boş bırakın",
-            "files": "dosya",
-            "folders": "klasör",
             "compress": "Sıkıştır",
             "store": "Depola (sıkıştırmasız)",
             "fast": "Hızlı",
@@ -4232,8 +4227,6 @@
             "modified": "Değiştirilme",
             "file": "Dosya",
             "folder": "Klasör",
-            "files": "dosya",
-            "folders": "klasör",
             "remote": "Uzak",
             "local": "Yerel",
             "linkTarget": "Sembolik Bağlantı Hedefi",
@@ -4309,10 +4302,7 @@
             "deleted": "{count} yinelenen dosya silindi",
             "scanFailed": "Tarama başarısız",
             "retry": "Yeniden Dene",
-            "groups": "grup",
-            "duplicateFiles": "yinelenen dosya",
             "wasted": "boşa harcanan",
-            "copies": "kopya",
             "delete": "SİL",
             "skip": "ATLA",
             "deleteConfirm": "{count} yinelenen dosyayı silmek istediğinizden emin misiniz?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, mes. {distance}",
             "modeExact": "Tam",
             "modeLabel": "Mod:",
-            "modeNonIdentical": "Özdeş olmayan"
+            "modeNonIdentical": "Özdeş olmayan",
+            "groupsCount": "{count} grup",
+            "duplicateFilesCount": "{count} yinelenen dosya",
+            "copiesCount": "{count} kopya"
         },
         "diskUsage": {
             "title": "Disk Kullanımı",
@@ -4340,20 +4333,16 @@
             "totalItems": "Toplam: {count} öğe genelinde {size}",
             "percentOfParent": "Üst dizinin %{percent}'i",
             "backToParent": "Üst dizine dön",
-            "items": "öğe",
             "scanFailed": "Analiz başarısız",
             "retry": "Yeniden Dene",
             "drillDown": "Keşfetmek için tıklayın",
             "back": "Geri",
-            "total": "Toplam",
-            "across": "genelinde",
             "empty": "Bu dizin boş",
             "hoverHint": "Ayrıntıları görmek için bir bloğun üzerine gelin",
             "scanUnknownError": "Disk kullanımı taranırken bilinmeyen hata"
         },
         "dependencies": {
             "title": "Bağımlılıklar",
-            "crates": "crate",
             "copy": "Kopyala",
             "copied": "Kopyalandı!",
             "checkUpdates": "Güncellemeleri Kontrol Et",
@@ -4363,7 +4352,8 @@
             "latest": "En Son",
             "status": "Durum",
             "footer": "Sürüm verileri crates.io API'sinden alınmıştır. Gösterilen sürümler çözümlenmiş (Cargo.lock) sürümlerdir.",
-            "copyTitle": "AeroFTP Bağımlılık Kontrolü"
+            "copyTitle": "AeroFTP Bağımlılık Kontrolü",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Uyarı",
                 "info": "Bilgi",
                 "debug": "Hata Ayıklama",
-                "entries": "kayıt",
                 "resume": "Devam",
                 "pause": "Duraklat",
                 "copyAll": "Tümünü kopyala",
@@ -4432,13 +4421,13 @@
                 "allSources": "Tüm kaynaklar",
                 "sourceFilterTitle": "Kaynağa göre filtrele",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Girdiler: {count}"
             },
             "frontend": {
                 "reactMode": "React Modu",
                 "language": "Dil",
                 "localStorageKeys": "LocalStorage Anahtarları",
-                "keys": "anahtar",
                 "localStorageSize": "LocalStorage Boyutu",
                 "windowSize": "Pencere Boyutu",
                 "devicePixelRatio": "Cihaz Piksel Oranı",
@@ -4447,7 +4436,8 @@
                 "light": "Açık",
                 "userAgent": "Kullanıcı Ajanı",
                 "localStorageKeysTitle": "LocalStorage Anahtarları",
-                "localStorageEntrySummary": "{size} bayt · {preview}"
+                "localStorageEntrySummary": "{size} bayt · {preview}",
+                "keysCount": "{count} anahtar"
             },
             "copyFileListToClipboard": "Dosya listesini panoya kopyala",
             "filesCopied": "{count} dosya girdisi panoya kopyalandı",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "i18n anahtar taraması",
                 "ipcSpeed": "IPC hız örneği",
                 "knownHosts": "known_hosts okuma",
-                "passed": "başarılı",
                 "pluginIntegrity": "Eklenti bütünlüğü",
                 "providerSelftest": "Sağlayıcı kendi kendini test (salt okunur)",
                 "runAll": "Tümünü çalıştır",
                 "runOne": "Bu testi çalıştır",
-                "vaultRoundtrip": "Kasa gidiş-dönüş"
+                "vaultRoundtrip": "Kasa gidiş-dönüş",
+                "passedCount": "{passed}/{total} başarılı"
             },
             "bundle": {
                 "title": "Tanılama paketini dışa aktar (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Komut bekleniyor...",
             "badges": {
-                "active": "AKTİF",
                 "live": "CANLI",
-                "synced": "SENKRONİZE"
+                "synced": "SENKRONİZE",
+                "activeCount": "{count} ETKİN"
             },
             "clearLog": "Günlüğü temizle",
             "close": "Kapat",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "İşlemleri filtrele",
-                "selected": "seçili"
+                "selectedCount": "{count} seçili"
             },
             "save": "Kaydet"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Otomatik",
                 "autoRefresh": "Otomatik Yenile (3s)",
                 "browser": "Tarayıcı",
-                "chars": "karakter",
                 "copy": "Panoya Kopyala",
                 "disableWrap": "Sözcük Kaydırmayı Kapat",
                 "enableWrap": "Sözcük Kaydırmayı Aç",
                 "encoding": "Kodlama",
                 "errorLoading": "İçerik yüklenirken hata",
                 "hex": "Hex",
-                "lines": "satır",
                 "loadFailed": "Metin içeriği yüklenemedi",
                 "noContent": "İçerik mevcut değil",
                 "openBrowser": "Sistem Tarayıcısında Aç",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Sözcük Kaydırma",
                 "zoomIn": "Yakınlaştır",
                 "zoomOut": "Uzaklaştır",
-                "htmlPreviewFrameTitle": "HTML önizlemesi"
+                "htmlPreviewFrameTitle": "HTML önizlemesi",
+                "stats": "{lines} satır • {chars} karakter"
             },
             "video": {
                 "exitFullscreen": "Tam Ekrandan Çık (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Üretim Sayısı",
             "pwdGenerate": "Oluştur",
             "pwdEntropy": "Entropi",
-            "pwdBits": "bit",
             "pwdWeak": "Zayıf",
             "pwdFair": "Orta",
             "pwdGood": "İyi",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Varsayılanlar: AeroVault ve AeroCrypt'in kullandığı profil (128 MiB, 4 yineleme, 4 şerit, 32 baytlık çıktı). Yukarıdaki tuz sizindir. Bellek en fazla 2 GiB.",
             "argon2Derive": "Türet",
             "argon2Phc": "PHC dizesi",
-            "hashError": "Hata: {error}"
+            "hashError": "Hata: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "\"{name}\" silinsin mi?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Yalnızca vault",
             "localOnly": "Yalnızca yerel",
             "conflict": "Catisma",
-            "conflicts": "catismalar",
-            "unchanged": "degismemis",
             "allToVault": "Tümünü vault'a",
             "allToLocal": "Tümünü yerele",
             "keepNewer": "Yeniyi koru",
@@ -5018,10 +5005,14 @@
             "applySync": "Senkronizasyonu uygula",
             "close": "Kapat",
             "allInSync": "Tüm dosyalar senkronize",
-            "filesToVault": "dosya vault'a senkronize edildi",
-            "filesToLocal": "dosya yerele çıkarıldı",
-            "filesSkipped": "dosya atlandı",
-            "errorsOccurred": "Bazı hatalar oluştu"
+            "errorsOccurred": "Bazı hatalar oluştu",
+            "vaultOnlyCount": "{count} Yalnızca vault",
+            "localOnlyCount": "{count} Yalnızca yerel",
+            "conflictsCount": "{count} çakışma",
+            "unchangedCount": "{count} değişmedi",
+            "filesToVaultCount": "{count} dosya vault'a eşitlendi",
+            "filesToLocalCount": "{count} dosya yerele çıkarıldı",
+            "filesSkippedCount": "{count} dosya atlandı"
         },
         "localTabs": {
             "closeAll": "Tüm Sekmeleri Kapat",
@@ -5246,7 +5237,6 @@
             "checkAll": "Tümünü kontrol et",
             "checkOne": "Bu sunucuyu kontrol et",
             "checking": "Kontrol ediliyor...",
-            "checked": "kontrol edildi",
             "healthy": "Sağlıklı",
             "degraded": "Düşük performans",
             "unreachable": "Erişilemiyor",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "{count} sunucu kontrol ediliyor, lütfen bekleyin...",
             "scoreLegend": "Skor 0-100, daha yüksek daha iyi",
-            "scoreLegendDetail": "80+ sağlıklı · 50-79 düşük · 50 altı sorunlu"
+            "scoreLegendDetail": "80+ sağlıklı · 50-79 düşük · 50 altı sorunlu",
+            "checkedCount": "{count} kontrol edildi",
+            "healthyCount": "{count} Sağlıklı",
+            "degradedCount": "{count} Düşük performans",
+            "unreachableCount": "{count} Erişilemiyor"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "Arşivlenmiş",
                 "trash": "Çöp Kutusu"
             },
-            "participants": "katılımcılar",
             "saving": "Kaydediliyor...",
             "saved": "Kaydedildi",
             "saveNow": "Şimdi kaydet",
@@ -5549,7 +5542,8 @@
                 "code": "Kod",
                 "richText": "Zengin Metin",
                 "checklist": "Kontrol Listesi"
-            }
+            },
+            "participantsCount": "{count} katılımcı"
         },
         "shareLinkModal": {
             "title": "Paylaşım bağlantısı",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "Diğer panele taşı",
             "copiedToOtherPanel": "Diğer panele kopyalandı",
             "movedToOtherPanel": "Diğer panele taşındı",
-            "itemsLower": "öğe",
             "resizePanels": "Panelleri yeniden boyutlandır",
             "copyHere": "{count} öğeyi buraya kopyala",
             "moveHere": "{count} öğeyi buraya taşı",
             "copyHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele kopyala (F5)",
             "moveHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele taşı (F6)",
-            "syncToOtherPanel": "Diğer panele senkronize et (delta)"
+            "syncToOtherPanel": "Diğer panele senkronize et (delta)",
+            "failedCount": "{count} başarısız",
+            "skippedCount": "{count} atlandı"
         },
         "compare": {
             "title": "Panelleri karşılaştır",
@@ -6146,9 +6141,6 @@
             "bucket": "Kategori",
             "count": "Sayı",
             "action": "Eylem",
-            "delete": "sil",
-            "overwrite": "üzerine yaz",
-            "conflicts": "çakışma",
             "destructiveWarning": "Bu önayar daha yeni dosyaları silecek veya üzerine yazacak.",
             "confirmDestructive": "Yıkıcı eylemleri inceledim ve devam etmek istiyorum.",
             "executeHint": "Yürüt seçimi sıraya koyar ve birleşik aktarım planlayıcısı üzerinden gönderir.",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Ağdaki bayt",
                 "savings": "Tasarruf",
-                "errorDetails": "hata, ayrıntılar",
                 "errorPathsRequired": "Kaynak ve hedef gereklidir",
                 "deltaStatus": "Delta senkr.",
                 "deltaAuto": "OTOMATİK AÇIK",
@@ -6207,7 +6198,8 @@
                 "planned": "Planlanan kopyalar",
                 "resultDryRunOk": "Kuru çalıştırma tamamlandı",
                 "resultDryRunPartial": "Kuru çalıştırma hatalarla tamamlandı",
-                "resultDryRunCancelled": "Kuru çalıştırma iptal edildi"
+                "resultDryRunCancelled": "Kuru çalıştırma iptal edildi",
+                "errorDetailsCount": "{count} hata, ayrıntılar"
             },
             "launcherTemplates": "Şablonlar",
             "launcherMultiPath": "Çoklu yol",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Karşılaştırma her iki klasörü ve altındaki tüm klasörleri okur. Büyük bir ağaçta biraz zaman alabilir ve durdurabilirsiniz.",
             "progressDelta": "[delta]",
-            "progressCopy": "[kopya]"
+            "progressCopy": "[kopya]",
+            "deleteCount": "{count} silinecek",
+            "overwriteCount": "{count} üzerine yazılacak",
+            "conflictCount": "{count} çakışma"
         },
         "accountLock": {
             "title": "Bir hesap seçin",

@@ -184,7 +184,7 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
                             {totalItems > 0 && (
                                 <span className="opacity-80">
                                     {' · '}
-                                    {totalItems} {t('browser.items')}
+                                    {t('browser.itemCount', { count: totalItems })}
                                 </span>
                             )}
                         </span>

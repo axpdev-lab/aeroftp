@@ -772,11 +772,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             <div className="flex items-center gap-4 px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
               <span className="flex items-center gap-1.5">
                 <Copy size={13} className="text-blue-400" />
-                {summary.totalGroups} {t('duplicates.groups')}
+                {t('duplicates.groupsCount', { count: summary.totalGroups })}
               </span>
               <span className="flex items-center gap-1.5">
                 <FileX size={13} className="text-orange-400" />
-                {summary.totalDuplicates} {t('duplicates.duplicateFiles')}
+                {t('duplicates.duplicateFilesCount', { count: summary.totalDuplicates })}
               </span>
               <span className="flex items-center gap-1.5">
                 <Trash2 size={13} className="text-red-400" />
@@ -806,7 +806,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                       &mdash; {getFileName(group.files[0])}
                     </span>
                     <span className="text-gray-400 dark:text-gray-500 ml-auto shrink-0">
-                      {formatBytes(group.size)} &times; {group.files.length} {t('duplicates.copies')}
+                      {formatBytes(group.size)} &times; {t('duplicates.copiesCount', { count: group.files.length })}
                     </span>
                     {group.files.every((f) => selectedPaths.has(f)) && (
                       <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 shrink-0">

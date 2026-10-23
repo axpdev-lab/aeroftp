@@ -87,7 +87,7 @@ export const VaultCreateReceipt: React.FC<VaultCreateReceiptProps> = ({ state, o
                 )}
                 {fileCount > 0 && (
                     <div className="mt-0.5 text-[11px]" style={{ color: 'var(--compress-text-muted)' }}>
-                        {fileCount} {t('vault.receipt.files')}
+                        {t('browser.fileCount', { count: fileCount })}
                     </div>
                 )}
             </div>

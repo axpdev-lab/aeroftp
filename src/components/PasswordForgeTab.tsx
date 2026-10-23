@@ -197,7 +197,7 @@ export const PasswordForgeTab: React.FC = () => {
             </div>
 
             <div>
-                <div className="mb-1 flex justify-between gap-3 text-xs text-gray-500 dark:text-gray-400"><span>{t('cyberTools.pwdEntropy')}</span><span className="font-mono">{Math.round(entropy)} {t('cyberTools.pwdBits')}: {entropyLabel}</span></div>
+                <div className="mb-1 flex justify-between gap-3 text-xs text-gray-500 dark:text-gray-400"><span>{t('cyberTools.pwdEntropy')}</span><span className="font-mono">{t('cyberTools.pwdBitsCount', { count: Math.round(entropy) })}: {entropyLabel}</span></div>
                 <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div className={`h-full rounded-full transition-all duration-500 ${entropyColor}`} style={{ width: `${entropyPct}%` }} /></div>
             </div>
 

@@ -951,7 +951,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                         {folderSize ? (
                                             <div className="flex items-center gap-2">
                                                 <div className="text-sm text-gray-900 dark:text-gray-100">
-                                                    {formatBytes(folderSize.total_bytes)} ({folderSize.file_count.toLocaleString()} {t('properties.files')}, {folderSize.dir_count.toLocaleString()} {t('properties.folders')})
+                                                    {formatBytes(folderSize.total_bytes)} ({t('properties.folderContents', { files: folderSize.file_count.toLocaleString(), dirs: folderSize.dir_count.toLocaleString() })})
                                                     {folderSize.partial && !folderSizeCalculating && (
                                                         <span className="text-amber-600 dark:text-amber-400 ml-1" role="status">{t('properties.sizesPartial')}</span>
                                                     )}
@@ -1467,7 +1467,7 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
                     <Row
                         icon={<FilesIcon size={16} />}
                         label={t('properties.contains')}
-                        value={`${fileCount.toLocaleString()} ${t('properties.files')}, ${folderCount.toLocaleString()} ${t('properties.folders')}`}
+                        value={t('properties.folderContents', { files: fileCount.toLocaleString(), dirs: folderCount.toLocaleString() })}
                     />
                     <Row
                         icon={<Hash size={16} />}

@@ -928,7 +928,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
                       </div>
                     )}
                     {note.participants.length > 1 && (
-                      <span className="text-[10px] text-gray-400">{note.participants.length} {t('filenNotes.participants')}</span>
+                      <span className="text-[10px] text-gray-400">{t('filenNotes.participantsCount', { count: note.participants.length })}</span>
                     )}
                   </div>
                 </div>

@@ -419,20 +419,20 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
                 {/* Summary bar */}
                 {totalChecked > 0 && !singleServerId && (
                     <div className="px-5 py-2.5 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex items-center gap-4 text-xs">
-                        <span className="text-gray-500">{totalChecked} {t('healthCheck.checked')}</span>
+                        <span className="text-gray-500">{t('healthCheck.checkedCount', { count: totalChecked })}</span>
                         {healthy > 0 && (
                             <span className="flex items-center gap-1 text-green-600">
-                                <Wifi size={12} /> {healthy} {t('healthCheck.healthy')}
+                                <Wifi size={12} /> {t('healthCheck.healthyCount', { count: healthy })}
                             </span>
                         )}
                         {degraded > 0 && (
                             <span className="flex items-center gap-1 text-yellow-600">
-                                <AlertTriangle size={12} /> {degraded} {t('healthCheck.degraded')}
+                                <AlertTriangle size={12} /> {t('healthCheck.degradedCount', { count: degraded })}
                             </span>
                         )}
                         {unreachable > 0 && (
                             <span className="flex items-center gap-1 text-red-600">
-                                <WifiOff size={12} /> {unreachable} {t('healthCheck.unreachable')}
+                                <WifiOff size={12} /> {t('healthCheck.unreachableCount', { count: unreachable })}
                             </span>
                         )}
                     </div>

@@ -80,7 +80,8 @@
             "reset": "রিসেট করুন",
             "saved": "সংরক্ষিত",
             "saving": "সংরক্ষণ করা হচ্ছে...",
-            "creating": "তৈরি করা হচ্ছে..."
+            "creating": "তৈরি করা হচ্ছে...",
+            "minutesCount": "{count} মিনিট"
         },
         "connection": {
             "title": "সার্ভারে সংযোগ করুন",
@@ -159,7 +160,6 @@
             "saveChanges": "পরিবর্তন সংরক্ষণ করুন",
             "createAccount": "অ্যাকাউন্ট তৈরি করুন",
             "docs": "ডকুমেন্টস",
-            "minutes": "মিনিট",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "বিদ্যমান অ্যাকাউন্টে ফিরে যান",
@@ -390,7 +390,6 @@
             "path": "পাথ",
             "files": "ফাইল",
             "folders": "ফোল্ডার",
-            "items": "আইটেম",
             "emptyFolder": "এই ফোল্ডারটি খালি",
             "parentFolder": "প্যারেন্ট ফোল্ডার",
             "newFolder": "নতুন ফোল্ডার",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "ডান প্যানেল",
             "chooseRightPanelFolder": "ডান প্যানেলের ফোল্ডার বেছে নিন",
             "chooseLeftPanelFolder": "বাম প্যানেলের ফোল্ডার বেছে নিন",
-            "localRight": "লোকাল (ডান)"
+            "localRight": "লোকাল (ডান)",
+            "itemCount": "{count}টি আইটেম",
+            "fileCount": "{count}টি ফাইল",
+            "folderCount": "{count}টি ফোল্ডার"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent-কে জিজ্ঞাসা করুন...",
@@ -608,7 +610,6 @@
             "copyError": "কপি ত্রুটি",
             "copyQueueToClipboard": "ক্লিপবোর্ডে সারি কপি করুন",
             "fail": "ব্যর্থ",
-            "pending": "অপেক্ষমাণ",
             "remove": "সরান",
             "retry": "পুনরায় চেষ্টা",
             "stopAll": "সব বন্ধ করুন",
@@ -673,7 +674,6 @@
                 "newTransfer": "নতুন ট্রান্সফার",
                 "preparing": "স্থানান্তর প্রস্তুত করা হচ্ছে…"
             },
-            "staged": "সারিবদ্ধ",
             "start": "শুরু",
             "startAll": "সব শুরু করুন",
             "restored": "পুনরুদ্ধারকৃত",
@@ -744,7 +744,10 @@
                 "size": "আকার",
                 "source": "উৎস",
                 "title": "{mode} পরিকল্পনা"
-            }
+            },
+            "stagedCount": "{count}টি স্টেজ করা",
+            "pendingCount": "{count}টি অপেক্ষমাণ",
+            "failedCount": "{count}টি ব্যর্থ"
         },
         "settings": {
             "title": "সেটিংস",
@@ -929,7 +932,6 @@
             "migrationSkip": "এখন এড়িয়ে যান",
             "migrationFinish": "শেষ করুন",
             "migrationStep": "ধাপ {current} / {total}",
-            "duplicatesSkipped": "ডুপ্লিকেট এড়িয়ে যাওয়া হয়েছে",
             "invalidPassword": "ভুল পাসওয়ার্ড",
             "backup": "ব্যাকআপ",
             "visibleColumns": "দৃশ্যমান কলাম",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "ভোক্তা সিক্রেট",
             "privacyRespect": "AeroFTP আপনার গোপনীয়তা রক্ষা করে। কোনো ডেটা সংগ্রহ করা হয় না, কোনো ট্র্যাকিং নেই, কোনো টেলিমেট্রি নেই।",
             "keystoreEntries": "{count}টি এন্ট্রি",
-            "serverCredentials": "সার্ভার শংসাপত্র",
-            "serverProfilesLabel": "সার্ভার প্রোফাইল",
-            "aiKeysLabel": "AI কি",
-            "oauthTokensLabel": "OAuth টোকেন",
-            "configEntriesLabel": "কনফিগ এন্ট্রি",
             "session": "সেশন",
             "aeroftpBackupFiles": "AeroFTP ব্যাকআপ ফাইল",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "রপ্তানির জন্য সার্ভার নির্বাচন করুন",
             "selectAll": "সবগুলো নির্বাচন করুন",
             "deselectAll": "সবগুলো অনির্বাচন করুন",
-            "selected": "নির্বাচিত",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "কোনো আইকন সেট না থাকলে, সার্ভার থেকে favicon বা icon.png স্বয়ংক্রিয়ভাবে শনাক্ত করা হয়।",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "হালকা",
             "imagePreviewBgCustom": "কাস্টম",
             "showTransferProgress": "স্থানান্তর অগ্রগতি বার দেখান",
-            "similarToExisting": "একটি বিদ্যমান প্রোফাইলের অনুরূপ",
             "aerocloudCompress": "সংকোচন সক্ষম করুন (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: কম্প্রেশন + ক্রিপ্ট (প্রোফাইলে এনক্রিপশন আছে)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "সিস্টেমে ইনস্টল করা প্রয়োজন। উপলব্ধ না থাকলে AeroFTP স্বয়ংক্রিয়ভাবে বিকল্প ব্যবহার করে।",
             "fontSizeIndicatorLabel": "ফন্ট",
             "fontPresetDefault": "{font} (ডিফল্ট)",
-            "fontPresetSystemDefault": "সিস্টেম ডিফল্ট"
+            "fontPresetSystemDefault": "সিস্টেম ডিফল্ট",
+            "duplicatesSkippedCount": "{count}টি ডুপ্লিকেট এড়িয়ে যাওয়া হয়েছে",
+            "similarToExistingCount": "{count}টি বিদ্যমান প্রোফাইলের মতো",
+            "bridgeSkippedCount": "{count}টি এড়িয়ে যাওয়া হয়েছে",
+            "selectedOfTotal": "{selected} / {total} নির্বাচিত",
+            "serverCredentialsCount": "{count}টি সার্ভার ক্রেডেনশিয়াল",
+            "serverProfilesCount": "{count}টি সার্ভার প্রোফাইল",
+            "aiKeysCount": "{count}টি AI কী",
+            "oauthTokensCount": "{count}টি OAuth টোকেন",
+            "configEntriesCount": "{count}টি কনফিগারেশন এন্ট্রি"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "শুরু হচ্ছে...",
             "pending": "অপেক্ষমাণ",
             "conflict": "দ্বন্দ্ব",
-            "conflicts": "দ্বন্দ্বগুলোর মনোযোগ প্রয়োজন",
             "error": "সিঙ্ক ত্রুটি",
             "never": "কখনো না",
             "justNow": "এইমাত্র",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "শীঘ্রই...",
             "aerocloudEnabled": "AeroCloud সক্রিয়",
             "selectPairLocalFolder": "জোড়ার জন্য স্থানীয় ফোল্ডার নির্বাচন করুন",
-            "secondsAgo": "{count}সে আগে"
+            "secondsAgo": "{count}সে আগে",
+            "conflictsCount": "{count}টি দ্বন্দ্বে মনোযোগ প্রয়োজন"
         },
         "statusBar": {
             "connected": "সংযুক্ত",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "ফাইল ইতিমধ্যে বিদ্যমান",
-            "moreFiles": "আরও ফাইল কিউতে আছে",
             "remote": "রিমোট",
             "local": "লোকাল",
             "sourceNewer": "উৎস নতুন",
@@ -2800,7 +2803,6 @@
                 "approveThis": "এই টুল কল অনুমোদন করুন",
                 "confirm": "নিশ্চিত করুন",
                 "confirmDangerous": "বিপজ্জনক কাজ নিশ্চিত করুন",
-                "pendingApproval": "অনুমোদনের অপেক্ষায়",
                 "rejectAllCalls": "সব টুল কল প্রত্যাখ্যান করুন",
                 "rejectExecution": "টুল চালানো প্রত্যাখ্যান করুন",
                 "toggleDetails": "বিস্তারিত টগল করুন",
@@ -3029,12 +3031,11 @@
                 "allowAll": "সব অনুমতি দিন",
                 "rejectAll": "সব প্রত্যাখ্যান করুন",
                 "pending": "অনুমোদনের অপেক্ষায়",
-                "toolCall": "টুল কল",
-                "toolCalls": "টুল কলগুলি",
                 "running": "চলছে...",
                 "done": "সম্পন্ন",
                 "failed": "ব্যর্থ",
-                "allowThis": "এই টুল অনুমতি দিন"
+                "allowThis": "এই টুল অনুমতি দিন",
+                "pendingApprovalCount": "{count}টি টুল কল অনুমোদনের অপেক্ষায়"
             },
             "diff": {
                 "title": "পার্থক্য প্রিভিউ",
@@ -3334,7 +3335,6 @@
                 "add": "যোগ করুন",
                 "added": "যোগ করা হয়েছে",
                 "all": "সব",
-                "available": "উপলব্ধ",
                 "browseProviders": "প্রদানকারী ব্রাউজ করুন",
                 "chinese": "চীনা",
                 "fast": "দ্রুত ইনফারেন্স",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "AWS-এ হোস্ট করা মডেল, আঞ্চলিক API কী দিয়ে অ্যাক্সেসযোগ্য। আপনার model ID নিজে যোগ করুন।",
-                "bedrockHighlight": "AWS আঞ্চলিক এন্ডপয়েন্ট"
+                "bedrockHighlight": "AWS আঞ্চলিক এন্ডপয়েন্ট",
+                "availableCount": "{count}টি উপলব্ধ"
             },
             "history": {
                 "cancel": "বাতিল",
@@ -3709,12 +3710,12 @@
             "size": "আকার",
             "compressed": "কম্প্রেসড",
             "actions": "ক্রিয়া",
-            "files": "ফাইল",
             "empty": "আর্কাইভ খালি",
             "extracting": "এক্সট্রাক্ট করা হচ্ছে...",
             "preview": "প্রিভিউ",
             "extract": "এক্সট্র্যাক্ট",
-            "back": "পিছনে"
+            "back": "পিছনে",
+            "filesSummary": "{count}টি ফাইল, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{dirs} ডিরেক্টরিতে {files}টি ফাইল যোগ করা হয়েছে",
@@ -3761,7 +3762,6 @@
             "filesAdded": "{count}টি ফাইল যোগ হয়েছে",
             "folderName": "ফোল্ডারের নাম",
             "itemDeleted": "{name} মুছে ফেলা হয়েছে",
-            "items": "আইটেম",
             "itemsDeleted": "{count}টি আইটেম মুছে ফেলা হয়েছে",
             "lastOpened": "সর্বশেষ খোলা",
             "modified": "পরিবর্তিত",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - শক্তিশালী এনক্রিপশন",
-            "totalItems": "মোট",
             "unlock": "আনলক",
             "v1Standard": "AeroVault v1 (স্ট্যান্ডার্ড)",
             "v2Advanced": "AeroVault v2 (উন্নত নিরাপত্তা)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "ভল্টের প্রতিটি ফাইল একটি ফোল্ডারে নিষ্কাশন করুন",
             "extractedAll": "{count}টি ফাইল {path}-এ নিষ্কাশিত হয়েছে",
             "dropFilesHint": "ফাইল বা ফোল্ডার এখানে টেনে আনুন, অথবা নিচের বোতামগুলি ব্যবহার করুন",
-            "itemSingular": "আইটেম",
-            "itemPlural": "আইটেম",
             "reportExported": "ভল্ট প্রতিবেদন {path}-এ সংরক্ষিত হয়েছে",
             "reportCopied": "ভল্ট প্রতিবেদন ক্লিপবোর্ডে অনুলিপি করা হয়েছে",
             "exportReportHint": "একটি সম্পূর্ণ প্রযুক্তিগত প্রতিবেদন রপ্তানি করুন: ভল্ট মেটাডেটা, এনক্রিপশন, ত্রুটি সংশোধন এবং সম্পূর্ণ ফাইল তালিকা",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · দ্রুত",
             "securityAdvancedDescription": "Nonce-প্রতিরোধী · এনক্রিপ্ট করা ফাইলের নাম · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 ক্যাসকেড · দ্বৈত এনক্রিপশন",
-            "securityArchiveDescription": "ডিডুপ্লিকেট করা আর্কাইভ · zstd খণ্ড · v3"
+            "securityArchiveDescription": "ডিডুপ্লিকেট করা আর্কাইভ · zstd খণ্ড · v3",
+            "totalItemsCount": "মোট {count}টি"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",
@@ -3956,7 +3954,6 @@
             "empty": "ডিরেক্টরি খালি",
             "name": "নাম",
             "size": "আকার",
-            "items": "আইটেম",
             "readOnly": "শুধুমাত্র পঠনযোগ্য মোড - ভল্ট তৈরি v2.1-এ আসবে",
             "openAsVault": "Cryptomator ভল্ট হিসেবে খুলুন",
             "decryptAndSave": "ডিক্রিপ্ট ও সেভ করুন",
@@ -3989,8 +3986,6 @@
             "level": "কম্প্রেসনের স্তর",
             "password": "পাসওয়ার্ড (ঐচ্ছিক, AES-256)",
             "passwordHint": "এনক্রিপশন না চাইলে খালি রাখুন",
-            "files": "ফাইল",
-            "folders": "ফোল্ডার",
             "compress": "কম্প্রেস",
             "store": "সংরক্ষণ করুন (কোনো কম্প্রেসন নেই)",
             "fast": "দ্রুত",
@@ -4232,8 +4227,6 @@
             "modified": "পরিবর্তিত",
             "file": "ফাইল",
             "folder": "ফোল্ডার",
-            "files": "ফাইল",
-            "folders": "ফোল্ডার",
             "remote": "রিমোট",
             "local": "লোকাল",
             "linkTarget": "লিঙ্ক লক্ষ্য",
@@ -4309,10 +4302,7 @@
             "deleted": "{count} টি ডুপ্লিকেট মুছা হয়েছে",
             "scanFailed": "স্ক্যান ব্যর্থ হয়েছে",
             "retry": "পুনরায় চেষ্টা করুন",
-            "groups": "গ্রুপ",
-            "duplicateFiles": "ডুপ্লিকেট ফাইল",
             "wasted": "অপচয়",
-            "copies": "কপি",
             "delete": "মুছুন",
             "skip": "এড়িয়ে যান",
             "deleteConfirm": "আপনি কি নিশ্চিত যে আপনি {count} টি ডুপ্লিকেট ফাইল মুছতে চান?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, দূরত্ব {distance}",
             "modeExact": "হুবহু",
             "modeLabel": "মোড:",
-            "modeNonIdentical": "অভিন্ন নয়"
+            "modeNonIdentical": "অভিন্ন নয়",
+            "groupsCount": "{count}টি গ্রুপ",
+            "duplicateFilesCount": "{count}টি ডুপ্লিকেট ফাইল",
+            "copiesCount": "{count}টি কপি"
         },
         "diskUsage": {
             "title": "ডিস্ক ব্যবহার",
@@ -4340,20 +4333,16 @@
             "totalItems": "মোট: {count} টি আইটেমে {size}",
             "percentOfParent": "প্যারন্টের {percent}%",
             "backToParent": "প্যারন্টে ফিরে যান",
-            "items": "আইটেম",
             "scanFailed": "বিশ্লেষণ ব্যর্থ হয়েছে",
             "retry": "পুনরায় চেষ্টা করুন",
             "drillDown": "নেভিগেট করতে ক্লিক করুন",
             "back": "পেছনে",
-            "total": "মোট",
-            "across": "জুড়ে",
             "empty": "এই ফোল্ডারটি খালি",
             "hoverHint": "বিস্তারিত দেখতে ব্লকের উপর মাউস রাখুন",
             "scanUnknownError": "ডিস্ক ব্যবহার স্ক্যান করার সময় অজানা ত্রুটি"
         },
         "dependencies": {
             "title": "ডিপেন্ডেন্সি",
-            "crates": "crates",
             "copy": "অনুলিপি",
             "copied": "অনুলিপি করা হয়েছে!",
             "checkUpdates": "আপডেট চেক করুন",
@@ -4363,7 +4352,8 @@
             "latest": "সর্বশেষ",
             "status": "স্ট্যাটাস",
             "footer": "crates.io API থেকে সংস্করণ ডেটা। প্রদর্শিত সংস্করণটি রিসলভড (Cargo.lock) সংস্করণ।",
-            "copyTitle": "AeroFTP ডিপেন্ডেন্সি চেক করুন"
+            "copyTitle": "AeroFTP ডিপেন্ডেন্সি চেক করুন",
+            "cratesCount": "{count}টি crate"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "সতর্কতা",
                 "info": "তথ্য",
                 "debug": "ডিবাগ",
-                "entries": "এন্ট্রি",
                 "resume": "চালিয়ে যান",
                 "pause": "বিরতি দিন",
                 "copyAll": "সব কপি করুন",
@@ -4432,13 +4421,13 @@
                 "allSources": "সব উৎস",
                 "sourceFilterTitle": "উৎস অনুযায়ী ফিল্টার করুন",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "এন্ট্রি: {count}"
             },
             "frontend": {
                 "reactMode": "React মোড",
                 "language": "ভাষা",
                 "localStorageKeys": "LocalStorage কী",
-                "keys": "কী",
                 "localStorageSize": "LocalStorage আকার",
                 "windowSize": "উইন্ডো সাইজ",
                 "devicePixelRatio": "ডিভাইস পিক্সেল রেশিও",
@@ -4447,7 +4436,8 @@
                 "light": "লাইট",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "LocalStorage Keys",
-                "localStorageEntrySummary": "{size} বাইট · {preview}"
+                "localStorageEntrySummary": "{size} বাইট · {preview}",
+                "keysCount": "{count}টি কী"
             },
             "copyFileListToClipboard": "ফাইল তালিকা ক্লিপবোর্ডে অনুলিপি করুন",
             "filesCopied": "{count}টি ফাইল এন্ট্রি ক্লিপবোর্ডে কপি করা হয়েছে",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "i18n কী স্ক্যান",
                 "ipcSpeed": "IPC গতি নমুনা",
                 "knownHosts": "known_hosts পড়া",
-                "passed": "উত্তীর্ণ",
                 "pluginIntegrity": "প্লাগইন অখণ্ডতা",
                 "providerSelftest": "প্রদানকারীর স্ব-পরীক্ষা (শুধু পড়া)",
                 "runAll": "সব চালান",
                 "runOne": "এই পরীক্ষাটি চালান",
-                "vaultRoundtrip": "ভল্ট রাউন্ড-ট্রিপ"
+                "vaultRoundtrip": "ভল্ট রাউন্ড-ট্রিপ",
+                "passedCount": "{passed}/{total} উত্তীর্ণ"
             },
             "bundle": {
                 "title": "ডায়াগনস্টিক বান্ডেল রপ্তানি করুন (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",
             "badges": {
-                "active": "সক্রিয়",
                 "live": "লাইভ",
-                "synced": "সিঙ্কড"
+                "synced": "সিঙ্কড",
+                "activeCount": "{count}টি সক্রিয়"
             },
             "clearLog": "লগ মুছুন",
             "close": "বন্ধ",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "অপারেশন ফিল্টার করুন",
-                "selected": "নির্বাচিত"
+                "selectedCount": "{count}টি নির্বাচিত"
             },
             "save": "সংরক্ষণ করুন"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "স্বয়ংক্রিয়",
                 "autoRefresh": "স্বয়ংক্রিয় রিফ্রেশ (3s)",
                 "browser": "ব্রাউজার",
-                "chars": "অক্ষর",
                 "copy": "ক্লিপবোর্ডে কপি",
                 "disableWrap": "ওয়ার্ড র‍্যাপ বন্ধ করুন",
                 "enableWrap": "ওয়ার্ড র‍্যাপ চালু করুন",
                 "encoding": "এনকোডিং",
                 "errorLoading": "কন্টেন্ট লোডে ত্রুটি",
                 "hex": "হেক্স",
-                "lines": "লাইন",
                 "loadFailed": "টেক্সট কন্টেন্ট লোড করা ব্যর্থ",
                 "noContent": "কোনো কন্টেন্ট নেই",
                 "openBrowser": "সিস্টেম ব্রাউজারে খুলুন",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "ওয়ার্ড র‍্যাপ",
                 "zoomIn": "জুম ইন",
                 "zoomOut": "জুম আউট",
-                "htmlPreviewFrameTitle": "HTML প্রিভিউ"
+                "htmlPreviewFrameTitle": "HTML প্রিভিউ",
+                "stats": "{lines} লাইন • {chars} অক্ষর"
             },
             "video": {
                 "exitFullscreen": "ফুলস্ক্রিন থেকে বেরিয়ে আসুন (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "তৈরি সংখ্যা",
             "pwdGenerate": "তৈরি করুন",
             "pwdEntropy": "এনট্রপি",
-            "pwdBits": "bits",
             "pwdWeak": "দুর্বল",
             "pwdFair": "মোটামুটি",
             "pwdGood": "ভালো",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "ডিফল্ট: AeroVault এবং AeroCrypt যে প্রোফাইল ব্যবহার করে (128 MiB, 4 পুনরাবৃত্তি, 4 লেন, 32 বাইট আউটপুট)। উপরের সল্ট আপনার। মেমরি 2 GiB পর্যন্ত।",
             "argon2Derive": "ডিরাইভ করুন",
             "argon2Phc": "PHC স্ট্রিং",
-            "hashError": "ত্রুটি: {error}"
+            "hashError": "ত্রুটি: {error}",
+            "pwdBitsCount": "{count} বিট"
         },
         "dialog": {
             "deleteFile": "\"{name}\" মুছে ফেলবেন?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "শুধুমাত্র ভল্টে",
             "localOnly": "শুধুমাত্র স্থানীয়",
             "conflict": "দ্বন্দ্ব",
-            "conflicts": "দ্বন্দ্বসমূহ",
-            "unchanged": "অপরিবর্তিত",
             "allToVault": "সব ভল্টে",
             "allToLocal": "সব স্থানীয়ে",
             "keepNewer": "নতুনতম রাখুন",
@@ -5018,10 +5005,14 @@
             "applySync": "সিঙ্ক প্রয়োগ করুন",
             "close": "বন্ধ করুন",
             "allInSync": "সব ফাইল সিঙ্ক আছে",
-            "filesToVault": "ফাইল ভল্টে সিঙ্ক করা হয়েছে",
-            "filesToLocal": "ফাইল স্থানীয়ে এক্সট্র্যাক্ট করা হয়েছে",
-            "filesSkipped": "ফাইল এড়িয়ে যাওয়া হয়েছে",
-            "errorsOccurred": "কিছু ত্রুটি ঘটেছে"
+            "errorsOccurred": "কিছু ত্রুটি ঘটেছে",
+            "vaultOnlyCount": "{count}টি শুধুমাত্র ভল্টে",
+            "localOnlyCount": "{count}টি শুধুমাত্র স্থানীয়",
+            "conflictsCount": "{count}টি দ্বন্দ্ব",
+            "unchangedCount": "{count}টি অপরিবর্তিত",
+            "filesToVaultCount": "{count}টি ফাইল ভল্টে সিঙ্ক করা হয়েছে",
+            "filesToLocalCount": "{count}টি ফাইল স্থানীয়ভাবে এক্সট্র্যাক্ট করা হয়েছে",
+            "filesSkippedCount": "{count}টি ফাইল এড়িয়ে যাওয়া হয়েছে"
         },
         "localTabs": {
             "closeAll": "সব ট্যাব বন্ধ করুন",
@@ -5246,7 +5237,6 @@
             "checkAll": "সব পরীক্ষা করুন",
             "checkOne": "এই সার্ভার পরীক্ষা করুন",
             "checking": "পরীক্ষা করা হচ্ছে...",
-            "checked": "পরীক্ষিত",
             "healthy": "সুস্থ",
             "degraded": "মন্থর",
             "unreachable": "অপ্রাপ্য",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "{count}টি সার্ভার পরীক্ষা করা হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...",
             "scoreLegend": "স্কোর 0-100, বেশি ভালো",
-            "scoreLegendDetail": "80+ স্বাস্থ্যকর · 50-79 অবনত · 50 এর নিচে সমস্যা আছে"
+            "scoreLegendDetail": "80+ স্বাস্থ্যকর · 50-79 অবনত · 50 এর নিচে সমস্যা আছে",
+            "checkedCount": "{count}টি পরীক্ষিত",
+            "healthyCount": "{count}টি সুস্থ",
+            "degradedCount": "{count}টি মন্থর",
+            "unreachableCount": "{count}টি অপ্রাপ্য"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "আর্কাইভ করা",
                 "trash": "ট্র্যাশ"
             },
-            "participants": "অংশগ্রহণকারী",
             "saving": "সংরক্ষণ হচ্ছে...",
             "saved": "সংরক্ষিত",
             "saveNow": "এখনই সংরক্ষণ করুন",
@@ -5549,7 +5542,8 @@
                 "code": "কোড",
                 "richText": "রিচ টেক্সট",
                 "checklist": "চেকলিস্ট"
-            }
+            },
+            "participantsCount": "{count} জন অংশগ্রহণকারী"
         },
         "shareLinkModal": {
             "title": "শেয়ার লিঙ্ক",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "অন্য প্যানেলে সরান",
             "copiedToOtherPanel": "অন্য প্যানেলে কপি হয়েছে",
             "movedToOtherPanel": "অন্য প্যানেলে সরানো হয়েছে",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "{count} এখানে কপি করুন",
             "moveHere": "{count} এখানে সরান",
             "copyHereFromOtherPanelTooltip": "অন্য প্যানেল থেকে নির্বাচিত {count} এই প্যানেলে কপি করুন (F5)",
             "moveHereFromOtherPanelTooltip": "অন্য প্যানেল থেকে নির্বাচিত {count} এই প্যানেলে সরান (F6)",
-            "syncToOtherPanel": "অন্য প্যানেলে সিঙ্ক করুন (delta)"
+            "syncToOtherPanel": "অন্য প্যানেলে সিঙ্ক করুন (delta)",
+            "failedCount": "{count}টি ব্যর্থ",
+            "skippedCount": "{count}টি এড়িয়ে যাওয়া হয়েছে"
         },
         "compare": {
             "title": "প্যানেল তুলনা",
@@ -6146,9 +6141,6 @@
             "bucket": "বিভাগ",
             "count": "গণনা",
             "action": "ক্রিয়া",
-            "delete": "মুছুন",
-            "overwrite": "ওভাররাইট",
-            "conflicts": "দ্বন্দ্ব",
             "destructiveWarning": "এই প্রিসেটটি নতুন ফাইলগুলি মুছে ফেলবে বা ওভাররাইট করবে।",
             "confirmDestructive": "আমি ধ্বংসাত্মক ক্রিয়াগুলি পর্যালোচনা করেছি এবং এগিয়ে যেতে চাই।",
             "executeHint": "এক্সিকিউট নির্বাচনটি সারিবদ্ধ করে এবং একীভূত ট্রান্সফার প্ল্যানারের মাধ্যমে প্রেরণ করে।",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "নেটওয়ার্কে বাইট",
                 "savings": "সঞ্চয়",
-                "errorDetails": "ত্রুটি, বিস্তারিত",
                 "errorPathsRequired": "উৎস এবং গন্তব্য আবশ্যক",
                 "deltaStatus": "ডেল্টা সিঙ্ক",
                 "deltaAuto": "অটো চালু",
@@ -6207,7 +6198,8 @@
                 "planned": "পরিকল্পিত কপি",
                 "resultDryRunOk": "ড্রাই রান সম্পন্ন হয়েছে",
                 "resultDryRunPartial": "ত্রুটিসহ ড্রাই রান সম্পন্ন হয়েছে",
-                "resultDryRunCancelled": "ড্রাই রান বাতিল করা হয়েছে"
+                "resultDryRunCancelled": "ড্রাই রান বাতিল করা হয়েছে",
+                "errorDetailsCount": "{count}টি ত্রুটি, বিস্তারিত"
             },
             "launcherTemplates": "টেমপ্লেট",
             "launcherMultiPath": "একাধিক পাথ",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "তুলনা দুটি ফোল্ডার এবং তাদের ভেতরের সব ফোল্ডার পড়ে। বড় ট্রিতে কিছুটা সময় লাগতে পারে, এবং আপনি এটি থামাতে পারেন।",
             "progressDelta": "[ডেল্টা]",
-            "progressCopy": "[কপি]"
+            "progressCopy": "[কপি]",
+            "deleteCount": "{count}টি মুছতে হবে",
+            "overwriteCount": "{count}টি ওভাররাইট করতে হবে",
+            "conflictCount": "{count}টি দ্বন্দ্ব"
         },
         "accountLock": {
             "title": "একটি অ্যাকাউন্ট বেছে নিন",

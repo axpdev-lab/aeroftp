@@ -439,7 +439,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     <FileText size={16} className="text-blue-400" />
                     <span className="text-sm font-medium text-gray-300 truncate max-w-xs">{file.name}</span>
                     <span className="text-xs text-gray-500">
-                        {lineCount} {t('preview.text.lines')} • {charCount.toLocaleString()} {t('preview.text.chars')}
+                        {t('preview.text.stats', { lines: lineCount, chars: charCount.toLocaleString() })}
                     </span>
                 </div>
 

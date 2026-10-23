@@ -80,7 +80,8 @@
             "reset": "Weka upya",
             "saved": "Imehifadhiwa",
             "saving": "Inahifadhi...",
-            "creating": "Inaunda..."
+            "creating": "Inaunda...",
+            "minutesCount": "Dakika {count}"
         },
         "connection": {
             "title": "Unganisha na Seva",
@@ -159,7 +160,6 @@
             "saveChanges": "Hifadhi Mabadiliko",
             "createAccount": "Unda Akaunti",
             "docs": "Nyaraka",
-            "minutes": "dakika",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Rudi kwenye akaunti iliyopo",
@@ -390,7 +390,6 @@
             "path": "Njia",
             "files": "faili",
             "folders": "folda",
-            "items": "vipengele",
             "emptyFolder": "Folda hii ni tupu",
             "parentFolder": "Folda kuu",
             "newFolder": "Folda Mpya",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Paneli ya kulia",
             "chooseRightPanelFolder": "Chagua folda ya paneli ya kulia",
             "chooseLeftPanelFolder": "Chagua folda ya paneli ya kushoto",
-            "localRight": "Ndani (kulia)"
+            "localRight": "Ndani (kulia)",
+            "itemCount": "Vipengee: {count}",
+            "fileCount": "Faili {count}",
+            "folderCount": "Folda {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Uliza AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "Hitilafu ya kunakili",
             "copyQueueToClipboard": "Nakili foleni kwenye ubao wa kunakili",
             "fail": "IMESHINDIKANA",
-            "pending": "Inasubiri",
             "remove": "Ondoa",
             "retry": "Jaribu tena",
             "stopAll": "Simamisha zote",
@@ -673,7 +674,6 @@
                 "newTransfer": "Uhamisho Mpya",
                 "preparing": "Inaandaa uhamishaji…"
             },
-            "staged": "kwenye foleni",
             "start": "Anza",
             "startAll": "Anza zote",
             "restored": "Imerejeshwa",
@@ -744,7 +744,10 @@
                 "size": "Ukubwa",
                 "source": "Chanzo",
                 "title": "Mpango: {mode}"
-            }
+            },
+            "stagedCount": "Zilizoandaliwa: {count}",
+            "pendingCount": "Zinazosubiri: {count}",
+            "failedCount": "Zilizoshindwa: {count}"
         },
         "settings": {
             "title": "Mipangilio",
@@ -929,7 +932,6 @@
             "migrationSkip": "Ruka kwa sasa",
             "migrationFinish": "Kamilisha",
             "migrationStep": "Hatua {current} ya {total}",
-            "duplicatesSkipped": "nakala zilimerukwa",
             "invalidPassword": "Nenosiri lisilo sahihi",
             "backup": "Hifadhi Rudufu",
             "visibleColumns": "Safu Wima Zinazoonekana",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Siri ya Muuzaji",
             "privacyRespect": "AeroFTP inalinda faragha yako. Hakuna data inayokusanywa, hakuna ufuatiliaji, hakuna telemetri.",
             "keystoreEntries": "vipengele {count}",
-            "serverCredentials": "kitambulisho cha seva",
-            "serverProfilesLabel": "wasifu wa seva",
-            "aiKeysLabel": "ufunguo wa AI",
-            "oauthTokensLabel": "tokens ya OAuth",
-            "configEntriesLabel": "vipengele vya usanidi",
             "session": "Kipindi",
             "aeroftpBackupFiles": "Faili za nakala rudufu za AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Chagua seva za kuhamisha",
             "selectAll": "Chagua Zote",
             "deselectAll": "Ondoa Chaguo Zote",
-            "selected": "zilizochaguliwa",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Ikiwa aikoni haijawekwa, favicon au icon.png kutoka kwa seva itagunduliwa kiotomatiki.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Angavu",
             "imagePreviewBgCustom": "Maalum",
             "showTransferProgress": "Onyesha upau wa maendeleo ya uhamishaji",
-            "similarToExisting": "zinafanana na wasifu uliopo",
             "aerocloudCompress": "Washa mgandamizo (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: mbano + usimbaji (wasifu una usimbaji fiche)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Inahitaji usakinishaji wa mfumo. AeroFTP hubadilisha kiotomatiki ikiwa haipatikani.",
             "fontSizeIndicatorLabel": "Fonti",
             "fontPresetDefault": "{font} (Chaguomsingi)",
-            "fontPresetSystemDefault": "Chaguomsingi la mfumo"
+            "fontPresetSystemDefault": "Chaguomsingi la mfumo",
+            "duplicatesSkippedCount": "Nakala rudufu zilizorukwa: {count}",
+            "similarToExistingCount": "Zinazofanana na wasifu uliopo: {count}",
+            "bridgeSkippedCount": "Zilizorukwa: {count}",
+            "selectedOfTotal": "Zilizochaguliwa: {selected} / {total}",
+            "serverCredentialsCount": "Vitambulisho vya seva: {count}",
+            "serverProfilesCount": "Wasifu wa seva: {count}",
+            "aiKeysCount": "Funguo za AI: {count}",
+            "oauthTokensCount": "Tokeni za OAuth: {count}",
+            "configEntriesCount": "Maingizo ya usanidi: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Inaanza...",
             "pending": "Inasubiri",
             "conflict": "Mgongano",
-            "conflicts": "migongano inahitaji usikivu",
             "error": "Hitilafu ya usawazishaji",
             "never": "Kamwe",
             "justNow": "Sasa hivi",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Hivi karibuni...",
             "aerocloudEnabled": "AeroCloud imewashwa",
             "selectPairLocalFolder": "Chagua folda ya ndani kwa jozi",
-            "secondsAgo": "sekunde {count} zilizopita"
+            "secondsAgo": "sekunde {count} zilizopita",
+            "conflictsCount": "Migogoro inayohitaji umakini: {count}"
         },
         "statusBar": {
             "connected": "Imeunganishwa",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "Faili tayari ipo",
-            "moreFiles": "faili zaidi kwenye foleni",
             "remote": "Mbali",
             "local": "Ndani",
             "sourceNewer": "Chanzo ni kipya zaidi",
@@ -2800,7 +2803,6 @@
                 "approveThis": "Thibitisha wito huu wa zana",
                 "confirm": "Thibitisha",
                 "confirmDangerous": "Thibitisha kitendo hatari",
-                "pendingApproval": "inasubiri idhini",
                 "rejectAllCalls": "Kataa wito zote za zana",
                 "rejectExecution": "Kataa utekelezaji wa zana",
                 "toggleDetails": "Onyesha/ficha maelezo",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Ruhusu Zote",
                 "rejectAll": "Kataa Zote",
                 "pending": "inasubiri idhini",
-                "toolCall": "wito wa zana",
-                "toolCalls": "wito za zana",
                 "running": "Inatekeleza...",
                 "done": "Imekamilika",
                 "failed": "Imeshindikana",
-                "allowThis": "Ruhusu zana hii"
+                "allowThis": "Ruhusu zana hii",
+                "pendingApprovalCount": "Miito ya zana inayosubiri idhini: {count}"
             },
             "diff": {
                 "title": "Onyesho la Tofauti",
@@ -3334,7 +3335,6 @@
                 "add": "Ongeza",
                 "added": "Imeongezwa",
                 "all": "Zote",
-                "available": "inapatikana",
                 "browseProviders": "Vinjari watoa huduma",
                 "chinese": "Kichina",
                 "fast": "Uchanganuzi wa haraka",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Miundo inayopangishwa kwenye AWS yenye ufikiaji kupitia ufunguo wa API wa eneo. Ongeza model ID yako mwenyewe.",
-                "bedrockHighlight": "Sehemu ya mwisho ya AWS ya eneo"
+                "bedrockHighlight": "Sehemu ya mwisho ya AWS ya eneo",
+                "availableCount": "Zinazopatikana: {count}"
             },
             "history": {
                 "cancel": "Ghairi",
@@ -3709,12 +3710,12 @@
             "size": "Ukubwa",
             "compressed": "Imebana",
             "actions": "Vitendo",
-            "files": "faili",
             "empty": "Kumbukumbu ni tupu",
             "extracting": "Inafungua",
             "preview": "Hakiki",
             "extract": "Toa",
-            "back": "Rudi"
+            "back": "Rudi",
+            "filesSummary": "Faili {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Zimeongezwa faili {files} katika saraka {dirs}",
@@ -3761,7 +3762,6 @@
             "filesAdded": "Faili {count} zimeongezwa",
             "folderName": "Jina la folda",
             "itemDeleted": "Imefutwa {name}",
-            "items": "vipengele",
             "itemsDeleted": "Vitu {count} vimefutwa",
             "lastOpened": "Ilifunguliwa mwisho",
             "modified": "Imebadilishwa",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Usimbaji fiche imara",
-            "totalItems": "jumla",
             "unlock": "Fungua",
             "v1Standard": "AeroVault v1 (Kawaida)",
             "v2Advanced": "AeroVault v2 (Usalama wa Juu)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "Toa kila faili kwenye kasha hadi folda",
             "extractedAll": "Faili {count} zimetolewa hadi {path}",
             "dropFilesHint": "Buruta faili au folda hapa, au tumia vitufe vilivyo hapa chini",
-            "itemSingular": "kipengele",
-            "itemPlural": "vipengele",
             "reportExported": "Ripoti ya kasha imehifadhiwa kwenye {path}",
             "reportCopied": "Ripoti ya kasha imenakiliwa kwenye ubao wa kunakili",
             "exportReportHint": "Hamisha ripoti kamili ya kiufundi: metadata ya kasha, usimbaji fiche, urekebishaji wa makosa na orodha kamili ya faili",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Haraka",
             "securityAdvancedDescription": "Inastahimili nonce · Majina ya faili yaliyosimbwa · KDF ya 128 MB",
             "securityParanoidDescription": "Mfululizo wa AES + ChaCha20 · Usimbaji maradufu",
-            "securityArchiveDescription": "Kumbukumbu isiyo na nakala rudufu · vipande vya zstd · v3"
+            "securityArchiveDescription": "Kumbukumbu isiyo na nakala rudufu · vipande vya zstd · v3",
+            "totalItemsCount": "Jumla: {count}"
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",
@@ -3956,7 +3954,6 @@
             "empty": "Saraka ni tupu",
             "name": "Jina",
             "size": "Ukubwa",
-            "items": "vipengele",
             "readOnly": "Hali ya kusoma tu - uundaji wa hazina unakuja katika v2.1",
             "openAsVault": "Fungua kama Hazina ya Cryptomator",
             "decryptAndSave": "Fichue na Hifadhi",
@@ -3989,8 +3986,6 @@
             "level": "Kiwango cha Kubana",
             "password": "Nenosiri (hiari, AES-256)",
             "passwordHint": "Acha tupu kwa bila usimbaji",
-            "files": "faili",
-            "folders": "folda",
             "compress": "Bana",
             "store": "Hifadhi (bila kubana)",
             "fast": "Haraka",
@@ -4232,8 +4227,6 @@
             "modified": "Imebadilishwa",
             "file": "Faili",
             "folder": "Folda",
-            "files": "faili",
-            "folders": "folda",
             "remote": "Mbali",
             "local": "Ndani",
             "linkTarget": "Lengo la Kiungo",
@@ -4309,10 +4302,7 @@
             "deleted": "faili nakala {count} zimefutwa",
             "scanFailed": "Ukaguzi umeshindikana",
             "retry": "Jaribu Tena",
-            "groups": "makundi",
-            "duplicateFiles": "faili nakala",
             "wasted": "zinapotea",
-            "copies": "nakala",
             "delete": "FUTA",
             "skip": "RUKA",
             "deleteConfirm": "Una uhakika unataka kufuta faili nakala {count}?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, umbali {distance}",
             "modeExact": "Kamili",
             "modeLabel": "Hali ya utendaji:",
-            "modeNonIdentical": "Zisizofanana"
+            "modeNonIdentical": "Zisizofanana",
+            "groupsCount": "Vikundi: {count}",
+            "duplicateFilesCount": "Faili rudufu {count}",
+            "copiesCount": "Nakala {count}"
         },
         "diskUsage": {
             "title": "Matumizi ya Diski",
@@ -4340,20 +4333,16 @@
             "totalItems": "Jumla: {size} katika vipengele {count}",
             "percentOfParent": "{percent}% ya mzazi",
             "backToParent": "Rudi kwa mzazi",
-            "items": "vipengele",
             "scanFailed": "Uchambuzi umeshindikana",
             "retry": "Jaribu Tena",
             "drillDown": "Bonyeza kuchunguza",
             "back": "Rudi",
-            "total": "Jumla",
-            "across": "katika",
             "empty": "Saraka hii ni tupu",
             "hoverHint": "Pindua juu ya kisanduku kuona maelezo",
             "scanUnknownError": "Hitilafu isiyojulikana wakati wa kuchanganua matumizi ya diski"
         },
         "dependencies": {
             "title": "Vitegemezi",
-            "crates": "sanduku",
             "copy": "Nakili",
             "copied": "Imenakiliwa!",
             "checkUpdates": "Kagua Sasisho",
@@ -4363,7 +4352,8 @@
             "latest": "Hivi Punde",
             "status": "Hali",
             "footer": "Data ya toleo kutoka crates.io API. Matoleo yaliyoonyeshwa ni matoleo yaliyosuluhishwa (Cargo.lock).",
-            "copyTitle": "Ukaguzi wa Vitegemezi vya AeroFTP"
+            "copyTitle": "Ukaguzi wa Vitegemezi vya AeroFTP",
+            "cratesCount": "Crate: {count}"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Onyo",
                 "info": "Taarifa",
                 "debug": "Utatuzi",
-                "entries": "ingizo",
                 "resume": "Endelea",
                 "pause": "Sitisha",
                 "copyAll": "Nakili zote",
@@ -4432,13 +4421,13 @@
                 "allSources": "Vyanzo vyote",
                 "sourceFilterTitle": "Chuja kwa chanzo",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Maingizo: {count}"
             },
             "frontend": {
                 "reactMode": "Hali ya React",
                 "language": "Lugha",
                 "localStorageKeys": "Funguo za LocalStorage",
-                "keys": "funguo",
                 "localStorageSize": "Ukubwa wa LocalStorage",
                 "windowSize": "Ukubwa wa Dirisha",
                 "devicePixelRatio": "Uwiano wa Pikseli za Kifaa",
@@ -4447,7 +4436,8 @@
                 "light": "Mwangaza",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "Funguo za LocalStorage",
-                "localStorageEntrySummary": "baiti {size} · {preview}"
+                "localStorageEntrySummary": "baiti {size} · {preview}",
+                "keysCount": "Funguo: {count}"
             },
             "copyFileListToClipboard": "Nakili orodha ya faili kwenye ubao wa kunakili",
             "filesCopied": "Maingizo {count} ya faili yamenakiliwa kwenye ubao wa kunakili",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "Ukaguzi wa funguo za i18n",
                 "ipcSpeed": "Sampuli ya kasi ya IPC",
                 "knownHosts": "kusoma known_hosts",
-                "passed": "yamefaulu",
                 "pluginIntegrity": "Uadilifu wa programu-jalizi",
                 "providerSelftest": "Jaribio la kibinafsi la mtoa huduma (kusoma tu)",
                 "runAll": "Endesha zote",
                 "runOne": "Endesha jaribio hili",
-                "vaultRoundtrip": "Safari ya mzunguko ya hifadhi"
+                "vaultRoundtrip": "Safari ya mzunguko ya hifadhi",
+                "passedCount": "Zilizofaulu: {passed}/{total}"
             },
             "bundle": {
                 "title": "Hamisha kifurushi cha uchunguzi (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Inasubiri amri...",
             "badges": {
-                "active": "INATUMIKA",
                 "live": "HAI",
-                "synced": "IMESAWAZISHWA"
+                "synced": "IMESAWAZISHWA",
+                "activeCount": "ZINAZOENDELEA: {count}"
             },
             "clearLog": "Futa kumbukumbu",
             "close": "Funga",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Chuja shughuli",
-                "selected": "zimechaguliwa"
+                "selectedCount": "Zilizochaguliwa: {count}"
             },
             "save": "Hifadhi"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Kiotomatiki",
                 "autoRefresh": "Onyesha Upya Kiotomatiki (3s)",
                 "browser": "Kivinjari",
-                "chars": "herufi",
                 "copy": "Nakili kwenye Ubao wa Kunakili",
                 "disableWrap": "Zima Kuvunja Maneno",
                 "enableWrap": "Wezesha Kuvunja Maneno",
                 "encoding": "Usimbaji",
                 "errorLoading": "Hitilafu kupakia maudhui",
                 "hex": "Hex",
-                "lines": "mistari",
                 "loadFailed": "Kupakia maudhui ya maandishi kumeshindikana",
                 "noContent": "Hakuna maudhui yanayopatikana",
                 "openBrowser": "Fungua kwenye Kivinjari cha Mfumo",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Kuvunja Maneno",
                 "zoomIn": "Kuza Ndani",
                 "zoomOut": "Kuza Nje",
-                "htmlPreviewFrameTitle": "Onyesho la kukagua HTML"
+                "htmlPreviewFrameTitle": "Onyesho la kukagua HTML",
+                "stats": "Mistari: {lines} • Herufi: {chars}"
             },
             "video": {
                 "exitFullscreen": "Ondoka Skrini Kamili (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Idadi ya Kutengeneza",
             "pwdGenerate": "Tengeneza",
             "pwdEntropy": "Entropy",
-            "pwdBits": "bits",
             "pwdWeak": "Dhaifu",
             "pwdFair": "Wastani",
             "pwdGood": "Nzuri",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Chaguo-msingi: wasifu ambao AeroVault na AeroCrypt wanatumia (128 MiB, marudio 4, njia 4, pato la baiti 32). Chumvi hapo juu ni yako. Kumbukumbu hadi 2 GiB.",
             "argon2Derive": "Tokeza",
             "argon2Phc": "Mfuatano wa PHC",
-            "hashError": "Hitilafu: {error}"
+            "hashError": "Hitilafu: {error}",
+            "pwdBitsCount": "Biti {count}"
         },
         "dialog": {
             "deleteFile": "Futa \"{name}\"?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Hazina pekee",
             "localOnly": "Ndani pekee",
             "conflict": "Mgogoro",
-            "conflicts": "migogoro",
-            "unchanged": "haijabadilika",
             "allToVault": "Zote kwa Hazina",
             "allToLocal": "Zote kwa Ndani",
             "keepNewer": "Hifadhi Mpya Zaidi",
@@ -5018,10 +5005,14 @@
             "applySync": "Tekeleza Usawazishaji",
             "close": "Funga",
             "allInSync": "Faili zote zimesawazishwa",
-            "filesToVault": "faili zilizosawazishwa kwa hazina",
-            "filesToLocal": "faili zilizotolewa kwa ndani",
-            "filesSkipped": "faili zilizorukwa",
-            "errorsOccurred": "Baadhi ya makosa yalitokea"
+            "errorsOccurred": "Baadhi ya makosa yalitokea",
+            "vaultOnlyCount": "Hazina pekee: {count}",
+            "localOnlyCount": "Ndani pekee: {count}",
+            "conflictsCount": "Migogoro: {count}",
+            "unchangedCount": "Bila mabadiliko: {count}",
+            "filesToVaultCount": "Faili zilizosawazishwa kwenye hazina: {count}",
+            "filesToLocalCount": "Faili zilizotolewa kwenda ndani: {count}",
+            "filesSkippedCount": "Faili zilizorukwa: {count}"
         },
         "localTabs": {
             "closeAll": "Funga Vichupo Vyote",
@@ -5246,7 +5237,6 @@
             "checkAll": "Kagua zote",
             "checkOne": "Kagua seva hii",
             "checking": "Inakagua...",
-            "checked": "imekaguliwa",
             "healthy": "Inafanya kazi vizuri",
             "degraded": "Imepungua ubora",
             "unreachable": "Haifikiki",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Inakagua seva {count}, tafadhali subiri...",
             "scoreLegend": "Alama 0-100, juu zaidi ni bora",
-            "scoreLegendDetail": "80+ afya · 50-79 imeshuka · chini ya 50 ina shida"
+            "scoreLegendDetail": "80+ afya · 50-79 imeshuka · chini ya 50 ina shida",
+            "checkedCount": "Zilizokaguliwa: {count}",
+            "healthyCount": "Zinazofanya kazi vizuri: {count}",
+            "degradedCount": "Zilizopungua ubora: {count}",
+            "unreachableCount": "Zisizofikika: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "Hifadhid",
                 "trash": "Takataka"
             },
-            "participants": "washiriki",
             "saving": "Inahifadhi...",
             "saved": "Imehifadhiwa",
             "saveNow": "Hifadhi sasa",
@@ -5549,7 +5542,8 @@
                 "code": "Msimbo",
                 "richText": "Maandishi yaliyoumbizwa",
                 "checklist": "Orodha ya ukaguzi"
-            }
+            },
+            "participantsCount": "Washiriki {count}"
         },
         "shareLinkModal": {
             "title": "Kiungo cha kushiriki",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "Hamisha kwenye paneli nyingine",
             "copiedToOtherPanel": "Imenakiliwa kwenye paneli nyingine",
             "movedToOtherPanel": "Imehamishwa kwenye paneli nyingine",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Nakili {count} hapa",
             "moveHere": "Hamisha {count} hapa",
             "copyHereFromOtherPanelTooltip": "Nakili {count} zilizochaguliwa kutoka paneli nyingine kwenda kwenye paneli hii (F5)",
             "moveHereFromOtherPanelTooltip": "Hamisha {count} zilizochaguliwa kutoka paneli nyingine kwenda kwenye paneli hii (F6)",
-            "syncToOtherPanel": "Sawazisha kwenye paneli nyingine (delta)"
+            "syncToOtherPanel": "Sawazisha kwenye paneli nyingine (delta)",
+            "failedCount": "Zilizoshindwa: {count}",
+            "skippedCount": "Zilizorukwa: {count}"
         },
         "compare": {
             "title": "Linganisha paneli",
@@ -6146,9 +6141,6 @@
             "bucket": "Kategoria",
             "count": "Idadi",
             "action": "Kitendo",
-            "delete": "futa",
-            "overwrite": "andika juu",
-            "conflicts": "mgogoro",
             "destructiveWarning": "Mpangilio huu utafuta au kuandika juu ya faili mpya zaidi.",
             "confirmDestructive": "Nimekagua vitendo hatari na ninataka kuendelea.",
             "executeHint": "Tekeleza huweka uchaguzi katika foleni na kutuma kupitia mpangaji wa uhamishaji ulioungana.",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Baiti kwenye mtandao",
                 "savings": "Uhifadhi",
-                "errorDetails": "kosa(zo), maelezo",
                 "errorPathsRequired": "Chanzo na lengo vinahitajika",
                 "deltaStatus": "Usawazishaji wa delta",
                 "deltaAuto": "OTOMATIKI IMEWASHWA",
@@ -6207,7 +6198,8 @@
                 "planned": "Nakala zilizopangwa",
                 "resultDryRunOk": "Jaribio limekamilika",
                 "resultDryRunPartial": "Jaribio limekamilika likiwa na makosa",
-                "resultDryRunCancelled": "Jaribio limeghairiwa"
+                "resultDryRunCancelled": "Jaribio limeghairiwa",
+                "errorDetailsCount": "Hitilafu {count}, maelezo"
             },
             "launcherTemplates": "Violezo",
             "launcherMultiPath": "Njia nyingi",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Ulinganishaji husoma folda zote mbili na kila folda iliyo chini yake. Kwenye mti mkubwa unaweza kuchukua muda, na unaweza kuusimamisha.",
             "progressDelta": "[delta]",
-            "progressCopy": "[nakala]"
+            "progressCopy": "[nakala]",
+            "deleteCount": "Za kufutwa: {count}",
+            "overwriteCount": "Za kuandikwa upya: {count}",
+            "conflictCount": "Migogoro: {count}"
         },
         "accountLock": {
             "title": "Chagua akaunti",

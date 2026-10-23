@@ -80,7 +80,8 @@
             "reset": "重置",
             "saved": "已保存",
             "saving": "保存中...",
-            "creating": "正在创建..."
+            "creating": "正在创建...",
+            "minutesCount": "{count} 分钟"
         },
         "connection": {
             "title": "连接到服务器",
@@ -159,7 +160,6 @@
             "saveChanges": "保存更改",
             "createAccount": "创建账户",
             "docs": "文档",
-            "minutes": "分钟",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "返回已有账户",
@@ -390,7 +390,6 @@
             "path": "路径",
             "files": "文件",
             "folders": "文件夹",
-            "items": "项目",
             "emptyFolder": "此文件夹为空",
             "parentFolder": "上级文件夹",
             "newFolder": "新建文件夹",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "右侧面板",
             "chooseRightPanelFolder": "选择右侧面板文件夹",
             "chooseLeftPanelFolder": "选择左侧面板文件夹",
-            "localRight": "本地 (右)"
+            "localRight": "本地 (右)",
+            "itemCount": "{count} 个项目",
+            "fileCount": "{count} 个文件",
+            "folderCount": "{count} 个文件夹"
         },
         "contextMenu": {
             "askAeroAgent": "询问 AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "复制错误",
             "copyQueueToClipboard": "将队列复制到剪贴板",
             "fail": "失败",
-            "pending": "等待中",
             "remove": "移除",
             "retry": "重试",
             "stopAll": "全部停止",
@@ -673,7 +674,6 @@
                 "newTransfer": "新建传输",
                 "preparing": "正在准备传输…"
             },
-            "staged": "已排队",
             "start": "开始",
             "startAll": "全部开始",
             "restored": "已恢复",
@@ -744,7 +744,10 @@
                 "size": "大小",
                 "source": "源",
                 "title": "{mode}计划"
-            }
+            },
+            "stagedCount": "{count} 个已暂存",
+            "pendingCount": "{count} 个等待中",
+            "failedCount": "{count} 个失败"
         },
         "settings": {
             "title": "设置",
@@ -929,7 +932,6 @@
             "migrationSkip": "暂时跳过",
             "migrationFinish": "完成",
             "migrationStep": "第 {current} 步，共 {total} 步",
-            "duplicatesSkipped": "已跳过重复项",
             "invalidPassword": "密码无效",
             "backup": "备份",
             "visibleColumns": "可见列",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "消费者密钥",
             "privacyRespect": "AeroFTP 保护您的隐私。不收集数据,不跟踪,不遥测。",
             "keystoreEntries": "{count} 条记录",
-            "serverCredentials": "服务器凭据",
-            "serverProfilesLabel": "服务器配置",
-            "aiKeysLabel": "AI 密钥",
-            "oauthTokensLabel": "OAuth 令牌",
-            "configEntriesLabel": "配置记录",
             "session": "会话",
             "aeroftpBackupFiles": "AeroFTP 备份文件",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "选择要导出的服务器",
             "selectAll": "全选",
             "deselectAll": "取消全选",
-            "selected": "已选择",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "如果未设置图标，将自动检测服务器的 favicon 或 icon.png。",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "浅色",
             "imagePreviewBgCustom": "自定义",
             "showTransferProgress": "显示传输进度条",
-            "similarToExisting": "与现有配置文件相似",
             "aerocloudCompress": "启用压缩 (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1：压缩 + 加密（配置文件已启用加密）",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "需要在系统中安装。如不可用，AeroFTP 会自动回退。",
             "fontSizeIndicatorLabel": "字体",
             "fontPresetDefault": "{font} (默认)",
-            "fontPresetSystemDefault": "系统默认"
+            "fontPresetSystemDefault": "系统默认",
+            "duplicatesSkippedCount": "已跳过 {count} 个重复项",
+            "similarToExistingCount": "{count} 个与现有配置文件相似",
+            "bridgeSkippedCount": "{count} 个已跳过",
+            "selectedOfTotal": "已选择 {selected} / {total}",
+            "serverCredentialsCount": "{count} 个服务器凭据",
+            "serverProfilesCount": "{count} 个服务器配置文件",
+            "aiKeysCount": "{count} 个 AI 密钥",
+            "oauthTokensCount": "{count} 个 OAuth 令牌",
+            "configEntriesCount": "{count} 个配置条目"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "启动中...",
             "pending": "待处理",
             "conflict": "冲突",
-            "conflicts": "个冲突需要处理",
             "error": "同步错误",
             "never": "从未",
             "justNow": "刚刚",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "即将到来...",
             "aerocloudEnabled": "AeroCloud 已启用",
             "selectPairLocalFolder": "为配对选择本地文件夹",
-            "secondsAgo": "{count}秒前"
+            "secondsAgo": "{count}秒前",
+            "conflictsCount": "{count} 个冲突需要处理"
         },
         "statusBar": {
             "connected": "已连接",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "文件已存在",
-            "moreFiles": "队列中还有更多文件",
             "remote": "远程",
             "local": "本地",
             "sourceNewer": "源文件较新",
@@ -2800,7 +2803,6 @@
                 "approveThis": "批准此工具调用",
                 "confirm": "确认",
                 "confirmDangerous": "确认危险操作",
-                "pendingApproval": "等待审批",
                 "rejectAllCalls": "拒绝所有工具调用",
                 "rejectExecution": "拒绝工具执行",
                 "toggleDetails": "切换详情",
@@ -3029,12 +3031,11 @@
                 "allowAll": "全部允许",
                 "rejectAll": "全部拒绝",
                 "pending": "待审批",
-                "toolCall": "工具调用",
-                "toolCalls": "工具调用",
                 "running": "运行中...",
                 "done": "完成",
                 "failed": "失败",
-                "allowThis": "允许此工具"
+                "allowThis": "允许此工具",
+                "pendingApprovalCount": "{count} 个工具调用待批准"
             },
             "diff": {
                 "title": "差异预览",
@@ -3334,7 +3335,6 @@
                 "add": "添加",
                 "added": "已添加",
                 "all": "全部",
-                "available": "可用",
                 "browseProviders": "浏览提供商",
                 "chinese": "中文",
                 "fast": "快速推理",
@@ -3354,7 +3354,8 @@
                 "tools": "工具",
                 "vision": "Vision",
                 "bedrockDescription": "托管在 AWS 上的模型，可通过区域 API 密钥访问。请手动添加您的 model ID。",
-                "bedrockHighlight": "AWS 区域端点"
+                "bedrockHighlight": "AWS 区域端点",
+                "availableCount": "{count} 个可用"
             },
             "history": {
                 "cancel": "取消",
@@ -3709,12 +3710,12 @@
             "size": "大小",
             "compressed": "压缩后",
             "actions": "操作",
-            "files": "个文件",
             "empty": "压缩包为空",
             "extracting": "正在解压",
             "preview": "预览",
             "extract": "提取",
-            "back": "返回"
+            "back": "返回",
+            "filesSummary": "{count} 个文件，{size}"
         },
         "vault": {
             "addDirectorySuccess": "已在 {dirs} 个目录中添加 {files} 个文件",
@@ -3761,7 +3762,6 @@
             "filesAdded": "已添加 {count} 个文件",
             "folderName": "文件夹名称",
             "itemDeleted": "已删除 {name}",
-            "items": "个项目",
             "itemsDeleted": "已删除 {count} 个项目",
             "lastOpened": "上次打开",
             "modified": "修改时间",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - 强加密",
-            "totalItems": "总计",
             "unlock": "解锁",
             "v1Standard": "AeroVault v1（标准）",
             "v2Advanced": "AeroVault v2（高级安全）",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "将保险库中的每个文件解压到文件夹",
             "extractedAll": "已解压 {count} 个文件到 {path}",
             "dropFilesHint": "将文件或文件夹拖到此处，或使用下方的按钮",
-            "itemSingular": "项",
-            "itemPlural": "项",
             "reportExported": "保险库报告已保存到 {path}",
             "reportCopied": "保险库报告已复制到剪贴板",
             "exportReportHint": "导出完整的技术报告：保险库元数据、加密、纠错和完整文件列表",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · 快速",
             "securityAdvancedDescription": "抗 nonce 重用 · 文件名加密 · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 级联 · 双重加密",
-            "securityArchiveDescription": "去重归档 · zstd 分块 · v3"
+            "securityArchiveDescription": "去重归档 · zstd 分块 · v3",
+            "totalItemsCount": "共 {count} 个"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",
@@ -3956,7 +3954,6 @@
             "empty": "目录为空",
             "name": "名称",
             "size": "大小",
-            "items": "个项目",
             "readOnly": "只读模式 - 保险库创建功能将在 v2.1 版本中推出",
             "openAsVault": "作为 Cryptomator 保险库打开",
             "decryptAndSave": "解密并保存",
@@ -3989,8 +3986,6 @@
             "level": "压缩级别",
             "password": "密码（可选，AES-256）",
             "passwordHint": "留空则不加密",
-            "files": "个文件",
-            "folders": "个文件夹",
             "compress": "压缩",
             "store": "存储（不压缩）",
             "fast": "快速",
@@ -4232,8 +4227,6 @@
             "modified": "修改时间",
             "file": "文件",
             "folder": "文件夹",
-            "files": "个文件",
-            "folders": "个文件夹",
             "remote": "远程",
             "local": "本地",
             "linkTarget": "符号链接目标",
@@ -4309,10 +4302,7 @@
             "deleted": "已删除 {count} 个重复文件",
             "scanFailed": "扫描失败",
             "retry": "重试",
-            "groups": "组",
-            "duplicateFiles": "个重复文件",
             "wasted": "浪费空间",
-            "copies": "个副本",
             "delete": "删除",
             "skip": "跳过",
             "deleteConfirm": "确定要删除 {count} 个重复文件吗？",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}，距离 {distance}",
             "modeExact": "完全相同",
             "modeLabel": "模式:",
-            "modeNonIdentical": "不完全相同"
+            "modeNonIdentical": "不完全相同",
+            "groupsCount": "{count} 个组",
+            "duplicateFilesCount": "{count} 个重复文件",
+            "copiesCount": "{count} 个副本"
         },
         "diskUsage": {
             "title": "磁盘使用情况",
@@ -4340,20 +4333,16 @@
             "totalItems": "总计：{size}，{count} 个项目",
             "percentOfParent": "占上级目录 {percent}%",
             "backToParent": "返回上级",
-            "items": "个项目",
             "scanFailed": "分析失败",
             "retry": "重试",
             "drillDown": "点击查看详情",
             "back": "返回",
-            "total": "总计",
-            "across": "包含",
             "empty": "此目录为空",
             "hoverHint": "将鼠标悬停在方块上查看详情",
             "scanUnknownError": "扫描磁盘使用情况时出现未知错误"
         },
         "dependencies": {
             "title": "依赖项",
-            "crates": "个 crate",
             "copy": "复制",
             "copied": "已复制！",
             "checkUpdates": "检查更新",
@@ -4363,7 +4352,8 @@
             "latest": "最新",
             "status": "状态",
             "footer": "版本数据来自 crates.io API。显示的版本为解析后的 (Cargo.lock) 版本。",
-            "copyTitle": "AeroFTP 依赖项检查"
+            "copyTitle": "AeroFTP 依赖项检查",
+            "cratesCount": "{count} 个 crate"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "警告",
                 "info": "信息",
                 "debug": "调试",
-                "entries": "条记录",
                 "resume": "继续",
                 "pause": "暂停",
                 "copyAll": "全部复制",
@@ -4432,13 +4421,13 @@
                 "allSources": "所有来源",
                 "sourceFilterTitle": "按来源筛选",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "条目：{count}"
             },
             "frontend": {
                 "reactMode": "React 模式",
                 "language": "语言",
                 "localStorageKeys": "LocalStorage 键",
-                "keys": "个键",
                 "localStorageSize": "LocalStorage 大小",
                 "windowSize": "窗口大小",
                 "devicePixelRatio": "设备像素比",
@@ -4447,7 +4436,8 @@
                 "light": "浅色",
                 "userAgent": "用户代理",
                 "localStorageKeysTitle": "LocalStorage 键",
-                "localStorageEntrySummary": "{size} 字节 · {preview}"
+                "localStorageEntrySummary": "{size} 字节 · {preview}",
+                "keysCount": "{count} 个键"
             },
             "copyFileListToClipboard": "将文件列表复制到剪贴板",
             "filesCopied": "已复制 {count} 个文件条目到剪贴板",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "i18n 键扫描",
                 "ipcSpeed": "IPC 速度采样",
                 "knownHosts": "known_hosts 读取",
-                "passed": "通过",
                 "pluginIntegrity": "插件完整性",
                 "providerSelftest": "提供商自检 (只读)",
                 "runAll": "全部运行",
                 "runOne": "运行此测试",
-                "vaultRoundtrip": "保险库往返测试"
+                "vaultRoundtrip": "保险库往返测试",
+                "passedCount": "{passed}/{total} 通过"
             },
             "bundle": {
                 "title": "导出诊断包 (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "等待命令...",
             "badges": {
-                "active": "活动",
                 "live": "实时",
-                "synced": "已同步"
+                "synced": "已同步",
+                "activeCount": "{count} 个运行中"
             },
             "clearLog": "清除日志",
             "close": "关闭",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "筛选操作",
-                "selected": "已选"
+                "selectedCount": "已选择 {count} 个"
             },
             "save": "保存"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "自动",
                 "autoRefresh": "自动刷新 (3s)",
                 "browser": "浏览器",
-                "chars": "字符",
                 "copy": "复制到剪贴板",
                 "disableWrap": "禁用自动换行",
                 "enableWrap": "启用自动换行",
                 "encoding": "编码",
                 "errorLoading": "加载内容时出错",
                 "hex": "Hex",
-                "lines": "行",
                 "loadFailed": "无法加载文本内容",
                 "noContent": "暂无内容",
                 "openBrowser": "在系统浏览器中打开",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "自动换行",
                 "zoomIn": "放大",
                 "zoomOut": "缩小",
-                "htmlPreviewFrameTitle": "HTML 预览"
+                "htmlPreviewFrameTitle": "HTML 预览",
+                "stats": "{lines} 行 • {chars} 个字符"
             },
             "video": {
                 "exitFullscreen": "退出全屏 (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "生成数量",
             "pwdGenerate": "生成",
             "pwdEntropy": "熵",
-            "pwdBits": "位",
             "pwdWeak": "弱",
             "pwdFair": "一般",
             "pwdGood": "良好",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "默认值：AeroVault 和 AeroCrypt 使用的配置（128 MiB、4 次迭代、4 条通道、32 字节输出）。上方的盐值是你的。内存最高 2 GiB。",
             "argon2Derive": "派生",
             "argon2Phc": "PHC 字符串",
-            "hashError": "错误：{error}"
+            "hashError": "错误：{error}",
+            "pwdBitsCount": "{count} 比特"
         },
         "dialog": {
             "deleteFile": "删除\"{name}\"？",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "仅在 vault",
             "localOnly": "仅在本地",
             "conflict": "冲突",
-            "conflicts": "冲突",
-            "unchanged": "未更改",
             "allToVault": "全部到 vault",
             "allToLocal": "全部到本地",
             "keepNewer": "保留较新的",
@@ -5018,10 +5005,14 @@
             "applySync": "应用同步",
             "close": "关闭",
             "allInSync": "所有文件均已同步",
-            "filesToVault": "个文件已同步到 vault",
-            "filesToLocal": "个文件已提取到本地",
-            "filesSkipped": "个文件已跳过",
-            "errorsOccurred": "发生了一些错误"
+            "errorsOccurred": "发生了一些错误",
+            "vaultOnlyCount": "仅在 vault：{count}",
+            "localOnlyCount": "仅在本地：{count}",
+            "conflictsCount": "{count} 个冲突",
+            "unchangedCount": "{count} 个未更改",
+            "filesToVaultCount": "已将 {count} 个文件同步到 vault",
+            "filesToLocalCount": "已将 {count} 个文件提取到本地",
+            "filesSkippedCount": "已跳过 {count} 个文件"
         },
         "localTabs": {
             "closeAll": "关闭所有标签页",
@@ -5246,7 +5237,6 @@
             "checkAll": "检查全部",
             "checkOne": "检查此服务器",
             "checking": "检查中...",
-            "checked": "已检查",
             "healthy": "正常",
             "degraded": "性能下降",
             "unreachable": "无法访问",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "正在检查 {count} 台服务器, 请稍候...",
             "scoreLegend": "分数 0-100，越高越好",
-            "scoreLegendDetail": "80+ 健康 · 50-79 降级 · 低于 50 有问题"
+            "scoreLegendDetail": "80+ 健康 · 50-79 降级 · 低于 50 有问题",
+            "checkedCount": "已检查 {count} 个",
+            "healthyCount": "{count} 个正常",
+            "degradedCount": "{count} 个性能下降",
+            "unreachableCount": "{count} 个无法访问"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "已归档",
                 "trash": "回收站"
             },
-            "participants": "参与者",
             "saving": "保存中...",
             "saved": "已保存",
             "saveNow": "立即保存",
@@ -5549,7 +5542,8 @@
                 "code": "代码",
                 "richText": "富文本",
                 "checklist": "清单"
-            }
+            },
+            "participantsCount": "{count} 位参与者"
         },
         "shareLinkModal": {
             "title": "共享链接",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "移动到另一面板",
             "copiedToOtherPanel": "已复制到另一面板",
             "movedToOtherPanel": "已移动到另一面板",
-            "itemsLower": "项",
             "resizePanels": "调整面板大小",
             "copyHere": "复制 {count} 项到此处",
             "moveHere": "移动 {count} 项到此处",
             "copyHereFromOtherPanelTooltip": "将另一面板中选中的 {count} 项复制到此面板 (F5)",
             "moveHereFromOtherPanelTooltip": "将另一面板中选中的 {count} 项移动到此面板 (F6)",
-            "syncToOtherPanel": "同步到另一个面板 (delta)"
+            "syncToOtherPanel": "同步到另一个面板 (delta)",
+            "failedCount": "{count} 个失败",
+            "skippedCount": "{count} 个已跳过"
         },
         "compare": {
             "title": "比较面板",
@@ -6146,9 +6141,6 @@
             "bucket": "类别",
             "count": "计数",
             "action": "操作",
-            "delete": "删除",
-            "overwrite": "覆盖",
-            "conflicts": "冲突",
             "destructiveWarning": "此预设将删除或覆盖较新的文件。",
             "confirmDestructive": "我已查看破坏性操作并希望继续。",
             "executeHint": "执行将选择项放入队列并通过统一的传输规划器分发。",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "网络字节数",
                 "savings": "节省",
-                "errorDetails": "个错误，详情",
                 "errorPathsRequired": "源和目标为必填项",
                 "deltaStatus": "增量同步",
                 "deltaAuto": "自动开启",
@@ -6207,7 +6198,8 @@
                 "planned": "计划复制",
                 "resultDryRunOk": "试运行完成",
                 "resultDryRunPartial": "试运行完成，但有错误",
-                "resultDryRunCancelled": "试运行已取消"
+                "resultDryRunCancelled": "试运行已取消",
+                "errorDetailsCount": "{count} 个错误，详情"
             },
             "launcherTemplates": "模板",
             "launcherMultiPath": "多路径",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "比较会读取两个文件夹及其下的所有文件夹。对于大型目录树，可能需要一些时间，您可以随时停止。",
             "progressDelta": "[增量]",
-            "progressCopy": "[复制]"
+            "progressCopy": "[复制]",
+            "deleteCount": "{count} 个待删除",
+            "overwriteCount": "{count} 个待覆盖",
+            "conflictCount": "{count} 个冲突"
         },
         "accountLock": {
             "title": "选择一个账户",

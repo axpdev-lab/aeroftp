@@ -80,7 +80,8 @@
             "reset": "Đặt lại",
             "saved": "Đã lưu",
             "saving": "Đang lưu...",
-            "creating": "Đang tạo..."
+            "creating": "Đang tạo...",
+            "minutesCount": "{count} phút"
         },
         "connection": {
             "title": "Kết nối đến máy chủ",
@@ -159,7 +160,6 @@
             "saveChanges": "Lưu thay đổi",
             "createAccount": "Tạo tài khoản",
             "docs": "Tài liệu",
-            "minutes": "phút",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Quay lại tài khoản hiện có",
@@ -390,7 +390,6 @@
             "path": "Đường dẫn",
             "files": "tệp",
             "folders": "thư mục",
-            "items": "mục",
             "emptyFolder": "Thư mục này trống",
             "parentFolder": "Thư mục cha",
             "newFolder": "Thư mục mới",
@@ -445,7 +444,10 @@
             "rightPanelMarker": "Bảng bên phải",
             "chooseRightPanelFolder": "Chọn thư mục bảng phải",
             "chooseLeftPanelFolder": "Chọn thư mục bảng trái",
-            "localRight": "Cục bộ (phải)"
+            "localRight": "Cục bộ (phải)",
+            "itemCount": "{count} mục",
+            "fileCount": "{count} tệp",
+            "folderCount": "{count} thư mục"
         },
         "contextMenu": {
             "askAeroAgent": "Hỏi AeroAgent...",
@@ -608,7 +610,6 @@
             "copyError": "Lỗi sao chép",
             "copyQueueToClipboard": "Sao chép hàng đợi vào bộ nhớ tạm",
             "fail": "THẤT BẠI",
-            "pending": "Đang chờ",
             "remove": "Xóa",
             "retry": "Thử lại",
             "stopAll": "Dừng tất cả",
@@ -673,7 +674,6 @@
                 "newTransfer": "Chuyển mới",
                 "preparing": "Đang chuẩn bị truyền…"
             },
-            "staged": "trong hàng đợi",
             "start": "Bắt đầu",
             "startAll": "Bắt đầu tất cả",
             "restored": "Đã khôi phục",
@@ -744,7 +744,10 @@
                 "size": "Kích thước",
                 "source": "Nguồn",
                 "title": "Kế hoạch {mode}"
-            }
+            },
+            "stagedCount": "{count} đã chuẩn bị",
+            "pendingCount": "{count} Đang chờ",
+            "failedCount": "{count} Thất bại"
         },
         "settings": {
             "title": "Cài đặt",
@@ -929,7 +932,6 @@
             "migrationSkip": "Bỏ qua lúc này",
             "migrationFinish": "Hoàn tất",
             "migrationStep": "Bước {current} / {total}",
-            "duplicatesSkipped": "bản trùng lặp đã bỏ qua",
             "invalidPassword": "Mật khẩu không hợp lệ",
             "backup": "Sao lưu",
             "visibleColumns": "Cột hiển thị",
@@ -1036,11 +1038,6 @@
             "consumerSecret": "Bí mật người tiêu dùng",
             "privacyRespect": "AeroFTP bảo vệ quyền riêng tư của bạn. Không thu thập dữ liệu, không theo dõi, không đo lường từ xa.",
             "keystoreEntries": "{count} mục",
-            "serverCredentials": "thông tin xác thực máy chủ",
-            "serverProfilesLabel": "hồ sơ máy chủ",
-            "aiKeysLabel": "khóa AI",
-            "oauthTokensLabel": "token OAuth",
-            "configEntriesLabel": "mục cấu hình",
             "session": "Phiên",
             "aeroftpBackupFiles": "Tệp sao lưu AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1099,7 +1096,6 @@
             "selectServersToExport": "Chọn máy chủ để xuất",
             "selectAll": "Chọn tất cả",
             "deselectAll": "Bỏ chọn tất cả",
-            "selected": "đã chọn",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Nếu không có icon nào được đặt, favicon hoặc icon.png từ máy chủ sẽ được phát hiện tự động.",
             "protocolFilelu": "FileLu",
@@ -1262,7 +1258,6 @@
             "imagePreviewBgLight": "Sáng",
             "imagePreviewBgCustom": "Tùy chỉnh",
             "showTransferProgress": "Hiển thị thanh tiến trình truyền",
-            "similarToExisting": "tương tự hồ sơ hiện có",
             "aerocloudCompress": "Bật tính năng nén (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: nén + mã hóa (hồ sơ có mã hóa)",
@@ -1337,7 +1332,16 @@
             "fontSystemInstallHint": "Cần cài đặt vào hệ thống. AeroFTP tự động dùng phương án dự phòng nếu không khả dụng.",
             "fontSizeIndicatorLabel": "Phông chữ",
             "fontPresetDefault": "{font} (Mặc định)",
-            "fontPresetSystemDefault": "Mặc định hệ thống"
+            "fontPresetSystemDefault": "Mặc định hệ thống",
+            "duplicatesSkippedCount": "Đã bỏ qua {count} mục trùng lặp",
+            "similarToExistingCount": "{count} tương tự hồ sơ hiện có",
+            "bridgeSkippedCount": "{count} đã bỏ qua",
+            "selectedOfTotal": "Đã chọn {selected} / {total}",
+            "serverCredentialsCount": "{count} thông tin xác thực máy chủ",
+            "serverProfilesCount": "{count} hồ sơ máy chủ",
+            "aiKeysCount": "{count} khóa AI",
+            "oauthTokensCount": "{count} token OAuth",
+            "configEntriesCount": "{count} mục cấu hình"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1432,7 +1436,6 @@
             "starting": "Đang bắt đầu...",
             "pending": "Đang chờ",
             "conflict": "Xung đột",
-            "conflicts": "xung đột cần xử lý",
             "error": "Lỗi đồng bộ",
             "never": "Chưa bao giờ",
             "justNow": "Vừa xong",
@@ -1555,7 +1558,8 @@
             "countdownSoon": "Sắp tới...",
             "aerocloudEnabled": "Đã bật AeroCloud",
             "selectPairLocalFolder": "Chọn thư mục cục bộ cho cặp",
-            "secondsAgo": "{count} giây trước"
+            "secondsAgo": "{count} giây trước",
+            "conflictsCount": "{count} xung đột cần xử lý"
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -2363,7 +2367,6 @@
         },
         "overwrite": {
             "title": "Tệp đã tồn tại",
-            "moreFiles": "tệp khác trong hàng đợi",
             "remote": "Từ xa",
             "local": "Cục bộ",
             "sourceNewer": "Nguồn mới hơn",
@@ -2800,7 +2803,6 @@
                 "approveThis": "Phê duyệt lệnh gọi công cụ này",
                 "confirm": "Xác nhận",
                 "confirmDangerous": "Xác nhận hành động nguy hiểm",
-                "pendingApproval": "đang chờ phê duyệt",
                 "rejectAllCalls": "Từ chối tất cả lệnh gọi công cụ",
                 "rejectExecution": "Từ chối thực thi công cụ",
                 "toggleDetails": "Bật/tắt chi tiết",
@@ -3029,12 +3031,11 @@
                 "allowAll": "Cho phép tất cả",
                 "rejectAll": "Từ chối tất cả",
                 "pending": "đang chờ phê duyệt",
-                "toolCall": "lệnh gọi công cụ",
-                "toolCalls": "lệnh gọi công cụ",
                 "running": "Đang chạy...",
                 "done": "Xong",
                 "failed": "Thất bại",
-                "allowThis": "Cho phép công cụ này"
+                "allowThis": "Cho phép công cụ này",
+                "pendingApprovalCount": "{count} lệnh gọi công cụ đang chờ phê duyệt"
             },
             "diff": {
                 "title": "Xem trước thay đổi",
@@ -3334,7 +3335,6 @@
                 "add": "Thêm",
                 "added": "Đã thêm",
                 "all": "Tất cả",
-                "available": "khả dụng",
                 "browseProviders": "Duyệt nhà cung cấp",
                 "chinese": "Trung Quốc",
                 "fast": "Suy luận nhanh",
@@ -3354,7 +3354,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Các mô hình lưu trữ trên AWS, truy cập bằng khóa API theo khu vực. Thêm model ID của bạn theo cách thủ công.",
-                "bedrockHighlight": "Điểm cuối AWS theo khu vực"
+                "bedrockHighlight": "Điểm cuối AWS theo khu vực",
+                "availableCount": "{count} khả dụng"
             },
             "history": {
                 "cancel": "Hủy",
@@ -3709,12 +3710,12 @@
             "size": "Kích thước",
             "compressed": "Đã nén",
             "actions": "Hành động",
-            "files": "tệp",
             "empty": "Tệp lưu trữ trống",
             "extracting": "Đang giải nén",
             "preview": "Xem trước",
             "extract": "Trích xuất",
-            "back": "Quay lại"
+            "back": "Quay lại",
+            "filesSummary": "{count} tệp, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Đã thêm {files} tệp trong {dirs} thư mục",
@@ -3761,7 +3762,6 @@
             "filesAdded": "Đã thêm {count} tệp",
             "folderName": "Tên thư mục",
             "itemDeleted": "Đã xóa {name}",
-            "items": "mục",
             "itemsDeleted": "Đã xóa {count} mục",
             "lastOpened": "Mở lần cuối",
             "modified": "Đã sửa đổi",
@@ -3802,7 +3802,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Mã hóa mạnh",
-            "totalItems": "tổng cộng",
             "unlock": "Mở khóa",
             "v1Standard": "AeroVault v1 (Tiêu chuẩn)",
             "v2Advanced": "AeroVault v2 (Bảo mật nâng cao)",
@@ -3889,8 +3888,6 @@
             "extractAllHint": "Trích xuất mọi tệp trong két vào một thư mục",
             "extractedAll": "Đã trích xuất {count} tệp vào {path}",
             "dropFilesHint": "Kéo tệp hoặc thư mục vào đây, hoặc dùng các nút bên dưới",
-            "itemSingular": "mục",
-            "itemPlural": "mục",
             "reportExported": "Đã lưu báo cáo két bảo mật vào {path}",
             "reportCopied": "Đã sao chép báo cáo két bảo mật vào bảng nhớ tạm",
             "exportReportHint": "Xuất báo cáo kỹ thuật đầy đủ: siêu dữ liệu két bảo mật, mã hóa, sửa lỗi và danh sách tệp đầy đủ",
@@ -3943,7 +3940,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Nhanh",
             "securityAdvancedDescription": "Chống trùng nonce · Mã hóa tên tệp · 128 MB KDF",
             "securityParanoidDescription": "Xếp tầng AES + ChaCha20 · Mã hóa kép",
-            "securityArchiveDescription": "Kho lưu trữ khử trùng lặp · khối zstd · v3"
+            "securityArchiveDescription": "Kho lưu trữ khử trùng lặp · khối zstd · v3",
+            "totalItemsCount": "Tổng {count}"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",
@@ -3956,7 +3954,6 @@
             "empty": "Thư mục trống",
             "name": "Tên",
             "size": "Kích thước",
-            "items": "mục",
             "readOnly": "Chế độ chỉ đọc - tạo kho sẽ có trong v2.1",
             "openAsVault": "Mở dưới dạng kho Cryptomator",
             "decryptAndSave": "Giải mã & Lưu",
@@ -3989,8 +3986,6 @@
             "level": "Mức nén",
             "password": "Mật khẩu (tùy chọn, AES-256)",
             "passwordHint": "Để trống nếu không mã hóa",
-            "files": "tệp",
-            "folders": "thư mục",
             "compress": "Nén",
             "store": "Lưu trữ (không nén)",
             "fast": "Nhanh",
@@ -4232,8 +4227,6 @@
             "modified": "Đã sửa đổi",
             "file": "Tệp",
             "folder": "Thư mục",
-            "files": "tệp",
-            "folders": "thư mục",
             "remote": "Từ xa",
             "local": "Cục bộ",
             "linkTarget": "Đích liên kết tượng trưng",
@@ -4309,10 +4302,7 @@
             "deleted": "Đã xóa {count} tệp trùng lặp",
             "scanFailed": "Quét thất bại",
             "retry": "Thử lại",
-            "groups": "nhóm",
-            "duplicateFiles": "tệp trùng lặp",
             "wasted": "lãng phí",
-            "copies": "bản sao",
             "delete": "XÓA",
             "skip": "BỎ QUA",
             "deleteConfirm": "Bạn có chắc chắn muốn xóa {count} tệp trùng lặp?",
@@ -4332,7 +4322,10 @@
             "similarityDistance": "{similarity}, khoảng cách {distance}",
             "modeExact": "Chính xác",
             "modeLabel": "Chế độ:",
-            "modeNonIdentical": "Không giống hệt"
+            "modeNonIdentical": "Không giống hệt",
+            "groupsCount": "{count} nhóm",
+            "duplicateFilesCount": "{count} tệp trùng lặp",
+            "copiesCount": "{count} bản sao"
         },
         "diskUsage": {
             "title": "Sử dụng đĩa",
@@ -4340,20 +4333,16 @@
             "totalItems": "Tổng: {size} trong {count} mục",
             "percentOfParent": "{percent}% của thư mục cha",
             "backToParent": "Quay lại thư mục cha",
-            "items": "mục",
             "scanFailed": "Phân tích thất bại",
             "retry": "Thử lại",
             "drillDown": "Nhấn để khám phá",
             "back": "Quay lại",
-            "total": "Tổng",
-            "across": "trong",
             "empty": "Thư mục này trống",
             "hoverHint": "Di chuột lên một khối để xem chi tiết",
             "scanUnknownError": "Lỗi không xác định khi quét dung lượng đĩa"
         },
         "dependencies": {
             "title": "Phụ thuộc",
-            "crates": "crate",
             "copy": "Sao chép",
             "copied": "Đã sao chép!",
             "checkUpdates": "Kiểm tra cập nhật",
@@ -4363,7 +4352,8 @@
             "latest": "Mới nhất",
             "status": "Trạng thái",
             "footer": "Dữ liệu phiên bản từ API crates.io. Các phiên bản hiển thị là phiên bản đã phân giải (Cargo.lock).",
-            "copyTitle": "Kiểm tra phụ thuộc AeroFTP"
+            "copyTitle": "Kiểm tra phụ thuộc AeroFTP",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4423,7 +4413,6 @@
                 "warning": "Cảnh báo",
                 "info": "Thông tin",
                 "debug": "Gỡ lỗi",
-                "entries": "mục nhập",
                 "resume": "Tiếp tục",
                 "pause": "Tạm dừng",
                 "copyAll": "Sao chép tất cả",
@@ -4432,13 +4421,13 @@
                 "allSources": "Tất cả nguồn",
                 "sourceFilterTitle": "Lọc theo nguồn",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Mục nhập: {count}"
             },
             "frontend": {
                 "reactMode": "Chế độ React",
                 "language": "Ngôn ngữ",
                 "localStorageKeys": "Khóa LocalStorage",
-                "keys": "khóa",
                 "localStorageSize": "Kích thước LocalStorage",
                 "windowSize": "Kích thước cửa sổ",
                 "devicePixelRatio": "Tỷ lệ điểm ảnh thiết bị",
@@ -4447,7 +4436,8 @@
                 "light": "Sáng",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "Khóa LocalStorage",
-                "localStorageEntrySummary": "{size} byte · {preview}"
+                "localStorageEntrySummary": "{size} byte · {preview}",
+                "keysCount": "{count} khóa"
             },
             "copyFileListToClipboard": "Sao chép danh sách tệp vào clipboard",
             "filesCopied": "Đã sao chép {count} mục tệp vào bộ nhớ tạm",
@@ -4469,12 +4459,12 @@
                 "i18nSweep": "Quét khóa i18n",
                 "ipcSpeed": "Mẫu tốc độ IPC",
                 "knownHosts": "đọc known_hosts",
-                "passed": "đã đạt",
                 "pluginIntegrity": "Tính toàn vẹn của plugin",
                 "providerSelftest": "Tự kiểm tra nhà cung cấp (chỉ đọc)",
                 "runAll": "Chạy tất cả",
                 "runOne": "Chạy bài kiểm tra này",
-                "vaultRoundtrip": "Vòng lặp kho"
+                "vaultRoundtrip": "Vòng lặp kho",
+                "passedCount": "Đạt {passed}/{total}"
             },
             "bundle": {
                 "title": "Xuất gói chẩn đoán (ZIP)"
@@ -4522,9 +4512,9 @@
         "activityPanel": {
             "awaitingCommands": "Đang chờ lệnh...",
             "badges": {
-                "active": "HOẠT ĐỘNG",
                 "live": "TRỰC TIẾP",
-                "synced": "ĐÃ ĐỒNG BỘ"
+                "synced": "ĐÃ ĐỒNG BỘ",
+                "activeCount": "{count} ĐANG CHẠY"
             },
             "clearLog": "Xóa nhật ký",
             "close": "Đóng",
@@ -4548,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Lọc thao tác",
-                "selected": "đã chọn"
+                "selectedCount": "Đã chọn {count}"
             },
             "save": "Lưu"
         },
@@ -4740,14 +4730,12 @@
                 "auto": "Tự động",
                 "autoRefresh": "Tự động làm mới (3s)",
                 "browser": "Trình duyệt",
-                "chars": "ký tự",
                 "copy": "Sao chép vào bộ nhớ tạm",
                 "disableWrap": "Tắt ngắt dòng",
                 "enableWrap": "Bật ngắt dòng",
                 "encoding": "Mã hóa",
                 "errorLoading": "Lỗi khi tải nội dung",
                 "hex": "Hex",
-                "lines": "dòng",
                 "loadFailed": "Không thể tải nội dung văn bản",
                 "noContent": "Không có nội dung",
                 "openBrowser": "Mở trong trình duyệt hệ thống",
@@ -4766,7 +4754,8 @@
                 "wordWrap": "Ngắt dòng",
                 "zoomIn": "Phóng to",
                 "zoomOut": "Thu nhỏ",
-                "htmlPreviewFrameTitle": "Xem trước HTML"
+                "htmlPreviewFrameTitle": "Xem trước HTML",
+                "stats": "{lines} dòng • {chars} ký tự"
             },
             "video": {
                 "exitFullscreen": "Thoát toàn màn hình (F)",
@@ -4891,7 +4880,6 @@
             "pwdBatchCount": "Số lượng tạo",
             "pwdGenerate": "Tạo",
             "pwdEntropy": "Entropy",
-            "pwdBits": "bit",
             "pwdWeak": "Yếu",
             "pwdFair": "Trung bình",
             "pwdGood": "Tốt",
@@ -4942,7 +4930,8 @@
             "argon2DefaultsHint": "Mặc định: hồ sơ mà AeroVault và AeroCrypt dùng (128 MiB, 4 vòng lặp, 4 làn, đầu ra 32 byte). Muối ở trên là của bạn. Bộ nhớ tối đa 2 GiB.",
             "argon2Derive": "Dẫn xuất",
             "argon2Phc": "Chuỗi PHC",
-            "hashError": "Lỗi: {error}"
+            "hashError": "Lỗi: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "Xóa \"{name}\"?",
@@ -5002,8 +4991,6 @@
             "vaultOnly": "Chỉ trong vault",
             "localOnly": "Chỉ cục bộ",
             "conflict": "Xung đột",
-            "conflicts": "xung đột",
-            "unchanged": "không thay đổi",
             "allToVault": "Tất cả vào vault",
             "allToLocal": "Tất cả ra cục bộ",
             "keepNewer": "Giữ bản mới hơn",
@@ -5018,10 +5005,14 @@
             "applySync": "Áp dụng đồng bộ",
             "close": "Đóng",
             "allInSync": "Tất cả tệp đã được đồng bộ",
-            "filesToVault": "tệp đã đồng bộ vào vault",
-            "filesToLocal": "tệp đã trích xuất ra cục bộ",
-            "filesSkipped": "tệp đã bỏ qua",
-            "errorsOccurred": "Đã xảy ra một số lỗi"
+            "errorsOccurred": "Đã xảy ra một số lỗi",
+            "vaultOnlyCount": "{count} Chỉ trong vault",
+            "localOnlyCount": "{count} Chỉ cục bộ",
+            "conflictsCount": "{count} xung đột",
+            "unchangedCount": "{count} không thay đổi",
+            "filesToVaultCount": "Đã đồng bộ {count} tệp vào vault",
+            "filesToLocalCount": "Đã giải nén {count} tệp ra cục bộ",
+            "filesSkippedCount": "Đã bỏ qua {count} tệp"
         },
         "localTabs": {
             "closeAll": "Đóng tất cả tab",
@@ -5246,7 +5237,6 @@
             "checkAll": "Kiểm tra tất cả",
             "checkOne": "Kiểm tra máy chủ này",
             "checking": "Đang kiểm tra...",
-            "checked": "đã kiểm tra",
             "healthy": "Hoạt động tốt",
             "degraded": "Suy giảm",
             "unreachable": "Không thể truy cập",
@@ -5261,7 +5251,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Đang kiểm tra {count} máy chủ, vui lòng đợi...",
             "scoreLegend": "Điểm 0-100, cao hơn tốt hơn",
-            "scoreLegendDetail": "80+ tốt · 50-79 giảm · dưới 50 có vấn đề"
+            "scoreLegendDetail": "80+ tốt · 50-79 giảm · dưới 50 có vấn đề",
+            "checkedCount": "Đã kiểm tra {count}",
+            "healthyCount": "{count} Hoạt động tốt",
+            "degradedCount": "{count} Suy giảm",
+            "unreachableCount": "{count} Không thể truy cập"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5531,7 +5525,6 @@
                 "archived": "Lưu trữd",
                 "trash": "Thùng rác"
             },
-            "participants": "người tham gia",
             "saving": "Đang lưu...",
             "saved": "Đã lưu",
             "saveNow": "Lưu ngay",
@@ -5549,7 +5542,8 @@
                 "code": "Mã",
                 "richText": "Văn bản định dạng",
                 "checklist": "Danh sách kiểm tra"
-            }
+            },
+            "participantsCount": "{count} người tham gia"
         },
         "shareLinkModal": {
             "title": "Liên kết chia sẻ",
@@ -5996,13 +5990,14 @@
             "moveToOtherPanel": "Di chuyển sang bảng kia",
             "copiedToOtherPanel": "Đã sao chép sang bảng kia",
             "movedToOtherPanel": "Đã di chuyển sang bảng kia",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Sao chép {count} vào đây",
             "moveHere": "Di chuyển {count} vào đây",
             "copyHereFromOtherPanelTooltip": "Sao chép {count} đã chọn từ bảng khác vào bảng này (F5)",
             "moveHereFromOtherPanelTooltip": "Di chuyển {count} đã chọn từ bảng khác vào bảng này (F6)",
-            "syncToOtherPanel": "Đồng bộ sang bảng khác (delta)"
+            "syncToOtherPanel": "Đồng bộ sang bảng khác (delta)",
+            "failedCount": "{count} thất bại",
+            "skippedCount": "{count} đã bỏ qua"
         },
         "compare": {
             "title": "So sánh các bảng",
@@ -6146,9 +6141,6 @@
             "bucket": "Danh mục",
             "count": "Số lượng",
             "action": "Hành động",
-            "delete": "xóa",
-            "overwrite": "ghi đè",
-            "conflicts": "xung đột",
             "destructiveWarning": "Cài đặt sẵn này sẽ xóa hoặc ghi đè các tệp mới hơn.",
             "confirmDestructive": "Tôi đã xem xét các hành động phá hủy và muốn tiếp tục.",
             "executeHint": "Thực thi đặt lựa chọn vào hàng đợi và gửi qua trình lập kế hoạch chuyển thống nhất.",
@@ -6175,7 +6167,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Byte trên mạng",
                 "savings": "Tiết kiệm",
-                "errorDetails": "lỗi, chi tiết",
                 "errorPathsRequired": "Nguồn và đích là bắt buộc",
                 "deltaStatus": "Đồng bộ delta",
                 "deltaAuto": "TỰ ĐỘNG BẬT",
@@ -6207,7 +6198,8 @@
                 "planned": "Bản sao dự kiến",
                 "resultDryRunOk": "Chạy thử hoàn tất",
                 "resultDryRunPartial": "Chạy thử hoàn tất với lỗi",
-                "resultDryRunCancelled": "Đã hủy chạy thử"
+                "resultDryRunCancelled": "Đã hủy chạy thử",
+                "errorDetailsCount": "{count} lỗi, chi tiết"
             },
             "launcherTemplates": "Mẫu",
             "launcherMultiPath": "Nhiều đường dẫn",
@@ -6311,7 +6303,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "So sánh sẽ đọc cả hai thư mục và mọi thư mục bên dưới. Với cây thư mục lớn, quá trình này có thể mất một lúc, và bạn có thể dừng lại.",
             "progressDelta": "[delta]",
-            "progressCopy": "[bản sao]"
+            "progressCopy": "[bản sao]",
+            "deleteCount": "{count} sẽ bị xóa",
+            "overwriteCount": "{count} sẽ bị ghi đè",
+            "conflictCount": "{count} xung đột"
         },
         "accountLock": {
             "title": "Chọn tài khoản",
