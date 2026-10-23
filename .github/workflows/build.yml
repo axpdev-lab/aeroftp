@@ -27,12 +27,16 @@ on:
 permissions:
   contents: read
 
-# Same idea as checks.yml: a new SHA on a PR or on main should cancel the
-# previous 4-leg Tauri matrix, not let it keep burning. Do not cancel a tag
-# run: a release build must finish even if something else is dispatched.
+# A new SHA on a PR cancels the previous 4-leg Tauri matrix, not let it keep
+# burning. On main and on tags nothing is cancelled: a newer run waits for the
+# one in progress. Cancelling on main left merges without a complete Build
+# (runs 39828613464 and 39843007844, 2026-10-22, "Canceling since a higher
+# priority waiting request") and, since rust-cache saves only from a finished
+# main run, kept linux-validate cold: 13 "No cache found" in 18 runs
+# (tracker Requested 76). A tag run, likewise, must always finish.
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # C2: Linux lint+test used to sit on the packaging critical path
@@ -217,7 +221,14 @@ jobs:
         with:
           toolchain: 1.97.1
 
+      # Not on macOS (Actions cache quota, tracker Requested 76). Both macOS
+      # legs run on the same arm64 runner under the same job id, so they share
+      # ONE ~1 GB key. Measured on build.yml runs of 2026-10-22/23: aarch64 took
+      # 42 min with a full hit and 42.5 with a miss; x64 took 28 against 41,
+      # and neither leg is ever the run's critical path. Windows (34 against
+      # 58) and Linux (55.5 against 72) keep theirs.
       - name: Rust cache
+        if: matrix.target != 'macos'
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'

@@ -45,10 +45,13 @@ permissions:
   contents: read
 
 # A new SHA on a PR supersedes the previous one: cancel the smoke matrix that
-# was still building for it, like checks.yml and build.yml already do.
+# was still building for it. On main and on tags nothing is cancelled, as in
+# build.yml: a cancelled main run checks nothing and saves no cache, and the
+# macOS smoke cache is saved only from a finished main run (tracker
+# Requested 76).
 concurrency:
   group: cli-smoke-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   smoke:
@@ -85,7 +88,12 @@ jobs:
         with:
           toolchain: 1.97.1
 
+      # macOS only (Actions cache quota, tracker Requested 76). Measured over
+      # the last 20 runs, a warm cache saved ~18 min on macOS (17 against 35.5)
+      # but ~7.5 on Linux and ~5 on Windows, for 1-1.2 GB of quota each. This
+      # job builds the release profile, so no other job's entry can stand in.
       - name: Rust cache
+        if: runner.os == 'macOS'
         continue-on-error: true # cache is an optimization; a hiccup must not fail the job
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
@@ -314,14 +322,9 @@ jobs:
         with:
           toolchain: 1.97.1
 
-      - name: Rust cache
-        continue-on-error: true # cache is an optimization; a hiccup must not fail the job
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
-        with:
-          workspaces: './src-tauri -> target'
-          prefix-key: 'v2-whisper-vs18'
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # No Rust cache (Actions cache quota, tracker Requested 76): a release
+      # build no other job shares, in a lane that does not gate a merge, and
+      # its ~1.1 GB entry missed in every sampled run anyway.
 
       - name: Install Linux dependencies
         run: |
@@ -384,17 +387,9 @@ jobs:
         with:
           toolchain: 1.97.1
 
-      - name: Rust cache
-        continue-on-error: true # cache is an optimization; a hiccup must not fail the job
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
-        with:
-          workspaces: './src-tauri -> target'
-          # Mirror smoke job prefix to keep cache keys aligned across jobs
-          # in this workflow. Linux coverage does not hit the VS18 issue,
-          # but a shared prefix avoids partial cache reuse confusion.
-          prefix-key: 'v2-whisper-vs18'
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # No Rust cache (Actions cache quota, tracker Requested 76): cargo
+      # llvm-cov instruments every crate, so restored dependencies are rebuilt
+      # anyway. Measured: 57 min with a warm 1.7 GB entry, 54 without.
 
       - name: Install Linux dependencies
         run: |

@@ -111,7 +111,18 @@ jobs:
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          # Family `linux-dev` (Actions cache quota, tracker Requested 76): every
+          # ubuntu-latest job that builds the src-tauri test profile restores ONE
+          # shared entry instead of writing its own 1-2 GB, and only the two jobs
+          # that compile the whole lib save it: delta-sync-integration.yml
+          # `integration` and aerorsync-protocol.yml `check`. A new job of the
+          # same shape joins as a restore-only member (save-if false). Members
+          # must hash the same environment: rust-cache puts every non-empty
+          # CARGO*/RUST*/CC*/CFLAGS*/CXX*/CMAKE* variable into the key, so a
+          # workflow-level one (CARGO_TERM_COLOR, RUST_BACKTRACE) is blanked on
+          # this step and nowhere else.
+          shared-key: linux-dev
+          # Saver of the family; PRs restore, only main saves.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # The 74 MB .deb download is this lane's whole observed failure mode: an
@@ -319,9 +330,9 @@ jobs:
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'
-          shared-key: delta-sync-fallback
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # Restore-only member of `linux-dev` (see the key-auth job above).
+          shared-key: linux-dev
+          save-if: false
 
       # Same action and the same shared cache as the key-auth job: this lane
       # failed in apt three times on 2026-10-22 while the key-auth lane, which
