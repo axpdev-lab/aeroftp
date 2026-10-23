@@ -395,7 +395,7 @@ struct Cli {
     )]
     parallel: usize,
 
-    /// Resume interrupted transfers using partial files or remote offsets when supported
+    /// Resume interrupted transfers when supported; in-place downloads restart from byte 0
     #[arg(
         long,
         global = true,
@@ -711,7 +711,7 @@ struct Cli {
     )]
     fast_list: bool,
 
-    /// Write downloads directly to final path (no .aerotmp temp file)
+    /// Write downloads directly to final path (no .aerotmp); --partial keeps interrupted bytes but the next download starts from byte 0
     #[arg(
         long,
         global = true,
@@ -10544,7 +10544,8 @@ impl AttemptProgress {
     }
 }
 
-/// What `--partial` should do with `local_bytes` already on disk.
+/// Size classification of a finished out-of-place destination. This alone
+/// never proves that its bytes are a prefix suitable for resumption.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResumePlan {
     /// The local copy is exactly the remote size: nothing to fetch.
@@ -10553,7 +10554,8 @@ enum ResumePlan {
     /// it, so a range request would be refused (416) or, worse, accepted by a
     /// server that ignores ranges and then appended to. Start over.
     Restart,
-    /// A genuine prefix (or an unknown remote size): ask for the tail.
+    /// Shorter, or the remote size is unknown. A separately recorded part
+    /// could resume; an unrecorded destination must download again whole.
     Resume,
 }
 
@@ -10573,25 +10575,26 @@ async fn download_with_resume(
     cli: &Cli,
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError> {
-    if cli.partial && provider.supports_resume() {
+    // The destination of an in-place download has no record of its source
+    // version. Neither its length nor --partial proves it is a prefix of
+    // the current remote object: even equal sizes can hide a replacement.
+    // Download it whole, keeping --partial's failure/cancellation retention.
+    // Verified resumption requires the out-of-place part and its record.
+    if cli.partial && !cli.inplace && provider.supports_resume() {
         // Out of place the part is the `.aerotmp`, and only one that recorded
         // the version it was started from: the provider checks that version
         // against the file as it is now, then goes on from the part, publishes
         // it when it already holds the whole file, or starts it over. A part
         // with no record is removed here and the file downloaded whole.
-        if !cli.inplace {
-            let offset = ftp_client_gui_lib::providers::atomic_write::resumable_part_len(
-                Path::new(local_path),
-            )
-            .await;
-            if offset > 0 {
-                return provider
-                    .resume_download(remote_path, local_path, offset, progress_cb)
-                    .await;
-            }
+        let offset =
+            ftp_client_gui_lib::providers::atomic_write::resumable_part_len(Path::new(local_path))
+                .await;
+        if offset > 0 {
+            return provider
+                .resume_download(remote_path, local_path, offset, progress_cb)
+                .await;
         }
-        // The destination itself. In place it is the part, which the provider
-        // goes on from. Out of place it is a finished file, never a part: one
+        // Out of place the destination is a finished file, never a part: one
         // as long as the remote is taken as already there, and any other is
         // downloaded again whole, because going on from its length appended
         // the tail of the new file to the old one.
@@ -10604,17 +10607,13 @@ async fn download_with_resume(
             // answered with 416 by every HTTP backend, which used to surface
             // as "file may have changed on server" (exit 4) when re-running
             // `get --partial` over a finished download. Compare with the
-            // remote size first and decide like rclone does: complete is a
-            // no-op, longer-than-remote is stale and restarts, shorter resumes.
+            // remote size first for the out-of-place complete-file shortcut.
+            // All other unrecorded destinations download again whole; only
+            // the recorded part handled above may request a tail.
             let remote_size = provider.size(remote_path).await.ok();
             match partial_resume_plan(final_offset, remote_size) {
                 ResumePlan::Complete => return Ok(()),
                 ResumePlan::Restart => {}
-                ResumePlan::Resume if cli.inplace => {
-                    return provider
-                        .resume_download(remote_path, local_path, final_offset, progress_cb)
-                        .await;
-                }
                 ResumePlan::Resume => {}
             }
         }
@@ -80567,7 +80566,7 @@ mod tests {
         assert_eq!(partial_resume_plan(100, Some(100)), ResumePlan::Complete);
         assert_eq!(partial_resume_plan(40, Some(100)), ResumePlan::Resume);
         assert_eq!(partial_resume_plan(140, Some(100)), ResumePlan::Restart);
-        // Unknown remote size: the only honest move is to ask for the tail.
+        // Unknown size cannot classify the finished destination as complete.
         assert_eq!(partial_resume_plan(40, None), ResumePlan::Resume);
         assert_eq!(partial_resume_plan(0, Some(0)), ResumePlan::Complete);
     }
@@ -87121,19 +87120,18 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         }
     }
 
-    /// `get --partial --inplace` goes on from the destination, which is the
-    /// part an in-place download leaves. A `.aerotmp` there, left by an
-    /// earlier download out of place, was read first and its length sent as
-    /// the offset while the provider resumes the destination: the remote
-    /// bytes from one offset were appended at another.
+    /// Neither the final path nor an unrelated `.aerotmp` proves which
+    /// version an in-place prefix belongs to. Restart instead of asking an
+    /// offset-only provider to append the current remote tail to it.
     #[tokio::test]
-    async fn an_inplace_resume_goes_on_from_the_destination_not_a_stale_temporary() {
+    async fn an_inplace_partial_never_resumes_an_unverified_destination() {
         let dir = tempfile::tempdir().unwrap();
         let local = dir.path().join("f.bin");
         std::fs::write(&local, vec![b'a'; 50]).unwrap();
         std::fs::write(dir.path().join("f.bin.aerotmp"), vec![b'b'; 100]).unwrap();
         let mut provider = ResumeOffsetProbe::new();
         let offsets = Arc::clone(&provider.offsets);
+        let wholes = Arc::clone(&provider.wholes);
         let cli = Cli {
             partial: true,
             inplace: true,
@@ -87149,7 +87147,102 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         )
         .await
         .unwrap();
-        assert_eq!(*offsets.lock().unwrap(), vec![50]);
+        assert!(offsets.lock().unwrap().is_empty());
+        assert_eq!(wholes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            std::fs::read(dir.path().join("f.bin.aerotmp")).unwrap(),
+            vec![b'b'; 100],
+            "an in-place request consumed an out-of-place leftover"
+        );
+    }
+
+    /// Use an actual provider and check bytes: a replaced same-size remote
+    /// used to be skipped, and a shorter prefix from an older version was
+    /// joined to its tail with a successful result.
+    #[tokio::test]
+    async fn an_inplace_partial_download_replaces_stale_bytes_even_at_equal_size() {
+        let remote_dir = tempfile::tempdir().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
+        let current = b"new remote version";
+        std::fs::write(remote_dir.path().join("f.bin"), current).unwrap();
+        let mut provider = ftp_client_gui_lib::providers::directory::DirectoryProvider::local(
+            remote_dir.path().to_path_buf(),
+        );
+        provider.connect().await.unwrap();
+        let cli = Cli {
+            partial: true,
+            inplace: true,
+            ..test_cli()
+        };
+        let local = local_dir.path().join("f.bin");
+        for stale_size in [4, current.len(), current.len() + 5] {
+            std::fs::write(&local, vec![b'X'; stale_size]).unwrap();
+            download_with_resume(
+                &mut provider,
+                "/f.bin",
+                local.to_str().unwrap(),
+                Some(current.len() as u64),
+                &cli,
+                None,
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                std::fs::read(&local).unwrap(),
+                current,
+                "stale destination of {stale_size} bytes was accepted"
+            );
+        }
+    }
+
+    /// Restarting must not turn a former size-only skip into a truncation
+    /// of the source itself when the "remote" is a directory on this host.
+    #[tokio::test]
+    async fn an_inplace_partial_download_refuses_its_source_as_the_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("f.bin");
+        let bytes = b"precious source";
+        std::fs::write(&source, bytes).unwrap();
+        let aliases = vec![source.clone()];
+        #[cfg(any(unix, windows))]
+        let aliases = {
+            let mut aliases = aliases;
+            let hard = dir.path().join("hard.bin");
+            std::fs::hard_link(&source, &hard).unwrap();
+            aliases.push(hard);
+            #[cfg(unix)]
+            {
+                let link = dir.path().join("link.bin");
+                std::os::unix::fs::symlink(&source, &link).unwrap();
+                aliases.push(link);
+            }
+            aliases
+        };
+        let mut provider = ftp_client_gui_lib::providers::directory::DirectoryProvider::local(
+            dir.path().to_path_buf(),
+        );
+        provider.connect().await.unwrap();
+        let cli = Cli {
+            partial: true,
+            inplace: true,
+            ..test_cli()
+        };
+        for alias in aliases {
+            let outcome = download_with_resume(
+                &mut provider,
+                "/f.bin",
+                alias.to_str().unwrap(),
+                None,
+                &cli,
+                None,
+            )
+            .await;
+            assert!(
+                matches!(outcome, Err(ProviderError::InvalidPath(_))),
+                "{alias:?}: {outcome:?}"
+            );
+            assert_eq!(std::fs::read(&source).unwrap(), bytes);
+        }
     }
 
     /// Run `get --partial` (out of place) of the probe's 200-byte file into

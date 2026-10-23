@@ -558,6 +558,22 @@ impl StorageProvider for DirectoryProvider {
                 "{vpath} is a directory"
             )));
         }
+        // Opening the destination below truncates it. A full restart must
+        // not truncate its own source through the same path or an alias.
+        if let Ok(occupant) = std::fs::metadata(local_path) {
+            #[cfg(windows)]
+            let same = {
+                let _ = &occupant;
+                same_file::is_same_file(&src, local_path).map_err(ProviderError::IoError)?
+            };
+            #[cfg(not(windows))]
+            let same = same_file(&src, Path::new(local_path), &meta, &occupant);
+            if same {
+                return Err(ProviderError::InvalidPath(format!(
+                    "{vpath} is the download destination itself"
+                )));
+            }
+        }
         let total = meta.len();
         let mut reader = tokio::fs::File::open(&src)
             .await
@@ -2073,6 +2089,43 @@ mod tests {
             );
         }
         assert_eq!(std::fs::read(&src).unwrap(), b"precious");
+    }
+
+    /// Also run in the native Windows --lib lane: canonical spelling alone
+    /// cannot detect a hard link to the source before the target truncates.
+    #[tokio::test]
+    async fn a_download_onto_its_own_source_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("data.bin");
+        std::fs::write(&source, b"precious").unwrap();
+        let mut provider = local(dir.path()).await;
+        let destinations = vec![source.clone()];
+        #[cfg(any(unix, windows))]
+        let destinations = {
+            let mut destinations = destinations;
+            let hard = dir.path().join("hard.bin");
+            std::fs::hard_link(&source, &hard).unwrap();
+            destinations.push(hard);
+            destinations
+        };
+        for destination in destinations {
+            let result = provider
+                .download("/data.bin", destination.to_str().unwrap(), None)
+                .await;
+            assert!(
+                matches!(result, Err(ProviderError::InvalidPath(_))),
+                "{destination:?}: {result:?}"
+            );
+            assert_eq!(std::fs::read(&source).unwrap(), b"precious");
+        }
+        let independent = dir.path().join("independent.bin");
+        std::fs::write(&independent, b"outdated").unwrap();
+        provider
+            .download("/data.bin", independent.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&independent).unwrap(), b"precious");
+        assert_eq!(std::fs::read(&source).unwrap(), b"precious");
     }
 
     /// A local folder answers the digest the caller names by reading the
