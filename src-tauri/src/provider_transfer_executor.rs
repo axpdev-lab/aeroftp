@@ -1654,6 +1654,18 @@ impl ProviderUploadExecutor {
                 .upload_attempt(provider, &entry, &file_transfer_id, file_size)
                 .await
             {
+                // A create-only upload whose earlier attempt failed may have
+                // stored the file before its answer was lost: the name that
+                // now exists can be this transfer's own bytes, so it is not
+                // a skip of something that was already there.
+                Ok(false) if attempt > 0 => {
+                    last_error = format!(
+                        "Upload outcome uncertain: an earlier attempt failed and {} now exists, \
+                         possibly from that attempt. Check the destination before retrying.",
+                        entry.remote_path
+                    );
+                    break;
+                }
                 Ok(false) => {
                     self.sink.emit_transfer_event(crate::TransferEvent {
                         event_type: "file_skip".into(),
@@ -3300,6 +3312,27 @@ mod tests {
             self.upload_calls += 1;
             Ok(())
         }
+        fn supports_upload_if_absent(&self) -> bool {
+            true
+        }
+        /// The first `fail_first_n` create-only attempts lose their answer
+        /// (retryable); every later one finds the name taken.
+        async fn upload_if_absent(
+            &mut self,
+            _local_path: &str,
+            remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            self.upload_calls += 1;
+            if self.upload_calls <= self.fail_first_n {
+                return Err(crate::providers::ProviderError::TransferFailed(
+                    "connection timeout mid-stream".to_string(),
+                ));
+            }
+            Err(crate::providers::ProviderError::AlreadyExists(
+                remote_path.to_string(),
+            ))
+        }
         async fn mkdir(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
             if let Some(cancel) = &self.cancel_on_mkdir {
                 cancel.cancel();
@@ -3976,6 +4009,59 @@ mod tests {
             None,
             "consumed once, never double counted"
         );
+    }
+
+    /// CodeRabbit on #1350: a create-only upload whose first attempt lost
+    /// its answer may have stored the file, so the "already exists" of the
+    /// retry is not a skip: the outcome is uncertain and reported as a
+    /// failure. A name taken on the first attempt is still a skip.
+    #[tokio::test]
+    async fn a_create_only_upload_retried_after_a_lost_answer_is_not_a_skip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("in.bin");
+        std::fs::write(&local, b"ok").expect("local file");
+        for (lost_answers, expect_skip) in [(1, false), (0, true)] {
+            let executor = ProviderUploadExecutor::new(
+                Arc::new(crate::transfer_event_sink::NoopTransferSink),
+                Arc::new(Mutex::new(Some(
+                    Box::new(FlakyDownloadProvider::fail_first(lost_answers))
+                        as Box<dyn StorageProvider>,
+                ))),
+                ResolvedTransferSettings {
+                    requested_max_concurrent: 1,
+                    max_concurrent: 1,
+                    retry_count: 2,
+                    timeout_seconds: 30,
+                    download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(
+                        1,
+                    ),
+                    sftp_download_preset: None,
+                },
+                None,
+                CancellationToken::new(),
+                ProviderExecutorSessionModel::locked(Some(ProviderType::S3)),
+                TransferCapabilities::default(),
+            )
+            .with_no_clobber(true);
+            let outcome = executor
+                .execute(TransferEntry {
+                    id: "create-only".to_string(),
+                    display_name: "in.bin".to_string(),
+                    remote_path: "/remote/in.bin".to_string(),
+                    local_path: local.to_string_lossy().to_string(),
+                    size: 2,
+                    modified: None,
+                })
+                .await;
+            if expect_skip {
+                assert!(
+                    matches!(outcome, TransferOutcome::Skipped { .. }),
+                    "{outcome:?}"
+                );
+            } else {
+                assert!(matches!(outcome, TransferOutcome::Failed(_)), "{outcome:?}");
+            }
+        }
     }
 
     /// A clean first-try success meters one attempt => zero retries.

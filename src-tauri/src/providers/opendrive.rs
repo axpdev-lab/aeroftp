@@ -1226,9 +1226,12 @@ impl OpenDriveProvider {
                 let to_name = to_name.clone();
                 let from_parent_path = from_parent_path.clone();
                 Box::pin(async move {
-                    let folder_id = match this.folder_id_by_path(&from_resolved).await {
-                        Ok(id) => id,
-                        Err(_) => return Ok::<Option<()>, ProviderError>(None),
+                    // Only a proven "not a folder" falls through to the file
+                    // path; a server, auth or parse error stays an error, or
+                    // an existing folder would end in NotFound below.
+                    let folder_id = match this.folder_id_if_folder(&from_resolved).await? {
+                        Some(id) => id,
+                        None => return Ok::<Option<()>, ProviderError>(None),
                     };
                     if from_parent_path == to_parent_path {
                         this.post_form_unit(
@@ -2932,6 +2935,49 @@ mod tests {
         provider.session_id = "sid".to_string();
 
         let outcome = provider.stat("/docs").await;
+        server.abort();
+
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// CodeRabbit on #1350: a rename read every folder-lookup error as
+    /// "not a folder" and went on to the file lookup, so a server error on
+    /// an existing folder ended in NotFound. The lookup error is returned.
+    #[tokio::test]
+    async fn a_rename_does_not_turn_a_failed_folder_lookup_into_not_found() {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        let (base, server) = serve(vec![
+            Route::get(
+                "/api/v1/folder/list.json/sid/0",
+                200,
+                r#"{"Folders":[],"Files":[]}"#,
+            ),
+            Route::post(
+                "/api/v1/folder/idbypath.json",
+                503,
+                r#"{"error":{"code":503,"message":"busy"}}"#,
+            ),
+            Route::post(
+                "/api/v1/file/idbypath.json",
+                404,
+                r#"{"error":{"code":404,"message":"not found"}}"#,
+            ),
+        ])
+        .await;
+        let mut provider = OpenDriveProvider::new(OpenDriveConfig {
+            host: base,
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        provider.connected = true;
+        provider.session_id = "sid".to_string();
+
+        let outcome = provider.rename("/docs", "/docs2").await;
         server.abort();
 
         assert!(

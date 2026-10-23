@@ -18,7 +18,7 @@ use crate::providers::types::ProviderError;
 
 /// Finalize an enumeration only after checking the native API's error
 /// channel. Partial objects cannot prove that an unlisted name is absent.
-#[cfg(any(target_os = "linux", target_os = "windows", test))]
+#[cfg(any(all(target_os = "linux", mtp_libmtp), target_os = "windows", test))]
 pub(super) fn checked_object_listing(
     objects: Vec<MtpObject>,
     operation_error: Option<ProviderError>,
@@ -30,7 +30,7 @@ pub(super) fn checked_object_listing(
 }
 
 /// Native enumeration cannot silently invent an unreturned name.
-#[cfg(any(target_os = "linux", target_os = "windows", test))]
+#[cfg(any(all(target_os = "linux", mtp_libmtp), target_os = "windows", test))]
 pub(super) fn checked_object_name(decoded: Option<String>) -> Result<String, ProviderError> {
     decoded
         .filter(|name| !name.is_empty())

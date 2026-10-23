@@ -1071,7 +1071,10 @@ impl StorageProvider for GitLabProvider {
             Ok(file) => file,
             Err(ProviderError::NotFound(_)) => {
                 let (parent, name) = resolved.rsplit_once('/').unwrap_or(("", &resolved));
-                let entries = self.list(parent).await?;
+                // `resolved` is already relative to the repository root:
+                // list its parent as an absolute path, so the working
+                // folder of a session that did `cd` is not joined again.
+                let entries = self.list(&format!("/{parent}")).await?;
                 return match entries.into_iter().find(|entry| entry.name == name) {
                     Some(entry) if entry.is_dir => Ok(entry),
                     Some(_) => Err(ProviderError::ParseError(format!(
@@ -1191,7 +1194,11 @@ mod tests {
             } else if uri.path().ends_with("/file") {
                 axum::Json(serde_json::json!({"file_name":"file","file_path":"file","size":3,"encoding":"base64","blob_id":"b","commit_id":"c","last_commit_id":"c"})).into_response()
             } else if uri.path().ends_with("/repository/tree") {
-                axum::Json(serde_json::json!([{"id":"folder","name":"dir","type":"tree","path":"dir","mode":"040000"}])).into_response()
+                if uri.query().unwrap_or("").contains("path=sub") {
+                    axum::Json(serde_json::json!([])).into_response()
+                } else {
+                    axum::Json(serde_json::json!([{"id":"folder","name":"dir","type":"tree","path":"dir","mode":"040000"}])).into_response()
+                }
             } else { (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"message":"404 File Not Found"}))).into_response() }
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1212,6 +1219,10 @@ mod tests {
         assert!(!provider.stat("/file").await.unwrap().is_dir);
         assert!(!provider.exists("/missing").await.unwrap());
         assert!(provider.exists("/denied").await.is_err());
+        // An absolute path ignores the session's working folder.
+        provider.current_path = "sub".into();
+        assert!(provider.stat("/dir").await.unwrap().is_dir);
+        assert!(provider.exists("/dir").await.unwrap());
         server.abort();
     }
 
