@@ -259,15 +259,18 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     'src/components/AeroCryptKeyslotsModal.tsx': ['YES'],
     // Sample exclude patterns.
     'src/components/AeroSync/PlanTabContent.tsx': ['cache, *.tmp, build/output'],
-    // Sample credentials and identifiers, a provider name and the AeroShare id label.
+    // Sample credentials and identifiers, a provider name, the AeroShare id label and
+    // the Proton Drive tab a copy is saved to.
     'src/components/ConnectionScreen.tsx': [
         'demopublickey...', 'dxz9abc12', '003d90ca9d33900000000001', 'my-b2-bucket', 'glpat-xxxxxxxxxxxx',
         'FEF5078EA41D182EEF89A21E034BD680', 'AKIAIOSFODNN7EXAMPLE', 'aeroftp2026', 'FileLu', 'AeroFTP-ID',
         'PixelUnion', 'Immich', 'Dropbox', 'Google Drive', 'OneDrive', 'Box', 'Google Photos', 'pCloud Drive',
         'Filen', 'Internxt', 'Jottacloud', 'Proton Drive', 'kDrive', 'Yandex Disk', 'Zoho WorkDrive', '4shared',
         'Backblaze B2', 'Drime', 'MEGA', 'Cloudinary', 'ImageKit', 'Twake Drive', 'Uploadcare', 'GitHub', 'GitLab',
-        'Proton',
+        'Proton', 'API', 'CLI',
     ],
+    // The Proton Drive tab (API or CLI) a mode switch goes to.
+    'src/components/ProtonModeSwitchDialog.tsx': ['API', 'CLI'],
     // Cipher names.
     'src/components/CryptoLabTab.tsx': ['AES-256-GCM', 'ChaCha20-Poly1305'],
     // Key derivation and key wrap algorithm names.
