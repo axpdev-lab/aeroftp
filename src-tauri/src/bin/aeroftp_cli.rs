@@ -55509,7 +55509,16 @@ mod fuse_mount {
 
             let mut child_inodes = Vec::with_capacity(entries.len());
             for e in &entries {
-                let child_ino = self.alloc_inode(&e.path);
+                // FUSE identifies an entry by its parent and name, as lookup
+                // does. A provider path may alias the parent or a sibling.
+                if e.name.is_empty()
+                    || matches!(e.name.as_str(), "." | "..")
+                    || e.name.contains('/')
+                {
+                    continue;
+                }
+                let child_path = Self::child_path(path, &e.name);
+                let child_ino = self.alloc_inode(&child_path);
                 child_inodes.push(child_ino);
 
                 let attr = if e.is_dir {
@@ -56659,6 +56668,101 @@ mod fuse_mount {
             stop,
         )
         .await
+    }
+
+    #[cfg(test)]
+    mod inode_tests {
+        use super::*;
+
+        #[test]
+        fn listed_children_ignore_names_outside_the_direct_namespace() {
+            let remote = crate::tests::listed_remote(
+                &[(
+                    "/root",
+                    &[
+                        (".", "/root", None),
+                        ("..", "/", None),
+                        ("", "/root", None),
+                        ("/absolute", "/absolute", None),
+                        ("nested/name", "/root/nested/name", Some(1)),
+                        ("keep.txt", "/root/keep.txt", Some(2)),
+                    ],
+                )],
+                &[],
+            );
+            let fs = AeroFuseFs::new(
+                Arc::new(AsyncMutex::new(Box::new(remote))),
+                "/root".to_string(),
+                60,
+                true,
+                true,
+                MountKnobs::default(),
+            );
+            let listing = fs.fetch_dir(ROOT_INODE, "/root").unwrap();
+            let children = listing.children.unwrap();
+            assert_eq!(children.len(), 1);
+            assert_eq!(fs.get_path(children[0]).as_deref(), Some("/root/keep.txt"));
+            assert_eq!(fs.path_inode.lock().unwrap().len(), 2);
+        }
+
+        /// Provider paths may alias the parent or another child. The mount's
+        /// namespace must still give each listed name its own stable inode.
+        #[test]
+        fn listed_children_keep_distinct_inodes_when_provider_paths_alias() {
+            let remote = crate::tests::listed_remote(
+                &[(
+                    "/root",
+                    &[
+                        ("folder", "/root", None),
+                        ("first.txt", "/elsewhere/shared", Some(3)),
+                        ("second.txt", "/elsewhere/shared", Some(7)),
+                    ],
+                )],
+                &[],
+            );
+            let fs = AeroFuseFs::new(
+                Arc::new(AsyncMutex::new(Box::new(remote))),
+                "/root".to_string(),
+                60,
+                true,
+                true,
+                MountKnobs::default(),
+            );
+            let listing = fs.fetch_dir(ROOT_INODE, "/root").unwrap();
+            let children = listing.children.unwrap();
+            assert_eq!(children.len(), 3);
+            for (index, (name, size)) in [("folder", 0), ("first.txt", 3), ("second.txt", 7)]
+                .into_iter()
+                .enumerate()
+            {
+                let path = format!("/root/{name}");
+                let ino = children[index];
+                assert_ne!(ino, ROOT_INODE, "{name}");
+                assert_eq!(fs.get_path(ino).as_deref(), Some(path.as_str()));
+                assert_eq!(
+                    fs.alloc_inode(&path),
+                    ino,
+                    "lookup must reuse readdir's inode"
+                );
+                assert_eq!(fs.get_cached(ino).unwrap().attr.size, size);
+            }
+            assert_eq!(
+                children
+                    .iter()
+                    .copied()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
+                3
+            );
+            assert_eq!(
+                fs.fetch_dir(ROOT_INODE, "/root").unwrap().children.unwrap(),
+                children
+            );
+            assert_eq!(
+                fs.get_cached(ROOT_INODE).unwrap().attr.kind,
+                FileType::Directory
+            );
+        }
     }
 }
 
@@ -85107,7 +85211,7 @@ mod tests {
     /// Deletes are also recorded, refused or not, so a test can tell a delete
     /// the run attempted from one it never planned.
     #[derive(Default)]
-    struct MemTreeProvider {
+    pub(super) struct MemTreeProvider {
         dirs: HashMap<String, Vec<RemoteEntry>>,
         delete_attempts: Arc<Mutex<Vec<String>>>,
         /// Opt-in: a delete removes the file, and `rmdir` removes a directory
@@ -91572,7 +91676,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     /// A remote holding `listings`, with the files stamped with
     /// [`FIXTURE_MTIME`] and holding `contents` when named there. Mutations go
     /// through, so a test sees what a command really removed.
-    fn listed_remote(listings: &[Listing<'_>], contents: &[(&str, &[u8])]) -> MemTreeProvider {
+    pub(super) fn listed_remote(
+        listings: &[Listing<'_>],
+        contents: &[(&str, &[u8])],
+    ) -> MemTreeProvider {
         let dirs = listings
             .iter()
             .map(|(listed, entries)| {

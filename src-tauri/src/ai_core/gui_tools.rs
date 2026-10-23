@@ -15,6 +15,48 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
     crate::ai_core::local_tools::value_as_string_array(args, key).map_err(|e| e.to_string())
 }
 
+/// Expand a local directory for AeroAgent upload, keeping its top-level name.
+fn expand_upload_directory(base: &std::path::Path) -> Result<Vec<(String, String)>, String> {
+    let mut expanded_paths = Vec::new();
+    // Walk directory recursively
+    let base = base.to_path_buf();
+    let mut stack = vec![base.clone()];
+    while let Some(dir) = stack.pop() {
+        let entries = std::fs::read_dir(&dir)
+            .map_err(|e| format!("Failed to read directory {}: {}", dir.display(), e))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("Directory entry error: {}", e))?;
+            let entry_path = entry.path();
+            // Like CLI `put -r` and the sync scan, never follow symlinks.
+            let file_type = entry
+                .file_type()
+                .map_err(|e| format!("Failed to read file type {}: {}", entry_path.display(), e))?;
+            if file_type.is_dir() {
+                stack.push(entry_path);
+            } else if file_type.is_file() {
+                let rel = entry_path
+                    .strip_prefix(&base)
+                    .map(|r| r.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| {
+                        entry_path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
+                    });
+                let dir_name = base
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let remote_rel = format!("{}/{}", dir_name, rel);
+                expanded_paths.push((entry_path.to_string_lossy().to_string(), remote_rel));
+            }
+        }
+    }
+    Ok(expanded_paths)
+}
+
 /// Interim crypt-overlay guard for the AeroAgent `gui_tools` paths.
 ///
 /// Delegates to the shared [`ProviderState::guard_no_raw_crypt_write`], which
@@ -650,41 +692,7 @@ pub async fn dispatch_gui_tool(
                 let local_path = resolve_local_path(raw_path, context_local_path.as_deref());
                 let p = std::path::Path::new(&local_path);
                 if p.is_dir() {
-                    // Walk directory recursively
-                    let base = p.to_path_buf();
-                    let mut stack = vec![base.clone()];
-                    while let Some(dir) = stack.pop() {
-                        let entries = std::fs::read_dir(&dir).map_err(|e| {
-                            format!("Failed to read directory {}: {}", dir.display(), e)
-                        })?;
-                        for entry in entries {
-                            let entry =
-                                entry.map_err(|e| format!("Directory entry error: {}", e))?;
-                            let entry_path = entry.path();
-                            if entry_path.is_dir() {
-                                stack.push(entry_path);
-                            } else {
-                                let rel = entry_path
-                                    .strip_prefix(&base)
-                                    .map(|r| r.to_string_lossy().to_string())
-                                    .unwrap_or_else(|_| {
-                                        entry_path
-                                            .file_name()
-                                            .unwrap_or_default()
-                                            .to_string_lossy()
-                                            .to_string()
-                                    });
-                                let dir_name = base
-                                    .file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string();
-                                let remote_rel = format!("{}/{}", dir_name, rel);
-                                expanded_paths
-                                    .push((entry_path.to_string_lossy().to_string(), remote_rel));
-                            }
-                        }
-                    }
+                    expanded_paths.extend(expand_upload_directory(p)?);
                 } else {
                     let filename = p
                         .file_name()
@@ -1051,6 +1059,32 @@ pub async fn dispatch_gui_tool(
 mod tests {
     use super::publish_remote_edit;
     use crate::providers::edit_replace_tests::EditFake;
+
+    /// A link back to the upload root must not repeat files or escape it.
+    #[cfg(unix)]
+    #[test]
+    fn recursive_upload_skips_ancestor_and_external_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("upload");
+        let nested = root.join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(root.join("own.txt"), b"own").unwrap();
+        std::fs::write(nested.join("child.txt"), b"child").unwrap();
+        let outside = temp.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("secret.txt"), b"secret").unwrap();
+        std::os::unix::fs::symlink(&root, nested.join("ancestor")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("file-link")).unwrap();
+        std::os::unix::fs::symlink("missing", root.join("dangling")).unwrap();
+        let mut paths: Vec<_> = super::expand_upload_directory(&root)
+            .unwrap()
+            .into_iter()
+            .map(|(_, remote)| remote)
+            .collect();
+        paths.sort();
+        assert_eq!(paths, ["upload/nested/child.txt", "upload/own.txt"]);
+    }
 
     fn staged(text: &[u8]) -> tempfile::NamedTempFile {
         let file = tempfile::NamedTempFile::new().expect("temp file");
