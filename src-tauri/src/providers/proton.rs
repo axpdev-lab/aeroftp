@@ -1880,6 +1880,13 @@ impl StorageProvider for ProtonCliProvider {
         self.delete(path).await
     }
 
+    fn purges_live_path(&self) -> bool {
+        // `delete_permanent` captures the node UID of the live path, trashes
+        // it and purges that very item; after a plain delete the path is gone
+        // and it finds nothing to purge.
+        true
+    }
+
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         let abs = self.resolve_path(path);
         ensure_not_section(&abs)?;

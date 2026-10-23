@@ -829,6 +829,185 @@ mod engine_runs {
         assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
     }
 
+    /// A remote with a trash. `Unpurgeable`: deletes go to a trash this
+    /// client cannot purge (Koofr). `LivePath`: a recursive delete moves the
+    /// folder to the trash, and the purge works only on a live path, by
+    /// trashing and then purging what it finds there (Proton's CLI).
+    #[derive(Clone, Copy, PartialEq)]
+    enum TrashKind {
+        Unpurgeable,
+        LivePath,
+    }
+
+    struct TrashKeepingRemote {
+        inner: MemRemote,
+        kind: TrashKind,
+        trash: Arc<Mutex<Vec<String>>>,
+    }
+
+    #[async_trait]
+    impl StorageProvider for TrashKeepingRemote {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            self.inner.provider_type()
+        }
+        fn display_name(&self) -> String {
+            self.inner.display_name()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            self.inner.connect().await
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.inner.disconnect().await
+        }
+        fn is_connected(&self) -> bool {
+            self.inner.is_connected()
+        }
+        async fn list(&mut self, p: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.inner.list(p).await
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            self.inner.pwd().await
+        }
+        async fn cd(&mut self, p: &str) -> Result<(), ProviderError> {
+            self.inner.cd(p).await
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            self.inner.cd_up().await
+        }
+        async fn download(
+            &mut self,
+            r: &str,
+            l: &str,
+            cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.inner.download(r, l, cb).await
+        }
+        async fn download_to_bytes(&mut self, r: &str) -> Result<Vec<u8>, ProviderError> {
+            self.inner.download_to_bytes(r).await
+        }
+        async fn upload(
+            &mut self,
+            l: &str,
+            r: &str,
+            cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.inner.upload(l, r, cb).await
+        }
+        async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
+            self.inner.mkdir(p).await
+        }
+        async fn delete(&mut self, p: &str) -> Result<(), ProviderError> {
+            self.inner.delete(p).await
+        }
+        async fn rmdir(&mut self, p: &str) -> Result<(), ProviderError> {
+            self.inner.rmdir(p).await
+        }
+        async fn rmdir_recursive(&mut self, p: &str) -> Result<(), ProviderError> {
+            self.trash.lock().unwrap().push(p.to_string());
+            self.inner.rmdir_recursive(p).await
+        }
+        async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.inner.rename(from, to).await
+        }
+        async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
+            self.inner.stat(p).await
+        }
+        async fn size(&mut self, p: &str) -> Result<u64, ProviderError> {
+            self.inner.size(p).await
+        }
+        async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
+            self.inner.exists(p).await
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            self.inner.keep_alive().await
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            self.inner.server_info().await
+        }
+        fn trash_left_unpurged(&self) -> Option<&'static str> {
+            (self.kind == TrashKind::Unpurgeable)
+                .then_some("this provider keeps deleted items in its trash")
+        }
+        fn purges_live_path(&self) -> bool {
+            self.kind == TrashKind::LivePath
+        }
+        async fn delete_permanent(&mut self, p: &str) -> Result<bool, ProviderError> {
+            if self.kind != TrashKind::LivePath || !self.inner.exists(p).await? {
+                // Gone already, as after a recursive delete: nothing found.
+                return Ok(false);
+            }
+            // Trashed and purged in one step: nothing stays in the trash.
+            self.inner.rmdir_recursive(p).await?;
+            Ok(true)
+        }
+    }
+
+    /// The remote's state, its trash, and the provider to run against.
+    type TrashRemote = (
+        Arc<Mutex<Remote>>,
+        Arc<Mutex<Vec<String>>>,
+        Box<dyn StorageProvider>,
+    );
+
+    fn trash_remote(kind: TrashKind) -> TrashRemote {
+        let (state, _) = remote();
+        let trash = Arc::new(Mutex::new(Vec::new()));
+        let provider = Box::new(TrashKeepingRemote {
+            inner: MemRemote(state.clone()),
+            kind,
+            trash: trash.clone(),
+        });
+        (state, trash, provider)
+    }
+
+    #[tokio::test]
+    async fn a_trash_the_run_cannot_purge_is_reported_not_passed_over() {
+        let (_state, _trash, provider) = trash_remote(TrashKind::Unpurgeable);
+        let outcome = run(
+            provider,
+            "/data",
+            options(BenchmarkLevel::Quick, "1K", None),
+            &Silent,
+        )
+        .await
+        .unwrap();
+        assert!(
+            outcome
+                .report
+                .summary
+                .errors
+                .iter()
+                .any(|e| e.contains("keeps deleted items in its trash")),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+    }
+
+    #[tokio::test]
+    async fn a_client_that_purges_a_live_path_leaves_nothing_in_the_trash() {
+        let (state, trash, provider) = trash_remote(TrashKind::LivePath);
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.test_root_prefix = Some("/tests/run".into());
+        let outcome = run(provider, "/data", opts, &Silent).await.unwrap();
+        // The run folder and the two prefix folders the run created were
+        // purged where they stood, never moved to the trash by a plain delete.
+        assert!(
+            trash.lock().unwrap().is_empty(),
+            "{:?}",
+            trash.lock().unwrap()
+        );
+        assert!(
+            outcome.report.summary.errors.is_empty(),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+        let r = state.lock().unwrap();
+        assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
+    }
+
     #[tokio::test]
     async fn a_run_probes_latency_and_reports_a_signal() {
         let (_state, provider) = remote();
@@ -1159,4 +1338,37 @@ fn a_long_run_with_no_address_in_it_is_scanned_quickly() {
         started.elapsed()
     );
     assert!(json.contains("xy:xy:xy"));
+}
+
+#[test]
+fn each_client_gets_its_own_protocol_label_and_signal_kind() {
+    use BenchmarkClient::*;
+    // (client, provider type label) -> (Protocol, local bridge, metadata cache)
+    let cases = [
+        // MEGAcmd answers from its server on this machine.
+        (MegaCmd, "REST API", false, false, ("CLI", true, false)),
+        // Native MEGA answers stat from the tree it keeps in memory.
+        (
+            MegaNative,
+            "REST API",
+            false,
+            false,
+            ("REST API", false, true),
+        ),
+        // AeroFTP's own Proton client: Proton's API, answered from its cache.
+        (ProtonNative, "CLI", false, false, ("REST API", false, true)),
+        // Proton's official CLI reaches the service on every call: bars.
+        (ProtonCli, "CLI", false, false, ("CLI", false, false)),
+        // A loopback host or a Filen Desktop note is a local bridge.
+        (Other, "WebDAV", true, false, ("WebDAV", true, false)),
+        (Other, "S3", false, true, ("S3", true, false)),
+        (Other, "REST API", false, false, ("REST API", false, false)),
+    ];
+    for (client, label, local, note, (access, bridge, cached)) in cases {
+        assert_eq!(
+            benchmark_endpoint_kind(client, label, local, note),
+            (access.to_string(), bridge, cached),
+            "{client:?}"
+        );
+    }
 }

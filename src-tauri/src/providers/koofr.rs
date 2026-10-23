@@ -595,8 +595,18 @@ impl KoofrProvider {
     }
 }
 
+/// Koofr keeps every deleted item in its trash; its API purges the whole trash
+/// or nothing, so AeroFTP does not purge a single item there yet. Shared with
+/// the Koofr preset over WebDAV, whose deletes land in the same trash.
+pub(crate) const KOOFR_TRASH_NOT_PURGED: &str =
+    "Koofr keeps deleted items in its trash and AeroFTP cannot purge a single one there yet; empty it from Koofr to free the space";
+
 #[async_trait]
 impl StorageProvider for KoofrProvider {
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        Some(KOOFR_TRASH_NOT_PURGED)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }

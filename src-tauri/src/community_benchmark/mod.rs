@@ -189,6 +189,49 @@ pub fn benchmark_signal_from(
     })
 }
 
+/// The concrete client a benchmark measured, as far as its labels need it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BenchmarkClient {
+    /// MEGAcmd: commands to a MEGAcmd server running on this machine.
+    MegaCmd,
+    /// AeroFTP's own MEGA client.
+    MegaNative,
+    /// Proton's official `proton-drive` CLI, driven by AeroFTP.
+    ProtonCli,
+    /// AeroFTP's own Proton Drive client.
+    ProtonNative,
+    /// Anything else.
+    Other,
+}
+
+/// What a run reports about how it reached the service: the Protocol label,
+/// whether a round trip ends on this machine (a local bridge), and whether the
+/// client answers metadata from its own cache. `access_label` is the provider
+/// type's label, `local_endpoint` a loopback host, `has_note` a measurement
+/// note (the Filen Desktop presets).
+pub fn benchmark_endpoint_kind(
+    client: BenchmarkClient,
+    access_label: &str,
+    local_endpoint: bool,
+    has_note: bool,
+) -> (String, bool, bool) {
+    let access = match client {
+        BenchmarkClient::MegaCmd | BenchmarkClient::ProtonCli => "CLI",
+        BenchmarkClient::ProtonNative => "REST API",
+        BenchmarkClient::MegaNative | BenchmarkClient::Other => access_label,
+    }
+    .to_string();
+    // Only MEGAcmd talks to a server on this machine; Proton's official CLI
+    // reaches the service on every call, so its round trip gets bars.
+    let local_bridge = local_endpoint || has_note || client == BenchmarkClient::MegaCmd;
+    let metadata_cached = !local_bridge
+        && matches!(
+            client,
+            BenchmarkClient::MegaNative | BenchmarkClient::ProtonNative
+        );
+    (access, local_bridge, metadata_cached)
+}
+
 /// Whether a profile's host is this machine: a local bridge (MEGAcmd WebDAV,
 /// Filen Desktop, a test server) rather than the service it fronts.
 pub fn benchmark_is_loopback_host(host: &str) -> bool {

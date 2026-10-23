@@ -49168,6 +49168,13 @@ fn benchmark_profile_identity(p: &serde_json::Value) -> (String, String) {
                     || p.pointer("/options/mega_mode").and_then(|v| v.as_str()) == Some("megacmd"))
             {
                 "CLI".to_string()
+            } else if pt == ProviderType::Proton
+                && (p.pointer("/options/proton_mode").and_then(|v| v.as_str()) == Some("native")
+                    || p.pointer("/options/protonMode").and_then(|v| v.as_str()) == Some("native"))
+            {
+                // AeroFTP's own Proton client speaks Proton's API; a profile
+                // without the option drives Proton's official CLI.
+                "REST API".to_string()
             } else {
                 pt.access_label().to_string()
             },
@@ -84003,6 +84010,26 @@ mod tests {
             benchmark_profile_identity(&json!({"protocol":"webdav","providerId":"megacmd-webdav"}))
                 .1,
             "WebDAV"
+        );
+        // Proton: AeroFTP's own client speaks Proton's API, the other mode
+        // drives Proton's official CLI.
+        assert_eq!(
+            benchmark_profile_identity(
+                &json!({"protocol":"proton","options":{"proton_mode":"native"}})
+            )
+            .1,
+            "REST API"
+        );
+        assert_eq!(
+            benchmark_profile_identity(
+                &json!({"protocol":"proton","options":{"protonMode":"native"}})
+            )
+            .1,
+            "REST API"
+        );
+        assert_eq!(
+            benchmark_profile_identity(&json!({"protocol":"proton"})).1,
+            "CLI"
         );
     }
 

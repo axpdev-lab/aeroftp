@@ -3818,6 +3818,12 @@ impl StorageProvider for WebDavProvider {
             .then_some(super::FILEN_DESKTOP_BRIDGE_NOTE)
     }
 
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        // The Koofr preset deletes into the same Koofr trash as the API.
+        (self.config.provider_id.as_deref() == Some("koofr"))
+            .then_some(super::koofr::KOOFR_TRASH_NOT_PURGED)
+    }
+
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
         // Issue #175: prefer the connect-time server_root (auto-detected on
         // Nextcloud / ownCloud) over the user-typed initial_path so cd_up
