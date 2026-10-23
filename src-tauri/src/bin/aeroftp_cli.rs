@@ -13050,7 +13050,38 @@ fn unlock_auto_keyring_with_totp() -> Result<(), String> {
     }
 }
 
+/// The vault this process already opened, else the one `unlock` opens.
+/// Every step of a command that reads the vault goes through [`open_vault`]
+/// (an `ls --profile` opened it twice); each unlock derives the
+/// key from the master password again, about a third of a second, so only
+/// the first one does.
+fn vault_once<T>(
+    cached: impl Fn() -> Option<T>,
+    unlock: impl FnOnce() -> Result<(), String>,
+) -> Result<T, String> {
+    if let Some(store) = cached() {
+        return Ok(store);
+    }
+    unlock()?;
+    cached().ok_or_else(|| "Vault not available after init".to_string())
+}
+
 fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
+    use ftp_client_gui_lib::credential_store::CredentialStore;
+
+    let store = vault_once(CredentialStore::from_cache, || unlock_vault(cli))?;
+
+    // MU-3: run partition migration eagerly so `cli.user` can be resolved
+    // by the per-command unlock helper. Resolve+unlock is intentionally
+    // deferred to `ensure_active_user_unlocked` so that subcommands like
+    // `users list` work even when the active user is locked.
+    ftp_client_gui_lib::user_partitions::init_or_migrate_cli(&store)?;
+    Ok(store)
+}
+
+/// Opens the vault: `init` (auto mode unlocks by itself), else the master
+/// password and the second factor when the vault asks for them.
+fn unlock_vault(cli: &Cli) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
     // Try to init vault (auto mode unlocks automatically)
@@ -13092,16 +13123,33 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
         Ok(_) => {} // Auto mode - already open
         Err(e) => return Err(format!("Failed to open vault: {}", e)),
     }
+    Ok(())
+}
 
-    let store = CredentialStore::from_cache()
-        .ok_or_else(|| "Vault not available after init".to_string())?;
+#[cfg(test)]
+mod vault_once_tests {
+    use super::vault_once;
+    use std::cell::Cell;
 
-    // MU-3: run partition migration eagerly so `cli.user` can be resolved
-    // by the per-command unlock helper. Resolve+unlock is intentionally
-    // deferred to `ensure_active_user_unlocked` so that subcommands like
-    // `users list` work even when the active user is locked.
-    ftp_client_gui_lib::user_partitions::init_or_migrate_cli(&store)?;
-    Ok(store)
+    /// The key is derived once per command: a vault this process already
+    /// opened is used as it is, and only a closed one is unlocked.
+    #[test]
+    fn an_open_vault_is_not_unlocked_again() {
+        let unlocks = Cell::new(0);
+        let open = Cell::new(false);
+        let unlock = || {
+            unlocks.set(unlocks.get() + 1);
+            open.set(true);
+            Ok(())
+        };
+        let cached = || open.get().then_some("store");
+        assert_eq!(vault_once(cached, unlock), Ok("store"));
+        assert_eq!(vault_once(cached, unlock), Ok("store"));
+        assert_eq!(unlocks.get(), 1);
+
+        let refused = vault_once(|| None::<&str>, || Err("locked".to_string()));
+        assert_eq!(refused, Err("locked".to_string()));
+    }
 }
 
 /// Resolve which user partition the current CLI invocation should target,
@@ -36753,25 +36801,26 @@ async fn cmd_put_recursive(
     // reports `AlreadyExists` now, so the answer is read rather than guessed.
     if resolved_remote_base != "/" {
         let strict_ancestors = matches!(ptype, ProviderType::Ftp | ProviderType::Ftps);
-        for ancestor in benchmark_mkdir_ladder(&resolved_remote_base) {
-            match provider.mkdir(&ancestor).await {
-                Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
-                Err(mkd_err) if strict_ancestors => {
-                    let code = provider_error_to_exit_code(&mkd_err);
-                    print_error(
-                        format,
-                        &format!("Cannot create remote directory '{}': {}", ancestor, mkd_err),
-                        code,
-                    );
-                    let _ = provider.disconnect().await;
-                    return code;
-                }
-                Err(_) => {}
-            }
+        if let Err((ancestor, mkd_err)) = ftp_client_gui_lib::providers::create_folder_chain(
+            &mut *provider,
+            &resolved_remote_base,
+            strict_ancestors,
+        )
+        .await
+        {
+            let code = provider_error_to_exit_code(&mkd_err);
+            print_error(
+                format,
+                &format!("Cannot create remote directory '{}': {}", ancestor, mkd_err),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
         }
     }
 
-    for dir in &dirs {
+    // remote_base itself was made by the chain above.
+    for dir in dirs.iter().filter(|dir| **dir != resolved_remote_base) {
         let _ = provider.mkdir(dir).await;
     }
 

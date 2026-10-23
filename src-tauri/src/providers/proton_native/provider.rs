@@ -213,9 +213,22 @@ where
         out: &mut (dyn AsyncWrite + Unpin + Send),
         progress: &mut (dyn FnMut(u64) + Send),
     ) -> Result<DownloadOutcome, ProtonError> {
-        let node = self.fresh(link_id).await?;
         let mut out = out;
-        DriveClient::download(self, &node, &mut out, progress).await
+        // The node a listing decrypted names the revision that was active
+        // then. The first revision page says whether it still is, before any
+        // byte is written: if so it is read without loading the node again,
+        // as the official client reads from its synced cache; if not, the
+        // node is read again for the revision that replaced it.
+        if let Some(node) = self.cached_node(link_id).await {
+            match DriveClient::download(self, &node, &mut out, &mut *progress, true).await {
+                Err(ProtonError::RevisionNotActive) => {
+                    log::debug!("Proton: {link_id} has a newer revision than the one listed");
+                }
+                other => return other,
+            }
+        }
+        let node = self.fresh(link_id).await?;
+        DriveClient::download(self, &node, &mut out, progress, false).await
     }
 
     async fn upload_new(
@@ -322,7 +335,8 @@ pub fn map_error(path: &str, error: ProtonError) -> ProviderError {
         }
         error @ (ProtonError::Integrity(_)
         | ProtonError::Crypto(_)
-        | ProtonError::RevisionUnsupported) => ProviderError::TransferFailed(error.to_string()),
+        | ProtonError::RevisionUnsupported
+        | ProtonError::RevisionNotActive) => ProviderError::TransferFailed(error.to_string()),
         ProtonError::Api { code, .. } if code == CODE_NOT_EXISTS => {
             ProviderError::NotFound(path.to_string())
         }
@@ -568,6 +582,58 @@ struct SharedState {
     /// A listing left out an entry whose name could not be decrypted, so
     /// listings no longer prove that a file is absent.
     skipped_unreadable: AtomicBool,
+    /// One walk step at a time per folder: clones that resolve paths below
+    /// one folder at once wait for the first listing and read its answer
+    /// from the cache, instead of each listing the folder (four workers
+    /// starting on one folder sent four identical listings).
+    walks: std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+}
+
+/// The walk step on one folder, held while it runs (see
+/// [`SharedState::walks`]).
+struct WalkTurn<'a> {
+    shared: &'a SharedState,
+    folder: String,
+    gate: Arc<tokio::sync::Mutex<()>>,
+    held: Option<tokio::sync::OwnedMutexGuard<()>>,
+}
+
+impl<'a> WalkTurn<'a> {
+    /// Waits until no other clone walks `folder`.
+    async fn take(shared: &'a SharedState, folder: &str) -> Self {
+        let gate = Arc::clone(
+            shared
+                .walks
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .entry(folder.to_string())
+                .or_default(),
+        );
+        let held = Some(Arc::clone(&gate).lock_owned().await);
+        Self {
+            shared,
+            folder: folder.to_string(),
+            gate,
+            held,
+        }
+    }
+}
+
+impl Drop for WalkTurn<'_> {
+    /// The last one out removes the folder's gate, so the map holds only the
+    /// folders being walked.
+    fn drop(&mut self) {
+        let mut walks = self
+            .shared
+            .walks
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.held = None;
+        // The map's and this turn's: nobody else waits.
+        if Arc::strong_count(&self.gate) <= 2 {
+            walks.remove(&self.folder);
+        }
+    }
 }
 
 /// [`ProtonNativeProvider::forget_path`] on the state the clones of one
@@ -732,11 +798,19 @@ impl ProtonNativeProvider {
                 break;
             }
         }
+        let shared = Arc::clone(&self.shared);
         let (mut current_path, mut current) = match current {
             Some(found) => found,
             None => {
-                let root = drive.root().await.map_err(|error| map_error("/", error))?;
-                self.remember("/".to_string(), root.clone());
+                let _turn = WalkTurn::take(&shared, "").await;
+                let root = match self.cached("/") {
+                    Some(root) => root,
+                    None => {
+                        let root = drive.root().await.map_err(|error| map_error("/", error))?;
+                        self.remember("/".to_string(), root.clone());
+                        root
+                    }
+                };
                 ("/".to_string(), root)
             }
         };
@@ -744,13 +818,19 @@ impl ProtonNativeProvider {
             if !current.is_folder {
                 return Err(ProviderError::NotFound(path.to_string()));
             }
-            let children = self.children_of(&current_path, &current).await?;
             let next = join(&current_path, name);
-            current = children
-                .into_iter()
-                .find(|(child_path, _)| *child_path == next)
-                .map(|(_, info)| info)
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            let _turn = WalkTurn::take(&shared, &current_path).await;
+            // Another clone may have listed this folder while this one waited.
+            let found = match self.cached(&next) {
+                Some(info) => Some(info),
+                None => self
+                    .children_of(&current_path, &current)
+                    .await?
+                    .into_iter()
+                    .find(|(child_path, _)| *child_path == next)
+                    .map(|(_, info)| info),
+            };
+            current = found.ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
             current_path = next;
         }
         Ok(current)
@@ -1177,13 +1257,19 @@ impl StorageProvider for ProtonNativeProvider {
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let target = self.absolute(path);
         let (parent, _, name) = self.parent_and_name(&target).await?;
-        let result = self
-            .drive()?
+        let drive = self.drive()?;
+        let result = drive
             .create_folder(&parent.link_id, &name)
             .await
             .map_err(|error| map_error(&target, error));
         self.forget_path(&target);
-        result.map(|_| ())
+        let link_id = result?;
+        // The new folder is known from the answer (the client keeps the node
+        // it made), so what goes into it next needs no listing of its parent.
+        if let Ok(info) = drive.node(&link_id).await {
+            self.remember(target, info);
+        }
+        Ok(())
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1439,6 +1525,8 @@ mod tests {
         /// The next rename to this name says it was reached, then waits for
         /// the release: (name, reached, release).
         rename_gate: Mutex<Option<RenameGate>>,
+        /// Every listing takes this long, so parallel callers overlap.
+        children_delay: Mutex<Option<std::time::Duration>>,
     }
 
     type RenameGate = (String, Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>);
@@ -1554,6 +1642,10 @@ mod tests {
 
         async fn children(&self, folder_link_id: &str) -> Result<Vec<NodeInfo>, ProtonError> {
             self.log(format!("children {folder_link_id}"));
+            let delay = *self.children_delay.lock().unwrap();
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            }
             let nodes = self.nodes.lock().unwrap();
             let mut children: Vec<NodeInfo> = nodes
                 .iter()
@@ -1952,11 +2044,16 @@ mod tests {
         assert!(p.exists("/docs/sub").await.unwrap());
         assert_eq!(drive.count("children"), 2);
 
+        // A folder made here is known from the create answer.
         p.mkdir("/docs/new").await.unwrap();
         assert!(p.exists("/docs/new").await.unwrap());
+        assert_eq!(drive.count("children"), 2);
+
+        p.delete("/docs/a.txt").await.unwrap();
+        assert!(!p.exists("/docs/a.txt").await.unwrap());
         assert!(
             drive.count("children") > 2,
-            "a write must drop the cached listings"
+            "a write must drop the cached path"
         );
     }
 
@@ -2346,6 +2443,54 @@ mod tests {
         p.rename("/docs/sub", "/docs/moved").await.unwrap();
         assert!(!p.exists("/docs/sub").await.unwrap());
         assert!(p.exists("/docs/moved").await.unwrap());
+    }
+
+    /// Workers that start at once on files of one folder nobody resolved yet
+    /// list each folder on the way once between them, not once each.
+    #[tokio::test]
+    async fn parallel_workers_list_a_shared_parent_once() {
+        let (p, drive) = provider();
+        *drive.children_delay.lock().unwrap() = Some(std::time::Duration::from_millis(50));
+        let dir = tempfile::tempdir().unwrap();
+        let mut uploads = Vec::new();
+        for i in 0..4 {
+            let local = local_file_with(&dir, &format!("w{i}.txt"), b"w");
+            let mut worker = p.clone_for_transfer().unwrap();
+            uploads.push(async move {
+                worker
+                    .upload(&local, &format!("/docs/sub/w{i}.txt"), None)
+                    .await
+            });
+        }
+        for result in futures_util::future::join_all(uploads).await {
+            result.unwrap();
+        }
+        for folder in ["root", "docs"] {
+            assert_eq!(
+                drive.count(&format!("children {folder}")),
+                1,
+                "{:?}",
+                drive.calls()
+            );
+        }
+        assert_eq!(drive.count("upload-new"), 4);
+    }
+
+    /// A folder this connection made is known from its answer: writing into
+    /// it, or a folder below it, lists nothing.
+    #[tokio::test]
+    async fn a_folder_made_here_needs_no_listing() {
+        let (mut p, drive) = provider();
+        p.mkdir("/docs/new").await.unwrap();
+        let walks = drive.count("children");
+        p.mkdir("/docs/new/deeper").await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let local = local_file_with(&dir, "f.txt", b"f");
+        p.upload(&local, "/docs/new/deeper/f.txt", None)
+            .await
+            .unwrap();
+        assert_eq!(drive.count("children"), walks, "{:?}", drive.calls());
+        assert!(p.exists("/docs/new/deeper/f.txt").await.unwrap());
     }
 
     /// Clones share the connection and its caches: a write through one drops

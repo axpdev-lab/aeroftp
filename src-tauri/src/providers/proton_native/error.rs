@@ -112,6 +112,11 @@ pub enum ProtonError {
     )]
     RevisionUnsupported,
 
+    /// The revision a download started from is no longer the file's active
+    /// one: the file was written again since its node was read.
+    #[error("the file changed on Proton Drive while it was being read")]
+    RevisionNotActive,
+
     /// The node, path or volume does not exist (API code 2501).
     #[error("not found on Proton Drive: {0}")]
     NotFound(String),

@@ -19,8 +19,9 @@ use serde_json::{json, Value};
 
 use super::client::DriveClient;
 use super::drive_crypto;
+use super::drive_crypto::Verified;
 use super::error::ProtonError;
-use super::nodes::{validate_node_name, Node};
+use super::nodes::{validate_node_name, Node, NodeKind};
 
 /// Batch link operations accept at most 100 IDs (`nodes/apiService.ts`).
 const LINK_BATCH_SIZE: usize = 100;
@@ -151,7 +152,7 @@ impl<P: PGPProviderSync> DriveClient<P> {
         let armored_name =
             drive_crypto::encrypt_node_name(provider, name, None, &parent_public, &address_key)?;
         let hash = drive_crypto::lookup_hash(&parent_hash_key, name);
-        let (_, armored_hash_key) = drive_crypto::generate_hash_key(provider, &node.key)?;
+        let (hash_key, armored_hash_key) = drive_crypto::generate_hash_key(provider, &node.key)?;
 
         let response: CreateFolderResponse = self
             .api
@@ -169,6 +170,33 @@ impl<P: PGPProviderSync> DriveClient<P> {
                 }),
             )
             .await?;
+        // What a load of the new folder would decrypt, signed by us: kept, so
+        // a write into it right after needs no request to read it back.
+        let now = chrono::Utc::now().timestamp();
+        self.remember_node(Node {
+            link_id: response.folder.id.clone(),
+            parent_link_id: Some(parent.link_id.clone()),
+            kind: NodeKind::Folder,
+            name: Ok(name.to_string()),
+            name_verified: Verified::Valid,
+            name_hash: Some(hash),
+            create_time: now,
+            modify_time: now,
+            mime_type: None,
+            node_key: Some(node.key),
+            key_verified: Verified::Valid,
+            hash_key: Some(hash_key),
+            content_key: None,
+            active_revision: None,
+            xattr: Default::default(),
+            total_encrypted_size: None,
+            signature_email: Some(email.clone()),
+            name_signature_email: Some(email),
+            armored_name,
+            armored_node_passphrase: node.armored_passphrase,
+            errors: Vec::new(),
+        })
+        .await;
         Ok(response.folder.id)
     }
 

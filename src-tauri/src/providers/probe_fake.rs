@@ -17,6 +17,12 @@ pub(crate) struct ProbeFake {
     pub list_error: Option<fn() -> ProviderError>,
     /// `upload <path>`, `mkdir <path>`, `delete <path>`, `rename <from> <to>`.
     pub writes: Vec<String>,
+    /// With folders on, `mkdir` follows a real filesystem: it refuses a
+    /// folder whose parent is missing (NotFound) or that exists already
+    /// (AlreadyExists). Off, every `mkdir` succeeds.
+    pub folders: Option<std::collections::HashSet<String>>,
+    /// `mkdir` of this path is refused (PermissionDenied).
+    pub refuse_mkdir: Option<String>,
 }
 
 impl ProbeFake {
@@ -26,7 +32,21 @@ impl ProbeFake {
             probe_error: None,
             list_error: None,
             writes: Vec::new(),
+            folders: None,
+            refuse_mkdir: None,
         }
+    }
+
+    /// Folders on, with `existing` there already.
+    pub fn with_folders(mut self, existing: &[&str]) -> Self {
+        self.folders = Some(existing.iter().map(|path| path.to_string()).collect());
+        self
+    }
+
+    pub fn has_folder(&self, path: &str) -> bool {
+        self.folders
+            .as_ref()
+            .is_some_and(|folders| folders.contains(path))
     }
 
     pub fn with_file(mut self, path: &str, size: u64) -> Self {
@@ -112,6 +132,22 @@ impl StorageProvider for ProbeFake {
     }
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         self.writes.push(format!("mkdir {path}"));
+        if self.refuse_mkdir.as_deref() == Some(path) {
+            return Err(ProviderError::PermissionDenied(path.to_string()));
+        }
+        let Some(folders) = self.folders.as_mut() else {
+            return Ok(());
+        };
+        let parent = match path.rsplit_once('/') {
+            Some(("", _)) | None => None,
+            Some((parent, _)) => Some(parent.to_string()),
+        };
+        if parent.is_some_and(|parent| !folders.contains(&parent)) {
+            return Err(ProviderError::NotFound(path.to_string()));
+        }
+        if !folders.insert(path.to_string()) {
+            return Err(ProviderError::AlreadyExists(path.to_string()));
+        }
         Ok(())
     }
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
