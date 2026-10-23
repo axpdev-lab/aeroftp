@@ -565,10 +565,11 @@ impl AsyncWrite for CappedBuffer {
 }
 
 /// Files transferred, and folders scanned, at once through clones of one
-/// connection: below the SDK's 5 concurrent file uploads and downloads
-/// (`upload/queue.ts`, `download/queue.ts`). Every clone shares the session,
-/// its rate limiter and the block budget of the Drive client.
-const MAX_SESSIONS: u16 = 4;
+/// connection: the SDK's 5 concurrent file uploads and downloads
+/// (`upload/queue.ts`, `download/queue.ts`), which the official client runs
+/// at too. Every clone shares the session, its rate limiter and the block
+/// budget of the Drive client.
+const MAX_SESSIONS: u16 = 5;
 
 /// What a connection and its clones share: the resolved paths, the items
 /// this session trashed and whether a listing left an unreadable name out.
@@ -2497,6 +2498,17 @@ mod tests {
             .unwrap();
         assert_eq!(drive.count("children"), walks, "{:?}", drive.calls());
         assert!(p.exists("/docs/new/deeper/f.txt").await.unwrap());
+    }
+
+    /// Five files or scans at once: the SDK's own limits, the same as the
+    /// official client's (`upload/queue.ts::MAX_CONCURRENT_FILE_UPLOADS`,
+    /// `download/queue.ts::MAX_CONCURRENT_DOWNLOADS`).
+    #[test]
+    fn transfers_run_five_at_once_like_the_sdk() {
+        assert_eq!(MAX_SESSIONS, 5);
+        let (p, _) = provider();
+        assert_eq!(p.transfer_executor_max_sessions(), 5);
+        assert_eq!(p.list_executor_max_sessions(), 5);
     }
 
     /// Clones share the connection and its caches: a write through one drops

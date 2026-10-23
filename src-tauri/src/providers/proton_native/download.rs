@@ -219,64 +219,82 @@ impl<P: PGPProviderSync> DriveClient<P> {
                 .map_err(|_| ProtonError::Integrity("thumbnail hash is not base64".into()))?;
             thumbnails.push((thumbnail.thumbnail_type, hash));
         }
-        // apiService.ts: pages are read until one comes back empty.
-        while !page.blocks.is_empty() {
-            let mut blocks = std::mem::take(&mut page.blocks);
-            blocks.sort_by_key(|b| b.index);
-            // RevisionReader.cs: indices must be consecutive from 1.
-            for (offset, block) in blocks.iter().enumerate() {
-                let expected = next_index + offset as u64;
-                if block.index != expected {
-                    return Err(ProtonError::Integrity(format!(
-                        "expected block {expected}, got {}",
-                        block.index
-                    )));
+        // apiService.ts: pages are read until one comes back empty. The pages
+        // feed one stream of blocks, so the window of BLOCKS_IN_FLIGHT blocks
+        // runs on across page boundaries as the SDK's `fileDownloader.ts`
+        // does: before, the first block of a page was asked only once the
+        // last one of the page before had arrived, and every page boundary
+        // left a few blocks in flight instead of ten (a 200 MB file has two).
+        let first_index = next_index;
+        let (blocks_tx, blocks_rx) =
+            tokio::sync::mpsc::channel::<BlockRef>(2 * BLOCK_PAGE_SIZE as usize);
+        let pages = async {
+            let blocks_tx = blocks_tx;
+            let mut following = first_index;
+            while !page.blocks.is_empty() {
+                let mut blocks = std::mem::take(&mut page.blocks);
+                blocks.sort_by_key(|b| b.index);
+                // RevisionReader.cs: indices must be consecutive from 1.
+                for (offset, block) in blocks.iter().enumerate() {
+                    let expected = following + offset as u64;
+                    if block.index != expected {
+                        return Err(ProtonError::Integrity(format!(
+                            "expected block {expected}, got {}",
+                            block.index
+                        )));
+                    }
                 }
-            }
-            // The next page is read while this one's blocks download, as the
-            // SDK's generator does. It is left out when this page was short
-            // and its blocks complete the count the attributes give: the
-            // server has nothing more to send, and the empty page it would
-            // answer costs a request per file. The manifest signature covers
-            // every block either way, so a block the server failed to list
-            // still fails the download below.
-            let following = next_index + blocks.len() as u64;
-            let complete = blocks.len() < BLOCK_PAGE_SIZE as usize
-                && !node.xattr.block_sizes.is_empty()
-                && following - 1 == node.xattr.block_sizes.len() as u64;
-            let next_page = async {
+                // The page that would close the file is left out when this
+                // page was short and its blocks complete the count the
+                // attributes give: the server has nothing more to send. The
+                // manifest signature covers every block either way, so a
+                // block the server failed to list still fails the download.
+                let short = blocks.len() < BLOCK_PAGE_SIZE as usize;
+                following += blocks.len() as u64;
+                let complete = short
+                    && !node.xattr.block_sizes.is_empty()
+                    && following - 1 == node.xattr.block_sizes.len() as u64;
+                // Read while the blocks before it download: the channel holds
+                // two pages, so the next page is asked as soon as this one is
+                // handed over.
+                for block in blocks {
+                    if blocks_tx.send(block).await.is_err() {
+                        // The blocks stopped being read: a block failed, and
+                        // its error is the one reported.
+                        return Ok(());
+                    }
+                }
                 if complete {
-                    Ok(None)
-                } else {
-                    self.revision_page(node, &revision.revision_id, following, BLOCK_PAGE_SIZE)
-                        .await
-                        .map(Some)
+                    break;
                 }
-            };
-            let this_page = async {
-                // Fetched up to BLOCKS_IN_FLIGHT at a time, handed over in order.
-                let mut fetched = futures_util::stream::iter(blocks.into_iter().map(|block| {
-                    self.fetch_block(node, &revision.revision_id, session_key, block)
-                }))
-                .buffered(BLOCKS_IN_FLIGHT);
-                while let Some(result) = fetched.next().await {
-                    let (plain, digest) = result?;
-                    sha1.update(&plain);
-                    out.write_all(&plain).await.map_err(ProtonError::LocalIo)?;
-                    written += plain.len() as u64;
-                    progress(written);
-                    block_digests.push(digest);
-                    next_index += 1;
-                }
-                Ok::<(), ProtonError>(())
-            };
-            let (next, done) = tokio::join!(next_page, this_page);
-            done?;
-            match next? {
-                Some(next) => page = next,
-                None => break,
+                page = self
+                    .revision_page(node, &revision.revision_id, following, BLOCK_PAGE_SIZE)
+                    .await?;
             }
-        }
+            Ok::<(), ProtonError>(())
+        };
+        let downloads = async {
+            let incoming = futures_util::stream::unfold(blocks_rx, |mut blocks_rx| async move {
+                blocks_rx.recv().await.map(|block| (block, blocks_rx))
+            });
+            // Fetched up to BLOCKS_IN_FLIGHT at a time, handed over in order.
+            let mut fetched = std::pin::pin!(incoming
+                .map(|block| self.fetch_block(node, &revision.revision_id, session_key, block))
+                .buffered(BLOCKS_IN_FLIGHT));
+            while let Some(result) = fetched.next().await {
+                let (plain, digest) = result?;
+                sha1.update(&plain);
+                out.write_all(&plain).await.map_err(ProtonError::LocalIo)?;
+                written += plain.len() as u64;
+                progress(written);
+                block_digests.push(digest);
+                next_index += 1;
+            }
+            Ok::<(), ProtonError>(())
+        };
+        let (listed, done) = tokio::join!(pages, downloads);
+        done?;
+        listed?;
         out.flush().await.map_err(ProtonError::LocalIo)?;
 
         // Manifest: thumbnails sorted by type, then blocks by index.
@@ -443,6 +461,29 @@ mod tests {
             );
             assert_eq!(drive.count("storage"), *count);
         }
+    }
+
+    /// Blocks flow across revision pages: the first block of the next page is
+    /// asked while the last block of this page is still on its way, as the
+    /// SDK's downloader does, instead of after the whole page arrived.
+    #[tokio::test]
+    async fn the_next_page_starts_before_this_page_ends() {
+        let account = test_account();
+        let mut drive = TestDrive::start(&account).await;
+        let page = BLOCK_PAGE_SIZE as usize;
+        let content = blocks(page + 5);
+        let (file, _) = drive.add_file(account.provider(), ROOT, "a.bin", &refs(&content));
+        let client = drive.client(account);
+        DriveOps::children(&client, ROOT).await.unwrap();
+        drive.hold_block_until_asked(page, page + 1);
+
+        assert_eq!(download(&client, &file).await.unwrap(), content.concat());
+        assert_eq!(
+            drive.hold_released_by_request(),
+            Some(true),
+            "block {} was asked only after block {page} arrived",
+            page + 1
+        );
     }
 
     /// A server that drops the end of a file: the manifest signature covers
